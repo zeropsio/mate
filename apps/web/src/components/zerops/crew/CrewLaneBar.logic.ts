@@ -37,6 +37,12 @@ export interface CrewLaneBarModel {
   readonly ahead: string | null;
   /** "+214 −12"; `null` while level with your tree. */
   readonly diffStat: string | null;
+  /**
+   * What *Changes* diffs the copy against: your tree's tip as the engine last
+   * read it (`<head>..crew/<handle>`); `null` until it has, when the diff panel
+   * picks its own base.
+   */
+  readonly changesBase: string | null;
   readonly check: {
     readonly word: string;
     readonly tone: ServiceStatusToneId;
@@ -249,6 +255,7 @@ export function crewLaneBarModel(
     branch: lane.branch,
     ahead: crewAheadWord(lane.ahead),
     diffStat: ahead === null ? null : crewDiffStatWord(lane),
+    changesBase: host?.integration?.head ?? null,
     check:
       lane.check === null
         ? null

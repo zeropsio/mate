@@ -316,6 +316,12 @@ describe("crewLaneBarModel", () => {
     ).toEqual(showOnDev);
   });
 
+  it("diffs its copy against the tip of your tree, once the engine has read it", () => {
+    const head = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
+    expect(backend({ host: { integration: { branch: "main", head } } })?.changesBase).toBe(head);
+    expect(backend({ host: { integration: null } })?.changesBase).toBeNull();
+  });
+
   it("asks the Mate to commit your edit a landing waits on, and nothing otherwise", () => {
     const wait: CrewAttention = {
       id: "wait-1",
