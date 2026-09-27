@@ -34,5 +34,6 @@ export * from "./review.ts";
 export * from "./resourceTelemetry.ts";
 export * from "./zerops.ts";
 export * from "./zeropsCrewStates.ts";
+export * from "./zeropsCrew.ts";
 export * from "./usage.ts";
 export * from "./rpc.ts";
