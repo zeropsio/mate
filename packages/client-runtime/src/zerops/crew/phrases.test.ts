@@ -15,6 +15,7 @@ import {
   crewAheadWord,
   crewAppWord,
   crewConflictWord,
+  crewDevHostDatabaseWord,
   crewDiffStatWord,
   crewEarlierStintNotice,
   crewJobVersionWord,
@@ -523,5 +524,15 @@ describe("the chat's words (PRD §4.5, §5.6, §5.7)", () => {
       text: "An earlier conversation with @backend — it goes on in a newer one.",
       sendBlock: "Write to @backend in its current conversation",
     });
+  });
+});
+
+describe("crewDevHostDatabaseWord", () => {
+  it.each([
+    [true, "Has a database"],
+    [false, "No database"],
+    [null, "Database unknown"],
+  ] as const)("says a dev service's database %s as %s", (database, word) => {
+    expect(crewDevHostDatabaseWord(database)).toBe(word);
   });
 });

@@ -543,3 +543,9 @@ export const crewEarlierStintNotice = (
 /** A stint that began without a reason of its own, and the link to the one before it. */
 export const CREW_NEW_STINT_WORD = "New conversation";
 export const CREW_PREVIOUS_STINT_LINK = "previous conversation";
+
+/** Whether a dev service reaches a database (the crewmate editor's *Service*); `null` is unknown, never "no". */
+export function crewDevHostDatabaseWord(database: boolean | null): string {
+  if (database === null) return "Database unknown";
+  return database ? "Has a database" : "No database";
+}
