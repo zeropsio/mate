@@ -461,11 +461,11 @@ export const crewConflictWord = (paths: ReadonlyArray<string>): string =>
     ? "Conflicts with what landed"
     : `Conflicts with what landed: ${pathSummary(paths)}`;
 
-/** A task's landing in your tree (PRD §4.5). */
+/** A task's landing in your tree, by its commit's short sha (PRD §4.5). */
 export const crewLandedAsWord = (task: {
   readonly number: number;
   readonly landedCommit: string;
-}): string => `Task #${task.number} landed as ${task.landedCommit}`;
+}): string => `Task #${task.number} landed as ${task.landedCommit.slice(0, 7)}`;
 
 /** A crewmate's own app on its crew port (PRD §5.7). */
 export function crewAppWord(

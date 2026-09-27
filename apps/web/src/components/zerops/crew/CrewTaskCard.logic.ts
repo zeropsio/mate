@@ -8,8 +8,11 @@
  *
  * Pure: no clock, no I/O.
  */
-import { crewTaskSourceWord } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { CrewTask } from "@t3tools/contracts";
+import {
+  CREW_NEW_STINT_WORD,
+  crewTaskSourceWord,
+} from "@t3tools/client-runtime/zerops/crew/phrases";
+import type { CrewStint, CrewTask, ThreadId } from "@t3tools/contracts";
 
 export interface CrewTaskCardModel {
   readonly heading: string;
@@ -45,5 +48,25 @@ export function crewTaskCardModel(
     source: task === undefined ? null : crewTaskSourceWord(task.source),
     text,
     doneWhen: doneWhen === "" ? null : doneWhen,
+  };
+}
+
+/**
+ * Why this conversation began, for the seam above its first card, and the one
+ * before it; `null` for a crewmate's first conversation, and where the
+ * engine's own `stint` seam says it already (`seamed`), so it stands once.
+ */
+export function crewCardOrigin(input: {
+  readonly stints: ReadonlyArray<Pick<CrewStint, "threadId" | "reason">>;
+  readonly threadId: ThreadId;
+  readonly seamed: boolean;
+}): { readonly text: string; readonly previousThreadId: ThreadId | null } | null {
+  if (input.seamed) return null;
+  const index = input.stints.findIndex((stint) => stint.threadId === input.threadId);
+  const stint = input.stints[index];
+  if (stint === undefined || (index === 0 && stint.reason === null)) return null;
+  return {
+    text: stint.reason ?? CREW_NEW_STINT_WORD,
+    previousThreadId: input.stints[index - 1]?.threadId ?? null,
   };
 }

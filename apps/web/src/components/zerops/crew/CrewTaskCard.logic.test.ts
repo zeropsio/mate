@@ -1,7 +1,9 @@
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import { describe, expect, it } from "vite-plus/test";
 
-import { crewTaskCardModel } from "./CrewTaskCard.logic";
+import { ThreadId } from "@t3tools/contracts";
+
+import { crewCardOrigin, crewTaskCardModel } from "./CrewTaskCard.logic";
 
 const TASKS = crewSnapshotFixture().board.tasks.map((task) =>
   task.number === 12
@@ -65,5 +67,55 @@ describe("crewTaskCardModel", () => {
     },
   ])("$name", ({ card, model }) => {
     expect(crewTaskCardModel(card, TASKS)).toEqual(model);
+  });
+});
+
+describe("crewCardOrigin", () => {
+  const first = { threadId: ThreadId.make("thread-crew-backend-1"), reason: null };
+  const second = {
+    threadId: ThreadId.make("thread-crew-backend-2"),
+    reason: "Started fresh by you",
+  };
+  const third = { threadId: ThreadId.make("thread-crew-backend-3"), reason: null };
+  const stints = [first, second, third];
+
+  it.each<{
+    readonly name: string;
+    readonly threadId: ThreadId;
+    readonly seamed: boolean;
+    readonly origin: ReturnType<typeof crewCardOrigin>;
+  }>([
+    {
+      name: "a crewmate's first conversation has none",
+      threadId: first.threadId,
+      seamed: false,
+      origin: null,
+    },
+    {
+      name: "a later one says why it began and links the one before",
+      threadId: second.threadId,
+      seamed: false,
+      origin: { text: "Started fresh by you", previousThreadId: first.threadId },
+    },
+    {
+      name: "a later one without a reason is a new conversation",
+      threadId: third.threadId,
+      seamed: false,
+      origin: { text: "New conversation", previousThreadId: second.threadId },
+    },
+    {
+      name: "none where the engine's own seam says it already",
+      threadId: second.threadId,
+      seamed: true,
+      origin: null,
+    },
+    {
+      name: "none for a thread the crewmate's stints do not list",
+      threadId: ThreadId.make("thread-other"),
+      seamed: false,
+      origin: null,
+    },
+  ])("$name", ({ threadId, seamed, origin }) => {
+    expect(crewCardOrigin({ stints, threadId, seamed })).toEqual(origin);
   });
 });

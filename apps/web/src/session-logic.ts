@@ -12,6 +12,8 @@ import {
   extractCommandOutputText,
 } from "@t3tools/client-runtime/work-log/presentation";
 import {
+  CREW_SEAM_ACTIVITY_KIND,
+  CrewSeam,
   isToolLifecycleItemType,
   type AssetResource,
   type OrchestrationLatestTurn,
@@ -155,6 +157,8 @@ export interface WorkLogEntry {
   toolLifecycleStatus?: WorkLogToolLifecycleStatus;
   /** Originating orchestration activity kind (e.g. `user-input.requested`) for row chrome. */
   sourceActivityKind?: OrchestrationThreadActivity["kind"];
+  /** A crew seam (`crew.seam`): a line across a crewmate's chat, `label` its words. */
+  crewSeam?: CrewSeam;
   /** Grouping key for subagent lifecycle rows (one row per agent). */
   taskId?: string;
   /** Agent role (subagent_type) for labeled timeline rows. */
@@ -181,6 +185,8 @@ interface DerivedWorkLogEntry extends WorkLogEntry {
   /** Shell/monitor/plan tasks: ordinary work-log rows, never spawn CTAs. */
   isBackgroundTask?: boolean;
 }
+
+const isCrewSeam = Schema.is(CrewSeam);
 
 const derivedWorkLogEntryByActivity = new WeakMap<
   OrchestrationThreadActivity,
@@ -951,6 +957,9 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (activity.kind === "user-input.answer-submitted") {
     const answer = decodeQuestionAttachmentAnswer(payload);
     if (Option.isSome(answer)) entry.questionAnswer = answer.value;
+  }
+  if (activity.kind === CREW_SEAM_ACTIVITY_KIND && isCrewSeam(activity.payload)) {
+    entry.crewSeam = activity.payload;
   }
   if (activity.kind === "user-input.requested" || activity.kind === "user-input.resolved") {
     const requestId = asTrimmedString(payload?.requestId);

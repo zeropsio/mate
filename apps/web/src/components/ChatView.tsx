@@ -184,12 +184,10 @@ import { CrewLaneBar } from "./zerops/crew/CrewLaneBar";
 import { CrewLeadPlan } from "./zerops/crew/CrewLeadPlan";
 import { CrewmateEditor } from "./zerops/crew/CrewmateEditor";
 import { CrewTimelineContext, type CrewTimeline } from "./zerops/crew/CrewTaskCard";
+import { crewCardOrigin } from "./zerops/crew/CrewTaskCard.logic";
 import { crewChatNotices } from "./zerops/crew/crewChatNotices";
 import { crewComposerMentions, crewMessageCommand } from "./zerops/crew/crewComposerSend";
-import {
-  CREW_NEW_STINT_WORD,
-  crewMessagePlaceholder,
-} from "@t3tools/client-runtime/zerops/crew/phrases";
+import { crewMessagePlaceholder } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { crewCommands } from "../zerops/crew/crewCommands";
 import { crewFailureSentence } from "../zerops/crew/useCrewCommand";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
@@ -5353,12 +5351,10 @@ export default function ChatView(props: ChatViewProps) {
   }, [crewNotices, environmentId, navigate, threadId]);
   // What a crew thread's task cards need beyond their text: the board, and
   // for the stint's first card — while the conversation is loaded from its
-  // start — why this conversation began and the one before it.
+  // start — why this conversation began and the one before it, unless the
+  // engine's own stint seam says so already.
   const crewTimeline = useMemo<CrewTimeline | null>(() => {
     if (activeCrewOrigin === null) return null;
-    const stints = activeCrewmate?.crewmate.stints ?? [];
-    const index = stints.findIndex((stint) => stint.threadId === threadId);
-    const stint = stints[index];
     const firstCard =
       loadEarlierTurns === null
         ? displayedTimeline.entries.find(
@@ -5370,13 +5366,13 @@ export default function ChatView(props: ChatViewProps) {
         : undefined;
     return {
       firstCardId: firstCard?.id ?? null,
-      origin:
-        stint === undefined || (index === 0 && stint.reason === null)
-          ? null
-          : {
-              text: stint.reason ?? CREW_NEW_STINT_WORD,
-              previousThreadId: stints[index - 1]?.threadId ?? null,
-            },
+      origin: crewCardOrigin({
+        stints: activeCrewmate?.crewmate.stints ?? [],
+        threadId,
+        seamed: displayedTimeline.entries.some(
+          (entry) => entry.kind === "work" && entry.entry.crewSeam?.seam === "stint",
+        ),
+      }),
       tasks: crew.snapshot?.board.tasks ?? [],
       onOpenThread: (target) =>
         void navigate({

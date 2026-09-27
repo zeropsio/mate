@@ -1216,6 +1216,81 @@ describe("deriveMessagesTimelineRows", () => {
     });
   });
 
+  describe("crew seams", () => {
+    const LANDED = {
+      seam: "landed",
+      taskId: "task-12",
+      number: 12,
+      commit: "a1b2c3d4e5f6",
+    } as const;
+    /** A line the crew engine drew across a crewmate's chat: no turn owns it. */
+    const crewSeam = (id: string, minute: number, words = "Task #12 landed as a1b2c3d") => {
+      const entry = tool(id, "t1", minute, {
+        label: words,
+        tone: "info",
+        sourceActivityKind: "crew.seam",
+        crewSeam: LANDED,
+      }) as Extract<TimelineEntry, { kind: "work" }>;
+      const {
+        command: _command,
+        toolCallId: _call,
+        toolLifecycleStatus: _status,
+        ...rest
+      } = entry.entry;
+      return { ...entry, entry: { ...rest, turnId: null } };
+    };
+
+    it("draws a seam between turns as its own line, never as background work", () => {
+      const list = rows({
+        entries: [user("m0", 0), assistant("a1", "t1", 1), crewSeam("s1", 10)],
+        settled: "t1",
+      });
+      expect(list.at(-1)).toMatchObject({
+        kind: "crew-seam",
+        id: "s1",
+        seam: LANDED,
+        words: "Task #12 landed as a1b2c3d",
+      });
+      expect(list.some((row) => row.kind === "background")).toBe(false);
+    });
+
+    it("keeps a seam out of the background work around it", () => {
+      const list = rows({
+        entries: [
+          user("m0", 0),
+          assistant("a1", "t1", 1),
+          background("b1", 9),
+          crewSeam("s1", 10),
+          background("b2", 11),
+        ],
+        settled: "t1",
+      });
+      expect(shape(list).slice(-3)).toEqual([
+        "background:background:b1",
+        "crew-seam:s1",
+        "background:background:b2",
+      ]);
+    });
+
+    it("stands apart from what is around it, as a day seam does", () => {
+      const list = rows({
+        entries: [user("m0", 0), assistant("a1", "t1", 1), crewSeam("s1", 10), user("m1", 11)],
+        settled: "t1",
+      });
+      const seamAt = list.findIndex((row) => row.kind === "crew-seam");
+      expect(list[seamAt]?.gap).toBe("turn");
+      expect(list[seamAt + 1]?.gap).toBe("block");
+    });
+
+    it("draws a seam that lands while a turn runs as its line there", () => {
+      const list = rows({
+        entries: [user("m0", 0), tool("w1", "t1", 1), crewSeam("s1", 2)],
+        live: "t1",
+      });
+      expect(list.some((row) => row.kind === "crew-seam" && row.id === "s1")).toBe(true);
+    });
+  });
+
   it("shows an image-only message's images without the placeholder", () => {
     const list = rows({ entries: [user("m0", 0, IMAGE_ONLY_BOOTSTRAP_PROMPT)], working: true });
     expect(list[1]).toMatchObject({ kind: "message", imageOnly: true, receipt: "sent" });
