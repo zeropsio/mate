@@ -89,22 +89,9 @@ describe("timeline minimap previews", () => {
       ["assistant", "Stage is live, footer fixed."],
       ["user", "Next"],
     ]);
-    const line = (after: number, face: string, minutes: number) => ({
-      kind: "work-line" as const,
-      id: `work-line:${after}`,
-      createdAt: source[after]!.createdAt,
-      stretchKey: `msg:${source[after]!.id}`,
-      turnId: null,
-      live: false,
-      face: face as "produced",
-      startedAt: new Date(0).toISOString(),
-      endedAt: new Date(minutes * 60_000).toISOString(),
-      waitedMs: 0,
-      waitingSince: null,
-      worked: true,
-    });
-    // The run's last note, from its record: what the Mate said last on its way.
-    const record = (after: number): MessagesTimelineRow => ({
+    // The run's chat: its status on its last line, and its last note — what
+    // the Mate said last on its way.
+    const record = (after: number, face: string, minutes: number): MessagesTimelineRow => ({
       kind: "record",
       id: `record:${after}`,
       createdAt: source[after]!.createdAt,
@@ -123,12 +110,20 @@ describe("timeline minimap previews", () => {
       ],
       now: null,
       answering: false,
+      status: {
+        live: false,
+        face: face as "produced",
+        startedAt: new Date(0).toISOString(),
+        endedAt: new Date(minutes * 60_000).toISOString(),
+        waitedMs: 0,
+        waitingSince: null,
+        worked: true,
+      },
     });
     const withLines: MessagesTimelineRow[] = [
       { ...source[0]!, aside: false } as MessagesTimelineRow,
       { ...(source[1] as Extract<MessagesTimelineRow, { kind: "message" }>), aside: true },
-      line(0, "produced", 75),
-      record(0),
+      record(0, "produced", 75),
       source[2]!,
       source[3]!,
     ];

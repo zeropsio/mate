@@ -1,4 +1,4 @@
-import type { MessagesTimelineRow } from "./MessagesTimeline.logic";
+import type { MessagesTimelineRow, RunStatus } from "./MessagesTimeline.logic";
 
 /** What a stretch came to, as the turn map colours its mark. */
 export type TimelineMinimapTone = "produced" | "failed" | "paused" | "quiet";
@@ -22,65 +22,54 @@ function isAside(row: MessagesTimelineRow): boolean {
   return row.kind === "message" && row.message.role === "user" && row.aside;
 }
 
-/** The line of the run a message started: past the messages sent into it, which stand first. */
-function workLineAfter(
+/**
+ * The run a message started, past the messages sent into it, which stand
+ * first: its chat, which says its status on its last line, or its line where
+ * it has no chat.
+ */
+function runAfter(
   rows: ReadonlyArray<MessagesTimelineRow>,
   index: number,
-): Extract<MessagesTimelineRow, { kind: "work-line" }> | null {
+): { readonly row: MessagesTimelineRow; readonly status: RunStatus } | null {
   for (let cursor = index + 1; cursor < rows.length; cursor += 1) {
     const row = rows[cursor]!;
-    if (row.kind === "work-line") return row;
+    if (row.kind === "work-line") return { row, status: row };
+    if (row.kind === "record" && row.status !== null) return { row, status: row.status };
     if (row.kind === "message" && row.message.role === "user" && !row.aside) return null;
   }
   return null;
 }
 
-/** The Mate's latest words in the run's record, one line: what a preview quotes of its work. */
-/**
- * What the Mate said last on its way, from its run's record: every part of it,
- * the card breaking where the person wrote into the run, up to the next run.
- */
-function lastNoteOf(
-  rows: ReadonlyArray<MessagesTimelineRow>,
-  line: MessagesTimelineRow,
-): string | null {
-  let said: string | null = null;
-  for (let index = rows.indexOf(line) + 1; index < rows.length; index += 1) {
-    const row = rows[index]!;
-    if (row.kind === "work-line") break;
-    if (row.kind === "message" && row.message.role === "user" && !row.aside) break;
-    if (row.kind !== "record") continue;
-    const note = row.items.findLast((item) => item.kind === "note");
-    if (note?.kind !== "note") continue;
-    const first =
-      note.message.text
-        .trim()
-        .split("\n")[0]
-        ?.replace(/[*_`#>]/g, "")
-        .trim() ?? "";
-    if (first.length > 0) said = first;
-  }
-  return said;
+/** The Mate's latest words in the run's chat, one line: what a preview quotes of its work. */
+function lastNoteOf(row: MessagesTimelineRow): string | null {
+  if (row.kind !== "record") return null;
+  const note = row.items.findLast((item) => item.kind === "note");
+  if (note?.kind !== "note") return null;
+  const first =
+    note.message.text
+      .trim()
+      .split("\n")[0]
+      ?.replace(/[*_`#>]/g, "")
+      .trim() ?? "";
+  return first.length > 0 ? first : null;
 }
 
-function markOf(
-  rows: ReadonlyArray<MessagesTimelineRow>,
-  line: Extract<MessagesTimelineRow, { kind: "work-line" }> | null,
-) {
-  if (line === null) return { tone: "quiet" as const, weight: 0 as const, note: null };
+function markOf(run: ReturnType<typeof runAfter>) {
+  if (run === null) return { tone: "quiet" as const, weight: 0 as const, note: null };
+  const { status } = run;
   const tone: TimelineMinimapTone =
-    line.face === "failed"
+    status.face === "failed"
       ? "failed"
-      : line.face === "paused"
+      : status.face === "paused"
         ? "paused"
-        : line.face === "produced"
+        : status.face === "produced"
           ? "produced"
           : "quiet";
-  const endMs = line.endedAt === null ? Date.now() : Date.parse(line.endedAt);
-  // How long the Mate worked, as the line says it: its waits on the person are theirs.
-  const minutes = (endMs - Date.parse(line.startedAt) - line.waitedMs) / 60_000;
+  const endMs = status.endedAt === null ? Date.now() : Date.parse(status.endedAt);
+  // How long the Mate worked, as its status says it: its waits on the person are theirs.
+  const minutes = (endMs - Date.parse(status.startedAt) - status.waitedMs) / 60_000;
   const weight = !Number.isFinite(minutes) || minutes < 10 ? 0 : minutes < 60 ? 1 : 2;
-  return { tone, weight: weight as 0 | 1 | 2, note: lastNoteOf(rows, line) };
+  return { tone, weight: weight as 0 | 1 | 2, note: lastNoteOf(run.row) };
 }
 
 /** Keep full source text untouched until a minimap preview is opened. */
@@ -101,7 +90,7 @@ export function deriveTimelineMinimapItems(
       userText: row.message.text,
       assistantText: row.aside ? null : resolveFinalAssistantTextForTurn(rows, index),
       aside: row.aside,
-      ...markOf(rows, row.aside ? null : workLineAfter(rows, index)),
+      ...markOf(row.aside ? null : runAfter(rows, index)),
     });
   }
   return items;

@@ -1102,7 +1102,7 @@ describe("MessagesTimeline — the conversation", () => {
     ...overrides,
   });
 
-  it("draws a settled turn as the message, its card — heading, record, result — and the answer", () => {
+  it("draws a settled turn as the message, its card — chat, status, result — and the answer", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline
         {...buildProps()}
@@ -1116,9 +1116,13 @@ describe("MessagesTimeline — the conversation", () => {
         ]}
       />,
     );
-    // Its heading says who worked and how long: to the answer, not to when
-    // the server closed the turn — the same span once another turn follows.
-    expect(markup).toMatch(/Assistant worked<\/span><span[^>]*data-work-line-clock[^>]*>1m</);
+    // The chat's last line says who worked and how long: to the answer, not
+    // to when the server closed the turn — the same span once another turn
+    // follows. No heading stands over the card.
+    expect(markup).toMatch(
+      /Assistant worked<\/span><\/span><span[^>]*data-work-line-clock[^>]*>1m</,
+    );
+    expect(markup).not.toContain('data-timeline-row-kind="work-line"');
     // The record stays on the page, everything the Mate did in order (the
     // owner, 2026-09-27: "after the work is done I'd leave it on the page").
     const record = markup.slice(markup.indexOf('data-timeline-row-kind="record"'));
@@ -1162,11 +1166,10 @@ describe("MessagesTimeline — the conversation", () => {
         timelineEntries={[buildUserTimelineEntry("Deploy it")]}
       />,
     );
-    expect(markup).toContain('data-timeline-row-id="work-line:msg:message-1"');
-    expect(markup).toContain("Assistant is working");
+    // The card stands from the first frame, the Mate's status its last line.
+    expect(markup).toContain('data-timeline-row-id="record:msg:message-1"');
+    expect(markup).toContain("Assistant is thinking");
     expect(markup).toContain('data-work-line="working"');
-    expect(markup).toContain('data-chat-kind="typing:thought"');
-    expect(markup).toContain('aria-label="Thinking"');
     expect(markup).toContain('data-message-receipt="sent"');
   });
 
@@ -1219,8 +1222,8 @@ describe("MessagesTimeline — the conversation", () => {
       record.indexOf("Fixing the types."),
     );
     expect(record.indexOf("Fixing the types.")).toBeLessThan(record.indexOf("pnpm build"));
-    // Beside the face, between steps: no word of what it did twice.
-    expect(record).toContain('data-chat-kind="typing:thought"');
+    // Between steps the status line says it thinks: no word of what it did twice.
+    expect(record).toContain("Assistant is thinking");
     // What runs alongside stands under the record.
     expect(markup).toContain("data-conversation-working");
   });
@@ -1231,14 +1234,13 @@ describe("MessagesTimeline — the conversation", () => {
       tool("w1", 5),
       { ...writing, message: { ...writing.message, streaming: true } },
     ]);
-    expect(markup).toContain('data-chat-kind="typing:speech"');
-    expect(markup).toContain('aria-label="Writing"');
+    expect(markup).toContain("Assistant is writing");
     expect(markup).not.toContain("Checking /status next.");
   });
 
   it("shows the Mate composing before it said anything", () => {
     const markup = liveTimeline([tool("w1", 5)]);
-    expect(markup).toContain('data-chat-kind="typing:thought"');
+    expect(markup).toContain("Assistant is thinking");
     expect(markup).not.toContain('data-chat-kind="note"');
   });
 
@@ -1274,9 +1276,9 @@ describe("MessagesTimeline — the conversation", () => {
     const markup = liveTimeline([
       call("c1", 8, 'AskUserQuestion: {"questions":[{"question":"Teal or amber?"}]}'),
     ]);
-    expect(markup).toContain('data-chat-kind="waiting"');
+    expect(markup).toContain('data-run-status="waiting"');
     expect(markup).toContain('data-mate-face-state="needs"');
-    expect(markup).toContain("Waiting for your answer");
+    expect(markup).toContain("Assistant is waiting for your answer");
     expect(markup).not.toContain("AskUserQuestion");
   });
 

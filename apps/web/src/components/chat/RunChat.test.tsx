@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
 import type { WorkLogEntry } from "../../session-logic";
 import type { ChatMessage } from "../../types";
-import type { MessagesTimelineRow, RecordItem, TurnHeaderActivity } from "./MessagesTimeline.logic";
+import type { MessagesTimelineRow, RecordItem, RunStatus } from "./MessagesTimeline.logic";
 import { foldsLikeAMessage, RunChat } from "./RunChat";
 import {
   TimelineRowActivityCtx,
@@ -111,6 +111,7 @@ function record(items: ReadonlyArray<RecordItem>, overrides: Partial<RecordRow> 
     items,
     now: null,
     answering: false,
+    status: null,
     ...overrides,
   };
 }
@@ -128,6 +129,18 @@ const step = (entry: WorkLogEntry): RecordItem => ({
   key: `step:${entry.id}`,
   at: at(9),
   step: stepOf(entry, undefined, false),
+});
+
+/** A run's status: live and working by default. */
+const status = (overrides: Partial<RunStatus> = {}): RunStatus => ({
+  live: true,
+  face: "working",
+  startedAt: at(0),
+  endedAt: null,
+  waitedMs: 0,
+  waitingSince: null,
+  worked: true,
+  ...overrides,
 });
 
 const draw = (row: RecordRow) =>
@@ -193,61 +206,147 @@ describe("RunChat", () => {
     expect(markup).toContain("Context condensed");
   });
 
-  // One voice down the card's left edge: where two bubbles meet their
-  // corners are small, and only the first keeps its top corner round.
-  it("sets the bubbles on one spine", () => {
-    const [first, ...rest] = bubbles(
-      draw(record([thought("r1", "One."), thought("r2", "Two."), thought("r3", "Three.")])),
+  // Its words and what it did cannot be taken for one another (the owner,
+  // 2026-09-28: "command looks exactly like responses"): only its words are a
+  // filled, round bubble; a call is an outline led by its kind's mark.
+  it("fills only the Mate's words; what it did is an outline led by its kind", () => {
+    const markup = draw(
+      record([
+        {
+          kind: "note",
+          key: "note:a1",
+          at: at(10),
+          message: message("a1", "assistant", "Found it."),
+        },
+        step(command("w1", "npm test", { callInput: { description: "Run the tests" } })),
+      ]),
     );
-    expect(first?.tag).toContain("rounded-es-md");
-    expect(first?.tag).not.toContain("rounded-s-md");
-    for (const bubble of rest) expect(bubble.tag).toContain("rounded-s-md");
+    const [said, did] = bubbles(markup);
+    expect(said?.tag).toContain("bg-foreground/8");
+    expect(said?.tag).toContain("rounded-2xl");
+    expect(did?.tag).toContain("border");
+    expect(did?.tag).not.toContain("bg-foreground/8");
+    expect(markup).toContain("lucide-square-terminal");
   });
 
-  it("stands the face beside what the Mate is on, and only while it works", () => {
-    const now: TurnHeaderActivity = {
-      kind: "thinking",
-      key: "thought:r9",
-      messages: [message("r9", "reasoning", "Checking the route next.")],
-    };
-    const live = draw(record([thought("r1", "One.")], { live: true, now }));
-    expect(live.match(/data-mate-face-state="working"/g)).toHaveLength(1);
-    // The face is in the newest row, beside the thought it is thinking.
-    const newest = live.slice(live.lastIndexOf("data-chat-row"));
-    expect(newest).toContain("data-mate-face-state");
-    expect(newest).toContain("Checking the route next.");
+  // The Mate's status is the chat's last line, never a heading over the card
+  // (the owner, 2026-09-28: "it doesn't need to be at the top"): its face,
+  // what it is doing, its clock — the one face in the chat.
+  it.each([
+    { name: "thinking", now: null, says: "Nova is thinking", face: "working" },
+    { name: "writing", now: { kind: "writing" }, says: "Nova is writing", face: "working" },
+    {
+      name: "waiting on the person",
+      now: { kind: "waiting" },
+      says: "Nova is waiting for your answer",
+      face: "needs",
+    },
+  ] as const)("says under its chat what the Mate is doing: $name", ({ now, says, face }) => {
+    const markup = draw(record([thought("r1", "One.")], { live: true, now, status: status() }));
+    expect(markup.match(/data-mate-face-state="[a-z]+"/g)).toEqual([
+      `data-mate-face-state="${face}"`,
+    ]);
+    expect(markup).toContain(says);
+    // It stands under the chat's scroll, not in it.
+    expect(markup.indexOf(says)).toBeGreaterThan(markup.lastIndexOf("data-chat-row"));
+    // No bubble stands in for what the status line says.
+    expect(markup).not.toContain('data-chat-kind="typing');
+    expect(markup).not.toContain('data-chat-kind="waiting"');
+  });
+
+  it("says who worked and for how long once the run is over, where it said what it did", () => {
+    const markup = draw(
+      record([thought("r1", "One.")], {
+        status: status({ live: false, face: "produced", endedAt: at(72) }),
+      }),
+    );
+    expect(markup).toContain("Nova worked");
+    expect(markup).toMatch(/data-work-line-clock[^>]*>1m 12s</);
+    expect(markup).toContain('data-mate-face-state="done"');
     expect(draw(record([thought("r1", "One.")]))).not.toContain("data-mate-face-state");
   });
 
-  // The person's rule for their own messages, with one difference: what the
-  // Mate is writing now is always whole (the owner, 2026-09-27: "the current
-  // message being written should absolutely be visible in full").
-  it("never folds the thought it is thinking, however long, and offers no fold under it", () => {
+  // A long thought scrolls inside itself while it is thought, its newest
+  // words in sight, and folds to its top once it ends — at the same height
+  // (the owner, 2026-09-28: "the long thinking blocks needs to start inner
+  // scrolling with fade at the same cutoff").
+  it("keeps the thought it is thinking to eight lines that scroll, and offers no fold under it", () => {
     const markup = draw(
       record([], {
         live: true,
         now: { kind: "thinking", key: "thought:r9", messages: [message("r9", "reasoning", LONG)] },
       }),
     );
-    expect(markup).toContain('data-chat-folded="false"');
-    expect(markup).not.toContain("Show full message");
-    expect(markup).not.toContain("Show less");
+    expect(markup).toMatch(/class="[^"]*max-h-36[^"]*overflow-y-auto/);
+    expect(markup).not.toContain("data-chat-folded");
+    expect(markup).not.toContain("Show more");
   });
 
   it("folds what the chat opens onto past the limits, and leaves the rest whole", () => {
-    const markup = draw(record([thought("r1", LONG), thought("r2", "Short.")]));
-    expect(markup.match(/data-chat-folded="true"/g)).toHaveLength(1);
+    const markup = draw(
+      record([
+        thought("r1", LONG),
+        thought("r2", "Short."),
+        { kind: "note", key: "note:a1", at: at(10), message: message("a1", "assistant", LONG) },
+      ]),
+    );
+    expect(markup.match(/data-chat-folded="true"/g)).toHaveLength(2);
+    expect(markup.match(/>Show more</g)).toHaveLength(1);
     expect(markup.match(/>Show full message</g)).toHaveLength(1);
   });
 
-  it("folds a command past its eighth line, saying how many there are", () => {
-    const markup = draw(
+  // A script arrives whole, so it is never "being written": four of its
+  // lines from its first frame, running or done (the owner, 2026-09-28: "I
+  // see 100s of LoC printed directly").
+  it("folds a command past its fourth line from its first frame, saying how many there are", () => {
+    const done = draw(
       record([
         step(command("w1", SCRIPT, { callInput: { description: "Write the status route" } })),
       ]),
     );
-    expect(markup).toContain('data-chat-folded="true"');
-    expect(markup).toContain(">Show all 16 lines<");
+    expect(done).toContain('data-chat-folded="true"');
+    expect(done).toContain(">Show all 16 lines<");
+    const running = draw(
+      record([], {
+        live: true,
+        now: {
+          kind: "step",
+          step: stepOf(
+            command("w9", SCRIPT, {
+              toolLifecycleStatus: "inProgress",
+              sourceActivityKind: "tool.started",
+            }),
+            undefined,
+            false,
+          ),
+        },
+      }),
+    );
+    expect(running).toContain('data-chat-folded="true"');
+  });
+
+  // The person's words stand on the page above the card; the chat marks, in
+  // short and on their side, where they reached the Mate (the owner,
+  // 2026-09-28: "shown the user message in short inside the working group").
+  it("marks where the person's words reached the Mate, in one line on their side", () => {
+    const markup = draw(
+      record([
+        {
+          kind: "person",
+          key: "person:u2",
+          at: at(5),
+          message: {
+            ...message("u2", "assistant", "Keep /health working too\nThe load balancer calls it."),
+            role: "user",
+          },
+          imageOnly: false,
+        },
+      ]),
+    );
+    expect(markup).toMatch(
+      /justify-end[^>]*><p[^>]*data-chat-kind="person"[^>]*>Keep \/health working too</,
+    );
+    expect(markup).not.toContain("The load balancer calls it.");
   });
 
   // A two-hour run drew nine hundred bubbles as its conversation opened and
@@ -374,9 +473,11 @@ describe("RunChat, as the person uses it", () => {
         (node) => node.type === "div" && node.props["data-chat-folded"] !== undefined,
       ).props["data-chat-folded"];
     expect(folded()).toBe("true");
-    act(() => button(renderer, "Show all 16 lines").props.onClick());
+    const press = (words: string) =>
+      act(() => button(renderer, words).props.onClick({ currentTarget: { closest: () => null } }));
+    press("Show all 16 lines");
     expect(folded()).toBe("false");
-    act(() => button(renderer, "Show less").props.onClick());
+    press("Show less");
     expect(folded()).toBe("true");
   });
 });

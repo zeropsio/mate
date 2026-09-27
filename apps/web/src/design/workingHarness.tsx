@@ -20,7 +20,7 @@ import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRunt
 import * as Stream from "effect/Stream";
 
 import { ConversationAfterWork, ConversationWorking } from "~/components/chat/ConversationWorking";
-import { WorkLine, type ConversationSpeaker } from "~/components/chat/ConversationRows";
+import type { ConversationSpeaker } from "~/components/chat/ConversationRows";
 import {
   activityPills,
   splitBatchDeploy,
@@ -29,6 +29,7 @@ import {
 import type { DockModel } from "~/components/chat/conversationDock.logic";
 import type {
   MessagesTimelineRow,
+  RunStatus,
   RecordItem,
   TurnHeaderActivity,
 } from "~/components/chat/MessagesTimeline.logic";
@@ -53,15 +54,8 @@ const SPEAKER: ConversationSpeaker = { name: "Nova", tint: "sky" };
 const NOW = Date.now();
 const ago = (seconds: number) => new Date(NOW - seconds * 1000).toISOString();
 
-type WorkLineRow = Extract<MessagesTimelineRow, { kind: "work-line" }>;
-
-function heading(overrides: Partial<WorkLineRow>): WorkLineRow {
+function status(overrides: Partial<RunStatus>): RunStatus {
   return {
-    kind: "work-line",
-    id: "work-line:turn-1",
-    createdAt: ago(134),
-    stretchKey: "turn-1",
-    turnId: TurnId.make("turn-1"),
     live: true,
     face: "working",
     startedAt: ago(134),
@@ -490,6 +484,20 @@ const SO_FAR: ReadonlyArray<RecordItem> = [
       110,
     ),
   },
+  {
+    kind: "person",
+    key: "person:u2",
+    at: ago(90),
+    message: {
+      id: MessageId.make("u2"),
+      role: "user",
+      text: "Keep /health working too, the load balancer still calls it",
+      turnId: TURN,
+      streaming: false,
+      createdAt: ago(90),
+    } as ChatMessage,
+    imageOnly: false,
+  },
   { kind: "step", key: "step:e1", at: ago(79), step: edits },
   {
     kind: "step",
@@ -598,6 +606,7 @@ function record(overrides: Partial<RecordRow>): RecordRow {
     items: SO_FAR,
     now: null,
     answering: false,
+    status: status({}),
     ...overrides,
   };
 }
@@ -609,7 +618,7 @@ const THINKING: TurnHeaderActivity = {
     said(
       "r9",
       "reasoning",
-      "The test fails with 503, so the database didn't answer inside the test. The test database isn't seeded in CI — the pool connects to nothing and the route says \"down\", which is right. The test should start the database the same way the other route tests do, with the shared fixture, rather than the route learning to lie about it.\n\nI'll reuse `withDatabase()` from the users tests, run the suite again, and only then deploy.",
+      "The test fails with 503, so the database didn't answer inside the test. The test database isn't seeded in CI — the pool connects to nothing and the route says \"down\", which is right. The test should start the database the same way the other route tests do, with the shared fixture, rather than the route learning to lie about it.\n\nThe users tests already do this with `withDatabase()`: it starts a throwaway database, runs the migrations and hands the pool to the test. Reusing it keeps one way of starting a database in the suite.\n\nThe catch is time: every test file that calls it pays for a migration run, about two seconds. Four files use it today; a fifth is fine, but the fixture should cache the migrated template if this grows.\n\nI'll reuse `withDatabase()` from the users tests, run the suite again, and only then deploy.",
       9,
       true,
     ),
@@ -729,7 +738,6 @@ function Harness() {
           note="The thought it is thinking, whole, beside its face; the bubbles before it folded where long."
         >
           <Card>
-            <WorkLine row={heading({})} speaker={SPEAKER} timestampFormat="24-hour" />
             <RunChat row={record({ now: THINKING })} />
           </Card>
         </State>
@@ -738,7 +746,6 @@ function Harness() {
           note="The call it is making, its clock in the busy blue; the bars under the chat."
         >
           <Card>
-            <WorkLine row={heading({})} speaker={SPEAKER} timestampFormat="24-hour" />
             <RunChat row={record({ now: RUNNING_STEP })} />
             <ConversationWorking
               browser={null}
@@ -752,17 +759,13 @@ function Harness() {
         </State>
         <State label="Waiting for you" note="A question stops the clock; its face waits.">
           <Card>
-            <WorkLine
-              row={heading({ waitingSince: ago(30) })}
-              speaker={SPEAKER}
-              timestampFormat="24-hour"
+            <RunChat
+              row={record({ now: { kind: "waiting" }, status: status({ waitingSince: ago(30) }) })}
             />
-            <RunChat row={record({ now: { kind: "waiting" } })} />
           </Card>
         </State>
         <State label="Writing" note="Words on their way, not placed yet.">
           <Card>
-            <WorkLine row={heading({})} speaker={SPEAKER} timestampFormat="24-hour" />
             <RunChat row={record({ now: { kind: "writing" } })} />
           </Card>
         </State>
@@ -771,12 +774,12 @@ function Harness() {
           note="The chat stays, in the same scroll; the result under it, its pills opening in place."
         >
           <Card>
-            <WorkLine
-              row={heading({ live: false, face: "produced", endedAt: ago(2) })}
-              speaker={SPEAKER}
-              timestampFormat="24-hour"
+            <RunChat
+              row={record({
+                live: false,
+                status: status({ live: false, face: "produced", endedAt: ago(2) }),
+              })}
             />
-            <RunChat row={record({ live: false })} />
             <div className="-mx-4 border-border/60 border-t px-4 pt-2.5">
               <TurnReport
                 onOpenImage={() => undefined}

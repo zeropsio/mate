@@ -28,9 +28,7 @@ import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../times
 import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatWorkDuration } from "./conversation.logic";
-import type { ConversationEvent, MessagesTimelineRow } from "./MessagesTimeline.logic";
-
-type WorkLineRow = Extract<MessagesTimelineRow, { kind: "work-line" }>;
+import type { ConversationEvent, MessagesTimelineRow, RunStatus } from "./MessagesTimeline.logic";
 
 /** Who the conversation is with: a Mate's colour, or the neutral one for a thread without a Mate. */
 export interface ConversationSpeaker {
@@ -111,61 +109,80 @@ function spanText(startedAt: string, endedAt: string | null, waitedMs = 0): stri
   );
 }
 
+/** What a run that is over did, after the Mate's name: "worked", "stopped", "thought". */
+export function settledRunVerb(status: RunStatus): string {
+  if (status.face === "stopped") return "stopped";
+  if (status.face === "paused") return "stopped at the usage limit";
+  return status.worked ? "worked" : "thought";
+}
+
 /**
- * A run's heading, the top of its card: who, and what the run is — working,
- * worked, stopped — with its time in the card's time column, on the right
- * edge every line of the record keeps its time on. The time is the Mate's
- * own: it stands still while a question waits on the person. Its tooltip
- * keeps the run's whole span.
+ * A run's clock, in the card's time column: the Mate's own time — it stands
+ * still while a question waits on the person — counting while the run goes
+ * on. Its tooltip keeps the run's whole span.
+ */
+export function RunClock({
+  status,
+  timestampFormat,
+  className,
+}: {
+  readonly status: RunStatus;
+  readonly timestampFormat: TimestampFormat;
+  readonly className?: string | undefined;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            className={cn("w-14 shrink-0 text-end tabular-nums", className)}
+            data-work-line-clock
+          />
+        }
+      >
+        {status.live ? (
+          <ElapsedSince
+            leftOutMs={status.waitedMs}
+            since={status.startedAt}
+            standingSince={status.waitingSince}
+          />
+        ) : (
+          spanText(status.startedAt, status.endedAt, status.waitedMs)
+        )}
+      </TooltipTrigger>
+      <TooltipPopup>
+        {formatChatTimestampTooltip(status.startedAt, timestampFormat)}
+        {status.endedAt ? ` – ${formatDayAwareTimestamp(status.endedAt, timestampFormat)}` : ""}
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
+/**
+ * The line of a run with no chat to end on — one that only asked for a plan's
+ * approval, or paused before it did anything: who, what the run is, and its
+ * clock. A run with a chat says the same on the chat's last line.
  */
 export function WorkLine({
   row,
   speaker,
   timestampFormat,
 }: {
-  readonly row: WorkLineRow;
+  readonly row: RunStatus;
   /** Who worked: a line that says only "Worked" says nobody did (the owner, 2026-09-26: "'worked' who where?"). */
   readonly speaker: ConversationSpeaker;
   readonly timestampFormat: TimestampFormat;
 }) {
-  const live = row.live;
-  const verb = live
-    ? "is working"
-    : row.face === "stopped"
-      ? "stopped"
-      : row.face === "paused"
-        ? "stopped at the usage limit"
-        : row.worked
-          ? "worked"
-          : "thought";
   return (
     <div
       className="flex min-h-7 min-w-0 items-center gap-2.5 text-line text-muted-foreground"
       data-work-line={row.face}
-      role={live ? "status" : undefined}
+      role={row.live ? "status" : undefined}
     >
       <span className="min-w-0 flex-1 truncate">
-        {speaker.name} {verb}
+        {speaker.name} {row.live ? "is working" : settledRunVerb(row)}
       </span>
-      <Tooltip>
-        <TooltipTrigger
-          render={<span className="w-14 shrink-0 text-end tabular-nums" data-work-line-clock />}
-        >
-          {live ? (
-            <ElapsedSince
-              leftOutMs={row.waitedMs}
-              since={row.startedAt}
-              standingSince={row.waitingSince}
-            />
-          ) : (
-            spanText(row.startedAt, row.endedAt, row.waitedMs)
-          )}
-        </TooltipTrigger>
-        <TooltipPopup>
-          {formatChatTimestampTooltip(row.startedAt, timestampFormat)}
-          {row.endedAt ? ` – ${formatDayAwareTimestamp(row.endedAt, timestampFormat)}` : ""}
-        </TooltipPopup>
-      </Tooltip>
+      <RunClock status={row} timestampFormat={timestampFormat} />
     </div>
   );
 }
