@@ -21,6 +21,7 @@ import {
   loneChatNewChatShown,
   mainChatToPin,
   mateChats,
+  replacementChatToPin,
   stripShown,
   type ConversationStripEntry,
 } from "./ConversationStrip.logic";
@@ -587,4 +588,41 @@ describe("mainChatToPin", () => {
       expect(mainChatToPin(row.threads)).toBe(row.pin);
     });
   }
+});
+
+describe("replacementChatToPin", () => {
+  const pinned = { pinnedAt: "2026-09-05T09:00:00.000Z" };
+  const archived = { ...pinned, archivedAt: "2026-09-05T11:00:00.000Z" };
+  const sent = ThreadId.make("fresh");
+  it.each<{
+    readonly name: string;
+    readonly threads: ReadonlyArray<EnvironmentThreadShell>;
+    readonly pin: string | null;
+  }>([
+    {
+      name: "pins the chat that replaced the main one, whose pin went with the archive",
+      threads: [shell("old-main", archived), shell("logs"), shell("fresh")],
+      pin: "fresh",
+    },
+    {
+      name: "writes nothing while another chat is main",
+      threads: [shell("main", pinned), shell("fresh")],
+      pin: null,
+    },
+    {
+      name: "writes nothing for a Mate's only chat, which is main without a pin",
+      threads: [shell("old-main", { archivedAt: "2026-09-05T11:00:00.000Z" }), shell("fresh")],
+      pin: null,
+    },
+    {
+      name: "counts a crewmate's thread as no chat of the Mate's",
+      threads: [
+        shell("old-main", archived),
+        shell("crew", { crew: { crew: "shop", crewmate: "backend", stint: 1 } }),
+      ],
+      pin: null,
+    },
+  ])("$name", ({ threads, pin }) => {
+    expect(replacementChatToPin(threads, sent)).toBe(pin);
+  });
 });

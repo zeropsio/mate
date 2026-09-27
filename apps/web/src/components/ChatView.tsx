@@ -311,6 +311,7 @@ import {
   useProject,
   useProjects,
   useThread,
+  readThreadShells,
   useThreadRefs,
   useThreadShell,
 } from "../state/entities";
@@ -337,6 +338,7 @@ import {
   useCrewStripGroups,
   useLoneChatNewChat,
 } from "./chat/ConversationStrip";
+import { replacementChatToPin } from "./chat/ConversationStrip.logic";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -6833,6 +6835,15 @@ export default function ChatView(props: ChatViewProps) {
           releaseAttachmentUploads(composerImagesSnapshot);
         }
         acknowledgeActiveThreadWoke();
+        // New session in the main chat archived it with its pin: the chat
+        // that took its place is main from its first send.
+        if (isLocalDraftThread && zeropsMateAt(zeropsMates, environmentId).kind === "mate") {
+          const mainChat = replacementChatToPin(
+            readThreadShells().filter((thread) => thread.environmentId === environmentId),
+            threadIdForSend,
+          );
+          if (mainChat !== null) void pinThread(scopeThreadRef(environmentId, mainChat));
+        }
         if (backgroundThreadRef) {
           markPromotedDraftThreadByRef(backgroundThreadRef);
           try {
@@ -7007,11 +7018,11 @@ export default function ChatView(props: ChatViewProps) {
     queuedMessageActionsRef.current.remove(id);
   }, []);
 
-  // Starting over in a Mate's conversation: the conversation is archived —
-  // it leaves the sidebar and stays readable under Archived — and a fresh
-  // thread in the same project takes its place as the Mate's one
-  // conversation (archived threads never rank as primary). Blocked while a
-  // turn is running, the same as archiving from the sidebar.
+  // Starting over in one of a Mate's chats: the chat is archived — it leaves
+  // the strip and stays readable under Archived — and a fresh thread in the
+  // same project takes its place (archived threads never rank as primary);
+  // in place of the main chat it takes the pin at its first send. Blocked
+  // while a turn is running, the same as archiving from the sidebar.
   const startFreshConversation = async () => {
     if (!activeThreadRef) return;
     const result = await archiveThread(activeThreadRef, {
