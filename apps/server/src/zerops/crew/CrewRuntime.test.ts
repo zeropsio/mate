@@ -1,13 +1,27 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
 import { describe, expect, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 
 import { claimTransition } from "./crewMachines.ts";
 import {
   claimEventFromServed,
   claimRequest,
+  CrewRuntime,
   holdsClaim,
+  makeCrewRuntime,
   servedFrom,
   showOnDevAnswer,
 } from "./CrewRuntime.ts";
+import { CrewStore } from "./CrewStore.ts";
+import * as CrewWorkspace from "./CrewWorkspace.ts";
+import { crewGitLayer, TEST_HOST, withCrewService } from "./testing/crewGitFixture.ts";
 
 const HANDLES = ["backend", "frontend"];
 
@@ -99,4 +113,127 @@ describe("holdsClaim", () => {
   ] as const)("%j → %s", (claim, holds) => {
     expect(holdsClaim(claim, "backend")).toBe(holds);
   });
+});
+
+/** A stand-in for zcp's dev server: a process in `cwd` whose pid is in the pidfile. */
+const startDevServer = (pidFile: string, cwd: string): NodeChildProcess.ChildProcess => {
+  const child = NodeChildProcess.spawn("sleep", ["30"], { cwd, stdio: "ignore" });
+  NodeFS.writeFileSync(pidFile, `${child.pid}\n`);
+  return child;
+};
+
+const withRuntime = <A, E>(
+  body: (context: {
+    readonly root: string;
+    readonly pidFile: string;
+  }) => Effect.Effect<A, E, CrewRuntime | CrewStore | CrewWorkspace.CrewWorkspace>,
+) => {
+  const pidFile = NodePath.join(
+    NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-crew-dev-")),
+    "zcp-dev-server.log.pid",
+  );
+  return withCrewService(
+    (root) =>
+      Effect.gen(function* () {
+        const workspace = yield* CrewWorkspace.CrewWorkspace;
+        yield* workspace.create({ crew: "game", host: TEST_HOST, handle: "backend" });
+        return yield* body({ root, pidFile });
+      }),
+    (root) =>
+      Layer.effect(CrewRuntime, makeCrewRuntime({ devServerPidFile: pidFile })).pipe(
+        Layer.provideMerge(crewGitLayer(root)),
+      ),
+  );
+};
+
+describe("CrewRuntime", () => {
+  it.effect("reads what dev serves from its process's working directory", () =>
+    withRuntime(({ root, pidFile }) =>
+      Effect.gen(function* () {
+        const runtime = yield* CrewRuntime;
+        const nothing = yield* runtime.served(TEST_HOST);
+        const lane = startDevServer(pidFile, NodePath.join(root, ".crew/backend"));
+        const fromLane = yield* runtime
+          .served(TEST_HOST)
+          .pipe(Effect.ensuring(Effect.sync(() => lane.kill())));
+        const tree = startDevServer(pidFile, root);
+        const fromTree = yield* runtime
+          .served(TEST_HOST)
+          .pipe(Effect.ensuring(Effect.sync(() => tree.kill())));
+        expect([nothing, fromLane, fromTree]).toEqual([
+          { by: "unknown" },
+          { by: "crewmate", handle: "backend" },
+          { by: "tree" },
+        ]);
+      }),
+    ),
+  );
+
+  it.effect("takes a claim from a request through held and back to the tree", () =>
+    withRuntime(({ root, pidFile }) =>
+      Effect.gen(function* () {
+        const runtime = yield* CrewRuntime;
+        const store = yield* CrewStore;
+        const workspace = yield* CrewWorkspace.CrewWorkspace;
+        yield* workspace.create({ crew: "game", host: TEST_HOST, handle: "frontend" });
+        const backend = { crew: "game", handle: "backend", host: TEST_HOST };
+        const claim = () =>
+          Effect.map(store.getClaim(TEST_HOST), (row) =>
+            Option.match(row, {
+              onNone: () => "none",
+              onSome: (value) => `${value.state} ${value.member}`,
+            }),
+          );
+        const seen: Array<unknown> = [];
+
+        seen.push((yield* runtime.request(backend)).outcome, yield* claim());
+        seen.push(
+          (yield* runtime.request({ ...backend, handle: "frontend" })).outcome,
+          (yield* runtime.request({ crew: "game", handle: "lead", host: undefined })).outcome,
+        );
+        yield* runtime.grant(TEST_HOST, "user-1");
+        seen.push(
+          yield* claim(),
+          Option.map(yield* store.getClaim(TEST_HOST), (row) => row.grantedBy),
+        );
+
+        const lane = startDevServer(pidFile, NodePath.join(root, ".crew/backend"));
+        yield* runtime.settle(TEST_HOST).pipe(Effect.ensuring(Effect.sync(() => lane.kill())));
+        seen.push(yield* claim());
+
+        yield* runtime.apply(TEST_HOST, "report");
+        seen.push(yield* claim());
+        const tree = startDevServer(pidFile, root);
+        yield* runtime.settle(TEST_HOST).pipe(Effect.ensuring(Effect.sync(() => tree.kill())));
+        seen.push(yield* claim());
+
+        expect(seen).toEqual([
+          { kind: "requested" },
+          "requested backend",
+          { kind: "busy", by: "backend" },
+          { kind: "no-lane" },
+          "starting backend",
+          Option.some("user-1"),
+          "held backend",
+          "releasing backend",
+          "none",
+        ]);
+      }),
+    ),
+  );
+
+  it.effect("refuses an event the claim's state does not take", () =>
+    withRuntime(() =>
+      Effect.gen(function* () {
+        const runtime = yield* CrewRuntime;
+        const refused = yield* runtime.grant(TEST_HOST, "user-1").pipe(Effect.flip);
+        expect(refused).toMatchObject({
+          _tag: "CrewClaimRefused",
+          host: TEST_HOST,
+          state: "none",
+          event: "grant",
+        });
+      }),
+    ),
+  );
 });
