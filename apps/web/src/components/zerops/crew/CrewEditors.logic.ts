@@ -1,0 +1,189 @@
+/**
+ * What the crew editors (PRD §4.7) compute: the edited crew home, the save
+ * choices (§5.6, on the probe-22 fallback: a next-turn save starts a fresh
+ * conversation), when a job changed enough to start fresh, the free tints,
+ * and *Runs on*'s logins, models and effort levels from the Mate's provider
+ * catalog. Phase B offers the two default logins only.
+ *
+ * The crew home's format is `@t3tools/shared/crewHome`'s; these only edit a
+ * parsed definition, and the editors write it back with `renderCrewHome`.
+ */
+import {
+  agentIdForProviderInstance,
+  type CrewApplyChoice,
+  type CrewLogin,
+  type Crewmate,
+  type ServerProvider,
+} from "@t3tools/contracts";
+import { MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
+import { parseBrief, type CrewDefinition, type CrewMemberSpec } from "@t3tools/shared/crewHome";
+
+export interface CrewSaveChoice {
+  readonly apply: CrewApplyChoice;
+  readonly label: string;
+  readonly description: string;
+}
+
+/** The split save button's choices; the first is the default. */
+export const CREW_SAVE_CHOICES: ReadonlyArray<CrewSaveChoice> = [
+  {
+    apply: "nextTurn",
+    label: "Save — the next turn starts a fresh conversation",
+    description: "Each crewmate it applies to starts its next turn in a new conversation.",
+  },
+  {
+    apply: "now",
+    label: "Save and apply now",
+    description: "Interrupts working crewmates, keeps their work and continues with the change.",
+  },
+  {
+    apply: "fresh",
+    label: "Save and start fresh",
+    description: "New conversations now, started from the task, the branch and the last report.",
+  },
+];
+
+/** CONCEPT §3A.3's docs-derived figure, until probe 19 measures it. */
+export const CREW_APPLY_COST_LINE =
+  "Applying re-reads this crewmate’s conversation once (up to about $1.25 at 200k context)";
+
+/** More than half of the job's lines changed: a fresh conversation follows it better. */
+export function jobChangedMostly(before: string, after: string): boolean {
+  const lines = (text: string) => text.split(/\r?\n/u).filter((line) => line.trim() !== "");
+  const old = lines(before);
+  if (old.length === 0) return false;
+  const kept = new Set(lines(after));
+  const changed = old.filter((line) => !kept.has(line)).length;
+  return changed * 2 > old.length;
+}
+
+/** The definition with one crewmate replaced (by its handle before the edit) or, for `null`, added. */
+export function withMember(
+  definition: CrewDefinition,
+  handle: string | null,
+  spec: CrewMemberSpec,
+): CrewDefinition {
+  return {
+    ...definition,
+    members:
+      handle === null
+        ? [...definition.members, spec]
+        : definition.members.map((member) => (member.handle === handle ? spec : member)),
+  };
+}
+
+export function withBrief(definition: CrewDefinition, title: string, text: string): CrewDefinition {
+  return { ...definition, brief: parseBrief(title, text) };
+}
+
+/** The tints a crewmate may take: its own and those nobody else wears, never the Mate's. */
+export function freeTints(
+  definition: CrewDefinition,
+  handle: string | null,
+  mateTint: MateTintId | undefined,
+): ReadonlyArray<MateTintId> {
+  const taken = new Set(
+    definition.members.flatMap((member) =>
+      member.handle !== handle && member.tint !== undefined ? [member.tint] : [],
+    ),
+  );
+  return MATE_TINT_IDS.filter((tint) => tint !== mateTint && !taken.has(tint));
+}
+
+/** The provider instances that are Mate logins in phase B: the two defaults. */
+const DEFAULT_LOGINS: ReadonlyArray<{ readonly id: string; readonly label: string }> = [
+  { id: "claudeAgent", label: "Claude Code" },
+  { id: "codex", label: "Codex" },
+];
+
+export function crewLoginOptions(
+  providers: ReadonlyArray<ServerProvider>,
+): ReadonlyArray<CrewLogin> {
+  return DEFAULT_LOGINS.flatMap((login) => {
+    const agent = agentIdForProviderInstance(login.id);
+    const present = providers.some((provider) => provider.instanceId === login.id);
+    return present && agent !== undefined ? [{ id: login.id, label: login.label, agent }] : [];
+  });
+}
+
+export function crewModelOptions(
+  providers: ReadonlyArray<ServerProvider>,
+  loginId: string,
+): ReadonlyArray<{ readonly slug: string; readonly name: string }> {
+  const provider = providers.find((candidate) => candidate.instanceId === loginId);
+  return (provider?.models ?? []).map((model) => ({ slug: model.slug, name: model.name }));
+}
+
+/** A model's effort levels: its `effort` (Claude) or `reasoningEffort` (Codex) choices. */
+export function crewEffortOptions(
+  providers: ReadonlyArray<ServerProvider>,
+  loginId: string,
+  modelSlug: string | null,
+): ReadonlyArray<{ readonly id: string; readonly label: string }> {
+  if (modelSlug === null) return [];
+  const model = providers
+    .find((candidate) => candidate.instanceId === loginId)
+    ?.models.find((candidate) => candidate.slug === modelSlug);
+  const descriptor = model?.capabilities?.optionDescriptors?.find(
+    (candidate) =>
+      candidate.type === "select" &&
+      (candidate.id === "effort" || candidate.id === "reasoningEffort"),
+  );
+  return descriptor?.type === "select"
+    ? descriptor.options.map((option) => ({ id: option.id, label: option.label }))
+    : [];
+}
+
+/**
+ * Where a crewmate's copy may live: the dev half of each runtime (a Mate's
+ * pairs are `<name>dev`/`<name>stage`, D12), and any host the crew already
+ * names, so an edit never loses one the topology has not read yet.
+ */
+export function crewDevHosts(
+  services: ReadonlyArray<{ readonly hostname: string; readonly group: string }>,
+  known: ReadonlyArray<string>,
+): ReadonlyArray<string> {
+  const dev = services
+    .filter((service) => service.group === "runtimes" && service.hostname.endsWith("dev"))
+    .map((service) => service.hostname);
+  return [...new Set([...dev, ...known])];
+}
+
+export interface CrewApplyStep {
+  readonly id: string;
+  readonly label: string;
+  readonly state: "queued" | "running" | "done" | "failed";
+  readonly stateLabel: string;
+}
+
+/** Apply's progress per crewmate (PRD §4.7): its copy being created, set up, ready or failed. */
+export function crewApplyProgress(
+  crewmates: ReadonlyArray<Crewmate>,
+): ReadonlyArray<CrewApplyStep> {
+  return crewmates.map((mate): CrewApplyStep => {
+    const step = { id: mate.handle, label: mate.displayName };
+    const lane = mate.lane;
+    if (lane === null) return { ...step, state: "done", stateLabel: "Ready" };
+    switch (lane.state) {
+      case "creating":
+        return {
+          ...step,
+          state: "running",
+          stateLabel: `Creating ${mate.displayName}'s copy of the code`,
+        };
+      case "setting-up":
+        return {
+          ...step,
+          state: "running",
+          stateLabel: lane.detail === null ? "Setting up its copy" : `Running ${lane.detail}`,
+        };
+      case "missing":
+      case "failed":
+        return { ...step, state: "failed", stateLabel: lane.detail ?? "Its copy failed" };
+      case "ready":
+      case "conflicts":
+      case "frozen":
+        return { ...step, state: "done", stateLabel: "Ready" };
+    }
+  });
+}
