@@ -672,4 +672,213 @@ describe("CrewEngine", () => {
       }),
     ),
   );
+
+  it.live(
+    "Start fresh rotates between turns; Save and apply now interrupts, rotates and continues",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          const thread = yield* firstTurn(world, () => undefined);
+          const busy = yield* Effect.flip(command({ _tag: "startFresh", handle: "backend" }));
+          writeCrewHome(world.workspace, { "brief.md": "Ship it by Friday.\n" });
+          yield* command({ _tag: "briefSave", apply: "now" });
+          const interrupts = (yield* dispatchedOf(world, "thread.turn.interrupt")).map(
+            (entry) => entry.threadId,
+          );
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "interrupted" }));
+          yield* eventually(
+            Effect.map(
+              dispatchedOf(world, "thread.crew.create"),
+              (creates) => creates.length === 2,
+            ),
+          );
+          yield* eventually(
+            Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) =>
+              turns.at(-1)!.message.text.includes("· continue"),
+            ),
+          );
+          const continued = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!;
+          const creates = yield* dispatchedOf(world, "thread.crew.create");
+          yield* world.publish(
+            spiEvent("turn.completed", continued.threadId, { state: "completed" }),
+          );
+          yield* eventually(
+            command({ _tag: "startFresh", handle: "backend" }).pipe(
+              Effect.as(true),
+              Effect.orElseSucceed(() => false),
+            ),
+          );
+          const snapshot = yield* snapshotWhere(
+            (current) => current.crewmates[0]!.stints.length === 3,
+          );
+          assert.deepStrictEqual(
+            {
+              busy: busy.reason,
+              interrupts,
+              continueIn: continued.threadId === creates[1]!.threadId,
+              continueAs: (yield* Ref.get(world.admitted)).at(-1)?.principal,
+              reasons: snapshot.crewmates[0]!.stints.map((stint) => stint.reason),
+              brief: snapshot.crew?.briefVersion,
+            },
+            {
+              busy: "wrong-state",
+              interrupts: [thread],
+              continueIn: true,
+              continueAs: { kind: "crew", startedBy: "user-karel" },
+              reasons: [null, "prompt-changed", "start-fresh"],
+              brief: 2,
+            },
+          );
+        }),
+      ),
+  );
+
+  it.live("a changed login saves only as fresh", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        writeCrewHome(world.workspace, {
+          "crew.yaml": [
+            "name: Game team",
+            "briefTitle: Space shooter",
+            "members:",
+            "  - handle: backend",
+            "    displayName: Backend",
+            "    host: appdev",
+            "    login: claudeAgent_work",
+            "",
+          ].join("\n"),
+        });
+        const refused = yield* Effect.flip(
+          command({ _tag: "jobSave", handle: "backend", apply: "nextTurn" }),
+        );
+        yield* command({ _tag: "jobSave", handle: "backend", apply: "fresh" });
+        const snapshot = yield* snapshotWhere(
+          (current) => current.crewmates[0]!.login.id === "claudeAgent_work",
+        );
+        assert.deepStrictEqual(
+          [refused.reason, snapshot.crewmates[0]!.login],
+          [
+            "login-needs-fresh",
+            { id: "claudeAgent_work", label: "claudeAgent_work", agent: "claude-code" },
+          ],
+        );
+      }),
+    ),
+  );
+
+  it.live("Remove from crew keeps a copy with unlanded work until Discard", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const thread = yield* firstTurn(world, () =>
+          write(world.root, ".crew/backend/x.txt", "x\n"),
+        );
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        yield* eventually(
+          Effect.map(latest, (snapshot) => snapshot.crewmates[0]!.lane?.ahead === 1),
+        );
+        const kept = yield* Effect.flip(
+          command({ _tag: "removeCrewmate", handle: "backend", discardUnlanded: false }),
+        );
+        yield* command({ _tag: "removeCrewmate", handle: "backend", discardUnlanded: true });
+        const snapshot = yield* snapshotWhere((current) => current.crewmates.length === 0);
+        assert.deepStrictEqual(
+          {
+            kept: kept.reason,
+            copy: NodeFS.existsSync(NodePath.join(world.root, ".crew/backend")),
+            task: snapshot.board.tasks[0]?.state,
+            home: read(world.workspace, ".mate/crew/main/crew.yaml").includes("backend"),
+          },
+          { kept: "unlanded-commits", copy: false, task: "discarded", home: false },
+        );
+      }),
+    ),
+  );
+
+  it.live(
+    "crew ports: Apply gives each writer one, Run and Stop its app, Add crew ports proposes more",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          write(
+            world.root,
+            "zerops.yaml",
+            [
+              "zerops:",
+              "  - setup: appdev",
+              "    run:",
+              "      ports:",
+              "        - port: 3000",
+              "          httpSupport: true",
+              "        - port: 3001",
+              "          httpSupport: true",
+              "",
+            ].join("\n"),
+          );
+          git(world.root, ["add", "-A"]);
+          git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
+          writeCrewHome(world.workspace, {
+            "crew.yaml": [
+              "name: Game team",
+              "briefTitle: Space shooter",
+              "members:",
+              "  - handle: backend",
+              "    displayName: Backend",
+              "    host: appdev",
+              "    run: sleep 30",
+              "",
+            ].join("\n"),
+          });
+          yield* command({ _tag: "apply" });
+          yield* eventually(Effect.map(latest, everyCopyReady));
+          const ports = yield* command({ _tag: "addCrewPorts", host: "appdev", count: 2 });
+          yield* command({ _tag: "appRun", handle: "backend" });
+          const running = yield* snapshotWhere(
+            (current) => current.crewmates[0]!.app?.state === "running",
+          );
+          yield* command({ _tag: "appStop", handle: "backend" });
+          const stopped = yield* snapshotWhere(
+            (current) => current.crewmates[0]!.app?.state === "stopped",
+          );
+          assert.deepStrictEqual(
+            {
+              hosts: running.hosts.map((host) => [host.host, host.crewPorts]),
+              app: running.crewmates[0]!.app,
+              stopped: stopped.crewmates[0]!.app?.state,
+              ports,
+            },
+            {
+              hosts: [["appdev", [{ port: 3001, routed: false }]]],
+              app: { state: "running", port: 3001, url: null },
+              stopped: "stopped",
+              ports: { _tag: "crewPorts", host: "appdev", ports: [3002, 3003] },
+            },
+          );
+        }),
+      ),
+  );
+
+  it.live(
+    "Deliver's draft names your tree's uncommitted paths; the orphan scan finds lost branches",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          write(world.root, "notes.txt", "mine\n");
+          git(world.root, ["branch", "crew/ghost"]);
+          git(world.root, ["commit", "-q", "--allow-empty", "-m", "ahead of ghost"]);
+          const draft = yield* command({ _tag: "deliverDraft" });
+          const orphans = yield* command({ _tag: "orphanScan" });
+          assert.deepStrictEqual(
+            [draft, orphans],
+            [
+              { _tag: "deliverDraft", dirtyPaths: [`${world.root}/notes.txt`] },
+              { _tag: "orphans", orphans: [{ host: "appdev", branch: "crew/ghost", ahead: 0 }] },
+            ],
+          );
+        }),
+      ),
+  );
 });
