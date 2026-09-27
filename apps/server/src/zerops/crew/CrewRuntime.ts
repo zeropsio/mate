@@ -240,7 +240,8 @@ export interface CrewRuntimeOptions {
   readonly devServerPidFile: string;
 }
 
-const claimOf = (row: Option.Option<CrewClaimRow>): CrewClaim | undefined =>
+/** A host's stored claim as the pure rules read it, e.g. `holdsClaim(claimOf(row), handle)`. */
+export const claimOf = (row: Option.Option<CrewClaimRow>): CrewClaim | undefined =>
   Option.match(row, {
     onNone: () => undefined,
     onSome: (value) => ({ state: value.state, handle: value.member }),

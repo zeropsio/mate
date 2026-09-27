@@ -12,6 +12,7 @@ import * as Option from "effect/Option";
 import { claimTransition } from "./crewMachines.ts";
 import {
   claimEventFromServed,
+  claimOf,
   claimRequest,
   CrewRuntime,
   holdsClaim,
@@ -112,6 +113,23 @@ describe("holdsClaim", () => {
     [undefined, false],
   ] as const)("%j → %s", (claim, holds) => {
     expect(holdsClaim(claim, "backend")).toBe(holds);
+  });
+
+  it("reads a stored claim by its member", () => {
+    const row = {
+      host: TEST_HOST,
+      crew: "game",
+      member: "backend",
+      lane: "backend",
+      state: "held",
+      requestedAt: "2026-09-27T20:00:00.000Z",
+      grantedBy: "user-1",
+      grantedAt: "2026-09-27T20:01:00.000Z",
+      expiresAt: null,
+      releasedAt: null,
+    } as const;
+    expect(holdsClaim(claimOf(Option.some(row)), "backend")).toBe(true);
+    expect(claimOf(Option.none())).toBeUndefined();
   });
 });
 
