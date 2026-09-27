@@ -418,13 +418,16 @@ export const land = (
     }
   });
 
-/** *Land* on a task whose crewmate never reported (PRD §5.2 step 5′): WIP, merge-in, check, land. */
+/**
+ * *Land* on a task whose crewmate never reported (PRD §5.2 step 5′), or on one
+ * sent back as rework, as its copy stands: WIP, merge-in, check, land.
+ */
 export const landNow = (core: CrewCore, principal: TurnPrincipal, taskId: string) =>
   Effect.gen(function* () {
     const applied = yield* requireApplied(core);
     const task = yield* requireTask(core, taskId);
     const member = yield* requireMember(applied, task.member);
-    if (task.state !== "working")
+    if (task.state !== "working" && task.state !== "rework")
       return yield* refuse("wrong-state", `#${task.number} is ${task.state}`);
     if (isWorking(core, applied, member.row.handle)) {
       return yield* refuse("wrong-state", `@${member.row.handle}'s turn is running`);
@@ -439,11 +442,15 @@ export const landNow = (core: CrewCore, principal: TurnPrincipal, taskId: string
           { assignment: task.assignment, turn: 0 },
         ),
       );
+      if (committed._tag === "rework") return yield* refuse("wrong-state", committed.reason);
       if (committed._tag !== "committed" && committed._tag !== "unchanged") {
         return yield* refuse("wrong-state", `its copy could not be committed (${committed._tag})`);
       }
     }
-    const merging = yield* stepTask(core, task, { type: "land-now" });
+    const merging = yield* stepTask(core, task, { type: "land-now" }, (next) => ({
+      ...next,
+      waiting: null,
+    }));
     if ((yield* integrate(core, merging.assignment)).state === "ready") {
       yield* land(core, principal, merging.assignment);
     }

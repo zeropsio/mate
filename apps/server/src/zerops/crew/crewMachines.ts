@@ -318,8 +318,10 @@ const landHold = (facts: LandFacts): TaskHoldReason | undefined =>
  * One task through its states. A person's message returns a task that
  * reported but has not landed to work (PRD §5.2); in `rework` it is the
  * rework's dispatch, admitted by the engine's `message` path. `land-now` is
- * *Land* pressed before the crewmate reported (PRD §5.2 step 5′). `retry` is
- * the person's *Try again* on a stopped task: a fresh attempt in the queue.
+ * *Land* pressed before the crewmate reported (PRD §5.2 step 5′), or on a
+ * task back for rework: the copy lands as it stands if it merges and checks.
+ * `retry` is the person's *Try again* on a stopped task: a fresh attempt in
+ * the queue.
  */
 export const taskTransition = (task: CrewTask, event: TaskEvent): TaskStep => {
   const { state: from, counters } = task;
@@ -358,8 +360,9 @@ export const taskTransition = (task: CrewTask, event: TaskEvent): TaskStep => {
     case "report-blocked":
       return from === "working" ? to("blocked") : illegal;
     case "report-done":
-    case "land-now":
       return from === "working" ? to("merging") : illegal;
+    case "land-now":
+      return from === "working" || from === "rework" ? to("merging") : illegal;
     case "infrastructure-ending":
       if (from !== "working") return illegal;
       return counters.requeues >= CREW_REQUEUES_MAX

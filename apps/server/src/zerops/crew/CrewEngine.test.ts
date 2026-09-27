@@ -34,7 +34,7 @@ import {
   writeCrewHome,
   type CrewWorld,
 } from "./testing/crewEngineFixture.ts";
-import { git, read, write } from "./testing/crewGitFixture.ts";
+import { TEST_HOST, git, read, write } from "./testing/crewGitFixture.ts";
 
 const mateLogin = (id: string, agent: "claude-code" | "codex", label: string): MateLogin => ({
   id,
@@ -595,6 +595,29 @@ describe("CrewEngine", () => {
           );
         }),
       ),
+  );
+
+  it.live("Land now takes a task back from rework as its copy stands", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const thread = yield* firstTurn(world, () =>
+          write(world.root, ".crew/backend/b.txt", "crew\n"),
+        );
+        yield* reportDone(thread);
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        const failed = yield* snapshotWhere(
+          (snapshot) => snapshot.board.tasks[0]?.state === "rework",
+        );
+        write(world.root, ".crew/backend/ok.txt", "ok\n");
+        yield* command({ _tag: "landNow", taskId: failed.board.tasks[0]!.id });
+        yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "landed");
+        assert.deepStrictEqual(
+          [read(world.root, "b.txt"), read(world.root, "ok.txt")],
+          ["crew\n", "ok\n"],
+        );
+      }),
+    ),
   );
 
   it.live("a self-deploy onto the service freezes its copies and interrupts their turns", () =>
@@ -1189,6 +1212,29 @@ describe("CrewEngine", () => {
   );
 
   it.live(
+    "the dev services this Mate mounts show before any crew; opening the crew home reads their databases",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          const engine = yield* CrewEngine;
+          const before = yield* snapshotWhere((current) => current.devHosts.length > 0);
+          const sshBefore = yield* Ref.get(world.sshCalls);
+          yield* engine.readFiles;
+          const read = yield* snapshotWhere((current) => current.devHosts[0]?.database !== null);
+          assert.deepStrictEqual(
+            [
+              before.status,
+              before.devHosts,
+              sshBefore,
+              read.devHosts.map((host) => [host.host, typeof host.database]),
+            ],
+            ["none", [{ host: TEST_HOST, database: null }], 0, [[TEST_HOST, "boolean"]]],
+          );
+        }),
+      ),
+  );
+
+  it.live(
     "a writer's conversation runs in its copy; your tree's branch and head are in the snapshot",
     () =>
       withCrewEngine((world) =>
@@ -1218,8 +1264,11 @@ describe("CrewEngine", () => {
           write(world.root, ".crew/backend/.env", "SECRET=1\n"),
         );
         yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        // The guard left the file uncommitted: the copy reads dirty with nothing ahead.
         const parked = yield* snapshotWhere(
-          (current) => current.board.tasks[0]?.state === "parked",
+          (current) =>
+            current.board.tasks[0]?.state === "parked" &&
+            current.crewmates[0]!.lane?.dirty === true,
         );
         NodeFS.rmSync(NodePath.join(world.root, ".crew/backend/.env"));
         yield* command({ _tag: "taskRetry", taskId: parked.board.tasks[0]!.id });

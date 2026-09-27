@@ -133,6 +133,8 @@ export const CrewLaneSummary = Schema.Struct({
   ahead: NonNegativeInt,
   insertions: NonNegativeInt,
   deletions: NonNegativeInt,
+  /** Changes in the copy no commit holds yet, as last read; *Land now* commits them first. */
+  dirty: Schema.Boolean,
   /** The copy's latest check; `null` before its first. */
   check: Schema.NullOr(CrewCheck),
   state: CrewLaneState,
@@ -372,8 +374,20 @@ export const CrewSummary = Schema.Struct({
 export type CrewSummary = typeof CrewSummary.Type;
 
 /**
+ * A dev service a writer's copy can live on: one this Mate mounts, with
+ * whether its ssh environment reaches a database (a writer there declares
+ * `env:` or `database: shared`); `database` is `null` until the engine read it.
+ */
+export const CrewDevHost = Schema.Struct({
+  host: TrimmedNonEmptyString,
+  database: Schema.NullOr(Schema.Boolean),
+});
+export type CrewDevHost = typeof CrewDevHost.Type;
+
+/**
  * One frame of the crew feed. `crew` is `null` exactly when `status` is not
- * `applied`; a status other than `applied` carries empty lists.
+ * `applied`; a status other than `applied` carries empty lists, `devHosts`
+ * aside: the crewmate editor offers them before any crew exists.
  */
 export const CrewSnapshot = Schema.Struct({
   status: CrewStatus,
@@ -387,6 +401,8 @@ export const CrewSnapshot = Schema.Struct({
   board: Schema.Struct({ tasks: Schema.Array(CrewTask) }),
   run: Schema.NullOr(CrewRun),
   attention: Schema.Array(CrewAttention),
+  /** Where a writer's copy may live (the crewmate editor's *Service*); empty where crew mode is off. */
+  devHosts: Schema.Array(CrewDevHost),
   /** Landed tasks whose change has not gone out with *Deliver* yet. */
   landedNotDelivered: NonNegativeInt,
   /** The engine's last failure the section should show; `null` when none stands. */

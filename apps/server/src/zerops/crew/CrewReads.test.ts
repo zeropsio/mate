@@ -51,7 +51,7 @@ describe("CrewReads", () => {
   );
 
   it.effect(
-    "reads a lane against your tree, its log, your dirty paths and what a remote holds",
+    "reads a lane against your tree and its uncommitted work, its log, your dirty paths and what a remote holds",
     () =>
       withCrewService(
         (root) =>
@@ -64,12 +64,15 @@ describe("CrewReads", () => {
             write(lane, "a.ts", "one\ntwo\n");
             git(lane, ["add", "-A"]);
             git(lane, ["commit", "-q", "-m", "wip(t-1): turn 1"]);
+            const clean = yield* reads.laneStats(TEST_HOST, "backend");
+            write(lane, "draft.ts", "draft\n");
             write(root, "README.md", "edited\n");
             write(root, "new.txt", "new\n");
             git(root, ["update-ref", "refs/remotes/origin/main", start]);
             const log = yield* reads.laneLog(TEST_HOST, "backend", start);
             assert.deepStrictEqual(
               {
+                clean: clean.dirty,
                 stats: yield* reads.laneStats(TEST_HOST, "backend"),
                 integration: yield* reads.integration(TEST_HOST),
                 log: log.map((line) => line.replace(/^[0-9a-f]+ /u, "")),
@@ -80,10 +83,12 @@ describe("CrewReads", () => {
                 diff: (yield* reads.diff(TEST_HOST, "backend", "a.ts")).includes("+one"),
               },
               {
+                clean: false,
                 stats: {
                   ahead: 1,
                   insertions: 2,
                   deletions: 0,
+                  dirty: true,
                   integration: { branch: "main", head: start },
                 },
                 integration: { branch: "main", head: start },

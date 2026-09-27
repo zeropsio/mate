@@ -60,6 +60,7 @@ const appliedSnapshot = {
         ahead: 3,
         insertions: 214,
         deletions: 12,
+        dirty: false,
         check: { state: "passed", output: "" },
         state: "ready",
         detail: null,
@@ -110,6 +111,10 @@ const appliedSnapshot = {
   },
   run: null,
   attention: [],
+  devHosts: [
+    { host: "appdev", database: true },
+    { host: "webdev", database: null },
+  ],
   landedNotDelivered: 0,
   lastError: null,
 };

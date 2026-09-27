@@ -9,8 +9,8 @@
  *   leaves the service: the check runs there and prints one word.
  * - **Your tree**: its branch and HEAD (*Changes* diffs `<head>..crew/<handle>`).
  * - **A lane against your tree**: commits ahead, insertions and deletions
- *   (`HEAD...crew/<handle>`), and the lane's commits since its task started,
- *   for a new stint's seed.
+ *   (`HEAD...crew/<handle>`), whether the copy holds uncommitted work, and the
+ *   lane's commits since its task started, for a new stint's seed.
  * - **Your tree**: its dirty paths (*Deliver*'s draft names them) and which
  *   landing commits a remote branch already holds (delivered).
  * - **The dev server** zcp started on the service (`DEV_SERVER_PIDFILE`,
@@ -52,6 +52,8 @@ export interface LaneStats {
   readonly ahead: number;
   readonly insertions: number;
   readonly deletions: number;
+  /** The copy holds work no commit has yet: what a lane commit would take, or an open merge. */
+  readonly dirty: boolean;
   /** Your tree as the figures were read against it. */
   readonly integration: Integration;
 }
@@ -164,12 +166,18 @@ export const make = Effect.gen(function* () {
       INTEGRATION_SCRIPT +
         `ahead=$(${git("integration", ["rev-list", "--count", `HEAD..refs/heads/${laneBranch(handle)}`])}) || exit 1\n` +
         `printf 'ahead\\t%s\\n' "$ahead"\n` +
-        `${git("integration", ["diff", "--numstat", range])} | awk '{ i += $1; d += $2 } END { printf "insertions\\t%d\\ndeletions\\t%d\\n", i, d }'\n`,
+        `${git("integration", ["diff", "--numstat", range])} | awk '{ i += $1; d += $2 } END { printf "insertions\\t%d\\ndeletions\\t%d\\n", i, d }'\n` +
+        `dirty=no\n` +
+        `if [ -d ${shellQuote(laneDirectory(handle))} ]; then\n` +
+        `  if ${git({ lane: handle }, ["rev-parse", "-q", "--verify", "MERGE_HEAD"])} >/dev/null || [ -n "$(${git({ lane: handle }, ["status", "--porcelain"])})" ]; then dirty=yes; fi\n` +
+        `fi\n` +
+        `printf 'dirty\\t%s\\n' "$dirty"\n`,
     ).pipe(
       Effect.map((out) => ({
         ahead: Number(field(out, "ahead") ?? 0),
         insertions: Number(field(out, "insertions") ?? 0),
         deletions: Number(field(out, "deletions") ?? 0),
+        dirty: field(out, "dirty") === "yes",
         integration: integrationOf(out),
       })),
     );
