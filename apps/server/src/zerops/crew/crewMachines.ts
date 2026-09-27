@@ -250,6 +250,7 @@ export type TaskEvent =
   | { readonly type: "wait-expired" }
   | { readonly type: "after-land" }
   | { readonly type: "park"; readonly reason: string }
+  | { readonly type: "retry" }
   | { readonly type: "discard" };
 
 export type TaskHoldReason =
@@ -317,7 +318,8 @@ const landHold = (facts: LandFacts): TaskHoldReason | undefined =>
  * One task through its states. A person's message returns a task that
  * reported but has not landed to work (PRD §5.2); in `rework` it is the
  * rework's dispatch, admitted by the engine's `message` path. `land-now` is
- * *Land* pressed before the crewmate reported (PRD §5.2 step 5′).
+ * *Land* pressed before the crewmate reported (PRD §5.2 step 5′). `retry` is
+ * the person's *Try again* on a stopped task: a fresh attempt in the queue.
  */
 export const taskTransition = (task: CrewTask, event: TaskEvent): TaskStep => {
   const { state: from, counters } = task;
@@ -422,6 +424,16 @@ export const taskTransition = (task: CrewTask, event: TaskEvent): TaskStep => {
       return TERMINAL.has(from) || from === "proposed" || from === "parked"
         ? illegal
         : park(event.reason);
+    case "retry":
+      return from === "parked"
+        ? to("queued", {
+            ...counters,
+            attempt: counters.attempt + 1,
+            reworks: 0,
+            remerges: 0,
+            rotations: 0,
+          })
+        : illegal;
     case "discard":
       return TERMINAL.has(from) ? illegal : to("discarded");
   }

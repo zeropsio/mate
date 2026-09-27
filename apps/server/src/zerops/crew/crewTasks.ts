@@ -635,14 +635,7 @@ export const retryTask = (core: CrewCore, principal: TurnPrincipal, taskId: stri
     const queued =
       row.state === "queued"
         ? row
-        : yield* saveTask(core, {
-            ...row,
-            state: "queued",
-            attempt: row.attempt + 1,
-            reworks: 0,
-            remerges: 0,
-            waiting: null,
-          });
+        : yield* stepTask(core, row, { type: "retry" }, (next) => ({ ...next, waiting: null }));
     yield* pump(core, row.member, { taskId: queued.assignment, principal });
   });
 
