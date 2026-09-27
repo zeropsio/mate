@@ -4,6 +4,7 @@ import {
   collectCrewmateMentions,
   selectionTouchesMentionBoundary,
   splitPromptIntoComposerSegments,
+  splitPromptIntoEditorSegments,
 } from "./composer-editor-mentions";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
@@ -278,5 +279,76 @@ describe("collectCrewmateMentions", () => {
     expect(collectCrewmateMentions(text, roster)).toEqual(
       handles.map((handle) => ({ type: "mention", path: handle, source: "crewmate" })),
     );
+  });
+});
+
+describe("splitPromptIntoEditorSegments", () => {
+  const CREW = [
+    { handle: "backend", tint: "sky" },
+    { handle: "erik", tint: "amber" },
+  ] as const;
+
+  it.each<{
+    readonly name: string;
+    readonly prompt: string;
+    readonly handles: Parameters<typeof splitPromptIntoEditorSegments>[2];
+    readonly segments: ReturnType<typeof splitPromptIntoEditorSegments>;
+  }>([
+    {
+      name: "a crewmate the composer offers is drawn as that crewmate",
+      prompt: "Ask @backend and @erik first",
+      handles: CREW,
+      segments: [
+        { type: "text", text: "Ask " },
+        { type: "crewmate", handle: "backend", tint: "sky", source: "@backend" },
+        { type: "text", text: " and " },
+        { type: "crewmate", handle: "erik", tint: "amber", source: "@erik" },
+        { type: "text", text: " first" },
+      ],
+    },
+    {
+      name: "a handle not on the list stays a file's mention",
+      prompt: "Ask @frontend first",
+      handles: CREW,
+      segments: [
+        { type: "text", text: "Ask " },
+        { type: "mention", path: "frontend", source: "@frontend" },
+        { type: "text", text: " first" },
+      ],
+    },
+    {
+      name: "a path that merely contains a handle stays a file's mention",
+      prompt: "Read @backend/README.md now",
+      handles: CREW,
+      segments: [
+        { type: "text", text: "Read " },
+        { type: "mention", path: "backend/README.md", source: "@backend/README.md" },
+        { type: "text", text: " now" },
+      ],
+    },
+    {
+      name: "a quoted mention of the same name stays a file's mention",
+      prompt: 'Read @"backend" now',
+      handles: CREW,
+      segments: [
+        { type: "text", text: "Read " },
+        { type: "mention", path: "backend", source: '@"backend"' },
+        { type: "text", text: " now" },
+      ],
+    },
+    {
+      name: "without crewmates on offer every mention parses as today",
+      prompt: "Ask @backend first",
+      handles: [],
+      segments: splitPromptIntoComposerSegments("Ask @backend first"),
+    },
+    {
+      name: "an unfinished handle is still text",
+      prompt: "Ask @backend",
+      handles: CREW,
+      segments: [{ type: "text", text: "Ask @backend" }],
+    },
+  ])("$name", ({ prompt, handles, segments }) => {
+    expect(splitPromptIntoEditorSegments(prompt, [], handles)).toEqual(segments);
   });
 });

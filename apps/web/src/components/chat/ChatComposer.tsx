@@ -3841,6 +3841,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         : []
                     }
                     skills={selectedProviderSkills}
+                    crewmates={mentionCrewmates}
                     {...(showMobilePendingAnswerActions ? { className: "max-sm:pb-11" } : {})}
                     onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
                     onChange={onPromptChange}

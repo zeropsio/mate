@@ -2,6 +2,7 @@ import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
 } from "./lib/terminalContext";
+import type { MateTintId } from "@t3tools/shared/brand";
 import {
   collectComposerInlineTokens,
   type ComposerInlineToken,
@@ -221,6 +222,37 @@ export function splitPromptIntoComposerSegments(
   });
 
   return segments;
+}
+
+/** A crewmate's `@handle`, drawn as that crewmate where the composer offers crewmates. */
+export interface ComposerCrewmateSegment {
+  readonly type: "crewmate";
+  readonly handle: string;
+  readonly tint: MateTintId;
+  readonly source: string;
+}
+
+export type ComposerEditorSegment = ComposerPromptSegment | ComposerCrewmateSegment;
+
+/**
+ * What the editor draws: the prompt's segments, a mention written exactly as
+ * `@handle` of a crewmate the composer offers (the lead's chat, PRD §5.3)
+ * drawn as that crewmate, every other mention a file's as ever. Only the
+ * drawing differs: the text — and so every cursor offset the composer counts
+ * on the prompt's own segments — stays the same.
+ */
+export function splitPromptIntoEditorSegments(
+  prompt: string,
+  terminalContexts: ReadonlyArray<TerminalContextDraft>,
+  crewmates: ReadonlyArray<{ readonly handle: string; readonly tint: MateTintId }>,
+): ComposerEditorSegment[] {
+  const tints = new Map(crewmates.map((mate) => [mate.handle, mate.tint]));
+  return splitPromptIntoComposerSegments(prompt, terminalContexts).map((segment) => {
+    const tint = segment.type === "mention" ? tints.get(segment.path) : undefined;
+    return segment.type === "mention" && tint !== undefined && segment.source === `@${segment.path}`
+      ? { type: "crewmate", handle: segment.path, tint, source: segment.source }
+      : segment;
+  });
 }
 
 /** `@handle` at a word start, not part of an address, ending where a handle cannot go on. */
