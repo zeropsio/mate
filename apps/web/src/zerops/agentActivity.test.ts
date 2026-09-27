@@ -8,6 +8,7 @@ import {
   agentActivitySubject,
   deriveZeropsAgentActivity,
   mateFaceFor,
+  threadAgentActivity,
 } from "./agentActivity";
 
 const FEN = EnvironmentId.make("env-fen");
@@ -116,6 +117,37 @@ describe("deriveZeropsAgentActivity", () => {
       kind: "idle",
       status: null,
       subject: "Add the login page",
+    });
+  });
+});
+
+describe("threadAgentActivity", () => {
+  it("answers for the chat it is given, not for the Mate's main one", () => {
+    const main = shell({
+      id: ThreadId.make("main"),
+      pinnedAt: "2026-09-05T09:00:00.000Z",
+      latestUserMessagePreview: {
+        role: "user",
+        text: "Fix pagination",
+        createdAt: "2026-09-05T09:00:00.000Z",
+      },
+    });
+    const logs = {
+      ...RUNNING,
+      id: ThreadId.make("logs"),
+      latestUserMessagePreview: {
+        role: "user" as const,
+        text: "Why does /api/items 500?",
+        createdAt: "2026-09-05T10:01:00.000Z",
+      },
+    };
+
+    expect(deriveZeropsAgentActivity([main, logs], {}).get(FEN)?.threadId).toBe("main");
+    expect(threadAgentActivity(logs, undefined)).toMatchObject({
+      threadId: "logs",
+      kind: "working",
+      face: "working",
+      subject: "Why does /api/items 500?",
     });
   });
 });

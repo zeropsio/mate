@@ -75,12 +75,30 @@ describe("resolvePrimaryConversation", () => {
   });
 
   it("lets the user overrule the heuristic by pinning", () => {
-    const pinned = thread("pinned", { pinned: true });
+    const pinned = thread("pinned", { pinnedAt: "2026-09-01T00:00:00Z" });
     const chatty = thread("chatty", { latestUserMessageAt: "2026-09-05T00:00:00Z" });
 
     const result = resolvePrimaryConversation([chatty, pinned]);
     expect(result.primary?.id).toBe("pinned");
     expect(result.reason).toBe("pinned");
+  });
+
+  it("keeps the pinned main chat main after a newer chat is spoken in", () => {
+    // A thread shell carries its pin as `pinnedAt`; a cleared pin is null.
+    const main = thread("main", {
+      pinnedAt: "2026-09-05T09:00:00Z",
+      latestUserMessageAt: "2026-09-05T09:00:00Z",
+    });
+    const logs = thread("logs", {
+      pinnedAt: null,
+      createdAt: "2026-09-05T10:00:00Z",
+      latestUserMessageAt: "2026-09-05T11:00:00Z",
+    });
+
+    const result = resolvePrimaryConversation([logs, main]);
+    expect(result.primary?.id).toBe("main");
+    expect(result.reason).toBe("pinned");
+    expect(result.hidden.map((entry) => entry.id)).toEqual(["logs"]);
   });
 
   it("never resurrects an archived thread", () => {

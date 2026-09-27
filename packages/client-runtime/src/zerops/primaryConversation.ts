@@ -1,22 +1,22 @@
 /**
- * Which thread *is* an environment's conversation.
+ * Which of an environment's chats is its main one.
  *
- * The product decision this implements: one environment is one agent is one
- * continuous conversation. Parallel work is another environment, not another
- * thread in the same one — a second thread would share the container's dev
- * server, browser and working tree with the first, and the two would collide.
- * The server already agrees: `ZeropsPolicy` forbids worktrees on Zerops
- * because "the isolation unit is a service, not a directory".
+ * A Mate is one agent with several chats over one tree: the same name and
+ * face, the same working tree, the same coding agent in each. Chats are not
+ * isolated — two can run at once over the same files, the way two terminals
+ * can — and isolation is what a crewmate's own copy is for, never a chat.
+ * The main chat is where every surface that opens "the Mate" lands: the
+ * sidebar row, the index route, asking the Mate, its activity. The
+ * conversation strip shows the others.
  *
- * **Threads are hidden, not removed.** Nothing here deletes a thread, and the
- * substrate — thread ids, routes, history, the server's whole orchestration —
- * is untouched. This module only answers "which one do we open", so the
- * sidebar can show a conversation where it used to show a list. That is what
- * keeps the door open to surfacing the others later (as tabs, say) with no
- * migration, and it is why an environment that already has several threads
- * degrades into this model rather than losing anything.
+ * **The main chat is the pinned one.** When a second chat is started the
+ * first is pinned, so this keeps answering "pinned" and nothing that opened
+ * the Mate before chats existed moves; *Make main* moves the pin. No pin is
+ * written until a second chat is started, and an environment that already
+ * holds several unpinned threads degrades into this model rather than losing
+ * any.
  *
- * ## The rule, and why it is not "most recently updated"
+ * ## Without a pin, the rule is not "most recently updated"
  *
  * `updatedAt` moves for reasons the user did not cause — a provider event, a
  * checkpoint, a token-usage refresh — and the index route already creates an
@@ -25,16 +25,16 @@
  * the one failure this resolver must not have.
  *
  * So: a thread that has heard from the user always outranks one that has not,
- * and only then does recency decide. An explicitly chosen primary outranks
- * both, so the user can always overrule us.
+ * and only then does recency decide. A pinned chat outranks both, so the user
+ * can always overrule us.
  *
  * @module primaryConversation
  */
 
 /**
- * The fields this needs from a thread shell. Structural on purpose: web's
- * `SidebarThreadSummary`, mobile's list row and a test fixture all satisfy it
- * without this module importing any of them.
+ * The fields this needs from a thread shell. Structural on purpose: a thread
+ * shell and a test fixture both satisfy it without this module importing
+ * either.
  */
 export interface ZeropsConversationCandidate {
   readonly id: string;
@@ -43,8 +43,8 @@ export interface ZeropsConversationCandidate {
   readonly updatedAt: string;
   /** When the user last said something. Absent on a thread nobody has spoken in. */
   readonly latestUserMessageAt?: string | null;
-  /** The user pinned this one as the environment's conversation. */
-  readonly pinned?: boolean;
+  /** When the user pinned this one as the environment's main chat; null or absent when not. */
+  readonly pinnedAt?: string | null | undefined;
 }
 
 /** Why this thread was chosen — the UI may want to explain itself, and tests must. */
@@ -53,10 +53,7 @@ export type ZeropsPrimaryConversationReason = "pinned" | "spoken" | "newest" | "
 export interface ZeropsPrimaryConversation<T extends ZeropsConversationCandidate> {
   /** The conversation to open, or `undefined` when the environment has none yet. */
   readonly primary: T | undefined;
-  /**
-   * Everything else, newest first — never shown by default, always reachable.
-   * Its length is the "N other conversations" affordance.
-   */
+  /** The Mate's other chats, most primary first — the conversation strip shows them. */
   readonly hidden: ReadonlyArray<T>;
   readonly reason: ZeropsPrimaryConversationReason;
 }
@@ -75,7 +72,8 @@ function timestamp(value: string | null | undefined): number {
  * must open the same conversation.
  */
 function compare(left: ZeropsConversationCandidate, right: ZeropsConversationCandidate): number {
-  if (left.pinned !== right.pinned) return left.pinned === true ? -1 : 1;
+  const leftPinned = left.pinnedAt != null;
+  if (leftPinned !== (right.pinnedAt != null)) return leftPinned ? -1 : 1;
 
   const leftSpoken = timestamp(left.latestUserMessageAt);
   const rightSpoken = timestamp(right.latestUserMessageAt);
@@ -92,7 +90,7 @@ function compare(left: ZeropsConversationCandidate, right: ZeropsConversationCan
 }
 
 /**
- * Splits an environment's threads into the one conversation and the rest.
+ * Splits an environment's threads into the main chat and the rest.
  *
  * Archived threads are excluded outright: archiving is the user saying they
  * are done with it, and resurrecting one as the environment's conversation
@@ -108,7 +106,7 @@ export function resolvePrimaryConversation<T extends ZeropsConversationCandidate
   const [primary, ...hidden] = ranked as [T, ...Array<T>];
 
   const reason: ZeropsPrimaryConversationReason =
-    primary.pinned === true
+    primary.pinnedAt != null
       ? "pinned"
       : timestamp(primary.latestUserMessageAt) > 0
         ? "spoken"

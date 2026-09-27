@@ -11,7 +11,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { ChangeRequestSettleSource } from "@t3tools/client-runtime/state/thread-settled";
-import { ChevronDownIcon, EllipsisIcon, SquarePenIcon } from "lucide-react";
+import { ChevronDownIcon, EllipsisIcon, PlusIcon, SquarePenIcon } from "lucide-react";
 import {
   memo,
   useCallback,
@@ -46,7 +46,7 @@ import { ProjectFavicon } from "../ProjectFavicon";
 import { MateFace } from "../zerops/primitives";
 import { useThreadShell } from "../../state/entities";
 import { mateFaceFor } from "~/zerops/agentActivity";
-import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
+import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import type { ZeropsMateAt } from "~/zerops/mateIdentities";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsMark } from "../ZeropsMark";
@@ -82,6 +82,11 @@ interface ChatHeaderProps {
   onNewThreadInProject: () => void;
   /** Archives the Mate's conversation and opens a fresh one in its place. */
   onStartFresh: () => void;
+  /**
+   * Starts a second chat beside the Mate's one. Absent where the conversation
+   * strip carries its own New chat, and where no Mate lives.
+   */
+  onNewChat?: (() => void) | undefined;
   onOpenProjectSettings?: (() => void) | undefined;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;
@@ -165,9 +170,8 @@ function ZeropsProjectLink({ projectUrl }: { readonly projectUrl: string }) {
 }
 
 /**
- * Starting over in a Mate's conversation: the current one is archived and a
- * fresh thread takes its place, so the Mate still has one conversation and
- * it is empty. A glyph only; its name is the tooltip.
+ * Starting over in a Mate's chat: the one on screen is archived and a fresh,
+ * empty thread takes its place. A glyph only; its name is the tooltip.
  */
 function StartFreshButton({ onStartFresh }: { readonly onStartFresh: () => void }) {
   return (
@@ -186,6 +190,26 @@ function StartFreshButton({ onStartFresh }: { readonly onStartFresh: () => void 
         <SquarePenIcon />
       </TooltipTrigger>
       <TooltipPopup side="top">New session</TooltipPopup>
+    </Tooltip>
+  );
+}
+
+/**
+ * Another chat beside the Mate's one, for a Mate with a single chat — once
+ * there are two, the conversation strip carries it. A glyph only, like its
+ * neighbour; its name is the tooltip.
+ */
+function NewChatButton({ onNewChat }: { readonly onNewChat: () => void }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button aria-label="New chat" onClick={onNewChat} size="icon-xs" variant="outline" />
+        }
+      >
+        <PlusIcon />
+      </TooltipTrigger>
+      <TooltipPopup side="top">New chat</TooltipPopup>
     </Tooltip>
   );
 }
@@ -209,6 +233,7 @@ export const ChatHeader = memo(function ChatHeader({
   gitCwd,
   onNewThreadInProject,
   onStartFresh,
+  onNewChat,
   onOpenProjectSettings,
   onRunProjectScript,
   onAddProjectScript,
@@ -281,17 +306,18 @@ export const ChatHeader = memo(function ChatHeader({
     () => scopeThreadRef(activeThreadEnvironmentId, activeThreadId),
     [activeThreadEnvironmentId, activeThreadId],
   );
-  // The face the lists draw, by the same rule: a Mate is known from its
-  // project's tags and its container's origin — before its socket is up — so
-  // an unconnected one sleeps here too
-  // rather than wearing an idle face it has not earned.
-  const mateActivity = useZeropsAgentActivity().get(activeThreadEnvironmentId);
+  // The face the lists draw, by the same rule, for the chat this heads — in a
+  // second chat, what the Mate does there, not in its main one. A Mate is
+  // known from its project's tags and its container's origin — before its
+  // socket is up — so an unconnected one sleeps here too rather than wearing
+  // an idle face it has not earned.
+  const mateActivity = useZeropsThreadActivity(activeThreadRef);
   const mateFace = mateFaceFor(mate?.connected === true, mateActivity);
   const spoken = useThreadShell(activeThreadRef)?.latestUserMessageAt != null;
-  // A Mate's conversation is headed by what the Mate is on — the same subject
-  // its row shows (`agentActivity.ts`): the last task as the person put it,
-  // not the conversation's title, which with one conversation per environment
-  // names the first task forever. The title stays the rename target.
+  // A Mate's chat is headed by what the Mate is on in it — the subject its
+  // row shows for the main chat (`agentActivity.ts`): the last task as the
+  // person put it, not the chat's title, which names its first task forever.
+  // The title stays the rename target.
   const headline =
     mate === undefined ? activeThreadTitle : (mateActivity?.subject ?? activeThreadTitle);
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
@@ -607,6 +633,7 @@ export const ChatHeader = memo(function ChatHeader({
           <>
             {/* The Mate's version and its update live with its body in the
                 right panel's Zerops view, not over the conversation. */}
+            {onNewChat === undefined ? null : <NewChatButton onNewChat={onNewChat} />}
             <StartFreshButton onStartFresh={onStartFresh} />
             <ZeropsProjectLink projectUrl={mate.projectUrl} />
           </>

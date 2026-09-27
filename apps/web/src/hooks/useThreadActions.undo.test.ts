@@ -122,6 +122,13 @@ describe("unpin Undo", () => {
     await latestUndo();
     expect(commands.pin).toHaveBeenCalledTimes(2);
   });
+
+  it("stays silent when the unpin is a step of moving the main chat", async () => {
+    const add = vi.spyOn(toastManager, "add").mockReturnValue("toast");
+    await useThreadActions().unpinThread(target, { undoToast: false });
+    expect(commands.unpin).toHaveBeenCalledTimes(1);
+    expect(add).not.toHaveBeenCalled();
+  });
 });
 
 describe("archive Undo", () => {

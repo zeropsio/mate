@@ -322,6 +322,11 @@ import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
+import {
+  ConversationStrip,
+  useAlsoWorkingBanner,
+  useLoneChatNewChat,
+} from "./chat/ConversationStrip";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -5234,6 +5239,18 @@ export default function ChatView(props: ChatViewProps) {
     question: activePendingUserInput !== null,
     approval: activePendingApproval !== null,
   });
+  // Typing here while the Mate works in another of its chats (`ConversationStrip.tsx`).
+  const alsoWorkingBannerItem = useAlsoWorkingBanner({
+    environmentId,
+    currentThreadId: isServerThread ? threadId : null,
+    typing: composerHasUnsentContent,
+  });
+  // The header's New chat while the Mate has one chat and so no strip.
+  const startSecondChat = useLoneChatNewChat({
+    environmentId,
+    projectId: activeThread?.projectId ?? null,
+    currentThreadId: isServerThread ? threadId : null,
+  });
 
   const feedbackBannerItems = useMemo(
     () =>
@@ -5308,6 +5325,7 @@ export default function ChatView(props: ChatViewProps) {
       ...systemComposerBannerItems.filter(isUrgentSystemItem),
     ];
     const mateNextStepItems = mateNextStepBannerItem === null ? [] : [mateNextStepBannerItem];
+    const alsoWorkingItems = alsoWorkingBannerItem === null ? [] : [alsoWorkingBannerItem];
     const calmSystemItems = systemComposerBannerItems.filter((item) => !isUrgentSystemItem(item));
     const resumeCompactionItems =
       resumeCompactionBannerItem === null ? [] : [resumeCompactionBannerItem];
@@ -5321,6 +5339,7 @@ export default function ChatView(props: ChatViewProps) {
         ...urgentSystemItems,
         ...usageLimitsItems,
         ...mateNextStepItems,
+        ...alsoWorkingItems,
         ...feedbackBannerItems,
         ...projectCloneItems,
         ...calmSystemItems,
@@ -5333,6 +5352,7 @@ export default function ChatView(props: ChatViewProps) {
       ...urgentSystemItems,
       ...usageLimitsItems,
       ...mateNextStepItems,
+      ...alsoWorkingItems,
       ...feedbackBannerItems,
       ...projectCloneItems,
       ...calmSystemItems,
@@ -5382,6 +5402,7 @@ export default function ChatView(props: ChatViewProps) {
   }, [
     activeBranchMismatchKey,
     agentOwnershipBannerItem,
+    alsoWorkingBannerItem,
     feedbackBannerItems,
     handleRestoreThreadBranch,
     isRestoringThreadBranch,
@@ -7790,6 +7811,7 @@ export default function ChatView(props: ChatViewProps) {
             gitCwd={gitCwd}
             onNewThreadInProject={handleNewThreadInActiveProject}
             onStartFresh={startFreshConversation}
+            {...(startSecondChat === null ? {} : { onNewChat: startSecondChat })}
             {...(activeDraftLogicalProjectKey
               ? { onOpenProjectSettings: handleOpenDraftProjectSettings }
               : {})}
@@ -7799,6 +7821,11 @@ export default function ChatView(props: ChatViewProps) {
             onDeleteProjectScript={deleteProjectScript}
           />
         </WorkspacePageHeader>
+        <ConversationStrip
+          environmentId={activeThread.environmentId}
+          projectId={activeThread.projectId}
+          currentThreadId={isServerThread ? activeThread.id : null}
+        />
         <ZeropsLifecycleStrip
           agentAuthNeedsAttention={zeropsChrome.agentSignInRequired}
           onOpenAgentAuth={openAgentAuthDialog}

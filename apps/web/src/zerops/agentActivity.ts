@@ -1,8 +1,8 @@
 /**
  * What each Mate is up to, one answer per environment.
  *
- * An environment is one conversation (`resolvePrimaryConversation`), and that
- * conversation's status is the agent's: run through `resolveThreadStatus`,
+ * The environment's answer is its main chat's (`resolvePrimaryConversation`),
+ * and that chat's status is the agent's: run through `resolveThreadStatus`,
  * the one status resolver, and `threadStatusPill`, the one phrase producer
  * (R5), so a Mate's row, a Mate's card and a thread's row can never disagree
  * about what "working" looks like. The face comes from the same status
@@ -13,9 +13,10 @@
  * sent into a running turn is not the task; a server from before it told the
  * two apart keeps their last ask), which stays up while the Mate is idle: a
  * row that only ever said "Idle" told nobody which Mate this is.
- * The conversation's title is the fallback for a server that keeps no
- * preview — with one conversation per environment it names the first task,
- * forever. The snippet is the Mate's last words, off the same shell.
+ * The chat's title is the fallback for a server that keeps no preview — it
+ * names the chat's first task, forever. The snippet is the Mate's last words,
+ * off the same shell. `threadAgentActivity` gives the same answer for any one
+ * chat, so the header of a second chat speaks for that chat.
  * Nothing is decided here; it is all read off the one resolver.
  *
  * Knowable only for an environment Mate is connected to: an environment with
@@ -139,6 +140,29 @@ function isPersonsWords(text: string): boolean {
   );
 }
 
+/**
+ * What the Mate is up to in one chat: the same answer the environment's
+ * entry gives for its main chat, for any chat — a conversation's header
+ * speaks for the chat it heads.
+ */
+export function threadAgentActivity(
+  thread: EnvironmentThreadShell,
+  lastVisitedAt: string | undefined,
+): ZeropsAgentActivity {
+  const resolved = resolveThreadStatus(
+    lastVisitedAt === undefined ? thread : { ...thread, lastVisitedAt },
+  );
+  return {
+    threadId: thread.id,
+    kind: resolved.kind,
+    status: threadStatusPill(resolved),
+    face: mateMarkStateForThreadStatus(resolved.kind),
+    subject: agentActivitySubject(thread, resolved.kind),
+    at: agentActivityAt(thread),
+    snippet: agentActivitySnippet(thread),
+  };
+}
+
 export function deriveZeropsAgentActivity(
   threads: ReadonlyArray<EnvironmentThreadShell>,
   lastVisitedAtById: Readonly<Record<string, string>>,
@@ -154,21 +178,13 @@ export function deriveZeropsAgentActivity(
   for (const [environmentId, shells] of shellsByEnvironment) {
     const { primary } = resolvePrimaryConversation(shells);
     if (primary === undefined) continue;
-    const lastVisitedAt =
-      lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, primary.id))];
-    const resolved = resolveThreadStatus({
-      ...primary,
-      ...(lastVisitedAt === undefined ? {} : { lastVisitedAt }),
-    });
-    activity.set(environmentId, {
-      threadId: primary.id,
-      kind: resolved.kind,
-      status: threadStatusPill(resolved),
-      face: mateMarkStateForThreadStatus(resolved.kind),
-      subject: agentActivitySubject(primary, resolved.kind),
-      at: agentActivityAt(primary),
-      snippet: agentActivitySnippet(primary),
-    });
+    activity.set(
+      environmentId,
+      threadAgentActivity(
+        primary,
+        lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, primary.id))],
+      ),
+    );
   }
   return activity;
 }
