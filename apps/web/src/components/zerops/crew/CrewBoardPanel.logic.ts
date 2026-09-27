@@ -184,10 +184,9 @@ function afterDependency(task: CrewTask, tasks: ReadonlyArray<CrewTask>): string
   return waitsFor === undefined ? null : `after #${waitsFor.number}`;
 }
 
-function planCard(
-  snapshot: CrewSnapshot,
-  proposed: ReadonlyArray<CrewTaskView>,
-): CrewPlanCard | null {
+/** The lead's proposed tasks as one plan card — the board's and the lead's chat's; `null` while none. */
+export function crewPlanCard(snapshot: CrewSnapshot, view: CrewView): CrewPlanCard | null {
+  const proposed = view.tasks.filter((row) => row.task.state === "proposed");
   if (proposed.length === 0) return null;
   const attention = snapshot.attention.find((row) => row.kind === "plan");
   return {
@@ -216,8 +215,12 @@ function crewStateTone(snapshot: CrewSnapshot, view: CrewView): ServiceStatusTon
   }
 }
 
+/** A run is on while it runs or is paused: a plan's Start accepts at once, else a run starts first. */
+export const crewRunOn = (run: CrewSnapshot["run"]): boolean =>
+  run?.state === "running" || run?.state === "paused";
+
 export function crewBoardModel(snapshot: CrewSnapshot, view: CrewView): CrewBoardModel {
-  const proposed = view.tasks.filter((row) => row.task.state === "proposed");
+  const plan = crewPlanCard(snapshot, view);
   const hasReviewer = view.crewmates.some((row) => row.crewmate.kind !== "writer");
   const columns = CREW_BOARD_COLUMNS.flatMap(({ id, title }): ReadonlyArray<CrewBoardColumn> => {
     const cards = view.tasks
@@ -225,17 +228,17 @@ export function crewBoardModel(snapshot: CrewSnapshot, view: CrewView): CrewBoar
       .map(boardCard);
     // In review exists with someone to review; a task that sits there anyway is never hidden.
     if (id === "in-review" && !hasReviewer && cards.length === 0) return [];
-    const plan = id === "waiting-on-you" && proposed.length > 0 ? 1 : 0;
-    return [{ id, title, count: cards.length + plan, cards }];
+    const planCount = id === "waiting-on-you" && plan !== null ? 1 : 0;
+    return [{ id, title, count: cards.length + planCount, cards }];
   });
   return {
-    runOn: snapshot.run?.state === "running" || snapshot.run?.state === "paused",
+    runOn: crewRunOn(snapshot.run),
     header: {
       briefTitle: snapshot.crew?.briefTitle ?? "",
       state: { word: view.stateWord, tone: crewStateTone(snapshot, view), pulse: false },
     },
     columns,
-    plan: planCard(snapshot, proposed),
+    plan,
   };
 }
 

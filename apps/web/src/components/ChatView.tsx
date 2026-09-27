@@ -181,10 +181,11 @@ import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
 import { CrewLaneBar } from "./zerops/crew/CrewLaneBar";
+import { CrewLeadPlan } from "./zerops/crew/CrewLeadPlan";
 import { CrewmateEditor } from "./zerops/crew/CrewmateEditor";
 import { CrewTimelineContext, type CrewTimeline } from "./zerops/crew/CrewTaskCard";
 import { crewChatNotices } from "./zerops/crew/crewChatNotices";
-import { crewMessageCommand } from "./zerops/crew/crewComposerSend";
+import { crewComposerMentions, crewMessageCommand } from "./zerops/crew/crewComposerSend";
 import {
   CREW_NEW_STINT_WORD,
   crewMessagePlaceholder,
@@ -5293,6 +5294,11 @@ export default function ChatView(props: ChatViewProps) {
       ? null
       : (crew.view?.crewmates.find((row) => row.crewmate.handle === activeCrewOrigin.crewmate) ??
         null);
+  // The lead's chat names crewmates on `@`; no other chat does (PRD §5.3).
+  const crewMentions = useMemo(
+    () => crewComposerMentions(activeCrewmate, crew.snapshot?.crewmates ?? []),
+    [activeCrewmate, crew.snapshot],
+  );
   // A crewmate's chat is written to the crewmate (PRD §4.5).
   const crewComposerPlaceholder =
     activeCrewOrigin === null
@@ -8238,6 +8244,14 @@ export default function ChatView(props: ChatViewProps) {
                         items={composerBannerItems}
                         stackRef={setComposerBannerStackElement}
                       />
+                      {/* The lead's plan waits above its composer, where its
+                          answer ends (PRD §4.6). */}
+                      {activeCrewmate?.crewmate.kind === "lead" &&
+                      activeCrewmate.crewmate.currentThreadId === threadId ? (
+                        <div className="mx-auto w-full max-w-3xl pb-2">
+                          <CrewLeadPlan environmentId={environmentId} />
+                        </div>
+                      ) : null}
                     </>
                   )}
                   {shownThreadSyncPhase && !activeEnvironmentUnavailable ? (
@@ -8297,6 +8311,7 @@ export default function ChatView(props: ChatViewProps) {
                               connectedPlaceholder={
                                 crewComposerPlaceholder ?? connectedComposerPlaceholder
                               }
+                              mentionCrewmates={crewMentions}
                               {...(crewComposerPlaceholder !== null
                                 ? { idlePlaceholder: crewComposerPlaceholder }
                                 : zeropsChrome.panel === "available"
