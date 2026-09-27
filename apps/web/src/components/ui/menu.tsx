@@ -182,25 +182,95 @@ function MenuRadioGroup(props: MenuPrimitive.RadioGroup.Props) {
   return <MenuPrimitive.RadioGroup data-slot="menu-radio-group" {...props} />;
 }
 
+/**
+ * How a radio item says it is the chosen one:
+ * - `fill`: a tint behind it;
+ * - `check`: a check in front of it, as a checkbox item does — a tint alone
+ *   reads as the pointer resting there;
+ * - `segment`: one choice on a `MenuSwitch`'s track, the chosen one raised.
+ */
+type MenuRadioItemVariant = "fill" | "check" | "segment";
+
+const RADIO_ITEM_VARIANT: Record<MenuRadioItemVariant, string> = {
+  fill: "[&_svg]:-mx-0.5 flex min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] items-center rounded-sm px-2 py-1 text-base text-foreground data-checked:bg-foreground/[0.08] data-highlighted:bg-accent data-highlighted:text-accent-foreground sm:min-h-7 sm:text-sm [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
+  check:
+    "grid min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] grid-cols-[1rem_minmax(0,1fr)] items-center gap-2 rounded-sm py-1 ps-2 pe-4 text-base text-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground sm:min-h-7 sm:text-sm [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
+  segment:
+    // Each as wide as its words, the room left shared out: "Creation date"
+    // never cut to fit beside "Name".
+    "flex min-h-6 flex-auto items-center justify-center whitespace-nowrap rounded-md px-2 font-medium text-muted-foreground text-xs data-checked:bg-popover data-checked:text-foreground data-checked:shadow-xs data-checked:ring-1 data-checked:ring-border data-highlighted:text-foreground",
+};
+
 function MenuRadioItem({
   className,
   children,
-  hideIndicator: _hideIndicator = false,
+  variant = "fill",
   ...props
 }: MenuPrimitive.RadioItem.Props & {
-  hideIndicator?: boolean;
+  variant?: MenuRadioItemVariant;
 }) {
   return (
     <MenuPrimitive.RadioItem
       className={cn(
-        "[&_svg]:-mx-0.5 flex min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center rounded-sm px-2 py-1 text-base text-foreground outline-none data-checked:bg-foreground/[0.08] data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-highlighted:bg-accent data-highlighted:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 sm:text-sm [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+        "cursor-pointer outline-none data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-disabled:opacity-64 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+        RADIO_ITEM_VARIANT[variant],
         className,
       )}
       data-slot="menu-radio-item"
+      data-variant={variant}
       {...props}
     >
-      <span className="min-w-0 flex-1">{children}</span>
+      {variant === "check" ? (
+        <>
+          <MenuPrimitive.RadioItemIndicator className="col-start-1">
+            <svg
+              fill="none"
+              height="24"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+              width="24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path d="M5.252 12.7 10.2 18.63 18.748 5.37" />
+            </svg>
+          </MenuPrimitive.RadioItemIndicator>
+          <span className="col-start-2 min-w-0 truncate">{children}</span>
+        </>
+      ) : (
+        <span className={variant === "segment" ? undefined : "min-w-0 flex-1"}>{children}</span>
+      )}
     </MenuPrimitive.RadioItem>
+  );
+}
+
+/**
+ * A radio group laid out as a switch: its label, then its choices on one
+ * track, the chosen one raised — for a setting a person sets once and
+ * leaves, where a list of rows would take a row a choice. Its items are
+ * `MenuRadioItem`s with `variant="segment"`, still menu items to the keys and
+ * to a screen reader.
+ */
+function MenuSwitch({
+  label,
+  children,
+  ...props
+}: MenuPrimitive.RadioGroup.Props & {
+  readonly label: React.ReactNode;
+}) {
+  return (
+    <MenuPrimitive.RadioGroup
+      className="flex items-center gap-2 px-2 py-1"
+      data-slot="menu-switch"
+      {...props}
+    >
+      <MenuPrimitive.GroupLabel className="w-11 shrink-0 text-muted-foreground text-xs">
+        {label}
+      </MenuPrimitive.GroupLabel>
+      <div className="flex min-w-0 flex-1 gap-0.5 rounded-lg bg-foreground/6 p-0.5">{children}</div>
+    </MenuPrimitive.RadioGroup>
   );
 }
 
@@ -328,6 +398,7 @@ export {
   MenuRadioGroup as DropdownMenuRadioGroup,
   MenuRadioItem,
   MenuRadioItem as DropdownMenuRadioItem,
+  MenuSwitch,
   MenuGroupLabel,
   MenuGroupLabel as DropdownMenuLabel,
   MenuSeparator,

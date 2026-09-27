@@ -91,10 +91,28 @@ describe("SidebarZeropsAccountMenu", () => {
       </Menu>,
     );
 
-  it("names the account in full, with its address", () => {
-    const html = renderMenu();
+  // As the approved prototype drew it: the person, and what they are in the
+  // organization the list shows; the address only while none is known.
+  it("names the account in full, and what it is in the organization the list shows", () => {
+    const html = renderMenu({ activeOrganization: { ...ZEROPS, roleCode: "OWNER" } });
     expect(html).toContain("Ada Lovelace");
-    expect(html).toContain("ada@example.com");
+    expect(html).toContain("Owner of Zerops");
+    expect(html).not.toContain("ada@example.com");
+    expect(renderMenu({ activeOrganization: null })).toContain("ada@example.com");
+  });
+
+  // Show and Order are switches — a label and its choices on one track, the
+  // chosen one raised — never a list of rows whose chosen one is only grey.
+  it("draws Show and Order as switches, each choice on one track", () => {
+    const html = renderMenu();
+    const track = (attribute: string) =>
+      /<div class="[^"]*rounded-lg[^"]*">(.*?)<\/div><\/div>/u.exec(
+        html.slice(html.indexOf(attribute) - 400),
+      )?.[0] ?? "";
+    expect(html.match(/data-zerops-account-scope="/g)).toHaveLength(2);
+    expect(html.match(/data-zerops-account-order="/g)).toHaveLength(3);
+    expect(track("data-zerops-account-scope")).toContain("Everyone");
+    expect(html).toContain("data-checked:bg-popover");
   });
 
   it("folds every place the foot used to spend a glyph on", () => {

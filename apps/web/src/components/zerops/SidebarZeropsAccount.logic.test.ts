@@ -7,12 +7,36 @@ import {
   sidebarAccountDestinationOf,
   sidebarAccountLines,
   sidebarAccountOrganizationChoices,
+  sidebarAccountRoleLine,
 } from "./SidebarZeropsAccount.logic";
 
 const organization = (name: string, id = name): ZeropsOrganization => ({
   id,
   name,
   membershipId: `m-${id}`,
+});
+
+// What the viewer is in the organization the list shows, under their name
+// at the top of the menu — as the approved prototype drew it: "Owner of …".
+describe("sidebarAccountRoleLine", () => {
+  it.each([
+    ["OWNER", "Owner of Northwind s.r.o."],
+    ["ADMIN", "Admin of Northwind s.r.o."],
+    ["BASIC_USER", "Northwind s.r.o. · Basic user"],
+    [undefined, "Northwind s.r.o. · Member"],
+  ])("%s: %s", (roleCode, line) => {
+    expect(
+      sidebarAccountRoleLine({
+        ...organization(" Northwind s.r.o. "),
+        ...(roleCode === undefined ? {} : { roleCode }),
+      }),
+    ).toBe(line);
+  });
+
+  it("says nothing until an organization is known", () => {
+    expect(sidebarAccountRoleLine(null)).toBeNull();
+    expect(sidebarAccountRoleLine(organization("  "))).toBeNull();
+  });
 });
 
 describe("sidebarAccountLines", () => {

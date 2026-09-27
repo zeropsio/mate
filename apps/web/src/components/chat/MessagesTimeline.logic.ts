@@ -391,6 +391,20 @@ export type ConversationEvent =
   /** The server resumed the thread itself after a usage limit reset. */
   | { readonly type: "resumed" };
 
+/** A run as its status says it: who, whether it still works, and for how long. */
+export interface RunStatus {
+  readonly live: boolean;
+  readonly face: WorkLineFace;
+  readonly startedAt: string;
+  readonly endedAt: string | null;
+  /** How long the run waited on the person — its questions and approvals — which is not the Mate's work. */
+  readonly waitedMs: number;
+  /** Live, when the wait still open began: the clock stands still until the person answers. */
+  readonly waitingSince: string | null;
+  /** It did something — a call, a helper, an operation: it "worked", never only "thought". */
+  readonly worked: boolean;
+}
+
 type MessagesTimelineRowBody =
   | {
       /** The person's message, or the Mate's answer to a settled turn. */
@@ -409,27 +423,21 @@ type MessagesTimelineRowBody =
       /** The Mate's last word under a run that has nothing to report: see `FoldsFrom`. */
       foldsFrom?: FoldsFrom;
     }
-  | {
+  | ({
       /**
-       * The run's heading, the top of its card: who, whether it still works,
-       * and its time in the card's time column. Its height never changes.
+       * The run's line where it has no chat to end on — a run that only
+       * asked for a plan's approval, or paused before it did anything: who,
+       * whether it still works, and its time. A run with a chat says the
+       * same on the chat's last line instead (`record.status`), never at the
+       * top of its card (the owner, 2026-09-28: "it doesn't need to be at the
+       * top"). Its height never changes.
        */
       kind: "work-line";
       id: string;
       createdAt: string;
       stretchKey: string;
       turnId: TurnId | null;
-      live: boolean;
-      face: WorkLineFace;
-      startedAt: string;
-      endedAt: string | null;
-      /** How long the run waited on the person — its questions and approvals — which is not the Mate's work. */
-      waitedMs: number;
-      /** Live, when the wait still open began: the clock stands still until the person answers. */
-      waitingSince: string | null;
-      /** It did something — a call, a helper, an operation: it "worked", never only "thought". */
-      worked: boolean;
-    }
+    } & RunStatus)
   | {
       /**
        * The run's record: everything the Mate did, in the order it did it —
@@ -445,10 +453,16 @@ type MessagesTimelineRowBody =
       turnKey: string;
       live: boolean;
       items: ReadonlyArray<RecordItem>;
-      /** What its hands are on right now, beside its face; null once the run is over. */
+      /** What its hands are on right now, the newest bubble; null once the run is over. */
       now: TurnHeaderActivity | null;
-      /** Its answer streams under the card: its face has nothing to say of its own. */
+      /** Its answer streams under the card: nothing of its own is on its way into the chat. */
       answering: boolean;
+      /**
+       * Who worked and for how long, on the chat's last line beside the
+       * Mate's face — on the run's last record only; null on a card the
+       * person's words broke off above it.
+       */
+      status: RunStatus | null;
     }
   | {
       /**
@@ -635,8 +649,8 @@ export type RecordItem =
     }
   /**
    * Where the person spoke into the run — a message, their answer to its
-   * question: the card breaks there and their words stand on the page, so
-   * this is never drawn as a line.
+   * question: their words stand on the page above the card, and the chat
+   * marks here, in short, where they reached the Mate.
    */
   | {
       readonly kind: "person";
@@ -738,12 +752,9 @@ export function rowGap(
   row: MessagesTimelineRow,
 ): RowGap {
   if (previous === undefined) return "none";
-  // The record hangs from its heading, and what runs alongside from the
-  // record; where the card carries on under the person's words, it stands off
-  // them as a card does.
-  if (row.kind === "record" || row.kind === "working") {
-    return isPersonRow(previous) ? "line" : "tight";
-  }
+  // What runs alongside hangs from the record; the record starts its card,
+  // as a run's line with no chat does.
+  if (row.kind === "working") return "tight";
   if (row.kind === "seam") return "turn";
   if (previous.kind === "seam") return "block";
   if (isPersonRow(row)) {
@@ -760,7 +771,7 @@ export function rowGap(
   if (closesTurn(previous)) {
     if (row.kind === "outcome") return "line";
     if (isMateProse(previous)) return "block";
-    return row.kind === "work-line" ? "turn" : "block";
+    return row.kind === "work-line" || row.kind === "record" ? "turn" : "block";
   }
   // The result hangs from its heading or its record: they read as one.
   if (row.kind === "outcome" && (previous.kind === "work-line" || previous.kind === "record"))
@@ -1590,24 +1601,24 @@ export function deriveMessagesTimelineRows(input: {
     const pause = pauseByTurnKey.get(turn.key)?.row ?? null;
     const pausedHere = pause !== null || turn.limitOnly;
 
-    // What the person and the Mate said to each other while the run went on
-    // stands on the page, in the order it was said: each message the person
-    // sent into the run where they sent it, and each answer under the
-    // question it answers. The record marks where each reached the Mate.
-    // Where the person spoke into the run — a message, their answer to its
-    // question: the page row that stands there, keyed as the record marks it.
-    const breaks = new Map<string, MessagesTimelineRow>();
+    // What the person said while the run went on — a message sent into it,
+    // an answer to its question — stands on the page, in the order it was
+    // said, and the run's card stays whole under it, as a typing indicator
+    // stays under the last message; the card's chat marks where each reached
+    // the Mate (the owner, 2026-09-28, of the card breaking around them:
+    // "these split working groups have no chance to stay like this when the
+    // work is done").
+    const exchanges: MessagesTimelineRow[] = [];
     // What the card holds besides its record: a plan to approve, a pause.
     const extras: MessagesTimelineRow[] = [];
     const items: RecordItem[] = [];
     turn.stretches.forEach((stretch, index) => {
       if (index > 0 && stretch.lead !== null && stretch.leadIndex !== null) {
         const person = personRow(stretch.lead, stretch.leadIndex, stretch.aside);
-        const key = `person:${stretch.lead.id}`;
-        breaks.set(key, person);
+        exchanges.push(person);
         items.push({
           kind: "person",
-          key,
+          key: `person:${stretch.lead.id}`,
           at: stretch.lead.createdAt,
           message: stretch.lead.message,
           imageOnly: person.kind === "message" && person.imageOnly,
@@ -1622,10 +1633,7 @@ export function deriveMessagesTimelineRows(input: {
         until: turn.live ? null : last.endedAt,
       });
       items.push(...built.items);
-      for (const row of built.rows) {
-        if (row.kind === "answer") breaks.set(`person:${row.id.slice("answer:".length)}`, row);
-        else extras.push(row);
-      }
+      for (const row of built.rows) (row.kind === "answer" ? exchanges : extras).push(row);
     });
     const hasRecord = items.some((item) => item.kind !== "person");
     // A live run with nothing in its record whose answer is known already is
@@ -1668,114 +1676,88 @@ export function deriveMessagesTimelineRows(input: {
         });
       }
     }
-    // Where the person spoke into the run the card stops, their words stand
-    // on the page, and the card carries on under them — the same run, one
-    // heading, one clock (the owner, 2026-09-27, chose "the card breaks
-    // around it" over the person's words inside the record).
-    const parts: Array<{
-      readonly key: string;
-      readonly before: MessagesTimelineRow | null;
-      readonly items: RecordItem[];
-    }> = [{ key: first.key, before: null, items: [] }];
-    for (const item of items) {
-      if (item.kind === "person") {
-        parts.push({
-          key: `part:${item.key.slice("person:".length)}`,
-          before: breaks.get(item.key) ?? null,
-          items: [],
-        });
-      } else {
-        parts.at(-1)!.items.push(item);
-      }
-    }
-    const lastPart = parts.at(-1)!;
-    // The heading stands on the first part with anything in it: one who wrote
-    // before the Mate did anything sees the card after their words. That part
-    // is the run's card by the run's key, wherever it stands, so the card
-    // moving under a message is the same card, never a new one.
-    const headed = parts.find((part) => part.items.length > 0) ?? lastPart;
-    const keyOf = (part: (typeof parts)[number]) => (part === headed ? first.key : part.key);
-    for (const part of parts) {
-      if (part.before !== null) rows.push(part.before);
-      if (!carded) continue;
-      const isLast = part === lastPart;
+    rows.push(...exchanges);
+    const status: RunStatus = {
+      live: turn.live,
+      face: stretchFace({ stretch: last, turn, pausedHere }),
+      startedAt: first.startedAt,
+      endedAt: last.endedAt,
+      ...waitedOnPerson(turn),
+      // A question it asked is work too: a run that only asked read "thought".
+      worked:
+        items.some(
+          (item) => item.kind !== "thought" && item.kind !== "note" && item.kind !== "person",
+        ) ||
+        turn.stretches.some((stretch) =>
+          stretch.entries.some(
+            (candidate) =>
+              (candidate.kind === "work" || candidate.kind === "generic-call") &&
+              (isQuestionToolCall(candidate.entry) || candidate.entry.inputQuestions !== undefined),
+          ),
+        ),
+    };
+    // Who worked and for how long is said once, on the chat's last line,
+    // where the Mate's face stands — the live edge while it works, the run's
+    // end once it is over. A run with no chat keeps it as a line of its own.
+    const chatted = hasRecord || working;
+    if (carded) {
       const cardStart = rows.length;
-      if (part === headed) {
+      if (!chatted) {
         rows.push({
           kind: "work-line",
           id: `work-line:${first.key}`,
           createdAt: first.startedAt,
           stretchKey: first.key,
           turnId: first.turnId,
-          live: turn.live,
-          face: stretchFace({ stretch: last, turn, pausedHere }),
-          startedAt: first.startedAt,
-          endedAt: last.endedAt,
-          ...waitedOnPerson(turn),
-          // A question it asked is work too: a run that only asked read "thought".
-          worked:
-            items.some(
-              (item) => item.kind !== "thought" && item.kind !== "note" && item.kind !== "person",
-            ) ||
-            turn.stretches.some((stretch) =>
-              stretch.entries.some(
-                (candidate) =>
-                  (candidate.kind === "work" || candidate.kind === "generic-call") &&
-                  (isQuestionToolCall(candidate.entry) ||
-                    candidate.entry.inputQuestions !== undefined),
-              ),
-            ),
+          ...status,
         });
-      }
-      if (part.items.length > 0 || (isLast && working)) {
+      } else {
         rows.push({
           kind: "record",
-          id: `record:${keyOf(part)}`,
-          createdAt: part.before?.createdAt ?? first.startedAt,
+          id: `record:${first.key}`,
+          createdAt: first.startedAt,
           turnKey: turn.key,
-          live: turn.live && isLast,
-          items: part.items,
-          now:
-            isLast && working && answer === null ? liveActivity(last, turn.writing, tracked) : null,
-          answering: isLast && answer !== null,
+          live: turn.live,
+          items,
+          now: working && answer === null ? liveActivity(last, turn.writing, tracked) : null,
+          answering: answer !== null,
+          status,
         });
       }
-      if (isLast) {
-        rows.push(...extras);
-        if (working) {
-          // What runs alongside is the whole run's, however often the person wrote into it.
-          const wholeRun: Stretch = {
-            ...last,
-            entries: turn.stretches.flatMap((stretch) => stretch.entries),
-          };
-          rows.push({
-            kind: "working",
-            id: `working:${last.key}`,
-            createdAt: last.startedAt,
-            stretchKey: last.key,
-            turnKey: turn.key,
-            cardKey: keyOf(part),
-            strip: browserStrip(wholeRun),
-            incidents: stretchIncidents(wholeRun),
-          });
-        }
-        // Settled, what runs alongside becomes the run's result — the same
-        // pills, where it was — easing from its height, and the answer follows.
-        if (outcome !== null) {
-          rows.push({
-            kind: "outcome",
-            id: outcome.key,
-            createdAt: turn.answer?.createdAt ?? last.endedAt ?? last.startedAt,
-            outcome,
-          });
-        }
+      rows.push(...extras);
+      if (working) {
+        // What runs alongside is the whole run's, however often the person wrote into it.
+        const wholeRun: Stretch = {
+          ...last,
+          entries: turn.stretches.flatMap((stretch) => stretch.entries),
+        };
+        rows.push({
+          kind: "working",
+          id: `working:${last.key}`,
+          createdAt: last.startedAt,
+          stretchKey: last.key,
+          turnKey: turn.key,
+          cardKey: first.key,
+          strip: browserStrip(wholeRun),
+          incidents: stretchIncidents(wholeRun),
+        });
       }
-      // A heading with nothing under it is no card: one quiet line, not an
+      // Settled, what runs alongside becomes the run's result — the same
+      // pills, where it was — easing from its height, and the answer follows.
+      if (outcome !== null) {
+        rows.push({
+          kind: "outcome",
+          id: outcome.key,
+          createdAt: turn.answer?.createdAt ?? last.endedAt ?? last.startedAt,
+          outcome,
+        });
+      }
+      // A line with nothing under it is no card: one quiet line, not an
       // empty box.
-      if (rows.length > cardStart + (part === headed ? 1 : 0)) {
+      if (rows.length > cardStart + (chatted ? 0 : 1)) {
         rows.push({
           kind: "card-end",
-          id: `card-end:${keyOf(part)}`,
+          id: `card-end:${first.key}`,
           createdAt: rows.at(-1)!.createdAt,
         });
         cardRanges.push([cardStart, rows.length]);
@@ -1789,7 +1771,7 @@ export function deriveMessagesTimelineRows(input: {
         ? undefined
         : {
             turnKey: turn.key,
-            cardKey: keyOf(lastPart),
+            cardKey: first.key,
             cardClosed: !carded || rows.at(-1)?.kind !== "card-end",
           };
     // The answer follows the card, settled or still streaming.

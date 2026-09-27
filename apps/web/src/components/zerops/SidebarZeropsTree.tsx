@@ -1400,7 +1400,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   return (
     <nav
       aria-label="Mates"
-      className={cn("relative flex flex-col gap-4", className)}
+      className={cn("relative flex flex-col gap-6", className)}
       data-zerops-surface="sidebar-environments"
       ref={treeRef}
     >
@@ -1548,7 +1548,7 @@ export function ProjectHeader({
   const title = group?.name ?? name ?? "";
   return (
     <div
-      className="group/project relative mb-0.5 flex h-8 min-w-0 items-center gap-1 px-2.5"
+      className="group/project relative mb-1 flex h-9 min-w-0 items-center gap-1 px-2.5"
       data-zerops-surface="sidebar-project"
     >
       {reorder?.custom === true && group !== undefined ? (
@@ -1846,7 +1846,7 @@ function QuietMatesRow({
   return (
     <button
       aria-expanded={open}
-      className="flex h-7 w-full min-w-0 cursor-pointer items-center gap-3.5 rounded-md px-2.5 text-left text-xs text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      className="flex h-8 w-full min-w-0 cursor-pointer items-center gap-3.5 rounded-md px-2.5 text-left text-xs text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring"
       data-zerops-surface="sidebar-quiet-mates"
       onClick={onToggle}
       type="button"
@@ -2143,12 +2143,12 @@ function MateRow<T extends RosterCandidate>({
         </RailCell>
         {/* The row's own vertical padding lives here: the rail has to run the
             full height of the row to meet the rows either side of it. */}
-        <span className="flex min-w-0 flex-1 flex-col py-2">
+        <span className="flex min-w-0 flex-1 flex-col py-2.5">
           <span className="flex min-w-0 items-center gap-2">
             <span className={cn("flex min-w-0 flex-1 items-center gap-1", renaming && "invisible")}>
               <span
                 className={cn(
-                  "min-w-0 truncate text-sm leading-5",
+                  "min-w-0 truncate text-sm leading-5.5",
                   unread ? "font-bold" : "font-medium",
                 )}
                 data-zerops-surface="sidebar-mate-name"
@@ -2188,7 +2188,7 @@ function MateRow<T extends RosterCandidate>({
           {subject === undefined ? null : (
             <span
               className={cn(
-                "truncate text-xs leading-4",
+                "mt-0.5 truncate text-xs leading-4.5",
                 unread ? "font-medium text-sidebar-foreground" : "text-sidebar-muted-foreground",
               )}
               data-zerops-surface="sidebar-mate-subject"
@@ -2203,7 +2203,7 @@ function MateRow<T extends RosterCandidate>({
       </button>
       {actions === undefined ? null : (
         <span
-          className="absolute end-2.5 top-2 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100"
+          className="absolute end-2.5 top-2.75 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100"
           data-zerops-surface="sidebar-mate-actions"
         >
           {actions.stop === undefined ? null : (
@@ -2355,7 +2355,7 @@ function MateSnippet({
   const unsent = draft?.trim() ?? "";
   return (
     <span
-      className="truncate text-xs leading-4 text-sidebar-muted-foreground/70"
+      className="truncate text-xs leading-4.5 text-sidebar-muted-foreground/70"
       data-zerops-surface="sidebar-mate-snippet"
     >
       {unsent.length === 0 ? (
@@ -2395,9 +2395,9 @@ function ComingMateRow({
           <MateFace size="md" state="sleep" tint="slate" />
         </span>
       </RailCell>
-      <span className="flex min-w-0 flex-1 flex-col py-2">
-        <span className="min-w-0 truncate text-sm leading-5 font-medium">{name}</span>
-        <span className="truncate text-xs leading-4 text-sidebar-muted-foreground">
+      <span className="flex min-w-0 flex-1 flex-col py-2.5">
+        <span className="min-w-0 truncate text-sm leading-5.5 font-medium">{name}</span>
+        <span className="mt-0.5 truncate text-xs leading-4.5 text-sidebar-muted-foreground">
           {comingMateLine(coming)}
         </span>
       </span>
@@ -2562,7 +2562,7 @@ function PullRequestList({
       {folded ? (
         <button
           aria-expanded={open}
-          className="flex h-7 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-[11px] text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+          className="flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-[11px] text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
           onClick={onToggle}
           type="button"
         >
@@ -2623,7 +2623,7 @@ function PullRequestRow({
   const blocked = pullRequestBlocked(pull);
   return (
     <li
-      className={cn("flex h-7 min-w-0 items-center gap-2.5 px-2.5 text-xs", !underMate && "pe-0.5")}
+      className={cn("flex h-8 min-w-0 items-center gap-2.5 px-2.5 text-xs", !underMate && "pe-0.5")}
       data-zerops-change={changeRowKey(pull)}
       data-zerops-surface="sidebar-pull-request"
     >
@@ -3222,7 +3222,7 @@ function StopRowItem({
   return (
     <>
       <li
-        className="group/stop flex h-7 min-w-0 items-center gap-3.5 rounded-md px-2.5 transition-colors hover:bg-sidebar-row-hover"
+        className="group/stop flex h-8 min-w-0 items-center gap-3.5 rounded-md px-2.5 transition-colors hover:bg-sidebar-row-hover"
         data-zerops-project={projectId}
         data-zerops-surface="sidebar-environment"
       >
@@ -3406,7 +3406,7 @@ function StopChangeRow({
   const shown = mark === undefined || mark === "none" ? undefined : STAGE_MARK[mark];
   return (
     <li
-      className="flex h-6 min-w-0 items-center gap-3.5 px-2.5 text-[11px] leading-4"
+      className="flex h-7 min-w-0 items-center gap-3.5 px-2.5 text-[11px] leading-4"
       data-zerops-stage-mark={mark ?? "none"}
       data-zerops-surface="sidebar-stop-change"
     >
@@ -3485,7 +3485,7 @@ function CreatingStopRow({
   return (
     <li
       aria-busy="true"
-      className="flex h-7 min-w-0 items-center gap-3.5 rounded-md px-2.5"
+      className="flex h-8 min-w-0 items-center gap-3.5 rounded-md px-2.5"
       data-zerops-project={member.projectId}
       data-zerops-surface="sidebar-environment-creating"
     >

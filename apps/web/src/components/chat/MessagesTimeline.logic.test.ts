@@ -72,6 +72,21 @@ const recordOf = (list: MessagesTimelineRow[]) => {
   return record?.kind === "record" ? record : null;
 };
 
+/** Where the live run's card starts: its first chat, or its line where it has none. */
+const liveCardAt = (list: MessagesTimelineRow[]) => {
+  const live = list.find((row) => row.kind === "record" && row.live);
+  if (live?.kind !== "record") return list.findIndex((row) => row.kind === "work-line" && row.live);
+  return list.findIndex((row) => row.kind === "record" && row.turnKey === live.turnKey);
+};
+
+/** A run's status: on its last chat, or on a line of its own where it has none. */
+const statusOf = (list: MessagesTimelineRow[]) => {
+  const record = list.findLast((row) => row.kind === "record" && row.status !== null);
+  if (record?.kind === "record") return record.status;
+  const line = list.find((row) => row.kind === "work-line");
+  return line?.kind === "work-line" ? line : null;
+};
+
 /** Every line of a run's record, its parts in order. */
 const allItems = (list: MessagesTimelineRow[]) =>
   list.flatMap((row) => (row.kind === "record" ? row.items : []));
@@ -113,7 +128,7 @@ const said = (item: RecordItem): string => {
  * and between the parts what the person said into the run, on the page.
  */
 const lines = (list: MessagesTimelineRow[]) => {
-  const start = list.findIndex((row) => row.kind === "work-line");
+  const start = list.findIndex((row) => row.kind === "work-line" || row.kind === "record");
   if (start === -1) return null;
   return list
     .slice(start)
@@ -181,13 +196,12 @@ describe("deriveMessagesTimelineRows", () => {
     expect(shape(list)).toEqual([
       expect.stringMatching(/^seam:seam:day:/),
       "message:m0",
-      "work-line:work-line:msg:m0",
       "record:record:msg:m0",
       "outcome:outcome:msg:m0",
       "message:a2",
     ]);
-    expect(list[2]).toMatchObject({
-      kind: "work-line",
+    // Who worked and for how long is the chat's last line, never a heading.
+    expect(recordOf(list)?.status).toMatchObject({
       live: false,
       face: "idle",
       worked: true,
@@ -202,16 +216,17 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
     expect(recordOf(list)).toMatchObject({ live: false, now: null });
     // What its calls came to is the result's, in pills (the owner, 2026-09-27).
-    expect(list[4]).toMatchObject({
+    expect(list[3]).toMatchObject({
       outcome: { activity: [{ kind: "command", count: 2, words: "Ran 2 commands" }] },
     });
-    expect(list[5]).toMatchObject({ showAssistantMeta: true, receipt: null });
+    expect(list[4]).toMatchObject({ showAssistantMeta: true, receipt: null });
   });
 
-  // The card stops where the person wrote and carries on under their words:
-  // one run, one heading, one clock (the owner, 2026-09-27, chose "the card
-  // breaks around it").
-  it("keeps every message the person sent where they sent it, the card breaking around each", () => {
+  // What the person sent into the run stands on the page above its card, and
+  // the card's chat marks where each reached the Mate: one card, one status
+  // (the owner, 2026-09-28, of the card breaking around each: "these split
+  // working groups have no chance to stay like this when the work is done").
+  it("keeps every message the person sent above the whole card, marked in its chat", () => {
     const list = rows({
       entries: [
         user("m0", 0),
@@ -225,16 +240,15 @@ describe("deriveMessagesTimelineRows", () => {
     });
     expect(shape(list).slice(1)).toEqual([
       "message:m0",
-      "work-line:work-line:msg:m0",
-      "record:record:msg:m0",
       "message:m1",
-      "record:record:part:m1",
       "message:m2",
+      "record:record:msg:m0",
       "outcome:outcome:msg:m0",
       "message:a3",
     ]);
-    // One heading: the parts after the person's words carry on without one.
-    expect(list.filter((row) => row.kind === "work-line")).toHaveLength(1);
+    // One card, its status on the chat's last line.
+    expect(list.filter((row) => row.kind === "work-line")).toHaveLength(0);
+    expect(recordOf(list)?.status).toMatchObject({ live: false, worked: true });
     expect(list.filter((row) => row.kind === "message" && row.message.role === "user")).toEqual([
       expect.objectContaining({ aside: false, receipt: "seen" }),
       expect.objectContaining({ aside: true, receipt: "seen" }),
@@ -257,11 +271,10 @@ describe("deriveMessagesTimelineRows", () => {
     });
     expect(shape(list).slice(1)).toEqual([
       "message:m0",
-      "work-line:work-line:msg:m0",
       "record:record:msg:m0",
       "working:working:msg:m0",
     ]);
-    expect(list[2]).toMatchObject({ live: true, face: "working", endedAt: null });
+    expect(recordOf(list)?.status).toMatchObject({ live: true, face: "working", endedAt: null });
     // The call it is making is beside its face, never a line of the record yet.
     expect(recordOf(list)).toMatchObject({
       live: true,
@@ -269,7 +282,7 @@ describe("deriveMessagesTimelineRows", () => {
       now: { kind: "step", step: { state: "running" } },
     });
     expect(lines(list)).toEqual(["Checking the build."]);
-    expect(list[4]).toMatchObject({
+    expect(list[3]).toMatchObject({
       kind: "working",
       turnKey: "msg:m0",
       cardKey: "msg:m0",
@@ -294,17 +307,19 @@ describe("deriveMessagesTimelineRows", () => {
         toolLifecycleStatus: undefined as never,
         sourceActivityKind: kind,
       });
-    const line = rows({
-      entries: [
-        user("m0", 0),
-        assistant("a1", "t1", 1, "One thing first."),
-        waitOn("q1", 2, kinds[0]),
-        waitOn("q2", 7, kinds[1]),
-        tool("w1", "t1", 8),
-        assistant("a2", "t1", 9, "Done."),
-      ],
-      settled: "t1",
-    }).find((row) => row.kind === "work-line");
+    const line = statusOf(
+      rows({
+        entries: [
+          user("m0", 0),
+          assistant("a1", "t1", 1, "One thing first."),
+          waitOn("q1", 2, kinds[0]),
+          waitOn("q2", 7, kinds[1]),
+          tool("w1", "t1", 8),
+          assistant("a2", "t1", 9, "Done."),
+        ],
+        settled: "t1",
+      }),
+    );
     expect(line).toMatchObject({ waitedMs: 5 * 60_000 });
   });
 
@@ -332,9 +347,7 @@ describe("deriveMessagesTimelineRows", () => {
       ...(answered ? [waitOn("q2", 7, "user-input.resolved")] : []),
       tool("w1", "t1", answered ? 8 : 9, live ? {} : { toolLifecycleStatus: "completed" }),
     ];
-    const line = rows(live ? { entries, live: "t1" } : { entries, settled: "t1" }).find(
-      (row) => row.kind === "work-line",
-    );
+    const line = statusOf(rows(live ? { entries, live: "t1" } : { entries, settled: "t1" }));
     expect(line).toMatchObject({
       waitedMs: waited * 60_000,
       waitingSince: since === null ? null : at(since),
@@ -534,10 +547,9 @@ describe("deriveMessagesTimelineRows", () => {
     });
   });
 
-  // Answered, the question and the person's answer stand on the page where
-  // the answer arrived; the record marks where it reached the Mate and goes
-  // on from there.
-  it("breaks the card at the person's answer, the question and answer on the page", () => {
+  // Answered, the person's answer stands on the page above the card, and the
+  // chat marks where it reached the Mate and goes on from there.
+  it("keeps the card whole under the person's answer, its chat marking where it arrived", () => {
     const before = [user("m0", 0), assistant("a1", "t1", 1, "One question first."), asked("q1", 2)];
     const waiting = framed({ entries: before, live: "t1" });
     const after = framed({
@@ -549,19 +561,16 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       live: "t1",
     });
-    expect(shape(after).slice(-7)).toEqual([
-      "work-line:work-line:msg:m0",
-      "record:record:msg:m0",
-      "card-end:card-end:msg:m0",
+    expect(shape(after).slice(-4)).toEqual([
       "answer:answer:rs",
-      "record:record:part:rs",
+      "record:record:msg:m0",
       "working:working:msg:m0",
-      "card-end:card-end:part:rs",
+      "card-end:card-end:msg:m0",
     ]);
     expect(lines(after)).toEqual(["One question first.", "> Green", "Green it is.", "· pnpm test"]);
-    // Everything above the live card is drawn as it was: the card stops
-    // above the answer and carries on under it.
-    const cardAt = waiting.findIndex((row) => row.kind === "work-line" && row.live);
+    // Everything above the live card is drawn as it was: the answer lands
+    // above the card, and the card moves down with it.
+    const cardAt = liveCardAt(waiting);
     expect(frame(after).slice(0, cardAt)).toEqual(frame(waiting).slice(0, cardAt));
   });
 
@@ -586,9 +595,8 @@ describe("deriveMessagesTimelineRows", () => {
       entries: [user("m0", 0), assistant("a1", "t1", 1, "Started it."), background("b1", 5)],
       live: "t2",
     });
-    expect(shape(list).slice(-4)).toEqual([
+    expect(shape(list).slice(-3)).toEqual([
       "background:background:b1",
-      "work-line:work-line:turn:t2",
       "record:record:turn:t2",
       "working:working:turn:t2",
     ]);
@@ -628,16 +636,18 @@ describe("deriveMessagesTimelineRows", () => {
   // A run that thought and asked the person something worked, it did not
   // only think.
   it("says a run that thought and asked the person something worked", () => {
-    const line = rows({
-      entries: [
-        user("m0", 0),
-        reasoning("r0", "t1", 1),
-        asked("q1", 1),
-        answeredWith("rs", 2, "Teal"),
-        assistant("a2", "t1", 4, "Teal it is."),
-      ],
-      settled: "t1",
-    }).find((row) => row.kind === "work-line");
+    const line = statusOf(
+      rows({
+        entries: [
+          user("m0", 0),
+          reasoning("r0", "t1", 1),
+          asked("q1", 1),
+          answeredWith("rs", 2, "Teal"),
+          assistant("a2", "t1", 4, "Teal it is."),
+        ],
+        settled: "t1",
+      }),
+    );
     expect(line).toMatchObject({ worked: true });
   });
 
@@ -660,7 +670,7 @@ describe("deriveMessagesTimelineRows", () => {
       [user("m0", 0), assistant("a1", "t1", 1, "The review is done.")],
     ]) {
       const kinds = rows({ entries, live: "t1" }).map((row) => row.kind);
-      expect(kinds).toEqual(expect.arrayContaining(["work-line", "record", "working"]));
+      expect(kinds).toEqual(expect.arrayContaining(["record", "working"]));
     }
   });
 
@@ -916,9 +926,8 @@ describe("deriveMessagesTimelineRows", () => {
       live: "t2",
       startedAt: 5,
     });
-    expect(shape(waking).slice(-5)).toEqual([
+    expect(shape(waking).slice(-4)).toEqual([
       "background:woke:turn:t2",
-      "work-line:work-line:turn:t2",
       "record:record:turn:t2",
       "working:working:turn:t2",
       "card-end:card-end:turn:t2",
@@ -1186,7 +1195,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(
       outcome?.kind === "outcome" ? outcome.outcome.activity.map((pill) => pill.words) : null,
     ).toEqual(pills);
-    expect(list.find((row) => row.kind === "work-line")).toMatchObject({ worked: true });
+    expect(statusOf(list)).toMatchObject({ worked: true });
   });
 
   // A run whose only work was an operation — a page check, a deploy — did
@@ -1204,7 +1213,7 @@ describe("deriveMessagesTimelineRows", () => {
       entries: [user("m0", 0), ...middle, assistant("a1", "t1", 2, "Done.")],
       settled: "t1",
     });
-    expect(list.find((row) => row.kind === "work-line")).toMatchObject({ worked });
+    expect(statusOf(list)).toMatchObject({ worked });
   });
 
   // Each line stands where it joined the record: the deploy that failed
@@ -1243,7 +1252,6 @@ describe("deriveMessagesTimelineRows", () => {
     });
     expect(shape(list).slice(1)).toEqual([
       "message:m0",
-      "work-line:work-line:msg:m0",
       "record:record:msg:m0",
       "outcome:outcome:msg:m0",
       "message:a1",
@@ -1257,7 +1265,7 @@ describe("deriveMessagesTimelineRows", () => {
       "✗ deploy appdev",
       "✓ deploy appdev",
     ]);
-    expect(list[2]).toMatchObject({ face: "produced" });
+    expect(statusOf(list)).toMatchObject({ face: "produced" });
   });
 
   it("draws the person's answer to the Mate's question as their own words on the page", () => {
@@ -1292,9 +1300,9 @@ describe("deriveMessagesTimelineRows", () => {
     expect(shape(list).filter((id) => id.includes(":rq") || id === "work:rs")).toEqual([]);
     // Asked before it did anything, the question and answer stand before the card.
     expect(shape(list).indexOf("answer:answer:rs")).toBeLessThan(
-      shape(list).indexOf("work-line:work-line:msg:m0"),
+      shape(list).indexOf("record:record:msg:m0"),
     );
-    expect(lines(list)).toEqual(["· pnpm test"]);
+    expect(lines(list)).toEqual(["> Green", "· pnpm test"]);
   });
 
   it("draws a settled stretch's browser checks in the record, where they happened", () => {
@@ -1326,21 +1334,20 @@ describe("deriveMessagesTimelineRows", () => {
     });
     expect(shape(list).slice(1)).toEqual([
       "message:m0",
-      "work-line:work-line:msg:m0",
       "record:record:msg:m0",
       "pause:pause:msg:m0",
       "outcome:outcome:msg:m0",
       "message:m1",
       "work-line:work-line:msg:m1",
     ]);
-    expect(list[4]).toMatchObject({
+    expect(list[3]).toMatchObject({
       held: 3,
       resumedAt: null,
       resetsAt: new Date(Date.UTC(2026, 8, 24, 21, 20)).toISOString(),
     });
-    expect(list[2]).toMatchObject({ face: "paused" });
-    // A turn the limit refused before it did anything is its heading alone.
-    expect(list[7]).toMatchObject({ face: "paused", worked: false });
+    expect(recordOf(list)?.status).toMatchObject({ face: "paused" });
+    // A turn the limit refused before it did anything is its line alone.
+    expect(list[6]).toMatchObject({ kind: "work-line", face: "paused", worked: false });
   });
 
   it("tells a limit once when the server adds its own error row, and keeps a real answer", () => {
@@ -1359,13 +1366,12 @@ describe("deriveMessagesTimelineRows", () => {
     });
     expect(shape(list).slice(1)).toEqual([
       "message:m0",
-      "work-line:work-line:msg:m0",
       "record:record:msg:m0",
       "pause:pause:msg:m0",
       "outcome:outcome:msg:m0",
       "message:a1",
     ]);
-    expect(list[2]).toMatchObject({ face: "paused" });
+    expect(statusOf(list)).toMatchObject({ face: "paused" });
   });
 
   it("marks a pause resumed once the Mate works again", () => {
@@ -1435,12 +1441,7 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       live: "t2",
       settled: undefined,
-      after: [
-        "message:m1",
-        "work-line:work-line:msg:m1",
-        "record:record:msg:m1",
-        "working:working:msg:m1",
-      ],
+      after: ["message:m1", "record:record:msg:m1", "working:working:msg:m1"],
     },
     {
       name: "a /compact with no turn of its own, then a settled run",
@@ -1452,13 +1453,7 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       live: undefined,
       settled: "t2",
-      after: [
-        "message:m1",
-        "work-line:work-line:msg:m1",
-        "record:record:msg:m1",
-        "outcome:outcome:msg:m1",
-        "message:a1",
-      ],
+      after: ["message:m1", "record:record:msg:m1", "outcome:outcome:msg:m1", "message:a1"],
     },
     {
       name: "a /compact's own turn, then a run",
@@ -1471,13 +1466,7 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       live: undefined,
       settled: "t2",
-      after: [
-        "message:m1",
-        "work-line:work-line:msg:m1",
-        "record:record:msg:m1",
-        "outcome:outcome:msg:m1",
-        "message:a1",
-      ],
+      after: ["message:m1", "record:record:msg:m1", "outcome:outcome:msg:m1", "message:a1"],
     },
     {
       name: "a message sent while the /compact ran",
@@ -1491,13 +1480,7 @@ describe("deriveMessagesTimelineRows", () => {
       live: undefined,
       settled: "t1",
       // The result is the turn's, and the turn is the /compact's.
-      after: [
-        "message:m1",
-        "work-line:work-line:msg:m1",
-        "record:record:msg:m1",
-        "outcome:outcome:msg:m0",
-        "message:a1",
-      ],
+      after: ["message:m1", "record:record:msg:m1", "outcome:outcome:msg:m0", "message:a1"],
     },
   ])("draws the person's message after $name as theirs, and its run", (scene) => {
     const list = rows({
@@ -1528,8 +1511,7 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       live: "t1",
     });
-    const line = list.find((row) => row.kind === "work-line");
-    expect(line?.id).toBe("work-line:msg:m1");
+    expect(list.find((row) => row.kind === "record")?.id).toBe("record:msg:m1");
     expect(list.find((row) => row.kind === "working")).toMatchObject({ cardKey: "msg:m1" });
   });
 
@@ -1559,7 +1541,7 @@ describe("deriveMessagesTimelineRows", () => {
       entries: [user("m0", 0), reasoning("r1", "t1", 1), assistant("a1", "t1", 2, "Yes.")],
       settled: "t1",
     });
-    expect(list[2]).toMatchObject({ kind: "work-line", worked: false });
+    expect(statusOf(list)).toMatchObject({ worked: false });
     expect(lines(list)).toEqual(["~ thinking about it"]);
   });
 
@@ -1790,14 +1772,7 @@ describe("a run's card", () => {
         ],
         settled: "t1",
       } satisfies Scene,
-      expected: [
-        "message",
-        "work-line:top",
-        "record:middle",
-        "outcome:middle",
-        "card-end:bottom",
-        "message",
-      ],
+      expected: ["message", "record:top", "outcome:middle", "card-end:bottom", "message"],
     },
     {
       case: "settled, a command: what it ran counted in its result",
@@ -1805,14 +1780,7 @@ describe("a run's card", () => {
         entries: [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, "Done.")],
         settled: "t1",
       } satisfies Scene,
-      expected: [
-        "message",
-        "work-line:top",
-        "record:middle",
-        "outcome:middle",
-        "card-end:bottom",
-        "message",
-      ],
+      expected: ["message", "record:top", "outcome:middle", "card-end:bottom", "message"],
     },
     {
       case: "live: the record, then what runs alongside",
@@ -1820,10 +1788,10 @@ describe("a run's card", () => {
         entries: [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, "Looking.")],
         live: "t1",
       } satisfies Scene,
-      expected: ["message", "work-line:top", "record:middle", "working:middle", "card-end:bottom"],
+      expected: ["message", "record:top", "working:middle", "card-end:bottom"],
     },
     {
-      case: "written into: the card stops above the person's message and carries on under it",
+      case: "written into: the person's message stands above the whole card",
       scene: {
         entries: [
           user("m0", 0),
@@ -1834,16 +1802,7 @@ describe("a run's card", () => {
         ],
         live: "t1",
       } satisfies Scene,
-      expected: [
-        "message",
-        "work-line:top",
-        "record:middle",
-        "card-end:bottom",
-        "message",
-        "record:top",
-        "working:middle",
-        "card-end:bottom",
-      ],
+      expected: ["message", "message", "record:top", "working:middle", "card-end:bottom"],
     },
     {
       case: "settled, a change landed: the record says where, the result names it",
@@ -1851,14 +1810,7 @@ describe("a run's card", () => {
         entries: [user("m0", 0), tool("w1", "t1", 1), landed("l1", 2), assistant("a1", "t1", 3)],
         settled: "t1",
       } satisfies Scene,
-      expected: [
-        "message",
-        "work-line:top",
-        "record:middle",
-        "outcome:middle",
-        "card-end:bottom",
-        "message",
-      ],
+      expected: ["message", "record:top", "outcome:middle", "card-end:bottom", "message"],
     },
     {
       case: "live, a change landed: a line of the record until the result takes it",
@@ -1866,7 +1818,7 @@ describe("a run's card", () => {
         entries: [user("m0", 0), tool("w1", "t1", 1), landed("l1", 2), tool("w2", "t1", 3)],
         live: "t1",
       } satisfies Scene,
-      expected: ["message", "work-line:top", "record:middle", "working:middle", "card-end:bottom"],
+      expected: ["message", "record:top", "working:middle", "card-end:bottom"],
     },
     {
       case: "an answer with no work before it: no card",
@@ -1894,8 +1846,7 @@ describe("a run's card", () => {
     });
     expect(cards(list)).toEqual([
       "message",
-      "work-line:top",
-      "record:middle",
+      "record:top",
       "working:middle",
       "card-end:bottom",
       "message",
@@ -1970,7 +1921,7 @@ describe("the no-shift contract", () => {
       const current = framed({ entries, ...(live ? { live: "t1" } : { settled: "t1" }) });
       const settling = wasLive && !live;
       const tail = liveTailStart(previous, wasLive);
-      const cardAt = previous.findIndex((row) => row.kind === "work-line" && row.live);
+      const cardAt = liveCardAt(previous);
       if (cardAt === -1) {
         expect(frame(current).slice(0, tail)).toEqual(frame(previous).slice(0, tail));
       } else {

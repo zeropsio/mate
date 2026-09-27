@@ -203,10 +203,10 @@ describe("foldGroups", () => {
     ["a release waits in the strip", { flow: FLOWS.release, ...settled }, "active", true],
     ["a Mate waiting waits in the strip", { flow: FLOWS.answer, ...settled }, "active", true],
     [
-      "adding production waits in the strip",
+      "adding production is the row's offer, never a step in the strip",
       { flow: FLOWS.addProduction, ...settled },
       "active",
-      true,
+      false,
     ],
   ];
   for (const [name, entry, place, waits] of cases) {
@@ -281,7 +281,9 @@ describe("nextStepAwaitsSomebody", () => {
     merge: true,
     unblock: true,
     release: true,
-    "add-production": true,
+    // A project needs no production (the owner, 2026-09-28: "production not
+    // required, this shouldn't be there"): the page offers it, nothing nags.
+    "add-production": false,
     // The Mate is the way in to a first task; nothing waits on anybody.
     "first-task": false,
     none: false,

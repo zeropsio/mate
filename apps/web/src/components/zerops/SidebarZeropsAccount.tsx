@@ -36,6 +36,7 @@ import {
   MenuRadioGroup,
   MenuRadioItem,
   MenuSeparator,
+  MenuSwitch,
   MenuTrigger,
 } from "../ui/menu";
 import { Avatar } from "./primitives";
@@ -48,6 +49,7 @@ import {
   sidebarAccountDestinationOf,
   sidebarAccountLines,
   sidebarAccountOrganizationChoices,
+  sidebarAccountRoleLine,
   type SidebarAccountDestination,
 } from "./SidebarZeropsAccount.logic";
 
@@ -118,7 +120,7 @@ export function SidebarZeropsAccount({
           </>
         )}
       </MenuTrigger>
-      <MenuPopup align="start" className="w-64" side="top">
+      <MenuPopup align="start" className="w-72" side="top">
         <SidebarZeropsAccountMenu
           account={account}
           activeOrganization={activeOrganization}
@@ -164,8 +166,12 @@ export function SidebarZeropsAccountMenu({
           <p className="truncate text-sm font-medium text-foreground">
             {account.fullName ?? account.name}
           </p>
-          {account.email === null ? null : (
-            <p className="truncate text-xs text-muted-foreground">{account.email}</p>
+          {/* What they are in the organization the list shows, as the prototype
+              said it; the address where no organization is known yet. */}
+          {(sidebarAccountRoleLine(activeOrganization) ?? account.email) === null ? null : (
+            <p className="truncate text-xs text-muted-foreground">
+              {sidebarAccountRoleLine(activeOrganization) ?? account.email}
+            </p>
           )}
         </div>
       </div>
@@ -176,44 +182,52 @@ export function SidebarZeropsAccountMenu({
           heading and menu. *Custom* starts from the order on screen
           (`projectOrderPreference.ts`). */}
       <MenuSeparator />
-      <MenuRadioGroup
+      {/* Each a switch, as the approved prototype drew them: its label, then
+          its choices on one track with the chosen one raised — a list of
+          radio rows only greyed the chosen one, which read as the pointer
+          (the owner, 2026-09-28: "much more shit"). Still the menu's own
+          radio items, so the keys and the reader treat them as before; the
+          menu stays open to show the list changing under it. */}
+      <MenuSwitch
+        label="Show"
         onValueChange={(value) => {
           const choice = MATE_SCOPE_CHOICES.find((entry) => entry.value === value);
           if (choice !== undefined) setMateScope(choice.value);
         }}
         value={mateScope}
       >
-        <MenuGroupLabel>Show</MenuGroupLabel>
         {MATE_SCOPE_CHOICES.map((choice) => (
           <MenuRadioItem
-            closeOnClick
+            closeOnClick={false}
             data-zerops-account-scope={choice.value}
             key={choice.value}
             value={choice.value}
+            variant="segment"
           >
             {choice.label}
           </MenuRadioItem>
         ))}
-      </MenuRadioGroup>
-      <MenuRadioGroup
+      </MenuSwitch>
+      <MenuSwitch
+        label="Order"
         onValueChange={(value) => {
           const choice = PROJECT_ORDER_CHOICES.find((entry) => entry.value === value);
           if (choice !== undefined) projectOrder.choose(choice.value, readProjectsOnScreen());
         }}
         value={projectOrder.order}
       >
-        <MenuGroupLabel>Order</MenuGroupLabel>
         {PROJECT_ORDER_CHOICES.map((choice) => (
           <MenuRadioItem
-            closeOnClick
+            closeOnClick={false}
             data-zerops-account-order={choice.value}
             key={choice.value}
             value={choice.value}
+            variant="segment"
           >
             {choice.label}
           </MenuRadioItem>
         ))}
-      </MenuRadioGroup>
+      </MenuSwitch>
 
       {choices.length === 0 ? null : (
         <>
@@ -225,13 +239,16 @@ export function SidebarZeropsAccountMenu({
             value={activeOrganization?.membershipId ?? ""}
           >
             <MenuGroupLabel>Organization</MenuGroupLabel>
+            {/* The one the list shows wears a check, as the prototype drew it:
+                a grey fill alone read as the pointer resting there. */}
             {choices.map((organization) => (
               <MenuRadioItem
                 closeOnClick
                 key={organization.membershipId}
                 value={organization.membershipId}
+                variant="check"
               >
-                <span className="min-w-0 truncate">{organization.name}</span>
+                {organization.name}
               </MenuRadioItem>
             ))}
           </MenuRadioGroup>

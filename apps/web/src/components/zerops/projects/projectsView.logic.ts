@@ -78,14 +78,18 @@ export function parseProjectsSearch(raw: Record<string, unknown>): ProjectsSearc
   };
 }
 
-/** The steps somebody has something to do for: the strip gathers them, the left menu dots them. */
+/**
+ * The steps somebody has something to do for: the strip gathers them, the
+ * left menu dots them. A project without production owes nobody anything —
+ * production is not required (the owner, 2026-09-28) — so adding one is the
+ * page's offer, never a step that waits.
+ */
 const STRIP_STEPS: ReadonlySet<GroupNextStepKind> = new Set([
   "answer-mate",
   "fix-deploy",
   "merge",
   "unblock",
   "release",
-  "add-production",
 ]);
 
 /** Whether a next step waits on somebody — never a first task (the Mate is the way in) or none. */
