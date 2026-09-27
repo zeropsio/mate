@@ -1422,6 +1422,44 @@ describe("deriveMessagesTimelineRows", () => {
     expect(shape(list).slice(7, 9)).toEqual(["log-person:log-person:m1", "working:working:msg:m1"]);
   });
 
+  // An answer to the Mate's question is marked where it reached the Mate, as
+  // a message sent into the run is: the thinking it split stood as two lines
+  // side by side with nothing between them (Nova, 2026-09-27).
+  it("marks where the person's answer reached the Mate in the opened log", () => {
+    const answered = tool("rs", "t1", 3, {
+      tone: "info",
+      label: "User input submitted",
+      command: undefined as never,
+      toolCallId: undefined as never,
+      toolLifecycleStatus: undefined as never,
+      sourceActivityKind: "user-input.resolved",
+      inputRequestId: "req-1",
+      inputAnswers: [{ key: "accent", answer: "Teal" }],
+    });
+    const list = rows({
+      entries: [
+        user("m0", 0),
+        reasoning("r1", "t1", 1),
+        asked("q1", 2),
+        answered,
+        reasoning("r2", "t1", 4),
+        tool("w1", "t1", 5),
+        assistant("a1", "t1", 6, "Done."),
+      ],
+      settled: "t1",
+      open: ["msg:m0"],
+    });
+    expect(
+      list.flatMap((row) =>
+        row.kind === "log-person"
+          ? [`person: ${row.words}`]
+          : row.kind.startsWith("log-")
+            ? [row.kind]
+            : [],
+      ),
+    ).toEqual(["log-reasoning", "person: Teal", "log-reasoning", "log-step"]);
+  });
+
   // An image sent into the run is marked as the image it is, never the
   // client's placeholder text for a message without words.
   it.each([

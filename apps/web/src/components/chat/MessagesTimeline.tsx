@@ -1900,8 +1900,8 @@ function LogNoteTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-no
  * on the page above the card.
  */
 function LogPersonTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-person" }> }) {
-  const words = row.imageOnly ? "" : (row.message.text.trim().split("\n")[0] ?? "");
-  const images = row.message.attachments?.filter(isImageAttachment).length ?? 0;
+  const words = row.words ?? (row.imageOnly ? "" : (row.message?.text.trim().split("\n")[0] ?? ""));
+  const images = row.message?.attachments?.filter(isImageAttachment).length ?? 0;
   return (
     <div className="flex justify-end" data-log-person>
       <p className="max-w-4/5 truncate rounded-2xl bg-message px-3.5 py-1 text-line text-message-foreground">

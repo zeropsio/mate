@@ -27,7 +27,7 @@ import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { KindGlyph } from "../zerops/ZeropsOperationCard";
-import { formatWorkDuration } from "./conversation.logic";
+import { formatWorkDuration, operationLineWords } from "./conversation.logic";
 import { ElapsedSince } from "./ConversationRows";
 import type { StepKind, WorkStep } from "./workSteps.logic";
 
@@ -78,12 +78,19 @@ function stepTime(step: WorkStep): ReactNode {
   return Number.isFinite(ms) && ms >= 1000 ? formatWorkDuration(ms) : null;
 }
 
+/** What a step's line cannot show of it: a script's length, how many edits it folds. */
+function stepSuffix(step: WorkStep): string | null {
+  if (step.kind === "command" && step.codeLines > 1) return `${step.codeLines} lines`;
+  if (step.kind === "edit" && step.entries.length > 1) return `${step.entries.length} edits`;
+  return null;
+}
+
 /** The words, the code after them, the time at the line's end. */
 function LineBody({
   mark,
   words,
   code,
-  codeLines = 0,
+  suffix = null,
   state,
   time,
   chevron,
@@ -91,8 +98,8 @@ function LineBody({
   readonly mark: ReactNode;
   readonly words: string | null;
   readonly code: string | null;
-  /** A script's lines: said after its first, which is all the line shows of it. */
-  readonly codeLines?: number;
+  /** What the line cannot show of it: a script's lines, a run of edits' count. */
+  readonly suffix?: string | null;
   readonly state: WorkStep["state"];
   readonly time: ReactNode;
   /** An opened log's line: its chevron, shown on hover or open. */
@@ -120,10 +127,8 @@ function LineBody({
       ) : (
         <span className="flex-1" />
       )}
-      {code !== null && codeLines > 1 ? (
-        <span className="shrink-0 text-muted-foreground/80 text-xs tabular-nums">
-          {codeLines} lines
-        </span>
+      {suffix !== null ? (
+        <span className="shrink-0 text-muted-foreground/80 text-xs tabular-nums">{suffix}</span>
       ) : null}
       {time !== null ? (
         <span className="shrink-0 text-muted-foreground text-xs tabular-nums">{time}</span>
@@ -157,7 +162,7 @@ export function WorkStepLine({
     >
       <LineBody
         code={step.code}
-        codeLines={step.codeLines}
+        suffix={stepSuffix(step)}
         mark={<Mark icon={KIND_MARK[step.kind]} state={step.state} />}
         state={step.state}
         time={stepTime(step)}
@@ -222,7 +227,7 @@ export function OperationStepLine({
         }
         state={state}
         time={operationTime(operation)}
-        words={words ?? `${operation.statusWord} ${operation.subject}`}
+        words={words ?? operationLineWords(operation)}
       />
     </div>
   );
@@ -254,7 +259,7 @@ export function LogStepButton({
       <LineBody
         chevron={expanded ? "open" : true}
         code={step.code}
-        codeLines={step.codeLines}
+        suffix={stepSuffix(step)}
         mark={<Mark icon={KIND_MARK[step.kind]} state={step.state} />}
         state={step.state}
         time={stepTime(step)}

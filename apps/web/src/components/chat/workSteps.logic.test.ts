@@ -262,6 +262,29 @@ describe("foldSteps", () => {
     expect(steps[1]?.key).toBe("2");
   });
 
+  it("folds edits in a row into one step naming each file once", () => {
+    const edit = (id: string, file: string, tool = "Edit") =>
+      entry({
+        id,
+        itemType: "file_change",
+        label: "File change",
+        detail: `${tool}: {"file_path":"/var/www/app/${file}"}`,
+      });
+    const steps = foldSteps([
+      edit("1", "index.ts"),
+      edit("2", "index.ts"),
+      edit("3", "index.ts"),
+      command("4", "npm test"),
+      edit("5", "a.ts"),
+      edit("6", "b.ts", "Write"),
+    ]);
+    expect(steps.map((step) => [step.words ?? step.code, step.entries.length])).toEqual([
+      ["Edited index.ts", 3],
+      ["npm test", 1],
+      ["Edited a.ts and b.ts", 2],
+    ]);
+  });
+
   it("counts past three pictures", () => {
     const steps = foldSteps(
       ["a", "b", "c", "d", "e"].map((name, index) => look(`${index}`, `/tmp/${name}.png`)),

@@ -507,14 +507,17 @@ type MessagesTimelineRowBody =
     }
   | {
       /**
-       * Where a message the person sent into the run reached the Mate, in an
-       * opened log: their words, one line, on their side — the message itself
-       * stands on the page above the card.
+       * Where the person's words reached the Mate, in an opened log — a
+       * message sent into the run, an answer to its question: one line, on
+       * their side; the words themselves stand on the page above the card.
        */
       kind: "log-person";
       id: string;
       createdAt: string;
-      message: ChatMessage;
+      /** A message sent into the run; an answer has its words instead. */
+      message?: ChatMessage;
+      /** An answer's words. */
+      words?: string;
       /** The client's own placeholder stands in for the text: the message is its images. */
       imageOnly: boolean;
     }
@@ -1356,6 +1359,20 @@ function stretchContentRows(input: {
                   : [],
               )
               .at(-1) ?? [];
+          if (open) {
+            // The log marks where the answer reached the Mate, as it marks a
+            // message sent into the run: two stretches of thinking stood
+            // side by side with nothing between them (Nova, 2026-09-27).
+            push(entry.createdAt, [
+              {
+                kind: "log-person",
+                id: `log-person:${entry.id}`,
+                createdAt: entry.createdAt,
+                words: work.inputAnswers.map((given) => given.answer).join(" · "),
+                imageOnly: false,
+              },
+            ]);
+          }
           push(entry.createdAt, [
             {
               kind: "answer",
@@ -2251,8 +2268,11 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       );
     }
     case "log-note":
-    case "log-person":
       return a.message === (b as typeof a).message;
+    case "log-person": {
+      const bp = b as typeof a;
+      return a.message === bp.message && a.words === bp.words && a.imageOnly === bp.imageOnly;
+    }
     case "speech": {
       const bs = b as typeof a;
       return a.message === bs.message && a.hand === bs.hand && sameFold(a.foldsFrom, bs.foldsFrom);

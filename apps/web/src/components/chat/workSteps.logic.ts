@@ -211,6 +211,34 @@ function webTarget(url: string): string {
   }
 }
 
+/** The files a run of edits touched, by name, each once. */
+function editedFiles(entries: ReadonlyArray<WorkLogEntry>): string[] {
+  return [
+    ...new Set(
+      entries.flatMap((entry) =>
+        (entry.changedFiles?.length
+          ? entry.changedFiles
+          : [entry.callInput?.filePath ?? detailFile(entry.detail)].filter(
+              (file): file is string => file !== null && file !== undefined,
+            )
+        ).map(basename),
+      ),
+    ),
+  ];
+}
+
+/** Edits said plainly: "Edited index.ts", "Wrote AGENTS.md", "Edited a.ts and b.ts". */
+function editWords(entries: ReadonlyArray<WorkLogEntry>, running: boolean): string {
+  const files = editedFiles(entries);
+  const wrote = entries.every(
+    (entry) => (namedToolCall(entry) ?? detailToolName(entry.detail)) === "Write",
+  );
+  const what =
+    files.length === 0 ? "a file" : files.length > 3 ? `${files.length} files` : listed(files);
+  if (wrote) return running ? `Writing ${what}` : `Wrote ${what}`;
+  return running ? `Editing ${what}` : `Edited ${what}`;
+}
+
 /** A call said plainly, as it runs ("Reading a.ts") or once done ("Read a.ts"). */
 function plainWords(entry: WorkLogEntry, kind: StepKind, running: boolean): string | null {
   const say = (now: string, then: string) => (running ? now : then);
@@ -230,24 +258,8 @@ function plainWords(entry: WorkLogEntry, kind: StepKind, running: boolean): stri
         ? say("Reading a file", "Read a file")
         : say(`Reading ${basename(file)}`, `Read ${basename(file)}`);
     }
-    case "edit": {
-      const files = [
-        ...new Set(
-          (entry.changedFiles?.length
-            ? entry.changedFiles
-            : [input?.filePath ?? detailFile(entry.detail)].filter(
-                (file): file is string => file !== null && file !== undefined,
-              )
-          ).map(basename),
-        ),
-      ];
-      const wrote = (namedToolCall(entry) ?? detailToolName(entry.detail)) === "Write";
-      const what =
-        files.length === 0 ? "a file" : files.length > 3 ? `${files.length} files` : listed(files);
-      return wrote
-        ? say(`Writing ${what}`, `Wrote ${what}`)
-        : say(`Editing ${what}`, `Edited ${what}`);
-    }
+    case "edit":
+      return editWords([entry], running);
     case "search": {
       const named = namedToolCall(entry);
       const pattern = input?.pattern ?? detailField(entry.detail, "pattern");
@@ -318,7 +330,8 @@ export function stepOf(
 
 /**
  * The steps of a run of calls, in order: looks at pictures one after another
- * fold into one step naming them all.
+ * fold into one step naming them all, and so do edits one after another —
+ * four edits of one file were four lines of "Edited index.ts".
  */
 export function foldSteps(
   entries: ReadonlyArray<WorkLogEntry>,
@@ -352,6 +365,25 @@ export function foldSteps(
         endedAt: step.endedAt,
         entries: [...previous.entries, entry],
         images,
+      };
+      continue;
+    }
+    if (
+      previous !== undefined &&
+      previous.kind === "edit" &&
+      step.kind === "edit" &&
+      previous.state === "done" &&
+      step.state !== "failed" &&
+      step.words === plainWords(entry, "edit", step.state === "running") &&
+      previous.entries.every((earlier) => earlier.callInput?.description === undefined)
+    ) {
+      const merged = [...previous.entries, entry];
+      steps[steps.length - 1] = {
+        ...previous,
+        words: editWords(merged, step.state === "running"),
+        state: step.state,
+        endedAt: step.endedAt,
+        entries: merged,
       };
       continue;
     }
