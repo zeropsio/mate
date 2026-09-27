@@ -1,16 +1,19 @@
 /**
- * The two remaining server-fed Zerops feeds, as atoms.
+ * The server-fed Zerops feeds, as atoms.
  *
  * - **lifecycle** — one per thread: where the agent is, for the strip and the
  *   cards.
  * - **agentAuth** — one per environment: which agent CLIs are signed in, for
  *   the sign-in card (S7 plan D1/D3).
+ * - **crew** — one per environment: the crew engine's whole snapshot, for the
+ *   Crew section, the board and crew chats (ARCHITECTURE §6). Its `status`,
+ *   not the feed's existence, says whether there is a crew surface at all.
  *
  * A lifecycle frame is also a push into the account's bus: its envelope,
  * beside the one before it, names the forge and deployment facts it made
  * old (`accountForge.ts`, DESIGN §6.1).
  *
- * Both reach a consumer as `Known` (DESIGN §2.C C12–C13): `reading` until the
+ * Each reaches a consumer as `Known` (DESIGN §2.C C12–C13): `reading` until the
  * first frame, `stale` with the value kept while the Mate is disconnected,
  * and `failed(unsupported)` on an old Mate without the RPC. Each session asks
  * once and nothing retries within it; a new session's ask to an old Mate
@@ -22,7 +25,7 @@
  * server feed. `useZeropsTopology` (`useZeropsFeeds.ts`) is now a thin read
  * of that hook, not of an atom here.
  *
- * Both feeds are read-only and *snapshot*-typed rather than delta-typed:
+ * These feeds are read-only and *snapshot*-typed rather than delta-typed:
  * every emission is the whole state. That is what makes a reconnect free —
  * the RPC is asked again on the new session and its first emission is a
  * fresh snapshot, so there is no re-`get` to arrange and no accumulator that
@@ -59,6 +62,7 @@ import {
 } from "@t3tools/client-runtime/zerops/knowledge";
 import { EnvironmentAuthorizationError, WS_METHODS } from "@t3tools/contracts";
 import type {
+  CrewSnapshot,
   EnvironmentId,
   ThreadId,
   ZeropsAgentAuthSnapshot,
@@ -81,6 +85,11 @@ export interface ZeropsLifecycleTarget {
 }
 
 export interface ZeropsAgentAuthTarget {
+  readonly environmentId: EnvironmentId;
+  readonly input: Record<string, never>;
+}
+
+export interface ZeropsCrewTarget {
   readonly environmentId: EnvironmentId;
   readonly input: Record<string, never>;
 }
@@ -225,6 +234,15 @@ export function createZeropsFeedAtoms<R, E>(runtime: Atom.AtomRuntime<Environmen
       subscribe(WS_METHODS.subscribeZeropsAgentAuth, input),
   });
 
+  const crew = createKnownFeedFamily(runtime, {
+    label: "environment-data:zerops:crew",
+    capability: WS_METHODS.subscribeZeropsCrew,
+    subscribe: (
+      input: ZeropsCrewTarget["input"],
+    ): Stream.Stream<CrewSnapshot, unknown, EnvironmentSupervisor> =>
+      subscribe(WS_METHODS.subscribeZeropsCrew, input),
+  });
+
   /**
    * `subscribeZeropsBrowserStream` interleaves state transitions and frames
    * on one stream; `transform` folds it (`foldBrowserStreamEvent`) into the
@@ -282,5 +300,5 @@ export function createZeropsFeedAtoms<R, E>(runtime: Atom.AtomRuntime<Environmen
       ),
   });
 
-  return { lifecycle, agentAuth, browserStream, dataConsole };
+  return { lifecycle, agentAuth, crew, browserStream, dataConsole };
 }
