@@ -6,6 +6,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import type {
@@ -18,6 +19,9 @@ import type { WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
 import * as ZeropsLogins from "./ZeropsLogins.ts";
 
 type Instances = Readonly<Record<string, ProviderInstanceConfig>>;
+
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+const decodeJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
 /** The settings' provider instances: what the service reads, writes and hears change. */
 const makeSettings = (initial: Instances) =>
@@ -113,6 +117,49 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
           (yield* logins.latest).map((login) => [login.id, login.state]),
           [[id, "not-authorized"]],
         );
+      }),
+    ),
+  );
+
+  it.effect("seeds a new Claude login's home with zcp's MCP server and a finished onboarding", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { fs, homeDir, logins } = yield* makeHarness({});
+        const zerops = { command: "zcp", args: ["serve"] };
+        yield* fs.writeFileString(
+          `${homeDir}/.claude.json`,
+          encodeJson({
+            hasCompletedOnboarding: true,
+            theme: "dark",
+            mcpServers: { zerops },
+            oauthAccount: { emailAddress: "jan@example.com" },
+          }),
+        );
+
+        const account = yield* logins.add({
+          agent: "claude-code",
+          kind: "subscription",
+          label: "work",
+        });
+        const key = yield* logins.add({
+          agent: "claude-code",
+          kind: "apiKey",
+          label: "",
+          apiKey: "sk-ant-1",
+        });
+        const codex = yield* logins.add({ agent: "codex", kind: "subscription", label: "home" });
+
+        for (const { id } of [account, key]) {
+          const path = `${homeDir}/.mate/logins/${id}/.claude.json`;
+          assert.deepStrictEqual(decodeJson(yield* fs.readFileString(path)), {
+            hasCompletedOnboarding: true,
+            theme: "dark",
+            mcpServers: { zerops },
+          });
+          // It may carry an MCP server's own environment: the login's alone.
+          assert.strictEqual((yield* fs.stat(path)).mode & 0o777, 0o600);
+        }
+        assert.isFalse(yield* fs.exists(`${homeDir}/.mate/logins/${codex.id}/.claude.json`));
       }),
     ),
   );

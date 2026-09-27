@@ -11,7 +11,8 @@
  * - a second Claude account: `CLAUDE_CONFIG_DIR` is that home, and its
  *   credential is `<home>/.credentials.json`;
  * - a Claude API key: the same, with `ANTHROPIC_API_KEY` stored for that
- *   instance alone (the settings' secret store);
+ *   instance alone (the settings' secret store); either Claude home starts
+ *   with zcp's MCP server and a finished onboarding ({@link seedClaudeConfig});
  * - a second Codex account: a shadow home over `~/.codex` (the driver's auth
  *   overlay), so it shares zcp's MCP config and keeps its own `auth.json`.
  *
@@ -48,6 +49,7 @@ import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
@@ -240,6 +242,50 @@ export function withLogins(
   return { ...snapshot, logins: [...snapshot.agents.map(defaultLoginRow), ...extras] };
 }
 
+/** The per-project flags a finished first run leaves — what spares a project's trust dialog. */
+const PROJECT_ONBOARDING_FLAGS = [
+  "hasTrustDialogAccepted",
+  "hasCompletedProjectOnboarding",
+] as const;
+
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * The `.claude.json` a new Claude login's home starts with. Claude reads its
+ * global config from `$CLAUDE_CONFIG_DIR/.claude.json`, and zcp writes its MCP
+ * server and the finished onboarding only into the default's `~/.claude.json`
+ * (`../zcp/internal/init/adapters/claude.go`): without this the login would
+ * have no zcp tools and would show the first-run screens.
+ *
+ * Carried: `mcpServers`, `theme`, and each project's trust and onboarding
+ * flags; onboarding is always finished. Never carried: the account
+ * (`oauthAccount`, `userID`), a key's pre-approval, a project's history —
+ * those are the default login's own.
+ */
+export function seedClaudeConfig(defaultConfig: unknown): Record<string, unknown> {
+  const source = isRecord(defaultConfig) ? defaultConfig : {};
+  const projects: Record<string, Record<string, unknown>> = {};
+  if (isRecord(source["projects"])) {
+    for (const [path, project] of Object.entries(source["projects"])) {
+      if (!isRecord(project)) continue;
+      const flags = Object.fromEntries(
+        PROJECT_ONBOARDING_FLAGS.filter((flag) => project[flag] === true).map((flag) => [
+          flag,
+          true,
+        ]),
+      );
+      if (Object.keys(flags).length > 0) projects[path] = flags;
+    }
+  }
+  return {
+    hasCompletedOnboarding: true,
+    ...(typeof source["theme"] === "string" ? { theme: source["theme"] } : {}),
+    ...(isRecord(source["mcpServers"]) ? { mcpServers: source["mcpServers"] } : {}),
+    ...(Object.keys(projects).length > 0 ? { projects } : {}),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // I/O
 // ---------------------------------------------------------------------------
@@ -268,6 +314,9 @@ export const UNKNOWN_LOGIN_RECHECK_INTERVAL = Duration.minutes(1);
 export const LOGIN_SIGNER_RECHECK_INTERVAL = Duration.seconds(35);
 
 type Instances = Readonly<Record<string, ProviderInstanceConfig>>;
+
+const decodeUnknownJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 export class ZeropsLogins extends Context.Service<
   ZeropsLogins,
@@ -596,9 +645,22 @@ export const make = (options: ZeropsLoginsOptions) =>
             const id = makeExtraLoginId(input, new Set(Object.keys(current)));
             // The home exists before the instance does, so the driver and the
             // login's watcher find it at once.
-            yield* fs
-              .makeDirectory(mateLoginHome(homeDir, id), { recursive: true })
-              .pipe(Effect.orDie);
+            const home = mateLoginHome(homeDir, id);
+            yield* fs.makeDirectory(home, { recursive: true }).pipe(Effect.orDie);
+            if (input.agent === "claude-code") {
+              // zcp's MCP server and a finished onboarding, before its first
+              // login — see `seedClaudeConfig`. Unreadable defaults seed the
+              // onboarding alone.
+              const defaults = yield* fs.readFileString(`${homeDir}/.claude.json`).pipe(
+                Effect.flatMap(decodeUnknownJson),
+                Effect.orElseSucceed(() => undefined),
+              );
+              yield* fs
+                .writeFileString(`${home}/.claude.json`, encodeJson(seedClaudeConfig(defaults)), {
+                  mode: 0o600,
+                })
+                .pipe(Effect.orDie);
+            }
             const instance = mateLoginInstance({ ...input, id, apiKey }, homeDir);
             return [{ ...current, [id]: instance }, { id }] as const;
           }),

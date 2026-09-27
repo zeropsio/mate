@@ -11,6 +11,7 @@ import {
   mateLoginRow,
   mateLoginState,
   readMateLogins,
+  seedClaudeConfig,
   withLogins,
 } from "./ZeropsLogins.ts";
 
@@ -346,5 +347,49 @@ describe("mateLoginRow", () => {
     expect(
       mateLoginRow(login, { credPresent: false, providerAuth: "unknown" }, "u-jan").signedInBy,
     ).toBeUndefined();
+  });
+});
+
+// A second Claude login starts from its own CLAUDE_CONFIG_DIR, which would
+// hold neither zcp's MCP server nor a finished onboarding: zcp writes both
+// into the default's ~/.claude.json only.
+describe("seedClaudeConfig", () => {
+  const zerops = { type: "stdio", command: "zcp", args: ["serve"], env: {} };
+
+  it("carries zcp's MCP servers, the onboarding and the trusted projects, never the account", () => {
+    expect(
+      seedClaudeConfig({
+        hasCompletedOnboarding: true,
+        theme: "dark",
+        mcpServers: { zerops },
+        projects: {
+          "/var/www": {
+            hasTrustDialogAccepted: true,
+            hasCompletedProjectOnboarding: true,
+            allowedTools: ["Bash"],
+            lastCost: 3.2,
+          },
+          "/tmp/scratch": { allowedTools: [] },
+        },
+        oauthAccount: { emailAddress: "jan@example.com" },
+        userID: "abc",
+        customApiKeyResponses: { approved: ["xyz"], rejected: [] },
+      }),
+    ).toEqual({
+      hasCompletedOnboarding: true,
+      theme: "dark",
+      mcpServers: { zerops },
+      projects: {
+        "/var/www": { hasTrustDialogAccepted: true, hasCompletedProjectOnboarding: true },
+      },
+    });
+  });
+
+  it.each([
+    { name: "no default config at all", source: undefined },
+    { name: "a config that is not an object", source: ["x"] },
+    { name: "a config zcp never touched", source: { theme: 3, mcpServers: "none" } },
+  ])("finishes the onboarding from $name", ({ source }) => {
+    expect(seedClaudeConfig(source)).toEqual({ hasCompletedOnboarding: true });
   });
 });
