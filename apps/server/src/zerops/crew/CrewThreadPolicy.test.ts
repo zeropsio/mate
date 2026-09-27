@@ -89,8 +89,10 @@ const makeHost = (calls: Ref.Ref<ReadonlyArray<HostCall>>) => {
     review: answer("review"),
     finish: answer("finish"),
     memory: answer("memory"),
-    sessionStart: (member, source) =>
-      record(["sessionStart", member.handle, source]).pipe(Effect.as(`seed for ${member.handle}`)),
+    sessionStart: (member, event) =>
+      record(["sessionStart", member.handle, event.source]).pipe(
+        Effect.as(`seed for ${member.handle}`),
+      ),
     postCompact: (member, summary) => record(["postCompact", member.handle, summary]),
   });
 };

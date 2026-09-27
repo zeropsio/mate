@@ -94,6 +94,12 @@ export type CrewMemoryOp =
   | { readonly op: "remove"; readonly id: string }
   | { readonly op: "list"; readonly topic?: string };
 
+export interface CrewSessionStart {
+  readonly source: "startup" | "resume" | "compact" | "clear";
+  readonly sessionId: string;
+  readonly transcriptPath: string;
+}
+
 export class CrewToolHost extends Context.Service<
   CrewToolHost,
   {
@@ -132,11 +138,13 @@ export class CrewToolHost extends Context.Service<
     /**
      * `SessionStart`'s additional context: the rotation seed on a new stint's
      * first session (B), the state packet after a compaction and the resume
-     * delta (C). `undefined` adds nothing.
+     * delta (C). `undefined` adds nothing. The session id and transcript path
+     * are the stint's own: the engine records them for its missing-transcript
+     * rotation (ARCHITECTURE §5 *Compaction and resume*).
      */
     readonly sessionStart: (
       member: CrewThreadMember,
-      source: "startup" | "resume" | "compact" | "clear",
+      event: CrewSessionStart,
     ) => Effect.Effect<string | undefined>;
     readonly postCompact: (member: CrewThreadMember, summary: string) => Effect.Effect<void>;
   }

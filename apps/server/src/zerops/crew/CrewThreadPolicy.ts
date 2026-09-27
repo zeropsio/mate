@@ -86,7 +86,11 @@ export const installCrewThreadPolicy = Effect.gen(function* () {
     onSessionStart: (event) =>
       Effect.flatMap(liveMember(threadId), (current) =>
         Option.isSome(current)
-          ? host.sessionStart(current.value, event.source)
+          ? host.sessionStart(current.value, {
+              source: event.source,
+              sessionId: event.sessionId,
+              transcriptPath: event.transcriptPath,
+            })
           : Effect.succeed(undefined),
       ),
     onPostCompact: (event) =>
