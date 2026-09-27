@@ -76,7 +76,9 @@ through it would make the two directories import each other.
   commands the gate allows unchanged only in their lane form (`ssh <host> 'cd <copy> && <port and
 env> timeout <n> sh -c …'`, byte for byte), and gives the model that exact form. Its permission and MCP
   elicitation requests are declined unasked. The deny reason does not reach the model; Codex
-  reports a plain rejection.
+  reports a plain rejection. Its `request_user_input` questions still wait for the person, in the
+  crewmate's chat, which is the person's surface — unlike Claude, whose gate denies
+  `AskUserQuestion` and sends the crewmate to `crew_report`.
 - **What a Codex crewmate is in phase C.** Code only: no zcp tools, and no crew tools either — they
   are an in-process MCP server only the Claude SDK can host. A Codex crewmate never reports its
   task done; its task completes when the person lands it (_Land_, or _Land now_: WIP commit,
