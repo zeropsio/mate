@@ -252,6 +252,24 @@ export const agentIdForProviderInstance = (
 };
 
 /**
+ * Which agent a provider instance is, by the driver that runs it
+ * (`ServerProvider.driver`). A second instance of a driver — `claudeAgent_work`
+ * beside `claudeAgent` — runs the same agent CLI, so it is the same agent to
+ * D6: {@link agentIdForProviderInstance} knows only the default ids and would
+ * let it through unchecked.
+ */
+export const agentIdForDriverKind = (driver: string | undefined): ZeropsAgentId | undefined => {
+  switch (driver) {
+    case "claudeAgent":
+      return "claude-code";
+    case "codex":
+      return "codex";
+    default:
+      return undefined;
+  }
+};
+
+/**
  * The §3 W-STATE matrix, five values, mirrored verbatim from
  * `vscode-bootstrap-welcome.js`'s `computeAgentState` (docs/spec-welcome-mode.md
  * §3): the platform flag and the local credential artifact are two

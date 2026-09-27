@@ -10,10 +10,11 @@ import {
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   agentOwnershipComposerNotice,
+  resolveOwnedAgentId,
   type ZeropsAgentOwnership,
 } from "@t3tools/client-runtime/zerops/agentOwnership";
 import {
-  agentIdForProviderInstance,
+  agentIdForDriverKind,
   ANTIGRAVITY_DEFAULT_MODEL,
   type EnvironmentId,
   isProviderDriverKind,
@@ -438,7 +439,7 @@ export function resolveZeropsProviderAvailability(input: {
   if (reads === undefined) return undefined;
   const map = new Map<ProviderInstanceId, ZeropsAgentAvailability>();
   for (const entry of input.entries) {
-    const agentId = agentIdForProviderInstance(entry.instanceId);
+    const agentId = agentIdForDriverKind(entry.driverKind);
     if (agentId === undefined) continue;
     const agent = reads(agentId);
     if (agent === undefined) continue;
@@ -485,12 +486,14 @@ export function isZeropsInstanceRunnable(
  */
 export function resolveZeropsOwnedAgentSendBlockReason(input: {
   readonly instanceId: ProviderInstanceId | null | undefined;
+  /** The configured instances, to name the agent by the instance's driver. */
+  readonly providers: ReadonlyArray<{ readonly instanceId: string; readonly driver: string }>;
   readonly availabilityByInstanceId:
     | ReadonlyMap<ProviderInstanceId, ZeropsAgentAvailability>
     | undefined;
 }): string | undefined {
   if (input.instanceId == null) return undefined;
-  const agentId = agentIdForProviderInstance(input.instanceId);
+  const agentId = resolveOwnedAgentId(input.instanceId, input.providers);
   const availability = input.availabilityByInstanceId?.get(input.instanceId);
   if (agentId === undefined || availability === undefined) return undefined;
   if (availability.kind === "ready" || zeropsAgentAvailabilityIsRunnable(availability)) {

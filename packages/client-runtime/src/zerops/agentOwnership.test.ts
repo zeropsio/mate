@@ -8,6 +8,7 @@ import {
   agentOwnershipNeedsAttention,
   agentOwnershipNotice,
   resolveAgentOwnership,
+  resolveOwnedAgentId,
   type ZeropsAgentOwnership,
 } from "./agentOwnership.ts";
 
@@ -196,4 +197,24 @@ describe("agentOwnershipNeedsAttention", () => {
       expect(agentOwnershipNeedsAttention(ownership)).toBe(expected);
     },
   );
+});
+
+describe("resolveOwnedAgentId", () => {
+  const providers = [
+    { instanceId: "claudeAgent", driver: "claudeAgent" },
+    { instanceId: "claudeAgent_work", driver: "claudeAgent" },
+    { instanceId: "codex", driver: "codex" },
+    { instanceId: "opencode", driver: "opencode" },
+  ];
+
+  it.each([
+    { instanceId: "claudeAgent", expected: "claude-code" },
+    { instanceId: "claudeAgent_work", expected: "claude-code" },
+    { instanceId: "codex", expected: "codex" },
+    { instanceId: "opencode", expected: undefined },
+    { instanceId: "claude-code", expected: "claude-code" },
+    { instanceId: undefined, expected: undefined },
+  ] as const)("$instanceId spends $expected", ({ instanceId, expected }) => {
+    expect(resolveOwnedAgentId(instanceId, providers)).toBe(expected);
+  });
 });

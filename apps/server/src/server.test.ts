@@ -155,6 +155,8 @@ import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsAgentSignOutModule from "./zerops/ZeropsAgentSignOut.ts";
 import * as ZeropsProjectSignersModule from "./zerops/ZeropsProjectSigners.ts";
+import * as ZeropsTurnAdmissionModule from "./zerops/ZeropsTurnAdmission.ts";
+import { layer as providerInstancesLayer } from "./spi/providerInstances.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
 import * as ZeropsCliModule from "./zerops/ZeropsCli.ts";
 import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
@@ -548,6 +550,11 @@ const buildAppUnderTest = (options?: {
     | ZeropsDataConsoleModule.ZeropsDataConsole
     | ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe
     | ZeropsProjectSignersModule.ZeropsProjectSigners
+    | ZeropsTurnAdmissionModule.ZeropsTurnAdmission,
+    never,
+    | ServerConfig.ServerConfig
+    | ProjectionSnapshotQuery.ProjectionSnapshotQuery
+    | ProviderRegistry.ProviderRegistry
   >;
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
@@ -796,6 +803,59 @@ const buildAppUnderTest = (options?: {
           ...options.layers.vcsStatusBroadcaster,
         })
       : VcsStatusBroadcaster.layer.pipe(Layer.provide(gitWorkflowLayer));
+    // One projection for the routes and for D6's gate, which reads a
+    // thread's agent from it.
+    const projectionSnapshotQueryLayer = Layer.mock(
+      ProjectionSnapshotQuery.ProjectionSnapshotQuery,
+    )({
+      getUserInputActivity: () => Effect.die("unused"),
+      getCommandReadModel: () => Effect.succeed(makeDefaultOrchestrationReadModel()),
+      getSnapshot: () => Effect.succeed(makeDefaultOrchestrationReadModel()),
+      getShellSnapshot: () =>
+        Effect.succeed({
+          snapshotSequence: 0,
+          projects: [],
+          threads: [],
+          updatedAt: "1970-01-01T00:00:00.000Z",
+        }),
+      getArchivedShellSnapshot: () =>
+        Effect.succeed({
+          snapshotSequence: 0,
+          projects: [],
+          threads: [],
+          updatedAt: "1970-01-01T00:00:00.000Z",
+        }),
+      searchThreads: () => Effect.succeed({ matches: [] }),
+      getSnapshotSequence: () => Effect.succeed({ snapshotSequence: 0 }),
+      getProjectShellById: () => Effect.succeedNone,
+      getThreadShellById: () => Effect.succeedNone,
+      getThreadDetailById: () => Effect.succeedNone,
+      getThreadDetailSnapshot: () => Effect.succeedNone,
+      getCounts: () => Effect.succeed({ projectCount: 0, threadCount: 0 }),
+      getEventReplayStats: ({ fromSequenceExclusive, toSequenceInclusive }) =>
+        Effect.succeed({
+          eventCount: Math.max(0, toSequenceInclusive - fromSequenceExclusive),
+          payloadBytes: 0,
+        }),
+      getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
+      getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
+      getThreadCheckpointContext: () => Effect.succeed(Option.none()),
+      ...options?.layers?.projectionSnapshotQuery,
+    });
+    // One registry for the routes and for D6's gate, which reads an
+    // instance's driver from it.
+    const providerRegistryLayer = Layer.mock(ProviderRegistry.ProviderRegistry)({
+      getProviders: Effect.succeed([]),
+      refresh: () => Effect.succeed([]),
+      refreshInstance: () => Effect.succeed([]),
+      getProviderMaintenanceCapabilitiesForInstance: (_instanceId, provider) =>
+        Effect.succeed(
+          makeManualOnlyProviderMaintenanceCapabilities({ provider, packageName: null }),
+        ),
+      setProviderMaintenanceActionState: () => Effect.succeed([]),
+      streamChanges: Stream.empty,
+      ...options?.layers?.providerRegistry,
+    });
     const resourceTelemetryLayer = ResourceTelemetry.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -834,18 +894,7 @@ const buildAppUnderTest = (options?: {
             forceRefresh: Effect.succeed(ModelManifest.BUNDLED_MODEL_MANIFEST),
             ...options?.layers?.modelManifest,
           }),
-          Layer.mock(ProviderRegistry.ProviderRegistry)({
-            getProviders: Effect.succeed([]),
-            refresh: () => Effect.succeed([]),
-            refreshInstance: () => Effect.succeed([]),
-            getProviderMaintenanceCapabilitiesForInstance: (_instanceId, provider) =>
-              Effect.succeed(
-                makeManualOnlyProviderMaintenanceCapabilities({ provider, packageName: null }),
-              ),
-            setProviderMaintenanceActionState: () => Effect.succeed([]),
-            streamChanges: Stream.empty,
-            ...options?.layers?.providerRegistry,
-          }),
+          providerRegistryLayer,
           Layer.mock(ProviderService.ProviderService)({
             uploadFeedback: () => Effect.die("Provider feedback is not stubbed in this test"),
             ...options?.layers?.providerService,
@@ -1002,43 +1051,7 @@ const buildAppUnderTest = (options?: {
           }),
         ),
       ),
-      Layer.provide(
-        Layer.mock(ProjectionSnapshotQuery.ProjectionSnapshotQuery)({
-          getUserInputActivity: () => Effect.die("unused"),
-          getCommandReadModel: () => Effect.succeed(makeDefaultOrchestrationReadModel()),
-          getSnapshot: () => Effect.succeed(makeDefaultOrchestrationReadModel()),
-          getShellSnapshot: () =>
-            Effect.succeed({
-              snapshotSequence: 0,
-              projects: [],
-              threads: [],
-              updatedAt: "1970-01-01T00:00:00.000Z",
-            }),
-          getArchivedShellSnapshot: () =>
-            Effect.succeed({
-              snapshotSequence: 0,
-              projects: [],
-              threads: [],
-              updatedAt: "1970-01-01T00:00:00.000Z",
-            }),
-          searchThreads: () => Effect.succeed({ matches: [] }),
-          getSnapshotSequence: () => Effect.succeed({ snapshotSequence: 0 }),
-          getProjectShellById: () => Effect.succeedNone,
-          getThreadShellById: () => Effect.succeedNone,
-          getThreadDetailById: () => Effect.succeedNone,
-          getThreadDetailSnapshot: () => Effect.succeedNone,
-          getCounts: () => Effect.succeed({ projectCount: 0, threadCount: 0 }),
-          getEventReplayStats: ({ fromSequenceExclusive, toSequenceInclusive }) =>
-            Effect.succeed({
-              eventCount: Math.max(0, toSequenceInclusive - fromSequenceExclusive),
-              payloadBytes: 0,
-            }),
-          getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
-          getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
-          getThreadCheckpointContext: () => Effect.succeed(Option.none()),
-          ...options?.layers?.projectionSnapshotQuery,
-        }),
-      ),
+      Layer.provide(projectionSnapshotQueryLayer),
       Layer.provide(
         Layer.mock(CheckpointDiffQuery.CheckpointDiffQuery)({
           getTurnDiff: () =>
@@ -1092,7 +1105,9 @@ const buildAppUnderTest = (options?: {
         ),
       ),
       Layer.provide(
-        options?.fixtureZeropsLayer ??
+        options?.fixtureZeropsLayer?.pipe(
+          Layer.provide(Layer.mergeAll(projectionSnapshotQueryLayer, providerRegistryLayer)),
+        ) ??
           Layer.mergeAll(
             // A test machine is not a Zerops environment, which is exactly the
             // shape the real feeds report there: unavailable, no errors. Mocked
@@ -1220,6 +1235,18 @@ const buildAppUnderTest = (options?: {
                 }),
               ...options?.layers?.zeropsGitRemoteProbe,
             }),
+          ).pipe((zeropsMocks) =>
+            // D6's gate, live, over the agent-auth and signers mocked above:
+            // with no agents reported, it admits every turn.
+            ZeropsTurnAdmissionModule.layer.pipe(
+              Layer.provideMerge(zeropsMocks),
+              Layer.provide(
+                Layer.mergeAll(
+                  projectionSnapshotQueryLayer,
+                  providerInstancesLayer.pipe(Layer.provide(providerRegistryLayer)),
+                ),
+              ),
+            ),
           ),
       ),
       Layer.provide(
@@ -2402,6 +2429,60 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
       assert.equal(response.status, 200);
       assert.equal(snapshot.thread.id, threadId);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  // D6 over HTTP: the dispatch route admits a turn as the caller's session,
+  // exactly as the socket does, and says so as a refusal, not a failure.
+  it.effect("refuses an HTTP turn on an agent the caller did not sign in", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        config: { zerops: zeropsTestEnvironment() },
+        layers: {
+          zeropsAgentAuth: {
+            latest: Effect.succeed({
+              available: true,
+              agents: [
+                {
+                  agentId: "claude-code",
+                  credPresent: true,
+                  flagOAuth: true,
+                  flagToken: false,
+                  providerAuth: "authenticated",
+                  state: "authorized",
+                },
+              ],
+            }),
+          },
+        },
+      });
+
+      const response = yield* fetchEffect(yield* getHttpServerUrl("/api/orchestration/dispatch"), {
+        method: "POST",
+        headers: {
+          authorization: yield* getAuthenticatedAuthorizationHeader(),
+          "content-type": "application/json",
+        },
+        body: jsonRequestBody({
+          type: "thread.turn.start",
+          commandId: CommandId.make("cmd-http-turn-refused"),
+          threadId: defaultThreadId,
+          message: {
+            messageId: MessageId.make("msg-http-turn-refused"),
+            role: "user",
+            text: "hello",
+            attachments: [],
+          },
+          modelSelection: { instanceId: ProviderInstanceId.make("claudeAgent"), model: "m" },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          createdAt: "2026-09-27T10:00:00.000Z",
+        }),
+      });
+      const body = yield* responseJsonEffect<{ readonly reason?: string }>(response);
+
+      assert.equal(response.status, 403);
+      assert.equal(body.reason, "zerops_turn_refused");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

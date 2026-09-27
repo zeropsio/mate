@@ -72,7 +72,6 @@ import {
   type ZeropsAgentId,
   WS_METHODS,
   WsRpcGroup,
-  agentIdForProviderInstance,
 } from "@t3tools/contracts";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
 import { HttpRouter, HttpServerRequest, HttpServerRespondable } from "effect/unstable/http";
@@ -136,9 +135,7 @@ import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import { overlayZeropsAgentAuth } from "./zerops/zeropsAgentProviderOverlay.ts";
-import * as ZeropsProjectSigners from "./zerops/ZeropsProjectSigners.ts";
-import { isTurnStartingCommand } from "./zerops/ZeropsProjectSigners.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "./zerops/ZeropsMembershipWatch.ts";
+import { ZeropsTurnAdmission } from "./zerops/ZeropsTurnAdmission.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsAgentSignOutModule from "./zerops/ZeropsAgentSignOut.ts";
 import { threadsToStopForAgent, waitUntilNotLive } from "./zerops/ZeropsAgentSignOut.ts";
@@ -180,7 +177,6 @@ import { makeZeropsOriginAllowlist } from "./zerops/origin.ts";
 import { runExecCommand } from "./zerops/ExecService.ts";
 import * as ProcessRunner from "./processRunner.ts";
 import * as RelayClient from "@t3tools/shared/relayClient";
-import { zeropsAgentUnavailableReason } from "@t3tools/shared/zeropsAgentAuth";
 import { zeropsPolicy } from "./zerops/ZeropsPolicy.ts";
 const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
 
@@ -648,7 +644,7 @@ const makeWsRpcLayer = (
       const resourceTelemetry = yield* ResourceTelemetry.ResourceTelemetry;
       const zeropsLifecycle = yield* ZeropsLifecycle.ZeropsLifecycle;
       const zeropsAgentAuth = yield* ZeropsAgentAuth.ZeropsAgentAuth;
-      const projectSigners = yield* ZeropsProjectSigners.ZeropsProjectSigners;
+      const turnAdmission = yield* ZeropsTurnAdmission;
       const zeropsAgentLogin = yield* ZeropsAgentLoginModule.ZeropsAgentLogin;
       const zeropsAgentSignOut = yield* ZeropsAgentSignOutModule.ZeropsAgentSignOut;
       const zeropsBrowserStream = yield* ZeropsBrowserStreamModule.ZeropsBrowserStream;
@@ -1252,67 +1248,6 @@ const makeWsRpcLayer = (
           );
         });
 
-      /**
-       * A turn starts only on an agent that is signed in on this project, and
-       * (D6) only for the person who signed it in.
-       *
-       * The agent is resolved from the command's own model selection, or from
-       * the thread's when the command names none. An agent Mate never signs
-       * anybody in to, and an agent authorized by a token rather than by a
-       * personal login, are both unaffected — a token belongs to the project.
-       *
-       * The record is a tag on the Mate's project, which this container's key
-       * cannot write, so neither it nor its agent can forge it
-       * (`ZeropsProjectSigners`). A read that fails leaves the record
-       * unknown, and unknown refuses: "nobody recorded it" and "somebody
-       * else's" are the same thing to everyone but the person who knows. A
-       * refusal on a cached record is re-read once before it stands.
-       */
-      const refuseTurnTheAgentCannotRun = Effect.fnUntraced(function* (
-        normalizedCommand: OrchestrationCommand,
-      ) {
-        if (!isTurnStartingCommand(normalizedCommand.type)) return;
-        if (!isZeropsEnvironment(config)) return;
-        const commandInstanceId =
-          "modelSelection" in normalizedCommand
-            ? normalizedCommand.modelSelection?.instanceId
-            : undefined;
-        const threadInstanceId =
-          commandInstanceId === undefined && "threadId" in normalizedCommand
-            ? yield* projectionSnapshotQuery.getThreadShellById(normalizedCommand.threadId).pipe(
-                Effect.map(
-                  Option.match({
-                    onNone: () => undefined,
-                    onSome: (thread) => thread.modelSelection.instanceId as string | undefined,
-                  }),
-                ),
-                Effect.catchCause(() => Effect.succeed(undefined)),
-              )
-            : undefined;
-        const agentId = agentIdForProviderInstance(commandInstanceId ?? threadInstanceId);
-        if (agentId === undefined) return;
-
-        const snapshot = yield* zeropsAgentAuth.latest;
-        const agent = snapshot.agents.find((entry) => entry.agentId === agentId);
-        if (agent === undefined) return;
-        const refusal = yield* projectSigners.turnRefusal({
-          agentId,
-          agent,
-          subject: currentSession.subject.startsWith(ZEROPS_SUBJECT_PREFIX)
-            ? currentSession.subject.slice(ZEROPS_SUBJECT_PREFIX.length)
-            : undefined,
-        });
-        if (refusal === undefined) return;
-        return yield* new OrchestrationDispatchCommandError({
-          message:
-            refusal.kind === "not-signed-in"
-              ? zeropsAgentUnavailableReason(agentId, refusal.auth)
-              : refusal.kind === "unrecorded"
-                ? "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it. Sign in with your own account first."
-                : "This agent was signed in by another project member — only they can run it. Sign in with your own account first.",
-        });
-      });
-
       const dispatchNormalizedCommand = (
         normalizedCommand: OrchestrationCommand,
       ): Effect.Effect<{ readonly sequence: number }, OrchestrationDispatchCommandError> => {
@@ -1333,17 +1268,22 @@ const makeWsRpcLayer = (
                 ),
               );
 
-        return refuseTurnTheAgentCannotRun(normalizedCommand).pipe(
-          Effect.andThen(
-            startup
-              .enqueueCommand(dispatchEffect)
-              .pipe(
-                Effect.mapError((cause) =>
-                  toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
+        return turnAdmission
+          .admit({
+            command: normalizedCommand,
+            principal: { kind: "session", subject: currentSession.subject },
+          })
+          .pipe(
+            Effect.andThen(
+              startup
+                .enqueueCommand(dispatchEffect)
+                .pipe(
+                  Effect.mapError((cause) =>
+                    toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
+                  ),
                 ),
-              ),
-          ),
-        );
+            ),
+          );
       };
 
       /**
