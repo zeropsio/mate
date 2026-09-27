@@ -19,7 +19,9 @@
  *   `cd <remoteRoot> &&` (or `;`) is dropped — the form the reloaded project
  *   guidance teaches — a payload that reaches outside the copy is refused,
  *   git runs only read-only subcommands, and the payload is rewritten to run
- *   in the copy with `CREW_PORT`, the crewmate's `env:` and a timeout.
+ *   in the copy with `CREW_PORT`, the crewmate's `env:` and a timeout. A
+ *   command already in exactly that form runs as it is, so a driver that
+ *   cannot rewrite a call (Codex) runs it too.
  *   `zerops_dev_server` only in the after-land, claim and release turns, in
  *   exactly their shape.
  * - **Readers and the lead:** no `Write`, `Edit` or `Bash`.
@@ -337,34 +339,63 @@ const laneEscape = (payload: string, lane: CrewLane): string | undefined => {
   return undefined;
 };
 
+/** Single-quoted for sh whatever it holds, so a payload has one lane form. */
+const singleQuoted = (text: string): string => `'${text.replaceAll("'", `'\\''`)}'`;
+
+/** What runs on the host ahead of a payload: into the copy, the port and env, the timeout. */
+const laneRunPrefix = (ctx: LiveGateContext, lane: CrewLane): string =>
+  [
+    `cd ${shellQuote(lane.remoteDir)} &&`,
+    ...(ctx.member.crewPort === undefined ? [] : [`CREW_PORT=${ctx.member.crewPort}`]),
+    ...Object.entries(ctx.member.env).map(([name, value]) => `${name}=${shellQuote(value)}`),
+    `timeout ${ctx.payloadTimeoutSeconds} sh -c`,
+  ].join(" ");
+
+/** A payload's lane form: the one command the gate runs for it. */
+const laneCommand = (ctx: LiveGateContext, lane: CrewLane, payload: string): string =>
+  `ssh ${shellQuote(lane.host)} ${shellQuote(`${laneRunPrefix(ctx, lane)} ${singleQuoted(payload)}`)}`;
+
+/** The payload of a command that is already its lane form, byte for byte. */
+const lanePayload = (
+  ctx: LiveGateContext,
+  lane: CrewLane,
+  command: string,
+  words: ReadonlyArray<string>,
+): string | undefined => {
+  const prefix = `${laneRunPrefix(ctx, lane)} `;
+  const inner = words[2];
+  if (words.length !== 3 || inner === undefined || !inner.startsWith(prefix)) return undefined;
+  const payload = shellWords(inner.slice(prefix.length));
+  return payload?.length === 1 && laneCommand(ctx, lane, payload[0]!) === command
+    ? payload[0]
+    : undefined;
+};
+
 const decideCommand = (ctx: LiveGateContext, args: Record<string, unknown>): GateDecision => {
   const { lane } = ctx.member;
   if (ctx.member.kind !== "writer" || lane === undefined) {
     return deny("A read-only crewmate runs no commands.");
   }
   const form = `Run commands as ssh ${lane.host} "<command>"; they run in your copy.`;
-  const words = typeof args.command === "string" ? shellWords(args.command) : undefined;
+  const command = typeof args.command === "string" ? args.command : "";
+  const words = shellWords(command);
   if (!words || words[0] !== "ssh" || words.length < 3) return deny(form);
   if (words[1] !== lane.host) return deny(form);
-  const payload = words
-    .slice(2)
-    .join(" ")
-    .replace(new RegExp(`^\\s*cd\\s+${escapeRegExp(lane.remoteRoot)}/?\\s*(?:&&|;)\\s*`, "u"), "");
+  const laneForm = lanePayload(ctx, lane, command, words);
+  const payload =
+    laneForm ??
+    words
+      .slice(2)
+      .join(" ")
+      .replace(
+        new RegExp(`^\\s*cd\\s+${escapeRegExp(lane.remoteRoot)}/?\\s*(?:&&|;)\\s*`, "u"),
+        "",
+      );
   const refused = laneEscape(payload, lane) ?? gitRefusal(payload);
   if (refused) return deny(refused);
-  const assignments = [
-    ...(ctx.member.crewPort === undefined ? [] : [`CREW_PORT=${ctx.member.crewPort}`]),
-    ...Object.entries(ctx.member.env).map(([name, value]) => `${name}=${shellQuote(value)}`),
-  ];
-  const inner = [
-    `cd ${shellQuote(lane.remoteDir)} &&`,
-    ...assignments,
-    `timeout ${ctx.payloadTimeoutSeconds} sh -c ${shellQuote(payload)}`,
-  ].join(" ");
-  return {
-    kind: "allow",
-    updatedInput: { ...args, command: `ssh ${shellQuote(lane.host)} ${shellQuote(inner)}` },
-  };
+  // Already its lane form: it runs as it is, so a driver that cannot rewrite a call runs it too.
+  if (laneForm !== undefined) return allow;
+  return { kind: "allow", updatedInput: { ...args, command: laneCommand(ctx, lane, payload) } };
 };
 
 /**

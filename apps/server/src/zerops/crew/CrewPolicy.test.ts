@@ -285,6 +285,8 @@ describe("decideCrewTool — file writes", () => {
 });
 
 describe("decideCrewTool — commands", () => {
+  /** A payload always goes into the lane form single-quoted, one word or many. */
+  const singleQuoted = (text: string) => `'${text.replaceAll("'", `'\\''`)}'`;
   /** What the gate hands the CLI instead: the payload wrapped to run in the copy. */
   const plainWriter: LiveGateContext = {
     ...writer,
@@ -301,7 +303,7 @@ describe("decideCrewTool — commands", () => {
     const inner = [
       "cd /var/www/.crew/backend &&",
       ...prefix,
-      `timeout ${ctx.payloadTimeoutSeconds} sh -c ${shellQuote(payload)}`,
+      `timeout ${ctx.payloadTimeoutSeconds} sh -c ${singleQuoted(payload)}`,
     ].join(" ");
     return { kind: "allow", updatedInput: { command: `ssh appdev ${shellQuote(inner)}` } };
   };
@@ -386,6 +388,74 @@ describe("decideCrewTool — commands", () => {
       "Bash",
       { command: 'ssh appdev "npm test"' },
       wrapped("npm test", plainWriter),
+    ],
+    [
+      "a command already in its lane form runs as it is",
+      writer,
+      "Bash",
+      wrapped("npm test").updatedInput,
+      ALLOW,
+    ],
+    [
+      "a one-word command in its lane form, single-quoted like any other",
+      writer,
+      "Bash",
+      wrapped("ls").updatedInput,
+      ALLOW,
+    ],
+    [
+      "a command with a quote in its lane form",
+      writer,
+      "Bash",
+      wrapped("echo it's done").updatedInput,
+      ALLOW,
+    ],
+    [
+      "a lane form keeps its other Bash fields",
+      writer,
+      "Bash",
+      { ...wrapped("npm test").updatedInput, timeout: 60000 },
+      ALLOW,
+    ],
+    [
+      "a lane form still stays in the copy",
+      writer,
+      "Bash",
+      wrapped("cd .. && ls").updatedInput,
+      DENY,
+    ],
+    [
+      "a lane form still reads history only",
+      writer,
+      "Bash",
+      wrapped("git push").updatedInput,
+      DENY,
+    ],
+    [
+      "a lane form with another timeout is wrapped again",
+      writer,
+      "Bash",
+      {
+        command: String(wrapped("npm test").updatedInput.command).replace(
+          "timeout 600",
+          "timeout 9999",
+        ),
+      },
+      wrapped(
+        "cd /var/www/.crew/backend && CREW_PORT=3001 DATABASE_URL=postgres://db/backend timeout 9999 sh -c 'npm test'",
+      ),
+    ],
+    [
+      "a lane form quoted another way is wrapped again",
+      writer,
+      "Bash",
+      {
+        command:
+          "ssh appdev \"cd /var/www/.crew/backend && CREW_PORT=3001 DATABASE_URL=postgres://db/backend timeout 600 sh -c 'npm test'\"",
+      },
+      wrapped(
+        "cd /var/www/.crew/backend && CREW_PORT=3001 DATABASE_URL=postgres://db/backend timeout 600 sh -c 'npm test'",
+      ),
     ],
     ["a command on the zcp container", writer, "Bash", { command: "npm test" }, DENY],
     ["another host", writer, "Bash", { command: 'ssh apidev "npm test"' }, DENY],
