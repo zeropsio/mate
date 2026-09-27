@@ -426,6 +426,11 @@ export const CrewCommand = Schema.TaggedUnion({
   discard: taskRef,
   /** Marks a task as unrelated work: its dispatch starts a fresh conversation. */
   markFresh: taskRef,
+  /**
+   * *Try again*: a stopped task (`parked`) queues again and starts when its
+   * crewmate is free; a queued one admission refused tries again now.
+   */
+  taskRetry: taskRef,
   /** Accepts rows of the lead's plan: `proposed` → `queued`. */
   planAccept: { taskIds: Schema.NonEmptyArray(CrewTaskId) },
   planDiscard: { taskIds: Schema.NonEmptyArray(CrewTaskId) },

@@ -167,6 +167,7 @@ const commandSamples = [
   { _tag: "taskEdit", taskId: "task-12", title: "Paginate /api/items" },
   { _tag: "discard", taskId: "task-12" },
   { _tag: "markFresh", taskId: "task-12" },
+  { _tag: "taskRetry", taskId: "task-17" },
   { _tag: "planAccept", taskIds: ["task-16"] },
   { _tag: "planDiscard", taskIds: ["task-16"] },
   { _tag: "review", taskId: "task-12", verdict: "reject", note: "Keep the old route." },
