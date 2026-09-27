@@ -30,6 +30,7 @@
  *
  * @module primaryConversation
  */
+import type { ThreadCrewOrigin } from "@t3tools/contracts";
 
 /**
  * The fields this needs from a thread shell. Structural on purpose: web's
@@ -45,6 +46,8 @@ export interface ZeropsConversationCandidate {
   readonly latestUserMessageAt?: string | null;
   /** The user pinned this one as the environment's conversation. */
   readonly pinned?: boolean;
+  /** Set on a crewmate's thread, which the server made: never the person's conversation. */
+  readonly crew?: ThreadCrewOrigin | undefined;
 }
 
 /** Why this thread was chosen — the UI may want to explain itself, and tests must. */
@@ -96,12 +99,14 @@ function compare(left: ZeropsConversationCandidate, right: ZeropsConversationCan
  *
  * Archived threads are excluded outright: archiving is the user saying they
  * are done with it, and resurrecting one as the environment's conversation
- * would be the opposite of what they asked for.
+ * would be the opposite of what they asked for. A crewmate's thread is
+ * excluded too, from `hidden` as well: it is the crew's conversation, not one
+ * the person had, and the server's task cards would otherwise rank it spoken.
  */
 export function resolvePrimaryConversation<T extends ZeropsConversationCandidate>(
   threads: ReadonlyArray<T>,
 ): ZeropsPrimaryConversation<T> {
-  const live = threads.filter((thread) => thread.archivedAt === null);
+  const live = threads.filter((thread) => thread.archivedAt === null && thread.crew === undefined);
   if (live.length === 0) return { primary: undefined, hidden: [], reason: "none" };
 
   const ranked = [...live].sort(compare);
