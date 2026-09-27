@@ -44,6 +44,7 @@ import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { MateFace } from "../zerops/primitives";
+import { CrewmateHeader } from "../zerops/crew/CrewmateHeader";
 import { useThreadShell } from "../../state/entities";
 import { mateFaceFor } from "~/zerops/agentActivity";
 import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
@@ -87,6 +88,8 @@ interface ChatHeaderProps {
    * strip carries its own New chat, and where no Mate lives.
    */
   onNewChat?: (() => void) | undefined;
+  /** In a crewmate's chat, *Edit job*: the crew section's crewmate sheet on that crewmate. */
+  onEditCrewmateJob?: ((handle: string) => void) | undefined;
   onOpenProjectSettings?: (() => void) | undefined;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;
@@ -234,6 +237,7 @@ export const ChatHeader = memo(function ChatHeader({
   onNewThreadInProject,
   onStartFresh,
   onNewChat,
+  onEditCrewmateJob,
   onOpenProjectSettings,
   onRunProjectScript,
   onAddProjectScript,
@@ -313,7 +317,11 @@ export const ChatHeader = memo(function ChatHeader({
   // an idle face it has not earned.
   const mateActivity = useZeropsThreadActivity(activeThreadRef);
   const mateFace = mateFaceFor(mate?.connected === true, mateActivity);
-  const spoken = useThreadShell(activeThreadRef)?.latestUserMessageAt != null;
+  const activeThreadShell = useThreadShell(activeThreadRef);
+  const spoken = activeThreadShell?.latestUserMessageAt != null;
+  // A crewmate's chat is headed by the crewmate, and it is the crew engine's:
+  // no rename, no archive, no new session, no commit from here.
+  const crewOrigin = activeThreadShell?.crew ?? null;
   // A Mate's chat is headed by what the Mate is on in it — the subject its
   // row shows for the main chat (`agentActivity.ts`): the last task as the
   // person put it, not the chat's title, which names its first task forever.
@@ -362,7 +370,7 @@ export const ChatHeader = memo(function ChatHeader({
     [activeThreadEnvironmentId, activeThreadId, activeThreadTitle, updateThreadMetadata],
   );
   const { openMenu, closeMenu } = useThreadActionMenu({
-    threadRef: isServerThread ? activeThreadRef : null,
+    threadRef: isServerThread && crewOrigin === null ? activeThreadRef : null,
     projectCwd: activeProjectCwd,
     changeRequest,
     onStartRename: startRename,
@@ -423,7 +431,7 @@ export const ChatHeader = memo(function ChatHeader({
   );
   const handleHeaderContextMenu = useCallback(
     (event: ReactMouseEvent) => {
-      if (renamingTitle !== null) return;
+      if (renamingTitle !== null || crewOrigin !== null) return;
       // The right-side controls (git, scripts, open-in) keep their own
       // behavior; only the breadcrumb area opens the thread menu.
       if ((event.target as HTMLElement).closest("[data-chat-header-actions]")) return;
@@ -445,7 +453,14 @@ export const ChatHeader = memo(function ChatHeader({
       }
       openMenu({ x: event.clientX, y: event.clientY });
     },
-    [cancelPendingTitleMenu, isServerThread, onOpenProjectSettings, openMenu, renamingTitle],
+    [
+      cancelPendingTitleMenu,
+      crewOrigin,
+      isServerThread,
+      onOpenProjectSettings,
+      openMenu,
+      renamingTitle,
+    ],
   );
   const handleRenameKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -463,7 +478,8 @@ export const ChatHeader = memo(function ChatHeader({
   // A Mate's conversation offers no project actions: the Mate runs what the
   // project needs.
   const showProjectScripts = whoLivesHere.kind === "nobody" && activeProjectScripts !== undefined;
-  const showGitActions = Boolean(activeProjectName) && stackedActionsSupported;
+  const showGitActions =
+    Boolean(activeProjectName) && stackedActionsSupported && crewOrigin === null;
   // Upstream's project actions fold into one menu on a narrow header; the
   // Mate's own controls stay where they are.
   const headerActions = (
@@ -516,7 +532,16 @@ export const ChatHeader = memo(function ChatHeader({
         {/* The project always leads the header: knowing which project a
             thread lives in is priority zero, and the thread title alone
             doesn't answer it. */}
-        {mate !== undefined ? (
+        {crewOrigin !== null ? (
+          <WorkspaceBreadcrumbItem current className="flex-1">
+            <CrewmateHeader
+              environmentId={activeThreadEnvironmentId}
+              onEditJob={onEditCrewmateJob}
+              origin={crewOrigin}
+              threadId={activeThreadId}
+            />
+          </WorkspaceBreadcrumbItem>
+        ) : mate !== undefined ? (
           <>
             <WorkspaceBreadcrumbItem>
               <span
@@ -557,7 +582,7 @@ export const ChatHeader = memo(function ChatHeader({
             <WorkspaceBreadcrumbSeparator />
           </>
         ) : null}
-        {whoLivesHere.kind !== "nobody" && !spoken ? null : (
+        {crewOrigin !== null || (whoLivesHere.kind !== "nobody" && !spoken) ? null : (
           <WorkspaceBreadcrumbItem current className="flex-1">
             {renamingTitle !== null ? (
               <input
@@ -633,8 +658,10 @@ export const ChatHeader = memo(function ChatHeader({
           <>
             {/* The Mate's version and its update live with its body in the
                 right panel's Zerops view, not over the conversation. */}
-            {onNewChat === undefined ? null : <NewChatButton onNewChat={onNewChat} />}
-            <StartFreshButton onStartFresh={onStartFresh} />
+            {onNewChat === undefined || crewOrigin !== null ? null : (
+              <NewChatButton onNewChat={onNewChat} />
+            )}
+            {crewOrigin !== null ? null : <StartFreshButton onStartFresh={onStartFresh} />}
             <ZeropsProjectLink projectUrl={mate.projectUrl} />
           </>
         )}

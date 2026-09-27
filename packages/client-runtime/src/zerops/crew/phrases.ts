@@ -1,7 +1,9 @@
 /**
  * Crew mode's phrase producer (R5): the board's column titles, task-state
  * words, the section header's crew state, *Waiting on you* sentences and
- * refusal sentences — PRD §4.3, §4.4, §5.3, §6.3. A crew surface renders crew
+ * presses, the section's copy, pending and footer words, refusal sentences,
+ * and the drafts a crew surface hands the Mate — PRD §4.3, §4.4, §4.7, §5.3,
+ * §5.7, §6.3. A crew surface renders crew
  * and task words only from here; a thread's own status word still comes only
  * from `resolveThreadStatus` and is passed in where a task shows it.
  *
@@ -9,11 +11,15 @@
  */
 import type {
   CrewAttention,
+  CrewCheck,
+  CrewHost,
+  CrewLaneSummary,
   CrewRefusalReason,
   CrewRun,
   CrewSnapshot,
   CrewTask,
   CrewTaskState,
+  Crewmate,
 } from "@t3tools/contracts";
 
 /** The board's columns, left to right (PRD §4.4). */
@@ -114,6 +120,18 @@ export function crewTaskWord(task: CrewTask, context: CrewTaskWordContext): stri
   }
 }
 
+/** A check's outcome (PRD §4.5, §5.2): the board's cards and sheet and the lane bar say it alike. */
+export function crewCheckWord(check: CrewCheck): string {
+  switch (check.state) {
+    case "running":
+      return "Checking";
+    case "passed":
+      return "Check passed";
+    case "failed":
+      return "Check failed";
+  }
+}
+
 /** A run is on while it is running or paused; its options govern only then. */
 const isRunOn = (run: CrewRun | null): run is CrewRun =>
   run !== null && (run.state === "running" || run.state === "paused");
@@ -150,6 +168,9 @@ function pausedWord(run: CrewRun): string {
   }
 }
 
+/** A crewmate doing nothing, and a crew nobody on which is working. */
+export const CREW_IDLE_WORD = "Idle";
+
 /**
  * The crew state beside the section's header (PRD §4.3 item 1). `run` is the
  * crew's latest run; `workingCount` is how many crewmates' current threads
@@ -163,7 +184,7 @@ export function crewStateWord(input: {
   if (run?.state === "running") return `Running · ${formatCrewDuration(run.elapsedMs)}`;
   if (run?.state === "paused") return pausedWord(run);
   if (run?.state === "finishing") return "Finishing";
-  return workingCount === 0 ? "Idle" : `${workingCount} working`;
+  return workingCount === 0 ? CREW_IDLE_WORD : `${workingCount} working`;
 }
 
 export interface CrewRunMeters {
@@ -267,3 +288,140 @@ export function crewRefusalSentence(reason: CrewRefusalReason, detail: string | 
   const base = REFUSALS[reason];
   return detail === null ? `${base}.` : `${base}: ${detail.replace(/\.$/u, "")}.`;
 }
+
+/** A crewmate's copy of the code in a few words (PRD §4.3 item 5); `null` when there is nothing to say. */
+export function crewLaneWord(lane: CrewLaneSummary): string | null {
+  switch (lane.state) {
+    case "creating":
+      return "Creating its copy of the code";
+    case "setting-up":
+      return lane.detail === null ? "Setting up its copy" : `Running ${lane.detail}`;
+    case "conflicts":
+      return "Conflicts";
+    case "frozen":
+      return "Its service is redeploying";
+    case "missing":
+      return "Its copy is missing";
+    case "failed":
+      return lane.detail === null ? "Its copy failed" : `Its copy failed: ${lane.detail}`;
+    case "ready":
+      return lane.ahead === 0 ? null : `${lane.ahead} ahead`;
+  }
+}
+
+/**
+ * "v5 at next turn" (PRD §5.6): the job's version when it changed, else the
+ * brief's; `null` for a crewmate whose prompt is current.
+ */
+export function crewPendingWord(pending: {
+  readonly brief: number | null;
+  readonly job: number | null;
+}): string | null {
+  if (pending.job !== null) return `v${pending.job} at next turn`;
+  return pending.brief === null ? null : `Brief v${pending.brief} at next turn`;
+}
+
+/** Apply's word for one crewmate (PRD §4.7): its copy being created, set up, failed, or ready. */
+export function crewApplyWord(mate: Pick<Crewmate, "displayName" | "lane">): string {
+  const lane = mate.lane;
+  if (lane === null) return "Ready";
+  switch (lane.state) {
+    case "creating":
+      return `Creating ${mate.displayName}'s copy of the code`;
+    case "setting-up":
+      return lane.detail === null ? "Setting up its copy" : `Running ${lane.detail}`;
+    case "missing":
+    case "failed":
+      return lane.detail ?? "Its copy failed";
+    case "ready":
+    case "conflicts":
+    case "frozen":
+      return "Ready";
+  }
+}
+
+/** The section footer's way to the board (PRD §4.3 item 8). */
+export const crewBoardLinkWord = (count: number): string =>
+  `Board · ${count} ${count === 1 ? "task" : "tasks"}`;
+
+export const crewLandedWord = (count: number): string => `Landed, not delivered · ${count}`;
+
+/** A dev service without crew ports (PRD §5.7). */
+export const crewPortsOffWord = (host: string): string => `${host} · Crew ports: off`;
+
+/** What a dev service serves; `null` while nobody can say. */
+export function crewServedWord(
+  host: CrewHost,
+  crewmates: ReadonlyArray<Pick<Crewmate, "handle" | "displayName">>,
+): string | null {
+  switch (host.served.by) {
+    case "tree":
+      return `${host.host} serves: your tree`;
+    case "crewmate": {
+      const handle = host.served.handle;
+      const name = crewmates.find((mate) => mate.handle === handle)?.displayName ?? `@${handle}`;
+      return `${host.host} serves: ${name}'s copy`;
+    }
+    case "unknown":
+      return null;
+  }
+}
+
+/** *Waiting on you*'s presses (PRD §4.3 item 4, §5.2). */
+export const CREW_ATTENTION_VERBS = {
+  answer: "Answer",
+  commitEdit: "Commit my edit",
+  land: "Land",
+  reviewPlan: "Review plan",
+  allow: "Allow",
+  notNow: "Not now",
+} as const;
+
+export const crewAskToResolveWord = (name: string): string => `Ask ${name} to resolve`;
+
+export const crewAskToFixWord = (name: string): string => `Ask ${name} to fix`;
+
+/** `a.ts`, `a.ts and b.ts`, `a.ts, b.ts and c.ts`. */
+function pathList(paths: ReadonlyArray<string>): string {
+  if (paths.length <= 1) return paths[0] ?? "";
+  return `${paths.slice(0, -1).join(", ")} and ${paths.at(-1)}`;
+}
+
+/** *Commit my edit* (CONCEPT §3.2): a local commit that pushes nothing, so a waiting landing can go. */
+export function crewCommitEditAsk(paths: ReadonlyArray<string>): string {
+  return paths.length > 1
+    ? `Commit my edits to ${pathList(paths)} locally, without pushing: a crew landing waits on them.`
+    : `Commit my edit to ${pathList(paths)} locally, without pushing: a crew landing waits on it.`;
+}
+
+/**
+ * *Deliver* (CONCEPT §3.2): the landed tasks not yet delivered, and the paths
+ * dirty in your tree that no landing produced, which ship too.
+ */
+export function crewDeliverAsk(
+  crew: Pick<CrewSnapshot, "board" | "hosts">,
+  dirtyPaths: ReadonlyArray<string>,
+): string {
+  const hosts = crew.hosts.map((host) => host.host).join(" and ");
+  const titles = crew.board.tasks
+    .filter((task) => task.state === "landed" && !task.delivered)
+    .map((task) => `#${task.number} ${task.title}`)
+    .join(", ");
+  const ship = `Ship the crew's landed work${hosts === "" ? "" : ` on ${hosts}`}: ${titles}.`;
+  return dirtyPaths.length === 0
+    ? ship
+    : `${ship} My own edits in ${pathList(dirtyPaths)} ship too.`;
+}
+
+/** *Add crew ports* (PRD §5.7), for the ports the engine reserved. */
+export function crewPortsAsk(host: string, ports: ReadonlyArray<number>): string {
+  const first = ports[0];
+  if (ports.length === 1 && first !== undefined) {
+    return `Add crew port ${first} (httpSupport) to ${host}'s dev setup in zerops.yaml, self-deploy ${host}, then make sure the new port is routed on the subdomain.`;
+  }
+  return `Add crew ports ${first}–${ports.at(-1)} (httpSupport) to ${host}'s dev setup in zerops.yaml, self-deploy ${host}, then make sure each new port is routed on the subdomain.`;
+}
+
+/** *Describe it to Fen* (PRD §4.7). */
+export const crewDescribeAsk = (description: string): string =>
+  `Set up a crew for this project: ${description.trim()}`;

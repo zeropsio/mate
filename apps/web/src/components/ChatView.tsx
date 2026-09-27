@@ -62,7 +62,7 @@ import {
   resolveProjectScripts,
 } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
-import { IMAGE_ONLY_BOOTSTRAP_PROMPT, isSlashCommand } from "@t3tools/shared/userAsk";
+import { IMAGE_ONLY_BOOTSTRAP_PROMPT, isCrewCard, isSlashCommand } from "@t3tools/shared/userAsk";
 import {
   getTerminalLabel,
   nextTerminalId,
@@ -171,6 +171,8 @@ import { ZeropsBrowserPanel } from "./zerops/ZeropsBrowserPanel";
 import { ZeropsDataPanel } from "./zerops/ZeropsDataPanel";
 import { ZeropsChangeDetailPage } from "./zerops/ZeropsGroupDetail";
 import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
+import { CrewBoardPanel } from "./zerops/crew/CrewBoardPanel";
+import { useCrew } from "../zerops/crew/useCrew";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useZeropsNextStepBanner } from "./zerops/ZeropsNextStepBanner";
 import { zeropsMateAt } from "../zerops/mateIdentities";
@@ -178,6 +180,12 @@ import { useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
+import { CrewLaneBar } from "./zerops/crew/CrewLaneBar";
+import { CrewTimelineContext, type CrewTimeline } from "./zerops/crew/CrewTaskCard";
+import { crewChatNotices } from "./zerops/crew/crewChatNotices";
+import { crewMessageCommand } from "./zerops/crew/crewComposerSend";
+import { crewCommands } from "../zerops/crew/crewCommands";
+import { crewFailureSentence } from "../zerops/crew/useCrewCommand";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
 import { resolveConnectedComposerPlaceholder } from "../composerPlaceholder";
 import { useZeropsAgentAuth, useZeropsLifecycle } from "../zerops/useZeropsFeeds";
@@ -210,9 +218,11 @@ import {
   ChevronDownIcon,
   DownloadIcon,
   GitBranchIcon,
+  HistoryIcon,
   LockIcon,
   Minimize2Icon,
   PaperclipIcon,
+  RefreshCwIcon,
 } from "lucide-react";
 import { cn, randomHex } from "~/lib/utils";
 import { stackedThreadToast, toastManager } from "./ui/toast";
@@ -302,6 +312,7 @@ import {
   useProject,
   useProjects,
   useThread,
+  readThreadShells,
   useThreadRefs,
   useThreadShell,
 } from "../state/entities";
@@ -325,8 +336,10 @@ import { ChatHeader } from "./chat/ChatHeader";
 import {
   ConversationStrip,
   useAlsoWorkingBanner,
+  useCrewStripGroups,
   useLoneChatNewChat,
 } from "./chat/ConversationStrip";
+import { replacementChatToPin } from "./chat/ConversationStrip.logic";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -1371,6 +1384,7 @@ export default function ChatView(props: ChatViewProps) {
     reportFailure: false,
   });
   const startThreadTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
+  const sendCrewCommand = useAtomCommand(crewCommands.command, { reportFailure: false });
   const uploadThreadFeedback = useAtomCommand(threadEnvironment.uploadFeedback, {
     reportFailure: false,
   });
@@ -3755,6 +3769,10 @@ export default function ChatView(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "git");
   }, [activeThreadRef]);
+  const addCrewSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "crew");
+  }, [activeThreadRef]);
   const openDataSurface = useCallback(
     (service: string) => {
       if (!activeThreadRef) return;
@@ -3790,6 +3808,8 @@ export default function ChatView(props: ChatViewProps) {
     topology: zeropsTopology,
     agentAuth: zeropsAgentAuth,
   });
+  // The crew board's tab exists only while the crew feed says a crew is, or could be, set up.
+  const crewStatus = useCrew(activeThreadEnvironmentId).status;
   // The band's sign-in request lands here: the first agent that needs a
   // sign-in gets the dialog, without a detour through the panel.
   const openAgentAuthDialog = useCallback(() => {
@@ -5114,11 +5134,14 @@ export default function ChatView(props: ChatViewProps) {
     activeThread?.messages.some(
       (message) => message.role === "user" && !isCompactCommandMessage(message),
     ) ?? false;
+  // A crewmate's conversation is the crew engine's to compact and rotate;
+  // `/compact` from here would start a turn around it.
   const compactThreadUnavailable =
     !activeThread ||
     !activeThreadHasCompactableConversation ||
     !activeProject ||
     !isServerThread ||
+    activeThreadShell?.crew != null ||
     !manualCompactionProviderAvailable ||
     isWorking ||
     threadDetailLoading ||
@@ -5132,9 +5155,11 @@ export default function ChatView(props: ChatViewProps) {
   const compactDisabledReason = compactDisabled
     ? !activeProject
       ? "Choose a project before compacting"
-      : !manualCompactionProviderAvailable
-        ? "Compaction is unavailable for this provider"
-        : "Compacting is unavailable right now"
+      : activeThreadShell?.crew != null
+        ? "A crewmate's conversation compacts on its own"
+        : !manualCompactionProviderAvailable
+          ? "Compaction is unavailable for this provider"
+          : "Compacting is unavailable right now"
     : null;
   const resumeCompactionBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
     if (
@@ -5242,16 +5267,130 @@ export default function ChatView(props: ChatViewProps) {
     approval: activePendingApproval !== null,
   });
   // Typing here while the Mate works in another of its chats (`ConversationStrip.tsx`).
+  // A crewmate works on its own copy of the code, so another chat's work is
+  // no warning there.
   const alsoWorkingBannerItem = useAlsoWorkingBanner({
     environmentId,
     currentThreadId: isServerThread ? threadId : null,
-    typing: composerHasUnsentContent,
+    typing: composerHasUnsentContent && activeThreadShell?.crew == null,
   });
+  // The Mate's crew, where a Mate lives: its group in the strip, and the
+  // crewmate this conversation belongs to when it is a crew thread.
+  const crew = useCrew(
+    zeropsMateAt(zeropsMates, environmentId).kind === "mate" ? environmentId : null,
+  );
+  const crewStripGroups = useCrewStripGroups({
+    environmentId,
+    currentThreadId: isServerThread ? threadId : null,
+    view: crew.view,
+  });
+  const activeCrewOrigin = activeThreadShell?.crew ?? null;
+  const activeCrewmate =
+    activeCrewOrigin === null
+      ? null
+      : (crew.view?.crewmates.find((row) => row.crewmate.handle === activeCrewOrigin.crewmate) ??
+        null);
+  // A crewmate's chat is written to the crewmate (PRD §4.5).
+  const crewComposerPlaceholder =
+    activeCrewOrigin === null
+      ? null
+      : `Message ${activeCrewmate?.crewmate.displayName ?? activeCrewOrigin.crewmate}…`;
+  // A crewmate's chat: an earlier conversation points at the one it talks in
+  // now and sends nothing, as its send would land there; the current one says
+  // what its next turn brings in.
+  const crewNotices = useMemo(
+    () => (activeCrewmate === null ? null : crewChatNotices(activeCrewmate, threadId)),
+    [activeCrewmate, threadId],
+  );
+  const crewSendBlockReason = crewNotices?.retired?.sendBlock ?? null;
+  const crewBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
+    if (crewNotices === null) return [];
+    const items: ComposerBannerStackItem[] = [];
+    if (crewNotices.retired !== null) {
+      const current = crewNotices.retired.currentThreadId;
+      items.push({
+        id: `crew-retired:${threadId}`,
+        variant: "info",
+        icon: <HistoryIcon />,
+        title: crewNotices.retired.text,
+        ...(current === null
+          ? {}
+          : {
+              actions: (
+                <Button
+                  onClick={() =>
+                    void navigate({
+                      to: "/$environmentId/$threadId",
+                      params: buildThreadRouteParams(scopeThreadRef(environmentId, current)),
+                    })
+                  }
+                  size="xs"
+                >
+                  Open it
+                </Button>
+              ),
+            }),
+      });
+    }
+    if (crewNotices.pending !== null) {
+      items.push({
+        id: `crew-pending:${crewNotices.pending}`,
+        variant: "default",
+        icon: <RefreshCwIcon />,
+        title: crewNotices.pending,
+      });
+    }
+    return items;
+  }, [crewNotices, environmentId, navigate, threadId]);
+  // What a crew thread's task cards need beyond their text: the board, and
+  // for the stint's first card — while the conversation is loaded from its
+  // start — why this conversation began and the one before it.
+  const crewTimeline = useMemo<CrewTimeline | null>(() => {
+    if (activeCrewOrigin === null) return null;
+    const stints = activeCrewmate?.crewmate.stints ?? [];
+    const index = stints.findIndex((stint) => stint.threadId === threadId);
+    const stint = stints[index];
+    const firstCard =
+      loadEarlierTurns === null
+        ? displayedTimeline.entries.find(
+            (entry) =>
+              entry.kind === "message" &&
+              entry.message.role === "user" &&
+              isCrewCard(entry.message.text),
+          )
+        : undefined;
+    return {
+      firstCardId: firstCard?.id ?? null,
+      origin:
+        stint === undefined || (index === 0 && stint.reason === null)
+          ? null
+          : {
+              text: stint.reason ?? "New conversation",
+              previousThreadId: stints[index - 1]?.threadId ?? null,
+            },
+      tasks: crew.snapshot?.board.tasks ?? [],
+      onOpenThread: (target) =>
+        void navigate({
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams(scopeThreadRef(environmentId, target)),
+        }),
+    };
+  }, [
+    activeCrewOrigin,
+    activeCrewmate,
+    crew.snapshot,
+    displayedTimeline.entries,
+    environmentId,
+    loadEarlierTurns,
+    navigate,
+    threadId,
+  ]);
   // The header's New chat while the Mate has one chat and so no strip.
   const startSecondChat = useLoneChatNewChat({
     environmentId,
     projectId: activeThread?.projectId ?? null,
     currentThreadId: isServerThread ? threadId : null,
+    extraGroups: crewStripGroups,
   });
 
   const feedbackBannerItems = useMemo(
@@ -5341,6 +5480,7 @@ export default function ChatView(props: ChatViewProps) {
         ...urgentSystemItems,
         ...usageLimitsItems,
         ...mateNextStepItems,
+        ...crewBannerItems,
         ...alsoWorkingItems,
         ...feedbackBannerItems,
         ...projectCloneItems,
@@ -5354,6 +5494,7 @@ export default function ChatView(props: ChatViewProps) {
       ...urgentSystemItems,
       ...usageLimitsItems,
       ...mateNextStepItems,
+      ...crewBannerItems,
       ...alsoWorkingItems,
       ...feedbackBannerItems,
       ...projectCloneItems,
@@ -5405,6 +5546,7 @@ export default function ChatView(props: ChatViewProps) {
     activeBranchMismatchKey,
     agentOwnershipBannerItem,
     alsoWorkingBannerItem,
+    crewBannerItems,
     feedbackBannerItems,
     handleRestoreThreadBranch,
     isRestoringThreadBranch,
@@ -6372,6 +6514,29 @@ export default function ChatView(props: ChatViewProps) {
         useQueuedMessageStore.getState().holdAtFront(activeThreadKey, queuedMessage);
       }
     };
+    // A live send that failed goes back into the composer, unless the user
+    // has started writing something else there in the meantime.
+    const composerLeftEmpty = () =>
+      promptRef.current.length === 0 &&
+      composerImagesRef.current.length === 0 &&
+      composerTerminalContextsRef.current.length === 0 &&
+      (useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.reviewComments
+        .length ?? 0) === 0;
+    const restoreSentToComposer = () => {
+      promptRef.current = promptForSend;
+      const retryComposerImages = composerImagesSnapshot.map(cloneComposerImageForRetry);
+      composerImagesRef.current = retryComposerImages;
+      composerTerminalContextsRef.current = composerTerminalContextsSnapshot;
+      setComposerDraftPrompt(composerDraftTarget, promptForSend);
+      addComposerDraftImages(composerDraftTarget, retryComposerImages);
+      setComposerDraftTerminalContexts(composerDraftTarget, composerTerminalContextsSnapshot);
+      setComposerDraftReviewComments(composerDraftTarget, composerReviewCommentsSnapshot);
+      composerRef.current?.resetCursorState({
+        cursor: collapseExpandedComposerCursor(promptForSend, promptForSend.length),
+        prompt: promptForSend,
+        detectTrigger: true,
+      });
+    };
     if (supportsAttachmentUploads && composerImagesSnapshot.length > 0) {
       for (const image of composerImagesSnapshot) {
         startAttachmentUpload({ environmentId, image });
@@ -6390,6 +6555,50 @@ export default function ChatView(props: ChatViewProps) {
     ) {
       sendInFlightRef.current = false;
       restoreQueuedMessagesToComposer([queuedMessage]);
+      return;
+    }
+
+    // A crewmate's chat never starts a turn of its own (`crewComposerSend.ts`):
+    // the crew engine opens the task, admits the turn against the crewmate's
+    // login and writes the message into this thread. So no title, no turn
+    // settings — the crewmate's *Runs on* owns model and effort — and no
+    // optimistic row, which only a turn's message id could reconcile.
+    const crewAttachments = getUploadedAttachments({
+      environmentId,
+      images: composerImagesSnapshot,
+    });
+    const crewMessage = crewMessageCommand(activeThreadShell, {
+      text: messageTextForSend || IMAGE_ONLY_BOOTSTRAP_PROMPT,
+      attachments: crewAttachments ?? [],
+    });
+    if (crewMessage !== null) {
+      if (crewAttachments === null) {
+        sendInFlightRef.current = false;
+        setThreadError(threadIdForSend, "Retry or remove failed image uploads before sending.");
+        abortQueuedReplay();
+        return;
+      }
+      setThreadError(threadIdForSend, null);
+      if (!queuedMessage) {
+        promptRef.current = "";
+        clearComposerDraftContent(composerDraftTarget);
+        composerRef.current?.resetCursorState();
+      }
+      const crewResult = await sendCrewCommand({ environmentId, input: crewMessage });
+      if (crewResult._tag === "Success") {
+        if (supportsAttachmentUploads) releaseAttachmentUploads(composerImagesSnapshot);
+        acknowledgeActiveThreadWoke();
+      } else {
+        if (queuedMessage) abortQueuedReplay();
+        else if (composerLeftEmpty()) restoreSentToComposer();
+        if (!isAtomCommandInterrupted(crewResult)) {
+          setThreadError(
+            threadIdForSend,
+            crewFailureSentence(squashAtomCommandFailure(crewResult)),
+          );
+        }
+      }
+      sendInFlightRef.current = false;
       return;
     }
 
@@ -6640,6 +6849,15 @@ export default function ChatView(props: ChatViewProps) {
           releaseAttachmentUploads(composerImagesSnapshot);
         }
         acknowledgeActiveThreadWoke();
+        // New session in the main chat archived it with its pin: the chat
+        // that took its place is main from its first send.
+        if (isLocalDraftThread && zeropsMateAt(zeropsMates, environmentId).kind === "mate") {
+          const mainChat = replacementChatToPin(
+            readThreadShells().filter((thread) => thread.environmentId === environmentId),
+            threadIdForSend,
+          );
+          if (mainChat !== null) void pinThread(scopeThreadRef(environmentId, mainChat));
+        }
         if (backgroundThreadRef) {
           markPromotedDraftThreadByRef(backgroundThreadRef);
           try {
@@ -6708,13 +6926,7 @@ export default function ChatView(props: ChatViewProps) {
             images: queuedMessage.images.map(cloneComposerImageForRetry),
           });
         }
-      } else if (
-        promptRef.current.length === 0 &&
-        composerImagesRef.current.length === 0 &&
-        composerTerminalContextsRef.current.length === 0 &&
-        (useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.reviewComments
-          .length ?? 0) === 0
-      ) {
+      } else if (composerLeftEmpty()) {
         setOptimisticUserMessages((existing) => {
           const removed = existing.filter((message) => message.id === messageIdForSend);
           for (const message of removed) {
@@ -6723,19 +6935,7 @@ export default function ChatView(props: ChatViewProps) {
           const next = existing.filter((message) => message.id !== messageIdForSend);
           return next.length === existing.length ? existing : next;
         });
-        promptRef.current = promptForSend;
-        const retryComposerImages = composerImagesSnapshot.map(cloneComposerImageForRetry);
-        composerImagesRef.current = retryComposerImages;
-        composerTerminalContextsRef.current = composerTerminalContextsSnapshot;
-        setComposerDraftPrompt(composerDraftTarget, promptForSend);
-        addComposerDraftImages(composerDraftTarget, retryComposerImages);
-        setComposerDraftTerminalContexts(composerDraftTarget, composerTerminalContextsSnapshot);
-        setComposerDraftReviewComments(composerDraftTarget, composerReviewCommentsSnapshot);
-        composerRef.current?.resetCursorState({
-          cursor: collapseExpandedComposerCursor(promptForSend, promptForSend.length),
-          prompt: promptForSend,
-          detectTrigger: true,
-        });
+        restoreSentToComposer();
       }
       if (!isAtomCommandInterrupted(failure)) {
         const error = squashAtomCommandFailure(failure);
@@ -6832,11 +7032,11 @@ export default function ChatView(props: ChatViewProps) {
     queuedMessageActionsRef.current.remove(id);
   }, []);
 
-  // Starting over in a Mate's conversation: the conversation is archived —
-  // it leaves the sidebar and stays readable under Archived — and a fresh
-  // thread in the same project takes its place as the Mate's one
-  // conversation (archived threads never rank as primary). Blocked while a
-  // turn is running, the same as archiving from the sidebar.
+  // Starting over in one of a Mate's chats: the chat is archived — it leaves
+  // the strip and stays readable under Archived — and a fresh thread in the
+  // same project takes its place (archived threads never rank as primary);
+  // in place of the main chat it takes the pin at its first send. Blocked
+  // while a turn is running, the same as archiving from the sidebar.
   const startFreshConversation = async () => {
     if (!activeThreadRef) return;
     const result = await archiveThread(activeThreadRef, {
@@ -7591,6 +7791,7 @@ export default function ChatView(props: ChatViewProps) {
     gitRepo: isGitRepo,
     serverThread: isServerThread,
     zeropsPanel: zeropsChrome.panel,
+    crewStatus,
   });
   const onAddRightPanelSurface = (kind: Exclude<RightPanelKind, "file" | "terminal">): void => {
     switch (kind) {
@@ -7614,6 +7815,9 @@ export default function ChatView(props: ChatViewProps) {
         return;
       case "git":
         addGitSurface();
+        return;
+      case "crew":
+        addCrewSurface();
         return;
     }
     kind satisfies never;
@@ -7705,6 +7909,8 @@ export default function ChatView(props: ChatViewProps) {
                 });
             case "git":
               return <ZeropsGitSurface threadRef={zeropsChrome.threadRef} />;
+            case "crew":
+              return <CrewBoardPanel environmentId={activeThreadRef.environmentId} />;
             case "change":
               return (
                 <ZeropsChangeDetailPage
@@ -7827,16 +8033,23 @@ export default function ChatView(props: ChatViewProps) {
           environmentId={activeThread.environmentId}
           projectId={activeThread.projectId}
           currentThreadId={isServerThread ? activeThread.id : null}
+          extraGroups={crewStripGroups}
         />
-        <ZeropsLifecycleStrip
-          agentAuthNeedsAttention={zeropsChrome.agentSignInRequired}
-          onOpenAgentAuth={openAgentAuthDialog}
-          pendingUserInput={activePendingUserInput !== null}
-          running={zeropsThreadModel.running}
-          session={zeropsThreadModel.session}
-          threadRef={zeropsChrome.threadRef}
-          zeropsPanelOpen={activeRightPanelKind === "zerops"}
-        />
+        {/* A crewmate with a copy of the code shows it where a person's chat
+            shows its lifecycle (seam S7); a reader and the lead have none. */}
+        {activeCrewmate?.crewmate.lane != null && activeThreadRef !== null ? (
+          <CrewLaneBar handle={activeCrewmate.crewmate.handle} threadRef={activeThreadRef} />
+        ) : (
+          <ZeropsLifecycleStrip
+            agentAuthNeedsAttention={zeropsChrome.agentSignInRequired}
+            onOpenAgentAuth={openAgentAuthDialog}
+            pendingUserInput={activePendingUserInput !== null}
+            running={zeropsThreadModel.running}
+            session={zeropsThreadModel.session}
+            threadRef={zeropsChrome.threadRef}
+            zeropsPanelOpen={activeRightPanelKind === "zerops"}
+          />
+        )}
         {zeropsSignInDialog.dialog}
 
         <ThreadErrorBanner
@@ -7889,61 +8102,63 @@ export default function ChatView(props: ChatViewProps) {
             {/* Messages Wrapper */}
             <div className="relative flex min-h-0 flex-1 flex-col">
               {/* Messages — LegendList handles virtualization and scrolling internally */}
-              <MessagesTimeline
-                agentPanelModel={agentPanelModel}
-                onOpenAgents={addAgentsSurface}
-                working={dockModel}
-                afterTurnWork={activeBackgroundLiveness}
-                onStopBackgroundWork={stopBackgroundWork}
-                stoppingBackgroundWork={isStoppingBackgroundWork}
-                key={activeThread.id}
-                isWorking={isWorking}
-                workingStepLabel={workingStepLabel}
-                isCompacting={isCompacting}
-                activeTurnStartedAt={activeWorkStartedAt}
-                listRef={legendListRef}
-                timelineEntries={displayedTimeline.entries}
-                latestTurn={activeLatestTurn}
-                runningTurnId={activeRunningTurnId}
-                turnDiffSummaries={activeThread.checkpoints}
-                activeThreadEnvironmentId={activeThread.environmentId}
-                routeThreadKey={routeThreadKey}
-                onOpenTurnDiff={onOpenTurnDiff}
-                supportsConversationRollback={supportsConversationRollback}
-                onRevertToTurnCount={onRevertTimelineTurn}
-                {...(activeProject ? { onRunShellCommand: runShellCommand } : {})}
-                isRevertingCheckpoint={isRevertingCheckpoint}
-                onImageExpand={onExpandTimelineImage}
-                markdownCwd={gitCwd ?? undefined}
-                resolvedTheme={resolvedTheme}
-                timestampFormat={timestampFormat}
-                workspaceRoot={activeWorkspaceRoot}
-                skills={
-                  activeProviderStatus
-                    ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
-                    : EMPTY_PROVIDER_SKILLS
-                }
-                anchorMessageId={timelineAnchorMessageId}
-                onAnchorReady={onTimelineAnchorReady}
-                contentInsetEndAdjustment={composerOverlayHeight}
-                liveFollowEnabled={timelineLiveFollowEnabled}
-                onIsAtEndChange={onIsAtEndChange}
-                onManualNavigation={cancelTimelineLiveFollowForUserNavigation}
-                cancelPositionRestoreRef={cancelPositionRestoreRef}
-                hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
-                queuedMessages={queuedMessages}
-                usagePause={activeThreadShell?.usagePause ?? null}
-                onUsageAutoResumeChange={onUsageAutoResumeChange}
-                onSteerQueuedMessage={onSteerQueuedMessage}
-                steerQueuedMessageShortcutLabel={shortcutLabelForCommand(
-                  keybindings,
-                  "thread.steerQueuedMessage",
-                  { context: { terminalFocus: false } },
-                )}
-                onRemoveQueuedMessage={onRemoveQueuedMessage}
-                topFadeEnabled={!hasTimelineTopBanner}
-                loadEarlier={loadEarlierTurns}
-              />
+              <CrewTimelineContext value={crewTimeline}>
+                <MessagesTimeline
+                  agentPanelModel={agentPanelModel}
+                  onOpenAgents={addAgentsSurface}
+                  working={dockModel}
+                  afterTurnWork={activeBackgroundLiveness}
+                  onStopBackgroundWork={stopBackgroundWork}
+                  stoppingBackgroundWork={isStoppingBackgroundWork}
+                  key={activeThread.id}
+                  isWorking={isWorking}
+                  workingStepLabel={workingStepLabel}
+                  isCompacting={isCompacting}
+                  activeTurnStartedAt={activeWorkStartedAt}
+                  listRef={legendListRef}
+                  timelineEntries={displayedTimeline.entries}
+                  latestTurn={activeLatestTurn}
+                  runningTurnId={activeRunningTurnId}
+                  turnDiffSummaries={activeThread.checkpoints}
+                  activeThreadEnvironmentId={activeThread.environmentId}
+                  routeThreadKey={routeThreadKey}
+                  onOpenTurnDiff={onOpenTurnDiff}
+                  supportsConversationRollback={supportsConversationRollback}
+                  onRevertToTurnCount={onRevertTimelineTurn}
+                  {...(activeProject ? { onRunShellCommand: runShellCommand } : {})}
+                  isRevertingCheckpoint={isRevertingCheckpoint}
+                  onImageExpand={onExpandTimelineImage}
+                  markdownCwd={gitCwd ?? undefined}
+                  resolvedTheme={resolvedTheme}
+                  timestampFormat={timestampFormat}
+                  workspaceRoot={activeWorkspaceRoot}
+                  skills={
+                    activeProviderStatus
+                      ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
+                      : EMPTY_PROVIDER_SKILLS
+                  }
+                  anchorMessageId={timelineAnchorMessageId}
+                  onAnchorReady={onTimelineAnchorReady}
+                  contentInsetEndAdjustment={composerOverlayHeight}
+                  liveFollowEnabled={timelineLiveFollowEnabled}
+                  onIsAtEndChange={onIsAtEndChange}
+                  onManualNavigation={cancelTimelineLiveFollowForUserNavigation}
+                  cancelPositionRestoreRef={cancelPositionRestoreRef}
+                  hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
+                  queuedMessages={queuedMessages}
+                  usagePause={activeThreadShell?.usagePause ?? null}
+                  onUsageAutoResumeChange={onUsageAutoResumeChange}
+                  onSteerQueuedMessage={onSteerQueuedMessage}
+                  steerQueuedMessageShortcutLabel={shortcutLabelForCommand(
+                    keybindings,
+                    "thread.steerQueuedMessage",
+                    { context: { terminalFocus: false } },
+                  )}
+                  onRemoveQueuedMessage={onRemoveQueuedMessage}
+                  topFadeEnabled={!hasTimelineTopBanner}
+                  loadEarlier={loadEarlierTurns}
+                />
+              </CrewTimelineContext>
 
               {/* scroll to end pill — shown when user has scrolled away from the live edge */}
               {showScrollToBottom && (
@@ -8070,10 +8285,14 @@ export default function ChatView(props: ChatViewProps) {
                               projectSelectionRequired={
                                 isLocalDraftThread && activeProject === null
                               }
-                              connectedPlaceholder={connectedComposerPlaceholder}
-                              {...(zeropsChrome.panel === "available"
-                                ? { idlePlaceholder: connectedComposerPlaceholder }
-                                : {})}
+                              connectedPlaceholder={
+                                crewComposerPlaceholder ?? connectedComposerPlaceholder
+                              }
+                              {...(crewComposerPlaceholder !== null
+                                ? { idlePlaceholder: crewComposerPlaceholder }
+                                : zeropsChrome.panel === "available"
+                                  ? { idlePlaceholder: connectedComposerPlaceholder }
+                                  : {})}
                               phase={phase}
                               isConnecting={isConnecting}
                               // A session starting for the message just sent
@@ -8086,7 +8305,7 @@ export default function ChatView(props: ChatViewProps) {
                                   ? "Sending feedback"
                                   : threadDetailLoading
                                     ? "Messages loading"
-                                    : (projectCloneSendBlockReason ?? null)
+                                    : (crewSendBlockReason ?? projectCloneSendBlockReason ?? null)
                               }
                               zeropsSendBlockReason={zeropsSendBlockReason ?? null}
                               isPreparingWorktree={isPreparingWorktree}

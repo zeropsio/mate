@@ -1869,6 +1869,7 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
         "apps/web/src/components/Sidebar.tsx",
         "apps/web/src/components/Sidebar.logic.ts",
         "apps/web/src/components/ThreadStatusIndicators.tsx",
+        "apps/web/src/components/zerops/crew/CrewBoardPanel.logic.ts",
         "apps/mobile/src/features/threads/thread-list-v2-items.tsx",
         "apps/mobile/src/features/threads/threadListV2.ts",
         "apps/mobile/src/features/agent-awareness/remoteRegistration.ts",

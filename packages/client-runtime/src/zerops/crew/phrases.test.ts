@@ -1,11 +1,32 @@
-import { CrewAttentionKind, CrewRefusalReason, CrewTaskState } from "@t3tools/contracts";
+import {
+  CrewAttentionKind,
+  CrewRefusalReason,
+  CrewTaskState,
+  type CrewLaneSummary,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { crewSnapshotFixture } from "./testing/fixtures.ts";
 import {
+  CREW_ATTENTION_VERBS,
   CREW_BOARD_COLUMNS,
+  CREW_IDLE_WORD,
+  crewApplyWord,
+  crewAskToFixWord,
+  crewAskToResolveWord,
   crewAttentionSentence,
+  crewBoardLinkWord,
+  crewCommitEditAsk,
+  crewDeliverAsk,
+  crewDescribeAsk,
+  crewLandedWord,
+  crewLaneWord,
+  crewPendingWord,
+  crewPortsAsk,
+  crewPortsOffWord,
+  crewServedWord,
   crewBoardColumn,
+  crewCheckWord,
   crewPersonLands,
   crewRefusalSentence,
   crewRunMeters,
@@ -159,6 +180,16 @@ describe("crewPersonLands", () => {
   });
 });
 
+describe("crewCheckWord", () => {
+  it.each([
+    ["running", "Checking"],
+    ["passed", "Check passed"],
+    ["failed", "Check failed"],
+  ] as const)("words a %s check as %s", (state, word) => {
+    expect(crewCheckWord({ state, output: "" })).toBe(word);
+  });
+});
+
 describe("crewRunMeters", () => {
   it("reads spend, time and usage against their limits", () => {
     expect(crewRunMeters(run)).toEqual({
@@ -269,5 +300,121 @@ describe("crewRefusalSentence", () => {
     for (const reason of CrewRefusalReason.literals) {
       expect(crewRefusalSentence(reason, null), reason).toMatch(/^[A-Z].*\.$/);
     }
+  });
+});
+
+describe("the section's words (PRD §4.3)", () => {
+  const lane = (fields: Partial<CrewLaneSummary>): CrewLaneSummary => ({
+    branch: "crew/backend",
+    ahead: 0,
+    insertions: 0,
+    deletions: 0,
+    check: null,
+    state: "ready",
+    detail: null,
+    ...fields,
+  });
+
+  it.each<readonly [string, CrewLaneSummary, string | null]>([
+    ["nothing ahead", lane({}), null],
+    ["commits ahead", lane({ ahead: 3 }), "3 ahead"],
+    ["conflicts", lane({ ahead: 3, state: "conflicts" }), "Conflicts"],
+    ["being created", lane({ state: "creating" }), "Creating its copy of the code"],
+    ["setting up", lane({ state: "setting-up", detail: "npm ci" }), "Running npm ci"],
+    ["setting up, no command", lane({ state: "setting-up" }), "Setting up its copy"],
+    ["service redeploying", lane({ state: "frozen" }), "Its service is redeploying"],
+    ["gone", lane({ state: "missing" }), "Its copy is missing"],
+    ["failed", lane({ state: "failed", detail: "No free disk" }), "Its copy failed: No free disk"],
+  ])("a copy: %s", (_name, input, word) => {
+    expect(crewLaneWord(input)).toBe(word);
+  });
+
+  it.each([
+    [{ job: 5, brief: null }, "v5 at next turn"],
+    [{ job: null, brief: 5 }, "Brief v5 at next turn"],
+    [{ job: 3, brief: 5 }, "v3 at next turn"],
+    [{ job: null, brief: null }, null],
+  ] as const)("pending %j reads %j", (pending, word) => {
+    expect(crewPendingWord(pending)).toBe(word);
+  });
+
+  it("words an idle crewmate as the idle crew", () => {
+    expect(CREW_IDLE_WORD).toBe(crewStateWord({ run: null, workingCount: 0 }));
+  });
+
+  it("words Apply's progress per crewmate (PRD §4.7)", () => {
+    const backend = crew.crewmates[1]!;
+    expect(crewApplyWord({ ...backend, lane: lane({ state: "creating" }) })).toBe(
+      "Creating Backend's copy of the code",
+    );
+    expect(
+      crewApplyWord({ ...backend, lane: lane({ state: "setting-up", detail: "npm ci" }) }),
+    ).toBe("Running npm ci");
+    expect(crewApplyWord({ ...backend, lane: lane({ state: "failed", detail: "No disk" }) })).toBe(
+      "No disk",
+    );
+    expect(crewApplyWord({ ...backend, lane: lane({}) })).toBe("Ready");
+    expect(crewApplyWord(crew.crewmates[0]!)).toBe("Ready");
+  });
+
+  it("words the footer", () => {
+    const host = crew.hosts[0]!;
+    expect(crewBoardLinkWord(7)).toBe("Board · 7 tasks");
+    expect(crewBoardLinkWord(1)).toBe("Board · 1 task");
+    expect(crewLandedWord(3)).toBe("Landed, not delivered · 3");
+    expect(crewPortsOffWord("appdev")).toBe("appdev · Crew ports: off");
+    expect(crewServedWord(host, crew.crewmates)).toBe("appdev serves: your tree");
+    expect(
+      crewServedWord({ ...host, served: { by: "crewmate", handle: "frontend" } }, crew.crewmates),
+    ).toBe("appdev serves: Frontend's copy");
+    expect(crewServedWord({ ...host, served: { by: "unknown" } }, crew.crewmates)).toBeNull();
+  });
+
+  it("words the Waiting on you presses", () => {
+    expect(Object.values(CREW_ATTENTION_VERBS)).toEqual([
+      "Answer",
+      "Commit my edit",
+      "Land",
+      "Review plan",
+      "Allow",
+      "Not now",
+    ]);
+    expect(crewAskToResolveWord("Backend")).toBe("Ask Backend to resolve");
+    expect(crewAskToFixWord("Backend")).toBe("Ask Backend to fix");
+  });
+});
+
+describe("the drafts a crew surface hands the Mate", () => {
+  it("asks for a local commit of the paths a landing waits on", () => {
+    expect(crewCommitEditAsk(["src/ui/hud.ts"])).toBe(
+      "Commit my edit to src/ui/hud.ts locally, without pushing: a crew landing waits on it.",
+    );
+    expect(crewCommitEditAsk(["a.ts", "b.ts"])).toBe(
+      "Commit my edits to a.ts and b.ts locally, without pushing: a crew landing waits on them.",
+    );
+  });
+
+  it("delivers the landed, undelivered tasks and names the tree's own dirty paths", () => {
+    expect(crewDeliverAsk(crew, [])).toBe(
+      "Ship the crew's landed work on appdev: #11 Health endpoint for the load balancer.",
+    );
+    expect(crewDeliverAsk(crew, ["src/ui/hud.ts", "README.md"])).toBe(
+      "Ship the crew's landed work on appdev: #11 Health endpoint for the load balancer. My own edits in src/ui/hud.ts and README.md ship too.",
+    );
+  });
+
+  it("asks for crew ports as one range (PRD §5.7)", () => {
+    expect(crewPortsAsk("appdev", [3001, 3002, 3003, 3004])).toBe(
+      "Add crew ports 3001–3004 (httpSupport) to appdev's dev setup in zerops.yaml, self-deploy appdev, then make sure each new port is routed on the subdomain.",
+    );
+    expect(crewPortsAsk("appdev", [3001])).toBe(
+      "Add crew port 3001 (httpSupport) to appdev's dev setup in zerops.yaml, self-deploy appdev, then make sure the new port is routed on the subdomain.",
+    );
+  });
+
+  it("asks the Mate to set up a described crew (PRD §4.7)", () => {
+    expect(crewDescribeAsk("  a builder and a reviewer ")).toBe(
+      "Set up a crew for this project: a builder and a reviewer",
+    );
   });
 });
