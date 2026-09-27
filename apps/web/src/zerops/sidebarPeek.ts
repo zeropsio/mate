@@ -5,7 +5,9 @@
  * closes when the pointer leaves the row and the peek both, and a hover never
  * takes over a peek somebody pinned. A pinned one — opened with Space, from
  * the header's waiting faces, or a hover peek somebody worked in — stays
- * until it is closed.
+ * until it is closed. A Mate's own menu opens where a peek floats, so one
+ * opening puts the peek away, and no hover brings it back while the menu
+ * stands open.
  *
  * `reveal` is how a surface outside the tree asks it to show something: the
  * header's waiting faces a Mate — its project opens, its row takes the focus
@@ -44,6 +46,8 @@ export interface SidebarPeekState {
   readonly revealing: { readonly target: SidebarRevealTarget; readonly seq: number } | null;
   /** A Mate whose menu somebody asked for from its peek — a phone has no hover and no right-click. */
   readonly menuFor: string | null;
+  /** The Mate whose own menu stands open. */
+  readonly menu: string | null;
   /**
    * Every Mate the menu holds, in the order it draws them — collapsed
    * projects included — so "the next one" means the one under it.
@@ -60,6 +64,8 @@ export interface SidebarPeekState {
   /** The tree showed ask `seq`; nothing is left to show. */
   readonly answerReveal: (seq: number) => void;
   readonly askForMenu: (projectId: string | null) => void;
+  /** `projectId`'s own menu opened, or closed. */
+  readonly menuOpened: (projectId: string, open: boolean) => void;
   readonly setMateOrder: (order: ReadonlyArray<string>) => void;
   readonly setCursor: (projectId: string | null) => void;
 }
@@ -71,11 +77,12 @@ export const useSidebarPeek = create<SidebarPeekState>((set, get) => ({
   peek: null,
   revealing: null,
   menuFor: null,
+  menu: null,
   mateOrder: [],
   cursor: null,
   open: (projectId, mode, change) => {
-    const { peek } = get();
-    if (mode === "hover" && peek?.mode === "pinned") return;
+    const { peek, menu } = get();
+    if (mode === "hover" && (peek?.mode === "pinned" || menu !== null)) return;
     if (peek?.projectId === projectId && peek.mode === mode && peek.change === change) return;
     set({
       peek: { projectId, mode, ...(change === undefined ? {} : { change }) },
@@ -102,6 +109,10 @@ export const useSidebarPeek = create<SidebarPeekState>((set, get) => ({
   },
   askForMenu: (projectId) => {
     if (get().menuFor !== projectId) set({ menuFor: projectId });
+  },
+  menuOpened: (projectId, open) => {
+    if (open) set({ menu: projectId, peek: null });
+    else if (get().menu === projectId) set({ menu: null });
   },
   setMateOrder: (order) => {
     const current = get().mateOrder;

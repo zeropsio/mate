@@ -1864,6 +1864,15 @@ function MateRow<T extends RosterCandidate>({
     setMenuOpen(true);
     peek?.onMenuRequestSeen();
   }, [menuRequested, peek]);
+  // The menu opens where the peek floats: while it stands open, no peek does.
+  const projectId = candidate.project.id;
+  useEffect(() => {
+    if (!menuOpen) return;
+    useSidebarPeek.getState().menuOpened(projectId, true);
+    return () => {
+      useSidebarPeek.getState().menuOpened(projectId, false);
+    };
+  }, [menuOpen, projectId]);
   // A finger held on the row peeks, as a hover would; the click that ends
   // the hold is the peek's, not an open.
   const longPress = useRef<{ timer: ReturnType<typeof setTimeout> | null; fired: boolean }>({

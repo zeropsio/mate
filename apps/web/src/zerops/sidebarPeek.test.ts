@@ -5,6 +5,7 @@ import { nextWaitingMate, useSidebarPeek } from "./sidebarPeek";
 afterEach(() => {
   useSidebarPeek.getState().close();
   useSidebarPeek.getState().askForMenu(null);
+  useSidebarPeek.setState({ menu: null });
 });
 
 describe("useSidebarPeek — the one Mate peeked at", () => {
@@ -99,6 +100,39 @@ describe("a Mate's menu, asked for from its peek", () => {
     expect(useSidebarPeek.getState().menuFor).toBe("nova");
     useSidebarPeek.getState().askForMenu(null);
     expect(useSidebarPeek.getState().menuFor).toBeNull();
+  });
+});
+
+describe("a Mate's own menu, standing open where its peek would float", () => {
+  it("puts the peek away as it opens, and no hover brings one back until it closes", () => {
+    const { open, menuOpened } = useSidebarPeek.getState();
+    open("nova", "hover");
+    menuOpened("nova", true);
+    expect(useSidebarPeek.getState().peek).toBeNull();
+    open("nova", "hover");
+    open("kai", "hover");
+    expect(useSidebarPeek.getState().peek).toBeNull();
+    menuOpened("nova", false);
+    open("kai", "hover");
+    expect(useSidebarPeek.getState().peek).toEqual({ projectId: "kai", mode: "hover" });
+  });
+
+  it("puts a pinned peek away too, and still pins the one its Peek asks for", () => {
+    const { open, menuOpened } = useSidebarPeek.getState();
+    open("nova", "pinned");
+    menuOpened("kai", true);
+    expect(useSidebarPeek.getState().peek).toBeNull();
+    open("kai", "pinned");
+    expect(useSidebarPeek.getState().peek).toEqual({ projectId: "kai", mode: "pinned" });
+  });
+
+  it("is forgotten only when that Mate's menu closes", () => {
+    const { open, menuOpened } = useSidebarPeek.getState();
+    menuOpened("nova", true);
+    menuOpened("kai", false);
+    open("nova", "hover");
+    expect(useSidebarPeek.getState().peek).toBeNull();
+    expect(useSidebarPeek.getState().menu).toBe("nova");
   });
 });
 
