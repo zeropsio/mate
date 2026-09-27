@@ -1946,7 +1946,7 @@ function LogOperationTimelineRow({
         </span>
         <span className="min-w-0 truncate">{operation.subject}</span>
         {operation.settledAt ? (
-          <span className="shrink-0 text-xs tabular-nums">
+          <span className="shrink-0 tabular-nums">
             · {formatWorkDurationBetween(operation.anchorAt, operation.settledAt)}
           </span>
         ) : null}
@@ -3478,7 +3478,7 @@ function LiveActivityRow({
   failed?: boolean;
 }) {
   return (
-    <div className="w-fit max-w-full min-w-0 overflow-hidden rounded-md text-[13px] leading-5">
+    <div className="w-fit max-w-full min-w-0 overflow-hidden rounded-md text-line">
       <LiveActivityContent
         label={label}
         iconName={iconName}
@@ -3650,7 +3650,7 @@ function AgentSpawnMemberRow({ agent }: { agent: RuntimeSubagent }) {
       )}
     >
       <div className="flex select-none items-center gap-1.5">
-        <p className="flex min-w-0 flex-1 items-baseline gap-1.5 text-sm leading-relaxed">
+        <p className="flex min-w-0 flex-1 items-baseline gap-1.5 text-line">
           <span
             className={cn(
               "min-w-0 truncate",
@@ -3799,7 +3799,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
         </span>
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           <div className="min-w-0 flex-1 overflow-hidden">
-            <p className="flex min-w-0 w-full items-baseline gap-1.5 text-[13px] leading-5">
+            <p className="flex min-w-0 w-full items-baseline gap-1.5 text-line">
               <span
                 className={cn(
                   "min-w-0 flex-1",
