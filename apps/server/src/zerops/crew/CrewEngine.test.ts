@@ -90,7 +90,7 @@ describe("CrewEngine", () => {
             branch: "crew/backend",
             copy: true,
             installs: 1,
-            versions: { running: null, current: { brief: 1, job: 1 } },
+            versions: { running: { brief: 1, job: 1 }, current: { brief: 1, job: 1 } },
           },
         );
       }),

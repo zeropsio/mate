@@ -41,6 +41,7 @@ import {
   currentStint,
   DEFAULT_CREW_LOGIN,
   isWorking,
+  memberOf,
   principalUser,
   refuse,
   requireApplied,
@@ -53,7 +54,7 @@ import { CREW_ID, refusalOf } from "./CrewHome.ts";
 import { assignCrewPorts, proposeCrewPorts, readDeclaredPorts } from "./crewPorts.ts";
 import { flushState } from "./crewState.ts";
 import { appendSeam } from "./crewSeamLines.ts";
-import { retireStint, rotateBetweenTurns } from "./CrewStints.ts";
+import { openStint, retireStint, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewMemberRow } from "./CrewStore.ts";
 import { refreshLaneStats } from "./crewLanding.ts";
 import { saveTask } from "./crewTasks.ts";
@@ -213,6 +214,19 @@ const dropMember = (
     core.memory.missingLanes.delete(row.handle);
   });
 
+/**
+ * A crewmate's first conversation, opened without a turn so its chat opens
+ * before its first message; a writer's once its copy is ready, since the
+ * conversation runs in it.
+ */
+const openFirstStint = (core: CrewCore, handle: string) =>
+  Effect.gen(function* () {
+    const applied = yield* requireApplied(core);
+    const member = memberOf(applied, handle);
+    if (member === undefined || currentStint(applied, handle) !== undefined) return;
+    yield* openStint(core, applied, member, { reason: null, seed: null });
+  });
+
 /** Makes the writers' copies the tables do not have yet, with Apply's progress, then mirrors the home. */
 const createLanes = (core: CrewCore, applied: AppliedCrew) =>
   Effect.gen(function* () {
@@ -288,6 +302,7 @@ const createLanes = (core: CrewCore, applied: AppliedCrew) =>
       );
       memory.progress.delete(handle);
       yield* refreshLaneStats(core, { row, spec });
+      yield* openFirstStint(core, handle);
       yield* core.changed;
     }
     yield* flushState(core);
@@ -496,6 +511,14 @@ export const apply = (core: CrewCore, principal: TurnPrincipal, activate: Activa
         principal,
         "login-changed",
       );
+    }
+    for (const [handle, row] of applied.members) {
+      if (
+        row.kind !== "writer" ||
+        Option.isSome(yield* asRefusal(core.store.getLane(CREW_ID, handle)))
+      ) {
+        yield* openFirstStint(core, handle);
+      }
     }
     yield* core.background(createLanes(core, applied));
   });

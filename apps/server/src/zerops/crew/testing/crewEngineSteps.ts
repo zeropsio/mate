@@ -67,8 +67,9 @@ export const snapshotWhere = (check: (snapshot: CrewSnapshot) => boolean) =>
 export const firstTurn = (world: CrewWorld, edit: () => void) =>
   Effect.gen(function* () {
     yield* command({ _tag: "message", handle: "backend", text: "Change a.txt", attachments: [] });
-    const [created] = yield* dispatchedOf(world, "thread.crew.create");
-    const thread = created!.threadId;
+    const thread = (yield* dispatchedOf(world, "thread.crew.create")).find(
+      (entry) => entry.crew.crewmate === "backend",
+    )!.threadId;
     yield* world.publish(spiEvent("turn.started", thread, {}));
     edit();
     return thread;
