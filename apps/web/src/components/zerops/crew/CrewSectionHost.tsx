@@ -96,10 +96,7 @@ function CrewSectionFor({
   const [runOpen, setRunOpen] = useState(false);
   const [ask, setAsk] = useState<{ readonly ask: string; readonly what: string } | null>(null);
   const mateName = mate?.name ?? "the Mate";
-  const devHosts = crewDevHosts(
-    services,
-    snapshot.hosts.map((host) => host.host),
-  );
+  const devHosts = crewDevHosts(snapshot, services);
 
   const openThread = useCallback(
     (threadId: ThreadId) => {

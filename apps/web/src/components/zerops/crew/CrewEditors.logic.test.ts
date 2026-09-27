@@ -193,15 +193,30 @@ describe("CREW_SAVE_CHOICES", () => {
 });
 
 describe("crewDevHosts", () => {
-  it("offers the dev halves of the runtimes, and every host the crew already names", () => {
-    const services = [
-      { hostname: "appdev", group: "runtimes" as const },
-      { hostname: "appstage", group: "runtimes" as const },
-      { hostname: "db", group: "data" as const },
-      { hostname: "zcp", group: "infrastructure" as const },
+  const services = [
+    { hostname: "appdev", group: "runtimes" as const },
+    { hostname: "appstage", group: "runtimes" as const },
+    { hostname: "web", group: "runtimes" as const },
+    { hostname: "db", group: "data" as const },
+    { hostname: "zcp", group: "infrastructure" as const },
+  ];
+  const crew = (hosts: ReadonlyArray<string>) => ({ hosts: hosts.map((host) => ({ host })) });
+
+  it("offers the dev services the engine names, and every host the crew already names", () => {
+    const devHosts = [
+      { host: "web", database: "db" },
+      { host: "appdev", database: null },
     ];
-    expect(crewDevHosts(services, ["apidev", "appdev"])).toEqual(["appdev", "apidev"]);
-    expect(crewDevHosts(undefined, ["apidev"])).toEqual(["apidev"]);
+    expect(crewDevHosts({ ...crew(["apidev"]), devHosts }, services)).toEqual([
+      "web",
+      "appdev",
+      "apidev",
+    ]);
+  });
+
+  it("guesses the dev halves by their suffix only while the engine names none", () => {
+    expect(crewDevHosts(crew(["apidev", "appdev"]), services)).toEqual(["appdev", "apidev"]);
+    expect(crewDevHosts(crew(["apidev"]), undefined)).toEqual(["apidev"]);
   });
 });
 
