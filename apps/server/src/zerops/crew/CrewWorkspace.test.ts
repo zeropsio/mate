@@ -161,7 +161,11 @@ describe("CrewWorkspace", () => {
               merging: exists(root, ".git/worktrees/backend/MERGE_HEAD"),
             },
             {
-              conflicted: { _tag: "rework", paths: ["README.md"] },
+              conflicted: {
+                _tag: "rework",
+                paths: ["README.md"],
+                reason: "Resolve the conflict markers left in README.md",
+              },
               unchangedWhileConflicted: true,
               resolved: "committed",
               parents: 2,
@@ -325,7 +329,15 @@ describe("CrewWorkspace", () => {
             aborted: aborted._tag,
             kept: git(root, ["rev-parse", "refs/t3/crew/run-1/a-1/1"]),
           },
-          { refused: { _tag: "rework", paths: ["README.md"] }, aborted: "kept", kept: laneTip },
+          {
+            refused: {
+              _tag: "rework",
+              paths: ["README.md"],
+              reason: "Resolve the conflict markers left in README.md",
+            },
+            aborted: "kept",
+            kept: laneTip,
+          },
         );
       }),
     ),
@@ -577,8 +589,87 @@ describe("CrewWorkspace", () => {
         git(root, ["commit", "-q", "-am", "person"]);
         gitExit(`${root}/.crew/backend`, ["merge", "-q", "main"]);
         const outcome = yield* workspace.commitTurn(BACKEND, { assignment: "a-1", turn: 2 });
-        assert.deepStrictEqual(outcome, { _tag: "rework", paths: ["Úkol.md"] });
+        assert.deepStrictEqual(outcome, {
+          _tag: "rework",
+          paths: ["Úkol.md"],
+          reason: "Resolve the conflict markers left in Úkol.md",
+        });
       }),
     ),
   );
+
+  const RESOLUTIONS: ReadonlyArray<{
+    readonly name: string;
+    readonly resolve: (root: string, lane: string) => void;
+    readonly expected: "rework" | "committed";
+    /** After the turn: whether README.md is unmerged again. */
+    readonly unmergedAfter: boolean;
+  }> = [
+    {
+      name: "a lone ======= left in the conflicted file is a marker",
+      resolve: (_root, lane) => write(lane, "README.md", "person\n=======\nlane\n"),
+      expected: "rework",
+      unmergedAfter: true,
+    },
+    {
+      name: "trailing whitespace in a resolution is not",
+      resolve: (_root, lane) => write(lane, "README.md", "person and lane   \n \tindented\n"),
+      expected: "committed",
+      unmergedAfter: false,
+    },
+    {
+      name: "a marker-like line in a file the merge did not conflict on is not",
+      resolve: (_root, lane) => {
+        write(lane, "README.md", "person and lane\n");
+        write(lane, "docs/merging.md", "A conflict looks like\n<<<<<<< HEAD\n");
+      },
+      expected: "committed",
+      unmergedAfter: false,
+    },
+    {
+      name: "a marker that only appears once staged is caught after add -A and left unmerged",
+      resolve: (root, lane) => {
+        git(root, ["config", "filter.sneaky.clean", "sed 's/^RESOLVED$/>>>>>>> sneaky/'"]);
+        write(root, ".git/info/attributes", "README.md filter=sneaky\n");
+        write(lane, "README.md", "RESOLVED\n");
+      },
+      expected: "rework",
+      unmergedAfter: true,
+    },
+  ];
+
+  for (const resolution of RESOLUTIONS) {
+    it.effect(`during an open merge, ${resolution.name}`, () =>
+      withLanes((root) =>
+        Effect.gen(function* () {
+          const workspace = yield* CrewWorkspace.CrewWorkspace;
+          yield* workspace.create(BACKEND);
+          const lane = `${root}/.crew/backend`;
+          write(lane, "README.md", "lane\n");
+          yield* workspace.commitTurn(BACKEND, { assignment: "a-1", turn: 1 });
+          write(root, "README.md", "person\n");
+          git(root, ["commit", "-q", "-am", "person"]);
+          gitExit(lane, ["merge", "-q", "main"]);
+          resolution.resolve(root, lane);
+          const outcome = yield* workspace.commitTurn(BACKEND, { assignment: "a-1", turn: 2 });
+          assert.deepStrictEqual(
+            {
+              outcome:
+                outcome._tag === "rework"
+                  ? { tag: outcome._tag, paths: outcome.paths }
+                  : outcome._tag,
+              unmerged: git(lane, ["diff", "--name-only", "--diff-filter=U"]) === "README.md",
+            },
+            {
+              outcome:
+                resolution.expected === "rework"
+                  ? { tag: "rework", paths: ["README.md"] }
+                  : "committed",
+              unmerged: resolution.unmergedAfter,
+            },
+          );
+        }),
+      ),
+    );
+  }
 });
