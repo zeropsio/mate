@@ -47,15 +47,14 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 
 import { shellQuote } from "../ZeropsWorkspaceAccess.ts";
 import { CrewChecks, type CheckOutcome } from "./CrewChecks.ts";
 import {
-  CrewGitError,
   CrewShell,
+  runFields,
+  type CrewGitError,
   field,
-  fields,
   fieldsOf,
   git,
   laneBranch,
@@ -65,7 +64,12 @@ import {
   type CrewShellError,
   type ShellVariable,
 } from "./CrewShell.ts";
-import { CrewStore, type CrewLaneRow, type CrewStoreError } from "./CrewStore.ts";
+import {
+  CrewStore,
+  type CrewLaneNotRecorded,
+  type CrewLaneRow,
+  type CrewStoreError,
+} from "./CrewStore.ts";
 import { landedAssignmentsScript } from "./crewTrailers.ts";
 
 /** The integration HEAD a lane script read into `$H`. */
@@ -97,7 +101,11 @@ const MOUNT_WAIT_INTERVAL = Duration.millis(500);
 /** Every lane script finishes well inside a minute; setup and checks have their own. */
 const LANE_SCRIPT_TIMEOUT = Duration.minutes(2);
 
-export type CrewWorkspaceError = CrewShellError | CrewGitError | CrewStoreError;
+export type CrewWorkspaceError =
+  | CrewShellError
+  | CrewGitError
+  | CrewStoreError
+  | CrewLaneNotRecorded;
 
 /** A writer's lane as the definition declares it. */
 export interface LaneSpec {
@@ -290,19 +298,7 @@ export const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
 
   const runLane = (host: string, operation: string, body: string) =>
-    shell.run(host, script(body), { timeout: LANE_SCRIPT_TIMEOUT }).pipe(
-      Effect.flatMap((result) =>
-        result.code === 0
-          ? Effect.succeed(fields(result.stdout))
-          : Effect.fail(
-              new CrewGitError({
-                host,
-                operation,
-                detail: result.stderr.trim() || `exit ${result.code}`,
-              }),
-            ),
-      ),
-    );
+    runFields(shell, host, operation, body, LANE_SCRIPT_TIMEOUT);
 
   /** Polls the mount until the lane directory is there. */
   const seenThroughMount = (host: string, handle: string) =>
@@ -315,23 +311,6 @@ export const make = Effect.gen(function* () {
       }
       return false;
     });
-
-  const laneRow = (key: LaneKey, operation: string) =>
-    store.getLane(key.crew, key.handle).pipe(
-      Effect.flatMap(
-        Option.match({
-          onNone: () =>
-            Effect.fail(
-              new CrewGitError({
-                host: "",
-                operation,
-                detail: `no lane is recorded for ${key.crew}/${key.handle}`,
-              }),
-            ),
-          onSome: Effect.succeed,
-        }),
-      ),
-    );
 
   /**
    * The lane-commit precondition and the commit, one ssh script. Guards read
@@ -406,19 +385,21 @@ export const make = Effect.gen(function* () {
     });
 
   const commitTurn: CrewWorkspaceService["commitTurn"] = (key, turn) =>
-    laneRow(key, "commitTurn").pipe(
-      Effect.flatMap((row) =>
-        commitLane(
-          row,
-          `wip(${turn.assignment}): turn ${turn.turn}`,
-          turn.maxBlobBytes ?? DEFAULT_MAX_BLOB_BYTES,
+    store
+      .requireLane(key.crew, key.handle)
+      .pipe(
+        Effect.flatMap((row) =>
+          commitLane(
+            row,
+            `wip(${turn.assignment}): turn ${turn.turn}`,
+            turn.maxBlobBytes ?? DEFAULT_MAX_BLOB_BYTES,
+          ),
         ),
-      ),
-    );
+      );
 
   const keepAndReset: CrewWorkspaceService["keepAndReset"] = (key, input) =>
     Effect.gen(function* () {
-      const row = yield* laneRow(key, "keepAndReset");
+      const row = yield* store.requireLane(key.crew, key.handle);
       const lg = laneGit(row.lane);
       if (input.abortMerge === true && row.frozenSince === null) {
         yield* runLane(
@@ -459,7 +440,7 @@ export const make = Effect.gen(function* () {
 
   const prepareDispatch: CrewWorkspaceService["prepareDispatch"] = (key) =>
     Effect.gen(function* () {
-      const row = yield* laneRow(key, "prepareDispatch");
+      const row = yield* store.requireLane(key.crew, key.handle);
       if (row.frozenSince !== null) return { _tag: "frozen" } satisfies DispatchOutcome;
       const lane = shellQuote(laneDirectory(row.lane));
       const lg = laneGit(row.lane);
@@ -687,7 +668,7 @@ export const make = Effect.gen(function* () {
 
   const cleanup: CrewWorkspaceService["cleanup"] = (key, options) =>
     Effect.gen(function* () {
-      const row = yield* laneRow(key, "cleanup");
+      const row = yield* store.requireLane(key.crew, key.handle);
       const directory = shellQuote(laneDirectory(row.lane));
       const branch = `refs/heads/${laneBranch(row.lane)}`;
       const out = yield* runLane(

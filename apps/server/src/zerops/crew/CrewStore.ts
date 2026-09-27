@@ -27,6 +27,16 @@ import { PersistenceDecodeError, PersistenceSqlError } from "../../persistence/E
 
 export type CrewStoreError = PersistenceSqlError | PersistenceDecodeError;
 
+/** A lane operation named a lane the store has no row for. */
+export class CrewLaneNotRecorded extends Schema.TaggedError<CrewLaneNotRecorded>()(
+  "CrewLaneNotRecorded",
+  { crew: Schema.String, lane: Schema.String },
+) {
+  override get message(): string {
+    return `No lane is recorded for ${this.crew}/${this.lane}`;
+  }
+}
+
 export interface CrewDefinitionRow {
   readonly crew: string;
   readonly homeHost: string | null;
@@ -174,6 +184,10 @@ export interface CrewStoreService {
     crew: string,
     lane: string,
   ) => Effect.Effect<Option.Option<CrewLaneRow>, CrewStoreError>;
+  readonly requireLane: (
+    crew: string,
+    lane: string,
+  ) => Effect.Effect<CrewLaneRow, CrewStoreError | CrewLaneNotRecorded>;
   /** Read, change and write one lane in a transaction; a missing lane is left missing. */
   readonly updateLane: (
     crew: string,
@@ -591,6 +605,15 @@ export const make = Effect.gen(function* () {
     putLane: (row) =>
       writeLane(row).pipe(Effect.andThen(publish({ crew: row.crew, table: "lane" }))),
     getLane,
+    requireLane: (crew, lane) =>
+      getLane(crew, lane).pipe(
+        Effect.flatMap(
+          Option.match({
+            onNone: () => Effect.fail(new CrewLaneNotRecorded({ crew, lane })),
+            onSome: Effect.succeed,
+          }),
+        ),
+      ),
     updateLane: (crew, lane, change) =>
       sql
         .withTransaction(

@@ -160,6 +160,28 @@ export const fieldsOf = (
   key: string,
 ): ReadonlyArray<string> => entries.filter(([name]) => name === key).map(([, value]) => value);
 
+/** Runs a crew script whose output is {@link fields}; a non-zero exit is a {@link CrewGitError}. */
+export const runFields = (
+  shell: CrewShellService,
+  host: string,
+  operation: string,
+  body: string,
+  timeout: Duration.Input,
+) =>
+  shell.run(host, script(body), { timeout }).pipe(
+    Effect.flatMap((result) =>
+      result.code === 0
+        ? Effect.succeed(fields(result.stdout))
+        : Effect.fail(
+            new CrewGitError({
+              host,
+              operation,
+              detail: result.stderr.trim() || `exit ${result.code}`,
+            }),
+          ),
+    ),
+  );
+
 export interface CrewShellService {
   readonly run: (
     host: string,
