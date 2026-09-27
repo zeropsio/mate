@@ -272,6 +272,14 @@ describe("crewAttentionSentence", () => {
       "Can't start Backend: the login is not yours",
     ],
     [
+      {
+        kind: "cant-start",
+        handle: "backend",
+        text: "Backend's login was signed in by another member. Only their crews can use it.",
+      },
+      "Can't start Backend: Backend's login was signed in by another member. Only their crews can use it.",
+    ],
+    [
       { kind: "conflict", handle: "backend", paths: ["src/api/items.ts"] },
       "Backend's copy conflicts with what landed: src/api/items.ts",
     ],
@@ -409,6 +417,7 @@ describe("the section's words (PRD §4.3)", () => {
       "Review plan",
       "Allow",
       "Not now",
+      "Try again",
     ]);
     expect(crewAskToResolveWord("Backend")).toBe("Ask Backend to resolve");
     expect(crewAskToFixWord("Backend")).toBe("Ask Backend to fix");
