@@ -1,9 +1,10 @@
 /**
  * Crew mode's phrase producer (R5): the board's column titles, task-state
  * words, the section header's crew state, *Waiting on you* sentences and
- * presses, the section's copy, pending and footer words, refusal sentences,
- * and the drafts a crew surface hands the Mate — PRD §4.3, §4.4, §4.7, §5.3,
- * §5.7, §6.3. A crew surface renders crew
+ * presses, the section's copy, pending and footer words, a crewmate chat's
+ * header, lane bar and notices, refusal sentences, and the drafts a crew
+ * surface hands the Mate — PRD §4.3, §4.4, §4.5, §4.7, §5.3, §5.6, §5.7,
+ * §6.3. A crew surface renders crew
  * and task words only from here; a thread's own status word still comes only
  * from `resolveThreadStatus` and is passed in where a task shows it.
  *
@@ -18,6 +19,7 @@ import type {
   CrewRun,
   CrewSnapshot,
   CrewTask,
+  CrewTaskSource,
   CrewTaskState,
   Crewmate,
 } from "@t3tools/contracts";
@@ -425,3 +427,103 @@ export function crewPortsAsk(host: string, ports: ReadonlyArray<number>): string
 /** *Describe it to Fen* (PRD §4.7). */
 export const crewDescribeAsk = (description: string): string =>
   `Set up a crew for this project: ${description.trim()}`;
+
+/** A copy of the code against your tree (PRD §4.5); `null` while level with it. */
+export const crewAheadWord = (ahead: number): string | null =>
+  ahead === 0 ? null : `${ahead} ${ahead === 1 ? "change" : "changes"} ahead of your tree`;
+
+/** `+214 −12`, with a true minus. */
+export const crewDiffStatWord = (stat: {
+  readonly insertions: number;
+  readonly deletions: number;
+}): string => `+${stat.insertions} \u2212${stat.deletions}`;
+
+/** A merge-in stopped on unmerged paths (PRD §5.2). */
+export const crewConflictWord = (paths: ReadonlyArray<string>): string =>
+  paths.length === 0
+    ? "Conflicts with what landed"
+    : `Conflicts with what landed: ${pathSummary(paths)}`;
+
+/** A task's landing in your tree (PRD §4.5). */
+export const crewLandedAsWord = (task: {
+  readonly number: number;
+  readonly landedCommit: string;
+}): string => `Task #${task.number} landed as ${task.landedCommit}`;
+
+/** A crewmate's own app on its crew port (PRD §5.7). */
+export function crewAppWord(
+  app:
+    | { readonly kind: "running"; readonly port: number }
+    | { readonly kind: "stopped" }
+    | { readonly kind: "no-crew-ports"; readonly host: string }
+    | { readonly kind: "no-free-port" },
+): string {
+  switch (app.kind) {
+    case "running":
+      return `App on :${app.port}`;
+    case "stopped":
+      return "App stopped";
+    case "no-crew-ports":
+      return `No crew ports on ${app.host}`;
+    case "no-free-port":
+      return "No free crew port";
+  }
+}
+
+/** The lane bar's presses beside *Land* (`CREW_ATTENTION_VERBS.land`) and the asks. */
+export const CREW_LANE_VERBS = {
+  showOnDev: "Show on dev",
+  backToTree: "Back to my tree",
+  landNow: "Land now",
+  addCrewPorts: "Add crew ports",
+} as const;
+
+const TASK_SOURCES: Readonly<Record<CrewTaskSource, string>> = {
+  you: "from you",
+  lead: "from lead",
+  message: "from a message",
+  issue: "from an issue",
+};
+
+/** Where a task came from (PRD §4.4, §4.5). */
+export const crewTaskSourceWord = (source: CrewTaskSource): string => TASK_SOURCES[source];
+
+/** The header's version chip while the crewmate runs on its current job (PRD §4.5). */
+export const crewJobVersionWord = (version: number): string => `Job v${version}`;
+
+/** One of a crewmate's conversations, for *Previous conversations*. */
+export const crewStintWord = (stint: number, current: boolean): string =>
+  current ? `Conversation ${stint} · current` : `Conversation ${stint}`;
+
+/** A crewmate chat's composer. */
+export const crewMessagePlaceholder = (name: string): string => `Message ${name}…`;
+
+const NEXT_TURN_FRESH = "the next turn starts a fresh conversation";
+
+/**
+ * What a pending prompt does (PRD §5.6 with the probe-22 fallback: a resumed
+ * session keeps the prompt it began with); `null` while nothing is pending.
+ */
+export function crewPendingNotice(pending: {
+  readonly brief: number | null;
+  readonly job: number | null;
+}): string | null {
+  const { brief, job } = pending;
+  if (job !== null && brief !== null) {
+    return `Job updated to v${job} and brief to v${brief} — ${NEXT_TURN_FRESH}`;
+  }
+  if (job !== null) return `Job updated to v${job} — ${NEXT_TURN_FRESH}`;
+  return brief === null ? null : `Brief updated to v${brief} — ${NEXT_TURN_FRESH}`;
+}
+
+/** An earlier conversation with a crewmate: where it goes on, and why nothing is sent from it. */
+export const crewEarlierStintNotice = (
+  handle: string,
+): { readonly text: string; readonly sendBlock: string } => ({
+  text: `An earlier conversation with @${handle} — it goes on in a newer one.`,
+  sendBlock: `Write to @${handle} in its current conversation`,
+});
+
+/** A stint that began without a reason of its own, and the link to the one before it. */
+export const CREW_NEW_STINT_WORD = "New conversation";
+export const CREW_PREVIOUS_STINT_LINK = "previous conversation";

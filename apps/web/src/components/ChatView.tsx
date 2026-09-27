@@ -185,6 +185,10 @@ import { CrewmateEditor } from "./zerops/crew/CrewmateEditor";
 import { CrewTimelineContext, type CrewTimeline } from "./zerops/crew/CrewTaskCard";
 import { crewChatNotices } from "./zerops/crew/crewChatNotices";
 import { crewMessageCommand } from "./zerops/crew/crewComposerSend";
+import {
+  CREW_NEW_STINT_WORD,
+  crewMessagePlaceholder,
+} from "@t3tools/client-runtime/zerops/crew/phrases";
 import { crewCommands } from "../zerops/crew/crewCommands";
 import { crewFailureSentence } from "../zerops/crew/useCrewCommand";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
@@ -5294,7 +5298,7 @@ export default function ChatView(props: ChatViewProps) {
   const crewComposerPlaceholder =
     activeCrewOrigin === null
       ? null
-      : `Message ${activeCrewmate?.crewmate.displayName ?? activeCrewOrigin.crewmate}…`;
+      : crewMessagePlaceholder(activeCrewmate?.crewmate.displayName ?? activeCrewOrigin.crewmate);
   // A crewmate's chat: an earlier conversation points at the one it talks in
   // now and sends nothing, as its send would land there; the current one says
   // what its next turn brings in.
@@ -5365,7 +5369,7 @@ export default function ChatView(props: ChatViewProps) {
         stint === undefined || (index === 0 && stint.reason === null)
           ? null
           : {
-              text: stint.reason ?? "New conversation",
+              text: stint.reason ?? CREW_NEW_STINT_WORD,
               previousThreadId: stints[index - 1]?.threadId ?? null,
             },
       tasks: crew.snapshot?.board.tasks ?? [],

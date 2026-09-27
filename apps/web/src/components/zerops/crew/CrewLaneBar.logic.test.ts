@@ -183,12 +183,12 @@ describe("crewLaneBarModel", () => {
     {
       name: "a copy whose service redeploys waits",
       lane: { state: "frozen" },
-      note: { text: "appdev is redeploying — its copy waits", tone: "muted" },
+      note: { text: "Its service is redeploying", tone: "muted" },
     },
     {
       name: "a copy that failed says why",
       lane: { state: "failed", detail: "no free disk" },
-      note: { text: "Its copy of the code failed: no free disk", tone: "failed" },
+      note: { text: "Its copy failed: no free disk", tone: "failed" },
     },
     {
       name: "a copy level with your tree names the last landing",

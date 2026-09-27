@@ -6,7 +6,7 @@
  * only the Mate can do — declare crew ports, commit your edit — is asked of it
  * in your chat after a confirmation, as the crew section asks it.
  */
-import { crewPortsAsk } from "@t3tools/client-runtime/zerops/crew/phrases";
+import { CREW_LANE_VERBS, crewPortsAsk } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { ExternalLinkIcon } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -164,7 +164,7 @@ export function CrewLaneBar({
                   size="xs"
                   variant="ghost-muted"
                 >
-                  Add crew ports
+                  {CREW_LANE_VERBS.addCrewPorts}
                 </Button>
               ) : null}
             </span>
