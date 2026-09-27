@@ -4,21 +4,13 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { assert, describe, it } from "@effect/vitest";
-import {
-  ProviderInstanceId,
-  ThreadId as ThreadIdSchema,
-  type CrewSnapshot,
-  type OrchestrationCommand,
-  type ThreadId,
-} from "@t3tools/contracts";
+import { ProviderInstanceId, ThreadId as ThreadIdSchema } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
 import type { MateLogin } from "../ZeropsLogins.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "../ZeropsMembershipWatch.ts";
-import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
 import { CrewEngine } from "./CrewEngine.ts";
@@ -32,8 +24,19 @@ import {
   withCrewEngine,
   withCrewEngines,
   writeCrewHome,
-  type CrewWorld,
 } from "./testing/crewEngineFixture.ts";
+import {
+  KAREL,
+  applied,
+  command,
+  dispatchedOf,
+  everyCopyReady,
+  firstTurn,
+  latest,
+  reportDone,
+  seamsOf,
+  snapshotWhere,
+} from "./testing/crewEngineSteps.ts";
 import { TEST_HOST, git, read, write } from "./testing/crewGitFixture.ts";
 
 const mateLogin = (id: string, agent: "claude-code" | "codex", label: string): MateLogin => ({
@@ -44,48 +47,6 @@ const mateLogin = (id: string, agent: "claude-code" | "codex", label: string): M
   home: `/home/zerops/.mate/logins/${id}`,
   keyStored: false,
 });
-
-const KAREL: TurnPrincipal = { kind: "session", subject: `${ZEROPS_SUBJECT_PREFIX}user-karel` };
-
-const latest = Effect.flatMap(CrewEngine, (engine) =>
-  engine.snapshot.pipe(Stream.take(1), Stream.runHead, Effect.map(Option.getOrThrow)),
-);
-
-const command = (input: Parameters<CrewEngine["Service"]["command"]>[0]) =>
-  Effect.flatMap(CrewEngine, (engine) => engine.command(input, KAREL));
-
-const dispatchedOf = <T extends OrchestrationCommand["type"]>(world: CrewWorld, type: T) =>
-  Effect.map(Ref.get(world.dispatched), (all) =>
-    all.filter(
-      (entry): entry is Extract<OrchestrationCommand, { readonly type: T }> => entry.type === type,
-    ),
-  );
-
-/** The seam lines the engine wrote into crewmates' chats: thread, words, payload. */
-const seamsOf = (world: CrewWorld) =>
-  Effect.map(dispatchedOf(world, "thread.activity.append"), (all) =>
-    all
-      .filter((entry) => entry.activity.kind === "crew.seam")
-      .map((entry) => [entry.threadId, entry.activity.summary, entry.activity.payload]),
-  );
-
-const everyCopyReady = (snapshot: CrewSnapshot) =>
-  snapshot.status === "applied" &&
-  snapshot.crewmates.every((mate) => mate.readOnly || mate.lane?.state === "ready");
-
-/** Applies the crew home and waits until every copy is ready. */
-const applied = (world: CrewWorld) =>
-  Effect.gen(function* () {
-    writeCrewHome(world.workspace);
-    yield* command({ _tag: "apply" });
-    yield* eventually(Effect.map(latest, everyCopyReady));
-  });
-
-const snapshotWhere = (check: (snapshot: CrewSnapshot) => boolean) =>
-  Effect.gen(function* () {
-    yield* eventually(Effect.map(latest, check));
-    return yield* latest;
-  });
 
 describe("CrewEngine", () => {
   it.live("with no crew applied: status none, no policy installed", () =>
@@ -454,23 +415,6 @@ describe("CrewEngine", () => {
       }),
     ),
   );
-
-  /** Opens a task with a message and ends its first turn with `edit` made in the copy. */
-  const firstTurn = (world: CrewWorld, edit: () => void) =>
-    Effect.gen(function* () {
-      yield* command({ _tag: "message", handle: "backend", text: "Change a.txt", attachments: [] });
-      const [created] = yield* dispatchedOf(world, "thread.crew.create");
-      const thread = created!.threadId;
-      yield* world.publish(spiEvent("turn.started", thread, {}));
-      edit();
-      return thread;
-    });
-
-  const reportDone = (thread: ThreadId) =>
-    Effect.gen(function* () {
-      const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
-      yield* (yield* CrewToolHost).report(member, { status: "done", summary: "Done." });
-    });
 
   it.live("a message to a crewmate that asked a question answers its open task", () =>
     withCrewEngine((world) =>
