@@ -9,7 +9,10 @@ import {
   crewGitLayer,
   exists,
   git,
+  gitExit,
+  memberRow,
   read,
+  taskRow,
   TEST_HOST,
   withCrewService,
   write,
@@ -141,14 +144,7 @@ describe("CrewWorkspace", () => {
           write(root, "README.md", "person\n");
           git(root, ["commit", "-q", "-am", "person"]);
           const laneTip = git(root, ["rev-parse", "crew/backend"]);
-          const merge = () => {
-            try {
-              git(`${root}/.crew/backend`, ["merge", "-q", "main"]);
-            } catch {
-              // The conflict is the point.
-            }
-          };
-          merge();
+          gitExit(`${root}/.crew/backend`, ["merge", "-q", "main"]);
           const conflicted = yield* workspace.commitTurn(BACKEND, { assignment: "a-1", turn: 2 });
           const tipWhileConflicted = git(root, ["rev-parse", "crew/backend"]);
           write(root, ".crew/backend/README.md", "person and lane\n");
@@ -243,6 +239,85 @@ describe("CrewWorkspace", () => {
           reason: "unknown-tip",
           tip: git(lane, ["rev-parse", "HEAD"]),
         });
+      }),
+    ),
+  );
+
+  it.effect(
+    "keeps an attempt's tip under its ref and resets the lane to where the attempt began",
+    () =>
+      withLanes((root) =>
+        Effect.gen(function* () {
+          const workspace = yield* CrewWorkspace.CrewWorkspace;
+          const store = yield* CrewStore.CrewStore;
+          yield* store.putMember(memberRow("backend"));
+          yield* store.putAssignment(taskRow("a-1", 1, "backend"));
+          yield* workspace.create(BACKEND);
+          const dispatch = git(root, ["rev-parse", "crew/backend"]);
+          const lane = `${root}/.crew/backend`;
+          const kept: Array<CrewWorkspace.KeepOutcome> = [];
+          for (const attempt of [1, 2, 3, 4]) {
+            write(lane, "src/attempt.ts", `export const attempt = ${attempt};\n`);
+            kept.push(
+              yield* workspace.keepAndReset(BACKEND, { run: null, assignment: "a-1", attempt }),
+            );
+          }
+          const refs = git(root, ["for-each-ref", "--format=%(refname)", "refs/t3/crew/"]);
+          assert.deepStrictEqual(
+            {
+              last: kept[3],
+              keptContent: git(root, ["show", "refs/t3/crew/manual/a-1/4:src/attempt.ts"]),
+              laneTip: git(root, ["rev-parse", "crew/backend"]),
+              laneClean: git(lane, ["status", "--porcelain"]),
+              attemptFileLeft: exists(lane, "src/attempt.ts"),
+              refs: refs.split("\n"),
+              recorded: Option.getOrUndefined(yield* store.getLane("game", "backend"))?.recordedTip,
+            },
+            {
+              last: {
+                _tag: "kept",
+                ref: "refs/t3/crew/manual/a-1/4",
+                tip: git(root, ["rev-parse", "refs/t3/crew/manual/a-1/4"]),
+              },
+              keptContent: "export const attempt = 4;",
+              laneTip: dispatch,
+              laneClean: "",
+              attemptFileLeft: false,
+              refs: [
+                "refs/t3/crew/manual/a-1/2",
+                "refs/t3/crew/manual/a-1/3",
+                "refs/t3/crew/manual/a-1/4",
+              ],
+              recorded: dispatch,
+            },
+          );
+        }),
+      ),
+  );
+
+  it.effect("keeps nothing from a conflicted merge unless it is aborted first", () =>
+    withLanes((root) =>
+      Effect.gen(function* () {
+        const workspace = yield* CrewWorkspace.CrewWorkspace;
+        yield* workspace.create(BACKEND);
+        const lane = `${root}/.crew/backend`;
+        write(lane, "README.md", "lane\n");
+        yield* workspace.commitTurn(BACKEND, { assignment: "a-1", turn: 1 });
+        const laneTip = git(root, ["rev-parse", "crew/backend"]);
+        write(root, "README.md", "person\n");
+        git(root, ["commit", "-q", "-am", "person"]);
+        gitExit(lane, ["merge", "-q", "main"]);
+        const keep = { run: "run-1", assignment: "a-1", attempt: 1 } as const;
+        const refused = yield* workspace.keepAndReset(BACKEND, keep);
+        const aborted = yield* workspace.keepAndReset(BACKEND, { ...keep, abortMerge: true });
+        assert.deepStrictEqual(
+          {
+            refused,
+            aborted: aborted._tag,
+            kept: git(root, ["rev-parse", "refs/t3/crew/run-1/a-1/1"]),
+          },
+          { refused: { _tag: "rework", paths: ["README.md"] }, aborted: "kept", kept: laneTip },
+        );
       }),
     ),
   );

@@ -97,7 +97,7 @@ describe("CrewStore", () => {
   });
 
   it.layer(storeLayer)("landings", (it) => {
-    it.effect("lists the landed tasks of the crewmates on a host, oldest landing first", () =>
+    it.effect("lists a host's landings oldest first, and a crewmate's tasks by number", () =>
       Effect.gen(function* () {
         const store = yield* CrewStore.CrewStore;
         const member = (handle: string, host: string): CrewStore.CrewMemberRow => ({
@@ -160,6 +160,7 @@ describe("CrewStore", () => {
           {
             landings: yield* store.landingsOnHost("appdev"),
             members: (yield* store.members("game")).map((row) => row.handle),
+            backendTasks: yield* store.assignmentsOf("game", "backend"),
             read: Option.getOrUndefined(read),
           },
           {
@@ -180,6 +181,7 @@ describe("CrewStore", () => {
               },
             ],
             members: ["backend", "web"],
+            backendTasks: ["a-1", "a-2", "a-3"],
             read: task("a-1", 1, "backend", "c".repeat(40)),
           },
         );

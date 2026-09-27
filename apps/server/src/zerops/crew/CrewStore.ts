@@ -158,6 +158,11 @@ export interface CrewStoreService {
   readonly getAssignment: (
     assignment: string,
   ) => Effect.Effect<Option.Option<CrewAssignmentRow>, CrewStoreError>;
+  /** A crewmate's task ids, by number. */
+  readonly assignmentsOf: (
+    crew: string,
+    member: string,
+  ) => Effect.Effect<ReadonlyArray<string>, CrewStoreError>;
   /** Every recorded landing by a crewmate on `host`, oldest first. */
   readonly landingsOnHost: (
     host: string,
@@ -526,6 +531,15 @@ export const make = Effect.gen(function* () {
             ? Effect.succeed(Option.none<CrewAssignmentRow>())
             : assignmentFromSql(rows[0]).pipe(Effect.asSome),
         ),
+      ),
+    assignmentsOf: (crew, member) =>
+      sql<{ readonly assignment: string }>`
+        SELECT assignment FROM crew_assignment
+        WHERE crew = ${crew} AND member = ${member}
+        ORDER BY number
+      `.pipe(
+        Effect.mapError(sqlError("assignmentsOf")),
+        Effect.map((rows) => rows.map((row) => row.assignment)),
       ),
     landingsOnHost: (host) =>
       sql<CrewLanding>`

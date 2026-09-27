@@ -138,12 +138,35 @@ export type LaneCommit =
   | { readonly _tag: "frozen" }
   | { readonly _tag: "lane-missing" };
 
+export interface KeepInput {
+  /** `null` for a task the person started outside a run. */
+  readonly run: string | null;
+  readonly assignment: string;
+  readonly attempt: number;
+  /** The conflict-rework cap was reached: abort the open merge first. */
+  readonly abortMerge?: boolean | undefined;
+}
+
+/** The kept tip, or why the lane could not be committed first. */
+export type KeepOutcome =
+  | { readonly _tag: "kept"; readonly ref: string; readonly tip: string }
+  | Exclude<LaneCommit, { readonly _tag: "committed" | "unchanged" }>;
+
+/** Where an attempt's tip is kept. */
+export const attemptRef = (input: Pick<KeepInput, "run" | "assignment" | "attempt">): string =>
+  `refs/t3/crew/${input.run ?? "manual"}/${input.assignment}/${input.attempt}`;
+
 /** Widens one outcome literal to the union, so a generator's returns agree. */
 const laneCommit = (commit: LaneCommit): LaneCommit => commit;
 
 export interface CrewWorkspaceService {
   /** Apply: exclude line, disk floor, `worktree add`, wait for the mount, setup, record. */
   readonly create: (spec: LaneSpec) => Effect.Effect<CreateOutcome, CrewWorkspaceError>;
+  /** Retry, re-queue or failure: WIP, keep the tip, reset to the dispatch commit. */
+  readonly keepAndReset: (
+    key: LaneKey,
+    input: KeepInput,
+  ) => Effect.Effect<KeepOutcome, CrewWorkspaceError>;
   /** Turn end: the lane-commit precondition, then `wip(<task>): turn <n>`. */
   readonly commitTurn: (
     key: LaneKey,
@@ -295,6 +318,47 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  const keepAndReset: CrewWorkspaceService["keepAndReset"] = (key, input) =>
+    Effect.gen(function* () {
+      const row = yield* laneRow(key, "keepAndReset");
+      const lg = (args: ReadonlyArray<string>) => git({ lane: row.lane }, args);
+      if (input.abortMerge === true && row.frozenSince === null) {
+        yield* runLane(
+          row.host,
+          "keepAndReset",
+          `if ${lg(["rev-parse", "-q", "--verify", "MERGE_HEAD"])} >/dev/null; then ${lg(["merge", "--abort"])} || exit 1; fi\n`,
+        );
+      }
+      const committed = yield* commitLane(
+        row,
+        `wip(${input.assignment}): keep attempt ${input.attempt}`,
+        DEFAULT_MAX_BLOB_BYTES,
+      );
+      if (committed._tag !== "committed" && committed._tag !== "unchanged") return committed;
+      const ref = attemptRef(input);
+      const lanePattern = (yield* store.assignmentsOf(row.crew, row.lane))
+        .map((assignment) => `refs/t3/crew/*/${shellQuote(assignment)}/*`)
+        .join("|");
+      yield* runLane(
+        row.host,
+        "keepAndReset",
+        `${lg(["update-ref", ref, committed.tip])} || exit 1\n` +
+          `${lg(["reset", "-q", "--hard", row.dispatchCommit ?? committed.tip])} || exit 1\n` +
+          (lanePattern.length === 0
+            ? ""
+            : `n=0\n` +
+              `for ref in $(${lg(["for-each-ref", "--sort=-refname", "--sort=-creatordate", "--format=%(refname)", "refs/t3/crew/"])}); do\n` +
+              `  case "$ref" in refs/t3/crew/landing/*) continue ;; esac\n` +
+              `  case "$ref" in ${lanePattern}) n=$((n + 1)); [ "$n" -le ${ATTEMPT_REFS_PER_LANE} ] || ${lg(["update-ref", "-d"])} "$ref" ;; esac\n` +
+              `done\n`),
+      );
+      yield* store.updateLane(row.crew, row.lane, (lane) => ({
+        ...lane,
+        recordedTip: row.dispatchCommit ?? committed.tip,
+      }));
+      return { _tag: "kept", ref, tip: committed.tip } satisfies KeepOutcome;
+    });
+
   const create: CrewWorkspaceService["create"] = (spec) =>
     Effect.gen(function* () {
       const directory = shellQuote(laneDirectory(spec.handle));
@@ -359,7 +423,7 @@ export const make = Effect.gen(function* () {
       ) satisfies CreateOutcome;
     });
 
-  return CrewWorkspace.of({ create, commitTurn });
+  return CrewWorkspace.of({ create, commitTurn, keepAndReset });
 });
 
 export const layer = Layer.effect(CrewWorkspace, make);

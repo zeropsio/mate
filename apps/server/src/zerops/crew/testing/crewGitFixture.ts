@@ -43,6 +43,14 @@ export const git = (cwd: string, args: ReadonlyArray<string>): string =>
     encoding: "utf8",
   }).trim();
 
+/** Git as the person, for a command expected to fail (a conflicting merge); its exit code. */
+export const gitExit = (cwd: string, args: ReadonlyArray<string>): number | null =>
+  NodeChildProcess.spawnSync("git", [...args], {
+    cwd,
+    env: { ...process.env, ...PERSON },
+    stdio: "ignore",
+  }).status;
+
 export const write = (root: string, path: string, content: string): void => {
   const target = NodePath.join(root, path);
   NodeFS.mkdirSync(NodePath.dirname(target), { recursive: true });
@@ -103,6 +111,59 @@ export const crewShellLayer = (
     Layer.provide(localSshProcessRunnerLayer(options.remoteEnv ?? TEST_IDENTITY)),
     Layer.provideMerge(NodeServices.layer),
   );
+
+/** A writer on the fixture's host, lane = handle. */
+export const memberRow = (handle: string, crew = "game"): CrewStore.CrewMemberRow => ({
+  crew,
+  handle,
+  displayName: handle,
+  kind: "writer",
+  tint: null,
+  host: TEST_HOST,
+  lane: handle,
+  readOnly: false,
+  login: null,
+  model: null,
+  effort: null,
+  jobVersion: 1,
+  runCommand: null,
+  restartAfterMerge: false,
+  crewPort: null,
+  config: {},
+});
+
+/** A task `#number` owned by `member`, landed when `landedCommit` is set. */
+export const taskRow = (
+  assignment: string,
+  number: number,
+  member: string,
+  landedCommit: string | null = null,
+): CrewStore.CrewAssignmentRow => ({
+  assignment,
+  run: null,
+  crew: "game",
+  member,
+  number,
+  title: `Task ${number}`,
+  source: "you",
+  createdBy: "user-1",
+  card: null,
+  pending: null,
+  dependsOn: [],
+  fresh: false,
+  state: landedCommit === null ? "working" : "landed",
+  attempt: 1,
+  reworks: 0,
+  remerges: 0,
+  mergedHead: null,
+  check: null,
+  review: null,
+  report: null,
+  waiting: null,
+  landedCommit,
+  createdAt: "2026-09-27T10:00:00.000Z",
+  updatedAt: `2026-09-27T10:${String(number).padStart(2, "0")}:00.000Z`,
+});
 
 /** A fresh in-memory crew database. */
 export const crewStoreLayer = CrewStore.layer.pipe(
