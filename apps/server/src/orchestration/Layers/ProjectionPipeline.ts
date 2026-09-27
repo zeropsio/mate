@@ -2,6 +2,7 @@ import {
   ApprovalRequestId,
   UserInputAttachmentAnswerPayload,
   type ChatAttachment,
+  type MessageId,
   type OrchestrationEvent,
   type OrchestrationSessionStatus,
   ThreadId,
@@ -151,6 +152,16 @@ function threadMessagePreviewFromSource(
 // How many of the newest messages a preview looks through for one that
 // previews: past this many slash commands in a row, it says nothing.
 const PREVIEW_SOURCE_WINDOW = 20;
+
+// A request to compact the conversation — `/compact` alone, as the command
+// reactor reads it.
+function isCompactRequest(message: ProjectionThreadMessage): boolean {
+  return (
+    message.role === "user" &&
+    (message.attachments?.length ?? 0) === 0 &&
+    message.text.trim().toLowerCase() === "/compact"
+  );
+}
 
 function firstThreadMessagePreview(
   sources: ReadonlyArray<ProjectionThreadMessagePreviewSource>,
@@ -614,6 +625,44 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       return next;
     });
 
+    const isCompactRequestId = Effect.fn("isCompactRequestId")(function* (messageId: MessageId) {
+      const message = yield* projectionThreadMessageRepository.getByMessageId({ messageId });
+      return Option.isSome(message) && isCompactRequest(message.value);
+    });
+
+    // Whether the person's message lands in a run already on — a turn the
+    // provider is running (the command reactor's continuation) or starting
+    // for an earlier message — and is steered into it: a follow-up, not the
+    // task. A compaction's run is nobody's task: the reactor holds what
+    // arrives during it and starts it as the next run.
+    const isSteeredIntoRun = Effect.fn("isSteeredIntoRun")(function* (
+      payload: Extract<OrchestrationEvent, { type: "thread.message-sent" }>["payload"],
+    ) {
+      const threadId = payload.threadId;
+      const session = yield* projectionThreadSessionRepository.getByThreadId({ threadId });
+      if (Option.isNone(session)) return false;
+      const { status, activeTurnId } = session.value;
+      if (status === "running" && activeTurnId !== null) {
+        const turn = yield* projectionTurnRepository.getByTurnId({
+          threadId,
+          turnId: activeTurnId,
+        });
+        const opener = Option.isSome(turn) ? turn.value.pendingMessageId : null;
+        return opener === null || !(yield* isCompactRequestId(opener));
+      }
+      if (status !== "starting") return false;
+      const pendingTurnStart = yield* projectionTurnRepository.getPendingTurnStartByThreadId({
+        threadId,
+      });
+      if (
+        Option.isNone(pendingTurnStart) ||
+        pendingTurnStart.value.messageId === payload.messageId
+      ) {
+        return false;
+      }
+      return !(yield* isCompactRequestId(pendingTurnStart.value.messageId));
+    });
+
     const refreshThreadShellSummary = Effect.fn("refreshThreadShellSummary")(function* (
       threadId: ThreadId,
     ) {
@@ -627,7 +676,6 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       const [
         latestUserMessageAt,
         previewSources,
-        userPreviewSources,
         hasActionableProposedPlan,
         activities,
         pendingApprovalCount,
@@ -635,11 +683,6 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         projectionThreadMessageRepository.getLatestUserMessageAt({ threadId }),
         projectionThreadMessageRepository.listLatestPreviewSources({
           threadId,
-          limit: PREVIEW_SOURCE_WINDOW,
-        }),
-        projectionThreadMessageRepository.listLatestPreviewSources({
-          threadId,
-          role: "user",
           limit: PREVIEW_SOURCE_WINDOW,
         }),
         projectionThreadProposedPlanRepository.hasActionableByThreadId({
@@ -652,11 +695,28 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
 
       const pendingUserInputCount = derivePendingUserInputCountFromActivities(activities);
 
+      // The task stays as the fold chose it: whether an ask started a run or
+      // was steered into one is known only as it arrives. Only a revert takes
+      // messages away — when the task's own went with them, the newest ask
+      // that remains is the task.
+      const task = existingRow.value.latestUserMessagePreview ?? null;
+      const taskIsGone =
+        task !== null && (latestUserMessageAt === null || task.createdAt > latestUserMessageAt);
+      const latestUserMessagePreview = taskIsGone
+        ? firstThreadMessagePreview(
+            yield* projectionThreadMessageRepository.listLatestPreviewSources({
+              threadId,
+              role: "user",
+              limit: PREVIEW_SOURCE_WINDOW,
+            }),
+          )
+        : task;
+
       yield* projectionThreadRepository.upsert({
         ...existingRow.value,
         latestUserMessageAt,
         latestMessagePreview: firstThreadMessagePreview(previewSources),
-        latestUserMessagePreview: firstThreadMessagePreview(userPreviewSources),
+        latestUserMessagePreview,
         pendingApprovalCount,
         pendingUserInputCount,
         hasActionableProposedPlan: hasActionableProposedPlan ? 1 : 0,
@@ -1012,9 +1072,11 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             existingRow.value.latestMessagePreview ?? null,
             event.payload,
           );
-          // The task as the person put it: the same fold, over their messages only.
+          // The task as the person put it: the same fold, over the messages of
+          // theirs that start a run. One steered into a run already on is a
+          // follow-up, and the task stays.
           const latestUserMessagePreview =
-            event.payload.role === "user"
+            event.payload.role === "user" && !(yield* isSteeredIntoRun(event.payload))
               ? yield* foldLatestMessagePreview(
                   existingRow.value.latestUserMessagePreview ?? null,
                   event.payload,
@@ -1389,12 +1451,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             const pendingMessage = yield* projectionThreadMessageRepository.getByMessageId({
               messageId: pendingTurnStart.value.messageId,
             });
-            if (
-              Option.isSome(pendingMessage) &&
-              pendingMessage.value.role === "user" &&
-              (pendingMessage.value.attachments?.length ?? 0) === 0 &&
-              pendingMessage.value.text.trim().toLowerCase() === "/compact"
-            ) {
+            if (Option.isSome(pendingMessage) && isCompactRequest(pendingMessage.value)) {
               return;
             }
           }
