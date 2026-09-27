@@ -36,6 +36,7 @@ import * as ZeropsAgentSignOutModule from "./ZeropsAgentSignOut.ts";
 import * as ZeropsGitRemoteProbe from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsProjectSigners from "./ZeropsProjectSigners.ts";
+import * as ZeropsTurnAdmission from "./ZeropsTurnAdmission.ts";
 import type { ZeropsAgentLoginByAgent } from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsCliModule from "./ZeropsCli.ts";
@@ -496,11 +497,26 @@ const dataConsoleLayer = () =>
     }),
   ).pipe(Layer.provide(FetchHttpClient.layer));
 
+// A fixture scene has no platform to read tags from: nobody signed anything
+// in, and nothing is ever signed out.
+const fixtureSignersLayer = Layer.succeed(
+  ZeropsProjectSigners.ZeropsProjectSigners,
+  ZeropsProjectSigners.ZeropsProjectSigners.of({
+    signers: Effect.succeed({}),
+    turnRefusal: ({ agent, subject }) =>
+      Effect.succeed(ZeropsProjectSigners.turnRefusal({ agent, signer: undefined, subject })),
+    checkLeaversNow: Effect.succeed(0),
+  }),
+);
+
 export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
   const auth = agentAuthLayer(scene);
   return Layer.mergeAll(
     lifecycleLayer(scene),
     agentLoginLayer(scene).pipe(Layer.provideMerge(auth)),
+    // The live gate, over this scene's agents and signers — a fixture admits
+    // and refuses turns exactly as a live Mate would on the same facts.
+    ZeropsTurnAdmission.layer.pipe(Layer.provide(auth), Layer.provide(fixtureSignersLayer)),
     agentSignOutFixtureLayer(),
     browserStreamLayer(),
     zeropsCliFixtureLayer(),
@@ -520,17 +536,7 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
           }),
       }),
     ),
-    // A fixture scene has no platform to read tags from: nobody signed
-    // anything in, and nothing is ever signed out.
-    Layer.succeed(
-      ZeropsProjectSigners.ZeropsProjectSigners,
-      ZeropsProjectSigners.ZeropsProjectSigners.of({
-        signers: Effect.succeed({}),
-        turnRefusal: ({ agent, subject }) =>
-          Effect.succeed(ZeropsProjectSigners.turnRefusal({ agent, signer: undefined, subject })),
-        checkLeaversNow: Effect.succeed(0),
-      }),
-    ),
+    fixtureSignersLayer,
     // A fixture scene has no live env store either: the reader answers
     // `undefined` explicitly, never a hidden default. `ZeropsIdentityStatus`
     // is not provided here — it is supplied once, live or fixture alike, in

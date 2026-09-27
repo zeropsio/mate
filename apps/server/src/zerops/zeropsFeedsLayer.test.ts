@@ -12,11 +12,16 @@ import {
 } from "@t3tools/shared/showcaseScenes";
 
 import * as ServerConfig from "../config.ts";
+import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import { loadFixtureScene } from "./ZeropsFixtureFeeds.ts";
 import { selectZeropsFeedsLayer, ZeropsLayerLive } from "./zeropsFeedsLayer.ts";
 
 const encodeScene = Schema.encodeSync(Schema.fromJsonString(ShowcaseSceneJson));
+
+// What the fixture branch reads from below besides the config: the projection
+// the turn gate reads a thread's agent from.
+const hostLayer = Layer.mock(ProjectionSnapshotQuery)({});
 
 it.layer(NodeServices.layer)("zerops feed layer selection", (it) => {
   it.effect("loads a configured scene without constructing live feed dependencies", () =>
@@ -26,7 +31,18 @@ it.layer(NodeServices.layer)("zerops feed layer selection", (it) => {
       if (selected.kind !== "fixture") {
         return;
       }
-      const agentAuth = yield* ZeropsAgentAuth.ZeropsAgentAuth.pipe(Effect.provide(selected.layer));
+      const agentAuth = yield* ZeropsAgentAuth.ZeropsAgentAuth.pipe(
+        Effect.provide(
+          selected.layer.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                hostLayer,
+                ServerConfig.layerTest(process.cwd(), { prefix: "fixture-select-" }),
+              ),
+            ),
+          ),
+        ),
+      );
 
       assert.deepEqual(
         (yield* agentAuth.latest).agents.map((agent) => agent.agentId),
@@ -49,7 +65,7 @@ it.layer(NodeServices.layer)("zerops feed layer selection", (it) => {
       // type; this configured branch proves they are not requested at runtime.
       // @effect-diagnostics-next-line unsafeEffectTypeAssertion:off
       const agentAuth = yield* ZeropsAgentAuth.ZeropsAgentAuth.pipe(
-        Effect.provide(ZeropsLayerLive),
+        Effect.provide(ZeropsLayerLive.pipe(Layer.provide(hostLayer))),
         Effect.orDie,
       ) as Effect.Effect<
         ZeropsAgentAuth.ZeropsAgentAuth["Service"],

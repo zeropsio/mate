@@ -1,18 +1,30 @@
 import { assert, it } from "@effect/vitest";
-import { ThreadId, ZeropsAgentLoginError } from "@t3tools/contracts";
+import {
+  CommandId,
+  MessageId,
+  ProviderInstanceId,
+  ThreadId,
+  ZeropsAgentLoginError,
+} from "@t3tools/contracts";
 import { loadShowcaseScene, type ShowcaseScene } from "@t3tools/shared/showcaseScenes";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
+import * as ServerConfig from "../config.ts";
+import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLogin from "./ZeropsAgentLogin.ts";
+import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { makeFixtureZeropsLayer } from "./ZeropsFixtureFeeds.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
+import { ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
 
 const serviceMapScene = loadShowcaseScene("web:service-map-live");
 const noZeropsScene = loadShowcaseScene("web:no-zerops");
@@ -82,6 +94,22 @@ const absoluteLoginStepScene: ShowcaseScene = {
   ],
 };
 
+/**
+ * What the server hands the fixture layer from below: its config, and the
+ * projection the turn gate reads a thread's agent from. No scene here has a
+ * thread to read, so the projection answers nothing.
+ */
+const fixtureHost = (zerops: ServerConfig.ServerConfig["Service"]["zerops"]) =>
+  Layer.mergeAll(
+    ServerConfig.layer({ zerops } as ServerConfig.ServerConfig["Service"]),
+    Layer.mock(ProjectionSnapshotQuery)({}),
+  );
+
+const fixtureLayer = (
+  scene: ShowcaseScene,
+  zerops: ServerConfig.ServerConfig["Service"]["zerops"] = undefined,
+) => makeFixtureZeropsLayer(scene).pipe(Layer.provide(fixtureHost(zerops)));
+
 const withFixtureFeeds = <A>(
   scene: ShowcaseScene,
   use: (feeds: {
@@ -94,7 +122,7 @@ const withFixtureFeeds = <A>(
     lifecycle: ZeropsLifecycle.ZeropsLifecycle,
     agentAuth: ZeropsAgentAuth.ZeropsAgentAuth,
     agentLogin: ZeropsAgentLogin.ZeropsAgentLogin,
-  }).pipe(Effect.flatMap(use), Effect.scoped, Effect.provide(makeFixtureZeropsLayer(scene)));
+  }).pipe(Effect.flatMap(use), Effect.scoped, Effect.provide(fixtureLayer(scene)));
 
 const advanceTestClock = (ms: number) =>
   TestClock.adjust(`${ms} millis`).pipe(Effect.andThen(Effect.yieldNow));
@@ -288,5 +316,46 @@ it.effect("answers an unknown lifecycle thread with the live feed's empty state"
         recentTools: [],
       });
     }),
+  ),
+);
+
+it.effect("admits turns through the live gate, over a scene where nobody recorded a signer", () =>
+  Effect.gen(function* () {
+    const admission = yield* ZeropsTurnAdmission;
+    const refusal = yield* admission
+      .admit({
+        command: {
+          type: "thread.turn.start",
+          commandId: CommandId.make("fixture-command"),
+          threadId: ThreadId.make("fixture-thread"),
+          message: {
+            messageId: MessageId.make("fixture-message"),
+            role: "user",
+            text: "hi",
+            attachments: [],
+          },
+          modelSelection: { instanceId: ProviderInstanceId.make("claudeAgent"), model: "m" },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          createdAt: "2026-09-27T10:00:00.000Z",
+        },
+        principal: { kind: "session", subject: `${ZEROPS_SUBJECT_PREFIX}jan-user-id` },
+      })
+      .pipe(Effect.flip);
+    assert.equal(
+      refusal.message,
+      "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it. Sign in with your own account first.",
+    );
+  }).pipe(
+    Effect.provide(
+      fixtureLayer(
+        serviceMapScene,
+        resolveZeropsEnvironment({
+          projectId: "fixture-project",
+          apiHost: undefined,
+          allowedOrigins: [],
+        }),
+      ),
+    ),
   ),
 );

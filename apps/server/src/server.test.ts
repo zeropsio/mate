@@ -155,6 +155,7 @@ import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsAgentSignOutModule from "./zerops/ZeropsAgentSignOut.ts";
 import * as ZeropsProjectSignersModule from "./zerops/ZeropsProjectSigners.ts";
+import * as ZeropsTurnAdmissionModule from "./zerops/ZeropsTurnAdmission.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
 import * as ZeropsCliModule from "./zerops/ZeropsCli.ts";
 import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
@@ -548,6 +549,9 @@ const buildAppUnderTest = (options?: {
     | ZeropsDataConsoleModule.ZeropsDataConsole
     | ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe
     | ZeropsProjectSignersModule.ZeropsProjectSigners
+    | ZeropsTurnAdmissionModule.ZeropsTurnAdmission,
+    never,
+    ServerConfig.ServerConfig | ProjectionSnapshotQuery.ProjectionSnapshotQuery
   >;
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
@@ -796,6 +800,45 @@ const buildAppUnderTest = (options?: {
           ...options.layers.vcsStatusBroadcaster,
         })
       : VcsStatusBroadcaster.layer.pipe(Layer.provide(gitWorkflowLayer));
+    // One projection for the routes and for D6's gate, which reads a
+    // thread's agent from it.
+    const projectionSnapshotQueryLayer = Layer.mock(
+      ProjectionSnapshotQuery.ProjectionSnapshotQuery,
+    )({
+      getUserInputActivity: () => Effect.die("unused"),
+      getCommandReadModel: () => Effect.succeed(makeDefaultOrchestrationReadModel()),
+      getSnapshot: () => Effect.succeed(makeDefaultOrchestrationReadModel()),
+      getShellSnapshot: () =>
+        Effect.succeed({
+          snapshotSequence: 0,
+          projects: [],
+          threads: [],
+          updatedAt: "1970-01-01T00:00:00.000Z",
+        }),
+      getArchivedShellSnapshot: () =>
+        Effect.succeed({
+          snapshotSequence: 0,
+          projects: [],
+          threads: [],
+          updatedAt: "1970-01-01T00:00:00.000Z",
+        }),
+      searchThreads: () => Effect.succeed({ matches: [] }),
+      getSnapshotSequence: () => Effect.succeed({ snapshotSequence: 0 }),
+      getProjectShellById: () => Effect.succeedNone,
+      getThreadShellById: () => Effect.succeedNone,
+      getThreadDetailById: () => Effect.succeedNone,
+      getThreadDetailSnapshot: () => Effect.succeedNone,
+      getCounts: () => Effect.succeed({ projectCount: 0, threadCount: 0 }),
+      getEventReplayStats: ({ fromSequenceExclusive, toSequenceInclusive }) =>
+        Effect.succeed({
+          eventCount: Math.max(0, toSequenceInclusive - fromSequenceExclusive),
+          payloadBytes: 0,
+        }),
+      getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
+      getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
+      getThreadCheckpointContext: () => Effect.succeed(Option.none()),
+      ...options?.layers?.projectionSnapshotQuery,
+    });
     const resourceTelemetryLayer = ResourceTelemetry.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -1002,43 +1045,7 @@ const buildAppUnderTest = (options?: {
           }),
         ),
       ),
-      Layer.provide(
-        Layer.mock(ProjectionSnapshotQuery.ProjectionSnapshotQuery)({
-          getUserInputActivity: () => Effect.die("unused"),
-          getCommandReadModel: () => Effect.succeed(makeDefaultOrchestrationReadModel()),
-          getSnapshot: () => Effect.succeed(makeDefaultOrchestrationReadModel()),
-          getShellSnapshot: () =>
-            Effect.succeed({
-              snapshotSequence: 0,
-              projects: [],
-              threads: [],
-              updatedAt: "1970-01-01T00:00:00.000Z",
-            }),
-          getArchivedShellSnapshot: () =>
-            Effect.succeed({
-              snapshotSequence: 0,
-              projects: [],
-              threads: [],
-              updatedAt: "1970-01-01T00:00:00.000Z",
-            }),
-          searchThreads: () => Effect.succeed({ matches: [] }),
-          getSnapshotSequence: () => Effect.succeed({ snapshotSequence: 0 }),
-          getProjectShellById: () => Effect.succeedNone,
-          getThreadShellById: () => Effect.succeedNone,
-          getThreadDetailById: () => Effect.succeedNone,
-          getThreadDetailSnapshot: () => Effect.succeedNone,
-          getCounts: () => Effect.succeed({ projectCount: 0, threadCount: 0 }),
-          getEventReplayStats: ({ fromSequenceExclusive, toSequenceInclusive }) =>
-            Effect.succeed({
-              eventCount: Math.max(0, toSequenceInclusive - fromSequenceExclusive),
-              payloadBytes: 0,
-            }),
-          getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
-          getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
-          getThreadCheckpointContext: () => Effect.succeed(Option.none()),
-          ...options?.layers?.projectionSnapshotQuery,
-        }),
-      ),
+      Layer.provide(projectionSnapshotQueryLayer),
       Layer.provide(
         Layer.mock(CheckpointDiffQuery.CheckpointDiffQuery)({
           getTurnDiff: () =>
@@ -1092,7 +1099,7 @@ const buildAppUnderTest = (options?: {
         ),
       ),
       Layer.provide(
-        options?.fixtureZeropsLayer ??
+        options?.fixtureZeropsLayer?.pipe(Layer.provide(projectionSnapshotQueryLayer)) ??
           Layer.mergeAll(
             // A test machine is not a Zerops environment, which is exactly the
             // shape the real feeds report there: unavailable, no errors. Mocked
@@ -1220,6 +1227,13 @@ const buildAppUnderTest = (options?: {
                 }),
               ...options?.layers?.zeropsGitRemoteProbe,
             }),
+          ).pipe((zeropsMocks) =>
+            // D6's gate, live, over the agent-auth and signers mocked above:
+            // with no agents reported, it admits every turn.
+            ZeropsTurnAdmissionModule.layer.pipe(
+              Layer.provideMerge(zeropsMocks),
+              Layer.provide(projectionSnapshotQueryLayer),
+            ),
           ),
       ),
       Layer.provide(
