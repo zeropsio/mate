@@ -35,6 +35,7 @@ export function CrewmateEditor({
       commands={commands}
       crewPort={snapshot.crewmates.find((row) => row.handle === target.handle)?.app?.port ?? null}
       devHosts={crewDevHosts(snapshot)}
+      mateName={mate.kind === "mate" ? mate.mate.name : "the Mate"}
       mateTint={mate.kind === "mate" ? mate.mate.tint : undefined}
       onOpenChange={(open) => {
         if (!open) onClose();
