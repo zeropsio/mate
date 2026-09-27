@@ -222,7 +222,6 @@ import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { useNowMs } from "../zerops/useNowMs";
 import { useZeropsContainers } from "../zerops/zeropsContainers";
-import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
 import { SidebarZeropsTree, type SidebarProjectFlow } from "./zerops/SidebarZeropsTree";
 import { sidebarStopReads } from "./zerops/SidebarZeropsTree.logic";
@@ -230,6 +229,7 @@ import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
 import { useSidebarWaiting } from "../zerops/useSidebarWaiting";
 import { shownInScope, useMateScope } from "../zerops/mateScope";
+import { useOpenMate } from "../zerops/useOpenMate";
 import { SidebarWaitingStack } from "./zerops/SidebarWaitingStack";
 
 import { SidebarMatePeekLive } from "./zerops/SidebarMatePeekLive";
@@ -239,7 +239,6 @@ import {
   canCreateProjectsInOrganization,
   flowVerbKey,
   type EnvironmentRow,
-  resolvePrimaryConversation,
 } from "@t3tools/client-runtime/zerops";
 import {
   candidatesNotice,
@@ -1801,7 +1800,8 @@ export default function Sidebar() {
         : candidatesNotice(zeropsListing, ZEROPS_SIDEBAR_SURFACE, zeropsNowMs),
     [zeropsListing, zeropsNowMs, zeropsSession.organizationStatus],
   );
-  const zeropsLinks = useEnvironmentLinks();
+  // A Mate's conversation, from its row — the jump box opens it the same way.
+  const openMate = useOpenMate();
   // Each project's flow — what its Mates have waiting, what its environments
   // run, whether there is something to release — read once for the account
   // (`ZeropsProjectFlowProvider`) and drawn under the project as a timeline.
@@ -4088,38 +4088,7 @@ export default function Sidebar() {
                 if (isMobile) {
                   setOpenMobile(false);
                 }
-                // Registered here and not gone or replaced: open it, whatever
-                // its socket is doing — the route says what the Mate is up
-                // to. Otherwise hand off to the projects screen, which owns
-                // the connect flow — better than a row that looks clickable
-                // and quietly does nothing.
-                const environmentId = zeropsLinks.linkTarget(candidate);
-                if (environmentId === undefined) {
-                  void router.navigate({ to: "/zerops" });
-                  return;
-                }
-                // One environment is one conversation: open *its* conversation,
-                // not whichever project anywhere was touched last — which is
-                // what landing on the index would pick.
-                const { primary } = resolvePrimaryConversation(
-                  threads.filter((thread) => thread.environmentId === environmentId),
-                );
-                if (primary !== undefined) {
-                  void router.navigate({
-                    to: "/$environmentId/$threadId",
-                    params: buildThreadRouteParams(scopeThreadRef(environmentId, primary.id)),
-                  });
-                  return;
-                }
-                // No conversation yet: start one in the environment's project.
-                const project = projects.find((entry) => entry.environmentId === environmentId);
-                if (project !== undefined) {
-                  void handleNewThreadRef.current(
-                    scopeProjectRef(project.environmentId, project.id),
-                  );
-                  return;
-                }
-                void router.navigate({ to: "/" });
+                openMate(candidate);
               }}
             />
           ) : null}
