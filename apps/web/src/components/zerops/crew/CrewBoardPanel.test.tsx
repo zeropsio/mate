@@ -328,6 +328,24 @@ describe("CrewNewTaskBody", () => {
     // Nothing to create until it has an owner and a title.
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Create task<\/button>/u);
   });
+
+  it("starts with the owner a crewmate's chat asked for", () => {
+    const text = textOf(
+      renderToStaticMarkup(
+        <Sheet open>
+          <CrewNewTaskBody
+            owner="backend"
+            owners={crewTaskOwners(view)}
+            dependencies={crewDependencyOptions(view)}
+            canAct
+            error={null}
+            onCreate={() => undefined}
+          />
+        </Sheet>,
+      ),
+    );
+    expect(text).toContain("Owner Backend Title");
+  });
 });
 
 describe("CrewBoardPanel", () => {
