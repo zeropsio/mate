@@ -97,6 +97,7 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import type { MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
   ArrowUpIcon,
+  BellOffIcon,
   CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
@@ -141,6 +142,7 @@ import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { environmentRoleTag, groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
 import { formatWorkingTime, stopNameSaysOnlyRole } from "./SidebarZeropsTree.logic";
+import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
 import {
   keyboardTarget,
   movedAnnouncement,
@@ -394,6 +396,13 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly births?: ReadonlyArray<ZeropsPlacedBirth> | undefined;
   /** How clock times read — the paused Mate's "picks up at" — per the viewer's setting. */
   readonly timestampFormat?: TimestampFormat;
+  /**
+   * What each Mate's own menu can do (`useSidebarMateMenus`). Absent — a
+   * harness, a test — the rows carry no menu.
+   */
+  readonly getMateActions?:
+    | ((candidate: T, activity: ZeropsAgentActivity | undefined) => MateRowActions | undefined)
+    | undefined;
 }
 
 export function SidebarZeropsTree<T extends RosterCandidate>({
@@ -414,6 +423,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   className,
   births = NO_BIRTHS,
   timestampFormat = "locale",
+  getMateActions,
 }: SidebarZeropsTreeProps<T>) {
   const emptyReason = mateEnvironmentsEmptyReason(candidates);
   const [openLists, setOpenLists] = useState<ReadonlySet<string>>(() => new Set());
@@ -612,8 +622,12 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           return (
             <div className="flex flex-col" key={item.key}>
               <MateRow
+                actions={getMateActions?.(item, getActivity?.(item))}
                 active={item.project.id === activeProjectId}
                 activity={getActivity?.(item)}
+                appUrl={
+                  projectFlow.mates.find((mate) => mate.projectId === item.project.id)?.preview
+                }
                 candidate={item}
                 onSelect={onSelect}
                 owner={getOwner?.(item)}
@@ -1091,6 +1105,8 @@ function MateRow<T extends RosterCandidate>({
   owner,
   railCap,
   timestampFormat,
+  actions,
+  appUrl,
 }: {
   readonly candidate: T;
   readonly tint: MateTintId;
@@ -1100,6 +1116,10 @@ function MateRow<T extends RosterCandidate>({
   readonly owner: ZeropsMateOwner | undefined;
   readonly railCap?: RailCap;
   readonly timestampFormat: TimestampFormat;
+  /** Its menu's verbs; absent, the row carries no menu (a harness, a test). */
+  readonly actions?: MateRowActions | undefined;
+  /** Its app — its pair's stage route — where it has one. */
+  readonly appUrl?: string | undefined;
 }) {
   const tags = readZeropsGroupTags(candidate.project.tagList);
   const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
@@ -1112,95 +1132,186 @@ function MateRow<T extends RosterCandidate>({
   // The plan as a ring around the face while it works: one segment a step.
   const progress = face === "working" ? live?.progress : undefined;
   const unread = live?.unread === true;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuAt, setMenuAt] = useState<MenuPoint | undefined>(undefined);
+  const [renaming, setRenaming] = useState(false);
+  const rowButton = useRef<HTMLButtonElement>(null);
+  const openMenu = (at?: MenuPoint) => {
+    setMenuAt(at);
+    setMenuOpen(true);
+    actions?.onMenuOpen?.();
+  };
 
   return (
-    <button
-      aria-current={active ? "true" : undefined}
-      className={cn(
-        // The wider gap is the face's: it overhangs the 20px spine column by
-        // 4px a side, and the owner's badge by as much again. It is also the
-        // menu's one text column — every stop and change row takes the same
-        // gap after the same 20px cell (the owner, 2026-09-25).
-        "flex w-full min-w-0 cursor-pointer items-center gap-3.5 rounded-md px-2.5 text-left outline-none select-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
-        active
-          ? "bg-sidebar-row-active text-sidebar-foreground"
-          : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
-      )}
-      data-zerops-surface="sidebar-mate"
-      onClick={() => onSelect(candidate)}
-      type="button"
+    // The row is the container, not the button: the menu's trigger sits in
+    // the row beside the button, never inside it, and the row stays lit
+    // while the pointer is on either.
+    <div
+      className="group/mate relative"
+      data-zerops-surface="sidebar-mate-row"
+      onContextMenu={
+        actions === undefined
+          ? undefined
+          : (event) => {
+              event.preventDefault();
+              openMenu({ x: event.clientX, y: event.clientY });
+            }
+      }
     >
-      <RailCell cap={railCap}>
-        {/* The Mate is the node the rest of its project hangs from, so it
-            wears the card's face rather than a row's, and the person it
-            belongs to rides on its corner (a teammate, 2026-09-24). The column
-            stays 20px: the spine keeps its x, and the face overhangs it. A
-            ring, when it works, stands 4px clear all round, and the spine
-            stops at the ring instead of running under it. */}
-        <span className={cn("relative flex", progress !== undefined && "my-1")}>
-          <MateFace size="md" state={face} tint={tint} />
-          {progress === undefined ? null : (
-            <span className="absolute -inset-1 flex" data-zerops-surface="sidebar-mate-ring">
-              <PlanRing completed={progress.completed} total={progress.total} />
+      <button
+        aria-current={active ? "true" : undefined}
+        className={cn(
+          // The wider gap is the face's: it overhangs the 20px spine column by
+          // 4px a side, and the owner's badge by as much again. It is also the
+          // menu's one text column — every stop and change row takes the same
+          // gap after the same 20px cell (the owner, 2026-09-25).
+          "flex w-full min-w-0 cursor-pointer items-center gap-3.5 rounded-md px-2.5 text-left outline-none select-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+          active
+            ? "bg-sidebar-row-active text-sidebar-foreground"
+            : "bg-transparent text-sidebar-foreground group-hover/mate:bg-sidebar-row-hover group-has-[[data-popup-open]]/mate:bg-sidebar-row-hover",
+        )}
+        data-zerops-surface="sidebar-mate"
+        onClick={() => onSelect(candidate)}
+        onKeyDown={(event) => {
+          // The keyboard's right-click: the menu key, or Shift+F10.
+          if (actions === undefined) return;
+          if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+            event.preventDefault();
+            openMenu();
+          }
+        }}
+        ref={rowButton}
+        type="button"
+      >
+        <RailCell cap={railCap}>
+          {/* The Mate is the node the rest of its project hangs from, so it
+              wears the card's face rather than a row's, and the person it
+              belongs to rides on its corner (a teammate, 2026-09-24). The
+              column stays 20px: the spine keeps its x, and the face overhangs
+              it. A ring, when it works, stands 4px clear all round, and the
+              spine stops at the ring instead of running under it. */}
+          <span className={cn("relative flex", progress !== undefined && "my-1")}>
+            <MateFace size="md" state={face} tint={tint} />
+            {progress === undefined ? null : (
+              <span className="absolute -inset-1 flex" data-zerops-surface="sidebar-mate-ring">
+                <PlanRing completed={progress.completed} total={progress.total} />
+              </span>
+            )}
+            {owner === undefined ? null : (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span
+                      className="absolute -right-1 -bottom-1 flex"
+                      data-zerops-surface="sidebar-mate-owner"
+                    />
+                  }
+                >
+                  {/* Cut out of the face by a ring of the menu's own ground. */}
+                  <Avatar
+                    className="ring-2 ring-sidebar"
+                    initials={owner.initials}
+                    size="xs"
+                    src={owner.avatarUrl}
+                  />
+                  <span className="sr-only">{`${owner.name}'s Mate`}</span>
+                </TooltipTrigger>
+                <TooltipPopup side="right">{`${owner.name}'s Mate`}</TooltipPopup>
+              </Tooltip>
+            )}
+          </span>
+        </RailCell>
+        {/* The row's own vertical padding lives here: the rail has to run the
+            full height of the row to meet the rows either side of it. */}
+        <span className="flex min-w-0 flex-1 flex-col py-2">
+          <span className="flex min-w-0 items-center gap-2">
+            <span className={cn("flex min-w-0 flex-1 items-center gap-1", renaming && "invisible")}>
+              <span
+                className={cn(
+                  "min-w-0 truncate text-sm leading-5",
+                  unread ? "font-bold" : "font-medium",
+                )}
+                data-zerops-surface="sidebar-mate-name"
+              >
+                {name}
+              </span>
+              {actions?.muted === true ? (
+                <BellOffIcon
+                  aria-label="Notifications muted"
+                  className="size-3 shrink-0 text-sidebar-muted-foreground/70"
+                  data-zerops-surface="sidebar-mate-muted"
+                  role="img"
+                />
+              ) : null}
+            </span>
+            {/* A slot that is always there: the time, which gives way to the
+                row's menu on hover and focus without anything moving. */}
+            <span
+              className={cn(
+                "flex h-5 min-w-11 shrink-0 justify-end",
+                actions !== undefined &&
+                  "transition-opacity group-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0",
+              )}
+            >
+              {live === undefined ? null : (
+                <MateTime activity={live} timestampFormat={timestampFormat} />
+              )}
+            </span>
+          </span>
+          {subject === undefined ? null : (
+            <span
+              className={cn(
+                "truncate text-xs leading-4",
+                unread ? "font-medium text-sidebar-foreground" : "text-sidebar-muted-foreground",
+              )}
+              data-zerops-surface="sidebar-mate-subject"
+            >
+              {subject}
             </span>
           )}
-          {owner === undefined ? null : (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span
-                    className="absolute -right-1 -bottom-1 flex"
-                    data-zerops-surface="sidebar-mate-owner"
-                  />
-                }
-              >
-                {/* Cut out of the face by a ring of the menu's own ground. */}
-                <Avatar
-                  className="ring-2 ring-sidebar"
-                  initials={owner.initials}
-                  size="xs"
-                  src={owner.avatarUrl}
-                />
-                <span className="sr-only">{`${owner.name}'s Mate`}</span>
-              </TooltipTrigger>
-              <TooltipPopup side="right">{`${owner.name}'s Mate`}</TooltipPopup>
-            </Tooltip>
+          {snippet === undefined ? null : (
+            <MateSnippet snippet={snippet} threadKey={live?.threadKey} />
           )}
         </span>
-      </RailCell>
-      {/* The row's own vertical padding lives here: the rail has to run the
-          full height of the row to meet the rows either side of it. */}
-      <span className="flex min-w-0 flex-1 flex-col py-2">
-        <span className="flex min-w-0 items-center gap-2">
-          <span
-            className={cn(
-              "min-w-0 flex-1 truncate text-sm leading-5",
-              unread ? "font-bold" : "font-medium",
-            )}
-            data-zerops-surface="sidebar-mate-name"
-          >
-            {name}
-          </span>
-          {live === undefined ? null : (
-            <MateTime activity={live} timestampFormat={timestampFormat} />
-          )}
+      </button>
+      {actions === undefined ? null : (
+        <span
+          className="absolute end-2.5 top-2 flex h-5 items-center opacity-0 transition-opacity group-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100"
+          data-zerops-surface="sidebar-mate-actions"
+        >
+          <MateMenu
+            actions={actions}
+            appUrl={appUrl}
+            at={menuAt}
+            name={name}
+            onOpenChange={(next) => {
+              setMenuOpen(next);
+              if (!next) setMenuAt(undefined);
+            }}
+            onOpenMate={() => {
+              setMenuOpen(false);
+              onSelect(candidate);
+            }}
+            onRename={() => {
+              setMenuOpen(false);
+              setRenaming(true);
+            }}
+            open={menuOpen}
+            shortcuts={false}
+            unread={unread}
+          />
         </span>
-        {subject === undefined ? null : (
-          <span
-            className={cn(
-              "truncate text-xs leading-4",
-              unread ? "font-medium text-sidebar-foreground" : "text-sidebar-muted-foreground",
-            )}
-            data-zerops-surface="sidebar-mate-subject"
-          >
-            {subject}
-          </span>
-        )}
-        {snippet === undefined ? null : (
-          <MateSnippet snippet={snippet} threadKey={live?.threadKey} />
-        )}
-      </span>
-    </button>
+      )}
+      {renaming && actions?.rename !== undefined ? (
+        <MateRenameField
+          onDone={() => {
+            setRenaming(false);
+            rowButton.current?.focus();
+          }}
+          rename={actions.rename}
+        />
+      ) : null}
+    </div>
   );
 }
 

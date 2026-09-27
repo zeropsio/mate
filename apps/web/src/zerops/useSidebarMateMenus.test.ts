@@ -1,0 +1,33 @@
+import { describe, expect, it } from "vite-plus/test";
+
+import type { ZeropsMenuEntry } from "~/components/zerops/ZeropsProjectMenu";
+
+import { sidebarMateVerbs } from "./useSidebarMateMenus";
+
+const entry = (id: string, label: string): ZeropsMenuEntry => ({ id, label, onSelect: () => {} });
+
+describe("sidebarMateVerbs — the shared verbs a Mate's own menu carries", () => {
+  it("keeps start or restart, register, hand over and move, in the menu's own words", () => {
+    const verbs = sidebarMateVerbs([
+      entry("restart", "Restart"),
+      { id: "quick", separator: true },
+      entry("rename-agent", "Rename Mate"),
+      entry("register", "Register in Storefront"),
+      entry("assign", "Hand this Mate over"),
+      entry("move", "Change project or role"),
+      entry("leave", "Leave the project"),
+      { id: "version", separator: true },
+      entry("server-version", "Server 0.11.53"),
+    ]);
+    expect(verbs.map((verb) => ("label" in verb ? verb.label : "—"))).toEqual([
+      "Restart",
+      "Register in Storefront",
+      "Hand over…",
+      "Move to project…",
+    ]);
+  });
+
+  it("keeps Start in place of Restart where the Mate is stopped", () => {
+    expect(sidebarMateVerbs([entry("start", "Start")]).map((verb) => verb.id)).toEqual(["start"]);
+  });
+});

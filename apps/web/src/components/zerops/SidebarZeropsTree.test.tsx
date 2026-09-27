@@ -55,6 +55,7 @@ import {
   productionAddable,
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
+import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
 import { ProjectHeader, SidebarZeropsTree, type SidebarProjectFlow } from "./SidebarZeropsTree";
 import { groupAddsOffered } from "./ZeropsProjectRow.logic";
 
@@ -213,7 +214,8 @@ describe("SidebarZeropsTree", () => {
     const row = html.slice(html.lastIndexOf("<button", rowAt), rowAt);
     expect(row).toContain("w-full");
     expect(row).toContain("rounded-md");
-    expect(row).toContain("hover:bg-sidebar-row-hover");
+    // Lit from its row, so it stays lit while the pointer is on its menu.
+    expect(row).toContain("group-hover/mate:bg-sidebar-row-hover");
     expect(row).not.toContain("border");
   });
 
@@ -2140,5 +2142,79 @@ describe("a Mate's row says more without words", () => {
       expect(html).not.toContain("sidebar-mate-snippet");
       expect(html).not.toContain("Draft:");
     });
+  });
+});
+
+describe("a Mate's own menu, in its row", () => {
+  const ACTIONS: MateRowActions = { muted: false, entries: [] };
+  const spoken: ZeropsAgentActivity = {
+    threadId: "thread-1" as ZeropsAgentActivity["threadId"],
+    kind: "idle",
+    status: null,
+    face: "idle",
+    subject: "Add a /status page",
+    at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    snippet: undefined,
+    progress: undefined,
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread",
+  };
+  const row = (actions: MateRowActions | undefined) =>
+    render([CRM_DEV_CONNECTED], {
+      getActivity: () => spoken,
+      ...(actions === undefined ? {} : { getMateActions: () => actions }),
+    });
+
+  it("gives the time slot to the menu on hover and focus, in a slot reserved so nothing moves", () => {
+    const html = row(ACTIONS);
+    const actions =
+      /<span class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate-actions"/u.exec(html)?.[1] ?? "";
+    expect(actions).toContain("absolute");
+    expect(actions).toContain("opacity-0");
+    expect(actions).toContain("group-hover/mate:opacity-100");
+    expect(actions).toContain("group-has-[:focus-visible]/mate:opacity-100");
+    // The time stands in a slot at least the menu's width, and steps aside.
+    const timeTag = html.lastIndexOf(
+      "<span",
+      html.indexOf('data-zerops-surface="sidebar-mate-time"'),
+    );
+    const slotClass = html.slice(html.lastIndexOf("<span", timeTag - 1), timeTag);
+    expect(slotClass).toContain("min-w-11");
+    expect(slotClass).toContain("group-hover/mate:opacity-0");
+    expect(html).toContain('aria-label="More for crm-dev"');
+  });
+
+  it("carries no menu where nobody supplied its verbs", () => {
+    expect(row(undefined)).not.toContain("sidebar-mate-actions");
+  });
+
+  it("follows a muted Mate's name with a crossed bell, and nothing for one that rings", () => {
+    expect(row({ ...ACTIONS, muted: true })).toContain('data-zerops-surface="sidebar-mate-muted"');
+    expect(row(ACTIONS)).not.toContain("sidebar-mate-muted");
+  });
+
+  it("opens the same menu at the pointer on a right-click", () => {
+    const mounted = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getActivity={() => spoken}
+        getMateActions={() => ACTIONS}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    expect(mounted.root.findByType(MateMenu).props.open).toBe(false);
+    act(() => {
+      surface(mounted, "sidebar-mate-row").props.onContextMenu({
+        preventDefault: () => {},
+        clientX: 120,
+        clientY: 340,
+      });
+    });
+    const menu = mounted.root.findByType(MateMenu);
+    expect(menu.props.open).toBe(true);
+    expect(menu.props.at).toEqual({ x: 120, y: 340 });
   });
 });

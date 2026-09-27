@@ -227,6 +227,7 @@ import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
 import { SidebarZeropsTree, type SidebarProjectFlow } from "./zerops/SidebarZeropsTree";
 import { sidebarStopReads } from "./zerops/SidebarZeropsTree.logic";
 import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
+import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
 import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
 import { placedBirthsIn, useZeropsBirths } from "../zerops/zeropsBirths";
 import {
@@ -2286,6 +2287,8 @@ export default function Sidebar() {
   // screen reads too (`agentActivity.ts`), so a Mate says the same thing in
   // both places.
   const zeropsAgentActivity = useZeropsAgentActivity();
+  // Each Mate's own menu: the projects screen's verbs, and this viewer's own.
+  const zeropsMateMenus = useSidebarMateMenus({ threads });
 
   // The row for the environment whose conversation is open. A fresh draft
   // has no thread yet, but it knows its environment — and that is the one
@@ -4026,6 +4029,7 @@ export default function Sidebar() {
               onBrowseProjects={navigateToZeropsProjects}
               getFlow={zeropsSidebarFlowWithAsk}
               getOwner={zeropsMateOwner}
+              getMateActions={zeropsMateMenus.getMateActions}
               timestampFormat={timestampFormat}
               onOpenGroup={openGroup}
               getActivity={(candidate) =>
@@ -4072,6 +4076,8 @@ export default function Sidebar() {
               }}
             />
           ) : null}
+          {/* The dialogs a Mate's own menu opens: rename, hand over, move. */}
+          {zeropsSignedIn ? zeropsMateMenus.dialogs : null}
           {isSearchingThreads ? (
             threadSearchResults.length > 0 ? (
               <TooltipProvider

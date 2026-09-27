@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { getClientSettings, useClientSettings } from "../hooks/useSettings";
 import { useEnvironments } from "../state/environments";
 import { environmentShell } from "../state/shell";
+import { useMutedMates } from "../zerops/mutedMates";
 import {
   hasDesktopNotifications,
   hasNotificationSound,
@@ -105,6 +106,10 @@ function EnvironmentNotifications({
   const { environmentId: activeEnvironmentId, threadId: activeThreadId } = useParams({
     strict: false,
   });
+  // A Mate is one environment, so muting it (the left menu's Mate menu) is
+  // this environment ringing for nothing — while it is still watched, so an
+  // unmute rings for what happens after and never for what it missed.
+  const muted = useMutedMates().muted.includes(environmentId);
   const previous = useRef(
     new Map<ThreadId, { attention: string | null; completion: number | null }>(),
   );
@@ -140,7 +145,7 @@ function EnvironmentNotifications({
           : completion !== null && (prior.completion === null || completion > prior.completion)
             ? "completion"
             : null;
-      if (!kind) continue;
+      if (!kind || muted) continue;
       // The glyph and its colour are the sidebar row's for the same status.
       const NotificationIcon =
         kind === "completion"
@@ -231,6 +236,7 @@ function EnvironmentNotifications({
     environmentId,
     inAppNotificationsEnabled,
     mode,
+    muted,
     navigate,
     onNotification,
     shell,

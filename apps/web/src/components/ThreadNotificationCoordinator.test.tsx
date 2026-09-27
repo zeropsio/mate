@@ -17,6 +17,7 @@ const state = vi.hoisted(() => ({
   approval: false,
   sessionError: false,
   turnError: false,
+  muted: [] as string[],
   add: vi.fn(
     (_toast: { title: string; description: string; actionProps: { onClick: () => void } }) =>
       "toast-1",
@@ -82,6 +83,9 @@ vi.mock("../threadNotifications", async (importOriginal) => ({
   playNotificationSound: state.sound,
   setNotificationBadge: vi.fn(),
 }));
+vi.mock("../zerops/mutedMates", () => ({
+  useMutedMates: () => ({ muted: state.muted, toggle: vi.fn() }),
+}));
 vi.mock("./ui/toast", () => ({
   toastManager: { add: state.add, close: state.close },
 }));
@@ -117,6 +121,7 @@ beforeEach(() => {
     approval: false,
     sessionError: false,
     turnError: false,
+    muted: [],
   });
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("window", new EventTarget());
@@ -138,6 +143,33 @@ afterEach(async () => {
 });
 
 describe("thread notifications", () => {
+  it("rings nothing for a Mate its viewer muted: no toast, no sound, no desktop alert", async () => {
+    state.mode = "notifications-and-sound";
+    state.muted = ["env-1"];
+    await render();
+    await complete();
+    state.input = true;
+    await render();
+    state.focused = false;
+    state.approval = true;
+    await render();
+    expect(state.add).not.toHaveBeenCalled();
+    expect(state.sound).not.toHaveBeenCalled();
+    expect(state.notification).not.toHaveBeenCalled();
+  });
+
+  it("rings again once the Mate is unmuted, for what happens after — never for what it missed", async () => {
+    state.muted = ["env-1"];
+    await render();
+    await complete();
+    state.muted = [];
+    await render();
+    expect(state.add).not.toHaveBeenCalled();
+    state.input = true;
+    await render();
+    expect(state.add).toHaveBeenCalledTimes(1);
+  });
+
   it("alerts once with system alerts off and opens the completed thread", async () => {
     await render();
     await complete();
