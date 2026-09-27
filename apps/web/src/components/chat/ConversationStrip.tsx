@@ -38,6 +38,8 @@ import {
 const SLOT_PX = 148;
 /** The New chat button at the end of the row. */
 const NEW_CHAT_PX = 104;
+/** The divider before each further group, with its margins. */
+const DIVIDER_PX = 9;
 /** Below this the status words fold into their dots, the word kept as the name. */
 const NARROW_PX = 480;
 
@@ -185,8 +187,11 @@ export function ConversationStripView({
   onMakeMain,
   onNewChat,
 }: ConversationStripViewProps) {
+  const dividers = Math.max(0, groups.filter((group) => group.entries.length > 0).length - 1);
   const slots =
-    width === null ? Number.POSITIVE_INFINITY : Math.floor((width - NEW_CHAT_PX) / SLOT_PX);
+    width === null
+      ? Number.POSITIVE_INFINITY
+      : Math.floor((width - NEW_CHAT_PX - dividers * DIVIDER_PX) / SLOT_PX);
   const narrow = width !== null && width < NARROW_PX;
   const { visible, folded } = foldStrip(groups, slots);
   const drawn = visible.filter((group) => group.entries.length > 0);

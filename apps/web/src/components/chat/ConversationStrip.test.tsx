@@ -194,6 +194,18 @@ describe("ConversationStripView", () => {
     expect(html).toContain("More");
   });
 
+  it("counts the divider before a further group when deciding what fits", () => {
+    const html = view(
+      [
+        { id: "chats", label: "Chats", entries: [entry("main"), entry("logs")] },
+        { id: "crew", label: "Crew", entries: [entry("@lead"), entry("@backend")] },
+      ],
+      // Four slots and New chat, with nothing left for the divider.
+      4 * 148 + 104,
+    );
+    expect(html).toContain("More");
+  });
+
   it("offers Make main and Close chat on the chat you are on", () => {
     const html = view(
       [
