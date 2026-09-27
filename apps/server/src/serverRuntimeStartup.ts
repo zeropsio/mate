@@ -45,6 +45,7 @@ import {
 } from "./zerops/ZeropsBootstrapModel.ts";
 import { isZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
 import { forkParked } from "./serverActivation.ts";
+import { ServerCommandReadiness } from "./spi/serverCommandReadiness.ts";
 import {
   formatHostForUrl,
   formatZeropsServeOutput,
@@ -467,6 +468,10 @@ export const make = (options?: StartupOptions) =>
     const serverSettings = yield* ServerSettings.ServerSettingsService;
     const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
     const crypto = yield* Crypto.Crypto;
+    // Optional: the full server layer provides it (server.ts); a startup
+    // built on its own, as the startup integration test does, has no one
+    // waiting on it.
+    const commandReadiness = yield* Effect.serviceOption(ServerCommandReadiness);
 
     const commandGate = yield* makeCommandGate;
     const httpListening = yield* Deferred.make<void>();
@@ -600,6 +605,9 @@ export const make = (options?: StartupOptions) =>
 
       yield* Effect.logDebug("Accepting commands");
       yield* commandGate.signalCommandReady;
+      if (Option.isSome(commandReadiness)) {
+        yield* commandReadiness.value.complete;
+      }
       yield* runStartupPhase(
         "ready.publish",
         lifecycleEvents.publish({
