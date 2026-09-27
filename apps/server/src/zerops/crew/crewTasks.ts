@@ -24,7 +24,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
-import { continueCard, taskCard } from "./crewCards.ts";
+import { carriedCard, continueCard, taskCard } from "./crewCards.ts";
 import {
   asRefusal,
   currentStint,
@@ -352,7 +352,12 @@ export const startTask = (
     return { _tag: "started", task: started } satisfies StartOutcome as StartOutcome;
   });
 
-/** A further turn of an open task, as `principal` (a message, *Ask to resolve*, *Ask to fix*). */
+/**
+ * A further turn of an open task, as `principal` (a message, *Ask to resolve*,
+ * *Ask to fix*). When the turn opens a new conversation, it carries the task
+ * in a card (why the conversation is new, then the turn's words), so the new
+ * stint starts from a card as every stint does.
+ */
 export const continueTask = (
   core: CrewCore,
   applied: AppliedCrew,
@@ -363,11 +368,16 @@ export const continueTask = (
   attachments: ReadonlyArray<ChatAttachment> = [],
 ) =>
   Effect.gen(function* () {
+    const before = currentStint(applied, member.row.handle);
     const stint = yield* stintForTurn(core, applied, member, "turn-start", false);
+    const sent =
+      before !== undefined && before.threadId !== stint.threadId
+        ? carriedCard({ number: task.number, title: task.title, reason: stint.reason ?? "", text })
+        : text;
     const probe = yield* crewTurnCommand(core, {
       threadId: stint.threadId,
       modelSelection: yield* modelSelectionFor(core, member.row),
-      text,
+      text: sent,
       attachments,
       createdAt: yield* core.now,
     });
@@ -377,7 +387,7 @@ export const continueTask = (
     );
     const key = `${working.assignment}:${working.attempt}`;
     core.memory.turns.set(key, (core.memory.turns.get(key) ?? 0) + 1);
-    yield* sendTurn(core, member, stint, principal, text, attachments);
+    yield* sendTurn(core, member, stint, principal, sent, attachments);
     return working;
   });
 
@@ -635,14 +645,7 @@ export const retryTask = (core: CrewCore, principal: TurnPrincipal, taskId: stri
     const queued =
       row.state === "queued"
         ? row
-        : yield* saveTask(core, {
-            ...row,
-            state: "queued",
-            attempt: row.attempt + 1,
-            reworks: 0,
-            remerges: 0,
-            waiting: null,
-          });
+        : yield* stepTask(core, row, { type: "retry" }, (next) => ({ ...next, waiting: null }));
     yield* pump(core, row.member, { taskId: queued.assignment, principal });
   });
 

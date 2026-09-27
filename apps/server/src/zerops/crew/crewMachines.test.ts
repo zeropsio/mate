@@ -502,6 +502,13 @@ describe("taskTransition", () => {
       moved("working"),
     ],
     ["the after-land turn keeps it landed", "landed", c(), { type: "after-land" }, moved("landed")],
+    [
+      "Try again queues a stopped task for its next attempt, its counts reset",
+      "parked",
+      c({ attempt: 2, reworks: 3, remerges: 2, requeues: 1, rotations: 2 }),
+      { type: "retry" },
+      moved("queued", c({ attempt: 3, reworks: 0, remerges: 0, requeues: 1, rotations: 0 })),
+    ],
     ...(
       [
         "proposed",
@@ -582,6 +589,7 @@ describe("taskTransition", () => {
       { type: "wait-expired" },
       { type: "after-land" },
       { type: "park", reason: "needs-triage" },
+      { type: "retry" },
       { type: "discard" },
     ];
     const legal = new Set(TASK_ROWS.map(([, from, , event]) => `${from}+${event.type}`));

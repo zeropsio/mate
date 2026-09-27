@@ -128,8 +128,8 @@ export interface CrewLanding {
 
 export interface CrewHostPort {
   readonly port: number;
-  /** Whether the service's subdomain routes the port (`httpRouting`). */
-  readonly routed: boolean;
+  /** Whether the service's subdomain routes the port (`httpRouting`); `null` when not known. */
+  readonly routed: boolean | null;
 }
 
 export interface CrewHostRow {
@@ -368,7 +368,7 @@ const DependsOn = Schema.fromJsonString(Schema.Array(Schema.String));
 const decodeDependsOn = Schema.decodeEffect(DependsOn);
 const encodeDependsOn = Schema.encodeEffect(DependsOn);
 const CrewPorts = Schema.fromJsonString(
-  Schema.Array(Schema.Struct({ port: Schema.Number, routed: Schema.Boolean })),
+  Schema.Array(Schema.Struct({ port: Schema.Number, routed: Schema.NullOr(Schema.Boolean) })),
 );
 const decodeCrewPorts = Schema.decodeEffect(CrewPorts);
 const encodeCrewPorts = Schema.encodeEffect(CrewPorts);

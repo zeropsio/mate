@@ -1565,6 +1565,7 @@ const CREW_ALLOWED_OUTSIDE: ReadonlySet<string> = new Set([
   "apps/server/src/spi/serverCommandReadiness.ts",
   "apps/server/src/spi/threadToolPolicy.ts",
   "apps/server/src/zerops/ZeropsEnvironment.ts",
+  "apps/server/src/zerops/ZeropsLogins.ts",
   "apps/server/src/zerops/ZeropsProjectSigners.ts",
   "apps/server/src/zerops/ZeropsRepositorySource.ts",
   "apps/server/src/zerops/ZeropsTurnAdmission.ts",

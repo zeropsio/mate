@@ -103,6 +103,8 @@ const liveLayer = Layer.mergeAll(
   // admits its turns through the same gate instance.
   crewLayer.pipe(
     Layer.provide(ZeropsTurnAdmissionLive),
+    Layer.provide(ZeropsLoginsLive),
+    Layer.provide(ZeropsProjectSignersModule.layer),
     Layer.provide(providerInstancesLayer),
     Layer.provide(ProcessRunner.layer),
   ),

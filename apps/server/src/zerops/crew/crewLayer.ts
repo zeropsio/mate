@@ -18,8 +18,6 @@
  * @module crewLayer
  */
 import {
-  agentIdForDriverKind,
-  agentIdForProviderInstance,
   type CrewCommand,
   type CrewCommandResult,
   type CrewLogin,
@@ -58,7 +56,7 @@ import {
   startFresh,
 } from "./crewApply.ts";
 import { boot } from "./crewBoot.ts";
-import { grantClaim, moveClaim, releaseClaim } from "./crewClaims.ts";
+import { grantClaim, moveClaim, releaseClaim, showOnDevNow } from "./crewClaims.ts";
 import * as CrewChecks from "./CrewChecks.ts";
 import { DEFAULT_CREW_LOGIN, makeCrewCore, refuse, runtimeOf, type CrewCore } from "./crewCore.ts";
 import {
@@ -69,12 +67,14 @@ import {
   postCompact,
   report,
   sessionStart,
+  memoryTool,
   showOnDevTool,
 } from "./crewDirectory.ts";
 import { CrewEngine, inertCrewEngine, type CrewEngineService } from "./CrewEngine.ts";
 import * as CrewHome from "./CrewHome.ts";
 import * as CrewIntegration from "./CrewIntegration.ts";
 import { askRework, land, landNow } from "./crewLanding.ts";
+import * as CrewMemory from "./CrewMemory.ts";
 import * as CrewReads from "./CrewReads.ts";
 import * as CrewRuntime from "./CrewRuntime.ts";
 import { CrewThreadDirectory, CrewToolHost } from "./crewSeams.ts";
@@ -83,6 +83,7 @@ import { appliedSnapshot, crewNoneSnapshot } from "./crewSnapshot.ts";
 import * as CrewStateRef from "./CrewStateRef.ts";
 import * as CrewStore from "./CrewStore.ts";
 import { installCrewThreadPolicy } from "./CrewThreadPolicy.ts";
+import { editMemory, forgetMemory, removeMemory } from "./crewMemoryCommands.ts";
 import { discard, editTask, markFresh, message, newTask, retryTask, tell } from "./crewTasks.ts";
 import { makeTurnHandler } from "./crewTurns.ts";
 import * as CrewWorkspace from "./CrewWorkspace.ts";
@@ -105,17 +106,18 @@ export type CrewPolicyInstaller = Effect.Effect<
   | ClaudeThreadExtensionRegistry
 >;
 
+/** The coding agent's own name, for a login that has no label of its own (the defaults). */
+const AGENT_NAMES = { "claude-code": "Claude Code", codex: "Codex" } as const;
+
+/** Each crewmate's login as the section names it: a Mate login's label, else its agent's name. */
 const loginsOf = (core: CrewCore, members: ReadonlyArray<CrewStore.CrewMemberRow>) =>
   Effect.gen(function* () {
     const logins = new Map<string, CrewLogin>();
     for (const row of members) {
       const id = row.login ?? DEFAULT_CREW_LOGIN;
-      const driver = yield* core.instances.driverKindOf(id);
-      logins.set(row.handle, {
-        id,
-        label: id === DEFAULT_CREW_LOGIN ? "" : id,
-        agent: agentIdForDriverKind(driver) ?? agentIdForProviderInstance(id) ?? "claude-code",
-      });
+      const mateLogin = yield* core.logins.resolve(id);
+      const agent = mateLogin?.agent ?? (yield* core.agentOf(id)) ?? "claude-code";
+      logins.set(row.handle, { id, label: mateLogin?.label ?? AGENT_NAMES[agent], agent });
     }
     return logins;
   });
@@ -136,7 +138,14 @@ const buildSnapshot = (core: CrewCore, seq: number) =>
       const found = yield* store.getHost(host);
       hostRows.push(Option.getOrElse(found, () => ({ host, crewPorts: [] })));
     }
+    const memory = new Map<string, { readonly entries: number; readonly unfiled: number }>();
+    for (const member of members) {
+      const rows = yield* store.memory(CrewHome.CREW_ID, member.handle);
+      const unfiled = rows.filter((entry) => entry.kind === "unfiled").length;
+      memory.set(member.handle, { entries: rows.length - unfiled, unfiled });
+    }
     return appliedSnapshot({
+      memory,
       seq,
       definition: row.value.spec as CrewDefinition,
       briefVersion: row.value.briefVersion,
@@ -148,7 +157,15 @@ const buildSnapshot = (core: CrewCore, seq: number) =>
       claims: [...core.memory.claims].flatMap(([host, claim]) =>
         claim.handle === null
           ? []
-          : [{ host, member: claim.handle, state: claim.state, requestedAt: claim.requestedAt }],
+          : [
+              {
+                host,
+                member: claim.handle,
+                state: claim.state,
+                requestedAt: claim.requestedAt,
+                reason: core.memory.showReasons.get(host) ?? null,
+              },
+            ],
       ),
       runtime: runtimeOf(core.memory, yield* loginsOf(core, members)),
     });
@@ -243,6 +260,18 @@ const run = (
       case "claimRelease":
         yield* releaseClaim(core, principal, command.host, "press");
         return done;
+      case "showOnDev":
+        yield* showOnDevNow(core, principal, command.handle);
+        return done;
+      case "memoryEdit":
+        yield* editMemory(core, command.handle, command.entryId, command.text);
+        return done;
+      case "memoryRemove":
+        yield* removeMemory(core, command.handle, command.entryId);
+        return done;
+      case "forgetMemory":
+        yield* forgetMemory(core, command.handle);
+        return done;
       case "start":
       case "pause":
       case "resume":
@@ -251,9 +280,6 @@ const run = (
       case "planAccept":
       case "planDiscard":
       case "review":
-      case "memoryEdit":
-      case "memoryRemove":
-      case "forgetMemory":
         return yield* refuse("unavailable", `${command._tag} is not in this build of crew mode`);
     }
   }).pipe(Effect.tap(() => core.changed));
@@ -272,11 +298,11 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
       report: (member, input) => report(core, member, input),
       board: () => board(core),
       diff: (member, input) => diff(core, member, input),
-      showOnDev: (member) => showOnDevTool(core, member),
+      showOnDev: (member, input) => showOnDevTool(core, member, input),
       propose: () => notYet("crew_propose"),
       review: () => notYet("crew_review"),
       finish: () => notYet("crew_finish"),
-      memory: () => notYet("crew_memory"),
+      memory: (member, op) => memoryTool(core, member, op),
       sessionStart: (member, event) => sessionStart(core, member, event),
       postCompact: (member, summary) => postCompact(core, member, summary),
     });
@@ -367,6 +393,7 @@ export const crewServicesLayer = Layer.mergeAll(
   CrewReads.layer,
   CrewHome.layer,
   CrewRuntime.layer,
+  CrewMemory.layer,
 ).pipe(
   Layer.provideMerge(CrewChecks.layer),
   Layer.provideMerge(CrewShell.layer),

@@ -88,6 +88,8 @@ export interface SnapshotClaim {
   readonly member: string;
   readonly state: CrewClaimState;
   readonly requestedAt: string;
+  /** Why the crewmate asked, while it asks. */
+  readonly reason: string | null;
 }
 
 /** Apply's per-crewmate progress (PRD §4.7), or why it failed. */
@@ -115,6 +117,11 @@ export interface SnapshotRuntime {
   /** Queued tasks admission refused to start, with its words. */
   readonly cantStart: ReadonlyMap<string, { readonly text: string; readonly at: string }>;
   readonly served: ReadonlyMap<string, CrewServed>;
+  /** Your tree on each dev service: its branch and HEAD. */
+  readonly integration: ReadonlyMap<
+    string,
+    { readonly branch: string | null; readonly head: string }
+  >;
   /** A crewmate's login as the section names it. */
   readonly logins: ReadonlyMap<string, CrewLogin>;
   readonly lastError: string | null;
@@ -129,6 +136,7 @@ export const EMPTY_RUNTIME: SnapshotRuntime = {
   delivered: new Set(),
   cantStart: new Map(),
   served: new Map(),
+  integration: new Map(),
   logins: new Map(),
   lastError: null,
 };
@@ -144,6 +152,8 @@ export interface AppliedSnapshotInput {
   readonly tasks: ReadonlyArray<CrewAssignmentRow>;
   readonly hosts: ReadonlyArray<CrewHostRow>;
   readonly claims: ReadonlyArray<SnapshotClaim>;
+  /** Each crewmate's memory: its entries and its unfiled lessons. */
+  readonly memory: ReadonlyMap<string, { readonly entries: number; readonly unfiled: number }>;
   readonly runtime: SnapshotRuntime;
 }
 
@@ -358,7 +368,7 @@ const toCrewmate = (
         ? null
         : { tokens: context.tokens, window: context.window || DEFAULT_CONTEXT_WINDOW },
     compactions: current?.compactions ?? 0,
-    memory: { entries: 0, unfiled: 0 },
+    memory: input.memory.get(row.handle) ?? { entries: 0, unfiled: 0 },
     openTaskId: open?.assignment ?? null,
     queuedTaskIds: tasks.filter((task) => task.state === "queued").map((task) => task.assignment),
     lane: readOnly ? null : laneSummary(row.handle, lane, open, runtime, lastCheck),
@@ -389,7 +399,7 @@ export const appliedSnapshot = (input: AppliedSnapshotInput): CrewSnapshot => {
       kind: "show-on-dev",
       handle: claim.member,
       taskId: null,
-      text: null,
+      text: claim.reason,
       paths: [],
       host: claim.host,
       at: claim.requestedAt,
@@ -408,6 +418,7 @@ export const appliedSnapshot = (input: AppliedSnapshotInput): CrewSnapshot => {
       const claim = input.claims.find((candidate) => candidate.host === host.host);
       return {
         host: host.host,
+        integration: input.runtime.integration.get(host.host) ?? null,
         crewPorts: host.crewPorts,
         served: input.runtime.served.get(host.host) ?? { by: "unknown" },
         claim: { state: claim?.state ?? "none", handle: claim?.member ?? null },

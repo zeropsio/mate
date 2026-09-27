@@ -10,7 +10,13 @@
  *   (fan-out without a lead is deliberately dumb, PRD §5.3);
  * - the one turn a press sends as the person: **continue** after *Save and
  *   apply now*, **resolve** a merge-in's conflicts, **fix** a failed check,
- *   **restart the dev server** after a landing.
+ *   **restart the dev server** after a landing, **show** the copy on dev and
+ *   **give dev back**;
+ * - the **carried** card a new conversation's first turn on an open task
+ *   starts from, so every stint begins with a card for its seam line.
+ *
+ * A stint's seam line — why its conversation is new — is `stintReasonWords`;
+ * the chat shows it verbatim above the stint's first card.
  *
  * The **rotation seed** is not a card: it is what `SessionStart` adds to a new
  * stint's first session, so the crewmate carries on without the old
@@ -22,6 +28,7 @@ import type { CrewTaskSource } from "@t3tools/contracts";
 import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 
 import type { TaskCard } from "./crewTaskData.ts";
+import type { PromptVersions } from "./crewVersions.ts";
 import type { RotationReason } from "./rotationDecision.ts";
 
 interface CardTask {
@@ -138,6 +145,58 @@ export const claimReleaseCard = (input: {
       `action=restart hostname=${input.host} port=${input.devServer.port} ` +
       `processMatch="${input.devServer.command}", no workDir. Nothing else.`,
   );
+
+/**
+ * The seam line a new stint opens with (PRD §4.5 *Seam lines*): the client
+ * shows a stint's reason verbatim above its first card. `running` is what
+ * the retired stint's session started with, `current` what the crew home
+ * holds now.
+ */
+export const stintReasonWords = (
+  reason: RotationReason,
+  running: PromptVersions,
+  current: PromptVersions,
+): string => {
+  switch (reason) {
+    case "start-fresh":
+      return "Started fresh by you";
+    case "prompt-changed": {
+      const brief = current.brief > running.brief;
+      const job = current.job > running.job;
+      const what =
+        brief && job
+          ? `Brief updated to v${current.brief} and job to v${current.job}`
+          : brief
+            ? `Brief updated to v${current.brief}`
+            : `Job updated to v${current.job}`;
+      return `${what} — applies from here`;
+    }
+    case "login-changed":
+      return "New login — a new conversation";
+    case "fresh-task":
+      return "New conversation — the next task is unrelated work";
+    case "principal-changed":
+      return "New conversation — the next task is someone else's";
+    case "second-rework":
+      return "New conversation — the task came back a second time";
+    case "compactions":
+      return "New conversation — continues from memory";
+    case "context-overflow":
+      return "New conversation — the last one outgrew its context";
+    case "transcript-missing":
+    case "resume-failed":
+      return "New conversation — the last one could not be resumed";
+  }
+};
+
+/**
+ * A new conversation's first turn on a task already open: the task and why
+ * the conversation is new, then the words the turn was sent with — so the
+ * stint starts from a card, which its seam line stands above.
+ */
+export const carriedCard = (
+  task: CardTask & { readonly reason: string; readonly text: string },
+): string => card(task, "continues", [task.reason, "", task.text.trim()]);
 
 const ROTATION_WHY: Readonly<Record<RotationReason, string>> = {
   "prompt-changed": "the brief or your job changed",

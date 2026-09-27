@@ -48,6 +48,7 @@ import { ServerCommandReadiness } from "../../../spi/serverCommandReadiness.ts";
 import { ThreadToolPolicyRegistry } from "../../../spi/threadToolPolicy.ts";
 import { localSshProcessRunnerLayer } from "../../testing/localSsh.ts";
 import { resolveZeropsEnvironment } from "../../ZeropsEnvironment.ts";
+import { ZeropsLogins, type MateLogin } from "../../ZeropsLogins.ts";
 import { ZeropsRepositorySource, type ZeropsRepository } from "../../ZeropsRepositorySource.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "../../ZeropsTurnAdmission.ts";
 import { ZeropsWorkspaceObserver } from "../../ZeropsWorkspaceObserver.ts";
@@ -86,6 +87,8 @@ export interface CrewWorld {
   readonly installs: Ref.Ref<number>;
   /** ssh sessions the crew opened. */
   readonly sshCalls: Ref.Ref<number>;
+  /** Mate logins beyond the defaults, by id. */
+  readonly logins: Ref.Ref<ReadonlyMap<string, MateLogin>>;
   readonly publish: (event: SpiEvent) => Effect.Effect<void>;
 }
 
@@ -199,6 +202,9 @@ const fakes = (world: Omit<CrewWorld, "publish">, events: PubSub.PubSub<SpiEvent
           ),
         ),
     }),
+    Layer.mock(ZeropsLogins)({
+      resolve: (id) => Effect.map(Ref.get(world.logins), (logins) => logins.get(id)),
+    }),
     Layer.mock(ProviderInstances)({
       driverKindOf: () => Effect.succeed(ProviderDriverKind.make("claudeAgent")),
     }),
@@ -263,6 +269,7 @@ export const withCrewEngines = <E>(
       threads: yield* Ref.make<ReadonlyArray<OrchestrationThreadShell>>([]),
       installs: yield* Ref.make(0),
       sshCalls: yield* Ref.make(0),
+      logins: yield* Ref.make<ReadonlyMap<string, MateLogin>>(new Map()),
       publish: (event) => PubSub.publish(events, event).pipe(Effect.asVoid),
     };
     const installer = (options.installer ?? countingInstaller)(world.installs);

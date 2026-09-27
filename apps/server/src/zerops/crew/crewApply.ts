@@ -53,6 +53,7 @@ import { CREW_ID, refusalOf } from "./CrewHome.ts";
 import { assignCrewPorts, proposeCrewPorts, readDeclaredPorts } from "./crewPorts.ts";
 import { retireStint, rotate } from "./CrewStints.ts";
 import type { CrewMemberRow } from "./CrewStore.ts";
+import { refreshLaneStats } from "./crewLanding.ts";
 import { saveTask } from "./crewTasks.ts";
 import { versionsAfterSave } from "./crewVersions.ts";
 import type { RotationReason } from "./rotationDecision.ts";
@@ -281,7 +282,7 @@ const createLanes = (core: CrewCore, applied: AppliedCrew) =>
         core.store.updateLane(CREW_ID, handle, (lane) => ({ ...lane, lockfileHash })),
       );
       memory.progress.delete(handle);
-      memory.laneStats.set(handle, { ahead: 0, insertions: 0, deletions: 0 });
+      yield* refreshLaneStats(core, { row, spec });
       yield* core.changed;
     }
     yield* flushState(core);
@@ -357,6 +358,17 @@ export const apply = (core: CrewCore, principal: TurnPrincipal, installPolicies:
     }
     const topology = validateCrewTopology(definition, { devHosts, databaseHosts });
     if (topology.length > 0) return yield* refusalOf(topology);
+    const login = yield* defaultLogin(core);
+    const lead = definition.members.find((member) => member.kind === "lead");
+    if (lead !== undefined && (yield* core.agentOf(lead.login ?? login)) === "codex") {
+      return yield* refuse(
+        "invalid-definition",
+        `@${lead.handle} leads the crew, and a lead needs the crew tools, which Codex cannot host: give the lead a Claude login.`,
+      );
+    }
+    for (const host of verified.keys()) {
+      core.memory.integration.set(host, yield* asRefusal(core.reads.integration(host)));
+    }
 
     const previous = yield* core.applied;
     const kept = new Set(definition.members.map((member) => member.handle));
@@ -400,14 +412,13 @@ export const apply = (core: CrewCore, principal: TurnPrincipal, installPolicies:
       definition,
     );
     const tints = assignTints(definition.members, previous?.members ?? new Map());
-    const login = yield* defaultLogin(core);
     const ports = new Map<string, number | null>();
     for (const host of verified.keys()) {
       const yaml = yield* asRefusal(core.reads.zeropsYaml(host));
       const declared = yaml === undefined ? undefined : readDeclaredPorts(yaml, host);
       const crewPorts = declared?.crew ?? [];
       yield* asRefusal(
-        core.store.putHost({ host, crewPorts: crewPorts.map((port) => ({ port, routed: false })) }),
+        core.store.putHost({ host, crewPorts: crewPorts.map((port) => ({ port, routed: null })) }),
       );
       const writers = definition.members.filter(
         (member) => member.kind === "writer" && member.host === host,

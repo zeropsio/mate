@@ -37,6 +37,7 @@ import {
 } from "./crewCore.ts";
 import { claimShown } from "./crewClaims.ts";
 import { CREW_ID } from "./CrewHome.ts";
+import { dropHandoff } from "./crewMemoryCommands.ts";
 import { readDeclaredPorts } from "./crewPorts.ts";
 import type { CrewAssignmentRow } from "./CrewStore.ts";
 import { readTaskCheck, readTaskWait } from "./crewTaskData.ts";
@@ -58,18 +59,21 @@ const ON_DEV = "its work is on dev; take dev back to your tree first";
 const CHECK_RERUNS = 1;
 
 /** Reads a lane's figures again after the engine moved it; a failure leaves the old ones. */
-export const refreshLaneStats = (core: CrewCore, member: CrewMember) =>
-  member.row.kind !== "writer" || member.row.host === null
+export const refreshLaneStats = (core: CrewCore, member: CrewMember) => {
+  const host = member.row.host;
+  return member.row.kind !== "writer" || host === null
     ? Effect.void
-    : core.reads.laneStats(member.row.host, member.row.handle).pipe(
+    : core.reads.laneStats(host, member.row.handle).pipe(
         Effect.tap((stats) =>
           Effect.sync(() => {
             core.memory.laneStats.set(member.row.handle, stats);
+            core.memory.integration.set(host, stats.integration);
           }),
         ),
         Effect.andThen(core.changed),
         Effect.ignore,
       );
+};
 
 /** Stops and starts the crewmate's app, when it runs, so a stack without hot reload serves the new tree. */
 export const restartApp = (core: CrewCore, member: CrewMember) =>
@@ -345,6 +349,7 @@ export const land = (
             payload: { task: landing.assignment, commit: outcome.commit },
           }),
         );
+        yield* dropHandoff(core, member.row.handle, landing.assignment);
         if (member.row.restartAfterMerge) yield* restartApp(core, member);
         if (member.spec.afterLandRestart) {
           yield* afterLand(core, applied, member, landing, outcome.commit, principal);

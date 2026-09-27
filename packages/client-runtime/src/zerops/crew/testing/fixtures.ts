@@ -308,6 +308,7 @@ const appliedCrew: CrewSnapshot = {
   hosts: [
     {
       host: "appdev",
+      integration: { branch: "main", head: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678" },
       crewPorts: [
         { port: 3001, routed: true },
         { port: 3002, routed: true },

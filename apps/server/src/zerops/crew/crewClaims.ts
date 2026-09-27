@@ -17,6 +17,7 @@
  *
  * @module crewClaims
  */
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 
 import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
@@ -51,6 +52,11 @@ export const refreshClaims = (core: CrewCore) =>
             requestedAt: row.requestedAt,
           });
         }
+        for (const host of Array.from(core.memory.showReasons.keys())) {
+          if (core.memory.claims.get(host)?.state !== "requested") {
+            core.memory.showReasons.delete(host);
+          }
+        }
       }),
     ),
     Effect.andThen(core.changed),
@@ -76,16 +82,65 @@ export const devServerShape = (core: CrewCore, host: string) =>
   });
 
 /** `crew_show_on_dev`: the request, and the answer the model reads. */
-export const showOnDev = (core: CrewCore, member: CrewThreadMember) =>
+/** A request nobody answers ends by itself (ARCHITECTURE §4 *Show-on-dev claim*: deny or 10 min). */
+export const CLAIM_REQUEST_TIMEOUT = Duration.minutes(10);
+
+/** The host of a writer's copy, or undefined for a crewmate without one. */
+const hostOf = (core: CrewCore, handle: string) =>
+  Effect.map(requireApplied(core), (applied) => {
+    const row = applied.members.get(handle);
+    return row?.kind === "writer" ? (row.host ?? undefined) : undefined;
+  });
+
+/**
+ * Records a request on the claimant's host, with why it asks; a request still
+ * standing after {@link CLAIM_REQUEST_TIMEOUT} times out.
+ */
+const request = (core: CrewCore, handle: string, reason: string | null) =>
+  Effect.gen(function* () {
+    const host = yield* hostOf(core, handle);
+    const requested = yield* asRefusal(core.runtime.request({ crew: CREW_ID, handle, host }));
+    if (requested.outcome.kind === "requested" && host !== undefined) {
+      if (reason !== null) core.memory.showReasons.set(host, reason);
+      yield* refreshClaims(core);
+      const requestedAt = core.memory.claims.get(host)?.requestedAt;
+      yield* core.background(
+        Effect.gen(function* () {
+          const claim = core.memory.claims.get(host);
+          if (claim?.state === "requested" && claim.requestedAt === requestedAt) {
+            yield* moveClaim(core, host, "timeout");
+          }
+        }).pipe(Effect.delay(CLAIM_REQUEST_TIMEOUT)),
+      );
+    } else {
+      yield* refreshClaims(core);
+    }
+    return { ...requested, host };
+  });
+
+/** `crew_show_on_dev`: the request, and the answer the model reads. */
+export const showOnDev = (
+  core: CrewCore,
+  member: CrewThreadMember,
+  input: { readonly reason: string },
+) => Effect.map(request(core, member.handle, input.reason), (requested) => requested.answer);
+
+/**
+ * *Show on dev* pressed by the person (`showOnDev {handle}`): the crewmate's
+ * request and the person's grant at once, the claim turn sent as them.
+ */
+export const showOnDevNow = (core: CrewCore, principal: TurnPrincipal, handle: string) =>
   Effect.gen(function* () {
     const applied = yield* requireApplied(core);
-    const row = applied.members.get(member.handle);
-    const host = row?.kind === "writer" ? (row.host ?? undefined) : undefined;
-    const { answer } = yield* asRefusal(
-      core.runtime.request({ crew: CREW_ID, handle: member.handle, host }),
-    );
-    yield* refreshClaims(core);
-    return answer;
+    if (isWorking(core, applied, handle)) {
+      return yield* refuse("wrong-state", `@${handle}'s turn is running`);
+    }
+    const { outcome, answer, host } = yield* request(core, handle, null);
+    if (host === undefined || (outcome.kind !== "requested" && outcome.kind !== "pending")) {
+      if (outcome.kind === "shown") return;
+      return yield* refuse("wrong-state", answer.text);
+    }
+    yield* grantClaim(core, principal, host);
   });
 
 /** Reads what dev serves on `host` and moves its claim by it. */
