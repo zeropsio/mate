@@ -1,4 +1,8 @@
-import { IMAGE_ONLY_BOOTSTRAP_PROMPT, isUsageLimitResumePrompt } from "@t3tools/shared/userAsk";
+import {
+  IMAGE_ONLY_BOOTSTRAP_PROMPT,
+  isCrewCard,
+  isUsageLimitResumePrompt,
+} from "@t3tools/shared/userAsk";
 
 import { extractTrailingTerminalContexts } from "../../lib/terminalContext";
 import { PLAN_IMPLEMENTATION_PROMPT_PREFIX } from "../../proposedPlan";
@@ -134,11 +138,12 @@ export function recallableComposerPrompt(messageText: string): string {
   }
 
   // App-composed sends are not text the user typed, so they are not history;
-  // neither is the server's resume after a usage limit.
+  // neither is the server's resume after a usage limit, nor a crew task card.
   const trimmed = prompt.trim();
   if (
     trimmed === IMAGE_ONLY_BOOTSTRAP_PROMPT ||
     isUsageLimitResumePrompt(trimmed) ||
+    isCrewCard(trimmed) ||
     trimmed.startsWith(PLAN_IMPLEMENTATION_PROMPT_PREFIX)
   ) {
     return "";
