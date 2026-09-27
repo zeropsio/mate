@@ -186,8 +186,8 @@ import {
   CrewCommand,
   CrewCommandError,
   CrewCommandResult,
+  CrewFeedFrame,
   CrewFiles,
-  CrewSnapshot,
 } from "./zeropsCrew.ts";
 import {
   UsageLimitSourceError,
@@ -1100,7 +1100,8 @@ const WsSubscribeZeropsDataConsoleRpc = Rpc.make(WS_METHODS.subscribeZeropsDataC
  */
 const WsSubscribeZeropsCrewRpc = Rpc.make(WS_METHODS.subscribeZeropsCrew, {
   payload: Schema.Struct({}),
-  success: CrewSnapshot,
+  // Never fails to decode: a chunk that did would take the whole socket down.
+  success: CrewFeedFrame,
   error: EnvironmentAuthorizationError,
   stream: true,
 });

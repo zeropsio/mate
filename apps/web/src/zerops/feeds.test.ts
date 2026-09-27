@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { EnvironmentId, ThreadId, WS_METHODS } from "@t3tools/contracts";
-import type { CrewSnapshot, ZeropsAgentAuthSnapshot, ZeropsLifecycle } from "@t3tools/contracts";
+import type { CrewFeedFrame, ZeropsAgentAuthSnapshot, ZeropsLifecycle } from "@t3tools/contracts";
 import { EnvironmentRegistry, EnvironmentSupervisor } from "@t3tools/client-runtime/connection";
 import { type RpcSession } from "@t3tools/client-runtime/rpc";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
@@ -67,7 +67,7 @@ const makeHarness = (options?: {
     const calls: string[] = [];
     const lifecycleRef = yield* SubscriptionRef.make(Option.none<ZeropsLifecycle>());
     const agentAuthRef = yield* SubscriptionRef.make(Option.none<ZeropsAgentAuthSnapshot>());
-    const crewRef = yield* SubscriptionRef.make(Option.none<CrewSnapshot>());
+    const crewRef = yield* SubscriptionRef.make(Option.none<CrewFeedFrame>());
 
     const makeSession = (): RpcSession => {
       const client = {
@@ -141,7 +141,7 @@ const makeHarness = (options?: {
         SubscriptionRef.set(lifecycleRef, Option.some(value)),
       publishAgentAuth: (value: ZeropsAgentAuthSnapshot) =>
         SubscriptionRef.set(agentAuthRef, Option.some(value)),
-      publishCrew: (value: CrewSnapshot) => SubscriptionRef.set(crewRef, Option.some(value)),
+      publishCrew: (value: CrewFeedFrame) => SubscriptionRef.set(crewRef, Option.some(value)),
       /** The socket dropped and came back: a brand-new client for the same environment. */
       reconnect: SubscriptionRef.set(session, Option.some(makeSession())),
       /** The socket dropped and nothing replaced it yet. */
@@ -430,6 +430,32 @@ describe("createZeropsFeedAtoms", () => {
       expect(read.state === "known" && read.value.status).toBe("off");
       expect(read.state === "known" && read.freshness).toEqual({ kind: "live" });
       expect(rig.calls).toContain("crew");
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("a crew frame this client cannot read fails only the crew feed, never the others", () =>
+    Effect.gen(function* () {
+      const rig = yield* makeHarness();
+      const crewAtom = rig.feeds.crew({ environmentId: ENVIRONMENT_ID, input: {} });
+      const authAtom = rig.feeds.agentAuth({ environmentId: ENVIRONMENT_ID, input: {} });
+      rig.registry.mount(crewAtom);
+      rig.registry.mount(authAtom);
+
+      yield* rig.publishCrew({ _tag: "CrewFrameUndecodable" });
+      const crew = yield* until(
+        () => rig.registry.get(crewAtom),
+        (value) => value.state === "failed",
+      );
+      expect(crew).toMatchObject({
+        state: "failed",
+        failure: { kind: "malformed" },
+        retryAtMs: null,
+      });
+
+      yield* rig.publishAgentAuth(agentAuthSnapshot());
+      const auth = yield* until(() => rig.registry.get(authAtom), isKnown);
+      expect(auth.state === "known" && auth.freshness).toEqual({ kind: "live" });
+      expect(rig.calls.filter((call) => call === "crew")).toHaveLength(1);
     }).pipe(Effect.scoped),
   );
 
