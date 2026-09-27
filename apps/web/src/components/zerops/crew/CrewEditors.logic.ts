@@ -88,6 +88,19 @@ export function crewLoginOptions(
   });
 }
 
+/**
+ * What *Runs on* says about the chosen login, if anything: a Codex crewmate
+ * runs code-only in phase C, and only the person's *Land* completes its task.
+ */
+export function crewLoginNote(
+  logins: ReadonlyArray<CrewLogin>,
+  loginId: string,
+): string | undefined {
+  return logins.find((login) => login.id === loginId)?.agent === "codex"
+    ? "A Codex crewmate works on code only, with no Zerops tools. Its task is done when you land it."
+    : undefined;
+}
+
 export function crewModelOptions(
   providers: ReadonlyArray<ServerProvider>,
   loginId: string,

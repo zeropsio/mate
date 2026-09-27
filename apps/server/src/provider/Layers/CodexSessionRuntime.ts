@@ -40,6 +40,7 @@ import * as EffectCodexSchema from "effect-codex-app-server/schema";
 import { buildCodexInitializeParams } from "./CodexProvider.ts";
 import { codexSessionAppServerArgs } from "./codexLaunchArgs.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
+import type { CodexFileChange, CodexThreadSetup } from "../../spi/codexThreadProfile.ts";
 import {
   buildCodexAdditionalContext,
   buildCodexDeveloperInstructions,
@@ -170,6 +171,8 @@ export interface CodexSessionRuntimeOptions {
   readonly appServerArgs?: ReadonlyArray<string>;
   /** The provider's model list; supplies the display name for runtime info. */
   readonly models?: Effect.Effect<ReadonlyArray<ServerProviderModel>>;
+  /** A thread with a tool profile: its overrides, and the gate that answers its approvals. */
+  readonly threadSetup?: CodexThreadSetup;
 }
 
 export interface CodexSessionRuntimeSendTurnInput {
@@ -536,6 +539,7 @@ function buildThreadStartParams(input: {
   readonly runtimeMode: RuntimeMode;
   readonly model: string | undefined;
   readonly serviceTier: CodexServiceTier | undefined;
+  readonly overrides?: CodexThreadSetup["thread"];
 }): EffectCodexSchema.V2ThreadStartParams {
   const config = runtimeModeToThreadConfig(input.runtimeMode);
   return {
@@ -545,6 +549,7 @@ function buildThreadStartParams(input: {
     approvalsReviewer: config.approvalsReviewer,
     ...(input.model ? { model: input.model } : {}),
     ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
+    ...input.overrides,
   };
 }
 
@@ -615,6 +620,7 @@ export function buildTurnStartParams(input: {
   readonly serviceTier?: CodexServiceTier;
   readonly effort?: EffectCodexSchema.V2TurnStartParams__ReasoningEffort;
   readonly interactionMode?: ProviderInteractionMode;
+  readonly overrides?: CodexThreadSetup["turn"];
 }): Effect.Effect<
   CodexTurnStartParamsWithCollaborationMode,
   CodexErrors.CodexAppServerProtocolParseError
@@ -644,6 +650,7 @@ export function buildTurnStartParams(input: {
     approvalPolicy: config.approvalPolicy,
     approvalsReviewer: config.approvalsReviewer,
     sandboxPolicy: runtimeModeToTurnSandboxPolicy(input.runtimeMode),
+    ...input.overrides,
     ...(input.model ? { model: input.model } : {}),
     ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
     ...(input.effort ? { effort: input.effort } : {}),
@@ -720,6 +727,7 @@ export const openCodexThread = (input: {
   readonly requestedModel: string | undefined;
   readonly serviceTier: CodexServiceTier | undefined;
   readonly resumeThreadId: string | undefined;
+  readonly overrides?: CodexThreadSetup["thread"];
 }): Effect.Effect<typeof CodexThreadResumeMetadata.Type, CodexErrors.CodexAppServerError> => {
   const resumeThreadId = input.resumeThreadId;
   const startParams = buildThreadStartParams({
@@ -727,6 +735,7 @@ export const openCodexThread = (input: {
     runtimeMode: input.runtimeMode,
     model: input.requestedModel,
     serviceTier: input.serviceTier,
+    ...(input.overrides ? { overrides: input.overrides } : {}),
   });
 
   if (resumeThreadId === undefined) {
@@ -2082,8 +2091,36 @@ export const makeCodexSessionRuntime = (
       ),
     );
 
+    // A gated thread's approvals are answered by its gate, never parked for a
+    // person. Its file change requests name no file, so the changes each
+    // `fileChange` item listed when it started are kept until it completes.
+    const { threadSetup } = options;
+    const fileChangesRef = yield* Ref.make(new Map<string, ReadonlyArray<CodexFileChange>>());
+    if (threadSetup) {
+      yield* client.handleServerNotification("item/started", ({ item }) =>
+        item.type === "fileChange"
+          ? Ref.update(fileChangesRef, (current) => new Map(current).set(item.id, item.changes))
+          : Effect.void,
+      );
+      yield* client.handleServerNotification("item/completed", ({ item }) =>
+        Ref.update(fileChangesRef, (current) => {
+          const next = new Map(current);
+          next.delete(item.id);
+          return next;
+        }),
+      );
+    }
+
     yield* client.handleServerRequest("item/commandExecution/requestApproval", (payload) =>
       Effect.gen(function* () {
+        if (threadSetup) {
+          return {
+            decision: yield* threadSetup.decideCommand({
+              itemId: payload.itemId,
+              command: payload.command,
+            }),
+          } satisfies EffectCodexSchema.CommandExecutionRequestApprovalResponse;
+        }
         const requestId = ApprovalRequestId.make(yield* randomUUIDv4("command-approval-request"));
         const turnId = TurnId.make(payload.turnId);
         const itemId = ProviderItemId.make(payload.itemId);
@@ -2140,6 +2177,15 @@ export const makeCodexSessionRuntime = (
 
     yield* client.handleServerRequest("item/fileChange/requestApproval", (payload) =>
       Effect.gen(function* () {
+        if (threadSetup) {
+          return {
+            decision: yield* threadSetup.decideFileChange({
+              itemId: payload.itemId,
+              cwd: options.cwd,
+              changes: (yield* Ref.get(fileChangesRef)).get(payload.itemId),
+            }),
+          } satisfies EffectCodexSchema.FileChangeRequestApprovalResponse;
+        }
         const requestId = ApprovalRequestId.make(
           yield* randomUUIDv4("file-change-approval-request"),
         );
@@ -2198,6 +2244,11 @@ export const makeCodexSessionRuntime = (
 
     yield* client.handleServerRequest("mcpServer/elicitation/request", (payload) =>
       Effect.gen(function* () {
+        if (threadSetup) {
+          return {
+            action: "decline",
+          } satisfies EffectCodexSchema.McpServerElicitationRequestResponse;
+        }
         if (toMcpElicitationResponse(payload, "accept").action !== "accept") {
           yield* Effect.logWarning("Declined an unsupported MCP elicitation.", {
             serverName: payload.serverName,
@@ -2263,6 +2314,11 @@ export const makeCodexSessionRuntime = (
 
     yield* client.handleServerRequest("item/permissions/requestApproval", (payload) =>
       Effect.gen(function* () {
+        if (threadSetup) {
+          return {
+            permissions: {},
+          } satisfies EffectCodexSchema.PermissionsRequestApprovalResponse;
+        }
         const requestId = ApprovalRequestId.make(
           yield* randomUUIDv4("app-permission-approval-request"),
         );
@@ -2473,6 +2529,7 @@ export const makeCodexSessionRuntime = (
         requestedModel,
         serviceTier: options.serviceTier,
         resumeThreadId: readResumeCursorThreadId(options.resumeCursor),
+        ...(options.threadSetup ? { overrides: options.threadSetup.thread } : {}),
       });
 
       const providerThreadId = opened.thread.id;
@@ -2545,6 +2602,7 @@ export const makeCodexSessionRuntime = (
             ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
             ...(input.effort ? { effort: input.effort } : {}),
             ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
+            ...(options.threadSetup ? { overrides: options.threadSetup.turn } : {}),
           });
           yield* Ref.set(lastAdditionalContextRef, params.additionalContext);
           const rawResponse = yield* client.raw.request("turn/start", params);

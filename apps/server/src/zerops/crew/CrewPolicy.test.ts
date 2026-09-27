@@ -3,6 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { shellQuote } from "../ZeropsWorkspaceAccess.ts";
 import { crewLane } from "./CrewDefinition.ts";
 import {
+  crewExactCommandRule,
   crewRefusedRoots,
   decideCrewTool,
   type GateDecision,
@@ -285,6 +286,8 @@ describe("decideCrewTool — file writes", () => {
 });
 
 describe("decideCrewTool — commands", () => {
+  /** A payload always goes into the lane form single-quoted, one word or many. */
+  const singleQuoted = (text: string) => `'${text.replaceAll("'", `'\\''`)}'`;
   /** What the gate hands the CLI instead: the payload wrapped to run in the copy. */
   const plainWriter: LiveGateContext = {
     ...writer,
@@ -301,7 +304,7 @@ describe("decideCrewTool — commands", () => {
     const inner = [
       "cd /var/www/.crew/backend &&",
       ...prefix,
-      `timeout ${ctx.payloadTimeoutSeconds} sh -c ${shellQuote(payload)}`,
+      `timeout ${ctx.payloadTimeoutSeconds} sh -c ${singleQuoted(payload)}`,
     ].join(" ");
     return { kind: "allow", updatedInput: { command: `ssh appdev ${shellQuote(inner)}` } };
   };
@@ -387,6 +390,74 @@ describe("decideCrewTool — commands", () => {
       { command: 'ssh appdev "npm test"' },
       wrapped("npm test", plainWriter),
     ],
+    [
+      "a command already in its lane form runs as it is",
+      writer,
+      "Bash",
+      wrapped("npm test").updatedInput,
+      ALLOW,
+    ],
+    [
+      "a one-word command in its lane form, single-quoted like any other",
+      writer,
+      "Bash",
+      wrapped("ls").updatedInput,
+      ALLOW,
+    ],
+    [
+      "a command with a quote in its lane form",
+      writer,
+      "Bash",
+      wrapped("echo it's done").updatedInput,
+      ALLOW,
+    ],
+    [
+      "a lane form keeps its other Bash fields",
+      writer,
+      "Bash",
+      { ...wrapped("npm test").updatedInput, timeout: 60000 },
+      ALLOW,
+    ],
+    [
+      "a lane form still stays in the copy",
+      writer,
+      "Bash",
+      wrapped("cd .. && ls").updatedInput,
+      DENY,
+    ],
+    [
+      "a lane form still reads history only",
+      writer,
+      "Bash",
+      wrapped("git push").updatedInput,
+      DENY,
+    ],
+    [
+      "a lane form with another timeout is wrapped again",
+      writer,
+      "Bash",
+      {
+        command: String(wrapped("npm test").updatedInput.command).replace(
+          "timeout 600",
+          "timeout 9999",
+        ),
+      },
+      wrapped(
+        "cd /var/www/.crew/backend && CREW_PORT=3001 DATABASE_URL=postgres://db/backend timeout 9999 sh -c 'npm test'",
+      ),
+    ],
+    [
+      "a lane form quoted another way is wrapped again",
+      writer,
+      "Bash",
+      {
+        command:
+          "ssh appdev \"cd /var/www/.crew/backend && CREW_PORT=3001 DATABASE_URL=postgres://db/backend timeout 600 sh -c 'npm test'\"",
+      },
+      wrapped(
+        "cd /var/www/.crew/backend && CREW_PORT=3001 DATABASE_URL=postgres://db/backend timeout 600 sh -c 'npm test'",
+      ),
+    ],
     ["a command on the zcp container", writer, "Bash", { command: "npm test" }, DENY],
     ["another host", writer, "Bash", { command: 'ssh apidev "npm test"' }, DENY],
     ["ssh options", writer, "Bash", { command: 'ssh -o ProxyCommand=x appdev "ls"' }, DENY],
@@ -470,6 +541,28 @@ describe("decideCrewTool — commands", () => {
     ["a reader runs nothing", reader, "Bash", { command: 'ssh appdev "ls"' }, DENY],
     ["the lead runs nothing", lead, "Bash", { command: 'ssh appdev "ls"' }, DENY],
   ]);
+});
+
+describe("crewExactCommandRule — the lane form, for a driver that cannot rewrite a command", () => {
+  it("gives a writer its lane form, and its example runs as it is", () => {
+    const rule = crewExactCommandRule(writer)!;
+    const form =
+      "ssh appdev 'cd /var/www/.crew/backend && CREW_PORT=3001 DATABASE_URL=postgres://db/backend timeout 600 sh -c '\\''<command>'\\'''";
+    expect(rule).toContain(form);
+    const example = form.replace("<command>", "npm test");
+    expect(rule).toContain(example);
+    expect(decideCrewTool(writer, { toolName: "Bash", input: { command: example } })).toEqual(
+      ALLOW,
+    );
+  });
+
+  it.each([
+    ["a reader", reader],
+    ["the lead", lead],
+    ["a thread without a live stint", { kind: "deny-all" } as const],
+  ] as const)("gives %s none: it runs no commands", (_name, ctx) => {
+    expect(crewExactCommandRule(ctx)).toBeUndefined();
+  });
 });
 
 describe("decideCrewTool — the dev server and a claim", () => {

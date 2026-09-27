@@ -35,6 +35,7 @@ import { useCrewHome, type CrewHomeRead } from "../../../zerops/crew/useCrewHome
 import { MateFace, Pill } from "../primitives";
 import {
   crewEffortOptions,
+  crewLoginNote,
   crewLoginOptions,
   crewModelOptions,
   crewRewriteBlockers,
@@ -133,6 +134,7 @@ function CrewmateForm({
 
   const catalog = providers ?? [];
   const logins = crewLoginOptions(catalog);
+  const loginNote = crewLoginNote(logins, draft.login);
   const models = crewModelOptions(catalog, draft.login);
   const efforts = crewEffortOptions(catalog, draft.login, draft.model);
   const tints = freeTints(definition, target.handle, mateTint);
@@ -244,6 +246,9 @@ function CrewmateForm({
               </SelectPopup>
             </Select>
           </CrewField>
+          {loginNote === undefined ? null : (
+            <p className="text-xs text-muted-foreground">{loginNote}</p>
+          )}
           <CrewField label="Model">
             <Select
               onValueChange={(value) => {
