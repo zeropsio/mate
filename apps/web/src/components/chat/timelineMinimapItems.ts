@@ -17,6 +17,12 @@ export interface TimelineMinimapItem {
   readonly note: string | null;
 }
 
+/** A message the person sent into a running turn: its run's line and answer come after it. */
+function isAside(row: MessagesTimelineRow): boolean {
+  return row.kind === "message" && row.message.role === "user" && row.aside;
+}
+
+/** The line of the run a message started: past the messages sent into it, which stand first. */
 function workLineAfter(
   rows: ReadonlyArray<MessagesTimelineRow>,
   index: number,
@@ -24,7 +30,7 @@ function workLineAfter(
   for (let cursor = index + 1; cursor < rows.length; cursor += 1) {
     const row = rows[cursor]!;
     if (row.kind === "work-line") return row;
-    if (row.kind === "message" && row.message.role === "user") return null;
+    if (row.kind === "message" && row.message.role === "user" && !row.aside) return null;
   }
   return null;
 }
@@ -57,13 +63,14 @@ export function deriveTimelineMinimapItems(
       continue;
     }
 
+    // A message sent into a run is a dot: what the run came to is its opener's.
     items.push({
       id: row.id,
       rowIndex: index,
       userText: row.message.text,
-      assistantText: resolveFinalAssistantTextForTurn(rows, index),
+      assistantText: row.aside ? null : resolveFinalAssistantTextForTurn(rows, index),
       aside: row.aside,
-      ...markOf(workLineAfter(rows, index)),
+      ...markOf(row.aside ? null : workLineAfter(rows, index)),
     });
   }
   return items;
@@ -80,6 +87,7 @@ function resolveFinalAssistantTextForTurn(
       continue;
     }
     if (row.message.role === "user") {
+      if (isAside(row)) continue;
       break;
     }
     if (row.message.role === "assistant") {
