@@ -4026,6 +4026,7 @@ export default function Sidebar() {
               onBrowseProjects={navigateToZeropsProjects}
               getFlow={zeropsSidebarFlowWithAsk}
               getOwner={zeropsMateOwner}
+              timestampFormat={timestampFormat}
               onOpenGroup={openGroup}
               getActivity={(candidate) =>
                 candidate.environmentId === undefined

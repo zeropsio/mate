@@ -308,3 +308,78 @@ describe("mateFaceFor", () => {
     expect(mateFaceFor(connected, activity)).toBe(face);
   });
 });
+
+describe("what a Mate's row says without words", () => {
+  const COMPLETED = {
+    turnId: TurnId.make("turn-1"),
+    state: "completed" as const,
+    requestedAt: "2026-09-05T10:01:00.000Z",
+    startedAt: "2026-09-05T10:01:00.000Z",
+    completedAt: "2026-09-05T10:05:00.000Z",
+    assistantMessageId: null,
+  };
+  const key = "env-fen:thread-1";
+
+  it.each([
+    {
+      case: "a working plan, counted",
+      shell: shell({
+        ...RUNNING,
+        planProgress: { step: "Run the build", completedSteps: 2, totalSteps: 5 },
+      }),
+      progress: { completed: 2, total: 5 },
+    },
+    {
+      case: "no plan while it works",
+      shell: RUNNING,
+      progress: undefined,
+    },
+    {
+      case: "a plan left over from a settled turn — never drawn",
+      shell: shell({
+        latestTurn: COMPLETED,
+        planProgress: { step: "Run the build", completedSteps: 2, totalSteps: 5 },
+      }),
+      progress: undefined,
+    },
+  ])("counts the plan's steps only while it works: $case", ({ shell: thread, progress }) => {
+    expect(deriveZeropsAgentActivity([thread], {}).get(FEN)?.progress).toEqual(progress);
+  });
+
+  it.each([
+    {
+      case: "a completion after the last visit",
+      visited: "2026-09-05T10:04:00.000Z",
+      unread: true,
+    },
+    { case: "a completion seen since", visited: "2026-09-05T10:06:00.000Z", unread: false },
+    { case: "never visited on this device", visited: undefined, unread: false },
+  ])("is unread for $case", ({ visited, unread }) => {
+    const activity = deriveZeropsAgentActivity(
+      [shell({ latestTurn: COMPLETED })],
+      visited === undefined ? {} : { [key]: visited },
+    );
+    expect(activity.get(FEN)?.unread).toBe(unread);
+  });
+
+  it("sleeps through a usage limit and says when it wakes", () => {
+    const paused = shell({
+      latestTurn: COMPLETED,
+      usagePause: {
+        resetsAt: "2026-09-05T14:20:00.000Z",
+        window: "5-hour",
+        held: 0,
+        pausedAt: "2026-09-05T10:05:00.000Z",
+        autoResume: true,
+      },
+    });
+    const activity = deriveZeropsAgentActivity([paused], {}).get(FEN);
+    expect(activity?.face).toBe("sleep");
+    expect(activity?.pausedUntil).toBe("2026-09-05T14:20:00.000Z");
+    expect(deriveZeropsAgentActivity([RUNNING], {}).get(FEN)?.pausedUntil).toBeUndefined();
+  });
+
+  it("names its conversation by the key a draft is kept under", () => {
+    expect(deriveZeropsAgentActivity([RUNNING], {}).get(FEN)?.threadKey).toBe(key);
+  });
+});

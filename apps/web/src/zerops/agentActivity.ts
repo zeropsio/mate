@@ -32,7 +32,8 @@ import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
 import {
-  mateMarkStateForThreadStatus,
+  hasUnseenCompletion,
+  mateMarkStateForThread,
   resolveThreadStatus,
   type ThreadStatusKind,
 } from "@t3tools/shared/threadStatus";
@@ -69,6 +70,23 @@ export interface ZeropsAgentActivity {
    * (the subject already says it), and on a server that keeps no preview.
    */
   readonly snippet: string | undefined;
+  /**
+   * The plan's steps while it works, counted — what the ring around a
+   * working face is drawn from, one segment a step. Absent while it rests
+   * and where the server reports no plan: a ring nobody can fill is not
+   * drawn.
+   */
+  readonly progress: { readonly completed: number; readonly total: number } | undefined;
+  /**
+   * The Mate finished something this device has not looked at since
+   * (`hasUnseenCompletion`, the resolver's own fact): its row is bold until
+   * its conversation is opened.
+   */
+  readonly unread: boolean;
+  /** When the usage limit pausing it resets; absent while it is not paused. */
+  readonly pausedUntil: string | undefined;
+  /** The conversation's scoped key — what its unsent draft is kept under. */
+  readonly threadKey: string;
 }
 
 /**
@@ -154,20 +172,27 @@ export function deriveZeropsAgentActivity(
   for (const [environmentId, shells] of shellsByEnvironment) {
     const { primary } = resolvePrimaryConversation(shells);
     if (primary === undefined) continue;
-    const lastVisitedAt =
-      lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, primary.id))];
-    const resolved = resolveThreadStatus({
-      ...primary,
-      ...(lastVisitedAt === undefined ? {} : { lastVisitedAt }),
-    });
+    const threadKey = scopedThreadKey(scopeThreadRef(environmentId, primary.id));
+    const lastVisitedAt = lastVisitedAtById[threadKey];
+    const visited = lastVisitedAt === undefined ? {} : { lastVisitedAt };
+    const resolved = resolveThreadStatus({ ...primary, ...visited });
+    const pause = primary.usagePause ?? undefined;
+    const plan = primary.planProgress ?? undefined;
     activity.set(environmentId, {
       threadId: primary.id,
       kind: resolved.kind,
       status: threadStatusPill(resolved),
-      face: mateMarkStateForThreadStatus(resolved.kind),
+      face: mateMarkStateForThread(resolved.kind, pause !== undefined),
       subject: agentActivitySubject(primary, resolved.kind),
       at: agentActivityAt(primary),
       snippet: agentActivitySnippet(primary),
+      progress:
+        resolved.kind === "working" && plan !== undefined && plan.totalSteps > 0
+          ? { completed: plan.completedSteps, total: plan.totalSteps }
+          : undefined,
+      unread: hasUnseenCompletion({ latestTurn: primary.latestTurn, ...visited }),
+      pausedUntil: pause?.resetsAt,
+      threadKey,
     });
   }
   return activity;

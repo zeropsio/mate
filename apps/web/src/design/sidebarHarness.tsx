@@ -98,6 +98,10 @@ function activity(input: {
     subject: input.subject,
     snippet: input.snippet,
     at: hoursAgo(input.hours),
+    progress: undefined,
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread",
   };
 }
 

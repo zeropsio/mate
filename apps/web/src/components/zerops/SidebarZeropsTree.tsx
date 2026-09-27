@@ -93,6 +93,7 @@ import { stopView, type Deployment, type StopView } from "@t3tools/client-runtim
 import type { KnownAffordance, Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
+import type { TimestampFormat } from "@t3tools/contracts/settings";
 import type { MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
   ArrowUpIcon,
@@ -103,6 +104,7 @@ import {
   ChevronsUpDownIcon,
   MinusIcon,
   MoreHorizontalIcon,
+  PauseIcon,
   PlusIcon,
   TriangleAlertIcon,
 } from "lucide-react";
@@ -115,7 +117,12 @@ import {
 } from "react";
 
 import { cn } from "~/lib/utils";
-import { formatRelativeTimeLabel } from "~/timestampFormat";
+import {
+  formatRelativeTimeLabel,
+  formatShortTimestamp,
+  formatUpcomingTimestamp,
+} from "~/timestampFormat";
+import { useComposerDraftStore } from "~/composerDraftStore";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -128,12 +135,12 @@ import {
 } from "~/zerops/projectOrderPreference";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
-import { Avatar, MateFace, StatusDot } from "./primitives";
+import { Avatar, MateFace, PlanRing, StatusDot } from "./primitives";
 import { RAIL_BLANK, RAIL_LINE } from "./rail";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { environmentRoleTag, groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
-import { stopNameSaysOnlyRole } from "./SidebarZeropsTree.logic";
+import { formatWorkingTime, stopNameSaysOnlyRole } from "./SidebarZeropsTree.logic";
 import {
   keyboardTarget,
   movedAnnouncement,
@@ -385,6 +392,8 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    * reads the same ones.
    */
   readonly births?: ReadonlyArray<ZeropsPlacedBirth> | undefined;
+  /** How clock times read — the paused Mate's "picks up at" — per the viewer's setting. */
+  readonly timestampFormat?: TimestampFormat;
 }
 
 export function SidebarZeropsTree<T extends RosterCandidate>({
@@ -404,6 +413,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   onNoticeAct,
   className,
   births = NO_BIRTHS,
+  timestampFormat = "locale",
 }: SidebarZeropsTreeProps<T>) {
   const emptyReason = mateEnvironmentsEmptyReason(candidates);
   const [openLists, setOpenLists] = useState<ReadonlySet<string>>(() => new Set());
@@ -608,6 +618,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 onSelect={onSelect}
                 owner={getOwner?.(item)}
                 railCap={railCapFor({ first, last: last && ownRow })}
+                timestampFormat={timestampFormat}
                 tint={tints.get(item.project.id) ?? "slate"}
               />
               {pulls.length === 0 || flow === undefined ? null : (
@@ -1079,6 +1090,7 @@ function MateRow<T extends RosterCandidate>({
   onSelect,
   owner,
   railCap,
+  timestampFormat,
 }: {
   readonly candidate: T;
   readonly tint: MateTintId;
@@ -1087,6 +1099,7 @@ function MateRow<T extends RosterCandidate>({
   readonly onSelect: (candidate: T) => void;
   readonly owner: ZeropsMateOwner | undefined;
   readonly railCap?: RailCap;
+  readonly timestampFormat: TimestampFormat;
 }) {
   const tags = readZeropsGroupTags(candidate.project.tagList);
   const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
@@ -1095,10 +1108,10 @@ function MateRow<T extends RosterCandidate>({
   const live = candidate.group === "connected" ? activity : undefined;
   const subject = live?.subject;
   const snippet = subject === undefined ? undefined : live?.snippet;
-  const when =
-    live === undefined || live.subject === undefined
-      ? undefined
-      : compactSidebarTimeLabel(formatRelativeTimeLabel(live.at));
+  const face = mateFaceFor(candidate.group === "connected", activity);
+  // The plan as a ring around the face while it works: one segment a step.
+  const progress = face === "working" ? live?.progress : undefined;
+  const unread = live?.unread === true;
 
   return (
     <button
@@ -1121,13 +1134,16 @@ function MateRow<T extends RosterCandidate>({
         {/* The Mate is the node the rest of its project hangs from, so it
             wears the card's face rather than a row's, and the person it
             belongs to rides on its corner (a teammate, 2026-09-24). The column
-            stays 20px: the spine keeps its x, and the face overhangs it. */}
-        <span className="relative flex">
-          <MateFace
-            size="md"
-            state={mateFaceFor(candidate.group === "connected", activity)}
-            tint={tint}
-          />
+            stays 20px: the spine keeps its x, and the face overhangs it. A
+            ring, when it works, stands 4px clear all round, and the spine
+            stops at the ring instead of running under it. */}
+        <span className={cn("relative flex", progress !== undefined && "my-1")}>
+          <MateFace size="md" state={face} tint={tint} />
+          {progress === undefined ? null : (
+            <span className="absolute -inset-1 flex" data-zerops-surface="sidebar-mate-ring">
+              <PlanRing completed={progress.completed} total={progress.total} />
+            </span>
+          )}
           {owner === undefined ? null : (
             <Tooltip>
               <TooltipTrigger
@@ -1156,34 +1172,135 @@ function MateRow<T extends RosterCandidate>({
           full height of the row to meet the rows either side of it. */}
       <span className="flex min-w-0 flex-1 flex-col py-2">
         <span className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 flex-1 truncate text-sm leading-5 font-medium">{name}</span>
-          {when === undefined || when.length === 0 ? null : (
-            <span
-              className="shrink-0 text-[11px] leading-5 text-sidebar-muted-foreground tabular-nums"
-              data-zerops-surface="sidebar-mate-time"
-            >
-              {when}
-            </span>
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate text-sm leading-5",
+              unread ? "font-bold" : "font-medium",
+            )}
+            data-zerops-surface="sidebar-mate-name"
+          >
+            {name}
+          </span>
+          {live === undefined ? null : (
+            <MateTime activity={live} timestampFormat={timestampFormat} />
           )}
         </span>
         {subject === undefined ? null : (
           <span
-            className="truncate text-xs leading-4 text-sidebar-muted-foreground"
+            className={cn(
+              "truncate text-xs leading-4",
+              unread ? "font-medium text-sidebar-foreground" : "text-sidebar-muted-foreground",
+            )}
             data-zerops-surface="sidebar-mate-subject"
           >
             {subject}
           </span>
         )}
         {snippet === undefined ? null : (
-          <span
-            className="truncate text-xs leading-4 text-sidebar-muted-foreground/70"
-            data-zerops-surface="sidebar-mate-snippet"
-          >
-            {snippet}
-          </span>
+          <MateSnippet snippet={snippet} threadKey={live?.threadKey} />
         )}
       </span>
     </button>
+  );
+}
+
+/**
+ * The row's right edge: when the Mate last did something, as a messenger
+ * dates its rows — or, while it works, how long it has been at it, counting
+ * up in the busy blue; or, paused at a usage limit, when it picks up again.
+ * Nothing at all for a Mate nobody has spoken to yet.
+ */
+function MateTime({
+  activity,
+  timestampFormat,
+}: {
+  readonly activity: ZeropsAgentActivity;
+  readonly timestampFormat: TimestampFormat;
+}) {
+  if (activity.pausedUntil !== undefined) {
+    const upcoming = formatUpcomingTimestamp(activity.pausedUntil, timestampFormat);
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={<span className={TIME_CLASS} data-zerops-surface="sidebar-mate-time" />}
+        >
+          <span
+            className="inline-flex items-center gap-1"
+            data-zerops-surface="sidebar-mate-paused"
+          >
+            <PauseIcon aria-hidden="true" className="size-2.5" />
+            {formatShortTimestamp(activity.pausedUntil, timestampFormat)}
+          </span>
+          <span className="sr-only">{`Paused at a usage limit, picks up ${upcoming}`}</span>
+        </TooltipTrigger>
+        <TooltipPopup side="right">{`Paused at a usage limit. Picks up ${upcoming}.`}</TooltipPopup>
+      </Tooltip>
+    );
+  }
+  if (activity.kind === "working" || activity.kind === "connecting") {
+    return <MateWorkingTime since={activity.at} />;
+  }
+  if (activity.subject === undefined) return null;
+  const when = compactSidebarTimeLabel(formatRelativeTimeLabel(activity.at));
+  return when.length === 0 ? null : (
+    <span className={TIME_CLASS} data-zerops-surface="sidebar-mate-time">
+      {when}
+    </span>
+  );
+}
+
+const TIME_CLASS = "shrink-0 text-[11px] leading-5 text-sidebar-muted-foreground tabular-nums";
+
+/** The working clock, ticking once a second — a step, never a continuous repaint (R6). */
+function MateWorkingTime({ since }: { readonly since: string }) {
+  const [nowMs, setNowMs] = useState(Date.now);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
+  return (
+    <span
+      className="shrink-0 text-2xs leading-5 font-medium text-status-busy-text tabular-nums"
+      data-zerops-surface="sidebar-mate-time"
+    >
+      {formatWorkingTime(nowMs - Date.parse(since))}
+    </span>
+  );
+}
+
+/**
+ * The Mate's last words — or, while a message to it waits unsent in its
+ * composer, that draft, led by *Draft:*. Only where the row already says
+ * something here: a draft never grows a row, the composer holds it anyway.
+ */
+function MateSnippet({
+  snippet,
+  threadKey,
+}: {
+  readonly snippet: string;
+  readonly threadKey: string | undefined;
+}) {
+  const draft = useComposerDraftStore((state) =>
+    threadKey === undefined ? undefined : state.draftsByThreadKey[threadKey]?.prompt,
+  );
+  const unsent = draft?.trim() ?? "";
+  return (
+    <span
+      className="truncate text-xs leading-4 text-sidebar-muted-foreground/70"
+      data-zerops-surface="sidebar-mate-snippet"
+    >
+      {unsent.length === 0 ? (
+        snippet
+      ) : (
+        <>
+          <span className="font-medium text-sidebar-foreground">Draft:</span> {unsent}
+        </>
+      )}
+    </span>
   );
 }
 

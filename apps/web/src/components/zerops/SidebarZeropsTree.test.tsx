@@ -17,6 +17,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+
+import { useComposerDraftStore } from "~/composerDraftStore";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import {
@@ -248,6 +252,10 @@ describe("SidebarZeropsTree", () => {
       subject: "Fix the login redirect",
       at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
       snippet: undefined,
+      progress: undefined,
+      unread: false,
+      pausedUntil: undefined,
+      threadKey: "env:thread",
     };
     const html = render([connected], { getActivity: () => idle });
     expect(html).toContain('data-mate-face-state="idle"');
@@ -269,6 +277,10 @@ describe("SidebarZeropsTree", () => {
       subject: "give it optimistic updates",
       at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
       snippet: "Deploying and verifying now.",
+      progress: undefined,
+      unread: false,
+      pausedUntil: undefined,
+      threadKey: "env:thread",
     };
     const html = render([connected], { getActivity: () => spoken });
     const subjectAt = html.indexOf('data-zerops-surface="sidebar-mate-subject"');
@@ -815,6 +827,10 @@ describe("the project's flow under it", () => {
       subject: "Something already asked",
       at: new Date().toISOString(),
       snippet: undefined,
+      progress: undefined,
+      unread: false,
+      pausedUntil: undefined,
+      threadKey: "env:thread",
     };
     const getActivity = () => activity;
     const withMergedCode = flow({ pullRequests: [], merged: [pull(4, { merged: true })], missing });
@@ -1422,6 +1438,10 @@ describe("the project's flow under it", () => {
         subject: "Ship it",
         at: new Date().toISOString(),
         snippet: undefined,
+        progress: undefined,
+        unread: false,
+        pausedUntil: undefined,
+        threadKey: "env:thread",
       };
       const html = render([CRM_DEV_CONNECTED, CRM_STAGE, CRM_PROD], {
         getActivity: () => talked,
@@ -1767,6 +1787,10 @@ describe("the Mate's card", () => {
     subject: "Reviewing the migration",
     at: "2026-09-06T10:00:00.000Z",
     snippet: undefined,
+    progress: undefined,
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread",
   };
 
   it("leads with the agent's name — not the project's, not its tag", () => {
@@ -2009,5 +2033,112 @@ describe("arranging the projects by hand", () => {
       (node) => typeof node.type === "string" && node.props.role === "status",
     );
     expect(text(spoken)).toBe("Shop moved to 1 of 2.");
+  });
+});
+
+describe("a Mate's row says more without words", () => {
+  const live = (overrides: Partial<ZeropsAgentActivity> = {}): ZeropsAgentActivity => ({
+    threadId: "thread-1" as ZeropsAgentActivity["threadId"],
+    kind: "idle",
+    status: null,
+    face: "idle",
+    subject: "Add a /status page with the build number",
+    at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    snippet: "The handler reads the build number from the environment.",
+    progress: undefined,
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env-crm-dev:thread-1",
+    ...overrides,
+  });
+  const row = (activity: ZeropsAgentActivity, props: Record<string, unknown> = {}) =>
+    render([CRM_DEV_CONNECTED], { getActivity: () => activity, ...props });
+  const working = (overrides: Partial<ZeropsAgentActivity> = {}) =>
+    live({
+      kind: "working",
+      face: "working",
+      subject: "Run the build",
+      at: new Date(Date.now() - 192_000).toISOString(),
+      progress: { completed: 2, total: 5 },
+      ...overrides,
+    });
+  const slot = (html: string) =>
+    /<span[^>]*data-zerops-surface="sidebar-mate-time"[^>]*>(.*?)<\/span>/u.exec(html)?.[0] ?? "";
+
+  it("rings a working face with its plan, one segment a step", () => {
+    const html = row(working());
+    expect(html).toContain('data-zerops-surface="sidebar-mate-ring"');
+    expect(html.match(/data-plan-ring-segment=/gu)).toHaveLength(5);
+    expect(html.match(/data-plan-ring-segment="done"/gu)).toHaveLength(2);
+  });
+
+  it.each([
+    { case: "a resting Mate", activity: live() },
+    { case: "a working one with no plan", activity: working({ progress: undefined }) },
+  ])("draws no ring on $case", ({ activity }) => {
+    expect(row(activity)).not.toContain("sidebar-mate-ring");
+  });
+
+  it("counts up how long it has been working, in the busy blue, where its age was", () => {
+    const time = slot(row(working()));
+    expect(time).toContain("3:12");
+    expect(time).toContain("text-status-busy-text");
+    expect(slot(row(live()))).toContain(">2h<");
+  });
+
+  it("sleeps through a usage limit, and says in the time slot when it picks up", () => {
+    const resets = new Date(2026, 8, 27, 14, 20).toISOString();
+    const html = row(live({ face: "sleep", pausedUntil: resets }), { timestampFormat: "24-hour" });
+    expect(html).toContain('data-mate-face-state="sleep"');
+    const time = slot(html);
+    expect(time).toContain('data-zerops-surface="sidebar-mate-paused"');
+    expect(time).toContain(">14:20<");
+    expect(time).not.toContain(">2h<");
+  });
+
+  it("sets an unread Mate's name and task in bold, and a read one in the usual weight", () => {
+    const name = (html: string) =>
+      /<span class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate-name"/u.exec(html)?.[1] ?? "";
+    const subject = (html: string) =>
+      /<span class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate-subject"/u.exec(html)?.[1] ?? "";
+    const unread = row(live({ unread: true }));
+    expect(name(unread)).toContain("font-bold");
+    expect(subject(unread)).toContain("text-sidebar-foreground");
+    expect(subject(unread)).toContain("font-medium");
+    const read = row(live());
+    expect(name(read)).toContain("font-medium");
+    expect(name(read)).not.toContain("font-bold");
+    expect(subject(read)).toContain("text-sidebar-muted-foreground");
+  });
+
+  describe("an unsent draft", () => {
+    const ref = scopeThreadRef(EnvironmentId.make("env-crm-dev"), ThreadId.make("thread-1"));
+    afterEach(() => {
+      useComposerDraftStore.getState().setPrompt(ref, "");
+    });
+
+    it("leads the last line with Draft:, in place of the last words", () => {
+      useComposerDraftStore.getState().setPrompt(ref, "also check the thumbnails");
+      // Mounted, not drawn once: a store read on the server answers with its
+      // first state, never the draft written since.
+      const mounted = mount(
+        <SidebarZeropsTree
+          candidates={[CRM_DEV_CONNECTED]}
+          complete
+          getActivity={() => live()}
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+        />,
+      );
+      const snippet = text(surface(mounted, "sidebar-mate-snippet"));
+      expect(snippet).toBe("Draft: also check the thumbnails");
+    });
+
+    it("never grows a row that has no last words: the composer holds the draft", () => {
+      useComposerDraftStore.getState().setPrompt(ref, "also check the thumbnails");
+      const html = row(live({ snippet: undefined }));
+      expect(html).not.toContain("sidebar-mate-snippet");
+      expect(html).not.toContain("Draft:");
+    });
   });
 });

@@ -7,7 +7,11 @@ import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { describe, expect, it } from "vite-plus/test";
 
-import { sidebarStopReads, stopNameSaysOnlyRole } from "./SidebarZeropsTree.logic";
+import {
+  formatWorkingTime,
+  sidebarStopReads,
+  stopNameSaysOnlyRole,
+} from "./SidebarZeropsTree.logic";
 
 /** A full sha whose first character says which commit it is. */
 const sha = (mark: string): string => mark.repeat(40);
@@ -170,5 +174,20 @@ describe("stopNameSaysOnlyRole", () => {
     { tag: null, name: "stage", expected: false },
   ])("$name as $tag: $expected", ({ tag, name, expected }) => {
     expect(stopNameSaysOnlyRole(tag, name)).toBe(expected);
+  });
+});
+
+describe("formatWorkingTime — how long a Mate has been at it", () => {
+  it.each([
+    { ms: 0, label: "0:00" },
+    { ms: 7_000, label: "0:07" },
+    { ms: 192_000, label: "3:12" },
+    { ms: 3_599_000, label: "59:59" },
+    { ms: 3_840_000, label: "1h 04m" },
+    { ms: 37_800_000, label: "10h 30m" },
+    // A clock skewed ahead of the server never reads as a negative time.
+    { ms: -5_000, label: "0:00" },
+  ])("reads $ms ms as $label", ({ ms, label }) => {
+    expect(formatWorkingTime(ms)).toBe(label);
   });
 });
