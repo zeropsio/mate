@@ -9,6 +9,7 @@
  * section's presses, *Tell the crew*, and the editors.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { crewDeliverAsk, crewPortsAsk } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { CrewmateView, CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { CrewSnapshot, EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
@@ -25,7 +26,6 @@ import { useEnvironmentProjectRef, useEnvironmentTopology } from "../../../zerop
 import { ZeropsAskDialog } from "../ZeropsAskDialog";
 import { CrewBriefSheet } from "./CrewBriefSheet";
 import { crewDevHosts } from "./CrewEditors.logic";
-import { crewDeliverAsk, crewPortsAsk } from "./CrewSection.logic";
 import { CrewSection, CrewSectionEmpty } from "./CrewSection";
 import { CrewmateEditor } from "./CrewmateEditor";
 import type { CrewmateSheetTarget } from "./CrewmateSheet";

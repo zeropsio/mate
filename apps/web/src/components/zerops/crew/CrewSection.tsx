@@ -12,6 +12,11 @@
 import {
   CREW_BOARD_COLUMNS,
   crewAttentionSentence,
+  crewBoardLinkWord,
+  crewLandedWord,
+  crewLaneWord,
+  crewPendingWord,
+  crewPortsOffWord,
   crewRunMeters,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewmateView, CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
@@ -33,9 +38,7 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Chip, FlatCard, MateFace, MicroLabel, Pill, StatusDot } from "../primitives";
 import {
   crewAttentionActions,
-  crewLaneSummary,
   crewLoginMark,
-  crewPendingChip,
   crewRowLead,
   crewRowState,
   crewServedLine,
@@ -298,8 +301,8 @@ function CrewmateRow(props: CrewSectionProps & { readonly row: CrewmateView }) {
   const mate = row.crewmate;
   const state = crewRowState(row, view.tasks);
   const lead = crewRowLead(row);
-  const lane = crewLaneSummary(mate.lane);
-  const pending = crewPendingChip(row.pending);
+  const lane = mate.lane === null ? null : crewLaneWord(mate.lane);
+  const pending = row.pending === null ? null : crewPendingWord(row.pending);
   const loginMark = crewLoginMark(mate.login);
   const threadId = mate.currentThreadId;
   const face = row.status === null ? "idle" : mateMarkStateForThreadStatus(row.status.kind);
@@ -385,7 +388,7 @@ function CrewFooter(props: CrewSectionProps & { readonly boardCount: number }) {
     <div className="space-y-1.5 border-t border-border pt-3 text-xs text-muted-foreground">
       {props.onOpenBoard === null ? null : (
         <Button onClick={props.onOpenBoard} size="xs" variant="ghost">
-          {`Board · ${props.boardCount} ${props.boardCount === 1 ? "task" : "tasks"}`}
+          {crewBoardLinkWord(props.boardCount)}
         </Button>
       )}
       {snapshot.hosts.map((host) => (
@@ -393,7 +396,7 @@ function CrewFooter(props: CrewSectionProps & { readonly boardCount: number }) {
       ))}
       {snapshot.landedNotDelivered === 0 ? null : (
         <div className="flex items-center gap-2">
-          <span>{`Landed, not delivered · ${snapshot.landedNotDelivered}`}</span>
+          <span>{crewLandedWord(snapshot.landedNotDelivered)}</span>
           <Pill className="ms-auto" label="Deliver" onClick={props.onDeliver} size="sm" />
         </div>
       )}
@@ -423,7 +426,7 @@ function CrewHostLine(props: CrewSectionProps & { readonly host: CrewHost }) {
       )}
       {host.crewPorts.length > 0 ? null : (
         <div className="flex items-center gap-2">
-          <span className="min-w-0 truncate">{`${host.host} · Crew ports: off`}</span>
+          <span className="min-w-0 truncate">{crewPortsOffWord(host.host)}</span>
           <Button
             className="ms-auto"
             onClick={() => props.onAddCrewPorts(host.host)}

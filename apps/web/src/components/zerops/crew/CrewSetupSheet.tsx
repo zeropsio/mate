@@ -4,6 +4,7 @@
  * crewmates (saved, not yet applied), then **Apply**, which creates each
  * writer's copy of the code and reports per crewmate as it goes.
  */
+import { crewDescribeAsk } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { Crewmate } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { renderCrewHome } from "@t3tools/shared/crewHome";
@@ -138,7 +139,7 @@ function CrewSetupDraft({
             <Pill
               disabled={description.trim() === ""}
               label={`Ask ${mateName}`}
-              onClick={() => onDescribe(`Set up a crew for this project: ${description.trim()}`)}
+              onClick={() => onDescribe(crewDescribeAsk(description))}
               size="sm"
               tone="outline"
             />

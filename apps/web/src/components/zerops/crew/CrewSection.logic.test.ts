@@ -1,18 +1,14 @@
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
-import { ThreadId, type CrewAttention, type CrewLaneSummary } from "@t3tools/contracts";
+import { ThreadId, type CrewAttention } from "@t3tools/contracts";
 import type { ThreadStatusInput } from "@t3tools/shared/threadStatus";
 import { describe, expect, it } from "vite-plus/test";
 
 import { readCrewThread } from "../../../zerops/crew/useCrew";
 import {
   crewAttentionActions,
-  crewDeliverAsk,
   crewFaceStack,
-  crewLaneSummary,
   crewLoginMark,
-  crewPendingChip,
-  crewPortsAsk,
   crewRowLead,
   crewRowState,
   crewServedLine,
@@ -81,64 +77,6 @@ describe("crewRowLead", () => {
       kind: "job",
       text: "Plans the work, splits it into tasks and reviews each landing.",
     });
-  });
-});
-
-describe("crewLaneSummary", () => {
-  const lane = (fields: Partial<CrewLaneSummary>): CrewLaneSummary => ({
-    branch: "crew/backend",
-    ahead: 0,
-    insertions: 0,
-    deletions: 0,
-    check: null,
-    state: "ready",
-    detail: null,
-    ...fields,
-  });
-
-  it.each<{
-    readonly name: string;
-    readonly lane: CrewLaneSummary | null;
-    readonly text: string | null;
-  }>([
-    { name: "no copy", lane: null, text: null },
-    { name: "nothing ahead", lane: lane({}), text: null },
-    { name: "commits ahead", lane: lane({ ahead: 3 }), text: "3 ahead" },
-    { name: "conflicts", lane: lane({ ahead: 3, state: "conflicts" }), text: "Conflicts" },
-    {
-      name: "being created",
-      lane: lane({ state: "creating" }),
-      text: "Creating its copy of the code",
-    },
-    {
-      name: "setting up",
-      lane: lane({ state: "setting-up", detail: "npm ci" }),
-      text: "Running npm ci",
-    },
-    {
-      name: "service redeploying",
-      lane: lane({ state: "frozen" }),
-      text: "Its service is redeploying",
-    },
-    { name: "gone", lane: lane({ state: "missing" }), text: "Its copy is missing" },
-    {
-      name: "failed with a reason",
-      lane: lane({ state: "failed", detail: "No free disk" }),
-      text: "Its copy failed: No free disk",
-    },
-  ])("$name", ({ lane: input, text }) => {
-    expect(crewLaneSummary(input)).toBe(text);
-  });
-});
-
-describe("crewPendingChip", () => {
-  it.each([
-    { name: "current", pending: null, text: null },
-    { name: "a job ahead", pending: { job: 5, brief: null }, text: "v5 at next turn" },
-    { name: "the brief ahead", pending: { job: null, brief: 5 }, text: "Brief v5 at next turn" },
-    { name: "both ahead", pending: { job: 3, brief: 5 }, text: "v3 at next turn" },
-  ])("$name", ({ pending, text }) => {
-    expect(crewPendingChip(pending)).toBe(text);
   });
 });
 
@@ -270,26 +208,6 @@ describe("crewServedLine", () => {
     { name: "unknown", served: { by: "unknown" as const }, line: null },
   ])("$name", ({ served, line }) => {
     expect(crewServedLine({ ...host, served }, snapshot.crewmates)).toEqual(line);
-  });
-});
-
-describe("the drafts for Fen", () => {
-  it("delivers the landed, undelivered tasks and names the tree's own dirty paths", () => {
-    expect(crewDeliverAsk(snapshot, [])).toBe(
-      "Ship the crew's landed work on appdev: #11 Health endpoint for the load balancer.",
-    );
-    expect(crewDeliverAsk(snapshot, ["src/ui/hud.ts", "README.md"])).toBe(
-      "Ship the crew's landed work on appdev: #11 Health endpoint for the load balancer. My own edits in src/ui/hud.ts and README.md ship too.",
-    );
-  });
-
-  it("asks for crew ports as one range", () => {
-    expect(crewPortsAsk("appdev", [3001, 3002, 3003, 3004])).toBe(
-      "Add crew ports 3001–3004 (httpSupport) to appdev's dev setup in zerops.yaml, self-deploy appdev, then make sure each new port is routed on the subdomain.",
-    );
-    expect(crewPortsAsk("appdev", [3001])).toBe(
-      "Add crew port 3001 (httpSupport) to appdev's dev setup in zerops.yaml, self-deploy appdev, then make sure the new port is routed on the subdomain.",
-    );
   });
 });
 

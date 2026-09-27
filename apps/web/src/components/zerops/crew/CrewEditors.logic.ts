@@ -15,6 +15,7 @@ import {
   type Crewmate,
   type ServerProvider,
 } from "@t3tools/contracts";
+import { crewApplyWord } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
 import {
   parseBrief,
@@ -168,33 +169,22 @@ export function crewApplyProgress(
   crewmates: ReadonlyArray<Crewmate>,
 ): ReadonlyArray<CrewApplyStep> {
   return crewmates.map((mate): CrewApplyStep => {
-    const step = { id: mate.handle, label: mate.displayName };
-    const lane = mate.lane;
-    if (lane === null) return { ...step, state: "done", stateLabel: "Ready" };
-    switch (lane.state) {
+    const step = { id: mate.handle, label: mate.displayName, stateLabel: crewApplyWord(mate) };
+    switch (mate.lane?.state) {
       case "creating":
-        return {
-          ...step,
-          state: "running",
-          stateLabel: `Creating ${mate.displayName}'s copy of the code`,
-        };
       case "setting-up":
-        return {
-          ...step,
-          state: "running",
-          stateLabel: lane.detail === null ? "Setting up its copy" : `Running ${lane.detail}`,
-        };
+        return { ...step, state: "running" };
       case "missing":
       case "failed":
-        return { ...step, state: "failed", stateLabel: lane.detail ?? "Its copy failed" };
+        return { ...step, state: "failed" };
+      case undefined:
       case "ready":
       case "conflicts":
       case "frozen":
-        return { ...step, state: "done", stateLabel: "Ready" };
+        return { ...step, state: "done" };
     }
   });
 }
-
 /**
  * The issues an editor must not save over: an editor writes crew.yaml back
  * from the parsed definition, so a field it could not read would be dropped.
