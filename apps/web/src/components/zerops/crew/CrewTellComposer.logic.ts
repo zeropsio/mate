@@ -30,6 +30,29 @@ export interface TellFile {
   readonly kind: "file" | "directory";
 }
 
+/**
+ * The crewmates a typed `@` query names, by handle or name — what `@` offers
+ * first wherever crewmates are offered (*Tell the crew*, the lead's chat).
+ */
+export function crewmateMenuItems(
+  crewmates: ReadonlyArray<Crewmate>,
+  query: string,
+): ReadonlyArray<Extract<ComposerCommandItem, { type: "crewmate" }>> {
+  const typed = query.toLowerCase();
+  return crewmates
+    .filter(
+      (mate) => mate.handle.startsWith(typed) || mate.displayName.toLowerCase().startsWith(typed),
+    )
+    .map((mate) => ({
+      id: `crewmate:${mate.handle}`,
+      type: "crewmate",
+      handle: mate.handle,
+      tint: mate.tint,
+      label: `@${mate.handle}`,
+      description: mate.jobFirstLine,
+    }));
+}
+
 /** The menu under the caret — crewmates first, then `files` — or `null` while the caret is on no `@`. */
 export function tellMenu(
   text: string,
@@ -39,19 +62,7 @@ export function tellMenu(
 ): TellMenu | null {
   const trigger = detectComposerTrigger(text, cursor, { mentions: "crewmate" });
   if (trigger?.kind !== "crewmate") return null;
-  const query = trigger.query.toLowerCase();
-  const mates = crewmates
-    .filter(
-      (mate) => mate.handle.startsWith(query) || mate.displayName.toLowerCase().startsWith(query),
-    )
-    .map((mate): TellMenuItem => ({
-      id: `crewmate:${mate.handle}`,
-      type: "crewmate",
-      handle: mate.handle,
-      tint: mate.tint,
-      label: `@${mate.handle}`,
-      description: mate.jobFirstLine,
-    }));
+  const mates = crewmateMenuItems(crewmates, trigger.query);
   const paths = files.map((file): TellMenuItem => ({
     id: `path:${file.kind}:${file.path}`,
     type: "path",

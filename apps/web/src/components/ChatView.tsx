@@ -184,7 +184,7 @@ import { CrewLaneBar } from "./zerops/crew/CrewLaneBar";
 import { CrewmateEditor } from "./zerops/crew/CrewmateEditor";
 import { CrewTimelineContext, type CrewTimeline } from "./zerops/crew/CrewTaskCard";
 import { crewChatNotices } from "./zerops/crew/crewChatNotices";
-import { crewMessageCommand } from "./zerops/crew/crewComposerSend";
+import { crewComposerMentions, crewMessageCommand } from "./zerops/crew/crewComposerSend";
 import {
   CREW_NEW_STINT_WORD,
   crewMessagePlaceholder,
@@ -5293,6 +5293,11 @@ export default function ChatView(props: ChatViewProps) {
       ? null
       : (crew.view?.crewmates.find((row) => row.crewmate.handle === activeCrewOrigin.crewmate) ??
         null);
+  // The lead's chat names crewmates on `@`; no other chat does (PRD §5.3).
+  const crewMentions = useMemo(
+    () => crewComposerMentions(activeCrewmate, crew.snapshot?.crewmates ?? []),
+    [activeCrewmate, crew.snapshot],
+  );
   // A crewmate's chat is written to the crewmate (PRD §4.5).
   const crewComposerPlaceholder =
     activeCrewOrigin === null
@@ -8297,6 +8302,7 @@ export default function ChatView(props: ChatViewProps) {
                               connectedPlaceholder={
                                 crewComposerPlaceholder ?? connectedComposerPlaceholder
                               }
+                              mentionCrewmates={crewMentions}
                               {...(crewComposerPlaceholder !== null
                                 ? { idlePlaceholder: crewComposerPlaceholder }
                                 : zeropsChrome.panel === "available"

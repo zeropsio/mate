@@ -1,7 +1,10 @@
 import type { ChatAttachment, ThreadCrewOrigin } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { crewMessageCommand } from "./crewComposerSend";
+import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
+import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
+
+import { crewComposerMentions, crewMessageCommand } from "./crewComposerSend";
 
 const ATTACHMENTS: ReadonlyArray<ChatAttachment> = [
   {
@@ -45,5 +48,32 @@ describe("crewMessageCommand", () => {
         attachments: ATTACHMENTS,
       }),
     ).toEqual(command);
+  });
+});
+
+describe("crewComposerMentions", () => {
+  const snapshot = crewSnapshotFixture();
+  const view = deriveCrewView(snapshot, [], () => {
+    throw new Error("no shells here");
+  });
+  const row = (handle: string) =>
+    view.crewmates.find(({ crewmate }) => crewmate.handle === handle)!;
+
+  it.each<{
+    readonly name: string;
+    readonly row: Parameters<typeof crewComposerMentions>[0];
+    readonly offered: ReadonlyArray<string> | undefined;
+  }>([
+    {
+      name: "the lead's chat offers the other crewmates on @",
+      row: row("lead"),
+      offered: ["backend", "frontend", "erik"],
+    },
+    { name: "a crewmate's chat offers none", row: row("backend"), offered: undefined },
+    { name: "a person's chat offers none", row: null, offered: undefined },
+  ])("$name", ({ row: chat, offered }) => {
+    expect(crewComposerMentions(chat, snapshot.crewmates)?.map((mate) => mate.handle)).toEqual(
+      offered,
+    );
   });
 });
