@@ -114,6 +114,24 @@ describe("CrewSection", () => {
     expect(paused).toContain("Spend $6.40 · no limit · Time 1 h 12 m of 8 h");
   });
 
+  it("meters a run without usage until the first rate-limit event, and words a refused pause", () => {
+    const snapshot = crewSnapshotFixture();
+    const running = render({ ...snapshot, run: { ...snapshot.run!, usagePercent: null } });
+    expect(running).toContain("Spend $6.40 of $20 · Time 1 h 12 m of 8 h<");
+    expect(running).not.toContain("Usage");
+
+    const refused = render({
+      ...snapshot,
+      run: {
+        ...snapshot.run!,
+        state: "paused",
+        reason: "refused",
+        reasonDetail: "Backend's login is not yours",
+      },
+    });
+    expect(refused).toContain("Paused · Backend&#x27;s login is not yours");
+  });
+
   it("offers + Add lead exactly while the crew has no lead", () => {
     const snapshot = crewSnapshotFixture();
     const leadless = { ...snapshot, crewmates: snapshot.crewmates.slice(1) };
