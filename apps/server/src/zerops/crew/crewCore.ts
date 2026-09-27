@@ -11,8 +11,9 @@
  *
  * {@link EngineMemory} holds what is cheap to lose: Apply's progress, the
  * lane figures read at turn end, which crew threads have a turn running,
- * refused dispatches, shaped turns, apply choices waiting on a turn's end. A
- * restart loses it and the boot sweep reads it again.
+ * refused dispatches, shaped turns, apply choices waiting on a turn's end,
+ * the dev services this Mate mounts. A restart loses it and the boot sweep
+ * reads it again.
  *
  * @module crewCore
  */
@@ -131,6 +132,8 @@ export interface EngineMemory {
   readonly integration: Map<string, Integration>;
   /** Why a crewmate asked to show its work on each dev service, while it asks. */
   readonly showReasons: Map<string, string>;
+  /** The dev services this Mate mounts: whether each reaches a database, `null` until read. */
+  readonly devHosts: Map<string, boolean | null>;
   lastError: string | null;
 }
 
@@ -161,6 +164,7 @@ export const makeMemory = (): EngineMemory => ({
   served: new Map(),
   integration: new Map(),
   showReasons: new Map(),
+  devHosts: new Map(),
   lastError: null,
 });
 
@@ -179,6 +183,7 @@ export const runtimeOf = (
   served: memory.served,
   integration: memory.integration,
   logins,
+  devHosts: memory.devHosts,
   lastError: memory.lastError,
 });
 
@@ -286,6 +291,58 @@ export const makeCrewCore = Effect.gen(function* () {
     yield* reload;
   });
 
+  const reads = yield* CrewReads;
+
+  /** Records the mounted dev services, forgetting the unmounted, and what is known of their databases. */
+  const recordDevHosts = (
+    mounted: ReadonlyArray<string>,
+    databases: ReadonlyMap<string, boolean>,
+  ) =>
+    Effect.sync(() => {
+      const listed = new Set(mounted);
+      for (const host of memory.devHosts.keys()) {
+        if (!listed.has(host)) memory.devHosts.delete(host);
+      }
+      for (const host of mounted) {
+        memory.devHosts.set(host, databases.get(host) ?? memory.devHosts.get(host) ?? null);
+      }
+    }).pipe(Effect.andThen(changed));
+
+  /** The dev services from the mount table: no ssh, so it runs with no crew applied. */
+  const listDevHosts = Effect.gen(function* () {
+    const listed = yield* repositories.list;
+    if (listed._tag === "available") {
+      yield* recordDevHosts(
+        listed.repositories.map((repository) => repository.host),
+        new Map(),
+      );
+    }
+  });
+
+  const probing = yield* Semaphore.make(1);
+
+  /**
+   * Verifies each mounted dev service and asks whether it reaches a database.
+   * It opens ssh sessions, so only a press of the person's runs it (opening
+   * the crew home), never a subscription; a second press while one runs
+   * adds nothing. A service that cannot be verified keeps an unknown answer.
+   */
+  const probeDevHosts = Effect.gen(function* () {
+    const listed = yield* repositories.refresh;
+    if (listed._tag !== "available") return;
+    const databases = new Map<string, boolean>();
+    for (const repository of listed.repositories) {
+      const seen = yield* observer.observe(repository);
+      if (seen._tag !== "available") continue;
+      const reaches = yield* Effect.option(reads.reachesDatabase(repository.host));
+      if (Option.isSome(reaches)) databases.set(repository.host, reaches.value);
+    }
+    yield* recordDevHosts(
+      listed.repositories.map((repository) => repository.host),
+      databases,
+    );
+  }).pipe(probing.withPermitsIfAvailable(1), Effect.asVoid);
+
   return {
     config,
     store,
@@ -297,7 +354,7 @@ export const makeCrewCore = Effect.gen(function* () {
     checks: yield* CrewChecks,
     app: yield* CrewApp,
     stateRef: yield* CrewStateRef,
-    reads: yield* CrewReads,
+    reads,
     runtime: yield* CrewRuntime,
     crewMemory: yield* CrewMemory,
     orchestration: yield* OrchestrationEngineService,
@@ -311,6 +368,9 @@ export const makeCrewCore = Effect.gen(function* () {
     applied: Ref.get(cache),
     reload,
     verify,
+    recordDevHosts,
+    listDevHosts,
+    probeDevHosts,
     /** Tells the snapshot hub something in memory changed. */
     changed,
     /**

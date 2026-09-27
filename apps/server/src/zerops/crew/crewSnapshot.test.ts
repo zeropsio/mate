@@ -151,12 +151,24 @@ const base = (fields: Partial<AppliedSnapshotInput> = {}): AppliedSnapshotInput 
 const decode = Schema.decodeUnknownSync(CrewSnapshot);
 
 describe("crew snapshot", () => {
-  it("off and none carry no crew and empty lists", () => {
+  it("off and none carry no crew and empty lists; none offers the dev services by name", () => {
     expect(decode(CREW_OFF_SNAPSHOT)).toEqual(CREW_OFF_SNAPSHOT);
-    expect(crewNoneSnapshot(12, "boom")).toEqual({
+    expect(
+      crewNoneSnapshot(12, {
+        devHosts: new Map([
+          ["webdev", null],
+          ["appdev", true],
+        ]),
+        lastError: "boom",
+      }),
+    ).toEqual({
       ...CREW_OFF_SNAPSHOT,
       status: "none",
       seq: 12,
+      devHosts: [
+        { host: "appdev", database: true },
+        { host: "webdev", database: null },
+      ],
       lastError: "boom",
     });
   });

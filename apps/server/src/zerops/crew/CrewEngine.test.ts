@@ -34,7 +34,7 @@ import {
   writeCrewHome,
   type CrewWorld,
 } from "./testing/crewEngineFixture.ts";
-import { git, read, write } from "./testing/crewGitFixture.ts";
+import { TEST_HOST, git, read, write } from "./testing/crewGitFixture.ts";
 
 const mateLogin = (id: string, agent: "claude-code" | "codex", label: string): MateLogin => ({
   id,
@@ -1209,6 +1209,29 @@ describe("CrewEngine", () => {
         );
       }),
     ),
+  );
+
+  it.live(
+    "the dev services this Mate mounts show before any crew; opening the crew home reads their databases",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          const engine = yield* CrewEngine;
+          const before = yield* snapshotWhere((current) => current.devHosts.length > 0);
+          const sshBefore = yield* Ref.get(world.sshCalls);
+          yield* engine.readFiles;
+          const read = yield* snapshotWhere((current) => current.devHosts[0]?.database !== null);
+          assert.deepStrictEqual(
+            [
+              before.status,
+              before.devHosts,
+              sshBefore,
+              read.devHosts.map((host) => [host.host, typeof host.database]),
+            ],
+            ["none", [{ host: TEST_HOST, database: null }], 0, [[TEST_HOST, "boolean"]]],
+          );
+        }),
+      ),
   );
 
   it.live(

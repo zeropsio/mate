@@ -110,6 +110,10 @@ const appliedSnapshot = {
   },
   run: null,
   attention: [],
+  devHosts: [
+    { host: "appdev", database: true },
+    { host: "webdev", database: null },
+  ],
   landedNotDelivered: 0,
   lastError: null,
 };

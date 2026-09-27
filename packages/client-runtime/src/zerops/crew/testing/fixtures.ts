@@ -394,6 +394,7 @@ const appliedCrew: CrewSnapshot = {
       at: at("08:58"),
     },
   ],
+  devHosts: [{ host: "appdev", database: false }],
   landedNotDelivered: 1,
   lastError: null,
 };

@@ -21,6 +21,7 @@ import {
   type CrewAppState,
   type CrewAttention,
   type CrewClaimState,
+  type CrewDevHost,
   type CrewLaneState,
   type CrewLogin,
   type CrewServed,
@@ -53,16 +54,27 @@ export const CREW_OFF_SNAPSHOT: CrewSnapshot = {
   board: { tasks: [] },
   run: null,
   attention: [],
+  devHosts: [],
   landedNotDelivered: 0,
   lastError: null,
 };
 
-/** Crew mode is on and nothing is applied yet. */
-export const crewNoneSnapshot = (seq: number, lastError: string | null): CrewSnapshot => ({
+/** The dev services a writer's copy may live on, by name. */
+const devHostsOf = (devHosts: SnapshotRuntime["devHosts"]): ReadonlyArray<CrewDevHost> =>
+  [...devHosts]
+    .map(([host, database]) => ({ host, database }))
+    .toSorted((a, b) => a.host.localeCompare(b.host));
+
+/** Crew mode is on and nothing is applied yet: the crewmate editor still offers the dev services. */
+export const crewNoneSnapshot = (
+  seq: number,
+  runtime: Pick<SnapshotRuntime, "devHosts" | "lastError">,
+): CrewSnapshot => ({
   ...CREW_OFF_SNAPSHOT,
   status: "none",
   seq,
-  lastError,
+  devHosts: devHostsOf(runtime.devHosts),
+  lastError: runtime.lastError,
 });
 
 /** A stint as the engine recorded it (`crew_stint`). */
@@ -129,6 +141,8 @@ export interface SnapshotRuntime {
   >;
   /** A crewmate's login as the section names it. */
   readonly logins: ReadonlyMap<string, CrewLogin>;
+  /** The dev services this Mate mounts: whether each reaches a database, `null` until read. */
+  readonly devHosts: ReadonlyMap<string, boolean | null>;
   readonly lastError: string | null;
 }
 
@@ -143,6 +157,7 @@ export const EMPTY_RUNTIME: SnapshotRuntime = {
   served: new Map(),
   integration: new Map(),
   logins: new Map(),
+  devHosts: new Map(),
   lastError: null,
 };
 
@@ -436,6 +451,7 @@ export const appliedSnapshot = (input: AppliedSnapshotInput): CrewSnapshot => {
       ...tasks.flatMap((row) => taskAttention(row, input.runtime) ?? []),
       ...claimAttention,
     ],
+    devHosts: devHostsOf(input.runtime.devHosts),
     landedNotDelivered: tasks.filter(
       (row) => row.state === "landed" && !input.runtime.delivered.has(row.assignment),
     ).length,

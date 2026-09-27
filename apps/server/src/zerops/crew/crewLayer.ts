@@ -127,7 +127,7 @@ const buildSnapshot = (core: CrewCore, seq: number) =>
     const { store } = core;
     const row = yield* store.getDefinition(CrewHome.CREW_ID);
     if (Option.isNone(row) || row.value.state !== "applied") {
-      return crewNoneSnapshot(seq, core.memory.lastError);
+      return crewNoneSnapshot(seq, core.memory);
     }
     const members = yield* store.members(CrewHome.CREW_ID);
     const hosts = [
@@ -342,6 +342,7 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
       Effect.forkIn(scope),
     );
 
+    yield* core.listDevHosts;
     let seq = yield* Clock.currentTimeMillis;
     const next = () => {
       seq += 1;
@@ -374,7 +375,10 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
 
     const engine: CrewEngineService = {
       snapshot: SubscriptionRef.changes(hub),
-      readFiles: Effect.map(core.home.read, (files) => ({ files })),
+      // Opening the crew home is the editor opening: the moment to read what its Service picker offers.
+      readFiles: core
+        .background(core.probeDevHosts)
+        .pipe(Effect.andThen(Effect.map(core.home.read, (files) => ({ files })))),
       writeFiles: (files) => core.home.write(files.files),
       command: (command, principal) => run(core, command, principal, installPolicies),
     };

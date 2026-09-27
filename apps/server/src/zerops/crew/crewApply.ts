@@ -356,6 +356,10 @@ export const apply = (core: CrewCore, principal: TurnPrincipal, installPolicies:
     for (const host of verified.keys()) {
       if (yield* asRefusal(core.reads.reachesDatabase(host))) databaseHosts.push(host);
     }
+    yield* core.recordDevHosts(
+      devHosts,
+      new Map([...verified.keys()].map((host) => [host, databaseHosts.includes(host)])),
+    );
     const topology = validateCrewTopology(definition, { devHosts, databaseHosts });
     if (topology.length > 0) return yield* refusalOf(topology);
     const login = yield* defaultLogin(core);
