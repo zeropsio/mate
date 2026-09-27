@@ -145,6 +145,7 @@ export function crewLaneBarModel(
           tasks: snapshot.board.tasks,
           hasLead: false,
           threadStatusWord: "",
+          ownerOpenTaskId: openTask.id,
         }),
         tone: "attention",
       };

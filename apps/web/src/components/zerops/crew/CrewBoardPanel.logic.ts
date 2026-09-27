@@ -11,6 +11,7 @@ import {
   crewAttentionSentence,
   crewCheckWord,
   crewDiffStatWord,
+  crewQueuedReason,
   crewTaskSourceWord,
   type CrewBoardColumnId,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
@@ -176,14 +177,6 @@ function boardCard(row: CrewTaskView): CrewBoardCard {
   };
 }
 
-/** `after #13`: the first dependency that has not landed, as `crewTaskWord` names it for a queued task. */
-function afterDependency(task: CrewTask, tasks: ReadonlyArray<CrewTask>): string | null {
-  const waitsFor = task.dependsOn
-    .map((id) => tasks.find((candidate) => candidate.id === id))
-    .find((dependency) => dependency !== undefined && dependency.state !== "landed");
-  return waitsFor === undefined ? null : `after #${waitsFor.number}`;
-}
-
 function planCard(
   snapshot: CrewSnapshot,
   proposed: ReadonlyArray<CrewTaskView>,
@@ -198,7 +191,8 @@ function planCard(
       number: task.number,
       title: task.title,
       owner: crewBoardFace(task.owner, owner),
-      after: afterDependency(task, snapshot.board.tasks),
+      // A plan row names only its dependency: its owner's current task is no reason yet.
+      after: crewQueuedReason(task, { tasks: snapshot.board.tasks, ownerOpenTaskId: null }),
     })),
   };
 }
@@ -331,7 +325,22 @@ function taskActions(row: CrewTaskView): ReadonlyArray<CrewTaskAction> {
   return actions;
 }
 
-export function crewTaskSheet(view: CrewView, taskId: string): CrewTaskSheet | null {
+/** `Not started`, `Attempt 2`; a queued task's with what it waits for (`· waits for #13`). */
+function attemptsLine(task: CrewTask, owner: CrewmateView | null, tasks: ReadonlyArray<CrewTask>) {
+  const attempts = task.attempts === 0 ? "Not started" : `Attempt ${task.attempts}`;
+  if (task.state !== "queued") return attempts;
+  const reason = crewQueuedReason(task, {
+    tasks,
+    ownerOpenTaskId: owner?.crewmate.openTaskId ?? null,
+  });
+  return reason === null ? attempts : `${attempts} · ${reason}`;
+}
+
+export function crewTaskSheet(
+  snapshot: CrewSnapshot,
+  view: CrewView,
+  taskId: string,
+): CrewTaskSheet | null {
   const row = view.tasks.find((candidate) => candidate.task.id === taskId);
   if (row === undefined) return null;
   const { task, owner } = row;
@@ -344,7 +353,7 @@ export function crewTaskSheet(view: CrewView, taskId: string): CrewTaskSheet | n
     source: crewTaskSourceWord(task.source),
     brief: task.brief,
     doneWhen: task.doneWhen === "" ? null : task.doneWhen,
-    attempts: task.attempts === 0 ? "Not started" : `Attempt ${task.attempts}`,
+    attempts: attemptsLine(task, owner, snapshot.board.tasks),
     report: task.report,
     check:
       task.check === null

@@ -230,6 +230,16 @@ describe("crewBoardModel cards", () => {
       },
     },
     {
+      name: "a queued task with no dependency names the task its owner is on",
+      snapshot: withTask("task-15", { dependsOn: [] }),
+      number: 15,
+      card: {
+        owner: { handle: "frontend", name: "Frontend", tint: "coral", face: "idle" },
+        status: { word: "Queued · waits for #13", tone: "off", pulse: false },
+        detail: "from lead",
+      },
+    },
+    {
       name: "a parked task says why it stopped",
       snapshot: fixture,
       number: 17,
@@ -373,7 +383,7 @@ describe("crewBoardModel plan", () => {
 describe("crewTaskSheet", () => {
   const fixture = crewSnapshotFixture();
   const sheetOf = (snapshot: CrewSnapshot, taskId: string) =>
-    crewTaskSheet(viewOf(snapshot), taskId);
+    crewTaskSheet(snapshot, viewOf(snapshot), taskId);
 
   it("reads a landed task in full", () => {
     const sheet = sheetOf(fixture, "task-11");
@@ -400,12 +410,27 @@ describe("crewTaskSheet", () => {
 
   it.each([
     {
-      name: "a task not started yet, with nothing to report",
+      name: "a task not started yet, with nothing to report, after its dependency",
       taskId: "task-15",
       fields: {},
       read: {
         doneWhen: "The camera follows the player; npm test passes",
-        attempts: "Not started",
+        attempts: "Not started · after #12",
+        report: null,
+        check: null,
+        review: null,
+        changes: null,
+        landedCommit: null,
+        editable: true,
+      },
+    },
+    {
+      name: "a task not started yet, behind the task its owner is on",
+      taskId: "task-15",
+      fields: { dependsOn: [] },
+      read: {
+        doneWhen: "The camera follows the player; npm test passes",
+        attempts: "Not started · waits for #13",
         report: null,
         check: null,
         review: null,
@@ -494,7 +519,7 @@ describe("crewTaskSheet actions", () => {
       },
     });
   const actionsOf = (snapshot: CrewSnapshot, taskId: string) =>
-    crewTaskSheet(viewOf(snapshot), taskId)?.actions.map(({ label, tone, command }) => ({
+    crewTaskSheet(snapshot, viewOf(snapshot), taskId)?.actions.map(({ label, tone, command }) => ({
       label,
       tone,
       command,

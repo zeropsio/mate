@@ -40,6 +40,7 @@ import {
   crewBoardColumn,
   crewCheckWord,
   crewPersonLands,
+  crewQueuedReason,
   crewRefusalSentence,
   crewRunMeters,
   crewStateWord,
@@ -100,7 +101,12 @@ describe("crewBoardColumn", () => {
 });
 
 describe("crewTaskWord", () => {
-  const context = { tasks, hasLead: true, threadStatusWord: "Connecting" };
+  const context = {
+    tasks,
+    hasLead: true,
+    threadStatusWord: "Connecting",
+    ownerOpenTaskId: null,
+  };
 
   it.each([
     ["proposed", {}, "Proposed"],
@@ -137,6 +143,17 @@ describe("crewTaskWord", () => {
     const afterLanded = { ...taskOf("task-15"), dependsOn: ["task-11", "task-12"] };
     expect(crewTaskWord(afterLanded, context)).toBe("Queued · after #12");
     expect(crewTaskWord({ ...afterLanded, dependsOn: ["task-11"] }, context)).toBe("Queued");
+  });
+
+  it("names what a queued task waits for: a dependency first, else its owner's open task", () => {
+    const behindOwner = { ...context, ownerOpenTaskId: "task-13" };
+    const noDependency = { ...taskOf("task-15"), dependsOn: [] };
+    expect(crewTaskWord(noDependency, behindOwner)).toBe("Queued · waits for #13");
+    expect(crewQueuedReason(noDependency, behindOwner)).toBe("waits for #13");
+    expect(crewTaskWord(taskOf("task-15"), behindOwner)).toBe("Queued · after #12");
+    expect(crewQueuedReason(taskOf("task-15"), behindOwner)).toBe("after #12");
+    expect(crewQueuedReason(noDependency, context)).toBeNull();
+    expect(crewQueuedReason(noDependency, { ...context, ownerOpenTaskId: "task-404" })).toBeNull();
   });
 
   it("words a working task with its thread's own status word", () => {

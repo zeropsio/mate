@@ -256,7 +256,7 @@ describe("CrewTaskSheetBody", () => {
     },
   });
   const view = viewOf(snapshot);
-  const sheet = crewTaskSheet(view, "task-13")!;
+  const sheet = crewTaskSheet(snapshot, view, "task-13")!;
   const task = view.tasks.find((row) => row.task.id === "task-13")!.task;
 
   function renderSheet(onSend = () => undefined, onOpenChat = () => undefined) {

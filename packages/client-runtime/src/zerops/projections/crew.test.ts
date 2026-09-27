@@ -195,6 +195,22 @@ describe("deriveCrewView", () => {
     ]);
   });
 
+  it("words a queued task with the owner's open task it waits behind", () => {
+    const fixture = crewSnapshotFixture();
+    const view = deriveCrewView(
+      crewSnapshotFixture({
+        board: {
+          tasks: fixture.board.tasks.map((task) =>
+            task.id === "task-15" ? { ...task, dependsOn: [] } : task,
+          ),
+        },
+      }),
+      shells,
+    );
+
+    expect(view.tasks.find((row) => row.task.number === 15)?.word).toBe("Queued · waits for #13");
+  });
+
   it("has no word for a working task whose owner's thread is idle", () => {
     const view = deriveCrewView(
       crewSnapshotFixture(),

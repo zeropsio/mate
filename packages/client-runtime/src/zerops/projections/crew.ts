@@ -169,6 +169,7 @@ export function deriveCrewView<S extends CrewShellInput>(
             tasks: snapshot.board.tasks,
             hasLead: lead !== null,
             threadStatusWord: threadStatusWord ?? "",
+            ownerOpenTaskId: owner?.crewmate.openTaskId ?? null,
           });
     return [{ task, owner, column, word }];
   });
