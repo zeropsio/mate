@@ -15,8 +15,9 @@
  *   report, which the new stint's first session starts from (probe 22 failed,
  *   so every changed prompt reaches a crewmate this way, PRD §5.6).
  *
- * A stint's `reason` is the rotation's code (`RotationReason`); the client
- * words it.
+ * A stint's `reason` is the seam line its conversation opens with ("Job
+ * updated to v5 — applies from here"), which the chat shows verbatim above
+ * the stint's first card.
  *
  * @module CrewStints
  */
@@ -32,7 +33,8 @@ import {
   type CrewCore,
   type CrewMember,
 } from "./crewCore.ts";
-import { rotationSeed } from "./crewCards.ts";
+import { rotationSeed, stintReasonWords } from "./crewCards.ts";
+import { crewLane } from "./CrewDefinition.ts";
 import { modelSelectionFor } from "./CrewDispatch.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import type { CrewStintRow } from "./CrewStore.ts";
@@ -47,7 +49,8 @@ export const openStint = (
   core: CrewCore,
   applied: AppliedCrew,
   member: CrewMember,
-  input: { readonly reason: RotationReason | null; readonly seed: string | null },
+  /** `reason` is the seam line the new conversation opens with; `null` for a crewmate's first. */
+  input: { readonly reason: string | null; readonly seed: string | null },
 ) =>
   Effect.gen(function* () {
     const project = yield* asRefusal(
@@ -91,7 +94,7 @@ export const openStint = (
       runtimeMode: "approval-required",
       interactionMode: "default",
       branch: null,
-      worktreePath: null,
+      worktreePath: worktreeOf(applied, member),
       createdAt: now,
       crew: { crew: CREW_ID, crewmate: member.row.handle, stint },
     });
@@ -104,6 +107,19 @@ export const openStint = (
     yield* asRefusal(core.reload);
     return row;
   });
+
+/**
+ * Where a crewmate's conversation runs: a writer's in its copy (the lane's
+ * directory through the mount), so the chat's diff and file panels open the
+ * copy; a reader's and the lead's in the Mate's tree.
+ */
+const worktreeOf = (applied: AppliedCrew, member: CrewMember): string | null => {
+  const repository =
+    member.row.kind === "writer" && member.row.host !== null
+      ? applied.repositories.get(member.row.host)
+      : undefined;
+  return repository === undefined ? null : crewLane(repository, member.row.handle).mountDir;
+};
 
 export const retireStint = (core: CrewCore, stint: CrewStintRow) =>
   Effect.gen(function* () {
@@ -178,8 +194,14 @@ export const rotate = (
   Effect.gen(function* () {
     const seed = yield* stintSeed(core, applied, member, reason);
     const current = currentStint(applied, member.row.handle);
+    const latest = { brief: applied.briefVersion, job: member.row.jobVersion };
+    const words = stintReasonWords(
+      reason,
+      current === undefined ? latest : { brief: current.briefVersion, job: current.jobVersion },
+      latest,
+    );
     if (current !== undefined) yield* retireStint(core, current);
     core.memory.applyChoices.delete(member.row.handle);
     const reloaded = yield* core.applied;
-    return yield* openStint(core, reloaded ?? applied, member, { reason, seed });
+    return yield* openStint(core, reloaded ?? applied, member, { reason: words, seed });
   });

@@ -71,6 +71,7 @@ describe("CrewReads", () => {
             assert.deepStrictEqual(
               {
                 stats: yield* reads.laneStats(TEST_HOST, "backend"),
+                integration: yield* reads.integration(TEST_HOST),
                 log: log.map((line) => line.replace(/^[0-9a-f]+ /u, "")),
                 dirty: yield* reads.dirtyPaths(TEST_HOST),
                 delivered: [
@@ -79,7 +80,13 @@ describe("CrewReads", () => {
                 diff: (yield* reads.diff(TEST_HOST, "backend", "a.ts")).includes("+one"),
               },
               {
-                stats: { ahead: 1, insertions: 2, deletions: 0 },
+                stats: {
+                  ahead: 1,
+                  insertions: 2,
+                  deletions: 0,
+                  integration: { branch: "main", head: start },
+                },
+                integration: { branch: "main", head: start },
                 log: ["wip(t-1): turn 1"],
                 dirty: ["README.md", "new.txt"],
                 delivered: [start],

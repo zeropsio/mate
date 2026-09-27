@@ -16,6 +16,7 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
+import type { MateLogin } from "../ZeropsLogins.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "../ZeropsMembershipWatch.ts";
 import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
@@ -34,6 +35,15 @@ import {
   type CrewWorld,
 } from "./testing/crewEngineFixture.ts";
 import { git, read, write } from "./testing/crewGitFixture.ts";
+
+const mateLogin = (id: string, agent: "claude-code" | "codex", label: string): MateLogin => ({
+  id,
+  agent,
+  kind: "subscription",
+  label,
+  home: `/home/zerops/.mate/logins/${id}`,
+  keyStored: false,
+});
 
 const KAREL: TurnPrincipal = { kind: "session", subject: `${ZEROPS_SUBJECT_PREFIX}user-karel` };
 
@@ -404,6 +414,7 @@ describe("CrewEngine", () => {
             stints: creates.map((entry) => entry.crew.stint),
             reason: snapshot.crewmates[0]!.stints.map((stint) => [stint.state, stint.reason]),
             running: snapshot.crewmates[0]!.promptVersions.running,
+            carried: (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!.message.text,
           },
           {
             pending: { running: { brief: 1, job: 1 }, current: { brief: 1, job: 2 } },
@@ -412,9 +423,16 @@ describe("CrewEngine", () => {
             stints: [1, 2],
             reason: [
               ["retired", null],
-              ["open", "prompt-changed"],
+              ["open", "Job updated to v2 — applies from here"],
             ],
             running: { brief: 1, job: 2 },
+            carried: [
+              "[Crew task card]",
+              "#1 Start · continues",
+              "Job updated to v2 — applies from here",
+              "",
+              "Go on",
+            ].join("\n"),
           },
         );
       }),
@@ -745,7 +763,7 @@ describe("CrewEngine", () => {
               interrupts: [thread],
               continueIn: true,
               continueAs: { kind: "crew", startedBy: "user-karel" },
-              reasons: [null, "prompt-changed", "start-fresh"],
+              reasons: [null, "Brief updated to v2 — applies from here", "Started fresh by you"],
               brief: 2,
             },
           );
@@ -753,10 +771,14 @@ describe("CrewEngine", () => {
       ),
   );
 
-  it.live("a changed login saves only as fresh", () =>
+  it.live("a changed login saves only as fresh; the section names it by its label", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
         yield* applied(world);
+        yield* Ref.set(
+          world.logins,
+          new Map([["claudeAgent_work", mateLogin("claudeAgent_work", "claude-code", "work")]]),
+        );
         writeCrewHome(world.workspace, {
           "crew.yaml": [
             "name: Game team",
@@ -778,10 +800,7 @@ describe("CrewEngine", () => {
         );
         assert.deepStrictEqual(
           [refused.reason, snapshot.crewmates[0]!.login],
-          [
-            "login-needs-fresh",
-            { id: "claudeAgent_work", label: "claudeAgent_work", agent: "claude-code" },
-          ],
+          ["login-needs-fresh", { id: "claudeAgent_work", label: "work", agent: "claude-code" }],
         );
       }),
     ),
@@ -869,7 +888,7 @@ describe("CrewEngine", () => {
               ports,
             },
             {
-              hosts: [["appdev", [{ port: 3001, routed: false }]]],
+              hosts: [["appdev", [{ port: 3001, routed: null }]]],
               app: { state: "running", port: 3001, url: null },
               stopped: "stopped",
               ports: { _tag: "crewPorts", host: "appdev", ports: [3002, 3003] },
@@ -959,7 +978,9 @@ describe("CrewEngine", () => {
           assert.deepStrictEqual(
             {
               asked: asked.isError,
-              attention: requested.attention.find((row) => row.kind === "show-on-dev")?.host,
+              attention: requested.attention
+                .filter((row) => row.kind === "show-on-dev")
+                .map((row) => [row.host, row.text]),
               claimCard: claimTurn.message.text.split("\n")[1],
               claimWorkDir: claimTurn.message.text.includes(`workDir=${world.root}/.crew/backend`),
               shaped: shaped.kind === "live" ? [shaped.turn, shaped.devServer?.port] : null,
@@ -971,7 +992,7 @@ describe("CrewEngine", () => {
             },
             {
               asked: false,
-              attention: "appdev",
+              attention: [["appdev", "see the HUD"]],
               claimCard: "Show your work on appdev",
               claimWorkDir: true,
               shaped: ["claim-start", 3000],
@@ -997,6 +1018,54 @@ describe("CrewEngine", () => {
       );
     },
   );
+
+  it.live("Show on dev pressed by you asks and allows at once, as you", () => {
+    const started: Array<number> = [];
+    return withCrewEngine((world) =>
+      Effect.gen(function* () {
+        write(
+          world.root,
+          "zerops.yaml",
+          "zerops:\n  - setup: appdev\n    run:\n      ports:\n        - port: 3000\n          httpSupport: true\n",
+        );
+        git(world.root, ["add", "-A"]);
+        git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
+        yield* applied(world);
+        started.push(startDevServer(world.root));
+        yield* command({ _tag: "message", handle: "backend", text: "Start", attachments: [] });
+        const [created] = yield* dispatchedOf(world, "thread.crew.create");
+        yield* world.publish(spiEvent("turn.completed", created!.threadId, { state: "completed" }));
+        yield* eventually(
+          command({ _tag: "showOnDev", handle: "backend" }).pipe(
+            Effect.as(true),
+            Effect.orElseSucceed(() => false),
+          ),
+        );
+        const starting = yield* snapshotWhere(
+          (snapshot) => snapshot.hosts[0]?.claim.state === "starting",
+        );
+        assert.deepStrictEqual(
+          [
+            starting.hosts[0]!.claim.handle,
+            (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!.message.text.split("\n")[1],
+            (yield* Ref.get(world.admitted)).at(-1)?.principal,
+          ],
+          ["backend", "Show your work on appdev", KAREL],
+        );
+      }),
+    ).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          for (const pid of started) {
+            try {
+              process.kill(pid);
+            } catch {}
+          }
+          NodeFS.rmSync(DEV_SERVER_PIDFILE, { force: true });
+        }),
+      ),
+    );
+  });
 
   it.live(
     "the crew's thread policy: installed at Apply, a profile for the live stint, deny-all once retired, none for a person",
@@ -1051,5 +1120,117 @@ describe("CrewEngine", () => {
           }),
         { installer: () => installCrewThreadPolicy },
       ),
+  );
+
+  it.live(
+    "Apply refuses a lead on a Codex login, naming why; a Codex writer runs without crew tools",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* Ref.set(
+            world.logins,
+            new Map([["codex_work", mateLogin("codex_work", "codex", "work")]]),
+          );
+          const crewYaml = (leadLogin: string) =>
+            [
+              "name: Game team",
+              "briefTitle: Space shooter",
+              "members:",
+              "  - handle: lead",
+              "    displayName: Lead",
+              "    kind: lead",
+              `    login: ${leadLogin}`,
+              "  - handle: backend",
+              "    displayName: Backend",
+              "    host: appdev",
+              "    login: codex_work",
+              "",
+            ].join("\n");
+          writeCrewHome(world.workspace, {
+            "crew.yaml": crewYaml("codex_work"),
+            "jobs/lead.md": "Plan the work.\n",
+          });
+          const refused = yield* Effect.flip(command({ _tag: "apply" }));
+          writeCrewHome(world.workspace, {
+            "crew.yaml": crewYaml("claudeAgent"),
+            "jobs/lead.md": "Plan the work.\n",
+          });
+          yield* command({ _tag: "apply" });
+          yield* eventually(Effect.map(latest, everyCopyReady));
+          yield* command({ _tag: "message", handle: "backend", text: "Start", attachments: [] });
+          const created = (yield* dispatchedOf(world, "thread.crew.create")).find(
+            (entry) => entry.crew.crewmate === "backend",
+          )!;
+          const member = Option.getOrThrow(
+            yield* (yield* CrewThreadDirectory).memberFor(created.threadId),
+          );
+          assert.deepStrictEqual(
+            [
+              refused.reason,
+              refused.detail?.includes("Codex cannot host"),
+              member.prompt.crewTools,
+            ],
+            ["invalid-definition", true, false],
+          );
+        }),
+      ),
+  );
+
+  it.live("before any crew exists the crew home reads as an empty set, never a refusal", () =>
+    withCrewEngine(() =>
+      Effect.gen(function* () {
+        const engine = yield* CrewEngine;
+        assert.deepStrictEqual(
+          [yield* engine.readFiles, (yield* latest).status],
+          [{ files: [] }, "none"],
+        );
+      }),
+    ),
+  );
+
+  it.live(
+    "a writer's conversation runs in its copy; your tree's branch and head are in the snapshot",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          yield* command({ _tag: "message", handle: "backend", text: "Start", attachments: [] });
+          const [created] = yield* dispatchedOf(world, "thread.crew.create");
+          const snapshot = yield* snapshotWhere(
+            (current) => current.hosts[0]?.integration !== null,
+          );
+          assert.deepStrictEqual(
+            [created!.worktreePath, snapshot.hosts[0]!.integration],
+            [
+              `${world.root}/.crew/backend`,
+              { branch: "main", head: git(world.root, ["rev-parse", "HEAD"]) },
+            ],
+          );
+        }),
+      ),
+  );
+
+  it.live("Try again on a stopped task queues it for its next attempt and starts it", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const thread = yield* firstTurn(world, () =>
+          write(world.root, ".crew/backend/.env", "SECRET=1\n"),
+        );
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        const parked = yield* snapshotWhere(
+          (current) => current.board.tasks[0]?.state === "parked",
+        );
+        NodeFS.rmSync(NodePath.join(world.root, ".crew/backend/.env"));
+        yield* command({ _tag: "taskRetry", taskId: parked.board.tasks[0]!.id });
+        const retried = yield* snapshotWhere(
+          (current) => current.board.tasks[0]?.state === "working",
+        );
+        assert.deepStrictEqual(
+          [parked.board.tasks[0]!.reason?.includes(".env"), retried.board.tasks[0]!.attempts],
+          [true, 2],
+        );
+      }),
+    ),
   );
 });

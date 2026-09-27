@@ -70,7 +70,11 @@ const appliedSnapshot = {
   hosts: [
     {
       host: "appdev",
-      crewPorts: [{ port: 3001, routed: true }],
+      integration: { branch: "main", head: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678" },
+      crewPorts: [
+        { port: 3001, routed: true },
+        { port: 3002, routed: null },
+      ],
       served: { by: "tree" },
       claim: { state: "none", handle: null },
     },
@@ -179,6 +183,7 @@ const commandSamples = [
   { _tag: "claimGrant", host: "appdev" },
   { _tag: "claimDeny", host: "appdev" },
   { _tag: "claimRelease", host: "appdev" },
+  { _tag: "showOnDev", handle: "backend" },
   { _tag: "startFresh", handle: "backend" },
   { _tag: "briefSave", apply: "nextTurn" },
   { _tag: "jobSave", handle: "backend", apply: "fresh" },

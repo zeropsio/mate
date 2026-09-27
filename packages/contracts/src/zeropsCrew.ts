@@ -217,8 +217,25 @@ export type CrewServed = typeof CrewServed.Type;
 
 export const CrewHost = Schema.Struct({
   host: TrimmedNonEmptyString,
-  /** Declared once per dev service (PRD §5.7); empty until *Add crew ports* is done. */
-  crewPorts: Schema.Array(Schema.Struct({ port: PortSchema, routed: Schema.Boolean })),
+  /**
+   * Your tree on the service: its branch (`null` when detached) and HEAD, as
+   * the engine last read them — *Changes* diffs `<head>..crew/<handle>`.
+   * `null` before the engine has read them.
+   */
+  integration: Schema.NullOr(
+    Schema.Struct({
+      branch: Schema.NullOr(TrimmedNonEmptyString),
+      head: TrimmedNonEmptyString,
+    }),
+  ),
+  /**
+   * Declared once per dev service (PRD §5.7); empty until *Add crew ports* is
+   * done. `routed` is whether the subdomain routes the port; `null` when the
+   * engine cannot know (not confirmed).
+   */
+  crewPorts: Schema.Array(
+    Schema.Struct({ port: PortSchema, routed: Schema.NullOr(Schema.Boolean) }),
+  ),
   served: CrewServed,
   /** The Show-on-dev claim; `handle` is its holder or requester, `null` in `none`. */
   claim: Schema.Struct({ state: CrewClaimState, handle: Schema.NullOr(CrewHandle) }),
@@ -450,6 +467,8 @@ export const CrewCommand = Schema.TaggedUnion({
   claimDeny: hostRef,
   /** *Back to my tree*. */
   claimRelease: hostRef,
+  /** *Show on dev* pressed by you: the crewmate's request and your grant at once. */
+  showOnDev: handleRef,
   startFresh: handleRef,
   briefSave: { apply: CrewApplyChoice },
   jobSave: { ...handleRef, apply: CrewApplyChoice },

@@ -7,6 +7,7 @@
  * - **Topology** at Apply: the service's `zerops.yaml` (its crew ports) and
  *   whether its ssh environment reaches a database. The environment never
  *   leaves the service: the check runs there and prints one word.
+ * - **Your tree**: its branch and HEAD (*Changes* diffs `<head>..crew/<handle>`).
  * - **A lane against your tree**: commits ahead, insertions and deletions
  *   (`HEAD...crew/<handle>`), and the lane's commits since its task started,
  *   for a new stint's seed.
@@ -41,10 +42,18 @@ import {
 
 export type CrewReadError = CrewShellError | CrewGitError;
 
+/** Your tree on a service: its branch (`null` when detached) and HEAD. */
+export interface Integration {
+  readonly branch: string | null;
+  readonly head: string;
+}
+
 export interface LaneStats {
   readonly ahead: number;
   readonly insertions: number;
   readonly deletions: number;
+  /** Your tree as the figures were read against it. */
+  readonly integration: Integration;
 }
 
 /** What a `crew_diff` answer carries at most. */
@@ -63,6 +72,8 @@ export interface CrewReadsService {
   /** `zerops.yaml` (or `zerops.yml`) of the service's tree; undefined when it has none. */
   readonly zeropsYaml: (host: string) => Effect.Effect<string | undefined, CrewReadError>;
   readonly reachesDatabase: (host: string) => Effect.Effect<boolean, CrewReadError>;
+  /** Your tree's branch and HEAD. */
+  readonly integration: (host: string) => Effect.Effect<Integration, CrewReadError>;
   readonly laneStats: (host: string, handle: string) => Effect.Effect<LaneStats, CrewReadError>;
   /** `git log --oneline` of the lane since `since`, newest first, at most 20. */
   readonly laneLog: (
@@ -132,12 +143,26 @@ export const make = Effect.gen(function* () {
       `if env | grep -qiE ${shellQuote(DATABASE_ENV_PATTERN)}; then printf 'database\\tyes\\n'; else printf 'database\\tno\\n'; fi\n`,
     ).pipe(Effect.map((out) => field(out, "database") === "yes"));
 
+  /** Prints `branch` and `head` of your tree. */
+  const INTEGRATION_SCRIPT =
+    `printf 'branch\\t%s\\n' "$(${git("integration", ["symbolic-ref", "-q", "--short", "HEAD"])})"\n` +
+    `printf 'head\\t%s\\n' "$(${git("integration", ["rev-parse", "HEAD"])})"\n`;
+
+  const integrationOf = (out: ReadonlyArray<readonly [string, string]>): Integration => {
+    const branch = field(out, "branch") ?? "";
+    return { branch: branch === "" ? null : branch, head: field(out, "head") ?? "" };
+  };
+
+  const integration: CrewReadsService["integration"] = (host) =>
+    read(host, "integration", INTEGRATION_SCRIPT).pipe(Effect.map(integrationOf));
+
   const laneStats: CrewReadsService["laneStats"] = (host, handle) => {
     const range = `HEAD...refs/heads/${laneBranch(handle)}`;
     return read(
       host,
       "laneStats",
-      `ahead=$(${git("integration", ["rev-list", "--count", `HEAD..refs/heads/${laneBranch(handle)}`])}) || exit 1\n` +
+      INTEGRATION_SCRIPT +
+        `ahead=$(${git("integration", ["rev-list", "--count", `HEAD..refs/heads/${laneBranch(handle)}`])}) || exit 1\n` +
         `printf 'ahead\\t%s\\n' "$ahead"\n` +
         `${git("integration", ["diff", "--numstat", range])} | awk '{ i += $1; d += $2 } END { printf "insertions\\t%d\\ndeletions\\t%d\\n", i, d }'\n`,
     ).pipe(
@@ -145,6 +170,7 @@ export const make = Effect.gen(function* () {
         ahead: Number(field(out, "ahead") ?? 0),
         insertions: Number(field(out, "insertions") ?? 0),
         deletions: Number(field(out, "deletions") ?? 0),
+        integration: integrationOf(out),
       })),
     );
   };
@@ -226,6 +252,7 @@ export const make = Effect.gen(function* () {
   return CrewReads.of({
     zeropsYaml,
     reachesDatabase,
+    integration,
     laneStats,
     laneLog,
     dirtyPaths,

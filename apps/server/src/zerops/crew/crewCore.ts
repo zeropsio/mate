@@ -9,7 +9,7 @@
  * reloaded after every write that changes the crew, so the thread directory
  * answers a hook's lookup from memory (`memberFor` runs at every tool call).
  *
- * {@link CrewMemory} holds what is cheap to lose: Apply's progress, the
+ * {@link EngineMemory} holds what is cheap to lose: Apply's progress, the
  * lane figures read at turn end, which crew threads have a turn running,
  * refused dispatches, shaped turns, apply choices waiting on a turn's end. A
  * restart loses it and the boot sweep reads it again.
@@ -17,11 +17,14 @@
  * @module crewCore
  */
 import {
+  agentIdForDriverKind,
+  agentIdForProviderInstance,
   CrewCommandError,
   type CrewApplyChoice,
   type CrewClaimState,
   type CrewRefusalReason,
   type CrewServed,
+  type ZeropsAgentId,
 } from "@t3tools/contracts";
 import type { CrewDefinition, CrewMemberSpec } from "@t3tools/shared/crewHome";
 import * as Crypto from "effect/Crypto";
@@ -38,6 +41,7 @@ import { ServerConfig } from "../../config.ts";
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ProviderInstances } from "../../spi/providerInstances.ts";
+import { ZeropsLogins } from "../ZeropsLogins.ts";
 import { ZeropsRepositorySource, type ZeropsRepository } from "../ZeropsRepositorySource.ts";
 import {
   principalUserId,
@@ -49,6 +53,7 @@ import { CrewApp } from "./CrewApp.ts";
 import { CrewChecks } from "./CrewChecks.ts";
 import { CREW_ID, CrewHome } from "./CrewHome.ts";
 import { CrewIntegration } from "./CrewIntegration.ts";
+import { CrewMemory } from "./CrewMemory.ts";
 import { CrewReads } from "./CrewReads.ts";
 import { CrewRuntime } from "./CrewRuntime.ts";
 import { CrewShell } from "./CrewShell.ts";
@@ -63,7 +68,7 @@ import { CrewWorkspace } from "./CrewWorkspace.ts";
 import type { GateTurn } from "./CrewPolicy.ts";
 import type { LaneProgress, SnapshotRuntime } from "./crewSnapshot.ts";
 import type { PromptChange } from "./crewCards.ts";
-import type { LaneStats } from "./CrewReads.ts";
+import type { Integration, LaneStats } from "./CrewReads.ts";
 
 /** A crewmate's login when neither `crew.yaml` nor the project names one. */
 export const DEFAULT_CREW_LOGIN = "claudeAgent";
@@ -79,8 +84,8 @@ export interface AppliedCrew {
   readonly stints: ReadonlyArray<CrewStintRow>;
   /** The verified repository of every writer's host. */
   readonly repositories: ReadonlyMap<string, ZeropsRepository>;
-  /** Each crewmate's login's driver kind; a Codex crewmate hosts no crew tools (PRD §2.3). */
-  readonly drivers: ReadonlyMap<string, string | undefined>;
+  /** Each crewmate's login's coding agent; a Codex crewmate hosts no crew tools (PRD §2.3). */
+  readonly agents: ReadonlyMap<string, ZeropsAgentId | undefined>;
 }
 
 /** A shaped turn the gate lets through one tool shape for (CONCEPT §3.3). */
@@ -96,7 +101,7 @@ export interface PendingContinue {
 }
 
 /** The engine's in-memory facts; see the module doc. Mutated only inside `Effect.sync`. */
-export interface CrewMemory {
+export interface EngineMemory {
   readonly progress: Map<string, LaneProgress>;
   readonly laneStats: Map<string, LaneStats>;
   readonly missingLanes: Set<string>;
@@ -122,6 +127,10 @@ export interface CrewMemory {
   readonly claims: Map<string, MemoryClaim>;
   /** What each dev service's dev server served when last read. */
   readonly served: Map<string, CrewServed>;
+  /** Your tree on each dev service, as last read. */
+  readonly integration: Map<string, Integration>;
+  /** Why a crewmate asked to show its work on each dev service, while it asks. */
+  readonly showReasons: Map<string, string>;
   lastError: string | null;
 }
 
@@ -132,7 +141,7 @@ export interface MemoryClaim {
   readonly requestedAt: string;
 }
 
-export const makeMemory = (): CrewMemory => ({
+export const makeMemory = (): EngineMemory => ({
   progress: new Map(),
   laneStats: new Map(),
   missingLanes: new Set(),
@@ -150,12 +159,14 @@ export const makeMemory = (): CrewMemory => ({
   integrating: new Set(),
   claims: new Map(),
   served: new Map(),
+  integration: new Map(),
+  showReasons: new Map(),
   lastError: null,
 });
 
 /** The memory as the snapshot reads it. */
 export const runtimeOf = (
-  memory: CrewMemory,
+  memory: EngineMemory,
   logins: SnapshotRuntime["logins"],
 ): SnapshotRuntime => ({
   progress: memory.progress,
@@ -166,6 +177,7 @@ export const runtimeOf = (
   delivered: memory.delivered,
   cantStart: memory.cantStart,
   served: memory.served,
+  integration: memory.integration,
   logins,
   lastError: memory.lastError,
 });
@@ -191,7 +203,17 @@ export const makeCrewCore = Effect.gen(function* () {
   const repositories = yield* ZeropsRepositorySource;
   const shell = yield* CrewShell;
   const instances = yield* ProviderInstances;
+  const logins = yield* ZeropsLogins;
   const cache = yield* Ref.make<AppliedCrew | undefined>(undefined);
+
+  /** The coding agent a login runs: a Mate login's own, else its instance's driver's. */
+  const agentOf = (login: string) =>
+    Effect.gen(function* () {
+      const mateLogin = yield* logins.resolve(login);
+      if (mateLogin !== undefined) return mateLogin.agent;
+      const driver = yield* instances.driverKindOf(login);
+      return agentIdForDriverKind(driver) ?? agentIdForProviderInstance(login);
+    });
   const signals = yield* PubSub.unbounded<void>();
   const memory = makeMemory();
   const scope = yield* Effect.scope;
@@ -219,12 +241,12 @@ export const makeCrewCore = Effect.gen(function* () {
       const repository = yield* Effect.option(shell.repository(host));
       if (Option.isSome(repository)) known.set(host, repository.value);
     }
-    const drivers = new Map<string, string | undefined>();
+    const agents = new Map<string, ZeropsAgentId | undefined>();
     for (const member of members.values()) {
-      drivers.set(member.handle, yield* instances.driverKindOf(member.login ?? DEFAULT_CREW_LOGIN));
+      agents.set(member.handle, yield* agentOf(member.login ?? DEFAULT_CREW_LOGIN));
     }
     yield* Ref.set(cache, {
-      drivers,
+      agents,
       definition,
       briefVersion: row.value.briefVersion,
       seq: row.value.seq,
@@ -277,11 +299,14 @@ export const makeCrewCore = Effect.gen(function* () {
     stateRef: yield* CrewStateRef,
     reads: yield* CrewReads,
     runtime: yield* CrewRuntime,
+    crewMemory: yield* CrewMemory,
     orchestration: yield* OrchestrationEngineService,
     projection: yield* ProjectionSnapshotQuery,
     admission: yield* ZeropsTurnAdmission,
     observer,
     instances,
+    logins,
+    agentOf,
     memory,
     applied: Ref.get(cache),
     reload,

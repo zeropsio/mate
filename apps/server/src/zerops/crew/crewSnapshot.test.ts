@@ -143,6 +143,7 @@ const base = (fields: Partial<AppliedSnapshotInput> = {}): AppliedSnapshotInput 
   tasks: [],
   hosts: [{ host: "appdev", crewPorts: [{ port: 3001, routed: false }] }],
   claims: [],
+  memory: new Map(),
   runtime: EMPTY_RUNTIME,
   ...fields,
 });

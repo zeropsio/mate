@@ -4,11 +4,13 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   afterLandCard,
   claimReleaseCard,
+  carriedCard,
   claimStartCard,
   continueCard,
   fixCard,
   resolveCard,
   rotationSeed,
+  stintReasonWords,
   taskCard,
 } from "./crewCards.ts";
 
@@ -159,6 +161,58 @@ describe("crew cards", () => {
     );
     expect(rotationSeed({ handle: "erik", reason: "start-fresh", task: null, commits: [] })).toBe(
       "This is a new conversation for @erik: the person started you fresh. Your copy of the code and its history carry on.",
+    );
+  });
+
+  it.each([
+    ["start-fresh", { brief: 1, job: 1 }, { brief: 1, job: 1 }, "Started fresh by you"],
+    [
+      "prompt-changed",
+      { brief: 1, job: 4 },
+      { brief: 1, job: 5 },
+      "Job updated to v5 — applies from here",
+    ],
+    [
+      "prompt-changed",
+      { brief: 3, job: 2 },
+      { brief: 4, job: 2 },
+      "Brief updated to v4 — applies from here",
+    ],
+    [
+      "prompt-changed",
+      { brief: 3, job: 2 },
+      { brief: 4, job: 3 },
+      "Brief updated to v4 and job to v3 — applies from here",
+    ],
+    ["login-changed", { brief: 1, job: 1 }, { brief: 1, job: 1 }, "New login — a new conversation"],
+    [
+      "context-overflow",
+      { brief: 1, job: 1 },
+      { brief: 1, job: 1 },
+      "New conversation — the last one outgrew its context",
+    ],
+  ] as const)(
+    "a stint opened for %s reads as its seam line",
+    (reason, running, current, expected) => {
+      expect(stintReasonWords(reason, running, current)).toBe(expected);
+    },
+  );
+
+  it("carries the open task into a new conversation's first turn", () => {
+    expect(
+      carriedCard({
+        ...TASK,
+        reason: "Job updated to v5 — applies from here",
+        text: "Now also sort them.",
+      }),
+    ).toBe(
+      [
+        CREW_CARD_OPENER,
+        "#12 Camera rig · continues",
+        "Job updated to v5 — applies from here",
+        "",
+        "Now also sort them.",
+      ].join("\n"),
     );
   });
 });

@@ -41,6 +41,7 @@ import { holdsClaim } from "./CrewRuntime.ts";
 import { releaseClaim, showOnDev } from "./crewClaims.ts";
 import type { CrewPromptMember } from "./crewPrompt.ts";
 import type {
+  CrewMemoryOp,
   CrewReportInput,
   CrewSessionStart,
   CrewThreadMember,
@@ -119,6 +120,9 @@ const gateFor = (
         env: spec.env,
       },
       ...base,
+      // A writer's conversation runs in its copy (its stint's worktree), so
+      // a relative path resolves there.
+      workspaceRoot: lane.mountDir,
     },
     prompt: { handle: row.handle, kind: "writer", lane },
   };
@@ -154,7 +158,7 @@ export const memberFor = (core: CrewCore) => (threadId: string) =>
         job: spec.job,
         jobVersion: row.jobVersion,
         memory: false,
-        crewTools: applied.drivers.get(row.handle) !== "codex",
+        crewTools: applied.agents.get(row.handle) !== "codex",
       },
       contextWindow: spec.context ?? CREW_CONTEXT_DEFAULT,
       ...(row.model === null ? {} : { model: row.model }),
@@ -177,6 +181,9 @@ export const report = (core: CrewCore, member: CrewThreadMember, input: CrewRepo
       const open = openTaskOf(tasks, member.handle);
       if (open === undefined) {
         return text("You have no open task. The person gives you one with a message or a task.");
+      }
+      if (input.lessons !== undefined && input.lessons.length > 0) {
+        yield* asRefusal(core.crewMemory.recordLessons(member, input.lessons, open.assignment));
       }
       const reported = {
         ...open,
@@ -317,8 +324,24 @@ export const postCompact = (core: CrewCore, member: CrewThreadMember, summary: s
     .pipe(Effect.andThen(core.reload), Effect.andThen(core.changed), Effect.ignore);
 
 /** `crew_show_on_dev` (CONCEPT §3.3): asks the person to show the crewmate's copy on its service. */
-export const showOnDevTool = (core: CrewCore, member: CrewThreadMember) =>
-  answered(showOnDev(core, member));
+export const showOnDevTool = (
+  core: CrewCore,
+  member: CrewThreadMember,
+  input: { readonly reason: string },
+) => answered(showOnDev(core, member, input));
+
+/** `crew_memory` (CONCEPT §3A): one operation on the crewmate's memory, tied to its open task. */
+export const memoryTool = (core: CrewCore, member: CrewThreadMember, op: CrewMemoryOp) =>
+  answered(
+    Effect.gen(function* () {
+      const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
+      const answer = yield* asRefusal(
+        core.crewMemory.apply(member, op, openTaskOf(tasks, member.handle)?.assignment),
+      );
+      yield* core.changed;
+      return answer;
+    }),
+  );
 
 /** Tools of later phases: answered, never run. */
 export const notYet = (tool: string) =>
