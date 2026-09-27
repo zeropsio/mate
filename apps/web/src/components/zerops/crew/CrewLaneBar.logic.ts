@@ -8,12 +8,12 @@
  * (a person-started Show on dev, *Commit my edit*) is said, not offered.
  * `null` for a crewmate without a copy — a reader or the lead.
  *
- * Pure: no clock, no I/O. The words here are the lane's; a task's word still
- * comes from the crew phrases (`crewTaskWord`).
+ * Pure: no clock, no I/O. The words here are the lane's; a task's and a
+ * check's words come from the crew phrases (`crewTaskWord`, `crewCheckWord`).
  */
 import type { CrewmateView } from "@t3tools/client-runtime/zerops/projections/crew";
-import { crewTaskWord } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { CrewSnapshot } from "@t3tools/contracts";
+import { crewCheckWord, crewTaskWord } from "@t3tools/client-runtime/zerops/crew/phrases";
+import type { CrewCheck, CrewSnapshot } from "@t3tools/contracts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 export interface CrewLaneBarModel {
@@ -63,12 +63,11 @@ function paths(list: ReadonlyArray<string>): string | null {
   return rest.length === 0 ? first : `${first} and ${rest.length} more`;
 }
 
-const CHECK: Readonly<
-  Record<"running" | "passed" | "failed", NonNullable<CrewLaneBarModel["check"]>>
-> = {
-  running: { word: "Checking", tone: "busy", pulse: true },
-  passed: { word: "Check passed", tone: "ok", pulse: false },
-  failed: { word: "Check failed", tone: "failed", pulse: false },
+/** The dot a check's word wears; the word is `crewCheckWord`'s. */
+const CHECK_TONE: Readonly<Record<CrewCheck["state"], ServiceStatusToneId>> = {
+  running: "busy",
+  passed: "ok",
+  failed: "failed",
 };
 
 export function crewLaneBarModel(
@@ -193,7 +192,14 @@ export function crewLaneBarModel(
     ahead:
       ahead === null ? null : `${ahead} ${ahead === 1 ? "change" : "changes"} ahead of your tree`,
     diffStat: ahead === null ? null : `+${lane.insertions} −${lane.deletions}`,
-    check: lane.check === null ? null : CHECK[lane.check.state],
+    check:
+      lane.check === null
+        ? null
+        : {
+            word: crewCheckWord(lane.check),
+            tone: CHECK_TONE[lane.check.state],
+            pulse: lane.check.state === "running",
+          },
     note,
     ask,
     app,
