@@ -2286,14 +2286,15 @@ describe("a Mate's peek", () => {
     vi.useRealTimers();
   });
 
-  it("opens after half a second's rest on the row, and closes once the pointer has left", () => {
+  // The owner, 2026-09-27: "this pop needs to show up with much bigger delay".
+  it("opens after the pointer rests on the row a while, and closes once it has left", () => {
     vi.useFakeTimers();
     const tree = mounted();
     act(() => {
       row(tree).props.onPointerEnter({ pointerType: "mouse" });
     });
     act(() => {
-      vi.advanceTimersByTime(499);
+      vi.advanceTimersByTime(1199);
     });
     expect(peek()).toBeNull();
     act(() => {
@@ -2319,11 +2320,32 @@ describe("a Mate's peek", () => {
     const tree = mounted();
     act(() => {
       row(tree).props.onPointerEnter({ pointerType: "mouse" });
-      vi.advanceTimersByTime(300);
+      vi.advanceTimersByTime(900);
       row(tree).props.onPointerLeave({ pointerType: "mouse" });
-      vi.advanceTimersByTime(1000);
+      vi.advanceTimersByTime(2000);
     });
     expect(peek()).toBeNull();
+  });
+
+  // It waits for the pointer to rest: one still moving across the row is on
+  // its way somewhere else.
+  it("waits while the pointer keeps moving over the row", () => {
+    vi.useFakeTimers();
+    const tree = mounted();
+    act(() => {
+      row(tree).props.onPointerEnter({ pointerType: "mouse" });
+    });
+    for (let moved = 0; moved < 4; moved += 1) {
+      act(() => {
+        vi.advanceTimersByTime(800);
+        row(tree).props.onPointerMove({ pointerType: "mouse", movementY: 2 });
+      });
+    }
+    expect(peek()).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(1200);
+    });
+    expect(peek()).toEqual({ projectId: "crm-dev", mode: "hover" });
   });
 
   it("is offered in the Mate's own menu, which pins it open", () => {

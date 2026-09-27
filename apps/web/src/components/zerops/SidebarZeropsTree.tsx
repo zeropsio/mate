@@ -826,7 +826,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
               () => {
                 open(projectId, "hover");
               },
-              peek === null ? 500 : 120,
+              peek === null ? PEEK_REST_MS : PEEK_NEXT_MS,
             );
           },
           onToggle: () => {
@@ -1848,10 +1848,20 @@ function QuietMatesRow({
   );
 }
 
+/**
+ * How long the pointer rests on a Mate's row before its peek opens — a
+ * while, and only while the pointer rests: one still moving over the row is
+ * on its way somewhere else (the owner, 2026-09-27: "this pop needs to show
+ * up with much bigger delay"). Once a peek is open, the next Mate's comes
+ * almost at once, as a hover card does.
+ */
+const PEEK_REST_MS = 1200;
+const PEEK_NEXT_MS = 120;
+
 /** What a Mate's row needs to open its peek; see the tree's peek host. */
 export interface MateRowPeek {
   readonly peeking: boolean;
-  /** The pointer came onto the row (`true`) or left it. */
+  /** The pointer came onto the row or moved on it (`true` — the wait starts over), or left it. */
   readonly onHover: (entering: boolean) => void;
   /** Space: open the peek and keep it, or close it. */
   readonly onToggle: () => void;
@@ -2006,7 +2016,12 @@ function MateRow<T extends RosterCandidate>({
         if (event.pointerType !== "touch") peek?.onHover(false);
       }}
       onPointerMove={(event) => {
-        if (event.pointerType === "touch" && event.movementY !== 0) cancelLongPress();
+        if (event.pointerType === "touch") {
+          if (event.movementY !== 0) cancelLongPress();
+          return;
+        }
+        // Still moving: the peek waits for the pointer to rest.
+        peek?.onHover(true);
       }}
       onPointerUp={cancelLongPress}
     >
