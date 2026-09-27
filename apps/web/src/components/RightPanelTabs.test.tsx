@@ -37,6 +37,7 @@ const ALL_AVAILABLE = {
   browser: "available",
   data: "available",
   git: "available",
+  crew: "available",
 } as const;
 
 function renderLauncher(
@@ -67,10 +68,17 @@ function renderLauncher(
 
 describe("RightPanelTabs launcher", () => {
   it("publishes the real shortcut order for available kinds", () => {
-    expect(renderLauncher()).toContain('data-surface-launcher-keys="TFDAZBVG"');
+    expect(renderLauncher()).toContain('data-surface-launcher-keys="TFDAZBVGC"');
     expect(renderLauncher({ ...ALL_AVAILABLE, zerops: "unknown" })).toContain(
-      'data-surface-launcher-keys="TFDABVG"',
+      'data-surface-launcher-keys="TFDABVGC"',
     );
+  });
+
+  it("draws a crew card only while the crew kind is not hidden", () => {
+    expect(renderLauncher()).toContain("Follow the crew&#x27;s tasks on its board.");
+    const hidden = renderLauncher({ ...ALL_AVAILABLE, crew: "hidden" });
+    expect(hidden).toContain('data-surface-launcher-keys="TFDAZBVG"');
+    expect(hidden).not.toContain(">Crew<");
   });
 
   it("characterizes the established hint for every unavailable launcher kind", () => {
@@ -84,6 +92,7 @@ describe("RightPanelTabs launcher", () => {
       browser: "unavailable",
       data: "unavailable",
       git: "unavailable",
+      crew: "hidden",
     });
     expect(html.match(/Available when a project is open\./gu)).toHaveLength(2);
     expect(html).toContain("Available for Git repositories.");
