@@ -16,7 +16,10 @@
  *   starts from, so every stint begins with a card for its seam line.
  *
  * A stint's seam line — why its conversation is new — is `stintReasonWords`;
- * the chat shows it verbatim above the stint's first card.
+ * the chat shows it verbatim above the stint's first card. The seam lines no
+ * card carries — a landing, a save that reaches the conversation later, a
+ * conversation opened between turns — are thread activities
+ * (`crewSeamLines`); their words are here too.
  *
  * The **rotation seed** is not a card: it is what `SessionStart` adds to a new
  * stint's first session, so the crewmate carries on without the old
@@ -24,7 +27,7 @@
  *
  * @module crewCards
  */
-import type { CrewTaskSource } from "@t3tools/contracts";
+import type { CrewApplyChoice, CrewTaskSource } from "@t3tools/contracts";
 import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 
 import type { TaskCard } from "./crewTaskData.ts";
@@ -188,6 +191,34 @@ export const stintReasonWords = (
       return "New conversation — the last one could not be resumed";
   }
 };
+
+/**
+ * The seam line a save leaves in the conversation it reaches later (PRD
+ * §5.6): at the next turn, now (the running turn is interrupted), or as a
+ * fresh conversation once the running turn ends.
+ */
+export const savedSeamWords = (
+  change: PromptChange,
+  reason: RotationReason,
+  apply: CrewApplyChoice,
+): string => {
+  const what =
+    reason === "login-changed"
+      ? "New login"
+      : `${change.kind === "brief" ? "Brief" : "Job"} updated to v${change.version}`;
+  switch (apply) {
+    case "nextTurn":
+      return `${what} — applies at the next turn`;
+    case "now":
+      return `${what} — applies now`;
+    case "fresh":
+      return `${what} — a fresh conversation follows this turn`;
+  }
+};
+
+/** The seam line a landing leaves in its crewmate's chat (PRD §5.2 step 5). */
+export const landedSeamWords = (number: number, commit: string): string =>
+  `Task #${number} landed as ${commit.slice(0, 7)}`;
 
 /**
  * A new conversation's first turn on a task already open: the task and why

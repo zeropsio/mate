@@ -35,7 +35,7 @@ import * as Option from "effect/Option";
 
 import type { ZeropsRepository } from "../ZeropsRepositorySource.ts";
 import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
-import type { PromptChange } from "./crewCards.ts";
+import { savedSeamWords, type PromptChange } from "./crewCards.ts";
 import {
   asRefusal,
   currentStint,
@@ -51,7 +51,8 @@ import {
 } from "./crewCore.ts";
 import { CREW_ID, refusalOf } from "./CrewHome.ts";
 import { assignCrewPorts, proposeCrewPorts, readDeclaredPorts } from "./crewPorts.ts";
-import { retireStint, rotate } from "./CrewStints.ts";
+import { appendSeam } from "./crewSeamLines.ts";
+import { retireStint, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewMemberRow } from "./CrewStore.ts";
 import { refreshLaneStats } from "./crewLanding.ts";
 import { saveTask } from "./crewTasks.ts";
@@ -319,22 +320,32 @@ const applyChoice = (
     const { memory } = core;
     const handle = member.row.handle;
     const working = isWorking(core, applied, handle);
-    if (currentStint(applied, handle) === undefined) return;
+    const stint = currentStint(applied, handle);
+    if (stint === undefined) return;
+    /** The save waits for its moment: the conversation says so where the person reads it. */
+    const waits = (apply: CrewApplyChoice) =>
+      appendSeam(core, stint.threadId, savedSeamWords(change, reason, apply), {
+        seam: "saved",
+        apply,
+      });
     switch (choice) {
       case "nextTurn":
         memory.applyChoices.set(handle, "nextTurn");
+        yield* waits("nextTurn");
         return;
       case "fresh":
-        if (working) memory.freshAtTurnEnd.add(handle);
-        else yield* rotate(core, applied, member, reason);
+        if (working) {
+          memory.freshAtTurnEnd.set(handle, reason);
+          yield* waits("fresh");
+        } else yield* rotateBetweenTurns(core, applied, member, reason);
         return;
       case "now": {
         if (!working) {
-          yield* rotate(core, applied, member, reason);
+          yield* rotateBetweenTurns(core, applied, member, reason);
           return;
         }
         memory.continueAtTurnEnd.set(handle, { startedBy: principalUser(principal), change });
-        const stint = currentStint(applied, handle)!;
+        yield* waits("now");
         const now = yield* core.now;
         yield* asRefusal(
           core.orchestration.dispatch({
@@ -597,7 +608,7 @@ export const startFresh = (core: CrewCore, handle: string) =>
     if (isWorking(core, applied, handle)) {
       return yield* refuse("wrong-state", `@${handle}'s turn is running`);
     }
-    yield* rotate(core, applied, member, "start-fresh");
+    yield* rotateBetweenTurns(core, applied, member, "start-fresh");
   });
 
 /** *Remove from crew* (PRD §5.6): also taken out of `crew.yaml`, so the next Apply does not bring it back. */

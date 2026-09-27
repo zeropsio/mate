@@ -7,6 +7,7 @@ import {
   CrewCommandResult,
   CrewFeedFrame,
   CrewFiles,
+  CrewSeam,
   CrewSnapshot,
 } from "./zeropsCrew.ts";
 
@@ -18,6 +19,7 @@ const decodeCommand = Schema.decodeUnknownSync(CrewCommand);
 const decodeFiles = Schema.decodeUnknownSync(CrewFiles);
 const decodeResult = Schema.decodeUnknownSync(CrewCommandResult);
 const decodeError = Schema.decodeUnknownSync(CrewCommandError);
+const decodeSeam = Schema.decodeUnknownSync(CrewSeam);
 
 const appliedSnapshot = {
   status: "applied",
@@ -314,6 +316,26 @@ describe("CrewCommandResult", () => {
     { _tag: "orphans", orphans: [{ host: "appdev", branch: "crew/map", ahead: 3 }] },
   ])("decodes $_tag", (result) => {
     expect(decodeResult(result)).toEqual(result);
+  });
+});
+
+describe("CrewSeam", () => {
+  it.each([
+    {
+      seam: "landed",
+      taskId: "task-1",
+      number: 3,
+      commit: "0a84078f2fd5652d10c3c820786c944d057386e3",
+    },
+    { seam: "saved", apply: "nextTurn" },
+    { seam: "stint", previousThreadId: "thread-1" },
+    { seam: "stint", previousThreadId: null },
+  ])("decodes a $seam seam", (seam) => {
+    expect(decodeSeam(seam)).toEqual(seam);
+  });
+
+  it("refuses a seam the chat does not know", () => {
+    expect(() => decodeSeam({ seam: "deployed" })).toThrow();
   });
 });
 

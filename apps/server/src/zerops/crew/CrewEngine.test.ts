@@ -61,6 +61,14 @@ const dispatchedOf = <T extends OrchestrationCommand["type"]>(world: CrewWorld, 
     ),
   );
 
+/** The seam lines the engine wrote into crewmates' chats: thread, words, payload. */
+const seamsOf = (world: CrewWorld) =>
+  Effect.map(dispatchedOf(world, "thread.activity.append"), (all) =>
+    all
+      .filter((entry) => entry.activity.kind === "crew.seam")
+      .map((entry) => [entry.threadId, entry.activity.summary, entry.activity.payload]),
+  );
+
 const everyCopyReady = (snapshot: CrewSnapshot) =>
   snapshot.status === "applied" &&
   snapshot.crewmates.every((mate) => mate.readOnly || mate.lane?.state === "ready");
@@ -415,6 +423,7 @@ describe("CrewEngine", () => {
             reason: snapshot.crewmates[0]!.stints.map((stint) => [stint.state, stint.reason]),
             running: snapshot.crewmates[0]!.promptVersions.running,
             carried: (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!.message.text,
+            seams: yield* seamsOf(world),
           },
           {
             pending: { running: { brief: 1, job: 1 }, current: { brief: 1, job: 2 } },
@@ -433,6 +442,13 @@ describe("CrewEngine", () => {
               "",
               "Go on",
             ].join("\n"),
+            seams: [
+              [
+                first!.threadId,
+                "Job updated to v2 — applies at the next turn",
+                { seam: "saved", apply: "nextTurn" },
+              ],
+            ],
           },
         );
       }),
@@ -455,6 +471,37 @@ describe("CrewEngine", () => {
       const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
       yield* (yield* CrewToolHost).report(member, { status: "done", summary: "Done." });
     });
+
+  it.live("a message to a crewmate that asked a question answers its open task", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const thread = yield* firstTurn(world, () => undefined);
+        const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
+        yield* (yield* CrewToolHost).report(member, {
+          status: "blocked",
+          summary: "Which currency?",
+          question: "CZK or EUR?",
+        });
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        yield* snapshotWhere((current) => current.board.tasks[0]?.state === "blocked");
+        yield* Effect.sleep("300 millis");
+        yield* command({ _tag: "message", handle: "backend", text: "EUR", attachments: [] });
+        const answered = yield* snapshotWhere(
+          (current) => current.board.tasks[0]?.state === "working",
+        );
+        const turns = yield* dispatchedOf(world, "thread.turn.start");
+        assert.deepStrictEqual(
+          [
+            answered.board.tasks.map((task) => [task.number, task.state]),
+            turns.at(-1)?.threadId,
+            turns.at(-1)?.message.text,
+          ],
+          [[[1, "working"]], thread, "EUR"],
+        );
+      }),
+    ),
+  );
 
   it.live("refs the engine writes mid-turn never park the lane; a foreign one does", () =>
     withCrewEngine((world) =>
@@ -538,22 +585,40 @@ describe("CrewEngine", () => {
       ),
   );
 
-  it.live("Land now on a crewmate that never reported: WIP, merge-in, check and land", () =>
-    withCrewEngine((world) =>
-      Effect.gen(function* () {
-        yield* applied(world);
-        const thread = yield* firstTurn(world, () =>
-          write(world.root, ".crew/backend/ok.txt", "ok\n"),
-        );
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-        const working = yield* snapshotWhere(
-          (snapshot) => snapshot.crewmates[0]!.lane?.ahead === 1,
-        );
-        yield* command({ _tag: "landNow", taskId: working.board.tasks[0]!.id });
-        yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "landed");
-        assert.strictEqual(read(world.root, "ok.txt"), "ok\n");
-      }),
-    ),
+  it.live(
+    "Land now on a crewmate that never reported: WIP, merge-in, check and land; its chat shows the landing",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          const thread = yield* firstTurn(world, () =>
+            write(world.root, ".crew/backend/ok.txt", "ok\n"),
+          );
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          const working = yield* snapshotWhere(
+            (snapshot) => snapshot.crewmates[0]!.lane?.ahead === 1,
+          );
+          const task = working.board.tasks[0]!;
+          yield* command({ _tag: "landNow", taskId: task.id });
+          const landed = yield* snapshotWhere(
+            (snapshot) => snapshot.board.tasks[0]?.state === "landed",
+          );
+          const commit = landed.board.tasks[0]!.landedCommit!;
+          assert.deepStrictEqual(
+            [read(world.root, "ok.txt"), yield* seamsOf(world)],
+            [
+              "ok\n",
+              [
+                [
+                  thread,
+                  `Task #1 landed as ${commit.slice(0, 7)}`,
+                  { seam: "landed", taskId: task.id, number: 1, commit },
+                ],
+              ],
+            ],
+          );
+        }),
+      ),
   );
 
   it.live(
@@ -772,8 +837,10 @@ describe("CrewEngine", () => {
           const snapshot = yield* snapshotWhere(
             (current) => current.crewmates[0]!.stints.length === 3,
           );
+          const fresh = (yield* dispatchedOf(world, "thread.crew.create")).at(-1)!;
           assert.deepStrictEqual(
             {
+              seams: yield* seamsOf(world),
               busy: busy.reason,
               interrupts,
               continueIn: continued.threadId === creates[1]!.threadId,
@@ -782,6 +849,14 @@ describe("CrewEngine", () => {
               brief: snapshot.crew?.briefVersion,
             },
             {
+              seams: [
+                [thread, "Brief updated to v2 — applies now", { seam: "saved", apply: "now" }],
+                [
+                  fresh.threadId,
+                  "Started fresh by you",
+                  { seam: "stint", previousThreadId: creates[1]!.threadId },
+                ],
+              ],
               busy: "wrong-state",
               interrupts: [thread],
               continueIn: true,

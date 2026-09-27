@@ -385,6 +385,29 @@ export const CrewSummary = Schema.Struct({
 export type CrewSummary = typeof CrewSummary.Type;
 
 /**
+ * A seam line in a crewmate's chat that no card carries (PRD §4.5, *Seams*):
+ * a thread activity of kind {@link CREW_SEAM_ACTIVITY_KIND} on the
+ * conversation the person reads at that moment, its `summary` the line's
+ * words. `landed`: a task landed. `saved`: a saved brief, job or login that
+ * reaches this conversation later, by `apply`. `stint`: a conversation opened
+ * between turns (*Start fresh*, a save applied at once) opens with its
+ * reason; one opened for a turn carries the reason in that turn's card.
+ */
+export const CREW_SEAM_ACTIVITY_KIND = "crew.seam";
+
+export const CrewSeam = Schema.Union([
+  Schema.Struct({
+    seam: Schema.Literal("landed"),
+    taskId: CrewTaskId,
+    number: PositiveInt,
+    commit: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({ seam: Schema.Literal("saved"), apply: CrewApplyChoice }),
+  Schema.Struct({ seam: Schema.Literal("stint"), previousThreadId: Schema.NullOr(ThreadId) }),
+]);
+export type CrewSeam = typeof CrewSeam.Type;
+
+/**
  * A dev service a writer's copy can live on: one this Mate mounts, with
  * whether its ssh environment reaches a database (a writer there declares
  * `env:` or `database: shared`); `database` is `null` until the engine read it.

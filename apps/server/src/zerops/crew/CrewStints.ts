@@ -17,7 +17,9 @@
  *
  * A stint's `reason` is the seam line its conversation opens with ("Job
  * updated to v5 — applies from here"), which the chat shows verbatim above
- * the stint's first card.
+ * the stint's first card. A rotation no turn follows (a press between turns,
+ * a fresh save at a turn's end) also writes it into the new conversation at
+ * once, which is empty until its first card.
  *
  * @module CrewStints
  */
@@ -34,6 +36,7 @@ import {
   type CrewMember,
 } from "./crewCore.ts";
 import { rotationSeed, stintReasonWords } from "./crewCards.ts";
+import { appendSeam } from "./crewSeamLines.ts";
 import { crewLane } from "./CrewDefinition.ts";
 import { modelSelectionFor } from "./CrewDispatch.ts";
 import { CREW_ID } from "./CrewHome.ts";
@@ -204,4 +207,23 @@ export const rotate = (
     core.memory.applyChoices.delete(member.row.handle);
     const reloaded = yield* core.applied;
     return yield* openStint(core, reloaded ?? applied, member, { reason: words, seed });
+  });
+
+/** A rotation no turn follows: the new conversation opens with its seam line. */
+export const rotateBetweenTurns = (
+  core: CrewCore,
+  applied: AppliedCrew,
+  member: CrewMember,
+  reason: RotationReason,
+) =>
+  Effect.gen(function* () {
+    const previous = currentStint(applied, member.row.handle);
+    const opened = yield* rotate(core, applied, member, reason);
+    if (opened.reason !== null) {
+      yield* appendSeam(core, opened.threadId, opened.reason, {
+        seam: "stint",
+        previousThreadId: previous === undefined ? null : ThreadId.make(previous.threadId),
+      });
+    }
+    return opened;
   });

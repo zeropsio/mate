@@ -70,6 +70,7 @@ import type { GateTurn } from "./CrewPolicy.ts";
 import type { LaneProgress, SnapshotRuntime } from "./crewSnapshot.ts";
 import type { PromptChange } from "./crewCards.ts";
 import type { Integration, LaneStats } from "./CrewReads.ts";
+import type { RotationReason } from "./rotationDecision.ts";
 
 /** A crewmate's login when neither `crew.yaml` nor the project names one. */
 export const DEFAULT_CREW_LOGIN = "claudeAgent";
@@ -117,8 +118,8 @@ export interface EngineMemory {
   readonly shaped: Map<string, ShapedTurn>;
   /** A pending save's apply choice per crewmate, read at its next turn. */
   readonly applyChoices: Map<string, CrewApplyChoice>;
-  /** Crewmates to rotate when their running turn ends (`fresh` on a working crewmate). */
-  readonly freshAtTurnEnd: Set<string>;
+  /** Crewmates to rotate when their running turn ends (`fresh` on a working crewmate), and why. */
+  readonly freshAtTurnEnd: Map<string, RotationReason>;
   readonly continueAtTurnEnd: Map<string, PendingContinue>;
   /** Turns sent per task attempt, for its WIP commits' messages. */
   readonly turns: Map<string, number>;
@@ -156,7 +157,7 @@ export const makeMemory = (): EngineMemory => ({
   terminalReasons: new Map(),
   shaped: new Map(),
   applyChoices: new Map(),
-  freshAtTurnEnd: new Set(),
+  freshAtTurnEnd: new Map(),
   continueAtTurnEnd: new Map(),
   turns: new Map(),
   integrating: new Set(),
