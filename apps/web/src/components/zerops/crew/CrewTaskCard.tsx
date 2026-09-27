@@ -1,0 +1,72 @@
+/**
+ * The task card in a crewmate's chat (PRD §4.5, seam 19): the engine's
+ * message that hands the crewmate its task, drawn as a task — never as the
+ * person's bubble. Above a stint's first card stands the seam that says why
+ * this conversation began and links the one before it.
+ *
+ * The timeline knows only the card's text; the crew facts it needs — the
+ * board, the stint's origin — come from `CrewTimelineContext`, which the chat
+ * provides for a crew thread and nothing provides elsewhere.
+ */
+import type { CrewTask, ThreadId } from "@t3tools/contracts";
+import { createContext, use, useMemo } from "react";
+
+import type { CrewCard } from "../../chat/conversation.logic";
+import { MicroLabel } from "../primitives";
+import { crewTaskCardModel } from "./CrewTaskCard.logic";
+import { CrewSeamLine } from "./CrewSeamLine";
+
+export interface CrewTimeline {
+  /** The timeline row of the stint's first card, while the conversation is loaded from its start. */
+  readonly firstCardId: string | null;
+  /** Why this stint began, and the stint before it; `null` for a crewmate's first conversation. */
+  readonly origin: { readonly text: string; readonly previousThreadId: ThreadId | null } | null;
+  readonly tasks: ReadonlyArray<CrewTask>;
+  readonly onOpenThread: (threadId: ThreadId) => void;
+}
+
+export const CrewTimelineContext = createContext<CrewTimeline | null>(null);
+
+const NO_TASKS: ReadonlyArray<CrewTask> = [];
+
+export function CrewTaskCard({ id, card }: { readonly id: string; readonly card: CrewCard }) {
+  const crew = use(CrewTimelineContext);
+  const tasks = crew?.tasks ?? NO_TASKS;
+  const model = useMemo(() => crewTaskCardModel(card, tasks), [card, tasks]);
+  const origin = crew !== null && crew.firstCardId === id ? crew.origin : null;
+  const previous = origin?.previousThreadId ?? null;
+  return (
+    <div className="flex flex-col gap-3">
+      {origin === null ? null : (
+        <CrewSeamLine
+          link={
+            previous === null
+              ? undefined
+              : { label: "previous conversation", onOpen: () => crew?.onOpenThread(previous) }
+          }
+          text={origin.text}
+        />
+      )}
+      <div
+        className="flex flex-col gap-1 rounded-2xl border border-border/70 bg-card px-4 py-2.5"
+        data-crew-task-card
+      >
+        <div className="flex min-w-0 items-baseline gap-2">
+          <MicroLabel className="shrink-0">Task</MicroLabel>
+          <p className="min-w-0 truncate text-prose font-medium text-foreground">{model.heading}</p>
+          {model.source === null ? null : (
+            <span className="shrink-0 text-xs text-muted-foreground">{model.source}</span>
+          )}
+        </div>
+        {model.text.length === 0 ? null : (
+          <p className="whitespace-pre-wrap text-line text-muted-foreground">{model.text}</p>
+        )}
+        {model.doneWhen === null ? null : (
+          <p className="text-line text-muted-foreground">
+            <span className="font-medium text-foreground">Done when:</span> {model.doneWhen}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}

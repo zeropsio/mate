@@ -62,7 +62,7 @@ import {
   resolveProjectScripts,
 } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
-import { IMAGE_ONLY_BOOTSTRAP_PROMPT, isSlashCommand } from "@t3tools/shared/userAsk";
+import { IMAGE_ONLY_BOOTSTRAP_PROMPT, isCrewCard, isSlashCommand } from "@t3tools/shared/userAsk";
 import {
   getTerminalLabel,
   nextTerminalId,
@@ -179,6 +179,7 @@ import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
 import { CrewLaneBar } from "./zerops/crew/CrewLaneBar";
+import { CrewTimelineContext, type CrewTimeline } from "./zerops/crew/CrewTaskCard";
 import { crewMessageCommand } from "./zerops/crew/crewComposerSend";
 import { crewCommands } from "../zerops/crew/crewCommands";
 import { useCrew } from "../zerops/crew/useCrew";
@@ -5275,6 +5276,49 @@ export default function ChatView(props: ChatViewProps) {
       ? null
       : (crew.view?.crewmates.find((row) => row.crewmate.handle === activeCrewOrigin.crewmate) ??
         null);
+  // What a crew thread's task cards need beyond their text: the board, and
+  // for the stint's first card — while the conversation is loaded from its
+  // start — why this conversation began and the one before it.
+  const crewTimeline = useMemo<CrewTimeline | null>(() => {
+    if (activeCrewOrigin === null) return null;
+    const stints = activeCrewmate?.crewmate.stints ?? [];
+    const index = stints.findIndex((stint) => stint.threadId === threadId);
+    const stint = stints[index];
+    const firstCard =
+      loadEarlierTurns === null
+        ? displayedTimeline.entries.find(
+            (entry) =>
+              entry.kind === "message" &&
+              entry.message.role === "user" &&
+              isCrewCard(entry.message.text),
+          )
+        : undefined;
+    return {
+      firstCardId: firstCard?.id ?? null,
+      origin:
+        stint === undefined || (index === 0 && stint.reason === null)
+          ? null
+          : {
+              text: stint.reason ?? "New conversation",
+              previousThreadId: stints[index - 1]?.threadId ?? null,
+            },
+      tasks: crew.snapshot?.board.tasks ?? [],
+      onOpenThread: (target) =>
+        void navigate({
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams(scopeThreadRef(environmentId, target)),
+        }),
+    };
+  }, [
+    activeCrewOrigin,
+    activeCrewmate,
+    crew.snapshot,
+    displayedTimeline.entries,
+    environmentId,
+    loadEarlierTurns,
+    navigate,
+    threadId,
+  ]);
   // The header's New chat while the Mate has one chat and so no strip.
   const startSecondChat = useLoneChatNewChat({
     environmentId,
@@ -7974,61 +8018,63 @@ export default function ChatView(props: ChatViewProps) {
             {/* Messages Wrapper */}
             <div className="relative flex min-h-0 flex-1 flex-col">
               {/* Messages — LegendList handles virtualization and scrolling internally */}
-              <MessagesTimeline
-                agentPanelModel={agentPanelModel}
-                onOpenAgents={addAgentsSurface}
-                working={dockModel}
-                afterTurnWork={activeBackgroundLiveness}
-                onStopBackgroundWork={stopBackgroundWork}
-                stoppingBackgroundWork={isStoppingBackgroundWork}
-                key={activeThread.id}
-                isWorking={isWorking}
-                workingStepLabel={workingStepLabel}
-                isCompacting={isCompacting}
-                activeTurnStartedAt={activeWorkStartedAt}
-                listRef={legendListRef}
-                timelineEntries={displayedTimeline.entries}
-                latestTurn={activeLatestTurn}
-                runningTurnId={activeRunningTurnId}
-                turnDiffSummaries={activeThread.checkpoints}
-                activeThreadEnvironmentId={activeThread.environmentId}
-                routeThreadKey={routeThreadKey}
-                onOpenTurnDiff={onOpenTurnDiff}
-                supportsConversationRollback={supportsConversationRollback}
-                onRevertToTurnCount={onRevertTimelineTurn}
-                {...(activeProject ? { onRunShellCommand: runShellCommand } : {})}
-                isRevertingCheckpoint={isRevertingCheckpoint}
-                onImageExpand={onExpandTimelineImage}
-                markdownCwd={gitCwd ?? undefined}
-                resolvedTheme={resolvedTheme}
-                timestampFormat={timestampFormat}
-                workspaceRoot={activeWorkspaceRoot}
-                skills={
-                  activeProviderStatus
-                    ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
-                    : EMPTY_PROVIDER_SKILLS
-                }
-                anchorMessageId={timelineAnchorMessageId}
-                onAnchorReady={onTimelineAnchorReady}
-                contentInsetEndAdjustment={composerOverlayHeight}
-                liveFollowEnabled={timelineLiveFollowEnabled}
-                onIsAtEndChange={onIsAtEndChange}
-                onManualNavigation={cancelTimelineLiveFollowForUserNavigation}
-                cancelPositionRestoreRef={cancelPositionRestoreRef}
-                hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
-                queuedMessages={queuedMessages}
-                usagePause={activeThreadShell?.usagePause ?? null}
-                onUsageAutoResumeChange={onUsageAutoResumeChange}
-                onSteerQueuedMessage={onSteerQueuedMessage}
-                steerQueuedMessageShortcutLabel={shortcutLabelForCommand(
-                  keybindings,
-                  "thread.steerQueuedMessage",
-                  { context: { terminalFocus: false } },
-                )}
-                onRemoveQueuedMessage={onRemoveQueuedMessage}
-                topFadeEnabled={!hasTimelineTopBanner}
-                loadEarlier={loadEarlierTurns}
-              />
+              <CrewTimelineContext value={crewTimeline}>
+                <MessagesTimeline
+                  agentPanelModel={agentPanelModel}
+                  onOpenAgents={addAgentsSurface}
+                  working={dockModel}
+                  afterTurnWork={activeBackgroundLiveness}
+                  onStopBackgroundWork={stopBackgroundWork}
+                  stoppingBackgroundWork={isStoppingBackgroundWork}
+                  key={activeThread.id}
+                  isWorking={isWorking}
+                  workingStepLabel={workingStepLabel}
+                  isCompacting={isCompacting}
+                  activeTurnStartedAt={activeWorkStartedAt}
+                  listRef={legendListRef}
+                  timelineEntries={displayedTimeline.entries}
+                  latestTurn={activeLatestTurn}
+                  runningTurnId={activeRunningTurnId}
+                  turnDiffSummaries={activeThread.checkpoints}
+                  activeThreadEnvironmentId={activeThread.environmentId}
+                  routeThreadKey={routeThreadKey}
+                  onOpenTurnDiff={onOpenTurnDiff}
+                  supportsConversationRollback={supportsConversationRollback}
+                  onRevertToTurnCount={onRevertTimelineTurn}
+                  {...(activeProject ? { onRunShellCommand: runShellCommand } : {})}
+                  isRevertingCheckpoint={isRevertingCheckpoint}
+                  onImageExpand={onExpandTimelineImage}
+                  markdownCwd={gitCwd ?? undefined}
+                  resolvedTheme={resolvedTheme}
+                  timestampFormat={timestampFormat}
+                  workspaceRoot={activeWorkspaceRoot}
+                  skills={
+                    activeProviderStatus
+                      ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
+                      : EMPTY_PROVIDER_SKILLS
+                  }
+                  anchorMessageId={timelineAnchorMessageId}
+                  onAnchorReady={onTimelineAnchorReady}
+                  contentInsetEndAdjustment={composerOverlayHeight}
+                  liveFollowEnabled={timelineLiveFollowEnabled}
+                  onIsAtEndChange={onIsAtEndChange}
+                  onManualNavigation={cancelTimelineLiveFollowForUserNavigation}
+                  cancelPositionRestoreRef={cancelPositionRestoreRef}
+                  hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
+                  queuedMessages={queuedMessages}
+                  usagePause={activeThreadShell?.usagePause ?? null}
+                  onUsageAutoResumeChange={onUsageAutoResumeChange}
+                  onSteerQueuedMessage={onSteerQueuedMessage}
+                  steerQueuedMessageShortcutLabel={shortcutLabelForCommand(
+                    keybindings,
+                    "thread.steerQueuedMessage",
+                    { context: { terminalFocus: false } },
+                  )}
+                  onRemoveQueuedMessage={onRemoveQueuedMessage}
+                  topFadeEnabled={!hasTimelineTopBanner}
+                  loadEarlier={loadEarlierTurns}
+                />
+              </CrewTimelineContext>
 
               {/* scroll to end pill — shown when user has scrolled away from the live edge */}
               {showScrollToBottom && (

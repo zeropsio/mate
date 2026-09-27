@@ -181,6 +181,7 @@ import {
   type ServerUsagePause,
 } from "./ConversationRows";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
+import { CrewTaskCard } from "../zerops/crew/CrewTaskCard";
 import { KindGlyph, ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
@@ -2105,16 +2106,9 @@ function EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "event" }
   );
 }
 
-/** The task the server handed a crewmate: its title and text, plainly, on the Mate's side. */
+/** The task the server handed a crewmate, drawn as a task (`CrewTaskCard.tsx`). */
 function CrewCardTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "crew-card" }> }) {
-  return (
-    <div className="rounded-2xl border border-border/70 bg-card px-4 py-2.5">
-      <p className="text-prose font-medium text-foreground">{row.task.title}</p>
-      {row.task.text.length > 0 ? (
-        <p className="whitespace-pre-wrap text-line text-muted-foreground">{row.task.text}</p>
-      ) : null}
-    </div>
-  );
+  return <CrewTaskCard card={row.task} id={row.id} />;
 }
 
 /** The pause's countdown reads the clock once a minute: words change, the block never moves. */
