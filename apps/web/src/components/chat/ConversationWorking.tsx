@@ -409,13 +409,20 @@ function Stream({
     const scroller = scrollerRef.current;
     const content = contentRef.current;
     if (scroller === null || content === null) return;
-    // Following the newest: held at the bottom as words arrive and the
-    // window grows, unless the person scrolled back to read.
-    const pin = () => {
-      if (followingRef.current) scroller.scrollTop = scroller.scrollHeight;
+    // The window runs from its bottom (it is a reversed column), so the
+    // newest is where it starts: a panel mounted, moved or reset opens on the
+    // newest, whatever order its layout settles in. Following, it stays
+    // there as words arrive; scrolled back to read, it holds still — what
+    // grows below is taken off the scroll, so the words being read stay put.
+    let height = content.getBoundingClientRect().height;
+    const hold = () => {
+      const next = content.getBoundingClientRect().height;
+      if (followingRef.current) scroller.scrollTop = 0;
+      else scroller.scrollTop -= next - height;
+      height = next;
     };
-    pin();
-    const observer = new ResizeObserver(pin);
+    hold();
+    const observer = new ResizeObserver(hold);
     observer.observe(content);
     observer.observe(scroller);
     return () => observer.disconnect();
@@ -431,7 +438,8 @@ function Stream({
   const onScroll = () => {
     const scroller = scrollerRef.current;
     if (scroller === null) return;
-    const atBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 2;
+    // A reversed column's scroll starts at 0 at its bottom and goes negative up.
+    const atBottom = Math.abs(scroller.scrollTop) <= 2;
     if (atBottom) {
       followingRef.current = true;
       setReading(false);
@@ -439,7 +447,7 @@ function Stream({
       followingRef.current = false;
       setReading(true);
     } else if (followingRef.current) {
-      scroller.scrollTop = scroller.scrollHeight;
+      scroller.scrollTop = 0;
     }
   };
 
@@ -451,7 +459,7 @@ function Stream({
         aria-label={`What ${speaker.name} said while working`}
         aria-live="polite"
         className={cn(
-          "min-w-0 flex-1 overflow-y-auto scrollbar-none transition-[height] duration-500 ease-out motion-reduce:transition-none",
+          "flex min-w-0 flex-1 flex-col-reverse overflow-y-auto scrollbar-none transition-[height] duration-500 ease-out motion-reduce:transition-none",
           older && !reading && "stream-fade",
         )}
         data-stream-reading={reading ? "true" : undefined}
