@@ -78,13 +78,20 @@ const DEFAULT_LOGINS: ReadonlyArray<{ readonly id: string; readonly label: strin
   { id: "codex", label: "Codex" },
 ];
 
+/**
+ * The logins a crewmate may run on. The lead needs the crew tools, which
+ * only Claude hosts in phase C, so it is offered no Codex login.
+ */
 export function crewLoginOptions(
   providers: ReadonlyArray<ServerProvider>,
+  lead: boolean,
 ): ReadonlyArray<CrewLogin> {
   return DEFAULT_LOGINS.flatMap((login) => {
     const agent = agentIdForProviderInstance(login.id);
     const present = providers.some((provider) => provider.instanceId === login.id);
-    return present && agent !== undefined ? [{ id: login.id, label: login.label, agent }] : [];
+    return present && agent !== undefined && !(lead && agent === "codex")
+      ? [{ id: login.id, label: login.label, agent }]
+      : [];
   });
 }
 

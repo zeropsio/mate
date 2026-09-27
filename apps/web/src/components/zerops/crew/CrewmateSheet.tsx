@@ -133,7 +133,7 @@ function CrewmateForm({
     setDraft((current) => ({ ...current, [key]: value }));
 
   const catalog = providers ?? [];
-  const logins = crewLoginOptions(catalog);
+  const logins = crewLoginOptions(catalog, lead);
   const loginNote = crewLoginNote(logins, draft.login);
   const models = crewModelOptions(catalog, draft.login);
   const efforts = crewEffortOptions(catalog, draft.login, draft.model);
