@@ -170,8 +170,8 @@ declared and applied — read only, and _Tell the crew_ goes to its chat (`crewR
 
 ## 8. Measured facts
 
-Both measured 2026-09-27 against the local Claude Code CLI 2.1.283; neither is in
-[`verified.md`](verified.md) yet.
+Both measured 2026-09-27 against the local Claude Code CLI 2.1.283; the rows, with the crew
+port facts from the test rig, are in [`verified.md`](verified.md) _Crew mode's CLI and port facts_.
 
 - **Probe 22 failed.** A resumed session keeps the `--append-system-prompt` it started with; an
   append passed on resume is ignored — the model quoted the old text verbatim and the cache prefix
