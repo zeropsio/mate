@@ -5,8 +5,8 @@
  * and *Runs on*'s logins, models and effort levels from the Mate's provider
  * catalog. Phase B offers the two default logins only.
  *
- * The crew home's format is `@t3tools/shared/crewHome`'s; these only edit a
- * parsed definition, and the editors write it back with `renderCrewHome`.
+ * The crew home's format is `@t3tools/shared/crewHome`'s, and the form ↔
+ * definition adapter is `zerops/crew/crewHome.ts`.
  */
 import {
   agentIdForProviderInstance,
@@ -17,12 +17,7 @@ import {
 } from "@t3tools/contracts";
 import { crewApplyWord } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
-import {
-  parseBrief,
-  type CrewDefinition,
-  type CrewDefinitionIssue,
-  type CrewMemberSpec,
-} from "@t3tools/shared/crewHome";
+import type { CrewDefinition, CrewDefinitionIssue } from "@t3tools/shared/crewHome";
 
 export interface CrewSaveChoice {
   readonly apply: CrewApplyChoice;
@@ -61,25 +56,6 @@ export function jobChangedMostly(before: string, after: string): boolean {
   const kept = new Set(lines(after));
   const changed = old.filter((line) => !kept.has(line)).length;
   return changed * 2 > old.length;
-}
-
-/** The definition with one crewmate replaced (by its handle before the edit) or, for `null`, added. */
-export function withMember(
-  definition: CrewDefinition,
-  handle: string | null,
-  spec: CrewMemberSpec,
-): CrewDefinition {
-  return {
-    ...definition,
-    members:
-      handle === null
-        ? [...definition.members, spec]
-        : definition.members.map((member) => (member.handle === handle ? spec : member)),
-  };
-}
-
-export function withBrief(definition: CrewDefinition, title: string, text: string): CrewDefinition {
-  return { ...definition, brief: parseBrief(title, text) };
 }
 
 /** The tints a crewmate may take: its own and those nobody else wears, never the Mate's. */

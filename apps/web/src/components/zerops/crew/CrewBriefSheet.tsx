@@ -16,10 +16,11 @@ import { useState } from "react";
 
 import { Input } from "../../ui/input";
 import { Textarea } from "../../ui/textarea";
+import { withBrief } from "../../../zerops/crew/crewHome";
 import type { UseCrewCommand } from "../../../zerops/crew/useCrewCommand";
 import { useCrewHome, type CrewHomeRead } from "../../../zerops/crew/useCrewHome";
 import { Pill } from "../primitives";
-import { CREW_APPLY_COST_LINE, crewRewriteBlockers, withBrief } from "./CrewEditors.logic";
+import { CREW_APPLY_COST_LINE, crewRewriteBlockers } from "./CrewEditors.logic";
 import {
   CrewField,
   CrewIssues,

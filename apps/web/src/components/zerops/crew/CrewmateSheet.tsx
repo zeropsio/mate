@@ -16,7 +16,6 @@ import {
   crewJobFile,
   type CrewDefinition,
   type CrewDefinitionIssue,
-  type CrewMemberSpec,
 } from "@t3tools/shared/crewHome";
 import { useState } from "react";
 
@@ -24,6 +23,13 @@ import { Input } from "../../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../../ui/select";
 import { Switch } from "../../ui/switch";
 import { Textarea } from "../../ui/textarea";
+import {
+  crewmateDraftOf,
+  crewmateSpecOf,
+  emptyCrewmateDraft,
+  withMember,
+  type CrewmateDraft,
+} from "../../../zerops/crew/crewHome";
 import type { UseCrewCommand } from "../../../zerops/crew/useCrewCommand";
 import { useCrewHome, type CrewHomeRead } from "../../../zerops/crew/useCrewHome";
 import { MateFace, Pill } from "../primitives";
@@ -34,7 +40,6 @@ import {
   crewRewriteBlockers,
   freeTints,
   jobChangedMostly,
-  withMember,
 } from "./CrewEditors.logic";
 import {
   CrewField,
@@ -48,89 +53,6 @@ import {
 
 /** The select's value for "the login's own default". */
 const LOGIN_DEFAULT = "default";
-
-interface Draft {
-  readonly displayName: string;
-  readonly handle: string;
-  readonly tint: MateTintId | undefined;
-  readonly job: string;
-  readonly login: string;
-  readonly model: string | null;
-  readonly effort: string | null;
-  readonly readOnly: boolean;
-  readonly host: string;
-  readonly setup: string;
-  readonly check: string;
-  readonly run: string;
-  readonly restartAfterMerge: boolean;
-  readonly afterLandRestart: boolean;
-}
-
-const emptyDraft = (lead: boolean): Draft => ({
-  displayName: lead ? "Lead" : "",
-  handle: lead ? "lead" : "",
-  tint: undefined,
-  job: "",
-  login: "claudeAgent",
-  model: null,
-  effort: null,
-  readOnly: lead,
-  host: "",
-  setup: "",
-  check: "",
-  run: "",
-  restartAfterMerge: false,
-  afterLandRestart: false,
-});
-
-const draftOf = (member: CrewMemberSpec): Draft => ({
-  displayName: member.displayName,
-  handle: member.handle,
-  tint: member.tint,
-  job: member.job,
-  login: member.login ?? "claudeAgent",
-  model: member.model ?? null,
-  effort: member.effort ?? null,
-  readOnly: member.readOnly,
-  host: member.host ?? "",
-  setup: member.setup ?? "",
-  check: member.check ?? "",
-  run: member.run ?? "",
-  restartAfterMerge: member.restartAfterMerge,
-  afterLandRestart: member.afterLandRestart,
-});
-
-const optional = (value: string) => (value.trim() === "" ? undefined : value.trim());
-
-function specOf(draft: Draft, lead: boolean, before: CrewMemberSpec | undefined): CrewMemberSpec {
-  const writes = !lead && !draft.readOnly;
-  const host = writes ? optional(draft.host) : undefined;
-  const setup = writes ? optional(draft.setup) : undefined;
-  const check = writes ? optional(draft.check) : undefined;
-  const run = writes ? optional(draft.run) : undefined;
-  return {
-    handle: draft.handle,
-    displayName: draft.displayName.trim(),
-    kind: lead ? "lead" : writes ? "writer" : "reader",
-    readOnly: !writes,
-    ...(draft.tint === undefined ? {} : { tint: draft.tint }),
-    ...(host === undefined ? {} : { host }),
-    ...(setup === undefined ? {} : { setup }),
-    ...(check === undefined ? {} : { check }),
-    ...(run === undefined ? {} : { run }),
-    restartAfterMerge: writes && draft.restartAfterMerge,
-    afterLandRestart: writes && draft.afterLandRestart,
-    login: draft.login,
-    ...(draft.model === null ? {} : { model: draft.model }),
-    ...(draft.effort === null ? {} : { effort: draft.effort }),
-    env: writes ? (before?.env ?? {}) : {},
-    ...(writes && before?.database !== undefined ? { database: before.database } : {}),
-    migrations: writes ? (before?.migrations ?? []) : [],
-    ...(before?.context === undefined ? {} : { context: before.context }),
-    ...(before?.rotateAfter === undefined ? {} : { rotateAfter: before.rotateAfter }),
-    job: draft.job,
-  };
-}
 
 export interface CrewmateSheetTarget {
   /** The crewmate's handle; `null` adds one. */
@@ -200,13 +122,13 @@ function CrewmateForm({
   const before = definition.members.find((member) => member.handle === target.handle);
   const lead = target.lead || before?.kind === "lead";
   const isApplied = target.handle !== null && applied.has(target.handle);
-  const [draft, setDraft] = useState<Draft>(() =>
-    before === undefined ? emptyDraft(target.lead) : draftOf(before),
+  const [draft, setDraft] = useState<CrewmateDraft>(() =>
+    before === undefined ? emptyCrewmateDraft(target.lead) : crewmateDraftOf(before),
   );
   /** `null` until the person picks one: the default follows the edit. */
   const [picked, setPicked] = useState<CrewApplyChoice | null>(null);
 
-  const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
+  const set = <K extends keyof CrewmateDraft>(key: K, value: CrewmateDraft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
 
   const catalog = providers ?? [];
@@ -231,7 +153,7 @@ function CrewmateForm({
 
   const submit = async (apply: CrewApplyChoice) => {
     if (!ready) return;
-    const spec = specOf(draft, lead, before);
+    const spec = crewmateSpecOf(draft, lead, before);
     const saved = await save(withMember(definition, target.handle, spec), [
       CREW_HOME_FILE,
       crewJobFile(spec.handle),

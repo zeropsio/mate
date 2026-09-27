@@ -13,8 +13,6 @@ import {
   crewModelOptions,
   freeTints,
   jobChangedMostly,
-  withBrief,
-  withMember,
 } from "./CrewEditors.logic";
 
 const member = (
@@ -50,34 +48,6 @@ describe("jobChangedMostly", () => {
     { name: "a new job", before: "", after: "Writes the plan.", mostly: false },
   ])("$name", ({ before, after, mostly }) => {
     expect(jobChangedMostly(before, after)).toBe(mostly);
-  });
-});
-
-describe("withMember and withBrief", () => {
-  it("replaces a crewmate by handle, keeping the others in order", () => {
-    const next = withMember(
-      definition,
-      "backend",
-      member({ handle: "backend", displayName: "API" }),
-    );
-    expect(next.members.map((mate) => [mate.handle, mate.displayName])).toEqual([
-      ["backend", "API"],
-      ["erik", "erik"],
-    ]);
-  });
-
-  it("adds a crewmate at the end", () => {
-    const next = withMember(definition, null, member({ handle: "qa" }));
-    expect(next.members.map((mate) => mate.handle)).toEqual(["backend", "erik", "qa"]);
-  });
-
-  it("sets the brief's title and text, reading its sections again", () => {
-    const next = withBrief(definition, "Shop", "Sell things.\n\n## Done when\n- a guest pays\n");
-    expect(next.brief).toEqual({
-      title: "Shop",
-      text: "Sell things.\n\n## Done when\n- a guest pays\n",
-      doneWhen: ["a guest pays"],
-    });
   });
 });
 
