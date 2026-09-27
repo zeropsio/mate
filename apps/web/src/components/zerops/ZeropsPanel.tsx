@@ -39,6 +39,7 @@ import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
 import { ZeropsAgentAuthorizationDialog } from "./ZeropsAgentAuthorizationDialog";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
+import { CrewSectionHost } from "./crew/CrewSectionHost";
 import { MicroLabel } from "./primitives";
 
 export function ZeropsPanel({
@@ -190,6 +191,12 @@ export function ZeropsPanel({
               {agents}
             </section>
           )}
+          <CrewSectionHost
+            mate={mate === undefined ? undefined : { name: mate.name, tint: mate.tint }}
+            onOpenBoard={null}
+            services={topology.view?.services}
+            threadRef={threadRef}
+          />
         </div>
       </ScrollArea>
       {authorizationAgent === undefined ? null : (
