@@ -137,7 +137,7 @@ export function WorkLine({
 }) {
   const live = row.live;
   // A stretch that did nothing but think says so, and nothing more.
-  const thoughtOnly = !live && row.note === null && row.fallback === null;
+  const thoughtOnly = !live && !row.worked && row.note === null && row.fallback === null;
   const verb = live
     ? "is working ·"
     : row.face === "stopped"

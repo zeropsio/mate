@@ -100,6 +100,7 @@ describe("timeline minimap previews", () => {
       note: "Stage is live.",
       fallback: null,
       summary: null,
+      worked: true,
       noteCount: 1,
       hasLog: true,
       open: false,

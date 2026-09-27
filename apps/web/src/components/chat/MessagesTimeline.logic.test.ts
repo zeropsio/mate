@@ -835,6 +835,24 @@ describe("deriveMessagesTimelineRows", () => {
     expect(list.find((row) => row.kind === "work-line")).toMatchObject({ summary });
   });
 
+  // A run whose only work was an operation — a page check, a deploy — did
+  // work: "Nova thought for 8s" stood over its report of "1 page · 1 check"
+  // (Nova, 2026-09-27).
+  it.each([
+    {
+      name: "only a page checked",
+      middle: [operation("b1", "t1", 1, { kind: "browser", subject: "https://shop.dev/" })],
+      worked: true,
+    },
+    { name: "only thought", middle: [reasoning("r1", "t1", 1)], worked: false },
+  ])("says a run that did something worked: $name", ({ middle, worked }) => {
+    const list = rows({
+      entries: [user("m0", 0), ...middle, assistant("a1", "t1", 2, "Done.")],
+      settled: "t1",
+    });
+    expect(list.find((row) => row.kind === "work-line")).toMatchObject({ worked });
+  });
+
   it("keeps what matters visible under a closed line, each where it appeared", () => {
     const list = rows({
       entries: [

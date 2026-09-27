@@ -420,6 +420,8 @@ type MessagesTimelineRowBody =
       fallback: string | null;
       /** What its calls came to, in words ("Read 4 files · ran 2 commands"); null when it made none. */
       summary: string | null;
+      /** It did something — a call, a question, a helper, an operation: it "worked", never only "thought". */
+      worked: boolean;
       noteCount: number;
       /** The stretch has a log to open. */
       hasLog: boolean;
@@ -1839,6 +1841,9 @@ export function deriveMessagesTimelineRows(
         note: lastNote === null ? null : noteLine(lastNote.message.text),
         fallback: lastNote !== null ? null : pausedHere ? "Stopped by the usage limit" : summary,
         summary,
+        worked:
+          summary !== null ||
+          turn.stretches.some((stretch) => stretchOperations(stretch).length > 0),
         noteCount: notes.length,
         hasLog,
         open,
