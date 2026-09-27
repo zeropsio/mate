@@ -372,6 +372,12 @@ describe("snippetAround — the words around a match, not the conversation's ope
     },
     { case: "whitespace folded", text: "one\n\ntwo   three", query: "two", out: "one two three" },
     {
+      case: "markdown's marks dropped, the way the rows quote it",
+      text: "Done: - **Checkout moved:** the `cart` is [live](https://x.dev)",
+      query: "done",
+      out: "Done: - Checkout moved: the cart is live",
+    },
+    {
       case: "whole words at both cuts",
       text: "Split the checkout into a two-step flow with a saved basket, and keep it",
       query: "basket",

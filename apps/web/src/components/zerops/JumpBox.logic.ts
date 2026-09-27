@@ -19,6 +19,7 @@
  */
 import type { GroupRowTone } from "@t3tools/client-runtime/zerops";
 import type { MateMarkState, MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
+import { messageWords } from "@t3tools/shared/messagePreview";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -405,10 +406,12 @@ const SNIPPET_AFTER = 40;
 
 /**
  * The words around a match, on one line, rather than wherever the message
- * began — cut between words, never through one.
+ * began — cut between words, never through one, and quoted as the rows quote
+ * a message: markdown's marks dropped. The server's hit comes on one line
+ * already, so a list's dash inside it stays a dash.
  */
 export function snippetAround(text: string, query: string): string {
-  const line = text.replace(/\s+/gu, " ").trim();
+  const line = messageWords(text);
   const needle = query.trim();
   const at = fold(line).indexOf(fold(needle));
   if (at === -1) return line;

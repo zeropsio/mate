@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { MESSAGE_PREVIEW_MAX_LENGTH, messagePreviewText } from "./messagePreview.ts";
+import { MESSAGE_PREVIEW_MAX_LENGTH, messagePreviewText, messageWords } from "./messagePreview.ts";
 
 describe("messagePreviewText", () => {
   it.each([
@@ -47,5 +47,12 @@ describe("messagePreviewText", () => {
   it("keeps a message within the limit whole", () => {
     const text = "y".repeat(MESSAGE_PREVIEW_MAX_LENGTH);
     expect(messagePreviewText(text)).toBe(text);
+  });
+});
+
+describe("messageWords", () => {
+  it("drops markdown's marks the way a preview does, and keeps every word", () => {
+    const long = `**Done.** ${"word ".repeat(60)}\n\n- the \`end\``;
+    expect(messageWords(long)).toBe(`Done. ${"word ".repeat(60)}the end`);
   });
 });

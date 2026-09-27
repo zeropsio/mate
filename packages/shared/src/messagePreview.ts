@@ -19,9 +19,12 @@ const CODE = /`([^`\n]+)`/gu;
 const BLOCK_MARKS = /^\s{0,3}(?:#{1,6}\s+|>\s?|[-*+]\s+(?:\[[ xX]\]\s+)?|\d{1,3}[.)]\s+)/gmu;
 const TRAILING_PUNCTUATION = /[\s,;:.!?…-]+$/u;
 
-/** A markdown message as plain words, or null when nothing is left to quote. */
-export function messagePreviewText(markdown: string): string | null {
-  const words = markdown
+/**
+ * A markdown message as plain words on one line, every one of them: what a
+ * preview cuts, and what a search quotes around the words it found.
+ */
+export function messageWords(markdown: string): string {
+  return markdown
     .replace(FENCE_LINE, "")
     .replace(HORIZONTAL_RULE, "")
     .replace(IMAGE, "$1")
@@ -33,6 +36,11 @@ export function messagePreviewText(markdown: string): string | null {
     .replace(BLOCK_MARKS, "")
     .replace(/\s+/gu, " ")
     .trim();
+}
+
+/** A markdown message as plain words, or null when nothing is left to quote. */
+export function messagePreviewText(markdown: string): string | null {
+  const words = messageWords(markdown);
   if (words.length === 0) return null;
   return truncateAtWord(words, MESSAGE_PREVIEW_MAX_LENGTH);
 }
