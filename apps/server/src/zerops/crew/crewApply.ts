@@ -60,8 +60,11 @@ import { saveTask } from "./crewTasks.ts";
 import { versionsAfterSave } from "./crewVersions.ts";
 import type { RotationReason } from "./rotationDecision.ts";
 
-/** Installs the crew's thread policies for the engine's life; idempotent. */
-export type InstallPolicies = Effect.Effect<void>;
+/**
+ * What an applied crew turns on for the engine's life: the crew's thread
+ * policies and the watch on sign-ins; idempotent.
+ */
+export type Activate = Effect.Effect<void>;
 
 const loadHome = (core: CrewCore) =>
   Effect.gen(function* () {
@@ -346,7 +349,7 @@ const applyChoice = (
     }
   });
 
-export const apply = (core: CrewCore, principal: TurnPrincipal, installPolicies: InstallPolicies) =>
+export const apply = (core: CrewCore, principal: TurnPrincipal, activate: Activate) =>
   Effect.gen(function* () {
     const definition = yield* loadHome(core);
     const { devHosts, verified } = yield* verifyHosts(core, definition);
@@ -468,7 +471,7 @@ export const apply = (core: CrewCore, principal: TurnPrincipal, installPolicies:
       );
     }
     yield* bumped(core);
-    yield* installPolicies;
+    yield* activate;
     const applied = yield* requireApplied(core);
     for (const handle of save.pending) {
       const member = yield* requireMember(applied, handle);

@@ -460,13 +460,15 @@ export const pump = (
     const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
     if (openTaskOf(tasks, handle) !== undefined) return;
     const run = runningRun(applied);
-    const next = tasks.find(
+    const startable = tasks.filter(
       (row) =>
         row.member === handle &&
         row.state === "queued" &&
         (row.source !== "lead" || run !== undefined) &&
         row.dependsOn.every((id) => landed(tasks, id)),
     );
+    // A press names its task; otherwise the oldest goes first.
+    const next = startable.find((row) => row.assignment === now?.taskId) ?? startable[0];
     if (next === undefined) return;
     const ownCall = now !== undefined && now.taskId === next.assignment;
     const principal = ownCall ? now.principal : dispatchPrincipal(applied, next);
@@ -679,7 +681,8 @@ export const discard = (core: CrewCore, taskId: string) =>
 export const retryTask = (core: CrewCore, principal: TurnPrincipal, taskId: string) =>
   Effect.gen(function* () {
     const row = yield* requireTask(core, taskId);
-    if (row.state !== "parked" && row.state !== "queued") {
+    const refused = row.state === "queued" && core.memory.cantStart.has(row.assignment);
+    if (row.state !== "parked" && !refused) {
       return yield* refuse("wrong-state", `#${row.number} is ${row.state}`);
     }
     const queued =

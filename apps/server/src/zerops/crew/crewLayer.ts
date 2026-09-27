@@ -39,6 +39,7 @@ import { ClaudeThreadExtensionRegistry } from "../../spi/claudeThreadProfile.ts"
 import { ProviderRuntimeEventBus } from "../../spi/ProviderRuntimeEventBus.ts";
 import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
+import { ZeropsAgentAuth } from "../ZeropsAgentAuth.ts";
 import { isZeropsEnvironment } from "../ZeropsEnvironment.ts";
 import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 import * as CrewApp from "./CrewApp.ts";
@@ -54,6 +55,7 @@ import {
   saveBrief,
   saveJob,
   startFresh,
+  type Activate,
 } from "./crewApply.ts";
 import { boot } from "./crewBoot.ts";
 import { grantClaim, moveClaim, releaseClaim, showOnDevNow } from "./crewClaims.ts";
@@ -100,7 +102,7 @@ import {
 } from "./crewTasks.ts";
 import { makeTurnHandler } from "./crewTurns.ts";
 import { MIRRORED_TABLES } from "./crewState.ts";
-import { advanceAll } from "./crewRunFlow.ts";
+import { advanceAll, retryRefused } from "./crewRunFlow.ts";
 import {
   finishRun,
   pressPause,
@@ -200,18 +202,13 @@ const buildSnapshot = (core: CrewCore, seq: number) =>
     });
   });
 
-const run = (
-  core: CrewCore,
-  command: CrewCommand,
-  principal: TurnPrincipal,
-  installPolicies: Effect.Effect<void>,
-) =>
+const run = (core: CrewCore, command: CrewCommand, principal: TurnPrincipal, activate: Activate) =>
   Effect.gen(function* () {
     core.memory.lastError = null;
     const done = { _tag: "done" } satisfies CrewCommandResult as CrewCommandResult;
     switch (command._tag) {
       case "apply":
-        yield* apply(core, principal, installPolicies);
+        yield* apply(core, principal, activate);
         return done;
       case "message":
         yield* message(core, principal, command);
@@ -341,6 +338,7 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
   Effect.gen(function* () {
     const core = yield* makeCrewCore;
     const bus = yield* ProviderRuntimeEventBus;
+    const agentAuth = yield* ZeropsAgentAuth;
     const readiness = yield* ServerCommandReadiness;
     const policies = yield* ThreadToolPolicyRegistry;
     const extensions = yield* ClaudeThreadExtensionRegistry;
@@ -378,8 +376,32 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
           ),
     );
 
+    // A queued task admission refused may start once a sign-in or a signer changes.
+    let watching = false;
+    const watchSignIns = Effect.suspend(() => {
+      if (watching) return Effect.void;
+      watching = true;
+      return Stream.merge(
+        Stream.map(core.logins.changes, () => undefined),
+        Stream.map(agentAuth.changes, () => undefined),
+      ).pipe(
+        Stream.runForEach(() =>
+          retryRefused(core).pipe(
+            Effect.catch((error) =>
+              Effect.sync(() => {
+                core.memory.lastError = error.message;
+              }),
+            ),
+          ),
+        ),
+        Effect.forkIn(scope),
+        Effect.asVoid,
+      );
+    });
+    const activate: Activate = installPolicies.pipe(Effect.andThen(watchSignIns));
+
     yield* core.reload;
-    if ((yield* core.applied) !== undefined) yield* installPolicies;
+    if ((yield* core.applied) !== undefined) yield* activate;
 
     yield* bus.events.pipe(Stream.runForEach(makeTurnHandler(core)), Effect.forkIn(scope));
     yield* Effect.flatMap(core.applied, (applied) =>
@@ -439,7 +461,7 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
         .background(core.probeDevHosts)
         .pipe(Effect.andThen(Effect.map(core.home.read, (files) => ({ files })))),
       writeFiles: (files) => core.home.write(files.files),
-      command: (command, principal) => run(core, command, principal, installPolicies),
+      command: (command, principal) => run(core, command, principal, activate),
     };
     return Context.make(CrewEngine, engine).pipe(
       Context.add(CrewThreadDirectory, directory),

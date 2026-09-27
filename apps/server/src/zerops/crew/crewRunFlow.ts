@@ -151,6 +151,23 @@ export const advance = (core: CrewCore, handle: string) =>
     yield* core.changed;
   });
 
+/**
+ * Starts again every queued task admission refused, once a sign-in or a
+ * signer changed: the cause may have cleared. One refused again keeps its
+ * *Can't start* row with the new words.
+ */
+export const retryRefused = (core: CrewCore) =>
+  Effect.gen(function* () {
+    if (core.memory.cantStart.size === 0) return;
+    const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
+    const handles = new Set(
+      tasks
+        .filter((task) => task.state === "queued" && core.memory.cantStart.has(task.assignment))
+        .map((task) => task.member),
+    );
+    for (const handle of handles) yield* advance(core, handle);
+  });
+
 /** Advances every crewmate; a failure is the section's last error, never a stop. */
 export const advanceAll = (core: CrewCore) =>
   Effect.gen(function* () {
