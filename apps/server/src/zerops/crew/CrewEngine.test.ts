@@ -144,6 +144,15 @@ describe("CrewEngine", () => {
             },
           );
           yield* world.publish(spiEvent("turn.started", created[0]!.threadId, {}));
+          const member = Option.getOrThrow(
+            yield* (yield* CrewThreadDirectory).memberFor(created[0]!.threadId),
+          );
+          const seed = yield* (yield* CrewToolHost).sessionStart(member, {
+            source: "startup",
+            sessionId: "session-1",
+            transcriptPath: "/home/zerops/.claude/projects/x/session-1.jsonl",
+          });
+          assert.isUndefined(seed);
           yield* eventually(
             Effect.map(latest, (snapshot) => snapshot.crewmates[0]!.stints[0]?.state === "active"),
           );

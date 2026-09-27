@@ -1488,15 +1488,16 @@ const makeClientRuntimeZeropsFixture = Effect.fn("makeClientRuntimeZeropsFixture
 });
 
 // The Ported↔spi rule (ARCHITECTURE seam 27). `spi/**` wraps `provider/**`,
-// so the only way back is these two files: a driver reads a thread's tool
-// profile through them. They import only each other inside the repo — any
-// other spi file may reach `provider/**`, and one hop through it would make
-// the two directories import each other.
+// so the only way back is these files: a driver reads a thread's tool profile
+// through the neutral one and its own extension. They import only each other
+// inside the repo — any other spi file may reach `provider/**`, and one hop
+// through it would make the two directories import each other.
 const SPI_DIR = "apps/server/src/spi";
 const PROVIDER_DIR = "apps/server/src/provider";
 const SPI_INBOUND_FILES: ReadonlySet<string> = new Set([
   `${SPI_DIR}/threadToolPolicy.ts`,
   `${SPI_DIR}/claudeThreadProfile.ts`,
+  `${SPI_DIR}/codexThreadProfile.ts`,
 ]);
 
 const collectPortedSpiViolations = Effect.fn("collectPortedSpiViolations")(function* (
@@ -1681,13 +1682,14 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
   );
 
   it.effect(
-    "Ported↔spi fixture: a third spi import, and an inbound file reaching beyond the pair, are reported",
+    "Ported↔spi fixture: an spi import beyond the inbound files, and an inbound file reaching beyond them, are reported",
     () =>
       Effect.gen(function* () {
         const fixtureRoot = yield* makeRepoFixture({
           "apps/server/src/provider/Layers/Adapter.ts": [
             'import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";',
             'import { claudeQueryOptionsPatch } from "../../spi/claudeThreadProfile.ts";',
+            'import { codexThreadStart } from "../../spi/codexThreadProfile.ts";',
             'import { readToolCall } from "../../spi/toolCall.ts";',
             "",
           ].join("\n"),
@@ -1700,6 +1702,11 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
             'import type { Options } from "@anthropic-ai/claude-agent-sdk";',
             'import { makeInstallSlot } from "./threadToolPolicy.ts";',
             'import { ProviderRuntimeEventBus } from "./ProviderRuntimeEventBus.ts";',
+            "",
+          ].join("\n"),
+          "apps/server/src/spi/codexThreadProfile.ts": [
+            'import { DECIDE_TOOL_TIMEOUT } from "./claudeThreadProfile.ts";',
+            'import { buildTurnStartParams } from "../provider/Layers/CodexSessionRuntime.ts";',
             "",
           ].join("\n"),
           "apps/server/src/spi/toolCall.ts": 'import { x } from "../provider/Layers/Adapter.ts";\n',
@@ -1715,6 +1722,10 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
             specifier: "./ProviderRuntimeEventBus.ts",
           },
           {
+            file: "apps/server/src/spi/codexThreadProfile.ts",
+            specifier: "../provider/Layers/CodexSessionRuntime.ts",
+          },
+          {
             file: "apps/server/src/spi/threadToolPolicy.ts",
             specifier: "../provider/Errors.ts",
           },
@@ -1723,7 +1734,7 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
   );
 
   it.effect(
-    "Ported↔spi: provider/** imports from spi/ only the two inbound files, and they import only each other",
+    "Ported↔spi: provider/** imports from spi/ only the inbound files, and they import only each other",
     () =>
       Effect.gen(function* () {
         const root = yield* repoRoot;
@@ -1961,6 +1972,7 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
         "apps/web/src/components/Sidebar.tsx",
         "apps/web/src/components/Sidebar.logic.ts",
         "apps/web/src/components/ThreadStatusIndicators.tsx",
+        "apps/web/src/components/zerops/crew/CrewBoardPanel.logic.ts",
         "apps/mobile/src/features/threads/thread-list-v2-items.tsx",
         "apps/mobile/src/features/threads/threadListV2.ts",
         "apps/mobile/src/features/agent-awareness/remoteRegistration.ts",

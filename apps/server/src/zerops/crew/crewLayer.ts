@@ -264,7 +264,7 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
       review: () => notYet("crew_review"),
       finish: () => notYet("crew_finish"),
       memory: () => notYet("crew_memory"),
-      sessionStart: (member, source) => sessionStart(core, member, source),
+      sessionStart: (member, event) => sessionStart(core, member, event),
       postCompact: (member, summary) => postCompact(core, member, summary),
     });
 

@@ -399,6 +399,66 @@ export const ZeropsAgentAuth = Schema.Struct({
 });
 export type ZeropsAgentAuth = typeof ZeropsAgentAuth.Type;
 
+// ---------------------------------------------------------------------------
+// Logins — crew mode's *Runs on* (PRD §2.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * A login's id: the provider instance it is. The two defaults keep the
+ * driver's default instance ids (`claudeAgent`, `codex`); another login is a
+ * further instance of the same driver with its own home. The slug rules of
+ * `ProviderInstanceId`, unbranded: the id also names the login in its signer
+ * tag `mate:signer:{id}:{userId}`, which a colon would break.
+ */
+export const ZeropsLoginId = TrimmedNonEmptyString.check(
+  Schema.isMaxLength(64),
+  Schema.isPattern(/^[a-zA-Z][a-zA-Z0-9_-]*$/),
+);
+export type ZeropsLoginId = typeof ZeropsLoginId.Type;
+
+/** How a login signs in: an account, through the CLI's own login, or an API key stored for that login alone. */
+export const ZeropsLoginKind = Schema.Literals(["subscription", "apiKey"]);
+export type ZeropsLoginKind = typeof ZeropsLoginKind.Type;
+
+/**
+ * Whether a login can run a turn — the answers of `classifyZeropsAgentAuth`
+ * (`@t3tools/shared/zeropsAgentAuth`). A default login is classified from its
+ * agent row; another login has no platform flag, so its own CLI check decides
+ * (`registering`: the check has not answered yet).
+ */
+export const ZeropsLoginState = Schema.Literals([
+  "authorized",
+  "registering",
+  "reconnect",
+  "needs-reauth",
+  "not-authorized",
+]);
+export type ZeropsLoginState = typeof ZeropsLoginState.Type;
+
+/**
+ * One coding agent signed in to one account in this project. The defaults
+ * mirror {@link ZeropsAgentAuth}'s rows; every other login is a provider
+ * instance whose home is `~/.mate/logins/<id>` and whose signer is its own
+ * (D6 per login: a second Claude login never inherits the default's signer).
+ */
+export const ZeropsLogin = Schema.Struct({
+  id: ZeropsLoginId,
+  agent: ZeropsAgentId,
+  /** What the person named it ("work"); empty for the defaults. */
+  label: Schema.String,
+  kind: ZeropsLoginKind,
+  /** One of the two default instances, whose sign-in is the agent row's. */
+  default: Schema.Boolean,
+  state: ZeropsLoginState,
+  /** A project token authorizes it (a default only): it is nobody's login, and D6 does not apply. */
+  token: Schema.Boolean,
+  /** The Zerops user id of whoever signed it in (or added its key), from its signer tag. */
+  signedInBy: Schema.optional(Schema.String),
+  /** Its server-driven login, while one runs or just finished. */
+  login: Schema.optional(ZeropsAgentLoginState),
+});
+export type ZeropsLogin = typeof ZeropsLogin.Type;
+
 /**
  * `available: false` means this is not a Zerops environment — the feed is off
  * and that is not an error.
@@ -408,6 +468,12 @@ export const ZeropsAgentAuthSnapshot = Schema.Struct({
   /** Why the feed is unavailable. Absent when it is available. */
   reason: Schema.optional(Schema.String),
   agents: Schema.Array(ZeropsAgentAuth),
+  /**
+   * Every login, the two defaults first. Optional on the wire: a Mate keeps
+   * its installed version while the hosted client moves on, and a required
+   * field an older server does not send would fail the whole snapshot.
+   */
+  logins: Schema.optional(Schema.Array(ZeropsLogin)),
 });
 export type ZeropsAgentAuthSnapshot = typeof ZeropsAgentAuthSnapshot.Type;
 
@@ -427,9 +493,18 @@ export const ZEROPS_AGENT_LOGIN_COMMANDS: Readonly<Record<ZeropsAgentId, string>
   codex: "codex login --device-auth",
 };
 
+/**
+ * Which login an agent-login RPC acts on: absent, the agent's default login;
+ * present, another login of that agent ({@link ZeropsLogin}). A server that
+ * predates logins does not decode the field, so a client sends it only where
+ * the environment advertises `capabilities.mateLogins`.
+ */
+const loginTarget = { loginId: Schema.optional(ZeropsLoginId) } as const;
+
 export const ZeropsAgentLoginStartInput = Schema.Struct({
   agentId: ZeropsAgentId,
   threadId: ThreadId,
+  ...loginTarget,
 });
 export type ZeropsAgentLoginStartInput = typeof ZeropsAgentLoginStartInput.Type;
 
@@ -440,6 +515,7 @@ export type ZeropsAgentLoginStartResult = typeof ZeropsAgentLoginStartResult.Typ
 
 export const ZeropsAgentLoginCancelInput = Schema.Struct({
   agentId: ZeropsAgentId,
+  ...loginTarget,
 });
 export type ZeropsAgentLoginCancelInput = typeof ZeropsAgentLoginCancelInput.Type;
 
@@ -457,14 +533,38 @@ export const ZeropsAgentLoginCode = TrimmedNonEmptyString.check(
 export const ZeropsAgentLoginSubmitCodeInput = Schema.Struct({
   agentId: ZeropsAgentId,
   code: ZeropsAgentLoginCode,
+  ...loginTarget,
 });
 export type ZeropsAgentLoginSubmitCodeInput = typeof ZeropsAgentLoginSubmitCodeInput.Type;
 
 /** `zerops.agentLogin.signOut` — any client (web, later mobile) can sign an agent out. */
 export const ZeropsAgentSignOutInput = Schema.Struct({
   agentId: ZeropsAgentId,
+  ...loginTarget,
 });
 export type ZeropsAgentSignOutInput = typeof ZeropsAgentSignOutInput.Type;
+
+/**
+ * `zerops.login.add` — *Add another login*: a second account of an agent
+ * (signed in afterwards through `zerops.agentLogin.start` with the new id), or
+ * a Claude API key. The key crosses the wire here once and is stored for that
+ * login alone; no feed, span or log carries it.
+ */
+export const ZeropsLoginAddInput = Schema.Struct({
+  agent: ZeropsAgentId,
+  kind: ZeropsLoginKind,
+  /** What the rows show beside the agent ("work"); may be empty for an API key. */
+  label: Schema.String.check(Schema.isMaxLength(32)),
+  apiKey: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(4096))),
+});
+export type ZeropsLoginAddInput = typeof ZeropsLoginAddInput.Type;
+
+export const ZeropsLoginAddResult = Schema.Struct({ id: ZeropsLoginId });
+export type ZeropsLoginAddResult = typeof ZeropsLoginAddResult.Type;
+
+/** `zerops.login.remove` — signs the login out, then forgets it: its instance, its key and its home. */
+export const ZeropsLoginRemoveInput = Schema.Struct({ id: ZeropsLoginId });
+export type ZeropsLoginRemoveInput = typeof ZeropsLoginRemoveInput.Type;
 
 export const ZeropsAgentLoginErrorReason = Schema.Literals([
   /** This environment does not offer a server-driven login (not a Zerops environment). */
@@ -477,6 +577,12 @@ export const ZeropsAgentLoginErrorReason = Schema.Literals([
    * sign-in to end.
    */
   "token-authorized",
+  /** No login of this agent carries that id. */
+  "unknown-login",
+  /** A default login cannot be removed: it is the agent's own. */
+  "default-login",
+  /** A login this build does not make: an API key for anything but Claude, or an API key without one. */
+  "invalid-login",
 ]);
 export type ZeropsAgentLoginErrorReason = typeof ZeropsAgentLoginErrorReason.Type;
 

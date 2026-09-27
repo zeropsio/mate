@@ -37,7 +37,12 @@ import {
 import { CREW_ID } from "./CrewHome.ts";
 import { crewRefusedRoots, type GateContext } from "./CrewPolicy.ts";
 import type { CrewPromptMember } from "./crewPrompt.ts";
-import type { CrewReportInput, CrewThreadMember, CrewToolText } from "./crewSeams.ts";
+import type {
+  CrewReportInput,
+  CrewSessionStart,
+  CrewThreadMember,
+  CrewToolText,
+} from "./crewSeams.ts";
 import { isOpenTask } from "./crewSnapshot.ts";
 import type { CrewStintRow } from "./CrewStore.ts";
 import { readTaskCard } from "./crewTaskData.ts";
@@ -262,19 +267,30 @@ export const diff = (
     }),
   );
 
-/** What a new stint's first session starts from (its rotation seed). */
-export const sessionStart = (
-  core: CrewCore,
-  member: CrewThreadMember,
-  source: "startup" | "resume" | "compact" | "clear",
-) =>
-  Effect.map(core.applied, (applied) => {
-    if (source !== "startup" || applied === undefined) return undefined;
-    const stint = applied.stints.find(
+/**
+ * A session of the crewmate's current stint started: the stint records its
+ * session and transcript (a stint with a session is active), and a new
+ * stint's first session starts from its rotation seed.
+ */
+export const sessionStart = (core: CrewCore, member: CrewThreadMember, event: CrewSessionStart) =>
+  Effect.gen(function* () {
+    const applied = yield* core.applied;
+    const stint = applied?.stints.find(
       (row) => row.member === member.handle && row.stint === member.stint,
     );
-    const seed = stint?.seededFrom;
-    return typeof seed === "object" &&
+    if (stint === undefined) return undefined;
+    if (stint.sessionId !== event.sessionId || stint.transcriptPath !== event.transcriptPath) {
+      yield* core.store
+        .updateStint(stint.crew, stint.member, stint.stint, (row) => ({
+          ...row,
+          sessionId: event.sessionId,
+          transcriptPath: event.transcriptPath,
+        }))
+        .pipe(Effect.andThen(core.reload), Effect.andThen(core.changed), Effect.ignore);
+    }
+    const seed = stint.seededFrom;
+    return event.source === "startup" &&
+      typeof seed === "object" &&
       seed !== null &&
       "text" in seed &&
       typeof seed.text === "string"

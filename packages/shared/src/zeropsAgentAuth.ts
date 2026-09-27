@@ -19,7 +19,7 @@
  * container rebuilt) and the agent must be signed in again. A check that has
  * not answered (`unknown`) changes nothing.
  */
-import type { ZeropsAgentAuth, ZeropsAgentId } from "@t3tools/contracts";
+import type { ZeropsAgentAuth, ZeropsAgentId, ZeropsLogin } from "@t3tools/contracts";
 
 export type ZeropsAgentAuthFields = Pick<ZeropsAgentAuth, "credPresent" | "providerAuth" | "state">;
 
@@ -58,6 +58,17 @@ const AGENT_NAMES: Readonly<Record<ZeropsAgentId, string>> = {
 };
 
 /**
+ * What every surface calls a login: the agent, or "Claude API key" for a
+ * key, then the name the person gave it — "Claude Code · work". The model
+ * picker shows the same words as the instance's display name.
+ */
+export function zeropsLoginTitle(login: Pick<ZeropsLogin, "agent" | "kind" | "label">): string {
+  const base = login.kind === "apiKey" ? "Claude API key" : AGENT_NAMES[login.agent];
+  const label = login.label.trim();
+  return label.length === 0 ? base : `${base} · ${label}`;
+}
+
+/**
  * What an agent that cannot be picked says about it — the model picker's
  * tooltip, and (since D6's `turnRefusal` reuses this classification) the
  * server's own refusal text for the same agent. Neither names a specific
@@ -79,5 +90,29 @@ export function zeropsAgentUnavailableReason(
       return `${name}'s login on this project no longer works. Sign in again.`;
     case "not-authorized":
       return `${name} is not signed in on this project. Sign it in to use it.`;
+  }
+}
+
+/**
+ * {@link zeropsAgentUnavailableReason} for a login. A default login is its
+ * agent's; another login has no platform flag, so "registering" is its own
+ * check still answering and a lost login is simply one to sign in again.
+ */
+export function zeropsLoginUnavailableReason(
+  login: Pick<ZeropsLogin, "agent" | "kind" | "label" | "default">,
+  kind: Exclude<ZeropsAgentAuthKind["kind"], "authorized">,
+): string {
+  if (login.default) return zeropsAgentUnavailableReason(login.agent, kind);
+  const title = zeropsLoginTitle(login);
+  switch (kind) {
+    case "registering":
+      return `${title} is signed in and being checked. It will be ready in a moment.`;
+    case "reconnect":
+    case "needs-reauth":
+      return `${title}'s login on this project no longer works. Sign in again.`;
+    case "not-authorized":
+      return login.kind === "apiKey"
+        ? `${title} has no key stored on this project. Add it again.`
+        : `${title} is not signed in on this project. Sign it in to use it.`;
   }
 }

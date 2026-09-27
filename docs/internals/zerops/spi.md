@@ -8,8 +8,8 @@ matching `zerops`; owned product reaches providers only through the SPI; only `s
 named exception (`provider/Services/ProviderInstanceRegistry.ts`, consumed directly by
 `TextGeneration.ts`'s `resolveInstance`) may import provider internals from
 `textGeneration/**`/`usage/**`; owned product never contains the literal text `payload.data`; and
-the Ported↔spi rule — `provider/**` imports from `spi/` only the two inbound files of §1a, which
-import only each other.
+the Ported↔spi rule — `provider/**` imports from `spi/` only the inbound files of §1a, which import
+only each other.
 
 ## 1. The boundary
 
@@ -29,15 +29,16 @@ Consumers never read `payload.data` (a driver's raw, per-provider item shape) �
 
 ## 1a. The inbound direction: thread tool policy
 
-Everything above wraps the ported zone from outside. Two files point the other way, so a driver can
+Everything above wraps the ported zone from outside. Three files point the other way, so a driver can
 ask owned code how to run one thread: `apps/server/src/spi/threadToolPolicy.ts` (provider-neutral —
-`ThreadToolProfile`, `ToolDecision`, `ThreadToolPolicy`, `ThreadToolPolicyRegistry`) and
+`ThreadToolProfile`, `ToolDecision`, `ThreadToolPolicy`, `ThreadToolPolicyRegistry`),
 `apps/server/src/spi/claudeThreadProfile.ts` (Claude's extension — `ClaudeThreadExtension`,
 `ClaudeThreadExtensionRegistry`, and `claudeQueryOptionsPatch`, the translation of a profile into SDK
-options). They are the only `spi/` files `provider/**` may import, and they import only each other
-and packages (effect, contracts, the Claude Agent SDK) — any other spi file reaches `provider/**`,
-so one hop through it would make the two directories import each other. Codex gets its own
-extension file when Codex crewmates land.
+options) and `apps/server/src/spi/codexThreadProfile.ts` (Codex's — `codexThreadSetup`, the
+translation of a profile into thread and turn params and an approval gate). They are the only `spi/`
+files `provider/**` may import, and they import only each other and packages (effect, contracts, the
+Claude Agent SDK, the Codex app-server schema) — any other spi file reaches `provider/**`, so one hop
+through it would make the two directories import each other.
 
 - **Registries.** Each is a one-entry slot a policy is installed into for the life of a scope; a
   later install wins, and closing an earlier install's scope never clears a later one. Both are
@@ -54,13 +55,54 @@ extension file when Codex crewmates land.
   MCP server with their JSON Schemas as given; its spend cap becomes `maxBudgetUsd`; the dialog
   kinds are dropped. The profile's model and effort override the thread's selection at session
   start and again at every turn, so a change applies from the thread's next turn.
+- **The Codex seam.** `CodexAdapter.ts` reads the policy registry once, when a driver builds it, and
+  asks for the thread's profile at session start and every turn (model, and effort as
+  `reasoningEffort`). A thread with a profile starts and resumes with approval policy `untrusted`,
+  the user as reviewer, zcp's MCP server (`zerops`, as `zcp init` registers it) off through the
+  thread's `config` overrides, not the app-server argv, with the profile's context window as
+  `model_auto_compact_token_limit` beside it, its session context as `developerInstructions`
+  (Codex has no spend cap, so `maxBudgetUsd` is not mapped), and the read-only sandbox when the
+  profile says `readOnly` (the crew sets it for every crewmate but a writer, and for a retired
+  stint; Claude ignores it, its gate already refuses the writes); every `turn/start` carries the same
+  policy and sandbox, so the runtime mode never restores its own. `CodexSessionRuntime.ts` answers
+  that thread's approval requests from the gate and parks none for a person: a command is a `Bash`
+  call `{ command }`; a patch, whose request names no file, is an `Edit` per updated or deleted
+  file and a `Write` per added file or move target, from the changes its `fileChange` item listed
+  when it started, relative paths against the session's cwd — every call must allow. A failing or
+  silent (15 s) gate declines, and so does an allow that rewrites the call: Codex's answer carries a
+  decision only, so it would run what it asked, not what the gate allowed. So a profile may carry
+  `exactCallsContext`, how to write calls the gate allows as they are, which the Codex setup adds
+  after the session context in `developerInstructions`: the crew sets it for a writer, whose
+  commands the gate allows unchanged only in their lane form, byte for byte (`ssh` to its host,
+  `cd` into its copy, its port and `env:`, a timeout, the command for `sh -c`), and gives the model
+  that exact form. The form carries the crewmate's `env:` values, so they reach the model's
+  instructions; they are the dev service's own values, which the agent can read there anyway. Its
+  permission and MCP elicitation requests are declined unasked. The deny reason does not reach the
+  model; Codex reports a plain rejection. Its `request_user_input` questions still wait for the
+  person, in the crewmate's chat, which is the person's surface — unlike Claude, whose gate denies
+  `AskUserQuestion` and sends the crewmate to `crew_report`.
+- **What a Codex crewmate is in phase C.** Code only: no zcp tools, and no crew tools either — they
+  are an in-process MCP server only the Claude SDK can host — so its prompt names none
+  (`CrewPromptInput.crewTools: false`). A Codex crewmate never reports its task done; its task
+  completes when the person lands it (_Land_, or _Land now_: WIP commit, merge-in, check, land),
+  which the engine already supports.
 - **Byte identity without a profile.** `claudeNoCrewSnapshot.test.ts` pins the options, the
   session config and the permission calls of three input rows against a golden taken before the
   seam existed (`fixtures/claude-options/no-crew.expected.json`), under no registries, empty
   registries and a policy with no profile for the thread. `threadToolPolicy.contract.test.ts`
-  pins what a profile changes, through the real adapter.
+  pins what a profile changes, through the real adapter. For Codex, `codexNoCrewSnapshot.test.ts`
+  pins the spawn argv and everything written to the app-server — thread start or resume, default
+  and plan turns, a person's answers to a patch and a command — against
+  `fixtures/codex-options/no-crew.expected.json`, taken before the Codex seam, under the same three
+  setups; `codexThreadProfile.contract.test.ts` pins what a profile changes. Both run the real
+  adapter and session runtime against `codexAdapterHarness.ts`, an app-server peer in memory.
 - **What only a live CLI settles.** That `dontAsk` plus a `PreToolUse` allow runs a tool without a
   prompt, and that `SessionStart` context reaches the model, are CLI behavior: probes 1, 2, 14 and 15. The tests pin the options the adapter hands the SDK.
+  For Codex, probe 25: that the dotted `config` key turns zcp's server off for that thread alone
+  (no `zerops_*` tool listed) and the compaction limit applies, whether `untrusted` sends every command and patch as an approval
+  request or runs the commands Codex holds known-safe unasked, past the gate, that the thread's
+  `developerInstructions` survive each turn's collaboration-mode instructions, and that the
+  read-only sandbox refuses writes in the zcp container.
 
 `apps/server/src/spi/serverCommandReadiness.ts` sits beside them without being SPI: a `Deferred`
 the runtime startup completes where it opens its command gate, for layers beneath the startup that
@@ -194,14 +236,14 @@ Current set: 4 Claude fixtures (real recordings, SDK 0.3.250 / CLI 2.1.251 / `cl
 `terminal_reason`), 1 Codex fixture (`multi-agent-wire`, converted once from the upstream
 ported-zone test fixture `testFixtures/codexMultiAgentWire.json`, `synthetic: false`) and 4 live
 baselines (cursor, grok, antigravity, opencode, each `synthetic: true`) = 10 goldens total. The
-no-crew options golden (`fixtures/claude-options/no-crew.expected.json`, §1a) is not a replay
-golden.
+no-crew goldens (`fixtures/claude-options/no-crew.expected.json`,
+`fixtures/codex-options/no-crew.expected.json`, §1a) are not replay goldens.
 
 ## 8. Porting checklist
 
 1. **Import the wire packages** — regenerate `imported.lock` from the new upstream ref: `imported-lock --write --upstream <ref>` (`scripts/imported-lock.ts`); it refuses to write if HEAD has diverged from the ref for either imported path (an import must stay byte-identical).
 2. **Port the driver commits** behind the SPI, minimally — the ported zone (`provider/**`, `packages/effect-codex-app-server/**`, `packages/effect-acp/**`) must still import nothing matching `zerops`.
-3. **Run the goldens** (`replay/goldens.test.ts`) **+ the no-crew options snapshot and the SPI contract test** (`claudeNoCrewSnapshot.test.ts`, `threadToolPolicy.contract.test.ts`, §1a) **+ the zone test** (`scripts/mate-zone-architecture.test.ts`) **+ package typecheck**.
+3. **Run the goldens** (`replay/goldens.test.ts`) **+ the no-crew snapshots and the SPI contract tests** (`claudeNoCrewSnapshot.test.ts`, `threadToolPolicy.contract.test.ts`, `codexNoCrewSnapshot.test.ts`, `codexThreadProfile.contract.test.ts`, §1a) **+ the zone test** (`scripts/mate-zone-architecture.test.ts`) **+ package typecheck**.
 4. If a golden diverges: fix `toolCall.ts`'s readers or the typed capabilities (§6) to match the new driver shape — **never edit `apps/server/src/zerops/**`to chase a driver change**; that tree only ever reads`event.toolCall`, never `payload.data`.
 5. Add a `compat.md` row for the new port.
 6. Bump `PROVIDER_RUNTIME_SPI_VERSION` (§2) only when the change alters what owned code may depend on — not for every port.

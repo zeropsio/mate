@@ -10,6 +10,7 @@ import {
   type ServerProviderSlashCommand,
 } from "@t3tools/contracts";
 import type { DataMentionEntry } from "@t3tools/client-runtime/zerops/dataConsole";
+import type { MateTintId } from "@t3tools/shared/brand";
 import {
   BlocksIcon,
   DatabaseIcon,
@@ -24,6 +25,7 @@ import { memo, useLayoutEffect, useRef } from "react";
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
 import { Badge } from "../ui/badge";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
+import { MateFace } from "../zerops/primitives";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 
 export type ComposerCommandItem =
@@ -62,6 +64,15 @@ export type ComposerCommandItem =
       type: "skill";
       provider: ProviderDriverKind;
       skill: ServerProviderSkill;
+      label: string;
+      description: string;
+    }
+  | {
+      /** *Tell the crew*'s `@` (PRD §5.3): a crewmate by its face, `@handle` and job line. */
+      id: string;
+      type: "crewmate";
+      handle: string;
+      tint: MateTintId;
       label: string;
       description: string;
     };
@@ -129,7 +140,9 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
                     ? "No skills found. Try / to browse provider commands."
                     : props.triggerKind === "path"
                       ? "No matching files or folders."
-                      : "No matching command."))}
+                      : props.triggerKind === "crewmate"
+                        ? "No crewmate or file by that name."
+                        : "No matching command."))}
             </p>
           </div>
         )}
@@ -175,6 +188,9 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       ) : null}
       {props.item.type === "data" ? (
         <DatabaseIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
+      ) : null}
+      {props.item.type === "crewmate" ? (
+        <MateFace size="dot" state="idle" tint={props.item.tint} />
       ) : null}
       <span className="flex min-w-0 flex-1 items-center gap-2">
         <span className="min-w-0 max-w-[45%] shrink-0 truncate font-sans text-xs font-medium">

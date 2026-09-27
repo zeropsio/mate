@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  collectCrewmateMentions,
   selectionTouchesMentionBoundary,
   splitPromptIntoComposerSegments,
 } from "./composer-editor-mentions";
@@ -251,5 +252,31 @@ describe("selectionTouchesMentionBoundary", () => {
         prompt.length,
       ),
     ).toBe(true);
+  });
+});
+
+describe("collectCrewmateMentions", () => {
+  const roster = ["backend", "frontend", "erik"];
+
+  it.each<{ readonly name: string; readonly text: string; readonly handles: string[] }>([
+    {
+      name: "mentions in the order typed",
+      text: "Rework @backend to X, implement Y on @frontend",
+      handles: ["backend", "frontend"],
+    },
+    { name: "a mention at the very end", text: "Business plan, @erik", handles: ["erik"] },
+    {
+      name: "a mention before punctuation",
+      text: "@erik, @backend: go",
+      handles: ["erik", "backend"],
+    },
+    { name: "each crewmate once", text: "@backend X. @backend Y.", handles: ["backend"] },
+    { name: "a handle not on the crew", text: "@ghost and @backend", handles: ["backend"] },
+    { name: "an e-mail address", text: "mail ada@backend.io", handles: [] },
+    { name: "a longer word that starts with a handle", text: "@backends", handles: [] },
+  ])("$name", ({ text, handles }) => {
+    expect(collectCrewmateMentions(text, roster)).toEqual(
+      handles.map((handle) => ({ type: "mention", path: handle, source: "crewmate" })),
+    );
   });
 });

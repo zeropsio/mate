@@ -32,22 +32,38 @@ export interface CrewPromptInput {
   readonly jobVersion: number;
   /** Phase C: the crewmate keeps memory through `crew_memory`. */
   readonly memory: boolean;
+  /**
+   * The crewmate's coding agent hosts the crew tools; true when absent. A
+   * Codex crewmate has none in phase C, so its rules name none.
+   */
+  readonly crewTools?: boolean;
 }
 
-const writerRules = (handle: string, lane: CrewLane): ReadonlyArray<string> => [
+const WRITER_NO_CREW_TOOLS =
+  "- You have no crew tools: your task is done when the person lands your work; say in your answer when it is ready.";
+const READER_NO_CREW_TOOLS =
+  "- You have no crew tools: answer in this conversation; the person reads it.";
+
+const writerRules = (handle: string, lane: CrewLane, crewTools: boolean): ReadonlyArray<string> => [
   `You are @${handle}, a crewmate of this Mate. You change files only in your own copy of the code.`,
   "",
   `- Your copy is branch ${lane.branch}, checked out at ${lane.mountDir}/ (on ${lane.host}: ${lane.remoteDir}).`,
   `- Where the project guidance says ${lane.mountRoot}/, use ${lane.mountDir}/. Write and edit files only there.`,
   `- Run commands as ssh ${lane.host} "<command>". They already run in your copy: leave out any cd ${lane.remoteRoot}.`,
   "- Git is the engine's: it commits your work at the end of every turn. You may read history (git status, log, diff, show); never commit, reset, merge or push.",
-  "- Your task arrives as a card in this conversation. When it is done, or when you need the person, say so with crew_report.",
+  ...(crewTools
+    ? [
+        "- Your task arrives as a card in this conversation. When it is done, or when you need the person, say so with crew_report.",
+      ]
+    : ["- Your task arrives as a card in this conversation.", WRITER_NO_CREW_TOOLS]),
 ];
 
-const readerRules = (handle: string): ReadonlyArray<string> => [
+const readerRules = (handle: string, crewTools: boolean): ReadonlyArray<string> => [
   `You are @${handle}, a read-only crewmate of this Mate: you have no copy of the code and you never change files.`,
   "",
-  "- You read files and the crew's changes, and you report what you find with crew_report.",
+  ...(crewTools
+    ? ["- You read files and the crew's changes, and you report what you find with crew_report."]
+    : ["- You read files and the crew's changes.", READER_NO_CREW_TOOLS]),
 ];
 
 const leadRules = (handle: string): ReadonlyArray<string> => [
@@ -57,29 +73,28 @@ const leadRules = (handle: string): ReadonlyArray<string> => [
   "- Who is on the crew and what they work on is on the board (crew_board). Read a crewmate's changes with crew_diff and review them with crew_review.",
 ];
 
-const commonRules = (memory: boolean): ReadonlyArray<string> => [
+const commonRules = (memory: boolean, crewTools: boolean): ReadonlyArray<string> => [
   "- Your context is compacted automatically; do not stop early. Files are the truth: re-read a file before you edit or judge it.",
-  ...(memory
-    ? [
-        "- Record decisions, lessons and your handoff with crew_memory as you go.",
-        "- The brief outranks your memory: when they disagree, follow the brief.",
-      ]
+  ...(memory && crewTools
+    ? ["- Record decisions, lessons and your handoff with crew_memory as you go."]
     : []),
+  ...(memory ? ["- The brief outranks your memory: when they disagree, follow the brief."] : []),
 ];
 
 export const crewSessionContext = (input: CrewPromptInput): string => {
   const { member } = input;
+  const crewTools = input.crewTools ?? true;
   const rules =
     member.kind === "writer"
-      ? writerRules(member.handle, member.lane)
+      ? writerRules(member.handle, member.lane, crewTools)
       : member.kind === "reader"
-        ? readerRules(member.handle)
+        ? readerRules(member.handle, crewTools)
         : leadRules(member.handle);
   return [
     "# Crew rules",
     "",
     ...rules,
-    ...commonRules(input.memory),
+    ...commonRules(input.memory, crewTools),
     "",
     `# Brief v${input.briefVersion}: ${input.brief.title}`,
     "",

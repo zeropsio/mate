@@ -11,6 +11,7 @@ import {
   ThreadId,
   type ZeropsAgentAuth,
   type ZeropsAgentId,
+  type ZeropsLoginState,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -23,6 +24,7 @@ import { ThreadToolPolicyRegistry, type ThreadToolProfile } from "../spi/threadT
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ZeropsAgentAuthModule from "./ZeropsAgentAuth.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 import { make as makeAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
@@ -86,6 +88,8 @@ interface World {
     readonly archived?: boolean;
     readonly profile: "given" | "none" | "no-registry";
   };
+  /** Logins beyond the defaults (`ZeropsLogins`), by id → their state. */
+  readonly logins?: Readonly<Record<string, ZeropsLoginState>>;
 }
 
 const DEFAULT_DRIVERS: Readonly<Record<string, string>> = {
@@ -131,6 +135,32 @@ const admission = (world: World) =>
             );
           },
         }),
+        Layer.mock(ZeropsLoginsModule.ZeropsLogins)({
+          resolve: (id) =>
+            Effect.succeed(
+              world.logins?.[id] === undefined
+                ? undefined
+                : {
+                    id,
+                    agent: "claude-code",
+                    kind: "subscription",
+                    label: "work",
+                    home: `/home/zerops/.mate/logins/${id}`,
+                    keyStored: false,
+                  },
+            ),
+          latest: Effect.succeed(
+            Object.entries(world.logins ?? {}).map(([id, state]) => ({
+              id,
+              agent: "claude-code" as const,
+              label: "work",
+              kind: "subscription" as const,
+              default: false,
+              state,
+              token: false,
+            })),
+          ),
+        }),
         Layer.mock(ZeropsAgentAuthModule.ZeropsAgentAuth)({
           latest: Effect.succeed({ available: true, agents: world.agents ?? [] }),
         }),
@@ -140,6 +170,15 @@ const admission = (world: World) =>
               ZeropsProjectSignersModule.turnRefusal({
                 agent,
                 signer: world.signers?.[agentId],
+                subject,
+              }),
+            ),
+          loginRefusal: ({ key, state, token, subject }) =>
+            Effect.succeed(
+              ZeropsProjectSignersModule.loginTurnRefusal({
+                state,
+                token,
+                signer: world.signers?.[key],
                 subject,
               }),
             ),
@@ -177,6 +216,11 @@ const SOMEONE_ELSE =
 const UNRECORDED =
   "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it. Sign in with your own account first.";
 
+const LOGIN_SOMEONE_ELSE =
+  "Claude Code · work was signed in by another project member — only they can run it. Use a login you signed in yourself.";
+const LOGIN_UNRECORDED =
+  "Claude Code · work's sign-in was not recorded by Zerops Mate, so nobody can run it. Sign it in with your own account first.";
+
 const interrupt: OrchestrationCommand = {
   type: "thread.turn.interrupt",
   commandId: CommandId.make("command-1"),
@@ -207,6 +251,14 @@ const janSignedClaude: World = {
   agents: [signedIn("claude-code")],
   signers: { "claude-code": JAN },
   members: { [JAN]: true, [EVA]: true },
+};
+
+/** Jan signed Claude Code in; Eva signed in a second Claude account, `work`. */
+const evaSignedWork: World = {
+  ...janSignedClaude,
+  signers: { "claude-code": JAN, "claudeAgent-work": EVA },
+  drivers: { ...DEFAULT_DRIVERS, "claudeAgent-work": "claudeAgent" },
+  logins: { "claudeAgent-work": "authorized" },
 };
 
 describe("ZeropsTurnAdmission", () => {
@@ -276,6 +328,55 @@ describe("ZeropsTurnAdmission", () => {
       turnStart("claudeAgent_work"),
       session(EVA),
       SOMEONE_ELSE,
+    ],
+    [
+      "admits a turn on another login by that login's own signer",
+      evaSignedWork,
+      turnStart("claudeAgent-work"),
+      session(EVA),
+      undefined,
+    ],
+    [
+      "refuses a turn on another login a teammate signed in, whoever signed its agent in",
+      evaSignedWork,
+      turnStart("claudeAgent-work"),
+      session(JAN),
+      LOGIN_SOMEONE_ELSE,
+    ],
+    [
+      "reads another login off the thread when the command names none",
+      { ...evaSignedWork, threadInstanceId: "claudeAgent-work" },
+      turnStart(),
+      session(JAN),
+      LOGIN_SOMEONE_ELSE,
+    ],
+    [
+      "refuses a crew turn on a login its starter did not sign in (N9)",
+      evaSignedWork,
+      turnStart("claudeAgent-work"),
+      { kind: "crew", startedBy: JAN },
+      LOGIN_SOMEONE_ELSE,
+    ],
+    [
+      "admits a crew turn on the starter's own login",
+      evaSignedWork,
+      turnStart("claudeAgent-work"),
+      { kind: "crew", startedBy: EVA },
+      undefined,
+    ],
+    [
+      "never lets another login inherit its agent's signer",
+      { ...evaSignedWork, signers: { "claude-code": JAN } },
+      turnStart("claudeAgent-work"),
+      session(JAN),
+      LOGIN_UNRECORDED,
+    ],
+    [
+      "refuses a turn on another login that is not signed in",
+      { ...evaSignedWork, logins: { "claudeAgent-work": "not-authorized" } },
+      turnStart("claudeAgent-work"),
+      session(EVA),
+      "Claude Code · work is not signed in on this project. Sign it in to use it.",
     ],
     [
       "admits a turn on a driver Mate signs nobody in to",

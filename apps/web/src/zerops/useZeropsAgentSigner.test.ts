@@ -159,6 +159,67 @@ describe("agentSignersToRecord", () => {
   });
 });
 
+// D6 per login: a login beyond the defaults carries its own record, under its
+// own id — never its agent's.
+describe("agentSignersToRecord, logins beyond the defaults", () => {
+  const withWork = (
+    work: { readonly phase: "succeeded" | "menu"; readonly startedBy: string },
+    signedInBy?: string,
+  ): ZeropsAgentAuthSnapshot => ({
+    ...snapshot({}, { "claude-code": "user-b" }),
+    logins: [
+      {
+        id: "claudeAgent-work",
+        agent: "claude-code",
+        label: "work",
+        kind: "subscription",
+        default: false,
+        state: "authorized",
+        token: false,
+        ...(signedInBy === undefined ? {} : { signedInBy }),
+        login: {
+          phase: work.phase,
+          terminalId: "agent-login-claudeAgent-work",
+          startedAt: DateTime.makeUnsafe("2026-09-27T10:00:00.000Z"),
+          startedBy: work.startedBy,
+        },
+      },
+    ],
+  });
+
+  it.each([
+    {
+      name: "records a success this person started",
+      work: { phase: "succeeded", startedBy: "user-a" },
+      expected: ["claudeAgent-work"],
+    },
+    {
+      name: "leaves a teammate's success to them",
+      work: { phase: "succeeded", startedBy: "user-b" },
+      expected: [],
+    },
+    {
+      name: "waits for a login still running",
+      work: { phase: "menu", startedBy: "user-a" },
+      expected: [],
+    },
+    {
+      name: "stops once the project carries it",
+      work: { phase: "succeeded", startedBy: "user-a" },
+      signedInBy: "user-a",
+      expected: [],
+    },
+  ] as const)("$name", ({ work, signedInBy, expected }) => {
+    expect(agentSignersToRecord(withWork(work, signedInBy), "user-a", null)).toEqual(expected);
+  });
+
+  it("forgets a login's local record once the snapshot carries it", () => {
+    rememberLocalAgentSigner("claudeAgent-work", "user-a");
+    localSignersSettledBy(withWork({ phase: "succeeded", startedBy: "user-a" }, "user-a"));
+    expect(readLocalAgentSigners()).toEqual({});
+  });
+});
+
 // The person who just wrote the record is the one person who already knows
 // what it says. The store remembers it for them until the server's snapshot
 // carries the same fact.

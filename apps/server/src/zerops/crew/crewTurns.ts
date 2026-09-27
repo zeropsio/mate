@@ -259,15 +259,6 @@ export const makeTurnHandler = (core: CrewCore) => {
         case "turn.started":
           core.memory.working.add(stint.threadId);
           core.memory.terminalReasons.delete(stint.threadId);
-          if (stint.sessionId === null) {
-            yield* asRefusal(
-              core.store.updateStint(stint.crew, stint.member, stint.stint, (row) => ({
-                ...row,
-                sessionId: event.turnId ?? stint.threadId,
-              })),
-            );
-            yield* asRefusal(core.reload);
-          }
           break;
         case "turn.completed":
           yield* turnEnded(core, stint, event);

@@ -63,6 +63,7 @@ import type {
 } from "@t3tools/contracts";
 
 import type { ZeropsAgentAuthorizer } from "./agentOwnership.ts";
+import { mateLoginAsAgentRow } from "./logins.ts";
 import type { Known } from "./knowledge/index.ts";
 
 /** The auth kind behind a `needs-sign-in` answer — what button copy to show. */
@@ -140,6 +141,28 @@ export function zeropsAgentAuthReads(
       };
     }
   }
+}
+
+/**
+ * {@link zeropsAgentAuthReads} for the logins beyond the defaults, by instance
+ * id (crew mode's *Runs on*): a known snapshot's login row, read through the
+ * agent row that classifies as it does (`mateLoginAsAgentRow`), with `facts`
+ * told the login's own signer key. A default login, an instance that is no
+ * login, and every instance before the feed is known read `undefined` — the
+ * instance's driver's agent answers for it, as `ZeropsTurnAdmission` does.
+ */
+export function zeropsLoginAuthReads(
+  snapshot: Known<ZeropsAgentAuthSnapshot>,
+  facts: (row: ZeropsAgentAuthSnapshot["agents"][number], key: string) => ZeropsAgentAuthFacts,
+): (instanceId: string) => ZeropsAgentAuthRead | undefined {
+  if (snapshot.state !== "known" || !snapshot.value.available) return () => undefined;
+  const logins = snapshot.value.logins ?? [];
+  return (instanceId) => {
+    const login = logins.find((row) => !row.default && row.id === instanceId);
+    return login === undefined
+      ? undefined
+      : { ...snapshot, value: facts(mateLoginAsAgentRow(login), login.id) };
+  };
 }
 
 export interface ZeropsAgentAvailabilityInput {

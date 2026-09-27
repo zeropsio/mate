@@ -7,9 +7,10 @@
  * what a thread is doing now. The caller hands that read in (`readThread`):
  * the resolver's module graph is not a pure one (rule 3), so this projection
  * only joins. Board rows take their owner's joined row, so a working task's
- * word is its owner's thread word. Every crew shell with
- * `archivedAt` set is a retired stint, whether or not the snapshot still lists
- * it; `stints` answers "whose conversation is this thread" for the chat.
+ * word is its owner's thread word. A stint is retired when the engine says so
+ * or its shell has `archivedAt` set — a crew shell the snapshot no longer
+ * lists included; `stints` answers "whose conversation is this thread" for
+ * the chat.
  *
  * Shells are structural: `crew` is the thread's crew origin, absent on a
  * person's thread, so any shell list passes and only crew threads join.
@@ -179,7 +180,7 @@ export function deriveCrewView<S extends CrewShellInput>(
         handle: crewmate.handle,
         stint: stint.stint,
         current: stint.threadId === crewmate.currentThreadId,
-        retired: shellsById.get(stint.threadId)?.archivedAt != null,
+        retired: stint.state === "retired" || shellsById.get(stint.threadId)?.archivedAt != null,
       });
     }
   }

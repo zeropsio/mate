@@ -18,11 +18,11 @@ import { useAtomCommand } from "../state/use-atom-command";
 
 export function useAgentLoginCancel(
   threadRef: ScopedThreadRef | null,
-): (agentId: ZeropsAgentId) => void {
+): (agentId: ZeropsAgentId, loginId?: string) => void {
   const cancelLogin = useAtomCommand(zeropsCommands.agentLoginCancel, "zerops agent login cancel");
 
   return useCallback(
-    (agentId: ZeropsAgentId) => {
+    (agentId: ZeropsAgentId, loginId?: string) => {
       if (threadRef === null) {
         return;
       }
@@ -30,7 +30,7 @@ export function useAgentLoginCancel(
       // default reportFailure); there is nothing further to await here.
       void cancelLogin({
         environmentId: threadRef.environmentId,
-        input: { agentId },
+        input: { agentId, ...(loginId === undefined ? {} : { loginId }) },
       });
     },
     [threadRef, cancelLogin],

@@ -14,6 +14,7 @@ import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { make as makeMateKey } from "./ZeropsMateKey.ts";
 import {
   isMemberListComplete,
+  loginTurnRefusal,
   isTurnStartingCommand,
   make as makeProjectSigners,
   parseSignerTags,
@@ -58,6 +59,18 @@ describe("parseSignerTags", () => {
 
   it("reads nothing out of a project with no tags at all", () => {
     assert.deepStrictEqual(parseSignerTags(undefined), {});
+  });
+
+  // D6 per login: another login's signer is its own, never its agent's.
+  it("reads a signer per login beside the agents' own", () => {
+    assert.deepStrictEqual(
+      parseSignerTags([
+        signerTag("claude-code", JAN),
+        signerTag("claudeAgent-work", EVA),
+        signerTag("codex-home", JAN),
+      ]),
+      { "claude-code": JAN, "claudeAgent-work": EVA, "codex-home": JAN },
+    );
   });
 });
 
@@ -159,6 +172,43 @@ describe("turnRefusal", () => {
   ] as const) {
     it(`${refusal === undefined ? "allows" : "refuses"} a turn on ${name}`, () => {
       assert.deepStrictEqual(turnRefusal(input), refusal);
+    });
+  }
+});
+
+// A login other than the defaults has no platform flag: its state is its own
+// check's answer, and its signer is its own.
+describe("loginTurnRefusal", () => {
+  for (const [name, input, refusal] of [
+    ["my own login", { state: "authorized", token: false, signer: JAN, subject: JAN }, undefined],
+    [
+      "a login a teammate signed in",
+      { state: "authorized", token: false, signer: EVA, subject: JAN },
+      { kind: "someone-else" },
+    ],
+    [
+      "a login nobody's sign-in was recorded for",
+      { state: "authorized", token: false, signer: undefined, subject: JAN },
+      { kind: "unrecorded" },
+    ],
+    [
+      "my login its own check has not answered for yet",
+      { state: "registering", token: false, signer: JAN, subject: JAN },
+      undefined,
+    ],
+    [
+      "a login nobody signed in",
+      { state: "not-authorized", token: false, signer: JAN, subject: JAN },
+      { kind: "not-signed-in", auth: "not-authorized" },
+    ],
+    [
+      "a project token somebody else set",
+      { state: "authorized", token: true, signer: EVA, subject: JAN },
+      undefined,
+    ],
+  ] as const) {
+    it(`${refusal === undefined ? "allows" : "refuses"} a turn on ${name}`, () => {
+      assert.deepStrictEqual(loginTurnRefusal(input), refusal);
     });
   }
 });
@@ -559,6 +609,25 @@ describe("the turn gate", () => {
       });
       assert.deepStrictEqual(refusal, { kind: "someone-else" });
       assert.strictEqual(reads() - before, 1);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("another login is gated on its own signer, never its agent's", () =>
+    Effect.gen(function* () {
+      const { signers } = yield* gate([
+        signerTag("claude-code", JAN),
+        signerTag("claudeAgent-work", EVA),
+      ]);
+      const onWork = (subject: string) =>
+        signers.loginRefusal({
+          key: "claudeAgent-work",
+          state: "authorized",
+          token: false,
+          subject,
+        });
+
+      assert.deepStrictEqual(yield* onWork(JAN), { kind: "someone-else" });
+      assert.isUndefined(yield* onWork(EVA));
     }).pipe(Effect.scoped),
   );
 

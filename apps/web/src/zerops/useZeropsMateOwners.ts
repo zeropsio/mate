@@ -21,12 +21,13 @@ import {
   MATE_SIGNER_TAG_PREFIX,
   mateMemberName,
   resolveMateOwner,
+  type MateOwnerCandidate,
 } from "@t3tools/client-runtime/zerops/mateAccess";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 
-import { useZeropsSession } from "./ZeropsSessionProvider";
+import { useZeropsSession, useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
 /** A Mate's owner, as a face in the corner of the Mate's own draws them. */
 export interface ZeropsMateOwner {
@@ -49,6 +50,15 @@ export function zeropsMateOwner(
   return { name, initials: display.initials, avatarUrl: display.avatarUrl };
 }
 
+/** The name of the member whose Zerops user id a signer tag names, when the list has one. */
+export function zeropsMemberNameByUserId(
+  members: ReadonlyArray<MateOwnerCandidate>,
+  userId: string,
+): string | undefined {
+  const member = members.find((entry) => entry.user?.id === userId);
+  return member === undefined ? undefined : mateMemberName(member);
+}
+
 /**
  * Where the member read stands: `idle` until a surface would use it, `failed`
  * when it came back with nothing to tell (the list stays empty).
@@ -63,7 +73,9 @@ export function useZeropsOrganizationMembersRead(input: {
   readonly members: ReadonlyArray<ZeropsOrganizationMember>;
   readonly status: ZeropsOrganizationMembersStatus;
 } {
-  const { client } = useZeropsSession();
+  // A surface outside the session provider (a render test in isolation)
+  // reads nobody, and its rows say the same thing without names.
+  const client = useZeropsSessionOptional()?.client;
   const [members, setMembers] = useState<ReadonlyArray<ZeropsOrganizationMember>>([]);
   const [settled, setSettled] = useState<{
     readonly clientId: string;
@@ -73,7 +85,7 @@ export function useZeropsOrganizationMembersRead(input: {
   const { clientId, enabled } = input;
 
   useEffect(() => {
-    if (!enabled || clientId === undefined) return;
+    if (!enabled || clientId === undefined || client === undefined) return;
     if (read.current === clientId) return;
     read.current = clientId;
 
@@ -97,7 +109,7 @@ export function useZeropsOrganizationMembersRead(input: {
   }, [client, clientId, enabled]);
 
   const status: ZeropsOrganizationMembersStatus =
-    !enabled || clientId === undefined
+    !enabled || clientId === undefined || client === undefined
       ? "idle"
       : settled?.clientId !== clientId
         ? "loading"
@@ -113,6 +125,18 @@ export function useZeropsOrganizationMembers(input: {
   readonly enabled: boolean;
 }): ReadonlyArray<ZeropsOrganizationMember> {
   return useZeropsOrganizationMembersRead(input).members;
+}
+
+/**
+ * Who signed a login in, by name, for the coding-agents card — read from the
+ * Mate's own organization, and only when a login names somebody else.
+ */
+export function useZeropsMemberNames(input: {
+  readonly clientId: string | undefined;
+  readonly enabled: boolean;
+}): (userId: string) => string | undefined {
+  const members = useZeropsOrganizationMembers(input);
+  return useCallback((userId: string) => zeropsMemberNameByUserId(members, userId), [members]);
 }
 
 /**

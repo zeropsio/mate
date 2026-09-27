@@ -8,7 +8,9 @@
  * layer retains the authorization service it receives. `ws.ts` and the login
  * module therefore share the SAME `ZeropsAgentAuth` instance. `ZeropsAgentSignOut`
  * shares that same instance too, plus the same `ZeropsAgentLogin` instance —
- * see its own branch below for why.
+ * see its own branch below for why. The logins beyond the defaults
+ * (`ZeropsLogins`) are one instance the same way: the login walker re-checks
+ * them, their sign-out cancels its sessions, and the turn gate reads them.
  */
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -26,6 +28,8 @@ import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import * as ZeropsGitRemoteProbeModule from "./ZeropsGitRemoteProbe.ts";
 import { loadFixtureScene, makeFixtureZeropsLayer } from "./ZeropsFixtureFeeds.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
+import * as ZeropsLoginSignOutModule from "./ZeropsLoginSignOut.ts";
+import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
 import * as ZeropsMembershipWatchModule from "./ZeropsMembershipWatch.ts";
@@ -40,6 +44,9 @@ import * as ZeropsTurnAdmissionModule from "./ZeropsTurnAdmission.ts";
  */
 const ZeropsAgentAuthLive = ZeropsAgentAuth.layer.pipe(Layer.provide(providerInstancesLayer));
 
+/** The same `ProviderInstances` discharge, for the logins' picker reconcile. */
+const ZeropsLoginsLive = ZeropsLoginsModule.layer.pipe(Layer.provide(providerInstancesLayer));
+
 const liveLayer = Layer.mergeAll(
   ZeropsLifecycle.layer.pipe(Layer.provide(ZeropsThreadLifecycle.layer)),
   // `ZeropsProjectSigners` is merged rather than hidden: the agent-auth feed
@@ -48,6 +55,7 @@ const liveLayer = Layer.mergeAll(
   // cache.
   ZeropsAgentLoginModule.layer.pipe(
     Layer.provideMerge(ZeropsAgentAuthLive),
+    Layer.provideMerge(ZeropsLoginsLive),
     Layer.provideMerge(ZeropsProjectSignersModule.layer),
   ),
   // `ZeropsAgentSignOut` declares `ZeropsAgentLogin`/`ZeropsAgentAuth` as
@@ -62,7 +70,16 @@ const liveLayer = Layer.mergeAll(
   ZeropsAgentSignOutModule.layer.pipe(
     Layer.provide(ZeropsAgentLoginModule.layer),
     Layer.provide(ZeropsAgentAuthLive),
+    Layer.provide(ZeropsLoginsLive),
     Layer.provide(ZeropsAgentFlagModule.layer),
+    Layer.provide(ZeropsProjectSignersModule.layer),
+  ),
+  // The same construction for the logins beyond the defaults, over the same
+  // walker and the same logins.
+  ZeropsLoginSignOutModule.layer.pipe(
+    Layer.provide(ZeropsAgentLoginModule.layer),
+    Layer.provide(ZeropsAgentAuthLive),
+    Layer.provide(ZeropsLoginsLive),
     Layer.provide(ZeropsProjectSignersModule.layer),
   ),
   // D6's one gate, over the same agent-auth and signers instances the
@@ -70,6 +87,7 @@ const liveLayer = Layer.mergeAll(
   // route admit every turn through it.
   ZeropsTurnAdmissionModule.layer.pipe(
     Layer.provide(ZeropsAgentAuthLive),
+    Layer.provide(ZeropsLoginsLive),
     Layer.provide(ZeropsProjectSignersModule.layer),
     Layer.provide(providerInstancesLayer),
   ),

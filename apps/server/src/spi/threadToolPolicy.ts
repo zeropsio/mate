@@ -51,6 +51,17 @@ export interface ThreadToolProfile {
   readonly model?: string;
   /** The effort option's value; applies only when a model is known. */
   readonly effort?: string;
+  /**
+   * The thread never changes files. Its gate refuses every write either
+   * way; a driver with a sandbox also runs the thread in a read-only one.
+   */
+  readonly readOnly?: boolean;
+  /**
+   * How to write calls so the gate allows them as they are, for a driver
+   * that cannot run a call the gate rewrote (Codex answers an approval with
+   * a decision only). Such a driver adds it after `sessionContext`.
+   */
+  readonly exactCallsContext?: string;
   readonly decideTool: (call: {
     readonly toolName: string;
     readonly input: unknown;

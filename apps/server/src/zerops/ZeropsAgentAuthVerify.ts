@@ -126,13 +126,23 @@ const EMPTY_PROBE_OUTCOME: AgentAuthProbeOutcome = { stdout: "", stderr: "", cod
  * binary is missing" from "the process failed some other way" on its own.
  */
 export const spawnAgentAuthProbe =
-  (processRunner: ProcessRunner.ProcessRunner["Service"], cwd: string): AgentAuthProbeSpawn =>
+  (
+    processRunner: ProcessRunner.ProcessRunner["Service"],
+    cwd: string,
+    /**
+     * Added to the server's own environment: a login beyond the defaults
+     * checks its own home (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`). The defaults
+     * pass none.
+     */
+    env?: Readonly<Record<string, string>>,
+  ): AgentAuthProbeSpawn =>
   (command, args) =>
     processRunner
       .run({
         command,
         args,
         cwd,
+        ...(env === undefined ? {} : { env: { ...env } }),
         timeout: AGENT_AUTH_PROBE_TIMEOUT,
         timeoutBehavior: "timedOutResult",
         maxOutputBytes: AGENT_AUTH_PROBE_MAX_OUTPUT_BYTES,

@@ -5,6 +5,7 @@ import {
   resolveZeropsAgentAvailability,
   zeropsAgentAuthReads,
   zeropsAgentAvailabilityIsRunnable,
+  zeropsLoginAuthReads,
   type ZeropsAgentAvailability,
 } from "@t3tools/client-runtime/zerops/agentAvailability";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
@@ -30,7 +31,6 @@ import {
   type ThreadId,
   type TurnId,
   type ZeropsAgentAuthSnapshot,
-  type ZeropsAgentId,
 } from "@t3tools/contracts";
 import {
   type ChatMessage,
@@ -425,20 +425,38 @@ export function resolveZeropsProviderAvailability(input: {
   readonly agentAuth: Known<ZeropsAgentAuthSnapshot> | undefined;
   readonly viewerSubject: string | undefined;
   readonly localSigners: LocalAgentSigners;
-  readonly recordFailed: ReadonlySet<ZeropsAgentId>;
+  readonly recordFailed: ReadonlySet<string>;
 }): ReadonlyMap<ProviderInstanceId, ZeropsAgentAvailability> | undefined {
   if (input.agentAuth === undefined) return undefined;
-  const reads = zeropsAgentAuthReads(input.agentAuth, (agent) => ({
+  /** A row's facts, its signer resolved under `key` — the agent id, or a login's own id. */
+  const factsOf = (agent: ZeropsAgentAuthSnapshot["agents"][number], key: string) => ({
     credPresent: agent.credPresent,
     flagToken: agent.flagToken,
     providerAuth: agent.providerAuth,
     state: agent.state,
     loginPhase: agent.login?.phase,
-    authorizedBy: resolveAgentAuthorizer(agent.agentId, agent.authorizedBy, input.localSigners),
-  }));
+    authorizedBy: resolveAgentAuthorizer(key, agent.authorizedBy, input.localSigners),
+  });
+  const reads = zeropsAgentAuthReads(input.agentAuth, (agent) => factsOf(agent, agent.agentId));
   if (reads === undefined) return undefined;
+  // A login beyond the defaults answers for itself, as the server's admission
+  // resolves it; until the feed is known, its driver's agent says `unknown`
+  // for it like for every other instance.
+  const loginReads = zeropsLoginAuthReads(input.agentAuth, factsOf);
   const map = new Map<ProviderInstanceId, ZeropsAgentAvailability>();
   for (const entry of input.entries) {
+    const login = loginReads(entry.instanceId);
+    if (login !== undefined) {
+      map.set(
+        entry.instanceId,
+        resolveZeropsAgentAvailability({
+          agent: login,
+          viewerSubject: input.viewerSubject,
+          recordFailed: input.recordFailed.has(entry.instanceId),
+        }),
+      );
+      continue;
+    }
     const agentId = agentIdForDriverKind(entry.driverKind);
     if (agentId === undefined) continue;
     const agent = reads(agentId);

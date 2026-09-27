@@ -1,0 +1,336 @@
+[
+  {
+    "scenario": "full-access, no model",
+    "spawns": [
+      {
+        "command": "codex",
+        "args": ["app-server"],
+        "cwd": "/srv/app"
+      }
+    ],
+    "requestsOpened": [],
+    "wire": [
+      {
+        "method": "initialize",
+        "params": {
+          "capabilities": {
+            "experimentalApi": true
+          },
+          "clientInfo": {
+            "name": "t3code_desktop",
+            "title": "Zerops Mate",
+            "version": "[package version]"
+          }
+        }
+      },
+      {
+        "method": "initialized"
+      },
+      {
+        "method": "thread/start",
+        "params": {
+          "approvalPolicy": "never",
+          "approvalsReviewer": "user",
+          "cwd": "/srv/app",
+          "sandbox": "danger-full-access"
+        }
+      },
+      {
+        "method": "turn/start",
+        "params": {
+          "approvalPolicy": "never",
+          "approvalsReviewer": "user",
+          "input": [
+            {
+              "text": "a default turn",
+              "type": "text"
+            }
+          ],
+          "model": "gpt-5.6-sol",
+          "sandboxPolicy": {
+            "type": "dangerFullAccess"
+          },
+          "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+          "collaborationMode": {
+            "mode": "default",
+            "settings": {
+              "developer_instructions": "[buildCodexDeveloperInstructions(\"default\")]",
+              "model": "gpt-5.6-sol",
+              "reasoning_effort": "medium"
+            }
+          },
+          "additionalContext": {
+            "mate_runtime": {
+              "kind": "application",
+              "value": "[buildRuntimeInstructions({ harness: \"Codex\", model: \"gpt-5.6-sol\", reasoningEffort: \"medium\" })]"
+            }
+          }
+        }
+      },
+      {
+        "method": "turn/start",
+        "params": {
+          "approvalPolicy": "never",
+          "approvalsReviewer": "user",
+          "input": [
+            {
+              "text": "a plan turn",
+              "type": "text"
+            }
+          ],
+          "model": "gpt-5.6-sol",
+          "sandboxPolicy": {
+            "type": "dangerFullAccess"
+          },
+          "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+          "collaborationMode": {
+            "mode": "plan",
+            "settings": {
+              "developer_instructions": "[buildCodexDeveloperInstructions(\"plan\")]",
+              "model": "gpt-5.6-sol",
+              "reasoning_effort": "medium"
+            }
+          },
+          "additionalContext": {
+            "mate_runtime": {
+              "kind": "application",
+              "value": "[buildRuntimeInstructions({ harness: \"Codex\", model: \"gpt-5.6-sol\", reasoningEffort: \"medium\" })]"
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "scenario": "approval-required, model with reasoning effort and fast mode, resumed",
+    "spawns": [
+      {
+        "command": "codex",
+        "args": ["app-server"],
+        "cwd": "/srv/app"
+      }
+    ],
+    "requestsOpened": [],
+    "wire": [
+      {
+        "method": "initialize",
+        "params": {
+          "capabilities": {
+            "experimentalApi": true
+          },
+          "clientInfo": {
+            "name": "t3code_desktop",
+            "title": "Zerops Mate",
+            "version": "[package version]"
+          }
+        }
+      },
+      {
+        "method": "initialized"
+      },
+      {
+        "method": "thread/resume",
+        "params": {
+          "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+          "cwd": "/srv/app",
+          "approvalPolicy": "untrusted",
+          "sandbox": "read-only",
+          "approvalsReviewer": "user",
+          "model": "gpt-5.6-sol",
+          "serviceTier": "fast",
+          "excludeTurns": true
+        }
+      },
+      {
+        "method": "turn/start",
+        "params": {
+          "approvalPolicy": "untrusted",
+          "approvalsReviewer": "user",
+          "effort": "high",
+          "input": [
+            {
+              "text": "a default turn",
+              "type": "text"
+            }
+          ],
+          "model": "gpt-5.6-sol",
+          "sandboxPolicy": {
+            "type": "readOnly"
+          },
+          "serviceTier": "fast",
+          "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+          "collaborationMode": {
+            "mode": "default",
+            "settings": {
+              "developer_instructions": "[buildCodexDeveloperInstructions(\"default\")]",
+              "model": "gpt-5.6-sol",
+              "reasoning_effort": "high"
+            }
+          },
+          "additionalContext": {
+            "mate_runtime": {
+              "kind": "application",
+              "value": "[buildRuntimeInstructions({ harness: \"Codex\", model: \"gpt-5.6-sol\", reasoningEffort: \"high\" })]"
+            }
+          }
+        }
+      },
+      {
+        "method": "turn/start",
+        "params": {
+          "approvalPolicy": "untrusted",
+          "approvalsReviewer": "user",
+          "effort": "high",
+          "input": [
+            {
+              "text": "a plan turn",
+              "type": "text"
+            }
+          ],
+          "model": "gpt-5.6-sol",
+          "sandboxPolicy": {
+            "type": "readOnly"
+          },
+          "serviceTier": "fast",
+          "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+          "collaborationMode": {
+            "mode": "plan",
+            "settings": {
+              "developer_instructions": "[buildCodexDeveloperInstructions(\"plan\")]",
+              "model": "gpt-5.6-sol",
+              "reasoning_effort": "high"
+            }
+          },
+          "additionalContext": {
+            "mate_runtime": {
+              "kind": "application",
+              "value": "[buildRuntimeInstructions({ harness: \"Codex\", model: \"gpt-5.6-sol\", reasoningEffort: \"high\" })]"
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "scenario": "auto-accept-edits, a file change and a command the person answers",
+    "spawns": [
+      {
+        "command": "codex",
+        "args": ["app-server"],
+        "cwd": "/srv/app"
+      }
+    ],
+    "requestsOpened": [
+      {
+        "requestType": "file_change_approval"
+      },
+      {
+        "requestType": "command_execution_approval",
+        "detail": "npm test"
+      }
+    ],
+    "wire": [
+      {
+        "method": "initialize",
+        "params": {
+          "capabilities": {
+            "experimentalApi": true
+          },
+          "clientInfo": {
+            "name": "t3code_desktop",
+            "title": "Zerops Mate",
+            "version": "[package version]"
+          }
+        }
+      },
+      {
+        "method": "initialized"
+      },
+      {
+        "method": "thread/start",
+        "params": {
+          "approvalPolicy": "on-request",
+          "approvalsReviewer": "user",
+          "cwd": "/srv/app",
+          "sandbox": "workspace-write"
+        }
+      },
+      {
+        "method": "turn/start",
+        "params": {
+          "approvalPolicy": "on-request",
+          "approvalsReviewer": "user",
+          "input": [
+            {
+              "text": "a default turn",
+              "type": "text"
+            }
+          ],
+          "model": "gpt-5.6-sol",
+          "sandboxPolicy": {
+            "type": "workspaceWrite"
+          },
+          "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+          "collaborationMode": {
+            "mode": "default",
+            "settings": {
+              "developer_instructions": "[buildCodexDeveloperInstructions(\"default\")]",
+              "model": "gpt-5.6-sol",
+              "reasoning_effort": "medium"
+            }
+          },
+          "additionalContext": {
+            "mate_runtime": {
+              "kind": "application",
+              "value": "[buildRuntimeInstructions({ harness: \"Codex\", model: \"gpt-5.6-sol\", reasoningEffort: \"medium\" })]"
+            }
+          }
+        }
+      },
+      {
+        "answered": "item/fileChange/requestApproval",
+        "result": {
+          "decision": "acceptForSession"
+        }
+      },
+      {
+        "answered": "item/commandExecution/requestApproval",
+        "result": {
+          "decision": "decline"
+        }
+      },
+      {
+        "method": "turn/start",
+        "params": {
+          "approvalPolicy": "on-request",
+          "approvalsReviewer": "user",
+          "input": [
+            {
+              "text": "a plan turn",
+              "type": "text"
+            }
+          ],
+          "model": "gpt-5.6-sol",
+          "sandboxPolicy": {
+            "type": "workspaceWrite"
+          },
+          "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+          "collaborationMode": {
+            "mode": "plan",
+            "settings": {
+              "developer_instructions": "[buildCodexDeveloperInstructions(\"plan\")]",
+              "model": "gpt-5.6-sol",
+              "reasoning_effort": "medium"
+            }
+          },
+          "additionalContext": {
+            "mate_runtime": {
+              "kind": "application",
+              "value": "[buildRuntimeInstructions({ harness: \"Codex\", model: \"gpt-5.6-sol\", reasoningEffort: \"medium\" })]"
+            }
+          }
+        }
+      }
+    ]
+  }
+]

@@ -4,6 +4,7 @@ import type { ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import {
   resolveZeropsAgentAvailability,
   zeropsAgentAuthReads,
+  zeropsLoginAuthReads,
   zeropsAgentAvailabilityIsRunnable,
   type ZeropsAgentAuthFacts,
   type ZeropsAgentAuthRead,
@@ -366,5 +367,77 @@ describe("zeropsAgentAuthReads", () => {
     },
   ])("nothing gates the agents on $name", ({ read }) => {
     expect(zeropsAgentAuthReads(read, facts)).toBeUndefined();
+  });
+});
+
+// A login beyond the defaults reads as itself, under its own signer key; an
+// instance that is none — and every instance before the feed is known — reads
+// nothing, and its driver's agent answers for it.
+describe("zeropsLoginAuthReads", () => {
+  const SNAPSHOT: ZeropsAgentAuthSnapshot = {
+    available: true,
+    agents: [{ agentId: "claude-code", flagOAuth: true, ...signedIn }],
+    logins: [
+      {
+        id: "claudeAgent",
+        agent: "claude-code",
+        label: "",
+        kind: "subscription",
+        default: true,
+        state: "authorized",
+        token: false,
+      },
+      {
+        id: "claudeAgent-work",
+        agent: "claude-code",
+        label: "work",
+        kind: "subscription",
+        default: false,
+        state: "registering",
+        token: false,
+        signedInBy: EVA,
+      },
+    ],
+  };
+  const keys: Array<string> = [];
+  const facts = (row: ZeropsAgentAuthSnapshot["agents"][number], key: string) => {
+    keys.push(key);
+    return {
+      state: row.state,
+      providerAuth: row.providerAuth,
+      credPresent: row.credPresent,
+      flagToken: row.flagToken,
+      ...(row.authorizedBy === undefined
+        ? {}
+        : { authorizedBy: { subject: row.authorizedBy.subject } }),
+    } satisfies ZeropsAgentAuthFacts;
+  };
+  const knownSnapshot: Known<ZeropsAgentAuthSnapshot> = {
+    state: "known",
+    value: SNAPSHOT,
+    asOf: { ordinal: 1, atMs: 1_000 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+  };
+
+  it("reads a login beyond the defaults as itself, under its own key", () => {
+    const read = zeropsLoginAuthReads(knownSnapshot, facts)("claudeAgent-work");
+    expect(read?.state === "known" ? read.value : undefined).toEqual({
+      state: "local-only",
+      providerAuth: "unknown",
+      credPresent: true,
+      flagToken: false,
+      authorizedBy: { subject: EVA },
+    });
+    expect(keys).toEqual(["claudeAgent-work"]);
+  });
+
+  it("reads nothing for a default login, another instance, or an unknown feed", () => {
+    const reads = zeropsLoginAuthReads(knownSnapshot, facts);
+    expect(reads("claudeAgent")).toBeUndefined();
+    expect(reads("claudeAgent_mine")).toBeUndefined();
+    expect(
+      zeropsLoginAuthReads({ state: "reading", sinceMs: 0, attempt: 1 }, facts)("claudeAgent-work"),
+    ).toBeUndefined();
   });
 });

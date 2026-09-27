@@ -14,14 +14,20 @@
  *
  * **Git inside a lane is engine-only.** The lane edits files; the engine
  * commits them at turn end under one precondition (`commitTurn`):
- * - an open merge with conflicts is never committed - the task goes back as
- *   rework naming the files; a merge concludes only when no conflict marker
- *   remains in the merged changes;
+ * - an open merge is never committed while a file it left unmerged still
+ *   carries a conflict marker (`<<<<<<< `, a lone `=======`, `>>>>>>> `) - in
+ *   the tree before `add -A`, or in what `add -A` staged (a file whose staged
+ *   content still has one is marked unmerged again). The task goes back as
+ *   rework naming the files. Git cannot clear the unmerged set without a
+ *   stage and git in a lane is engine-only, so a marker-free file is the
+ *   crewmate's resolution and `add -A` concludes the merge; whitespace in a
+ *   resolution is not a marker;
  * - three guards run on what is about to be committed: an unignored
  *   dependency directory (delivery's own guard), a staged blob over the size
  *   cap (10 MB unless the crewmate raises it), and `.env`/`.env.*` or key
- *   files whatever their ignore state (DM-7). A trip unstages, parks the lane
- *   and names the paths;
+ *   files whatever their ignore state (DM-7). They read what `add -A` would
+ *   stage before anything is staged, so a trip leaves the index as it was,
+ *   parks the lane and names the paths;
  * - the engine records every tip it writes; a lane tip it did not write parks
  *   the lane.
  *
@@ -89,7 +95,7 @@ const DEPENDENCY_DIRECTORIES = ["node_modules", "vendor", ".venv"] as const;
 const SECRET_PATH_PATTERN = String.raw`(^|/)(\.env(\..+)?|id_(rsa|dsa|ecdsa|ed25519)|[^/]+\.(pem|key|p12|pfx))$`;
 
 /** A conflict marker git writes at the start of a line. */
-const CONFLICT_MARKER_PATTERN = "^(<<<<<<<|>>>>>>>)( |$)";
+const CONFLICT_MARKER_PATTERN = "^(<<<<<<< |=======$|>>>>>>> )";
 
 /** Attempt refs kept per lane. */
 export const ATTEMPT_REFS_PER_LANE = 3;
@@ -143,7 +149,12 @@ export type LaneCommit =
   | { readonly _tag: "committed"; readonly tip: string }
   | { readonly _tag: "unchanged"; readonly tip: string }
   /** An open merge whose conflicted files still carry markers; nothing was committed. */
-  | { readonly _tag: "rework"; readonly paths: ReadonlyArray<string> }
+  | {
+      readonly _tag: "rework";
+      readonly paths: ReadonlyArray<string>;
+      /** The rework's reason, naming the files. */
+      readonly reason: string;
+    }
   | {
       readonly _tag: "parked";
       readonly reason: Exclude<LaneParkReason, "unknown-tip">;
@@ -335,11 +346,12 @@ export const make = Effect.gen(function* () {
           `  if [ -d ${lane}/"$d" ] && ! ${lg(["check-ignore", "-q"])} "$d"; then deps="$deps $d"; fi\n` +
           `done\n` +
           `[ -z "$deps" ] || { printf 'status\\tparked\\nguard\\tdependencies\\n'; for d in $deps; do printf 'path\\t%s\\n' "$d"; done; exit 0; }\n` +
-          `pending=$(mktemp) || exit 1\n` +
-          `trap 'rm -f "$pending"' EXIT\n` +
-          `{ ${lg(["diff", "--name-only", "--diff-filter=U"])} && ${lg(["add", "-A", "--dry-run"])} | sed -n "s/^add '\\(.*\\)'$/\\1/p"; } | sort -u > "$pending" || exit 1\n` +
+          `unmerged=$(mktemp) && pending=$(mktemp) || exit 1\n` +
+          `trap 'rm -f "$unmerged" "$pending"' EXIT\n` +
+          `${lg(["diff", "--name-only", "--diff-filter=U"])} > "$unmerged" || exit 1\n` +
+          `{ cat "$unmerged" && ${lg(["add", "-A", "--dry-run"])} | sed -n "s/^add '\\(.*\\)'$/\\1/p"; } | sort -u > "$pending" || exit 1\n` +
           `if [ "$merging" = 1 ]; then\n` +
-          `  marked=$(while IFS= read -r f; do [ -f ${lane}/"$f" ] && grep -qE '${CONFLICT_MARKER_PATTERN}' ${lane}/"$f" && printf '%s\\n' "$f"; done < "$pending")\n` +
+          `  marked=$(while IFS= read -r f; do [ -f ${lane}/"$f" ] && grep -qE '${CONFLICT_MARKER_PATTERN}' ${lane}/"$f" && printf '%s\\n' "$f"; done < "$unmerged")\n` +
           `  [ -z "$marked" ] || { printf 'status\\trework\\n'; printf '%s\\n' "$marked" | sed 's/^/path\t/'; exit 0; }\n` +
           `fi\n` +
           `secrets=$(grep -E '${SECRET_PATH_PATTERN}' "$pending")\n` +
@@ -347,6 +359,13 @@ export const make = Effect.gen(function* () {
           `large=$(while IFS= read -r f; do if [ -f ${lane}/"$f" ] && [ "$(wc -c < ${lane}/"$f" | tr -d ' ')" -gt ${maxBlobBytes} ]; then printf '%s\\n' "$f"; fi; done < "$pending")\n` +
           `[ -z "$large" ] || { printf 'status\\tparked\\nguard\\tsize\\n'; printf '%s\\n' "$large" | sed 's/^/path\t/'; exit 0; }\n` +
           `${lg(["add", "-A"])} || exit 1\n` +
+          `if [ "$merging" = 1 ]; then\n` +
+          `  marked=$(while IFS= read -r f; do staged=":$f"; ${lg(["show", shellVariable("staged")])} 2>/dev/null | grep -qE '${CONFLICT_MARKER_PATTERN}' && printf '%s\\n' "$f"; done < "$unmerged")\n` +
+          `  if [ -n "$marked" ]; then\n` +
+          `    printf '%s\\n' "$marked" | while IFS= read -r f; do ${lg(["update-index", "--unresolve", "--", shellVariable("f")])} || exit 1; done || exit 1\n` +
+          `    printf 'status\\trework\\n'; printf '%s\\n' "$marked" | sed 's/^/path\t/'; exit 0\n` +
+          `  fi\n` +
+          `fi\n` +
           `if [ "$merging" = 1 ] || ! ${lg(["diff", "--cached", "--quiet"])}; then\n` +
           `  ${lg(["commit", "-q", "--no-verify", "-m", message])} || exit 1\n` +
           `  printf 'status\\tcommitted\\n'\n` +
@@ -362,7 +381,11 @@ export const make = Effect.gen(function* () {
         case "lane-missing":
           return laneCommit({ _tag: "lane-missing" });
         case "rework":
-          return laneCommit({ _tag: "rework", paths });
+          return laneCommit({
+            _tag: "rework",
+            paths,
+            reason: `Resolve the conflict markers left in ${paths.join(", ")}`,
+          });
         case "unknown-tip":
         case "parked": {
           yield* store.updateLane(row.crew, row.lane, (lane) => ({ ...lane, state: "parked" }));

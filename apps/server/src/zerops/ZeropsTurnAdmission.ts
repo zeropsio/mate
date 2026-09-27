@@ -7,10 +7,13 @@
  * client or a person caused asks here first, with the principal the turn is
  * for; `scripts/turn-start-sites.test.ts` pins which paths those are.
  *
- * The agent is resolved from the command's own model selection, or from the
- * thread's when the command names none. An agent Mate never signs anybody in
- * to, and an agent authorized by a token rather than by a personal login, are
- * both unaffected — a token belongs to the project.
+ * The instance is resolved from the command's own model selection, or from the
+ * thread's when the command names none. A login beyond the two defaults
+ * (`ZeropsLogins`) is gated on its own state and its own signer — never its
+ * agent's (D6 per login, PRD §2.3). Any other instance is gated as its
+ * driver's default login. An agent Mate never signs anybody in to, and an
+ * agent authorized by a token rather than by a personal login, are both
+ * unaffected — a token belongs to the project.
  *
  * The record is a tag on the Mate's project, which this container's key
  * cannot write, so neither it nor its agent can forge it
@@ -36,7 +39,11 @@ import {
   type OrchestrationThreadShell,
   type ZeropsAgentId,
 } from "@t3tools/contracts";
-import { zeropsAgentUnavailableReason } from "@t3tools/shared/zeropsAgentAuth";
+import {
+  zeropsAgentUnavailableReason,
+  zeropsLoginTitle,
+  zeropsLoginUnavailableReason,
+} from "@t3tools/shared/zeropsAgentAuth";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -48,6 +55,7 @@ import { ProviderInstances } from "../spi/providerInstances.ts";
 import { ThreadToolPolicyRegistry, threadProfileFor } from "../spi/threadToolPolicy.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import { ZeropsLogins, type MateLogin } from "./ZeropsLogins.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
 import {
   isTurnStartingCommand,
@@ -87,6 +95,22 @@ export function turnRefusalMessage(agentId: ZeropsAgentId, refusal: TurnRefusal)
   }
 }
 
+/** The sentence a refused turn on a login beyond the defaults reports. */
+export function loginRefusalMessage(
+  login: Pick<MateLogin, "agent" | "kind" | "label">,
+  refusal: TurnRefusal,
+): string {
+  const title = zeropsLoginTitle(login);
+  switch (refusal.kind) {
+    case "not-signed-in":
+      return zeropsLoginUnavailableReason({ ...login, default: false }, refusal.auth);
+    case "unrecorded":
+      return `${title}'s sign-in was not recorded by Zerops Mate, so nobody can run it. Sign it in with your own account first.`;
+    case "someone-else":
+      return `${title} was signed in by another project member — only they can run it. Use a login you signed in yourself.`;
+  }
+}
+
 /** The refusals of a crewmate's conversation (seam 13). */
 export const CREW_THREAD_REFUSALS = {
   keptByCrew:
@@ -119,6 +143,7 @@ export const make = Effect.gen(function* () {
   const agentAuth = yield* ZeropsAgentAuth.ZeropsAgentAuth;
   const projectSigners = yield* ZeropsProjectSigners;
   const providerInstances = yield* ProviderInstances;
+  const zeropsLogins = yield* ZeropsLogins;
   const policies = yield* Effect.serviceOption(ThreadToolPolicyRegistry);
 
   /** The thread the command acts on, when it names one and the projection has it. */
@@ -184,13 +209,38 @@ export const make = Effect.gen(function* () {
     });
   });
 
+  /**
+   * D6 on a login beyond the defaults: its own check must say it is signed
+   * in, and its own signer must be this principal. A login the feed has not
+   * listed yet is not signed in — unknown refuses.
+   */
+  const refuseSomeoneElsesLogin = Effect.fnUntraced(function* (
+    login: MateLogin,
+    principal: TurnPrincipal,
+  ) {
+    const row = (yield* zeropsLogins.latest).find((entry) => entry.id === login.id);
+    const refusal = yield* projectSigners.loginRefusal({
+      key: login.id,
+      state: row?.state ?? "not-authorized",
+      token: false,
+      subject: principalUserId(principal),
+    });
+    if (refusal === undefined) return;
+    return yield* new OrchestrationDispatchCommandError({
+      message: loginRefusalMessage(login, refusal),
+    });
+  });
+
   /** D6 itself: the agent must be signed in, and signed in by this principal. */
   const refuseSomeoneElsesAgent = Effect.fnUntraced(function* (
     command: OrchestrationCommand,
     thread: OrchestrationThreadShell | undefined,
     principal: TurnPrincipal,
   ) {
-    const agentId = yield* agentIdOf(instanceIdOf(command, thread));
+    const instanceId = instanceIdOf(command, thread);
+    const login = instanceId === undefined ? undefined : yield* zeropsLogins.resolve(instanceId);
+    if (login !== undefined) return yield* refuseSomeoneElsesLogin(login, principal);
+    const agentId = yield* agentIdOf(instanceId);
     if (agentId === undefined) return;
     const snapshot = yield* agentAuth.latest;
     const agent = snapshot.agents.find((entry) => entry.agentId === agentId);

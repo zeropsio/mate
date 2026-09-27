@@ -118,6 +118,7 @@ import { readCollapsedProjects, writeCollapsedProjects } from "~/zerops/collapse
 import { useProjectOrderPreference } from "~/zerops/projectOrderPreference";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
+import { SidebarCrewFaces } from "./crew/SidebarCrewFaces";
 import { Avatar, MateFace, StatusDot } from "./primitives";
 import { RAIL_BLANK, RAIL_LINE } from "./rail";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
@@ -977,7 +978,9 @@ function MateRow<T extends RosterCandidate>({
       ? undefined
       : compactSidebarTimeLabel(formatRelativeTimeLabel(live.at));
 
-  return (
+  // A connected Mate may have a crew: its faces follow the row (seam S8).
+  const crewAt = candidate.group === "connected" ? candidate.environmentId : undefined;
+  const row = (
     <button
       aria-current={active ? "true" : undefined}
       className={cn(
@@ -1061,6 +1064,14 @@ function MateRow<T extends RosterCandidate>({
         )}
       </span>
     </button>
+  );
+  return crewAt === undefined ? (
+    row
+  ) : (
+    <div className="flex min-w-0 items-center">
+      {row}
+      <SidebarCrewFaces environmentId={crewAt} />
+    </div>
   );
 }
 

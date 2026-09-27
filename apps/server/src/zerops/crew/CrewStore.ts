@@ -7,8 +7,8 @@
  * row is what the engine last wrote and saw, re-derived by the boot sweep.
  *
  * The git core reads and writes definition seq, crewmates, lanes, task
- * landings and dev-service crew ports; the engine adds stints, attempts and
- * the log. Runs, memory and claims are tables later phases add rows for.
+ * landings and dev-service crew ports; the crew tools Show-on-dev claims and
+ * memory; the engine stints, attempts and the log. Runs are phase C's.
  *
  * @module CrewStore
  */
@@ -21,7 +21,12 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
-import type { CrewMemberKind, CrewTaskSource, CrewTaskState } from "@t3tools/contracts";
+import type {
+  CrewClaimState,
+  CrewMemberKind,
+  CrewTaskSource,
+  CrewTaskState,
+} from "@t3tools/contracts";
 
 /** A crew table could not be read or written, or held a row this build cannot decode. */
 export class CrewStoreError extends Schema.TaggedError<CrewStoreError>()("CrewStoreError", {
@@ -132,6 +137,44 @@ export interface CrewHostRow {
   readonly crewPorts: ReadonlyArray<CrewHostPort>;
 }
 
+/** The Show-on-dev claim a dev service holds for one lane (ARCHITECTURE §4). */
+export interface CrewClaimRow {
+  readonly host: string;
+  readonly crew: string;
+  readonly member: string;
+  readonly lane: string;
+  readonly state: CrewClaimState;
+  readonly requestedAt: string;
+  readonly grantedBy: string | null;
+  readonly grantedAt: string | null;
+  readonly expiresAt: string | null;
+  readonly releasedAt: string | null;
+}
+
+export type CrewMemoryKind =
+  | "decision"
+  | "lesson"
+  | "fact"
+  | "open"
+  | "note"
+  | "handoff"
+  | "unfiled";
+
+/** One entry of a crewmate's memory (CONCEPT §3A). */
+export interface CrewMemoryRow {
+  readonly crew: string;
+  readonly member: string;
+  readonly id: string;
+  readonly kind: CrewMemoryKind;
+  readonly topic: string | null;
+  readonly text: string;
+  /** Files the entry is about; a `fact` is re-verified against them. */
+  readonly paths: ReadonlyArray<string>;
+  readonly verifiedAt: string | null;
+  readonly fromAssignment: string | null;
+  readonly updatedAt: string;
+}
+
 /** `parked`: the engine stopped using the lane until the person triages it · `lost`: a recovery could not bring it back. */
 export type CrewLaneState = "ready" | "parked" | "lost";
 
@@ -204,7 +247,15 @@ export interface CrewLogEntry {
 /** Which table changed, for which crew (`null` for per-host rows). */
 export interface CrewStoreChange {
   readonly crew: string | null;
-  readonly table: "definition" | "member" | "lane" | "assignment" | "host" | "stint";
+  readonly table:
+    | "definition"
+    | "member"
+    | "lane"
+    | "assignment"
+    | "host"
+    | "claim"
+    | "memory"
+    | "stint";
 }
 
 export interface CrewStoreService {
@@ -233,6 +284,25 @@ export interface CrewStoreService {
   ) => Effect.Effect<ReadonlyArray<CrewLanding>, CrewStoreError>;
   readonly putHost: (row: CrewHostRow) => Effect.Effect<void, CrewStoreError>;
   readonly getHost: (host: string) => Effect.Effect<Option.Option<CrewHostRow>, CrewStoreError>;
+  readonly getClaim: (host: string) => Effect.Effect<Option.Option<CrewClaimRow>, CrewStoreError>;
+  readonly claims: (crew: string) => Effect.Effect<ReadonlyArray<CrewClaimRow>, CrewStoreError>;
+  /** Read, change and write a host's claim in one transaction; `none` deletes it. */
+  readonly updateClaim: (
+    host: string,
+    change: (claim: Option.Option<CrewClaimRow>) => Option.Option<CrewClaimRow>,
+  ) => Effect.Effect<Option.Option<CrewClaimRow>, CrewStoreError>;
+  /** A crewmate's memory, oldest change first. */
+  readonly memory: (
+    crew: string,
+    member: string,
+  ) => Effect.Effect<ReadonlyArray<CrewMemoryRow>, CrewStoreError>;
+  readonly putMemory: (row: CrewMemoryRow) => Effect.Effect<void, CrewStoreError>;
+  readonly deleteMemory: (
+    crew: string,
+    member: string,
+    id: string,
+  ) => Effect.Effect<void, CrewStoreError>;
+  readonly clearMemory: (crew: string, member: string) => Effect.Effect<void, CrewStoreError>;
   readonly putLane: (row: CrewLaneRow) => Effect.Effect<void, CrewStoreError>;
   readonly getLane: (
     crew: string,
@@ -321,6 +391,14 @@ interface AssignmentSqlRow extends Omit<
   readonly review: string | null;
   readonly report: string | null;
   readonly waiting: string | null;
+}
+
+const MemoryPaths = Schema.fromJsonString(Schema.Array(Schema.String));
+const decodeMemoryPaths = Schema.decodeEffect(MemoryPaths);
+const encodeMemoryPaths = Schema.encodeEffect(MemoryPaths);
+
+interface MemorySqlRow extends Omit<CrewMemoryRow, "paths"> {
+  readonly paths: string;
 }
 
 const RefSnapshot = Schema.NullOr(
@@ -473,6 +551,47 @@ export const make = Effect.gen(function* () {
         waiting: yield* json(row.waiting),
       } satisfies CrewAssignmentRow;
     });
+
+  const selectClaims = (where: "host" | "crew", key: string) =>
+    sql<CrewClaimRow>`
+      SELECT
+        host, crew, member, lane, state,
+        requested_at AS "requestedAt",
+        granted_by AS "grantedBy",
+        granted_at AS "grantedAt",
+        expires_at AS "expiresAt",
+        released_at AS "releasedAt"
+      FROM crew_claim
+      WHERE ${where === "host" ? sql`host = ${key}` : sql`crew = ${key}`}
+      ORDER BY host
+    `.pipe(Effect.mapError(sqlError("claims")));
+
+  const getClaim: CrewStoreService["getClaim"] = (host) =>
+    selectClaims("host", host).pipe(Effect.map((rows) => Option.fromNullishOr(rows[0])));
+
+  const writeClaim = (host: string, claim: Option.Option<CrewClaimRow>) =>
+    Option.match(claim, {
+      onNone: () => sql`DELETE FROM crew_claim WHERE host = ${host}`,
+      onSome: (row) => sql`
+        INSERT INTO crew_claim (
+          host, crew, member, lane, state, requested_at, granted_by, granted_at,
+          expires_at, released_at
+        ) VALUES (
+          ${host}, ${row.crew}, ${row.member}, ${row.lane}, ${row.state}, ${row.requestedAt},
+          ${row.grantedBy}, ${row.grantedAt}, ${row.expiresAt}, ${row.releasedAt}
+        )
+        ON CONFLICT (host) DO UPDATE SET
+          crew = excluded.crew,
+          member = excluded.member,
+          lane = excluded.lane,
+          state = excluded.state,
+          requested_at = excluded.requested_at,
+          granted_by = excluded.granted_by,
+          granted_at = excluded.granted_at,
+          expires_at = excluded.expires_at,
+          released_at = excluded.released_at
+      `,
+    }).pipe(Effect.mapError(sqlError("updateClaim")));
 
   const getLane: CrewStoreService["getLane"] = (crew, lane) =>
     selectLanes("lane", crew, lane).pipe(Effect.map((rows) => Option.fromNullishOr(rows[0])));
@@ -786,6 +905,84 @@ export const make = Effect.gen(function* () {
       `.pipe(
         Effect.mapError(sqlError("markFlushed")),
         Effect.andThen(publish({ crew, table: "definition" })),
+      ),
+    getClaim,
+    claims: (crew) => selectClaims("crew", crew),
+    updateClaim: (host, change) =>
+      sql
+        .withTransaction(
+          Effect.gen(function* () {
+            const before = yield* getClaim(host);
+            const after = change(before);
+            yield* writeClaim(host, after);
+            return { before, after };
+          }),
+        )
+        .pipe(
+          Effect.catchTag("SqlError", (cause) => Effect.fail(sqlError("updateClaim")(cause))),
+          Effect.tap(({ before, after }) =>
+            Option.match(
+              Option.orElse(after, () => before),
+              {
+                onNone: () => Effect.void,
+                onSome: (row) => publish({ crew: row.crew, table: "claim" }),
+              },
+            ),
+          ),
+          Effect.map(({ after }) => after),
+        ),
+    memory: (crew, member) =>
+      sql<MemorySqlRow>`
+        SELECT
+          crew, member, id, kind, topic, text,
+          paths_json AS "paths",
+          verified_at AS "verifiedAt",
+          from_assignment AS "fromAssignment",
+          updated_at AS "updatedAt"
+        FROM crew_memory
+        WHERE crew = ${crew} AND member = ${member}
+        ORDER BY updated_at, id
+      `.pipe(
+        Effect.mapError(sqlError("memory")),
+        Effect.flatMap((rows) =>
+          Effect.forEach(rows, (row) =>
+            decode("memory", decodeMemoryPaths(row.paths)).pipe(
+              Effect.map((paths): CrewMemoryRow => ({ ...row, paths })),
+            ),
+          ),
+        ),
+      ),
+    putMemory: (row) =>
+      Effect.gen(function* () {
+        const paths = yield* decode("putMemory", encodeMemoryPaths(row.paths));
+        yield* sql`
+          INSERT INTO crew_memory (
+            crew, member, id, kind, topic, text, paths_json, verified_at, from_assignment,
+            updated_at
+          ) VALUES (
+            ${row.crew}, ${row.member}, ${row.id}, ${row.kind}, ${row.topic}, ${row.text},
+            ${paths}, ${row.verifiedAt}, ${row.fromAssignment}, ${row.updatedAt}
+          )
+          ON CONFLICT (crew, member, id) DO UPDATE SET
+            kind = excluded.kind,
+            topic = excluded.topic,
+            text = excluded.text,
+            paths_json = excluded.paths_json,
+            verified_at = excluded.verified_at,
+            from_assignment = excluded.from_assignment,
+            updated_at = excluded.updated_at
+        `.pipe(Effect.mapError(sqlError("putMemory")));
+        yield* publish({ crew: row.crew, table: "memory" });
+      }),
+    deleteMemory: (crew, member, id) =>
+      sql`DELETE FROM crew_memory WHERE crew = ${crew} AND member = ${member} AND id = ${id}`.pipe(
+        Effect.mapError(sqlError("deleteMemory")),
+        Effect.andThen(publish({ crew, table: "memory" })),
+      ),
+    clearMemory: (crew, member) =>
+      sql`DELETE FROM crew_memory WHERE crew = ${crew} AND member = ${member}`.pipe(
+        Effect.mapError(sqlError("clearMemory")),
+        Effect.andThen(publish({ crew, table: "memory" })),
       ),
     putLane: (row) =>
       writeLane(row).pipe(Effect.andThen(publish({ crew: row.crew, table: "lane" }))),

@@ -19,7 +19,10 @@
  * owns connecting and starting one, exactly as selecting the row does.
  */
 import type { EnvironmentId } from "@t3tools/contracts";
-import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
+import {
+  resolvePrimaryConversation,
+  type ZeropsConversationCandidate,
+} from "@t3tools/client-runtime/zerops";
 import { findCandidate, type CandidateLookup } from "@t3tools/client-runtime/zerops/projections";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useRouter } from "@tanstack/react-router";
@@ -30,8 +33,31 @@ import { buildThreadRouteParams } from "../threadRoutes";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 
-/** Writes `ask` into the Mate's composer and goes there. */
-export type AskMate = (mateProjectId: string | undefined, ask: string) => void;
+/**
+ * Writes `ask` into the Mate's composer and goes there: its main chat, or the
+ * person chat `options.threadId` names (*Deliver* asks in the chat you are in).
+ */
+export type AskMate = (
+  mateProjectId: string | undefined,
+  ask: string,
+  options?: { readonly threadId?: string | undefined },
+) => void;
+
+/**
+ * The chat an ask goes to among a Mate's threads: the one named when it is a
+ * person chat of this Mate (open, not a crewmate's), otherwise the main chat.
+ */
+export function askMateThread<T extends ZeropsConversationCandidate>(
+  threads: ReadonlyArray<T>,
+  threadId: string | undefined,
+): T | undefined {
+  const { primary, hidden } = resolvePrimaryConversation(threads);
+  const named =
+    threadId === undefined
+      ? undefined
+      : [primary, ...hidden].find((thread) => thread?.id === threadId);
+  return named ?? primary;
+}
 
 /**
  * Where an ask goes, from the one lookup of the Mate it names. Only a Mate found connected to an
@@ -62,22 +88,23 @@ export function useAskMate(
   const { onNavigate } = options;
 
   return useCallback<AskMate>(
-    (mateProjectId, ask) => {
+    (mateProjectId, ask, options) => {
       const target: AskMateTarget =
         mateProjectId === undefined
           ? { kind: "projects" }
           : askMateTarget(findCandidate(listing, (row) => row.project.id === mateProjectId));
-      const { primary } =
+      const chat =
         target.kind === "projects"
-          ? { primary: undefined }
-          : resolvePrimaryConversation(
+          ? undefined
+          : askMateThread(
               threads.filter((thread) => thread.environmentId === target.environmentId),
+              options?.threadId,
             );
-      if (target.kind === "projects" || primary === undefined) {
+      if (target.kind === "projects" || chat === undefined) {
         void router.navigate({ to: "/zerops" });
         return;
       }
-      const threadRef = scopeThreadRef(target.environmentId, primary.id);
+      const threadRef = scopeThreadRef(target.environmentId, chat.id);
       // Sent, not left in the box: every caller now confirms first, so the
       // person has already read the exact request and pressed Send (spec §5.4
       // retired for these surfaces by the owner, 2026-09-19).

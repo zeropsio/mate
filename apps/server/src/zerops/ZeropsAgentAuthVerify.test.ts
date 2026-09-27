@@ -169,6 +169,21 @@ describe("spawnAgentAuthProbe (real ProcessRunner)", () => {
     ),
   );
 
+  it.effect("runs a login's check with that login's home in its environment", () =>
+    withProcessRunner((runner) =>
+      Effect.gen(function* () {
+        const spawn = spawnAgentAuthProbe(runner, process.cwd(), {
+          CLAUDE_CONFIG_DIR: "/home/zerops/.mate/logins/claudeAgent-work",
+        });
+        const outcomeResult = yield* spawn(process.execPath, [
+          "-e",
+          'process.stdout.write(`${process.env.CLAUDE_CONFIG_DIR}|${process.env.PATH ? "path" : ""}`)',
+        ]);
+        expect(outcomeResult.stdout).toBe("/home/zerops/.mate/logins/claudeAgent-work|path");
+      }),
+    ),
+  );
+
   it.effect("reduces a missing binary to the empty outcome (unknown once parsed)", () =>
     withProcessRunner((runner) =>
       Effect.gen(function* () {

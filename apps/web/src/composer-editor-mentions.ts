@@ -222,3 +222,28 @@ export function splitPromptIntoComposerSegments(
 
   return segments;
 }
+
+/** `@handle` at a word start, not part of an address, ending where a handle cannot go on. */
+const CREWMATE_MENTION_REGEX = /(?<![\w@.-])@([a-z0-9-]{1,20})(?![a-z0-9-])/g;
+
+/**
+ * The crewmates a *Tell the crew* message names, as mention nodes with source
+ * `crewmate` and the handle as their path (PRD §5.3): in the order typed, each
+ * once, and only handles on the crew. Unlike a file mention, a crewmate mention
+ * may end the message or touch punctuation ("@erik, write the plan").
+ */
+export function collectCrewmateMentions(
+  prompt: string,
+  handles: ReadonlyArray<string>,
+): Array<Extract<ComposerPromptSegment, { type: "mention" }>> {
+  const roster = new Set(handles);
+  const seen = new Set<string>();
+  const mentions: Array<Extract<ComposerPromptSegment, { type: "mention" }>> = [];
+  for (const match of prompt.matchAll(CREWMATE_MENTION_REGEX)) {
+    const handle = match[1] ?? "";
+    if (!roster.has(handle) || seen.has(handle)) continue;
+    seen.add(handle);
+    mentions.push({ type: "mention", path: handle, source: "crewmate" });
+  }
+  return mentions;
+}
