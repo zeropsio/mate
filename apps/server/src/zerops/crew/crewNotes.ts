@@ -44,6 +44,7 @@ const apply = (memory: EngineMemory, note: CrewNote, run: string | null, at: str
       return;
     case "lead-woken":
       memory.woken.add(note.key);
+      memory.lastWakeAt = Math.max(memory.lastWakeAt ?? 0, Date.parse(at));
       if (run !== null) memory.wakeCounts.set(run, (memory.wakeCounts.get(run) ?? 0) + 1);
       return;
     case "escalated":

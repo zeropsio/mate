@@ -332,7 +332,7 @@ describe("CrewEngine lead", () => {
   );
 
   it.live(
-    "a question the lead passes on reaches you at once; the next one goes to the lead again",
+    "a question the lead passes on reaches you at once; the next one waits on the lead again",
     () =>
       withCrewEngine((world) =>
         Effect.gen(function* () {
@@ -367,9 +367,7 @@ describe("CrewEngine lead", () => {
             question: "Serif or sans?",
           });
           yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-          yield* eventually(
-            Effect.map(lastTurnText(world, lead), (text) => text.includes("Serif or sans?")),
-          );
+          // The new question waits on the lead (its wake keeps two minutes from the last), not on you.
           assert.deepStrictEqual(
             [
               asked.attention.map((row) => [row.kind, row.handle, row.text]),
@@ -482,5 +480,36 @@ describe("CrewEngine lead", () => {
           );
         }),
     ]),
+  );
+
+  it.live("the lead's wakes stand at least two minutes apart", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* withLead(world);
+        yield* startRun({ landing: "lead" });
+        const thread = yield* firstTurn(world, () =>
+          write(world.root, ".crew/backend/ok.txt", "ok\n"),
+        );
+        yield* (yield* CrewToolHost).report(yield* memberOf(thread), {
+          status: "blocked",
+          summary: "Which currency?",
+          question: "CZK or EUR?",
+        });
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        const lead = yield* leadThread(world);
+        yield* wokenWith(world, lead, "@backend asks");
+        yield* leadReplies(world, lead, "Use EUR.");
+        yield* snapshotWhere((current) => current.board.tasks[0]?.state === "working");
+        yield* world.publish(spiEvent("turn.started", thread, {}));
+        yield* reportDone(thread);
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        yield* snapshotWhere((current) => current.board.tasks[0]?.state === "review");
+        yield* Effect.sleep("500 millis");
+        const wakes = (yield* dispatchedOf(world, "thread.turn.start")).filter(
+          (turn) => turn.threadId === lead,
+        );
+        assert.strictEqual(wakes.length, 1);
+      }),
+    ),
   );
 });

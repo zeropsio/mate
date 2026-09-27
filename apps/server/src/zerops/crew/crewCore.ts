@@ -160,6 +160,10 @@ export interface EngineMemory {
   readonly woken: Set<string>;
   /** Wakes each run has spent, capped per run (CONCEPT §5 caps). */
   readonly wakeCounts: Map<string, number>;
+  /** When the lead was last woken (clock ms), for the spacing between wakes. */
+  lastWakeAt: number | null;
+  /** A wake waits for its spacing to pass. */
+  wakeWaiting: boolean;
   /** Questions the lead passed on to the person: shown at once, not after 15 minutes. */
   readonly escalated: Set<string>;
   /** The lead's own question for the person, per lead. */
@@ -219,6 +223,8 @@ export const makeMemory = (): EngineMemory => ({
   leadWakes: new Map(),
   woken: new Set(),
   wakeCounts: new Map(),
+  lastWakeAt: null,
+  wakeWaiting: false,
   escalated: new Set(),
   leadQuestions: new Map(),
   lastText: new Map(),
