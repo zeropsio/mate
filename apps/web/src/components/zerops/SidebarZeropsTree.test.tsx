@@ -2319,6 +2319,28 @@ describe("a Mate's peek", () => {
     expect(peek()).toBeNull();
   });
 
+  it("is offered in the Mate's own menu, which pins it open", () => {
+    const tree = mount(
+      <PortalGate closed>
+        <SidebarZeropsTree
+          candidates={[CRM_DEV_CONNECTED]}
+          complete
+          getActivity={() => spoken}
+          getMateActions={() => ({ muted: false, entries: [] })}
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+          renderPeek={renderPeek}
+        />
+      </PortalGate>,
+    );
+    const menu = tree.root.findByType(MateMenu);
+    expect(menu.props.onPeek).toBeTypeOf("function");
+    act(() => {
+      menu.props.onPeek();
+    });
+    expect(peek()).toEqual({ projectId: "crm-dev", mode: "pinned" });
+  });
+
   it("opens with Space and keeps it, and Space again puts it away — never pressing the row", () => {
     const tree = mounted();
     let prevented = 0;

@@ -724,7 +724,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             if (peek?.projectId === projectId && peek.mode === "pinned") close();
             else open(projectId, "pinned");
           },
-          onLongPress: () => {
+          onPin: () => {
             useSidebarPeek.getState().open(projectId, "pinned");
           },
           menuRequested: menuFor === projectId,
@@ -1488,8 +1488,8 @@ export interface MateRowPeek {
   readonly onHover: (entering: boolean) => void;
   /** Space: open the peek and keep it, or close it. */
   readonly onToggle: () => void;
-  /** A finger held on the row. */
-  readonly onLongPress: () => void;
+  /** Pins its peek open: a finger held on the row, or *Peek* in its menu. */
+  readonly onPin: () => void;
   /** Its peek asked for its menu (a phone's *More*). */
   readonly menuRequested: boolean;
   readonly onMenuRequestSeen: () => void;
@@ -1618,7 +1618,7 @@ function MateRow<T extends RosterCandidate>({
         cancelLongPress();
         longPress.current.timer = setTimeout(() => {
           longPress.current.fired = true;
-          peek.onLongPress();
+          peek.onPin();
         }, 480);
       }}
       onPointerEnter={(event) => {
@@ -1834,6 +1834,14 @@ function MateRow<T extends RosterCandidate>({
               setMenuOpen(false);
               onSelect(candidate);
             }}
+            onPeek={
+              peek === undefined
+                ? undefined
+                : () => {
+                    setMenuOpen(false);
+                    peek.onPin();
+                  }
+            }
             onRename={() => {
               setMenuOpen(false);
               setRenaming(true);
