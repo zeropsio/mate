@@ -23,9 +23,10 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
-import { afterLandCard, fixCard, resolveCard } from "./crewCards.ts";
+import { afterLandCard, fixCard, landedSeamWords, resolveCard } from "./crewCards.ts";
 import {
   asRefusal,
+  currentStint,
   isWorking,
   memberOf,
   refuse,
@@ -39,6 +40,7 @@ import { claimShown } from "./crewClaims.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { dropHandoff } from "./crewMemoryCommands.ts";
 import { readDeclaredPorts } from "./crewPorts.ts";
+import { appendSeam } from "./crewSeamLines.ts";
 import type { CrewAssignmentRow } from "./CrewStore.ts";
 import { readTaskCheck, readTaskWait } from "./crewTaskData.ts";
 import {
@@ -349,6 +351,15 @@ export const land = (
             payload: { task: landing.assignment, commit: outcome.commit },
           }),
         );
+        const stint = currentStint((yield* core.applied) ?? applied, member.row.handle);
+        if (stint !== undefined) {
+          yield* appendSeam(core, stint.threadId, landedSeamWords(landing.number, outcome.commit), {
+            seam: "landed",
+            taskId: landing.assignment,
+            number: landing.number,
+            commit: outcome.commit,
+          });
+        }
         yield* dropHandoff(core, member.row.handle, landing.assignment);
         if (member.row.restartAfterMerge) yield* restartApp(core, member);
         if (member.spec.afterLandRestart) {

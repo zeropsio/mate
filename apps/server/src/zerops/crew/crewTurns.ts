@@ -32,7 +32,7 @@ import { moveClaim, releaseAfterTurn, settleClaim } from "./crewClaims.ts";
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
 import { crewStateRef } from "./CrewStateRef.ts";
 import { attemptRef, type LaneSpec } from "./CrewWorkspace.ts";
-import { rotate } from "./CrewStints.ts";
+import { rotate, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
 import { continueAfterSave, openTaskOf, parkTask, pump } from "./crewTasks.ts";
 
@@ -168,11 +168,14 @@ const turnEnded = (
     }
     const handle = stint.member;
     const pendingContinue = memory.continueAtTurnEnd.get(handle);
-    if (memory.freshAtTurnEnd.has(handle) || pendingContinue !== undefined) {
-      memory.freshAtTurnEnd.delete(handle);
-      memory.continueAtTurnEnd.delete(handle);
-      yield* rotate(core, applied, member, "prompt-changed");
-      if (pendingContinue !== undefined) yield* continueAfterSave(core, handle, pendingContinue);
+    const freshReason = memory.freshAtTurnEnd.get(handle);
+    memory.freshAtTurnEnd.delete(handle);
+    memory.continueAtTurnEnd.delete(handle);
+    if (pendingContinue !== undefined) {
+      yield* rotate(core, applied, member, freshReason ?? "prompt-changed");
+      yield* continueAfterSave(core, handle, pendingContinue);
+    } else if (freshReason !== undefined) {
+      yield* rotateBetweenTurns(core, applied, member, freshReason);
     }
     const host = member.row.host;
     if (host !== null && (shaped?.turn === "claim-start" || shaped?.turn === "claim-release")) {
