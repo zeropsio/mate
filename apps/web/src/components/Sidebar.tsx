@@ -228,6 +228,9 @@ import { SidebarZeropsTree, type SidebarProjectFlow } from "./zerops/SidebarZero
 import { sidebarStopReads } from "./zerops/SidebarZeropsTree.logic";
 import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
+import { useSidebarWaiting } from "../zerops/useSidebarWaiting";
+import { SidebarWaitingStack } from "./zerops/SidebarWaitingStack";
+
 import { SidebarMatePeekLive } from "./zerops/SidebarMatePeekLive";
 import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
 import { placedBirthsIn, useZeropsBirths } from "../zerops/zeropsBirths";
@@ -1741,6 +1744,9 @@ const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
   );
 });
 
+/** Until Mine / Everyone narrows it, the menu shows every Mate. */
+const showEveryMate = () => true;
+
 /** How the menu's Mate tree names the listing it is drawn from. */
 const ZEROPS_SIDEBAR_SURFACE = {
   subject: "your projects",
@@ -2290,6 +2296,14 @@ export default function Sidebar() {
   const zeropsAgentActivity = useZeropsAgentActivity();
   // Each Mate's own menu: the projects screen's verbs, and this viewer's own.
   const zeropsMateMenus = useSidebarMateMenus({ threads });
+  // The Mates waiting on the viewer, for the header's faces and ⌥↓.
+  const zeropsActivityOf = useCallback(
+    (candidate: (typeof zeropsCandidates)[number]) =>
+      candidate.environmentId === undefined
+        ? undefined
+        : zeropsAgentActivity.get(candidate.environmentId),
+    [zeropsAgentActivity],
+  );
 
   // The row for the environment whose conversation is open. A fresh draft
   // has no thread yet, but it knows its environment — and that is the one
@@ -2303,6 +2317,18 @@ export default function Sidebar() {
     );
     return open.kind === "found" ? open.row.project.id : null;
   }, [routeDraftThread?.environmentId, routeThreadRef?.environmentId, zeropsListing]);
+  const zeropsWaiting = useSidebarWaiting({
+    candidates: zeropsCandidates,
+    activityOf: zeropsActivityOf,
+    shown: showEveryMate,
+    activeProjectId: activeZeropsProjectId,
+    beforeReveal: isMobile
+      ? () => {
+          setOpenMobile(true);
+        }
+      : undefined,
+    enabled: zeropsSignedIn,
+  });
 
   // Settled threads stay in the live shell stream (settled ≠ archived), so
   // the partition works directly off live shells: no archived-snapshot
@@ -3786,7 +3812,14 @@ export default function Sidebar() {
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
   return (
     <>
-      <SidebarChromeHeader isElectron={isElectron} />
+      <SidebarChromeHeader
+        isElectron={isElectron}
+        waiting={
+          zeropsSignedIn ? (
+            <SidebarWaitingStack mates={zeropsWaiting.mates} onNext={zeropsWaiting.next} />
+          ) : undefined
+        }
+      />
       <SidebarContent
         fixedHeader={
           // Lifted above the stage backdrop, whose fade bleeds below the

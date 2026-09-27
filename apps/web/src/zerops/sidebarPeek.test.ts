@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
-import { useSidebarPeek } from "./sidebarPeek";
+import { nextWaitingMate, useSidebarPeek } from "./sidebarPeek";
 
 afterEach(() => {
   useSidebarPeek.getState().close();
@@ -57,5 +57,33 @@ describe("a Mate's menu, asked for from its peek", () => {
     expect(useSidebarPeek.getState().menuFor).toBe("nova");
     useSidebarPeek.getState().askForMenu(null);
     expect(useSidebarPeek.getState().menuFor).toBeNull();
+  });
+});
+
+describe("nextWaitingMate — the next Mate that waits on you, in the menu's order", () => {
+  const order = ["nova", "kai", "dara", "juno", "zed", "mika"];
+  const waiting = new Set(["kai", "juno", "mika"]);
+  it.each([
+    { case: "after the one in view", cursor: "kai", next: "juno" },
+    { case: "after a Mate that does not wait", cursor: "dara", next: "juno" },
+    { case: "round from the last", cursor: "mika", next: "kai" },
+    { case: "from the top with nothing in view", cursor: null, next: "kai" },
+    { case: "from the top when the one in view is gone", cursor: "gone", next: "kai" },
+  ])("goes $case", ({ cursor, next }) => {
+    expect(nextWaitingMate(order, waiting, cursor)).toBe(next);
+  });
+
+  it("stays on the one Mate that waits, and finds nobody where nobody waits", () => {
+    expect(nextWaitingMate(order, new Set(["juno"]), "juno")).toBe("juno");
+    expect(nextWaitingMate(order, new Set(), "kai")).toBeUndefined();
+  });
+});
+
+describe("the menu's order and the Mate in view", () => {
+  it("keeps the order the tree drew its Mates in, and where the eye is", () => {
+    useSidebarPeek.getState().setMateOrder(["a", "b"]);
+    useSidebarPeek.getState().setCursor("b");
+    expect(useSidebarPeek.getState().mateOrder).toEqual(["a", "b"]);
+    expect(useSidebarPeek.getState().cursor).toBe("b");
   });
 });

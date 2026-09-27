@@ -488,6 +488,38 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   const phone = useIsMobile();
   const peekState = useSidebarPeek((state) => state.peek);
   const menuFor = useSidebarPeek((state) => state.menuFor);
+  // A surface's ask to show a Mate (the header's waiting faces): open its
+  // project, then — once its row is drawn — focus it and pin its peek.
+  const revealing = useSidebarPeek((state) => state.revealing);
+  const answeredReveal = useRef(0);
+  const focusAfterDraw = useRef<string | null>(null);
+  // The Mates in the order drawn — collapsed projects included — for the
+  // header's "next one that waits"; written after each render, not during it.
+  const mateOrder = useRef<ReadonlyArray<string>>([]);
+  useEffect(() => {
+    useSidebarPeek.getState().setMateOrder(mateOrder.current);
+  });
+  const [, setRevealDraw] = useState(0);
+  useEffect(() => {
+    if (revealing === null || revealing.seq === answeredReveal.current) return;
+    answeredReveal.current = revealing.seq;
+    const groupId = groupIdOf(candidates, revealing.projectId);
+    if (groupId !== undefined) setCollapsed((current) => withCollapsed(current, groupId, false));
+    focusAfterDraw.current = revealing.projectId;
+    setRevealDraw((draws) => draws + 1);
+  }, [candidates, revealing]);
+  useEffect(() => {
+    const projectId = focusAfterDraw.current;
+    if (projectId === null) return;
+    const row = treeRef.current?.querySelector<HTMLElement>(
+      `[data-zerops-mate-row="${projectId}"] [data-zerops-surface="sidebar-mate"]`,
+    );
+    if (row === null || row === undefined) return;
+    focusAfterDraw.current = null;
+    row.focus({ preventScroll: true });
+    row.scrollIntoView({ block: "nearest" });
+    useSidebarPeek.getState().open(projectId, "pinned");
+  });
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearTimer = (timer: { current: ReturnType<typeof setTimeout> | null }) => {
@@ -618,6 +650,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           menuRequested: menuFor === projectId,
           onMenuRequestSeen: () => {
             useSidebarPeek.getState().askForMenu(null);
+          },
+          onFocus: () => {
+            useSidebarPeek.getState().setCursor(projectId);
           },
         };
   const selectMate = (candidate: T) => {
@@ -847,6 +882,14 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   );
   const ungrouped = view.ungrouped.map((item) => ({ item, role: undefined }));
   const ungroupedMates = ungrouped.some(({ item }) => hasMate(item));
+  mateOrder.current = [
+    ...groups.flatMap(({ environments }) =>
+      environments.filter(({ item }) => hasMate(item)).map(({ item }) => item.project.id),
+    ),
+    ...(ungroupedMates
+      ? ungrouped.filter(({ item }) => hasMate(item)).map(({ item }) => item.project.id)
+      : []),
+  ];
 
   // The projects drawn, in order: a move by keyboard or by drag names its
   // place by these neighbours, and the order it writes still holds the rest.
@@ -1256,6 +1299,8 @@ export interface MateRowPeek {
   /** Its peek asked for its menu (a phone's *More*). */
   readonly menuRequested: boolean;
   readonly onMenuRequestSeen: () => void;
+  /** The row took the focus: the eye is on this Mate now. */
+  readonly onFocus: () => void;
 }
 
 /** What a heading needs to move its project; see {@link ProjectHeader}'s `reorder`. */
@@ -1420,6 +1465,9 @@ function MateRow<T extends RosterCandidate>({
             event.preventDefault();
             openMenu();
           }
+        }}
+        onFocus={() => {
+          peek?.onFocus();
         }}
         onKeyUp={(event) => {
           if (event.key === " " && peek !== undefined) event.preventDefault();

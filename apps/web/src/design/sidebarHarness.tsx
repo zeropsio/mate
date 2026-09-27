@@ -41,6 +41,8 @@ import { PlusIcon } from "lucide-react";
 import { MateLockup } from "~/components/MateLockup";
 import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 import { SidebarZeropsAccount } from "~/components/zerops/SidebarZeropsAccount";
+import { SidebarWaitingStack } from "~/components/zerops/SidebarWaitingStack";
+import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
 import { MatePeekCard } from "~/components/zerops/SidebarMatePeek";
 import type { MatePeekDecision, MatePeekStep } from "~/components/zerops/SidebarMatePeek.logic";
 import { askedLabelFor } from "~/components/zerops/SidebarMatePeek.logic";
@@ -674,6 +676,9 @@ const OWNERS = new Map<string, ZeropsMateOwner>([
   ["todo-vera", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: false }],
 ]);
 
+const activityOfCandidate = (item: ZeropsCandidate) => ACTIVITY.get(item.project.id);
+const showAll = () => true;
+
 const ACCOUNT = zeropsAccountDisplay({
   email: "ada@example.com",
   fullName: "Ada Lovelace",
@@ -688,14 +693,24 @@ const ORGANIZATION = { id: "org-acme", name: "Acme", membershipId: "m-acme" };
  * `?w=` sets its width; the owner runs it near 368, the default is 256.
  */
 function SidebarFrame({ width }: { readonly width: number }) {
+  const waiting = useSidebarWaiting({
+    candidates: CANDIDATES,
+    activityOf: activityOfCandidate,
+    shown: showAll,
+    activeProjectId: "links-enzo",
+    enabled: true,
+  });
   return (
     <aside
       className="flex h-screen shrink-0 flex-col border-e border-border bg-sidebar text-sidebar-foreground"
       data-sidebar="sidebar"
       style={{ width }}
     >
-      <header className="flex h-13 shrink-0 items-center gap-2 px-4">
+      <header className="flex h-13 shrink-0 items-center gap-2 ps-4">
         <MateLockup className="h-6 w-auto" decorative />
+        <div className="ms-auto flex w-24 shrink-0 items-center justify-end pe-3">
+          <SidebarWaitingStack mates={waiting.mates} onNext={waiting.next} />
+        </div>
       </header>
       <div className="shrink-0 px-2 pb-2">
         <button
@@ -711,7 +726,7 @@ function SidebarFrame({ width }: { readonly width: number }) {
           candidates={CANDIDATES}
           className="mb-2"
           complete
-          getActivity={(item) => ACTIVITY.get(item.project.id)}
+          getActivity={activityOfCandidate}
           getFlow={(groupId) => FLOWS.get(groupId)}
           getOwner={(item) => OWNERS.get(item.project.id)}
           getMateActions={(item, live) => ({
