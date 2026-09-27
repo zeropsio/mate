@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   browserFiguresLine,
   browserLiveCaption,
+  gitPushClosing,
+  gitPushVoice,
   humanizeCheckName,
   humanizeToolName,
   operationStatusWord,
@@ -213,6 +215,47 @@ describe("operationStatusWord — failed phase", () => {
   it("subdomain done is Enabled or Disabled by action", () => {
     expect(operationStatusWord("subdomain", "done", { action: "enable" })).toBe("Enabled");
     expect(operationStatusWord("subdomain", "done", { action: "disable" })).toBe("Disabled");
+  });
+});
+
+describe("a git push's words — a deploy only once the build it triggered landed", () => {
+  it.each([
+    { phase: "running", resultStatus: undefined, word: "Pushing" },
+    { phase: "done", resultStatus: "PUSHED", word: "Pushed" },
+    { phase: "done", resultStatus: "NOTHING_TO_PUSH", word: "Up to date" },
+    { phase: "done", resultStatus: "DELIVERED", word: "Deployed" },
+    { phase: "failed", resultStatus: "PUSHED", word: "Failed" },
+    { phase: "uncertain", resultStatus: "PUSHED", word: "Unconfirmed" },
+  ] as const)("$phase with $resultStatus is $word", ({ phase, resultStatus, word }) => {
+    expect(operationStatusWord("deploy", phase, { gitPush: true, resultStatus })).toBe(word);
+  });
+
+  it("the voice says a push", () => {
+    expect(gitPushVoice("appdev")).toBe("Pushing appdev.");
+  });
+
+  it.each([
+    {
+      name: "the pull request the branch lands through",
+      outcome: "pushed",
+      context: { branch: "mate/fen", pullRequest: 8 },
+      closing: "Pushed to pull request #8.",
+    },
+    {
+      name: "the branch, without a pull request",
+      outcome: "pushed",
+      context: { branch: "main" },
+      closing: "Pushed to main.",
+    },
+    { name: "where, when neither is known", outcome: "pushed", context: {}, closing: "Pushed." },
+    {
+      name: "that there was nothing to push",
+      outcome: "upToDate",
+      context: { branch: "main" },
+      closing: "Nothing new to push.",
+    },
+  ] as const)("the closing names $name", ({ outcome, context, closing }) => {
+    expect(gitPushClosing(outcome, context)).toBe(closing);
   });
 });
 

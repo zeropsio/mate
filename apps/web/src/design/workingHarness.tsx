@@ -19,6 +19,7 @@ import type { ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/da
 import {
   ConversationAfterWork,
   ConversationWorking,
+  THOUGHT_WORDS_CLASS,
   type WorkingActivity,
   type WorkingBubble,
 } from "~/components/chat/ConversationWorking";
@@ -46,7 +47,7 @@ const note = (key: string, words: string): WorkingBubble => ({
 const thought = (key: string, words: string): WorkingBubble => ({
   kind: "thought",
   key,
-  body: <p className="text-muted-foreground text-sm leading-relaxed">{words}</p>,
+  body: <p className={THOUGHT_WORDS_CLASS}>{words}</p>,
 });
 
 /** A stretch some way in: it thought, said, thought again — oldest first. */

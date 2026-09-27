@@ -738,9 +738,10 @@ export const OrchestrationThreadShell = Schema.Struct({
   latestUserMessageAt: Schema.NullOr(IsoDateTime),
   /**
    * The conversation's last completed user or assistant message, previewed,
-   * and the last thing the person asked — the task, as they put it. Optional
-   * so payloads from pre-preview servers still decode; absent or null =
-   * nothing said yet.
+   * and the task as the person put it: the ask that started the latest run,
+   * never a follow-up sent into a running turn (a server from before it told
+   * them apart keeps the person's last ask). Optional so payloads from
+   * pre-preview servers still decode; absent or null = nothing said yet.
    */
   latestMessagePreview: Schema.optional(Schema.NullOr(ThreadMessagePreview)),
   latestUserMessagePreview: Schema.optional(Schema.NullOr(ThreadMessagePreview)),

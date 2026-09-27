@@ -41,6 +41,7 @@ import {
   type SlashCommand,
   type Stretch,
   type WorkLineFace,
+  stretchOperations,
 } from "./conversation.logic";
 
 export type TimelineLatestTurn = Pick<
@@ -391,6 +392,8 @@ type MessagesTimelineRowBody =
       imageOnly: boolean;
       showAssistantMeta: boolean;
       revertTurnCount?: number | undefined;
+      /** The Mate's last word under a run that has nothing to report: see `FoldsFrom`. */
+      foldsFrom?: FoldsFrom;
     }
   | {
       /**
@@ -417,6 +420,8 @@ type MessagesTimelineRowBody =
       fallback: string | null;
       /** What its calls came to, in words ("Read 4 files · ran 2 commands"); null when it made none. */
       summary: string | null;
+      /** It did something — a call, a question, a helper, an operation: it "worked", never only "thought". */
+      worked: boolean;
       noteCount: number;
       /** The stretch has a log to open. */
       hasLog: boolean;
@@ -436,6 +441,8 @@ type MessagesTimelineRowBody =
       createdAt: string;
       stretchKey: string;
       turnKey: string;
+      /** The card it stands in: its line and edge are keyed by it. */
+      cardKey: string;
       stream: ReadonlyArray<WorkingStreamItem>;
       /** What its hands are on right now; null while it writes. */
       activity: TurnHeaderActivity | null;
@@ -466,6 +473,13 @@ type MessagesTimelineRowBody =
       id: string;
       createdAt: string;
       message: ChatMessage;
+      /**
+       * Words the person answered stand beside the Mate's face in its bubble;
+       * a run's last words, with no answer after them, in the answer's hand.
+       */
+      hand: "bubble" | "prose";
+      /** A run's last words, under a run that has nothing to report: see `FoldsFrom`. */
+      foldsFrom?: FoldsFrom;
     }
   | {
       /**
@@ -481,6 +495,19 @@ type MessagesTimelineRowBody =
         readonly question: string;
         readonly answer: string;
       }>;
+    }
+  | {
+      /**
+       * Where a message the person sent into the run reached the Mate, in an
+       * opened log: their words, one line, on their side — the message itself
+       * stands on the page above the card.
+       */
+      kind: "log-person";
+      id: string;
+      createdAt: string;
+      message: ChatMessage;
+      /** The client's own placeholder stands in for the text: the message is its images. */
+      imageOnly: boolean;
     }
   | {
       /** A progress note in an opened log: the Mate's words on the way, in full. */
@@ -617,6 +644,20 @@ type MessagesTimelineRowBody =
 export type RowGap = "none" | "tight" | "line" | "block" | "turn";
 
 /**
+ * The run whose Mate at work stood where this row now begins: a run with
+ * nothing to report settles into its line alone, and the Mate's last word
+ * under it eases up from where the panel stood instead of jumping. Whether it
+ * does is the page's to know — only a panel it just drew folds.
+ */
+export interface FoldsFrom {
+  readonly turnKey: string;
+  /** The card the panel stood in: its line and edge are keyed by it. */
+  readonly cardKey: string;
+  /** The panel's card closed with it: its bottom edge is gone too. */
+  readonly cardClosed: boolean;
+}
+
+/**
  * Where a row sits in its stretch's card — the one frame a stretch of work
  * is drawn in, once it holds anything: its line is the card's top; the log,
  * the Mate at work, the words the person answered and the report its body; a
@@ -634,6 +675,7 @@ export type MessagesTimelineRow = MessagesTimelineRowBody & {
 
 function isLogRowBody(row: MessagesTimelineRow): boolean {
   switch (row.kind) {
+    case "log-person":
     case "log-note":
     case "log-activity":
     case "log-reasoning":
@@ -660,7 +702,10 @@ function closesTurn(row: MessagesTimelineRow): boolean {
 
 /** The Mate talking to the person: its line of copy and time keeps room under it already. */
 function isMateProse(row: MessagesTimelineRow): boolean {
-  return (row.kind === "message" && row.message.role === "assistant") || row.kind === "speech";
+  return (
+    (row.kind === "message" && row.message.role === "assistant") ||
+    (row.kind === "speech" && row.hand === "prose")
+  );
 }
 
 export function rowGap(
@@ -1352,6 +1397,8 @@ export function deriveMessagesTimelineRows(
     newSince?: string | null;
     /** The server's word on work that outlived the turn, while it runs on. */
     afterTurnWork?: "working" | "monitoring" | null;
+    /** The clock a running turn's last words wait against (`LAST_WORDS_GRACE_MS`). */
+    nowMs?: number;
   } & ConversationView,
 ): MessagesTimelineRow[] {
   const entries = input.timelineEntries;
@@ -1361,6 +1408,7 @@ export function deriveMessagesTimelineRows(
     runningTurnId: input.runningTurnId ?? null,
     isWorking: input.isWorking,
     activeTurnStartedAt: input.activeTurnStartedAt,
+    ...(input.nowMs === undefined ? {} : { nowMs: input.nowMs }),
   });
   const turnByKey = new Map(structure.turns.map((turn) => [turn.key, turn]));
 
@@ -1662,12 +1710,37 @@ export function deriveMessagesTimelineRows(
           (isQuestionToolCall(candidate.entry) || candidate.entry.inputQuestions !== undefined),
       ),
     );
-    const summary =
+    // Starting a helper is work too: a run that only launched one read
+    // "thought for" (Nova, 2026-09-27).
+    const helpersStarted = turn.stretches.reduce(
+      (count, stretch) =>
+        count +
+        stretch.entries.reduce(
+          (inStretch, candidate) =>
+            inStretch +
+            (candidate.kind === "work" && candidate.entry.agentSpawn !== undefined
+              ? Math.max(1, candidate.entry.agentSpawn.agentTaskIds.length)
+              : 0),
+          0,
+        ),
+      0,
+    );
+    const did =
       shownActivity.length > 0
         ? summarizeActivity(shownActivity)
         : asked
           ? "Asked a question"
           : null;
+    const started =
+      helpersStarted === 0
+        ? null
+        : helpersStarted === 1
+          ? "started 1 helper"
+          : `started ${helpersStarted} helpers`;
+    const summary =
+      did !== null && started !== null
+        ? `${did} · ${started}`
+        : (did ?? (started === null ? null : started.charAt(0).toUpperCase() + started.slice(1)));
     const hasLog = turn.stretches.some((stretch) =>
       stretch.entries.some(
         (candidate) =>
@@ -1689,6 +1762,71 @@ export function deriveMessagesTimelineRows(
     // card for a frame, and the answer jumped up as it went (Nova,
     // 2026-09-26).
     const answeredAlone = turn.live && !hasLog && answer !== null;
+    const diff = turn.turnId === null ? null : (diffByTurnId.get(turn.turnId) ?? null);
+    const landed = landedByTurnKey.get(turn.key) ?? [];
+
+    // What the person and the Mate said to each other while the run went on
+    // stands on the page, in the order it was said: each message the person
+    // sent into the run under the Mate's words just before it, and each
+    // answer under the question it answers. The run's card follows it all —
+    // the Mate's own surface, never the person's words (the owner,
+    // 2026-09-27, of a run they wrote into seven times: "what exactly is
+    // this white wrapping?" — a white box around their own messages, the
+    // first of them outside it). The live card stays whole under them, its
+    // line with its panel, as a typing indicator stays under the last
+    // message.
+    const exchanges: MessagesTimelineRow[] = [];
+    const cardRows: MessagesTimelineRow[] = [];
+    turn.stretches.forEach((stretch, index) => {
+      if (index > 0) {
+        const before = turn.stretches[index - 1]!;
+        // The Mate's last words before the message — none when a question it
+        // asked, and the person's answer, came after them.
+        const answeredAt = before.entries.findLast(
+          (candidate) => candidate.kind === "work" && candidate.entry.inputAnswers !== undefined,
+        )?.createdAt;
+        const note = stretchNotes(before, turn.answer).at(-1) ?? null;
+        const said =
+          note !== null &&
+          (answeredAt === undefined || Date.parse(note.createdAt) >= Date.parse(answeredAt))
+            ? note
+            : null;
+        if (said !== null) {
+          exchanges.push({
+            kind: "speech",
+            id: `speech:${before.key}`,
+            createdAt: said.createdAt,
+            message: said.message,
+            hand: "bubble",
+          });
+        }
+        if (stretch.lead !== null && stretch.leadIndex !== null) {
+          const person = personRow(stretch.lead, stretch.leadIndex, stretch.aside);
+          exchanges.push(person);
+          if (open && person.kind === "message") {
+            cardRows.push({
+              kind: "log-person",
+              id: `log-person:${stretch.lead.id}`,
+              createdAt: stretch.lead.createdAt,
+              message: stretch.lead.message,
+              imageOnly: person.imageOnly,
+            });
+          }
+        }
+      }
+      for (const row of stretchContentRows({
+        stretch,
+        answer: turn.answer,
+        writing: turn.writing,
+        open,
+        view: input,
+        pauseRow: stretch === last ? pause : null,
+      })) {
+        (row.kind === "answer" ? exchanges : cardRows).push(row);
+      }
+    });
+    rows.push(...exchanges);
+
     const cardStart = rows.length;
     if ((turn.live && !answeredAlone) || hasLog || pausedHere)
       rows.push({
@@ -1705,40 +1843,21 @@ export function deriveMessagesTimelineRows(
         note: lastNote === null ? null : noteLine(lastNote.message.text),
         fallback: lastNote !== null ? null : pausedHere ? "Stopped by the usage limit" : summary,
         summary,
+        worked:
+          summary !== null ||
+          turn.stretches.some((stretch) => stretchOperations(stretch).length > 0),
         noteCount: notes.length,
         hasLog,
         open,
       });
 
-    turn.stretches.forEach((stretch, index) => {
-      if (index > 0) {
-        // What the person sent into the run, where it arrived, under the
-        // Mate's words just before it — which an opened log says itself.
-        const before = turn.stretches[index - 1]!;
-        const said = stretchNotes(before, turn.answer).at(-1) ?? null;
-        if (!open && said !== null) {
-          rows.push({
-            kind: "speech",
-            id: `speech:${before.key}`,
-            createdAt: said.createdAt,
-            message: said.message,
-          });
-        }
-        if (stretch.lead !== null && stretch.leadIndex !== null) {
-          rows.push(personRow(stretch.lead, stretch.leadIndex, stretch.aside));
-        }
-      }
-      rows.push(
-        ...stretchContentRows({
-          stretch,
-          answer: turn.answer,
-          writing: turn.writing,
-          open,
-          view: input,
-          pauseRow: stretch === last ? pause : null,
-        }),
-      );
-    });
+    // Settled and closed, the report names every change that landed: a line
+    // of its own for each would say it twice.
+    rows.push(
+      ...(turn.live || open
+        ? cardRows
+        : cardRows.filter((row) => !(row.kind === "event" && row.event.type === "landed"))),
+    );
 
     if (last.live && !answeredAlone) {
       // Under the person's answer the Mate at work starts afresh: its own
@@ -1750,6 +1869,7 @@ export function deriveMessagesTimelineRows(
         createdAt: last.startedAt,
         stretchKey: last.key,
         turnKey: turn.key,
+        cardKey: first.key,
         stream: stretchStream(last, turn.answer, turn.writing),
         activity: liveActivity(last, turn.writing),
         answering: answer !== null,
@@ -1759,14 +1879,14 @@ export function deriveMessagesTimelineRows(
     }
 
     // Settled, the Mate at work becomes the run's report — the same pills,
-    // where it was — and the Mate's answer follows it.
+    // where it was — easing from the panel's height, and the answer follows.
+    // Never before: words that read as an answer mid-run are a note once the
+    // Mate goes on, and a panel folded early would come back at full height.
+    let reported = false;
     if (!turn.live) {
-      const outcome = deriveOutcome({
-        turn,
-        landed: landedByTurnKey.get(turn.key) ?? [],
-        diff: turn.turnId === null ? null : (diffByTurnId.get(turn.turnId) ?? null),
-      });
+      const outcome = deriveOutcome({ turn, landed, diff });
       if (outcome !== null) {
+        reported = true;
         rows.push({
           kind: "outcome",
           id: outcome.key,
@@ -1779,7 +1899,14 @@ export function deriveMessagesTimelineRows(
     // conversation's own edge, as the person's messages do. A line with
     // nothing under it is no card — a closed log of a run that came to no
     // report is one quiet line, not an empty box.
-    if (rows[cardStart]?.kind === "work-line" && rows.length > cardStart + 1) {
+    const carded = rows[cardStart]?.kind === "work-line" && rows.length > cardStart + 1;
+    // With nothing to report, the Mate's last word under the run eases up
+    // from where its panel stood.
+    const foldsFrom: FoldsFrom | undefined =
+      reported || (turn.live && !answeredAlone)
+        ? undefined
+        : { turnKey: turn.key, cardKey: first.key, cardClosed: !carded };
+    if (carded) {
       rows.push({
         kind: "card-end",
         id: `card-end:${first.key}`,
@@ -1799,6 +1926,8 @@ export function deriveMessagesTimelineRows(
         id: `speech:${last.key}`,
         createdAt: speech.createdAt,
         message: speech.message,
+        hand: "prose",
+        ...(foldsFrom === undefined ? {} : { foldsFrom }),
       });
     }
     // The answer follows the card, settled or still streaming.
@@ -1812,6 +1941,7 @@ export function deriveMessagesTimelineRows(
         aside: false,
         imageOnly: false,
         showAssistantMeta: !answer.message.streaming,
+        ...(foldsFrom === undefined ? {} : { foldsFrom }),
       });
     }
     lastEnd = last.endedAt ?? last.startedAt;
@@ -1981,6 +2111,10 @@ export function computeStableMessagesTimelineRows(
  * compare by identity (a streamed message is a new object); everything the
  * derivation rebuilds compares by value.
  */
+function sameFold(a: FoldsFrom | undefined, b: FoldsFrom | undefined): boolean {
+  return a?.turnKey === b?.turnKey && a?.cardKey === b?.cardKey && a?.cardClosed === b?.cardClosed;
+}
+
 function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean {
   if (
     a.kind !== b.kind ||
@@ -2000,13 +2134,17 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.aside === bm.aside &&
         a.imageOnly === bm.imageOnly &&
         a.showAssistantMeta === bm.showAssistantMeta &&
-        a.revertTurnCount === bm.revertTurnCount
+        a.revertTurnCount === bm.revertTurnCount &&
+        sameFold(a.foldsFrom, bm.foldsFrom)
       );
     }
     case "log-note":
+    case "log-person":
       return a.message === (b as typeof a).message;
-    case "speech":
-      return a.message === (b as typeof a).message;
+    case "speech": {
+      const bs = b as typeof a;
+      return a.message === bs.message && a.hand === bs.hand && sameFold(a.foldsFrom, bs.foldsFrom);
+    }
     case "log-reasoning": {
       const br = b as typeof a;
       return (

@@ -9,8 +9,10 @@
  * (`mateMarkStateForThreadStatus`), and the subject — what it is on, or was
  * last on — is the running plan step while a turn runs and the server
  * reports one, else the last task as the person put it (the shell's
- * server-kept preview of their last message), which stays up while the Mate
- * is idle: a row that only ever said "Idle" told nobody which Mate this is.
+ * server-kept preview of the ask that started the latest run — a follow-up
+ * sent into a running turn is not the task; a server from before it told the
+ * two apart keeps their last ask), which stays up while the Mate is idle: a
+ * row that only ever said "Idle" told nobody which Mate this is.
  * The conversation's title is the fallback for a server that keeps no
  * preview — with one conversation per environment it names the first task,
  * forever. The snippet is the Mate's last words, off the same shell.

@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { ConversationWorking, type WorkingBubble } from "./ConversationWorking";
+import { ageClass, ConversationWorking, type WorkingBubble } from "./ConversationWorking";
 
 type SaidKind = "note" | "question" | "thought";
 
@@ -63,37 +63,35 @@ describe("the Mate's stream", () => {
     ]);
   });
 
-  // Its words to the person are a filled bubble, its corner toward the face;
-  // its thinking is text on a hairline, muted and in italics, with no fill —
-  // at every age, so a light thought never reads as an aged note, nor an aged
-  // note as a thought.
+  // Its words to the person are a chat bubble, its corner toward the face;
+  // its thinking is no bubble at all — no fill, no corner, no line — in
+  // italics, at every age, so the two are told apart at a glance (the owner,
+  // 2026-09-27: "almost no distinction between messages that are thoughts and
+  // notes").
   it.each([
-    { kind: "note", filled: true, cornered: true, italic: false, hairline: false },
-    { kind: "question", filled: true, cornered: true, italic: false, hairline: false },
-    { kind: "thought", filled: false, cornered: false, italic: true, hairline: true },
-  ])(
-    "draws a $kind in its own hand at every age",
-    ({ kind, filled, cornered, italic, hairline }) => {
-      const ofKind = drawn.filter((bubble) => bubble.kind === kind);
-      expect(ofKind.length).toBeGreaterThan(0);
-      for (const { hand } of ofKind) {
-        expect(hand.some((name) => name.startsWith("bg-"))).toBe(filled);
-        expect(hand.includes("rounded-es-md")).toBe(cornered);
-        expect(hand.includes("italic")).toBe(italic);
-        expect(hand.includes("before:bg-border")).toBe(hairline);
-      }
-    },
-  );
+    { kind: "note", filled: true, cornered: true, italic: false },
+    { kind: "question", filled: true, cornered: true, italic: false },
+    { kind: "thought", filled: false, cornered: false, italic: true },
+  ])("draws a $kind in its own hand at every age", ({ kind, filled, cornered, italic }) => {
+    const ofKind = drawn.filter((bubble) => bubble.kind === kind);
+    expect(ofKind.length).toBeGreaterThan(0);
+    for (const { hand } of ofKind) {
+      expect(hand.some((name) => name.startsWith("bg-"))).toBe(filled);
+      expect(hand.some((name) => name.startsWith("rounded"))).toBe(cornered);
+      expect(hand.includes("italic")).toBe(italic);
+      expect(hand.some((name) => name.startsWith("before:") || name.startsWith("border"))).toBe(
+        false,
+      );
+    }
+  });
 
-  it("keeps a thought in a note's box, so neither moves the stream", () => {
-    // What sizes a box: its padding, margin, border and width.
-    const box = (kind: string) =>
-      drawn
-        .find((bubble) => bubble.kind === kind)
-        ?.hand.filter((name) => /^(p|m|border|w|min-w|max-w|h|min-h|max-h)[a-z]?(-|$)/.test(name));
-    // The hairline is drawn, never a border that would take a pixel of width.
-    expect(box("thought")).toEqual(box("note"));
-    expect(box("note")).toEqual(["w-fit", "max-w-full", "px-3.5", "py-2"]);
+  // What it said to the person stays readable a while; what it thought to
+  // itself passes: at every age a thought is the dimmer of the two.
+  it.each([1, 2, 3, 4, 5])("dims a thought more than its words at age %i", (age) => {
+    const opacity = (kind: WorkingBubble["kind"]) =>
+      Number(/opacity-(\d+)/.exec(ageClass(kind, age))?.[1] ?? 100);
+    expect(opacity("thought")).toBeLessThan(opacity("note"));
+    expect(opacity("question")).toBe(opacity("note"));
   });
 
   it.each(drawn.filter((bubble) => bubble.age > 0))(

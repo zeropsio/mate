@@ -170,7 +170,18 @@ export interface OperationStatusWordContext {
   readonly running?: boolean | undefined;
   /** `process` only: what the processes it read came to, when not simply done. */
   readonly processOutcome?: "failed" | "timedOut" | "canceled" | undefined;
+  /** `deploy` only: the call pushes to a git remote (`strategy: "git-push"`) — see `GIT_PUSH_LABEL`. */
+  readonly gitPush?: boolean | undefined;
 }
+
+/**
+ * A git push that settled without a build of its own says what it did; a
+ * `DELIVERED` one, whose triggered build zcp watched to ACTIVE, is "Deployed".
+ */
+const GIT_PUSH_DONE_WORD: Readonly<Record<string, string>> = {
+  PUSHED: "Pushed",
+  NOTHING_TO_PUSH: "Up to date",
+};
 
 const PROCESS_OUTCOME_WORD: Readonly<Record<"failed" | "timedOut" | "canceled", string>> = {
   failed: "Process failed",
@@ -240,6 +251,9 @@ export function operationStatusWord(
     if (kind === "deploy" && context.resultStatus === "BUILD_TRIGGERED") {
       return "Build triggered";
     }
+    if (kind === "deploy" && context.gitPush === true) {
+      return "Pushing";
+    }
     switch (kind) {
       case "deploy":
         return "Deploying";
@@ -294,7 +308,10 @@ export function operationStatusWord(
   // phase === "done"
   switch (kind) {
     case "deploy":
-      return "Deployed";
+      return (
+        (context.gitPush === true ? GIT_PUSH_DONE_WORD[context.resultStatus ?? ""] : undefined) ??
+        "Deployed"
+      );
     case "verify":
       return "Healthy";
     case "import":
@@ -556,4 +573,43 @@ export function operationClosing(
     case "error":
       return context.errorFirstLine ?? "Failed.";
   }
+}
+
+/**
+ * A `zerops_deploy` with `strategy: "git-push"` pushes the service's commits
+ * to a git remote (zcp `internal/tools/deploy_git_push.go`). It is a deploy
+ * only once zcp watched the build its push triggered to ACTIVE (`DELIVERED`);
+ * until then every word it wears says a push: this labels its kicker and its
+ * one step, and `operationStatusWord` takes `gitPush`.
+ */
+export const GIT_PUSH_LABEL = "Push";
+
+/** A git push's opening line — its `operationVoice`. */
+export function gitPushVoice(subject: string): string {
+  return `Pushing ${subject}.`;
+}
+
+export interface GitPushClosingContext {
+  readonly branch?: string | undefined;
+  /** The pull request the pushed branch lands through, when zcp opened or found one. */
+  readonly pullRequest?: number | undefined;
+}
+
+/**
+ * A git push that settled without a build of its own: where its commits went
+ * — the pull request that carries them when there is one, since a Mate's own
+ * branch name is long and says less than its number — or that it had none
+ * to send.
+ */
+export function gitPushClosing(
+  outcome: "pushed" | "upToDate",
+  context: GitPushClosingContext,
+): string {
+  if (outcome === "upToDate") {
+    return "Nothing new to push.";
+  }
+  if (context.pullRequest !== undefined) {
+    return `Pushed to pull request #${context.pullRequest}.`;
+  }
+  return context.branch !== undefined ? `Pushed to ${context.branch}.` : "Pushed.";
 }

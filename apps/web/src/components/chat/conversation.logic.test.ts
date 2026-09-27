@@ -10,6 +10,7 @@ import {
   deriveConversationStructure,
   deriveOutcome,
   formatWorkDuration,
+  latestFinishedWordsAt,
   messageReceipt,
   namedToolCall,
   noteLine,
@@ -40,6 +41,7 @@ function structure(
     live?: string;
     latest?: { id: string; state: string; completed: boolean };
     working?: boolean;
+    nowMs?: number;
   } = {},
 ) {
   const latestTurn = options.latest
@@ -56,6 +58,7 @@ function structure(
     runningTurnId: options.live ? turn(options.live) : null,
     isWorking: options.working ?? options.live !== undefined,
     activeTurnStartedAt: options.live ? at(0) : null,
+    ...(options.nowMs === undefined ? {} : { nowMs: options.nowMs }),
   });
 }
 
@@ -595,6 +598,104 @@ describe("deriveConversationStructure", () => {
   });
 });
 
+// Words that just finished, with nothing after them, wait a moment before
+// they are placed: the turn nearly always settles within it, so a short
+// answer goes straight under the card instead of popping into the panel as a
+// note and moving (13 of 56 recorded answers did).
+describe("the live turn's last words", () => {
+  const words = (streaming: boolean) => assistant("a1", "t1", 2, "Done.", { streaming });
+  it.each([
+    { name: "still streaming", tail: [words(true)], nowMs: undefined, held: true },
+    { name: "just finished", tail: [words(false)], nowMs: Date.parse(at(2, 2)), held: true },
+    {
+      name: "finished a while ago",
+      tail: [words(false)],
+      nowMs: Date.parse(at(2, 5)),
+      held: false,
+    },
+    {
+      name: "a step after them",
+      tail: [words(false), tool("w2", "t1", 2)],
+      nowMs: Date.parse(at(2, 2)),
+      held: false,
+    },
+    { name: "no clock to tell", tail: [words(false)], nowMs: undefined, held: false },
+  ])("$name: held $held", ({ tail, nowMs, held }) => {
+    const result = structure([user("m0", 0), tool("w1", "t1", 1), ...tail], {
+      live: "t1",
+      ...(nowMs === undefined ? {} : { nowMs }),
+    });
+    expect(result.turns.at(-1)?.writing?.id ?? null).toBe(held ? "a1" : null);
+  });
+});
+
+describe("latestFinishedWordsAt", () => {
+  // When the newest wait for a running turn's last words runs out: the page
+  // derives again then.
+  it.each([
+    {
+      name: "a finished last word while working",
+      entries: [user("m0", 0), assistant("a1", "t1", 2, "Done.")],
+      working: true,
+      at: Date.parse(at(2, 1)),
+    },
+    {
+      name: "still streaming",
+      entries: [user("m0", 0), assistant("a1", "t1", 2, "Do", { streaming: true })],
+      working: true,
+      at: null,
+    },
+    {
+      name: "a step after the words",
+      entries: [user("m0", 0), assistant("a1", "t1", 2, "Done."), tool("w1", "t1", 3)],
+      working: true,
+      at: null,
+    },
+    {
+      name: "not working",
+      entries: [user("m0", 0), assistant("a1", "t1", 2, "Done.")],
+      working: false,
+      at: null,
+    },
+    // What the held words look past, this looks past too: a plan update, an
+    // empty thought or the person's message after the words left the wait
+    // with no clock to end it, and the words hidden until the next step.
+    {
+      name: "a plan update after the words",
+      entries: [
+        user("m0", 0),
+        assistant("a1", "t1", 2, "Done."),
+        {
+          id: "p1",
+          kind: "turn-plan",
+          createdAt: at(2, 2),
+          turnPlan: { id: "p1", createdAt: at(2, 2), turnId: turn("t1"), plan: [] },
+        } as unknown as TimelineEntry,
+      ],
+      working: true,
+      at: Date.parse(at(2, 1)),
+    },
+    {
+      name: "an empty thought after the words",
+      entries: [
+        user("m0", 0),
+        assistant("a1", "t1", 2, "Done."),
+        assistant("r9", "t1", 2, "  ", { second: 2 }),
+      ],
+      working: true,
+      at: Date.parse(at(2, 1)),
+    },
+    {
+      name: "the person's message after the words",
+      entries: [user("m0", 0), assistant("a1", "t1", 2, "Done."), user("m1", 3)],
+      working: true,
+      at: Date.parse(at(2, 1)),
+    },
+  ])("$name", ({ entries, working, at: expected }) => {
+    expect(latestFinishedWordsAt(entries, working)).toBe(expected);
+  });
+});
+
 describe("messageReceipt", () => {
   it.each([
     {
@@ -1040,6 +1141,70 @@ describe("deriveOutcome", () => {
       removed: ["oldtier"],
       notDone: [],
     });
+  });
+
+  // A git push is no deploy: the build that follows it, if any, says what
+  // came of the service, and a push that failed is something it could not do.
+  const pushed = (id: string, minute: number, status: string, phase = "done") =>
+    operation(id, "t1", minute, {
+      kind: "deploy",
+      strategy: "git-push",
+      phase: phase as never,
+      statusWord: phase === "failed" ? "Failed" : "Pushed",
+      resultStatus: status,
+      voice: "Pushing appdev.",
+      steps: [
+        {
+          id: "push",
+          label: "Push",
+          state: phase === "failed" ? "failed" : "done",
+          stateLabel: phase === "failed" ? "Failed" : "Done",
+        },
+      ],
+    });
+  it.each([
+    { name: "a push alone", ops: [pushed("p1", 1, "PUSHED")], services: [], notDone: 0 },
+    {
+      name: "a push, then the deploy",
+      ops: [pushed("p1", 1, "PUSHED"), operation("d1", "t1", 2, { kind: "deploy" })],
+      services: ["Deployed"],
+      notDone: 0,
+    },
+    {
+      name: "a deploy, then a push",
+      ops: [operation("d1", "t1", 1, { kind: "deploy" }), pushed("p1", 2, "PUSHED")],
+      services: ["Deployed"],
+      notDone: 0,
+    },
+    {
+      name: "nothing to push",
+      ops: [pushed("p1", 1, "NOTHING_TO_PUSH")],
+      services: [],
+      notDone: 0,
+    },
+    { name: "a push that failed", ops: [pushed("p1", 1, "", "failed")], services: [], notDone: 1 },
+    {
+      // A batch's split service has one step named by the service: one called
+      // "push" is a deploy like any other.
+      name: "a batch-deployed service named push",
+      ops: [
+        operation("b1", "t1", 1, {
+          kind: "deploy",
+          subject: "push",
+          steps: [{ id: "push", label: "push", state: "done", stateLabel: "Done" }],
+        }),
+      ],
+      services: ["Deployed"],
+      notDone: 0,
+    },
+  ])("reads a git push as a push: $name", ({ ops, services, notDone }) => {
+    const outcome = deriveOutcome({
+      turn: structure([user("m0", 0), ...ops, assistant("a1", "t1", 5)], settled).turns[0]!,
+      landed: [],
+      diff: null,
+    });
+    expect(outcome?.live.map((service) => service.word) ?? []).toEqual(services);
+    expect(outcome?.notDone.length ?? 0).toBe(notDone);
   });
 
   it("has nothing to say for a turn that produced nothing, or one a limit refused", () => {

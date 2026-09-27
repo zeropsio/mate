@@ -4,13 +4,25 @@ import {
   queuedPipelineSlots,
 } from "../../activity/observedSteps.ts";
 import type { PipelineState } from "../../activity/pipelineState.ts";
-import { readRecordArray, readString } from "../../cards/decode.ts";
+import {
+  readNumber,
+  readRecord,
+  readRecordArray,
+  readString,
+  readStringArray,
+} from "../../cards/decode.ts";
 import {
   type ZeropsCardPayload,
   type ZeropsDeployCard,
   decodeDeployResult,
 } from "../../cards/payloads.ts";
-import { OPEN_IN_ZEROPS, operationClosing } from "../../operations/phrases.ts";
+import {
+  GIT_PUSH_LABEL,
+  OPEN_IN_ZEROPS,
+  gitPushClosing,
+  gitPushVoice,
+  operationClosing,
+} from "../../operations/phrases.ts";
 import { zeropsProjectUrl } from "../../serviceMap.ts";
 import type {
   ZeropsCall,
@@ -109,6 +121,11 @@ export function buildDeployFields(
     return buildDeployBatchFields(call, context);
   }
   const decoded = decodeCall(call);
+  // A failed call's document is zcp's error, never a push result.
+  const pushed = call.status === "failed" ? undefined : decodeGitPushResult(decoded.document);
+  if (pushed !== undefined || readInputString(call.input, "strategy") === GIT_PUSH_STRATEGY) {
+    return buildGitPushFields(call, context, decoded, pushed);
+  }
   const errorInfo = errorInfoFor(call, decoded);
   const card = decoded.card?.kind === "deploy" ? decoded.card : undefined;
   const resultStatus = card?.status;
@@ -200,6 +217,262 @@ function resultExplanation(card: ZeropsDeployCard): ReturnType<typeof explanatio
       : (card.buildLogs ?? card.runtimeLogs);
   const message = card.message !== undefined ? firstLine(card.message) : undefined;
   return explanationField(card.failureCause ?? message, log);
+}
+
+// --- git push ----------------------------------------------------------------
+
+/** zcp's `strategy` for a push to a git remote (`deployStrategyGitPush`, `internal/tools/deploy_ssh.go`). */
+const GIT_PUSH_STRATEGY = "git-push";
+
+/** A git push's own step: every outcome holds it alone but a build zcp watched to its end. */
+const GIT_PUSH_STEP_ID = "push";
+
+/**
+ * What a git push came to (`internal/tools/deploy_git_push.go`): `pushed` —
+ * nothing built by this call, whether nothing is wired to build (a Mate's own
+ * Gitea branch among them) or zcp could not watch; `upToDate` — the remote
+ * already had every commit; `delivered` — the build the push triggered was
+ * watched to ACTIVE; `buildFailed` — that build failed or was cancelled;
+ * `buildUnconfirmed` — it never appeared, or was still running when zcp
+ * stopped watching; `refused` — zcp's `gitPushPrerequisites`, nothing pushed.
+ */
+type GitPushOutcome =
+  | "pushed"
+  | "upToDate"
+  | "delivered"
+  | "buildFailed"
+  | "buildUnconfirmed"
+  | "refused";
+
+/**
+ * `internal/ops/deploy_common.go` `GitPushResult`, with the pull request
+ * `deployGitPushResponse` adds on the account's own Gitea — or zcp's
+ * `gitPushPrerequisites`, which answers `GIT_TOKEN_MISSING` as a call that
+ * succeeded. Only the fields the card reads.
+ */
+interface GitPushResult {
+  readonly outcome: GitPushOutcome;
+  readonly status: string;
+  readonly branch: string | undefined;
+  readonly message: string | undefined;
+  /** Where the push's build lands — a standard pair's stage half. */
+  readonly buildTarget: string | undefined;
+  /** The watched build's last appVersion status, or `NOT_OBSERVED`. */
+  readonly buildStatus: string | undefined;
+  readonly verifyTarget: string | undefined;
+  readonly failureCause: string | undefined;
+  readonly buildLogs: ReadonlyArray<string>;
+  readonly pullRequest: number | undefined;
+}
+
+/**
+ * A build that did not land: an appVersion's `*_FAILED`, or the watch's own
+ * `FAILED` / `CANCELED`. zcp's watch ends only on ACTIVE, FAILED and
+ * CANCELED (`internal/ops/build_watch.go`), so a `BUILD_FAILED` comes back as
+ * a watch that gave up — and still failed.
+ */
+const FAILED_BUILD_STATUS = /FAIL|CANCEL/u;
+
+function gitPushOutcome(
+  status: string,
+  buildStatus: string | undefined,
+): GitPushOutcome | undefined {
+  switch (status) {
+    case "DELIVERED":
+      return "delivered";
+    case "NOTHING_TO_PUSH":
+      return "upToDate";
+    case "GIT_TOKEN_MISSING":
+      return "refused";
+    case "PUSHED":
+      return buildStatus === undefined
+        ? "pushed"
+        : FAILED_BUILD_STATUS.test(buildStatus)
+          ? "buildFailed"
+          : "buildUnconfirmed";
+    default:
+      return undefined;
+  }
+}
+
+/** A git push's result, or undefined for any other document — a deploy's among them. */
+function decodeGitPushResult(
+  document: Record<string, unknown> | undefined,
+): GitPushResult | undefined {
+  const status = readString(document?.status);
+  if (document === undefined || status === undefined) {
+    return undefined;
+  }
+  const buildStatus = readString(document.buildStatus);
+  const outcome = gitPushOutcome(status, buildStatus);
+  if (outcome === undefined) {
+    return undefined;
+  }
+  return {
+    outcome,
+    status,
+    branch: readString(document.branch),
+    message: readString(document.message),
+    buildTarget: readString(document.buildTarget),
+    buildStatus,
+    verifyTarget: readString(document.verifyTarget),
+    failureCause: readString(readRecord(document.failureClassification)?.likelyCause),
+    buildLogs: readStringArray(document.buildLogs),
+    pullRequest: readNumber(readRecord(document.pullRequest)?.number),
+  };
+}
+
+const GIT_PUSH_PHASE: Readonly<Record<GitPushOutcome, ZeropsOperationPhase>> = {
+  pushed: "done",
+  upToDate: "done",
+  delivered: "done",
+  buildFailed: "failed",
+  refused: "failed",
+  buildUnconfirmed: "uncertain",
+};
+
+/** A call that returned reads as its result says; any other keeps the call's own phase. */
+function gitPushPhase(call: ZeropsCall, pushed: GitPushResult | undefined): ZeropsOperationPhase {
+  const basePhase = phaseFor(call.status);
+  return basePhase === "done" && pushed !== undefined ? GIT_PUSH_PHASE[pushed.outcome] : basePhase;
+}
+
+/** zcp's `FailurePhaseFromStatus` (`internal/ops/deploy_failure.go`): the phase an appVersion failed in. */
+const BUILD_STATUS_FAILED_PHASE: Readonly<Record<string, string>> = {
+  BUILD_FAILED: "build",
+  PREPARING_RUNTIME_FAILED: "prepare",
+  DEPLOY_FAILED: "init",
+};
+
+/**
+ * One push step for all a push did alone — the call's own phase, or done
+ * under a build nobody saw end; the pipeline's five slots only for a build
+ * zcp watched to its end, landed or failed where its status says.
+ */
+function gitPushSteps(
+  phase: ZeropsOperationPhase,
+  pushed: GitPushResult | undefined,
+): ReadonlyArray<ZeropsOperationStep> {
+  switch (pushed?.outcome) {
+    case "delivered":
+      return deploySlots(phase, undefined);
+    case "buildFailed":
+      return deploySlots(phase, BUILD_STATUS_FAILED_PHASE[pushed.buildStatus ?? ""]);
+    case "buildUnconfirmed":
+      return [buildStep(GIT_PUSH_STEP_ID, GIT_PUSH_LABEL, "FINISHED")];
+    default:
+      return [buildStep(GIT_PUSH_STEP_ID, GIT_PUSH_LABEL, UNREPORTED_STEP_STATUS[phase])];
+  }
+}
+
+/** The service a push's outcome is about: the build's target once a build was watched, else the push's source. */
+function gitPushTarget(subject: string, pushed: GitPushResult | undefined): string {
+  switch (pushed?.outcome) {
+    case "delivered":
+      return pushed.verifyTarget ?? pushed.buildTarget ?? subject;
+    case "buildFailed":
+    case "buildUnconfirmed":
+      return pushed.buildTarget ?? subject;
+    default:
+      return subject;
+  }
+}
+
+function gitPushClosingFor(
+  phase: ZeropsOperationPhase,
+  pushed: GitPushResult | undefined,
+  errorInfo: ErrorInfo | undefined,
+  target: string,
+): string | undefined {
+  switch (phase) {
+    case "running":
+      return undefined;
+    case "failed": {
+      // A push result's message says the push landed — only a refusal's is the failure.
+      const failure =
+        errorInfo?.message ?? (pushed?.outcome === "refused" ? pushed.message : undefined);
+      return operationClosing("deploy", "failed", {
+        failureCause: pushed?.failureCause,
+        errorFirstLine: failure === undefined ? undefined : firstLine(failure),
+      });
+    }
+    case "done":
+      switch (pushed?.outcome) {
+        case "delivered":
+          return operationClosing("deploy", "done", { host: target });
+        case "pushed":
+          return gitPushClosing("pushed", {
+            branch: pushed.branch,
+            pullRequest: pushed.pullRequest,
+          });
+        case "upToDate":
+          return gitPushClosing("upToDate", {});
+        default:
+          return "Finished.";
+      }
+    default:
+      return operationClosing("deploy", phase, {});
+  }
+}
+
+function gitPushExplanation(
+  decoded: DecodedEntry,
+  pushed: GitPushResult | undefined,
+  errorInfo: ErrorInfo | undefined,
+): ReturnType<typeof explanationField> {
+  if (errorInfo !== undefined) {
+    return explanationField(failedCallReason(decoded, errorInfo));
+  }
+  switch (pushed?.outcome) {
+    case "buildFailed":
+      return explanationField(pushed.failureCause, pushed.buildLogs);
+    case "refused":
+      return explanationField(pushed.message === undefined ? undefined : firstLine(pushed.message));
+    default:
+      return {};
+  }
+}
+
+/**
+ * `zerops_deploy` with `strategy: "git-push"` (`GIT_PUSH_LABEL`): a push from
+ * the call's first moment — its input says so — to its last, and a deploy
+ * only once the build it triggered landed. `pushed` is undefined while the
+ * call runs, once it failed, and for a result this build cannot read, which
+ * then claims nothing.
+ */
+function buildGitPushFields(
+  call: ZeropsCall,
+  context: OperationBuildContext,
+  decoded: DecodedEntry,
+  pushed: GitPushResult | undefined,
+): BuiltCardFields {
+  const errorInfo = errorInfoFor(call, decoded);
+  const phase = gitPushPhase(call, pushed);
+  const subject = readInputString(call.input, "targetService") ?? "the service";
+  const target = gitPushTarget(subject, pushed);
+  const closing = gitPushClosingFor(phase, pushed, errorInfo, target);
+  return {
+    subject,
+    kicker: `${GIT_PUSH_LABEL} · ${subject}`,
+    strategy: "git-push",
+    voice: gitPushVoice(subject),
+    voiceSource: "mate",
+    statusWord: gatedStatusWord(
+      "deploy",
+      phase,
+      pushed !== undefined,
+      call.resultText !== undefined,
+      { gitPush: true, resultStatus: pushed?.status },
+    ),
+    ...(closing !== undefined ? { closing } : {}),
+    steps: gitPushSteps(phase, pushed),
+    links: deployLinks(phase, undefined, context.projectId),
+    target: { hostname: target },
+    ...(pushed !== undefined ? { resultStatus: pushed.status } : {}),
+    hasResult: decoded.document !== undefined,
+    ...gitPushExplanation(decoded, pushed, errorInfo),
+    phaseOverride: phase,
+  };
 }
 
 type BatchEntry = Extract<ZeropsCardPayload, { kind: "deployBatch" }>["entries"][number];

@@ -76,6 +76,7 @@ import {
   CircleAlertIcon,
   ClockIcon,
   EyeIcon,
+  GitCommitHorizontalIcon,
   GlobeIcon,
   HammerIcon,
   LayersIcon,
@@ -119,6 +120,7 @@ import {
   workEntryIsVisibleInGroup,
   type StableMessagesTimelineRowsState,
   type CardSlice,
+  type FoldsFrom,
   type MessagesTimelineRow,
   type RowGap,
   type TurnHeaderActivity,
@@ -149,7 +151,10 @@ import { SkillInlineText } from "./SkillInlineText";
 import { BrowserStrip } from "./BrowserStrip";
 import {
   formatWorkDuration,
+  isGitPushOnly,
   isQuestionToolCall,
+  LAST_WORDS_GRACE_MS,
+  latestFinishedWordsAt,
   namedToolCall,
   toolCallWords,
 } from "./conversation.logic";
@@ -158,6 +163,7 @@ import {
   ConversationAfterWork,
   ConversationWorking,
   MATE_BUBBLE_CLASS,
+  THOUGHT_WORDS_CLASS,
   type WorkingActivity,
 } from "./ConversationWorking";
 import { DOCKED_KINDS, type DockModel } from "./conversationDock.logic";
@@ -544,9 +550,30 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       ? visitedAt
       : null;
   });
+  // A running turn's last words wait a moment once finished: the rows are
+  // derived again when the newest wait runs out.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const finishedWordsAt = useMemo(
+    () => latestFinishedWordsAt(timelineEntries, isWorking),
+    [timelineEntries, isWorking],
+  );
+  useEffect(() => {
+    if (finishedWordsAt === null) return;
+    // At most one wait from now, and past it when it fires: a client clock
+    // behind the server's never stretches the wait.
+    const timer = setTimeout(
+      () => setNowMs(Math.max(Date.now(), finishedWordsAt + LAST_WORDS_GRACE_MS + 1)),
+      Math.min(
+        LAST_WORDS_GRACE_MS,
+        Math.max(0, finishedWordsAt + LAST_WORDS_GRACE_MS - Date.now()),
+      ) + 20,
+    );
+    return () => clearTimeout(timer);
+  }, [finishedWordsAt]);
   const rawRows = useMemo(
     () =>
       deriveMessagesTimelineRows({
+        nowMs,
         newSince,
         timelineEntries,
         latestTurn,
@@ -561,6 +588,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         afterTurnWork,
       }),
     [
+      nowMs,
       newSince,
       timelineEntries,
       latestTurn,
@@ -1443,6 +1471,7 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "after-work" ? <AfterWorkTimelineRow row={row} /> : null}
       {row.kind === "speech" ? <SpeechTimelineRow row={row} /> : null}
       {row.kind === "log-note" ? <LogNoteTimelineRow row={row} /> : null}
+      {row.kind === "log-person" ? <LogPersonTimelineRow row={row} /> : null}
       {row.kind === "log-activity" ? <LogActivityTimelineRow row={row} /> : null}
       {row.kind === "log-reasoning" ? <LogThoughtTimelineRow row={row} /> : null}
       {row.kind === "log-operation" ? <LogOperationTimelineRow row={row} /> : null}
@@ -1500,6 +1529,7 @@ function MateWords({ text }: { readonly text: string }) {
   const ctx = use(TimelineRowCtx);
   return (
     <ChatMarkdown
+      className="text-foreground"
       text={text}
       cwd={ctx.markdownCwd}
       threadRef={ctx.threadRef ?? undefined}
@@ -1523,7 +1553,7 @@ function NoteWords({
   return (
     <ChangeChipMomentContext value={message.createdAt}>
       <ChatMarkdown
-        {...(className === undefined ? {} : { className })}
+        className={cn("text-foreground", className)}
         text={message.text}
         cwd={ctx.markdownCwd}
         threadRef={ctx.threadRef ?? undefined}
@@ -1546,7 +1576,7 @@ function ThoughtWords({
   const ctx = use(TimelineRowCtx);
   return (
     <ChatMarkdown
-      className="text-muted-foreground"
+      className={THOUGHT_WORDS_CLASS}
       text={thought.text}
       cwd={ctx.markdownCwd}
       threadRef={ctx.threadRef ?? undefined}
@@ -1564,6 +1594,162 @@ function ThoughtWords({
  */
 const watchedTurnKeys = new Set<string>();
 
+/**
+ * Where the Mate at work last stood, per run, while this page drew it: its
+ * row, its card's bottom edge and its line, and when it left. What settles in
+ * its place — the report, or the Mate's last word under a run with nothing to
+ * report — starts there and eases to its own height, so a panel folding away
+ * never throws what follows (Nova, 2026-09-27: a tall panel folding into its
+ * report threw a streamed answer 470 px). Only a panel that left just now
+ * folds: one scrolled away, or never seen, is simply gone.
+ */
+interface PanelStand {
+  readonly panel: number;
+  readonly cardEnd: number;
+  readonly line: number;
+}
+const panelStands = new Map<string, PanelStand>();
+/**
+ * When a run's panel left the rows, read from the rows themselves: the list
+ * mounts and unmounts its rows in its own order, so the row that replaces the
+ * panel may arrive before the panel's own row is gone.
+ */
+const panelLeftAt = new Map<string, number>();
+/** When what replaced a run's panel first took its stand: an effect replayed takes it again. */
+const panelTakenAt = new Map<string, number>();
+const FOLD_RETAKE_MS = 50;
+
+/** Marks the runs whose panel the rows no longer carry. */
+function markPanelsGone(
+  previous: ReadonlyArray<MessagesTimelineRow>,
+  rows: ReadonlyArray<MessagesTimelineRow>,
+): void {
+  const live = new Set(rows.flatMap((row) => (row.kind === "working" ? [row.turnKey] : [])));
+  const now = performance.now();
+  for (const row of previous) {
+    if (row.kind === "working" && !live.has(row.turnKey)) panelLeftAt.set(row.turnKey, now);
+  }
+  for (const turnKey of live) {
+    panelLeftAt.delete(turnKey);
+    panelTakenAt.delete(turnKey);
+  }
+}
+const FOLD_FRESH_MS = 1500;
+/** How long after its panel left a run's report, arriving late, still eases in. */
+const FOLD_LATE_MS = 4000;
+const FOLD_EASE = "height 460ms cubic-bezier(0.32, 0.72, 0, 1)";
+
+function rowElementById(id: string): HTMLElement | null {
+  return document.querySelector<HTMLElement>(`[data-timeline-row-id="${CSS.escape(id)}"]`);
+}
+
+/**
+ * The stand a run's panel just left, for what takes its place: null when the
+ * panel is still there, left a while ago, or its stand was taken already — an
+ * effect replayed at once (React's strict mode runs each twice) takes it again.
+ */
+function takePanelStand(turnKey: string): PanelStand | null {
+  const stand = panelStands.get(turnKey);
+  const leftAt = panelLeftAt.get(turnKey);
+  if (stand === undefined || leftAt === undefined) return null;
+  const now = performance.now();
+  const takenAt = panelTakenAt.get(turnKey);
+  if (takenAt === undefined) panelTakenAt.set(turnKey, now);
+  else if (now - takenAt > FOLD_RETAKE_MS) return null;
+  return now - leftAt < FOLD_FRESH_MS ? stand : null;
+}
+
+/** A run's panel left the rows a moment ago: what arrives in its place late still eases. */
+function panelLeftRecently(turnKey: string): boolean {
+  const leftAt = panelLeftAt.get(turnKey);
+  return leftAt !== undefined && performance.now() - leftAt < FOLD_LATE_MS;
+}
+
+/** Eases an element's height from `from` to `to`, then lets it size itself again. */
+function easeHeight(element: HTMLElement, from: number, to: number): () => void {
+  if (Math.abs(to - from) < 1 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return () => {};
+  }
+  const release = () => {
+    element.style.height = "";
+    element.style.overflow = "";
+    element.style.transition = "";
+  };
+  element.style.height = `${from}px`;
+  element.style.overflow = "hidden";
+  const frame = requestAnimationFrame(() => {
+    element.style.transition = FOLD_EASE;
+    element.style.height = `${to}px`;
+  });
+  const onEnd = (event: TransitionEvent) => {
+    if (event.target !== element || event.propertyName !== "height") return;
+    element.removeEventListener("transitionend", onEnd);
+    release();
+  };
+  element.addEventListener("transitionend", onEnd);
+  return () => {
+    cancelAnimationFrame(frame);
+    element.removeEventListener("transitionend", onEnd);
+    release();
+  };
+}
+
+/** Records where a run's panel stands while the rows carry it. */
+function usePanelStand(turnKey: string, cardKey: string) {
+  const markerRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const own = markerRef.current?.closest<HTMLElement>("[data-timeline-row-id]");
+    if (!own) return;
+    const measure = () => {
+      // Gone from the rows, its row may still be emptied or recycled: its
+      // last stand is the one it left.
+      if (panelLeftAt.has(turnKey) || !own.isConnected) return;
+      const panel = own.getBoundingClientRect().height;
+      if (panel <= 0) return;
+      panelStands.set(turnKey, {
+        panel,
+        cardEnd: rowElementById(`card-end:${cardKey}`)?.getBoundingClientRect().height ?? 0,
+        line: rowElementById(`work-line:${cardKey}`)?.getBoundingClientRect().height ?? 0,
+      });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(own);
+    return () => {
+      observer.disconnect();
+      // Unmounted while the rows still carry it — scrolled out of the list's
+      // window — its stand would be stale by the time it is taken.
+      if (!panelLeftAt.has(turnKey)) panelStands.delete(turnKey);
+    };
+  }, [turnKey, cardKey]);
+  return markerRef;
+}
+
+/**
+ * Room at the top of the Mate's last word under a run that settled into its
+ * line alone: as tall as the panel that just stood there, easing to nothing.
+ */
+function FoldRoom({ fold }: { readonly fold: FoldsFrom | undefined }) {
+  const roomRef = useRef<HTMLDivElement>(null);
+  // Once it folds it folds through: a report arriving a moment later — the
+  // files a run changed are known after its settle — eases in from the card
+  // while this room eases on to nothing, rather than snapping shut.
+  const [folding, setFolding] = useState<FoldsFrom | undefined>(fold);
+  if (fold !== undefined && folding === undefined) setFolding(fold);
+  useLayoutEffect(() => {
+    const room = roomRef.current;
+    if (folding === undefined || room === null) return;
+    const stand = takePanelStand(folding.turnKey);
+    if (stand === null) return;
+    const lineNow = rowElementById(`work-line:${folding.cardKey}`)?.getBoundingClientRect().height;
+    const from =
+      stand.panel +
+      (folding.cardClosed ? stand.cardEnd + (stand.line - (lineNow ?? stand.line)) : 0);
+    return easeHeight(room, from, 0);
+  }, [folding]);
+  return <div ref={roomRef} aria-hidden="true" data-fold-room />;
+}
+
 /** The Mate at work: its words streaming, what runs, the browser while it checks. */
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
   const ctx = use(TimelineRowCtx);
@@ -1572,45 +1758,48 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
   useEffect(() => {
     watchedTurnKeys.add(row.turnKey);
   }, [row.turnKey]);
+  const standRef = usePanelStand(row.turnKey, row.cardKey);
   return (
-    <ConversationWorking
-      activity={
-        isCompacting
-          ? { kind: "doing", words: "Condensing the context" }
-          : workingActivity(row.activity, ctx.workspaceRoot)
-      }
-      browser={
-        row.strip === null ? null : (
-          <BrowserStrip
-            bare
-            environmentId={ctx.activeThreadEnvironmentId}
-            onOpenImage={ctx.onImageExpand}
-            strip={row.strip}
-            threadRef={ctx.threadRef}
-          />
-        )
-      }
-      answering={row.answering}
-      bubbles={row.stream.map((item) =>
-        item.kind === "note"
-          ? { kind: "note", key: item.key, body: <NoteWords message={item.message} /> }
-          : item.kind === "thought"
-            ? { kind: "thought", key: item.key, body: <ThoughtWords thought={item} /> }
-            : item.kind === "question"
-              ? {
-                  kind: "question",
-                  key: item.key,
-                  body: <MateWords text={item.questions.join("\n\n")} />,
-                }
-              : item,
-      )}
-      dock={dock}
-      environmentId={ctx.activeThreadEnvironmentId}
-      incidents={row.incidents}
-      onOpenAgents={ctx.onOpenAgents}
-      speaker={ctx.speaker}
-      threadRef={ctx.threadRef}
-    />
+    <div ref={standRef} className="contents">
+      <ConversationWorking
+        activity={
+          isCompacting
+            ? { kind: "doing", words: "Condensing the context" }
+            : workingActivity(row.activity, ctx.workspaceRoot)
+        }
+        browser={
+          row.strip === null ? null : (
+            <BrowserStrip
+              bare
+              environmentId={ctx.activeThreadEnvironmentId}
+              onOpenImage={ctx.onImageExpand}
+              strip={row.strip}
+              threadRef={ctx.threadRef}
+            />
+          )
+        }
+        answering={row.answering}
+        bubbles={row.stream.map((item) =>
+          item.kind === "note"
+            ? { kind: "note", key: item.key, body: <NoteWords message={item.message} /> }
+            : item.kind === "thought"
+              ? { kind: "thought", key: item.key, body: <ThoughtWords thought={item} /> }
+              : item.kind === "question"
+                ? {
+                    kind: "question",
+                    key: item.key,
+                    body: <MateWords text={item.questions.join("\n\n")} />,
+                  }
+                : item,
+        )}
+        dock={dock}
+        environmentId={ctx.activeThreadEnvironmentId}
+        incidents={row.incidents}
+        onOpenAgents={ctx.onOpenAgents}
+        speaker={ctx.speaker}
+        threadRef={ctx.threadRef}
+      />
+    </div>
   );
 }
 
@@ -1634,19 +1823,26 @@ function AfterWorkTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "afte
 }
 
 /**
- * The Mate's words the person answered. Inside a run's card — the person
- * wrote into the run — they are the card's chatter, a note bubble in its
- * bubble column above the person's message; after a card, the run's last
- * words, in the answer's hand.
+ * The Mate's words the person answered, on the page above the run's card:
+ * beside its face in its bubble, as the panel said them, with the person's
+ * message under them. A run's last words, with no answer after them, stand
+ * after its card in the answer's hand.
  */
 function SpeechTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "speech" }> }) {
-  if (row.card === undefined) return <MateProse message={row.message} showMeta />;
+  const ctx = use(TimelineRowCtx);
+  if (row.hand === "prose") {
+    return (
+      <>
+        <FoldRoom fold={row.foldsFrom} />
+        <MateProse message={row.message} showMeta />
+      </>
+    );
+  }
   return (
-    <div className={LOG_COLUMN} data-speech-in-card>
-      <div className={MATE_BUBBLE_CLASS.note}>
-        <NoteWords message={row.message} />
-      </div>
-    </div>
+    <MateSpeech speaker={ctx.speaker}>
+      <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
+      <NoteWords message={row.message} />
+    </MateSpeech>
   );
 }
 
@@ -1687,7 +1883,7 @@ function LogThoughtTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log
     });
   return (
     <div className={LOG_COLUMN} data-log-thought>
-      <div className="grid gap-1.5 border-border/70 border-s ps-3 italic">
+      <div className="grid gap-1.5 ps-3.5 italic">
         {paragraphs.map((thought) => {
           const open = opened.has(thought.key);
           return (
@@ -1724,6 +1920,23 @@ function LogNoteTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-no
       <div className={MATE_BUBBLE_CLASS.note}>
         <NoteWords message={row.message} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Where the person's message reached the Mate, in an opened log: their words,
+ * one line, on their side, in their bubble's fill — the message itself stands
+ * on the page above the card.
+ */
+function LogPersonTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "log-person" }> }) {
+  const words = row.imageOnly ? "" : (row.message.text.trim().split("\n")[0] ?? "");
+  const images = row.message.attachments?.filter(isImageAttachment).length ?? 0;
+  return (
+    <div className="flex justify-end" data-log-person>
+      <p className="max-w-4/5 truncate rounded-2xl bg-message px-3.5 py-1 text-line text-message-foreground">
+        {words.length > 0 ? words : images > 1 ? `${images} images` : "An image"}
+      </p>
     </div>
   );
 }
@@ -1784,13 +1997,20 @@ function LogOperationTimelineRow({
         data-scroll-anchor-ignore
         onClick={() => ctx.onToggleLogItem(row.id, row.id)}
       >
-        <KindGlyph kind={operation.kind} />
+        {isGitPushOnly(operation) ? (
+          <GitCommitHorizontalIcon
+            aria-hidden="true"
+            className="size-3.5 shrink-0 text-muted-foreground"
+          />
+        ) : (
+          <KindGlyph kind={operation.kind} />
+        )}
         <span className={cn("shrink-0", running ? "text-foreground" : "text-foreground/85")}>
           {operation.statusWord}
         </span>
         <span className="min-w-0 truncate">{operation.subject}</span>
         {operation.settledAt ? (
-          <span className="shrink-0 text-xs tabular-nums">
+          <span className="shrink-0 tabular-nums">
             · {formatWorkDurationBetween(operation.anchorAt, operation.settledAt)}
           </span>
         ) : null}
@@ -1909,13 +2129,28 @@ function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }
 function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcome" }> }) {
   const ctx = use(TimelineRowCtx);
   const [settling] = useState(() => watchedTurnKeys.delete(row.outcome.turnKey));
+  const markerRef = useRef<HTMLDivElement>(null);
+  const turnKey = row.outcome.turnKey;
+  // The panel it replaces stood here a moment ago: the report's band of the
+  // card starts at the panel's height and eases to its own.
+  useLayoutEffect(() => {
+    const band = markerRef.current?.parentElement;
+    if (!band) return;
+    const stand = takePanelStand(turnKey);
+    if (stand !== null) return easeHeight(band, stand.panel, band.getBoundingClientRect().height);
+    // Its panel already folded into the Mate's last word: the report came
+    // after, and grows in from nothing.
+    if (panelLeftRecently(turnKey)) return easeHeight(band, 0, band.getBoundingClientRect().height);
+  }, [turnKey]);
   return (
-    <TurnReport
-      onOpenImage={ctx.onImageExpand}
-      onOpenTurnDiff={(turnId) => ctx.onOpenTurnDiff(turnId)}
-      outcome={row.outcome}
-      settling={settling}
-    />
+    <div ref={markerRef} className="contents">
+      <TurnReport
+        onOpenImage={ctx.onImageExpand}
+        onOpenTurnDiff={(turnId) => ctx.onOpenTurnDiff(turnId)}
+        outcome={row.outcome}
+        settling={settling}
+      />
+    </div>
   );
 }
 
@@ -2272,7 +2507,12 @@ function workingActivity(
 
 /** The Mate's answer to a settled turn, set for reading. */
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
-  return <MateProse message={row.message} showMeta={row.showAssistantMeta} />;
+  return (
+    <>
+      <FoldRoom fold={row.foldsFrom} />
+      <MateProse message={row.message} showMeta={row.showAssistantMeta} />
+    </>
+  );
 }
 
 /**
@@ -2878,6 +3118,9 @@ function useStableRows(rows: MessagesTimelineRow[]): MessagesTimelineRow[] {
 
   return useMemo(() => {
     const nextState = computeStableMessagesTimelineRows(rows, prevState.current);
+    // A run's panel leaves when the rows stop carrying it, whatever order the
+    // list then mounts and unmounts their rows in.
+    markPanelsGone(prevState.current.result, nextState.result);
     prevState.current = nextState;
     return nextState.result;
   }, [rows]);
@@ -3304,7 +3547,7 @@ function LiveActivityRow({
   failed?: boolean;
 }) {
   return (
-    <div className="w-fit max-w-full min-w-0 overflow-hidden rounded-md text-[13px] leading-5">
+    <div className="w-fit max-w-full min-w-0 overflow-hidden rounded-md text-line">
       <LiveActivityContent
         label={label}
         iconName={iconName}
@@ -3476,7 +3719,7 @@ function AgentSpawnMemberRow({ agent }: { agent: RuntimeSubagent }) {
       )}
     >
       <div className="flex select-none items-center gap-1.5">
-        <p className="flex min-w-0 flex-1 items-baseline gap-1.5 text-sm leading-relaxed">
+        <p className="flex min-w-0 flex-1 items-baseline gap-1.5 text-line">
           <span
             className={cn(
               "min-w-0 truncate",
@@ -3625,7 +3868,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
         </span>
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           <div className="min-w-0 flex-1 overflow-hidden">
-            <p className="flex min-w-0 w-full items-baseline gap-1.5 text-[13px] leading-5">
+            <p className="flex min-w-0 w-full items-baseline gap-1.5 text-line">
               <span
                 className={cn(
                   "min-w-0 flex-1",

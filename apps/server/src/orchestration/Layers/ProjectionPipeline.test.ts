@@ -3278,6 +3278,244 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
     }),
   );
 
+  // The task is the ask that started the latest run. What the person sends
+  // while a run is on — running, or starting for the ask before it — is
+  // steered into that run: a follow-up, never the task. A refresh keeps the
+  // task the fold chose; only a revert that takes its message away reads the
+  // newest ask that remains.
+  it.effect("keeps the task at the ask that started the latest run", () =>
+    Effect.gen(function* () {
+      const projectionPipeline = yield* OrchestrationProjectionPipeline;
+      const eventStore = yield* OrchestrationEventStore;
+      const sql = yield* SqlClient.SqlClient;
+      type Step =
+        | { readonly say: string; readonly text: string }
+        | { readonly request: string }
+        | { readonly session: "starting" | "running" | "ready"; readonly turn?: string }
+        | { readonly compacted: string }
+        | { readonly checkpoint: string; readonly count: number }
+        | { readonly revert: number };
+      const ask = "Change the heading of the /status page to Nova status";
+      const footer = "Add a footer";
+      const version = "Bump the version";
+      const scenarios: Record<string, ReadonlyArray<readonly [string, Step, string | null]>> = {
+        "follow-ups": [
+          ["an ask while the Mate is idle", { say: "ask-1", text: ask }, ask],
+          ["its run is requested", { request: "ask-1" }, ask],
+          ["the session starts for it", { session: "starting" }, ask],
+          ["a follow-up while the run starts", { say: "follow-1", text: "and deploy appdev" }, ask],
+          ["that follow-up is requested", { request: "follow-1" }, ask],
+          ["the run is on", { session: "running", turn: "turn-1" }, ask],
+          [
+            "a follow-up while it runs",
+            { say: "follow-2", text: "and make the heading green too" },
+            ask,
+          ],
+          ["that follow-up is requested", { request: "follow-2" }, ask],
+          ["the run ends", { session: "ready" }, ask],
+          ["the next ask, while the Mate is idle", { say: "ask-2", text: footer }, footer],
+          ["its run is requested", { request: "ask-2" }, footer],
+          ["the session starts for it", { session: "starting" }, footer],
+          ["the run is on", { session: "running", turn: "turn-2" }, footer],
+          ["a slash command while it runs", { say: "model", text: "/model opus" }, footer],
+          ["the run ends", { session: "ready" }, footer],
+          ["a slash command while the Mate is idle", { say: "plan", text: "/plan" }, footer],
+          ["the usage-limit resume", { say: "resume", text: USAGE_LIMIT_RESUME_PROMPT }, footer],
+        ],
+        // The command reactor holds what arrives during a compaction and
+        // starts it as the next run once the compaction is done.
+        compaction: [
+          ["an ask", { say: "ask-1", text: ask }, ask],
+          ["its run is requested", { request: "ask-1" }, ask],
+          ["the run is on", { session: "running", turn: "turn-1" }, ask],
+          ["the run ends", { session: "ready" }, ask],
+          ["/compact while the Mate is idle", { say: "compact-1", text: "/compact" }, ask],
+          ["the compaction is requested", { request: "compact-1" }, ask],
+          ["the session starts to compact", { session: "starting" }, ask],
+          ["an ask while it compacts", { say: "ask-2", text: footer }, footer],
+          ["the context is compacted", { compacted: "compact-1" }, footer],
+          ["the compaction ends", { session: "ready" }, footer],
+          ["/compact again", { say: "compact-2", text: "/compact" }, footer],
+          ["that compaction is requested", { request: "compact-2" }, footer],
+          ["the session starts to compact", { session: "starting" }, footer],
+          [
+            "the compaction runs as a turn of its own",
+            { session: "running", turn: "turn-compact" },
+            footer,
+          ],
+          ["an ask while that turn runs", { say: "ask-3", text: version }, version],
+          ["the compaction ends", { session: "ready" }, version],
+        ],
+        // A run nobody's ask started — a helper's result woke the Mate — takes
+        // no follow-ups: the provider ends it and runs what the person sent as
+        // a run of its own (the subject stayed on the ask before, for good).
+        woken: [
+          ["an ask", { say: "ask-1", text: ask }, ask],
+          ["its run is requested", { request: "ask-1" }, ask],
+          ["the run is on", { session: "running", turn: "turn-1" }, ask],
+          ["the run ends", { session: "ready" }, ask],
+          [
+            "a helper's result wakes a run of its own",
+            { session: "running", turn: "turn-woken" },
+            ask,
+          ],
+          ["an ask while the woken run is on", { say: "ask-2", text: footer }, footer],
+          ["its run is requested", { request: "ask-2" }, footer],
+          ["the woken run ends", { session: "ready" }, footer],
+        ],
+        revert: [
+          ["an ask", { say: "ask-1", text: ask }, ask],
+          ["its run is requested", { request: "ask-1" }, ask],
+          ["the run is on", { session: "running", turn: "turn-1" }, ask],
+          [
+            "a follow-up while it runs",
+            { say: "follow-1", text: "and make the heading green too" },
+            ask,
+          ],
+          ["that follow-up is requested", { request: "follow-1" }, ask],
+          ["the run ends", { session: "ready" }, ask],
+          ["its checkpoint", { checkpoint: "turn-1", count: 1 }, ask],
+          ["the next ask", { say: "ask-2", text: footer }, footer],
+          ["its run is requested", { request: "ask-2" }, footer],
+          ["the run is on", { session: "running", turn: "turn-2" }, footer],
+          ["the run ends", { session: "ready" }, footer],
+          ["its checkpoint", { checkpoint: "turn-2", count: 2 }, footer],
+          ["a revert to the first run", { revert: 1 }, ask],
+        ],
+      };
+      const eventFor = (threadId: ThreadId, scenario: string, step: Step, at: string) => {
+        if ("say" in step) {
+          return {
+            type: "thread.message-sent",
+            payload: {
+              threadId,
+              messageId: MessageId.make(`run-task-${scenario}-${step.say}`),
+              role: "user",
+              text: step.text,
+              turnId: null,
+              streaming: false,
+              createdAt: at,
+              updatedAt: at,
+            },
+          };
+        }
+        if ("request" in step) {
+          return {
+            type: "thread.turn-start-requested",
+            payload: {
+              threadId,
+              messageId: MessageId.make(`run-task-${scenario}-${step.request}`),
+              runtimeMode: "full-access",
+              createdAt: at,
+            },
+          };
+        }
+        if ("session" in step) {
+          return {
+            type: "thread.session-set",
+            payload: {
+              threadId,
+              session: {
+                threadId,
+                status: step.session,
+                providerName: "claudeAgent",
+                runtimeMode: "full-access",
+                activeTurnId: step.turn === undefined ? null : TurnId.make(step.turn),
+                lastError: null,
+                updatedAt: at,
+              },
+            },
+          };
+        }
+        if ("compacted" in step) {
+          return {
+            type: "thread.activity-appended",
+            payload: {
+              threadId,
+              activity: {
+                id: EventId.make(`activity-run-task-${scenario}-${step.compacted}`),
+                tone: "info",
+                kind: "context-compaction",
+                summary: "Context compacted",
+                payload: { requestId: `run-task-${scenario}-${step.compacted}` },
+                turnId: null,
+                createdAt: at,
+              },
+            },
+          };
+        }
+        if ("checkpoint" in step) {
+          return {
+            type: "thread.turn-diff-completed",
+            payload: {
+              threadId,
+              turnId: TurnId.make(step.checkpoint),
+              checkpointTurnCount: step.count,
+              checkpointRef: CheckpointRef.make(
+                `refs/t3/checkpoints/${threadId}/turn/${step.count}`,
+              ),
+              status: "ready",
+              files: [],
+              assistantMessageId: null,
+              completedAt: at,
+            },
+          };
+        }
+        return { type: "thread.reverted", payload: { threadId, turnCount: step.revert } };
+      };
+
+      let sequence = 0;
+      for (const [scenario, steps] of Object.entries(scenarios)) {
+        const threadId = ThreadId.make(`thread-run-task-${scenario}`);
+        const project = (at: string, event: Record<string, unknown>) => {
+          sequence += 1;
+          return eventStore
+            .append({
+              eventId: EventId.make(`evt-run-task-${sequence}`),
+              aggregateKind: "thread",
+              aggregateId: threadId,
+              occurredAt: at,
+              commandId: CommandId.make(`cmd-run-task-${sequence}`),
+              causationEventId: null,
+              correlationId: null,
+              metadata: {},
+              ...event,
+            } as Parameters<typeof eventStore.append>[0])
+            .pipe(Effect.flatMap((savedEvent) => projectionPipeline.projectEvent(savedEvent)));
+        };
+        yield* project("2026-09-27T08:00:00.000Z", {
+          type: "thread.created",
+          payload: {
+            threadId,
+            projectId: ProjectId.make("project-run-task"),
+            title: "Nova status",
+            modelSelection: { instanceId: ProviderInstanceId.make("claudeAgent"), model: "opus" },
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: null,
+            createdAt: "2026-09-27T08:00:00.000Z",
+            updatedAt: "2026-09-27T08:00:00.000Z",
+          },
+        });
+        for (const [index, [label, step, task]] of steps.entries()) {
+          const at = `2026-09-27T08:00:${String(index + 1).padStart(2, "0")}.000Z`;
+          yield* project(at, eventFor(threadId, scenario, step, at));
+          const rows = yield* sql<{ readonly task: string | null }>`
+            SELECT latest_user_message_preview_json AS "task"
+            FROM projection_threads
+            WHERE thread_id = ${threadId}
+          `;
+          assert.deepEqual(
+            rows.map((row) => parsePreview(row.task)?.text ?? null),
+            [task],
+            `${scenario}: after ${label}`,
+          );
+        }
+      }
+    }),
+  );
+
   it.effect("keeps a thread's usage pause and its auto-resume switch on the thread row", () =>
     Effect.gen(function* () {
       const projectionPipeline = yield* OrchestrationProjectionPipeline;

@@ -31,6 +31,7 @@ import {
   CircleIcon,
   LayersIcon,
   ListTodoIcon,
+  GitCommitHorizontalIcon,
   RocketIcon,
   RotateCcwIcon,
   XIcon,
@@ -50,11 +51,11 @@ import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { Button } from "../ui/button";
 import { MateFace } from "../zerops/primitives";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
-import { formatWorkDuration, type IncidentModel } from "./conversation.logic";
+import { formatWorkDuration, isGitPushOnly, type IncidentModel } from "./conversation.logic";
 import { StatusBar, StatusDisc, type BarTone, type DiscTone } from "./ConversationPills";
 import type { DockBackgroundTask, DockModel } from "./conversationDock.logic";
 import type { WorkingFailure } from "./MessagesTimeline.logic";
-import { ElapsedSince, type ConversationSpeaker } from "./ConversationRows";
+import { ElapsedSince, MATE_BUBBLE_FILL, type ConversationSpeaker } from "./ConversationRows";
 
 /**
  * A bubble in the Mate's stream: what it thinks, its words, rendered; a step
@@ -105,14 +106,32 @@ function useArrivedLive(): boolean {
 /** Room above the newest bubble for the one before it, drifting away through the fade. */
 const PEEK_PX = 56;
 
-/** How a bubble recedes as newer ones push it up: dimmer and a little smaller each step. */
-const AGE_CLASS = [
-  "",
-  "scale-98 opacity-55",
-  "scale-96 opacity-30",
-  "scale-94 opacity-15",
-  "scale-92 opacity-10",
-];
+/**
+ * How a bubble recedes as newer ones push it up: dimmer and a little smaller
+ * each step. What the Mate said to the person stays readable a while; what it
+ * thought to itself passes quickly — the aging is part of telling them apart.
+ */
+const AGE_CLASS: Record<"said" | "thought", ReadonlyArray<string>> = {
+  said: [
+    "",
+    "scale-98 opacity-80",
+    "scale-96 opacity-60",
+    "scale-94 opacity-40",
+    "scale-92 opacity-25",
+  ],
+  thought: [
+    "",
+    "scale-98 opacity-45",
+    "scale-96 opacity-25",
+    "scale-94 opacity-12",
+    "scale-92 opacity-8",
+  ],
+};
+
+export function ageClass(kind: WorkingBubble["kind"], age: number): string {
+  const steps = AGE_CLASS[kind === "thought" ? "thought" : "said"];
+  return steps[Math.min(age, steps.length - 1)]!;
+}
 
 function TypingDots({ className }: { readonly className?: string }) {
   return (
@@ -125,21 +144,22 @@ function TypingDots({ className }: { readonly className?: string }) {
 }
 
 /**
- * The Mate's words and its thinking in the stream. Its words to the person
- * are a bubble, its corner toward the face, in a fill the dark card shows too
- * (the muted one vanished there) — the panel's and the opened log's alike, so
- * what it said reads the same live and after. Its thinking is no bubble: text
- * on a hairline in the muted ink and in italics, as the opened log keeps it —
- * the letterforms still say "thinking" once age has dimmed a fill to nothing
- * (a light thought bubble read as an aged note, and an aged note as a
- * thought). The hairline is drawn, not a border, so a thought keeps a note's
- * box to the pixel.
+ * The Mate's words and its thinking in the stream, told apart at a glance
+ * (the owner, 2026-09-27: "almost no distinction between messages that are
+ * thoughts and notes"). Its words to the person are a chat bubble, its corner
+ * toward the face, in a fill both palettes show (secondary was 0.03 off the
+ * light card: a bubble in the dark theme, bare text in the light). Its
+ * thinking is no bubble at all: smaller muted italics, the Mate talking to
+ * itself — the panel's and the opened log's alike, so each reads the same
+ * live and after.
  */
 export const MATE_BUBBLE_CLASS: Record<"thought" | "note", string> = {
-  thought:
-    "relative w-fit max-w-full origin-bottom-left px-3.5 py-2 text-muted-foreground italic before:absolute before:inset-y-2 before:start-0 before:w-px before:bg-border",
-  note: "w-fit max-w-full origin-bottom-left rounded-2xl rounded-es-md bg-secondary px-3.5 py-2 text-foreground",
+  thought: "w-fit max-w-full origin-bottom-left px-3.5 py-0.5 italic",
+  note: `w-fit max-w-full origin-bottom-left rounded-2xl rounded-es-md ${MATE_BUBBLE_FILL} px-3.5 py-2 text-foreground`,
 };
+
+/** A thought's words: a size under the Mate's words to the person, in the muted ink. */
+export const THOUGHT_WORDS_CLASS = "text-line leading-5 text-muted-foreground";
 
 function StreamBubble({ bubble }: { readonly bubble: WorkingBubble }) {
   const pop = useArrivedLive() ? "animate-bubble-pop motion-reduce:animate-none" : null;
@@ -186,11 +206,18 @@ function StreamBubble({ bubble }: { readonly bubble: WorkingBubble }) {
  * never moves the bubbles above.
  */
 function StreamActivity({ activity }: { readonly activity: WorkingActivity }) {
+  // In the stream's own language: words to the person come in a bubble, so
+  // words on their way are the dots in one; thinking is no bubble, as a
+  // thought is none. The same height either way, so one turning into the
+  // other moves nothing.
   if (activity.kind === "thinking" || activity.kind === "writing") {
     return (
       <div
         aria-label={activity.kind === "thinking" ? "Thinking" : "Writing"}
-        className="flex h-8 w-fit items-center rounded-2xl rounded-es-md bg-secondary px-3.5"
+        className={cn(
+          "flex h-8 w-fit items-center px-3.5",
+          activity.kind === "writing" && ["rounded-2xl rounded-es-md", MATE_BUBBLE_FILL],
+        )}
         data-stream-activity={activity.kind}
         role="img"
       >
@@ -387,7 +414,7 @@ function Stream({
                   ref={age === 0 ? setNewest : undefined}
                   className={cn(
                     "origin-bottom-left pt-2 transition duration-500",
-                    !reading && AGE_CLASS[Math.min(age, AGE_CLASS.length - 1)],
+                    !reading && ageClass(bubble.kind, age),
                   )}
                 >
                   <StreamBubble bubble={bubble} />
@@ -565,16 +592,19 @@ function DeployInstrument({
     steps.find((step) => step.state === "failed") ??
     steps.findLast((step) => step.state === "done");
   // A service of a batch has one step, named by the service: its state is
-  // the words, never its name a second time.
-  const words = !running
-    ? operation.statusWord
-    : pipeline?.calculating
-      ? "Calculating steps"
-      : pipelineStep !== undefined
-        ? pipelineStep.sentence
-        : fallbackStep !== undefined && fallbackStep.label !== operation.subject
-          ? fallbackStep.label
-          : operation.statusWord;
+  // the words, never its name a second time. A git push is its status word
+  // throughout ("Pushing", "Pushed"): it has no build to watch.
+  const pushOnly = isGitPushOnly(operation);
+  const words =
+    !running || pushOnly
+      ? operation.statusWord
+      : pipeline?.calculating
+        ? "Calculating steps"
+        : pipelineStep !== undefined
+          ? pipelineStep.sentence
+          : fallbackStep !== undefined && fallbackStep.label !== operation.subject
+            ? fallbackStep.label
+            : operation.statusWord;
   const settledMs =
     operation.settledAt === undefined
       ? null
@@ -613,6 +643,8 @@ function DeployInstrument({
           <XIcon aria-hidden="true" className="size-3.5" />
         ) : operation.phase === "done" ? (
           <CheckIcon aria-hidden="true" className="size-3.5" />
+        ) : pushOnly ? (
+          <GitCommitHorizontalIcon aria-hidden="true" className="size-3.5" />
         ) : (
           <RocketIcon aria-hidden="true" className="size-3.5" />
         )
@@ -1067,7 +1099,7 @@ export function ConversationAfterWork({
   return (
     <section
       aria-label={`${speaker.name} at work in the background`}
-      className="@container/panel animate-panel-in rounded-3xl bg-card text-card-foreground shadow-sm ring-1 ring-border/60 motion-reduce:animate-none"
+      className="@container/panel animate-panel-in rounded-3xl border border-border/70 bg-card text-card-foreground motion-reduce:animate-none"
       data-conversation-after-work={state}
     >
       <div className="flex min-h-12 min-w-0 items-center gap-2.5 px-4 py-2">
@@ -1079,15 +1111,18 @@ export function ConversationAfterWork({
           {stopping ? "Stopping…" : "Stop"}
         </Button>
       </div>
-      <Instruments
-        dock={dock}
-        environmentId={environmentId}
-        incidents={EMPTY_INCIDENTS}
-        onOpenAgents={onOpenAgents}
-        onToggle={toggle}
-        open={open}
-        threadRef={threadRef}
-      />
+      {/* The panel's bars span its card from inside its padding: the same here. */}
+      <div className="px-4">
+        <Instruments
+          dock={dock}
+          environmentId={environmentId}
+          incidents={EMPTY_INCIDENTS}
+          onOpenAgents={onOpenAgents}
+          onToggle={toggle}
+          open={open}
+          threadRef={threadRef}
+        />
+      </div>
     </section>
   );
 }

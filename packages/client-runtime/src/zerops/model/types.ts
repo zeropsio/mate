@@ -256,6 +256,8 @@ export interface ZeropsOperation {
   readonly target?: { readonly hostname: string };
   /** `deploy` only: a `zerops_deploy_batch` — one step per target, no single service to observe or name. */
   readonly batch?: true;
+  /** `deploy` only: the call delivered by pushing to a git remote (zcp's git-push strategy). */
+  readonly strategy?: "git-push";
   readonly resultStatus?: string;
   readonly hasResult: boolean;
   /** `deploy` only, once the result names one. */

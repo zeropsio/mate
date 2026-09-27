@@ -111,7 +111,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(list[3]).toMatchObject({ showAssistantMeta: true, receipt: null });
   });
 
-  it("keeps every message the person sent where they sent it, inside the run's one card", () => {
+  it("keeps every message the person sent where they sent it, on the page, the run's one line after them", () => {
     const list = rows({
       entries: [
         user("m0", 0),
@@ -124,13 +124,13 @@ describe("deriveMessagesTimelineRows", () => {
       settled: "t1",
     });
     // Messages sent into the run are delivered at the Mate's next step and
-    // the run goes on: one line for all of it, the messages inside its card
-    // where they arrived, the answer after it.
+    // the run goes on: the messages on the page where the person sent them,
+    // one line for all of the work after them, the answer after it.
     expect(shape(list).slice(1)).toEqual([
       "message:m0",
-      "work-line:work-line:msg:m0",
       "message:m1",
       "message:m2",
+      "work-line:work-line:msg:m0",
       "message:a3",
     ]);
     expect(list.filter((row) => row.kind === "message" && row.message.role === "user")).toEqual([
@@ -139,7 +139,10 @@ describe("deriveMessagesTimelineRows", () => {
       expect.objectContaining({ aside: true, receipt: "seen" }),
     ]);
     // A run without notes says what it did instead, all of it.
-    expect(list[2]).toMatchObject({ note: null, fallback: "Ran 2 commands" });
+    expect(list.find((row) => row.kind === "work-line")).toMatchObject({
+      note: null,
+      fallback: "Ran 2 commands",
+    });
   });
 
   it("keeps the running turn's last line live and its latest words at its tail", () => {
@@ -323,8 +326,9 @@ describe("deriveMessagesTimelineRows", () => {
       entries: [...before, answered, assistant("a2", "t1", 4, "Green it is."), tool("w9", "t1", 5)],
       live: "t1",
     });
-    expect(shape(after).slice(-3)).toEqual([
+    expect(shape(after).slice(-4)).toEqual([
       "answer:answer:rs",
+      "work-line:work-line:msg:m0",
       "working:working:msg:m0:rs",
       "card-end:card-end:msg:m0",
     ]);
@@ -332,9 +336,38 @@ describe("deriveMessagesTimelineRows", () => {
     expect(working?.kind === "working" ? working.stream.map((item) => item.key) : null).toEqual([
       "a2",
     ]);
-    // Everything above the live panel is drawn as it was.
-    const panelAt = waiting.findIndex((row) => row.kind === "working");
-    expect(frame(after).slice(0, panelAt)).toEqual(frame(waiting).slice(0, panelAt));
+    // Everything above the live card is drawn as it was: the answer lands
+    // under it, and the card goes on under the answer.
+    const cardAt = waiting.findIndex((row) => row.kind === "work-line" && row.live);
+    expect(frame(after).slice(0, cardAt)).toEqual(frame(waiting).slice(0, cardAt));
+  });
+
+  // The words the person's message answers are the Mate's last before it:
+  // after a question and its answer there are none of the Mate's own — its
+  // note from before the question stood between the answer and the message.
+  it("sets no earlier words between a question's answer and the person's next message", () => {
+    const answered = tool("rs", "t1", 3, {
+      tone: "info",
+      label: "User input submitted",
+      command: undefined as never,
+      toolCallId: undefined as never,
+      toolLifecycleStatus: undefined as never,
+      sourceActivityKind: "user-input.resolved",
+      inputRequestId: "req-1",
+      inputAnswers: [{ key: "accent", answer: "Green" }],
+    });
+    const list = rows({
+      entries: [
+        user("m0", 0),
+        assistant("a1", "t1", 1, "One question first."),
+        asked("q1", 2),
+        answered,
+        user("m1", 4, "and make it bold"),
+        tool("w9", "t1", 5),
+      ],
+      live: "t1",
+    });
+    expect(shape(list).slice(1, 4)).toEqual(["message:m0", "answer:answer:rs", "message:m1"]);
   });
 
   it("draws a turn a finished background task woke before its first words", () => {
@@ -651,10 +684,14 @@ describe("deriveMessagesTimelineRows", () => {
       stream: ["~ thinking about it", "Deploying.", "~ thinking about it"],
     },
     {
-      name: "words that read as the answer leave the stream: they stream under the card",
+      name: "words that read as the answer leave the stream while work still runs: they stream under the card",
       entries: [
         assistant("a1", "t1", 1, "Deploying."),
-        tool("w1", "t1", 2),
+        operation("d1", "t1", 2, {
+          kind: "deploy",
+          phase: "running",
+          settledAt: undefined as never,
+        }),
         assistant("a2", "t1", 3, "It is live.\n\n**What changed**"),
       ],
       stream: ["Deploying."],
@@ -789,6 +826,61 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
   });
 
+  // Starting a helper is work: a run that only launched one read "Nova
+  // thought for 8s" (Nova, 2026-09-27).
+  it.each([
+    {
+      name: "only a helper started",
+      spawned: ["task-h1"],
+      commands: 0,
+      summary: "Started 1 helper",
+    },
+    {
+      name: "two helpers at once",
+      spawned: ["task-h1", "task-h2"],
+      commands: 0,
+      summary: "Started 2 helpers",
+    },
+    {
+      name: "after other work",
+      spawned: ["task-h1"],
+      commands: 2,
+      summary: "Ran 2 commands · started 1 helper",
+    },
+  ])("says what a run started: $name", ({ spawned, commands, summary }) => {
+    const list = rows({
+      entries: [
+        user("m0", 0),
+        ...Array.from({ length: commands }, (_, index) => tool(`w${index}`, "t1", 1)),
+        tool("s1", "t1", 1, {
+          label: "Review server/index.ts",
+          agentSpawn: { workflowId: null, agentTaskIds: spawned },
+        }),
+        assistant("a1", "t1", 2, "It is running."),
+      ],
+      settled: "t1",
+    });
+    expect(list.find((row) => row.kind === "work-line")).toMatchObject({ summary });
+  });
+
+  // A run whose only work was an operation — a page check, a deploy — did
+  // work: "Nova thought for 8s" stood over its report of "1 page · 1 check"
+  // (Nova, 2026-09-27).
+  it.each([
+    {
+      name: "only a page checked",
+      middle: [operation("b1", "t1", 1, { kind: "browser", subject: "https://shop.dev/" })],
+      worked: true,
+    },
+    { name: "only thought", middle: [reasoning("r1", "t1", 1)], worked: false },
+  ])("says a run that did something worked: $name", ({ middle, worked }) => {
+    const list = rows({
+      entries: [user("m0", 0), ...middle, assistant("a1", "t1", 2, "Done.")],
+      settled: "t1",
+    });
+    expect(list.find((row) => row.kind === "work-line")).toMatchObject({ worked });
+  });
+
   it("keeps what matters visible under a closed line, each where it appeared", () => {
     const list = rows({
       entries: [
@@ -818,11 +910,11 @@ describe("deriveMessagesTimelineRows", () => {
     });
     // The failed deploy, the failed background task and the browser checks
     // are the work's own: they stay in the log, and the outcome says what the
-    // turn came to. What happened *to* the conversation stays in view.
+    // turn came to. What happened *to* the conversation stays in view — but
+    // the change that landed once, in the outcome's pill.
     expect(shape(list).slice(1)).toEqual([
       "message:m0",
       "work-line:work-line:msg:m0",
-      "event:event:l1",
       "event:event:w1",
       "error:e1",
       "outcome:outcome:msg:m0",
@@ -1068,6 +1160,27 @@ describe("deriveMessagesTimelineRows", () => {
     expect(list.find((row) => row.id === "m1")).toMatchObject({ kind: "message", aside: false });
   });
 
+  // The Mate at work names the card it stands in: a run a /compact opened is
+  // drawn from the person's message after it, and the panel's height is
+  // measured against that card's line and edge.
+  it("names the card a panel stands in, the one a /compact's run is drawn as", () => {
+    const list = rows({
+      entries: [
+        user("m0", 0, "/compact"),
+        tool("c1", "t1", 1, {
+          sourceActivityKind: "context-compaction",
+          label: "Context compacted",
+        }),
+        user("m1", 2),
+        tool("w1", "t1", 3),
+      ],
+      live: "t1",
+    });
+    const line = list.find((row) => row.kind === "work-line");
+    expect(line?.id).toBe("work-line:msg:m1");
+    expect(list.find((row) => row.kind === "working")).toMatchObject({ cardKey: "msg:m1" });
+  });
+
   it("says a /compact that ran without a turn is done once nothing runs", () => {
     const list = rows({ entries: [user("m0", 0, "/compact")] });
     expect(list.find((row) => row.id === "m0")).toMatchObject({
@@ -1192,7 +1305,7 @@ describe("deriveMessagesTimelineRows", () => {
     });
   });
 
-  it("says the words the person answered once: in the opened log, else in the speech", () => {
+  it("keeps the words the person answered on the page, and the whole record in the opened log", () => {
     const list = rows({
       entries: [
         user("m0", 0),
@@ -1203,14 +1316,39 @@ describe("deriveMessagesTimelineRows", () => {
       live: "t1",
       open: ["msg:m0"],
     });
-    expect(shape(list).slice(1, 6)).toEqual([
+    // Opening the log changes nothing above its line: the words the person
+    // answered stay beside the face, the log below says them in their place.
+    expect(shape(list).slice(1, 7)).toEqual([
       "message:m0",
+      "speech:speech:msg:m0",
+      "message:m1",
       "work-line:work-line:msg:m0",
       "log-activity:log-activity:w1",
       "log-note:log-note:a1",
-      "message:m1",
     ]);
+    expect(list.find((row) => row.kind === "speech")).toMatchObject({ hand: "bubble" });
+    // The log marks where the person's message reached the Mate: its record
+    // said "The user also wants the heading green" with no word of it (Nova,
+    // 2026-09-27).
+    expect(shape(list).slice(7, 9)).toEqual(["log-person:log-person:m1", "working:working:msg:m1"]);
   });
+
+  // An image sent into the run is marked as the image it is, never the
+  // client's placeholder text for a message without words.
+  it.each([
+    { text: "and the footer", imageOnly: false },
+    { text: IMAGE_ONLY_BOOTSTRAP_PROMPT, imageOnly: true },
+  ])(
+    "marks a message in the opened log as its words or its image ($imageOnly)",
+    ({ text, imageOnly }) => {
+      const list = rows({
+        entries: [user("m0", 0), tool("w1", "t1", 1), user("m1", 2, text), tool("w2", "t1", 3)],
+        live: "t1",
+        open: ["msg:m0"],
+      });
+      expect(list.find((row) => row.kind === "log-person")).toMatchObject({ imageOnly });
+    },
+  );
 
   it.each([
     { afterTurnWork: "working" as const, last: "after-work:after-work" },
@@ -1339,7 +1477,7 @@ describe("a stretch's card", () => {
       expected: ["message", "work-line:top", "working:middle", "card-end:bottom"],
     },
     {
-      case: "written into: the person's message inside the card, under the words it answered",
+      case: "written into: the person's message on the page under the words it answered, the card after it",
       scene: {
         entries: [
           user("m0", 0),
@@ -1350,16 +1488,34 @@ describe("a stretch's card", () => {
         ],
         live: "t1",
       } satisfies Scene,
-      // The run goes on after the person's message: one card, the message
-      // inside it under the Mate's words it answered, the Mate still at work.
+      // The run goes on after the person's message: the message on the page
+      // under the Mate's words it answered, the one card under it, the Mate
+      // still at work.
       expected: [
         "message",
+        "speech",
+        "message",
         "work-line:top",
-        "speech:middle",
-        "message:middle",
         "working:middle",
         "card-end:bottom",
       ],
+    },
+    {
+      case: "settled, closed, a change landed: the report names it, no line of its own",
+      scene: {
+        entries: [user("m0", 0), tool("w1", "t1", 1), landed("l1", 2), assistant("a1", "t1", 3)],
+        settled: "t1",
+      } satisfies Scene,
+      // The landing's own line said again what the report's pill says.
+      expected: ["message", "work-line:top", "outcome:middle", "card-end:bottom", "message"],
+    },
+    {
+      case: "live, a change landed: its line stands in the card until the report takes it",
+      scene: {
+        entries: [user("m0", 0), tool("w1", "t1", 1), landed("l1", 2), tool("w2", "t1", 3)],
+        live: "t1",
+      } satisfies Scene,
+      expected: ["message", "work-line:top", "event:middle", "working:middle", "card-end:bottom"],
     },
     {
       case: "an answer with no work before it: no card",
@@ -1373,11 +1529,15 @@ describe("a stretch's card", () => {
     expect(cards(framed(scene))).toEqual(expected);
   });
 
-  it("streams a running turn's answer under its card, the panel saying nothing of its own", () => {
+  // A running turn's answer streams under its card while the panel stays:
+  // words that read as an answer mid-run become a note once the Mate goes
+  // on, and a card folded early would come back at full height. It folds at
+  // the settle, easing from the panel's height.
+  it("streams a running turn's answer under its card, the panel staying until the settle", () => {
     const list = framed({
       entries: [
         user("m0", 0),
-        tool("w1", "t1", 1),
+        operation("d1", "t1", 1, { kind: "deploy" }),
         assistant("a1", "t1", 2, "It is live.\n\n**What changed**"),
       ],
       live: "t1",
@@ -1391,6 +1551,20 @@ describe("a stretch's card", () => {
     ]);
     expect(list.at(-1)).toMatchObject({ kind: "message", id: "a1" });
     expect(list.find((row) => row.kind === "working")).toMatchObject({ answering: true });
+  });
+
+  // A run with nothing to report settles into its line alone: the answer
+  // under it eases up from where the panel stood.
+  it("folds a run with nothing to report into its line, the answer easing up from the panel", () => {
+    const list = framed({
+      entries: [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, "Done.")],
+      settled: "t1",
+    });
+    expect(list.at(-1)).toMatchObject({
+      kind: "message",
+      id: "a1",
+      foldsFrom: { turnKey: "msg:m0", cardClosed: true },
+    });
   });
 
   it("keeps the room after a card that the card's last row kept", () => {
@@ -1433,6 +1607,11 @@ describe("the no-shift contract", () => {
     }
     return end;
   };
+  // The live card stays whole under the conversation's last word, as a
+  // typing indicator stays under the last message: a message the person
+  // sends into the run lands above it and the card moves down with it. So
+  // the page above the live card only grows at its bottom, and the card
+  // itself only grows at its bottom above its panel.
   const holds = (sequence: Array<{ entry: TimelineEntry; live: boolean }>, open: string[]) => {
     let previous: MessagesTimelineRow[] = [];
     let wasLive = false;
@@ -1441,11 +1620,26 @@ describe("the no-shift contract", () => {
       const live = sequence[count - 1]!.live;
       const current = framed({ entries, ...(live ? { live: "t1" } : { settled: "t1" }), open });
       const settling = wasLive && !live;
-      const liveLineEnd = previous.findLastIndex((row) => row.kind === "work-line" && row.live) + 1;
-      const bound = settling
-        ? Math.min(liveTailStart(previous, wasLive), liveLineEnd)
-        : liveTailStart(previous, wasLive);
-      expect(frame(current).slice(0, bound)).toEqual(frame(previous).slice(0, bound));
+      const tail = liveTailStart(previous, wasLive);
+      const cardAt = previous.findIndex((row) => row.kind === "work-line" && row.live);
+      if (cardAt === -1) {
+        expect(frame(current).slice(0, tail)).toEqual(frame(previous).slice(0, tail));
+      } else {
+        expect(frame(current).slice(0, cardAt)).toEqual(frame(previous).slice(0, cardAt));
+        // Settling, a card re-forms, its line's frame too: a line left with
+        // nothing under it stands alone.
+        const held = settling ? 0 : Math.max(1, tail - cardAt);
+        // The card moves as one: the room above its line is the room its new
+        // neighbour keeps, so the line is compared by what it draws.
+        const movedTo = current.findIndex((row) => row.id === previous[cardAt]!.id);
+        const unroomed = (list: MessagesTimelineRow[]) =>
+          frame(list).map((drawn, index) =>
+            index === 0 ? drawn.replace(/:(none|tight|line|block|turn):/, ":") : drawn,
+          );
+        expect(unroomed(current.slice(movedTo, movedTo + held))).toEqual(
+          unroomed(previous.slice(cardAt, cardAt + held)),
+        );
+      }
       previous = current;
       wasLive = live;
     }

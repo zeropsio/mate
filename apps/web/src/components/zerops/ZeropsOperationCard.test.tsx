@@ -46,6 +46,7 @@ vi.mock("../../rightPanelStore", () => ({
   },
 }));
 
+import { formatWorkDuration } from "../chat/conversation.logic";
 import { ZeropsOperationCard, type ObservedRegion } from "./ZeropsOperationCard";
 
 /** The clock at the hand-built calls' own moment, no project known — a triggered build is still running. */
@@ -86,6 +87,13 @@ function zeropsCall(overrides: {
 /** One call folds into exactly one operation — the reducer's output for a single-call fixture. */
 function operationFor(call: ZeropsCall): ZeropsOperation {
   return reduceZeropsOperations([call], CONTEXT).operations[0]!;
+}
+
+/** The header's clock as it reads, without the middle dot that leads it after a status word. */
+function clockOf(html: string): string | undefined {
+  return html
+    .match(/<span[^>]*data-zerops-operation-duration[^>]*>([^<]*)</)?.[1]
+    ?.replace(/^· /, "");
 }
 
 describe("ZeropsOperationCard — fixture operations", () => {
@@ -341,6 +349,15 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
     expect(rows[0]?.inner).toContain("Calculating steps from zerops.yml");
     expect(rows[0]?.inner).toContain('data-zerops-status-tone="busy"');
     expect(durationOf(headerOf(html))).toBe("1m 14s");
+  });
+
+  // A git push has no build of its own to read: it is its one push step,
+  // never "Calculating steps from zerops.yml" for a pipeline that is not coming.
+  it("a running git push reads no pipeline", () => {
+    const pushing = deploy({ input: { targetService: "weatherdash", strategy: "git-push" } });
+    const html = render(pushing, observedOf(readout({ status: "WAITING_TO_BUILD", build: {} })));
+    expect(html).not.toContain("Calculating steps from zerops.yml");
+    expect(rowsOf(html)).toHaveLength(0);
   });
 
   it("the provenance is one quiet line, only once the feed is not answering", () => {
@@ -682,7 +699,7 @@ describe("ZeropsOperationCard — browser", () => {
   it.each([
     { name: "errors on the page", errors: true },
     { name: "a clean page", errors: false },
-  ])("$name: the figures take the error tone only when there are errors", ({ errors }) => {
+  ])("$name: the figures take the failure tone only when there are errors", ({ errors }) => {
     const checked = errors
       ? operation
       : operationFor(
@@ -704,7 +721,9 @@ describe("ZeropsOperationCard — browser", () => {
         );
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={checked} />);
     const metrics = html.match(/<p[^>]*data-zerops-browser-metrics[^>]*>/)?.[0];
-    expect(metrics?.includes("text-destructive-foreground")).toBe(errors);
+    // The failure red the failed step under it is in: the status token, never `destructive`.
+    expect(metrics?.includes("text-status-failed-text")).toBe(errors);
+    expect(metrics).not.toContain("destructive");
     if (!errors) {
       expect(html).toContain(">1440×900 · 1 step · 0 errors<");
     }
@@ -882,6 +901,9 @@ describe("ZeropsOperationCard — browser", () => {
       expect(viewport).toContain(`aspect-ratio:${ratio}`);
       expect(viewport?.includes("data-zerops-browser-image")).toBe(image);
       expect(viewport).not.toMatch(/animate-/);
+      // Its static tint shows on both cards: `muted` all but vanishes on the dark one.
+      expect(viewport).toMatch(/^<button[^>]*class="[^"]*\bbg-foreground\/5\b/);
+      expect(viewport).not.toMatch(/\bbg-muted\b/);
     });
 
     it("the live caption follows the call's own phase, so a reload of a running call reads the same", () => {
@@ -1236,13 +1258,100 @@ describe("ZeropsOperationCard — durations against the real fixture (regression
     expect(html).not.toContain("0 s");
   });
 
-  it("the verify and bootstrap operations also show a nonzero duration", () => {
-    const verifyHtml = renderToStaticMarkup(<ZeropsOperationCard operation={verify} />);
-    const bootstrapHtml = renderToStaticMarkup(<ZeropsOperationCard operation={bootstrap} />);
-    expect(verifyHtml).toContain("6 s");
-    expect(verifyHtml).not.toContain("0 s");
-    expect(bootstrapHtml).toContain("55 s");
-    expect(bootstrapHtml).not.toContain("0 s");
+  // 5.881 s and 54.904 s: floored, as the conversation's clocks floor, so a
+  // settled card reads what its running clock last read.
+  it.each([
+    { name: "verify", operation: verify, reads: "5s" },
+    { name: "bootstrap", operation: bootstrap, reads: "54s" },
+  ])("the $name card's clock reads $reads", ({ operation, reads }) => {
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+    expect(clockOf(html)).toBe(reads);
+    expect(html).not.toContain("0 s");
+  });
+});
+
+describe("ZeropsOperationCard — the clock says a duration as the conversation does", () => {
+  const T0 = "2026-09-01T00:00:00.000Z";
+  const after = (ms: number) => new Date(Date.parse(T0) + ms).toISOString();
+  /** A check of appdev: running without `settledAfterMs`, else passed that long after it began. */
+  const check = (settledAfterMs?: number) =>
+    operationFor(
+      zeropsCall({
+        id: `clock-verify-${settledAfterMs ?? "running"}`,
+        startedAt: T0,
+        turnId: "t1",
+        toolName: "zerops_verify",
+        input: { serviceHostname: "appdev" },
+        ...(settledAfterMs === undefined
+          ? { status: "inProgress" as const }
+          : {
+              status: "completed" as const,
+              settledAt: after(settledAfterMs),
+              resultText: JSON.stringify({ hostname: "appdev", status: "healthy", checks: [] }),
+            }),
+      }),
+    );
+  /** An import names no one service: its clock follows its status word. */
+  const importing = operationFor(
+    zeropsCall({
+      id: "clock-import",
+      startedAt: T0,
+      turnId: "t1",
+      toolName: "zerops_import",
+      input: {},
+      status: "inProgress",
+    }),
+  );
+
+  // One format with the work line and every other clock in the conversation:
+  // "42s", "1m 12s" — never "0:42" while it runs or "4 s" once it is done.
+  it.each([
+    { name: "a check running for 42 seconds", operation: check(), atMs: 42_000, reads: "42s" },
+    { name: "a check running past a minute", operation: check(), atMs: 72_000, reads: "1m 12s" },
+    {
+      name: "an import running past a minute",
+      operation: importing,
+      atMs: 72_000,
+      reads: "1m 12s",
+    },
+    { name: "a check that took 4 seconds", operation: check(4_000), atMs: 600_000, reads: "4s" },
+    { name: "a check that took under a second", operation: check(400), atMs: 600_000, reads: "1s" },
+    {
+      name: "a check that took 72 seconds",
+      operation: check(72_000),
+      atMs: 600_000,
+      reads: "1m 12s",
+    },
+  ])("$name reads $reads", ({ operation, atMs, reads }) => {
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard now={Date.parse(T0) + atMs} operation={operation} />,
+    );
+    expect(clockOf(html)).toBe(reads);
+  });
+
+  // The card cannot import the chat's formatter (R2: a render-only root), so
+  // this holds the two to one format wherever a card's clock can stand.
+  it.each([400, 1_000, 59_999, 60_000, 72_000, 599_000, 600_000, 612_000, 3_600_000, 7_560_000])(
+    "a check that took %i ms reads what every clock in the conversation reads",
+    (ms) => {
+      const html = renderToStaticMarkup(
+        <ZeropsOperationCard now={Date.parse(T0) + ms + 60_000} operation={check(ms)} />,
+      );
+      expect(clockOf(html)).toBe(formatWorkDuration(ms));
+    },
+  );
+
+  // "9s" grows to "1m 12s": while it runs the clock holds the room of its
+  // widest reading, so a growing clock never wraps the header onto a second line.
+  it.each([
+    { name: "a check's", operation: check() },
+    { name: "an import's", operation: importing },
+  ])("$name running clock holds its widest reading's room", ({ operation }) => {
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard now={Date.parse(T0) + 9_000} operation={operation} />,
+    );
+    const tag = html.match(/<span[^>]*data-zerops-operation-duration[^>]*>/)?.[0] ?? "";
+    expect(tag).toMatch(/\bmin-w-\d+\b/);
   });
 });
 

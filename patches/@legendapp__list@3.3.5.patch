@@ -1377,7 +1377,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..93aac741d2cf77ce3599636243910817
        recycleItems,
        refreshControl: refreshControlElement ? stylePaddingTopState > 0 ? React2.cloneElement(refreshControlElement, {
 diff --git a/react.js b/react.js
-index 914d2dafaafa001c9ab6791a0a0581659295e333..a2df18d450eebe451fda42bab47d1658458edbb1 100644
+index 914d2dafaafa001c9ab6791a0a0581659295e333..0730b209dd688ed559144fdf339079483fa73869 100644
 --- a/react.js
 +++ b/react.js
 @@ -4702,7 +4702,8 @@ function maybeUpdateAnchoredEndSpace(ctx) {
@@ -1403,7 +1403,18 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..a2df18d450eebe451fda42bab47d1658
    }
    return nextSize;
  }
-@@ -6446,8 +6453,8 @@ function ScrollAdjust() {
+@@ -4922,7 +4929,9 @@ function updateOneItemSize(ctx, itemKey, sizeObj, resolvedMeasurementItem) {
+   const prevSize = getItemSize(ctx, itemKey, index, itemData, void 0, void 0, void 0, resolvedItemSize);
+   const rawSize = horizontal ? sizeObj.width : sizeObj.height;
+   const prevSizeKnown = sizesKnown.get(itemKey);
+-  const size = Math.round(rawSize) ;
++  // Floored to an eighth of a pixel, as on native: whole-pixel rounding left
++  // gaps of up to half a pixel between rows whose heights are fractional.
++  const size = Math.floor(rawSize * 8) / 8;
+   sizesKnown.set(itemKey, size);
+   if (fixedItemSize === void 0 && size > 0) {
+     itemType != null ? itemType : itemType = getItemType ? (_b = getItemType(itemData, index)) != null ? _b : "" : "";
+@@ -6446,8 +6455,8 @@ function ScrollAdjust() {
                window.getComputedStyle(contentNode)[axis.paddingEndProp]
              );
              const temporaryPaddingEnd = `${(currentPaddingEnd || 0) + pad}px`;
@@ -1414,7 +1425,7 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..a2df18d450eebe451fda42bab47d1658
              scrollBy();
              if (resetPaddingRafRef.current !== void 0) {
 diff --git a/react.mjs b/react.mjs
-index 95465f2ab89ce41a10553f58af83618f7310e83c..25cf046f2c3141ddce5a0b6e28c354b865331b4f 100644
+index 95465f2ab89ce41a10553f58af83618f7310e83c..e24364e9dd307063a079875abdf140961f6ce613 100644
 --- a/react.mjs
 +++ b/react.mjs
 @@ -4681,7 +4681,8 @@ function maybeUpdateAnchoredEndSpace(ctx) {
@@ -1440,7 +1451,18 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..25cf046f2c3141ddce5a0b6e28c354b8
    }
    return nextSize;
  }
-@@ -6425,8 +6432,8 @@ function ScrollAdjust() {
+@@ -4901,7 +4908,9 @@ function updateOneItemSize(ctx, itemKey, sizeObj, resolvedMeasurementItem) {
+   const prevSize = getItemSize(ctx, itemKey, index, itemData, void 0, void 0, void 0, resolvedItemSize);
+   const rawSize = horizontal ? sizeObj.width : sizeObj.height;
+   const prevSizeKnown = sizesKnown.get(itemKey);
+-  const size = Math.round(rawSize) ;
++  // Floored to an eighth of a pixel, as on native: whole-pixel rounding left
++  // gaps of up to half a pixel between rows whose heights are fractional.
++  const size = Math.floor(rawSize * 8) / 8;
+   sizesKnown.set(itemKey, size);
+   if (fixedItemSize === void 0 && size > 0) {
+     itemType != null ? itemType : itemType = getItemType ? (_b = getItemType(itemData, index)) != null ? _b : "" : "";
+@@ -6425,8 +6434,8 @@ function ScrollAdjust() {
                window.getComputedStyle(contentNode)[axis.paddingEndProp]
              );
              const temporaryPaddingEnd = `${(currentPaddingEnd || 0) + pad}px`;

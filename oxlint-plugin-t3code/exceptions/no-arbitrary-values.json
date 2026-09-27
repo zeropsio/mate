@@ -416,22 +416,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[13px] in \"flex min-w-0 w-full items-baseline gap-1.5 text-[13px] leading-5\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[13px] in \"w-fit max-w-full min-w-0 overflow-hidden rounded-md text-[13px] leading-5\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/settings/DiagnosticsSettings.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[11px] in \"cursor-pointer mt-1 text-[11px] font-medium text-foreground/70 underline-offset-2 hover:text-foreground hover:underline\"",
