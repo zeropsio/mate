@@ -107,6 +107,38 @@ describe("orchestration projector", () => {
     ]);
   });
 
+  it("keeps a crew thread's origin from thread.created", async () => {
+    const now = "2026-09-27T08:00:00.000Z";
+    const crew = { crew: "shop", crewmate: "backend", stint: 2 };
+    const next = await Effect.runPromise(
+      projectEvent(
+        createEmptyReadModel(now),
+        makeEvent({
+          sequence: 1,
+          type: "thread.created",
+          aggregateKind: "thread",
+          aggregateId: "thread-crew",
+          occurredAt: now,
+          commandId: "server:crew:shop:backend:2",
+          payload: {
+            threadId: "thread-crew",
+            projectId: "project-1",
+            title: "backend",
+            modelSelection: { instanceId: "claudeAgent", model: "opus" },
+            runtimeMode: "approval-required",
+            branch: null,
+            worktreePath: null,
+            createdAt: now,
+            updatedAt: now,
+            crew,
+          },
+        }),
+      ),
+    );
+
+    expect(next.threads[0]?.crew).toEqual(crew);
+  });
+
   it("fails when event payload cannot be decoded by runtime schema", async () => {
     const now = "2026-01-01T00:00:00.000Z";
     const model = createEmptyReadModel(now);

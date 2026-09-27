@@ -2,6 +2,7 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Schema from "effect/Schema";
+import * as Struct from "effect/Struct";
 
 import {
   DEFAULT_PROVIDER_INTERACTION_MODE,
@@ -1300,6 +1301,108 @@ it.effect.each([
     });
     assert.strictEqual(event.type, type);
     assert.deepStrictEqual<unknown>(event.payload, payload);
+  }),
+);
+
+const crewOrigin = { crew: "shop", crewmate: "backend", stint: 2 };
+const threadCreatedPayload = {
+  threadId: "thread-crew",
+  projectId: "project-1",
+  title: "backend",
+  modelSelection: { instanceId: "claudeAgent", model: "claude-opus-5" },
+  runtimeMode: "approval-required",
+  interactionMode: "default",
+  branch: null,
+  worktreePath: null,
+  createdAt: "2026-09-27T08:00:00.000Z",
+  updatedAt: "2026-09-27T08:00:00.000Z",
+};
+
+it.effect.each([
+  { name: "a person's thread", extra: {}, expected: undefined },
+  { name: "a crewmate's stint thread", extra: { crew: crewOrigin }, expected: crewOrigin },
+])("decodes the crew origin of $name on thread.created", ({ extra, expected }) =>
+  Effect.gen(function* () {
+    const payload = yield* decodeThreadCreatedPayload({ ...threadCreatedPayload, ...extra });
+    assert.deepStrictEqual(payload.crew, expected);
+  }),
+);
+
+// ThreadCreatedPayload as a server from before crews declares it.
+const decodePreCrewThreadCreatedPayload = Schema.decodeUnknownEffect(
+  Schema.Struct(Struct.omit(ThreadCreatedPayload.fields, ["crew"])),
+);
+
+it.effect("a server from before crews reads a crew thread.created as a plain thread", () =>
+  Effect.gen(function* () {
+    const payload = yield* decodePreCrewThreadCreatedPayload({
+      ...threadCreatedPayload,
+      crew: crewOrigin,
+    });
+    assert.strictEqual(payload.threadId, "thread-crew");
+    assert.isFalse("crew" in payload);
+  }),
+);
+
+it.effect("a thread shell and a thread carry their crew origin; absent on a person's", () =>
+  Effect.gen(function* () {
+    const shell = { ...usagePauseShell, id: "thread-crew" };
+    assert.isUndefined((yield* decodeOrchestrationThreadShell(shell)).crew);
+    assert.deepStrictEqual(
+      (yield* decodeOrchestrationThreadShell({ ...shell, crew: crewOrigin })).crew,
+      crewOrigin,
+    );
+    const thread = {
+      ...shell,
+      deletedAt: null,
+      messages: [],
+      activities: [],
+      checkpoints: [],
+    };
+    assert.isUndefined((yield* decodeOrchestrationThread(thread)).crew);
+    assert.deepStrictEqual(
+      (yield* decodeOrchestrationThread({ ...thread, crew: crewOrigin })).crew,
+      crewOrigin,
+    );
+  }),
+);
+
+it.effect("only the server makes a crew thread: thread.crew.create is no client command", () =>
+  Effect.gen(function* () {
+    const create = {
+      type: "thread.crew.create",
+      commandId: "server:crew:shop:backend:2",
+      threadId: "thread-crew",
+      projectId: "project-1",
+      title: "backend",
+      modelSelection: { instanceId: "claudeAgent", model: "claude-opus-5" },
+      runtimeMode: "approval-required",
+      branch: null,
+      worktreePath: null,
+      createdAt: "2026-09-27T08:00:00.000Z",
+      crew: crewOrigin,
+    };
+    const command = yield* decodeOrchestrationCommand(create);
+    assert.strictEqual(command.type, "thread.crew.create");
+    assert.deepStrictEqual(command.type === "thread.crew.create" && command.crew, crewOrigin);
+    assert.isTrue(Exit.isFailure(yield* Effect.exit(decodeClientOrchestrationCommand(create))));
+    const { crew: _crew, ...withoutCrew } = create;
+    assert.isTrue(Exit.isFailure(yield* Effect.exit(decodeOrchestrationCommand(withoutCrew))));
+  }),
+);
+
+it.effect("rejects a crew origin with a handle a branch cannot carry or a stint below 1", () =>
+  Effect.gen(function* () {
+    for (const broken of [
+      { ...crewOrigin, crewmate: "Back End" },
+      { ...crewOrigin, stint: 0 },
+      { ...crewOrigin, crew: " " },
+    ]) {
+      const exit = yield* Effect.exit(
+        decodeThreadCreatedPayload({ ...threadCreatedPayload, crew: broken }),
+      );
+      assert.isTrue(Exit.isFailure(exit));
+    }
   }),
 );
 
