@@ -117,21 +117,27 @@ function CrewSectionFor({
     });
   };
 
+  /**
+   * *Remove from crew* (PRD §5.6): a clean copy goes with it; a copy with
+   * commits that never landed is kept and the removal refused, and only then
+   * is *Discard* offered.
+   */
   const remove = (row: CrewmateView) => {
     const name = row.crewmate.displayName;
-    const unlanded = row.crewmate.lane?.ahead ?? 0;
-    void requestConfirmDialog(
-      unlanded === 0
-        ? `Remove ${name} from the crew?`
-        : `Remove ${name} from the crew and discard ${unlanded} ${unlanded === 1 ? "commit" : "commits"} of its that never landed?`,
-      { variant: "destructive" },
-    )?.then((ok) => {
+    const handle = row.crewmate.handle;
+    void requestConfirmDialog(`Remove ${name} from the crew?`)?.then(async (ok) => {
       if (!ok) return;
-      void commands.send({
+      const removed = await commands.send({
         _tag: "removeCrewmate",
-        handle: row.crewmate.handle,
-        discardUnlanded: unlanded > 0,
+        handle,
+        discardUnlanded: false,
       });
+      if (removed !== null || commands.lastRefusal() !== "unlanded-commits") return;
+      const discard = await requestConfirmDialog(
+        `${name}'s copy of the code has commits that never landed. Discard them and remove ${name}?`,
+        { variant: "destructive" },
+      );
+      if (discard) void commands.send({ _tag: "removeCrewmate", handle, discardUnlanded: true });
     });
   };
 

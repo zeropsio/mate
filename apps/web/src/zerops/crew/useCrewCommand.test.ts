@@ -1,7 +1,7 @@
 import { CrewCommandError, EnvironmentAuthorizationError } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { crewFailureSentence } from "./useCrewCommand";
+import { crewFailureSentence, crewRefusalOf } from "./useCrewCommand";
 
 describe("crewFailureSentence", () => {
   it.each<{ readonly name: string; readonly cause: unknown; readonly sentence: string }>([
@@ -30,5 +30,14 @@ describe("crewFailureSentence", () => {
     },
   ])("$name", ({ cause, sentence }) => {
     expect(crewFailureSentence(cause)).toBe(sentence);
+  });
+});
+
+describe("crewRefusalOf", () => {
+  it("names the engine's reason, and nothing for any other failure", () => {
+    expect(crewRefusalOf(new CrewCommandError({ reason: "unlanded-commits", detail: null }))).toBe(
+      "unlanded-commits",
+    );
+    expect(crewRefusalOf(new Error("socket closed"))).toBeNull();
   });
 });
