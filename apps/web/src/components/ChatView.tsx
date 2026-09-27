@@ -185,7 +185,6 @@ import { CrewTimelineContext, type CrewTimeline } from "./zerops/crew/CrewTaskCa
 import { crewChatNotices } from "./zerops/crew/crewChatNotices";
 import { crewMessageCommand } from "./zerops/crew/crewComposerSend";
 import { crewCommands } from "../zerops/crew/crewCommands";
-import { useCrew } from "../zerops/crew/useCrew";
 import { crewFailureSentence } from "../zerops/crew/useCrewCommand";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
 import { resolveConnectedComposerPlaceholder } from "../composerPlaceholder";
