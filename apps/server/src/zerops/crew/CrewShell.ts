@@ -65,18 +65,24 @@ const GIT_CONFIG: ReadonlyArray<string> = [
   "core.fsyncMethod=fsync",
 ];
 
+/** A word passed to the shell unquoted: a variable the script set (`"$H"`). */
+export interface ShellVariable {
+  readonly variable: string;
+}
+
+/** `"$name"` inside a {@link git} line. */
+export const shellVariable = (name: string): ShellVariable => ({ variable: name });
+
 /** One quoted git command line with the crew identity and the durable-write settings. */
-export const git = (at: GitAt, args: ReadonlyArray<string>): CrewScript =>
+export const git = (at: GitAt, args: ReadonlyArray<string | ShellVariable>): CrewScript =>
   script(
     [
-      "LC_ALL=C",
-      "git",
-      ...(at === "integration" ? [] : ["-C", laneDirectory(at.lane)]),
-      ...GIT_CONFIG,
-      ...args,
-    ]
-      .map((token) => (token === "LC_ALL=C" ? token : shellQuote(token)))
-      .join(" "),
+      "LC_ALL=C git",
+      ...[...(at === "integration" ? [] : ["-C", laneDirectory(at.lane)]), ...GIT_CONFIG].map(
+        shellQuote,
+      ),
+      ...args.map((arg) => (typeof arg === "string" ? shellQuote(arg) : `"$${arg.variable}"`)),
+    ].join(" "),
   );
 
 /** Inherited git environment never steers a crew script. */
@@ -117,6 +123,42 @@ export class CrewShellError extends Schema.TaggedError<CrewShellError>()("CrewSh
     return `Crew shell on '${this.host}' failed (${this.reason}): ${this.detail}`;
   }
 }
+
+/** A crew script that git refused in a way no outcome names. */
+export class CrewGitError extends Schema.TaggedError<CrewGitError>()("CrewGitError", {
+  host: Schema.String,
+  operation: Schema.String,
+  detail: Schema.String,
+}) {
+  override get message(): string {
+    return `Crew ${this.operation} on '${this.host}' failed: ${this.detail}`;
+  }
+}
+
+/**
+ * The `key<TAB>value` lines crew scripts print, in order. A value runs to the
+ * end of its line; a key may repeat (one `path` line per path).
+ */
+export const fields = (stdout: string): ReadonlyArray<readonly [string, string]> =>
+  stdout
+    .split("\n")
+    .map((line) => {
+      const tab = line.indexOf("\t");
+      return tab === -1 ? undefined : ([line.slice(0, tab), line.slice(tab + 1)] as const);
+    })
+    .filter((entry) => entry !== undefined);
+
+/** The first value of `key`, if any. */
+export const field = (
+  entries: ReadonlyArray<readonly [string, string]>,
+  key: string,
+): string | undefined => entries.find(([name]) => name === key)?.[1];
+
+/** Every value of `key`, in order. */
+export const fieldsOf = (
+  entries: ReadonlyArray<readonly [string, string]>,
+  key: string,
+): ReadonlyArray<string> => entries.filter(([name]) => name === key).map(([, value]) => value);
 
 export interface CrewShellService {
   readonly run: (

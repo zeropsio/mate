@@ -16,9 +16,14 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import { runMigrations } from "../../../persistence/Migrations.ts";
+import * as NodeSqliteClient from "../../../persistence/NodeSqliteClient.ts";
 import { localSshProcessRunnerLayer } from "../../testing/localSsh.ts";
 import { ZeropsRepositorySource, type ZeropsRepository } from "../../ZeropsRepositorySource.ts";
+import * as CrewChecks from "../CrewChecks.ts";
 import * as CrewShell from "../CrewShell.ts";
+import * as CrewStore from "../CrewStore.ts";
+import * as CrewWorkspace from "../CrewWorkspace.ts";
 
 export const TEST_HOST = "appdev";
 export const TEST_IDENTITY = { projectId: "project-crew", serviceId: "service-appdev" } as const;
@@ -98,3 +103,32 @@ export const crewShellLayer = (
     Layer.provide(localSshProcessRunnerLayer(options.remoteEnv ?? TEST_IDENTITY)),
     Layer.provideMerge(NodeServices.layer),
   );
+
+/** A fresh in-memory crew database. */
+export const crewStoreLayer = CrewStore.layer.pipe(
+  Layer.provideMerge(
+    Layer.effectDiscard(runMigrations()).pipe(
+      Layer.provideMerge(NodeSqliteClient.layer({ filename: ":memory:" })),
+    ),
+  ),
+);
+
+/** The crew git core against one service repository, with its own database. */
+export const crewGitLayer = (root: string, options: CrewShellFixtureOptions = {}) => {
+  const shell = crewShellLayer([serviceRepository(root)], options);
+  const checks = CrewChecks.layer.pipe(Layer.provideMerge(shell));
+  return CrewWorkspace.layer.pipe(Layer.provideMerge(checks), Layer.provideMerge(crewStoreLayer));
+};
+
+/** Runs `body` against a fresh service repository, removed afterwards. */
+export const withCrewService = <A, E, R, LE>(
+  body: (root: string) => Effect.Effect<A, E, R>,
+  layer: (root: string) => Layer.Layer<R, LE>,
+) =>
+  Effect.gen(function* () {
+    const root = makeServiceRepository();
+    return yield* body(root).pipe(
+      Effect.provide(layer(root)),
+      Effect.ensuring(Effect.sync(() => removeServiceRepository(root))),
+    );
+  });
