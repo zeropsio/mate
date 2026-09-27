@@ -12,7 +12,13 @@
  * check's words come from the crew phrases (`crewTaskWord`, `crewCheckWord`).
  */
 import type { CrewmateView } from "@t3tools/client-runtime/zerops/projections/crew";
-import { crewCheckWord, crewTaskWord } from "@t3tools/client-runtime/zerops/crew/phrases";
+import {
+  CREW_ATTENTION_VERBS,
+  crewAttentionSentence,
+  crewCheckWord,
+  crewCommitEditAsk,
+  crewTaskWord,
+} from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewCheck, CrewSnapshot } from "@t3tools/contracts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
@@ -39,9 +45,18 @@ export interface CrewLaneBarModel {
   readonly app:
     | { readonly kind: "running"; readonly label: string; readonly url: string | null }
     | { readonly kind: "stopped"; readonly label: string }
-    | { readonly kind: "no-crew-ports"; readonly label: string }
+    | { readonly kind: "no-crew-ports"; readonly label: string; readonly host: string }
     | { readonly kind: "no-free-port"; readonly label: string }
     | null;
+  /**
+   * *Commit my edit*: its landing waits on your tree, so the Mate is asked to
+   * commit your edit there; `what` is the waiting's sentence the ask confirms.
+   */
+  readonly commitEdit: {
+    readonly label: string;
+    readonly ask: string;
+    readonly what: string;
+  } | null;
   readonly showOnDev: {
     readonly kind: "claimGrant" | "claimRelease";
     readonly host: string;
@@ -153,7 +168,11 @@ export function crewLaneBarModel(
   const app = ((): CrewLaneBarModel["app"] => {
     if (crewmate.host === null) return null;
     if (host === undefined || host.crewPorts.length === 0) {
-      return { kind: "no-crew-ports", label: `No crew ports on ${crewmate.host}` };
+      return {
+        kind: "no-crew-ports",
+        label: `No crew ports on ${crewmate.host}`,
+        host: crewmate.host,
+      };
     }
     if (crewmate.app === null) return null;
     if (crewmate.app.port === null) return { kind: "no-free-port", label: "No free crew port" };
@@ -166,6 +185,18 @@ export function crewLaneBarModel(
         return null;
     }
   })();
+
+  const landingWait = snapshot.attention.find(
+    (item) => item.kind === "landing-wait" && item.handle === crewmate.handle,
+  );
+  const commitEdit: CrewLaneBarModel["commitEdit"] =
+    landingWait === undefined || landingWait.paths.length === 0
+      ? null
+      : {
+          label: CREW_ATTENTION_VERBS.commitEdit,
+          ask: crewCommitEditAsk(landingWait.paths),
+          what: crewAttentionSentence(landingWait, snapshot),
+        };
 
   const claim = host?.claim;
   const showOnDev: CrewLaneBarModel["showOnDev"] =
@@ -203,6 +234,7 @@ export function crewLaneBarModel(
     note,
     ask,
     app,
+    commitEdit,
     showOnDev,
     land,
   };

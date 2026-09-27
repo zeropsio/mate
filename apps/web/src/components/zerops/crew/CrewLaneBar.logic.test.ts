@@ -228,7 +228,7 @@ describe("crewLaneBarModel", () => {
     {
       name: "a service without crew ports",
       host: { crewPorts: [] },
-      expected: { kind: "no-crew-ports", label: "No crew ports on appdev" },
+      expected: { kind: "no-crew-ports", label: "No crew ports on appdev", host: "appdev" },
     },
     {
       name: "more crewmates than crew ports",
@@ -272,6 +272,30 @@ describe("crewLaneBarModel", () => {
     },
   ])("$name", ({ claim, showOnDev }) => {
     expect(backend({ host: { claim } })?.showOnDev).toEqual(showOnDev);
+  });
+
+  it("asks the Mate to commit your edit a landing waits on, and nothing otherwise", () => {
+    const wait: CrewAttention = {
+      id: "wait-1",
+      kind: "landing-wait",
+      handle: "backend",
+      taskId: "task-12",
+      text: null,
+      paths: ["src/ui/hud.ts"],
+      host: null,
+      at: "2026-09-27T09:30:00.000Z",
+    };
+    expect(
+      backend({
+        task: { state: "waiting-on-you", waitingOn: ["src/ui/hud.ts"] },
+        attention: [wait],
+      })?.commitEdit,
+    ).toEqual({
+      label: "Commit my edit",
+      ask: "Commit my edit to src/ui/hud.ts locally, without pushing: a crew landing waits on it.",
+      what: "Backend's landing waits: src/ui/hud.ts is edited in your tree",
+    });
+    expect(backend({ attention: [] })?.commitEdit).toBeNull();
   });
 
   it("draws no lane bar for a crewmate without a copy of the code", () => {
