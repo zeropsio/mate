@@ -447,7 +447,9 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('data-maintain-visible-content-position="object"');
     expect(markup).toContain('data-maintain-visible-content-position-data="true"');
     expect(markup).toContain('data-maintain-visible-content-position-size="true"');
-    expect(markup).toContain('data-maintain-visible-content-position-restore="true"');
+    // Every row keeps its place: nothing opens in place any more, so no row
+    // takes the anchor for itself.
+    expect(markup).toContain('data-maintain-visible-content-position-restore="false"');
     expect(onAnchorReady).toHaveBeenCalledOnce();
     expect(onAnchorReady).toHaveBeenCalledWith(firstEntry.message.id, 1);
   });
@@ -1009,105 +1011,6 @@ describe("MessagesTimeline", () => {
     expect(markup).toMatch(/data-zerops-subject-chip[^>]*>kanbandev</);
     expect(markup).toContain("kanbandev is live.");
   });
-
-  it("renders a muted failure marker for failed tool lifecycle entries", () => {
-    const markup = renderToStaticMarkup(
-      <MessagesTimeline
-        {...buildProps()}
-        timelineEntries={[
-          {
-            id: "entry-info",
-            kind: "work",
-            createdAt: "2026-03-17T19:12:27.000Z",
-            entry: {
-              id: "work-info",
-              createdAt: "2026-03-17T19:12:27.000Z",
-              label: "Status updated",
-              tone: "info",
-            },
-          },
-          {
-            id: "entry-1",
-            kind: "work",
-            createdAt: "2026-03-17T19:12:28.000Z",
-            entry: {
-              id: "work-1",
-              createdAt: "2026-03-17T19:12:28.000Z",
-              label: "Glob",
-              tone: "tool",
-              toolLifecycleStatus: "failed",
-              detail: "No files found",
-            },
-          },
-        ]}
-      />,
-    );
-
-    expect(markup).toContain("lucide-x");
-    expect(markup).toContain('aria-label="Tool call failed"');
-    // Ordinary tool failures render muted, not red.
-    expect(markup).not.toContain("text-destructive");
-  });
-
-  it("only withholds an expanded tool-call label click while text is selected", async () => {
-    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-    vi.stubGlobal("requestAnimationFrame", () => 0);
-    vi.stubGlobal("cancelAnimationFrame", () => {});
-    let renderer: ReactTestRenderer | undefined;
-    try {
-      await act(() => {
-        renderer = create(
-          <MessagesTimeline
-            {...buildProps()}
-            timelineEntries={[
-              {
-                id: "entry-standalone",
-                kind: "work",
-                createdAt: MESSAGE_CREATED_AT,
-                entry: {
-                  id: "work-standalone",
-                  createdAt: MESSAGE_CREATED_AT,
-                  toolCallId: "call-standalone",
-                  label: "Run lint",
-                  tone: "tool",
-                  itemType: "command_execution",
-                  command: "pnpm lint",
-                  toolLifecycleStatus: "completed",
-                },
-              },
-            ]}
-          />,
-        );
-      });
-      const findExpandedLabel = () =>
-        renderer!.root.findAll(
-          (node) => node.type === "span" && String(node.props.className).includes("select-text"),
-        )[0];
-      // The fork folds a lone tool call under its group toggle first; open
-      // collapsed disclosures until the tool row's label is expanded.
-      for (let attempt = 0; attempt < 3 && !findExpandedLabel(); attempt += 1) {
-        const collapsed = renderer!.root.findAll(
-          (node) =>
-            node.props["aria-expanded"] === false && typeof node.props.onClick === "function",
-        )[0];
-        if (!collapsed) break;
-        await act(() => collapsed.props.onClick());
-      }
-      const label = findExpandedLabel();
-      const stopPropagation = vi.fn();
-      // Only the click that ends a selection may be withheld from the row
-      // toggle; the plain click has to reach it so the label can collapse.
-      for (const isCollapsed of [false, true]) {
-        label!.props.onClick({
-          currentTarget: { ownerDocument: { getSelection: () => ({ isCollapsed }) } },
-          stopPropagation,
-        });
-      }
-      expect(stopPropagation).toHaveBeenCalledTimes(1);
-    } finally {
-      await act(() => renderer?.unmount());
-    }
-  });
 });
 
 describe("MessagesTimeline — the conversation", () => {
@@ -1199,7 +1102,7 @@ describe("MessagesTimeline — the conversation", () => {
     ...overrides,
   });
 
-  it("draws a settled turn as the message, one work line and the answer", () => {
+  it("draws a settled turn as the message, its card — heading, record, result — and the answer", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline
         {...buildProps()}
@@ -1213,56 +1116,39 @@ describe("MessagesTimeline — the conversation", () => {
         ]}
       />,
     );
-    // Settled, the line says who worked, how long and what the calls came
-    // to — no note preview, no face — and a read message carries no mark.
-    // How long runs to the answer, not to when the server closed the turn:
-    // the same span once another turn follows.
-    expect(markup).toContain('data-timeline-row-kind="work-line"');
-    expect(markup).toContain("Assistant worked for 1m");
-    expect(markup).not.toContain("Assistant worked for 1m 30s");
-    expect(markup).toContain("· ran 2 commands");
-    expect(markup).not.toContain("Building the shop now.");
-    expect(markup).not.toContain("1 note");
-    expect(markup).not.toContain("data-message-receipt");
-    expect(markup).not.toContain('data-zerops-primitive="mate-face"');
+    // Its heading says who worked and how long: to the answer, not to when
+    // the server closed the turn — the same span once another turn follows.
+    expect(markup).toMatch(/Assistant worked<\/span><span[^>]*data-work-line-clock[^>]*>1m</);
+    // The record stays on the page, everything the Mate did in order (the
+    // owner, 2026-09-27: "after the work is done I'd leave it on the page").
+    const record = markup.slice(markup.indexOf('data-timeline-row-kind="record"'));
+    expect(record.indexOf("pnpm build")).toBeLessThan(record.indexOf("Building the shop now."));
+    expect(record.match(/>pnpm build</g)).toHaveLength(2);
+    // What its calls came to is the result's, as a pill that opens them.
+    expect(markup).toContain('aria-label="Ran 2 commands. Show them"');
     expect(markup).toContain("The shop builds.");
-    // The log stays closed: no tool rows, no "Work Log".
-    expect(markup).not.toContain('data-timeline-row-kind="log-step"');
-    expect(markup).not.toContain("Work Log");
+    expect(markup).not.toContain("data-message-receipt");
+    // Nothing about the run opens in place.
+    expect(markup).not.toContain("aria-expanded");
   });
 
-  it("opens a remembered work line into its log", async () => {
-    const { rememberTimelinePosition } = await import("./timelineScrollAnchoring");
-    rememberTimelinePosition("environment-local:thread-log", {
-      rowId: "message-1",
-      offsetWithinRow: 0,
-      scrollOffset: 0,
-      atEnd: true,
-      disclosures: {
-        stretches: new Set(["msg:message-1"]),
-        logItems: new Set(),
-        spawnEntries: new Set(),
-      },
-    });
+  // A line with more behind it opens it in a modal; the record never moves
+  // under the person to show more of itself.
+  it("opens each step of the record in a modal", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline
         {...buildProps()}
-        routeThreadKey="environment-local:thread-log"
         latestTurn={settled}
         timelineEntries={[
           buildUserTimelineEntry("Build it"),
           tool("w1", 5),
-          assistant("a1", 10, "Building the shop now."),
-          assistant("a2", 60, "The shop builds."),
+          assistant("a1", 60, "The shop builds."),
         ]}
       />,
     );
-    // Each call a step: the command itself, never a count of commands.
-    expect(markup).toContain('data-timeline-row-kind="log-step"');
-    expect(markup).toContain("pnpm build");
-    expect(markup).not.toContain("Ran 1 command");
-    expect(markup).toContain('data-timeline-row-kind="log-note"');
-    expect(markup).toContain('aria-expanded="true"');
+    expect(markup).toMatch(
+      /<button[^>]*aria-haspopup="dialog"[^>]*aria-label="pnpm build\. Show what it did"[^>]*data-record-line="done"/,
+    );
   });
 
   it("says the Mate is working from the moment a message is sent", () => {
@@ -1275,9 +1161,10 @@ describe("MessagesTimeline — the conversation", () => {
       />,
     );
     expect(markup).toContain('data-timeline-row-id="work-line:msg:message-1"');
-    expect(markup).toContain("Assistant is working ·");
-    expect(markup).toContain("Thinking");
+    expect(markup).toContain("Assistant is working");
     expect(markup).toContain('data-work-line="working"');
+    expect(markup).toContain('data-record-now="thinking"');
+    expect(markup).toContain('aria-label="Thinking"');
     expect(markup).toContain('data-message-receipt="sent"');
   });
 
@@ -1303,13 +1190,14 @@ describe("MessagesTimeline — the conversation", () => {
       />,
     );
 
-  it("streams the Mate's words at the live tail, a failure where it happened, the newest last", () => {
+  it("records the Mate's words and steps as they happen, a failure where it happened", () => {
     const markup = liveTimeline([
       assistant("a1", 5, "Checking the build."),
       {
         ...tool("t9", 10),
         entry: {
           ...tool("t9", 10).entry,
+          command: undefined,
           tone: "error" as const,
           label: "Run the type check",
           sourceActivityKind: "task.completed" as const,
@@ -1318,18 +1206,21 @@ describe("MessagesTimeline — the conversation", () => {
       assistant("a2", 15, "Fixing the types."),
       tool("w2", 16),
     ]);
+    const record = markup.slice(markup.indexOf('data-timeline-row-kind="record"'));
+    expect(record).toContain('data-record-line="failed"');
+    expect(record).toContain("Run the type check failed");
+    // Oldest first, the step it took last.
+    expect(record.indexOf("Checking the build.")).toBeLessThan(
+      record.indexOf("Run the type check failed"),
+    );
+    expect(record.indexOf("Run the type check failed")).toBeLessThan(
+      record.indexOf("Fixing the types."),
+    );
+    expect(record.indexOf("Fixing the types.")).toBeLessThan(record.indexOf("pnpm build"));
+    // Beside the face, between steps: no word of what it did twice.
+    expect(record).toContain('data-record-now="thinking"');
+    // What runs alongside stands under the record.
     expect(markup).toContain("data-conversation-working");
-    expect(markup.match(/data-stream-bubble="note"/g)).toHaveLength(2);
-    expect(markup).toContain('data-stream-bubble="failed"');
-    expect(markup).toContain("Run the type check failed");
-    // Oldest first, the step it took last: its newest words stay fresh under
-    // it — a step fades only what came before it, never the Mate's last words.
-    expect(markup.indexOf("Checking the build.")).toBeLessThan(markup.indexOf("Fixing the types."));
-    expect(markup.indexOf("Fixing the types.")).toBeLessThan(markup.indexOf('data-step="command"'));
-    expect(markup.match(/data-stream-age="0"/g)).toHaveLength(2);
-    const newest = markup.slice(markup.indexOf('data-stream-age="0"'));
-    expect(newest).toContain("Fixing the types.");
-    expect(newest).not.toContain("Checking the build.");
   });
 
   it("says the Mate is writing, and shows none of its words, until they are known", () => {
@@ -1338,15 +1229,15 @@ describe("MessagesTimeline — the conversation", () => {
       tool("w1", 5),
       { ...writing, message: { ...writing.message, streaming: true } },
     ]);
-    expect(markup).toContain('data-stream-activity="writing"');
+    expect(markup).toContain('data-record-now="writing"');
     expect(markup).toContain('aria-label="Writing"');
     expect(markup).not.toContain("Checking /status next.");
   });
 
   it("shows the Mate composing before it said anything", () => {
     const markup = liveTimeline([tool("w1", 5)]);
-    expect(markup).toContain('data-stream-activity="thinking"');
-    expect(markup).not.toContain('data-stream-bubble="note"');
+    expect(markup).toContain('data-record-now="thinking"');
+    expect(markup).not.toContain("data-record-note");
   });
 
   const call = (id: string, second: number, detail: string) => ({
@@ -1369,8 +1260,8 @@ describe("MessagesTimeline — the conversation", () => {
       assistant("a1", 5, "Reading the docs first."),
       call("c1", 8, 'WebFetch: {"url":"https://docs.example.dev/guides"}'),
     ]);
-    expect(markup).toContain('data-stream-activity="step"');
-    // The panel says it; the line above keeps to its clock.
+    expect(markup).toContain('data-record-now="step"');
+    // Beside the face and nowhere else: the record takes it once it returns.
     expect(markup.match(/Reading docs\.example\.dev\/guides/g)).toHaveLength(1);
     expect(markup).not.toContain("WebFetch");
   });
@@ -1379,7 +1270,7 @@ describe("MessagesTimeline — the conversation", () => {
     const markup = liveTimeline([
       call("c1", 8, 'AskUserQuestion: {"questions":[{"question":"Teal or amber?"}]}'),
     ]);
-    expect(markup).toContain('data-stream-activity="waiting"');
+    expect(markup).toContain('data-record-now="waiting"');
     expect(markup).toContain("Waiting for your answer");
     expect(markup).not.toContain("AskUserQuestion");
   });
@@ -1454,8 +1345,13 @@ describe("MessagesTimeline — the conversation", () => {
         }
       />,
     );
-    expect(markup).toContain("Background task finished");
-    expect(markup).toContain("Run the smoke tests");
+    // The task in its own words, and where it ran; what it reported opens
+    // in a modal.
+    expect(markup).toContain("Run the smoke tests finished");
+    expect(markup).toContain("in the background");
+    expect(markup).toContain(
+      'aria-label="Run the smoke tests finished, in the background. Show what it reported"',
+    );
     expect(markup).not.toContain("1 background task ");
   });
 
@@ -1491,11 +1387,12 @@ describe("MessagesTimeline — the conversation", () => {
         }
       />,
     );
-    const line = markup.indexOf("Helper finished");
+    const line = markup.indexOf("Review the endpoint finished");
     expect(line).toBeGreaterThan(markup.indexOf("It reports back when done."));
     expect(line).toBeLessThan(markup.indexOf("The review came back clean."));
-    expect(markup).toContain("Review the endpoint");
-    expect(markup).not.toContain("Background task finished");
+    expect(markup).toContain(
+      'aria-label="Review the endpoint finished, helper. Show what it reported"',
+    );
   });
 
   it.each([

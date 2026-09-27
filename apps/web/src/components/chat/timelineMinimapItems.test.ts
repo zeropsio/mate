@@ -101,18 +101,34 @@ describe("timeline minimap previews", () => {
       endedAt: new Date(minutes * 60_000).toISOString(),
       waitedMs: 0,
       waitingSince: null,
-      note: "Stage is live.",
-      fallback: null,
-      summary: null,
       worked: true,
-      noteCount: 1,
-      hasLog: true,
-      open: false,
+    });
+    // The run's last note, from its record: what the Mate said last on its way.
+    const record = (after: number): MessagesTimelineRow => ({
+      kind: "record",
+      id: `record:${after}`,
+      createdAt: source[after]!.createdAt,
+      turnKey: `msg:${source[after]!.id}`,
+      live: false,
+      items: [
+        {
+          kind: "note",
+          key: "note:n1",
+          at: source[after]!.createdAt,
+          message: {
+            ...(source[2] as Extract<MessagesTimelineRow, { kind: "message" }>).message,
+            text: "**Stage** is live.\nThe footer next.",
+          },
+        },
+      ],
+      now: null,
+      answering: false,
     });
     const withLines: MessagesTimelineRow[] = [
       { ...source[0]!, aside: false } as MessagesTimelineRow,
       { ...(source[1] as Extract<MessagesTimelineRow, { kind: "message" }>), aside: true },
       line(0, "produced", 75),
+      record(0),
       source[2]!,
       source[3]!,
     ];

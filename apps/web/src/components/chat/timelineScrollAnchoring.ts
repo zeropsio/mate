@@ -124,13 +124,6 @@ export interface RememberedTimelinePosition {
   readonly offsetWithinRow: number;
   readonly scrollOffset: number;
   readonly atEnd: boolean;
-  readonly disclosures?: {
-    /** Work lines opened into their log, by stretch key. */
-    readonly stretches: ReadonlySet<string>;
-    /** Log lines opened in place: activity runs and operations. */
-    readonly logItems: ReadonlySet<string>;
-    readonly spawnEntries: ReadonlySet<string>;
-  };
 }
 
 // Scoped thread keys keep separate environments independent. Bound the session cache.
