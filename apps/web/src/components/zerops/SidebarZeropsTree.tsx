@@ -107,6 +107,7 @@ import {
   MoreHorizontalIcon,
   PauseIcon,
   PlusIcon,
+  SquareIcon,
   TriangleAlertIcon,
 } from "lucide-react";
 import {
@@ -1519,9 +1520,28 @@ function MateRow<T extends RosterCandidate>({
       </button>
       {actions === undefined ? null : (
         <span
-          className="absolute end-2.5 top-2 flex h-5 items-center opacity-0 transition-opacity group-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100"
+          className="absolute end-2.5 top-2 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100"
           data-zerops-surface="sidebar-mate-actions"
         >
+          {actions.stop === undefined ? null : (
+            // While it works, the time's slot is also its stop.
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    aria-label={`Stop ${name}`}
+                    className={ROW_ACTION_CLASS}
+                    data-zerops-surface="sidebar-mate-stop"
+                    onClick={actions.stop}
+                    type="button"
+                  />
+                }
+              >
+                <SquareIcon aria-hidden="true" className="size-2.5 fill-current" />
+              </TooltipTrigger>
+              <TooltipPopup side="right">Stop the run</TooltipPopup>
+            </Tooltip>
+          )}
           <MateMenu
             actions={actions}
             appUrl={appUrl}

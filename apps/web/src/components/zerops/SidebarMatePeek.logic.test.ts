@@ -2,7 +2,7 @@ import type { PendingApproval, PendingUserInput } from "@t3tools/client-runtime/
 import { ApprovalRequestId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { matePeekDecision, matePeekSteps } from "./SidebarMatePeek.logic";
+import { matePeekDecision, matePeekKey, matePeekSteps } from "./SidebarMatePeek.logic";
 
 describe("matePeekSteps — the plan as the peek lists it", () => {
   it("lists the thread's own plan once it is read, each step with its state", () => {
@@ -185,5 +185,40 @@ describe("matePeekDecision — what a Mate waits on, answered in place", () => {
     { kind: "done", expected: undefined },
   ] as const)("reads $kind as $expected", ({ kind, expected }) => {
     expect(matePeekDecision({ ...base, kind, failure: "The deploy timed out." })).toEqual(expected);
+  });
+});
+
+describe("matePeekKey — what a key does while a peek stands", () => {
+  const base = { modified: false, typing: false, choices: 3, canStop: true };
+  it.each([
+    { case: "1 picks the first choice", key: "1", input: {}, action: { kind: "choose", index: 0 } },
+    { case: "3 picks the third", key: "3", input: {}, action: { kind: "choose", index: 2 } },
+    { case: "4 of three picks nothing", key: "4", input: {}, action: undefined },
+    { case: "a number with nothing to pick", key: "1", input: { choices: 0 }, action: undefined },
+    { case: "x stops a working Mate", key: "x", input: {}, action: { kind: "stop" } },
+    { case: "X, shifted, stops it too", key: "X", input: {}, action: { kind: "stop" } },
+    {
+      case: "x on a resting Mate does nothing",
+      key: "x",
+      input: { canStop: false },
+      action: undefined,
+    },
+    {
+      case: "a number typed into a field is text",
+      key: "1",
+      input: { typing: true },
+      action: undefined,
+    },
+    { case: "⌥1 is not the peek's", key: "1", input: { modified: true }, action: undefined },
+    { case: "Escape puts it away", key: "Escape", input: {}, action: { kind: "close" } },
+    {
+      case: "Escape from a field too",
+      key: "Escape",
+      input: { typing: true },
+      action: { kind: "close" },
+    },
+    { case: "any other key is not the peek's", key: "a", input: {}, action: undefined },
+  ])("$case", ({ key, input, action }) => {
+    expect(matePeekKey({ ...base, ...input, key })).toEqual(action);
   });
 });

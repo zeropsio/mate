@@ -42,7 +42,7 @@ import { MateLockup } from "~/components/MateLockup";
 import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 import { SidebarZeropsAccount } from "~/components/zerops/SidebarZeropsAccount";
 import { MatePeekCard } from "~/components/zerops/SidebarMatePeek";
-import type { MatePeekStep } from "~/components/zerops/SidebarMatePeek.logic";
+import type { MatePeekDecision, MatePeekStep } from "~/components/zerops/SidebarMatePeek.logic";
 import { askedLabelFor } from "~/components/zerops/SidebarMatePeek.logic";
 import { SidebarZeropsTree, type SidebarProjectFlow } from "~/components/zerops/SidebarZeropsTree";
 import { useComposerDraftStore } from "~/composerDraftStore";
@@ -128,6 +128,42 @@ function activity(input: {
 }
 
 const group = (id: string, name: string) => [`mate:g:${id}`, `mate:name:${name}`];
+
+/** What a waiting Mate's thread says it waits on, as a peek reads it. */
+const PEEK_DECISIONS = new Map<string, MatePeekDecision>([
+  [
+    "links-theo",
+    {
+      kind: "approval",
+      requestId: "req-theo",
+      title: "Theo wants to run",
+      detail: "psql \"$DATABASE_URL\" -c 'DROP TABLE link_previews_legacy;'",
+      choices: [
+        { label: "Approve", value: "accept", primary: true },
+        { label: "Deny", value: "decline", primary: false },
+      ],
+    },
+  ],
+  [
+    "todo-vera",
+    {
+      kind: "question",
+      requestId: "req-vera",
+      questionId: "finished",
+      question: "Should finished items sink to the bottom, or hide behind a toggle?",
+      choices: [
+        { label: "Sink to the bottom", value: "sink", primary: false },
+        { label: "Hide behind a toggle", value: "hide", primary: false },
+        { label: "Both, the toggle off by default", value: "both", primary: false },
+      ],
+      allowText: true,
+    },
+  ],
+  [
+    "todo-fen",
+    { kind: "failure", message: "The deploy to stage failed: the build timed out after 120 s." },
+  ],
+]);
 
 /** The plans a peek reads off a working Mate's thread. */
 const PEEK_STEPS = new Map<string, ReadonlyArray<MatePeekStep>>([
@@ -235,7 +271,17 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
       progress: { completed: 2, total: 5 },
     }),
   ],
-  ["links-theo", activity({ subject: "/compact", hours: 9, face: "idle" })],
+  [
+    "links-theo",
+    activity({
+      id: "links-theo",
+      subject: "Drop the old previews table once the cache is live",
+      snippet: "The cache holds every preview. Dropping the old table needs your OK.",
+      hours: 0.05,
+      face: "needs",
+      kind: "approval",
+    }),
+  ],
   [
     "shop-mira",
     activity({
@@ -270,15 +316,24 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
   ],
   [
     "todo-vera",
-    activity({ subject: "Reply with just: done", snippet: "done", hours: 14, face: "idle" }),
+    activity({
+      id: "todo-vera",
+      subject: "Move finished items out of the way",
+      snippet: "Should finished items sink to the bottom, or hide behind a toggle?",
+      hours: 0.2,
+      face: "needs",
+      kind: "input",
+    }),
   ],
   [
     "todo-fen",
     activity({
+      id: "todo-fen",
       subject: "Rename the app in the page title and the main heading",
-      snippet: "Done. Both the browser tab title and the <h1> now read…",
-      hours: 20,
-      face: "idle",
+      snippet: "The deploy to stage failed: the build timed out after 120 s.",
+      hours: 0.3,
+      face: "needs",
+      kind: "failed",
     }),
   ],
   [
@@ -684,14 +739,14 @@ function SidebarFrame({ width }: { readonly width: number }) {
               appUrl={peek.appUrl ?? "https://example.com"}
               askedLabel={askedLabelFor(peek.owner)}
               change={peek.change}
-              decision={undefined}
+              decision={PEEK_DECISIONS.get(peek.candidate.project.id)}
               face={peek.face}
               lastWords={peek.activity?.snippet}
               name={peek.name}
               onChoose={() => {}}
               onMore={peek.onMore}
               onOpen={peek.onOpen}
-              onStop={undefined}
+              onStop={peek.face === "working" ? () => {} : undefined}
               onText={() => {}}
               projectName={peek.projectName}
               responding={false}

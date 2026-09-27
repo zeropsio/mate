@@ -2200,6 +2200,14 @@ describe("a Mate's own menu, in its row", () => {
     expect(html).toContain('aria-label="More for crm-dev"');
   });
 
+  it("gives a working Mate's time slot a stop, beside its menu", () => {
+    expect(row({ ...ACTIONS, stop: () => {} })).toContain(
+      'data-zerops-surface="sidebar-mate-stop"',
+    );
+    expect(row({ ...ACTIONS, stop: () => {} })).toContain('aria-label="Stop crm-dev"');
+    expect(row(ACTIONS)).not.toContain("sidebar-mate-stop");
+  });
+
   it("carries no menu where nobody supplied its verbs", () => {
     expect(row(undefined)).not.toContain("sidebar-mate-actions");
   });

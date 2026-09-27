@@ -182,3 +182,32 @@ export function askedLabelFor(
   const first = owner.name.trim().split(/\s+/u)[0];
   return first === undefined || first.length === 0 ? "Asked" : `${first} asked`;
 }
+
+/** What a key does while a peek stands. */
+export type MatePeekKeyAction =
+  | { readonly kind: "close" }
+  | { readonly kind: "choose"; readonly index: number }
+  | { readonly kind: "stop" };
+
+/**
+ * A key pressed while a peek stands: a number picks that choice, x stops the
+ * run, Escape puts the peek away. Nothing while somebody types into a field
+ * or holds a modifier — those keys are theirs, not the peek's.
+ */
+export function matePeekKey(input: {
+  readonly key: string;
+  readonly modified: boolean;
+  readonly typing: boolean;
+  /** How many choices the peek offers here and now: none while it may not answer. */
+  readonly choices: number;
+  readonly canStop: boolean;
+}): MatePeekKeyAction | undefined {
+  if (input.key === "Escape") return { kind: "close" };
+  if (input.modified || input.typing) return undefined;
+  if (/^[1-9]$/u.test(input.key)) {
+    const index = Number(input.key) - 1;
+    return index < input.choices ? { kind: "choose", index } : undefined;
+  }
+  if ((input.key === "x" || input.key === "X") && input.canStop) return { kind: "stop" };
+  return undefined;
+}
