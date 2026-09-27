@@ -158,15 +158,20 @@ function displayName(crewmates: ReadonlyArray<Crewmate>, handle: string | null):
   return crewmates.find((mate) => mate.handle === handle)?.displayName ?? `@${handle}`;
 }
 
-/** What a *Waiting on you* row lets you press, in order. */
+/**
+ * What a *Waiting on you* row lets you press, in order — never a press that
+ * could do nothing: *Review plan* only where a board opens, *Answer* only for
+ * a crewmate's question.
+ */
 export function crewAttentionActions(
   row: CrewAttention,
   crew: Pick<CrewSnapshot, "crewmates">,
+  can: { readonly board: boolean },
 ): ReadonlyArray<CrewAttentionAction> {
   const name = displayName(crew.crewmates, row.handle);
   switch (row.kind) {
     case "question":
-      return [{ kind: "answer", label: "Answer" }];
+      return row.handle === null ? [] : [{ kind: "answer", label: "Answer" }];
     case "landing-wait":
       return [
         {
@@ -183,7 +188,7 @@ export function crewAttentionActions(
         ? []
         : [{ kind: "command", label: "Land", command: { _tag: "land", taskId: row.taskId } }];
     case "plan":
-      return [{ kind: "board", label: "Review plan" }];
+      return can.board ? [{ kind: "board", label: "Review plan" }] : [];
     case "show-on-dev":
       return row.host === null
         ? []

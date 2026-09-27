@@ -67,10 +67,11 @@ describe("CrewSection", () => {
   });
 
   it("offers each Waiting on you row its presses", () => {
-    const markup = render(crewSnapshotFixture());
+    const markup = render(crewSnapshotFixture(), { onOpenBoard: noop });
     for (const label of ["Answer", "Commit my edit", "Review plan", "Allow", "Not now"]) {
       expect(markup).toContain(`>${label}<`);
     }
+    expect(render(crewSnapshotFixture())).not.toContain(">Review plan<");
   });
 
   it("shows a run's controls and meters only while a run is on, and a lead's send only with a lead", () => {

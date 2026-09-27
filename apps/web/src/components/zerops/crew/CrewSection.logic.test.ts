@@ -227,12 +227,23 @@ describe("crewAttentionActions", () => {
     { kind: "cant-start" as const, actions: [] },
   ])("$kind", ({ kind, actions }) => {
     const input = attention({ kind, paths: ["src/ui/hud.ts"], host: "appdev" });
-    expect(crewAttentionActions(input, snapshot)).toEqual(actions);
+    expect(crewAttentionActions(input, snapshot, { board: true })).toEqual(actions);
+  });
+
+  it("offers no press that could do nothing", () => {
+    expect(crewAttentionActions(attention({ kind: "plan" }), snapshot, { board: false })).toEqual(
+      [],
+    );
+    expect(
+      crewAttentionActions(attention({ kind: "question", handle: null }), snapshot, {
+        board: true,
+      }),
+    ).toEqual([]);
   });
 
   it("names every path a landing waits on in the commit ask", () => {
     const input = attention({ kind: "landing-wait", paths: ["a.ts", "b.ts"] });
-    expect(crewAttentionActions(input, snapshot)).toEqual([
+    expect(crewAttentionActions(input, snapshot, { board: true })).toEqual([
       {
         kind: "ask",
         label: "Commit my edit",

@@ -223,7 +223,7 @@ function CrewAttentionRow(props: CrewSectionProps & { readonly row: CrewAttentio
   const [answering, setAnswering] = useState(false);
   const [answer, setAnswer] = useState("");
   const sentence = crewAttentionSentence(row, snapshot);
-  const actions = crewAttentionActions(row, snapshot);
+  const actions = crewAttentionActions(row, snapshot, { board: props.onOpenBoard !== null });
   const submitAnswer = () => {
     const text = answer.trim();
     if (text === "" || row.handle === null) return;
