@@ -17,12 +17,35 @@
  *   handoff and the unfiled queue (`crewPacketInput`); ground truth comes
  *   from one script over ssh (`groundFromFields`), and a crewmate without a
  *   copy has none.
+ * - **Ground truth is read within 5 s**: `SessionStart` holds the CLI while
+ *   it runs (ARCHITECTURE §9 risk 6), so past the budget, or when the copy
+ *   cannot be read, the packet goes without it and says why.
  *
  * @module CrewMemory
  */
-import type { PacketGround, PacketInput, PacketTask } from "./CrewPacket.ts";
-import type { CrewMemoryOp, CrewToolText } from "./crewSeams.ts";
-import type { CrewMemoryKind, CrewMemoryRow } from "./CrewStore.ts";
+import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+
+import { shellQuote } from "../ZeropsWorkspaceAccess.ts";
+import {
+  crewResumeDelta,
+  crewStatePacket,
+  type PacketGround,
+  type PacketInput,
+  type PacketTask,
+} from "./CrewPacket.ts";
+import type { CrewMemoryOp, CrewThreadMember, CrewToolText } from "./crewSeams.ts";
+import { CrewShell, field, git, laneDirectory, runFields, shellVariable } from "./CrewShell.ts";
+import {
+  type CrewMemoryKind,
+  type CrewMemoryRow,
+  CrewStore,
+  type CrewStoreError,
+} from "./CrewStore.ts";
 
 /** One `crew_memory` row, without the crew and the crewmate it belongs to. */
 export type CrewMemoryEntry = Omit<CrewMemoryRow, "crew" | "member">;
@@ -350,3 +373,215 @@ export const groundFromFields = (
     stale,
   };
 };
+
+/**
+ * How long a read over ssh may hold a session start: `SessionStart` blocks
+ * the CLI (ARCHITECTURE §9 risk 6). Past it the packet goes without ground
+ * truth and says so.
+ */
+const GROUND_BUDGET = Duration.seconds(5);
+
+/** The host of a crewmate's copy; a lead or a reader has none. */
+const hostOf = (member: CrewThreadMember): string | undefined =>
+  member.prompt.member.kind === "writer" ? member.prompt.member.lane.host : undefined;
+
+/** The open task as the engine knows it: the packet's view, and what only the engine records. */
+export interface CrewMemoryTask extends PacketTask {
+  readonly assignment: string;
+  readonly lastCheck?: string;
+  /** Resets of the copy since the last packet, as facts. */
+  readonly resets: ReadonlyArray<string>;
+}
+
+export interface CrewMemoryService {
+  /** `crew_memory`: one operation, at most one row written, and the answer. */
+  readonly apply: (
+    member: CrewThreadMember,
+    op: CrewMemoryOp,
+    assignment: string | undefined,
+  ) => Effect.Effect<CrewToolText, CrewStoreError>;
+  /** `crew_report`'s lessons, queued as unfiled entries. */
+  readonly recordLessons: (
+    member: CrewThreadMember,
+    lessons: ReadonlyArray<string>,
+    assignment: string | undefined,
+  ) => Effect.Effect<void, CrewStoreError>;
+  /** The state packet, for `SessionStart` on startup, compact and clear. */
+  readonly packet: (
+    member: CrewThreadMember,
+    task: CrewMemoryTask | undefined,
+  ) => Effect.Effect<string, CrewStoreError>;
+  /** The resume delta, for `SessionStart` on resume. */
+  readonly delta: (
+    member: CrewThreadMember,
+    task: CrewMemoryTask | undefined,
+  ) => Effect.Effect<string, CrewStoreError>;
+}
+
+export class CrewMemory extends Context.Service<CrewMemory, CrewMemoryService>()(
+  "t3/zerops/crew/CrewMemory",
+) {}
+
+export const make = Effect.gen(function* () {
+  const shell = yield* CrewShell;
+  const store = yield* CrewStore;
+
+  /** The tree's head on `host`, or nothing when it cannot be read in time. */
+  const headOn = (host: string | undefined) =>
+    host === undefined
+      ? Effect.succeed(undefined)
+      : runFields(
+          shell,
+          host,
+          "memoryHead",
+          `printf 'head\\t%s\\n' "$(${git("integration", ["rev-parse", "HEAD"])})"\n`,
+          GROUND_BUDGET,
+        ).pipe(
+          Effect.map((out) => field(out, "head")),
+          Effect.timeoutOrElse({
+            duration: GROUND_BUDGET,
+            orElse: () => Effect.succeed(undefined),
+          }),
+          Effect.orElseSucceed(() => undefined),
+        );
+
+  /** Prints `line<TAB><each line of the command's output>`. */
+  const eachLine = (key: string, command: string) =>
+    `${command} 2>/dev/null | while IFS= read -r line; do printf '${key}\\t%s\\n' "$line"; done\n`;
+
+  /**
+   * One script: which facts the tree changed under, then the copy's tip,
+   * status and diffstat against the dispatch commit.
+   */
+  const groundScript = (
+    handle: string,
+    host: string,
+    facts: ReadonlyArray<CrewMemoryRow>,
+    dispatchCommit: string | undefined,
+  ): string => {
+    const lane = shellQuote(laneDirectory(handle));
+    const at = { lane: handle };
+    return (
+      `H=$(${git("integration", ["rev-parse", "HEAD"])})\n` +
+      facts
+        .map(
+          (fact) =>
+            `if ! out=$(${git("integration", ["diff", "--name-only", fact.verifiedAt ?? "", shellVariable("H"), "--", ...fact.paths])} 2>/dev/null) || [ -n "$out" ]; then printf 'stale\\t%s\\n' ${shellQuote(fact.id)}; fi\n`,
+        )
+        .join("") +
+      `if [ -d ${lane} ]; then\n` +
+      `printf 'tip\\t%s\\n' "$(${git(at, ["rev-parse", "HEAD"])})"\n` +
+      eachLine("status", git(at, ["status", "--porcelain"])) +
+      (dispatchCommit === undefined
+        ? ""
+        : eachLine("diffstat", git(at, ["diff", "--stat", dispatchCommit]))) +
+      `else\n` +
+      `printf 'unavailable\\t%s\\n' ${shellQuote(`your copy ${laneDirectory(handle)} is missing on ${host}`)}\n` +
+      `fi\n`
+    );
+  };
+
+  /** Ground truth within the budget, or a packet that says it has none. */
+  const groundFor = (
+    member: CrewThreadMember,
+    entries: ReadonlyArray<CrewMemoryRow>,
+    task: CrewMemoryTask | undefined,
+  ) => {
+    const host = hostOf(member);
+    const known = {
+      lane: host !== undefined,
+      resets: task?.resets ?? [],
+      ...(task?.lastCheck === undefined ? {} : { lastCheck: task.lastCheck }),
+    };
+    if (host === undefined) return Effect.succeed(groundFromFields([], known));
+    const facts = entries.filter(
+      (entry) => entry.kind === "fact" && entry.verifiedAt !== null && entry.paths.length > 0,
+    );
+    const unavailable = (reason: string) => Effect.succeed([["unavailable", reason] as const]);
+    return runFields(
+      shell,
+      host,
+      "memoryGround",
+      groundScript(member.handle, host, facts, task?.dispatchCommit),
+      GROUND_BUDGET,
+    ).pipe(
+      Effect.timeoutOrElse({
+        duration: GROUND_BUDGET,
+        orElse: () => unavailable(`${host} did not answer within 5 s`),
+      }),
+      Effect.catch(() => unavailable(`the copy on ${host} could not be read`)),
+      Effect.map((fields) => groundFromFields(fields, known)),
+    );
+  };
+
+  const seqOf = (crew: string) =>
+    Effect.map(store.getDefinition(crew), (definition) =>
+      Option.match(definition, { onNone: () => 0, onSome: (row) => row.seq }),
+    );
+
+  const packet: CrewMemoryService["packet"] = (member, task) =>
+    Effect.gen(function* () {
+      const entries = yield* store.memory(member.crew, member.handle);
+      const { ground, stale } = yield* groundFor(member, entries, task);
+      return crewStatePacket(
+        crewPacketInput({
+          seq: yield* seqOf(member.crew),
+          task,
+          assignment: task?.assignment,
+          ground,
+          entries,
+          stale,
+        }),
+      );
+    });
+
+  const delta: CrewMemoryService["delta"] = (member, task) =>
+    Effect.gen(function* () {
+      const { ground } = yield* groundFor(member, [], task);
+      return crewResumeDelta({ seq: yield* seqOf(member.crew), task, ground });
+    });
+
+  const write = (member: CrewThreadMember, change: CrewMemoryChange) => {
+    switch (change.kind) {
+      case "put":
+        return store.putMemory({ ...change.entry, crew: member.crew, member: member.handle });
+      case "delete":
+        return store.deleteMemory(member.crew, member.handle, change.id);
+      case "none":
+        return Effect.void;
+    }
+  };
+
+  const apply: CrewMemoryService["apply"] = (member, op, assignment) =>
+    Effect.gen(function* () {
+      const entries = yield* store.memory(member.crew, member.handle);
+      const verifies =
+        (op.op === "add" && op.kind === "fact") ||
+        (op.op === "update" &&
+          entries.some((entry) => entry.id === op.id && entry.kind === "fact"));
+      const head = verifies ? yield* headOn(hostOf(member)) : undefined;
+      const now = DateTime.formatIso(yield* DateTime.now);
+      const outcome = applyMemoryOp(entries, op, {
+        now,
+        ...(assignment === undefined ? {} : { assignment }),
+        ...(head === undefined ? {} : { head }),
+      });
+      yield* write(member, outcome.change);
+      return outcome.answer;
+    });
+
+  const recordLessonsOf: CrewMemoryService["recordLessons"] = (member, lessons, assignment) =>
+    Effect.gen(function* () {
+      const entries = yield* store.memory(member.crew, member.handle);
+      const now = DateTime.formatIso(yield* DateTime.now);
+      const changes = recordLessons(entries, lessons, {
+        now,
+        ...(assignment === undefined ? {} : { assignment }),
+      });
+      yield* Effect.forEach(changes, (change) => write(member, change), { discard: true });
+    });
+
+  return CrewMemory.of({ apply, recordLessons: recordLessonsOf, packet, delta });
+});
+
+export const layer = Layer.effect(CrewMemory, make);

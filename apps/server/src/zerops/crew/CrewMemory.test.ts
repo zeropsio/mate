@@ -1,14 +1,29 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 
+import { crewLane } from "./CrewDefinition.ts";
 import {
   applyMemoryOp,
+  CrewMemory,
   type CrewMemoryChange,
   type CrewMemoryEntry,
   crewPacketInput,
   groundFromFields,
+  layer as crewMemoryLayer,
   recordLessons,
 } from "./CrewMemory.ts";
-import type { CrewMemoryOp } from "./crewSeams.ts";
+import type { CrewMemoryOp, CrewThreadMember } from "./crewSeams.ts";
+import { CrewStore } from "./CrewStore.ts";
+import * as CrewWorkspace from "./CrewWorkspace.ts";
+import {
+  crewGitLayer,
+  git,
+  serviceRepository,
+  TEST_HOST,
+  withCrewService,
+  write,
+} from "./testing/crewGitFixture.ts";
 
 const NOW = "2026-09-27T20:00:00.000Z";
 const CTX = { assignment: "a-12", now: NOW, head: "abc123" } as const;
@@ -417,4 +432,227 @@ describe("groundFromFields", () => {
     const { ground, stale } = groundFromFields(fields, facts);
     expect({ ground, stale: [...stale] }).toEqual(expected);
   });
+});
+
+const writerOn = (root: string): CrewThreadMember => {
+  const lane = crewLane(serviceRepository(root), "backend");
+  return {
+    crew: "game",
+    handle: "backend",
+    kind: "writer",
+    stint: 1,
+    live: true,
+    gate: { kind: "deny-all" },
+    prompt: {
+      member: { handle: "backend", kind: "writer", lane },
+      brief: { title: "Snake", text: "Build a snake game.", doneWhen: [] },
+      briefVersion: 1,
+      job: "The API.",
+      jobVersion: 1,
+      memory: true,
+    },
+    contextWindow: 200_000,
+  };
+};
+
+const withMemory = <A, E>(
+  body: (root: string) => Effect.Effect<A, E, CrewMemory | CrewStore | CrewWorkspace.CrewWorkspace>,
+) =>
+  withCrewService(
+    (root) =>
+      Effect.gen(function* () {
+        const workspace = yield* CrewWorkspace.CrewWorkspace;
+        yield* workspace.create({ crew: "game", host: TEST_HOST, handle: "backend" });
+        return yield* body(root);
+      }),
+    (root) => crewMemoryLayer.pipe(Layer.provideMerge(crewGitLayer(root))),
+  );
+
+describe("CrewMemory", () => {
+  it.effect("writes one row per operation and records a fact against the tree's head", () =>
+    withMemory((root) =>
+      Effect.gen(function* () {
+        const memory = yield* CrewMemory;
+        const store = yield* CrewStore;
+        const backend = writerOn(root);
+        const added = yield* memory.apply(
+          backend,
+          {
+            op: "add",
+            kind: "fact",
+            topic: "db",
+            text: "Scores live in Redis.",
+            paths: ["src/db.ts"],
+          },
+          "a-12",
+        );
+        const rows = yield* store.memory("game", "backend");
+        expect(added).toEqual({ text: "Added m1.", isError: false });
+        expect(rows).toMatchObject([
+          {
+            crew: "game",
+            member: "backend",
+            id: "m1",
+            kind: "fact",
+            paths: ["src/db.ts"],
+            verifiedAt: git(root, ["rev-parse", "HEAD"]),
+            fromAssignment: "a-12",
+          },
+        ]);
+      }),
+    ),
+  );
+
+  it.effect("builds the packet from memory and the copy as it is on the service", () =>
+    withMemory((root) =>
+      Effect.gen(function* () {
+        const memory = yield* CrewMemory;
+        const store = yield* CrewStore;
+        const backend = writerOn(root);
+        const dispatched = git(root, ["rev-parse", "HEAD"]);
+        yield* store.putDefinition({
+          crew: "game",
+          homeHost: TEST_HOST,
+          spec: {},
+          briefHash: null,
+          briefVersion: 1,
+          appliedAt: null,
+          appliedBy: null,
+          seq: 4,
+          flushedSeq: 4,
+          state: "applied",
+        });
+        const row = {
+          crew: "game",
+          member: "backend",
+          topic: null,
+          paths: [],
+          verifiedAt: null,
+          updatedAt: NOW,
+        };
+        yield* store.putMemory({
+          ...row,
+          id: "m1",
+          kind: "decision",
+          text: "Scores are integers.",
+          fromAssignment: "a-3",
+        });
+        yield* store.putMemory({
+          ...row,
+          id: "m2",
+          kind: "fact",
+          text: "Scores live in Redis.",
+          paths: ["src/db.ts"],
+          verifiedAt: dispatched,
+          fromAssignment: "a-3",
+        });
+        yield* store.putMemory({
+          ...row,
+          id: "m3",
+          kind: "handoff",
+          text: "Routes done.",
+          fromAssignment: "a-12",
+        });
+        yield* store.putMemory({
+          ...row,
+          id: "m4",
+          kind: "unfiled",
+          text: "Vite needs --host.",
+          fromAssignment: "a-3",
+        });
+        // The tree moves under the fact; the copy has an edit and a new file.
+        write(root, "src/db.ts", "export const db = 'postgres';\n");
+        git(root, ["add", "-A"]);
+        git(root, ["commit", "-q", "-m", "db"]);
+        const lane = `${root}/.crew/backend`;
+        write(lane, "README.md", "service, changed\n");
+        write(lane, "new.ts", "export {};\n");
+
+        const task = {
+          assignment: "a-12",
+          number: 12,
+          title: "Scores API",
+          brief: "Serve /scores.",
+          doneWhen: "GET /scores answers.",
+          state: "working",
+          attempt: 1,
+          dispatchCommit: dispatched,
+          lastCheck: "passed",
+          resets: [],
+        } as const;
+        const packet = yield* memory.packet(backend, task);
+        for (const line of [
+          "crew-state seq 4",
+          "## Task #12 (attempt 1, dispatched at " + dispatched + ")",
+          "tip " + git(lane, ["rev-parse", "HEAD"]),
+          " M README.md",
+          "?? new.ts",
+          "last check passed",
+          " README.md | 2 +-",
+          "## Handoff\nRoutes done.",
+          "- m1 [decision] Scores are integers.",
+          "- m2 [fact, stale?] Scores live in Redis.",
+          "- m4 Vite needs --host.",
+        ]) {
+          expect(packet).toContain(line);
+        }
+
+        const delta = yield* memory.delta(backend, task);
+        expect(delta).toContain("crew-state seq 4 supersedes earlier crew-state blocks.");
+        expect(delta).toContain("Task #12 is working, attempt 1.");
+        expect(delta).toContain("?? new.ts");
+      }),
+    ),
+  );
+
+  it.effect("says so when there is no copy to read, or it cannot be read", () =>
+    withMemory((root) =>
+      Effect.gen(function* () {
+        const memory = yield* CrewMemory;
+        const backend = writerOn(root);
+        const reader: CrewThreadMember = {
+          ...backend,
+          handle: "erik",
+          kind: "reader",
+          prompt: { ...backend.prompt, member: { handle: "erik", kind: "reader" } },
+        };
+        const elsewhere: CrewThreadMember = {
+          ...backend,
+          prompt: {
+            ...backend.prompt,
+            member: {
+              handle: "backend",
+              kind: "writer",
+              lane: crewLane({ ...serviceRepository(root), host: "ghost" }, "backend"),
+            },
+          },
+        };
+        expect(yield* memory.packet(reader, undefined)).toContain(
+          "Ground truth unavailable: a read-only crewmate has no copy of the code",
+        );
+        expect(yield* memory.delta(elsewhere, undefined)).toContain(
+          "Ground truth unavailable: the copy on ghost could not be read",
+        );
+      }),
+    ),
+  );
+
+  it.effect("queues a report's lessons as unfiled rows", () =>
+    withMemory((root) =>
+      Effect.gen(function* () {
+        const memory = yield* CrewMemory;
+        const store = yield* CrewStore;
+        yield* memory.recordLessons(
+          writerOn(root),
+          ["Vite needs --host.", "Tests need Redis."],
+          "a-12",
+        );
+        const rows = yield* store.memory("game", "backend");
+        expect(rows.map((row) => [row.id, row.kind, row.text, row.fromAssignment])).toEqual([
+          ["m1", "unfiled", "Vite needs --host.", "a-12"],
+          ["m2", "unfiled", "Tests need Redis.", "a-12"],
+        ]);
+      }),
+    ),
+  );
 });
