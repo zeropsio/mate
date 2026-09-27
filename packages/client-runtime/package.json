@@ -391,6 +391,14 @@
       "types": "./src/zerops/serverCompatibility.ts",
       "default": "./src/zerops/serverCompatibility.ts"
     },
+    "./zerops/crew/phrases": {
+      "types": "./src/zerops/crew/phrases.ts",
+      "default": "./src/zerops/crew/phrases.ts"
+    },
+    "./zerops/crew/testing/fixtures": {
+      "types": "./src/zerops/crew/testing/fixtures.ts",
+      "default": "./src/zerops/crew/testing/fixtures.ts"
+    },
     "./work-log/presentation": {
       "types": "./src/work-log/presentation.ts",
       "default": "./src/work-log/presentation.ts"
