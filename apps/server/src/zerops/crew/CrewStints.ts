@@ -30,6 +30,7 @@ import * as Option from "effect/Option";
 import {
   asRefusal,
   currentStint,
+  memberOf,
   refuse,
   type AppliedCrew,
   type CrewCore,
@@ -109,6 +110,32 @@ export const openStint = (
     });
     yield* asRefusal(core.reload);
     return row;
+  });
+
+/**
+ * Points each writer's current conversation at its copy where its thread
+ * says otherwise — a stint created while the Zerops policy dropped a
+ * worktree from every new thread, or a copy the mount now reaches at
+ * another path — with the thread's meta update.
+ */
+export const repairWorktrees = (core: CrewCore, applied: AppliedCrew) =>
+  Effect.gen(function* () {
+    for (const handle of applied.members.keys()) {
+      const crewmate = memberOf(applied, handle);
+      const stint = currentStint(applied, handle);
+      const expected = crewmate === undefined ? null : worktreeOf(applied, crewmate);
+      if (stint === undefined || expected === null) continue;
+      const shell = yield* core.projection
+        .getThreadShellById(ThreadId.make(stint.threadId))
+        .pipe(Effect.orElseSucceed(() => Option.none()));
+      if (Option.isNone(shell) || shell.value.worktreePath === expected) continue;
+      yield* dispatch(core, {
+        type: "thread.meta.update",
+        commandId: CommandId.make(`crew:worktree:${stint.threadId}:${yield* core.now}`),
+        threadId: ThreadId.make(stint.threadId),
+        worktreePath: expected,
+      });
+    }
   });
 
 /**
