@@ -31,6 +31,7 @@ import {
   CircleIcon,
   LayersIcon,
   ListTodoIcon,
+  GitCommitHorizontalIcon,
   RocketIcon,
   RotateCcwIcon,
   XIcon,
@@ -50,7 +51,7 @@ import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { Button } from "../ui/button";
 import { MateFace } from "../zerops/primitives";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
-import { formatWorkDuration, type IncidentModel } from "./conversation.logic";
+import { formatWorkDuration, isGitPushOnly, type IncidentModel } from "./conversation.logic";
 import { StatusBar, StatusDisc, type BarTone, type DiscTone } from "./ConversationPills";
 import type { DockBackgroundTask, DockModel } from "./conversationDock.logic";
 import type { WorkingFailure } from "./MessagesTimeline.logic";
@@ -591,16 +592,19 @@ function DeployInstrument({
     steps.find((step) => step.state === "failed") ??
     steps.findLast((step) => step.state === "done");
   // A service of a batch has one step, named by the service: its state is
-  // the words, never its name a second time.
-  const words = !running
-    ? operation.statusWord
-    : pipeline?.calculating
-      ? "Calculating steps"
-      : pipelineStep !== undefined
-        ? pipelineStep.sentence
-        : fallbackStep !== undefined && fallbackStep.label !== operation.subject
-          ? fallbackStep.label
-          : operation.statusWord;
+  // the words, never its name a second time. A git push is its status word
+  // throughout ("Pushing", "Pushed"): it has no build to watch.
+  const pushOnly = isGitPushOnly(operation);
+  const words =
+    !running || pushOnly
+      ? operation.statusWord
+      : pipeline?.calculating
+        ? "Calculating steps"
+        : pipelineStep !== undefined
+          ? pipelineStep.sentence
+          : fallbackStep !== undefined && fallbackStep.label !== operation.subject
+            ? fallbackStep.label
+            : operation.statusWord;
   const settledMs =
     operation.settledAt === undefined
       ? null
@@ -639,6 +643,8 @@ function DeployInstrument({
           <XIcon aria-hidden="true" className="size-3.5" />
         ) : operation.phase === "done" ? (
           <CheckIcon aria-hidden="true" className="size-3.5" />
+        ) : pushOnly ? (
+          <GitCommitHorizontalIcon aria-hidden="true" className="size-3.5" />
         ) : (
           <RocketIcon aria-hidden="true" className="size-3.5" />
         )

@@ -1131,6 +1131,55 @@ describe("deriveOutcome", () => {
     },
   );
 
+  // A git push is no deploy: the build that follows it, if any, says what
+  // came of the service, and a push that failed is something it could not do.
+  const pushed = (id: string, minute: number, status: string, phase = "done") =>
+    operation(id, "t1", minute, {
+      kind: "deploy",
+      phase: phase as never,
+      statusWord: phase === "failed" ? "Failed" : "Pushed",
+      resultStatus: status,
+      voice: "Pushing appdev.",
+      steps: [
+        {
+          id: "push",
+          label: "Push",
+          state: phase === "failed" ? "failed" : "done",
+          stateLabel: phase === "failed" ? "Failed" : "Done",
+        },
+      ],
+    });
+  it.each([
+    { name: "a push alone", ops: [pushed("p1", 1, "PUSHED")], services: [], notDone: 0 },
+    {
+      name: "a push, then the deploy",
+      ops: [pushed("p1", 1, "PUSHED"), operation("d1", "t1", 2, { kind: "deploy" })],
+      services: ["Deployed"],
+      notDone: 0,
+    },
+    {
+      name: "a deploy, then a push",
+      ops: [operation("d1", "t1", 1, { kind: "deploy" }), pushed("p1", 2, "PUSHED")],
+      services: ["Deployed"],
+      notDone: 0,
+    },
+    {
+      name: "nothing to push",
+      ops: [pushed("p1", 1, "NOTHING_TO_PUSH")],
+      services: [],
+      notDone: 0,
+    },
+    { name: "a push that failed", ops: [pushed("p1", 1, "", "failed")], services: [], notDone: 1 },
+  ])("reads a git push as a push: $name", ({ ops, services, notDone }) => {
+    const outcome = deriveOutcome({
+      turn: structure([user("m0", 0), ...ops, assistant("a1", "t1", 5)], settled).turns[0]!,
+      landed: [],
+      diff: null,
+    });
+    expect(outcome?.live.map((service) => service.word) ?? []).toEqual(services);
+    expect(outcome?.notDone.length ?? 0).toBe(notDone);
+  });
+
   it("has nothing to say for a turn that produced nothing, or one a limit refused", () => {
     const quiet = structure(
       [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2)],

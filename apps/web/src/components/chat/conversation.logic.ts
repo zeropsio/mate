@@ -1452,6 +1452,17 @@ function failureWords(operation: ZeropsOperation): string {
 }
 
 /**
+ * A deploy call that only pushed to git, or found nothing to push: its one
+ * step is the push. A push whose build zcp watched carries the build's steps
+ * and is a deploy like any other.
+ */
+export function isGitPushOnly(operation: ZeropsOperation): boolean {
+  return (
+    operation.kind === "deploy" && operation.steps.length === 1 && operation.steps[0]!.id === "push"
+  );
+}
+
+/**
  * What a settled turn produced, each fact once and in its own register: the
  * services it left live, the changes that landed and the files it changed,
  * the checks, what it created and removed, and what it could not do. Built
@@ -1478,6 +1489,8 @@ export function deriveOutcome(input: {
       operation.kind !== "devServer"
     )
       continue;
+    // A git push says nothing of the service: the build after it, if any, does.
+    if (isGitPushOnly(operation)) continue;
     const host = operationTargetKey(operation);
     const known = services.get(host);
     if (operation.phase === "failed") {
@@ -1542,7 +1555,7 @@ export function deriveOutcome(input: {
   const notDone = unrecoveredFailures(settled)
     .filter(
       (operation) =>
-        operation.kind !== "deploy" &&
+        (operation.kind !== "deploy" || isGitPushOnly(operation)) &&
         operation.kind !== "verify" &&
         operation.kind !== "devServer" &&
         operation.kind !== "browser" &&

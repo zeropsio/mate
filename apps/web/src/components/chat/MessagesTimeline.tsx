@@ -76,6 +76,7 @@ import {
   CircleAlertIcon,
   ClockIcon,
   EyeIcon,
+  GitCommitHorizontalIcon,
   GlobeIcon,
   HammerIcon,
   LayersIcon,
@@ -150,6 +151,7 @@ import { SkillInlineText } from "./SkillInlineText";
 import { BrowserStrip } from "./BrowserStrip";
 import {
   formatWorkDuration,
+  isGitPushOnly,
   isQuestionToolCall,
   LAST_WORDS_GRACE_MS,
   latestFinishedWordsAt,
@@ -1940,7 +1942,14 @@ function LogOperationTimelineRow({
         data-scroll-anchor-ignore
         onClick={() => ctx.onToggleLogItem(row.id, row.id)}
       >
-        <KindGlyph kind={operation.kind} />
+        {isGitPushOnly(operation) ? (
+          <GitCommitHorizontalIcon
+            aria-hidden="true"
+            className="size-3.5 shrink-0 text-muted-foreground"
+          />
+        ) : (
+          <KindGlyph kind={operation.kind} />
+        )}
         <span className={cn("shrink-0", running ? "text-foreground" : "text-foreground/85")}>
           {operation.statusWord}
         </span>
