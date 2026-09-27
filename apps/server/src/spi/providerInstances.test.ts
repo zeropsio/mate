@@ -1,7 +1,20 @@
 import { describe, expect, it } from "@effect/vitest";
-import type { ServerProviderAuthStatus } from "@t3tools/contracts";
+import {
+  ProviderDriverKind,
+  ProviderInstanceId,
+  type ServerProvider,
+  type ServerProviderAuthStatus,
+} from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 
-import { agentDefaultInstanceId, providerAuthDisagrees } from "./providerInstances.ts";
+import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
+import {
+  agentDefaultInstanceId,
+  layer as providerInstancesLayer,
+  ProviderInstances,
+  providerAuthDisagrees,
+} from "./providerInstances.ts";
 
 describe("agentDefaultInstanceId", () => {
   it("maps claude-code to the claudeAgent driver's default instance", () => {
@@ -57,4 +70,38 @@ describe("providerAuthDisagrees", () => {
   ] as const)("$name", ({ providers, verified, expected }) => {
     expect(providerAuthDisagrees(providers, codex, verified)).toBe(expected);
   });
+});
+
+describe("driverKindOf", () => {
+  const provider = (instanceId: string, driver: string) =>
+    ({
+      instanceId: ProviderInstanceId.make(instanceId),
+      driver: ProviderDriverKind.make(driver),
+    }) as ServerProvider;
+  const instances = ProviderInstances.pipe(
+    Effect.provide(
+      providerInstancesLayer.pipe(
+        Layer.provide(
+          Layer.mock(ProviderRegistry)({
+            getProviders: Effect.succeed([
+              provider("claudeAgent", "claudeAgent"),
+              provider("claudeAgent_work", "claudeAgent"),
+            ]),
+          }),
+        ),
+      ),
+    ),
+  );
+
+  it.effect.each([
+    { instanceId: "claudeAgent", expected: "claudeAgent" },
+    { instanceId: "claudeAgent_work", expected: "claudeAgent" },
+    { instanceId: "codex", expected: undefined },
+  ] as const)("reads the driver of $instanceId from the registry", ({ instanceId, expected }) =>
+    Effect.gen(function* () {
+      const { driverKindOf } = yield* instances;
+      const driver = yield* driverKindOf(instanceId);
+      expect(driver).toBe(expected);
+    }),
+  );
 });

@@ -8,9 +8,9 @@
  * @module crewTemplates
  */
 import type { CrewMemberKind } from "@t3tools/contracts";
-import { MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
 
-import { parseBrief, type CrewDefinition, type CrewMemberSpec } from "./CrewDefinition.ts";
+import { MATE_TINT_IDS, type MateTintId } from "./brand.ts";
+import { parseBrief, type CrewDefinition, type CrewMemberSpec } from "./crewHome.ts";
 
 export type CrewTemplateId = "feature-team" | "solo-reviewer" | "empty";
 

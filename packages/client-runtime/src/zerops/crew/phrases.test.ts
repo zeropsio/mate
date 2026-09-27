@@ -6,6 +6,7 @@ import {
   CREW_BOARD_COLUMNS,
   crewAttentionSentence,
   crewBoardColumn,
+  crewCheckWord,
   crewPersonLands,
   crewRefusalSentence,
   crewRunMeters,
@@ -156,6 +157,16 @@ describe("crewPersonLands", () => {
     [{ ...landing("lead"), state: "stopped" }, true],
   ] as const)("with run %j: %s", (latestRun, lands) => {
     expect(crewPersonLands(latestRun)).toBe(lands);
+  });
+});
+
+describe("crewCheckWord", () => {
+  it.each([
+    ["running", "Checking"],
+    ["passed", "Check passed"],
+    ["failed", "Check failed"],
+  ] as const)("words a %s check as %s", (state, word) => {
+    expect(crewCheckWord({ state, output: "" })).toBe(word);
   });
 });
 

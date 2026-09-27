@@ -74,6 +74,11 @@ export class ProviderInstances extends Context.Service<
       agentId: ZeropsAgentId,
       verified: ServerProviderAuthStatus,
     ) => Effect.Effect<void>;
+    /**
+     * The driver kind of a configured instance (`ServerProvider.driver`), or
+     * `undefined` for an id no configured instance carries.
+     */
+    readonly driverKindOf: (instanceId: string) => Effect.Effect<ProviderDriverKind | undefined>;
   }
 >()("t3/spi/providerInstances") {}
 
@@ -90,6 +95,12 @@ export const layer = Layer.effect(
           }
           yield* registry.refreshInstance(instanceId);
         }),
+      driverKindOf: (instanceId) =>
+        registry.getProviders.pipe(
+          Effect.map(
+            (providers) => providers.find((provider) => provider.instanceId === instanceId)?.driver,
+          ),
+        ),
     } satisfies ProviderInstances["Service"];
   }),
 );

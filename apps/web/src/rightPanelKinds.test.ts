@@ -14,6 +14,7 @@ const AVAILABLE_INPUT: RightPanelAvailabilityInput = {
   gitRepo: true,
   serverThread: true,
   zeropsPanel: "available",
+  crewStatus: "applied",
 };
 
 describe("right panel kinds", () => {
@@ -24,7 +25,7 @@ describe("right panel kinds", () => {
     }
   });
 
-  it("keeps the eight launcher rows in their established order", () => {
+  it("keeps the nine launcher rows in their established order", () => {
     expect(
       launcherActions(resolveRightPanelAvailability(AVAILABLE_INPUT)).map(
         ({ kind, label, description, shortcut, unavailableHint }) => ({
@@ -92,6 +93,13 @@ describe("right panel kinds", () => {
         shortcut: "G",
         unavailableHint: "Available in a Zerops project.",
       },
+      {
+        kind: "crew",
+        label: "Crew",
+        description: "Follow the crew's tasks on its board.",
+        shortcut: "C",
+        unavailableHint: "Available in a Zerops project with crew mode on.",
+      },
     ]);
   });
 
@@ -115,6 +123,7 @@ describe("right panel kinds", () => {
         browser: "available",
         git: "available",
         data: "available",
+        crew: "available",
       },
     },
     {
@@ -136,6 +145,7 @@ describe("right panel kinds", () => {
         browser: "unavailable",
         git: "unavailable",
         data: "unavailable",
+        crew: "hidden",
       },
     },
     {
@@ -151,6 +161,7 @@ describe("right panel kinds", () => {
         browser: "unknown",
         git: "unknown",
         data: "unknown",
+        crew: "hidden",
       },
     },
     {
@@ -166,6 +177,7 @@ describe("right panel kinds", () => {
         browser: "available",
         git: "available",
         data: "available",
+        crew: "available",
       },
     },
   ] as const;
@@ -173,6 +185,28 @@ describe("right panel kinds", () => {
   it.each(cases)("$name", ({ input, expected }) => {
     expect(resolveRightPanelAvailability(input)).toEqual(expected);
   });
+
+  const crewCases = [
+    { crewStatus: "applied", zeropsPanel: "available", card: true },
+    { crewStatus: "none", zeropsPanel: "available", card: true },
+    { crewStatus: "off", zeropsPanel: "available", card: false },
+    { crewStatus: null, zeropsPanel: "available", card: false },
+    { crewStatus: "applied", zeropsPanel: "unknown", card: false },
+    { crewStatus: "applied", zeropsPanel: "unavailable", card: false },
+  ] as const;
+
+  it.each(crewCases)(
+    "status $crewStatus with the Zerops panel $zeropsPanel: crew card $card",
+    ({ crewStatus, zeropsPanel, card }) => {
+      const actions = launcherActions(
+        resolveRightPanelAvailability({ ...AVAILABLE_INPUT, crewStatus, zeropsPanel }),
+      );
+      const crew = actions.find(({ kind }) => kind === "crew");
+      expect(crew === undefined ? false : crew.available).toBe(card);
+      // A hidden kind is no card at all: a disabled one would still show the tab exists.
+      expect(crew === undefined).toBe(!card);
+    },
+  );
 
   it("names every retired persisted kind in one migration list", () => {
     expect(DROPPED_RIGHT_PANEL_KINDS).toEqual(["plan", "pull-request", "preview"]);

@@ -4,8 +4,12 @@
  * Availability controls whether a kind can be launched; it never reconciles
  * persisted surfaces. In particular, Diff and Zerops tabs remain visible when
  * a Git or topology answer arrives late or later becomes unavailable, and the
- * existing tab controls remain the way to close them.
+ * existing tab controls remain the way to close them. A `hidden` kind has no
+ * launcher card at all: an `unavailable` one still draws a disabled card, and
+ * that alone would say the surface exists.
  */
+import type { CrewStatus } from "@t3tools/contracts";
+
 export const RIGHT_PANEL_KINDS = [
   "terminal",
   "files",
@@ -16,16 +20,22 @@ export const RIGHT_PANEL_KINDS = [
   "browser",
   "data",
   "git",
+  "crew",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
-export type RightPanelAvailability = "available" | "unavailable" | "unknown";
+export type RightPanelAvailability = "available" | "unavailable" | "unknown" | "hidden";
 
 export interface RightPanelAvailabilityInput {
   readonly projectOpen: boolean;
   readonly gitRepo: boolean | null;
   readonly serverThread: boolean;
   readonly zeropsPanel: "available" | "unavailable" | "unknown";
+  /**
+   * The crew feed's latest status (`useCrew`); `null` before it answers. The
+   * feed's capability alone would only say the method exists (seam 21).
+   */
+  readonly crewStatus: CrewStatus | null;
 }
 
 export interface RightPanelKindMeta {
@@ -126,6 +136,19 @@ export const RIGHT_PANEL_KIND_META = {
     },
     availability: (input) => input.zeropsPanel,
   },
+  crew: {
+    launcher: {
+      label: "Crew",
+      description: "Follow the crew's tasks on its board.",
+      shortcut: "C",
+      unavailableHint: "Available in a Zerops project with crew mode on.",
+    },
+    availability: (input) =>
+      input.zeropsPanel === "available" &&
+      (input.crewStatus === "none" || input.crewStatus === "applied")
+        ? "available"
+        : "hidden",
+  },
 } satisfies Record<RightPanelKind, RightPanelKindMeta>;
 
 export const DROPPED_RIGHT_PANEL_KINDS = ["plan", "pull-request", "preview"] as const;
@@ -148,8 +171,10 @@ export function resolveRightPanelAvailability(
 }
 
 export function launcherActions(availability: Record<RightPanelKind, RightPanelAvailability>) {
-  return RIGHT_PANEL_KINDS.filter(rightPanelKindHasLauncher).map((kind) => {
-    const launcher = RIGHT_PANEL_KIND_META[kind].launcher;
-    return { kind, ...launcher, available: availability[kind] === "available" };
-  });
+  return RIGHT_PANEL_KINDS.filter(rightPanelKindHasLauncher)
+    .filter((kind) => availability[kind] !== "hidden")
+    .map((kind) => {
+      const launcher = RIGHT_PANEL_KIND_META[kind].launcher;
+      return { kind, ...launcher, available: availability[kind] === "available" };
+    });
 }
