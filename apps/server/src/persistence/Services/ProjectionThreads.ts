@@ -17,6 +17,7 @@ import {
   ThreadLinkedPullRequest,
   ThreadMessagePreview,
   ThreadTitleState,
+  ThreadCrewOrigin,
   ThreadId,
   ThreadUsagePauseState,
   TurnId,
@@ -62,6 +63,7 @@ export const ProjectionThread = Schema.Struct({
   hasActionableProposedPlan: NonNegativeInt,
   usagePause: Schema.optional(Schema.NullOr(ThreadUsagePauseState)),
   usageAutoResumeDisabledAt: Schema.optional(Schema.NullOr(IsoDateTime)),
+  crew: Schema.optional(Schema.NullOr(ThreadCrewOrigin)),
   deletedAt: Schema.NullOr(IsoDateTime),
 });
 export type ProjectionThread = typeof ProjectionThread.Type;

@@ -28,6 +28,7 @@ import {
   ModelSelection,
   ProjectId,
   ThreadLinkedPullRequest,
+  ThreadCrewOrigin,
   ThreadMessagePreview,
   ThreadTitleState,
   ThreadId,
@@ -125,6 +126,7 @@ const ProjectionThreadDbRowSchema = ProjectionThread.mapFields(
     latestUserMessagePreview: Schema.NullOr(Schema.fromJsonString(ThreadMessagePreview)),
     usagePause: Schema.NullOr(Schema.fromJsonString(ThreadUsagePauseState)),
     usageAutoResumeDisabledAt: Schema.NullOr(IsoDateTime),
+    crew: Schema.NullOr(Schema.fromJsonString(ThreadCrewOrigin)),
   }),
 );
 // The pause as clients read it: the thread's switch folded in (on by default).
@@ -541,6 +543,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
           usage_pause_json AS "usagePause",
           usage_auto_resume_disabled_at AS "usageAutoResumeDisabledAt",
+          crew_json AS "crew",
           deleted_at AS "deletedAt"
         FROM projection_threads
         ORDER BY created_at ASC, thread_id ASC
@@ -586,6 +589,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
           usage_pause_json AS "usagePause",
           usage_auto_resume_disabled_at AS "usageAutoResumeDisabledAt",
+          crew_json AS "crew",
           deleted_at AS "deletedAt"
         FROM projection_threads
         WHERE deleted_at IS NULL
@@ -633,6 +637,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
           usage_pause_json AS "usagePause",
           usage_auto_resume_disabled_at AS "usageAutoResumeDisabledAt",
+          crew_json AS "crew",
           deleted_at AS "deletedAt"
         FROM projection_threads
         WHERE deleted_at IS NULL
@@ -1103,6 +1108,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
           usage_pause_json AS "usagePause",
           usage_auto_resume_disabled_at AS "usageAutoResumeDisabledAt",
+          crew_json AS "crew",
           deleted_at AS "deletedAt"
         FROM projection_threads
         WHERE thread_id = ${threadId}
@@ -2118,6 +2124,7 @@ pending_approval_requests AS (
                 activities: activitiesByThread.get(row.threadId) ?? [],
                 checkpoints: checkpointsByThread.get(row.threadId) ?? [],
                 session: sessionsByThread.get(row.threadId) ?? null,
+                ...(row.crew === null ? {} : { crew: row.crew }),
               }));
 
               const snapshot = {
@@ -2332,6 +2339,7 @@ pending_approval_requests AS (
                   activities: [],
                   checkpoints: [],
                   session: sessionByThread.get(row.threadId) ?? null,
+                  ...(row.crew === null ? {} : { crew: row.crew }),
                 });
               }
 
@@ -2485,6 +2493,7 @@ pending_approval_requests AS (
                       ),
                       planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
                       usagePause: mapUsagePause(row),
+                      ...(row.crew === null ? {} : { crew: row.crew }),
                     } satisfies OrchestrationThreadShell)
                   : Result.failVoid,
               ),
@@ -2643,6 +2652,7 @@ pending_approval_requests AS (
                 ),
                 planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
                 usagePause: mapUsagePause(row),
+                ...(row.crew === null ? {} : { crew: row.crew }),
               })),
               updatedAt: updatedAt ?? "1970-01-01T00:00:00.000Z",
             };
@@ -2946,6 +2956,7 @@ pending_approval_requests AS (
         ),
         planProgress: threadPlanProgress.getThreadPlanProgress(threadRow.value.threadId),
         usagePause: mapUsagePause(threadRow.value),
+        ...(threadRow.value.crew === null ? {} : { crew: threadRow.value.crew }),
       } satisfies OrchestrationThreadShell);
     });
 
@@ -3251,6 +3262,7 @@ pending_approval_requests AS (
           completedAt: row.completedAt,
         })),
         session: Option.isSome(sessionRow) ? mapSessionRow(sessionRow.value) : null,
+        ...(threadRow.value.crew === null ? {} : { crew: threadRow.value.crew }),
       };
 
       return Option.some(
