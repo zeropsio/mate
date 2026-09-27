@@ -170,9 +170,8 @@ function ZeropsProjectLink({ projectUrl }: { readonly projectUrl: string }) {
 }
 
 /**
- * Starting over in a Mate's conversation: the current one is archived and a
- * fresh thread takes its place, so the Mate still has one conversation and
- * it is empty. A glyph only; its name is the tooltip.
+ * Starting over in a Mate's chat: the one on screen is archived and a fresh,
+ * empty thread takes its place. A glyph only; its name is the tooltip.
  */
 function StartFreshButton({ onStartFresh }: { readonly onStartFresh: () => void }) {
   return (

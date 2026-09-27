@@ -55,10 +55,9 @@ function ChatIndexRouteView() {
  * environments whose socket is up: a registration whose container is gone
  * keeps its cached projects, and those must not claim the landing.
  *
- * Either way the landing is the environment's one conversation when it has
- * one (`resolvePrimaryConversation`), else a draft in the project: one
- * environment is one conversation, and a second thread would be a second
- * Mate.
+ * Either way the landing is the environment's main chat when it has one
+ * (`resolvePrimaryConversation`), else a draft in the project: a Mate's other
+ * chats are opened from its conversation strip, never by landing.
  */
 type IndexLanding =
   | {
