@@ -66,6 +66,7 @@ import {
   type ShellVariable,
 } from "./CrewShell.ts";
 import { CrewStore, type CrewLaneRow, type CrewStoreError } from "./CrewStore.ts";
+import { landedAssignmentsScript } from "./crewTrailers.ts";
 
 /** The integration HEAD a lane script read into `$H`. */
 const H = shellVariable("H");
@@ -168,6 +169,23 @@ export type DispatchOutcome =
   | { readonly _tag: "frozen" }
   | { readonly _tag: "lane-missing" };
 
+export type RecoverOutcome =
+  | {
+      readonly _tag: "recovered";
+      /** Lanes whose directory was added back (and set up again). */
+      readonly readded: ReadonlyArray<string>;
+      readonly setups: Readonly<Record<string, CheckOutcome>>;
+    }
+  | {
+      readonly _tag: "lost";
+      /** Recorded landings no longer in H's first-parent history. */
+      readonly landings: ReadonlyArray<{ readonly assignment: string; readonly title: string }>;
+      /** Lanes whose `crew/<handle>` is gone. */
+      readonly branches: ReadonlyArray<string>;
+      /** Lanes whose branch no longer holds the recorded tip; `since` is what survived. */
+      readonly wip: ReadonlyArray<{ readonly handle: string; readonly since: string }>;
+    };
+
 /** Widens one outcome literal to the union, so a generator's returns agree. */
 const laneCommit = (commit: LaneCommit): LaneCommit => commit;
 
@@ -187,6 +205,15 @@ export interface CrewWorkspaceService {
   /** A self-deploy started on `host`: no lane writes, setup or resets there. */
   readonly freeze: (host: string) => Effect.Effect<ReadonlyArray<LaneKey>, CrewWorkspaceError>;
   readonly unfreeze: (host: string) => Effect.Effect<void, CrewWorkspaceError>;
+  /**
+   * After a self-deploy, a container replacement, or whenever a lane directory
+   * is missing: prune, verify every branch and recorded landing, then re-add
+   * the lanes, set them up and unfreeze - or name the loss and stay frozen.
+   */
+  readonly recover: (
+    host: string,
+    specs: ReadonlyArray<LaneSpec>,
+  ) => Effect.Effect<RecoverOutcome, CrewWorkspaceError>;
   /** Turn end: the lane-commit precondition, then `wip(<task>): turn <n>`. */
   readonly commitTurn: (
     key: LaneKey,
@@ -433,6 +460,81 @@ export const make = Effect.gen(function* () {
   const unfreeze: CrewWorkspaceService["unfreeze"] = (host) =>
     setFrozen(host, null).pipe(Effect.asVoid);
 
+  const recover: CrewWorkspaceService["recover"] = (host, specs) =>
+    Effect.gen(function* () {
+      const lanes = yield* store.lanesOnHost(host);
+      const out = yield* runLane(
+        host,
+        "recover",
+        `${git("integration", ["worktree", "prune"])} || exit 1\n` +
+          lanes
+            .map((row) => {
+              const branch = `refs/heads/${laneBranch(row.lane)}`;
+              const recorded = shellQuote(row.recordedTip ?? "");
+              return (
+                `if tip=$(${git("integration", ["rev-parse", "-q", "--verify", branch])}); then\n` +
+                `  dir=0; [ -d ${shellQuote(laneDirectory(row.lane))} ] && dir=1\n` +
+                `  kept=1; [ -z ${recorded} ] || ${git("integration", ["merge-base", "--is-ancestor", row.recordedTip ?? "", shellVariable("tip")])} 2>/dev/null || kept=0\n` +
+                `  printf 'lane\\t%s\\t%s\\t%s\\t%s\\n' ${shellQuote(row.lane)} "$dir" "$kept" "$(${git("integration", ["log", "-1", "--format=%cI", shellVariable("tip")])})"\n` +
+                `else\n` +
+                `  printf 'missing\\t%s\\n' ${shellQuote(row.lane)}\n` +
+                `fi\n`
+              );
+            })
+            .join("") +
+          landedAssignmentsScript("HEAD"),
+      );
+      const landed = new Set(fieldsOf(out, "landed"));
+      const lost = (yield* store.landingsOnHost(host))
+        .filter((landing) => !landed.has(landing.assignment))
+        .map((landing) => ({ assignment: landing.assignment, title: landing.title }));
+      const branches = fieldsOf(out, "missing");
+      const present = fieldsOf(out, "lane").map((value) => {
+        const [handle = "", dir = "", kept = "", since = ""] = value.split("\t");
+        return { handle, dir: dir === "1", kept: kept === "1", since };
+      });
+      const wip = present
+        .filter((lane) => !lane.kept)
+        .map((lane) => ({ handle: lane.handle, since: lane.since }));
+      if (lost.length > 0 || branches.length > 0 || wip.length > 0) {
+        yield* Effect.forEach(
+          lanes.filter((row) => branches.includes(row.lane)),
+          (row) => store.updateLane(row.crew, row.lane, (lane) => ({ ...lane, state: "lost" })),
+        );
+        return { _tag: "lost", landings: lost, branches, wip } satisfies RecoverOutcome;
+      }
+      const readded = present.filter((lane) => !lane.dir).map((lane) => lane.handle);
+      if (readded.length > 0) {
+        yield* runLane(
+          host,
+          "recover",
+          readded
+            .map(
+              (handle) =>
+                `${git("integration", ["worktree", "add", "-q", laneDirectory(handle), laneBranch(handle)])} || exit 1\n`,
+            )
+            .join(""),
+        );
+      }
+      const setups: Record<string, CheckOutcome> = {};
+      for (const handle of readded) {
+        yield* seenThroughMount(host, handle);
+        const spec = specs.find((candidate) => candidate.handle === handle);
+        if (spec?.setup !== undefined) {
+          setups[handle] = yield* checks.run({
+            host,
+            lane: handle,
+            kind: "setup",
+            command: spec.setup,
+            crewPort: spec.crewPort,
+            env: spec.env,
+          });
+        }
+      }
+      yield* setFrozen(host, null);
+      return { _tag: "recovered", readded, setups } satisfies RecoverOutcome;
+    });
+
   const create: CrewWorkspaceService["create"] = (spec) =>
     Effect.gen(function* () {
       const directory = shellQuote(laneDirectory(spec.handle));
@@ -502,6 +604,7 @@ export const make = Effect.gen(function* () {
     prepareDispatch,
     freeze,
     unfreeze,
+    recover,
     commitTurn,
     keepAndReset,
   });
