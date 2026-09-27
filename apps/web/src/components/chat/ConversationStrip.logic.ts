@@ -11,6 +11,7 @@ import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import { statusLabel, statusPulses } from "@t3tools/client-runtime/zerops/statusPresentation";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import type { CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { ThreadId } from "@t3tools/contracts";
 import type { MateMarkState, MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
@@ -185,6 +186,60 @@ export function chatEntries(input: {
       canMakeMain: false,
     },
   ];
+}
+
+/**
+ * The crew group (PRD §4.2): one chip per crewmate, the lead first — its face
+ * in its own tint wearing its current stint's state, its `@handle`, the
+ * resolver's word. A crewmate is one person across its conversations, so its
+ * chip is the current one on any of its stints, a retired one too, and a
+ * click opens the stint it talks in now. Crew chips have no close.
+ */
+export function crewEntries(input: {
+  readonly view: CrewView<EnvironmentThreadShell> | null;
+  readonly currentThreadId: ThreadId | null;
+  /** The Mate's container is connected; its crew sleeps with it otherwise. */
+  readonly connected: boolean;
+  readonly lastVisitedAtById: Readonly<Record<string, string>>;
+}): ConversationStripGroup {
+  const { view } = input;
+  const onScreen =
+    view === null || input.currentThreadId === null
+      ? undefined
+      : view.stints.get(input.currentThreadId)?.handle;
+  const entries =
+    view === null || view.status !== "applied"
+      ? []
+      : view.crewmates.map(({ crewmate, shell }): ConversationStripEntry => {
+          const resolved =
+            shell === null
+              ? null
+              : resolveChat(
+                  shell,
+                  input.lastVisitedAtById[
+                    scopedThreadKey(scopeThreadRef(shell.environmentId, shell.id))
+                  ],
+                );
+          return {
+            key: `crew:${crewmate.handle}`,
+            threadId: crewmate.currentThreadId,
+            label: `@${crewmate.handle}`,
+            face: {
+              tint: crewmate.tint,
+              state: mateFaceFor(
+                input.connected,
+                resolved === null
+                  ? undefined
+                  : { face: mateMarkStateForThreadStatus(resolved.kind) },
+              ),
+            },
+            status: resolved === null ? null : stripStatus(resolved),
+            current: onScreen === crewmate.handle,
+            close: "none",
+            canMakeMain: false,
+          };
+        });
+  return { id: "crew", label: "Crew", entries };
 }
 
 /**

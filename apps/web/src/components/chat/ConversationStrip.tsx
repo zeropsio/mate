@@ -4,6 +4,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import type { CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
@@ -28,6 +29,7 @@ import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 import {
   alsoWorkingLine,
   chatEntries,
+  crewEntries,
   foldStrip,
   loneChatNewChatShown,
   mateChats,
@@ -291,6 +293,28 @@ function useMateChatEntries(
     });
     return { chats, entries };
   }, [currentThreadId, environmentId, lastVisitedAtById, mate, shells]);
+}
+
+/**
+ * The strip's groups after the chats: the Mate's crew, read off its crew view
+ * (`useCrew`); nothing where no crew is applied.
+ */
+export function useCrewStripGroups({
+  environmentId,
+  currentThreadId,
+  view,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly currentThreadId: ThreadId | null;
+  readonly view: CrewView<EnvironmentThreadShell> | null;
+}): ReadonlyArray<ConversationStripGroup> {
+  const whoLivesHere = useZeropsMate(environmentId);
+  const lastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
+  const connected = whoLivesHere.kind === "mate" && whoLivesHere.mate.connected;
+  return useMemo(
+    () => [crewEntries({ view, currentThreadId, connected, lastVisitedAtById })],
+    [connected, currentThreadId, lastVisitedAtById, view],
+  );
 }
 
 /**

@@ -180,6 +180,7 @@ import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
 import { crewMessageCommand } from "./zerops/crew/crewComposerSend";
 import { crewCommands } from "../zerops/crew/crewCommands";
+import { useCrew } from "../zerops/crew/useCrew";
 import { crewFailureSentence } from "../zerops/crew/useCrewCommand";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
 import { resolveConnectedComposerPlaceholder } from "../composerPlaceholder";
@@ -328,6 +329,7 @@ import { ChatHeader } from "./chat/ChatHeader";
 import {
   ConversationStrip,
   useAlsoWorkingBanner,
+  useCrewStripGroups,
   useLoneChatNewChat,
 } from "./chat/ConversationStrip";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
@@ -5249,16 +5251,29 @@ export default function ChatView(props: ChatViewProps) {
     approval: activePendingApproval !== null,
   });
   // Typing here while the Mate works in another of its chats (`ConversationStrip.tsx`).
+  // A crewmate works on its own copy of the code, so another chat's work is
+  // no warning there.
   const alsoWorkingBannerItem = useAlsoWorkingBanner({
     environmentId,
     currentThreadId: isServerThread ? threadId : null,
-    typing: composerHasUnsentContent,
+    typing: composerHasUnsentContent && activeThreadShell?.crew == null,
+  });
+  // The Mate's crew, where a Mate lives: its group in the strip, and the
+  // crewmate this conversation belongs to when it is a crew thread.
+  const crew = useCrew(
+    zeropsMateAt(zeropsMates, environmentId).kind === "mate" ? environmentId : null,
+  );
+  const crewStripGroups = useCrewStripGroups({
+    environmentId,
+    currentThreadId: isServerThread ? threadId : null,
+    view: crew.view,
   });
   // The header's New chat while the Mate has one chat and so no strip.
   const startSecondChat = useLoneChatNewChat({
     environmentId,
     projectId: activeThread?.projectId ?? null,
     currentThreadId: isServerThread ? threadId : null,
+    extraGroups: crewStripGroups,
   });
 
   const feedbackBannerItems = useMemo(
@@ -7883,6 +7898,7 @@ export default function ChatView(props: ChatViewProps) {
           environmentId={activeThread.environmentId}
           projectId={activeThread.projectId}
           currentThreadId={isServerThread ? activeThread.id : null}
+          extraGroups={crewStripGroups}
         />
         <ZeropsLifecycleStrip
           agentAuthNeedsAttention={zeropsChrome.agentSignInRequired}

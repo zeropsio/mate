@@ -1,16 +1,28 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId, TurnId } from "@t3tools/contracts";
+import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
+import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
+import {
+  EnvironmentId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+  TurnId,
+  type CrewSnapshot,
+} from "@t3tools/contracts";
+import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   alsoWorkingLine,
   chatEntries,
   chatStatus,
+  crewEntries,
   foldStrip,
   loneChatNewChatShown,
   mainChatToPin,
   mateChats,
   stripShown,
+  type ConversationStripEntry,
 } from "./ConversationStrip.logic";
 
 const FEN = EnvironmentId.make("env-fen");
@@ -234,6 +246,122 @@ describe("chatEntries", () => {
       lastVisitedAtById: {},
     });
     expect(first?.face).toEqual({ tint: "amber", state: "sleep" });
+  });
+});
+
+describe("crewEntries", () => {
+  const crewShell = (
+    handle: string,
+    stint: number,
+    overrides: Partial<EnvironmentThreadShell> = {},
+  ) =>
+    shell(`thread-crew-${handle}-${stint}`, {
+      crew: { crew: "shop", crewmate: handle, stint },
+      ...overrides,
+    });
+  const running = {
+    turnId: TurnId.make("turn-1"),
+    state: "running",
+    requestedAt: "2026-09-05T10:01:00.000Z",
+    startedAt: "2026-09-05T10:01:00.000Z",
+    completedAt: null,
+    assistantMessageId: null,
+  } as const;
+  const shells = [
+    crewShell("lead", 1),
+    crewShell("backend", 1, { archivedAt: "2026-09-27T09:10:00.000Z" }),
+    crewShell("backend", 2, { latestTurn: running }),
+    crewShell("frontend", 1),
+    crewShell("erik", 1),
+  ];
+  const view = (snapshot: CrewSnapshot = crewSnapshotFixture()) =>
+    deriveCrewView(snapshot, shells, (thread) => ({
+      status: resolveThreadStatus(thread),
+      word: null,
+      working: false,
+    }));
+  const entries = (
+    input: Partial<Parameters<typeof crewEntries>[0]> = {},
+  ): ReadonlyArray<ConversationStripEntry> =>
+    crewEntries({
+      view: view(),
+      currentThreadId: null,
+      connected: true,
+      lastVisitedAtById: {},
+      ...input,
+    }).entries;
+
+  it("draws a chip per crewmate, the lead first, each as its @handle in its own tint", () => {
+    expect(
+      entries().map(({ key, threadId, label, face, close, canMakeMain }) => ({
+        key,
+        threadId,
+        label,
+        tint: face?.tint,
+        close,
+        canMakeMain,
+      })),
+    ).toEqual(
+      [
+        ["lead", "thread-crew-lead-1", "violet"],
+        ["backend", "thread-crew-backend-2", "sky"],
+        ["frontend", "thread-crew-frontend-1", "coral"],
+        ["erik", "thread-crew-erik-1", "amber"],
+      ].map(([handle, threadId, tint]) => ({
+        key: `crew:${handle}`,
+        threadId,
+        label: `@${handle}`,
+        tint,
+        close: "none",
+        canMakeMain: false,
+      })),
+    );
+  });
+
+  it("wears the working face and the resolver's word while its current stint works", () => {
+    const backend = entries().find((entry) => entry.key === "crew:backend");
+    expect(backend?.face?.state).toBe("working");
+    expect(backend?.status).toEqual(
+      chatStatus(crewShell("backend", 2, { latestTurn: running }), undefined),
+    );
+  });
+
+  it("is the current chip on any of its stints, a retired one too", () => {
+    for (const threadId of ["thread-crew-backend-2", "thread-crew-backend-1"]) {
+      expect(
+        entries({ currentThreadId: ThreadId.make(threadId) })
+          .filter((entry) => entry.current)
+          .map((entry) => entry.key),
+      ).toEqual(["crew:backend"]);
+    }
+  });
+
+  it("sleeps every face while the Mate's container is not connected", () => {
+    expect(new Set(entries({ connected: false }).map((entry) => entry.face?.state))).toEqual(
+      new Set(["sleep"]),
+    );
+  });
+
+  it("opens nothing for a crewmate before its first turn", () => {
+    const snapshot = crewSnapshotFixture();
+    const [first] = entries({
+      view: view({
+        ...snapshot,
+        crewmates: snapshot.crewmates.map((crewmate) =>
+          crewmate.handle === "lead"
+            ? { ...crewmate, currentThreadId: null, stints: [] }
+            : crewmate,
+        ),
+      }),
+    });
+    expect(first).toMatchObject({ key: "crew:lead", threadId: null, status: null });
+  });
+
+  it("draws nothing while no crew is applied", () => {
+    expect(entries({ view: null })).toEqual([]);
+    expect(
+      entries({ view: view(crewSnapshotFixture({ status: "none", crew: null, crewmates: [] })) }),
+    ).toEqual([]);
   });
 });
 
