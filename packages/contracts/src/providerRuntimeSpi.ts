@@ -60,6 +60,14 @@
  *   a turn runs, with `limits.windows` possibly empty. The orchestration usage
  *   pause (`orchestration/Layers/ThreadUsagePauseReactor.ts`) is its first
  *   reader; Claude emits it, the other drivers do not yet. Additive.
+ * - 2.5 (2026-09-27): `turn.completed` gains an optional `terminalReason` —
+ *   why the driver's agent loop ended (Claude's `terminal_reason`:
+ *   `completed`, `prompt_too_long`, `rapid_refill_breaker`, `budget_exhausted`,
+ *   `aborted_tools`, ...), passed through as the driver's own word so a
+ *   driver that adds one never becomes a decode failure. Until now the
+ *   reason reached owned code only as `errorMessage` prose. Added for the
+ *   crew engine to tell how a crew turn ended; no owned code reads it yet.
+ *   Claude emits it, the other drivers do not yet. Additive.
  *
  * @module providerRuntimeSpi
  */
@@ -73,7 +81,7 @@ import type { CanonicalItemType, ProviderRuntimeEvent } from "./providerRuntime.
  * enrichment) changes what owned code may depend on (a new member, a
  * renamed field, a narrowed payload shape).
  */
-export const PROVIDER_RUNTIME_SPI_VERSION = "2.4";
+export const PROVIDER_RUNTIME_SPI_VERSION = "2.5";
 
 /**
  * One image content block an MCP tool result carried, e.g. a

@@ -813,7 +813,8 @@
           "costBasis": "list"
         }
       },
-      "totalCostUsd": 0.000989
+      "totalCostUsd": 0.000989,
+      "terminalReason": "aborted_streaming"
     },
     "providerRefs": {}
   }

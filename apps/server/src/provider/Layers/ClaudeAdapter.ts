@@ -2864,6 +2864,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           ? { totalCostUsd: result.total_cost_usd }
           : {}),
         ...(errorMessage ? { errorMessage } : {}),
+        ...(result?.terminal_reason ? { terminalReason: result.terminal_reason } : {}),
       },
       providerRefs: nativeProviderRefs(context),
     });

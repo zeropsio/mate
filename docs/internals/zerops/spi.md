@@ -27,7 +27,7 @@ Consumers never read `payload.data` (a driver's raw, per-provider item shape) �
 
 ## 2. Version + changelog
 
-`PROVIDER_RUNTIME_SPI_VERSION` is `"2.4"` (`providerRuntimeSpi.ts`). Bump it, and add a
+`PROVIDER_RUNTIME_SPI_VERSION` is `"2.5"` (`providerRuntimeSpi.ts`). Bump it, and add a
 changelog entry in that file's doc comment, whenever a change to `ProviderRuntimeEventV2` or the
 `toolCall` enrichment changes what owned code may depend on — a new member, a renamed field, a
 narrowed payload shape. 2.2 (S8b) added an optional `images`/`imagesDropped` on `SpiToolCall.result`,
@@ -38,7 +38,10 @@ consumer; a reader that does not know about `images` still gets `text` exactly a
 to `thread.state.changed` for context compaction. 2.4 adds an optional `blocked: { window, resetsAt }`
 to `account.rate-limits.updated` — a closed usage window and when it reopens, reported whether or not
 a turn runs — which `orchestration/Layers/ThreadUsagePauseReactor.ts` turns into the thread's usage
-pause; Claude emits it, the other drivers do not yet. The bus
+pause; Claude emits it, the other drivers do not yet. 2.5 adds an optional `terminalReason` to
+`turn.completed` — the driver's own word for why its agent loop ended (Claude's `terminal_reason`),
+which before reached owned code only as `errorMessage` prose; it is for the crew engine, and no owned
+code reads it yet. Claude emits it, the other drivers do not yet. The bus
 carries its build-time version (`bus.version`,
 `ProviderRuntimeEventBus.ts:39-43`) as a hook for a future adapter-version gate at startup — that
 gate is a **stated intent, not implemented**; nothing reads `bus.version` today (the "exposes the
