@@ -10,6 +10,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   ProviderSetupError,
+  type ThreadCrewOrigin,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 import { IMAGE_ONLY_BOOTSTRAP_PROMPT, USAGE_LIMIT_RESUME_PROMPT } from "@t3tools/shared/userAsk";
@@ -175,6 +176,8 @@ describe("ProviderCommandReactor", () => {
       session: ProviderSession,
     ) => Effect.Effect<ProviderSession, ProviderServiceError>;
     readonly tryHandlePromptCommandEffect?: ProviderAuthService["Service"]["tryHandlePromptCommand"];
+    /** thread-1 is a crewmate's stint, made by the server. */
+    readonly crew?: ThreadCrewOrigin;
   }) {
     const now = "2026-01-01T00:00:00.000Z";
     const baseDir =
@@ -509,7 +512,9 @@ describe("ProviderCommandReactor", () => {
     );
     await Effect.runPromise(
       engine.dispatch({
-        type: "thread.create",
+        ...(input?.crew
+          ? { type: "thread.crew.create" as const, crew: input.crew }
+          : { type: "thread.create" as const }),
         commandId: CommandId.make("cmd-thread-create"),
         threadId: ThreadId.make("thread-1"),
         projectId: asProjectId("project-1"),
@@ -628,6 +633,39 @@ describe("ProviderCommandReactor", () => {
       },
     };
   }
+
+  effectIt.effect("a crew thread's turn goes to the provider without preparing a checkpoint", () =>
+    Effect.gen(function* () {
+      const sent = yield* Deferred.make<void>();
+      const prepare = vi.fn<WorkspaceHistory["Service"]["prepare"]>(() => Effect.void);
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          crew: { crew: "shop", crewmate: "backend", stint: 1 },
+          workspaceHistory: { prepare, release: () => Effect.void },
+          onSendTurn: Deferred.succeed(sent, undefined).pipe(Effect.asVoid),
+        }),
+      );
+      yield* harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-crew-turn"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: MessageId.make("message-crew-turn"),
+          role: "user",
+          text: "Add the camera rig",
+          attachments: [],
+        },
+        modelSelection: createModelSelection(ProviderInstanceId.make("codex"), "gpt-5.3-codex"),
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      yield* Deferred.await(sent);
+      yield* Effect.promise(harness.drain);
+      expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+      expect(prepare).not.toHaveBeenCalled();
+    }),
+  );
 
   effectIt.effect.each(["stop", "interrupt"] as const)(
     "%s during snapshot preparation cancels pending startup and leaves the next request usable",
