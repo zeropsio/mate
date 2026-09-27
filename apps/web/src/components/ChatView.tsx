@@ -180,6 +180,7 @@ import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
 import { CrewLaneBar } from "./zerops/crew/CrewLaneBar";
 import { CrewTimelineContext, type CrewTimeline } from "./zerops/crew/CrewTaskCard";
+import { crewChatNotices } from "./zerops/crew/crewChatNotices";
 import { crewMessageCommand } from "./zerops/crew/crewComposerSend";
 import { crewCommands } from "../zerops/crew/crewCommands";
 import { useCrew } from "../zerops/crew/useCrew";
@@ -216,9 +217,11 @@ import {
   ChevronDownIcon,
   DownloadIcon,
   GitBranchIcon,
+  HistoryIcon,
   LockIcon,
   Minimize2Icon,
   PaperclipIcon,
+  RefreshCwIcon,
 } from "lucide-react";
 import { cn, randomHex } from "~/lib/utils";
 import { stackedThreadToast, toastManager } from "./ui/toast";
@@ -5276,6 +5279,53 @@ export default function ChatView(props: ChatViewProps) {
       ? null
       : (crew.view?.crewmates.find((row) => row.crewmate.handle === activeCrewOrigin.crewmate) ??
         null);
+  // A crewmate's chat is written to the crewmate (PRD §4.5).
+  const crewComposerPlaceholder =
+    activeCrewOrigin === null
+      ? null
+      : `Message ${activeCrewmate?.crewmate.displayName ?? activeCrewOrigin.crewmate}…`;
+  // A crewmate's chat: an earlier conversation points at the one it talks in
+  // now; the current one says what its next turn brings in.
+  const crewBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
+    if (activeCrewmate === null) return [];
+    const notices = crewChatNotices(activeCrewmate, threadId);
+    const items: ComposerBannerStackItem[] = [];
+    if (notices.retired !== null) {
+      const current = notices.retired.currentThreadId;
+      items.push({
+        id: `crew-retired:${threadId}`,
+        variant: "info",
+        icon: <HistoryIcon />,
+        title: notices.retired.text,
+        ...(current === null
+          ? {}
+          : {
+              actions: (
+                <Button
+                  onClick={() =>
+                    void navigate({
+                      to: "/$environmentId/$threadId",
+                      params: buildThreadRouteParams(scopeThreadRef(environmentId, current)),
+                    })
+                  }
+                  size="xs"
+                >
+                  Open it
+                </Button>
+              ),
+            }),
+      });
+    }
+    if (notices.pending !== null) {
+      items.push({
+        id: `crew-pending:${notices.pending}`,
+        variant: "default",
+        icon: <RefreshCwIcon />,
+        title: notices.pending,
+      });
+    }
+    return items;
+  }, [activeCrewmate, environmentId, navigate, threadId]);
   // What a crew thread's task cards need beyond their text: the board, and
   // for the stint's first card — while the conversation is loaded from its
   // start — why this conversation began and the one before it.
@@ -5414,6 +5464,7 @@ export default function ChatView(props: ChatViewProps) {
         ...urgentSystemItems,
         ...usageLimitsItems,
         ...mateNextStepItems,
+        ...crewBannerItems,
         ...alsoWorkingItems,
         ...feedbackBannerItems,
         ...projectCloneItems,
@@ -5427,6 +5478,7 @@ export default function ChatView(props: ChatViewProps) {
       ...urgentSystemItems,
       ...usageLimitsItems,
       ...mateNextStepItems,
+      ...crewBannerItems,
       ...alsoWorkingItems,
       ...feedbackBannerItems,
       ...projectCloneItems,
@@ -5478,6 +5530,7 @@ export default function ChatView(props: ChatViewProps) {
     activeBranchMismatchKey,
     agentOwnershipBannerItem,
     alsoWorkingBannerItem,
+    crewBannerItems,
     feedbackBannerItems,
     handleRestoreThreadBranch,
     isRestoringThreadBranch,
@@ -8201,10 +8254,14 @@ export default function ChatView(props: ChatViewProps) {
                               projectSelectionRequired={
                                 isLocalDraftThread && activeProject === null
                               }
-                              connectedPlaceholder={connectedComposerPlaceholder}
-                              {...(zeropsChrome.panel === "available"
-                                ? { idlePlaceholder: connectedComposerPlaceholder }
-                                : {})}
+                              connectedPlaceholder={
+                                crewComposerPlaceholder ?? connectedComposerPlaceholder
+                              }
+                              {...(crewComposerPlaceholder !== null
+                                ? { idlePlaceholder: crewComposerPlaceholder }
+                                : zeropsChrome.panel === "available"
+                                  ? { idlePlaceholder: connectedComposerPlaceholder }
+                                  : {})}
                               phase={phase}
                               isConnecting={isConnecting}
                               // A session starting for the message just sent
