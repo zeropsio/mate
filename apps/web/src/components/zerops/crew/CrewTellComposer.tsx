@@ -1,26 +1,34 @@
 /**
  * *Tell the crew* (PRD §4.3 item 7): one line that grows, `@` offering the
- * crew's crewmates by face, handle and job. With a lead the send reads
- * *Send to lead*. What the engine refuses — no mention and no lead — comes
- * back as its sentence under the line; the text stays for a fix.
+ * crew's crewmates by face, handle and job, then the files of your tree. With
+ * a lead the send reads *Send to lead*. What the engine refuses — no mention
+ * and no lead — comes back as its sentence under the line; the text stays for
+ * a fix.
  */
-import type { CrewCommand, Crewmate } from "@t3tools/contracts";
+import type { CrewCommand, Crewmate, EnvironmentId } from "@t3tools/contracts";
 import { useCallback, useRef, useState, type KeyboardEvent } from "react";
 
 import { useTheme } from "~/hooks/useTheme";
+import { useComposerPathSearch } from "~/lib/composerPathSearchState";
 
+import { detectComposerTrigger } from "../../../composer-logic";
 import { ComposerCommandMenu } from "../../chat/ComposerCommandMenu";
 import { Textarea } from "../../ui/textarea";
 import { Pill } from "../primitives";
-import { pickCrewmate, tellMenu, tellPayload, type TellMenu } from "./CrewTellComposer.logic";
+import { pickTellItem, tellMenu, tellPayload, type TellMenuItem } from "./CrewTellComposer.logic";
 
 export function CrewTellComposer({
+  environmentId,
+  treeCwd,
   crewmates,
   hasLead,
   sending,
   error,
   onSend,
 }: {
+  readonly environmentId: EnvironmentId;
+  /** Your tree, where `@` finds files; `null` while the Mate's config is unread. */
+  readonly treeCwd: string | null;
   readonly crewmates: ReadonlyArray<Crewmate>;
   readonly hasLead: boolean;
   readonly sending: boolean;
@@ -31,25 +39,28 @@ export function CrewTellComposer({
 }) {
   const { resolvedTheme } = useTheme();
   const [text, setText] = useState("");
-  const [menu, setMenu] = useState<TellMenu | null>(null);
+  /** Where the caret is while the menu may show; `null` once it is dismissed. */
+  const [caret, setCaret] = useState<number | null>(null);
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
 
-  const follow = useCallback(
-    (nextText: string, cursor: number) => {
-      const nextMenu = tellMenu(nextText, cursor, crewmates);
-      setMenu(nextMenu);
-      setHighlighted(nextMenu?.items[0]?.id ?? null);
-    },
-    [crewmates],
-  );
+  const trigger =
+    caret === null ? null : detectComposerTrigger(text, caret, { mentions: "crewmate" });
+  const search = useComposerPathSearch({
+    environmentId,
+    cwd: trigger === null ? null : treeCwd,
+    query: trigger === null ? null : trigger.query,
+  });
+  const menu = caret === null ? null : tellMenu(text, caret, crewmates, search.entries);
+  const items = menu?.items ?? [];
+  const active = items.find((item) => item.id === highlighted) ?? items[0];
 
   const pick = useCallback(
-    (handle: string) => {
+    (item: TellMenuItem) => {
       if (menu === null) return;
-      const next = pickCrewmate(text, menu.trigger, handle);
+      const next = pickTellItem(text, menu.trigger, item);
       setText(next.text);
-      setMenu(null);
+      setCaret(null);
       requestAnimationFrame(() => {
         input.current?.focus();
         input.current?.setSelectionRange(next.cursor, next.cursor);
@@ -67,28 +78,23 @@ export function CrewTellComposer({
   }, [crewmates, onSend, sending, text]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    const items = menu?.items ?? [];
-    if (menu !== null && items.length > 0) {
-      const index = Math.max(
-        0,
-        items.findIndex((item) => item.id === highlighted),
-      );
+    if (menu !== null && active !== undefined) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         const step = event.key === "ArrowDown" ? 1 : -1;
+        const index = items.indexOf(active);
         setHighlighted(items[(index + step + items.length) % items.length]?.id ?? null);
         return;
       }
       if (event.key === "Enter" || event.key === "Tab") {
         event.preventDefault();
-        const item = items[index];
-        if (item !== undefined) pick(item.handle);
+        pick(active);
         return;
       }
     }
     if (event.key === "Escape" && menu !== null) {
       event.preventDefault();
-      setMenu(null);
+      setCaret(null);
       return;
     }
     if (event.key === "Enter" && !event.shiftKey) {
@@ -105,10 +111,10 @@ export function CrewTellComposer({
             aria-label="Tell the crew"
             onChange={(event) => {
               setText(event.target.value);
-              follow(event.target.value, event.target.selectionStart);
+              setCaret(event.target.selectionStart);
             }}
             onKeyDown={onKeyDown}
-            onSelect={(event) => follow(text, event.currentTarget.selectionStart)}
+            onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
             placeholder="Tell the crew… use @ to address"
             ref={input}
             rows={1}
@@ -118,12 +124,12 @@ export function CrewTellComposer({
           {menu === null ? null : (
             <div className="absolute inset-x-0 top-full z-10 mt-1">
               <ComposerCommandMenu
-                activeItemId={highlighted}
-                isLoading={false}
-                items={[...menu.items]}
+                activeItemId={active?.id ?? null}
+                isLoading={search.isPending}
+                items={[...items]}
                 onHighlightedItemChange={setHighlighted}
                 onSelect={(item) => {
-                  if (item.type === "crewmate") pick(item.handle);
+                  if (item.type === "crewmate" || item.type === "path") pick(item);
                 }}
                 resolvedTheme={resolvedTheme}
                 triggerKind="crewmate"

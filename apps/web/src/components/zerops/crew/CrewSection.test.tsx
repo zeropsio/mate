@@ -1,6 +1,6 @@
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
-import type { CrewSnapshot } from "@t3tools/contracts";
+import { EnvironmentId, type CrewSnapshot } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -13,6 +13,7 @@ const sent = async () => null;
 const render = (snapshot: CrewSnapshot, overrides: Partial<CrewSectionProps> = {}) =>
   renderToStaticMarkup(
     <CrewSection
+      environmentId={EnvironmentId.make("env-crew")}
       error={null}
       onAddCrewPorts={noop}
       onAddLead={noop}
@@ -29,6 +30,7 @@ const render = (snapshot: CrewSnapshot, overrides: Partial<CrewSectionProps> = {
       send={sent}
       snapshot={snapshot}
       tell={{ send: sent, pending: false, error: null }}
+      treeCwd="/var/www"
       view={deriveCrewView(snapshot, [], readCrewThread)}
       {...overrides}
     />,

@@ -27,6 +27,7 @@ import type {
   CrewCommandResult,
   CrewHost,
   CrewSnapshot,
+  EnvironmentId,
   ThreadId,
 } from "@t3tools/contracts";
 import { EllipsisIcon, ExternalLinkIcon } from "lucide-react";
@@ -63,6 +64,9 @@ export function CrewSectionEmpty({ onSetUp }: { readonly onSetUp: () => void }) 
 }
 
 export interface CrewSectionProps {
+  readonly environmentId: EnvironmentId;
+  /** Your tree, where *Tell the crew*'s `@` finds files; `null` while unread. */
+  readonly treeCwd: string | null;
   readonly view: CrewView;
   readonly snapshot: CrewSnapshot;
   /** Sends one press; its result, or `null` when it was refused. */
@@ -146,6 +150,8 @@ export function CrewSection(props: CrewSectionProps) {
       </div>
       <CrewTellComposer
         crewmates={snapshot.crewmates}
+        environmentId={props.environmentId}
+        treeCwd={props.treeCwd}
         error={props.tell.error}
         hasLead={view.lead !== null}
         onSend={async (command) => (await props.tell.send(command)) !== null}

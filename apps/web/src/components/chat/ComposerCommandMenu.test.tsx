@@ -173,6 +173,6 @@ describe("ComposerCommandMenu", () => {
       />,
     );
 
-    expect(markup).toContain("No crewmate by that name.");
+    expect(markup).toContain("No crewmate or file by that name.");
   });
 });

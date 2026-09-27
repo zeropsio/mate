@@ -141,7 +141,7 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
                     : props.triggerKind === "path"
                       ? "No matching files or folders."
                       : props.triggerKind === "crewmate"
-                        ? "No crewmate by that name."
+                        ? "No crewmate or file by that name."
                         : "No matching command."))}
             </p>
           </div>
