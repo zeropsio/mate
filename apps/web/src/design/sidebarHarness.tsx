@@ -688,7 +688,7 @@ const OWNERS = new Map<string, ZeropsMateOwner>([
 
 const activityOfCandidate = (item: ZeropsCandidate) => ACTIVITY.get(item.project.id);
 
-/** What the peek's keys and buttons did, for the audit browser to read. */
+/** What the peek's keys and buttons did, and which Mate was opened, for the audit browser. */
 const peekActions: string[] = [];
 (window as unknown as { __peekActions?: string[] }).__peekActions = peekActions;
 
@@ -819,7 +819,9 @@ function SidebarFrame({ width, phone }: { readonly width: number; readonly phone
             ],
           })}
           onBrowseProjects={() => {}}
-          onSelect={() => {}}
+          onSelect={(item) => {
+            peekActions.push(`open ${item.project.id}`);
+          }}
           activeProjectId="links-enzo"
           phone={phone}
           renderPeek={(peek) => <HarnessPeek peek={peek} />}
