@@ -150,6 +150,7 @@ import * as ZeropsGitRemoteProbeModule from "./zerops/ZeropsGitRemoteProbe.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import { ZeropsMateUpdate } from "./zerops/ZeropsMateUpdate.ts";
 import serverPackageJson from "../package.json" with { type: "json" };
+import { registerCrewRpc } from "./zerops/crew/registerCrewRpc.ts";
 import { registerZeropsRpc } from "./zerops/registerZeropsRpc.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
@@ -2333,6 +2334,7 @@ const makeWsRpcLayer = (
           observeRpcEffect,
           observeRpcStream,
         }),
+        ...registerCrewRpc({ observeRpcEffect, observeRpcStream }),
         [WS_METHODS.serverSignalProcess]: (input) =>
           observeRpcEffect(WS_METHODS.serverSignalProcess, processDiagnostics.signal(input), {
             "rpc.aggregate": "server",

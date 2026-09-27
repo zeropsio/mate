@@ -117,6 +117,13 @@ export const RPC_REQUIRED_SCOPES = {
   // AuthOrchestrationOperateScope.
   [WS_METHODS.zeropsDataConsoleCall]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeZeropsDataConsole]: AuthOrchestrationReadScope,
+  // Crew mode (ARCHITECTURE §6): reading the feed and the crew home is a read;
+  // saving the home or pressing anything on a crew surface starts crew work on
+  // the person's behalf, the same authority as dispatching a command.
+  [WS_METHODS.subscribeZeropsCrew]: AuthOrchestrationReadScope,
+  [WS_METHODS.zeropsCrewFilesGet]: AuthOrchestrationReadScope,
+  [WS_METHODS.zeropsCrewFilesPut]: AuthOrchestrationOperateScope,
+  [WS_METHODS.zeropsCrewCommand]: AuthOrchestrationOperateScope,
   [WS_METHODS.vcsRefreshStatus]: AuthOrchestrationReadScope,
   [WS_METHODS.vcsPull]: AuthOrchestrationOperateScope,
   [WS_METHODS.gitRunStackedAction]: AuthOrchestrationOperateScope,
