@@ -167,8 +167,9 @@ export const runFields = (
   operation: string,
   body: string,
   timeout: Duration.Input,
+  stdin?: string,
 ) =>
-  shell.run(host, script(body), { timeout }).pipe(
+  shell.run(host, script(body), { timeout, stdin }).pipe(
     Effect.flatMap((result) =>
       result.code === 0
         ? Effect.succeed(fields(result.stdout))
