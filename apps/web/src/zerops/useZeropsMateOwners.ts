@@ -87,21 +87,28 @@ export function useZeropsOrganizationMembersRead(input: {
     read.current = clientId;
 
     const controller = new AbortController();
+    let answered = false;
     void client
       .listOrganizationMembers(clientId, controller.signal)
       .then((answer) => {
+        answered = true;
         if (controller.signal.aborted) return;
         setMembers(answer);
         setSettled({ clientId, failed: false });
       })
       .catch(() => {
+        answered = true;
+        if (controller.signal.aborted) return;
         // No names, and the rows say the same thing without them.
         read.current = null;
-        if (!controller.signal.aborted) setSettled({ clientId, failed: true });
+        setSettled({ clientId, failed: true });
       });
 
     return () => {
       controller.abort();
+      // A read put away before it answered was never had: the effect that
+      // runs next — a remount's, a hot update's — reads again.
+      if (!answered) read.current = null;
     };
   }, [client, clientId, enabled]);
 

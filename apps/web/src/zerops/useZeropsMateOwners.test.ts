@@ -1,6 +1,10 @@
+import { act, createElement, StrictMode } from "react";
+import { create } from "react-test-renderer";
 import { describe, expect, it } from "vite-plus/test";
 
-import { zeropsMateOwner } from "./useZeropsMateOwners";
+import { ZeropsSessionContext } from "./sessionContext";
+import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
+import { useZeropsOrganizationMembersRead, zeropsMateOwner } from "./useZeropsMateOwners";
 
 describe("zeropsMateOwner", () => {
   it("is the member's name and the picture the account bar would pick", () => {
@@ -49,4 +53,42 @@ describe("zeropsMateOwner", () => {
       expect(zeropsMateOwner(member)).toBeUndefined();
     });
   }
+});
+
+describe("useZeropsOrganizationMembersRead", () => {
+  it("reads the members again when its first read was put away unanswered", async () => {
+    // StrictMode runs the effect, puts it away and runs it again, as a
+    // remount or a hot update does: the read put away never answers.
+    const client = {
+      listOrganizationMembers: (_clientId: string, signal: AbortSignal) =>
+        new Promise((resolve, reject) => {
+          signal.addEventListener("abort", () => {
+            reject(new Error("aborted"));
+          });
+          queueMicrotask(() => {
+            if (!signal.aborted) resolve([{ id: "cu-jan", user: { fullName: "Jan Novák" } }]);
+          });
+        }),
+    };
+    const seen: Array<ReturnType<typeof useZeropsOrganizationMembersRead>> = [];
+    function Probe() {
+      seen.push(useZeropsOrganizationMembersRead({ clientId: "org-1", enabled: true }));
+      return null;
+    }
+    await act(async () => {
+      create(
+        createElement(
+          StrictMode,
+          null,
+          createElement(
+            ZeropsSessionContext,
+            { value: { client } as unknown as ZeropsSessionValue },
+            createElement(Probe),
+          ),
+        ),
+      );
+    });
+    expect(seen.at(-1)?.status).toBe("ready");
+    expect(seen.at(-1)?.members).toHaveLength(1);
+  });
 });
