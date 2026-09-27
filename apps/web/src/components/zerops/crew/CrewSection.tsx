@@ -273,13 +273,16 @@ function CrewAttentionRow(props: CrewSectionProps & { readonly row: CrewAttentio
                   case "board":
                     props.onOpenBoard?.();
                     return;
+                  case "chat":
+                    props.onOpenThread(action.threadId);
+                    return;
                   case "command":
                     void send(action.command);
                     return;
                 }
               }}
               size="sm"
-              tone={action.kind === "command" || action.kind === "answer" ? "primary" : "outline"}
+              tone={action.kind === "ask" || action.kind === "board" ? "outline" : "primary"}
             />
           ))}
         </div>

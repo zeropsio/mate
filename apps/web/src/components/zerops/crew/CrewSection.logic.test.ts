@@ -174,6 +174,30 @@ describe("crewAttentionActions", () => {
     expect(crewAttentionActions(input, snapshot, { board: true })).toEqual(actions);
   });
 
+  it("answers the lead's own question in the lead's chat, and inline where it has none yet", () => {
+    const question = attention({ kind: "question", handle: "lead", taskId: null });
+    expect(crewAttentionActions(question, snapshot, { board: true })).toEqual([
+      { kind: "chat", label: "Answer", threadId: "thread-crew-lead-1" },
+    ]);
+
+    const noChat = {
+      ...snapshot,
+      crewmates: snapshot.crewmates.map((mate) =>
+        mate.handle === "lead" ? { ...mate, currentThreadId: null } : mate,
+      ),
+    };
+    expect(crewAttentionActions(question, noChat, { board: true })).toEqual([
+      { kind: "answer", label: "Answer" },
+    ]);
+  });
+
+  it("opens the board for the lead's plan, which names no task", () => {
+    const plan = attention({ kind: "plan", handle: "lead", taskId: null });
+    expect(crewAttentionActions(plan, snapshot, { board: true })).toEqual([
+      { kind: "board", label: "Review plan" },
+    ]);
+  });
+
   it("offers Try again on a crewmate that could not start only with its task", () => {
     expect(
       crewAttentionActions(attention({ kind: "cant-start", taskId: null }), snapshot, {
