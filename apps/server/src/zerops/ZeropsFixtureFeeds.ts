@@ -29,6 +29,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 
+import { layer as providerInstancesLayer } from "../spi/providerInstances.ts";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
@@ -516,7 +517,11 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
     agentLoginLayer(scene).pipe(Layer.provideMerge(auth)),
     // The live gate, over this scene's agents and signers — a fixture admits
     // and refuses turns exactly as a live Mate would on the same facts.
-    ZeropsTurnAdmission.layer.pipe(Layer.provide(auth), Layer.provide(fixtureSignersLayer)),
+    ZeropsTurnAdmission.layer.pipe(
+      Layer.provide(auth),
+      Layer.provide(fixtureSignersLayer),
+      Layer.provide(providerInstancesLayer),
+    ),
     agentSignOutFixtureLayer(),
     browserStreamLayer(),
     zeropsCliFixtureLayer(),

@@ -71,6 +71,7 @@ const liveLayer = Layer.mergeAll(
   ZeropsTurnAdmissionModule.layer.pipe(
     Layer.provide(ZeropsAgentAuthLive),
     Layer.provide(ZeropsProjectSignersModule.layer),
+    Layer.provide(providerInstancesLayer),
   ),
   ZeropsBrowserStreamModule.layer,
   ZeropsMateUpdateModule.layer.pipe(Layer.provideMerge(ZeropsCliModule.layer)),

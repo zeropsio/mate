@@ -22,6 +22,7 @@
  * @module ZeropsTurnAdmission
  */
 import {
+  agentIdForDriverKind,
   agentIdForProviderInstance,
   OrchestrationDispatchCommandError,
   type OrchestrationCommand,
@@ -35,6 +36,7 @@ import * as Option from "effect/Option";
 
 import * as ServerConfig from "../config.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ProviderInstances } from "../spi/providerInstances.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
@@ -92,6 +94,7 @@ export const make = Effect.gen(function* () {
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const agentAuth = yield* ZeropsAgentAuth.ZeropsAgentAuth;
   const projectSigners = yield* ZeropsProjectSigners;
+  const providerInstances = yield* ProviderInstances;
 
   /** The instance the command names, or else the one its thread runs on. */
   const instanceIdOf = (command: OrchestrationCommand) =>
@@ -112,6 +115,23 @@ export const make = Effect.gen(function* () {
     });
 
   /**
+   * The agent an instance runs, by its driver — a second instance of a driver
+   * is the same agent CLI on somebody's login. The instance id resolves when
+   * no configured instance carries it: the agent-auth spelling
+   * (`claude-code`) arrives on real threads too.
+   */
+  const agentIdOf = (instanceId: string | undefined) =>
+    instanceId === undefined
+      ? Effect.succeed(undefined)
+      : providerInstances
+          .driverKindOf(instanceId)
+          .pipe(
+            Effect.map(
+              (driver) => agentIdForDriverKind(driver) ?? agentIdForProviderInstance(instanceId),
+            ),
+          );
+
+  /**
    * Whether `command` starts a turn. An answer reads its question first: only
    * an answer in message mode becomes a turn. A question that cannot be read
    * is gated like one that would — unknown refuses, as everywhere in D6.
@@ -130,7 +150,7 @@ export const make = Effect.gen(function* () {
   }) {
     if (!isZeropsEnvironment(config)) return;
     if (!(yield* startsTurn(command))) return;
-    const agentId = agentIdForProviderInstance(yield* instanceIdOf(command));
+    const agentId = yield* agentIdOf(yield* instanceIdOf(command));
     if (agentId === undefined) return;
 
     const snapshot = yield* agentAuth.latest;

@@ -156,6 +156,7 @@ import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsAgentSignOutModule from "./zerops/ZeropsAgentSignOut.ts";
 import * as ZeropsProjectSignersModule from "./zerops/ZeropsProjectSigners.ts";
 import * as ZeropsTurnAdmissionModule from "./zerops/ZeropsTurnAdmission.ts";
+import { layer as providerInstancesLayer } from "./spi/providerInstances.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
 import * as ZeropsCliModule from "./zerops/ZeropsCli.ts";
 import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
@@ -551,7 +552,9 @@ const buildAppUnderTest = (options?: {
     | ZeropsProjectSignersModule.ZeropsProjectSigners
     | ZeropsTurnAdmissionModule.ZeropsTurnAdmission,
     never,
-    ServerConfig.ServerConfig | ProjectionSnapshotQuery.ProjectionSnapshotQuery
+    | ServerConfig.ServerConfig
+    | ProjectionSnapshotQuery.ProjectionSnapshotQuery
+    | ProviderRegistry.ProviderRegistry
   >;
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
@@ -839,6 +842,20 @@ const buildAppUnderTest = (options?: {
       getThreadCheckpointContext: () => Effect.succeed(Option.none()),
       ...options?.layers?.projectionSnapshotQuery,
     });
+    // One registry for the routes and for D6's gate, which reads an
+    // instance's driver from it.
+    const providerRegistryLayer = Layer.mock(ProviderRegistry.ProviderRegistry)({
+      getProviders: Effect.succeed([]),
+      refresh: () => Effect.succeed([]),
+      refreshInstance: () => Effect.succeed([]),
+      getProviderMaintenanceCapabilitiesForInstance: (_instanceId, provider) =>
+        Effect.succeed(
+          makeManualOnlyProviderMaintenanceCapabilities({ provider, packageName: null }),
+        ),
+      setProviderMaintenanceActionState: () => Effect.succeed([]),
+      streamChanges: Stream.empty,
+      ...options?.layers?.providerRegistry,
+    });
     const resourceTelemetryLayer = ResourceTelemetry.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -877,18 +894,7 @@ const buildAppUnderTest = (options?: {
             forceRefresh: Effect.succeed(ModelManifest.BUNDLED_MODEL_MANIFEST),
             ...options?.layers?.modelManifest,
           }),
-          Layer.mock(ProviderRegistry.ProviderRegistry)({
-            getProviders: Effect.succeed([]),
-            refresh: () => Effect.succeed([]),
-            refreshInstance: () => Effect.succeed([]),
-            getProviderMaintenanceCapabilitiesForInstance: (_instanceId, provider) =>
-              Effect.succeed(
-                makeManualOnlyProviderMaintenanceCapabilities({ provider, packageName: null }),
-              ),
-            setProviderMaintenanceActionState: () => Effect.succeed([]),
-            streamChanges: Stream.empty,
-            ...options?.layers?.providerRegistry,
-          }),
+          providerRegistryLayer,
           Layer.mock(ProviderService.ProviderService)({
             uploadFeedback: () => Effect.die("Provider feedback is not stubbed in this test"),
             ...options?.layers?.providerService,
@@ -1099,7 +1105,9 @@ const buildAppUnderTest = (options?: {
         ),
       ),
       Layer.provide(
-        options?.fixtureZeropsLayer?.pipe(Layer.provide(projectionSnapshotQueryLayer)) ??
+        options?.fixtureZeropsLayer?.pipe(
+          Layer.provide(Layer.mergeAll(projectionSnapshotQueryLayer, providerRegistryLayer)),
+        ) ??
           Layer.mergeAll(
             // A test machine is not a Zerops environment, which is exactly the
             // shape the real feeds report there: unavailable, no errors. Mocked
@@ -1232,7 +1240,12 @@ const buildAppUnderTest = (options?: {
             // with no agents reported, it admits every turn.
             ZeropsTurnAdmissionModule.layer.pipe(
               Layer.provideMerge(zeropsMocks),
-              Layer.provide(projectionSnapshotQueryLayer),
+              Layer.provide(
+                Layer.mergeAll(
+                  projectionSnapshotQueryLayer,
+                  providerInstancesLayer.pipe(Layer.provide(providerRegistryLayer)),
+                ),
+              ),
             ),
           ),
       ),

@@ -13,6 +13,7 @@ import {
 
 import * as ServerConfig from "../config.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ProviderRegistryTest } from "../spi/ProviderRegistryTest.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import { loadFixtureScene } from "./ZeropsFixtureFeeds.ts";
 import { selectZeropsFeedsLayer, ZeropsLayerLive } from "./zeropsFeedsLayer.ts";
@@ -20,8 +21,12 @@ import { selectZeropsFeedsLayer, ZeropsLayerLive } from "./zeropsFeedsLayer.ts";
 const encodeScene = Schema.encodeSync(Schema.fromJsonString(ShowcaseSceneJson));
 
 // What the fixture branch reads from below besides the config: the projection
-// the turn gate reads a thread's agent from.
-const hostLayer = Layer.mock(ProjectionSnapshotQuery)({});
+// the turn gate reads a thread's agent from, and the provider registry it
+// reads an instance's driver from.
+const hostLayer = Layer.mergeAll(
+  Layer.mock(ProjectionSnapshotQuery)({}),
+  ProviderRegistryTest.empty(),
+);
 
 it.layer(NodeServices.layer)("zerops feed layer selection", (it) => {
   it.effect("loads a configured scene without constructing live feed dependencies", () =>

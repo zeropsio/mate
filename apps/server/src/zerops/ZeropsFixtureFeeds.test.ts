@@ -18,6 +18,7 @@ import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../config.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ProviderRegistryTest } from "../spi/ProviderRegistryTest.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLogin from "./ZeropsAgentLogin.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
@@ -95,14 +96,16 @@ const absoluteLoginStepScene: ShowcaseScene = {
 };
 
 /**
- * What the server hands the fixture layer from below: its config, and the
- * projection the turn gate reads a thread's agent from. No scene here has a
- * thread to read, so the projection answers nothing.
+ * What the server hands the fixture layer from below: its config, the
+ * projection the turn gate reads a thread's agent from, and the provider
+ * registry it reads an instance's driver from. No scene here has a thread to
+ * read or a configured instance to look up.
  */
 const fixtureHost = (zerops: ServerConfig.ServerConfig["Service"]["zerops"]) =>
   Layer.mergeAll(
     ServerConfig.layer({ zerops } as ServerConfig.ServerConfig["Service"]),
     Layer.mock(ProjectionSnapshotQuery)({}),
+    ProviderRegistryTest.empty(),
   );
 
 const fixtureLayer = (

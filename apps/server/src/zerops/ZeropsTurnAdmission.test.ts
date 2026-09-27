@@ -6,6 +6,7 @@ import {
   type OrchestrationCommand,
   type OrchestrationThreadActivity,
   type OrchestrationThreadShell,
+  ProviderDriverKind,
   ProviderInstanceId,
   ThreadId,
   type ZeropsAgentAuth,
@@ -17,6 +18,7 @@ import * as Option from "effect/Option";
 
 import * as ServerConfig from "../config.ts";
 import { PersistenceSqlError } from "../persistence/Errors.ts";
+import { ProviderInstances } from "../spi/providerInstances.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ZeropsAgentAuthModule from "./ZeropsAgentAuth.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
@@ -71,7 +73,14 @@ interface World {
   readonly threadInstanceId?: string;
   /** The answered question's latest activity; absent means none was found. */
   readonly question?: Pick<OrchestrationThreadActivity, "kind" | "payload"> | "unreadable";
+  /** Configured instance → driver kind; the two default instances when absent. */
+  readonly drivers?: Readonly<Record<string, string>>;
 }
+
+const DEFAULT_DRIVERS: Readonly<Record<string, string>> = {
+  claudeAgent: "claudeAgent",
+  codex: "codex",
+};
 
 const admission = (world: World) =>
   makeAdmission.pipe(
@@ -95,6 +104,14 @@ const admission = (world: World) =>
               : Effect.succeed(
                   Option.fromUndefinedOr(world.question as OrchestrationThreadActivity | undefined),
                 ),
+        }),
+        Layer.mock(ProviderInstances)({
+          driverKindOf: (instanceId) => {
+            const driver = (world.drivers ?? DEFAULT_DRIVERS)[instanceId];
+            return Effect.succeed(
+              driver === undefined ? undefined : ProviderDriverKind.make(driver),
+            );
+          },
         }),
         Layer.mock(ZeropsAgentAuthModule.ZeropsAgentAuth)({
           latest: Effect.succeed({ available: true, agents: world.agents ?? [] }),
@@ -207,6 +224,13 @@ describe("ZeropsTurnAdmission", () => {
       "resolves the agent-auth spelling of an instance too",
       janSignedClaude,
       turnStart("claude-code"),
+      session(EVA),
+      SOMEONE_ELSE,
+    ],
+    [
+      "gates a second instance of a signed-in agent's driver as that agent",
+      { ...janSignedClaude, drivers: { ...DEFAULT_DRIVERS, claudeAgent_work: "claudeAgent" } },
+      turnStart("claudeAgent_work"),
       session(EVA),
       SOMEONE_ELSE,
     ],
