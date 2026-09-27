@@ -544,6 +544,68 @@ describe("decodeZeropsCard — browser", () => {
   it("has no card when the document has no url", () => {
     expect(card("zerops_browser", { steps: [] })).toBeUndefined();
   });
+
+  // A check that took no picture read the page: what it read is what the
+  // stage draws in the frame's place (the owner, 2026-09-27: "show the
+  // structure output or mock in the space where the window would have been").
+  it.each([
+    {
+      name: "the last tree a snapshot read, over the page's text",
+      steps: [
+        { command: ["snapshot", "-c"], success: true, result: { snapshot: '- heading "Old"' } },
+        { command: ["get", "text", "body"], success: true, result: { text: "Hello" } },
+        { command: ["snapshot", "-i"], success: true, result: { snapshot: '- heading "New"' } },
+      ],
+      read: { page: { kind: "tree", text: '- heading "New"' }, answers: [] },
+    },
+    {
+      name: "the page's text when it read no tree",
+      steps: [{ command: ["get", "text", "body"], success: true, result: { text: "Hello" } }],
+      read: { page: { kind: "text", text: "Hello" }, answers: [] },
+    },
+    {
+      // Juno's checks of a shop page asked only how many of a thing it had.
+      name: "what it asked of the page, and the answers",
+      steps: [
+        {
+          command: ["open", "https://shop.example.dev/cz"],
+          success: true,
+          result: { title: "Shop" },
+        },
+        {
+          command: ["get", "count", "main", "h3"],
+          success: true,
+          result: { count: 6, selector: "main h3" },
+        },
+        { command: ["is", "visible", ".hero"], success: true, result: { visible: false } },
+        { command: ["get", "text", "h1"], success: true, result: { text: "  Natural   care " } },
+        { command: ["get", "title"], success: true, result: { title: "Shop" } },
+        { command: ["eval", "document.title"], success: true, result: { result: "Shop" } },
+        { command: ["find", "role", "button", "click"], success: true, result: { clicked: true } },
+      ],
+      read: {
+        answers: [
+          { asked: "main h3", answer: "6 found" },
+          { asked: ".hero", answer: "not visible" },
+          { asked: "h1", answer: "Natural care" },
+          { asked: "title", answer: "Shop" },
+          { asked: "document.title", answer: "Shop" },
+        ],
+      },
+    },
+    {
+      name: "nothing from a step that failed, or that only acted",
+      steps: [
+        { command: ["snapshot"], success: false, result: { snapshot: "- x" } },
+        { command: ["click", "@e1"], success: true, result: { clicked: true } },
+      ],
+      read: undefined,
+    },
+  ])("keeps what a check read of the page: $name", ({ steps, read }) => {
+    const decoded = card("zerops_browser", { url: "https://shop.example.dev/", steps });
+    expect(decoded).toMatchObject({ kind: "browser" });
+    expect((decoded as { read?: unknown }).read).toEqual(read);
+  });
 });
 
 describe("decodeZeropsCard — errors", () => {

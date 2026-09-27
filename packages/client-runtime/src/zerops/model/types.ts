@@ -134,6 +134,16 @@ export interface ZeropsBrowserViewport {
   readonly height: number;
 }
 
+/**
+ * What a browser check read of the page besides a picture: the page itself —
+ * its accessibility tree, else its text — and each thing it asked of it with
+ * the page's answer ("main h3" → "6 found").
+ */
+export interface ZeropsBrowserRead {
+  readonly page?: { readonly kind: "tree" | "text"; readonly text: string };
+  readonly answers: ReadonlyArray<{ readonly asked: string; readonly answer: string }>;
+}
+
 export interface ZeropsOperationBrowserSummary {
   readonly viewport?: ZeropsBrowserViewport;
   readonly media?: "dark" | "light";
@@ -270,6 +280,12 @@ export interface ZeropsOperation {
   readonly screenshot?: { readonly src: string; readonly width?: number; readonly height?: number };
   /** `browser` only. */
   readonly browserSummary?: ZeropsOperationBrowserSummary;
+  /**
+   * `browser` only: what the check read of the page when it took no picture —
+   * the page (its accessibility tree, else its text) and what it asked of it
+   * with the answers — drawn where the picture would be.
+   */
+  readonly browserRead?: ZeropsBrowserRead;
   /**
    * `browser` only: the viewport the agent set — read from the call's own
    * commands once its arguments arrive, else from the result's steps — so the
