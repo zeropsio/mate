@@ -75,7 +75,7 @@ function CrewSectionFor({
 }: HostProps & {
   readonly environmentId: EnvironmentId;
   readonly snapshot: CrewSnapshot;
-  /** The chat the Zerops tab is open beside: *Deliver* drafts there when it is a person chat. */
+  /** The chat the Zerops tab is open beside: Fen's drafts go there when it is a person chat. */
   readonly threadId: ThreadId | null;
   /** `null` while no crew is applied. */
   readonly view: CrewView<EnvironmentThreadShell> | null;
@@ -92,12 +92,7 @@ function CrewSectionFor({
   const [homeVersion, setHomeVersion] = useState(0);
   const [portsHost, setPortsHost] = useState<string | null>(null);
   const [runOpen, setRunOpen] = useState(false);
-  const [ask, setAsk] = useState<{
-    readonly ask: string;
-    readonly what: string;
-    /** The chat to ask in; the main chat when absent. */
-    readonly threadId?: ThreadId | undefined;
-  } | null>(null);
+  const [ask, setAsk] = useState<{ readonly ask: string; readonly what: string } | null>(null);
   const mateName = mate?.name ?? "the Mate";
   const devHosts = crewDevHosts(
     services,
@@ -159,16 +154,18 @@ function CrewSectionFor({
       setAsk({
         ask: crewDeliverAsk(snapshot, result.dirtyPaths),
         what: `${count} landed ${count === 1 ? "task has" : "tasks have"} not gone out yet.`,
-        threadId: threadId ?? undefined,
       });
     });
   };
+
+  /** Every draft for Fen goes into the chat beside the tab when it is a person chat, else the main one. */
+  const askFen = (draft: string) => askMate(projectId, draft, { threadId: threadId ?? undefined });
 
   const addCrewPorts = (host: string, count: number) => {
     void commands.send({ _tag: "addCrewPorts", host, count }).then((result) => {
       if (result?._tag !== "crewPorts") return;
       setPortsHost(null);
-      askMate(projectId, crewPortsAsk(result.host, result.ports));
+      askFen(crewPortsAsk(result.host, result.ports));
     });
   };
 
@@ -246,7 +243,7 @@ function CrewSectionFor({
         onConfirm={() => {
           if (ask === null) return;
           setAsk(null);
-          askMate(projectId, ask.ask, { threadId: ask.threadId });
+          askFen(ask.ask);
         }}
         onOpenChange={(open) => {
           if (!open) setAsk(null);
