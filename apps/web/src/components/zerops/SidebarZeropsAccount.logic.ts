@@ -10,7 +10,10 @@
  * moment later takes back.
  */
 
-import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
+import {
+  zeropsOrganizationRoleLabel,
+  type ZeropsOrganization,
+} from "@t3tools/client-runtime/zerops";
 
 export interface SidebarAccountLines {
   /** The person, as the bar already says them elsewhere. */
@@ -28,6 +31,20 @@ export function sidebarAccountLines(input: {
     name: input.name,
     organization: organization !== undefined && organization.length > 0 ? organization : null,
   };
+}
+
+/**
+ * What the viewer is in the organization the list shows — "Owner of
+ * Northwind" — under their name at the top of the menu, as the approved
+ * prototype drew it. A role that reads badly before "of" follows the name.
+ */
+export function sidebarAccountRoleLine(organization: ZeropsOrganization | null): string | null {
+  const name = organization?.name.trim();
+  if (organization === null || name === undefined || name.length === 0) return null;
+  const role = zeropsOrganizationRoleLabel(organization);
+  return organization.roleCode === "OWNER" || organization.roleCode === "ADMIN"
+    ? `${role} of ${name}`
+    : `${name} · ${role}`;
 }
 
 /**

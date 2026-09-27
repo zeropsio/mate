@@ -13,7 +13,7 @@
  */
 
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import { ChevronsUpDownIcon, LogOutIcon } from "lucide-react";
+import { CheckIcon, ChevronsUpDownIcon, LogOutIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
@@ -48,6 +48,7 @@ import {
   sidebarAccountDestinationOf,
   sidebarAccountLines,
   sidebarAccountOrganizationChoices,
+  sidebarAccountRoleLine,
   type SidebarAccountDestination,
 } from "./SidebarZeropsAccount.logic";
 
@@ -118,7 +119,7 @@ export function SidebarZeropsAccount({
           </>
         )}
       </MenuTrigger>
-      <MenuPopup align="start" className="w-64" side="top">
+      <MenuPopup align="start" className="w-72" side="top">
         <SidebarZeropsAccountMenu
           account={account}
           activeOrganization={activeOrganization}
@@ -135,6 +136,14 @@ export function SidebarZeropsAccount({
     </Menu>
   );
 }
+
+/** A switch's row, its label and its track of choices. */
+const SWITCH_ROW = "flex items-center gap-2 px-2 py-1";
+const SWITCH_LABEL = "w-11 shrink-0 p-0 font-normal text-xs";
+const SWITCH_TRACK = "flex min-w-0 flex-1 gap-0.5 rounded-lg bg-foreground/6 p-0.5";
+/** A choice on its track: the chosen one raised on the menu's own ground. */
+const SWITCH_SEGMENT =
+  "min-h-6 flex-1 rounded-md px-2 py-0 text-center font-medium text-muted-foreground text-xs whitespace-nowrap sm:min-h-6 sm:text-xs data-checked:bg-popover data-checked:text-foreground data-checked:shadow-xs data-checked:ring-1 data-checked:ring-border data-highlighted:bg-transparent data-highlighted:text-foreground data-checked:data-highlighted:bg-popover";
 
 /**
  * The menu's body: who, then how the list above reads, then which
@@ -164,8 +173,12 @@ export function SidebarZeropsAccountMenu({
           <p className="truncate text-sm font-medium text-foreground">
             {account.fullName ?? account.name}
           </p>
-          {account.email === null ? null : (
-            <p className="truncate text-xs text-muted-foreground">{account.email}</p>
+          {/* What they are in the organization the list shows, as the prototype
+              said it; the address where no organization is known yet. */}
+          {(sidebarAccountRoleLine(activeOrganization) ?? account.email) === null ? null : (
+            <p className="truncate text-xs text-muted-foreground">
+              {sidebarAccountRoleLine(activeOrganization) ?? account.email}
+            </p>
           )}
         </div>
       </div>
@@ -176,43 +189,57 @@ export function SidebarZeropsAccountMenu({
           heading and menu. *Custom* starts from the order on screen
           (`projectOrderPreference.ts`). */}
       <MenuSeparator />
+      {/* Each a switch, as the approved prototype drew them: its label, then
+          its choices on one track with the chosen one raised — a list of
+          radio rows only greyed the chosen one, which read as the pointer
+          (the owner, 2026-09-28: "much more shit"). Still the menu's own
+          radio items, so the keys and the reader treat them as before; the
+          menu stays open to show the list changing under it. */}
       <MenuRadioGroup
+        className={SWITCH_ROW}
         onValueChange={(value) => {
           const choice = MATE_SCOPE_CHOICES.find((entry) => entry.value === value);
           if (choice !== undefined) setMateScope(choice.value);
         }}
         value={mateScope}
       >
-        <MenuGroupLabel>Show</MenuGroupLabel>
-        {MATE_SCOPE_CHOICES.map((choice) => (
-          <MenuRadioItem
-            closeOnClick
-            data-zerops-account-scope={choice.value}
-            key={choice.value}
-            value={choice.value}
-          >
-            {choice.label}
-          </MenuRadioItem>
-        ))}
+        <MenuGroupLabel className={SWITCH_LABEL}>Show</MenuGroupLabel>
+        <div className={SWITCH_TRACK}>
+          {MATE_SCOPE_CHOICES.map((choice) => (
+            <MenuRadioItem
+              className={SWITCH_SEGMENT}
+              closeOnClick={false}
+              data-zerops-account-scope={choice.value}
+              key={choice.value}
+              value={choice.value}
+            >
+              {choice.label}
+            </MenuRadioItem>
+          ))}
+        </div>
       </MenuRadioGroup>
       <MenuRadioGroup
+        className={SWITCH_ROW}
         onValueChange={(value) => {
           const choice = PROJECT_ORDER_CHOICES.find((entry) => entry.value === value);
           if (choice !== undefined) projectOrder.choose(choice.value, readProjectsOnScreen());
         }}
         value={projectOrder.order}
       >
-        <MenuGroupLabel>Order</MenuGroupLabel>
-        {PROJECT_ORDER_CHOICES.map((choice) => (
-          <MenuRadioItem
-            closeOnClick
-            data-zerops-account-order={choice.value}
-            key={choice.value}
-            value={choice.value}
-          >
-            {choice.label}
-          </MenuRadioItem>
-        ))}
+        <MenuGroupLabel className={SWITCH_LABEL}>Order</MenuGroupLabel>
+        <div className={SWITCH_TRACK}>
+          {PROJECT_ORDER_CHOICES.map((choice) => (
+            <MenuRadioItem
+              className={SWITCH_SEGMENT}
+              closeOnClick={false}
+              data-zerops-account-order={choice.value}
+              key={choice.value}
+              value={choice.value}
+            >
+              {choice.label}
+            </MenuRadioItem>
+          ))}
+        </div>
       </MenuRadioGroup>
 
       {choices.length === 0 ? null : (
@@ -225,13 +252,27 @@ export function SidebarZeropsAccountMenu({
             value={activeOrganization?.membershipId ?? ""}
           >
             <MenuGroupLabel>Organization</MenuGroupLabel>
+            {/* The one the list shows wears a check, as the prototype drew it:
+                a grey fill alone read as the pointer resting there. */}
             {choices.map((organization) => (
               <MenuRadioItem
+                className="data-checked:bg-transparent data-checked:data-highlighted:bg-accent"
                 closeOnClick
                 key={organization.membershipId}
                 value={organization.membershipId}
               >
-                <span className="min-w-0 truncate">{organization.name}</span>
+                <span className="flex min-w-0 items-center gap-2">
+                  <CheckIcon
+                    aria-hidden="true"
+                    className={cn(
+                      "size-4 shrink-0",
+                      organization.membershipId === activeOrganization?.membershipId
+                        ? "opacity-100"
+                        : "opacity-0",
+                    )}
+                  />
+                  <span className="min-w-0 truncate">{organization.name}</span>
+                </span>
               </MenuRadioItem>
             ))}
           </MenuRadioGroup>
