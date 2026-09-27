@@ -290,6 +290,25 @@ describe("CrewTaskSheetBody", () => {
     );
   });
 
+  it("reads a fan-out task's note before its brief", () => {
+    const note = "Also sent to @frontend. Your part is what is addressed to @backend.";
+    const text = textOf(
+      renderToStaticMarkup(
+        <Sheet open>
+          <CrewTaskSheetBody
+            sheet={{ ...sheet, note, owner: { ...sheet.owner, tint: null } }}
+            task={task}
+            canAct
+            error={null}
+            onSend={() => undefined}
+            onOpenChat={() => undefined}
+          />
+        </Sheet>,
+      ),
+    );
+    expect(text).toContain(`Note ${note} Brief HUD shows the ammo count`);
+  });
+
   it("lands, discards and opens the owner's chat", async () => {
     const onSend = vi.fn();
     const onOpenChat = vi.fn();

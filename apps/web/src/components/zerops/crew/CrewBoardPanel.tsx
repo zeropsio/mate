@@ -437,6 +437,11 @@ export function CrewTaskSheetBody(props: {
       >
         {draft === null ? (
           <>
+            {sheet.note === null ? null : (
+              <SheetSection label="Note">
+                <p className="whitespace-pre-wrap">{sheet.note}</p>
+              </SheetSection>
+            )}
             <SheetSection label="Brief">
               <p className="whitespace-pre-wrap">{sheet.brief}</p>
             </SheetSection>

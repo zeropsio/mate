@@ -60,7 +60,7 @@ export interface CrewBoardCard {
   readonly owner: CrewBoardFace;
   /** `null` for a working task whose owner's thread has no word (idle): a dot never stands alone. */
   readonly status: CrewBoardStatus | null;
-  /** The question, the check, the change or the landing commit, and where the task came from. */
+  /** The question, the check, the change or the landing commit, where the task came from, and its note. */
   readonly detail: string;
 }
 
@@ -163,6 +163,7 @@ function detailLine(task: CrewTask): string {
   if (task.state === "blocked" && task.question !== null) parts.push(task.question);
   else if (task.diffStat !== null) parts.push(crewDiffStatWord(task.diffStat));
   parts.push(crewTaskSourceWord(task.source));
+  if (task.note !== null) parts.push(task.note);
   return parts.join(" · ");
 }
 
@@ -257,6 +258,8 @@ export interface CrewTaskSheet {
   readonly brief: string;
   /** `null` when none was given. */
   readonly doneWhen: string | null;
+  /** The card's note: for a fan-out task, who else got the message and which part is this one (PRD §5.3). */
+  readonly note: string | null;
   readonly attempts: string;
   readonly report: string | null;
   readonly check: {
@@ -353,6 +356,7 @@ export function crewTaskSheet(
     source: crewTaskSourceWord(task.source),
     brief: task.brief,
     doneWhen: task.doneWhen === "" ? null : task.doneWhen,
+    note: task.note,
     attempts: attemptsLine(task, owner, snapshot.board.tasks),
     report: task.report,
     check:

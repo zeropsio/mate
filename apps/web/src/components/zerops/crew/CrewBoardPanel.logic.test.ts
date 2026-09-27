@@ -190,6 +190,19 @@ describe("crewBoardModel cards", () => {
       },
     },
     {
+      name: "a fan-out task's card carries its note",
+      snapshot: withTask("task-12", {
+        note: "Also sent to @frontend. Your part is what is addressed to @backend.",
+      }),
+      number: 12,
+      card: {
+        owner: { handle: "backend", name: "Backend", tint: "sky", face: "working" },
+        status: { word: "Working", tone: "busy", pulse: true },
+        detail:
+          "+214 \u221212 · from a message · Also sent to @frontend. Your part is what is addressed to @backend.",
+      },
+    },
+    {
       name: "a working task whose owner's thread is idle has no status word to show",
       snapshot: withTask("task-13", { state: "working" }),
       number: 13,
@@ -396,6 +409,7 @@ describe("crewTaskSheet", () => {
       source: "from lead",
       brief: "Health endpoint for the load balancer",
       doneWhen: "GET /health answers 200",
+      note: null,
       attempts: "Attempt 1",
       report: "Added GET /health with a database ping.",
       check: { word: "Check passed", tone: "ok", output: "Tests  46 passed (46)" },
@@ -495,6 +509,18 @@ describe("crewTaskSheet", () => {
         editable: sheet.editable,
       },
     ).toEqual(read);
+  });
+
+  it("reads a fan-out task's note", () => {
+    const note = "Also sent to @frontend. Your part is what is addressed to @backend.";
+    const snapshot = crewSnapshotFixture({
+      board: {
+        tasks: fixture.board.tasks.map((task) =>
+          task.id === "task-12" ? { ...task, note } : task,
+        ),
+      },
+    });
+    expect(sheetOf(snapshot, "task-12")?.note).toBe(note);
   });
 
   it("is null for a task the board does not show", () => {
