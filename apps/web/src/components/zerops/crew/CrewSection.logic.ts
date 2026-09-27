@@ -125,6 +125,7 @@ export type CrewAttentionAction =
   | { readonly kind: "answer"; readonly label: string }
   | { readonly kind: "ask"; readonly label: string; readonly ask: string }
   | { readonly kind: "board"; readonly label: string }
+  | { readonly kind: "chat"; readonly label: string; readonly threadId: ThreadId }
   | { readonly kind: "command"; readonly label: string; readonly command: CrewCommand };
 
 function displayName(crewmates: ReadonlyArray<Crewmate>, handle: string | null): string {
@@ -135,7 +136,8 @@ function displayName(crewmates: ReadonlyArray<Crewmate>, handle: string | null):
 /**
  * What a *Waiting on you* row lets you press, in order — never a press that
  * could do nothing: *Review plan* only where a board opens, *Answer* only for
- * a crewmate's question.
+ * a crewmate's question — in the lead's chat for the lead's own, inline for a
+ * task's, or while the lead has no chat yet.
  */
 export function crewAttentionActions(
   row: CrewAttention,
@@ -144,8 +146,17 @@ export function crewAttentionActions(
 ): ReadonlyArray<CrewAttentionAction> {
   const name = displayName(crew.crewmates, row.handle);
   switch (row.kind) {
-    case "question":
-      return row.handle === null ? [] : [{ kind: "answer", label: CREW_ATTENTION_VERBS.answer }];
+    case "question": {
+      if (row.handle === null) return [];
+      // The lead's own question (no task) is answered in its chat, where it asked.
+      const threadId =
+        row.taskId === null
+          ? (crew.crewmates.find((mate) => mate.handle === row.handle)?.currentThreadId ?? null)
+          : null;
+      return threadId === null
+        ? [{ kind: "answer", label: CREW_ATTENTION_VERBS.answer }]
+        : [{ kind: "chat", label: CREW_ATTENTION_VERBS.answer, threadId }];
+    }
     case "landing-wait":
       return [
         {
