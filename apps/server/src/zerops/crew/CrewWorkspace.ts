@@ -302,6 +302,21 @@ export const EXCLUDE_LINE = script(
     `{ grep -qxF '.crew/' "$exclude" 2>/dev/null || printf '%s\\n' '.crew/' >> "$exclude"; } || exit 1\n`,
 );
 
+/**
+ * Makes a lane's `.git` file name its gitdir relative to the lane. Git before
+ * 2.48 writes it absolute (`--relative-paths` is newer than the services'
+ * git), and the zcp container reaches the tree through its mount at another
+ * path, where an absolute gitdir names nothing. The worktree's own
+ * `commondir` is relative already.
+ */
+const relativeGitdir = (handle: string): string => {
+  const file = shellQuote(`${laneDirectory(handle)}/.git`);
+  return (
+    `gitdir=$(sed -n 's/^gitdir: //p' ${file})\n` +
+    `case "$gitdir" in /*) printf 'gitdir: ../../.git/worktrees/%s\\n' "\${gitdir##*/.git/worktrees/}" > ${file} || exit 1 ;; esac\n`
+  );
+};
+
 export const make = Effect.gen(function* () {
   const shell = yield* CrewShell;
   const checks = yield* CrewChecks;
@@ -566,7 +581,8 @@ export const make = Effect.gen(function* () {
           readded
             .map(
               (handle) =>
-                `${git("integration", ["worktree", "add", "-q", laneDirectory(handle), laneBranch(handle)])} || exit 1\n`,
+                `${git("integration", ["worktree", "add", "-q", laneDirectory(handle), laneBranch(handle)])} || exit 1\n` +
+                relativeGitdir(handle),
             )
             .join(""),
         );
@@ -603,6 +619,7 @@ export const make = Effect.gen(function* () {
               const handle = shellQuote(row.lane);
               return (
                 `if [ -d ${shellQuote(laneDirectory(row.lane))} ]; then\n` +
+                relativeGitdir(row.lane) +
                 `  tip=$(${lg(["rev-parse", "-q", "--verify", "HEAD"])} 2>/dev/null) || tip=\n` +
                 `  merging=0; ${lg(["rev-parse", "-q", "--verify", "MERGE_HEAD"])} >/dev/null 2>&1 && merging=1\n` +
                 `  dirty=0; [ -z "$(${lg(["status", "--porcelain"])} 2>/dev/null)" ] || dirty=1\n` +
@@ -746,7 +763,10 @@ export const make = Effect.gen(function* () {
         "create",
         EXCLUDE_LINE +
           `H=$(${git("integration", ["rev-parse", "-q", "--verify", "HEAD^{commit}"])}) || { printf 'status\\tno-head\\n'; exit 0; }\n` +
-          `if [ -e ${directory} ]; then printf 'status\\texists\\ntip\\t%s\\n' "$(${git({ lane: spec.handle }, ["rev-parse", "HEAD"])})"; exit 0; fi\n` +
+          `if [ -e ${directory} ]; then\n` +
+          relativeGitdir(spec.handle) +
+          `  printf 'status\\texists\\ntip\\t%s\\n' "$(${git({ lane: spec.handle }, ["rev-parse", "HEAD"])})"; exit 0\n` +
+          `fi\n` +
           `need=$(${git("integration", ["ls-tree", "-r", "-l", H])} | awk '{ s += $4 } END { printf "%d", 2 * (int(s / 1024) + 1) }')\n` +
           `available=$(df -Pk . | awk 'NR == 2 { print $4 }')\n` +
           `if [ "$available" -lt "$need" ]; then printf 'status\\tno-space\\nneed\\t%s\\navailable\\t%s\\n' "$need" "$available"; exit 0; fi\n` +
@@ -755,6 +775,7 @@ export const make = Effect.gen(function* () {
           `else\n` +
           `  ${git("integration", ["worktree", "add", "-q", laneDirectory(spec.handle), "-b", branch, H])} || exit 1\n` +
           `fi\n` +
+          relativeGitdir(spec.handle) +
           `printf 'status\\tcreated\\nhead\\t%s\\ntip\\t%s\\n' "$H" "$(${git({ lane: spec.handle }, ["rev-parse", "HEAD"])})"\n`,
       );
       const status = field(out, "status");
