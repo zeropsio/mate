@@ -24,9 +24,13 @@ import type {
   CrewSnapshot,
   CrewTaskState,
   Crewmate,
+  ThreadId,
 } from "@t3tools/contracts";
-import type { ServiceStatusToneId } from "@t3tools/shared/brand";
-import type { ThreadStatusToneId } from "@t3tools/shared/threadStatus";
+import type { MateMarkState, MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
+import {
+  mateMarkStateForThreadStatus,
+  type ThreadStatusToneId,
+} from "@t3tools/shared/threadStatus";
 
 const THREAD_DOT_TONE: Record<ThreadStatusToneId, ServiceStatusToneId> = {
   attention: "attention",
@@ -258,4 +262,30 @@ export function crewPortsAsk(host: string, ports: ReadonlyArray<number>): string
     return `Add crew port ${first} (httpSupport) to ${host}'s dev setup in zerops.yaml, self-deploy ${host}, then make sure the new port is routed on the subdomain.`;
   }
   return `Add crew ports ${first}–${last} (httpSupport) to ${host}'s dev setup in zerops.yaml, self-deploy ${host}, then make sure each new port is routed on the subdomain.`;
+}
+
+export interface CrewFace {
+  readonly handle: string;
+  readonly displayName: string;
+  readonly tint: MateTintId;
+  /** Its thread's face; idle before its first turn. */
+  readonly state: MateMarkState;
+  readonly threadId: ThreadId | null;
+}
+
+/** The sidebar Mate row's crew faces (PRD §4.2): at most `max`, the lead first, and how many more. */
+export function crewFaceStack(
+  crewmates: ReadonlyArray<CrewmateView>,
+  max = 3,
+): { readonly faces: ReadonlyArray<CrewFace>; readonly more: number } {
+  return {
+    faces: crewmates.slice(0, max).map((row) => ({
+      handle: row.crewmate.handle,
+      displayName: row.crewmate.displayName,
+      tint: row.crewmate.tint,
+      state: row.status === null ? "idle" : mateMarkStateForThreadStatus(row.status.kind),
+      threadId: row.crewmate.currentThreadId,
+    })),
+    more: Math.max(0, crewmates.length - max),
+  };
 }

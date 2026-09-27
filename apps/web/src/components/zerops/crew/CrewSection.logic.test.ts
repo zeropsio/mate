@@ -8,6 +8,7 @@ import { readCrewThread } from "../../../zerops/crew/useCrew";
 import {
   crewAttentionActions,
   crewDeliverAsk,
+  crewFaceStack,
   crewLaneSummary,
   crewLoginMark,
   crewPendingChip,
@@ -278,5 +279,18 @@ describe("the drafts for Fen", () => {
     expect(crewPortsAsk("appdev", [3001])).toBe(
       "Add crew port 3001 (httpSupport) to appdev's dev setup in zerops.yaml, self-deploy appdev, then make sure the new port is routed on the subdomain.",
     );
+  });
+});
+
+describe("crewFaceStack", () => {
+  it("shows at most three faces, the lead first, and counts the rest", () => {
+    const stack = crewFaceStack(view.crewmates);
+    expect(stack.faces.map((face) => [face.handle, face.state])).toEqual([
+      ["lead", "idle"],
+      ["backend", "working"],
+      ["frontend", "idle"],
+    ]);
+    expect(stack.more).toBe(1);
+    expect(crewFaceStack(view.crewmates.slice(0, 2)).more).toBe(0);
   });
 });
