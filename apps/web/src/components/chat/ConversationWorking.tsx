@@ -3,8 +3,10 @@
  * bar for each thing that runs — a deploy stepping through its pipeline in the
  * Zerops GUI's words, a service in trouble, the task list, the helpers, the
  * background tasks — and, while the Mate checks pages, the browser sliding
- * out under them. A bar says what runs now; the record says when it started
- * and how it ended. Each bar opens its detail in a modal.
+ * out under them. A bar says what runs now; the chat says when it started
+ * and how it ended. Each bar opens its detail in place, under it: a deploy's
+ * pipeline and build log, the list, each helper, each task (the owner,
+ * 2026-09-27: "so much better expandable inline").
  *
  * It is the card's bottom, so it may change shape; while live it only grows,
  * so a bar that leaves never pulls the conversation down. Settling turns it
@@ -26,17 +28,17 @@ import {
   type ReactNode,
 } from "react";
 
+import { ChevronDownIcon } from "lucide-react";
+
 import { cn } from "~/lib/utils";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { Button } from "../ui/button";
 import { MateFace } from "../zerops/primitives";
-import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { formatWorkDuration, isGitPushOnly, type IncidentModel } from "./conversation.logic";
 import { StatusBar, type BarTone } from "./ConversationPills";
 import type { DockBackgroundTask, DockModel } from "./conversationDock.logic";
 import { ElapsedSince, type ConversationSpeaker } from "./ConversationRows";
-import { RunDetailDialog } from "./RunDetail";
-import { PlanSteps, TIME_COLUMN } from "./RunRecord";
+import { OperationDetail, PlanSteps, TIME_COLUMN } from "./RunChat";
 
 // ---------------------------------------------------------------------------
 // Arriving live
@@ -101,9 +103,10 @@ const TONE_DOT: Record<ServiceStatusToneId, string> = {
 
 /**
  * One status bar: its name, the bar, where it is now in words, and a figure
- * in the card's time column — a time, a count. No mark: its name says what it
- * is ("no unnecessary icons, make the use obvious from the component"). Given
- * `onOpen`, it opens its detail in a modal.
+ * in the card's time column — a time, a count. No mark at rest: its name says
+ * what it is ("no unnecessary icons, make the use obvious from the
+ * component"). Given `onToggle`, it opens its detail under it, and a chevron
+ * says so on hover and while it is open.
  */
 function Instrument({
   subject,
@@ -112,7 +115,8 @@ function Instrument({
   figure = null,
   failed = false,
   label,
-  onOpen = null,
+  open = false,
+  onToggle = null,
 }: {
   readonly subject: string;
   readonly bar: ReadonlyArray<{ readonly key: string; readonly tone: BarTone }>;
@@ -120,7 +124,8 @@ function Instrument({
   readonly figure?: ReactNode;
   readonly failed?: boolean;
   readonly label: string;
-  readonly onOpen?: (() => void) | null;
+  readonly open?: boolean;
+  readonly onToggle?: (() => void) | null;
 }) {
   const body = (
     <>
@@ -136,11 +141,17 @@ function Instrument({
       >
         {words}
       </span>
+      {onToggle === null ? null : (
+        <ChevronDownIcon
+          aria-hidden="true"
+          className="size-3 shrink-0 text-muted-foreground/70 opacity-0 transition-[opacity,rotate] duration-150 group-hover/bar:opacity-100 group-aria-expanded/bar:rotate-180 group-aria-expanded/bar:opacity-100"
+        />
+      )}
       <span className={TIME_COLUMN}>{figure}</span>
     </>
   );
   const className = "flex h-8 w-full min-w-0 items-center gap-3 text-line";
-  if (onOpen === null) {
+  if (onToggle === null) {
     return (
       <div aria-label={label} className={className} role="group">
         {body}
@@ -149,17 +160,29 @@ function Instrument({
   }
   return (
     <button
-      aria-haspopup="dialog"
+      aria-expanded={open}
       aria-label={label}
       className={cn(
         className,
-        "-mx-1.5 w-[calc(100%+0.75rem)] cursor-pointer rounded-md px-1.5 transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset",
+        "group/bar -mx-1.5 w-[calc(100%+0.75rem)] cursor-pointer rounded-md px-1.5 transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset",
       )}
-      onClick={onOpen}
+      data-scroll-anchor-ignore
+      onClick={onToggle}
       type="button"
     >
       {body}
     </button>
+  );
+}
+
+/** What a bar holds, opened under it: it eases into its room, once. */
+function InstrumentDetail({ children }: { readonly children: ReactNode }) {
+  return (
+    <div className="grid animate-room-open motion-reduce:animate-none" data-working-detail>
+      <div className="min-h-0 overflow-hidden">
+        <div className="pt-1 pb-3">{children}</div>
+      </div>
+    </div>
   );
 }
 
@@ -221,11 +244,13 @@ function useDeployReading(operation: ZeropsOperation, environmentId: Environment
 function DeployInstrument({
   operation,
   environmentId,
-  onOpen,
+  open,
+  onToggle,
 }: {
   readonly operation: ZeropsOperation;
   readonly environmentId: EnvironmentId | null;
-  readonly onOpen: () => void;
+  readonly open: boolean;
+  readonly onToggle: () => void;
 }) {
   const { words, bar, running, failed } = useDeployReading(operation, environmentId);
   const settledMs =
@@ -243,26 +268,13 @@ function DeployInstrument({
           formatWorkDuration(settledMs)
         ) : null
       }
-      label={`${operation.subject}: ${words}. Show the pipeline`}
-      onOpen={onOpen}
+      label={`${operation.subject}: ${words}. ${open ? "Hide" : "Show"} the pipeline`}
+      onToggle={onToggle}
+      open={open}
       subject={operation.subject}
       words={words}
     />
   );
-}
-
-/** A deploy's pipeline and build log, whole: the card, under the modal's own heading. */
-export function OperationDetail({
-  operation,
-  environmentId,
-  threadRef,
-}: {
-  readonly operation: ZeropsOperation;
-  readonly environmentId: EnvironmentId | null;
-  readonly threadRef: ScopedThreadRef | null;
-}) {
-  const regions = useOperationCard(operation, environmentId);
-  return <ZeropsOperationCard headless operation={operation} threadRef={threadRef} {...regions} />;
 }
 
 /** A step's key: its words, and how many times the same words came before it. */
@@ -313,7 +325,12 @@ function useGrowOnlyHeight() {
     observer.observe(content);
     return () => observer.disconnect();
   }, []);
-  return { contentRef, minHeight };
+  // The person closed what they opened: the room follows them down, once.
+  const release = () => {
+    tallestRef.current = 0;
+    setMinHeight(undefined);
+  };
+  return { contentRef, minHeight, release };
 }
 
 const TASK_BAR: Record<DockBackgroundTask["state"], BarTone> = {
@@ -341,7 +358,7 @@ function spanOf(startedAt: string, endedAt: string | null): ReactNode {
   );
 }
 
-/** A list in a modal: a row per helper, task or step, its state and its time. */
+/** A list under a bar: a row per helper or task, its state and its time. */
 function DetailRow({
   tone,
   title,
@@ -367,8 +384,9 @@ function DetailRow({
 
 /**
  * A status bar for each thing that runs — the deploys, a service in trouble,
- * the task list, the helpers, the background tasks — each opening its detail
- * in a modal.
+ * the task list, the helpers, the background tasks — each opening what it
+ * holds under it. `onToggle` hears the person open or close one: the room the
+ * bars keep may shrink for that, and nothing else.
  */
 function Instruments({
   dock,
@@ -376,14 +394,16 @@ function Instruments({
   environmentId,
   threadRef,
   onOpenAgents,
+  onToggle = null,
 }: {
   readonly dock: DockModel | null;
   readonly incidents: ReadonlyArray<IncidentModel>;
   readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | null;
   readonly onOpenAgents: () => void;
+  readonly onToggle?: (() => void) | null;
 }) {
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const operations = dock?.operations ?? [];
   const helpers = dock?.helpers ?? null;
   const tasks = dock?.tasks ?? null;
@@ -398,184 +418,163 @@ function Instruments({
     return null;
   }
   const runningTask = background?.tasks.findLast((task) => task.state === "running");
-  const openOperation = operations.find((operation) => operation.key === open) ?? null;
-  const close = (next: boolean) => {
-    if (!next) setOpen(null);
+  const toggle = (key: string) => {
+    onToggle?.();
+    setOpen((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   };
+  const helperWords =
+    helpers === null
+      ? ""
+      : [
+          helpers.working > 0 ? `${helpers.working} working` : null,
+          helpers.done > 0 ? `${helpers.done} done` : null,
+          helpers.failed > 0 ? `${helpers.failed} failed` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
   return (
-    <>
-      <ul className="-mx-4 grid border-border/60 border-t px-4 pt-1.5" data-working-instruments>
-        {operations.map((operation) => (
-          <Arriving key={operation.key}>
-            <DeployInstrument
-              environmentId={environmentId}
-              onOpen={() => setOpen(operation.key)}
-              operation={operation}
-            />
-          </Arriving>
-        ))}
-        {incidents.map((incident) => (
-          <Arriving key={incident.key}>
-            <Instrument
-              bar={[{ key: "whole", tone: INCIDENT_BAR[incident.tone] }]}
-              failed={incident.tone === "failed"}
-              label={`${incident.hostname}: ${incident.phases.join(", ")}`}
-              subject={incident.hostname}
-              words={incident.phases.join(" · ")}
-            />
-          </Arriving>
-        ))}
-        {tasks !== null ? (
-          <Arriving>
-            <Instrument
-              bar={keyedSteps(tasks.steps).map(({ key, step }) => ({
-                key,
-                tone:
-                  step.status === "completed"
-                    ? "done"
-                    : step.status === "inProgress"
-                      ? "running"
-                      : "waiting",
-              }))}
-              figure={`${tasks.done}/${tasks.steps.length}`}
-              label={`Tasks: ${tasks.done} of ${tasks.steps.length} done. Show the list`}
-              onOpen={() => setOpen("tasks")}
-              subject="Tasks"
-              words={tasks.current ?? "All done"}
-            />
-          </Arriving>
-        ) : null}
-        {helpers !== null ? (
-          <Arriving>
-            <Instrument
-              bar={helpers.rows.map((helper) => ({
-                key: helper.id,
-                tone: HELPER_BAR[helper.tone],
-              }))}
-              label="Helpers. Show each one"
-              onOpen={() => setOpen("helpers")}
-              subject={helpers.rows.length === 1 ? "1 helper" : `${helpers.rows.length} helpers`}
-              words={[
-                helpers.working > 0 ? `${helpers.working} working` : null,
-                helpers.done > 0 ? `${helpers.done} done` : null,
-                helpers.failed > 0 ? `${helpers.failed} failed` : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            />
-          </Arriving>
-        ) : null}
-        {background !== null ? (
-          <Arriving>
-            <Instrument
-              bar={background.tasks.map((task) => ({ key: task.id, tone: TASK_BAR[task.state] }))}
-              failed={background.running === 0 && background.failed > 0}
-              figure={
-                background.tasks.length > 1
-                  ? `${background.done}/${background.tasks.length}`
-                  : runningTask !== undefined
-                    ? spanOf(runningTask.startedAt, null)
-                    : null
-              }
-              label={`Background tasks: ${background.running} running, ${background.done} done, ${background.failed} failed. Show each one`}
-              onOpen={() => setOpen("background")}
-              subject="Background"
-              words={
-                runningTask?.title ??
-                (background.failed > 0
-                  ? background.failed === 1
-                    ? "1 failed"
-                    : `${background.failed} failed`
-                  : "All done")
-              }
-            />
-          </Arriving>
-        ) : null}
-      </ul>
-      <RunDetailDialog
-        description={openOperation?.statusWord}
-        onOpenChange={close}
-        open={openOperation !== null}
-        title={openOperation?.subject ?? ""}
-        wide
-      >
-        {openOperation !== null ? (
-          <OperationDetail
+    <ul className="-mx-4 grid border-border/60 border-t px-4 pt-1.5" data-working-instruments>
+      {operations.map((operation) => (
+        <Arriving key={operation.key}>
+          <DeployInstrument
             environmentId={environmentId}
-            operation={openOperation}
-            threadRef={threadRef}
+            onToggle={() => toggle(operation.key)}
+            open={open.has(operation.key)}
+            operation={operation}
           />
-        ) : null}
-      </RunDetailDialog>
-      <RunDetailDialog
-        description={tasks === null ? undefined : `${tasks.done} of ${tasks.steps.length} done`}
-        onOpenChange={close}
-        open={open === "tasks" && tasks !== null}
-        title="Tasks"
-      >
-        <PlanSteps steps={tasks?.steps ?? []} />
-      </RunDetailDialog>
-      <RunDetailDialog
-        description={
-          helpers === null
-            ? undefined
-            : [
-                helpers.working > 0 ? `${helpers.working} working` : null,
-                helpers.done > 0 ? `${helpers.done} done` : null,
-                helpers.failed > 0 ? `${helpers.failed} failed` : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")
-        }
-        onOpenChange={close}
-        open={open === "helpers" && helpers !== null}
-        title="Helpers"
-      >
-        <ul className="grid gap-px">
-          {(helpers?.rows ?? []).map((helper) => (
-            <DetailRow
-              key={helper.id}
-              time={spanOf(helper.startedAt, helper.endedAt)}
-              title={helper.title}
-              tone={helper.tone}
-              word={helper.word}
-            />
-          ))}
-        </ul>
-        <button
-          className="mt-3 cursor-pointer text-info-foreground text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-          onClick={() => {
-            setOpen(null);
-            onOpenAgents();
-          }}
-          type="button"
-        >
-          Open the helpers panel
-        </button>
-      </RunDetailDialog>
-      <RunDetailDialog
-        description={
-          background === null
-            ? undefined
-            : `${background.running} running · ${background.done} done${background.failed > 0 ? ` · ${background.failed} failed` : ""}`
-        }
-        onOpenChange={close}
-        open={open === "background" && background !== null}
-        title="Background tasks"
-      >
-        <ul className="grid gap-px">
-          {(background?.tasks ?? []).map((task) => (
-            <DetailRow
-              key={task.id}
-              time={spanOf(task.startedAt, task.endedAt)}
-              title={task.title}
-              tone={TASK_STATE[task.state].tone}
-              word={TASK_STATE[task.state].word}
-            />
-          ))}
-        </ul>
-      </RunDetailDialog>
-    </>
+          {open.has(operation.key) ? (
+            <InstrumentDetail>
+              <OperationDetail
+                environmentId={environmentId}
+                operation={operation}
+                threadRef={threadRef}
+              />
+            </InstrumentDetail>
+          ) : null}
+        </Arriving>
+      ))}
+      {incidents.map((incident) => (
+        <Arriving key={incident.key}>
+          <Instrument
+            bar={[{ key: "whole", tone: INCIDENT_BAR[incident.tone] }]}
+            failed={incident.tone === "failed"}
+            label={`${incident.hostname}: ${incident.phases.join(", ")}`}
+            subject={incident.hostname}
+            words={incident.phases.join(" · ")}
+          />
+        </Arriving>
+      ))}
+      {tasks !== null ? (
+        <Arriving>
+          <Instrument
+            bar={keyedSteps(tasks.steps).map(({ key, step }) => ({
+              key,
+              tone:
+                step.status === "completed"
+                  ? "done"
+                  : step.status === "inProgress"
+                    ? "running"
+                    : "waiting",
+            }))}
+            figure={`${tasks.done}/${tasks.steps.length}`}
+            label={`Tasks: ${tasks.done} of ${tasks.steps.length} done. ${open.has("tasks") ? "Hide" : "Show"} the list`}
+            onToggle={() => toggle("tasks")}
+            open={open.has("tasks")}
+            subject="Tasks"
+            words={tasks.current ?? "All done"}
+          />
+          {open.has("tasks") ? (
+            <InstrumentDetail>
+              <PlanSteps steps={tasks.steps} />
+            </InstrumentDetail>
+          ) : null}
+        </Arriving>
+      ) : null}
+      {helpers !== null ? (
+        <Arriving>
+          <Instrument
+            bar={helpers.rows.map((helper) => ({
+              key: helper.id,
+              tone: HELPER_BAR[helper.tone],
+            }))}
+            label={`Helpers: ${helperWords}. ${open.has("helpers") ? "Hide" : "Show"} each one`}
+            onToggle={() => toggle("helpers")}
+            open={open.has("helpers")}
+            subject={helpers.rows.length === 1 ? "1 helper" : `${helpers.rows.length} helpers`}
+            words={helperWords}
+          />
+          {open.has("helpers") ? (
+            <InstrumentDetail>
+              <ul className="grid gap-px">
+                {helpers.rows.map((helper) => (
+                  <DetailRow
+                    key={helper.id}
+                    time={spanOf(helper.startedAt, helper.endedAt)}
+                    title={helper.title}
+                    tone={helper.tone}
+                    word={helper.word}
+                  />
+                ))}
+              </ul>
+              <button
+                className="mt-2 cursor-pointer text-info-foreground text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+                onClick={onOpenAgents}
+                type="button"
+              >
+                Open the helpers panel
+              </button>
+            </InstrumentDetail>
+          ) : null}
+        </Arriving>
+      ) : null}
+      {background !== null ? (
+        <Arriving>
+          <Instrument
+            bar={background.tasks.map((task) => ({ key: task.id, tone: TASK_BAR[task.state] }))}
+            failed={background.running === 0 && background.failed > 0}
+            figure={
+              background.tasks.length > 1
+                ? `${background.done}/${background.tasks.length}`
+                : runningTask !== undefined
+                  ? spanOf(runningTask.startedAt, null)
+                  : null
+            }
+            label={`Background tasks: ${background.running} running, ${background.done} done, ${background.failed} failed. ${open.has("background") ? "Hide" : "Show"} each one`}
+            onToggle={() => toggle("background")}
+            open={open.has("background")}
+            subject="Background"
+            words={
+              runningTask?.title ??
+              (background.failed > 0
+                ? background.failed === 1
+                  ? "1 failed"
+                  : `${background.failed} failed`
+                : "All done")
+            }
+          />
+          {open.has("background") ? (
+            <InstrumentDetail>
+              <ul className="grid gap-px">
+                {background.tasks.map((task) => (
+                  <DetailRow
+                    key={task.id}
+                    time={spanOf(task.startedAt, task.endedAt)}
+                    title={task.title}
+                    tone={TASK_STATE[task.state].tone}
+                    word={TASK_STATE[task.state].word}
+                  />
+                ))}
+              </ul>
+            </InstrumentDetail>
+          ) : null}
+        </Arriving>
+      ) : null}
+    </ul>
   );
 }
 
@@ -599,7 +598,7 @@ export function ConversationWorking({
   readonly threadRef: ScopedThreadRef | null;
   readonly onOpenAgents: () => void;
 }) {
-  const { contentRef, minHeight } = useGrowOnlyHeight();
+  const { contentRef, minHeight, release } = useGrowOnlyHeight();
   // Drawn once: from here on, what arrives arrives live.
   const shownRef = useRef(false);
   useEffect(() => {
@@ -619,6 +618,7 @@ export function ConversationWorking({
             environmentId={environmentId}
             incidents={incidents}
             onOpenAgents={onOpenAgents}
+            onToggle={release}
             threadRef={threadRef}
           />
           {browser !== null ? (

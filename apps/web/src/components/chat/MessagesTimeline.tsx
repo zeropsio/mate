@@ -6,19 +6,12 @@ import {
 import {
   type EnvironmentId,
   type MessageId,
-  type ScopedThreadRef,
   type ServerProviderSkill,
   type TurnId,
 } from "@t3tools/contracts";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
-import type {
-  AgentPanelModel,
-  RuntimeSubagent,
-} from "@t3tools/client-runtime/state/subagentRuntime";
-import {
-  emptyAgentPanelModel,
-  isActiveSubagentStatus,
-} from "@t3tools/client-runtime/state/subagentRuntime";
+import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
+import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 
 const EMPTY_AGENT_PANEL_MODEL = emptyAgentPanelModel();
 const NOOP_OPEN_AGENTS = () => {};
@@ -27,7 +20,6 @@ const EMPTY_QUEUED_MESSAGES: ReadonlyArray<QueuedComposerMessage> = [];
 const NOOP_QUEUED_MESSAGE_ACTION = (_id: string) => {};
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
 import {
-  createContext,
   Fragment,
   memo,
   use,
@@ -47,7 +39,6 @@ import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
 import {
   createMessageAttachmentPreviewProjector,
   deriveTimelineEntries,
-  type TurnPlanEntry,
   selectMessageImageResources,
   workEntryDisplayIndicatesToolFailure,
   workEntrySignalsSevereFailure,
@@ -66,7 +57,6 @@ import {
 } from "../../lib/diffRendering";
 import ChatMarkdown from "../ChatMarkdown";
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
   ArrowUpIcon,
   BotIcon,
@@ -91,7 +81,6 @@ import {
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
-import { useAssetUrlState } from "../../assets/assetUrls";
 import { useAssetUrls } from "../../assets/assetUrls";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import {
@@ -116,19 +105,13 @@ import {
   resolveTimelineMinimapInteractiveWidth,
   resolveTimelineMinimapTopPercent,
   shouldPreserveAssistantLineBreaks,
-  thoughtParagraphs,
-  thoughtPreview,
   toolGroupAction,
   workEntryIsVisibleInGroup,
   type StableMessagesTimelineRowsState,
   type CardSlice,
-  type ConversationEvent,
   type FoldsFrom,
-  type LogThought,
   type MessagesTimelineRow,
-  type RecordItem,
   type RowGap,
-  type TurnHeaderActivity,
   TIMELINE_MINIMAP_MIN_ITEMS,
   type TimelineLatestTurn,
 } from "./MessagesTimeline.logic";
@@ -150,46 +133,23 @@ import {
   formatInlineTerminalContextLabel,
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
-import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
 import { SkillInlineText } from "./SkillInlineText";
 import { BrowserStrip } from "./BrowserStrip";
-import {
-  browserCheckCaption,
-  formatWorkDuration,
-  LAST_WORDS_GRACE_MS,
-  latestFinishedWordsAt,
-  operationLineWords,
-  type BrowserStripModel,
-  type OutcomeActivity,
-} from "./conversation.logic";
+import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic";
 import { TurnReport } from "./TurnReport";
-import { stepOf, type WorkStep } from "./workSteps.logic";
-import { ConversationAfterWork, ConversationWorking, OperationDetail } from "./ConversationWorking";
+import { ConversationAfterWork, ConversationWorking } from "./ConversationWorking";
+import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat } from "./RunChat";
 import {
-  MATE_NOTE_CLASS,
-  operationTime,
-  PlanSteps,
-  RECORD_GUTTER,
-  RECORD_TEXT_INSET,
-  RecordLine,
-  RecordScroll,
-  StepDetail,
-  stepSuffix,
-  stepTime,
-  THOUGHT_WORDS_CLASS,
-  ThoughtTail,
-  TIME_COLUMN,
-  TypingDots,
-  type LineState,
-} from "./RunRecord";
-import { RunDetailDialog } from "./RunDetail";
-import { MateFace } from "../zerops/primitives";
+  TimelineRowActivityCtx,
+  TimelineRowCtx,
+  TimelineWorkingCtx,
+  type TimelineRowActivityState,
+  type TimelineRowSharedState,
+} from "./timelineContext";
 import type { DockModel } from "./conversationDock.logic";
 import {
-  ElapsedSince,
   ErrorLine,
   EventLine,
-  MATE_BUBBLE_FILL,
   MessageReceipt,
   PauseBlock,
   Seam,
@@ -208,69 +168,9 @@ import {
   type ReviewCommentContext,
 } from "../../reviewCommentContext";
 
-// ---------------------------------------------------------------------------
-// Context — shared state consumed by every row component via Context.
-// Propagates through LegendList's memo boundaries for shared callbacks and
-// non-row-scoped state. `nowIso` is intentionally excluded — self-ticking
-// components (WorkingTimer, LiveElapsed) handle it.
-// ---------------------------------------------------------------------------
-
-interface TimelineRowSharedState {
-  timestampFormat: TimestampFormat;
-  routeThreadKey: string;
-  threadRef: ScopedThreadRef | null;
-  markdownCwd: string | undefined;
-  resolvedTheme: "light" | "dark";
-  workspaceRoot: string | undefined;
-  skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
-  activeThreadEnvironmentId: EnvironmentId;
-  onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
-  onRunShellCommand: ((command: string) => void) | undefined;
-  onImageExpand: (preview: ExpandedImagePreview) => void;
-  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
-  /** Opens a detail of a run in the modal: a step, a thought, a pipeline, what a result counts. */
-  onOpenDetail: (detail: RunDetail) => void;
-  /** Who the conversation is with: the Mate's name and colour. */
-  speaker: ConversationSpeaker;
-  /** The pause row that holds the thread now, and the server's reading of it. */
-  livePauseId: string | null;
-  usagePause: ServerUsagePause | null;
-  onUsageAutoResumeChange: ((enabled: boolean) => void) | null;
-  agentPanelModel: AgentPanelModel;
-  onOpenAgents: () => void;
-  /** Stops the work that outlived the turn. */
-  onStopBackgroundWork: () => void;
-  onSteerQueuedMessage: (id: string) => void;
-  steerQueuedMessageShortcutLabel: string | null;
-  onRemoveQueuedMessage: (id: string) => void;
-}
-
-interface TimelineRowActivityState {
-  isWorking: boolean;
-  isCompacting: boolean;
-  isRevertingCheckpoint: boolean;
-  latestTurnId: TurnId | null;
-  /** Current plan step label for the working row, when the turn has a plan. */
-  workingStepLabel: string | null;
-  /** A stop of the work that outlived the turn is on its way. */
-  stoppingBackgroundWork: boolean;
-}
-
-/** A run's detail, as its modal shows it. */
-interface RunDetail {
-  readonly title: ReactNode;
-  readonly description?: ReactNode;
-  readonly wide?: boolean;
-  readonly body: ReactNode;
-}
-
 /** The rows above keep their place as rows arrive and change size under them. */
 const MAINTAIN_VISIBLE_CONTENT_POSITION = { data: true, size: true } as const;
 
-const TimelineRowCtx = createContext<TimelineRowSharedState>(null!);
-const TimelineRowActivityCtx = createContext<TimelineRowActivityState>(null!);
-/** What runs now, for the Mate at work: its own context, so a pipeline stepping on re-renders that row alone. */
-const TimelineWorkingCtx = createContext<DockModel | null>(null);
 const TIMELINE_LIST_HEADER = <div className="h-3 sm:h-4" />;
 const TIMELINE_LIST_FADE_HEADER = <div className="h-10 sm:h-12" />;
 
@@ -435,7 +335,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // The timeline mounts once per thread; a thread left mid-read comes back at
   // the same row.
   const rememberedPosition = useMemo(() => readTimelinePosition(routeThreadKey), [routeThreadKey]);
-  const [detail, setDetail] = useState<RunDetail | null>(null);
   const [positionRestored, setPositionRestored] = useState(
     () => rememberedPosition?.atEnd !== false,
   );
@@ -461,8 +360,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       }
     };
   }, []);
-
-  const onOpenDetail = useCallback((next: RunDetail) => setDetail(next), []);
 
   // Where the person left off: the last visit this conversation remembers,
   // read once as it opens — only when something came since — so the line
@@ -820,7 +717,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onRunShellCommand,
       onImageExpand,
       onOpenTurnDiff,
-      onOpenDetail,
       speaker,
       livePauseId,
       usagePause,
@@ -844,7 +740,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onRunShellCommand,
       onImageExpand,
       onOpenTurnDiff,
-      onOpenDetail,
       speaker,
       livePauseId,
       usagePause,
@@ -956,19 +851,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               }}
             />
           </div>
-          {/* A run's detail opens here, in the rows' own context: nothing about
-              a run opens in place under the person's eyes. */}
-          <RunDetailDialog
-            description={detail?.description}
-            onOpenChange={(open) => {
-              if (!open) setDetail(null);
-            }}
-            open={detail !== null}
-            title={detail?.title ?? ""}
-            wide={detail?.wide ?? false}
-          >
-            {detail?.body}
-          </RunDetailDialog>
         </TimelineWorkingCtx>
       </TimelineRowActivityCtx>
     </TimelineRowCtx>
@@ -1398,74 +1280,6 @@ function WorkLineTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "work-
   return <WorkLine row={row} speaker={ctx.speaker} timestampFormat={ctx.timestampFormat} />;
 }
 
-/** A note of the Mate's, in full: its words as markdown, at the moment it said them. */
-function NoteWords({
-  message,
-  className,
-}: {
-  readonly message: ChatMessage;
-  readonly className?: string;
-}) {
-  const ctx = use(TimelineRowCtx);
-  return (
-    <ChangeChipMomentContext value={message.createdAt}>
-      <ChatMarkdown
-        className={cn("text-foreground", className)}
-        text={message.text}
-        cwd={ctx.markdownCwd}
-        threadRef={ctx.threadRef ?? undefined}
-        isStreaming={Boolean(message.streaming)}
-        lineBreaks={shouldPreserveAssistantLineBreaks(message.text)}
-        skills={ctx.skills}
-        headingLevelOffset={MESSAGE_HEADING_LEVEL}
-        onOpenImage={ctx.onImageExpand}
-        onRunShellCommand={ctx.onRunShellCommand}
-      />
-    </ChangeChipMomentContext>
-  );
-}
-
-/** A paragraph of what the Mate thinks, in the muted ink. */
-function ThoughtWords({
-  text,
-  streaming = false,
-}: {
-  readonly text: string;
-  readonly streaming?: boolean;
-}) {
-  const ctx = use(TimelineRowCtx);
-  return (
-    <ChatMarkdown
-      className={THOUGHT_WORDS_CLASS}
-      text={text}
-      cwd={ctx.markdownCwd}
-      threadRef={ctx.threadRef ?? undefined}
-      isStreaming={streaming}
-      skills={ctx.skills}
-      headingLevelOffset={MESSAGE_HEADING_LEVEL}
-    />
-  );
-}
-
-/** A stretch of thinking, a paragraph at a time, the newest still coming. */
-function ThoughtParagraphs({ messages }: { readonly messages: ReadonlyArray<ChatMessage> }) {
-  const paragraphs = messages.flatMap((message) => {
-    const said = thoughtParagraphs(message.text);
-    return said.map((text, index) => ({
-      key: `${message.id}:${index}`,
-      text,
-      streaming: Boolean(message.streaming) && index === said.length - 1,
-    }));
-  });
-  return (
-    <div className="grid gap-2 italic">
-      {paragraphs.map((paragraph) => (
-        <ThoughtWords key={paragraph.key} streaming={paragraph.streaming} text={paragraph.text} />
-      ))}
-    </div>
-  );
-}
-
 /**
  * Turns whose Mate at work this page watched live: their report arrives as
  * the panel settles into it, once. A report scrolled back into view, or read
@@ -1680,682 +1494,23 @@ function AfterWorkTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "afte
   );
 }
 
-// ---------------------------------------------------------------------------
-// What a line of the record opens, in its modal
-// ---------------------------------------------------------------------------
-
-function stepDetail(step: WorkStep, thought: LogThought | null): RunDetail {
-  return {
-    title: step.words ?? step.code ?? "A command",
-    body: <StepModalBody step={step} thought={thought} />,
-  };
-}
-
-function thoughtDetail(messages: ReadonlyArray<ChatMessage>, duration: string | null): RunDetail {
-  return {
-    title: duration === null ? "Thought" : `Thought for ${duration}`,
-    body: <ThoughtParagraphs messages={messages} />,
-  };
-}
-
-function operationDetail(
-  operation: ZeropsOperation,
-  words: string,
-  environmentId: EnvironmentId | null,
-  threadRef: ScopedThreadRef | null,
-): RunDetail {
-  return {
-    title: words,
-    wide: true,
-    body: (
-      <OperationDetail environmentId={environmentId} operation={operation} threadRef={threadRef} />
-    ),
-  };
-}
-
-function helpersDetail(
-  words: string,
-  description: string,
-  agents: ReadonlyArray<RuntimeSubagent>,
-  onOpenAgents: () => void,
-): RunDetail {
-  return {
-    title: words,
-    description,
-    body: (
-      <div className="grid gap-1">
-        {agents.map((agent) => (
-          <AgentSpawnMemberRow key={agent.id} agent={agent} />
-        ))}
-        <button
-          className="mt-2 cursor-pointer self-start text-info-foreground text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-          onClick={onOpenAgents}
-          type="button"
-        >
-          Open the helpers panel
-        </button>
-      </div>
-    ),
-  };
-}
-
-function planDetail(steps: TurnPlanEntry["plan"]["steps"]): RunDetail {
-  const done = steps.filter((step) => step.status === "completed").length;
-  return {
-    title: "To-do list",
-    description: `${done} of ${steps.length} done`,
-    body: <PlanSteps steps={steps} />,
-  };
-}
-
-function reportsDetail(
-  title: string,
-  description: string | null,
-  entries: ReadonlyArray<TimelineWorkEntry>,
-): RunDetail {
-  return {
-    title,
-    ...(description === null ? {} : { description }),
-    body: <TaskReports entries={entries} />,
-  };
-}
-
-function checksDetail(
-  words: string,
-  strip: BrowserStripModel,
-  environmentId: EnvironmentId | null,
-  threadRef: ScopedThreadRef | null,
-  onOpenImage: (preview: ExpandedImagePreview) => void,
-): RunDetail {
-  return {
-    title: words,
-    wide: true,
-    body: (
-      <BrowserStrip
-        bare
-        environmentId={environmentId}
-        onOpenImage={onOpenImage}
-        strip={strip}
-        threadRef={threadRef}
-      />
-    ),
-  };
-}
-
-function errorDetail(label: string, whole: string): RunDetail {
-  return {
-    title: label,
-    body: (
-      <pre className="max-h-96 select-text overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/50 px-3 py-2 font-mono text-foreground/85 text-xs leading-relaxed">
-        {whole}
-      </pre>
-    ),
-  };
-}
-
-function activityDetail(activity: OutcomeActivity): RunDetail {
-  return { title: activity.words, body: <ActivityList activity={activity} /> };
-}
-
 /**
- * A run's record in its card: every line in one scroll, and, while the Mate
- * works, its face beside what it is on at the end — the one place the
- * present is shown, so nothing is ever drawn twice (the owner, 2026-09-27:
- * "it literally duplicates what's the mate bubbles").
+ * A run's chat in its card: every bubble in one scroll, and, while the Mate
+ * works, its face beside what it is on at the end — the one place the present
+ * is shown, so nothing is ever drawn twice (the owner, 2026-09-27: "it
+ * literally duplicates what's the mate bubbles").
  */
 function RecordTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "record" }> }) {
-  const { isCompacting } = use(TimelineRowActivityCtx);
-  return (
-    <RecordScroll live={row.live}>
-      {row.items.map((item) => (
-        <RecordItemView key={item.key} item={item} />
-      ))}
-      {row.live && !row.answering ? <NowLine compacting={isCompacting} now={row.now} /> : null}
-    </RecordScroll>
-  );
-}
-
-function RecordItemView({ item }: { readonly item: RecordItem }) {
-  const ctx = use(TimelineRowCtx);
-  switch (item.kind) {
-    case "step":
-      return <StepLine step={item.step} thought={item.thought} />;
-    case "call":
-      return <StepLine step={stepOf(item.entry, undefined, false)} thought={null} />;
-    case "thought":
-      return <ThoughtLineItem durationMs={item.durationMs} messages={item.messages} />;
-    case "note":
-      return (
-        <div className={cn(RECORD_TEXT_INSET, "py-1")} data-record-note>
-          <div className={MATE_NOTE_CLASS}>
-            <NoteWords message={item.message} />
-          </div>
-        </div>
-      );
-    case "person":
-      // Where the person spoke into the run the card breaks: their words stand
-      // on the page, never in the record.
-      return null;
-    case "operation":
-      return <OperationLine operation={item.operation} />;
-    case "helpers":
-      return <HelpersLine entry={item.entry} />;
-    case "task": {
-      const work = item.entry;
-      const failed = workEntryDisplayIndicatesToolFailure(work);
-      const words = `${taskTitle(work)} ${failed ? "failed" : "finished"}`;
-      return (
-        <RecordLine
-          detail={work.agentRole !== undefined ? "helper" : "in the background"}
-          label={`${words}. Show what it reported`}
-          onOpen={
-            work.detail?.trim() ? () => ctx.onOpenDetail(reportsDetail(words, null, [work])) : null
-          }
-          state={failed ? "failed" : "done"}
-          words={words}
-        />
-      );
-    }
-    case "plan":
-      return <PlanLine plan={item.plan} />;
-    case "strip":
-      return <ChecksLine strip={item.strip} />;
-    case "incident": {
-      const { incident } = item;
-      return (
-        <RecordLine
-          detail={incident.phases.join(" → ")}
-          state={
-            incident.tone === "failed"
-              ? "failed"
-              : incident.tone === "attention"
-                ? "attention"
-                : "done"
-          }
-          words={incident.hostname}
-        />
-      );
-    }
-    case "event": {
-      const { words, detail } = recordEventWords(item.event, ctx.speaker.name);
-      return <RecordLine detail={detail} state="done" words={words} />;
-    }
-    case "error": {
-      const { label, detail } = item.entry;
-      const more = detail !== undefined && detail.trim() !== label.trim() ? detail.trim() : null;
-      return (
-        <RecordLine
-          detail={more}
-          label={more === null ? label : `${label}. Show the whole error`}
-          onOpen={more === null ? null : () => ctx.onOpenDetail(errorDetail(label, more))}
-          state="failed"
-          words={label}
-        />
-      );
-    }
-  }
-}
-
-/** Something that happened in a run, as a line of its record: what, then a word more. */
-function recordEventWords(
-  event: ConversationEvent,
-  speaker: string,
-): { readonly words: string; readonly detail: string | null } {
-  switch (event.type) {
-    case "landed":
-      return {
-        words: `${event.event.repository} #${event.event.number} landed`,
-        detail: event.event.title,
-      };
-    case "compaction":
-      return {
-        words: "Context condensed",
-        detail: `${speaker} kept a summary of the conversation so far`,
-      };
-    case "resumed":
-      return {
-        words: "The usage limit reset",
-        detail: `${speaker} picked up where the work stopped`,
-      };
-    case "command":
-      return {
-        words: `You ran /${event.command.name}`,
-        detail: event.command.args || null,
-      };
-  }
-}
-
-function lineStateOf(step: WorkStep): LineState {
-  return step.state === "failed" ? "failed" : step.state === "running" ? "running" : "done";
-}
-
-/** A step's words: its own, or its command in mono where it said nothing of itself. */
-function stepWords(step: WorkStep): ReactNode {
-  if (step.words !== null) return step.words;
-  return <code className="font-mono text-xs">{step.code ?? "A command"}</code>;
-}
-
-/** A call the Mate made, as a line of the record; its command and what it printed in a modal. */
-function StepLine({
-  step,
-  thought,
-}: {
-  readonly step: WorkStep;
-  readonly thought: LogThought | null;
-}) {
-  const ctx = use(TimelineRowCtx);
-  const title = step.words ?? step.code ?? "A command";
-  return (
-    <RecordLine
-      code={step.words !== null ? step.code : null}
-      label={`${title}. Show what it did`}
-      onOpen={() => ctx.onOpenDetail(stepDetail(step, thought))}
-      state={lineStateOf(step)}
-      suffix={stepSuffix(step)}
-      time={stepTime(step)}
-      words={stepWords(step)}
-    />
-  );
-}
-
-function StepModalBody({
-  step,
-  thought,
-}: {
-  readonly step: WorkStep;
-  readonly thought: LogThought | null;
-}) {
-  return (
-    <div className="grid min-w-0 gap-4">
-      {thought !== null ? (
-        <div className="min-w-0">
-          <p className="mb-1.5 text-muted-foreground text-xs">
-            {thought.durationMs >= 1000
-              ? `Thought for ${formatWorkDuration(thought.durationMs)}`
-              : "Thought"}
-          </p>
-          <ThoughtParagraphs messages={thought.messages} />
-        </div>
-      ) : null}
-      <StepDetail pictures={<StepPictures paths={step.images} />} step={step} />
-    </div>
-  );
-}
-
-/** The pictures a step looked at, as themselves. */
-function StepPictures({ paths }: { readonly paths: ReadonlyArray<string> }) {
-  const { threadRef } = use(TimelineRowCtx);
-  if (threadRef === null) return null;
-  return (
-    <div className="grid min-w-0 gap-3">
-      {paths.map((path) => (
-        <StepPicture key={path} path={path} threadRef={threadRef} />
-      ))}
-    </div>
-  );
-}
-
-function StepPicture({
-  path,
-  threadRef,
-}: {
-  readonly path: string;
-  readonly threadRef: ScopedThreadRef;
-}) {
-  const asset = useAssetUrlState(threadRef.environmentId, {
-    _tag: "workspace-file",
-    threadId: threadRef.threadId,
-    path,
-  });
-  const name = path.split("/").pop() || path;
-  return (
-    <figure className="grid min-w-0 gap-1">
-      {asset._tag === "Success" ? (
-        <img
-          alt={name}
-          className="max-h-112 w-auto max-w-full rounded-lg border border-border/40 object-contain"
-          src={asset.url}
-        />
-      ) : asset._tag === "Loading" ? (
-        <span
-          aria-label="Loading the picture"
-          className="block aspect-video w-full rounded-lg bg-muted/60"
-          role="status"
-        />
-      ) : (
-        <span className="text-muted-foreground text-xs">The picture is not there any more</span>
-      )}
-      <figcaption className="truncate text-muted-foreground text-xs">{name}</figcaption>
-    </figure>
-  );
-}
-
-/** A stretch of thinking: its title or first sentence in the Mate's italics, the whole in a modal. */
-function ThoughtLineItem({
-  messages,
-  durationMs,
-}: {
-  readonly messages: ReadonlyArray<ChatMessage>;
-  readonly durationMs: number | null;
-}) {
-  const ctx = use(TimelineRowCtx);
-  const preview = thoughtPreview(messages);
-  if (preview === null) return null;
-  const duration =
-    durationMs !== null && durationMs >= 1000 ? formatWorkDuration(durationMs) : null;
-  return (
-    <RecordLine
-      italic
-      label={`Thought${duration === null ? "" : ` for ${duration}`}: ${preview}. Show it`}
-      onOpen={() => ctx.onOpenDetail(thoughtDetail(messages, duration))}
-      state="done"
-      time={duration}
-      words={preview}
-    />
-  );
-}
-
-/**
- * The pages the Mate checked in the browser, as one line: which, and how the
- * checks went; the stage with every take opens in a modal — the result shows
- * the takes themselves.
- */
-function ChecksLine({ strip }: { readonly strip: BrowserStripModel }) {
-  const ctx = use(TimelineRowCtx);
-  const latest = strip.checks.at(-1)!;
-  const words =
-    strip.views === 1 ? `Checked ${browserCheckCaption(latest)}` : `Checked ${strip.views} pages`;
-  const detail =
-    strip.failures > 0
-      ? strip.failures === 1
-        ? "1 check failed"
-        : `${strip.failures} checks failed`
-      : strip.checks.length === 1
-        ? "passed"
-        : `${strip.checks.length} checks passed`;
-  const startedMs = Date.parse(strip.checks[0]!.anchorAt);
-  const endedMs = Date.parse(latest.settledAt ?? latest.anchorAt);
-  const tookMs = endedMs - startedMs;
-  return (
-    <RecordLine
-      detail={detail}
-      label={`${words}, ${detail}. Show the checks`}
-      onOpen={() =>
-        ctx.onOpenDetail(
-          checksDetail(
-            words,
-            strip,
-            ctx.activeThreadEnvironmentId,
-            ctx.threadRef,
-            ctx.onImageExpand,
-          ),
-        )
-      }
-      state={strip.failures > 0 ? "failed" : "done"}
-      time={Number.isFinite(tookMs) && tookMs >= 1000 ? formatWorkDuration(tookMs) : null}
-      words={words}
-    />
-  );
-}
-
-/** A platform operation, once it settled: its sentence and its time; its card in a modal. */
-function OperationLine({ operation }: { readonly operation: ZeropsOperation }) {
-  const ctx = use(TimelineRowCtx);
-  const failed = operation.phase === "failed";
-  const words = operationLineWords(operation);
-  const version = operation.version?.name ?? null;
-  return (
-    <RecordLine
-      detail={
-        failed
-          ? (operation.explanation?.reason ?? operation.closing ?? null)
-          : operation.kind === "deploy" && version !== null
-            ? /^[0-9a-f]{12,40}$/i.test(version)
-              ? version.slice(0, 7)
-              : version
-            : null
-      }
-      label={`${words}. Show it`}
-      onOpen={() =>
-        ctx.onOpenDetail(
-          operationDetail(operation, words, ctx.activeThreadEnvironmentId, ctx.threadRef),
-        )
-      }
-      state={failed ? "failed" : "done"}
-      time={operationTime(operation)}
-      words={words}
-    />
-  );
-}
-
-/** The helpers a launch started, as the agents panel knows them. */
-function spawnAgents(model: AgentPanelModel, spawn: NonNullable<TimelineWorkEntry["agentSpawn"]>) {
-  const memberIds = new Set(spawn.agentTaskIds);
-  const workflowGroup = spawn.workflowId
-    ? model.workflows.find((group) => group.workflow.id === spawn.workflowId)
-    : undefined;
-  const agents = workflowGroup
-    ? [...workflowGroup.phases.flatMap((phase) => phase.members), ...workflowGroup.unphasedMembers]
-    : model.directAgents.filter((agent) => memberIds.has(agent.id));
-  const count = Math.max(
-    agents.length,
-    Math.max(memberIds.size - (spawn.workflowId ? 1 : 0), 0),
-    1,
-  );
-  const summary = deriveAgentSpawnSummary({
-    agents,
-    agentCount: count,
-    coordinatorStatus: workflowGroup?.workflow.status,
-  });
-  const workflowName =
-    workflowGroup?.workflow.workflowName ?? workflowGroup?.workflow.title ?? null;
-  return { agents, count, summary, workflowName };
-}
-
-/** Helpers the Mate started: how many and what for; each one, its state and its report, in a modal. */
-function HelpersLine({ entry }: { readonly entry: TimelineWorkEntry }) {
-  const ctx = use(TimelineRowCtx);
-  const spawn = entry.agentSpawn;
-  if (!spawn) return null;
-  const { agents, count, summary, workflowName } = spawnAgents(ctx.agentPanelModel, spawn);
-  const words = count === 1 ? "Started a helper" : `Started ${count} helpers`;
-  const detail =
-    workflowName ??
-    (agents.length === 1 ? agents[0]!.title : agents.map((agent) => agent.title).join(" · ")) ??
-    null;
-  return (
-    <RecordLine
-      detail={detail === "" ? null : detail}
-      label={`${words}. Show them`}
-      onOpen={() =>
-        ctx.onOpenDetail(
-          helpersDetail(words, workflowName ?? summary.status, agents, ctx.onOpenAgents),
-        )
-      }
-      state={summary.tone === "failed" ? "failed" : summary.live ? "running" : "done"}
-      words={words}
-    />
-  );
-}
-
-/** Its to-do list: one line, how far it got; the list in a modal. */
-function PlanLine({ plan }: { readonly plan: TurnPlanEntry }) {
-  const ctx = use(TimelineRowCtx);
-  const { steps } = plan.plan;
-  const done = steps.filter((step) => step.status === "completed").length;
-  const current =
-    steps.find((step) => step.status === "inProgress")?.step ??
-    steps.find((step) => step.status === "pending")?.step ??
-    null;
-  return (
-    <RecordLine
-      detail={current}
-      label={`To-do list, ${done} of ${steps.length} done. Show it`}
-      onOpen={() => ctx.onOpenDetail(planDetail(steps))}
-      state="done"
-      suffix={`${done}/${steps.length}`}
-      words="To-do list"
-    />
-  );
-}
-
-/**
- * What the Mate is on this second, beside its face at the record's end: the
- * thought it is thinking, as far as it got; the call it is making or the
- * operation it runs, with its clock; its words on their way; the person's
- * answer it waits on. When it ends it joins the record above.
- */
-function NowLine({
-  now,
-  compacting,
-}: {
-  readonly now: TurnHeaderActivity | null;
-  readonly compacting: boolean;
-}) {
-  const ctx = use(TimelineRowCtx);
-  const face = (state: "working" | "needs") => (
-    <span className={RECORD_GUTTER}>
-      <MateFace size="md" state={state} tint={ctx.speaker.tint} />
-    </span>
-  );
-  // What only dots say is said in words to a screen reader.
-  const line = (
-    kind: string,
-    children: ReactNode,
-    { state = "working", said }: { state?: "working" | "needs"; said?: string } = {},
-  ) => (
-    <div
-      aria-label={said}
-      className="flex min-h-9 min-w-0 items-center gap-2.5 text-line"
-      data-record-now={kind}
-      role={said === undefined ? undefined : "status"}
-    >
-      {face(state)}
-      {children}
-    </div>
-  );
-  if (compacting) {
-    return line(
-      "compacting",
-      <>
-        <span className="min-w-0 truncate text-foreground">Condensing the context</span>
-        <TypingDots className="scale-75" />
-      </>,
-    );
-  }
-  if (now === null) return line("thinking", <TypingDots />, { said: "Thinking" });
-  switch (now.kind) {
-    case "waiting":
-      return line(
-        "waiting",
-        <span className="text-status-attention-text">Waiting for your answer</span>,
-        { state: "needs" },
-      );
-    case "writing":
-      return line(
-        "writing",
-        <span
-          className={cn("flex h-8 items-center rounded-2xl rounded-es-md px-3.5", MATE_BUBBLE_FILL)}
-        >
-          <TypingDots />
-        </span>,
-        { said: "Writing" },
-      );
-    case "thinking": {
-      const first = now.messages[0];
-      if (first === undefined) return line("thinking", <TypingDots />, { said: "Thinking" });
-      return (
-        <div className="flex min-w-0 items-end gap-2.5 py-0.5" data-record-now="thinking">
-          {face("working")}
-          <div className="min-w-0 flex-1">
-            <ThoughtTail>
-              <ThoughtParagraphs messages={now.messages} />
-            </ThoughtTail>
-          </div>
-          <span className={cn(TIME_COLUMN, "leading-5")}>
-            <ElapsedSince since={first.createdAt} />
-          </span>
-        </div>
-      );
-    }
-    case "step":
-      return (
-        <div className="py-0.5" data-record-now="step">
-          <RecordLine
-            code={now.step.words !== null ? now.step.code : null}
-            mark={face("working")}
-            state="running"
-            suffix={stepSuffix(now.step)}
-            time={<ElapsedSince since={now.step.startedAt} />}
-            words={stepWords(now.step)}
-          />
-        </div>
-      );
-    case "operation":
-      return (
-        <div className="py-0.5" data-record-now="operation">
-          <RecordLine
-            mark={face("working")}
-            state="running"
-            time={<ElapsedSince since={now.operation.anchorAt} />}
-            words={operationLineWords(now.operation)}
-          />
-        </div>
-      );
-  }
-}
-
-/** A task in the words it was given. */
-function taskTitle(entry: TimelineWorkEntry): string {
-  return capitalizePhrase(normalizeCompactToolLabel(entry.toolTitle ?? entry.label));
-}
-
-/**
- * What background work reported, in its modal: each task once, how it ended,
- * and what it said — a helper's report in words, a shell's output as it
- * printed it.
- */
-function TaskReports({ entries }: { readonly entries: ReadonlyArray<TimelineWorkEntry> }) {
-  const lastByTask = new Map<string, TimelineWorkEntry>();
-  for (const entry of entries) lastByTask.set(entry.taskId ?? entry.id, entry);
-  return (
-    <ul className="grid min-w-0 gap-3" data-task-reports>
-      {[...lastByTask.values()].map((entry) => {
-        const failed = workEntryDisplayIndicatesToolFailure(entry);
-        const report = entry.detail?.trim();
-        return (
-          <li key={entry.id} className="grid min-w-0 gap-1">
-            <RecordLine
-              detail={failed ? "Failed" : "Finished"}
-              state={failed ? "failed" : "done"}
-              words={taskTitle(entry)}
-            />
-            {report ? (
-              <pre
-                className={cn(
-                  RECORD_TEXT_INSET,
-                  "max-h-96 select-text overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/50 px-3 py-2 text-foreground/85 leading-relaxed",
-                  entry.agentRole !== undefined ? "font-sans text-line" : "font-mono text-xs",
-                )}
-              >
-                {report}
-              </pre>
-            ) : null}
-          </li>
-        );
-      })}
-    </ul>
-  );
+  return <RunChat row={row} />;
 }
 
 /**
  * Background work that finished after its turn, or that woke the run under
  * it: one quiet line saying what finished — a helper, a task, or how many —
- * and the latest in its own words; what each reported opens in a modal.
+ * and the latest in its own words; what each reported opens under it.
  */
 function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "background" }> }) {
-  const ctx = use(TimelineRowCtx);
-  const lastLabel = row.title ? capitalizePhrase(row.title) : null;
+  const lastLabel = row.title ? row.title.charAt(0).toUpperCase() + row.title.slice(1) : null;
   const { failed } = row;
   const finished =
     row.tasks === 1
@@ -2363,17 +1518,11 @@ function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "bac
         ? `${lastLabel} ${failed > 0 ? "failed" : "finished"}`
         : `${row.helpers ? "A helper" : "A background task"} ${failed > 0 ? "failed" : "finished"}`
       : `${row.tasks} ${row.helpers ? "helpers" : "background tasks"} finished${failed > 0 ? `, ${failed} failed` : ""}`;
-  const where = row.helpers ? "helper" : "in the background";
   return (
-    <RecordLine
-      detail={where}
-      label={`${finished}, ${where}. Show what it reported`}
-      onOpen={() =>
-        ctx.onOpenDetail(
-          reportsDetail(finished, row.helpers ? "Helpers" : "In the background", row.entries),
-        )
-      }
-      state={failed > 0 ? "failed" : "done"}
+    <BackgroundLine
+      entries={row.entries}
+      failed={failed > 0}
+      where={row.helpers ? "helper" : "in the background"}
       words={finished}
     />
   );
@@ -2430,49 +1579,14 @@ function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcom
     if (panelLeftRecently(turnKey)) return easeHeight(band, 0, band.getBoundingClientRect().height);
   }, [turnKey]);
   return (
-    <div ref={markerRef} className="contents">
+    // The result stands off the chat as the bars do, on the card's own hairline.
+    <div ref={markerRef} className="-mx-4 border-border/60 border-t px-4 pt-2">
       <TurnReport
-        onOpenActivity={(activity) => ctx.onOpenDetail(activityDetail(activity))}
         onOpenImage={ctx.onImageExpand}
         onOpenTurnDiff={(turnId) => ctx.onOpenTurnDiff(turnId)}
         outcome={row.outcome}
         settling={settling}
       />
-    </div>
-  );
-}
-
-/** What an activity pill counts: each call a step, its command and what it printed under it. */
-function ActivityList({ activity }: { readonly activity: OutcomeActivity }) {
-  if (activity.kind === "helpers") {
-    return (
-      <div className="grid gap-1">
-        {activity.entries.map((entry) => (
-          <HelpersLine key={entry.id} entry={entry} />
-        ))}
-      </div>
-    );
-  }
-  const steps = activity.entries.map((entry) => stepOf(entry, undefined, false));
-  return (
-    <div className="grid min-w-0 gap-3">
-      {steps.map((step) => (
-        <div key={step.key} className="min-w-0">
-          {/* A command's line is its words; the command itself stands whole under it. */}
-          <RecordLine
-            code={step.words !== null && step.kind !== "command" ? step.code : null}
-            state={lineStateOf(step)}
-            suffix={stepSuffix(step)}
-            time={stepTime(step)}
-            words={stepWords(step)}
-          />
-          {step.kind === "command" ? (
-            <div className={RECORD_TEXT_INSET}>
-              <StepDetail step={step} />
-            </div>
-          ) : null}
-        </div>
-      ))}
     </div>
   );
 }
@@ -2993,22 +2107,6 @@ const UserMessageTerminalContextInlineLabel = memo(
   },
 );
 
-const MAX_COLLAPSED_USER_MESSAGE_LINES = 8;
-const MAX_COLLAPSED_USER_MESSAGE_LENGTH = 600;
-const COLLAPSED_USER_MESSAGE_FADE_HEIGHT_REM = 1.75;
-const COLLAPSED_USER_MESSAGE_FADE_MASK = `linear-gradient(to bottom, black calc(100% - ${COLLAPSED_USER_MESSAGE_FADE_HEIGHT_REM}rem), transparent)`;
-
-function shouldCollapseUserMessage(text: string): boolean {
-  if (text.trim().length === 0) {
-    return false;
-  }
-
-  return (
-    text.length > MAX_COLLAPSED_USER_MESSAGE_LENGTH ||
-    text.split("\n").length > MAX_COLLAPSED_USER_MESSAGE_LINES
-  );
-}
-
 const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(props: {
   text: string;
   terminalContexts: ParsedTerminalContextEntry[];
@@ -3018,7 +2116,8 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasVisibleBody = props.text.trim().length > 0 || props.terminalContexts.length > 0;
-  const canCollapse = hasVisibleBody && shouldCollapseUserMessage(props.text);
+  // The person's words fold as the Mate's do in its run's chat: one rule for both.
+  const canCollapse = hasVisibleBody && foldsLikeAMessage(props.text);
   const isCollapsed = canCollapse && !expanded;
 
   return (
@@ -3033,8 +2132,8 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
           style={
             isCollapsed
               ? {
-                  WebkitMaskImage: COLLAPSED_USER_MESSAGE_FADE_MASK,
-                  maskImage: COLLAPSED_USER_MESSAGE_FADE_MASK,
+                  WebkitMaskImage: FOLD_FADE_MASK,
+                  maskImage: FOLD_FADE_MASK,
                 }
               : undefined
           }
@@ -3548,94 +2647,6 @@ const stopRowToggleWhileSelectingText = (e: MouseEvent<HTMLElement>) => {
     e.stopPropagation();
   }
 };
-
-const AGENT_MEMBER_STATUS_LABEL: Record<RuntimeSubagent["status"], string> = {
-  pending: "Starting",
-  running: "Working",
-  waiting: "Waiting for you",
-  idle: "Idle",
-  completed: "Done",
-  failed: "Failed",
-  cancelled: "Stopped",
-  interrupted: "Cut off",
-};
-
-/**
- * One helper in the helpers' modal: its task in the words it was given, its
- * state and how long it ran — never the model or the harness's role name,
- * which are the machinery, not the work.
- */
-function AgentSpawnMemberRow({ agent }: { agent: RuntimeSubagent }) {
-  const [open, setOpen] = useState(false);
-  const activeStatus = isActiveSubagentStatus(agent.status);
-  const activity = activeStatus
-    ? (agent.progress ?? null)
-    : (agent.error ?? agent.result ?? agent.progress ?? null);
-  const durationMs =
-    agent.startedAt && agent.completedAt
-      ? Date.parse(agent.completedAt) - Date.parse(agent.startedAt)
-      : null;
-  // A helper that never ran has no duration worth a number ("Stopped · 1ms").
-  const statusLabel =
-    !activeStatus && durationMs !== null && durationMs >= 1000
-      ? `${AGENT_MEMBER_STATUS_LABEL[agent.status]} · ${formatWorkDuration(durationMs)}`
-      : AGENT_MEMBER_STATUS_LABEL[agent.status];
-  const firstLine = activity?.split("\n").find((line) => line.trim().length > 0) ?? null;
-  const body = activity?.trim() ?? "";
-  const canExpand = body.length > 0;
-  const toggleOpen = () => setOpen((value) => !value);
-
-  return (
-    <div
-      role={canExpand ? "button" : undefined}
-      tabIndex={canExpand ? 0 : undefined}
-      aria-label={canExpand ? `${agent.title}, ${statusLabel}` : undefined}
-      aria-expanded={canExpand ? open : undefined}
-      onClick={canExpand ? toggleOpen : undefined}
-      onKeyDown={
-        canExpand
-          ? (e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                toggleOpen();
-              }
-            }
-          : undefined
-      }
-      className={cn(
-        "flex flex-col rounded-md px-1 py-0.5 transition-colors",
-        canExpand &&
-          "cursor-pointer hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
-      )}
-    >
-      <div className="flex select-none items-center gap-1.5">
-        <p className="flex min-w-0 flex-1 items-baseline gap-1.5 text-line">
-          <span
-            className={cn(
-              "min-w-0 truncate",
-              agent.status === "failed" ? "text-destructive" : "text-foreground/80",
-            )}
-          >
-            {agent.title}
-          </span>
-        </p>
-        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{statusLabel}</span>
-      </div>
-      {!open && firstLine ? (
-        <p className="truncate text-xs text-muted-foreground">{firstLine}</p>
-      ) : null}
-      {open ? (
-        <div
-          className="mt-1 cursor-default rounded-md bg-muted/40 px-3 py-2"
-          onClick={stopRowToggle}
-          onPointerDown={stopRowToggle}
-        >
-          <pre className={toolCallExpandedBodyClassName}>{body}</pre>
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
   workEntry: TimelineWorkEntry;

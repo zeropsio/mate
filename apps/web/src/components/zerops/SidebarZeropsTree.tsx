@@ -516,8 +516,10 @@ export interface SidebarPeekRender<T> {
   readonly owner: ZeropsMateOwner | undefined;
   /** The row's own time slot. */
   readonly time: ReactNode;
-  /** Its change's line, where it has one open. */
-  readonly change: ReactNode | undefined;
+  /** Each change it has open, a line each — the one a jump asked for first. */
+  readonly changes: ReactNode | undefined;
+  /** How many: its section says "Change" over one, "Changes" over more. */
+  readonly changeCount: number;
   readonly appUrl: string | undefined;
   readonly phone: boolean;
   readonly onOpen: () => void;
@@ -826,7 +828,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
               () => {
                 open(projectId, "hover");
               },
-              peek === null ? 500 : 120,
+              peek === null ? PEEK_REST_MS : PEEK_NEXT_MS,
             );
           },
           onToggle: () => {
@@ -1154,10 +1156,15 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             const activity = getActivity?.(item);
             const live = drawnActivity(item, activity);
             const tags = readZeropsGroupTags(item.project.tagList);
-            // The change the peek was asked to show — a jump to it — else its newest.
-            const firstPull = !changesKnown
-              ? undefined
-              : (pulls.find((pull) => changeRowKey(pull) === peekState.change) ?? pulls[0]);
+            // Every change it has open, as under its row: the one the peek was
+            // asked to show — a jump to it — first, then the rest newest first.
+            const asked = pulls.find((pull) => changeRowKey(pull) === peekState.change);
+            const peekPulls =
+              !changesKnown || flow === undefined
+                ? []
+                : asked === undefined
+                  ? pulls
+                  : [asked, ...pulls.filter((pull) => pull !== asked)];
             peekTarget = {
               candidate: item,
               activity: live,
@@ -1170,10 +1177,15 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 live === undefined ? null : (
                   <MateTime activity={live} timestampFormat={timestampFormat} />
                 ),
-              change:
-                firstPull === undefined || flow === undefined ? undefined : (
-                  <PeekChangeLine flow={flow} pull={firstPull} />
+              changes:
+                peekPulls.length === 0 || flow === undefined ? undefined : (
+                  <div className="grid gap-1.5">
+                    {peekPulls.map((pull) => (
+                      <PeekChangeLine key={changeRowKey(pull)} flow={flow} pull={pull} />
+                    ))}
+                  </div>
                 ),
+              changeCount: peekPulls.length,
               appUrl,
               phone,
               onOpen: () => {
@@ -1848,10 +1860,20 @@ function QuietMatesRow({
   );
 }
 
+/**
+ * How long the pointer rests on a Mate's row before its peek opens — a
+ * while, and only while the pointer rests: one still moving over the row is
+ * on its way somewhere else (the owner, 2026-09-27: "this pop needs to show
+ * up with much bigger delay"). Once a peek is open, the next Mate's comes
+ * almost at once, as a hover card does.
+ */
+const PEEK_REST_MS = 1200;
+const PEEK_NEXT_MS = 120;
+
 /** What a Mate's row needs to open its peek; see the tree's peek host. */
 export interface MateRowPeek {
   readonly peeking: boolean;
-  /** The pointer came onto the row (`true`) or left it. */
+  /** The pointer came onto the row or moved on it (`true` — the wait starts over), or left it. */
   readonly onHover: (entering: boolean) => void;
   /** Space: open the peek and keep it, or close it. */
   readonly onToggle: () => void;
@@ -2006,7 +2028,12 @@ function MateRow<T extends RosterCandidate>({
         if (event.pointerType !== "touch") peek?.onHover(false);
       }}
       onPointerMove={(event) => {
-        if (event.pointerType === "touch" && event.movementY !== 0) cancelLongPress();
+        if (event.pointerType === "touch") {
+          if (event.movementY !== 0) cancelLongPress();
+          return;
+        }
+        // Still moving: the peek waits for the pointer to rest.
+        peek?.onHover(true);
       }}
       onPointerUp={cancelLongPress}
     >

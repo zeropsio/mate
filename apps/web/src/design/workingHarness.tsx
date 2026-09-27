@@ -1,48 +1,49 @@
 /**
- * A run's card in every state it reaches: its heading, its record in one
+ * A run's card in every state it reaches: its heading, its chat in one
  * scroll with the Mate's face beside what it is on, what runs alongside it,
  * and the result it settles into.
  *
  * Served by the dev server at `/design-working.html` (`?theme=dark` for the
- * dark theme). The card's parts take what they show as props, so a batch
- * deploy, a question that waits and a helper still at it all stand side by
- * side without a Mate doing any of them.
+ * dark theme). The card's parts take what they show as rows and props, so a
+ * batch deploy, a question that waits and a helper still at it all stand side
+ * by side without a Mate doing any of them.
  *
  * Fixtures only. Nothing here ships — `design-working.html` is not
  * `index.html`, and no route imports this module.
  */
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { TurnId } from "@t3tools/contracts";
+import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
+import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
+import * as Stream from "effect/Stream";
 
 import { ConversationAfterWork, ConversationWorking } from "~/components/chat/ConversationWorking";
-import {
-  ElapsedSince,
-  WorkLine,
-  type ConversationSpeaker,
-} from "~/components/chat/ConversationRows";
+import { WorkLine, type ConversationSpeaker } from "~/components/chat/ConversationRows";
 import {
   activityPills,
   splitBatchDeploy,
   type OutcomeModel,
 } from "~/components/chat/conversation.logic";
 import type { DockModel } from "~/components/chat/conversationDock.logic";
-import type { MessagesTimelineRow } from "~/components/chat/MessagesTimeline.logic";
-import {
-  MATE_NOTE_CLASS,
-  RECORD_GUTTER,
-  RECORD_TEXT_INSET,
-  RecordLine,
-  RecordScroll,
-  ThoughtTail,
-  TIME_COLUMN,
-  TypingDots,
-} from "~/components/chat/RunRecord";
+import type {
+  MessagesTimelineRow,
+  RecordItem,
+  TurnHeaderActivity,
+} from "~/components/chat/MessagesTimeline.logic";
 import { BrowserStrip } from "~/components/chat/BrowserStrip";
+import { RunChat } from "~/components/chat/RunChat";
+import {
+  TimelineRowActivityCtx,
+  TimelineRowCtx,
+  type TimelineRowActivityState,
+  type TimelineRowSharedState,
+} from "~/components/chat/timelineContext";
 import { TurnReport } from "~/components/chat/TurnReport";
-import { MateFace } from "~/components/zerops/primitives";
+import { foldSteps, stepOf } from "~/components/chat/workSteps.logic";
+import type { WorkLogEntry } from "~/session-logic";
+import type { ChatMessage } from "~/types";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
@@ -314,61 +315,359 @@ const REPORT: OutcomeModel = {
   activity: [],
 };
 
-/** The record's lines as the card draws them some way into a run. */
-function RecordSoFar() {
-  return (
-    <>
-      <RecordLine
-        italic
-        state="done"
-        time="6s"
-        words="The readiness check asks for /status, but the router only registers /health."
-      />
-      <RecordLine
-        code="grep -rn status src/routes.ts"
-        state="done"
-        time="1s"
-        words="Find where the route is registered"
-      />
-      <div className={`${RECORD_TEXT_INSET} py-1`}>
-        <div className={MATE_NOTE_CLASS}>
-          <p className="text-sm leading-relaxed">
-            Found it: the check and the route disagree on the path.
-          </p>
-        </div>
-      </div>
-      <RecordLine state="done" suffix="2 edits" words="Edited routes.ts and status.test.ts" />
-      <RecordLine
-        detail="Review the copy · Check accessibility · Write a test"
-        state="running"
-        words="Started 3 helpers"
-      />
-      <RecordLine code="npm run build" state="done" time="24s" words="Run the production build" />
-      <RecordLine detail="v0.1.1" state="done" time="1m 12s" words="Deployed appdev" />
-      <RecordLine
-        code="npm test -- status"
-        state="failed"
-        time="6s"
-        words="Run the tests for the page"
-      />
-      <RecordLine
-        detail="in the background"
-        state="done"
-        words="Watch the pull request's checks finished"
-      />
-    </>
-  );
+const TURN = TurnId.make("turn-1");
+
+function said(
+  id: string,
+  role: "assistant" | "reasoning",
+  text: string,
+  seconds: number,
+  streaming = false,
+): ChatMessage {
+  return {
+    id: MessageId.make(id),
+    role,
+    text,
+    turnId: TURN,
+    streaming,
+    createdAt: ago(seconds),
+    updatedAt: ago(seconds),
+  };
 }
 
-function Face({ state = "working" }: { readonly state?: "working" | "needs" }) {
-  return (
-    <span className={RECORD_GUTTER}>
-      <MateFace size="md" state={state} tint={SPEAKER.tint} />
-    </span>
-  );
+function call(partial: Partial<WorkLogEntry> & { readonly id: string }): WorkLogEntry {
+  return {
+    createdAt: ago(100),
+    label: "Tool call",
+    tone: "tool",
+    sourceActivityKind: "tool.completed",
+    toolLifecycleStatus: "completed",
+    ...partial,
+  };
 }
 
-/** A run's card: its heading, its record, what runs alongside, its result. */
+function run(
+  id: string,
+  command: string,
+  description: string | null,
+  seconds: number,
+  took: number,
+  extra: Partial<WorkLogEntry> = {},
+): WorkLogEntry {
+  return call({
+    id,
+    label: "Command run",
+    itemType: "command_execution",
+    command,
+    ...(description === null ? {} : { callInput: { description } }),
+    startedAt: ago(seconds + took),
+    createdAt: ago(seconds + took),
+    updatedAt: ago(seconds),
+    ...extra,
+  });
+}
+
+const HEALTH_SCRIPT = [
+  "cat > src/routes/status.ts <<'EOF'",
+  'import { Router } from "express";',
+  'import { pool } from "../db";',
+  "",
+  "export const status = Router();",
+  "",
+  'status.get("/status", async (_request, response) => {',
+  "  const started = Date.now();",
+  "  try {",
+  '    await pool.query("select 1");',
+  "    response.json({",
+  '      build: process.env.BUILD_NUMBER ?? "dev",',
+  '      database: "up",',
+  "      ms: Date.now() - started,",
+  "    });",
+  "  } catch (error) {",
+  '    response.status(503).json({ database: "down", error: String(error) });',
+  "  }",
+  "});",
+  "EOF",
+].join("\n");
+
+const LONG_THOUGHT = [
+  "**Planning the check**",
+  "",
+  "The build takes about two minutes. While it runs I'll plan the check: /status should show the build number in its first row and the database in its second, green when it answers and red after two seconds without one.",
+  "",
+  "On a phone the number must not wrap onto a second line, so I'll look at an iPhone 13 first, then a desktop at 1280. If the number reads \"dev\", the pipeline didn't pass BUILD_NUMBER, which would mean the variable in zerops.yml sits under run instead of build — I'd move it and push again before saying it's done.",
+].join("\n");
+
+const edits = foldSteps(
+  [
+    call({
+      id: "e1",
+      itemType: "file_change",
+      label: "File change",
+      detail: 'Edit: {"file_path":"/var/www/app/src/routes.ts"}',
+      createdAt: ago(80),
+    }),
+    call({
+      id: "e2",
+      itemType: "file_change",
+      label: "File change",
+      detail: 'Edit: {"file_path":"/var/www/app/src/status.test.ts"}',
+      createdAt: ago(79),
+    }),
+  ],
+  undefined,
+  false,
+)[0]!;
+
+/** The run's chat some way in: each kind of bubble once. */
+const SO_FAR: ReadonlyArray<RecordItem> = [
+  {
+    kind: "thought",
+    key: "thought:r1",
+    at: ago(130),
+    messages: [
+      said(
+        "r1",
+        "reasoning",
+        "The readiness check asks for /status, but the router only registers /health. Either the route or zerops.yml is wrong.",
+        130,
+      ),
+    ],
+    durationMs: 6000,
+  },
+  {
+    kind: "step",
+    key: "step:w1",
+    at: ago(124),
+    step: stepOf(
+      call({ id: "w1", detail: 'Read: {"file_path":"/var/www/app/src/routes.ts"}' }),
+      undefined,
+      false,
+    ),
+  },
+  {
+    kind: "step",
+    key: "step:w2",
+    at: ago(122),
+    step: stepOf(
+      call({
+        id: "w2",
+        detail: 'Grep: {"pattern":"readinessCheck"}',
+        callInput: { pattern: "readinessCheck" },
+      }),
+      undefined,
+      false,
+    ),
+  },
+  {
+    kind: "step",
+    key: "step:w3",
+    at: ago(118),
+    step: stepOf(
+      run(
+        "w3",
+        "cd /var/www/app && grep -rn status src/routes.ts",
+        "Find where the route is registered",
+        118,
+        1,
+        {
+          detail:
+            'src/routes.ts:14:  app.get("/health", health);\nsrc/routes.ts:22:  // status lives on the dashboard',
+        },
+      ),
+      undefined,
+      false,
+    ),
+  },
+  {
+    kind: "note",
+    key: "note:a1",
+    at: ago(110),
+    message: said(
+      "a1",
+      "assistant",
+      "Found it: the check asks for `/status` and the router only has `/health`. I'll add `/status` and keep `/health` for the load balancer.",
+      110,
+    ),
+  },
+  { kind: "step", key: "step:e1", at: ago(79), step: edits },
+  {
+    kind: "step",
+    key: "step:w4",
+    at: ago(76),
+    step: stepOf(run("w4", HEALTH_SCRIPT, "Write the status route", 76, 1), undefined, false),
+  },
+  {
+    kind: "thought",
+    key: "thought:r2",
+    at: ago(74),
+    messages: [said("r2", "reasoning", LONG_THOUGHT, 74)],
+    durationMs: 21_000,
+  },
+  {
+    kind: "step",
+    key: "step:w5",
+    at: ago(50),
+    step: stepOf(
+      run("w5", "cd /var/www/app && npm run build", "Run the production build", 50, 24, {
+        detail:
+          "> app@0.1.1 build\n> tsc -p . && vite build\n\n✓ 214 modules transformed.\ndist/index.js  48.2 kB",
+      }),
+      undefined,
+      false,
+    ),
+  },
+  {
+    kind: "operation",
+    key: "operation:op:deploy-done",
+    at: ago(40),
+    operation: deploy({
+      key: "op:deploy-done",
+      phase: "done",
+      statusWord: "Deployed",
+      anchorAt: ago(112),
+      settledAt: ago(40),
+      version: { name: "v0.1.1" },
+      steps: [
+        { id: "build", label: "Build", state: "done", stateLabel: "Done" },
+        { id: "deploy", label: "Deploy", state: "done", stateLabel: "Done" },
+        { id: "run", label: "Run", state: "done", stateLabel: "Done" },
+      ],
+    } as Partial<ZeropsOperation>),
+  },
+  {
+    kind: "step",
+    key: "step:w6",
+    at: ago(33),
+    step: stepOf(
+      run("w6", "npm test -- status", "Run the tests for the page", 33, 6, {
+        toolLifecycleStatus: "failed",
+        detail:
+          "FAIL src/status.test.ts\n  ✕ answers 200 with the build number (12 ms)\n    Expected: 200\n    Received: 503",
+      }),
+      undefined,
+      false,
+    ),
+  },
+  {
+    kind: "event",
+    key: "event:c1",
+    at: ago(30),
+    event: { type: "compaction", label: "Context compacted" },
+  },
+  {
+    kind: "step",
+    key: "step:w7",
+    at: ago(24),
+    step: stepOf(
+      call({
+        id: "w7",
+        itemType: "web_search",
+        toolTitle: "WebFetch",
+        callInput: { url: "https://docs.example.dev/zerops-yml#readiness" },
+      }),
+      undefined,
+      false,
+    ),
+  },
+  {
+    kind: "task",
+    key: "task:k1",
+    at: ago(18),
+    entry: call({
+      id: "k1",
+      label: "Watch the pull request's checks",
+      toolTitle: "Watch the pull request's checks",
+      tone: "info",
+      sourceActivityKind: "task.completed",
+      taskId: "bk1",
+      detail: "checks: 3 passed, 0 failed\nmerge: allowed",
+    }),
+  },
+];
+
+type RecordRow = Extract<MessagesTimelineRow, { kind: "record" }>;
+
+function record(overrides: Partial<RecordRow>): RecordRow {
+  return {
+    kind: "record",
+    id: "record:turn-1",
+    createdAt: ago(134),
+    turnKey: "turn-1",
+    live: true,
+    items: SO_FAR,
+    now: null,
+    answering: false,
+    ...overrides,
+  };
+}
+
+const THINKING: TurnHeaderActivity = {
+  kind: "thinking",
+  key: "thought:r9",
+  messages: [
+    said(
+      "r9",
+      "reasoning",
+      "The test fails with 503, so the database didn't answer inside the test. The test database isn't seeded in CI — the pool connects to nothing and the route says \"down\", which is right. The test should start the database the same way the other route tests do, with the shared fixture, rather than the route learning to lie about it.\n\nI'll reuse `withDatabase()` from the users tests, run the suite again, and only then deploy.",
+      9,
+      true,
+    ),
+  ],
+};
+
+const RUNNING_STEP: TurnHeaderActivity = {
+  kind: "step",
+  step: stepOf(
+    call({
+      id: "w9",
+      label: "Command run",
+      itemType: "command_execution",
+      command: "npm run lint",
+      callInput: { description: "Lint the page" },
+      toolLifecycleStatus: "inProgress",
+      sourceActivityKind: "tool.started",
+      startedAt: ago(4),
+      createdAt: ago(4),
+    }),
+  ),
+};
+
+const SHARED: TimelineRowSharedState = {
+  timestampFormat: "24-hour",
+  routeThreadKey: "harness",
+  threadRef: null,
+  markdownCwd: undefined,
+  resolvedTheme: "light",
+  workspaceRoot: undefined,
+  skills: [],
+  activeThreadEnvironmentId: EnvironmentId.make("environment-local"),
+  onRevertToTurnCount: () => undefined,
+  onRunShellCommand: undefined,
+  onImageExpand: () => undefined,
+  onOpenTurnDiff: () => undefined,
+  speaker: SPEAKER,
+  livePauseId: null,
+  usagePause: null,
+  onUsageAutoResumeChange: null,
+  agentPanelModel: emptyAgentPanelModel(),
+  onOpenAgents: () => undefined,
+  onStopBackgroundWork: () => undefined,
+  onSteerQueuedMessage: () => undefined,
+  steerQueuedMessageShortcutLabel: null,
+  onRemoveQueuedMessage: () => undefined,
+};
+
+const WORKING: TimelineRowActivityState = {
+  isWorking: true,
+  isCompacting: false,
+  isRevertingCheckpoint: false,
+  latestTurnId: null,
+  workingStepLabel: null,
+  stoppingBackgroundWork: false,
+};
+
+/** A run's card: its heading, its chat, what runs alongside, its result. */
 function Card({ children }: { readonly children: ReactNode }) {
   return (
     <div className="rounded-3xl border border-border/70 bg-card px-4 pt-2 pb-3">{children}</div>
@@ -385,13 +684,12 @@ function State({
   readonly children: ReactNode;
 }) {
   return (
-    <section className="grid gap-2">
+    <section className="grid gap-2" data-harness-state={label}>
       <div>
         <h2 className="font-medium text-foreground text-sm">{label}</h2>
         <p className="text-muted-foreground text-xs">{caption}</p>
       </div>
-      {/* The conversation's column: 768 px, the Mate's side inset by its gutter. */}
-      <div className="ps-5">{children}</div>
+      {children}
     </section>
   );
 }
@@ -428,48 +726,20 @@ function Harness() {
       <div className="mx-auto grid w-full max-w-3xl gap-10">
         <State
           label="Thinking"
-          note="The record so far; the thought it is thinking beside its face."
+          note="The thought it is thinking, whole, beside its face; the bubbles before it folded where long."
         >
           <Card>
             <WorkLine row={heading({})} speaker={SPEAKER} timestampFormat="24-hour" />
-            <RecordScroll live>
-              <RecordSoFar />
-              <div className="flex min-w-0 items-end gap-2.5 py-0.5">
-                <Face />
-                <div className="min-w-0 flex-1">
-                  <ThoughtTail>
-                    <p className="text-line text-muted-foreground italic">
-                      If the deploy passes, the check should turn healthy within a minute. The route
-                      and the config now agree, so the next thing is the smoke tests on the stage
-                      and a screenshot of the page on a phone.
-                    </p>
-                  </ThoughtTail>
-                </div>
-                <span className={TIME_COLUMN}>
-                  <ElapsedSince since={ago(9)} />
-                </span>
-              </div>
-            </RecordScroll>
+            <RunChat row={record({ now: THINKING })} />
           </Card>
         </State>
         <State
           label="Doing, with work alongside"
-          note="The call it is making beside its face; the bars under the record."
+          note="The call it is making, its clock in the busy blue; the bars under the chat."
         >
           <Card>
             <WorkLine row={heading({})} speaker={SPEAKER} timestampFormat="24-hour" />
-            <RecordScroll live>
-              <RecordSoFar />
-              <div className="py-0.5">
-                <RecordLine
-                  code="npm run lint"
-                  mark={<Face />}
-                  state="running"
-                  time={<ElapsedSince since={ago(4)} />}
-                  words="Lint the page"
-                />
-              </div>
-            </RecordScroll>
+            <RunChat row={record({ now: RUNNING_STEP })} />
             <ConversationWorking
               browser={null}
               dock={BUSY_DOCK}
@@ -487,45 +757,33 @@ function Harness() {
               speaker={SPEAKER}
               timestampFormat="24-hour"
             />
-            <RecordScroll live>
-              <RecordSoFar />
-              <div className="flex min-h-9 min-w-0 items-center gap-2.5 text-line">
-                <Face state="needs" />
-                <span className="text-status-attention-text">Waiting for your answer</span>
-              </div>
-            </RecordScroll>
+            <RunChat row={record({ now: { kind: "waiting" } })} />
           </Card>
         </State>
         <State label="Writing" note="Words on their way, not placed yet.">
           <Card>
             <WorkLine row={heading({})} speaker={SPEAKER} timestampFormat="24-hour" />
-            <RecordScroll live>
-              <RecordSoFar />
-              <div className="flex min-h-9 min-w-0 items-center gap-2.5 text-line">
-                <Face />
-                <span className="flex h-8 items-center rounded-2xl rounded-es-md bg-foreground/8 px-3.5">
-                  <TypingDots />
-                </span>
-              </div>
-            </RecordScroll>
+            <RunChat row={record({ now: { kind: "writing" } })} />
           </Card>
         </State>
-        <State label="Finished" note="The record stays, in the same scroll; the result under it.">
+        <State
+          label="Finished"
+          note="The chat stays, in the same scroll; the result under it, its pills opening in place."
+        >
           <Card>
             <WorkLine
               row={heading({ live: false, face: "produced", endedAt: ago(2) })}
               speaker={SPEAKER}
               timestampFormat="24-hour"
             />
-            <RecordScroll live={false}>
-              <RecordSoFar />
-            </RecordScroll>
-            <TurnReport
-              onOpenActivity={() => undefined}
-              onOpenImage={() => undefined}
-              onOpenTurnDiff={() => undefined}
-              outcome={REPORT_WITH_ACTIVITY}
-            />
+            <RunChat row={record({ live: false })} />
+            <div className="-mx-4 border-border/60 border-t px-4 pt-2.5">
+              <TurnReport
+                onOpenImage={() => undefined}
+                onOpenTurnDiff={() => undefined}
+                outcome={REPORT_WITH_ACTIVITY}
+              />
+            </div>
           </Card>
         </State>
         <State
@@ -597,7 +855,9 @@ function Standins({ children }: { readonly children: ReactNode }) {
     lost: new Set(),
   };
   const data: ZeropsDataContextValue = {
-    runtime: {} as ManagedZeropsDataRuntime,
+    // The markdown's commands ask the account's grant what they may do: a
+    // grant that never answers, since nothing here is run.
+    runtime: { access: { changes: Stream.empty } } as unknown as ManagedZeropsDataRuntime,
     signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
     organizationRef: () => {
       throw new Error("not in the harness");
@@ -626,7 +886,11 @@ if (host) {
   createRoot(host).render(
     <StrictMode>
       <Standins>
-        <Harness />
+        <TimelineRowCtx value={{ ...SHARED, resolvedTheme: appearance }}>
+          <TimelineRowActivityCtx value={WORKING}>
+            <Harness />
+          </TimelineRowActivityCtx>
+        </TimelineRowCtx>
       </Standins>
     </StrictMode>,
   );

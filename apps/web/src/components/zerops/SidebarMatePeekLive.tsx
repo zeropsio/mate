@@ -184,7 +184,8 @@ export function SidebarMatePeekLive({
     <MatePeekCard
       appUrl={peek.appUrl}
       askedLabel={askedLabelFor(peek.owner)}
-      change={peek.change}
+      changeCount={peek.changeCount}
+      changes={peek.changes}
       decision={decision}
       face={peek.face}
       lastWords={activity?.snippet}

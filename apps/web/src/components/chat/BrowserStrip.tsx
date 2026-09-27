@@ -463,3 +463,69 @@ export function BrowserStrip({
     </div>
   );
 }
+
+/** A take among a run's pictures, in the shape of the device it was taken on. */
+const TAKE_PICTURE_CLASS: Record<Device, string> = {
+  desktop: "w-32",
+  tablet: "w-15",
+  phone: "w-9",
+};
+
+/**
+ * The pictures a run's checks took, side by side in their devices' shapes — a
+ * failed take outlined red, a retried one amber — each opening the picture
+ * viewer with the others beside it. A check with no picture is left out: what
+ * it read is the stage's to show.
+ */
+export function BrowserTakes({
+  takes,
+  onOpenImage,
+}: {
+  readonly takes: ReadonlyArray<ZeropsOperation>;
+  readonly onOpenImage: (preview: ExpandedImagePreview) => void;
+}) {
+  const shots = takes.flatMap((take) =>
+    take.screenshot
+      ? [{ key: take.key, src: take.screenshot.src, name: browserCheckCaption(take) }]
+      : [],
+  );
+  if (shots.length === 0) return null;
+  return (
+    // The first take on the text edge: the room its scroller keeps for a
+    // take's ring and the focus ring hangs outside it.
+    <div
+      className="-m-1 flex min-w-0 items-end gap-2 overflow-x-auto p-1 scrollbar-none"
+      data-report-takes
+    >
+      {takes.map((take) => {
+        const src = take.screenshot?.src;
+        if (src === undefined) return null;
+        const state = browserTakeState(take, takes);
+        const device = browserCheckDevice(take);
+        const index = shots.findIndex((shot) => shot.key === take.key);
+        return (
+          <button
+            key={take.key}
+            aria-label={`${browserCheckCaption(take)}${take.deviceName ? ` on ${take.deviceName}` : ""}${state === "failed" ? ", failed" : state === "retried" ? ", retried" : ""}. Open the screenshot`}
+            className={cn(
+              "h-20 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
+              TAKE_PICTURE_CLASS[device],
+              state === "failed"
+                ? "border-status-failed ring-1 ring-status-failed"
+                : state === "retried"
+                  ? "border-status-attention"
+                  : "border-border",
+            )}
+            data-report-take={device}
+            onClick={() =>
+              onOpenImage({ images: shots.map(({ src, name }) => ({ src, name })), index })
+            }
+            type="button"
+          >
+            <TakeThumbnail aspect={TAKE_ASPECT[device]} src={src} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}

@@ -366,8 +366,16 @@ export function resolveAssistantMessageCopyState({
 
 /** What the Mate's hands are on right now, beside its face while it works. */
 export type TurnHeaderActivity =
-  /** The thought it is thinking, as far as it got; none yet between two steps. */
-  | { readonly kind: "thinking"; readonly messages: ReadonlyArray<ChatMessage> }
+  /**
+   * The thought it is thinking, as far as it got — keyed as the record will
+   * key it once it ends, so its bubble stays the same bubble — or none yet
+   * between two steps.
+   */
+  | {
+      readonly kind: "thinking";
+      readonly key: string | null;
+      readonly messages: ReadonlyArray<ChatMessage>;
+    }
   /** It writes words that cannot be placed yet: a note or its answer. */
   | { readonly kind: "writing" }
   /** It asked the person something and waits for the answer. */
@@ -598,33 +606,19 @@ export interface FoldsFrom {
  */
 export type CardSlice = "top" | "middle" | "bottom";
 
-/** A stretch of thinking and how long it took, from what came before it to what came next. */
-export interface LogThought {
-  readonly messages: ReadonlyArray<ChatMessage>;
-  readonly durationMs: number;
-}
-
-/**
- * Thinking this long is a line of the record; shorter, it is the step it led
- * to — a "Thought" line between every two steps walled the steps in (a
- * forty-minute run, 2026-09-27).
- */
-export const THOUGHT_LINE_MIN_MS = 10_000;
-
 /**
  * One thing a run's record holds, at the moment it happened — its `key`
  * stable from its first sight, so the record only ever grows at its end.
  */
 export type RecordItem =
-  /** A call it made: in words, its command after them, how long; its short thinking with it. */
+  /** A call it made: in words, its command after them, how long. */
   | {
       readonly kind: "step";
       readonly key: string;
       readonly at: string;
       readonly step: WorkStep;
-      readonly thought: LogThought | null;
     }
-  /** A stretch of thinking: one line, its first words and how long. */
+  /** A stretch of thinking, however short: a bubble of its own, and how long it took. */
   | {
       readonly kind: "thought";
       readonly key: string;
@@ -877,19 +871,23 @@ function liveActivity(
         : { kind: "step", step: stepOf(entry.entry, tracked, true) };
     }
     if (entry.kind === "message") {
-      if (entry.message.role !== "reasoning" || passed) return { kind: "thinking", messages: [] };
+      if (entry.message.role !== "reasoning" || passed) {
+        return { kind: "thinking", key: null, messages: [] };
+      }
       // The thought it is thinking: the thinking that closes the stretch.
       const messages: ChatMessage[] = [];
+      let start: TimelineEntry = entry;
       for (let back = index; back >= 0; back -= 1) {
         const candidate = stretch.entries[back]!;
         if (candidate.kind !== "message" || candidate.message.role !== "reasoning") break;
         messages.unshift(candidate.message);
+        start = candidate;
       }
-      return { kind: "thinking", messages };
+      return { kind: "thinking", key: `thought:${start.id}`, messages };
     }
     passed = true;
   }
-  return { kind: "thinking", messages: [] };
+  return { kind: "thinking", key: null, messages: [] };
 }
 
 /**
@@ -1010,7 +1008,6 @@ function stretchRecord(input: {
   // thought only as it acts on it.
   let lastEndAt = stretch.startedAt;
   let thinkingFrom = stretch.startedAt;
-  let pendingThought: LogThought | null = null;
   const flushActivity = () => {
     if (activity.length === 0) return;
     // While the run goes on, a call still running in a part the person's
@@ -1021,8 +1018,6 @@ function stretchRecord(input: {
       (entry) => entry,
     );
     activity = [];
-    let thought = pendingThought;
-    pendingThought = null;
     for (const step of foldSteps(entries, input.tracked, runLive)) {
       // The call it is making stands beside its face until it returns. A
       // command it left running in the background returned: its line is
@@ -1037,16 +1032,14 @@ function stretchRecord(input: {
           call.createdAt,
         ),
         step,
-        thought,
       });
-      thought = null;
     }
   };
   /**
    * A stretch of thinking ends where what came next began; one still going is
-   * the Mate's face's to show. A short one that led to a step is that step's.
+   * the Mate's face's to show.
    */
-  const flushReasoning = (endedAt: string | null, leadsToStep = false) => {
+  const flushReasoning = (endedAt: string | null) => {
     if (reasoningStart === null) return;
     const start = reasoningStart;
     const messages = reasoning;
@@ -1056,10 +1049,6 @@ function stretchRecord(input: {
     const measured =
       endedAt === null ? null : Math.max(0, Date.parse(endedAt) - Date.parse(thinkingFrom));
     const durationMs = measured !== null && Number.isFinite(measured) ? measured : null;
-    if (leadsToStep && durationMs !== null && durationMs < THOUGHT_LINE_MIN_MS) {
-      pendingThought = { messages, durationMs };
-      return;
-    }
     push({
       kind: "thought",
       key: `thought:${start.id}`,
@@ -1084,8 +1073,13 @@ function stretchRecord(input: {
     }
     previous = entry;
     // Words not placed yet split nothing: a block of thinking drawn around
-    // them would have the note land between its halves once it is known.
-    if (entry === input.answer || entry === input.writing) continue;
+    // them would have the note land between its halves once it is known. The
+    // thinking before them ended where they began, though: it stays in the
+    // chat while they are on their way.
+    if (entry === input.answer || entry === input.writing) {
+      flushReasoning(entry.createdAt);
+      continue;
+    }
     // The Mate's question tool: its question and the person's answer stand
     // on the page, so the call itself is never a line of its own.
     if ((entry.kind === "work" || entry.kind === "generic-call") && isQuestionToolCall(entry.entry))
@@ -1113,7 +1107,7 @@ function stretchRecord(input: {
       continue;
     }
     if ((entry.kind === "work" || entry.kind === "generic-call") && isActivityWork(entry.entry)) {
-      flushReasoning(entry.createdAt, true);
+      flushReasoning(entry.createdAt);
       activity.push(entry.entry);
       continue;
     }

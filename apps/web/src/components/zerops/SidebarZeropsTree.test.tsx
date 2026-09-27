@@ -2286,14 +2286,15 @@ describe("a Mate's peek", () => {
     vi.useRealTimers();
   });
 
-  it("opens after half a second's rest on the row, and closes once the pointer has left", () => {
+  // The owner, 2026-09-27: "this pop needs to show up with much bigger delay".
+  it("opens after the pointer rests on the row a while, and closes once it has left", () => {
     vi.useFakeTimers();
     const tree = mounted();
     act(() => {
       row(tree).props.onPointerEnter({ pointerType: "mouse" });
     });
     act(() => {
-      vi.advanceTimersByTime(499);
+      vi.advanceTimersByTime(1199);
     });
     expect(peek()).toBeNull();
     act(() => {
@@ -2319,11 +2320,32 @@ describe("a Mate's peek", () => {
     const tree = mounted();
     act(() => {
       row(tree).props.onPointerEnter({ pointerType: "mouse" });
-      vi.advanceTimersByTime(300);
+      vi.advanceTimersByTime(900);
       row(tree).props.onPointerLeave({ pointerType: "mouse" });
-      vi.advanceTimersByTime(1000);
+      vi.advanceTimersByTime(2000);
     });
     expect(peek()).toBeNull();
+  });
+
+  // It waits for the pointer to rest: one still moving across the row is on
+  // its way somewhere else.
+  it("waits while the pointer keeps moving over the row", () => {
+    vi.useFakeTimers();
+    const tree = mounted();
+    act(() => {
+      row(tree).props.onPointerEnter({ pointerType: "mouse" });
+    });
+    for (let moved = 0; moved < 4; moved += 1) {
+      act(() => {
+        vi.advanceTimersByTime(800);
+        row(tree).props.onPointerMove({ pointerType: "mouse", movementY: 2 });
+      });
+    }
+    expect(peek()).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(1200);
+    });
+    expect(peek()).toEqual({ projectId: "crm-dev", mode: "hover" });
   });
 
   it("is offered in the Mate's own menu, which pins it open", () => {
@@ -2693,15 +2715,18 @@ describe("what the jump box finds in the menu", () => {
     expect(changeRows().map((row) => row.props["data-zerops-change"])).toContain("appdev#1");
   });
 
-  it("shows the change a jump asked for in its Mate's peek, and the newest otherwise", () => {
+  // Every change the Mate has open stands in its peek, as each stands under
+  // its row (the owner, 2026-09-27: "it shows only one of the two merge
+  // requests"): the one a jump asked for first, then the rest newest first.
+  it("shows every open change of its Mate in its peek, the one a jump asked for first", () => {
     const older = pull(2, { mateProjectId: "links-dev", title: "Older change" });
     const newer = pull(3, { mateProjectId: "links-dev", title: "Newer change" });
-    const peeks: Array<{ readonly change: unknown }> = [];
+    const peeks: Array<{ readonly changes: unknown; readonly changeCount: number }> = [];
     const mounted = mount(
       <PortalGate closed>
         {tree({
           getFlow: () => linksFlow([older, newer]),
-          renderPeek: (peek: { readonly change: unknown }) => {
+          renderPeek: (peek: { readonly changes: unknown; readonly changeCount: number }) => {
             peeks.push(peek);
             return null;
           },
@@ -2709,17 +2734,20 @@ describe("what the jump box finds in the menu", () => {
       </PortalGate>,
     );
     const shown = () => {
-      const change = peeks.at(-1)?.change as ReactElement<{ pull: FlowPullRequest }> | undefined;
-      return change?.props.pull.number;
+      const list = peeks.at(-1)?.changes as
+        | ReactElement<{ children: ReadonlyArray<ReactElement<{ pull: FlowPullRequest }>> }>
+        | undefined;
+      return list?.props.children.map((line) => line.props.pull.number);
     };
     act_(() => {
       useSidebarPeek.getState().open("links-dev", "pinned", "appdev#2");
     });
-    expect(shown()).toBe(2);
+    expect(shown()).toEqual([2, 3]);
+    expect(peeks.at(-1)?.changeCount).toBe(2);
     act_(() => {
       useSidebarPeek.getState().open("links-dev", "pinned");
     });
-    expect(shown()).toBe(3);
+    expect(shown()).toEqual([3, 2]);
     act_(() => {
       useSidebarPeek.getState().close();
       mounted.unmount();

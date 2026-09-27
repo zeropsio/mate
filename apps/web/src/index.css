@@ -189,6 +189,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-panel-in: panel-in 420ms cubic-bezier(0.32, 0.72, 0, 1) both;
   --animate-room-in: room-in 420ms cubic-bezier(0.32, 0.72, 0, 1) both;
   --animate-report-in: report-in 480ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  /* The run's chat. A bubble that arrives while the person watches rises in
+     from the spine, once — quick, since one arrives every few seconds; what
+     a bar or a bubble holds opens its room at the pace of a click. */
+  --animate-bubble-in: bubble-in 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-room-open: room-in 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
   /* The Mate composing its first words: three dots lit in turn, stepped. */
   --animate-typing-first: typing-first 1.2s infinite;
   --animate-typing-second: typing-second 1.2s infinite;
@@ -338,6 +343,12 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     from {
       opacity: 0;
       transform: translateY(6px) scale(0.985);
+    }
+  }
+  @keyframes bubble-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.97);
     }
   }
   @keyframes typing-first {

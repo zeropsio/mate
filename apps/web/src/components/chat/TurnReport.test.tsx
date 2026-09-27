@@ -1,8 +1,11 @@
 import { TurnId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { create, type ReactTestRenderer } from "react-test-renderer";
 import { describe, expect, it } from "vite-plus/test";
 
+import { BrowserTakes } from "./BrowserStrip";
 import type { OutcomeModel } from "./conversation.logic";
 import { TurnReport } from "./TurnReport";
 
@@ -68,23 +71,48 @@ const OUTCOME: OutcomeModel = {
   removed: ["cache"],
   notDone: ["Enable the subdomain"],
   activity: [
-    { kind: "command", count: 5, words: "Ran 5 commands", entries: [] },
+    {
+      kind: "command",
+      count: 2,
+      words: "Ran 2 commands",
+      entries: [
+        {
+          id: "c1",
+          createdAt: at(1),
+          label: "Command run",
+          tone: "tool",
+          itemType: "command_execution",
+          command: "npm run build",
+          callInput: { description: "Run the production build" },
+          toolLifecycleStatus: "completed",
+        },
+        {
+          id: "c2",
+          createdAt: at(2),
+          label: "Command run",
+          tone: "tool",
+          itemType: "command_execution",
+          command: "npm test",
+          toolLifecycleStatus: "completed",
+        },
+      ],
+    },
     { kind: "helpers", count: 11, words: "Started 11 helpers", entries: [] },
   ],
 };
 
 const markup = renderToStaticMarkup(
-  <TurnReport
-    onOpenActivity={() => undefined}
-    onOpenImage={() => undefined}
-    onOpenTurnDiff={() => undefined}
-    outcome={OUTCOME}
-  />,
+  <TurnReport onOpenImage={() => undefined} onOpenTurnDiff={() => undefined} outcome={OUTCOME} />,
+);
+
+/** The pictures the checks took, as the checks pill opens them. */
+const takesMarkup = renderToStaticMarkup(
+  <BrowserTakes onOpenImage={() => undefined} takes={OUTCOME.checks!.takes} />,
 );
 
 /** The class list of every opening tag that carries `marker`, in document order. */
-function classesOf(marker: string): ReadonlyArray<ReadonlyArray<string>> {
-  return [...markup.matchAll(/<[a-z][^>]*>/g)]
+function classesOf(marker: string, within: string = markup): ReadonlyArray<ReadonlyArray<string>> {
+  return [...within.matchAll(/<[a-z][^>]*>/g)]
     .map(([tag]) => tag)
     .filter((tag) => tag.includes(marker))
     .map((tag) => (/class="([^"]*)"/.exec(tag)?.[1] ?? "").split(" "));
@@ -113,13 +141,58 @@ describe("TurnReport", () => {
   // What its calls came to is a pill like the rest of the result, and it
   // opens what it counts (the owner, 2026-09-27: "why isn't [it] in the
   // result style?"). Its words say it: no mark in front of them.
-  it.each(["Ran 5 commands", "Started 11 helpers"])("opens %s from its pill", (words) => {
+  it.each(["Ran 2 commands", "Started 11 helpers"])("opens %s from its pill, in place", (words) => {
     const pill = new RegExp(
       `<button[^>]*aria-label="${words}. Show them"[^>]*>(.*?)</button>`,
     ).exec(markup);
     expect(pill?.[0]).toContain("data-pill");
+    expect(pill?.[0]).toContain('aria-expanded="false"');
     expect(pill?.[1]).not.toContain("rounded-full");
     expect(pill?.[1]).toContain(words);
+  });
+
+  // What a pill counts opens under the pills as the chat's own bubbles: the
+  // same command, said the same way, as where it ran (the owner, 2026-09-27:
+  // "so much better expandable inline").
+  it("opens what an activity pill counts under the pills, one pill at a time", () => {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(
+        <TurnReport
+          onOpenImage={() => undefined}
+          onOpenTurnDiff={() => undefined}
+          outcome={OUTCOME}
+        />,
+      );
+    });
+    const pill = (words: string) =>
+      renderer.root.find(
+        (node) => node.type === "button" && String(node.props["aria-label"]).startsWith(words),
+      );
+    const details = () =>
+      renderer.root.findAll(
+        (node) => node.type === "div" && node.props["data-report-detail"] !== undefined,
+      );
+    expect(details()).toHaveLength(0);
+    act(() => pill("Ran 2 commands").props.onClick());
+    expect(pill("Ran 2 commands").props["aria-expanded"]).toBe(true);
+    const commands = details()[0]!.findAll(
+      (node) => node.type === "div" && node.props["data-chat-kind"] === "step:command",
+    );
+    expect(commands).toHaveLength(2);
+    act(() => pill("3 checks of 2 pages").props.onClick());
+    expect(pill("Ran 2 commands").props["aria-expanded"]).toBe(false);
+    expect(details()).toHaveLength(1);
+    expect(
+      details()[0]!.findAll((node) => node.props["data-report-take"] !== undefined),
+    ).toHaveLength(3);
+  });
+
+  // The pictures are the chat's, where the checks ran: the result shows them
+  // only when its checks pill is opened, never twice at rest.
+  it("keeps the takes behind the checks pill", () => {
+    expect(markup).not.toContain("data-report-takes");
+    expect(markup).toMatch(/aria-label="3 checks of 2 pages, 1 failed\. Show the pictures"/);
   });
 
   // A text action in the conversation is said in its link ink, as the
@@ -132,7 +205,8 @@ describe("TurnReport", () => {
   // Flat cards: a shadow is a popover's; a take reads as an object by its border.
   it("casts no shadow, and every take keeps its border", () => {
     expect(markup).not.toMatch(/class="[^"]*\bshadow/);
-    const takes = classesOf("data-report-take=");
+    expect(takesMarkup).not.toMatch(/class="[^"]*\bshadow/);
+    const takes = classesOf("data-report-take=", takesMarkup);
     expect(takes).toHaveLength(3);
     for (const thumbnail of takes) expect(thumbnail).toContain("border");
   });
@@ -140,20 +214,20 @@ describe("TurnReport", () => {
   // One text edge: the takes stand where the pills do, and what room they
   // keep around themselves for a ring hangs outside that edge.
   it.each([
-    { row: "pills", marker: "data-report-pills" },
-    { row: "takes", marker: "data-report-takes" },
-  ])("starts the $row on the report's text edge", ({ marker }) => {
-    const [row = []] = classesOf(marker);
+    { row: "pills", marker: "data-report-pills", within: markup },
+    { row: "takes", marker: "data-report-takes", within: takesMarkup },
+  ])("starts the $row on the report's text edge", ({ marker, within }) => {
+    const [row = []] = classesOf(marker, within);
     expect(row.length).toBeGreaterThan(0);
     expect(startOffset(row)).toBe(0);
   });
 
   it("keeps room around its takes for a failed take's ring and the focus ring", () => {
-    const [row = []] = classesOf("data-report-takes");
+    const [row = []] = classesOf("data-report-takes", takesMarkup);
     const room = row.find((name) => name.startsWith("p-"));
     expect(Number(room?.slice(2))).toBeGreaterThanOrEqual(0.5);
     expect(row.some((name) => /^p[xytbse]-/.test(name))).toBe(false);
-    const failed = classesOf("data-report-take=").find((thumbnail) =>
+    const failed = classesOf("data-report-take=", takesMarkup).find((thumbnail) =>
       thumbnail.includes("ring-status-failed"),
     );
     expect(failed).toEqual(expect.arrayContaining(["ring-1", "border-status-failed"]));

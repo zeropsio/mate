@@ -4,6 +4,7 @@
  * checks, a change that landed, what its calls came to — a dot where it has a
  * state, its name and a few words. The live panel and the result share them,
  * so the result a run settles into is visibly what the person watched run.
+ * Nothing about them opens a dialog: what one holds opens in place.
  */
 import type { ReactNode } from "react";
 
@@ -17,14 +18,20 @@ const TONE_CLASS: Record<PillTone, string> = {
   attention: "border-status-attention/40 bg-status-attention-surface text-status-attention-text",
 };
 
-/** One thing, as a pill; given `onClick`, a click opens what it stands for. */
+/**
+ * One thing, as a pill; given `onClick`, a click opens what it stands for —
+ * in place, under the pills, when `expanded` says whether it is open.
+ */
 export function Pill({
   onClick = null,
+  expanded,
   label,
   tone = "plain",
   children,
 }: {
   readonly onClick?: (() => void) | null;
+  /** It opens in place: whether it is open now. */
+  readonly expanded?: boolean | undefined;
   readonly label: string;
   readonly tone?: PillTone;
   readonly children: ReactNode;
@@ -43,10 +50,12 @@ export function Pill({
   }
   return (
     <button
+      aria-expanded={expanded}
       aria-label={label}
       className={cn(
         className,
         "cursor-pointer hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
+        expanded === true && "border-border bg-accent/60",
       )}
       data-pill={tone}
       data-scroll-anchor-ignore
