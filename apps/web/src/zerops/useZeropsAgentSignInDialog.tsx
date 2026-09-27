@@ -36,9 +36,9 @@ export function useZeropsAgentSignInDialog(
 ): {
   readonly openFor: (agentId: ZeropsAgentId) => void;
   readonly dialog: ReactNode;
-  /** Agents whose sign-in succeeded but this browser's record write did not (H13). */
-  readonly recordFailed: ReadonlySet<ZeropsAgentId>;
-  readonly retryRecord: (agentId: ZeropsAgentId) => void;
+  /** Logins, by signer key, whose sign-in succeeded but this browser's record write did not (H13). */
+  readonly recordFailed: ReadonlySet<string>;
+  readonly retryRecord: (key: string) => void;
 } {
   const agentAuth = useZeropsAgentAuth(environmentId);
   const { recordFailed, retry: retryRecord } = useZeropsAgentSignerRecordState(environmentId);

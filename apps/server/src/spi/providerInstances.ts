@@ -11,7 +11,7 @@
 import {
   defaultInstanceIdForDriver,
   ProviderDriverKind,
-  type ProviderInstanceId,
+  ProviderInstanceId,
   type ServerProvider,
   type ServerProviderAuthStatus,
   type ZeropsAgentId,
@@ -34,10 +34,9 @@ const AGENT_DRIVER_KIND: Readonly<Record<ZeropsAgentId, string>> = {
 };
 
 /**
- * The provider instance each agent's sign-in belongs to — the driver's
- * default (single-instance) id. A second instance of the same driver (e.g.
- * `codex_work`) is not specially handled: the agent-auth feed, like the rest
- * of the credential-probe model, assumes one login per container.
+ * The provider instance each agent's own sign-in belongs to — the driver's
+ * default (single-instance) id. Every further login is an instance of its own
+ * (`zerops/ZeropsLogins.ts`), reconciled by id through `reconcileInstanceAuth`.
  */
 export const agentDefaultInstanceId = (agentId: ZeropsAgentId): ProviderInstanceId =>
   defaultInstanceIdForDriver(ProviderDriverKind.make(AGENT_DRIVER_KIND[agentId]));
@@ -75,6 +74,14 @@ export class ProviderInstances extends Context.Service<
       verified: ServerProviderAuthStatus,
     ) => Effect.Effect<void>;
     /**
+     * {@link reconcileAgentAuth} for one instance by its id — a login beyond
+     * the defaults, whose own CLI check is the one that changed.
+     */
+    readonly reconcileInstanceAuth: (
+      instanceId: string,
+      verified: ServerProviderAuthStatus,
+    ) => Effect.Effect<void>;
+    /**
      * The driver kind of a configured instance (`ServerProvider.driver`), or
      * `undefined` for an id no configured instance carries.
      */
@@ -86,15 +93,21 @@ export const layer = Layer.effect(
   ProviderInstances,
   Effect.gen(function* () {
     const registry = yield* ProviderRegistry;
+    const reconcileInstanceAuth = (
+      instanceId: ProviderInstanceId,
+      verified: ServerProviderAuthStatus,
+    ) =>
+      Effect.gen(function* () {
+        if (!providerAuthDisagrees(yield* registry.getProviders, instanceId, verified)) {
+          return;
+        }
+        yield* registry.refreshInstance(instanceId);
+      });
     return {
       reconcileAgentAuth: (agentId, verified) =>
-        Effect.gen(function* () {
-          const instanceId = agentDefaultInstanceId(agentId);
-          if (!providerAuthDisagrees(yield* registry.getProviders, instanceId, verified)) {
-            return;
-          }
-          yield* registry.refreshInstance(instanceId);
-        }),
+        reconcileInstanceAuth(agentDefaultInstanceId(agentId), verified),
+      reconcileInstanceAuth: (instanceId, verified) =>
+        reconcileInstanceAuth(ProviderInstanceId.make(instanceId), verified),
       driverKindOf: (instanceId) =>
         registry.getProviders.pipe(
           Effect.map(

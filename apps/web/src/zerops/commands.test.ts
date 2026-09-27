@@ -9,6 +9,8 @@ import type {
   ZeropsAgentSignOutInput,
   ZeropsGitRemoteProbeInput,
   ZeropsGitRemoteProbeResult,
+  ZeropsLoginAddInput,
+  ZeropsLoginRemoveInput,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -28,6 +30,8 @@ const makeHarness = Effect.gen(function* () {
   const cancelCalls: Array<ZeropsAgentLoginCancelInput> = [];
   const submitCodeCalls: Array<ZeropsAgentLoginSubmitCodeInput> = [];
   const signOutCalls: Array<ZeropsAgentSignOutInput> = [];
+  const loginAddCalls: Array<ZeropsLoginAddInput> = [];
+  const loginRemoveCalls: Array<ZeropsLoginRemoveInput> = [];
   const startResult: ZeropsAgentLoginStartResult = { terminalId: "terminal-login-1" };
   const probeCalls: Array<ZeropsGitRemoteProbeInput> = [];
   const probeResult: ZeropsGitRemoteProbeResult = {
@@ -51,6 +55,14 @@ const makeHarness = Effect.gen(function* () {
     },
     [WS_METHODS.zeropsAgentLoginSignOut]: (input: ZeropsAgentSignOutInput) => {
       signOutCalls.push(input);
+      return Effect.void;
+    },
+    [WS_METHODS.zeropsLoginAdd]: (input: ZeropsLoginAddInput) => {
+      loginAddCalls.push(input);
+      return Effect.succeed({ id: "claudeAgent-work" });
+    },
+    [WS_METHODS.zeropsLoginRemove]: (input: ZeropsLoginRemoveInput) => {
+      loginRemoveCalls.push(input);
       return Effect.void;
     },
     [WS_METHODS.zeropsGitProbeRemote]: (input: ZeropsGitRemoteProbeInput) => {
@@ -88,6 +100,8 @@ const makeHarness = Effect.gen(function* () {
   return {
     cancelCalls,
     commands: createZeropsCommandAtoms(Atom.runtime(layer)),
+    loginAddCalls,
+    loginRemoveCalls,
     probeCalls,
     probeResult,
     registry,
@@ -178,6 +192,40 @@ describe("createZeropsCommandAtoms", () => {
       if (result._tag === "Success") {
         expect(result.value).toBeUndefined();
       }
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("adds a login through the RPC and answers its id", () =>
+    Effect.gen(function* () {
+      const rig = yield* makeHarness;
+      const input: ZeropsLoginAddInput = {
+        agent: "claude-code",
+        kind: "subscription",
+        label: "work",
+      };
+
+      const result = yield* Effect.promise(() =>
+        rig.commands.loginAdd.run(rig.registry, { environmentId: ENVIRONMENT_ID, input }),
+      );
+
+      expect(rig.loginAddCalls).toEqual([input]);
+      expect(result._tag === "Success" ? result.value : undefined).toEqual({
+        id: "claudeAgent-work",
+      });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("removes a login through the RPC", () =>
+    Effect.gen(function* () {
+      const rig = yield* makeHarness;
+      const input: ZeropsLoginRemoveInput = { id: "claudeAgent-work" };
+
+      const result = yield* Effect.promise(() =>
+        rig.commands.loginRemove.run(rig.registry, { environmentId: ENVIRONMENT_ID, input }),
+      );
+
+      expect(rig.loginRemoveCalls).toEqual([input]);
+      expect(result._tag).toBe("Success");
     }).pipe(Effect.scoped),
   );
 

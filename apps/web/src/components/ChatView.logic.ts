@@ -30,7 +30,6 @@ import {
   type ThreadId,
   type TurnId,
   type ZeropsAgentAuthSnapshot,
-  type ZeropsAgentId,
 } from "@t3tools/contracts";
 import {
   type ChatMessage,
@@ -425,7 +424,7 @@ export function resolveZeropsProviderAvailability(input: {
   readonly agentAuth: Known<ZeropsAgentAuthSnapshot> | undefined;
   readonly viewerSubject: string | undefined;
   readonly localSigners: LocalAgentSigners;
-  readonly recordFailed: ReadonlySet<ZeropsAgentId>;
+  readonly recordFailed: ReadonlySet<string>;
 }): ReadonlyMap<ProviderInstanceId, ZeropsAgentAvailability> | undefined {
   if (input.agentAuth === undefined) return undefined;
   const reads = zeropsAgentAuthReads(input.agentAuth, (agent) => ({

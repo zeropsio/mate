@@ -165,6 +165,9 @@ import {
   ZeropsAgentLoginStartResult,
   ZeropsAgentLoginSubmitCodeInput,
   ZeropsAgentSignOutInput,
+  ZeropsLoginAddInput,
+  ZeropsLoginAddResult,
+  ZeropsLoginRemoveInput,
   ZeropsBrowserInput,
   ZeropsBrowserStreamEvent,
   ZeropsDataConsoleError,
@@ -324,6 +327,8 @@ export const WS_METHODS = {
   zeropsAgentLoginCancel: "zerops.agentLogin.cancel",
   zeropsAgentLoginSubmitCode: "zerops.agentLogin.submitCode",
   zeropsAgentLoginSignOut: "zerops.agentLogin.signOut",
+  zeropsLoginAdd: "zerops.login.add",
+  zeropsLoginRemove: "zerops.login.remove",
   zeropsBrowserInput: "zerops.browser.input",
   zeropsMateUpdate: "zerops.mate.update",
   zeropsMateCheckUpdate: "zerops.mate.checkUpdate",
@@ -990,6 +995,23 @@ const WsZeropsAgentLoginSignOutRpc = Rpc.make(WS_METHODS.zeropsAgentLoginSignOut
 });
 
 /**
+ * *Add another login* (crew mode, PRD §2.3): a further instance of the agent
+ * with its own home, signed in afterwards through `zerops.agentLogin.start`
+ * with the returned id — or, for Claude, an API key stored for it alone.
+ */
+const WsZeropsLoginAddRpc = Rpc.make(WS_METHODS.zeropsLoginAdd, {
+  payload: ZeropsLoginAddInput,
+  success: ZeropsLoginAddResult,
+  error: Schema.Union([ZeropsAgentLoginError, EnvironmentAuthorizationError]),
+});
+
+/** Signs a non-default login out and forgets it; refuses a default one (`default-login`). */
+const WsZeropsLoginRemoveRpc = Rpc.make(WS_METHODS.zeropsLoginRemove, {
+  payload: ZeropsLoginRemoveInput,
+  error: Schema.Union([ZeropsAgentLoginError, EnvironmentAuthorizationError]),
+});
+
+/**
  * The live view of the container's agent-browser daemon (S8b, spec-mate.md
  * §5 Browser surface): frames and connection state, Ack-flow-controlled like
  * every other feed (§5.5). Connects to the daemon on first subscriber,
@@ -1192,6 +1214,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsZeropsAgentLoginCancelRpc,
   WsZeropsAgentLoginSubmitCodeRpc,
   WsZeropsAgentLoginSignOutRpc,
+  WsZeropsLoginAddRpc,
+  WsZeropsLoginRemoveRpc,
   WsSubscribeZeropsBrowserStreamRpc,
   WsZeropsBrowserInputRpc,
   WsZeropsMateUpdateRpc,

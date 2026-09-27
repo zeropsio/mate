@@ -105,3 +105,38 @@ describe("driverKindOf", () => {
     }),
   );
 });
+
+describe("reconcileInstanceAuth", () => {
+  const work = ProviderInstanceId.make("claudeAgent-work");
+  const run = (status: ServerProviderAuthStatus, verified: ServerProviderAuthStatus) =>
+    Effect.gen(function* () {
+      const refreshed: Array<string> = [];
+      const { reconcileInstanceAuth } = yield* ProviderInstances.pipe(
+        Effect.provide(
+          providerInstancesLayer.pipe(
+            Layer.provide(
+              Layer.mock(ProviderRegistry)({
+                getProviders: Effect.succeed([
+                  { instanceId: work, auth: { status } } as ServerProvider,
+                ]),
+                refreshInstance: (instanceId) =>
+                  Effect.sync(() => {
+                    refreshed.push(instanceId);
+                    return [];
+                  }),
+              }),
+            ),
+          ),
+        ),
+      );
+      yield* reconcileInstanceAuth(work, verified);
+      return refreshed;
+    });
+
+  it.effect("re-probes a login's own instance when its snapshot contradicts the check", () =>
+    Effect.gen(function* () {
+      expect(yield* run("unauthenticated", "authenticated")).toEqual([work]);
+      expect(yield* run("authenticated", "authenticated")).toEqual([]);
+    }),
+  );
+});

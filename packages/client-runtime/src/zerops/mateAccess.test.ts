@@ -190,6 +190,16 @@ describe("resolveMateOwner", () => {
     ).toBe(eva);
   });
 
+  // A login someone added for their crew says who uses it, not whose Mate it is.
+  it("is an agent's signer, never the signer of a login added beside it", () => {
+    expect(
+      resolveMateOwner({
+        project: signedIn("mate:signer:claudeAgent-work:u-jan", "mate:signer:codex:u-eva"),
+        members: [{ ...jan, user: { ...jan.user, id: "u-jan" } }, eva],
+      }),
+    ).toBe(eva);
+  });
+
   it("lets a hand-over's OWNER outrank the signer", () => {
     expect(
       resolveMateOwner({

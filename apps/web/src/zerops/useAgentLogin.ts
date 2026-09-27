@@ -22,14 +22,14 @@ import { agentLoginTerminalToFocus } from "@t3tools/client-runtime/zerops/agentL
 export function useAgentLogin(
   threadRef: ScopedThreadRef | null,
   options: { readonly terminalSurface?: "drawer" | "embedded" } = {},
-): (agentId: ZeropsAgentId) => void {
+): (agentId: ZeropsAgentId, loginId?: string) => void {
   const setTerminalOpen = useTerminalUiStateStore((state) => state.setTerminalOpen);
   const ensureTerminal = useTerminalUiStateStore((state) => state.ensureTerminal);
   const startLogin = useAtomCommand(zeropsCommands.agentLoginStart, "zerops agent login start");
   const terminalSurface = options.terminalSurface ?? "drawer";
 
   return useCallback(
-    (agentId: ZeropsAgentId) => {
+    (agentId: ZeropsAgentId, loginId?: string) => {
       if (threadRef === null) {
         return;
       }
@@ -46,7 +46,12 @@ export function useAgentLogin(
       // unrelated (or empty) pane while the card says it's waiting on them.
       void startLogin({
         environmentId: threadRef.environmentId,
-        input: { agentId, threadId: threadRef.threadId },
+        // A login beyond the agent's default one signs in under its own id.
+        input: {
+          agentId,
+          threadId: threadRef.threadId,
+          ...(loginId === undefined ? {} : { loginId }),
+        },
       }).then((result) => {
         const terminalId = agentLoginTerminalToFocus(result);
         if (terminalSurface === "drawer" && terminalId !== undefined) {

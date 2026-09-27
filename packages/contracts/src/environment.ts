@@ -125,6 +125,12 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       flag). Absent everywhere else, so a client offers the action only
       where the RPC would actually work. */
   agentSignOut: Schema.optionalKey(Schema.Boolean),
+  /** Server keeps more than the two default logins (crew mode's *Runs on*):
+      it lists every login on the agent-auth feed, understands
+      `zerops.login.add`/`zerops.login.remove` and a `loginId` on the agent
+      login RPCs. Absent on older servers, so a client offers *Add another
+      login* only where it would work. */
+  mateLogins: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

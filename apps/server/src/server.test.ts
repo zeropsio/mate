@@ -154,6 +154,8 @@ import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsAgentSignOutModule from "./zerops/ZeropsAgentSignOut.ts";
+import * as ZeropsLoginSignOutModule from "./zerops/ZeropsLoginSignOut.ts";
+import * as ZeropsLoginsModule from "./zerops/ZeropsLogins.ts";
 import * as ZeropsProjectSignersModule from "./zerops/ZeropsProjectSigners.ts";
 import * as ZeropsTurnAdmissionModule from "./zerops/ZeropsTurnAdmission.ts";
 import { layer as providerInstancesLayer } from "./spi/providerInstances.ts";
@@ -544,6 +546,8 @@ const buildAppUnderTest = (options?: {
     | ZeropsAgentAuth.ZeropsAgentAuth
     | ZeropsAgentLoginModule.ZeropsAgentLogin
     | ZeropsAgentSignOutModule.ZeropsAgentSignOut
+    | ZeropsLoginsModule.ZeropsLogins
+    | ZeropsLoginSignOutModule.ZeropsLoginSignOut
     | ZeropsBrowserStreamModule.ZeropsBrowserStream
     | ZeropsCliModule.ZeropsCli
     | ZeropsMateUpdateModule.ZeropsMateUpdate
@@ -1178,6 +1182,14 @@ const buildAppUnderTest = (options?: {
                 ),
               ...options?.layers?.zeropsAgentSignOut,
             }),
+            // No logins beyond the two defaults outside a Zerops environment,
+            // and none to add, sign out or remove — the real services' own
+            // answer there.
+            Layer.effect(ZeropsLoginsModule.ZeropsLogins, ZeropsLoginsModule.unavailable),
+            Layer.succeed(
+              ZeropsLoginSignOutModule.ZeropsLoginSignOut,
+              ZeropsLoginSignOutModule.unavailable,
+            ),
             // A test machine has no Mate project to read signer tags off, so
             // nobody signed anything in and nothing is ever signed out.
             Layer.mock(ZeropsProjectSignersModule.ZeropsProjectSigners)({
@@ -1185,6 +1197,15 @@ const buildAppUnderTest = (options?: {
               turnRefusal: ({ agent, subject }) =>
                 Effect.succeed(
                   ZeropsProjectSignersModule.turnRefusal({ agent, signer: undefined, subject }),
+                ),
+              loginRefusal: ({ state, token, subject }) =>
+                Effect.succeed(
+                  ZeropsProjectSignersModule.loginTurnRefusal({
+                    state,
+                    token,
+                    signer: undefined,
+                    subject,
+                  }),
                 ),
               checkLeaversNow: Effect.succeed(0),
             }),
@@ -6023,9 +6044,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       );
 
       assert.deepEqual(snapshots.lifecycle, scene.lifecycle);
+      // The agent rows exactly as the scene has them, and the two default
+      // logins they are: a fixture keeps no other login.
       assert.deepEqual(
         snapshots.agentAuth,
-        ZeropsAgentLoginModule.mergeAgentAuthLogin(scene.agentAuth, {
+        ZeropsAgentLoginModule.combineAgentAuth(scene.agentAuth, [], {
           "claude-code": scene.agentLogin["claude-code"],
           codex: scene.agentLogin.codex,
         }),

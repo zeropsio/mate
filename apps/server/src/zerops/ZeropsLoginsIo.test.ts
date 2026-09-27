@@ -1,0 +1,238 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { assert, it } from "@effect/vitest";
+import * as Duration from "effect/Duration";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
+import * as Ref from "effect/Ref";
+import * as Stream from "effect/Stream";
+
+import type {
+  ProviderInstanceConfig,
+  ServerProviderAuthStatus,
+  ZeropsLogin,
+} from "@t3tools/contracts";
+
+import type { WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
+import * as ZeropsLogins from "./ZeropsLogins.ts";
+
+type Instances = Readonly<Record<string, ProviderInstanceConfig>>;
+
+/** The settings' provider instances: what the service reads, writes and hears change. */
+const makeSettings = (initial: Instances) =>
+  Effect.gen(function* () {
+    const current = yield* Ref.make<Instances>(initial);
+    const changes = yield* PubSub.unbounded<Instances>();
+    return {
+      current,
+      /** A change made elsewhere — the settings screen, another client. */
+      replace: (next: Instances) =>
+        Ref.set(current, next).pipe(Effect.andThen(PubSub.publish(changes, next))),
+      options: {
+        readInstances: Ref.get(current),
+        instanceChanges: Stream.fromPubSub(changes),
+        writeInstances: (next: Instances) =>
+          Ref.set(current, next).pipe(Effect.andThen(PubSub.publish(changes, next)), Effect.asVoid),
+      },
+    };
+  });
+
+/** Watchers by target; the test fires them. */
+const makeFakeWatch = () => {
+  const handlers = new Map<string, () => void>();
+  return {
+    watch: (target: string, _fallback: string, onChange: () => void): WatcherHandle => {
+      handlers.set(target, onChange);
+      return {
+        dispose: () => {
+          handlers.delete(target);
+        },
+      };
+    },
+    trigger: (target: string) => handlers.get(target)?.(),
+    watching: () => [...handlers.keys()],
+  };
+};
+
+const makeHarness = (input: {
+  readonly initial?: Instances;
+  readonly verified?: ServerProviderAuthStatus;
+  readonly signers?: Readonly<Record<string, string>>;
+  readonly isZeropsEnvironment?: boolean;
+}) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const homeDir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-logins-home-" });
+    const settings = yield* makeSettings(input.initial ?? {});
+    const verifies = yield* Ref.make<ReadonlyArray<string>>([]);
+    const reconciled = yield* Ref.make<ReadonlyArray<string>>([]);
+    const fakeWatch = makeFakeWatch();
+    const logins = yield* ZeropsLogins.make({
+      ...settings.options,
+      isZeropsEnvironment: input.isZeropsEnvironment ?? true,
+      homeDir,
+      verify: (login) =>
+        Ref.update(verifies, (all) => [...all, login.id]).pipe(
+          Effect.as(input.verified ?? "authenticated"),
+        ),
+      reconcile: (id, verified) => Ref.update(reconciled, (all) => [...all, `${id}:${verified}`]),
+      readSigners: Effect.succeed(input.signers ?? {}),
+      watch: fakeWatch.watch,
+      checkDebounce: Duration.millis(10),
+    });
+    return { fs, homeDir, settings, verifies, reconciled, fakeWatch, logins };
+  });
+
+/** Blocks this fiber for the next published list matching `predicate` (see `ZeropsAgentAuthIo.test.ts` on why it is not forked). */
+const listWhere = (
+  subscription: { readonly changes: Stream.Stream<ReadonlyArray<ZeropsLogin>> },
+  predicate: (logins: ReadonlyArray<ZeropsLogin>) => boolean,
+) =>
+  Stream.runHead(Stream.filter(subscription.changes, predicate)).pipe(
+    Effect.map(Option.getOrThrow),
+  );
+
+it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it) => {
+  it.effect("adds a second account as an instance with its own home, not signed in yet", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { fs, homeDir, settings, logins } = yield* makeHarness({});
+        const { id } = yield* logins.add({
+          agent: "claude-code",
+          kind: "subscription",
+          label: "work",
+        });
+
+        assert.strictEqual(id, "claudeAgent-work");
+        const written = (yield* Ref.get(settings.current))[id];
+        assert.deepStrictEqual(written?.config, { homePath: `${homeDir}/.mate/logins/${id}` });
+        assert.isTrue(yield* fs.exists(`${homeDir}/.mate/logins/${id}`));
+        assert.strictEqual((yield* logins.resolve(id))?.agent, "claude-code");
+        assert.deepStrictEqual(
+          (yield* logins.latest).map((login) => [login.id, login.state]),
+          [[id, "not-authorized"]],
+        );
+      }),
+    ),
+  );
+
+  it.effect("checks a login's own CLI when its credential appears, and names its own signer", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { fs, homeDir, verifies, reconciled, fakeWatch, logins } = yield* makeHarness({
+          // The default Claude login is Jan's; this one is Eva's.
+          signers: { "claude-code": "u-jan", "claudeAgent-work": "u-eva" },
+        });
+        const { id } = yield* logins.add({
+          agent: "claude-code",
+          kind: "subscription",
+          label: "work",
+        });
+        const subscription = yield* logins.subscribe;
+
+        yield* fs.writeFileString(`${homeDir}/.mate/logins/${id}/.credentials.json`, "{}");
+        fakeWatch.trigger(`${homeDir}/.mate/logins/${id}/.credentials.json`);
+        const signedIn = yield* listWhere(subscription, (rows) => rows[0]?.state === "authorized");
+
+        assert.strictEqual(signedIn[0]?.signedInBy, "u-eva");
+        assert.includeMembers([...(yield* Ref.get(verifies))], [id]);
+        // After the publish: the row flips first, the picker's re-probe follows.
+        yield* Effect.sleep(Duration.millis(20));
+        assert.include([...(yield* Ref.get(reconciled))], `${id}:authenticated`);
+      }),
+    ),
+  );
+
+  it.effect("lists an API key signed in the moment it is stored, and asks no CLI", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { settings, verifies, logins } = yield* makeHarness({
+          signers: { "claudeAgent-api-key": "u-eva" },
+        });
+        const { id } = yield* logins.add({
+          agent: "claude-code",
+          kind: "apiKey",
+          label: "",
+          apiKey: "sk-ant-1",
+        });
+
+        assert.deepStrictEqual((yield* Ref.get(settings.current))[id]?.environment, [
+          { name: "ANTHROPIC_API_KEY", value: "sk-ant-1", sensitive: true },
+        ]);
+        const [row] = yield* logins.latest;
+        assert.deepStrictEqual(
+          [row?.kind, row?.state, row?.signedInBy],
+          ["apiKey", "authorized", "u-eva"],
+        );
+        // The key never rides the feed.
+        assert.notInclude(Object.values(row ?? {}).map(String), "sk-ant-1");
+        yield* Effect.sleep(Duration.millis(50));
+        assert.deepStrictEqual(yield* Ref.get(verifies), []);
+      }),
+    ),
+  );
+
+  it.effect("refuses a key for Codex and a key-less API key login", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { logins } = yield* makeHarness({});
+        for (const input of [
+          { agent: "codex", kind: "apiKey", label: "", apiKey: "k" },
+          { agent: "claude-code", kind: "apiKey", label: "" },
+          { agent: "codex", kind: "subscription", label: "", apiKey: "k" },
+        ] as const) {
+          const refused = yield* Effect.flip(logins.add(input));
+          assert.strictEqual(refused.reason, "invalid-login");
+        }
+        assert.deepStrictEqual(yield* logins.latest, []);
+      }),
+    ),
+  );
+
+  it.effect("forgets a login: its instance, its home, its row", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { fs, homeDir, settings, fakeWatch, logins } = yield* makeHarness({});
+        const { id } = yield* logins.add({ agent: "codex", kind: "subscription", label: "home" });
+        assert.lengthOf(fakeWatch.watching(), 1);
+
+        yield* logins.forget(id);
+
+        assert.deepStrictEqual(yield* Ref.get(settings.current), {});
+        assert.isFalse(yield* fs.exists(`${homeDir}/.mate/logins/${id}`));
+        assert.deepStrictEqual(yield* logins.latest, []);
+        assert.deepStrictEqual(fakeWatch.watching(), []);
+        assert.strictEqual((yield* Effect.flip(logins.forget(id))).reason, "unknown-login");
+      }),
+    ),
+  );
+
+  it.effect("follows a login removed in the settings elsewhere", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { settings, logins } = yield* makeHarness({});
+        const { id } = yield* logins.add({ agent: "codex", kind: "subscription", label: "home" });
+        const subscription = yield* logins.subscribe;
+
+        yield* settings.replace({});
+
+        yield* listWhere(subscription, (rows) => rows.length === 0);
+        assert.isUndefined(yield* logins.resolve(id));
+      }),
+    ),
+  );
+
+  it.effect("keeps no logins outside a Zerops project", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { logins } = yield* makeHarness({ isZeropsEnvironment: false });
+        assert.deepStrictEqual(yield* logins.latest, []);
+        const refused = yield* Effect.flip(
+          logins.add({ agent: "codex", kind: "subscription", label: "home" }),
+        );
+        assert.strictEqual(refused.reason, "unavailable");
+      }),
+    ),
+  );
+});

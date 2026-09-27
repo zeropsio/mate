@@ -43,6 +43,7 @@ import type {
   OrchestrationThreadActivity,
   ZeropsAgentAuth,
   ZeropsAgentId,
+  ZeropsLoginState,
 } from "@t3tools/contracts";
 import {
   classifyZeropsAgentAuth,
@@ -68,6 +69,7 @@ import { requestWithMateKey } from "./ZeropsMateKey.ts";
 import { readJson, zeropsGet } from "./zeropsApiRead.ts";
 import { readMemberEntries, readOrgMembers } from "./ZeropsThrowawayIdentity.ts";
 import { readProjectRoles } from "./ZeropsMembershipWatch.ts";
+import { isLoginSignerKey } from "./zeropsLoginIds.ts";
 
 /** D6's record, on the Mate's own project: `mate:signer:{agent}:{userId}`. */
 export const MATE_SIGNER_TAG_PREFIX = "mate:signer";
@@ -81,38 +83,41 @@ export const AGENT_CREDENTIAL_SEGMENTS: Readonly<Record<ZeropsAgentId, ReadonlyA
   codex: [".codex", "auth.json"],
 };
 
-/** Agent id → the Zerops user id of whoever signed it in. */
-export type ProjectSigners = Readonly<Partial<Record<ZeropsAgentId, string>>>;
+/**
+ * Signer key → the Zerops user id of whoever signed that login in. The keys
+ * are the agent ids for the two default logins and the login's own id for
+ * every other one (`zeropsLoginIds.ts`).
+ */
+export type ProjectSigners = Readonly<Partial<Record<string, string>>>;
 
-export function signerTag(agentId: ZeropsAgentId, userId: string): string {
-  return `${MATE_SIGNER_TAG_PREFIX}:${agentId}:${userId}`;
+export function signerTag(key: string, userId: string): string {
+  return `${MATE_SIGNER_TAG_PREFIX}:${key}:${userId}`;
 }
 
 /**
- * Reads the signer tags off a project's tag list.
+ * Reads the signer tags off a project's tag list: one per agent's default
+ * login, and one per other login under that login's own id.
  *
- * Tolerant by design: an unknown agent id, an empty user id and a tag with the
+ * Tolerant by design: an unknown login key, an empty user id and a tag with the
  * wrong number of parts each drop out on their own. A tag list is a shared
  * space — people put their own tags there — and one it does not understand
  * must never cost it the ones it does.
  *
- * Last one wins when a project somehow carries two for the same agent: a
+ * Last one wins when a project somehow carries two for the same login: a
  * re-sign-in writes the new tag, and the reconcile that removes the old one is
  * the app's.
  */
 export function parseSignerTags(tagList: ReadonlyArray<string> | undefined): ProjectSigners {
-  const signers: Partial<Record<ZeropsAgentId, string>> = {};
+  const signers: Partial<Record<string, string>> = {};
   for (const tag of tagList ?? []) {
     if (!tag.startsWith(`${MATE_SIGNER_TAG_PREFIX}:`)) continue;
     const rest = tag.slice(MATE_SIGNER_TAG_PREFIX.length + 1);
     const separator = rest.indexOf(":");
     if (separator <= 0) continue;
-    const agentId = rest.slice(0, separator);
+    const key = rest.slice(0, separator);
     const userId = rest.slice(separator + 1);
-    if (userId.length === 0) continue;
-    const known = KNOWN_AGENT_IDS.find((entry) => entry === agentId);
-    if (known === undefined) continue;
-    signers[known] = userId;
+    if (userId.length === 0 || !isLoginSignerKey(key)) continue;
+    signers[key] = userId;
   }
   return signers;
 }
@@ -149,11 +154,29 @@ export function turnRefusal(input: {
   readonly signer: string | undefined;
   readonly subject: string | undefined;
 }): TurnRefusal | undefined {
-  const auth = classifyZeropsAgentAuth(input.agent).kind;
-  if (auth !== "authorized" && auth !== "registering") {
-    return { kind: "not-signed-in", auth };
+  return loginTurnRefusal({
+    state: classifyZeropsAgentAuth(input.agent).kind,
+    token: input.agent.flagToken,
+    signer: input.signer,
+    subject: input.subject,
+  });
+}
+
+/**
+ * {@link turnRefusal} for any login, from its classified state: a default
+ * login's comes from its agent row, another login's from its own check. The
+ * same order — signed in at all, then a project token, then whose it is.
+ */
+export function loginTurnRefusal(input: {
+  readonly state: ZeropsLoginState;
+  readonly token: boolean;
+  readonly signer: string | undefined;
+  readonly subject: string | undefined;
+}): TurnRefusal | undefined {
+  if (input.state !== "authorized" && input.state !== "registering") {
+    return { kind: "not-signed-in", auth: input.state };
   }
-  if (input.agent.flagToken) return undefined;
+  if (input.token) return undefined;
   if (input.signer === undefined || input.signer.length === 0) return { kind: "unrecorded" };
   return input.subject === input.signer ? undefined : { kind: "someone-else" };
 }
@@ -225,6 +248,16 @@ export class ZeropsProjectSigners extends Context.Service<
     readonly turnRefusal: (input: {
       readonly agentId: ZeropsAgentId;
       readonly agent: ZeropsAgentAuthFields & Pick<ZeropsAgentAuth, "flagToken">;
+      readonly subject: string | undefined;
+    }) => Effect.Effect<TurnRefusal | undefined>;
+    /**
+     * {@link loginTurnRefusal} for this session on the login whose signer tag
+     * is `key` — the same cache and the same one re-read as `turnRefusal`.
+     */
+    readonly loginRefusal: (input: {
+      readonly key: string;
+      readonly state: ZeropsLoginState;
+      readonly token: boolean;
       readonly subject: string | undefined;
     }) => Effect.Effect<TurnRefusal | undefined>;
     /**
@@ -418,15 +451,26 @@ export const make = Effect.gen(function* () {
       ? Effect.succeed({})
       : cachedOrRead(environment).pipe(Effect.map((read) => read.value));
 
-  const gateTurn: ZeropsProjectSigners["Service"]["turnRefusal"] = ({ agentId, agent, subject }) =>
+  /** `refuse` against the signer of `key`: from the cache, and once more from a fresh read. */
+  const gate = (key: string, refuse: (signer: string | undefined) => TurnRefusal | undefined) =>
     Effect.gen(function* () {
-      if (environment === undefined) return turnRefusal({ agent, signer: undefined, subject });
+      if (environment === undefined) return refuse(undefined);
       const held = yield* cachedOrRead(environment);
-      const refusal = turnRefusal({ agent, signer: held.value[agentId], subject });
+      const refusal = refuse(held.value[key]);
       if (refusal === undefined || refusal.kind === "not-signed-in" || held.fresh) return refusal;
       const reread = yield* readThrough(environment);
-      return turnRefusal({ agent, signer: reread.value[agentId], subject });
+      return refuse(reread.value[key]);
     });
+
+  const gateTurn: ZeropsProjectSigners["Service"]["turnRefusal"] = ({ agentId, agent, subject }) =>
+    gate(agentId, (signer) => turnRefusal({ agent, signer, subject }));
+
+  const gateLogin: ZeropsProjectSigners["Service"]["loginRefusal"] = ({
+    key,
+    state,
+    token,
+    subject,
+  }) => gate(key, (signer) => loginTurnRefusal({ state, token, signer, subject }));
 
   const checkLeaversNow: ZeropsProjectSigners["Service"]["checkLeaversNow"] =
     environment === undefined
@@ -461,6 +505,7 @@ export const make = Effect.gen(function* () {
   return ZeropsProjectSigners.of({
     signers,
     turnRefusal: gateTurn,
+    loginRefusal: gateLogin,
     isActiveMember,
     checkLeaversNow,
   });

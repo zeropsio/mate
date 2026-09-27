@@ -24,11 +24,17 @@
  * fails the login with how it ended, instead of leaving it at `menu` or
  * `awaiting-browser` with nothing left to answer it.
  *
- * Each agent gets at most one active session at a time (`start` on an agent
+ * Each login gets at most one active session at a time (`start` on a login
  * with a session already running just re-attaches to it — same
  * `{terminalId}`, no second command spawned into the same shell). A finished
  * session (`succeeded` / `failed` / `cancelled`) is removed from the active
  * set, so a later `start` opens a fresh one.
+ *
+ * A login is an agent's default one, keyed by the agent id, or one beyond the
+ * defaults (crew mode's *Runs on*, `ZeropsLogins`), keyed by its own id: the
+ * same walker, in its own terminal, with its own home in the terminal's
+ * environment (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`). Its success asks its own
+ * check, never its agent's.
  *
  * ## Fiber lifecycle — a deliberate simplification
  *
@@ -58,6 +64,7 @@ import type {
   ZeropsAgentAuthSnapshot,
   ZeropsAgentId,
   ZeropsAgentLoginState,
+  ZeropsLogin,
 } from "@t3tools/contracts";
 import { ZEROPS_AGENT_LOGIN_COMMANDS, ZeropsAgentLoginError } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -76,6 +83,7 @@ import { ServerConfig } from "../config.ts";
 import { TerminalManager } from "../terminal/Manager.ts";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
+import { withLogins, ZeropsLogins } from "./ZeropsLogins.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
 import { ZEROPS_AGENT_LOGIN_HANDLERS } from "./zeropsAgentLoginHandlers.ts";
@@ -108,12 +116,20 @@ const startedByOf = (subject: string): string =>
 /** The sshfs-mounted project root every mate terminal defaults to — matches `AGENT_LOGIN_CWD` in the web's (now-deleted) direct-typing path. */
 const AGENT_LOGIN_CWD = "/var/www";
 
-/** Deterministic per-agent terminal id, distinct from the user's own `term-1` primary shell. */
-export const loginTerminalId = (agentId: ZeropsAgentId): string => `agent-login-${agentId}`;
+/** Deterministic per-login terminal id (the agent id for a default login), distinct from the user's own `term-1` primary shell. */
+export const loginTerminalId = (key: string): string => `agent-login-${key}`;
 
-export type ZeropsAgentLoginByAgent = Readonly<
-  Record<ZeropsAgentId, ZeropsAgentLoginState | undefined>
->;
+/**
+ * A login beyond the two defaults (`ZeropsLogins`): its id, and what its CLI
+ * runs with — the home that makes it that login.
+ */
+export interface LoginTarget {
+  readonly id: string;
+  readonly env: Readonly<Record<string, string>>;
+}
+
+/** Login state by agent id for the default logins, and by login id for every other. */
+export type ZeropsAgentLoginByAgent = Readonly<Record<string, ZeropsAgentLoginState | undefined>>;
 
 const EMPTY_LOGIN_BY_AGENT: ZeropsAgentLoginByAgent = {
   "claude-code": undefined,
@@ -133,6 +149,25 @@ export const mergeAgentAuthLogin = (
   ...snapshot,
   agents: snapshot.agents.map((agent) => ({ ...agent, login: logins[agent.agentId] })),
 });
+
+/**
+ * The one snapshot `subscribeZeropsAgentAuth` publishes: the agent rows with
+ * their default logins' walker state ({@link mergeAgentAuthLogin}), and every
+ * login listed (`ZeropsLogins.withLogins`) — the defaults from those rows,
+ * every other login with its own walker state, keyed by its id.
+ */
+export const combineAgentAuth = (
+  snapshot: ZeropsAgentAuthSnapshot,
+  extras: ReadonlyArray<ZeropsLogin>,
+  logins: ZeropsAgentLoginByAgent,
+): ZeropsAgentAuthSnapshot =>
+  withLogins(
+    mergeAgentAuthLogin(snapshot, logins),
+    extras.map((row) => {
+      const login = logins[row.id];
+      return login === undefined ? row : { ...row, login };
+    }),
+  );
 
 /**
  * Field-by-field equality for one agent's login state (S7 fix2 finding 2) —
@@ -172,17 +207,21 @@ export class ZeropsAgentLogin extends Context.Service<
        * client records the signer once it succeeds.
        */
       subject: string,
+      /** Absent: the agent's default login. */
+      login?: LoginTarget,
     ) => Effect.Effect<{ readonly terminalId: string }, TerminalError | ZeropsAgentLoginError>;
     readonly cancel: (
       agentId: ZeropsAgentId,
+      loginId?: string,
     ) => Effect.Effect<void, TerminalError | ZeropsAgentLoginError>;
     /**
-     * Types `code` into the agent's login terminal, then Enter. Fails with
+     * Types `code` into the login's terminal, then Enter. Fails with
      * `not-awaiting-code` unless a paste-code login (Claude) is at its prompt.
      */
     readonly submitCode: (
       agentId: ZeropsAgentId,
       code: string,
+      loginId?: string,
     ) => Effect.Effect<void, TerminalError | ZeropsAgentLoginError>;
   }
 >()("t3/zerops/ZeropsAgentLogin") {}
@@ -193,6 +232,8 @@ export interface ZeropsAgentLoginOptions {
     "open" | "write" | "attachStream" | "close"
   >;
   readonly zeropsAgentAuth: Pick<ZeropsAgentAuth["Service"], "recheckNow">;
+  /** Re-checks a login beyond the defaults once it signs in; absent, only default logins run. */
+  readonly zeropsLogins?: Pick<ZeropsLogins["Service"], "recheckNow">;
   readonly isZeropsEnvironment: boolean;
 }
 
@@ -201,6 +242,7 @@ interface FeedState {
 }
 
 interface ActiveSession {
+  readonly agentId: ZeropsAgentId;
   readonly threadId: string;
   readonly terminalId: string;
   /** Identity marker — every deferred/background action checks this against the CURRENT map entry before acting (see the module header). */
@@ -230,7 +272,12 @@ const appendAndTrim = (buffer: string, chunk: string): string => {
 
 export const make = (options: ZeropsAgentLoginOptions) =>
   Effect.gen(function* () {
-    const { terminalManager, zeropsAgentAuth, isZeropsEnvironment: enabled } = options;
+    const {
+      terminalManager,
+      zeropsAgentAuth,
+      zeropsLogins,
+      isZeropsEnvironment: enabled,
+    } = options;
     const changes = yield* PubSub.sliding<ZeropsAgentLoginByAgent>(4);
     const subscribeMutex = yield* Semaphore.make(1);
 
@@ -254,7 +301,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
     // Plain Map, not a Ref — mirrors `ZeropsAgentAuth.ts`'s own
     // `providerCheckQueues`: session bookkeeping is fiber/queue handles,
     // never decoded/compared as data, so a Ref buys nothing here.
-    const sessions = new Map<ZeropsAgentId, ActiveSession>();
+    const sessions = new Map<string, ActiveSession>();
 
     const publish = Ref.get(state).pipe(
       Effect.flatMap((current) => PubSub.publish(changes, current.logins)),
@@ -271,39 +318,39 @@ export const make = (options: ZeropsAgentLoginOptions) =>
      * walker actually found a transition, so the dedup has to live here,
      * not at the call site.
      */
-    const setLoginState = (agentId: ZeropsAgentId, login: ZeropsAgentLoginState) =>
+    const setLoginState = (key: string, login: ZeropsAgentLoginState) =>
       Effect.gen(function* () {
-        const before = (yield* Ref.get(state)).logins[agentId];
+        const before = (yield* Ref.get(state)).logins[key];
         if (before !== undefined && loginStateEqual(before, login)) {
           return;
         }
         yield* Ref.update(state, (current) => ({
-          logins: { ...current.logins, [agentId]: login },
+          logins: { ...current.logins, [key]: login },
         }));
         yield* publish;
       });
 
-    const clearLoginState = (agentId: ZeropsAgentId) =>
+    const clearLoginState = (key: string) =>
       Ref.update(state, (current) => ({
-        logins: { ...current.logins, [agentId]: undefined },
+        logins: { ...current.logins, [key]: undefined },
       })).pipe(Effect.andThen(publish));
 
     /** Removes the session from the active map and stops its output listener — see the module header for why the stall fiber is left running. */
-    const disposeSession = (agentId: ZeropsAgentId, token: symbol) => {
-      const session = sessions.get(agentId);
+    const disposeSession = (key: string, token: symbol) => {
+      const session = sessions.get(key);
       if (session !== undefined && session.token === token) {
-        sessions.delete(agentId);
+        sessions.delete(key);
         session.unsubscribeOutput();
       }
     };
 
-    const fireStall = (agentId: ZeropsAgentId, token: symbol): Effect.Effect<void> =>
+    const fireStall = (key: string, token: symbol): Effect.Effect<void> =>
       Effect.gen(function* () {
-        const session = sessions.get(agentId);
+        const session = sessions.get(key);
         if (session === undefined || session.token !== token) {
           return;
         }
-        const login = (yield* Ref.get(state)).logins[agentId];
+        const login = (yield* Ref.get(state)).logins[key];
         if (login === undefined) {
           return;
         }
@@ -319,20 +366,16 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         }
       });
 
-    const handleOutputChunk = (
-      agentId: ZeropsAgentId,
-      token: symbol,
-      chunk: string,
-    ): Effect.Effect<void> =>
+    const handleOutputChunk = (key: string, token: symbol, chunk: string): Effect.Effect<void> =>
       Effect.gen(function* () {
-        const session = sessions.get(agentId);
+        const session = sessions.get(key);
         if (session === undefined || session.token !== token) {
           return;
         }
         const buffer = appendAndTrim(yield* Ref.get(session.bufferRef), chunk);
-        const before = (yield* Ref.get(state)).logins[agentId];
+        const before = (yield* Ref.get(state)).logins[key];
         const phase = before?.phase ?? "menu";
-        const handler = ZEROPS_AGENT_LOGIN_HANDLERS[agentId];
+        const handler = ZEROPS_AGENT_LOGIN_HANDLERS[session.agentId];
         const result = stepLoginOutput({ phase, handler, buffer });
 
         yield* Ref.set(session.bufferRef, result.clearBuffer ? "" : buffer);
@@ -352,11 +395,14 @@ export const make = (options: ZeropsAgentLoginOptions) =>
           // by the app as the person (D6, `ZeropsProjectSigners`): this
           // container's own key cannot write tags, which is the whole reason
           // the record moved off its disk. All this does is republish the
-          // snapshot, which re-reads the tags.
-          yield* zeropsAgentAuth.recheckNow(agentId);
+          // snapshot, which re-reads the tags. A login beyond the defaults
+          // is its own feed's to re-check.
+          yield* key === session.agentId
+            ? zeropsAgentAuth.recheckNow(session.agentId)
+            : (zeropsLogins?.recheckNow(key) ?? Effect.void);
         }
 
-        yield* setLoginState(agentId, {
+        yield* setLoginState(key, {
           phase: result.nextPhase,
           url: result.url ?? before?.url,
           code: result.code ?? before?.code,
@@ -371,7 +417,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         }
 
         if (result.nextPhase === "succeeded" || result.nextPhase === "failed") {
-          disposeSession(agentId, token);
+          disposeSession(key, token);
         }
       });
 
@@ -381,18 +427,18 @@ export const make = (options: ZeropsAgentLoginOptions) =>
      * The login is over: nothing it printed later could move it on.
      */
     const handleExit = (
-      agentId: ZeropsAgentId,
+      key: string,
       token: symbol,
       ended: { readonly exitCode: number | null; readonly exitSignal: number | null },
     ): Effect.Effect<void> =>
       Effect.gen(function* () {
-        const session = sessions.get(agentId);
+        const session = sessions.get(key);
         if (session === undefined || session.token !== token) {
           return;
         }
-        disposeSession(agentId, token);
-        const before = (yield* Ref.get(state)).logins[agentId];
-        yield* setLoginState(agentId, {
+        disposeSession(key, token);
+        const before = (yield* Ref.get(state)).logins[key];
+        yield* setLoginState(key, {
           phase: "failed",
           message: `The sign-in ended before it finished (${exitDetail(ended)}). Start it again.`,
           terminalId: session.terminalId,
@@ -402,7 +448,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
       });
 
     const attachTerminalListener = (
-      agentId: ZeropsAgentId,
+      key: string,
       token: symbol,
       threadId: string,
       terminalId: string,
@@ -411,9 +457,9 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         { threadId, terminalId } satisfies TerminalAttachInput,
         (event) =>
           event.type === "output"
-            ? handleOutputChunk(agentId, token, event.data)
+            ? handleOutputChunk(key, token, event.data)
             : event.type === "exited"
-              ? handleExit(agentId, token, event)
+              ? handleExit(key, token, event)
               : Effect.void,
       );
 
@@ -421,19 +467,21 @@ export const make = (options: ZeropsAgentLoginOptions) =>
       agentId: ZeropsAgentId,
       threadId: string,
       subject: string,
+      login?: LoginTarget,
     ): Effect.Effect<{ readonly terminalId: string }, TerminalError | ZeropsAgentLoginError> =>
       Effect.gen(function* () {
-        const existing = sessions.get(agentId);
+        const key = login?.id ?? agentId;
+        const existing = sessions.get(key);
         if (existing !== undefined) {
           return { terminalId: existing.terminalId };
         }
 
-        const terminalId = loginTerminalId(agentId);
-        const token = Symbol(agentId);
+        const terminalId = loginTerminalId(key);
+        const token = Symbol(key);
         const startedAt = yield* DateTime.now;
         const startedBy = startedByOf(subject);
 
-        yield* setLoginState(agentId, { phase: "starting", terminalId, startedAt, startedBy });
+        yield* setLoginState(key, { phase: "starting", terminalId, startedAt, startedBy });
 
         const attempt = Effect.gen(function* () {
           // A fresh PTY and no replayed history — see the module header.
@@ -444,6 +492,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
             threadId,
             terminalId,
             cwd: AGENT_LOGIN_CWD,
+            ...(login === undefined ? {} : { env: login.env }),
           } satisfies TerminalOpenInput);
           // The shell exits with the CLI, so the terminal's own `exited`
           // event is the end of the login process, however it ended.
@@ -455,14 +504,10 @@ export const make = (options: ZeropsAgentLoginOptions) =>
 
           const bufferRef = yield* Ref.make("");
           const stallQueue = yield* Queue.unbounded<void>();
-          const unsubscribeOutput = yield* attachTerminalListener(
-            agentId,
-            token,
-            threadId,
-            terminalId,
-          );
+          const unsubscribeOutput = yield* attachTerminalListener(key, token, threadId, terminalId);
 
-          sessions.set(agentId, {
+          sessions.set(key, {
+            agentId,
             threadId,
             terminalId,
             token,
@@ -474,35 +519,36 @@ export const make = (options: ZeropsAgentLoginOptions) =>
 
           yield* Stream.fromQueue(stallQueue).pipe(
             Stream.debounce(Duration.millis(STALL_TIMEOUT_MS)),
-            Stream.mapEffect(() => fireStall(agentId, token)),
+            Stream.mapEffect(() => fireStall(key, token)),
             Stream.runDrain,
             Effect.catchCause(() => Effect.void),
             Effect.forkDetach,
           );
 
-          yield* setLoginState(agentId, { phase: "menu", terminalId, startedAt, startedBy });
+          yield* setLoginState(key, { phase: "menu", terminalId, startedAt, startedBy });
           // Arms the FIRST countdown too — mirrors the GUI walker sending
           // the command and immediately being subject to the stall timer.
           yield* Queue.offer(stallQueue, undefined);
         });
 
-        yield* attempt.pipe(Effect.tapError(() => clearLoginState(agentId)));
+        yield* attempt.pipe(Effect.tapError(() => clearLoginState(key)));
 
         return { terminalId };
       });
 
     const cancel = (
       agentId: ZeropsAgentId,
+      loginId?: string,
     ): Effect.Effect<void, TerminalError | ZeropsAgentLoginError> =>
       Effect.gen(function* () {
-        const session = sessions.get(agentId);
+        const key = loginId ?? agentId;
+        const session = sessions.get(key);
         if (session === undefined) {
           return;
         }
-        disposeSession(agentId, session.token);
-        const startedAt =
-          (yield* Ref.get(state)).logins[agentId]?.startedAt ?? (yield* DateTime.now);
-        yield* setLoginState(agentId, {
+        disposeSession(key, session.token);
+        const startedAt = (yield* Ref.get(state)).logins[key]?.startedAt ?? (yield* DateTime.now);
+        yield* setLoginState(key, {
           phase: "cancelled",
           terminalId: session.terminalId,
           startedAt,
@@ -520,10 +566,12 @@ export const make = (options: ZeropsAgentLoginOptions) =>
     const submitCode = (
       agentId: ZeropsAgentId,
       code: string,
+      loginId?: string,
     ): Effect.Effect<void, TerminalError | ZeropsAgentLoginError> =>
       Effect.gen(function* () {
-        const session = sessions.get(agentId);
-        const login = (yield* Ref.get(state)).logins[agentId];
+        const key = loginId ?? agentId;
+        const session = sessions.get(key);
+        const login = (yield* Ref.get(state)).logins[key];
         if (
           session === undefined ||
           login === undefined ||
@@ -538,7 +586,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         // What the CLI printed before the code — its prompt, an earlier
         // attempt's error — must not read as the answer to this one.
         yield* Ref.set(session.bufferRef, "");
-        yield* setLoginState(agentId, { ...login, phase: "verifying-code", message: undefined });
+        yield* setLoginState(key, { ...login, phase: "verifying-code", message: undefined });
         const target = { threadId: session.threadId, terminalId: session.terminalId };
         // Uninterruptible: a dropped connection between the two writes would
         // leave the code typed without its Enter and the login stuck here.
@@ -552,8 +600,8 @@ export const make = (options: ZeropsAgentLoginOptions) =>
           Effect.tapError(() =>
             Ref.get(state).pipe(
               Effect.flatMap((current) =>
-                current.logins[agentId]?.phase === "verifying-code"
-                  ? setLoginState(agentId, login)
+                current.logins[key]?.phase === "verifying-code"
+                  ? setLoginState(key, login)
                   : Effect.void,
               ),
             ),
@@ -578,10 +626,12 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const terminalManager = yield* TerminalManager;
     const zeropsAgentAuth = yield* ZeropsAgentAuth;
+    const zeropsLogins = yield* ZeropsLogins;
     const config = yield* ServerConfig;
     return yield* make({
       terminalManager,
       zeropsAgentAuth,
+      zeropsLogins,
       isZeropsEnvironment: isZeropsEnvironment(config),
     });
   }),

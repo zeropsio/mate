@@ -43,6 +43,8 @@ import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsCliModule from "./ZeropsCli.ts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
+import * as ZeropsLoginSignOutModule from "./ZeropsLoginSignOut.ts";
+import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
 
 const strictParseOptions = {
@@ -507,9 +509,27 @@ const fixtureSignersLayer = Layer.succeed(
     signers: Effect.succeed({}),
     turnRefusal: ({ agent, subject }) =>
       Effect.succeed(ZeropsProjectSigners.turnRefusal({ agent, signer: undefined, subject })),
+    loginRefusal: ({ state, token, subject }) =>
+      Effect.succeed(
+        ZeropsProjectSigners.loginTurnRefusal({ state, token, signer: undefined, subject }),
+      ),
     isActiveMember: () => Effect.succeed(undefined),
     checkLeaversNow: Effect.succeed(0),
   }),
+);
+
+/**
+ * A fixture scene lists the two default logins its agents are and nothing
+ * beyond them: there is no settings file to add one to, and nothing to sign out.
+ */
+const loginsFixtureLayer = Layer.effect(
+  ZeropsLoginsModule.ZeropsLogins,
+  ZeropsLoginsModule.unavailable,
+);
+
+const loginSignOutFixtureLayer = Layer.succeed(
+  ZeropsLoginSignOutModule.ZeropsLoginSignOut,
+  ZeropsLoginSignOutModule.unavailable,
 );
 
 export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
@@ -521,10 +541,13 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
     // and refuses turns exactly as a live Mate would on the same facts.
     ZeropsTurnAdmission.layer.pipe(
       Layer.provide(auth),
+      Layer.provide(loginsFixtureLayer),
       Layer.provide(fixtureSignersLayer),
       Layer.provide(providerInstancesLayer),
     ),
     agentSignOutFixtureLayer(),
+    loginsFixtureLayer,
+    loginSignOutFixtureLayer,
     browserStreamLayer(),
     zeropsCliFixtureLayer(),
     zeropsMateUpdateFixtureLayer(),

@@ -85,6 +85,7 @@ export const makeServerEnvironmentCapabilities = (
     readonly dataConsole?: boolean;
     readonly agentLoginCode?: boolean;
     readonly agentSignOut?: boolean;
+    readonly mateLogins?: boolean;
   },
 ): ExecutionEnvironmentDescriptor["capabilities"] => {
   return {
@@ -112,6 +113,7 @@ export const makeServerEnvironmentCapabilities = (
     ...(options?.dataConsole === undefined ? {} : { dataConsole: options.dataConsole }),
     ...(options?.agentLoginCode === undefined ? {} : { agentLoginCode: options.agentLoginCode }),
     ...(options?.agentSignOut === undefined ? {} : { agentSignOut: options.agentSignOut }),
+    ...(options?.mateLogins === undefined ? {} : { mateLogins: options.mateLogins }),
   };
 };
 
@@ -198,6 +200,7 @@ export const make = Effect.gen(function* () {
       dataConsole: isZeropsEnvironment(serverConfig),
       agentLoginCode: isZeropsEnvironment(serverConfig),
       agentSignOut: isZeropsEnvironment(serverConfig),
+      mateLogins: isZeropsEnvironment(serverConfig),
     }),
   };
 
