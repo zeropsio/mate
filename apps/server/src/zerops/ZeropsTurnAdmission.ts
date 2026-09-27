@@ -144,15 +144,29 @@ export const make = Effect.gen(function* () {
         )
       : Effect.succeed(isTurnStartingCommand(command));
 
-  const admit: ZeropsTurnAdmission["Service"]["admit"] = Effect.fnUntraced(function* ({
-    command,
-    principal,
-  }) {
-    if (!isZeropsEnvironment(config)) return;
-    if (!(yield* startsTurn(command))) return;
+  /**
+   * A crew turn runs for somebody who is not at the keyboard, so it re-checks
+   * that they are still in the org. A person's own session needs no such
+   * check: the membership watch ends a session whose person left.
+   */
+  const refuseDepartedStarter = Effect.fnUntraced(function* (startedBy: string) {
+    const active = yield* projectSigners.isActiveMember(startedBy);
+    if (active === true) return;
+    return yield* new OrchestrationDispatchCommandError({
+      message:
+        active === false
+          ? "The person this turn runs for is no longer an active member of this Zerops organization."
+          : "Could not confirm that the person this turn runs for is still a member of this Zerops organization. Try again in a moment.",
+    });
+  });
+
+  /** D6 itself: the agent must be signed in, and signed in by this principal. */
+  const refuseSomeoneElsesAgent = Effect.fnUntraced(function* (
+    command: OrchestrationCommand,
+    principal: TurnPrincipal,
+  ) {
     const agentId = yield* agentIdOf(yield* instanceIdOf(command));
     if (agentId === undefined) return;
-
     const snapshot = yield* agentAuth.latest;
     const agent = snapshot.agents.find((entry) => entry.agentId === agentId);
     if (agent === undefined) return;
@@ -165,6 +179,21 @@ export const make = Effect.gen(function* () {
     return yield* new OrchestrationDispatchCommandError({
       message: turnRefusalMessage(agentId, refusal),
     });
+  });
+
+  /**
+   * The checks, in order. Checks keyed on a thread's crew origin go right
+   * after the environment check: some of them refuse commands that start no
+   * turn at all (archiving a crewmate's thread).
+   */
+  const admit: ZeropsTurnAdmission["Service"]["admit"] = Effect.fnUntraced(function* ({
+    command,
+    principal,
+  }) {
+    if (!isZeropsEnvironment(config)) return;
+    if (!(yield* startsTurn(command))) return;
+    if (principal.kind === "crew") yield* refuseDepartedStarter(principal.startedBy);
+    yield* refuseSomeoneElsesAgent(command, principal);
   });
 
   return ZeropsTurnAdmission.of({ admit });

@@ -73,6 +73,8 @@ interface World {
   readonly threadInstanceId?: string;
   /** The answered question's latest activity; absent means none was found. */
   readonly question?: Pick<OrchestrationThreadActivity, "kind" | "payload"> | "unreadable";
+  /** User → whether the org lists them ACTIVE; `undefined` is an unreadable list. */
+  readonly members?: Readonly<Record<string, boolean | undefined>>;
   /** Configured instance → driver kind; the two default instances when absent. */
   readonly drivers?: Readonly<Record<string, string>>;
 }
@@ -125,6 +127,7 @@ const admission = (world: World) =>
                 subject,
               }),
             ),
+          isActiveMember: (userId) => Effect.succeed(world.members?.[userId]),
         }),
       ),
     ),
@@ -164,6 +167,7 @@ const answer: OrchestrationCommand = {
 const janSignedClaude: World = {
   agents: [signedIn("claude-code")],
   signers: { "claude-code": JAN },
+  members: { [JAN]: true, [EVA]: true },
 };
 
 describe("ZeropsTurnAdmission", () => {
@@ -318,6 +322,27 @@ describe("ZeropsTurnAdmission", () => {
       turnStart("claudeAgent"),
       { kind: "crew", startedBy: EVA },
       SOMEONE_ELSE,
+    ],
+    [
+      "refuses a crew turn whose starter has left the organization",
+      { ...janSignedClaude, members: { [JAN]: false } },
+      turnStart("claudeAgent"),
+      { kind: "crew", startedBy: JAN },
+      "The person this turn runs for is no longer an active member of this Zerops organization.",
+    ],
+    [
+      "refuses a crew turn whose starter's membership cannot be read",
+      { ...janSignedClaude, members: {} },
+      turnStart("opencode"),
+      { kind: "crew", startedBy: JAN },
+      "Could not confirm that the person this turn runs for is still a member of this Zerops organization. Try again in a moment.",
+    ],
+    [
+      "leaves a person's own session to the membership watch",
+      { ...janSignedClaude, members: { [JAN]: false } },
+      turnStart("claudeAgent"),
+      session(JAN),
+      undefined,
     ],
   ] as const satisfies ReadonlyArray<
     readonly [string, World, OrchestrationCommand, TurnPrincipal, string | undefined]

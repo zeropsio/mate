@@ -577,3 +577,83 @@ describe("the turn gate", () => {
     }).pipe(Effect.scoped),
   );
 });
+
+describe("isActiveMember", () => {
+  /**
+   * The service over an org whose member list the test changes between
+   * calls, counting every member-list read. No signer is recorded, so the
+   * leave check never reads the member list on its own.
+   */
+  const members = (initial: unknown, initialStatus = 200) =>
+    Effect.gen(function* () {
+      let body = initial;
+      let status = initialStatus;
+      let memberReads = 0;
+      const signers = yield* makeProjectSigners.pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            httpLayer((url) => {
+              if (!url.endsWith("/user/list")) {
+                return json({ id: PROJECT_ID, clientId: CLIENT_ID, tagList: [] });
+              }
+              memberReads += 1;
+              return json(body, status);
+            }).layer,
+            ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
+            NodeServices.layer,
+          ),
+        ),
+      );
+      yield* TestClock.adjust(Duration.zero);
+      return {
+        signers,
+        setMembers: (next: unknown, nextStatus = 200) => {
+          body = next;
+          status = nextStatus;
+        },
+        reads: () => memberReads,
+      };
+    });
+
+  const janActive = { clientUserList: [{ id: "cu-jan", userId: JAN, status: "ACTIVE" }] };
+
+  it.effect("answers yes for an ACTIVE member and no for anybody else", () =>
+    Effect.gen(function* () {
+      const { signers } = yield* members(janActive);
+      assert.isTrue(yield* signers.isActiveMember(JAN));
+      assert.isFalse(yield* signers.isActiveMember(EVA));
+    }).pipe(Effect.scoped),
+  );
+
+  // "Cannot read" is neither answer: the caller refuses on it, and says why.
+  it.effect("answers nothing when the member list cannot be read and nothing was known", () =>
+    Effect.gen(function* () {
+      const { signers } = yield* members({ message: "down" }, 500);
+      assert.isUndefined(yield* signers.isActiveMember(JAN));
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("reads the member list once per cache lifetime", () =>
+    Effect.gen(function* () {
+      const { signers, reads } = yield* members(janActive);
+      yield* signers.isActiveMember(JAN);
+      yield* TestClock.adjust(Duration.seconds(5));
+      yield* signers.isActiveMember(EVA);
+      assert.strictEqual(reads(), 1);
+      yield* TestClock.adjust(SIGNERS_CACHE_TTL);
+      yield* signers.isActiveMember(JAN);
+      assert.strictEqual(reads(), 2);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("a failed re-read answers from the last list read", () =>
+    Effect.gen(function* () {
+      const { signers, setMembers, reads } = yield* members(janActive);
+      assert.isTrue(yield* signers.isActiveMember(JAN));
+      setMembers({ message: "down" }, 500);
+      yield* TestClock.adjust(SIGNERS_CACHE_TTL);
+      assert.isTrue(yield* signers.isActiveMember(JAN));
+      assert.strictEqual(reads(), 2);
+    }).pipe(Effect.scoped),
+  );
+});

@@ -498,14 +498,16 @@ const dataConsoleLayer = () =>
     }),
   ).pipe(Layer.provide(FetchHttpClient.layer));
 
-// A fixture scene has no platform to read tags from: nobody signed anything
-// in, and nothing is ever signed out.
+// A fixture scene has no platform to read tags or members from: nobody signed
+// anything in, nobody's membership can be confirmed, and nothing is ever
+// signed out.
 const fixtureSignersLayer = Layer.succeed(
   ZeropsProjectSigners.ZeropsProjectSigners,
   ZeropsProjectSigners.ZeropsProjectSigners.of({
     signers: Effect.succeed({}),
     turnRefusal: ({ agent, subject }) =>
       Effect.succeed(ZeropsProjectSigners.turnRefusal({ agent, signer: undefined, subject })),
+    isActiveMember: () => Effect.succeed(undefined),
     checkLeaversNow: Effect.succeed(0),
   }),
 );
