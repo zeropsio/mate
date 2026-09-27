@@ -244,6 +244,8 @@ export function buildBrowserFields(call: ZeropsCall): BuiltCardFields {
     ),
     ...(closing !== undefined ? { closing } : {}),
     ...(screenshot !== undefined ? { screenshot } : {}),
+    // With no picture, what the check read of the page stands in its place.
+    ...(screenshot === undefined && card?.read !== undefined ? { browserRead: card.read } : {}),
     ...(browserSummary !== undefined ? { browserSummary } : {}),
     ...(viewport !== undefined ? { viewport } : {}),
     ...(deviceName !== undefined ? { deviceName } : {}),

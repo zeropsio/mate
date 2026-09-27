@@ -63,6 +63,7 @@ import { remarkGithubAlerts } from "../markdown-github-alerts";
 import { renderSkillInlineMarkdownChildren } from "./chat/SkillInlineText";
 import { CHAT_FILE_TAG_CHIP_CLASS_NAME, FileTagChipContent } from "./chat/FileTagChip";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
+import type { ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import {
   revealInFileExplorerLabelForKind,
   revealInFileExplorerLabelForOs,
@@ -161,6 +162,8 @@ interface ChatMarkdownProps {
       output, anything around the answers — keeps the smaller muted body.
       Headings, lists, tables and code scale with whichever body they sit in. */
   variant?: ChatMarkdownVariant | undefined;
+  /** Opens a picture in the image viewer, the text's other pictures beside it. */
+  onOpenImage?: ((preview: ExpandedImagePreview) => void) | undefined;
 }
 
 export type ChatMarkdownVariant = "answer" | "person" | "log";
@@ -1078,6 +1081,55 @@ function ChatMarkdownImageFallback(props: { readonly alt: string }) {
   );
 }
 
+/** Opens a text's pictures in the image viewer; none where nothing opens them. */
+const MarkdownImageOpenerContext = React.createContext<
+  ((preview: ExpandedImagePreview) => void) | null
+>(null);
+
+/** The picture clicked, among every picture of the text it stands in. */
+function openMarkdownImage(button: HTMLElement, open: (preview: ExpandedImagePreview) => void) {
+  const clicked = button.querySelector("img");
+  const text = button.closest(".chat-markdown") ?? button;
+  const images = [...text.querySelectorAll<HTMLImageElement>("img[data-markdown-image]")];
+  const index = clicked === null ? -1 : images.indexOf(clicked);
+  if (index < 0) return;
+  open({
+    images: images.map((image) => ({
+      src: image.currentSrc || image.src,
+      name: image.alt || (image.currentSrc || image.src).split("/").pop()?.split("?")[0] || "Image",
+    })),
+    index,
+  });
+}
+
+/** A picture in a text that opens it large; a plain picture where nothing opens it. */
+function OpenableMarkdownImage({
+  alt,
+  block = false,
+  children,
+}: {
+  readonly alt: string;
+  readonly block?: boolean;
+  readonly children: ReactNode;
+}) {
+  const open = use(MarkdownImageOpenerContext);
+  if (open === null) return children;
+  return (
+    <button
+      aria-label={alt.length > 0 ? `Open ${alt}` : "Open the picture"}
+      className={cn(
+        "max-w-full cursor-zoom-in rounded-lg align-top focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
+        block ? "block" : "inline-block",
+      )}
+      data-markdown-image-opener
+      onClick={(event) => openMarkdownImage(event.currentTarget, open)}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
 /** Markdown images whose src is a workspace file path load through a signed asset URL. */
 const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(props: {
   readonly threadRef: ScopedThreadRef;
@@ -1104,14 +1156,17 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
     );
   }
   return (
-    <img
-      src={assetUrl.url}
-      alt={props.alt}
-      loading="lazy"
-      draggable={false}
-      className={CHAT_MARKDOWN_WORKSPACE_IMAGE_CLASS_NAME}
-      onError={() => setFailedUrl(assetUrl.url)}
-    />
+    <OpenableMarkdownImage alt={props.alt} block>
+      <img
+        src={assetUrl.url}
+        alt={props.alt}
+        loading="lazy"
+        draggable={false}
+        className={CHAT_MARKDOWN_WORKSPACE_IMAGE_CLASS_NAME}
+        data-markdown-image
+        onError={() => setFailedUrl(assetUrl.url)}
+      />
+    </OpenableMarkdownImage>
   );
 });
 
@@ -1545,7 +1600,7 @@ function areMarkdownFileLinkPropsEqual(
 
 type ChatMarkdownStateProps = Omit<
   ChatMarkdownProps,
-  "className" | "lineBreaks" | "parseRawHtml" | "variant"
+  "className" | "lineBreaks" | "parseRawHtml" | "variant" | "onOpenImage"
 >;
 
 function useChatMarkdownState({
@@ -2094,13 +2149,16 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const imageSource = classifyMarkdownImageSource(srcString, cwd);
     if (imageSource._tag === "Direct") {
       return (
-        <img
-          {...props}
-          src={imageSource.uri}
-          alt={altText}
-          loading="lazy"
-          className={cn(props.className, CHAT_MARKDOWN_IMAGE_SIZE_CLASS_NAME)}
-        />
+        <OpenableMarkdownImage alt={altText}>
+          <img
+            {...props}
+            src={imageSource.uri}
+            alt={altText}
+            loading="lazy"
+            className={cn(props.className, CHAT_MARKDOWN_IMAGE_SIZE_CLASS_NAME)}
+            data-markdown-image
+          />
+        </OpenableMarkdownImage>
       );
     }
     if (imageSource._tag === "WorkspaceFile" && threadRef) {
@@ -2169,6 +2227,7 @@ function ChatMarkdown({
   lineBreaks = false,
   parseRawHtml = true,
   variant = "log",
+  onOpenImage,
   ...props
 }: ChatMarkdownProps) {
   const { componentState, handleCopy, markdownUrlTransform } = useChatMarkdownState({
@@ -2203,15 +2262,17 @@ function ChatMarkdown({
       onCopy={handleCopy}
     >
       <ChatMarkdownRendererContext value={componentState}>
-        <ReactMarkdown
-          remarkPlugins={remarkPlugins}
-          rehypePlugins={parseRawHtml ? CHAT_MARKDOWN_REHYPE_PLUGINS : undefined}
-          skipHtml={false}
-          components={CHAT_MARKDOWN_COMPONENTS}
-          urlTransform={markdownUrlTransform}
-        >
-          {text}
-        </ReactMarkdown>
+        <MarkdownImageOpenerContext value={onOpenImage ?? null}>
+          <ReactMarkdown
+            remarkPlugins={remarkPlugins}
+            rehypePlugins={parseRawHtml ? CHAT_MARKDOWN_REHYPE_PLUGINS : undefined}
+            skipHtml={false}
+            components={CHAT_MARKDOWN_COMPONENTS}
+            urlTransform={markdownUrlTransform}
+          >
+            {text}
+          </ReactMarkdown>
+        </MarkdownImageOpenerContext>
       </ChatMarkdownRendererContext>
     </div>
   );

@@ -1,108 +1,154 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { ageClass, ConversationWorking, type WorkingBubble } from "./ConversationWorking";
+import type { IncidentModel } from "./conversation.logic";
+import type { DockModel } from "./conversationDock.logic";
+import { ConversationWorking } from "./ConversationWorking";
 
-type SaidKind = "note" | "question" | "thought";
+const at = (minute: number) => new Date(Date.UTC(2026, 8, 27, 10, minute)).toISOString();
 
-const said = (kind: SaidKind, key: string): WorkingBubble => ({
-  kind,
-  key,
-  body: <p>{`${kind} ${key}`}</p>,
-});
+/** A run some way in: its task list, three helpers and a background task at work. */
+const DOCK: DockModel = {
+  operations: [],
+  helpers: {
+    rows: [
+      {
+        id: "h1",
+        title: "Review the API",
+        tone: "ok",
+        word: "Done",
+        startedAt: at(1),
+        endedAt: at(3),
+      },
+      {
+        id: "h2",
+        title: "Review the UI",
+        tone: "busy",
+        word: "Working",
+        startedAt: at(1),
+        endedAt: null,
+      },
+      {
+        id: "h3",
+        title: "Review the docs",
+        tone: "busy",
+        word: "Working",
+        startedAt: at(2),
+        endedAt: null,
+      },
+    ],
+    working: 2,
+    done: 1,
+    failed: 0,
+  },
+  tasks: {
+    steps: [
+      { step: "Read the routes", status: "completed" },
+      { step: "Fix the status route", status: "inProgress" },
+      { step: "Deploy to stage", status: "pending" },
+    ],
+    done: 1,
+    current: "Fix the status route",
+  },
+  background: {
+    tasks: [
+      {
+        id: "b1",
+        title: "Serve the app on port 3000",
+        state: "running",
+        watch: false,
+        turnId: "t1",
+        startedAt: at(2),
+        endedAt: null,
+      },
+    ],
+    running: 1,
+    done: 0,
+    failed: 0,
+  },
+  afterTurn: null,
+  pause: null,
+};
 
-/** A stretch some way in: every kind at more than one age, oldest first. */
-const STRETCH: ReadonlyArray<WorkingBubble> = [
-  said("thought", "t1"),
-  said("note", "n1"),
-  said("thought", "t2"),
-  said("question", "q1"),
-  said("note", "n2"),
-  said("thought", "t3"),
-];
+const INCIDENT: IncidentModel = {
+  key: "incident:op:s1",
+  hostname: "apidev",
+  tone: "failed",
+  phases: ["Not running", "HTTP 502"],
+  appearedAt: at(4),
+} as IncidentModel;
 
-/** The stream as drawn, oldest first: each bubble's age, what aging put on it, and its own hand. */
-function streamOf(bubbles: ReadonlyArray<WorkingBubble>) {
-  const markup = renderToStaticMarkup(
+const render = (dock: DockModel | null, incidents: ReadonlyArray<IncidentModel> = []) =>
+  renderToStaticMarkup(
     <ConversationWorking
-      activity={null}
-      answering={false}
       browser={null}
-      bubbles={bubbles}
-      dock={null}
+      dock={dock}
       environmentId={null}
-      incidents={[]}
+      incidents={incidents}
       onOpenAgents={() => undefined}
-      speaker={{ name: "Nova", tint: "sky" }}
       threadRef={null}
     />,
   );
-  return [
-    ...markup.matchAll(
-      /data-stream-age="(\d+)"><div class="min-h-0"><div class="([^"]*)"><div class="([^"]*)" data-stream-bubble="(\w+)"/g,
-    ),
-  ].map(([, age, aging = "", hand = "", kind]) => ({
-    age: Number(age),
-    aging: aging.split(" "),
-    hand: hand.split(" "),
-    kind,
-  }));
+
+/** Each bar as drawn: its tag, its accessible name and the words it shows. */
+function barsOf(markup: string) {
+  const list = /<ul[^>]*data-working-instruments[^>]*>(.*)<\/ul>/s.exec(markup)?.[1] ?? "";
+  return [...list.matchAll(/<(button|div)([^>]*)aria-label="([^"]*)"[^>]*>(.*?)<\/\1>/gs)].map(
+    ([, tag, attributes = "", label = "", body = ""]) => ({
+      tag,
+      opens: attributes.includes('aria-haspopup="dialog"') || tag === "button",
+      label,
+      text: body
+        .replace(/<[^>]*>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim(),
+      body,
+    }),
+  );
 }
 
-const drawn = streamOf(STRETCH);
+describe("what runs alongside the Mate", () => {
+  it("draws nothing when nothing runs", () => {
+    expect(render(null)).not.toContain("data-working-instruments");
+  });
 
-describe("the Mate's stream", () => {
-  it("draws every bubble it was given, the newest at age 0", () => {
-    expect(drawn.map((bubble) => [bubble.kind, bubble.age])).toEqual([
-      ["thought", 5],
-      ["note", 4],
-      ["thought", 3],
-      ["question", 2],
-      ["note", 1],
-      ["thought", 0],
+  // Rows are what it did, bars what runs now (the owner, 2026-09-27: "rows
+  // and bars"): a bar per thing that runs, its name, where it is in words,
+  // and a figure on the card's time column.
+  it("draws a bar per thing that runs, each saying what it is in words", () => {
+    expect(barsOf(render(DOCK, [INCIDENT])).map(({ text }) => text)).toEqual([
+      "apidev Not running · HTTP 502",
+      "Tasks Fix the status route 1/3",
+      "3 helpers 2 working · 1 done",
+      // How long it has run, from when it started.
+      expect.stringMatching(/^Background Serve the app on port 3000 \d+[smhd]/),
     ]);
   });
 
-  // Its words to the person are a chat bubble, its corner toward the face;
-  // its thinking is no bubble at all — no fill, no corner, no line — in
-  // italics, at every age, so the two are told apart at a glance (the owner,
-  // 2026-09-27: "almost no distinction between messages that are thoughts and
-  // notes").
+  // "No unnecessary icons, make the use obvious from the component": the
+  // bar's name says what it is, no mark in front of it.
+  it("puts no icon on a bar", () => {
+    for (const { body } of barsOf(render(DOCK, [INCIDENT]))) expect(body).not.toContain("<svg");
+  });
+
+  // A bar with more behind it opens it in a modal; nothing opens in place.
   it.each([
-    { kind: "note", filled: true, cornered: true, italic: false },
-    { kind: "question", filled: true, cornered: true, italic: false },
-    { kind: "thought", filled: false, cornered: false, italic: true },
-  ])("draws a $kind in its own hand at every age", ({ kind, filled, cornered, italic }) => {
-    const ofKind = drawn.filter((bubble) => bubble.kind === kind);
-    expect(ofKind.length).toBeGreaterThan(0);
-    for (const { hand } of ofKind) {
-      expect(hand.some((name) => name.startsWith("bg-"))).toBe(filled);
-      expect(hand.some((name) => name.startsWith("rounded"))).toBe(cornered);
-      expect(hand.includes("italic")).toBe(italic);
-      expect(hand.some((name) => name.startsWith("before:") || name.startsWith("border"))).toBe(
-        false,
-      );
-    }
+    { name: "apidev", opens: false },
+    { name: "Tasks", opens: true },
+    { name: "Helpers", opens: true },
+    { name: "Background", opens: true },
+  ])("opens $name's detail in a modal: $opens", ({ name, opens }) => {
+    const bar = barsOf(render(DOCK, [INCIDENT])).find(({ label }) => label.startsWith(name));
+    expect(bar?.opens).toBe(opens);
+    expect(bar?.body).not.toContain("aria-expanded");
   });
 
-  // What it said to the person stays readable a while; what it thought to
-  // itself passes: at every age a thought is the dimmer of the two.
-  it.each([1, 2, 3, 4, 5])("dims a thought more than its words at age %i", (age) => {
-    const opacity = (kind: WorkingBubble["kind"]) =>
-      Number(/opacity-(\d+)/.exec(ageClass(kind, age))?.[1] ?? 100);
-    expect(opacity("thought")).toBeLessThan(opacity("note"));
-    expect(opacity("question")).toBe(opacity("note"));
+  // One right edge for every time in the card: the heading's, each line's
+  // and each bar's.
+  it("sets each bar's figure on the card's time column", () => {
+    const markup = render(DOCK);
+    const figures = [...markup.matchAll(/<span class="(w-14 shrink-0 text-end[^"]*)">/g)];
+    expect(figures).toHaveLength(3);
+    for (const [, classes = ""] of figures) expect(classes).toContain("tabular-nums");
   });
-
-  it.each(drawn.filter((bubble) => bubble.age > 0))(
-    "ages a $kind at $age by dimming and shrinking it, never by repainting it",
-    ({ aging }) => {
-      for (const name of aging) {
-        expect(name).toMatch(
-          /^(origin-bottom-left|pt-2|transition|duration-500|scale-\d+|opacity-\d+)$/,
-        );
-      }
-      expect(aging.some((name) => name.startsWith("opacity-"))).toBe(true);
-    },
-  );
 });

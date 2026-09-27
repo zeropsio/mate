@@ -34,6 +34,8 @@ interface EntrySpec {
   readonly status: "inProgress" | "completed" | "failed" | "declined" | "stopped";
   readonly resultText?: string;
   readonly truncated?: boolean;
+  /** Image content blocks the result carried (a browser check's picture). */
+  readonly images?: ReadonlyArray<{ readonly mimeType: string; readonly data: string }>;
 }
 
 function activityFor(entry: EntrySpec): OrchestrationThreadActivity {
@@ -55,6 +57,7 @@ function activityFor(entry: EntrySpec): OrchestrationThreadActivity {
           toolName: entry.toolName,
           ...(entry.resultText !== undefined ? { resultText: entry.resultText } : {}),
           ...(entry.truncated === true ? { truncated: true } : {}),
+          ...(entry.images !== undefined ? { images: entry.images } : {}),
         },
       },
     },
@@ -681,6 +684,49 @@ describe("reduceZeropsOperations — standalone card kinds", () => {
         url: "https://weatherdash-abcd.prg1.zerops.app",
       },
     ]);
+  });
+
+  // With no picture, what the check read of the page stands in its place;
+  // with one, the picture does.
+  it.each([
+    {
+      name: "no picture: the tree it read and what it asked",
+      images: undefined,
+      read: {
+        page: { kind: "tree", text: '- heading "Status"' },
+        answers: [{ asked: "main h3", answer: "6 found" }],
+      },
+    },
+    {
+      name: "a picture: the picture alone",
+      images: [{ mimeType: "image/png", data: "iVBORw0KGgo=" }],
+      read: undefined,
+    },
+  ])("keeps what a browser check read of the page: $name", ({ images, read }) => {
+    const { operations } = reduceFrom([
+      {
+        id: "brw9",
+        createdAt: "2026-09-01T00:00:00.000Z",
+        toolName: "zerops_browser",
+        input: { url: "https://shop.example.dev/status" },
+        status: "completed",
+        ...(images !== undefined ? { images } : {}),
+        resultText: JSON.stringify({
+          url: "https://shop.example.dev/status",
+          steps: [
+            { command: ["open", "https://shop.example.dev/status"], success: true },
+            {
+              command: ["snapshot", "-c"],
+              success: true,
+              result: { snapshot: '- heading "Status"' },
+            },
+            { command: ["get", "count", "main", "h3"], success: true, result: { count: 6 } },
+            { command: ["close"], success: true },
+          ],
+        }),
+      },
+    ]);
+    expect(operations[0]!.browserRead).toEqual(read);
   });
 
   it("condenses a browser batch into viewport, media, step count and failed step; tail steps are not listed", () => {

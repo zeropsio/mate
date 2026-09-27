@@ -154,7 +154,96 @@ export type ZeropsCardPayload =
         readonly success: boolean;
         readonly errorKind?: string;
       }>;
+      /** What the check read of the page: see {@link BrowserRead}. */
+      readonly read?: BrowserRead;
     };
+
+/**
+ * What a browser check read of the page, besides a picture: the page as it
+ * last read it — the accessibility tree of its last `snapshot`, else the text
+ * of its last `get text` of the page's body — and each thing it asked of the
+ * page with the page's answer (`get count main h3` → "6 found"). Capped: a
+ * page's shape is in its first screens.
+ */
+export interface BrowserRead {
+  readonly page?: { readonly kind: "tree" | "text"; readonly text: string };
+  readonly answers: ReadonlyArray<{ readonly asked: string; readonly answer: string }>;
+}
+
+const BROWSER_PAGE_LIMIT = 24_000;
+const BROWSER_ANSWER_LIMIT = 12;
+
+/** A `get text` of these reads the page itself; of anything else, it asks about one part of it. */
+const PAGE_SELECTORS: ReadonlySet<string> = new Set(["body", "html", "main", "article", ":root"]);
+
+const said = (value: unknown, limit: number): string | undefined => {
+  const text =
+    typeof value === "string" ? value : value === undefined ? undefined : JSON.stringify(value);
+  if (text === undefined) return undefined;
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > limit ? `${flat.slice(0, limit - 1)}…` : flat;
+};
+
+/** What one step asked of the page and what the page answered, or nothing for a step that acted. */
+function browserAnswer(
+  command: ReadonlyArray<string>,
+  result: Record<string, unknown> | undefined,
+): { readonly asked: string; readonly answer: string } | undefined {
+  const [verb, what, ...rest] = command;
+  if (result === undefined) return undefined;
+  if (verb === "get" && what === "count" && typeof result.count === "number") {
+    return { asked: rest.join(" "), answer: `${result.count} found` };
+  }
+  if (verb === "is" && (what === "visible" || what === "enabled" || what === "checked")) {
+    const yes = result[what];
+    if (typeof yes !== "boolean") return undefined;
+    const answer = yes ? what : what === "enabled" ? "disabled" : `not ${what}`;
+    return { asked: rest.join(" "), answer };
+  }
+  if (verb === "get" && (what === "title" || what === "url")) {
+    const answer = said(result[what], 120);
+    return answer === undefined ? undefined : { asked: what, answer };
+  }
+  if (verb === "get" && (what === "text" || what === "value" || what === "attr")) {
+    const answer = said(result[what === "text" ? "text" : "value"], 120);
+    return answer === undefined ? undefined : { asked: rest.join(" "), answer };
+  }
+  if (verb === "eval") {
+    const answer = said(result.result, 120);
+    return answer === undefined ? undefined : { asked: said(what, 80) ?? "", answer };
+  }
+  return undefined;
+}
+
+/** Everything a check's own steps read off the page. */
+function browserRead(value: unknown): BrowserRead | undefined {
+  let page: BrowserRead["page"];
+  const answers: Array<{ readonly asked: string; readonly answer: string }> = [];
+  for (const entry of readRecordArray(value)) {
+    const command = readStringArray(entry.command);
+    if (entry.success !== true || command.length === 0) continue;
+    const result = readRecord(entry.result);
+    const tree = command[0] === "snapshot" ? readString(result?.snapshot) : undefined;
+    const pageText =
+      command[0] === "get" && command[1] === "text" && PAGE_SELECTORS.has(command[2] ?? "body")
+        ? readString(result?.text)
+        : undefined;
+    if (tree !== undefined) {
+      page = { kind: "tree", text: tree.slice(0, BROWSER_PAGE_LIMIT) };
+      continue;
+    }
+    if (pageText !== undefined) {
+      if (page?.kind !== "tree")
+        page = { kind: "text", text: pageText.slice(0, BROWSER_PAGE_LIMIT) };
+      continue;
+    }
+    const answer = browserAnswer(command, result);
+    if (answer !== undefined && answers.length < BROWSER_ANSWER_LIMIT) answers.push(answer);
+  }
+  return page === undefined && answers.length === 0
+    ? undefined
+    : { ...(page !== undefined ? { page } : {}), answers };
+}
 
 const checkLines = (value: unknown): ReadonlyArray<ZeropsCheckLine> =>
   readRecordArray(value).flatMap((entry) => {
@@ -468,6 +557,7 @@ function decodeBrowser(document: Record<string, unknown>): ZeropsCardPayload | u
   if (url === undefined) {
     return undefined;
   }
+  const read = browserRead(document.steps);
   return {
     kind: "browser",
     url,
@@ -478,6 +568,7 @@ function decodeBrowser(document: Record<string, unknown>): ZeropsCardPayload | u
     forkRecoveryAttempted: document.forkRecoveryAttempted === true,
     ...optional("message", readString(document.message)),
     steps: browserSteps(document.steps),
+    ...(read !== undefined ? { read } : {}),
   };
 }
 

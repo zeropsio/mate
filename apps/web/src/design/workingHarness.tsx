@@ -1,32 +1,48 @@
 /**
- * The Mate at work in every state it reaches, and the report it settles into.
+ * A run's card in every state it reaches: its heading, its record in one
+ * scroll with the Mate's face beside what it is on, what runs alongside it,
+ * and the result it settles into.
  *
  * Served by the dev server at `/design-working.html` (`?theme=dark` for the
- * dark theme). The panel takes what it shows as props — the conversation's
- * rows hold the reads — so a batch deploy, a question that waits, a failure
- * that came back and a helper still at it all stand side by side without a
- * Mate doing any of them.
+ * dark theme). The card's parts take what they show as props, so a batch
+ * deploy, a question that waits and a helper still at it all stand side by
+ * side without a Mate doing any of them.
  *
  * Fixtures only. Nothing here ships — `design-working.html` is not
  * `index.html`, and no route imports this module.
  */
-import { StrictMode, useEffect, useState, type ReactNode } from "react";
+import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { TurnId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
 
+import { ConversationAfterWork, ConversationWorking } from "~/components/chat/ConversationWorking";
 import {
-  ConversationAfterWork,
-  ConversationWorking,
-  THOUGHT_WORDS_CLASS,
-  type WorkingActivity,
-  type WorkingBubble,
-} from "~/components/chat/ConversationWorking";
-import type { ConversationSpeaker } from "~/components/chat/ConversationRows";
-import { splitBatchDeploy, type OutcomeModel } from "~/components/chat/conversation.logic";
+  ElapsedSince,
+  WorkLine,
+  type ConversationSpeaker,
+} from "~/components/chat/ConversationRows";
+import {
+  activityPills,
+  splitBatchDeploy,
+  type OutcomeModel,
+} from "~/components/chat/conversation.logic";
 import type { DockModel } from "~/components/chat/conversationDock.logic";
+import type { MessagesTimelineRow } from "~/components/chat/MessagesTimeline.logic";
+import {
+  MATE_NOTE_CLASS,
+  RECORD_GUTTER,
+  RECORD_TEXT_INSET,
+  RecordLine,
+  RecordScroll,
+  ThoughtTail,
+  TIME_COLUMN,
+  TypingDots,
+} from "~/components/chat/RunRecord";
+import { BrowserStrip } from "~/components/chat/BrowserStrip";
 import { TurnReport } from "~/components/chat/TurnReport";
+import { MateFace } from "~/components/zerops/primitives";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
@@ -36,36 +52,25 @@ const SPEAKER: ConversationSpeaker = { name: "Nova", tint: "sky" };
 const NOW = Date.now();
 const ago = (seconds: number) => new Date(NOW - seconds * 1000).toISOString();
 
-// The bodies read as the app's `NoteWords` and `ThoughtWords` render them: the
-// log's body — its words in the 80 % ink, its thinking in the muted one.
-const note = (key: string, words: string): WorkingBubble => ({
-  kind: "note",
-  key,
-  body: <p className="text-foreground/80 text-sm leading-relaxed">{words}</p>,
-});
+type WorkLineRow = Extract<MessagesTimelineRow, { kind: "work-line" }>;
 
-const thought = (key: string, words: string): WorkingBubble => ({
-  kind: "thought",
-  key,
-  body: <p className={THOUGHT_WORDS_CLASS}>{words}</p>,
-});
-
-/** A stretch some way in: it thought, said, thought again — oldest first. */
-const MIXED: ReadonlyArray<WorkingBubble> = [
-  note("m1", "Checking why the readiness check fails."),
-  thought(
-    "m2",
-    "The readiness check asks for /status, but the router only registers /health. Either the route was renamed in the last change and the config never followed, or the config was copied from another service. Nothing else in the app calls /status, so the smaller change is the route, not the config.",
-  ),
-  note("m3", "Found it: the check and the route disagree on the path."),
-  thought("m4", "Renaming the route keeps zerops.yml as it is."),
-  note("m5", "Renaming the route to /status and deploying again."),
-];
-
-const MIXED_THEN_THINKING: ReadonlyArray<WorkingBubble> = [
-  ...MIXED,
-  thought("m6", "If the deploy passes, the check should turn healthy within a minute."),
-];
+function heading(overrides: Partial<WorkLineRow>): WorkLineRow {
+  return {
+    kind: "work-line",
+    id: "work-line:turn-1",
+    createdAt: ago(134),
+    stretchKey: "turn-1",
+    turnId: TurnId.make("turn-1"),
+    live: true,
+    face: "working",
+    startedAt: ago(134),
+    endedAt: null,
+    waitedMs: 0,
+    waitingSince: null,
+    worked: true,
+    ...overrides,
+  };
+}
 
 function deploy(overrides: Partial<ZeropsOperation>): ZeropsOperation {
   return {
@@ -88,6 +93,74 @@ function deploy(overrides: Partial<ZeropsOperation>): ZeropsOperation {
     ...overrides,
   };
 }
+
+/** A settled browser check with no picture, as a real one reads. */
+function readCheck(
+  key: string,
+  subject: string,
+  overrides: Partial<ZeropsOperation>,
+): ZeropsOperation {
+  return {
+    key,
+    kind: "browser",
+    phase: "done",
+    anchorAt: ago(40),
+    anchorActivityId: key,
+    settledAt: ago(29),
+    turnId: "turn-1",
+    subject,
+    kicker: `Browser · ${subject}`,
+    voice: `Checking ${subject}`,
+    voiceSource: "mate",
+    statusWord: "Checked",
+    steps: [],
+    links: [],
+    callIds: [key],
+    hasResult: true,
+    viewport: { width: 1640, height: 1000 },
+    browserSummary: { stepCount: 3, errorCount: 0, failedRequestCount: 0, line: "" },
+    ...overrides,
+  };
+}
+
+/** Takes that read the page, asked it how many of a thing it had, and read only its errors. */
+const READ_CHECKS = [
+  readCheck("op:read-page", "https://shop.example.dev/status", {
+    browserRead: {
+      page: {
+        kind: "tree",
+        text: [
+          "- banner",
+          '  - link "Snap"',
+          '  - link "Docs"',
+          '- heading "Service status" [level=1]',
+          "- paragraph",
+          '  - StaticText "Everything runs as it should."',
+          "- list",
+          "  - listitem",
+          '    - StaticText "Hostname: app"',
+          "  - listitem",
+          '    - StaticText "Node v22.22.3"',
+          "  - listitem",
+          '    - StaticText "Uptime 3 days"',
+          '- img "Requests over the last hour"',
+          '- textbox "Email for updates"',
+          '- button "Subscribe"',
+        ].join("\n"),
+      },
+      answers: [],
+    },
+  }),
+  readCheck("op:read-answers", "https://shop.example.dev/cz", {
+    browserRead: {
+      answers: [
+        { asked: "main h3", answer: "6 found" },
+        { asked: "main section[aria-label] ol li", answer: "3 found" },
+      ],
+    },
+  }),
+  readCheck("op:read-findings", "https://shop.example.dev/cz/kosik", {}),
+];
 
 const BATCH = splitBatchDeploy(
   deploy({
@@ -238,61 +311,68 @@ const REPORT: OutcomeModel = {
   created: [],
   removed: [],
   notDone: [],
+  activity: [],
 };
 
-function Working({
-  bubbles,
-  activity,
-  dock = EMPTY_DOCK,
-}: {
-  readonly bubbles: ReadonlyArray<WorkingBubble>;
-  readonly activity: WorkingActivity | null;
-  readonly dock?: DockModel;
-}) {
-  // The stretch's card is the panel's frame in the conversation; drawn here
-  // as its top, body and edge would draw it.
+/** The record's lines as the card draws them some way into a run. */
+function RecordSoFar() {
   return (
-    <div className="rounded-3xl border border-border/70 bg-card px-4 pt-2 pb-4">
-      <ConversationWorking
-        activity={activity}
-        answering={false}
-        browser={null}
-        bubbles={bubbles}
-        dock={dock}
-        environmentId={null}
-        incidents={[]}
-        onOpenAgents={() => undefined}
-        speaker={SPEAKER}
-        threadRef={null}
+    <>
+      <RecordLine
+        italic
+        state="done"
+        time="6s"
+        words="The readiness check asks for /status, but the router only registers /health."
       />
-    </div>
+      <RecordLine
+        code="grep -rn status src/routes.ts"
+        state="done"
+        time="1s"
+        words="Find where the route is registered"
+      />
+      <div className={`${RECORD_TEXT_INSET} py-1`}>
+        <div className={MATE_NOTE_CLASS}>
+          <p className="text-sm leading-relaxed">
+            Found it: the check and the route disagree on the path.
+          </p>
+        </div>
+      </div>
+      <RecordLine state="done" suffix="2 edits" words="Edited routes.ts and status.test.ts" />
+      <RecordLine
+        detail="Review the copy · Check accessibility · Write a test"
+        state="running"
+        words="Started 3 helpers"
+      />
+      <RecordLine code="npm run build" state="done" time="24s" words="Run the production build" />
+      <RecordLine detail="v0.1.1" state="done" time="1m 12s" words="Deployed appdev" />
+      <RecordLine
+        code="npm test -- status"
+        state="failed"
+        time="6s"
+        words="Run the tests for the page"
+      />
+      <RecordLine
+        detail="in the background"
+        state="done"
+        words="Watch the pull request's checks finished"
+      />
+    </>
   );
 }
 
-/**
- * The panel some way into a stretch. Drawn at once it opens onto the newest
- * bubble and a peek of the one before; live, a long paragraph grows the
- * window — it only grows — and the words after it age in the room it left.
- * So it is drawn first as that paragraph arrived, and what came after it
- * arrives a moment later, live.
- */
-function Later({
-  bubbles,
-  grownBy,
-  activity,
-}: {
-  readonly bubbles: ReadonlyArray<WorkingBubble>;
-  /** The newest bubble when the panel was first drawn: the one that grew the window. */
-  readonly grownBy: string;
-  readonly activity: WorkingActivity | null;
-}) {
-  const [arrived, setArrived] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setArrived(true), 300);
-    return () => clearTimeout(timer);
-  }, []);
-  const grown = bubbles.findIndex((bubble) => bubble.key === grownBy) + 1;
-  return <Working activity={activity} bubbles={arrived ? bubbles : bubbles.slice(0, grown)} />;
+function Face({ state = "working" }: { readonly state?: "working" | "needs" }) {
+  return (
+    <span className={RECORD_GUTTER}>
+      <MateFace size="md" state={state} tint={SPEAKER.tint} />
+    </span>
+  );
+}
+
+/** A run's card: its heading, its record, what runs alongside, its result. */
+function Card({ children }: { readonly children: ReactNode }) {
+  return (
+    <div className="rounded-3xl border border-border/70 bg-card px-4 pt-2 pb-3">{children}</div>
+  );
 }
 
 function State({
@@ -316,101 +396,173 @@ function State({
   );
 }
 
+// Its edits are the files pill's: the report's own diff counts them.
+const REPORT_WITH_ACTIVITY: OutcomeModel = {
+  ...REPORT,
+  activity: activityPills(
+    [
+      {
+        id: "c1",
+        createdAt: ago(90),
+        label: "Ran command",
+        tone: "tool",
+        command: "npm run build",
+      },
+      { id: "c2", createdAt: ago(60), label: "Ran command", tone: "tool", command: "npm test" },
+    ],
+    [
+      {
+        id: "s1",
+        createdAt: ago(80),
+        label: "Review the change",
+        tone: "tool",
+        agentSpawn: { workflowId: null, agentTaskIds: ["h1", "h2", "h3"] },
+      },
+    ],
+  ),
+};
+
 function Harness() {
   return (
     <div className="min-h-screen bg-background px-6 py-8">
       <div className="mx-auto grid w-full max-w-3xl gap-10">
-        <State label="Thinking" note="Nothing said yet: the dots beside the face.">
-          <Working activity={{ kind: "thinking" }} bubbles={[]} />
+        <State
+          label="Thinking"
+          note="The record so far; the thought it is thinking beside its face."
+        >
+          <Card>
+            <WorkLine row={heading({})} speaker={SPEAKER} timestampFormat="24-hour" />
+            <RecordScroll live>
+              <RecordSoFar />
+              <div className="flex min-w-0 items-end gap-2.5 py-0.5">
+                <Face />
+                <div className="min-w-0 flex-1">
+                  <ThoughtTail>
+                    <p className="text-line text-muted-foreground italic">
+                      If the deploy passes, the check should turn healthy within a minute. The route
+                      and the config now agree, so the next thing is the smoke tests on the stage
+                      and a screenshot of the page on a phone.
+                    </p>
+                  </ThoughtTail>
+                </div>
+                <span className={TIME_COLUMN}>
+                  <ElapsedSince since={ago(9)} />
+                </span>
+              </div>
+            </RecordScroll>
+          </Card>
         </State>
         <State
-          label="Doing"
-          note="Its words above, what its hands are on under the newest — never the call's arguments."
+          label="Doing, with work alongside"
+          note="The call it is making beside its face; the bars under the record."
         >
-          <Working
-            activity={{ kind: "doing", words: "Reading package.json" }}
-            bubbles={[
-              note("a1", "Reading the package manifest first."),
-              note("a2", "A small web app with a server; checking the server next."),
-            ]}
-          />
+          <Card>
+            <WorkLine row={heading({})} speaker={SPEAKER} timestampFormat="24-hour" />
+            <RecordScroll live>
+              <RecordSoFar />
+              <div className="py-0.5">
+                <RecordLine
+                  code="npm run lint"
+                  mark={<Face />}
+                  state="running"
+                  time={<ElapsedSince since={ago(4)} />}
+                  words="Lint the page"
+                />
+              </div>
+            </RecordScroll>
+            <ConversationWorking
+              browser={null}
+              dock={BUSY_DOCK}
+              environmentId={null}
+              incidents={[]}
+              onOpenAgents={() => undefined}
+              threadRef={null}
+            />
+          </Card>
+        </State>
+        <State label="Waiting for you" note="A question stops the clock; its face waits.">
+          <Card>
+            <WorkLine
+              row={heading({ waitingSince: ago(30) })}
+              speaker={SPEAKER}
+              timestampFormat="24-hour"
+            />
+            <RecordScroll live>
+              <RecordSoFar />
+              <div className="flex min-h-9 min-w-0 items-center gap-2.5 text-line">
+                <Face state="needs" />
+                <span className="text-status-attention-text">Waiting for your answer</span>
+              </div>
+            </RecordScroll>
+          </Card>
+        </State>
+        <State label="Writing" note="Words on their way, not placed yet.">
+          <Card>
+            <WorkLine row={heading({})} speaker={SPEAKER} timestampFormat="24-hour" />
+            <RecordScroll live>
+              <RecordSoFar />
+              <div className="flex min-h-9 min-w-0 items-center gap-2.5 text-line">
+                <Face />
+                <span className="flex h-8 items-center rounded-2xl rounded-es-md bg-foreground/8 px-3.5">
+                  <TypingDots />
+                </span>
+              </div>
+            </RecordScroll>
+          </Card>
+        </State>
+        <State label="Finished" note="The record stays, in the same scroll; the result under it.">
+          <Card>
+            <WorkLine
+              row={heading({ live: false, face: "produced", endedAt: ago(2) })}
+              speaker={SPEAKER}
+              timestampFormat="24-hour"
+            />
+            <RecordScroll live={false}>
+              <RecordSoFar />
+            </RecordScroll>
+            <TurnReport
+              onOpenActivity={() => undefined}
+              onOpenImage={() => undefined}
+              onOpenTurnDiff={() => undefined}
+              outcome={REPORT_WITH_ACTIVITY}
+            />
+          </Card>
         </State>
         <State
-          label="Thinking and saying, a few steps in"
-          note="A long thought grew the window; the words after it push it up, dimmer each step."
+          label="Settled bars"
+          note="A deploy that landed and a batch that failed, as the bars say it."
         >
-          <Later
-            activity={{ kind: "doing", words: "Editing src/routes.ts" }}
-            bubbles={MIXED}
-            grownBy="m2"
-          />
+          <Card>
+            <ConversationWorking
+              browser={null}
+              dock={SETTLED_DOCK}
+              environmentId={null}
+              incidents={[]}
+              onOpenAgents={() => undefined}
+              threadRef={null}
+            />
+          </Card>
         </State>
         <State
-          label="Saying, then thinking again"
-          note="The newest a thought, the note before it fading."
+          label="Checked without a picture"
+          note="The frame draws what the check read: the page, else its answers, else its findings."
         >
-          <Later activity={{ kind: "thinking" }} bubbles={MIXED_THEN_THINKING} grownBy="m2" />
-        </State>
-        <State
-          label="Waiting for the person"
-          note="Its question is its newest bubble; the amber says who is next."
-        >
-          <Working
-            activity={{ kind: "waiting" }}
-            bubbles={[
-              note("a1", "One question before the long part."),
-              {
-                kind: "question",
-                key: "q1",
-                body: <p className="text-sm leading-relaxed">Shall I go on?</p>,
-              },
-            ]}
-          />
-        </State>
-        <State
-          label="A failure, and one that came back"
-          note="Red where it failed; amber once a later attempt passed."
-        >
-          <Working
-            activity={{ kind: "doing", words: "Running pnpm" }}
-            bubbles={[
-              {
-                kind: "failure",
-                key: "f1",
-                failure: {
-                  subject: null,
-                  words: "Run the type check failed",
-                  recovered: "then passed",
-                },
-              },
-              note("a1", "Fixed the types; re-running the checks."),
-              {
-                kind: "failure",
-                key: "f2",
-                failure: { subject: "appdev", words: "Unhealthy", recovered: null },
-              },
-            ]}
-          />
-        </State>
-        <State
-          label="Everything running at once"
-          note="A batch deploy is a bar per service; helpers and background tasks their own."
-        >
-          <Working
-            activity={null}
-            bubbles={[note("a1", "Deploying both stages together, then the smoke tests.")]}
-            dock={BUSY_DOCK}
-          />
-        </State>
-        <State
-          label="Settled bars, before the report"
-          note="A deploy that landed is whole; a batch service that failed stops where it failed."
-        >
-          <Working
-            activity={{ kind: "thinking" }}
-            bubbles={[note("a1", "apistage is live; webstage failed its build.")]}
-            dock={SETTLED_DOCK}
-          />
+          {READ_CHECKS.map((check) => (
+            <Card key={check.key}>
+              <BrowserStrip
+                environmentId={null}
+                onOpenImage={() => undefined}
+                strip={{
+                  key: `strip:${check.key}`,
+                  checks: [check],
+                  views: 1,
+                  failures: 0,
+                  live: false,
+                }}
+                threadRef={null}
+              />
+            </Card>
+          ))}
         </State>
         <State
           label="After the turn"
@@ -425,13 +577,6 @@ function Harness() {
             state="monitoring"
             stopping={false}
             threadRef={null}
-          />
-        </State>
-        <State label="The report" note="What the turn left, each service once.">
-          <TurnReport
-            onOpenImage={() => undefined}
-            onOpenTurnDiff={() => undefined}
-            outcome={REPORT}
           />
         </State>
       </div>
