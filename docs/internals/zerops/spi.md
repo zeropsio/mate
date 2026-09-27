@@ -60,8 +60,10 @@ through it would make the two directories import each other.
   `reasoningEffort`). A thread with a profile starts and resumes with approval policy `untrusted`,
   the user as reviewer, zcp's MCP server (`zerops`, as `zcp init` registers it) off through the
   thread's `config` overrides, not the app-server argv, with the profile's context window as
-  `model_auto_compact_token_limit` beside it, and its session context as `developerInstructions`
-  (Codex has no spend cap, so `maxBudgetUsd` is not mapped); every `turn/start` carries the same
+  `model_auto_compact_token_limit` beside it, its session context as `developerInstructions`
+  (Codex has no spend cap, so `maxBudgetUsd` is not mapped), and the read-only sandbox when the
+  profile says `readOnly` (the crew sets it for every crewmate but a writer, and for a retired
+  stint; Claude ignores it, its gate already refuses the writes); every `turn/start` carries the same
   policy and sandbox, so the runtime mode never restores its own. `CodexSessionRuntime.ts` answers
   that thread's approval requests from the gate and parks none for a person: a command is a `Bash`
   call `{ command }`; a patch, whose request names no file, is an `Edit` per updated or deleted

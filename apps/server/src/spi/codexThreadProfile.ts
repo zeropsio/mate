@@ -163,7 +163,8 @@ export function codexProfileModelSelection(
  * that sends commands and file changes to the gate (the reviewer stated,
  * since an omitted one stays as the thread last had it), zcp's MCP server
  * off and the context window as the compaction limit for this thread
- * alone, and the session context as the thread's developer instructions.
+ * alone, the session context as the thread's developer instructions, and a
+ * read-only sandbox for a thread that only reads.
  * Codex has no spend cap, so `maxBudgetUsd` has nothing to become.
  */
 export function codexThreadSetup(profile: ThreadToolProfile): CodexThreadSetup {
@@ -171,7 +172,7 @@ export function codexThreadSetup(profile: ThreadToolProfile): CodexThreadSetup {
     thread: {
       approvalPolicy: "untrusted",
       approvalsReviewer: "user",
-      sandbox: "workspace-write",
+      sandbox: profile.readOnly ? "read-only" : "workspace-write",
       developerInstructions: profile.sessionContext,
       config: {
         [`mcp_servers.${ZCP_MCP_SERVER}.enabled`]: false,
@@ -181,7 +182,7 @@ export function codexThreadSetup(profile: ThreadToolProfile): CodexThreadSetup {
     turn: {
       approvalPolicy: "untrusted",
       approvalsReviewer: "user",
-      sandboxPolicy: { type: "workspaceWrite" },
+      sandboxPolicy: { type: profile.readOnly ? "readOnly" : "workspaceWrite" },
     },
     decideCommand: ({ itemId, command }) =>
       command

@@ -51,6 +51,11 @@ export interface ThreadToolProfile {
   readonly model?: string;
   /** The effort option's value; applies only when a model is known. */
   readonly effort?: string;
+  /**
+   * The thread never changes files. Its gate refuses every write either
+   * way; a driver with a sandbox also runs the thread in a read-only one.
+   */
+  readonly readOnly?: boolean;
   readonly decideTool: (call: {
     readonly toolName: string;
     readonly input: unknown;

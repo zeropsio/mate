@@ -318,6 +318,21 @@ describe("the thread and turn a profiled Codex thread starts", () => {
       sandboxPolicy: { type: "workspaceWrite" },
     });
   });
+
+  for (const [readOnly, sandbox, sandboxPolicy] of [
+    [undefined, "workspace-write", { type: "workspaceWrite" }],
+    [false, "workspace-write", { type: "workspaceWrite" }],
+    [true, "read-only", { type: "readOnly" }],
+  ] as const) {
+    it(`a profile read only ${readOnly} runs in the ${sandbox} sandbox`, () => {
+      const setup = codexThreadSetup({
+        ...PROFILE,
+        ...(readOnly === undefined ? {} : { readOnly }),
+      });
+      assert.strictEqual(setup.thread.sandbox, sandbox);
+      assert.deepStrictEqual(setup.turn.sandboxPolicy, sandboxPolicy);
+    });
+  }
 });
 
 describe("a Codex session start asks the installed policy", () => {

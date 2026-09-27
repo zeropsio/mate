@@ -110,6 +110,18 @@ describe("a thread with a tool profile, on the Codex adapter", () => {
       }).pipe(Effect.scoped, Effect.provide(contractLayer)),
   );
 
+  it.effect("runs a read-only thread in the read-only sandbox, on start and every turn", () =>
+    Effect.gen(function* () {
+      const { adapter, wire } = yield* withProfile({ ...PROFILE, readOnly: true });
+      yield* adapter.startSession(startInput());
+      yield* adapter.sendTurn({ threadId: CREW_THREAD, input: "read", attachments: [] });
+      const [start] = paramsOf(wire, "thread/start");
+      assert.deepInclude(start, { ...THREAD_OVERRIDES, sandbox: "read-only" });
+      const [turn] = paramsOf(wire, "turn/start");
+      assert.deepInclude(turn, { sandboxPolicy: { type: "readOnly" } });
+    }).pipe(Effect.scoped, Effect.provide(contractLayer)),
+  );
+
   it.effect("resumes with the same overrides", () =>
     Effect.gen(function* () {
       const { adapter, wire } = yield* withProfile(PROFILE);

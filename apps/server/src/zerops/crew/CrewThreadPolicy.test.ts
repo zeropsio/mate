@@ -195,10 +195,11 @@ describe("CrewThreadPolicy", () => {
   );
 
   it.effect.each([
-    ["writer", false, ["crew_report", "crew_board", "crew_diff", "crew_show_on_dev"]],
-    ["reader", false, ["crew_report", "crew_board", "crew_diff", "crew_review"]],
+    ["writer", false, false, ["crew_report", "crew_board", "crew_diff", "crew_show_on_dev"]],
+    ["reader", false, true, ["crew_report", "crew_board", "crew_diff", "crew_review"]],
     [
       "lead",
+      true,
       true,
       [
         "crew_report",
@@ -211,8 +212,8 @@ describe("CrewThreadPolicy", () => {
       ],
     ],
   ] as const)(
-    "a %s (memory %s) gets its kind's tools, and never a dialog",
-    ([kind, memory, names]) => {
+    "a %s (memory %s, read only %s) gets its kind's tools, and never a dialog",
+    ([kind, memory, readOnly, names]) => {
       const member: CrewThreadMember =
         kind === "writer"
           ? { ...backend, prompt: { ...backend.prompt, memory } }
@@ -228,6 +229,7 @@ describe("CrewThreadPolicy", () => {
           const profile = (yield* setupFor(CREW_THREAD))!.profile;
           expect(profile.sessionContext).toBe(crewSessionContext(member.prompt));
           expect(profile.tools.map((tool) => tool.name)).toEqual(names);
+          expect(profile.readOnly).toBe(readOnly);
           for (const toolName of ["AskUserQuestion", "ExitPlanMode"]) {
             const decision = yield* profile.decideTool({ toolName, input: {}, toolUseId: "t1" });
             expect(decision.kind).toBe("deny");
@@ -301,6 +303,7 @@ describe("CrewThreadPolicy", () => {
         expect(profile).toEqual({
           sessionContext: "This crew conversation is retired; nothing runs in it.",
           contextWindow: 300_000,
+          readOnly: true,
           decideTool: expect.any(Function),
           tools: [],
         });

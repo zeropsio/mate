@@ -63,6 +63,7 @@ export const installCrewThreadPolicy = Effect.gen(function* () {
     ...(member.maxBudgetUsd === undefined ? {} : { maxBudgetUsd: member.maxBudgetUsd }),
     ...(member.model === undefined ? {} : { model: member.model }),
     ...(member.effort === undefined ? {} : { effort: member.effort }),
+    readOnly: member.kind !== "writer",
     decideTool: (call) =>
       Effect.map(liveMember(threadId), (current) =>
         decideCrewTool(Option.isSome(current) ? current.value.gate : DENY_ALL, call),
@@ -77,6 +78,7 @@ export const installCrewThreadPolicy = Effect.gen(function* () {
   const denyAllProfile = (member: CrewThreadMember): ThreadToolProfile => ({
     sessionContext: CREW_RETIRED,
     contextWindow: member.contextWindow,
+    readOnly: true,
     decideTool: (call) => Effect.succeed(decideCrewTool(DENY_ALL, call)),
     tools: [],
   });
