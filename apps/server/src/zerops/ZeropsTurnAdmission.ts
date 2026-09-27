@@ -19,6 +19,13 @@
  * thing to everyone but the person who knows. A refusal on a cached record is
  * re-read once before it stands.
  *
+ * A crewmate's conversation (a thread with a crew origin) has three guards
+ * of its own (ARCHITECTURE seam 13). A person's session never archives,
+ * restores or deletes one — the crew does, through its own actions — and
+ * never starts a turn on a retired one. And no turn starts on one at all
+ * unless the thread tool policy has a profile for it: a crewmate's turn
+ * never runs ungated.
+ *
  * @module ZeropsTurnAdmission
  */
 import {
@@ -26,6 +33,7 @@ import {
   agentIdForProviderInstance,
   OrchestrationDispatchCommandError,
   type OrchestrationCommand,
+  type OrchestrationThreadShell,
   type ZeropsAgentId,
 } from "@t3tools/contracts";
 import { zeropsAgentUnavailableReason } from "@t3tools/shared/zeropsAgentAuth";
@@ -37,6 +45,7 @@ import * as Option from "effect/Option";
 import * as ServerConfig from "../config.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ProviderInstances } from "../spi/providerInstances.ts";
+import { ThreadToolPolicyRegistry, threadProfileFor } from "../spi/threadToolPolicy.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
@@ -78,6 +87,21 @@ export function turnRefusalMessage(agentId: ZeropsAgentId, refusal: TurnRefusal)
   }
 }
 
+/** The refusals of a crewmate's conversation (seam 13). */
+export const CREW_THREAD_REFUSALS = {
+  keptByCrew:
+    "A crewmate's conversation is the crew's to archive, restore or delete; use the crew's own actions.",
+  retired:
+    "This crewmate conversation is retired; message the crewmate in its current conversation.",
+  notRunning: "Crew mode is not running this crewmate's conversation, so it cannot take a turn.",
+} as const;
+
+const CREW_KEPT_COMMANDS: ReadonlySet<OrchestrationCommand["type"]> = new Set([
+  "thread.archive",
+  "thread.unarchive",
+  "thread.delete",
+]);
+
 export class ZeropsTurnAdmission extends Context.Service<
   ZeropsTurnAdmission,
   {
@@ -95,24 +119,24 @@ export const make = Effect.gen(function* () {
   const agentAuth = yield* ZeropsAgentAuth.ZeropsAgentAuth;
   const projectSigners = yield* ZeropsProjectSigners;
   const providerInstances = yield* ProviderInstances;
+  const policies = yield* Effect.serviceOption(ThreadToolPolicyRegistry);
+
+  /** The thread the command acts on, when it names one and the projection has it. */
+  const threadOf = (command: OrchestrationCommand) =>
+    "threadId" in command
+      ? projectionSnapshotQuery.getThreadShellById(command.threadId).pipe(
+          Effect.map(Option.getOrUndefined),
+          Effect.catchCause(() => Effect.succeed(undefined)),
+        )
+      : Effect.succeed(undefined);
 
   /** The instance the command names, or else the one its thread runs on. */
-  const instanceIdOf = (command: OrchestrationCommand) =>
-    Effect.gen(function* () {
-      const commandInstanceId =
-        "modelSelection" in command ? command.modelSelection?.instanceId : undefined;
-      if (commandInstanceId !== undefined) return commandInstanceId as string;
-      if (!("threadId" in command)) return undefined;
-      return yield* projectionSnapshotQuery.getThreadShellById(command.threadId).pipe(
-        Effect.map(
-          Option.match({
-            onNone: () => undefined,
-            onSome: (thread) => thread.modelSelection.instanceId as string | undefined,
-          }),
-        ),
-        Effect.catchCause(() => Effect.succeed(undefined)),
-      );
-    });
+  const instanceIdOf = (
+    command: OrchestrationCommand,
+    thread: OrchestrationThreadShell | undefined,
+  ): string | undefined =>
+    ("modelSelection" in command ? command.modelSelection?.instanceId : undefined) ??
+    thread?.modelSelection.instanceId;
 
   /**
    * The agent an instance runs, by its driver — a second instance of a driver
@@ -163,9 +187,10 @@ export const make = Effect.gen(function* () {
   /** D6 itself: the agent must be signed in, and signed in by this principal. */
   const refuseSomeoneElsesAgent = Effect.fnUntraced(function* (
     command: OrchestrationCommand,
+    thread: OrchestrationThreadShell | undefined,
     principal: TurnPrincipal,
   ) {
-    const agentId = yield* agentIdOf(yield* instanceIdOf(command));
+    const agentId = yield* agentIdOf(instanceIdOf(command, thread));
     if (agentId === undefined) return;
     const snapshot = yield* agentAuth.latest;
     const agent = snapshot.agents.find((entry) => entry.agentId === agentId);
@@ -181,19 +206,40 @@ export const make = Effect.gen(function* () {
     });
   });
 
+  const refuse = (message: string) => new OrchestrationDispatchCommandError({ message });
+
   /**
-   * The checks, in order. Checks keyed on a thread's crew origin go right
-   * after the environment check: some of them refuse commands that start no
-   * turn at all (archiving a crewmate's thread).
+   * The checks, in order. Archiving, restoring and deleting start no turn
+   * but are checked against a crewmate's conversation; every other command
+   * that starts no turn passes untouched, without a read.
    */
   const admit: ZeropsTurnAdmission["Service"]["admit"] = Effect.fnUntraced(function* ({
     command,
     principal,
   }) {
     if (!isZeropsEnvironment(config)) return;
-    if (!(yield* startsTurn(command))) return;
+    const kept = CREW_KEPT_COMMANDS.has(command.type);
+    if (!kept && !(yield* startsTurn(command))) return;
+    const thread = yield* threadOf(command);
+    const crewThread = thread?.crew !== undefined ? thread : undefined;
+    if (kept) {
+      if (crewThread !== undefined && principal.kind === "session") {
+        return yield* refuse(CREW_THREAD_REFUSALS.keptByCrew);
+      }
+      return;
+    }
+    if (crewThread !== undefined) {
+      if (principal.kind === "session" && crewThread.archivedAt !== null) {
+        return yield* refuse(CREW_THREAD_REFUSALS.retired);
+      }
+      const profile = yield* threadProfileFor(policies, {
+        threadId: crewThread.id,
+        instanceId: crewThread.modelSelection.instanceId,
+      });
+      if (profile === undefined) return yield* refuse(CREW_THREAD_REFUSALS.notRunning);
+    }
     if (principal.kind === "crew") yield* refuseDepartedStarter(principal.startedBy);
-    yield* refuseSomeoneElsesAgent(command, principal);
+    yield* refuseSomeoneElsesAgent(command, thread, principal);
   });
 
   return ZeropsTurnAdmission.of({ admit });
