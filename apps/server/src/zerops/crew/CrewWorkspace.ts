@@ -46,6 +46,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 
 import { shellQuote } from "../ZeropsWorkspaceAccess.ts";
 import { CrewChecks, type CheckOutcome } from "./CrewChecks.ts";
@@ -54,6 +55,7 @@ import {
   CrewShell,
   field,
   fields,
+  fieldsOf,
   git,
   laneBranch,
   laneDirectory,
@@ -61,10 +63,22 @@ import {
   shellVariable,
   type CrewShellError,
 } from "./CrewShell.ts";
-import { CrewStore, type CrewStoreError } from "./CrewStore.ts";
+import { CrewStore, type CrewLaneRow, type CrewStoreError } from "./CrewStore.ts";
 
 /** The integration HEAD a lane script read into `$H`. */
 const H = shellVariable("H");
+
+/** A staged blob larger than this parks the lane unless the crewmate raises it. */
+export const DEFAULT_MAX_BLOB_BYTES = 10 * 1024 * 1024;
+
+/** Delivery's unignored-dependency guard (zcp `ops/gitea_branch.go`). */
+const DEPENDENCY_DIRECTORIES = ["node_modules", "vendor", ".venv"] as const;
+
+/** DM-7's `.env`/`.env.*` and key files, committed whatever their ignore state. */
+const SECRET_PATH_PATTERN = String.raw`(^|/)(\.env(\..+)?|id_(rsa|dsa|ecdsa|ed25519)|[^/]+\.(pem|key|p12|pfx))$`;
+
+/** A conflict marker git writes at the start of a line. */
+const CONFLICT_MARKER_PATTERN = "^(<<<<<<<|>>>>>>>)( |$)";
 
 /** Attempt refs kept per lane. */
 export const ATTEMPT_REFS_PER_LANE = 3;
@@ -95,9 +109,46 @@ export type CreateOutcome =
   | { readonly _tag: "no-space"; readonly needKiB: number; readonly availableKiB: number }
   | { readonly _tag: "mount-unseen" };
 
+/** A lane by its crew and crewmate. */
+export interface LaneKey {
+  readonly crew: string;
+  readonly handle: string;
+}
+
+export interface TurnCommit {
+  readonly assignment: string;
+  readonly turn: number;
+  readonly maxBlobBytes?: number | undefined;
+}
+
+/** Why a lane stopped: a guard tripped, or its tip is not one the engine wrote. */
+export type LaneParkReason = "dependencies" | "secrets" | "size" | "unknown-tip";
+
+export type LaneCommit =
+  | { readonly _tag: "committed"; readonly tip: string }
+  | { readonly _tag: "unchanged"; readonly tip: string }
+  /** An open merge whose conflicted files still carry markers; nothing was committed. */
+  | { readonly _tag: "rework"; readonly paths: ReadonlyArray<string> }
+  | {
+      readonly _tag: "parked";
+      readonly reason: Exclude<LaneParkReason, "unknown-tip">;
+      readonly paths: ReadonlyArray<string>;
+    }
+  | { readonly _tag: "parked"; readonly reason: "unknown-tip"; readonly tip: string }
+  | { readonly _tag: "frozen" }
+  | { readonly _tag: "lane-missing" };
+
+/** Widens one outcome literal to the union, so a generator's returns agree. */
+const laneCommit = (commit: LaneCommit): LaneCommit => commit;
+
 export interface CrewWorkspaceService {
   /** Apply: exclude line, disk floor, `worktree add`, wait for the mount, setup, record. */
   readonly create: (spec: LaneSpec) => Effect.Effect<CreateOutcome, CrewWorkspaceError>;
+  /** Turn end: the lane-commit precondition, then `wip(<task>): turn <n>`. */
+  readonly commitTurn: (
+    key: LaneKey,
+    turn: TurnCommit,
+  ) => Effect.Effect<LaneCommit, CrewWorkspaceError>;
 }
 
 export class CrewWorkspace extends Context.Service<CrewWorkspace, CrewWorkspaceService>()(
@@ -143,6 +194,106 @@ export const make = Effect.gen(function* () {
       }
       return false;
     });
+
+  const laneRow = (key: LaneKey, operation: string) =>
+    store.getLane(key.crew, key.handle).pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () =>
+            Effect.fail(
+              new CrewGitError({
+                host: "",
+                operation,
+                detail: `no lane is recorded for ${key.crew}/${key.handle}`,
+              }),
+            ),
+          onSome: Effect.succeed,
+        }),
+      ),
+    );
+
+  /**
+   * The lane-commit precondition and the commit, one ssh script. Guards read
+   * what `add -A` would stage before anything is staged, so a trip leaves the
+   * index - and an open merge - exactly as they were.
+   */
+  const commitLane = (row: CrewLaneRow, message: string, maxBlobBytes: number) =>
+    Effect.gen(function* () {
+      if (row.frozenSince !== null) return laneCommit({ _tag: "frozen" });
+      const lane = shellQuote(laneDirectory(row.lane));
+      const lg = (args: ReadonlyArray<string>) => git({ lane: row.lane }, args);
+      const out = yield* runLane(
+        row.host,
+        "commitTurn",
+        EXCLUDE_LINE +
+          `[ -d ${lane} ] || { printf 'status\\tlane-missing\\n'; exit 0; }\n` +
+          `tip=$(${lg(["rev-parse", "HEAD"])}) || exit 1\n` +
+          `[ "$tip" = ${shellQuote(row.recordedTip ?? "")} ] || { printf 'status\\tunknown-tip\\ntip\\t%s\\n' "$tip"; exit 0; }\n` +
+          `merging=0; ${lg(["rev-parse", "-q", "--verify", "MERGE_HEAD"])} >/dev/null && merging=1\n` +
+          `deps=''\n` +
+          `for d in ${DEPENDENCY_DIRECTORIES.join(" ")}; do\n` +
+          `  if [ -d ${lane}/"$d" ] && ! ${lg(["check-ignore", "-q"])} "$d"; then deps="$deps $d"; fi\n` +
+          `done\n` +
+          `[ -z "$deps" ] || { printf 'status\\tparked\\nguard\\tdependencies\\n'; for d in $deps; do printf 'path\\t%s\\n' "$d"; done; exit 0; }\n` +
+          `pending=$(mktemp) || exit 1\n` +
+          `trap 'rm -f "$pending"' EXIT\n` +
+          `{ ${lg(["diff", "--name-only", "--diff-filter=U"])} && ${lg(["add", "-A", "--dry-run"])} | sed -n "s/^add '\\(.*\\)'$/\\1/p"; } | sort -u > "$pending" || exit 1\n` +
+          `if [ "$merging" = 1 ]; then\n` +
+          `  marked=$(while IFS= read -r f; do [ -f ${lane}/"$f" ] && grep -qE '${CONFLICT_MARKER_PATTERN}' ${lane}/"$f" && printf '%s\\n' "$f"; done < "$pending")\n` +
+          `  [ -z "$marked" ] || { printf 'status\\trework\\n'; printf '%s\\n' "$marked" | sed 's/^/path\t/'; exit 0; }\n` +
+          `fi\n` +
+          `secrets=$(grep -E '${SECRET_PATH_PATTERN}' "$pending")\n` +
+          `[ -z "$secrets" ] || { printf 'status\\tparked\\nguard\\tsecrets\\n'; printf '%s\\n' "$secrets" | sed 's/^/path\t/'; exit 0; }\n` +
+          `large=$(while IFS= read -r f; do if [ -f ${lane}/"$f" ] && [ "$(wc -c < ${lane}/"$f" | tr -d ' ')" -gt ${maxBlobBytes} ]; then printf '%s\\n' "$f"; fi; done < "$pending")\n` +
+          `[ -z "$large" ] || { printf 'status\\tparked\\nguard\\tsize\\n'; printf '%s\\n' "$large" | sed 's/^/path\t/'; exit 0; }\n` +
+          `${lg(["add", "-A"])} || exit 1\n` +
+          `if [ "$merging" = 1 ] || ! ${lg(["diff", "--cached", "--quiet"])}; then\n` +
+          `  ${lg(["commit", "-q", "--no-verify", "-m", message])} || exit 1\n` +
+          `  printf 'status\\tcommitted\\n'\n` +
+          `else\n` +
+          `  printf 'status\\tunchanged\\n'\n` +
+          `fi\n` +
+          `printf 'tip\\t%s\\n' "$(${lg(["rev-parse", "HEAD"])})"\n`,
+      );
+      const status = field(out, "status");
+      const paths = fieldsOf(out, "path");
+      const tip = field(out, "tip") ?? "";
+      switch (status) {
+        case "lane-missing":
+          return laneCommit({ _tag: "lane-missing" });
+        case "rework":
+          return laneCommit({ _tag: "rework", paths });
+        case "unknown-tip":
+        case "parked": {
+          yield* store.updateLane(row.crew, row.lane, (lane) => ({ ...lane, state: "parked" }));
+          return status === "unknown-tip"
+            ? laneCommit({ _tag: "parked", reason: "unknown-tip", tip })
+            : laneCommit({
+                _tag: "parked",
+                reason: field(out, "guard") as Exclude<LaneParkReason, "unknown-tip">,
+                paths,
+              });
+        }
+        default: {
+          yield* store.updateLane(row.crew, row.lane, (lane) => ({ ...lane, recordedTip: tip }));
+          return laneCommit({
+            _tag: status === "committed" ? "committed" : "unchanged",
+            tip,
+          });
+        }
+      }
+    });
+
+  const commitTurn: CrewWorkspaceService["commitTurn"] = (key, turn) =>
+    laneRow(key, "commitTurn").pipe(
+      Effect.flatMap((row) =>
+        commitLane(
+          row,
+          `wip(${turn.assignment}): turn ${turn.turn}`,
+          turn.maxBlobBytes ?? DEFAULT_MAX_BLOB_BYTES,
+        ),
+      ),
+    );
 
   const create: CrewWorkspaceService["create"] = (spec) =>
     Effect.gen(function* () {
@@ -208,7 +359,7 @@ export const make = Effect.gen(function* () {
       ) satisfies CreateOutcome;
     });
 
-  return CrewWorkspace.of({ create });
+  return CrewWorkspace.of({ create, commitTurn });
 });
 
 export const layer = Layer.effect(CrewWorkspace, make);
