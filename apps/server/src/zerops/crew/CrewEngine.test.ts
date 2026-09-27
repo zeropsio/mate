@@ -456,6 +456,37 @@ describe("CrewEngine", () => {
       yield* (yield* CrewToolHost).report(member, { status: "done", summary: "Done." });
     });
 
+  it.live("a message to a crewmate that asked a question answers its open task", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const thread = yield* firstTurn(world, () => undefined);
+        const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
+        yield* (yield* CrewToolHost).report(member, {
+          status: "blocked",
+          summary: "Which currency?",
+          question: "CZK or EUR?",
+        });
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        yield* snapshotWhere((current) => current.board.tasks[0]?.state === "blocked");
+        yield* Effect.sleep("300 millis");
+        yield* command({ _tag: "message", handle: "backend", text: "EUR", attachments: [] });
+        const answered = yield* snapshotWhere(
+          (current) => current.board.tasks[0]?.state === "working",
+        );
+        const turns = yield* dispatchedOf(world, "thread.turn.start");
+        assert.deepStrictEqual(
+          [
+            answered.board.tasks.map((task) => [task.number, task.state]),
+            turns.at(-1)?.threadId,
+            turns.at(-1)?.message.text,
+          ],
+          [[[1, "working"]], thread, "EUR"],
+        );
+      }),
+    ),
+  );
+
   it.live("refs the engine writes mid-turn never park the lane; a foreign one does", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
