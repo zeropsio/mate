@@ -29,7 +29,7 @@ vi.mock("../state/entities", () => ({
       id: "thread-existing",
       environmentId: "environment-1",
       archivedAt: null,
-      pinned: false,
+      pinnedAt: null,
       latestUserMessageAt: state.latestUserMessageAt,
       updatedAt: "2026-09-01T10:00:00.000Z",
       createdAt: "2026-09-01T09:00:00.000Z",

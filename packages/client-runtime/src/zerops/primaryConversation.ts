@@ -32,9 +32,9 @@
  */
 
 /**
- * The fields this needs from a thread shell. Structural on purpose: web's
- * `SidebarThreadSummary`, mobile's list row and a test fixture all satisfy it
- * without this module importing any of them.
+ * The fields this needs from a thread shell. Structural on purpose: a thread
+ * shell and a test fixture both satisfy it without this module importing
+ * either.
  */
 export interface ZeropsConversationCandidate {
   readonly id: string;
@@ -43,8 +43,8 @@ export interface ZeropsConversationCandidate {
   readonly updatedAt: string;
   /** When the user last said something. Absent on a thread nobody has spoken in. */
   readonly latestUserMessageAt?: string | null;
-  /** The user pinned this one as the environment's main chat. */
-  readonly pinned?: boolean;
+  /** When the user pinned this one as the environment's main chat; null or absent when not. */
+  readonly pinnedAt?: string | null | undefined;
 }
 
 /** Why this thread was chosen — the UI may want to explain itself, and tests must. */
@@ -72,7 +72,8 @@ function timestamp(value: string | null | undefined): number {
  * must open the same conversation.
  */
 function compare(left: ZeropsConversationCandidate, right: ZeropsConversationCandidate): number {
-  if (left.pinned !== right.pinned) return left.pinned === true ? -1 : 1;
+  const leftPinned = left.pinnedAt != null;
+  if (leftPinned !== (right.pinnedAt != null)) return leftPinned ? -1 : 1;
 
   const leftSpoken = timestamp(left.latestUserMessageAt);
   const rightSpoken = timestamp(right.latestUserMessageAt);
@@ -105,7 +106,7 @@ export function resolvePrimaryConversation<T extends ZeropsConversationCandidate
   const [primary, ...hidden] = ranked as [T, ...Array<T>];
 
   const reason: ZeropsPrimaryConversationReason =
-    primary.pinned === true
+    primary.pinnedAt != null
       ? "pinned"
       : timestamp(primary.latestUserMessageAt) > 0
         ? "spoken"
