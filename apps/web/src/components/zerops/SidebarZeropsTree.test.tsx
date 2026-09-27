@@ -44,6 +44,12 @@ vi.mock("~/zerops/collapsedProjects", () => ({
   },
 }));
 afterEach(() => {
+  // A tree left mounted would answer the next test's asks of the one menu.
+  for (const tree of mountedTrees.splice(0)) {
+    act(() => {
+      tree.unmount();
+    });
+  }
   stored.collapsed = new Set();
   stored.written = undefined;
   vi.unstubAllGlobals();
@@ -149,6 +155,7 @@ const stop = (html: string, id: string) =>
  * node is a DOM element; there is no DOM here, so an event target stands in
  * for the window and nothing is an element.
  */
+const mountedTrees: ReactTestRenderer[] = [];
 function mount(element: ReactElement): ReactTestRenderer {
   const noDom = Object.fromEntries(
     ["Node", "Element", "HTMLElement", "ShadowRoot"].map((name) => [name, function none() {}]),
@@ -159,6 +166,7 @@ function mount(element: ReactElement): ReactTestRenderer {
   act(() => {
     tree = create(element);
   });
+  mountedTrees.push(tree!);
   return tree!;
 }
 
@@ -2486,5 +2494,44 @@ describe("a long list, kept scannable", () => {
       window.dispatchEvent(Object.assign(new Event("keyup"), { key: "Alt" }));
     });
     expect(chips()).toEqual([]);
+  });
+});
+
+describe("a surface's ask to show a Mate", () => {
+  const tree = () => (
+    <SidebarZeropsTree
+      candidates={[CRM_DEV_CONNECTED, CRM_STAGE, CRM_PROD]}
+      complete
+      onBrowseProjects={() => {}}
+      onSelect={() => {}}
+    />
+  );
+
+  it("opens the Mate's collapsed project and answers the ask once", () => {
+    stored.collapsed = new Set(["aaa"]);
+    const mounted = mount(tree());
+    const mateRows = () =>
+      mounted.root.findAll(
+        (node) =>
+          typeof node.type === "string" && node.props["data-zerops-surface"] === "sidebar-mate",
+      );
+    expect(mateRows()).toHaveLength(0);
+    act(() => {
+      useSidebarPeek.getState().reveal("crm-dev");
+    });
+    expect(mateRows()).toHaveLength(1);
+    // Answered: a menu drawn again later has nothing left to show.
+    expect(useSidebarPeek.getState().revealing).toBeNull();
+  });
+
+  it("leaves an ask for a Mate it does not hold standing until one does", () => {
+    mount(tree());
+    act(() => {
+      useSidebarPeek.getState().reveal("elsewhere");
+    });
+    expect(useSidebarPeek.getState().revealing?.projectId).toBe("elsewhere");
+    act(() => {
+      useSidebarPeek.getState().answerReveal(useSidebarPeek.getState().revealing!.seq);
+    });
   });
 });

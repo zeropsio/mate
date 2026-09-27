@@ -49,6 +49,18 @@ describe("useSidebarPeek — the one Mate peeked at", () => {
     expect(second?.projectId).toBe("nova");
     expect(second?.seq).not.toBe(first?.seq);
   });
+
+  it("forgets an ask once the tree answered it, and only that ask", () => {
+    const { reveal, answerReveal } = useSidebarPeek.getState();
+    reveal("nova");
+    const first = useSidebarPeek.getState().revealing!;
+    reveal("kai");
+    // A late answer to an older ask leaves the newer one standing.
+    answerReveal(first.seq);
+    expect(useSidebarPeek.getState().revealing?.projectId).toBe("kai");
+    answerReveal(useSidebarPeek.getState().revealing!.seq);
+    expect(useSidebarPeek.getState().revealing).toBeNull();
+  });
 });
 
 describe("a Mate's menu, asked for from its peek", () => {

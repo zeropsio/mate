@@ -509,7 +509,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // A surface's ask to show a Mate (the header's waiting faces): open its
   // project, then — once its row is drawn — focus it and pin its peek.
   const revealing = useSidebarPeek((state) => state.revealing);
-  const answeredReveal = useRef(0);
   const focusAfterDraw = useRef<string | null>(null);
   // The Mates in the order drawn — collapsed projects included — for the
   // header's "next one that waits"; written after each render, not during it.
@@ -519,8 +518,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   });
   const [, setRevealDraw] = useState(0);
   useEffect(() => {
-    if (revealing === null || revealing.seq === answeredReveal.current) return;
-    answeredReveal.current = revealing.seq;
+    if (revealing === null) return;
+    // A Mate this menu does not hold yet is shown once it does.
+    if (!candidates.some((candidate) => candidate.project.id === revealing.projectId)) return;
+    useSidebarPeek.getState().answerReveal(revealing.seq);
     const groupId = groupIdOf(candidates, revealing.projectId);
     if (groupId !== undefined) {
       setCollapsed((current) => withCollapsed(current, groupId, false));
