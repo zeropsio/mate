@@ -10,6 +10,8 @@ import {
   CREW_BOARD_COLUMNS,
   crewAttentionSentence,
   crewCheckWord,
+  crewDiffStatWord,
+  crewTaskSourceWord,
   type CrewBoardColumnId,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type {
@@ -24,7 +26,6 @@ import type {
   CrewReview,
   CrewSnapshot,
   CrewTask,
-  CrewTaskSource,
   CrewTint,
   ThreadId,
 } from "@t3tools/contracts";
@@ -131,22 +132,6 @@ const TASK_DOT_TONE: Readonly<Record<Exclude<CrewTask["state"], "working">, Serv
     discarded: "off",
   };
 
-const SOURCE_WORDS: Readonly<Record<CrewTaskSource, string>> = {
-  you: "from you",
-  lead: "from lead",
-  message: "from a message",
-  issue: "from an issue",
-};
-
-/** `+214 −12`, with a true minus. */
-export function crewDiffStat(stat: NonNullable<CrewTask["diffStat"]>): string {
-  return `+${stat.insertions} \u2212${stat.deletions}`;
-}
-
-export function crewSourceWord(source: CrewTaskSource): string {
-  return SOURCE_WORDS[source];
-}
-
 export function crewBoardFace(handle: string, owner: CrewmateView | null): CrewBoardFace {
   if (owner === null) return { handle, name: `@${handle}`, tint: null, face: "idle" };
   return {
@@ -175,8 +160,8 @@ function detailLine(task: CrewTask): string {
   const parts: Array<string> = [];
   if (task.check?.state === "failed") parts.push(crewCheckWord(task.check));
   if (task.state === "blocked" && task.question !== null) parts.push(task.question);
-  else if (task.diffStat !== null) parts.push(crewDiffStat(task.diffStat));
-  parts.push(crewSourceWord(task.source));
+  else if (task.diffStat !== null) parts.push(crewDiffStatWord(task.diffStat));
+  parts.push(crewTaskSourceWord(task.source));
   return parts.join(" · ");
 }
 
@@ -356,7 +341,7 @@ export function crewTaskSheet(view: CrewView, taskId: string): CrewTaskSheet | n
     title: task.title,
     owner: crewBoardFace(task.owner, owner),
     status: crewTaskStatus(row),
-    source: crewSourceWord(task.source),
+    source: crewTaskSourceWord(task.source),
     brief: task.brief,
     doneWhen: task.doneWhen === "" ? null : task.doneWhen,
     attempts: task.attempts === 0 ? "Not started" : `Attempt ${task.attempts}`,
@@ -370,7 +355,7 @@ export function crewTaskSheet(view: CrewView, taskId: string): CrewTaskSheet | n
             output: task.check.output,
           },
     review: task.review === null ? null : reviewLine(task.review, view),
-    changes: task.diffStat === null ? null : crewDiffStat(task.diffStat),
+    changes: task.diffStat === null ? null : crewDiffStatWord(task.diffStat),
     landedCommit: task.landedCommit,
     ownerThreadId: owner?.crewmate.currentThreadId ?? null,
     editable: task.state !== "landed",

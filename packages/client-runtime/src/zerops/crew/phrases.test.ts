@@ -11,6 +11,18 @@ import {
   CREW_ATTENTION_VERBS,
   CREW_BOARD_COLUMNS,
   CREW_IDLE_WORD,
+  CREW_LANE_VERBS,
+  crewAheadWord,
+  crewAppWord,
+  crewConflictWord,
+  crewDiffStatWord,
+  crewEarlierStintNotice,
+  crewJobVersionWord,
+  crewLandedAsWord,
+  crewMessagePlaceholder,
+  crewPendingNotice,
+  crewStintWord,
+  crewTaskSourceWord,
   crewApplyWord,
   crewAskToFixWord,
   crewAskToResolveWord,
@@ -416,5 +428,82 @@ describe("the drafts a crew surface hands the Mate", () => {
     expect(crewDescribeAsk("  a builder and a reviewer ")).toBe(
       "Set up a crew for this project: a builder and a reviewer",
     );
+  });
+});
+
+describe("the chat's words (PRD §4.5, §5.6, §5.7)", () => {
+  it("says how far a copy is ahead of your tree, and its change", () => {
+    expect([0, 1, 3].map(crewAheadWord)).toEqual([
+      null,
+      "1 change ahead of your tree",
+      "3 changes ahead of your tree",
+    ]);
+    expect(crewDiffStatWord({ insertions: 214, deletions: 12 })).toBe("+214 \u221212");
+  });
+
+  it("names the files a merge-in stopped on", () => {
+    expect(crewConflictWord([])).toBe("Conflicts with what landed");
+    expect(crewConflictWord(["src/api/items.ts", "src/api/users.ts"])).toBe(
+      "Conflicts with what landed: src/api/items.ts and 1 more",
+    );
+  });
+
+  it("names a landing by its task and commit", () => {
+    expect(crewLandedAsWord({ number: 11, landedCommit: "a1b2c3d" })).toBe(
+      "Task #11 landed as a1b2c3d",
+    );
+  });
+
+  it.each([
+    [{ kind: "running", port: 3001 }, "App on :3001"],
+    [{ kind: "stopped" }, "App stopped"],
+    [{ kind: "no-crew-ports", host: "appdev" }, "No crew ports on appdev"],
+    [{ kind: "no-free-port" }, "No free crew port"],
+  ] as const)("says a crewmate's app %o", (app, word) => {
+    expect(crewAppWord(app)).toBe(word);
+  });
+
+  it("names the lane bar's presses", () => {
+    expect(CREW_LANE_VERBS).toEqual({
+      showOnDev: "Show on dev",
+      backToTree: "Back to my tree",
+      landNow: "Land now",
+      addCrewPorts: "Add crew ports",
+    });
+  });
+
+  it("says where a task came from", () => {
+    expect((["you", "lead", "message", "issue"] as const).map(crewTaskSourceWord)).toEqual([
+      "from you",
+      "from lead",
+      "from a message",
+      "from an issue",
+    ]);
+  });
+
+  it("heads a crewmate's chat with its job's version and its conversations", () => {
+    expect(crewJobVersionWord(4)).toBe("Job v4");
+    expect(crewStintWord(2, true)).toBe("Conversation 2 · current");
+    expect(crewStintWord(1, false)).toBe("Conversation 1");
+    expect(crewMessagePlaceholder("Backend")).toBe("Message Backend…");
+  });
+
+  it.each([
+    [{ brief: null, job: 5 }, "Job updated to v5 — the next turn starts a fresh conversation"],
+    [{ brief: 5, job: null }, "Brief updated to v5 — the next turn starts a fresh conversation"],
+    [
+      { brief: 5, job: 6 },
+      "Job updated to v6 and brief to v5 — the next turn starts a fresh conversation",
+    ],
+    [{ brief: null, job: null }, null],
+  ] as const)("says what a pending prompt does at the next turn: %o", (pending, word) => {
+    expect(crewPendingNotice(pending)).toBe(word);
+  });
+
+  it("points an earlier conversation at the current one", () => {
+    expect(crewEarlierStintNotice("backend")).toEqual({
+      text: "An earlier conversation with @backend — it goes on in a newer one.",
+      sendBlock: "Write to @backend in its current conversation",
+    });
   });
 });

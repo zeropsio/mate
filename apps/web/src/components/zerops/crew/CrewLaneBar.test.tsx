@@ -19,7 +19,12 @@ vi.mock("~/zerops/crew/useCrew", () => ({
   }),
 }));
 vi.mock("~/zerops/crew/useCrewCommand", () => ({
-  useCrewCommand: () => ({ send: vi.fn(), pending: false, error: null }),
+  useCrewCommand: () => ({ send: vi.fn(), pending: false, error: null, clearError: vi.fn() }),
+}));
+vi.mock("~/zerops/useAskMate", () => ({ useAskMate: () => vi.fn() }));
+vi.mock("~/zerops/useZeropsFeeds", () => ({ useEnvironmentProjectRef: () => null }));
+vi.mock("~/zerops/useZeropsMates", () => ({
+  useZeropsMate: () => ({ kind: "mate", mate: { name: "Fen", tint: "amber", connected: true } }),
 }));
 
 import { CrewLaneBar } from "./CrewLaneBar";
@@ -44,6 +49,21 @@ describe("CrewLaneBar", () => {
     expect(html).toContain('href="https://appdev-1df2-3001.prg1.zerops.app"');
     expect(html).toContain(">Show on dev<");
     expect(html).toContain(">Land now<");
+  });
+
+  it("offers what only the Mate can do: crew ports, and committing your edit", () => {
+    const snapshot = crewSnapshotFixture();
+    state.snapshot = {
+      ...snapshot,
+      hosts: snapshot.hosts.map((host) => ({ ...host, crewPorts: [] })),
+      attention: snapshot.attention.map((row) =>
+        row.kind === "landing-wait" ? { ...row, handle: "backend" } : row,
+      ),
+    };
+    const html = render("backend");
+    expect(html).toContain("No crew ports on appdev");
+    expect(html).toContain(">Add crew ports<");
+    expect(html).toContain(">Commit my edit<");
   });
 
   it("draws nothing for a crewmate without a copy of the code", () => {

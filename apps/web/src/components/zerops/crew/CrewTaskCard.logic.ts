@@ -8,7 +8,8 @@
  *
  * Pure: no clock, no I/O.
  */
-import type { CrewTask, CrewTaskSource } from "@t3tools/contracts";
+import { crewTaskSourceWord } from "@t3tools/client-runtime/zerops/crew/phrases";
+import type { CrewTask } from "@t3tools/contracts";
 
 export interface CrewTaskCardModel {
   readonly heading: string;
@@ -18,13 +19,6 @@ export interface CrewTaskCardModel {
   readonly text: string;
   readonly doneWhen: string | null;
 }
-
-const SOURCE: Readonly<Record<CrewTaskSource, string>> = {
-  you: "from you",
-  lead: "from the lead",
-  message: "from a message",
-  issue: "from an issue",
-};
 
 const TASK_NUMBER = /^#(\d+)\s/u;
 const DONE_WHEN = /^done when:\s*/iu;
@@ -48,7 +42,7 @@ export function crewTaskCardModel(
   const doneWhen = task === undefined || task.doneWhen === "" ? written : task.doneWhen;
   return {
     heading: task === undefined ? card.title : `#${task.number} ${task.title}`,
-    source: task === undefined ? null : SOURCE[task.source],
+    source: task === undefined ? null : crewTaskSourceWord(task.source),
     text,
     doneWhen: doneWhen === "" ? null : doneWhen,
   };

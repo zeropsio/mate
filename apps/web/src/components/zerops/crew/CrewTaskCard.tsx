@@ -8,6 +8,7 @@
  * board, the stint's origin — come from `CrewTimelineContext`, which the chat
  * provides for a crew thread and nothing provides elsewhere.
  */
+import { CREW_PREVIOUS_STINT_LINK } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewTask, ThreadId } from "@t3tools/contracts";
 import { createContext, use, useMemo } from "react";
 
@@ -42,7 +43,7 @@ export function CrewTaskCard({ id, card }: { readonly id: string; readonly card:
           link={
             previous === null
               ? undefined
-              : { label: "previous conversation", onOpen: () => crew?.onOpenThread(previous) }
+              : { label: CREW_PREVIOUS_STINT_LINK, onOpen: () => crew?.onOpenThread(previous) }
           }
           text={origin.text}
         />

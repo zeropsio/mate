@@ -4,15 +4,30 @@
  * check — what that copy needs said, its own app on its crew port, and the
  * presses: *Ask … to resolve / fix*, *Show on dev*, *Land*.
  *
- * Every press maps to one `CrewCommand`; a state the contract has no press for
- * (a person-started Show on dev, *Commit my edit*) is said, not offered.
- * `null` for a crewmate without a copy — a reader or the lead.
+ * Every press maps to one `CrewCommand`, or — for what only the Mate can do,
+ * *Commit my edit* — to the ask it confirms; a person-started Show on dev has
+ * no command yet, so it is not offered. `null` for a crewmate without a copy —
+ * a reader or the lead.
  *
- * Pure: no clock, no I/O. The words here are the lane's; a task's and a
- * check's words come from the crew phrases (`crewTaskWord`, `crewCheckWord`).
+ * Pure: no clock, no I/O. Every word comes from the crew phrases.
  */
 import type { CrewmateView } from "@t3tools/client-runtime/zerops/projections/crew";
-import { crewCheckWord, crewTaskWord } from "@t3tools/client-runtime/zerops/crew/phrases";
+import {
+  CREW_ATTENTION_VERBS,
+  CREW_LANE_VERBS,
+  crewAheadWord,
+  crewAppWord,
+  crewAskToFixWord,
+  crewAskToResolveWord,
+  crewAttentionSentence,
+  crewCheckWord,
+  crewCommitEditAsk,
+  crewConflictWord,
+  crewDiffStatWord,
+  crewLandedAsWord,
+  crewLaneWord,
+  crewTaskWord,
+} from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewCheck, CrewSnapshot } from "@t3tools/contracts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
@@ -39,9 +54,18 @@ export interface CrewLaneBarModel {
   readonly app:
     | { readonly kind: "running"; readonly label: string; readonly url: string | null }
     | { readonly kind: "stopped"; readonly label: string }
-    | { readonly kind: "no-crew-ports"; readonly label: string }
+    | { readonly kind: "no-crew-ports"; readonly label: string; readonly host: string }
     | { readonly kind: "no-free-port"; readonly label: string }
     | null;
+  /**
+   * *Commit my edit*: its landing waits on your tree, so the Mate is asked to
+   * commit your edit there; `what` is the waiting's sentence the ask confirms.
+   */
+  readonly commitEdit: {
+    readonly label: string;
+    readonly ask: string;
+    readonly what: string;
+  } | null;
   readonly showOnDev: {
     readonly kind: "claimGrant" | "claimRelease";
     readonly host: string;
@@ -54,13 +78,6 @@ export interface CrewLaneBarModel {
     readonly label: string;
     readonly enabled: boolean;
   };
-}
-
-/** `a.ts`, or `a.ts and 2 more`. */
-function paths(list: ReadonlyArray<string>): string | null {
-  const [first, ...rest] = list;
-  if (first === undefined) return null;
-  return rest.length === 0 ? first : `${first} and ${rest.length} more`;
 }
 
 /** The dot a check's word wears; the word is `crewCheckWord`'s. */
@@ -83,38 +100,18 @@ export function crewLaneBarModel(
   const note = ((): CrewLaneBarModel["note"] => {
     switch (lane.state) {
       case "creating":
-        return { text: "Creating its copy of the code", tone: "muted" };
       case "setting-up":
-        return {
-          text: lane.detail === null ? "Setting up its copy of the code" : `Running ${lane.detail}`,
-          tone: "muted",
-        };
+      case "frozen":
+        return { text: crewLaneWord(lane) ?? "", tone: "muted" };
+      case "missing":
+      case "failed":
+        return { text: crewLaneWord(lane) ?? "", tone: "failed" };
       case "conflicts": {
         const conflict = snapshot.attention.find(
           (item) => item.kind === "conflict" && item.handle === crewmate.handle,
         );
-        const named = paths(conflict?.paths ?? []);
-        return {
-          text:
-            named === null ? "Conflicts with what landed" : `Conflicts with what landed: ${named}`,
-          tone: "attention",
-        };
+        return { text: crewConflictWord(conflict?.paths ?? []), tone: "attention" };
       }
-      case "frozen":
-        return {
-          text: `${crewmate.host ?? "Its service"} is redeploying — its copy waits`,
-          tone: "muted",
-        };
-      case "missing":
-        return { text: "Its copy of the code is missing", tone: "failed" };
-      case "failed":
-        return {
-          text:
-            lane.detail === null
-              ? "Its copy of the code failed"
-              : `Its copy of the code failed: ${lane.detail}`,
-          tone: "failed",
-        };
       case "ready":
         break;
     }
@@ -132,9 +129,12 @@ export function crewLaneBarModel(
     const landed = snapshot.board.tasks
       .filter((task) => task.owner === crewmate.handle && task.landedCommit !== null)
       .toSorted((left, right) => right.number - left.number)[0];
-    return landed === undefined
+    return landed?.landedCommit == null
       ? null
-      : { text: `Task #${landed.number} landed as ${landed.landedCommit}`, tone: "muted" };
+      : {
+          text: crewLandedAsWord({ number: landed.number, landedCommit: landed.landedCommit }),
+          tone: "muted",
+        };
   })();
 
   const ask: CrewLaneBarModel["ask"] =
@@ -144,54 +144,76 @@ export function crewLaneBarModel(
         ? {
             kind: "askResolve",
             taskId: openTask.id,
-            label: `Ask ${crewmate.displayName} to resolve`,
+            label: crewAskToResolveWord(crewmate.displayName),
           }
         : lane.check?.state === "failed"
-          ? { kind: "askFix", taskId: openTask.id, label: `Ask ${crewmate.displayName} to fix` }
+          ? {
+              kind: "askFix",
+              taskId: openTask.id,
+              label: crewAskToFixWord(crewmate.displayName),
+            }
           : null;
 
   const app = ((): CrewLaneBarModel["app"] => {
     if (crewmate.host === null) return null;
     if (host === undefined || host.crewPorts.length === 0) {
-      return { kind: "no-crew-ports", label: `No crew ports on ${crewmate.host}` };
+      const where = { kind: "no-crew-ports", host: crewmate.host } as const;
+      return { ...where, label: crewAppWord(where) };
     }
     if (crewmate.app === null) return null;
-    if (crewmate.app.port === null) return { kind: "no-free-port", label: "No free crew port" };
+    if (crewmate.app.port === null) {
+      return { kind: "no-free-port", label: crewAppWord({ kind: "no-free-port" }) };
+    }
     switch (crewmate.app.state) {
       case "running":
-        return { kind: "running", label: `App on :${crewmate.app.port}`, url: crewmate.app.url };
+        return {
+          kind: "running",
+          label: crewAppWord({ kind: "running", port: crewmate.app.port }),
+          url: crewmate.app.url,
+        };
       case "stopped":
-        return { kind: "stopped", label: "App stopped" };
+        return { kind: "stopped", label: crewAppWord({ kind: "stopped" }) };
       case "none":
         return null;
     }
   })();
+
+  const landingWait = snapshot.attention.find(
+    (item) => item.kind === "landing-wait" && item.handle === crewmate.handle,
+  );
+  const commitEdit: CrewLaneBarModel["commitEdit"] =
+    landingWait === undefined || landingWait.paths.length === 0
+      ? null
+      : {
+          label: CREW_ATTENTION_VERBS.commitEdit,
+          ask: crewCommitEditAsk(landingWait.paths),
+          what: crewAttentionSentence(landingWait, snapshot),
+        };
 
   const claim = host?.claim;
   const showOnDev: CrewLaneBarModel["showOnDev"] =
     host === undefined || claim?.handle !== crewmate.handle
       ? null
       : claim.state === "requested"
-        ? { kind: "claimGrant", host: host.host, label: "Show on dev" }
+        ? { kind: "claimGrant", host: host.host, label: CREW_LANE_VERBS.showOnDev }
         : claim.state === "starting" || claim.state === "held"
-          ? { kind: "claimRelease", host: host.host, label: "Back to my tree" }
+          ? { kind: "claimRelease", host: host.host, label: CREW_LANE_VERBS.backToTree }
           : null;
 
   const taskId = openTask?.id ?? null;
   const land: CrewLaneBarModel["land"] =
     openTask?.state === "ready"
-      ? { kind: "land", taskId, label: "Land", enabled: true }
+      ? { kind: "land", taskId, label: CREW_ATTENTION_VERBS.land, enabled: true }
       : (openTask?.state === "working" || openTask?.state === "rework") &&
           !row.working &&
           ahead !== null
-        ? { kind: "landNow", taskId, label: "Land now", enabled: true }
-        : { kind: "land", taskId, label: "Land", enabled: false };
+        ? { kind: "landNow", taskId, label: CREW_LANE_VERBS.landNow, enabled: true }
+        : { kind: "land", taskId, label: CREW_ATTENTION_VERBS.land, enabled: false };
 
   return {
     branch: lane.branch,
-    ahead:
-      ahead === null ? null : `${ahead} ${ahead === 1 ? "change" : "changes"} ahead of your tree`,
-    diffStat: ahead === null ? null : `+${lane.insertions} −${lane.deletions}`,
+    ahead: crewAheadWord(lane.ahead),
+    diffStat: ahead === null ? null : crewDiffStatWord(lane),
     check:
       lane.check === null
         ? null
@@ -203,6 +225,7 @@ export function crewLaneBarModel(
     note,
     ask,
     app,
+    commitEdit,
     showOnDev,
     land,
   };

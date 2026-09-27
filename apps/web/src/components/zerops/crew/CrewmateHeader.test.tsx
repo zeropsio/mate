@@ -31,6 +31,7 @@ const render = () =>
   renderToStaticMarkup(
     <CrewmateHeader
       environmentId={FEN}
+      onEditJob={() => {}}
       origin={BACKEND}
       threadId={ThreadId.make("thread-crew-backend-2")}
     />,
@@ -50,7 +51,7 @@ describe("CrewmateHeader", () => {
     expect(html).toContain(">@backend<");
     expect(html).toContain("Owns the API under src/api and its tests.");
     expect(html).toContain('data-zerops-chip-tone="attention"');
-    expect(html).toContain("Job v5 at next turn");
+    expect(html).toContain("v5 at next turn");
     expect(html).toContain('aria-label="More for @backend"');
   });
 

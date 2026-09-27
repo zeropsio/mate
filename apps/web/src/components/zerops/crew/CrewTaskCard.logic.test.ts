@@ -35,7 +35,7 @@ describe("crewTaskCardModel", () => {
       card: { title: "#15 Camera rig follows the player", text: "" },
       model: {
         heading: "#15 Camera rig follows the player",
-        source: "from the lead",
+        source: "from lead",
         text: "",
         doneWhen: "The camera follows the player; npm test passes",
       },

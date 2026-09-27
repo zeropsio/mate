@@ -8,6 +8,10 @@
  *
  * Pure: no clock, no I/O.
  */
+import {
+  crewEarlierStintNotice,
+  crewPendingNotice,
+} from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewmateView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { ThreadId } from "@t3tools/contracts";
 
@@ -21,8 +25,6 @@ export interface CrewChatNotices {
   readonly pending: string | null;
 }
 
-const FRESH = "the next turn starts a fresh conversation";
-
 export function crewChatNotices(
   row: Pick<CrewmateView, "crewmate" | "pending">,
   threadId: ThreadId,
@@ -31,24 +33,11 @@ export function crewChatNotices(
   if (threadId !== crewmate.currentThreadId) {
     return {
       retired: {
-        text: `An earlier conversation with @${crewmate.handle} — it goes on in a newer one.`,
+        ...crewEarlierStintNotice(crewmate.handle),
         currentThreadId: crewmate.currentThreadId,
-        sendBlock: `Write to @${crewmate.handle} in its current conversation`,
       },
       pending: null,
     };
   }
-  const job = pending?.job ?? null;
-  const brief = pending?.brief ?? null;
-  return {
-    retired: null,
-    pending:
-      job !== null && brief !== null
-        ? `Job updated to v${job} and brief to v${brief} — ${FRESH}`
-        : job !== null
-          ? `Job updated to v${job} — ${FRESH}`
-          : brief !== null
-            ? `Brief updated to v${brief} — ${FRESH}`
-            : null,
-  };
+  return { retired: null, pending: pending === null ? null : crewPendingNotice(pending) };
 }

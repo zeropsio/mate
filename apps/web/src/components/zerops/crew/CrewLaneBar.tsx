@@ -2,20 +2,28 @@
  * The lane bar (PRD §4.5, seam S7): where `ZeropsLifecycleStrip` stands in a
  * person's chat, a writer's chat shows its copy of the code against your tree
  * and the presses on it — the words and which press applies are
- * `CrewLaneBar.logic.ts`'s; this only draws them and sends the command.
+ * `CrewLaneBar.logic.ts`'s; this only draws them and sends the command. What
+ * only the Mate can do — declare crew ports, commit your edit — is asked of it
+ * in your chat after a confirmation, as the crew section asks it.
  */
+import { CREW_LANE_VERBS, crewPortsAsk } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { ExternalLinkIcon } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { cn } from "~/lib/utils";
 import { useDiffPanelStore } from "~/diffPanelStore";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { useCrew } from "~/zerops/crew/useCrew";
 import { useCrewCommand } from "~/zerops/crew/useCrewCommand";
+import { useAskMate } from "~/zerops/useAskMate";
+import { useEnvironmentProjectRef } from "~/zerops/useZeropsFeeds";
+import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { Button } from "../../ui/button";
 import { StatusDot } from "../primitives";
+import { ZeropsAskDialog } from "../ZeropsAskDialog";
 import { crewLaneBarModel } from "./CrewLaneBar.logic";
+import { CrewPortsDialog } from "./CrewPortsDialog";
 
 const NOTE_TONE = {
   muted: "text-muted-foreground",
@@ -33,6 +41,12 @@ export function CrewLaneBar({
 }) {
   const { snapshot, view, current } = useCrew(threadRef.environmentId);
   const command = useCrewCommand(threadRef.environmentId);
+  const askMate = useAskMate();
+  const projectId = useEnvironmentProjectRef(threadRef.environmentId)?.projectId;
+  const whoLivesHere = useZeropsMate(threadRef.environmentId);
+  const mate = whoLivesHere.kind === "mate" ? whoLivesHere.mate : undefined;
+  const [portsHost, setPortsHost] = useState<string | null>(null);
+  const [askingCommit, setAskingCommit] = useState(false);
   const row = view?.crewmates.find(({ crewmate }) => crewmate.handle === handle);
   const model = useMemo(
     () => (snapshot === null || row === undefined ? null : crewLaneBarModel(snapshot, row)),
@@ -46,6 +60,14 @@ export function CrewLaneBar({
     useDiffPanelStore.getState().selectBranchBaseRef(threadRef, null);
     useRightPanelStore.getState().open(threadRef, "diff");
   };
+  const addCrewPorts = (host: string, count: number) => {
+    void command.send({ _tag: "addCrewPorts", host, count }).then((result) => {
+      if (result?._tag !== "crewPorts") return;
+      setPortsHost(null);
+      askMate(projectId, crewPortsAsk(result.host, result.ports));
+    });
+  };
+  const commitEdit = model.commitEdit;
 
   return (
     <div
@@ -76,6 +98,11 @@ export function CrewLaneBar({
         {model.ahead === null ? null : (
           <Button onClick={openChanges} size="xs" variant="ghost-muted">
             Changes
+          </Button>
+        )}
+        {commitEdit === null ? null : (
+          <Button onClick={() => setAskingCommit(true)} size="xs" variant="outline">
+            {commitEdit.label}
           </Button>
         )}
         {model.ask === null ? null : (
@@ -129,13 +156,15 @@ export function CrewLaneBar({
                   Run
                 </Button>
               ) : model.app.kind === "no-crew-ports" ? (
-                // The dialog lives with the crew, in the Zerops panel.
                 <Button
-                  onClick={() => useRightPanelStore.getState().open(threadRef, "zerops")}
+                  onClick={() => {
+                    command.clearError();
+                    if (model.app?.kind === "no-crew-ports") setPortsHost(model.app.host);
+                  }}
                   size="xs"
                   variant="ghost-muted"
                 >
-                  Add crew ports
+                  {CREW_LANE_VERBS.addCrewPorts}
                 </Button>
               ) : null}
             </span>
@@ -165,11 +194,38 @@ export function CrewLaneBar({
           </Button>
         </span>
       </div>
-      {command.error === null ? null : (
+      {command.error === null || portsHost !== null ? null : (
         <p className="w-full max-w-3xl pb-1 text-xs text-destructive-foreground" role="alert">
           {command.error}
         </p>
       )}
+      <CrewPortsDialog
+        error={command.error}
+        host={portsHost}
+        mateName={mate?.name ?? "the Mate"}
+        onConfirm={addCrewPorts}
+        onOpenChange={(open) => {
+          if (!open) setPortsHost(null);
+        }}
+        pending={command.pending}
+      />
+      {/* Your tree is yours: the Mate commits your edit in your chat — from a
+          crewmate's chat, that is the main one. */}
+      <ZeropsAskDialog
+        ask={commitEdit?.ask ?? ""}
+        mateName={mate?.name}
+        onConfirm={() => {
+          setAskingCommit(false);
+          if (commitEdit !== null) {
+            askMate(projectId, commitEdit.ask, { threadId: threadRef.threadId });
+          }
+        }}
+        onOpenChange={setAskingCommit}
+        open={askingCommit && commitEdit !== null}
+        sending={false}
+        tint={mate?.tint}
+        what={commitEdit?.what ?? ""}
+      />
     </div>
   );
 }

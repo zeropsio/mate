@@ -88,8 +88,8 @@ interface ChatHeaderProps {
    * strip carries its own New chat, and where no Mate lives.
    */
   onNewChat?: (() => void) | undefined;
-  /** In a crewmate's chat, *Edit job*: the crew section's crewmate sheet on that crewmate. */
-  onEditCrewmateJob?: ((handle: string) => void) | undefined;
+  /** In a crewmate's chat, *Edit job*: the crew's Crewmate editor on that crewmate. */
+  onEditCrewmateJob: (handle: string) => void;
   onOpenProjectSettings?: (() => void) | undefined;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;

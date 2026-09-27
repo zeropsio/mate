@@ -8,6 +8,11 @@
  *
  * Pure: no clock, no I/O.
  */
+import {
+  crewJobVersionWord,
+  crewPendingWord,
+  crewStintWord,
+} from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import {
   agentIdForProviderInstance,
@@ -23,7 +28,7 @@ export interface CrewmateHeaderModel {
   readonly job: string;
   /** The login's label beside the name, for a crewmate not on the Mate's own Claude Code. */
   readonly login: string | null;
-  /** `Job v4`; `Job v5 at next turn` / `Brief v5 at next turn` while its prompt is pending. */
+  /** `Job v4`; `v5 at next turn` / `Brief v5 at next turn` while its prompt is pending. */
   readonly version: { readonly label: string; readonly pending: boolean };
   /** *Previous conversations*: its other stints, newest first. */
   readonly previous: ReadonlyArray<{ readonly threadId: ThreadId; readonly label: string }>;
@@ -41,12 +46,11 @@ export function crewmateHeaderModel(
   const row = view?.crewmates.find(({ crewmate }) => crewmate.handle === origin.crewmate);
   if (row === undefined) return null;
   const { crewmate, pending } = row;
+  const pendingWord = pending === null ? null : crewPendingWord(pending);
   const version =
-    pending?.job != null
-      ? { label: `Job v${pending.job} at next turn`, pending: true }
-      : pending?.brief != null
-        ? { label: `Brief v${pending.brief} at next turn`, pending: true }
-        : { label: `Job v${crewmate.jobVersion}`, pending: false };
+    pendingWord === null
+      ? { label: crewJobVersionWord(crewmate.jobVersion), pending: false }
+      : { label: pendingWord, pending: true };
   return {
     handle: crewmate.handle,
     name: crewmate.displayName,
@@ -60,10 +64,7 @@ export function crewmateHeaderModel(
       .toReversed()
       .map((stint) => ({
         threadId: stint.threadId,
-        label:
-          stint.threadId === crewmate.currentThreadId
-            ? `Conversation ${stint.stint} · current`
-            : `Conversation ${stint.stint}`,
+        label: crewStintWord(stint.stint, stint.threadId === crewmate.currentThreadId),
       })),
     unlandedCommits: crewmate.lane?.ahead ?? 0,
     memoryEntries: crewmate.memory.entries,

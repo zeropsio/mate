@@ -49,7 +49,7 @@ describe("crewmateHeaderModel", () => {
       name: "names the job version its next turn brings in",
       running: { brief: 4, job: 4 },
       current: { brief: 4, job: 5 },
-      version: { label: "Job v5 at next turn", pending: true },
+      version: { label: "v5 at next turn", pending: true },
     },
     {
       name: "names the brief version its next turn brings in",

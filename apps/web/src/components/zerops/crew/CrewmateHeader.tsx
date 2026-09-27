@@ -37,10 +37,13 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "../../ui/menu";
+import { Sheet, SheetPopup } from "../../ui/sheet";
 import { stackedThreadToast, toastManager } from "../../ui/toast";
 import { Chip, MateFace } from "../primitives";
+import { CrewNewTaskBody } from "./CrewBoardPanel";
+import { crewDependencyOptions, crewTaskOwners } from "./CrewBoardPanel.logic";
 import { crewmateHeaderModel } from "./CrewmateHeader.logic";
-import { CrewmateConfirmDialog, CrewmateNewTaskDialog } from "./CrewmateHeaderDialogs";
+import { CrewmateConfirmDialog } from "./CrewmateHeaderDialogs";
 
 type OpenDialog = "new-task" | "remove" | "forget" | null;
 
@@ -54,10 +57,10 @@ export function CrewmateHeader({
   readonly threadId: ThreadId;
   /** The thread's crew origin: whose chat this is, before the crew is read. */
   readonly origin: ThreadCrewOrigin;
-  /** Opens the crew section's crewmate sheet on this crewmate; absent until it is wired. */
-  readonly onEditJob?: ((handle: string) => void) | undefined;
+  /** Opens the crew's Crewmate editor on this crewmate. */
+  readonly onEditJob: (handle: string) => void;
 }) {
-  const { view } = useCrew(environmentId);
+  const { view, current } = useCrew(environmentId);
   // The dialogs show their own refusal inline; Start fresh has no surface of
   // its own, so its refusal is a toast carrying the crew phrase.
   const command = useCrewCommand(environmentId);
@@ -143,9 +146,7 @@ export function CrewmateHeader({
           <EllipsisIcon aria-hidden="true" className="size-3.5" />
         </MenuTrigger>
         <MenuPopup align="start">
-          {onEditJob === undefined ? null : (
-            <MenuItem onClick={() => onEditJob(handle)}>Edit job</MenuItem>
-          )}
+          <MenuItem onClick={() => onEditJob(handle)}>Edit job</MenuItem>
           <MenuItem onClick={() => openDialog("new-task")}>New task…</MenuItem>
           <MenuItem disabled={startingFresh} onClick={() => void startFresh()}>
             Start fresh
@@ -169,18 +170,24 @@ export function CrewmateHeader({
           <MenuItem onClick={() => openDialog("remove")}>Remove from crew…</MenuItem>
         </MenuPopup>
       </Menu>
-      <CrewmateNewTaskDialog
-        error={command.error}
-        handle={handle}
-        onCreate={(task) =>
-          void closeOnSuccess(() =>
-            command.send({ _tag: "taskCreate", owner: handle, ...task, dependsOn: [] }),
-          )
-        }
+      {/* The board's New task sheet, starting with this crewmate as its owner. */}
+      <Sheet
         onOpenChange={(next) => setDialog(next ? "new-task" : null)}
         open={dialog === "new-task"}
-        sending={command.isPending("taskCreate")}
-      />
+      >
+        <SheetPopup side="right">
+          {dialog === "new-task" && view !== null ? (
+            <CrewNewTaskBody
+              canAct={current && !command.pending}
+              dependencies={crewDependencyOptions(view)}
+              error={command.error}
+              onCreate={(task) => void closeOnSuccess(() => command.send(task))}
+              owner={handle}
+              owners={crewTaskOwners(view)}
+            />
+          ) : null}
+        </SheetPopup>
+      </Sheet>
       <CrewmateConfirmDialog
         confirm={model.unlandedCommits > 0 ? "Remove and discard" : "Remove"}
         description={

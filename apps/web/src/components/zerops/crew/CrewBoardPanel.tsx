@@ -561,6 +561,8 @@ export function CrewTaskSheetBody(props: {
 }
 
 export function CrewNewTaskBody(props: {
+  /** The owner to start with: a crewmate's chat asks for a task of its own. */
+  readonly owner?: string | undefined;
   readonly owners: ReadonlyArray<CrewBoardFace>;
   readonly dependencies: ReadonlyArray<{ readonly taskId: string; readonly label: string }>;
   readonly canAct: boolean;
@@ -568,7 +570,7 @@ export function CrewNewTaskBody(props: {
   readonly onCreate: (command: CrewCommand) => void;
 }) {
   const [draft, setDraft] = useState<CrewNewTaskDraft>({
-    owner: null,
+    owner: props.owner ?? null,
     title: "",
     brief: "",
     doneWhen: "",

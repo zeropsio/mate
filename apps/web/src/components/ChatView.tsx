@@ -181,9 +181,14 @@ import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
 import { CrewLaneBar } from "./zerops/crew/CrewLaneBar";
+import { CrewmateEditor } from "./zerops/crew/CrewmateEditor";
 import { CrewTimelineContext, type CrewTimeline } from "./zerops/crew/CrewTaskCard";
 import { crewChatNotices } from "./zerops/crew/crewChatNotices";
 import { crewMessageCommand } from "./zerops/crew/crewComposerSend";
+import {
+  CREW_NEW_STINT_WORD,
+  crewMessagePlaceholder,
+} from "@t3tools/client-runtime/zerops/crew/phrases";
 import { crewCommands } from "../zerops/crew/crewCommands";
 import { crewFailureSentence } from "../zerops/crew/useCrewCommand";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
@@ -3808,8 +3813,10 @@ export default function ChatView(props: ChatViewProps) {
     topology: zeropsTopology,
     agentAuth: zeropsAgentAuth,
   });
-  // The crew board's tab exists only while the crew feed says a crew is, or could be, set up.
-  const crewStatus = useCrew(activeThreadEnvironmentId).status;
+  // The Mate's crew: the board's tab exists only while its status says a crew
+  // is, or could be, set up; its view gives the strip its crew group and a
+  // crew thread its crewmate.
+  const crew = useCrew(activeThreadEnvironmentId);
   // The band's sign-in request lands here: the first agent that needs a
   // sign-in gets the dialog, without a detour through the panel.
   const openAgentAuthDialog = useCallback(() => {
@@ -5274,17 +5281,14 @@ export default function ChatView(props: ChatViewProps) {
     currentThreadId: isServerThread ? threadId : null,
     typing: composerHasUnsentContent && activeThreadShell?.crew == null,
   });
-  // The Mate's crew, where a Mate lives: its group in the strip, and the
-  // crewmate this conversation belongs to when it is a crew thread.
-  const crew = useCrew(
-    zeropsMateAt(zeropsMates, environmentId).kind === "mate" ? environmentId : null,
-  );
   const crewStripGroups = useCrewStripGroups({
     environmentId,
     currentThreadId: isServerThread ? threadId : null,
     view: crew.view,
   });
   const activeCrewOrigin = activeThreadShell?.crew ?? null;
+  // *Edit job* in a crewmate's header: the crew's own Crewmate editor.
+  const [editingCrewmate, setEditingCrewmate] = useState<string | null>(null);
   const activeCrewmate =
     activeCrewOrigin === null
       ? null
@@ -5294,7 +5298,7 @@ export default function ChatView(props: ChatViewProps) {
   const crewComposerPlaceholder =
     activeCrewOrigin === null
       ? null
-      : `Message ${activeCrewmate?.crewmate.displayName ?? activeCrewOrigin.crewmate}…`;
+      : crewMessagePlaceholder(activeCrewmate?.crewmate.displayName ?? activeCrewOrigin.crewmate);
   // A crewmate's chat: an earlier conversation points at the one it talks in
   // now and sends nothing, as its send would land there; the current one says
   // what its next turn brings in.
@@ -5365,7 +5369,7 @@ export default function ChatView(props: ChatViewProps) {
         stint === undefined || (index === 0 && stint.reason === null)
           ? null
           : {
-              text: stint.reason ?? "New conversation",
+              text: stint.reason ?? CREW_NEW_STINT_WORD,
               previousThreadId: stints[index - 1]?.threadId ?? null,
             },
       tasks: crew.snapshot?.board.tasks ?? [],
@@ -7791,7 +7795,7 @@ export default function ChatView(props: ChatViewProps) {
     gitRepo: isGitRepo,
     serverThread: isServerThread,
     zeropsPanel: zeropsChrome.panel,
-    crewStatus,
+    crewStatus: crew.status,
   });
   const onAddRightPanelSurface = (kind: Exclude<RightPanelKind, "file" | "terminal">): void => {
     switch (kind) {
@@ -8019,6 +8023,7 @@ export default function ChatView(props: ChatViewProps) {
             gitCwd={gitCwd}
             onNewThreadInProject={handleNewThreadInActiveProject}
             onStartFresh={startFreshConversation}
+            onEditCrewmateJob={setEditingCrewmate}
             {...(startSecondChat === null ? {} : { onNewChat: startSecondChat })}
             {...(activeDraftLogicalProjectKey
               ? { onOpenProjectSettings: handleOpenDraftProjectSettings }
@@ -8051,6 +8056,11 @@ export default function ChatView(props: ChatViewProps) {
           />
         )}
         {zeropsSignInDialog.dialog}
+        <CrewmateEditor
+          environmentId={environmentId}
+          onClose={() => setEditingCrewmate(null)}
+          target={editingCrewmate === null ? null : { handle: editingCrewmate, lead: false }}
+        />
 
         <ThreadErrorBanner
           error={visibleThreadError}
