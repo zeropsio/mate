@@ -11,7 +11,7 @@ import {
 import type { CrewMemoryOp } from "./crewSeams.ts";
 
 const NOW = "2026-09-27T20:00:00.000Z";
-const CTX = { assignment: "a-12", now: NOW, tip: "abc123" } as const;
+const CTX = { assignment: "a-12", now: NOW, head: "abc123" } as const;
 
 const entry = (
   overrides: Partial<CrewMemoryEntry> & Pick<CrewMemoryEntry, "id">,
@@ -74,12 +74,12 @@ describe("applyMemoryOp", () => {
       string,
       ReadonlyArray<CrewMemoryEntry>,
       CrewMemoryOp,
-      { readonly assignment?: string; readonly now: string; readonly tip?: string },
+      { readonly assignment?: string; readonly now: string; readonly head?: string },
       { readonly change: CrewMemoryChange | { readonly kind: string }; readonly answer: unknown },
     ]
   > = [
     [
-      "a fact keeps its paths and the copy's tip",
+      "a fact keeps its paths and the tree's head",
       [],
       { op: "add", kind: "fact", topic: "db", text: "Scores live in Redis.", paths: ["src/db.ts"] },
       CTX,

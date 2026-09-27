@@ -7,7 +7,7 @@
  *   holds 30 entries or 2,500 characters; at the cap `add` asks the crewmate
  *   to merge or remove first. A note is read on demand (10 of 4,000); a
  *   handoff belongs to the open task (one, 2,000) and a new one replaces it;
- *   a fact keeps its paths and the copy's tip, and is marked `stale?` once
+ *   a fact keeps its paths and the tree's head, and is marked `stale?` once
  *   the tree changes those paths.
  * - **Every write changes one entry**: an operation yields at most one row
  *   to put or delete, never a regenerated memory (ACE, rulings §3A #8).
@@ -22,28 +22,10 @@
  */
 import type { PacketGround, PacketInput, PacketTask } from "./CrewPacket.ts";
 import type { CrewMemoryOp, CrewToolText } from "./crewSeams.ts";
-
-export type CrewMemoryKind =
-  | "decision"
-  | "lesson"
-  | "fact"
-  | "open"
-  | "note"
-  | "handoff"
-  | "unfiled";
+import type { CrewMemoryKind, CrewMemoryRow } from "./CrewStore.ts";
 
 /** One `crew_memory` row, without the crew and the crewmate it belongs to. */
-export interface CrewMemoryEntry {
-  readonly id: string;
-  readonly kind: CrewMemoryKind;
-  readonly topic: string | null;
-  readonly text: string;
-  readonly paths: ReadonlyArray<string>;
-  /** The copy's tip when a fact was recorded. */
-  readonly verifiedAt: string | null;
-  readonly fromAssignment: string | null;
-  readonly updatedAt: string;
-}
+export type CrewMemoryEntry = Omit<CrewMemoryRow, "crew" | "member">;
 
 export type CrewMemoryChange =
   | { readonly kind: "put"; readonly entry: CrewMemoryEntry }
@@ -54,8 +36,8 @@ export interface CrewMemoryContext {
   /** The open task's assignment, if any. */
   readonly assignment?: string;
   readonly now: string;
-  /** The copy's tip, for a fact's `verifiedAt`. */
-  readonly tip?: string;
+  /** The tree's head, for a fact's `verifiedAt`: later changes to its paths mark it stale. */
+  readonly head?: string;
 }
 
 export interface CrewMemoryOutcome {
@@ -136,7 +118,7 @@ const add = (
     topic: op.topic,
     text: op.text,
     paths: op.paths ?? [],
-    verifiedAt: op.kind === "fact" ? (ctx.tip ?? null) : null,
+    verifiedAt: op.kind === "fact" ? (ctx.head ?? null) : null,
     fromAssignment: ctx.assignment ?? null,
     updatedAt: ctx.now,
   };
@@ -240,7 +222,7 @@ export const applyMemoryOp = (
         entry: {
           ...current,
           text: op.text,
-          verifiedAt: current.kind === "fact" ? (ctx.tip ?? null) : current.verifiedAt,
+          verifiedAt: current.kind === "fact" ? (ctx.head ?? null) : current.verifiedAt,
           updatedAt: ctx.now,
         },
       });
