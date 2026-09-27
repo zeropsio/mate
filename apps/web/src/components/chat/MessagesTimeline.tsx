@@ -599,6 +599,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     ],
   );
   const rows = useStableRows(rawRows);
+  // A run's panel leaves when the rows stop carrying it, whatever order the
+  // list then mounts and unmounts their rows in.
+  const previousRowsRef = useRef<ReadonlyArray<MessagesTimelineRow>>(rows);
+  if (previousRowsRef.current !== rows) {
+    markPanelsGone(previousRowsRef.current, rows);
+    previousRowsRef.current = rows;
+  }
   const livePauseId = useMemo(
     () => rows.findLast((row) => row.kind === "pause" && row.resumedAt === null)?.id ?? null,
     [rows],
@@ -1602,9 +1609,33 @@ interface PanelStand {
   readonly panel: number;
   readonly cardEnd: number;
   readonly line: number;
-  readonly leftAt: number | null;
 }
 const panelStands = new Map<string, PanelStand>();
+/**
+ * When a run's panel left the rows, read from the rows themselves: the list
+ * mounts and unmounts its rows in its own order, so the row that replaces the
+ * panel may arrive before the panel's own row is gone.
+ */
+const panelLeftAt = new Map<string, number>();
+/** When what replaced a run's panel first took its stand: an effect replayed takes it again. */
+const panelTakenAt = new Map<string, number>();
+const FOLD_RETAKE_MS = 50;
+
+/** Marks the runs whose panel the rows no longer carry. */
+function markPanelsGone(
+  previous: ReadonlyArray<MessagesTimelineRow>,
+  rows: ReadonlyArray<MessagesTimelineRow>,
+): void {
+  const live = new Set(rows.flatMap((row) => (row.kind === "working" ? [row.turnKey] : [])));
+  const now = performance.now();
+  for (const row of previous) {
+    if (row.kind === "working" && !live.has(row.turnKey)) panelLeftAt.set(row.turnKey, now);
+  }
+  for (const turnKey of live) {
+    panelLeftAt.delete(turnKey);
+    panelTakenAt.delete(turnKey);
+  }
+}
 const FOLD_FRESH_MS = 1500;
 const FOLD_EASE = "height 460ms cubic-bezier(0.32, 0.72, 0, 1)";
 
@@ -1612,12 +1643,20 @@ function rowElementById(id: string): HTMLElement | null {
   return document.querySelector<HTMLElement>(`[data-timeline-row-id="${CSS.escape(id)}"]`);
 }
 
-/** The stand a run's panel just left, once: null when it left a while ago, or is still there. */
+/**
+ * The stand a run's panel just left, for what takes its place: null when the
+ * panel is still there, left a while ago, or its stand was taken already — an
+ * effect replayed at once (React's strict mode runs each twice) takes it again.
+ */
 function takePanelStand(turnKey: string): PanelStand | null {
   const stand = panelStands.get(turnKey);
-  if (stand === undefined || stand.leftAt === null) return null;
-  panelStands.delete(turnKey);
-  return performance.now() - stand.leftAt < FOLD_FRESH_MS ? stand : null;
+  const leftAt = panelLeftAt.get(turnKey);
+  if (stand === undefined || leftAt === undefined) return null;
+  const now = performance.now();
+  const takenAt = panelTakenAt.get(turnKey);
+  if (takenAt === undefined) panelTakenAt.set(turnKey, now);
+  else if (now - takenAt > FOLD_RETAKE_MS) return null;
+  return now - leftAt < FOLD_FRESH_MS ? stand : null;
 }
 
 /** Eases an element's height from `from` to `to`, then lets it size itself again. */
@@ -1649,28 +1688,28 @@ function easeHeight(element: HTMLElement, from: number, to: number): () => void 
   };
 }
 
-/** Records where a run's panel stands while it is drawn, and when it leaves. */
+/** Records where a run's panel stands while the rows carry it. */
 function usePanelStand(turnKey: string) {
   const markerRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const own = markerRef.current?.closest<HTMLElement>("[data-timeline-row-id]");
     if (!own) return;
     const measure = () => {
+      // Gone from the rows, its row may still be emptied or recycled: its
+      // last stand is the one it left.
+      if (panelLeftAt.has(turnKey) || !own.isConnected) return;
+      const panel = own.getBoundingClientRect().height;
+      if (panel <= 0) return;
       panelStands.set(turnKey, {
-        panel: own.getBoundingClientRect().height,
+        panel,
         cardEnd: rowElementById(`card-end:${turnKey}`)?.getBoundingClientRect().height ?? 0,
         line: rowElementById(`work-line:${turnKey}`)?.getBoundingClientRect().height ?? 0,
-        leftAt: null,
       });
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(own);
-    return () => {
-      observer.disconnect();
-      const stand = panelStands.get(turnKey);
-      if (stand !== undefined) panelStands.set(turnKey, { ...stand, leftAt: performance.now() });
-    };
+    return () => observer.disconnect();
   }, [turnKey]);
   return markerRef;
 }
