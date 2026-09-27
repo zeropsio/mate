@@ -18,6 +18,8 @@ import * as Layer from "effect/Layer";
 import { ServerConfig } from "../config.ts";
 import * as ZeropsThreadLifecycle from "../persistence/ZeropsThreadLifecycle.ts";
 import { layer as providerInstancesLayer } from "../spi/providerInstances.ts";
+import * as ProcessRunner from "../processRunner.ts";
+import { crewLayer } from "./crew/crewLayer.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentFlagModule from "./ZeropsAgentFlag.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
@@ -46,6 +48,18 @@ const ZeropsAgentAuthLive = ZeropsAgentAuth.layer.pipe(Layer.provide(providerIns
 
 /** The same `ProviderInstances` discharge, for the logins' picker reconcile. */
 const ZeropsLoginsLive = ZeropsLoginsModule.layer.pipe(Layer.provide(providerInstancesLayer));
+
+/**
+ * D6's one gate, over the same agent-auth and signers instances the branches
+ * below build (memoized by reference): ws.ts and the HTTP dispatch route
+ * admit every turn through it, and so does the crew engine.
+ */
+const ZeropsTurnAdmissionLive = ZeropsTurnAdmissionModule.layer.pipe(
+  Layer.provide(ZeropsAgentAuthLive),
+  Layer.provide(ZeropsLoginsLive),
+  Layer.provide(ZeropsProjectSignersModule.layer),
+  Layer.provide(providerInstancesLayer),
+);
 
 const liveLayer = Layer.mergeAll(
   ZeropsLifecycle.layer.pipe(Layer.provide(ZeropsThreadLifecycle.layer)),
@@ -82,14 +96,15 @@ const liveLayer = Layer.mergeAll(
     Layer.provide(ZeropsLoginsLive),
     Layer.provide(ZeropsProjectSignersModule.layer),
   ),
-  // D6's one gate, over the same agent-auth and signers instances the
-  // branches above build (memoized by reference): ws.ts and the HTTP dispatch
-  // route admit every turn through it.
-  ZeropsTurnAdmissionModule.layer.pipe(
-    Layer.provide(ZeropsAgentAuthLive),
-    Layer.provide(ZeropsLoginsLive),
-    Layer.provide(ZeropsProjectSignersModule.layer),
+  ZeropsTurnAdmissionLive,
+  // Crew mode (`zerops/crew`, reached only from here and ws.ts): inert unless
+  // this is a Zerops project with T3CODE_ZEROPS_CREW on, and even then it
+  // opens no ssh and installs no thread policy until a crew is applied. It
+  // admits its turns through the same gate instance.
+  crewLayer.pipe(
+    Layer.provide(ZeropsTurnAdmissionLive),
     Layer.provide(providerInstancesLayer),
+    Layer.provide(ProcessRunner.layer),
   ),
   ZeropsBrowserStreamModule.layer,
   ZeropsMateUpdateModule.layer.pipe(Layer.provideMerge(ZeropsCliModule.layer)),

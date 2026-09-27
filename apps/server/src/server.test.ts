@@ -163,6 +163,8 @@ import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
 import * as ZeropsCliModule from "./zerops/ZeropsCli.ts";
 import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
 import * as ZeropsGitRemoteProbeModule from "./zerops/ZeropsGitRemoteProbe.ts";
+import type { CrewEngine } from "./zerops/crew/CrewEngine.ts";
+import { crewLayerInert } from "./zerops/crew/crewLayer.ts";
 import * as ZeropsIdentityStatusModule from "./zerops/ZeropsIdentityStatus.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import * as ZeropsMateKeyModule from "./zerops/ZeropsMateKey.ts";
@@ -554,7 +556,8 @@ const buildAppUnderTest = (options?: {
     | ZeropsDataConsoleModule.ZeropsDataConsole
     | ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe
     | ZeropsProjectSignersModule.ZeropsProjectSigners
-    | ZeropsTurnAdmissionModule.ZeropsTurnAdmission,
+    | ZeropsTurnAdmissionModule.ZeropsTurnAdmission
+    | CrewEngine,
     never,
     | ServerConfig.ServerConfig
     | ProjectionSnapshotQuery.ProjectionSnapshotQuery
@@ -1257,6 +1260,9 @@ const buildAppUnderTest = (options?: {
                 }),
               ...options?.layers?.zeropsGitRemoteProbe,
             }),
+            // Crew mode off, as outside a Zerops project: the crew RPCs answer
+            // `off` and refuse the rest.
+            crewLayerInert,
           ).pipe((zeropsMocks) =>
             // D6's gate, live, over the agent-auth and signers mocked above:
             // with no agents reported, it admits every turn.

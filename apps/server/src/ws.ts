@@ -151,6 +151,7 @@ import * as ZeropsGitRemoteProbeModule from "./zerops/ZeropsGitRemoteProbe.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import { ZeropsMateUpdate } from "./zerops/ZeropsMateUpdate.ts";
 import serverPackageJson from "../package.json" with { type: "json" };
+import { CrewEngine } from "./zerops/crew/CrewEngine.ts";
 import { registerCrewRpc } from "./zerops/crew/registerCrewRpc.ts";
 import { registerZeropsRpc } from "./zerops/registerZeropsRpc.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
@@ -658,6 +659,7 @@ const makeWsRpcLayer = (
       const zeropsMateUpdate = yield* ZeropsMateUpdate;
       const zeropsDataConsole = yield* ZeropsDataConsoleModule.ZeropsDataConsole;
       const zeropsGitRemoteProbe = yield* ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe;
+      const crew = yield* CrewEngine;
       const usage = yield* UsageService.UsageService;
       const relayClient = yield* RelayClient.RelayClient;
       const authorizationError = (requiredScope: AuthEnvironmentScope) =>
@@ -2299,7 +2301,12 @@ const makeWsRpcLayer = (
           observeRpcEffect,
           observeRpcStream,
         }),
-        ...registerCrewRpc({ observeRpcEffect, observeRpcStream }),
+        ...registerCrewRpc({
+          crew,
+          subject: currentSession.subject,
+          observeRpcEffect,
+          observeRpcStream,
+        }),
         [WS_METHODS.serverSignalProcess]: (input) =>
           observeRpcEffect(WS_METHODS.serverSignalProcess, processDiagnostics.signal(input), {
             "rpc.aggregate": "server",
