@@ -13,7 +13,7 @@ import type {
   TurnId,
 } from "@t3tools/contracts";
 import {
-  agentIdForProviderInstance,
+  agentIdForDriverKind,
   isProviderSendTurnSupportedImageMimeType,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -973,14 +973,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // locked-agent name lets it say where the sign-in will actually run.
   const lockedZeropsAgentName = useMemo(() => {
     if (lockedProvider === null) return undefined;
-    const lockedAgentId = agentIdForProviderInstance(lockedProvider);
+    const lockedAgentId = agentIdForDriverKind(lockedProvider);
     return lockedAgentId === undefined ? undefined : ZEROPS_AGENT_NAMES[lockedAgentId];
   }, [lockedProvider]);
   const renderZeropsInstancePanel = useCallback(
     (entry: ProviderInstanceEntry, requestClosePicker: () => void): ReactNode | null => {
       const availability = zeropsAgentAvailabilityByInstanceId?.get(entry.instanceId);
       if (availability === undefined || availability.kind === "ready") return null;
-      const agentId = agentIdForProviderInstance(entry.instanceId);
+      const agentId = agentIdForDriverKind(entry.driverKind);
       if (agentId === undefined) return null;
       const lockedToAgentName =
         lockedZeropsAgentName !== undefined && entry.driverKind !== lockedProvider

@@ -16,7 +16,9 @@
  *
  * @module crewPrompt
  */
-import type { CrewBrief, CrewLane } from "./CrewDefinition.ts";
+import type { CrewBrief } from "@t3tools/shared/crewHome";
+
+import type { CrewLane } from "./CrewDefinition.ts";
 
 export type CrewPromptMember =
   | { readonly handle: string; readonly kind: "writer"; readonly lane: CrewLane }

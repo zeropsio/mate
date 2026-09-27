@@ -12,6 +12,7 @@ import {
   type LucideIcon,
   Plus,
   TerminalSquare,
+  Users,
 } from "lucide-react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -80,6 +81,7 @@ const SURFACE_DISABLED_REASONS = {
   browser: "The Browser view is only available from a Zerops project thread.",
   data: "Data is only available from a Zerops project thread.",
   git: "Git is only available from a Zerops project thread.",
+  crew: "The crew's board is only available from a Zerops project thread with crew mode on.",
 } as const satisfies Record<Exclude<RightPanelKind, "file">, string>;
 
 /** Overlays that must win over the launcher's letter shortcuts. */
@@ -185,6 +187,8 @@ function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): LucideIcon 
       return Database;
     case "git":
       return GitBranch;
+    case "crew":
+      return Users;
   }
 }
 
@@ -382,6 +386,8 @@ function surfaceTitle(
       return "service" in surface ? surface.service : "Data";
     case "git":
       return "Git";
+    case "crew":
+      return "Crew";
     case "change":
       return `${surface.repository} #${String(surface.number)}`;
   }
@@ -414,6 +420,8 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
       return <Database className="size-3 shrink-0" />;
     case "git":
       return <GitBranch className="size-3 shrink-0" />;
+    case "crew":
+      return <Users className="size-3 shrink-0" />;
     case "change":
       return <GitPullRequestArrow className="size-3 shrink-0" />;
   }

@@ -964,11 +964,11 @@ const knownAgentAuth = (snapshot: ZeropsAgentAuthSnapshot) =>
     freshness: { kind: "live" },
   }) as const;
 
-const claudeEntry = () =>
+const claudeEntry = (instanceId = "claudeAgent") =>
   deriveProviderInstanceEntries([
     {
       driver: ProviderDriverKind.make("claudeAgent"),
-      instanceId: ProviderInstanceId.make("claudeAgent"),
+      instanceId: ProviderInstanceId.make(instanceId),
       enabled: true,
       installed: true,
       status: "ready",
@@ -1031,6 +1031,22 @@ describe("resolveZeropsProviderAvailability", () => {
     });
 
     expect(map?.get(claude.instanceId)).toEqual({
+      kind: "needs-sign-in",
+      signInKind: "not-authorized",
+    });
+  });
+
+  it("maps a second instance of the driver to the same agent's availability", () => {
+    const work = claudeEntry("claudeAgent_work");
+    const map = resolveZeropsProviderAvailability({
+      entries: [work],
+      agentAuth: knownAgentAuth(claudeAgentAuth()),
+      viewerSubject: "user-a",
+      localSigners: {},
+      recordFailed: new Set(),
+    });
+
+    expect(map?.get(work.instanceId)).toEqual({
       kind: "needs-sign-in",
       signInKind: "not-authorized",
     });
@@ -1136,9 +1152,15 @@ describe("isZeropsInstanceRunnable", () => {
 describe("resolveZeropsOwnedAgentSendBlockReason", () => {
   const claudeInstance = ProviderInstanceId.make("claudeAgent");
   const codexInstance = ProviderInstanceId.make("codex");
+  const providers = [
+    { instanceId: "claudeAgent", driver: "claudeAgent" },
+    { instanceId: "claudeAgent_work", driver: "claudeAgent" },
+    { instanceId: "codex", driver: "codex" },
+  ];
   const sendBlock = (instanceId: ProviderInstanceId, availability: ZeropsAgentAvailability) =>
     resolveZeropsOwnedAgentSendBlockReason({
       instanceId,
+      providers,
       availabilityByInstanceId: new Map([[instanceId, availability]]),
     });
 
@@ -1146,18 +1168,21 @@ describe("resolveZeropsOwnedAgentSendBlockReason", () => {
     expect(
       resolveZeropsOwnedAgentSendBlockReason({
         instanceId: undefined,
+        providers,
         availabilityByInstanceId: undefined,
       }),
     ).toBeUndefined();
     expect(
       resolveZeropsOwnedAgentSendBlockReason({
         instanceId: codexInstance,
+        providers,
         availabilityByInstanceId: undefined,
       }),
     ).toBeUndefined();
     expect(
       resolveZeropsOwnedAgentSendBlockReason({
         instanceId: codexInstance,
+        providers,
         availabilityByInstanceId: new Map(),
       }),
     ).toBeUndefined();
@@ -1186,12 +1211,22 @@ describe("resolveZeropsOwnedAgentSendBlockReason", () => {
     );
   });
 
+  it("names the reason for a second instance of the agent's driver", () => {
+    expect(
+      sendBlock(ProviderInstanceId.make("claudeAgent_work"), {
+        kind: "someone-else",
+        signerId: "eva-user-id",
+      }),
+    ).toBe("Signed in by another project member — only they can run it.");
+  });
+
   it("holds Send while the owned agent's sign-in is still being read, saying so", () => {
     const claude = claudeEntry();
 
     expect(
       resolveZeropsOwnedAgentSendBlockReason({
         instanceId: claude.instanceId,
+        providers,
         availabilityByInstanceId: resolveZeropsProviderAvailability({
           entries: [claude],
           agentAuth: { state: "reading", sinceMs: 1_000, attempt: 1 },

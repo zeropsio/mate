@@ -40,11 +40,13 @@
  *
  * @module agentOwnership
  */
+import {
+  agentIdForDriverKind,
+  agentIdForProviderInstance,
+  type ZeropsAgentId,
+} from "@t3tools/contracts";
 
-/**
- * The recorded authorizer, as it arrives on `ZeropsAgentAuth.authorizedBy`.
- * Structural so this module needs no contracts import.
- */
+/** The recorded authorizer, as it arrives on `ZeropsAgentAuth.authorizedBy`. */
 export interface ZeropsAgentAuthorizer {
   /** The Zerops user id the door put on the session that drove the login. */
   readonly subject: string;
@@ -86,6 +88,21 @@ export interface ZeropsAgentOwnershipInput {
    * failed attempt is what happened here, whatever the tag currently says.
    */
   readonly recordFailed?: boolean | undefined;
+}
+
+/**
+ * The agent a provider instance spends, among the two Mate signs people in
+ * to — by the instance's driver, so a second instance of a driver is the same
+ * agent. The server's gate resolves it the same way; an id no configured
+ * instance carries resolves by its own spelling.
+ */
+export function resolveOwnedAgentId(
+  instanceId: string | undefined,
+  providers: ReadonlyArray<{ readonly instanceId: string; readonly driver: string }>,
+): ZeropsAgentId | undefined {
+  if (instanceId === undefined) return undefined;
+  const driver = providers.find((provider) => provider.instanceId === instanceId)?.driver;
+  return agentIdForDriverKind(driver) ?? agentIdForProviderInstance(instanceId);
 }
 
 export function resolveAgentOwnership(input: ZeropsAgentOwnershipInput): ZeropsAgentOwnership {

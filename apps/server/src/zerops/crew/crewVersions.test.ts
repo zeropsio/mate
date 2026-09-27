@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
+import type { CrewDefinition, CrewMemberSpec } from "@t3tools/shared/crewHome";
 
-import type { CrewDefinition, CrewMemberSpec } from "./CrewDefinition.ts";
 import { isPromptPending, suggestedApplyChoice, versionsAfterSave } from "./crewVersions.ts";
 
 const member = (handle: string, overrides: Partial<CrewMemberSpec> = {}): CrewMemberSpec => ({
