@@ -20,6 +20,7 @@ import { runMigrations } from "../../../persistence/Migrations.ts";
 import * as NodeSqliteClient from "../../../persistence/NodeSqliteClient.ts";
 import { localSshProcessRunnerLayer } from "../../testing/localSsh.ts";
 import { ZeropsRepositorySource, type ZeropsRepository } from "../../ZeropsRepositorySource.ts";
+import * as CrewApp from "../CrewApp.ts";
 import * as CrewChecks from "../CrewChecks.ts";
 import * as CrewIntegration from "../CrewIntegration.ts";
 import * as CrewShell from "../CrewShell.ts";
@@ -114,6 +115,43 @@ export const crewShellLayer = (
     Layer.provideMerge(NodeServices.layer),
   );
 
+/**
+ * The far side's environment with a `setsid` on its PATH. Linux services have
+ * util-linux's; where this machine lacks one, a perl stand-in does the same
+ * `setsid(2)` and exec.
+ */
+export const remoteEnvWithSetsid = (): Readonly<Record<string, string>> => {
+  const found = NodeChildProcess.spawnSync("sh", ["-c", "command -v setsid"]).status === 0;
+  if (found) return TEST_IDENTITY;
+  const bin = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-crew-bin-"));
+  NodeFS.writeFileSync(
+    NodePath.join(bin, "setsid"),
+    '#!/bin/sh\nexec perl -MPOSIX -e \'POSIX::setsid() or die "setsid: $!"; exec @ARGV or die "exec: $!"\' -- "$@"\n',
+    { mode: 0o755 },
+  );
+  return { ...TEST_IDENTITY, PATH: `${bin}:${process.env.PATH ?? ""}` };
+};
+
+/** Blocks until `ready` holds or `timeoutMs` passes; for a process the far side started. */
+export const waitUntil = (ready: () => boolean, timeoutMs = 5_000): boolean => {
+  const tick = new Int32Array(new SharedArrayBuffer(4));
+  for (let waited = 0; waited < timeoutMs; waited += 50) {
+    if (ready()) return true;
+    Atomics.wait(tick, 0, 0, 50);
+  }
+  return ready();
+};
+
+/** Whether a process is alive on this machine. */
+export const alive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 /** A writer on the fixture's host, lane = handle. */
 export const memberRow = (handle: string, crew = "game"): CrewStore.CrewMemberRow => ({
   crew,
@@ -180,10 +218,12 @@ export const crewStoreLayer = CrewStore.layer.pipe(
 export const crewGitLayer = (root: string, options: CrewShellFixtureOptions = {}) => {
   const shell = crewShellLayer([serviceRepository(root)], options);
   const checks = CrewChecks.layer.pipe(Layer.provideMerge(shell));
-  return Layer.mergeAll(CrewWorkspace.layer, CrewIntegration.layer, CrewStateRef.layer).pipe(
-    Layer.provideMerge(checks),
-    Layer.provideMerge(crewStoreLayer),
-  );
+  return Layer.mergeAll(
+    CrewWorkspace.layer,
+    CrewIntegration.layer,
+    CrewStateRef.layer,
+    CrewApp.layer,
+  ).pipe(Layer.provideMerge(checks), Layer.provideMerge(crewStoreLayer));
 };
 
 /** Runs `body` against a fresh service repository, removed afterwards. */
