@@ -16,6 +16,7 @@ const render = (snapshot: CrewSnapshot, overrides: Partial<CrewSectionProps> = {
       error={null}
       onAddCrewPorts={noop}
       onAddLead={noop}
+      onStartRun={noop}
       onAsk={noop}
       onDeliver={noop}
       onEditBrief={noop}
@@ -89,6 +90,8 @@ describe("CrewSection", () => {
     expect(manual).not.toContain("+ Add lead");
     expect(render(snapshot)).toContain("Send to lead");
     expect(render(snapshot)).toContain("Pause");
+    expect(render(snapshot)).not.toContain("Start run");
+    expect(render({ ...snapshot, run: null })).toContain("Start run");
   });
 
   it("opens the board only where there is one to open", () => {

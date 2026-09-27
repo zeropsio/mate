@@ -39,6 +39,7 @@ import { Chip, FlatCard, MateFace, MicroLabel, Pill, StatusDot } from "../primit
 import {
   crewAttentionActions,
   crewLoginMark,
+  crewOffersStart,
   crewRowLead,
   crewRowState,
   crewServedLine,
@@ -83,6 +84,8 @@ export interface CrewSectionProps {
   readonly onEditCrewmate: (handle: string | null) => void;
   /** (C) Adds the lead. */
   readonly onAddLead: () => void;
+  /** (C) Opens the run dialog. */
+  readonly onStartRun: () => void;
   readonly onStartFresh: (row: CrewmateView) => void;
   readonly onRemove: (row: CrewmateView) => void;
   /** Hands Fen a draft, confirmed first: `what` says why. */
@@ -197,6 +200,14 @@ function CrewHeader(props: CrewSectionProps & { readonly runOn: boolean }) {
             />
           </div>
         )}
+        {crewOffersStart(view, run) ? (
+          <Pill
+            className="ms-auto shrink-0"
+            label="Start run"
+            onClick={props.onStartRun}
+            size="sm"
+          />
+        ) : null}
       </div>
       {meters === null ? null : (
         <p className="text-xs text-muted-foreground tabular-nums" data-crew-run-meters>

@@ -112,6 +112,15 @@ export function crewStateTone(input: {
   return input.workingCount === 0 ? "off" : "busy";
 }
 
+/**
+ * *Start run* (C, PRD §4.3 item 1): offered while no run is on or finishing,
+ * and only to a crew a run can move — one with a lead to plan, or tasks queued.
+ */
+export function crewOffersStart(view: CrewView, run: CrewRun | null): boolean {
+  const idle = run === null || run.state === "finished" || run.state === "stopped";
+  return idle && (view.lead !== null || view.tasks.some((row) => row.task.state === "queued"));
+}
+
 export type CrewAttentionAction =
   | { readonly kind: "answer"; readonly label: string }
   | { readonly kind: "ask"; readonly label: string; readonly ask: string }

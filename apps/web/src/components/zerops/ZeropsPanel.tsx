@@ -193,7 +193,11 @@ export function ZeropsPanel({
           )}
           <CrewSectionHost
             mate={mate === undefined ? undefined : { name: mate.name, tint: mate.tint }}
-            onOpenBoard={null}
+            onOpenBoard={
+              threadRef === null
+                ? null
+                : () => useRightPanelStore.getState().open(threadRef, "crew")
+            }
             threadRef={threadRef}
           />
         </div>

@@ -8,6 +8,7 @@ import { readCrewThread } from "../../../zerops/crew/useCrew";
 import {
   crewAttentionActions,
   crewFaceStack,
+  crewOffersStart,
   crewLoginMark,
   crewRowLead,
   crewRowState,
@@ -221,5 +222,42 @@ describe("crewFaceStack", () => {
     ]);
     expect(stack.more).toBe(1);
     expect(crewFaceStack(view.crewmates.slice(0, 2)).more).toBe(0);
+  });
+});
+
+describe("crewOffersStart", () => {
+  const withoutLead = { ...snapshot, crewmates: snapshot.crewmates.slice(1) };
+  const derive = (input: typeof snapshot) => deriveCrewView(input, [], readCrewThread);
+  const noQueue = {
+    ...withoutLead,
+    board: {
+      tasks: withoutLead.board.tasks.map((task) =>
+        task.state === "queued" ? { ...task, state: "landed" as const } : task,
+      ),
+    },
+  };
+
+  it.each([
+    { name: "a run running", input: snapshot, offered: false },
+    {
+      name: "a run paused",
+      input: { ...snapshot, run: { ...snapshot.run!, state: "paused" as const } },
+      offered: false,
+    },
+    {
+      name: "a run finishing",
+      input: { ...snapshot, run: { ...snapshot.run!, state: "finishing" as const } },
+      offered: false,
+    },
+    { name: "a lead and no run", input: { ...snapshot, run: null }, offered: true },
+    {
+      name: "a finished run and a lead",
+      input: { ...snapshot, run: { ...snapshot.run!, state: "finished" as const } },
+      offered: true,
+    },
+    { name: "queued tasks and no lead", input: { ...withoutLead, run: null }, offered: true },
+    { name: "neither a lead nor a queue", input: { ...noQueue, run: null }, offered: false },
+  ])("$name", ({ input, offered }) => {
+    expect(crewOffersStart(derive(input), input.run)).toBe(offered);
   });
 });

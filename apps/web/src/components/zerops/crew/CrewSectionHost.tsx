@@ -30,6 +30,7 @@ import { CrewSection, CrewSectionEmpty } from "./CrewSection";
 import { CrewmateEditor } from "./CrewmateEditor";
 import type { CrewmateSheetTarget } from "./CrewmateSheet";
 import { CrewPortsDialog } from "./CrewPortsDialog";
+import { CrewRunDialog } from "./CrewRunDialog";
 import { CrewSetupSheet } from "./CrewSetupSheet";
 
 type Editor =
@@ -58,6 +59,7 @@ export function CrewSectionHost({
       {...props}
       environmentId={environmentId}
       snapshot={crew.snapshot}
+      threadId={threadRef?.threadId ?? null}
       view={crew.status === "applied" ? crew.view : null}
     />
   );
@@ -66,12 +68,15 @@ export function CrewSectionHost({
 function CrewSectionFor({
   environmentId,
   snapshot,
+  threadId,
   view,
   mate,
   onOpenBoard,
 }: HostProps & {
   readonly environmentId: EnvironmentId;
   readonly snapshot: CrewSnapshot;
+  /** The chat the Zerops tab is open beside: *Deliver* drafts there when it is a person chat. */
+  readonly threadId: ThreadId | null;
   /** `null` while no crew is applied. */
   readonly view: CrewView<EnvironmentThreadShell> | null;
 }) {
@@ -86,7 +91,13 @@ function CrewSectionFor({
   const [editor, setEditor] = useState<Editor>(null);
   const [homeVersion, setHomeVersion] = useState(0);
   const [portsHost, setPortsHost] = useState<string | null>(null);
-  const [ask, setAsk] = useState<{ readonly ask: string; readonly what: string } | null>(null);
+  const [runOpen, setRunOpen] = useState(false);
+  const [ask, setAsk] = useState<{
+    readonly ask: string;
+    readonly what: string;
+    /** The chat to ask in; the main chat when absent. */
+    readonly threadId?: ThreadId | undefined;
+  } | null>(null);
   const mateName = mate?.name ?? "the Mate";
   const devHosts = crewDevHosts(
     services,
@@ -148,6 +159,7 @@ function CrewSectionFor({
       setAsk({
         ask: crewDeliverAsk(snapshot, result.dirtyPaths),
         what: `${count} landed ${count === 1 ? "task has" : "tasks have"} not gone out yet.`,
+        threadId: threadId ?? undefined,
       });
     });
   };
@@ -169,6 +181,7 @@ function CrewSectionFor({
           error={commands.error}
           onAddCrewPorts={setPortsHost}
           onAddLead={() => setEditor({ kind: "crewmate", target: { handle: null, lead: true } })}
+          onStartRun={() => setRunOpen(true)}
           onAsk={(draft, what) => setAsk({ ask: draft, what })}
           onDeliver={deliver}
           onEditBrief={() => setEditor({ kind: "brief" })}
@@ -216,6 +229,7 @@ function CrewSectionFor({
         onClose={() => closeEditor(false)}
         target={editor?.kind === "crewmate" ? editor.target : null}
       />
+      <CrewRunDialog environmentId={environmentId} onOpenChange={setRunOpen} open={runOpen} />
       <CrewPortsDialog
         error={commands.error}
         host={portsHost}
@@ -232,7 +246,7 @@ function CrewSectionFor({
         onConfirm={() => {
           if (ask === null) return;
           setAsk(null);
-          askMate(projectId, ask.ask);
+          askMate(projectId, ask.ask, { threadId: ask.threadId });
         }}
         onOpenChange={(open) => {
           if (!open) setAsk(null);
