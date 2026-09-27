@@ -798,6 +798,43 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
   });
 
+  // Starting a helper is work: a run that only launched one read "Nova
+  // thought for 8s" (Nova, 2026-09-27).
+  it.each([
+    {
+      name: "only a helper started",
+      spawned: ["task-h1"],
+      commands: 0,
+      summary: "Started 1 helper",
+    },
+    {
+      name: "two helpers at once",
+      spawned: ["task-h1", "task-h2"],
+      commands: 0,
+      summary: "Started 2 helpers",
+    },
+    {
+      name: "after other work",
+      spawned: ["task-h1"],
+      commands: 2,
+      summary: "Ran 2 commands · started 1 helper",
+    },
+  ])("says what a run started: $name", ({ spawned, commands, summary }) => {
+    const list = rows({
+      entries: [
+        user("m0", 0),
+        ...Array.from({ length: commands }, (_, index) => tool(`w${index}`, "t1", 1)),
+        tool("s1", "t1", 1, {
+          label: "Review server/index.ts",
+          agentSpawn: { workflowId: null, agentTaskIds: spawned },
+        }),
+        assistant("a1", "t1", 2, "It is running."),
+      ],
+      settled: "t1",
+    });
+    expect(list.find((row) => row.kind === "work-line")).toMatchObject({ summary });
+  });
+
   it("keeps what matters visible under a closed line, each where it appeared", () => {
     const list = rows({
       entries: [

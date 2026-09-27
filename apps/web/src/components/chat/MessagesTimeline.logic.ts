@@ -1690,12 +1690,37 @@ export function deriveMessagesTimelineRows(
           (isQuestionToolCall(candidate.entry) || candidate.entry.inputQuestions !== undefined),
       ),
     );
-    const summary =
+    // Starting a helper is work too: a run that only launched one read
+    // "thought for" (Nova, 2026-09-27).
+    const helpersStarted = turn.stretches.reduce(
+      (count, stretch) =>
+        count +
+        stretch.entries.reduce(
+          (inStretch, candidate) =>
+            inStretch +
+            (candidate.kind === "work" && candidate.entry.agentSpawn !== undefined
+              ? Math.max(1, candidate.entry.agentSpawn.agentTaskIds.length)
+              : 0),
+          0,
+        ),
+      0,
+    );
+    const did =
       shownActivity.length > 0
         ? summarizeActivity(shownActivity)
         : asked
           ? "Asked a question"
           : null;
+    const started =
+      helpersStarted === 0
+        ? null
+        : helpersStarted === 1
+          ? "started 1 helper"
+          : `started ${helpersStarted} helpers`;
+    const summary =
+      did !== null && started !== null
+        ? `${did} · ${started}`
+        : (did ?? (started === null ? null : started.charAt(0).toUpperCase() + started.slice(1)));
     const hasLog = turn.stretches.some((stretch) =>
       stretch.entries.some(
         (candidate) =>
