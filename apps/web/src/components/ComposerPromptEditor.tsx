@@ -6,6 +6,7 @@ import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import { type ServerProviderSkill } from "@t3tools/contracts";
+import type { MateTintId } from "@t3tools/shared/brand";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import {
   $applyNodeReplacement,
@@ -63,7 +64,7 @@ import {
 } from "~/composer-logic";
 import {
   selectionTouchesMentionBoundary,
-  splitPromptIntoComposerSegments,
+  splitPromptIntoEditorSegments,
 } from "~/composer-editor-mentions";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
@@ -72,6 +73,7 @@ import {
 import { cn, isMacPlatform } from "~/lib/utils";
 import { basenameOfPath } from "~/pierre-icons";
 import {
+  COMPOSER_INLINE_CHIP_CLASS_NAME,
   COMPOSER_INLINE_CHIP_DECORATOR_CLASS_NAME,
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
   COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME,
@@ -83,6 +85,7 @@ import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTermin
 import { formatProviderSkillDisplayName } from "@t3tools/client-runtime/providerSkills";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { registerComposerInlineTokenPaste } from "./composerInlineTokenPaste";
+import { MateFace } from "./zerops/primitives";
 
 const COMPOSER_EDITOR_HMR_KEY = `composer-editor-${Math.random().toString(36).slice(2)}`;
 const SURROUND_SYMBOLS: [string, string][] = [
@@ -106,6 +109,16 @@ type SerializedComposerMentionNode = Spread<
     path: string;
     source?: string;
     type: "composer-mention";
+    version: 1;
+  },
+  SerializedLexicalNode
+>;
+
+type SerializedComposerCrewmateNode = Spread<
+  {
+    handle: string;
+    tint: MateTintId;
+    type: "composer-crewmate";
     version: 1;
   },
   SerializedLexicalNode
@@ -219,6 +232,88 @@ class ComposerMentionNode extends DecoratorNode<React.ReactElement> {
 
 function $createComposerMentionNode(path: string, source?: string): ComposerMentionNode {
   return $applyNodeReplacement(new ComposerMentionNode(path, source));
+}
+
+/** A crewmate the composer offers (the lead's chat), as the lead writes to it: `@handle`. */
+export interface ComposerCrewmateChip {
+  readonly handle: string;
+  readonly tint: MateTintId;
+}
+
+function ComposerCrewmateDecorator(props: ComposerCrewmateChip) {
+  return (
+    <span
+      className={COMPOSER_INLINE_CHIP_CLASS_NAME}
+      contentEditable={false}
+      spellCheck={false}
+      data-composer-crewmate-chip={props.handle}
+    >
+      <MateFace size="dot" state="idle" tint={props.tint} />
+      <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>@{props.handle}</span>
+    </span>
+  );
+}
+
+/** A crewmate's `@handle`: drawn as the crewmate, written as `@handle`. */
+class ComposerCrewmateNode extends DecoratorNode<React.ReactElement> {
+  __handle: string;
+  __tint: MateTintId;
+
+  static override getType(): string {
+    return "composer-crewmate";
+  }
+
+  static override clone(node: ComposerCrewmateNode): ComposerCrewmateNode {
+    return new ComposerCrewmateNode(node.__handle, node.__tint, node.__key);
+  }
+
+  static override importJSON(serializedNode: SerializedComposerCrewmateNode): ComposerCrewmateNode {
+    return $createComposerCrewmateNode(serializedNode.handle, serializedNode.tint).updateFromJSON(
+      serializedNode,
+    );
+  }
+
+  constructor(handle: string, tint: MateTintId, key?: NodeKey) {
+    super(key);
+    this.__handle = handle;
+    this.__tint = tint;
+  }
+
+  override exportJSON(): SerializedComposerCrewmateNode {
+    return {
+      ...super.exportJSON(),
+      handle: this.__handle,
+      tint: this.__tint,
+      type: "composer-crewmate",
+      version: 1,
+    };
+  }
+
+  override createDOM(): HTMLElement {
+    const dom = document.createElement("span");
+    dom.className = COMPOSER_INLINE_CHIP_DECORATOR_CLASS_NAME;
+    return dom;
+  }
+
+  override updateDOM(): false {
+    return false;
+  }
+
+  override getTextContent(): string {
+    return `@${this.__handle}`;
+  }
+
+  override isInline(): true {
+    return true;
+  }
+
+  override decorate(): React.ReactElement {
+    return <ComposerCrewmateDecorator handle={this.__handle} tint={this.__tint} />;
+  }
+}
+
+function $createComposerCrewmateNode(handle: string, tint: MateTintId): ComposerCrewmateNode {
+  return $applyNodeReplacement(new ComposerCrewmateNode(handle, tint));
 }
 
 function resolveSkillDescription(
@@ -434,12 +529,14 @@ function $createComposerTerminalContextNode(
 
 type ComposerInlineTokenNode =
   | ComposerMentionNode
+  | ComposerCrewmateNode
   | ComposerSkillNode
   | ComposerTerminalContextNode;
 
 function isComposerInlineTokenNode(candidate: unknown): candidate is ComposerInlineTokenNode {
   return (
     candidate instanceof ComposerMentionNode ||
+    candidate instanceof ComposerCrewmateNode ||
     candidate instanceof ComposerSkillNode ||
     candidate instanceof ComposerTerminalContextNode
   );
@@ -464,6 +561,12 @@ function terminalContextSignature(contexts: ReadonlyArray<TerminalContextDraft>)
       ].join("\u001f"),
     )
     .join("\u001e");
+}
+
+const NO_CREWMATES: ReadonlyArray<ComposerCrewmateChip> = [];
+
+function crewmateSignature(crewmates: ReadonlyArray<ComposerCrewmateChip>): string {
+  return crewmates.map((mate) => `${mate.handle}:${mate.tint}`).join("\u001f");
 }
 
 function skillSignature(skills: ReadonlyArray<ServerProviderSkill>): string {
@@ -829,16 +932,21 @@ function $setComposerEditorPrompt(
   prompt: string,
   terminalContexts: ReadonlyArray<TerminalContextDraft>,
   skillMetadata: ReadonlyMap<string, ComposerSkillMetadata>,
+  crewmates: ReadonlyArray<ComposerCrewmateChip>,
 ): void {
   const root = $getRoot();
   root.clear();
   const paragraph = $createParagraphNode();
   root.append(paragraph);
 
-  const segments = splitPromptIntoComposerSegments(prompt, terminalContexts);
+  const segments = splitPromptIntoEditorSegments(prompt, terminalContexts, crewmates);
   for (const segment of segments) {
     if (segment.type === "mention") {
       paragraph.append($createComposerMentionNode(segment.path, segment.source));
+      continue;
+    }
+    if (segment.type === "crewmate") {
+      paragraph.append($createComposerCrewmateNode(segment.handle, segment.tint));
       continue;
     }
     if (segment.type === "skill") {
@@ -938,6 +1046,8 @@ interface ComposerPromptEditorProps {
   cursor: number;
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   skills: ReadonlyArray<ServerProviderSkill>;
+  /** The crewmates `@` offers (the lead's chat): their `@handle`s are drawn as them. */
+  crewmates?: ReadonlyArray<ComposerCrewmateChip> | undefined;
   disabled: boolean;
   placeholder: string;
   className?: string;
@@ -1385,10 +1495,12 @@ function ComposerInlineTokenPastePlugin() {
 function ComposerSurroundSelectionPlugin(props: {
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   skills: ReadonlyArray<ServerProviderSkill>;
+  crewmates: ReadonlyArray<ComposerCrewmateChip>;
 }) {
   const [editor] = useLexicalComposerContext();
   const terminalContextsRef = useRef(props.terminalContexts);
   const skillMetadataRef = useRef(skillMetadataByName(props.skills));
+  const crewmatesRef = useRef(props.crewmates);
   const pendingSurroundSelectionRef = useRef<{
     value: string;
     expandedStart: number;
@@ -1407,6 +1519,10 @@ function ComposerSurroundSelectionPlugin(props: {
   useEffect(() => {
     skillMetadataRef.current = skillMetadataByName(props.skills);
   }, [props.skills]);
+
+  useEffect(() => {
+    crewmatesRef.current = props.crewmates;
+  }, [props.crewmates]);
 
   const applySurroundInsertion = useEffectEvent((inputData: string): boolean => {
     const surroundCloseSymbol = SURROUND_SYMBOLS_MAP.get(inputData);
@@ -1452,7 +1568,12 @@ function ComposerSurroundSelectionPlugin(props: {
         selectionSnapshot.expandedEnd,
       );
       const nextValue = `${selectionSnapshot.value.slice(0, selectionSnapshot.expandedStart)}${inputData}${selectedText}${surroundCloseSymbol}${selectionSnapshot.value.slice(selectionSnapshot.expandedEnd)}`;
-      $setComposerEditorPrompt(nextValue, terminalContextsRef.current, skillMetadataRef.current);
+      $setComposerEditorPrompt(
+        nextValue,
+        terminalContextsRef.current,
+        skillMetadataRef.current,
+        crewmatesRef.current,
+      );
       const selectionStart = collapseExpandedComposerCursor(
         nextValue,
         selectionSnapshot.expandedStart,
@@ -1653,6 +1774,7 @@ function ComposerPromptEditorInner({
   cursor,
   terminalContexts,
   skills,
+  crewmates = NO_CREWMATES,
   disabled,
   placeholder,
   className,
@@ -1670,6 +1792,11 @@ function ComposerPromptEditorInner({
   const skillsSignature = skillSignature(skills);
   const skillsSignatureRef = useRef(skillsSignature);
   const skillMetadataRef = useRef(skillMetadataByName(skills));
+  // The crewmates the chat hands fresh on every snapshot: the sync keys on
+  // their signature, and reads them from here.
+  const crewmatesSignature = crewmateSignature(crewmates);
+  const crewmatesSignatureRef = useRef(crewmatesSignature);
+  const crewmatesRef = useRef(crewmates);
   // The contexts the sync below writes into the editor. Held in a ref because
   // the screen builds this list fresh on every render — a thread with no
   // contexts hands a new empty array each time — and keying the sync to the
@@ -1693,7 +1820,8 @@ function ComposerPromptEditorInner({
   useLayoutEffect(() => {
     skillMetadataRef.current = skillMetadataByName(skills);
     terminalContextsRef.current = terminalContexts;
-  }, [skills, terminalContexts]);
+    crewmatesRef.current = crewmates;
+  }, [crewmates, skills, terminalContexts]);
 
   useEffect(() => {
     editor.setEditable(!disabled);
@@ -1703,12 +1831,14 @@ function ComposerPromptEditorInner({
     const normalizedCursor = clampCollapsedComposerCursor(value, cursor);
     const previousSnapshot = snapshotRef.current;
     const contextsChanged = terminalContextsSignatureRef.current !== terminalContextsSignature;
-    const skillsChanged = skillsSignatureRef.current !== skillsSignature;
+    const chipsChanged =
+      skillsSignatureRef.current !== skillsSignature ||
+      crewmatesSignatureRef.current !== crewmatesSignature;
     if (
       previousSnapshot.value === value &&
       previousSnapshot.cursor === normalizedCursor &&
       !contextsChanged &&
-      !skillsChanged
+      !chipsChanged
     ) {
       return;
     }
@@ -1722,18 +1852,19 @@ function ComposerPromptEditorInner({
     };
     terminalContextsSignatureRef.current = terminalContextsSignature;
     skillsSignatureRef.current = skillsSignature;
+    crewmatesSignatureRef.current = crewmatesSignature;
 
     const rootElement = editor.getRootElement();
     const isFocused = Boolean(rootElement && document.activeElement === rootElement);
-    if (previousSnapshot.value === value && !contextsChanged && !skillsChanged && !isFocused) {
+    if (previousSnapshot.value === value && !contextsChanged && !chipsChanged && !isFocused) {
       return;
     }
 
     editor.update(() => {
       const shouldRewriteEditorState =
-        previousSnapshot.value !== value || contextsChanged || skillsChanged;
+        previousSnapshot.value !== value || contextsChanged || chipsChanged;
       if (shouldRewriteEditorState) {
-        $setComposerEditorPrompt(value, contexts, skillMetadataRef.current);
+        $setComposerEditorPrompt(value, contexts, skillMetadataRef.current, crewmatesRef.current);
       }
       if (shouldRewriteEditorState || isFocused) {
         $setSelectionAtComposerOffset(normalizedCursor);
@@ -1748,7 +1879,7 @@ function ComposerPromptEditorInner({
       // (`verified.md`, 2026-09-18).
       snapshotRef.current = $readComposerEditorSnapshot(snapshotRef.current);
     });
-  }, [cursor, editor, skillsSignature, terminalContextsSignature, value]);
+  }, [cursor, crewmatesSignature, editor, skillsSignature, terminalContextsSignature, value]);
 
   const focusAt = useCallback(
     (nextCursor: number) => {
@@ -1878,7 +2009,11 @@ function ComposerPromptEditorInner({
         />
         <OnChangePlugin onChange={handleEditorChange} />
         <ComposerCommandKeyPlugin {...(onCommandKeyDown ? { onCommandKeyDown } : {})} />
-        <ComposerSurroundSelectionPlugin terminalContexts={terminalContexts} skills={skills} />
+        <ComposerSurroundSelectionPlugin
+          crewmates={crewmates}
+          skills={skills}
+          terminalContexts={terminalContexts}
+        />
         <ComposerHomeEndKeyPlugin />
         <ComposerInlineTokenArrowPlugin />
         <ComposerInlineTokenSelectionNormalizePlugin />
@@ -1896,6 +2031,7 @@ export function ComposerPromptEditor({
   cursor,
   terminalContexts,
   skills,
+  crewmates = NO_CREWMATES,
   disabled,
   placeholder,
   className,
@@ -1908,16 +2044,23 @@ export function ComposerPromptEditor({
   const initialValueRef = useRef(value);
   const initialTerminalContextsRef = useRef(terminalContexts);
   const initialSkillMetadataRef = useRef(skillMetadataByName(skills));
+  const initialCrewmatesRef = useRef(crewmates);
   const initialConfig = useMemo<InitialConfigType>(
     () => ({
       namespace: "t3tools-composer-editor",
       editable: true,
-      nodes: [ComposerMentionNode, ComposerSkillNode, ComposerTerminalContextNode],
+      nodes: [
+        ComposerMentionNode,
+        ComposerCrewmateNode,
+        ComposerSkillNode,
+        ComposerTerminalContextNode,
+      ],
       editorState: () => {
         $setComposerEditorPrompt(
           initialValueRef.current,
           initialTerminalContextsRef.current,
           initialSkillMetadataRef.current,
+          initialCrewmatesRef.current,
         );
       },
       onError: (error) => {
@@ -1934,6 +2077,7 @@ export function ComposerPromptEditor({
         cursor={cursor}
         terminalContexts={terminalContexts}
         skills={skills}
+        crewmates={crewmates}
         disabled={disabled}
         placeholder={placeholder}
         onRemoveTerminalContext={onRemoveTerminalContext}
