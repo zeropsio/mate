@@ -1,8 +1,9 @@
 /**
  * The agent's own name.
  *
- * One environment is one container, one agent, one conversation — so the thing
- * a person talks to is not "beviro-crm-dev", it is somebody. In a menu already
+ * One environment is one container and one agent, which may hold several
+ * chats over the same tree and is the same somebody in each — so the thing a
+ * person talks to is not "beviro-crm-dev", it is somebody. In a menu already
  * nested under its group and badged with its role, the project name says the
  * same thing three times; a name says the one thing the row is missing, and it
  * gives the user something to address ("ask Ada to take the migration").
