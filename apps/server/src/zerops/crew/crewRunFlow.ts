@@ -8,7 +8,8 @@
  * - a ready task lands when the run's landing is *Land when the check
  *   passes*; with *I land everything* it waits for the person's **Land**;
  * - a turn that ended without a report gets one nudge per attempt, and a
- *   turn the run's own pause stopped carries on when the run goes on;
+ *   task carries on in a turn the run's own pause stopped, when the run goes
+ *   on, and in the new conversation after an overflow;
  * - with *The crew may show work on dev*, a crewmate's request to show its
  *   copy is allowed as soon as its turn ends.
  *
@@ -20,7 +21,7 @@
  */
 import * as Effect from "effect/Effect";
 
-import { nudgeCard, resumeCard } from "./crewCards.ts";
+import { carriedCard, nudgeCard } from "./crewCards.ts";
 import {
   asRefusal,
   currentStint,
@@ -36,13 +37,20 @@ import {
 import { CREW_ID } from "./CrewHome.ts";
 import { grantClaim } from "./crewClaims.ts";
 import { land, reworkCard } from "./crewLanding.ts";
+import { remember } from "./crewNotes.ts";
 import { wakeLead } from "./crewLead.ts";
 import { pauseRun, runOptionsOf } from "./crewRuns.ts";
 import type { CrewAssignmentRow } from "./CrewStore.ts";
 import { readTaskReview, readTaskWait } from "./crewTaskData.ts";
 import { continueTask, openTaskOf, pump } from "./crewTasks.ts";
 
-/** One turn of the run into an open task; a refusal from admission pauses the run. */
+const CARRY_ON = "Carry on with your task from your copy and its history.";
+
+/**
+ * One turn of the run into an open task. A refusal from admission pauses the
+ * run; a task that stopped instead (its conversation rotated too often)
+ * waits on the person.
+ */
 const runTurn = (
   core: CrewCore,
   applied: AppliedCrew,
@@ -53,7 +61,11 @@ const runTurn = (
   continueTask(core, applied, member, task, dispatchPrincipal(applied, task), text).pipe(
     Effect.asVoid,
     Effect.catchTag("CrewCommandError", (error) =>
-      error.reason === "not-allowed" ? pauseRun(core, "refused", error.detail) : Effect.fail(error),
+      error.reason === "not-allowed"
+        ? pauseRun(core, "refused", error.detail)
+        : error.reason === "wrong-state"
+          ? Effect.void
+          : Effect.fail(error),
     ),
   );
 
@@ -88,15 +100,28 @@ const carryOn = (
       case "working": {
         const stint = currentStint(applied, member.row.handle);
         if (stint === undefined) return;
-        if (memory.runInterrupted.delete(stint.threadId)) {
-          yield* runTurn(core, applied, member, task, resumeCard(task));
+        const carried = memory.carryOn.get(stint.threadId);
+        if (carried !== undefined) {
+          memory.carryOn.delete(stint.threadId);
+          yield* runTurn(
+            core,
+            applied,
+            member,
+            task,
+            carriedCard({
+              number: task.number,
+              title: task.title,
+              reason: carried,
+              text: CARRY_ON,
+            }),
+          );
           return;
         }
         const attempt = `${task.assignment}:${task.attempt}`;
         if (memory.endings.get(stint.threadId) !== "completed" || memory.nudged.has(attempt)) {
           return;
         }
-        memory.nudged.add(attempt);
+        yield* remember(core, { kind: "nudged", key: attempt }, runningRun(applied)?.run ?? null);
         yield* runTurn(core, applied, member, task, nudgeCard(task));
         return;
       }

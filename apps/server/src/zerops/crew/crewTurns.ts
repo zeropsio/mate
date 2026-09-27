@@ -23,6 +23,7 @@ import * as Effect from "effect/Effect";
 
 import {
   asRefusal,
+  currentStint,
   memberOf,
   runningRun,
   type AppliedCrew,
@@ -34,10 +35,11 @@ import { moveClaim, releaseAfterTurn, settleClaim } from "./crewClaims.ts";
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
 import { crewStateRef } from "./CrewStateRef.ts";
 import { attemptRef, type LaneSpec } from "./CrewWorkspace.ts";
-import { recordRunSpend, recordUsage } from "./crewRuns.ts";
+import { RUN_PAUSED, recordRunSpend, recordUsage } from "./crewRuns.ts";
 import { rotate, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
-import { continueAfterSave, openTaskOf, parkTask } from "./crewTasks.ts";
+import { continueAfterSave, openTaskOf, parkTask, requeueTask, stepTask } from "./crewTasks.ts";
+import { turnEndingOf } from "./crewMachines.ts";
 import { settleLeadWake } from "./crewLead.ts";
 import { flushState } from "./crewState.ts";
 import { CREW_ROTATE_AFTER_DEFAULT } from "./rotationDecision.ts";
@@ -192,6 +194,7 @@ const turnEnded = (
     } else {
       yield* releaseAfterTurn(core, handle);
     }
+    yield* endedHow(core, member, stint, event);
     if (member.row.kind === "lead") yield* settleLeadWake(core, applied, member);
     yield* core.background(flushState(core));
     const after = openTaskOf(yield* asRefusal(core.store.assignments(CREW_ID)), handle);
@@ -201,6 +204,54 @@ const turnEnded = (
       );
     } else {
       yield* advance(core, handle);
+    }
+  });
+
+/**
+ * What the turn's ending means for the open task (CONCEPT §5 *Endings*): an
+ * overflowed context takes the task on in a new conversation (at most twice
+ * an attempt, then it stops), a broken-off turn queues it again once, and a
+ * turn the run's budget stopped carries on when the run goes on.
+ */
+const endedHow = (
+  core: CrewCore,
+  member: CrewMember,
+  stint: CrewStintRow,
+  event: Extract<SpiEvent, { readonly type: "turn.completed" }>,
+) =>
+  Effect.gen(function* () {
+    const applied = yield* core.applied;
+    const ending = turnEndingOf(event.payload.terminalReason);
+    if (applied === undefined || ending === "agent") return;
+    if (ending === "budget") {
+      core.memory.carryOn.set(stint.threadId, RUN_PAUSED);
+      return;
+    }
+    const task = openTaskOf(yield* asRefusal(core.store.assignments(CREW_ID)), member.row.handle);
+    // A save's rotation at this turn's end has already moved the task on.
+    if (
+      task?.state !== "working" ||
+      currentStint(applied, member.row.handle)?.threadId !== stint.threadId
+    ) {
+      return;
+    }
+    if (ending === "infrastructure") {
+      yield* requeueTask(core, task, `its turn ended: ${event.payload.terminalReason}`);
+      return;
+    }
+    const attempts = yield* asRefusal(core.store.attemptsOf(task.assignment));
+    const attempt = attempts.find((row) => row.attempt === task.attempt);
+    const moved = yield* stepTask(core, task, { type: "rotation-ending" }, undefined, {
+      rotations: attempt?.rotations ?? 0,
+    });
+    if (moved.state !== "working") return;
+    if (attempt !== undefined) {
+      yield* asRefusal(core.store.putAttempt({ ...attempt, rotations: attempt.rotations + 1 }));
+    }
+    core.memory.terminalReasons.delete(stint.threadId);
+    const opened = yield* rotateBetweenTurns(core, applied, member, "context-overflow");
+    if (runningRun(applied) !== undefined) {
+      core.memory.carryOn.set(opened.threadId, opened.reason ?? "");
     }
   });
 

@@ -63,11 +63,13 @@ import {
 
 /* ------------------------------------------------------------ task rows */
 
+const ROTATED_TOO_OFTEN = "its conversation outgrew its context too often";
+
 /** The board's words for the machine's own reasons to park (`crewMachines`); the engine's are words already. */
 const PARK_WORDS: Readonly<Record<string, string>> = {
   reworks: "it came back for rework too often",
-  infrastructure: "its turn died with the Mate server twice",
-  rotations: "its conversation outgrew its context too often",
+  infrastructure: "its turn broke off twice",
+  rotations: ROTATED_TOO_OFTEN,
   "empty-merge-base": "your tree's history was rewritten",
   "disk-full": "the service's disk is full",
 };
@@ -136,6 +138,29 @@ export const stepTask = (
         ...(parked === undefined ? {} : { waiting: parked }),
       }),
     );
+  });
+
+/**
+ * An infrastructure ending (the Mate server restarted mid-turn, the provider
+ * or the session setup failed): the attempt ends with `detail`, and the task
+ * queues again once — the second time it stops (ARCHITECTURE §4 *Assignment*).
+ */
+export const requeueTask = (core: CrewCore, task: CrewAssignmentRow, detail: string) =>
+  Effect.gen(function* () {
+    const attempts = yield* asRefusal(core.store.attemptsOf(task.assignment));
+    const attempt = attempts.find((row) => row.attempt === task.attempt);
+    if (attempt !== undefined) {
+      yield* asRefusal(
+        core.store.putAttempt({
+          ...attempt,
+          ending: "infrastructure",
+          endingDetail: detail,
+          endedAt: yield* core.now,
+        }),
+      );
+    }
+    const requeues = attempts.filter((row) => row.ending === "infrastructure").length;
+    return yield* stepTask(core, task, { type: "infrastructure-ending" }, undefined, { requeues });
   });
 
 /** Parks a task with the engine's own words for why. */
@@ -208,19 +233,30 @@ export const createTask = (
 
 /* ------------------------------------------------------------ rotation */
 
-/** Rotates the crewmate's conversation now when one is due at this moment; its stint either way. */
+/**
+ * Rotates the crewmate's conversation now when one is due at this moment; its
+ * stint either way. The engine's own rotations count toward `task`'s attempt,
+ * and one past its two stops the task instead (CONCEPT §3A.4).
+ */
 export const stintForTurn = (
   core: CrewCore,
   applied: AppliedCrew,
   member: CrewMember,
   moment: RotationMoment,
   freshTask: boolean,
+  task?: CrewAssignmentRow,
 ) =>
   Effect.gen(function* () {
     const stint = currentStint(applied, member.row.handle);
     if (stint === undefined) {
       return yield* openStint(core, applied, member, { reason: null, seed: null });
     }
+    const attempt =
+      task === undefined
+        ? undefined
+        : (yield* asRefusal(core.store.attemptsOf(task.assignment))).find(
+            (row) => row.attempt === task.attempt,
+          );
     const login = member.row.login ?? "";
     // A resume needs the transcript its session wrote; one gone (a redeploy) starts a new stint.
     const transcriptMissing =
@@ -244,7 +280,7 @@ export const stintForTurn = (
       login,
       freshTask,
       startFresh: false,
-      rotationsThisAttempt: 0,
+      rotationsThisAttempt: attempt?.rotations ?? 0,
     });
     if (decision.kind === "pending" && !stint.rotatePending) {
       yield* asRefusal(
@@ -255,9 +291,15 @@ export const stintForTurn = (
       );
       yield* asRefusal(core.reload);
     }
-    return decision.kind === "rotate" || decision.kind === "park"
-      ? yield* rotate(core, applied, member, decision.reason)
-      : stint;
+    if (decision.kind === "park" && task !== undefined) {
+      yield* parkTask(core, task, ROTATED_TOO_OFTEN);
+      return yield* refuse("wrong-state", `#${task.number} stopped: ${ROTATED_TOO_OFTEN}`);
+    }
+    if (decision.kind !== "rotate" && decision.kind !== "park") return stint;
+    if (decision.kind === "rotate" && decision.counted && attempt !== undefined) {
+      yield* asRefusal(core.store.putAttempt({ ...attempt, rotations: attempt.rotations + 1 }));
+    }
+    return yield* rotate(core, applied, member, decision.reason);
   });
 
 const optionalReason = (reason: string | undefined) =>
@@ -394,7 +436,7 @@ export const continueTask = (
 ) =>
   Effect.gen(function* () {
     const before = currentStint(applied, member.row.handle);
-    const stint = yield* stintForTurn(core, applied, member, "turn-start", false);
+    const stint = yield* stintForTurn(core, applied, member, "turn-start", false, task);
     const sent =
       before !== undefined && before.threadId !== stint.threadId
         ? carriedCard({ number: task.number, title: task.title, reason: stint.reason ?? "", text })
@@ -410,8 +452,6 @@ export const continueTask = (
     const working = yield* stepTask(core, task, { type: "message" }, (next) =>
       task.state === "rework" ? { ...next, waiting: null } : next,
     );
-    // An answered question: its next one goes to the lead first again.
-    if (task.state === "blocked") core.memory.escalated.delete(task.assignment);
     const key = `${working.assignment}:${working.attempt}`;
     core.memory.turns.set(key, (core.memory.turns.get(key) ?? 0) + 1);
     yield* sendTurn(core, member, stint, principal, sent, attachments);

@@ -25,7 +25,7 @@ import { CREW_ID } from "./CrewHome.ts";
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
 import { laneSpecsOn } from "./crewTurns.ts";
 import { advanceAll } from "./crewRunFlow.ts";
-import { saveTask, stepTask } from "./crewTasks.ts";
+import { requeueTask, saveTask, stepTask } from "./crewTasks.ts";
 
 const sweepHost = (core: CrewCore, host: string) =>
   Effect.gen(function* () {
@@ -107,18 +107,7 @@ export const boot = (core: CrewCore) =>
           const attempts = yield* asRefusal(core.store.attemptsOf(task.assignment));
           const attempt = attempts.find((row) => row.attempt === task.attempt);
           if (!(yield* turnDied(core, attempt?.threadId ?? null))) break;
-          if (attempt !== undefined) {
-            yield* asRefusal(
-              core.store.putAttempt({
-                ...attempt,
-                ending: "infrastructure",
-                endingDetail: "the Mate server restarted during its turn",
-                endedAt: yield* core.now,
-              }),
-            );
-          }
-          const requeues = attempts.filter((row) => row.ending === "infrastructure").length;
-          yield* stepTask(core, task, { type: "infrastructure-ending" }, undefined, { requeues });
+          yield* requeueTask(core, task, "the Mate server restarted during its turn");
           break;
         }
         default:

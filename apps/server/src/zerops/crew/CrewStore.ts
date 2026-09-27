@@ -371,6 +371,11 @@ export interface CrewStoreService {
     assignment: string,
   ) => Effect.Effect<ReadonlyArray<CrewAttemptRow>, CrewStoreError>;
   readonly appendLog: (entry: CrewLogEntry) => Effect.Effect<void, CrewStoreError>;
+  /** The crew's log entries of `kinds`, oldest first. */
+  readonly logOf: (
+    crew: string,
+    kinds: ReadonlyArray<string>,
+  ) => Effect.Effect<ReadonlyArray<CrewLogEntry>, CrewStoreError>;
   readonly putRun: (row: CrewRunRow) => Effect.Effect<void, CrewStoreError>;
   /** The crew's run started last, in any state. */
   readonly latestRun: (crew: string) => Effect.Effect<Option.Option<CrewRunRow>, CrewStoreError>;
@@ -1138,6 +1143,30 @@ export const make = Effect.gen(function* () {
           VALUES (${entry.crew}, ${entry.run}, ${entry.at}, ${entry.kind}, ${payload})
         `.pipe(Effect.mapError(sqlError("appendLog")));
       }),
+    logOf: (crew, kinds) =>
+      kinds.length === 0
+        ? Effect.succeed([])
+        : sql<{
+            readonly crew: string;
+            readonly run: string | null;
+            readonly at: string;
+            readonly kind: string;
+            readonly payload: string;
+          }>`
+            SELECT crew, run, at, kind, payload_json AS "payload"
+            FROM crew_log
+            WHERE crew = ${crew} AND ${sql.in("kind", kinds)}
+            ORDER BY seq
+          `.pipe(
+            Effect.mapError(sqlError("logOf")),
+            Effect.flatMap((rows) =>
+              Effect.forEach(rows, (row) =>
+                decode("logOf", decodeJson(row.payload)).pipe(
+                  Effect.map((payload): CrewLogEntry => ({ ...row, payload })),
+                ),
+              ),
+            ),
+          ),
     putRun: (row) =>
       Effect.gen(function* () {
         const options = yield* decode(
