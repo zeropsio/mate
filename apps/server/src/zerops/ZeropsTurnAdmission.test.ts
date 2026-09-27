@@ -1,8 +1,10 @@
 import { assert, describe, it } from "@effect/vitest";
 import {
+  ApprovalRequestId,
   CommandId,
   MessageId,
   type OrchestrationCommand,
+  type OrchestrationThreadActivity,
   type OrchestrationThreadShell,
   ProviderInstanceId,
   ThreadId,
@@ -14,6 +16,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import * as ServerConfig from "../config.ts";
+import { PersistenceSqlError } from "../persistence/Errors.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ZeropsAgentAuthModule from "./ZeropsAgentAuth.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
@@ -66,6 +69,8 @@ interface World {
   readonly signers?: ZeropsProjectSignersModule.ProjectSigners;
   /** The instance the thread itself runs on; absent means no such thread. */
   readonly threadInstanceId?: string;
+  /** The answered question's latest activity; absent means none was found. */
+  readonly question?: Pick<OrchestrationThreadActivity, "kind" | "payload"> | "unreadable";
 }
 
 const admission = (world: World) =>
@@ -84,6 +89,12 @@ const admission = (world: World) =>
                     modelSelection: { instanceId: world.threadInstanceId, model: "m" },
                   } as unknown as OrchestrationThreadShell),
             ),
+          getUserInputActivity: () =>
+            world.question === "unreadable"
+              ? Effect.fail(new PersistenceSqlError({ operation: "test", detail: "unreadable" }))
+              : Effect.succeed(
+                  Option.fromUndefinedOr(world.question as OrchestrationThreadActivity | undefined),
+                ),
         }),
         Layer.mock(ZeropsAgentAuthModule.ZeropsAgentAuth)({
           latest: Effect.succeed({ available: true, agents: world.agents ?? [] }),
@@ -121,6 +132,15 @@ const interrupt: OrchestrationCommand = {
   type: "thread.turn.interrupt",
   commandId: CommandId.make("command-1"),
   threadId: THREAD,
+  createdAt: CREATED_AT,
+};
+
+const answer: OrchestrationCommand = {
+  type: "thread.user-input.respond",
+  commandId: CommandId.make("command-1"),
+  threadId: THREAD,
+  requestId: ApprovalRequestId.make("request-1"),
+  answers: { q1: "yes" },
   createdAt: CREATED_AT,
 };
 
@@ -217,6 +237,35 @@ describe("ZeropsTurnAdmission", () => {
       interrupt,
       session(EVA),
       undefined,
+    ],
+    [
+      "gates an answer to a message-mode question: it starts a turn",
+      {
+        ...janSignedClaude,
+        threadInstanceId: "claudeAgent",
+        question: { kind: "user-input.requested", payload: { responseMode: "message" } },
+      },
+      answer,
+      session(EVA),
+      SOMEONE_ELSE,
+    ],
+    [
+      "leaves an answer to a native callback question to every member",
+      {
+        ...janSignedClaude,
+        threadInstanceId: "claudeAgent",
+        question: { kind: "user-input.requested", payload: {} },
+      },
+      answer,
+      session(EVA),
+      undefined,
+    ],
+    [
+      "gates an answer whose question cannot be read",
+      { ...janSignedClaude, threadInstanceId: "claudeAgent", question: "unreadable" },
+      answer,
+      session(EVA),
+      SOMEONE_ELSE,
     ],
     [
       "refuses a session that names no Zerops user",

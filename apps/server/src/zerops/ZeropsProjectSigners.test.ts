@@ -164,9 +164,35 @@ describe("turnRefusal", () => {
 });
 
 describe("isTurnStartingCommand", () => {
-  it("gates the one command that spends a subscription", () => {
-    assert.isTrue(isTurnStartingCommand("thread.turn.start"));
+  it("gates the command that starts a turn", () => {
+    assert.isTrue(isTurnStartingCommand({ type: "thread.turn.start" }));
   });
+
+  // The decider turns an answer to a message-mode question into a turn of its
+  // own; an answer to a native callback question continues the running turn.
+  const respond = { type: "thread.user-input.respond" };
+  for (const [name, request, expected] of [
+    [
+      "gates an answer to a pending message-mode question",
+      { kind: "user-input.requested", payload: { responseMode: "message", questions: [] } },
+      true,
+    ],
+    [
+      "leaves an answer to a native callback question to every member",
+      { kind: "user-input.requested", payload: { questions: [] } },
+      false,
+    ],
+    [
+      "leaves an answer to a message-mode question already resolved",
+      { kind: "user-input.resolved", payload: { responseMode: "message" } },
+      false,
+    ],
+    ["leaves an answer to a question it cannot find", undefined, false],
+  ] as const) {
+    it(name, () => {
+      assert.strictEqual(isTurnStartingCommand(respond, request), expected);
+    });
+  }
 
   // Everything else stays open to every member who can open the Mate: a
   // colleague must be able to stop an agent they are not allowed to start.
@@ -180,7 +206,7 @@ describe("isTurnStartingCommand", () => {
     "project.create",
   ]) {
     it(`leaves ${type} to every member`, () => {
-      assert.isFalse(isTurnStartingCommand(type));
+      assert.isFalse(isTurnStartingCommand({ type }));
     });
   }
 });

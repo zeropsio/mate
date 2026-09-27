@@ -39,7 +39,11 @@
  *
  * @module ZeropsProjectSigners
  */
-import type { ZeropsAgentAuth, ZeropsAgentId } from "@t3tools/contracts";
+import type {
+  OrchestrationThreadActivity,
+  ZeropsAgentAuth,
+  ZeropsAgentId,
+} from "@t3tools/contracts";
 import {
   classifyZeropsAgentAuth,
   type ZeropsAgentAuthFields,
@@ -179,9 +183,25 @@ export function planAgentSignOut(input: {
  * other command — interrupting a runaway turn, archiving, renaming — stays
  * open to every member who can open the Mate: a colleague must be able to stop
  * an agent they are not allowed to start.
+ *
+ * An answer to a question the agent asked in message mode is one of them: its
+ * turn has ended, and the decider starts a new one with the answer as the
+ * message. An answer to a native callback question is not — the agent's turn
+ * is still running and waits on it. `request` is the question's latest
+ * activity, which only an answer needs.
  */
-export function isTurnStartingCommand(type: string): boolean {
-  return type === "thread.turn.start";
+export function isTurnStartingCommand(
+  command: { readonly type: string },
+  request?: Pick<OrchestrationThreadActivity, "kind" | "payload">,
+): boolean {
+  if (command.type === "thread.turn.start") return true;
+  if (command.type !== "thread.user-input.respond" || request === undefined) return false;
+  return (
+    request.kind === "user-input.requested" &&
+    typeof request.payload === "object" &&
+    request.payload !== null &&
+    (request.payload as { readonly responseMode?: unknown }).responseMode === "message"
+  );
 }
 
 /** How long a read of the project's tags stays good for the dispatch gate. */

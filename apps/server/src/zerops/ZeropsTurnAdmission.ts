@@ -111,12 +111,25 @@ export const make = Effect.gen(function* () {
       );
     });
 
+  /**
+   * Whether `command` starts a turn. An answer reads its question first: only
+   * an answer in message mode becomes a turn. A question that cannot be read
+   * is gated like one that would — unknown refuses, as everywhere in D6.
+   */
+  const startsTurn = (command: OrchestrationCommand) =>
+    command.type === "thread.user-input.respond"
+      ? projectionSnapshotQuery.getUserInputActivity(command).pipe(
+          Effect.map((request) => isTurnStartingCommand(command, Option.getOrUndefined(request))),
+          Effect.catchCause(() => Effect.succeed(true)),
+        )
+      : Effect.succeed(isTurnStartingCommand(command));
+
   const admit: ZeropsTurnAdmission["Service"]["admit"] = Effect.fnUntraced(function* ({
     command,
     principal,
   }) {
-    if (!isTurnStartingCommand(command.type)) return;
     if (!isZeropsEnvironment(config)) return;
+    if (!(yield* startsTurn(command))) return;
     const agentId = agentIdForProviderInstance(yield* instanceIdOf(command));
     if (agentId === undefined) return;
 
