@@ -41,6 +41,7 @@ import {
   currentStint,
   DEFAULT_CREW_LOGIN,
   isWorking,
+  memberOf,
   principalUser,
   refuse,
   requireApplied,
@@ -53,15 +54,18 @@ import { CREW_ID, refusalOf } from "./CrewHome.ts";
 import { assignCrewPorts, proposeCrewPorts, readDeclaredPorts } from "./crewPorts.ts";
 import { flushState } from "./crewState.ts";
 import { appendSeam } from "./crewSeamLines.ts";
-import { retireStint, rotateBetweenTurns } from "./CrewStints.ts";
+import { openStint, retireStint, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewMemberRow } from "./CrewStore.ts";
 import { refreshLaneStats } from "./crewLanding.ts";
 import { saveTask } from "./crewTasks.ts";
 import { versionsAfterSave } from "./crewVersions.ts";
 import type { RotationReason } from "./rotationDecision.ts";
 
-/** Installs the crew's thread policies for the engine's life; idempotent. */
-export type InstallPolicies = Effect.Effect<void>;
+/**
+ * What an applied crew turns on for the engine's life: the crew's thread
+ * policies and the watch on sign-ins; idempotent.
+ */
+export type Activate = Effect.Effect<void>;
 
 const loadHome = (core: CrewCore) =>
   Effect.gen(function* () {
@@ -210,6 +214,19 @@ const dropMember = (
     core.memory.missingLanes.delete(row.handle);
   });
 
+/**
+ * A crewmate's first conversation, opened without a turn so its chat opens
+ * before its first message; a writer's once its copy is ready, since the
+ * conversation runs in it.
+ */
+const openFirstStint = (core: CrewCore, handle: string) =>
+  Effect.gen(function* () {
+    const applied = yield* requireApplied(core);
+    const member = memberOf(applied, handle);
+    if (member === undefined || currentStint(applied, handle) !== undefined) return;
+    yield* openStint(core, applied, member, { reason: null, seed: null });
+  });
+
 /** Makes the writers' copies the tables do not have yet, with Apply's progress, then mirrors the home. */
 const createLanes = (core: CrewCore, applied: AppliedCrew) =>
   Effect.gen(function* () {
@@ -285,6 +302,7 @@ const createLanes = (core: CrewCore, applied: AppliedCrew) =>
       );
       memory.progress.delete(handle);
       yield* refreshLaneStats(core, { row, spec });
+      yield* openFirstStint(core, handle);
       yield* core.changed;
     }
     yield* flushState(core);
@@ -346,7 +364,7 @@ const applyChoice = (
     }
   });
 
-export const apply = (core: CrewCore, principal: TurnPrincipal, installPolicies: InstallPolicies) =>
+export const apply = (core: CrewCore, principal: TurnPrincipal, activate: Activate) =>
   Effect.gen(function* () {
     const definition = yield* loadHome(core);
     const { devHosts, verified } = yield* verifyHosts(core, definition);
@@ -468,7 +486,7 @@ export const apply = (core: CrewCore, principal: TurnPrincipal, installPolicies:
       );
     }
     yield* bumped(core);
-    yield* installPolicies;
+    yield* activate;
     const applied = yield* requireApplied(core);
     for (const handle of save.pending) {
       const member = yield* requireMember(applied, handle);
@@ -493,6 +511,14 @@ export const apply = (core: CrewCore, principal: TurnPrincipal, installPolicies:
         principal,
         "login-changed",
       );
+    }
+    for (const [handle, row] of applied.members) {
+      if (
+        row.kind !== "writer" ||
+        Option.isSome(yield* asRefusal(core.store.getLane(CREW_ID, handle)))
+      ) {
+        yield* openFirstStint(core, handle);
+      }
     }
     yield* core.background(createLanes(core, applied));
   });

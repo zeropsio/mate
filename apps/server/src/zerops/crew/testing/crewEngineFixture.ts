@@ -26,6 +26,7 @@ import {
   type OrchestrationProject,
   type OrchestrationThreadShell,
   type SpiEvent,
+  type ZeropsAgentAuthSnapshot,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -48,6 +49,7 @@ import { ServerCommandReadiness } from "../../../spi/serverCommandReadiness.ts";
 import { ThreadToolPolicyRegistry } from "../../../spi/threadToolPolicy.ts";
 import { localSshProcessRunnerLayer } from "../../testing/localSsh.ts";
 import { resolveZeropsEnvironment } from "../../ZeropsEnvironment.ts";
+import { ZeropsAgentAuth } from "../../ZeropsAgentAuth.ts";
 import { ZeropsLogins, type MateLogin } from "../../ZeropsLogins.ts";
 import { ZeropsRepositorySource, type ZeropsRepository } from "../../ZeropsRepositorySource.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "../../ZeropsTurnAdmission.ts";
@@ -90,6 +92,8 @@ export interface CrewWorld {
   /** Mate logins beyond the defaults, by id. */
   readonly logins: Ref.Ref<ReadonlyMap<string, MateLogin>>;
   readonly publish: (event: SpiEvent) => Effect.Effect<void>;
+  /** A login's sign-in or signer changed: the agent-auth and logins feeds move. */
+  readonly signedIn: Effect.Effect<void>;
 }
 
 const project: OrchestrationProject = {
@@ -170,7 +174,11 @@ const repositoryLayers = (root: string) =>
     }),
   );
 
-const fakes = (world: Omit<CrewWorld, "publish">, events: PubSub.PubSub<SpiEvent>) =>
+const fakes = (
+  world: Omit<CrewWorld, "publish" | "signedIn">,
+  events: PubSub.PubSub<SpiEvent>,
+  signIns: PubSub.PubSub<void>,
+) =>
   Layer.mergeAll(
     repositoryLayers(world.root),
     Layer.mock(OrchestrationEngineService)({
@@ -204,6 +212,12 @@ const fakes = (world: Omit<CrewWorld, "publish">, events: PubSub.PubSub<SpiEvent
     }),
     Layer.mock(ZeropsLogins)({
       resolve: (id) => Effect.map(Ref.get(world.logins), (logins) => logins.get(id)),
+      changes: Stream.fromPubSub(signIns).pipe(Stream.map(() => [])),
+    }),
+    Layer.mock(ZeropsAgentAuth)({
+      changes: Stream.fromPubSub(signIns).pipe(
+        Stream.map(() => ({ agents: [] }) as unknown as ZeropsAgentAuthSnapshot),
+      ),
     }),
     Layer.mock(ProviderInstances)({
       driverKindOf: () => Effect.succeed(ProviderDriverKind.make("claudeAgent")),
@@ -258,6 +272,7 @@ export const withCrewEngines = <E>(
       NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-crew-mate-")),
     );
     const events = yield* PubSub.unbounded<SpiEvent>();
+    const signIns = yield* PubSub.unbounded<void>();
     const world: CrewWorld = {
       root,
       workspace,
@@ -271,6 +286,7 @@ export const withCrewEngines = <E>(
       sshCalls: yield* Ref.make(0),
       logins: yield* Ref.make<ReadonlyMap<string, MateLogin>>(new Map()),
       publish: (event) => PubSub.publish(events, event).pipe(Effect.asVoid),
+      signedIn: PubSub.publish(signIns, undefined).pipe(Effect.asVoid),
     };
     const installer = (options.installer ?? countingInstaller)(world.installs);
     const engine = () =>
@@ -278,7 +294,7 @@ export const withCrewEngines = <E>(
         Layer.provideMerge(crewServicesLayer),
         Layer.provideMerge(
           Layer.mergeAll(
-            fakes(world, events),
+            fakes(world, events, signIns),
             countingSsh(world.sshCalls),
             ServerConfig.layer({
               cwd: workspace,

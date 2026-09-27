@@ -48,6 +48,39 @@ describe("CrewWorkspace", () => {
     ),
   );
 
+  it.effect("a lane's git works through any path to the tree: its gitdir is relative", () =>
+    withLanes((root) =>
+      Effect.gen(function* () {
+        const workspace = yield* CrewWorkspace.CrewWorkspace;
+        yield* workspace.create(BACKEND);
+        // The zcp container sees the tree at another path (its sshfs mount).
+        const mounted = `${root}-mounted`;
+        NodeFS.renameSync(root, mounted);
+        const throughMount = gitExit(`${mounted}/.crew/backend`, ["status", "--porcelain"]);
+        NodeFS.renameSync(mounted, root);
+        assert.deepStrictEqual(
+          [read(root, ".crew/backend/.git"), throughMount],
+          ["gitdir: ../../.git/worktrees/backend\n", 0],
+        );
+      }),
+    ),
+  );
+
+  it.effect("the boot sweep makes an absolute lane gitdir relative", () =>
+    withLanes((root) =>
+      Effect.gen(function* () {
+        const workspace = yield* CrewWorkspace.CrewWorkspace;
+        yield* workspace.create(BACKEND);
+        write(root, ".crew/backend/.git", `gitdir: ${root}/.git/worktrees/backend\n`);
+        yield* workspace.sweep(TEST_HOST);
+        assert.strictEqual(
+          read(root, ".crew/backend/.git"),
+          "gitdir: ../../.git/worktrees/backend\n",
+        );
+      }),
+    ),
+  );
+
   it.effect(
     "needs the exclude line: without it the person's add -A stages the lane as a gitlink",
     () =>

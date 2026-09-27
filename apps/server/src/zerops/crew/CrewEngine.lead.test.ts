@@ -82,6 +82,10 @@ const lastTurnText = (world: CrewWorld, thread: ThreadId) =>
     (turns) => turns.findLast((turn) => turn.threadId === thread)?.message.text ?? "",
   );
 
+/** The engine woke the lead with a card that says `words`. */
+const wokenWith = (world: CrewWorld, lead: ThreadId, words: string) =>
+  eventually(Effect.map(lastTurnText(world, lead), (text) => text.includes(words)));
+
 /** The lead's turn ends with `reply` as its last message. */
 const leadReplies = (world: CrewWorld, thread: ThreadId, reply: string) =>
   Effect.gen(function* () {
@@ -101,6 +105,40 @@ const PLAN = [
 ];
 
 describe("CrewEngine lead", () => {
+  it.live("Apply opens each crewmate's first conversation, without a turn", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* withLead(world);
+        const opened = yield* snapshotWhere((current) =>
+          current.crewmates.every((mate) => mate.currentThreadId !== null),
+        );
+        const creates = yield* dispatchedOf(world, "thread.crew.create");
+        assert.deepStrictEqual(
+          {
+            opened: opened.crewmates.map((mate) => [
+              mate.handle,
+              mate.currentThreadId ===
+                creates.find((entry) => entry.crew.crewmate === mate.handle)?.threadId,
+              mate.stints.map((stint) => [stint.state, stint.reason]),
+            ]),
+            turns: (yield* dispatchedOf(world, "thread.turn.start")).length,
+            worktree: creates
+              .find((entry) => entry.crew.crewmate === "backend")
+              ?.worktreePath?.endsWith("/.crew/backend"),
+          },
+          {
+            opened: [
+              ["lead", true, [["open", null]]],
+              ["backend", true, [["open", null]]],
+            ],
+            turns: 0,
+            worktree: true,
+          },
+        );
+      }),
+    ),
+  );
+
   it.live("a message to the lead is a turn of its own, never a task", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
@@ -193,6 +231,7 @@ describe("CrewEngine lead", () => {
           (current) => current.board.tasks[0]?.state === "review",
         );
         const lead = yield* leadThread(world);
+        yield* wokenWith(world, lead, "review @backend's work");
         const wake = yield* lastTurnText(world, lead);
         const answer = yield* (yield* CrewToolHost).review(yield* memberOf(lead), {
           task: 1,
@@ -234,6 +273,7 @@ describe("CrewEngine lead", () => {
         yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
         yield* snapshotWhere((current) => current.board.tasks[0]?.state === "review");
         const lead = yield* leadThread(world);
+        yield* wokenWith(world, lead, "review @backend's work");
         yield* (yield* CrewToolHost).review(yield* memberOf(lead), {
           task: 1,
           verdict: "reject",
@@ -269,6 +309,7 @@ describe("CrewEngine lead", () => {
           (current) => current.board.tasks[0]?.state === "blocked",
         );
         const lead = yield* leadThread(world);
+        yield* wokenWith(world, lead, "@backend asks");
         const wake = yield* lastTurnText(world, lead);
         yield* leadReplies(world, lead, "Use EUR.");
         yield* snapshotWhere((current) => current.board.tasks[0]?.state === "working");
@@ -303,6 +344,7 @@ describe("CrewEngine lead", () => {
           });
           yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
           const lead = yield* leadThread(world);
+          yield* wokenWith(world, lead, "@backend asks");
           yield* (yield* CrewToolHost).report(yield* memberOf(lead), {
             status: "blocked",
             summary: "The person decides the currency.",

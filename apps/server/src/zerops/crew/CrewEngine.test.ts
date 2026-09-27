@@ -90,7 +90,7 @@ describe("CrewEngine", () => {
             branch: "crew/backend",
             copy: true,
             installs: 1,
-            versions: { running: null, current: { brief: 1, job: 1 } },
+            versions: { running: { brief: 1, job: 1 }, current: { brief: 1, job: 1 } },
           },
         );
       }),
@@ -299,7 +299,62 @@ describe("CrewEngine", () => {
         );
         yield* Ref.set(world.refusal, undefined);
         yield* command({ _tag: "taskRetry", taskId: snapshot.board.tasks[0]!.id });
-        yield* snapshotWhere((current) => current.board.tasks[0]?.state === "working");
+        const started = yield* snapshotWhere(
+          (current) => current.board.tasks[0]?.state === "working",
+        );
+        assert.deepStrictEqual(
+          [started.attention, (yield* Ref.get(world.admitted)).at(-1)?.principal],
+          [[], KAREL],
+        );
+      }),
+    ),
+  );
+
+  it.live("Try again is only for a queued task admission refused", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        yield* firstTurn(world, () => undefined);
+        yield* command({
+          _tag: "taskCreate",
+          owner: "backend",
+          title: "Behind",
+          brief: "Later.",
+          doneWhen: "",
+          dependsOn: [],
+        });
+        const queued = yield* snapshotWhere((current) => current.board.tasks.length === 2);
+        const refused = yield* Effect.flip(
+          command({ _tag: "taskRetry", taskId: queued.board.tasks[1]!.id }),
+        );
+        assert.strictEqual(refused.reason, "wrong-state");
+      }),
+    ),
+  );
+
+  it.live("a refused queued task starts again once a login's sign-in changes", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        yield* Ref.set(world.refusal, "not the login's signer");
+        yield* command({
+          _tag: "taskCreate",
+          owner: "backend",
+          title: "Refused",
+          brief: "Try it.",
+          doneWhen: "",
+          dependsOn: [],
+        });
+        yield* snapshotWhere((current) => current.attention.length === 1);
+        yield* Ref.set(world.refusal, undefined);
+        yield* world.signedIn;
+        const started = yield* snapshotWhere(
+          (current) => current.board.tasks[0]?.state === "working",
+        );
+        assert.deepStrictEqual(
+          [started.attention, (yield* Ref.get(world.admitted)).at(-1)?.principal],
+          [[], { kind: "crew", startedBy: "user-karel" }],
+        );
       }),
     ),
   );
