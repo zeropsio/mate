@@ -22,6 +22,7 @@ import { extractZeropsEnvelope } from "../../zerops/zeropsEnvelope.ts";
 import { applyToolCall } from "../toolCall.ts";
 import { replayClaude } from "./claudeReplay.ts";
 import { replayCodex } from "./codexReplay.ts";
+import { CREW_REPLAY_POLICY } from "./crewReplayPolicy.ts";
 import {
   recordAntigravityBaseline,
   recordCursorBaseline,
@@ -71,6 +72,18 @@ const jsonlCases: ReadonlyArray<GoldenCase> = [
     record: () => replayClaude(loadFixture(NodePath.join(fixturesRoot, "claude"), name)),
     timeoutMs: 20_000,
   })),
+  // Synthetic: a crew turn under a tool profile, until a live crew turn is
+  // recorded (probes 1, 2, 14, 15).
+  {
+    driver: "claude",
+    name: "crew-hooks",
+    record: () =>
+      replayClaude(
+        loadFixture(NodePath.join(fixturesRoot, "claude"), "crew-hooks"),
+        CREW_REPLAY_POLICY,
+      ),
+    timeoutMs: 20_000,
+  },
   {
     driver: "codex",
     name: "multi-agent-wire",
