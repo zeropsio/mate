@@ -8,13 +8,13 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
 import * as ProcessRunner from "../processRunner.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import { captureBaselineAcrossTargets } from "./ZeropsCheckpointTargets.ts";
 import { makeZeropsGitSpawner } from "./ZeropsGitSpawner.ts";
+import { localSshSpawner } from "./testing/localSsh.ts";
 import type { ZeropsRepositories } from "./ZeropsRepositorySource.ts";
 
 /**
@@ -43,18 +43,6 @@ const makeRepositoryWithUntrackedFiles = (fileCount: number) => {
   }
   return real;
 };
-
-/** Runs what ssh was asked to run on the far side, here instead. */
-const localSshSpawner = (
-  inner: ChildProcessSpawner.ChildProcessSpawner["Service"],
-): ChildProcessSpawner.ChildProcessSpawner["Service"] =>
-  ChildProcessSpawner.make((command) => {
-    if (command._tag !== "StandardCommand" || command.command !== "ssh") {
-      return inner.spawn(command);
-    }
-    const remote = command.args.at(-1) ?? "";
-    return inner.spawn(ChildProcess.make("/bin/sh", ["-c", remote], command.options));
-  });
 
 const guardLayer = (repositories: ZeropsRepositories) =>
   Layer.effect(
