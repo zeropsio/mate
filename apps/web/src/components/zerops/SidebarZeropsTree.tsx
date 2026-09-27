@@ -516,8 +516,10 @@ export interface SidebarPeekRender<T> {
   readonly owner: ZeropsMateOwner | undefined;
   /** The row's own time slot. */
   readonly time: ReactNode;
-  /** Its change's line, where it has one open. */
-  readonly change: ReactNode | undefined;
+  /** Each change it has open, a line each — the one a jump asked for first. */
+  readonly changes: ReactNode | undefined;
+  /** How many: its section says "Change" over one, "Changes" over more. */
+  readonly changeCount: number;
   readonly appUrl: string | undefined;
   readonly phone: boolean;
   readonly onOpen: () => void;
@@ -1154,10 +1156,15 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             const activity = getActivity?.(item);
             const live = drawnActivity(item, activity);
             const tags = readZeropsGroupTags(item.project.tagList);
-            // The change the peek was asked to show — a jump to it — else its newest.
-            const firstPull = !changesKnown
-              ? undefined
-              : (pulls.find((pull) => changeRowKey(pull) === peekState.change) ?? pulls[0]);
+            // Every change it has open, as under its row: the one the peek was
+            // asked to show — a jump to it — first, then the rest newest first.
+            const asked = pulls.find((pull) => changeRowKey(pull) === peekState.change);
+            const peekPulls =
+              !changesKnown || flow === undefined
+                ? []
+                : asked === undefined
+                  ? pulls
+                  : [asked, ...pulls.filter((pull) => pull !== asked)];
             peekTarget = {
               candidate: item,
               activity: live,
@@ -1170,10 +1177,15 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 live === undefined ? null : (
                   <MateTime activity={live} timestampFormat={timestampFormat} />
                 ),
-              change:
-                firstPull === undefined || flow === undefined ? undefined : (
-                  <PeekChangeLine flow={flow} pull={firstPull} />
+              changes:
+                peekPulls.length === 0 || flow === undefined ? undefined : (
+                  <div className="grid gap-1.5">
+                    {peekPulls.map((pull) => (
+                      <PeekChangeLine key={changeRowKey(pull)} flow={flow} pull={pull} />
+                    ))}
+                  </div>
                 ),
+              changeCount: peekPulls.length,
               appUrl,
               phone,
               onOpen: () => {

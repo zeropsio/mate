@@ -18,7 +18,8 @@ const card = (props: Partial<MatePeekCardProps> = {}) =>
     <MatePeekCard
       appUrl="https://nova-app.example"
       askedLabel="You asked"
-      change={<span>#14 Add a /status page</span>}
+      changeCount={1}
+      changes={<span>#14 Add a /status page</span>}
       decision={undefined}
       face="working"
       lastWords="The handler reads the build number from the environment."
@@ -69,9 +70,32 @@ describe("MatePeekCard — a Mate at a glance", () => {
     const html = card();
     expect(html).toMatch(/>Open<kbd[^>]*>↵<\/kbd>/u);
     expect(html).toMatch(/<a[^>]*href="https:\/\/nova-app\.example"[^>]*target="_blank"/u);
-    const bare = card({ appUrl: undefined, task: undefined, steps: undefined, change: undefined });
+    const bare = card({
+      appUrl: undefined,
+      task: undefined,
+      steps: undefined,
+      changes: undefined,
+      changeCount: 0,
+    });
     expect(bare).not.toContain("Open app");
     expect(sections(bare)).toEqual(["last-words"]);
+  });
+
+  // Every open change of the Mate stands in its peek, as each stands under
+  // its row (the owner, 2026-09-27: "it shows only one of the two").
+  it("says Changes over more than one", () => {
+    const html = card({
+      changeCount: 2,
+      changes: (
+        <>
+          <span>#48 Migrate the catalogue</span>
+          <span>#17 The catalogue, every product</span>
+        </>
+      ),
+    });
+    expect(html).toContain(">Changes<");
+    expect(html).toContain("#48 Migrate the catalogue");
+    expect(html).toContain("#17 The catalogue, every product");
   });
 
   it("offers Stop with its key while it works", () => {

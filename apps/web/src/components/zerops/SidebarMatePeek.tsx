@@ -1,6 +1,6 @@
 /**
  * A Mate's peek: what you asked it, its plan and the step it is on, its last
- * words or what it waits on, and its change — without opening it.
+ * words or what it waits on, and the changes it has open — without opening it.
  *
  * It floats to the right of the menu, level with the Mate's row, over the
  * page rather than in the list, so nothing in the list moves; on a phone it
@@ -99,8 +99,9 @@ export interface MatePeekCardProps {
   readonly responding: boolean;
   readonly onChoose: (choice: MatePeekChoice) => void;
   readonly onText: (text: string) => void;
-  /** Its change's line — checks, number, title and *Merge* — drawn by the list. */
-  readonly change: ReactNode | undefined;
+  /** Each change it has open — checks, number, title and *Merge* — drawn by the list. */
+  readonly changes: ReactNode | undefined;
+  readonly changeCount: number;
   readonly appUrl: string | undefined;
   readonly onOpen: () => void;
   /** Stops the run it is on; absent while it rests. */
@@ -310,7 +311,8 @@ export function MatePeekCard(props: MatePeekCardProps) {
     responding,
     onChoose,
     onText,
-    change,
+    changes,
+    changeCount,
     appUrl,
     onOpen,
     onStop,
@@ -375,9 +377,9 @@ export function MatePeekCard(props: MatePeekCardProps) {
           waitingOn={waitingOn}
         />
       )}
-      {change === undefined ? null : (
-        <PeekSection label="Change" surface="change">
-          {change}
+      {changes === undefined ? null : (
+        <PeekSection label={changeCount > 1 ? "Changes" : "Change"} surface="change">
+          {changes}
         </PeekSection>
       )}
       <footer className="-mx-1 flex items-center gap-1 border-t border-border pt-2">

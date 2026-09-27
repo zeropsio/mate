@@ -2715,15 +2715,18 @@ describe("what the jump box finds in the menu", () => {
     expect(changeRows().map((row) => row.props["data-zerops-change"])).toContain("appdev#1");
   });
 
-  it("shows the change a jump asked for in its Mate's peek, and the newest otherwise", () => {
+  // Every change the Mate has open stands in its peek, as each stands under
+  // its row (the owner, 2026-09-27: "it shows only one of the two merge
+  // requests"): the one a jump asked for first, then the rest newest first.
+  it("shows every open change of its Mate in its peek, the one a jump asked for first", () => {
     const older = pull(2, { mateProjectId: "links-dev", title: "Older change" });
     const newer = pull(3, { mateProjectId: "links-dev", title: "Newer change" });
-    const peeks: Array<{ readonly change: unknown }> = [];
+    const peeks: Array<{ readonly changes: unknown; readonly changeCount: number }> = [];
     const mounted = mount(
       <PortalGate closed>
         {tree({
           getFlow: () => linksFlow([older, newer]),
-          renderPeek: (peek: { readonly change: unknown }) => {
+          renderPeek: (peek: { readonly changes: unknown; readonly changeCount: number }) => {
             peeks.push(peek);
             return null;
           },
@@ -2731,17 +2734,20 @@ describe("what the jump box finds in the menu", () => {
       </PortalGate>,
     );
     const shown = () => {
-      const change = peeks.at(-1)?.change as ReactElement<{ pull: FlowPullRequest }> | undefined;
-      return change?.props.pull.number;
+      const list = peeks.at(-1)?.changes as
+        | ReactElement<{ children: ReadonlyArray<ReactElement<{ pull: FlowPullRequest }>> }>
+        | undefined;
+      return list?.props.children.map((line) => line.props.pull.number);
     };
     act_(() => {
       useSidebarPeek.getState().open("links-dev", "pinned", "appdev#2");
     });
-    expect(shown()).toBe(2);
+    expect(shown()).toEqual([2, 3]);
+    expect(peeks.at(-1)?.changeCount).toBe(2);
     act_(() => {
       useSidebarPeek.getState().open("links-dev", "pinned");
     });
-    expect(shown()).toBe(3);
+    expect(shown()).toEqual([3, 2]);
     act_(() => {
       useSidebarPeek.getState().close();
       mounted.unmount();

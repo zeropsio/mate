@@ -734,7 +734,8 @@ function HarnessPeek({ peek }: { readonly peek: SidebarPeekRender<ZeropsCandidat
     <MatePeekCard
       appUrl={peek.appUrl ?? "https://example.com"}
       askedLabel={askedLabelFor(peek.owner)}
-      change={peek.change}
+      changeCount={peek.changeCount}
+      changes={peek.changes}
       decision={decision}
       face={peek.face}
       lastWords={peek.activity?.snippet}
