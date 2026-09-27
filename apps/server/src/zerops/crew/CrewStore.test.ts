@@ -227,4 +227,167 @@ describe("CrewStore", () => {
       }),
     );
   });
+
+  it.layer(storeLayer)("engine rows", (it) => {
+    const stint = (fields: Partial<CrewStore.CrewStintRow> = {}): CrewStore.CrewStintRow => ({
+      crew: "game",
+      member: "backend",
+      stint: 1,
+      threadId: "thread-1",
+      sessionId: null,
+      transcriptPath: null,
+      compactions: 0,
+      lastCompactSummary: null,
+      rotatePending: false,
+      reason: null,
+      seededFrom: null,
+      briefVersion: 1,
+      jobVersion: 1,
+      startedAt: "2026-09-27T10:00:00.000Z",
+      retiredAt: null,
+      ...fields,
+    });
+
+    it.effect("round-trips stints, finds one by its thread and changes one in place", () =>
+      Effect.gen(function* () {
+        const store = yield* CrewStore.CrewStore;
+        yield* store.putStint(stint());
+        yield* store.putStint(
+          stint({
+            stint: 2,
+            threadId: "thread-2",
+            seededFrom: { text: "seed" },
+            reason: "start-fresh",
+          }),
+        );
+        yield* store.updateStint("game", "backend", 1, (row) => ({
+          ...row,
+          retiredAt: "2026-09-27T11:00:00.000Z",
+          rotatePending: true,
+        }));
+        assert.deepStrictEqual(
+          {
+            all: (yield* store.stints("game")).map((row) => [
+              row.stint,
+              row.retiredAt,
+              row.rotatePending,
+            ]),
+            byThread: Option.getOrUndefined(yield* store.stintByThread("thread-2")),
+            none: Option.isNone(yield* store.stintByThread("thread-9")),
+          },
+          {
+            all: [
+              [1, "2026-09-27T11:00:00.000Z", true],
+              [2, null, false],
+            ],
+            byThread: stint({
+              stint: 2,
+              threadId: "thread-2",
+              seededFrom: { text: "seed" },
+              reason: "start-fresh",
+            }),
+            none: true,
+          },
+        );
+      }),
+    );
+
+    it.effect(
+      "keeps a task's attempts, numbers tasks per crew, lists them and drops a crewmate",
+      () =>
+        Effect.gen(function* () {
+          const store = yield* CrewStore.CrewStore;
+          const attempt: CrewStore.CrewAttemptRow = {
+            assignment: "a-1",
+            attempt: 1,
+            threadId: "thread-1",
+            dispatchCommit: "a".repeat(40),
+            tipRef: null,
+            rotations: 0,
+            ending: null,
+            endingDetail: null,
+            costUsd: 0,
+            startedAt: "2026-09-27T10:00:00.000Z",
+            endedAt: null,
+          };
+          yield* store.putAttempt(attempt);
+          yield* store.putAttempt({ ...attempt, costUsd: 0.25, ending: "infrastructure" });
+          const firstNumber = yield* store.nextTaskNumber("game");
+          yield* store.putAssignment({
+            assignment: "a-1",
+            run: null,
+            crew: "game",
+            member: "backend",
+            number: firstNumber,
+            title: "First",
+            source: "message",
+            createdBy: "user-1",
+            card: null,
+            pending: null,
+            dependsOn: [],
+            fresh: false,
+            state: "working",
+            attempt: 1,
+            reworks: 0,
+            remerges: 0,
+            mergedHead: null,
+            check: null,
+            review: null,
+            report: null,
+            waiting: null,
+            landedCommit: null,
+            createdAt: "2026-09-27T10:00:00.000Z",
+            updatedAt: "2026-09-27T10:00:00.000Z",
+          });
+          yield* store.appendLog({
+            crew: "game",
+            run: null,
+            at: "2026-09-27T10:00:00.000Z",
+            kind: "landed",
+            payload: { task: "a-1" },
+          });
+          yield* store.putMember({
+            crew: "game",
+            handle: "gone",
+            displayName: "Gone",
+            kind: "reader",
+            tint: null,
+            host: null,
+            lane: null,
+            readOnly: true,
+            login: null,
+            model: null,
+            effort: null,
+            jobVersion: 1,
+            runCommand: null,
+            restartAfterMerge: false,
+            crewPort: null,
+            config: {},
+          });
+          yield* store.deleteMember("game", "gone");
+          assert.deepStrictEqual(
+            {
+              attempts: (yield* store.attemptsOf("a-1")).map((row) => [
+                row.attempt,
+                row.costUsd,
+                row.ending,
+              ]),
+              numbers: [
+                firstNumber,
+                yield* store.nextTaskNumber("game"),
+                yield* store.nextTaskNumber("shop"),
+              ],
+              tasks: (yield* store.assignments("game")).map((row) => row.assignment),
+              members: (yield* store.members("game")).map((row) => row.handle),
+            },
+            {
+              attempts: [[1, 0.25, "infrastructure"]],
+              numbers: [1, 2, 1],
+              tasks: ["a-1"],
+              members: [],
+            },
+          );
+        }),
+    );
+  });
 });
