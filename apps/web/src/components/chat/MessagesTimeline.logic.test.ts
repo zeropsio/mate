@@ -66,11 +66,15 @@ const shape = (list: MessagesTimelineRow[]) => list.map((row) => `${row.kind}:${
 const frame = (list: MessagesTimelineRow[]) =>
   list.map((row) => `${row.kind}:${row.id}:${row.gap ?? "none"}:${row.card ?? "free"}`);
 
-/** The run's record, as the card draws it. */
+/** The run's record where it ends: its last part, the live one while the run goes on. */
 const recordOf = (list: MessagesTimelineRow[]) => {
-  const record = list.find((row) => row.kind === "record");
+  const record = list.findLast((row) => row.kind === "record");
   return record?.kind === "record" ? record : null;
 };
+
+/** Every line of a run's record, its parts in order. */
+const allItems = (list: MessagesTimelineRow[]) =>
+  list.flatMap((row) => (row.kind === "record" ? row.items : []));
 
 /** A record's lines, each as a person would read it at a glance. */
 const said = (item: RecordItem): string => {
@@ -104,7 +108,25 @@ const said = (item: RecordItem): string => {
   }
 };
 
-const lines = (list: MessagesTimelineRow[]) => recordOf(list)?.items.map(said) ?? null;
+/**
+ * A run as it reads from its heading down: its record's lines, part by part,
+ * and between the parts what the person said into the run, on the page.
+ */
+const lines = (list: MessagesTimelineRow[]) => {
+  const start = list.findIndex((row) => row.kind === "work-line");
+  if (start === -1) return null;
+  return list
+    .slice(start)
+    .flatMap((row) =>
+      row.kind === "record"
+        ? row.items.map(said)
+        : row.kind === "message" && row.message.role === "user"
+          ? [`> ${row.imageOnly ? "" : row.message.text}`]
+          : row.kind === "answer"
+            ? [`> ${row.pairs.map((pair) => pair.answer).join(" · ")}`]
+            : [],
+    );
+};
 
 /** Background work that finished after its turn: no turn owns it. */
 const background = (id: string, minute: number, overrides: Partial<WorkLogEntry> = {}) => {
@@ -186,7 +208,10 @@ describe("deriveMessagesTimelineRows", () => {
     expect(list[5]).toMatchObject({ showAssistantMeta: true, receipt: null });
   });
 
-  it("keeps every message the person sent where they sent it, and marks each in the record", () => {
+  // The card stops where the person wrote and carries on under their words:
+  // one run, one heading, one clock (the owner, 2026-09-27, chose "the card
+  // breaks around it").
+  it("keeps every message the person sent where they sent it, the card breaking around each", () => {
     const list = rows({
       entries: [
         user("m0", 0),
@@ -200,13 +225,16 @@ describe("deriveMessagesTimelineRows", () => {
     });
     expect(shape(list).slice(1)).toEqual([
       "message:m0",
-      "message:m1",
-      "message:m2",
       "work-line:work-line:msg:m0",
       "record:record:msg:m0",
+      "message:m1",
+      "record:record:part:m1",
+      "message:m2",
       "outcome:outcome:msg:m0",
       "message:a3",
     ]);
+    // One heading: the parts after the person's words carry on without one.
+    expect(list.filter((row) => row.kind === "work-line")).toHaveLength(1);
     expect(list.filter((row) => row.kind === "message" && row.message.role === "user")).toEqual([
       expect.objectContaining({ aside: false, receipt: "seen" }),
       expect.objectContaining({ aside: true, receipt: "seen" }),
@@ -431,10 +459,10 @@ describe("deriveMessagesTimelineRows", () => {
       });
     const running = scene("inProgress");
     expect(lines(running)).toEqual(["· pnpm test", "> and the footer", "· pnpm test"]);
-    expect(recordOf(running)?.items[0]).toMatchObject({ step: { state: "running" } });
+    expect(allItems(running)[0]).toMatchObject({ step: { state: "running" } });
     const returned = scene("completed");
-    expect(recordOf(returned)?.items.map((item) => item.key)).toEqual(
-      recordOf(running)?.items.map((item) => item.key),
+    expect(allItems(returned).map((item) => item.key)).toEqual(
+      allItems(running).map((item) => item.key),
     );
   });
 
@@ -497,7 +525,7 @@ describe("deriveMessagesTimelineRows", () => {
   // Answered, the question and the person's answer stand on the page where
   // the answer arrived; the record marks where it reached the Mate and goes
   // on from there.
-  it("marks the person's answer in the record, the question and answer on the page", () => {
+  it("breaks the card at the person's answer, the question and answer on the page", () => {
     const before = [user("m0", 0), assistant("a1", "t1", 1, "One question first."), asked("q1", 2)];
     const waiting = framed({ entries: before, live: "t1" });
     const after = framed({
@@ -509,16 +537,18 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       live: "t1",
     });
-    expect(shape(after).slice(-5)).toEqual([
-      "answer:answer:rs",
+    expect(shape(after).slice(-7)).toEqual([
       "work-line:work-line:msg:m0",
       "record:record:msg:m0",
-      "working:working:msg:m0",
       "card-end:card-end:msg:m0",
+      "answer:answer:rs",
+      "record:record:part:rs",
+      "working:working:msg:m0",
+      "card-end:card-end:part:rs",
     ]);
     expect(lines(after)).toEqual(["One question first.", "> Green", "Green it is.", "· pnpm test"]);
-    // Everything above the live card is drawn as it was: the answer lands
-    // over it, and the card goes on under the answer.
+    // Everything above the live card is drawn as it was: the card stops
+    // above the answer and carries on under it.
     const cardAt = waiting.findIndex((row) => row.kind === "work-line" && row.live);
     expect(frame(after).slice(0, cardAt)).toEqual(frame(waiting).slice(0, cardAt));
   });
@@ -535,7 +565,8 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       live: "t1",
     });
-    expect(shape(list).slice(1, 4)).toEqual(["message:m0", "answer:answer:rs", "message:m1"]);
+    const answerAt = list.findIndex((row) => row.id === "answer:rs");
+    expect(shape(list).slice(answerAt, answerAt + 2)).toEqual(["answer:answer:rs", "message:m1"]);
   });
 
   it("draws a run a finished background task woke, before its first words", () => {
@@ -582,12 +613,13 @@ describe("deriveMessagesTimelineRows", () => {
     ).toEqual(["Ran 1 command"]);
   });
 
-  // A run that only asked the person something asked: it worked, it did not
+  // A run that thought and asked the person something worked, it did not
   // only think.
-  it("says a run that only asked the person something worked", () => {
+  it("says a run that thought and asked the person something worked", () => {
     const line = rows({
       entries: [
         user("m0", 0),
+        reasoning("r0", "t1", 1),
         asked("q1", 1),
         answeredWith("rs", 2, "Teal"),
         assistant("a2", "t1", 4, "Teal it is."),
@@ -1223,7 +1255,11 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
     // The request and the submission are no rows of their own.
     expect(shape(list).filter((id) => id.includes(":rq") || id === "work:rs")).toEqual([]);
-    expect(lines(list)).toEqual(["> Green", "· pnpm test"]);
+    // Asked before it did anything, the question and answer stand before the card.
+    expect(shape(list).indexOf("answer:answer:rs")).toBeLessThan(
+      shape(list).indexOf("work-line:work-line:msg:m0"),
+    );
+    expect(lines(list)).toEqual(["· pnpm test"]);
   });
 
   it("draws a settled stretch's browser checks in the record, where they happened", () => {
@@ -1617,9 +1653,7 @@ describe("deriveMessagesTimelineRows", () => {
         entries: [user("m0", 0), tool("w1", "t1", 1), user("m1", 2, text), tool("w2", "t1", 3)],
         live: "t1",
       });
-      expect(recordOf(list)?.items.find((item) => item.kind === "person")).toMatchObject({
-        imageOnly,
-      });
+      expect(list.find((row) => row.id === "m1")).toMatchObject({ kind: "message", imageOnly });
     },
   );
 
@@ -1754,7 +1788,7 @@ describe("a run's card", () => {
       expected: ["message", "work-line:top", "record:middle", "working:middle", "card-end:bottom"],
     },
     {
-      case: "written into: the person's message on the page, the card after it",
+      case: "written into: the card stops above the person's message and carries on under it",
       scene: {
         entries: [
           user("m0", 0),
@@ -1767,9 +1801,11 @@ describe("a run's card", () => {
       } satisfies Scene,
       expected: [
         "message",
-        "message",
         "work-line:top",
         "record:middle",
+        "card-end:bottom",
+        "message",
+        "record:top",
         "working:middle",
         "card-end:bottom",
       ],
@@ -1927,7 +1963,7 @@ describe("the no-shift contract", () => {
     for (let count = 1; count <= sequence.length; count += 1) {
       const entries = sequence.slice(0, count).map((arrival) => arrival.entry);
       if (!sequence[count - 1]!.live) return;
-      const keys = recordOf(framed({ entries, live: "t1" }))?.items.map((item) => item.key) ?? [];
+      const keys = allItems(framed({ entries, live: "t1" })).map((item) => item.key);
       expect(keys.slice(0, previous.length)).toEqual(previous);
       previous = keys;
     }
