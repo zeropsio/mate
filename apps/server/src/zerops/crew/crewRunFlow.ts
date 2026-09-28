@@ -38,7 +38,7 @@ import {
 } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { grantClaim } from "./crewClaims.ts";
-import { land, reworkCard } from "./crewLanding.ts";
+import { land, landingHeld, reworkCard } from "./crewLanding.ts";
 import { remember } from "./crewNotes.ts";
 import { renewLeadWakes, wakeLead } from "./crewLead.ts";
 import { pauseRun, runOptionsOf } from "./crewRuns.ts";
@@ -97,9 +97,18 @@ const carryOn = (
         const landing = run === undefined ? undefined : runOptionsOf(run)?.landing;
         const accepted = readTaskReview(task.review)?.verdict === "accept";
         if (landing !== "check" && !(landing === "lead" && accepted)) return;
-        // A landing held (your chat is working, the service redeploys) waits for the next free moment.
+        // A landing held (your chat is working, the service redeploys) waits for the next free
+        // moment, and says why: in the crew log once per reason, and as the section's last error.
         yield* land(core, dispatchPrincipal(applied, task), task.assignment).pipe(
-          Effect.catchTag("CrewCommandError", () => Effect.void),
+          Effect.catchTag("CrewCommandError", (error) =>
+            Effect.gen(function* () {
+              const words = failureWords(error);
+              memory.lastError = `#${task.number} waits to land: ${words}`;
+              if (memory.heldLandings.get(task.assignment) === words) return;
+              memory.heldLandings.set(task.assignment, words);
+              yield* landingHeld(core, task, words);
+            }),
+          ),
         );
         return;
       }

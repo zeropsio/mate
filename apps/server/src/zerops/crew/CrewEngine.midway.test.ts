@@ -8,6 +8,7 @@ import { CREW_ID } from "./CrewHome.ts";
 import { CrewStore } from "./CrewStore.ts";
 import {
   eventually,
+  runningPersonThread,
   spiEvent,
   withCrewEngine,
   withCrewEngines,
@@ -21,7 +22,7 @@ import {
   reportDone,
   snapshotWhere,
 } from "./testing/crewEngineSteps.ts";
-import { write } from "./testing/crewGitFixture.ts";
+import { git, write } from "./testing/crewGitFixture.ts";
 
 const OPTIONS: CrewRunOptions = {
   budgetUsd: 3,
@@ -331,6 +332,78 @@ describe("CrewEngine tasks stopped mid-way", () => {
               second: "queued",
               started: [],
             },
+          );
+        }),
+      ),
+  );
+
+  it.live(
+    "a run's landing held by your working chat says so, in the crew log and the section",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          yield* Ref.set(world.threads, [runningPersonThread()]);
+          yield* command({ _tag: "start", ...OPTIONS, landing: "check" });
+          yield* snapshotWhere((current) => current.run?.state === "running");
+          const thread = yield* firstTurn(world, () =>
+            write(world.root, ".crew/backend/ok.txt", "ok\n"),
+          );
+          yield* reportDone(thread);
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          const held = yield* snapshotWhere((current) => current.lastError !== null);
+          const log = yield* (yield* CrewStore).logOf(CREW_ID, ["landing-held"]);
+          assert.deepStrictEqual(
+            {
+              state: held.board.tasks[0]!.state,
+              rows: held.attention.map((row) => row.kind),
+              lastError: held.lastError,
+              log: log.map((entry) => entry.payload),
+            },
+            {
+              state: "ready",
+              rows: ["ready-to-land"],
+              lastError: "#1 waits to land: a chat of this Mate is working; land between its turns",
+              log: [
+                {
+                  task: held.board.tasks[0]!.id,
+                  detail: "a chat of this Mate is working; land between its turns",
+                },
+              ],
+            },
+          );
+        }),
+      ),
+  );
+
+  it.live(
+    "a landing that finds your tree moved says so in the crew log, merges again and lands",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          const thread = yield* firstTurn(world, () =>
+            write(world.root, ".crew/backend/ok.txt", "ok\n"),
+          );
+          yield* reportDone(thread);
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          const ready = yield* snapshotWhere(
+            (current) => current.board.tasks[0]?.state === "ready",
+          );
+          write(world.root, "docs/person.md", "person\n");
+          git(world.root, ["add", "-A"]);
+          git(world.root, ["commit", "-q", "-m", "person edits"]);
+          yield* command({ _tag: "land", taskId: ready.board.tasks[0]!.id });
+          yield* snapshotWhere((current) => current.board.tasks[0]?.state === "landed");
+          const log = yield* (yield* CrewStore).logOf(CREW_ID, ["landing-held"]);
+          assert.deepStrictEqual(
+            log.map((entry) => entry.payload),
+            [
+              {
+                task: ready.board.tasks[0]!.id,
+                detail: "your tree moved since its check; it merges again",
+              },
+            ],
           );
         }),
       ),

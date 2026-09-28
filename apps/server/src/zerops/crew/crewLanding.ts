@@ -304,9 +304,24 @@ const afterLand = (
     );
   });
 
+/** A landing that did not happen now, and why, in the crew log. */
+export const landingHeld = (core: CrewCore, task: CrewAssignmentRow, detail: string) =>
+  Effect.gen(function* () {
+    yield* asRefusal(
+      core.store.appendLog({
+        crew: CREW_ID,
+        run: null,
+        at: yield* core.now,
+        kind: "landing-held",
+        payload: { task: task.assignment, detail },
+      }),
+    );
+  });
+
 /**
  * *Land* (PRD §5.2 step 5); from `waiting-on-you` it merges again first, since
- * your tree moved, and from `review` it is your accept first.
+ * your tree moved, and from `review` it is your accept first. A landing that
+ * does not happen says why in the crew log; its task's state names it too.
  */
 export const land = (
   core: CrewCore,
@@ -425,6 +440,7 @@ export const land = (
         return;
       }
       case "head-moved": {
+        yield* landingHeld(core, landing, "your tree moved since its check; it merges again");
         const again = yield* stepTask(core, landing, { type: "head-moved" });
         if (
           again.state === "merging" &&
@@ -438,6 +454,11 @@ export const land = (
         const { refusal } = outcome;
         switch (refusal.action) {
           case "wait":
+            yield* landingHeld(
+              core,
+              landing,
+              `your tree has ${refusal.kind === "dirty" ? "uncommitted edits" : "untracked files"} in its way: ${refusal.paths.join(", ")}`,
+            );
             yield* stepTask(
               core,
               landing,
@@ -449,6 +470,11 @@ export const land = (
             );
             return;
           case "redo": {
+            yield* landingHeld(
+              core,
+              landing,
+              "your tree moved during the landing; it merges again",
+            );
             const again = yield* stepTask(core, landing, { type: "not-fast-forward" });
             if ((yield* integrate(core, again.assignment)).state === "ready") {
               return yield* land(core, principal, again.assignment);
@@ -456,12 +482,18 @@ export const land = (
             return;
           }
           case "backoff":
+            yield* landingHeld(core, landing, "another git process holds your tree's index");
             yield* stepTask(core, landing, { type: "index-lock" });
             return yield* refuse(
               "wrong-state",
               "another git process holds your tree's index; try again",
             );
           case "retry": {
+            yield* landingHeld(
+              core,
+              landing,
+              "an object the landing needs was missing; it lands again",
+            );
             const again = yield* stepTask(core, landing, { type: "missing-object" });
             return yield* land(core, principal, again.assignment);
           }
