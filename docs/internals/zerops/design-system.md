@@ -87,9 +87,9 @@ Material Icons webfont; the mark as path data (`brand.ts`) rendered by `<svg>` /
 `react-native-svg`; provider marks as `currentColor` SVGs; the 87 service-type icons are **not**
 used in map rows (concept D7).
 
-| Glyph id | Meaning | lucide (web) | Tabler (mobile) |
-| -------- | ------- | ------------ | --------------- |
-| —        | —       | —            | —               |
+| Glyph id    | Meaning         | lucide (web)  | Tabler (mobile)                     |
+| ----------- | --------------- | ------------- | ----------------------------------- |
+| `crew-lead` | the crew's lead | `CompassIcon` | — (crew mode has no mobile surface) |
 
 ## 4. Rules — machine-checked
 

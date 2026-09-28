@@ -1227,7 +1227,7 @@
         },
         {
           "kind": "overlay",
-          "value": "Crewmate chat header: Edit job"
+          "value": "Crewmate chat: the header's Edit job, the composer's Runs on"
         },
         {
           "kind": "overlay",
@@ -1283,6 +1283,10 @@
         {
           "action": "Start",
           "reverse": "none: a run is stopped from the Crew section's Stop."
+        },
+        {
+          "action": "Resume",
+          "reverse": "none: a resumed run is paused again from the Crew section's Pause; its new limits stay."
         }
       ],
       "docs": {
@@ -1390,7 +1394,9 @@
         "apps/web/src/components/zerops/crew/crewComposerSend.ts",
         "apps/web/src/components/zerops/crew/SidebarCrewFaces.tsx",
         "apps/web/src/components/zerops/crew/CrewmateEmptyState.tsx",
-        "apps/web/src/components/zerops/crew/CrewLeadPlan.tsx"
+        "apps/web/src/components/zerops/crew/CrewLeadPlan.tsx",
+        "apps/web/src/components/zerops/crew/CrewLeadBar.tsx",
+        "apps/web/src/components/zerops/crew/CrewRunsOnControl.tsx"
       ],
       "entryPoints": [
         {
@@ -1412,6 +1418,10 @@
         {
           "kind": "inline",
           "value": "The lead's chat: its plan, while the lead proposes tasks"
+        },
+        {
+          "kind": "inline",
+          "value": "ChatComposer footer, in a crewmate's chat: what it runs on"
         }
       ],
       "clients": {
@@ -1514,7 +1524,9 @@
         "apps/web/src/components/zerops/crew/crewComposerSend.test.ts",
         "apps/web/src/components/zerops/crew/SidebarCrewFaces.test.tsx",
         "apps/web/src/components/zerops/crew/CrewmateEmptyState.test.tsx",
-        "apps/web/src/components/zerops/crew/CrewLeadPlan.test.tsx"
+        "apps/web/src/components/zerops/crew/CrewLeadPlan.test.tsx",
+        "apps/web/src/components/zerops/crew/CrewLeadBar.test.tsx",
+        "apps/web/src/components/zerops/crew/CrewRunsOnControl.test.tsx"
       ],
       "captures": []
     },
