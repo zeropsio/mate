@@ -127,6 +127,7 @@ import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsMateEmptyState } from "../zerops/ZeropsMateEmptyState";
+import { MateFace } from "../zerops/primitives";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 
@@ -275,6 +276,11 @@ interface MessagesTimelineProps {
   /** Filled while a remembered reading position is being restored; calling it hands scrolling back. */
   cancelPositionRestoreRef?: React.RefObject<(() => void) | null>;
   hideEmptyPlaceholder?: boolean;
+  /**
+   * The conversation is on its way: a slow one shows its Mate at work in the
+   * middle of the pane, and a quick one shows nothing at all.
+   */
+  loading?: boolean;
   topFadeEnabled?: boolean;
   /** Non-null when older turns exist beyond the loaded window. */
   loadEarlier?: { readonly loading: boolean; readonly onLoadEarlier: () => void } | null;
@@ -329,6 +335,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onManualNavigation,
   cancelPositionRestoreRef,
   hideEmptyPlaceholder = false,
+  loading = false,
   topFadeEnabled = false,
   loadEarlier = null,
   queuedMessages = EMPTY_QUEUED_MESSAGES,
@@ -887,8 +894,26 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   if (empty && !isWorking) {
     if (hideEmptyPlaceholder) {
       // Occupy the pane with the theme surface so a thread switch cannot
-      // punch a hole through to the window chrome (white in light mode).
-      return <div className="h-full min-h-0 bg-background" data-timeline-loading="true" />;
+      // punch a hole through to the window chrome (white in light mode). A
+      // conversation slow to come — a Mate opened for the first time, over
+      // the network — was a blank second: its Mate works in the middle of the
+      // pane instead, shown only once the wait passes 400 ms.
+      return (
+        <div
+          className="flex h-full min-h-0 items-center justify-center bg-background"
+          data-timeline-loading="true"
+        >
+          {loading ? (
+            <span
+              aria-label={`Opening ${speaker.name}'s conversation`}
+              className="flex animate-held-appear motion-reduce:animate-none"
+              role="status"
+            >
+              <MateFace size="lg" state="working" tint={speaker.tint} />
+            </span>
+          ) : null}
+        </div>
+      );
     }
     return crew === null ? (
       <TimelineEmptyState environmentId={activeThreadEnvironmentId} threadKey={routeThreadKey} />

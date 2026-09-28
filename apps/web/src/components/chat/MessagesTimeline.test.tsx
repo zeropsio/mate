@@ -276,6 +276,23 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('aria-label="Next turn"');
   });
 
+  // A conversation slow to come was a blank second: its Mate works in the
+  // middle of the pane, shown only once the wait passes 400 ms — and never in
+  // a new draft's pane, whose hero carries the Mate's mark already.
+  it("shows the Mate at work while a slow conversation is on its way", () => {
+    const loading = renderToStaticMarkup(
+      <MessagesTimeline {...buildProps()} hideEmptyPlaceholder loading timelineEntries={[]} />,
+    );
+    expect(loading).toContain('role="status"');
+    expect(loading).toContain("animate-held-appear");
+    expect(loading).toContain('data-mate-face-state="working"');
+    const hero = renderToStaticMarkup(
+      <MessagesTimeline {...buildProps()} hideEmptyPlaceholder timelineEntries={[]} />,
+    );
+    expect(hero).toContain('data-timeline-loading="true"');
+    expect(hero).not.toContain("data-mate-face-state");
+  });
+
   it("uses the larger leading inset only when the top fade is enabled", () => {
     const timelineEntries = [buildUserTimelineEntry("Hello")];
 
