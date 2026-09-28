@@ -374,11 +374,35 @@ export const reviewTool = (
     if (task.state !== "review") return error(`#${task.number} is not in review (${task.state}).`);
     yield* reviewTask(core, task, { ...input, by: member.handle });
     yield* core.changed;
-    return text(
-      input.verdict === "accept"
-        ? `#${task.number} is accepted.`
-        : `#${task.number} goes back to @${task.member} with your note.`,
-    );
+    if (input.verdict === "reject") {
+      return text(`#${task.number} goes back to @${task.member} with your note.`);
+    }
+    return text(yield* acceptedWords(core, task));
+  });
+
+/**
+ * What an accept leads to, for the lead: a run that lands after the lead's
+ * review lands it now — or closes it, when its copy holds nothing of its own
+ * — and otherwise it waits for the person's *Land*.
+ */
+const acceptedWords = (core: CrewCore, task: CrewAssignmentRow) =>
+  Effect.gen(function* () {
+    const applied = yield* requireApplied(core);
+    const run = runningRun(applied);
+    if (run === undefined || runOptionsOf(run)?.landing !== "lead") {
+      return `Accepted — #${task.number} waits for the person to land it`;
+    }
+    const owner = applied.members.get(task.member);
+    const ahead =
+      owner?.kind === "writer" && owner.host !== null
+        ? yield* core.reads.laneStats(owner.host, owner.handle).pipe(
+            Effect.map((stats) => stats.ahead),
+            Effect.orElseSucceed(() => undefined),
+          )
+        : undefined;
+    return ahead === 0
+      ? `Accepted — #${task.number} had no changes, closed`
+      : "Accepted — landing…";
   });
 
 /** `crew_finish`: every Done when line is met; the run ends. */

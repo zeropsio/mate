@@ -264,6 +264,10 @@ export const savedSeamWords = (
 export const landedSeamWords = (number: number, commit: string): string =>
   `Task #${number} landed as ${commit.slice(0, 7)}`;
 
+/** The seam line of a task closed with nothing of its own to land. */
+export const closedSeamWords = (number: number): string =>
+  `Task #${number} closed — nothing to land`;
+
 /**
  * A new conversation's first turn on a task already open: the task and why
  * the conversation is new, then the words the turn was sent with — so the

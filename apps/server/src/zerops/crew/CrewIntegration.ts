@@ -119,6 +119,8 @@ export interface LandInput extends LaneKey {
 export type LandOutcome =
   | { readonly _tag: "landed"; readonly commit: string }
   | { readonly _tag: "already-landed"; readonly commit: string }
+  /** The lane holds nothing of its own: no commit ahead of your tree, or its tree is yours. */
+  | { readonly _tag: "nothing" }
   | { readonly _tag: "head-moved"; readonly head: string }
   | { readonly _tag: "refused"; readonly refusal: LandingRefusal }
   | LaneNotReady;
@@ -281,6 +283,8 @@ export const make = Effect.gen(function* () {
           `landed=$(${findLanding(input.assignment).trimEnd()})\n` +
           `[ -z "$landed" ] || { printf '%s\\n' "$landed"; exit 0; }\n` +
           laneReady(row) +
+          `ahead=$(${git("integration", ["rev-list", "--count", `HEAD..${branch}`])}) || exit 1\n` +
+          `[ "$ahead" != 0 ] && [ "$(${git("integration", ["rev-parse", `${branch}^{tree}`])})" != "$(${git("integration", ["rev-parse", "HEAD^{tree}"])})" ] || { printf 'status\\tnothing\\n'; exit 0; }\n` +
           `${git("integration", ["merge-base", "--is-ancestor", H, branch])} || { printf 'status\\thead-moved\\nhead\\t%s\\n' "$H"; exit 0; }\n` +
           `errors=$(mktemp) || exit 1\n` +
           `trap 'rm -f "$errors"' EXIT\n` +
@@ -309,6 +313,8 @@ export const make = Effect.gen(function* () {
       const refused = notReady(status, out);
       if (refused !== undefined) return refused;
       switch (status) {
+        case "nothing":
+          return { _tag: "nothing" } satisfies LandOutcome;
         case "head-moved":
           return { _tag: "head-moved", head: field(out, "head") ?? "" } satisfies LandOutcome;
         case "refused":

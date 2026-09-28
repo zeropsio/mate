@@ -26,6 +26,7 @@ import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 import {
   afterLandCard,
   fixCard,
+  closedSeamWords,
   landedSeamWords,
   resolveCard,
   reviewReworkCard,
@@ -382,6 +383,35 @@ export const land = (
         if (member.spec.afterLandRestart) {
           yield* afterLand(core, applied, member, landing, outcome.commit, principal);
         }
+        yield* refreshLaneStats(core, member);
+        yield* pump(core, member.row.handle);
+        return;
+      }
+      case "nothing": {
+        // Nothing of its own to land: the task closes, and its crewmate's queue moves.
+        yield* stepTask(core, landing, { type: "fast-forward" }, (next) => ({
+          ...next,
+          landedCommit: null,
+          waiting: null,
+        }));
+        yield* asRefusal(
+          core.store.appendLog({
+            crew: CREW_ID,
+            run: null,
+            at: yield* core.now,
+            kind: "closed",
+            payload: { task: landing.assignment, reason: "nothing to land" },
+          }),
+        );
+        const stint = currentStint((yield* core.applied) ?? applied, member.row.handle);
+        if (stint !== undefined) {
+          yield* appendSeam(core, stint.threadId, closedSeamWords(landing.number), {
+            seam: "closed",
+            taskId: landing.assignment,
+            number: landing.number,
+          });
+        }
+        yield* dropHandoff(core, member.row.handle, landing.assignment);
         yield* refreshLaneStats(core, member);
         yield* pump(core, member.row.handle);
         return;

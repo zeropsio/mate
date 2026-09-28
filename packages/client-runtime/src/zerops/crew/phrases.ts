@@ -130,6 +130,8 @@ export function crewTaskWord(task: CrewTask, context: CrewTaskWordContext): stri
         : `Waits on your tree: ${first} +${rest.length}`;
     }
     case "landed":
+      // Closed with nothing of its own to land: there is no commit to deliver.
+      if (task.landedCommit === null) return "Closed · no changes";
       return task.delivered ? "Delivered" : "Landed · not delivered";
     case "parked":
       return task.reason === null ? "Stopped" : `Stopped: ${task.reason}`;
@@ -547,7 +549,7 @@ export function crewDeliverAsk(
 ): string {
   const hosts = crew.hosts.map((host) => host.host).join(" and ");
   const titles = crew.board.tasks
-    .filter((task) => task.state === "landed" && !task.delivered)
+    .filter((task) => task.state === "landed" && task.landedCommit !== null && !task.delivered)
     .map((task) => `#${task.number} ${task.title}`)
     .join(", ");
   const ship = `Ship the crew's landed work${hosts === "" ? "" : ` on ${hosts}`}: ${titles}.`;

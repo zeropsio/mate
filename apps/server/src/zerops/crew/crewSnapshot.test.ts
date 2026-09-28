@@ -430,4 +430,16 @@ describe("crew snapshot", () => {
         .map((row) => [row.id, row.kind, row.handle]),
     ).toEqual(rows);
   });
+
+  it("counts a task closed with nothing to land as nothing to deliver", () => {
+    const snapshot = appliedSnapshot(
+      base({
+        tasks: [
+          task("t-1", 1, { state: "landed", landedCommit: "c".repeat(40) }),
+          task("t-2", 2, { state: "landed", landedCommit: null }),
+        ],
+      }),
+    );
+    expect(snapshot.landedNotDelivered).toBe(1);
+  });
 });

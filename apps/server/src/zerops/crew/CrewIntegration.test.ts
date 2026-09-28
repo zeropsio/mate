@@ -184,6 +184,44 @@ describe("CrewIntegration", () => {
     );
   }
 
+  it.effect(
+    "lands nothing from a lane with nothing of its own: level with your tree, behind it, or back to it",
+    () =>
+      withCrew((root) =>
+        Effect.gen(function* () {
+          const integration = yield* CrewIntegration.CrewIntegration;
+          const workspace = yield* CrewWorkspace.CrewWorkspace;
+          yield* workspace.create(BACKEND);
+          const head = git(root, ["rev-parse", "HEAD"]);
+          const level = yield* integration.land(TASK);
+          personCommits(root, "docs/person.md", "person\n");
+          const behind = yield* integration.land(TASK);
+          yield* integration.mergeIn(BACKEND);
+          write(`${root}/.crew/backend`, "docs/person.md", "undone\n");
+          yield* workspace.commitTurn(BACKEND, { assignment: "a-1", turn: 1 });
+          write(`${root}/.crew/backend`, "docs/person.md", "person\n");
+          yield* workspace.commitTurn(BACKEND, { assignment: "a-1", turn: 2 });
+          const undone = yield* integration.land(TASK);
+          assert.deepStrictEqual(
+            {
+              level,
+              behind,
+              undone,
+              landings: git(root, ["rev-list", "--count", `${head}..HEAD`]),
+              anchors: git(root, ["for-each-ref", "refs/t3/crew/landing/"]),
+            },
+            {
+              level: { _tag: "nothing" },
+              behind: { _tag: "nothing" },
+              undone: { _tag: "nothing" },
+              landings: "1",
+              anchors: "",
+            },
+          );
+        }),
+      ),
+  );
+
   it.effect("sends a landing back to merge-in when the head moved after the merge", () =>
     withCrew((root) =>
       Effect.gen(function* () {

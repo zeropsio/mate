@@ -557,7 +557,10 @@ export const appliedSnapshot = (input: AppliedSnapshotInput): CrewSnapshot => {
     ],
     devHosts: devHostsOf(input.runtime.devHosts),
     landedNotDelivered: tasks.filter(
-      (row) => row.state === "landed" && !input.runtime.delivered.has(row.assignment),
+      (row) =>
+        row.state === "landed" &&
+        row.landedCommit !== null &&
+        !input.runtime.delivered.has(row.assignment),
     ).length,
     lastError: input.runtime.lastError,
   };
