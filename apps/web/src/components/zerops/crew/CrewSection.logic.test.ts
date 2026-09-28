@@ -207,6 +207,23 @@ describe("crewAttentionActions", () => {
     ).toEqual([]);
   });
 
+  it("offers only Not now on a Show-on-dev grant waiting for the turn to end", () => {
+    const [host] = snapshot.hosts;
+    const waiting = {
+      ...snapshot,
+      hosts: [
+        { ...host!, claim: { state: "requested" as const, handle: "backend", grantWaiting: true } },
+      ],
+    };
+    expect(
+      crewAttentionActions(attention({ kind: "show-on-dev", host: "appdev" }), waiting, {
+        board: true,
+      }),
+    ).toEqual([
+      { kind: "command", label: "Not now", command: { _tag: "claimDeny", host: "appdev" } },
+    ]);
+  });
+
   it("offers no press that could do nothing", () => {
     expect(crewAttentionActions(attention({ kind: "plan" }), snapshot, { board: false })).toEqual(
       [],
