@@ -241,7 +241,7 @@ describe("usageEnvironmentIdentities", () => {
             "mate:g:docs",
             "mate:name:Acme Docs",
             "mate:bot:Fen",
-            "mate:signer:claude:user-eva",
+            "mate:signer:claude-code:user-eva",
           ],
           environmentId: FEN,
         }),
