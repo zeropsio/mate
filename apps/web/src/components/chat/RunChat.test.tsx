@@ -506,6 +506,37 @@ describe("RunChat", () => {
     expect(markup).toContain(`>${words}<`);
   });
 
+  // A row saying a check failed showed only the pictures of the ones that
+  // passed: a failed check took none (Nova, 2026-09-28, port 9 refused). Its
+  // frame stands all the same, outlined red, saying what went wrong.
+  it("keeps a failed check's frame among the takes, saying what went wrong", () => {
+    const passed = operation("b1", "turn-1", 1, {
+      kind: "browser",
+      subject: "https://shop.dev/",
+      screenshot: { src: "/shots/b1.png", width: 1280, height: 800 },
+    });
+    const refused = operation("b2", "turn-1", 2, {
+      kind: "browser",
+      subject: "http://shop.dev:9/",
+      phase: "failed",
+      browserSummary: {
+        failedStep: { label: "open http://shop.dev:9/", note: "net::ERR_UNSAFE_PORT" },
+      } as never,
+    });
+    const checks = [passed, refused].map((entry) => {
+      if (entry.kind !== "operation") throw new Error("an operation");
+      return entry.operation;
+    });
+    const markup = draw(
+      record([
+        { kind: "strip", key: "operation:op:b1", at: at(1), strip: checksStrip(checks, false) },
+      ]),
+    );
+    expect(markup).toMatch(/<button[^>]*data-report-take="desktop"/u);
+    expect(markup).toContain("data-report-take-failed");
+    expect(markup).toContain("couldn&#x27;t open http://shop.dev:9/: net::ERR_UNSAFE_PORT");
+  });
+
   it("opens nothing on a step that printed nothing", () => {
     const markup = draw(record([step(command("w1", "git status"))]));
     expect(markup).not.toContain("data-chat-disclose");

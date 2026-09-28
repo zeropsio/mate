@@ -81,6 +81,7 @@ import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
 import { BrowserStrip, BrowserTakes } from "./BrowserStrip";
 import {
   browserCheckCaption,
+  browserTakeState,
   formatWorkDuration,
   operationLineWords,
   type BrowserStripModel,
@@ -1494,7 +1495,12 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
     formatWorkDuration(tookMs)
   ) : null;
   const failed = strip.failures > 0;
-  const takes = strip.checks.some((check) => check.screenshot || check.phase === "running");
+  const takes = strip.checks.some(
+    (check) =>
+      check.screenshot ||
+      check.phase === "running" ||
+      browserTakeState(check, strip.checks) === "failed",
+  );
   return (
     <CallRow failed={failed} kind="checks">
       <DisclosureButton
