@@ -2757,7 +2757,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
   // Ordinary tool failures stay muted; only runtime errors and warnings get
   // color. The red treatment is reserved for severe failures.
   const iconWrapperClass = cn(
-    "flex w-3.5 shrink-0 items-center justify-center",
+    "flex w-5 shrink-0 items-center",
     showWarningIndicator
       ? "text-warning"
       : showDestructiveRowStyle
@@ -2796,7 +2796,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
   return (
     <div
       className={cn(
-        "group/timeline-row relative flex flex-col rounded-md px-0.5 transition-colors",
+        "group/timeline-row relative flex flex-col rounded-md transition-colors",
         isExpandedToolGroupEntry ? "py-0" : "py-px",
         expanded && "mb-1",
         canExpand &&
@@ -2804,7 +2804,9 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
       )}
       {...rowToggleProps}
     >
-      <div className="flex select-none items-center gap-2 transition-[opacity,translate] duration-200">
+      {/* Its icon in the page's 20 px mark column, its words on the edge the
+          answer's list items and the other event lines start on. */}
+      <div className="flex select-none items-center transition-[opacity,translate] duration-200">
         <span
           className={cn(iconWrapperClass, !showEntryIcon && "invisible")}
           role={showFailedIndicator ? "img" : undefined}
@@ -2850,7 +2852,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
       </div>
       {expanded && canExpand && expandedBody ? (
         <div
-          className="mt-1 ms-5.5 cursor-default border-s border-border/45 ps-3 pt-0.5"
+          className="mt-1 ms-5 cursor-default border-s border-border/45 ps-3 pt-0.5"
           onClick={stopRowToggle}
           onPointerDown={stopRowToggle}
         >

@@ -2365,14 +2365,18 @@ export function BackgroundLine({
   for (const entry of entries) lastByTask.set(entry.taskId ?? entry.id, entry);
   const reported = [...lastByTask.values()].filter((entry) => entry.detail?.trim());
   const line = (
-    <span className="flex min-w-0 items-center gap-2.5 text-line">
-      <span aria-hidden="true" className="flex w-4 shrink-0 justify-center">
-        <span
-          className={cn(
-            "size-1.5 rounded-full",
-            failed ? "bg-status-failed" : "bg-muted-foreground/35",
-          )}
-        />
+    <span className="flex min-w-0 items-center text-line">
+      {/* The page's mark column: its dot where an event's icon stands, its
+          words on the edge the answer's list items start on. */}
+      <span aria-hidden="true" className="flex w-5 shrink-0">
+        <span className="flex size-3.5 items-center justify-center">
+          <span
+            className={cn(
+              "size-1.5 rounded-full",
+              failed ? "bg-status-failed" : "bg-muted-foreground/35",
+            )}
+          />
+        </span>
       </span>
       <span
         className={cn(
@@ -2382,11 +2386,11 @@ export function BackgroundLine({
       >
         {words}
       </span>
-      <span className="shrink-0 text-muted-foreground text-xs">{where}</span>
+      <span className="ms-2.5 shrink-0 text-line text-muted-foreground">{where}</span>
       {reported.length > 0 ? (
         <ChevronDownIcon
           aria-hidden="true"
-          className="size-3 shrink-0 text-muted-foreground/70 opacity-0 transition-[opacity,rotate] duration-150 group-hover/disclose:opacity-100 group-aria-expanded/disclose:rotate-180 group-aria-expanded/disclose:opacity-100"
+          className="ms-2.5 size-3 shrink-0 text-muted-foreground/70 opacity-0 transition-[opacity,rotate] duration-150 group-hover/disclose:opacity-100 group-aria-expanded/disclose:rotate-180 group-aria-expanded/disclose:opacity-100"
         />
       ) : null}
     </span>
@@ -2407,7 +2411,7 @@ export function BackgroundLine({
         <div className="flex min-h-7 items-center">{line}</div>
       )}
       {open ? (
-        <ul className="grid min-w-0 gap-3 ps-6.5" data-chat-detail>
+        <ul className="grid min-w-0 gap-3 ps-5" data-chat-detail>
           {reported.map((entry) => (
             <li key={entry.id} className="grid min-w-0 gap-1">
               <span className="text-line text-foreground/85">
