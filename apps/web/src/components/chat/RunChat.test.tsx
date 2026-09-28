@@ -319,6 +319,29 @@ describe("RunChat", () => {
   // A script arrives whole, so it is never "being written": four of its
   // lines from its first frame, running or done (the owner, 2026-09-28: "I
   // see 100s of LoC printed directly").
+  // What a command was for leads; its code is how, in the muted ink under it
+  // — failed too, where the headline, the surface and the time already say so.
+  it("sets a command's code quieter than what it was for, failed or not", () => {
+    const codeTone = (markup: string) =>
+      /<code class="([^"]*)"/u
+        .exec(markup)?.[1]
+        ?.split(" ")
+        .filter((name) => name.startsWith("text-"));
+    for (const status of ["completed", "failed"] as const) {
+      const markup = draw(
+        record([
+          step(
+            command("w1", "npm test", {
+              callInput: { description: "Run the tests" },
+              toolLifecycleStatus: status,
+            }),
+          ),
+        ]),
+      );
+      expect(codeTone(markup)).toEqual(["text-xs", "text-muted-foreground"]);
+    }
+  });
+
   it("folds a command past its fourth line from its first frame, saying how many there are", () => {
     const done = draw(
       record([

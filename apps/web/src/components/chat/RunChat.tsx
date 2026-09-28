@@ -1206,16 +1206,16 @@ function CallRow({
 /**
  * A command's code, in mono: four lines of it from its first frame and a fade
  * where it goes on — a script never prints whole into the chat (the owner,
- * 2026-09-28: "I see 100s of LoC printed directly").
+ * 2026-09-28: "I see 100s of LoC printed directly"). It is how, under what the
+ * command was for: in the muted ink, failed too — the headline, the surface
+ * and the time say that it failed.
  */
 function CommandCode({
   script,
-  failed,
   folded,
   watch,
 }: {
   readonly script: string;
-  readonly failed: boolean;
   /** Cut to its first four lines. */
   readonly folded: boolean | null;
   readonly watch: (element: HTMLElement | null) => void;
@@ -1230,10 +1230,7 @@ function CommandCode({
     >
       <code
         ref={watch}
-        className={cn(
-          "block whitespace-pre-wrap break-words font-mono text-xs leading-4.5",
-          failed ? "text-status-failed-text" : "text-foreground/75",
-        )}
+        className="block whitespace-pre-wrap break-words font-mono text-xs leading-4.5 text-muted-foreground"
       >
         {script}
       </code>
@@ -1302,12 +1299,7 @@ export function StepBubble({ step }: { readonly step: WorkStep }) {
       )}
       {script !== null ? (
         <div className="pe-3 pb-2.5 ps-8.5">
-          <CommandCode
-            failed={failed}
-            folded={cut ? !disclosure.open : null}
-            script={script}
-            watch={watchCode}
-          />
+          <CommandCode folded={cut ? !disclosure.open : null} script={script} watch={watchCode} />
         </div>
       ) : null}
       <StepPictures paths={step.images} />
