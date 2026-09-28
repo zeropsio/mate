@@ -283,6 +283,18 @@ describe("CrewCommand", () => {
   it.each(commandSamples)("decodes $_tag", (sample) => {
     expect(decodeCommand(sample)).toEqual(sample);
   });
+  it("resumes a run with new limits, each one optional", () => {
+    const table = [
+      { runId: "run-1", budgetUsd: 40 },
+      { runId: "run-1", timeLimitHours: "unlimited" },
+      { runId: "run-1", budgetUsd: "unlimited", timeLimitHours: 12, stopAtUsagePercent: null },
+      { runId: "run-1", stopAtUsagePercent: 90 },
+    ] as const;
+    for (const fields of table) {
+      expect(decodeCommand({ _tag: "resume", ...fields })).toEqual({ _tag: "resume", ...fields });
+    }
+    expect(() => decodeCommand({ _tag: "resume", runId: "run-1", budgetUsd: 0 })).toThrow();
+  });
 });
 
 describe("CrewFiles", () => {
