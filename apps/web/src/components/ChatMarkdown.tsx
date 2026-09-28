@@ -1061,6 +1061,48 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({ host }: { host: 
 const CHAT_MARKDOWN_IMAGE_SIZE_CLASS_NAME =
   "h-auto w-auto max-h-[30rem] max-w-[min(100%,30rem)] object-contain";
 
+/**
+ * A picture's shape once it has been seen, by where it came from. A picture
+ * without one takes no room until its bytes come, and the list draws a row
+ * again whenever it recycles it: opening a conversation, its pictures grew
+ * from nothing one by one and everything under the pointer jumped with them
+ * (Juno, 2026-09-29). Known, a picture holds its room from its first frame.
+ */
+const knownImageSizes = new Map<string, { readonly width: number; readonly height: number }>();
+const KNOWN_IMAGE_SIZES_MAX = 256;
+
+/**
+ * The room a picture takes before it has loaded, and what it learns as it
+ * does: its own shape when it has been seen before; otherwise the room a
+ * picture usually takes, 16:9 across the text, rather than none. Only a first
+ * sight fades in — a row the list draws again shows its picture as it was.
+ */
+function useImageRoom(key: string) {
+  const [size, setSize] = useState(() => knownImageSizes.get(key));
+  const [firstSight] = useState(() => !knownImageSizes.has(key));
+  const [loaded, setLoaded] = useState(false);
+  return {
+    width: size?.width,
+    height: size?.height,
+    className: cn(
+      size === undefined && !loaded && "aspect-video w-full rounded-lg bg-muted/60",
+      firstSight && loaded && "animate-zerops-appear motion-reduce:animate-none",
+    ),
+    onLoad: (event: React.SyntheticEvent<HTMLImageElement>) => {
+      const { naturalWidth: width, naturalHeight: height } = event.currentTarget;
+      if (width > 0 && height > 0) {
+        if (!knownImageSizes.has(key) && knownImageSizes.size >= KNOWN_IMAGE_SIZES_MAX) {
+          const oldest = knownImageSizes.keys().next();
+          if (!oldest.done) knownImageSizes.delete(oldest.value);
+        }
+        knownImageSizes.set(key, { width, height });
+        setSize({ width, height });
+      }
+      setLoaded(true);
+    },
+  };
+}
+
 // block! outranks the unlayered `.chat-markdown img { display: inline-block }`
 // rule, keeping workspace images on the same block layout as their placeholder.
 const CHAT_MARKDOWN_WORKSPACE_IMAGE_CLASS_NAME = cn(
@@ -1138,6 +1180,7 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
     path: props.path,
   });
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const room = useImageRoom(props.path);
 
   if (assetUrl._tag === "Failure" || (assetUrl._tag === "Success" && failedUrl === assetUrl.url)) {
     return <ChatMarkdownImageFallback alt={props.alt} />;
@@ -1158,13 +1201,44 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
         alt={props.alt}
         loading="lazy"
         draggable={false}
-        className={CHAT_MARKDOWN_WORKSPACE_IMAGE_CLASS_NAME}
+        className={cn(CHAT_MARKDOWN_WORKSPACE_IMAGE_CLASS_NAME, room.className)}
         data-markdown-image
+        height={room.height}
         onError={() => setFailedUrl(assetUrl.url)}
+        onLoad={room.onLoad}
+        width={room.width}
       />
     </OpenableMarkdownImage>
   );
 });
+
+/** A picture from an address of its own, holding its room as a workspace picture does. */
+function DirectMarkdownImage({
+  uri,
+  alt,
+  className,
+  ...props
+}: Omit<React.ComponentProps<"img">, "src" | "alt"> & {
+  readonly uri: string;
+  readonly alt: string;
+}) {
+  const room = useImageRoom(uri);
+  return (
+    <OpenableMarkdownImage alt={alt}>
+      <img
+        {...props}
+        src={uri}
+        alt={alt}
+        loading="lazy"
+        className={cn(className, CHAT_MARKDOWN_IMAGE_SIZE_CLASS_NAME, room.className)}
+        data-markdown-image
+        height={room.height ?? props.height}
+        onLoad={room.onLoad}
+        width={room.width ?? props.width}
+      />
+    </OpenableMarkdownImage>
+  );
+}
 
 function plainHastText(node: unknown): string | null {
   if (!node || typeof node !== "object" || !("children" in node) || !Array.isArray(node.children)) {
@@ -2143,18 +2217,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const altText = alt ?? "";
     const imageSource = classifyMarkdownImageSource(srcString, cwd);
     if (imageSource._tag === "Direct") {
-      return (
-        <OpenableMarkdownImage alt={altText}>
-          <img
-            {...props}
-            src={imageSource.uri}
-            alt={altText}
-            loading="lazy"
-            className={cn(props.className, CHAT_MARKDOWN_IMAGE_SIZE_CLASS_NAME)}
-            data-markdown-image
-          />
-        </OpenableMarkdownImage>
-      );
+      return <DirectMarkdownImage {...props} alt={altText} uri={imageSource.uri} />;
     }
     if (imageSource._tag === "WorkspaceFile" && threadRef) {
       return (

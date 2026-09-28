@@ -1,5 +1,7 @@
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { create } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const testState = vi.hoisted(() => ({
@@ -143,5 +145,37 @@ describe("ChatMarkdown workspace images", () => {
     expect(html).toContain("max-w-[min(100%,30rem)]");
     expect(html).toContain("max-h-[30rem]");
     expect(html).not.toContain("Image unavailable");
+  });
+});
+
+describe("a picture's room before it loads", () => {
+  // A picture without a shape took no room until its bytes came, and the list
+  // draws a row again whenever it recycles it: opening a conversation, its
+  // pictures grew from nothing and everything in sight jumped (2026-09-29).
+  it("holds the room a picture usually takes the first time it is seen", () => {
+    const html = render("![first](https://example.com/first-sight.png)");
+    expect(html).toMatch(/<img[^>]*class="[^"]*aspect-video w-full[^"]*"/);
+    expect(html).not.toMatch(/<img[^>]*width=/);
+  });
+
+  it("holds its own shape from its first frame once it has been seen", () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const markdown = "![seen](https://example.com/seen-before.png)";
+    let renderer: ReturnType<typeof create> | undefined;
+    act(() => {
+      renderer = create(<ChatMarkdown cwd="/srv/app" threadRef={threadRef} text={markdown} />);
+    });
+    const image = renderer!.root.find(
+      (node) => node.type === "img" && node.props["data-markdown-image"] !== undefined,
+    );
+    act(() => {
+      image.props.onLoad({ currentTarget: { naturalWidth: 800, naturalHeight: 600 } });
+    });
+    act(() => renderer!.unmount());
+
+    const html = render(markdown);
+    expect(html).toMatch(/<img[^>]*height="600"/);
+    expect(html).toMatch(/<img[^>]*width="800"/);
+    expect(html).not.toContain("aspect-video");
   });
 });
