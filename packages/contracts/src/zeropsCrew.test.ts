@@ -83,7 +83,7 @@ const appliedSnapshot = {
         { port: 3002, routed: null },
       ],
       served: { by: "tree" },
-      claim: { state: "none", handle: null },
+      claim: { state: "none", handle: null, grantWaiting: false },
     },
   ],
   board: {
@@ -218,7 +218,8 @@ const commandSamples = [
 
 /**
  * The snapshot as the first contract's server sent it: none of the fields
- * added since (`dirty`, `integration`, `routed` null, `note`, `devHosts`).
+ * added since (`dirty`, `integration`, `routed` null, `note`, `devHosts`,
+ * `grantWaiting`).
  */
 const firstContractSnapshot = (() => {
   const { devHosts: _devHosts, ...snapshot } = appliedSnapshot;
@@ -231,7 +232,7 @@ const firstContractSnapshot = (() => {
   return {
     ...snapshot,
     crewmates: [{ ...mate, lane }],
-    hosts: [{ ...hostFields, crewPorts: [{ port: 3001 }] }],
+    hosts: [{ ...hostFields, crewPorts: [{ port: 3001 }], claim: { state: "none", handle: null } }],
     board: { tasks: [taskFields] },
   };
 })();
@@ -245,6 +246,7 @@ describe("CrewSnapshot from an older server", () => {
     expect(decoded.hosts[0]?.crewPorts).toEqual([{ port: 3001, routed: null }]);
     expect(decoded.board.tasks[0]?.note).toBeNull();
     expect(decoded.devHosts).toEqual([]);
+    expect(decoded.hosts[0]?.claim.grantWaiting).toBe(false);
   });
 });
 

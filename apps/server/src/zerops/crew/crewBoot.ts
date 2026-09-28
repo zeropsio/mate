@@ -19,7 +19,7 @@ import * as Option from "effect/Option";
 
 import { ThreadId } from "@t3tools/contracts";
 
-import { settleAllClaims } from "./crewClaims.ts";
+import { grantAfterTurn, settleAllClaims } from "./crewClaims.ts";
 import { asRefusal, memberOf, type CrewCore } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
@@ -128,6 +128,8 @@ export const boot = (core: CrewCore) =>
       }
     }
     yield* settleAllClaims(core);
+    // An Allow that waited on a turn the restart ended goes out now.
+    for (const handle of applied.members.keys()) yield* grantAfterTurn(core, handle);
     yield* repairWorktrees(core, (yield* core.applied) ?? applied);
     yield* advanceAll(core);
     yield* core.changed;

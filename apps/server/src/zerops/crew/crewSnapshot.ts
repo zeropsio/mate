@@ -110,6 +110,8 @@ export interface SnapshotClaim {
   readonly requestedAt: string;
   /** Why the crewmate asked, while it asks. */
   readonly reason: string | null;
+  /** *Allow* was pressed while the crewmate's turn ran. */
+  readonly grantWaiting: boolean;
 }
 
 /** Apply's per-crewmate progress (PRD §4.7), or why it failed. */
@@ -504,7 +506,11 @@ export const appliedSnapshot = (input: AppliedSnapshotInput): CrewSnapshot => {
         integration: input.runtime.integration.get(host.host) ?? null,
         crewPorts: host.crewPorts,
         served: input.runtime.served.get(host.host) ?? { by: "unknown" },
-        claim: { state: claim?.state ?? "none", handle: claim?.member ?? null },
+        claim: {
+          state: claim?.state ?? "none",
+          handle: claim?.member ?? null,
+          grantWaiting: claim?.grantWaiting ?? false,
+        },
       };
     }),
     board: { tasks: tasks.map((row) => toTask(row, input)) },

@@ -320,7 +320,7 @@ const appliedCrew: CrewSnapshot = {
         { port: 3004, routed: true },
       ],
       served: { by: "tree" },
-      claim: { state: "requested", handle: "backend" },
+      claim: { state: "requested", handle: "backend", grantWaiting: false },
     },
   ],
   board: { tasks },

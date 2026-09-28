@@ -33,6 +33,7 @@ import {
 } from "./crewCore.ts";
 import { crewLane } from "./CrewDefinition.ts";
 import { CREW_ID } from "./CrewHome.ts";
+import { remember } from "./crewNotes.ts";
 import { readDeclaredPorts } from "./crewPorts.ts";
 import type { CrewClaimPress } from "./CrewRuntime.ts";
 import type { CrewThreadMember } from "./crewSeams.ts";
@@ -189,6 +190,12 @@ const sendShaped = (
     ).pipe(Effect.tapError(() => Effect.sync(() => core.memory.shaped.delete(stint.threadId))));
   });
 
+/** A waiting *Allow* is gone: sent, or its claim moved on. */
+const settleGrant = (core: CrewCore, host: string) =>
+  core.memory.grantsWaiting.has(host)
+    ? remember(core, { kind: "grant-settled", host }, null)
+    : Effect.void;
+
 /**
  * *Allow*: the claim starts and its holder gets the claim turn, as the person
  * who allowed it. A crewmate asks while it works, so an *Allow* pressed
@@ -202,10 +209,10 @@ export const grantClaim = (core: CrewCore, principal: TurnPrincipal, host: strin
       return yield* refuse("wrong-state", `nobody asks to show work on ${host}`);
     }
     if (isWorking(core, applied, claim.handle)) {
-      core.memory.grantsWaiting.set(host, principal);
+      yield* remember(core, { kind: "grant-waiting", host, principal }, null);
       return;
     }
-    core.memory.grantsWaiting.delete(host);
+    yield* settleGrant(core, host);
     if ((yield* devServerShape(core, host)) === undefined) {
       return yield* refuse("wrong-state", `no dev server runs on ${host}; start it first`);
     }
@@ -217,7 +224,7 @@ export const grantClaim = (core: CrewCore, principal: TurnPrincipal, host: strin
 /** A press or an event that moves a claim without reading dev (deny, the person's own dev server, a deploy). */
 export const moveClaim = (core: CrewCore, host: string, event: CrewClaimPress) =>
   Effect.gen(function* () {
-    core.memory.grantsWaiting.delete(host);
+    yield* settleGrant(core, host);
     yield* asRefusal(core.runtime.apply(host, event));
     yield* refreshClaims(core);
   });

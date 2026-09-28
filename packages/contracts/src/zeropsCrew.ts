@@ -251,7 +251,12 @@ export const CrewHost = Schema.Struct({
   ),
   served: CrewServed,
   /** The Show-on-dev claim; `handle` is its holder or requester, `null` in `none`. */
-  claim: Schema.Struct({ state: CrewClaimState, handle: Schema.NullOr(CrewHandle) }),
+  claim: Schema.Struct({
+    state: CrewClaimState,
+    handle: Schema.NullOr(CrewHandle),
+    /** *Allow* was pressed while the crewmate's turn ran; the claim turn goes out at its end. */
+    grantWaiting: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  }),
 });
 export type CrewHost = typeof CrewHost.Type;
 
