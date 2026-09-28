@@ -132,6 +132,27 @@ describe("CrewSection", () => {
     expect(refused).toContain("Paused · Backend&#x27;s login is not yours");
   });
 
+  it("sets the lead apart: first, under its own label, with a Lead chip", () => {
+    const markup = render(crewSnapshotFixture());
+    const lead = markup.slice(markup.indexOf("data-crew-lead"), markup.indexOf("data-crew-rows"));
+    const rows = markup.slice(markup.indexOf("data-crew-rows"));
+
+    expect(markup.indexOf("data-crew-lead")).toBeLessThan(markup.indexOf("data-crew-rows"));
+    expect(lead).toContain(">Lead<");
+    expect(lead).toContain("@lead");
+    expect(lead).toContain("data-crew-lead-chip");
+    expect(rows).toContain(">Crewmates<");
+    expect(rows).not.toContain("@lead");
+    expect(rows).toContain("@backend");
+  });
+
+  it("has no lead group without a lead", () => {
+    const snapshot = crewSnapshotFixture();
+    const markup = render({ ...snapshot, crewmates: snapshot.crewmates.slice(1) });
+    expect(markup).not.toContain("data-crew-lead=");
+    expect(markup).toContain(">Crewmates<");
+  });
+
   it("offers + Add lead exactly while the crew has no lead", () => {
     const snapshot = crewSnapshotFixture();
     const leadless = { ...snapshot, crewmates: snapshot.crewmates.slice(1) };

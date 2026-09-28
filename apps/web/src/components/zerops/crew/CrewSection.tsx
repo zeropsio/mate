@@ -11,6 +11,8 @@
  */
 import {
   CREW_BOARD_COLUMNS,
+  CREW_CREWMATES_WORD,
+  CREW_LEAD_WORD,
   crewAttentionSentence,
   crewBoardLinkWord,
   crewLandedWord,
@@ -133,11 +135,24 @@ export function CrewSection(props: CrewSectionProps) {
         </FlatCard>
       )}
       {snapshot.attention.length === 0 ? null : <CrewAttentionBlock {...props} />}
-      <ul className="space-y-1" data-crew-rows>
-        {view.crewmates.map((row) => (
-          <CrewmateRow key={row.crewmate.handle} {...props} row={row} />
-        ))}
-      </ul>
+      {view.lead === null ? null : (
+        <div className="space-y-1" data-crew-lead>
+          <MicroLabel>{CREW_LEAD_WORD}</MicroLabel>
+          <ul>
+            <CrewmateRow {...props} row={view.lead} />
+          </ul>
+        </div>
+      )}
+      <div className="space-y-1" data-crew-rows>
+        <MicroLabel>{CREW_CREWMATES_WORD}</MicroLabel>
+        <ul className="space-y-1">
+          {view.crewmates
+            .filter((row) => row !== view.lead)
+            .map((row) => (
+              <CrewmateRow key={row.crewmate.handle} {...props} row={row} />
+            ))}
+        </ul>
+      </div>
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => props.onEditCrewmate(null)} size="xs" variant="ghost">
           + Add crewmate
@@ -332,6 +347,9 @@ function CrewmateRow(props: CrewSectionProps & { readonly row: CrewmateView }) {
       <span className="min-w-0 flex-1 space-y-0.5">
         <span className="flex min-w-0 items-baseline gap-1.5">
           <span className="truncate text-sm font-medium text-foreground">{mate.displayName}</span>
+          {mate.kind === "lead" ? (
+            <Chip className="shrink-0" data-crew-lead-chip label={CREW_LEAD_WORD} tone="off" />
+          ) : null}
           <span className="shrink-0 text-xs text-muted-foreground">@{mate.handle}</span>
           {loginMark === null ? null : (
             <span className="shrink-0 text-xs text-muted-foreground">· {loginMark}</span>

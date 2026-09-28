@@ -371,6 +371,15 @@ export const crewLandedWord = (count: number): string => `Landed, not delivered 
 export const crewNoDevHostWord = (mateName: string): string =>
   `No dev service is mounted yet — ask ${mateName} to start development first.`;
 
+/** The section's two groups of rows: the lead, set apart, then everyone else. */
+export const CREW_LEAD_WORD = "Lead";
+export const CREW_CREWMATES_WORD = "Crewmates";
+
+/** Which crewmates run on a login, the lead named as the lead. */
+export function crewRunsOnWord(crewmates: ReadonlyArray<string>, lead: string | null): string {
+  return `Runs: ${crewmates.map((handle) => (handle === lead ? `${handle} (lead)` : handle)).join(", ")}`;
+}
+
 /** A dev service without crew ports (PRD §5.7). */
 export const crewPortsOffWord = (host: string): string => `${host} · Crew ports: off`;
 

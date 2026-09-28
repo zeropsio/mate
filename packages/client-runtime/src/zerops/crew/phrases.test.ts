@@ -10,6 +10,8 @@ import { crewSnapshotFixture } from "./testing/fixtures.ts";
 import {
   CREW_ATTENTION_VERBS,
   CREW_BOARD_COLUMNS,
+  CREW_CREWMATES_WORD,
+  CREW_LEAD_WORD,
   CREW_IDLE_WORD,
   CREW_LANE_VERBS,
   crewAheadWord,
@@ -35,6 +37,7 @@ import {
   crewLandedWord,
   crewLaneWord,
   crewNoDevHostWord,
+  crewRunsOnWord,
   crewPendingWord,
   crewPortsAsk,
   crewPortsOffWord,
@@ -376,6 +379,12 @@ describe("the section's words (PRD §4.3)", () => {
     [{ job: null, brief: null }, null],
   ] as const)("pending %j reads %j", (pending, word) => {
     expect(crewPendingWord(pending)).toBe(word);
+  });
+
+  it("names the lead apart from the crewmates, and on the logins it runs on", () => {
+    expect([CREW_LEAD_WORD, CREW_CREWMATES_WORD]).toEqual(["Lead", "Crewmates"]);
+    expect(crewRunsOnWord(["lead", "backend"], "lead")).toBe("Runs: lead (lead), backend");
+    expect(crewRunsOnWord(["backend"], null)).toBe("Runs: backend");
   });
 
   it("says why a writer has no service to pick yet", () => {
