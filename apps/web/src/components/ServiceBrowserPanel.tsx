@@ -1,11 +1,16 @@
 import { serviceForPreview, isServiceBrowserUrl } from "../zerops/serviceBrowserPolicy";
 import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topology";
+import * as Schema from "effect/Schema";
 import { useState } from "react";
-import { ExternalLinkIcon, GlobeIcon, RotateCwIcon } from "lucide-react";
+import { CookieIcon, ExternalLinkIcon, GlobeIcon, RotateCwIcon } from "lucide-react";
+import { useLocalStorage } from "../hooks/useLocalStorage";
 import type { RightPanelSurface } from "../rightPanelStore";
 import { Button } from "./ui/button";
 
 const PREVIEW_CACHE_PARAM = "_mate_preview";
+
+/** Set once this browser's viewer has read the cookie note; a per-viewer convenience. */
+export const PREVIEW_COOKIE_NOTE_KEY = "mate:zerops:preview-cookie-note-read";
 
 /**
  * The address the frame loads: the service URL with one query parameter
@@ -59,6 +64,14 @@ export function previewKey(version: string | undefined, revision: number): strin
  * it is shown, under a strip of preview it costs, is worse than the escape
  * hatch it duplicated — so the escape hatch keeps its words and the apology
  * goes.
+ *
+ * The cookie note is the opposite case: it is true of every preview. A
+ * `*.zerops.app` host is its own site (the public suffix list), so the frame
+ * is cross-site wherever Mate runs, and a browser keeps out the cookies a
+ * site sets without `SameSite=None` — measured 2026-09-29, Chrome refused a
+ * Medusa storefront's cookie in the frame and stored it top-level. So sign-ins
+ * and carts fail here. It is said once, above the frame, and stays gone once
+ * read; it names the header's control rather than repeating it.
  */
 export function ServiceBrowserPanel({
   service,
@@ -72,6 +85,11 @@ export function ServiceBrowserPanel({
 }) {
   const [revision, setRevision] = useState(0);
   const [heldVersion, setHeldVersion] = useState(deployedVersion);
+  const [cookieNoteRead, setCookieNoteRead] = useLocalStorage(
+    PREVIEW_COOKIE_NOTE_KEY,
+    false,
+    Schema.Boolean,
+  );
   const version = nextHeldVersion(heldVersion, deployedVersion);
   if (version !== heldVersion) setHeldVersion(version);
   if (!isServiceBrowserUrl(url)) return null;
@@ -119,6 +137,23 @@ export function ServiceBrowserPanel({
           Open in new tab
         </Button>
       </div>
+      {cookieNoteRead ? null : (
+        <div className="flex items-center gap-2 border-b px-3 py-1.5 text-xs text-muted-foreground">
+          {/* The icon takes the globe's column, so the words start where the address does. */}
+          <CookieIcon className="size-4 shrink-0" aria-hidden="true" />
+          <p className="min-w-0 flex-1">
+            Browsers block most cookies here, so sign-ins and carts need a new tab.
+          </p>
+          <Button
+            variant="ghost"
+            size="compact"
+            className="shrink-0"
+            onClick={() => setCookieNoteRead(true)}
+          >
+            Got it
+          </Button>
+        </div>
+      )}
       <iframe
         key={src}
         title={`${service} live preview`}
