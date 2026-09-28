@@ -849,8 +849,8 @@ function NoteBubble({ message }: { readonly message: ChatMessage }) {
   );
 }
 
-/** A thought's hand: small, faint italics, the Mate talking to itself. */
-const THOUGHT_TEXT = "text-xs leading-4.5 text-muted-foreground/85";
+/** A thought's hand: small, faint italics, the Mate talking to itself — its code and file names too. */
+const THOUGHT_TEXT = "chat-markdown-aside text-xs leading-4.5 text-muted-foreground/85";
 
 /** Eight of a thought's 18 px lines: past them it scrolls while it is thought, and folds once it is. */
 const THOUGHT_CAP_PX = 144;

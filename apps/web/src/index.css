@@ -2333,6 +2333,39 @@ code {
   text-decoration: none;
 }
 
+/* A thought's code and file names are words it thinks, not things to press:
+   mono in the thought's own faint ink, no chip — a chip stood out of the
+   italics as the loudest thing in them (Nova, 2026-09-28). A file name still
+   opens its file, underlined under the pointer. */
+.chat-markdown.chat-markdown-aside :not(pre) > code {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+.chat-markdown.chat-markdown-aside .chat-markdown-file-link {
+  display: inline;
+  height: auto;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  font-weight: inherit;
+  color: inherit;
+}
+
+.chat-markdown.chat-markdown-aside .chat-markdown-file-link > :first-child {
+  display: none;
+}
+
+.chat-markdown.chat-markdown-aside .chat-markdown-file-link:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .chat-markdown .chat-markdown-file-link:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 70%, transparent);
