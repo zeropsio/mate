@@ -15,10 +15,12 @@
  */
 import type {
   CrewClaimState,
+  CrewRunReason,
   CrewRunState,
   CrewStintState,
   CrewTaskSource,
   CrewTaskState,
+  ProviderRuntimeTurnStatus,
 } from "@t3tools/contracts";
 
 import { CREW_ROTATIONS_PER_ATTEMPT, type RotationReason } from "./rotationDecision.ts";
@@ -294,6 +296,54 @@ const TURN_ENDINGS: Readonly<Record<string, TurnEnding>> = {
 
 export const turnEndingOf = (terminalReason: string | undefined): TurnEnding =>
   (terminalReason === undefined ? undefined : TURN_ENDINGS[terminalReason]) ?? "agent";
+
+/** A turn that ended without the crewmate's report: its task stands `working`. */
+export const NO_REPORT = {
+  ending: "no-report",
+  detail: "its turn ended without a report",
+} as const;
+
+const RUN_PAUSE_WORDS: Readonly<Record<CrewRunReason, string>> = {
+  person: "you paused the run",
+  budget: "the run reached its budget",
+  time: "the run reached its time limit",
+  usage: "the usage window reached the run's stop",
+  refused: "the run's turn was refused",
+};
+
+/**
+ * How a turn that left its task `working` ends the task's attempt, and the
+ * words for why: its session hit the run's budget, the run's pause or stop
+ * interrupted it, something else did, it failed, or the crewmate ended it
+ * without a report. The next turn of the attempt opens it again.
+ */
+export const attemptEndingOf = (input: {
+  readonly state: ProviderRuntimeTurnStatus;
+  readonly terminalReason: string | undefined;
+  readonly errorMessage: string | undefined;
+  readonly run: { readonly state: CrewRunState; readonly reason: CrewRunReason | null } | undefined;
+}): { readonly ending: string; readonly detail: string } => {
+  if (turnEndingOf(input.terminalReason) === "budget") {
+    return { ending: "budget", detail: "its session reached the run's budget" };
+  }
+  switch (input.state) {
+    case "interrupted":
+    case "cancelled":
+      if (input.run?.state === "paused") {
+        return {
+          ending: "run-paused",
+          detail: RUN_PAUSE_WORDS[input.run.reason ?? "person"],
+        };
+      }
+      return input.run?.state === "stopped"
+        ? { ending: "run-stopped", detail: "the run stopped" }
+        : { ending: "interrupted", detail: "its turn was interrupted" };
+    case "failed":
+      return { ending: "failed", detail: input.errorMessage ?? "its turn failed" };
+    case "completed":
+      return NO_REPORT;
+  }
+};
 
 /**
  * A lead's plan waits for the person's Start unless the run lets the lead

@@ -9,8 +9,9 @@
  * merges again. A task stuck in `merging`, `checking` or `landing` goes back
  * through integration. A task whose turn was running when the server died is
  * re-queued once (an infrastructure ending), and starts again as the person
- * who created it. Then the figures the snapshot shows are read again and
- * every free crewmate's queue moves.
+ * who created it; one whose turn ended unrecorded ends its attempt when the
+ * task last moved, and carries on in a running run. Then the figures the
+ * snapshot shows are read again and every free crewmate's queue moves.
  *
  * @module crewBoot
  */
@@ -20,11 +21,19 @@ import * as Option from "effect/Option";
 import { ThreadId } from "@t3tools/contracts";
 
 import { grantAfterTurn, settleAllClaims } from "./crewClaims.ts";
-import { asRefusal, failureWords, memberOf, type CrewCore } from "./crewCore.ts";
+import {
+  asRefusal,
+  currentStint,
+  failureWords,
+  isWorking,
+  memberOf,
+  type CrewCore,
+} from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
 import { laneSpecsOn } from "./crewTurns.ts";
-import { advanceAll } from "./crewRunFlow.ts";
+import { NO_REPORT } from "./crewMachines.ts";
+import { advanceAll, carryOnStopped } from "./crewRunFlow.ts";
 import { repairWorktrees } from "./CrewStints.ts";
 import { requeueTask, saveTask, stepTask } from "./crewTasks.ts";
 
@@ -107,8 +116,24 @@ export const boot = (core: CrewCore) =>
         case "working": {
           const attempts = yield* asRefusal(core.store.attemptsOf(task.assignment));
           const attempt = attempts.find((row) => row.attempt === task.attempt);
-          if (!(yield* turnDied(core, attempt?.threadId ?? null))) break;
-          yield* requeueTask(core, task, "the Mate server restarted during its turn");
+          const thread = currentStint(applied, task.member)?.threadId ?? attempt?.threadId ?? null;
+          if (yield* turnDied(core, thread)) {
+            yield* requeueTask(core, task, "the Mate server restarted during its turn");
+          } else if (
+            attempt !== undefined &&
+            attempt.endedAt === null &&
+            !isWorking(core, applied, task.member)
+          ) {
+            // Its turn ended unrecorded: the attempt ends when the task last moved.
+            yield* asRefusal(
+              core.store.putAttempt({
+                ...attempt,
+                ending: NO_REPORT.ending,
+                endingDetail: NO_REPORT.detail,
+                endedAt: task.updatedAt,
+              }),
+            );
+          }
           break;
         }
         default:
@@ -131,6 +156,7 @@ export const boot = (core: CrewCore) =>
     // An Allow that waited on a turn the restart ended goes out now.
     for (const handle of applied.members.keys()) yield* grantAfterTurn(core, handle);
     yield* repairWorktrees(core, (yield* core.applied) ?? applied);
+    yield* carryOnStopped(core);
     yield* advanceAll(core);
     yield* core.changed;
   });

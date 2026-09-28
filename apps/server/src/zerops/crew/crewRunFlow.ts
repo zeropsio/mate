@@ -9,7 +9,8 @@
  *   passes*; with *I land everything* it waits for the person's **Land**;
  * - a turn that ended without a report gets one nudge per attempt, and a
  *   task carries on in a turn the run's own pause stopped, when the run goes
- *   on, and in the new conversation after an overflow;
+ *   on, and in the new conversation after an overflow; a run that starts or
+ *   resumes carries on every task standing `working` with no turn running;
  * - with *The crew may show work on dev*, a crewmate's request to show its
  *   copy is allowed as soon as its turn ends.
  *
@@ -46,6 +47,10 @@ import { readTaskReview, readTaskWait } from "./crewTaskData.ts";
 import { continueTask, openTaskOf, pump } from "./crewTasks.ts";
 
 const CARRY_ON = "Carry on with your task from your copy and its history.";
+
+/** Why a task that stood `working` with no turn running goes on when a run does. */
+const STOPPED_MIDWAY =
+  "Your task stopped mid-way, with no turn of yours running; the run carries it on now.";
 
 /**
  * One turn of the run into an open task. A refusal from admission pauses the
@@ -175,6 +180,31 @@ export const advance = (core: CrewCore, handle: string) =>
     const lead = leadOf(applied);
     if (lead !== undefined) yield* wakeLead(core, (yield* core.applied) ?? applied, lead);
     yield* core.changed;
+  });
+
+/**
+ * A run starts, resumes, or goes on after a restart: every crewmate whose
+ * task stands `working` with no turn running carries it on, as the run's
+ * starter — words the run's own pause left keep theirs. Its queue waits on
+ * that task until it lands, parks or is discarded.
+ */
+export const carryOnStopped = (core: CrewCore) =>
+  Effect.gen(function* () {
+    const applied = yield* core.applied;
+    if (applied === undefined || runningRun(applied) === undefined) return;
+    const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
+    for (const handle of applied.members.keys()) {
+      const stint = currentStint(applied, handle);
+      if (
+        stint === undefined ||
+        isWorking(core, applied, handle) ||
+        core.memory.carryOn.has(stint.threadId) ||
+        openTaskOf(tasks, handle)?.state !== "working"
+      ) {
+        continue;
+      }
+      core.memory.carryOn.set(stint.threadId, STOPPED_MIDWAY);
+    }
   });
 
 /**

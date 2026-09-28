@@ -9,7 +9,8 @@
  *   turn rotates the stint (and *Save and apply now* sends its continue
  *   turn); a task the crewmate reported done merges in and checks; a
  *   crewmate that freed up starts its next queued task. An interrupted turn
- *   ends like any other — its work is committed too.
+ *   ends like any other — its work is committed too. A turn that leaves its
+ *   task working ends the task's attempt, saying how and when.
  * - token usage and compaction are recorded for the section's context meter;
  *   a turn's cost and the logins' usage windows move a run's meters.
  * - `zerops_deploy` onto a service with lanes (any thread) freezes the
@@ -18,13 +19,14 @@
  *
  * @module crewTurns
  */
-import { CommandId, ThreadId, type SpiEvent } from "@t3tools/contracts";
+import { CommandId, ThreadId, type CrewRunReason, type SpiEvent } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import {
   asRefusal,
   currentStint,
   failureWords,
+  isWorking,
   memberOf,
   runningRun,
   type AppliedCrew,
@@ -40,7 +42,7 @@ import { RUN_PAUSED, recordRunSpend, recordUsage, turnCost } from "./crewRuns.ts
 import { rotate, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
 import { continueAfterSave, openTaskOf, parkTask, requeueTask, stepTask } from "./crewTasks.ts";
-import { turnEndingOf } from "./crewMachines.ts";
+import { attemptEndingOf, turnEndingOf } from "./crewMachines.ts";
 import { settleLeadWake } from "./crewLead.ts";
 import { flushState } from "./crewState.ts";
 import { CREW_ROTATE_AFTER_DEFAULT } from "./rotationDecision.ts";
@@ -209,6 +211,7 @@ const turnEnded = (
       yield* grantAfterTurn(core, handle);
     }
     yield* endedHow(core, member, stint, event);
+    yield* endAttempt(core, handle, event);
     if (member.row.kind === "lead") yield* settleLeadWake(core, applied, member);
     yield* core.background(flushState(core));
     const after = openTaskOf(yield* asRefusal(core.store.assignments(CREW_ID)), handle);
@@ -267,6 +270,43 @@ const endedHow = (
     if (runningRun(applied) !== undefined) {
       core.memory.carryOn.set(opened.threadId, opened.reason ?? "");
     }
+  });
+
+/**
+ * A turn that left its task `working`, with no turn of the crewmate's
+ * running now, ends the task's attempt: how, in words, and when. A
+ * re-queue's ending stands; the attempt's next turn opens it again.
+ */
+const endAttempt = (
+  core: CrewCore,
+  handle: string,
+  event: Extract<SpiEvent, { readonly type: "turn.completed" }>,
+) =>
+  Effect.gen(function* () {
+    const applied = yield* core.applied;
+    if (applied === undefined || isWorking(core, applied, handle)) return;
+    const task = openTaskOf(yield* asRefusal(core.store.assignments(CREW_ID)), handle);
+    if (task?.state !== "working") return;
+    const attempts = yield* asRefusal(core.store.attemptsOf(task.assignment));
+    const attempt = attempts.find((row) => row.attempt === task.attempt);
+    if (attempt === undefined || attempt.ending === "infrastructure") return;
+    const { ending, detail } = attemptEndingOf({
+      state: event.payload.state,
+      terminalReason: event.payload.terminalReason,
+      errorMessage: event.payload.errorMessage,
+      run:
+        applied.run === undefined
+          ? undefined
+          : { state: applied.run.state, reason: applied.run.reason as CrewRunReason | null },
+    });
+    yield* asRefusal(
+      core.store.putAttempt({
+        ...attempt,
+        ending,
+        endingDetail: detail,
+        endedAt: yield* core.now,
+      }),
+    );
   });
 
 /** Keeps a thread's last assistant message: the streamed text, closed by its item's end. */
