@@ -448,7 +448,9 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('data-maintain-visible-content-position="object"');
     expect(markup).toContain('data-maintain-visible-content-position-data="true"');
     expect(markup).toContain('data-maintain-visible-content-position-size="true"');
-    expect(markup).toContain('data-maintain-visible-content-position-restore="true"');
+    // Every row keeps its place: nothing opens in place any more, so no row
+    // takes the anchor for itself.
+    expect(markup).toContain('data-maintain-visible-content-position-restore="false"');
     expect(onAnchorReady).toHaveBeenCalledOnce();
     expect(onAnchorReady).toHaveBeenCalledWith(firstEntry.message.id, 1);
   });
@@ -762,7 +764,8 @@ describe("MessagesTimeline", () => {
 
     expect(markup).not.toContain("Show full message");
     expect(markup).toContain('data-user-message-collapsible="false"');
-    expect(markup).toMatch(/rounded-2xl bg-message[^"]* px-4 py-2\.5/);
+    // The chat's one bubble: 14 px in, 10 px down, as every bubble of the run is.
+    expect(markup).toMatch(/rounded-2xl bg-message[^"]* px-3\.5 py-2\.5/);
   });
 
   it("preserves arbitrary XML-like tags and comparisons in rendered user messages", async () => {
@@ -1098,105 +1101,6 @@ describe("MessagesTimeline", () => {
     expect(markup).toMatch(/data-zerops-subject-chip[^>]*>kanbandev</);
     expect(markup).toContain("kanbandev is live.");
   });
-
-  it("renders a muted failure marker for failed tool lifecycle entries", () => {
-    const markup = renderToStaticMarkup(
-      <MessagesTimeline
-        {...buildProps()}
-        timelineEntries={[
-          {
-            id: "entry-info",
-            kind: "work",
-            createdAt: "2026-03-17T19:12:27.000Z",
-            entry: {
-              id: "work-info",
-              createdAt: "2026-03-17T19:12:27.000Z",
-              label: "Status updated",
-              tone: "info",
-            },
-          },
-          {
-            id: "entry-1",
-            kind: "work",
-            createdAt: "2026-03-17T19:12:28.000Z",
-            entry: {
-              id: "work-1",
-              createdAt: "2026-03-17T19:12:28.000Z",
-              label: "Glob",
-              tone: "tool",
-              toolLifecycleStatus: "failed",
-              detail: "No files found",
-            },
-          },
-        ]}
-      />,
-    );
-
-    expect(markup).toContain("lucide-x");
-    expect(markup).toContain('aria-label="Tool call failed"');
-    // Ordinary tool failures render muted, not red.
-    expect(markup).not.toContain("text-destructive");
-  });
-
-  it("only withholds an expanded tool-call label click while text is selected", async () => {
-    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-    vi.stubGlobal("requestAnimationFrame", () => 0);
-    vi.stubGlobal("cancelAnimationFrame", () => {});
-    let renderer: ReactTestRenderer | undefined;
-    try {
-      await act(() => {
-        renderer = create(
-          <MessagesTimeline
-            {...buildProps()}
-            timelineEntries={[
-              {
-                id: "entry-standalone",
-                kind: "work",
-                createdAt: MESSAGE_CREATED_AT,
-                entry: {
-                  id: "work-standalone",
-                  createdAt: MESSAGE_CREATED_AT,
-                  toolCallId: "call-standalone",
-                  label: "Run lint",
-                  tone: "tool",
-                  itemType: "command_execution",
-                  command: "pnpm lint",
-                  toolLifecycleStatus: "completed",
-                },
-              },
-            ]}
-          />,
-        );
-      });
-      const findExpandedLabel = () =>
-        renderer!.root.findAll(
-          (node) => node.type === "span" && String(node.props.className).includes("select-text"),
-        )[0];
-      // The fork folds a lone tool call under its group toggle first; open
-      // collapsed disclosures until the tool row's label is expanded.
-      for (let attempt = 0; attempt < 3 && !findExpandedLabel(); attempt += 1) {
-        const collapsed = renderer!.root.findAll(
-          (node) =>
-            node.props["aria-expanded"] === false && typeof node.props.onClick === "function",
-        )[0];
-        if (!collapsed) break;
-        await act(() => collapsed.props.onClick());
-      }
-      const label = findExpandedLabel();
-      const stopPropagation = vi.fn();
-      // Only the click that ends a selection may be withheld from the row
-      // toggle; the plain click has to reach it so the label can collapse.
-      for (const isCollapsed of [false, true]) {
-        label!.props.onClick({
-          currentTarget: { ownerDocument: { getSelection: () => ({ isCollapsed }) } },
-          stopPropagation,
-        });
-      }
-      expect(stopPropagation).toHaveBeenCalledTimes(1);
-    } finally {
-      await act(() => renderer?.unmount());
-    }
-  });
 });
 
 describe("MessagesTimeline — the conversation", () => {
@@ -1288,7 +1192,7 @@ describe("MessagesTimeline — the conversation", () => {
     ...overrides,
   });
 
-  it("names the crewmate, never the Mate, on a crewmate's work line", async () => {
+  it("names the crewmate, never the Mate, on a crewmate's run status", async () => {
     const { CrewTimelineContext } = await import("../zerops/crew/CrewTaskCard");
     const { crewSnapshotFixture } =
       await import("@t3tools/client-runtime/zerops/crew/testing/fixtures");
@@ -1314,11 +1218,11 @@ describe("MessagesTimeline — the conversation", () => {
         />
       </CrewTimelineContext>,
     );
-    expect(markup).toContain("Backend worked for");
-    expect(markup).not.toContain("Assistant worked for");
+    expect(markup).toContain("Backend worked<");
+    expect(markup).not.toContain("Assistant worked");
   });
 
-  it("draws a settled turn as the message, one work line and the answer", () => {
+  it("draws a settled turn as the message, its card — chat, status, result — and the answer", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline
         {...buildProps()}
@@ -1332,54 +1236,45 @@ describe("MessagesTimeline — the conversation", () => {
         ]}
       />,
     );
-    // Settled, the line says who worked, how long and what the calls came
-    // to — no note preview, no face — and a read message carries no mark.
-    // How long runs to the answer, not to when the server closed the turn:
-    // the same span once another turn follows.
-    expect(markup).toContain('data-timeline-row-kind="work-line"');
-    expect(markup).toContain("Assistant worked for 1m");
-    expect(markup).not.toContain("Assistant worked for 1m 30s");
-    expect(markup).toContain("· ran 2 commands");
-    expect(markup).not.toContain("Building the shop now.");
-    expect(markup).not.toContain("1 note");
-    expect(markup).not.toContain("data-message-receipt");
-    expect(markup).not.toContain('data-zerops-primitive="mate-face"');
+    // The chat's last line says who worked and how long: to the answer, not
+    // to when the server closed the turn — the same span once another turn
+    // follows. No heading stands over the card.
+    expect(markup).toMatch(
+      /Assistant worked<\/span><\/span><span[^>]*data-work-line-clock[^>]*>1m</,
+    );
+    expect(markup).not.toContain('data-timeline-row-kind="work-line"');
+    // The record stays on the page, everything the Mate did in order (the
+    // owner, 2026-09-27: "after the work is done I'd leave it on the page").
+    const record = markup.slice(markup.indexOf('data-timeline-row-kind="record"'));
+    expect(record.indexOf("pnpm build")).toBeLessThan(record.indexOf("Building the shop now."));
+    expect(record.match(/>pnpm build</g)).toHaveLength(2);
+    // What its calls came to is the result's, as a pill that opens them.
+    expect(markup).toContain('aria-label="Ran 2 commands. Show them"');
     expect(markup).toContain("The shop builds.");
-    // The log stays closed: no tool rows, no "Work Log".
-    expect(markup).not.toContain('data-timeline-row-kind="log-activity"');
-    expect(markup).not.toContain("Work Log");
+    expect(markup).not.toContain("data-message-receipt");
+    // Nothing about the run opens a dialog: what it holds opens in place.
+    expect(markup).not.toContain('aria-haspopup="dialog"');
   });
 
-  it("opens a remembered work line into its log", async () => {
-    const { rememberTimelinePosition } = await import("./timelineScrollAnchoring");
-    rememberTimelinePosition("environment-local:thread-log", {
-      rowId: "message-1",
-      offsetWithinRow: 0,
-      scrollOffset: 0,
-      atEnd: true,
-      disclosures: {
-        stretches: new Set(["msg:message-1"]),
-        logItems: new Set(),
-        spawnEntries: new Set(),
-      },
-    });
+  // A step is a bubble of the run's chat; what it printed opens in place,
+  // under it — never a dialog (the owner, 2026-09-27: "I hate the dialog").
+  it("opens what a step printed in place, under its bubble", () => {
+    const built = tool("w1", 5);
     const markup = renderToStaticMarkup(
       <MessagesTimeline
         {...buildProps()}
-        routeThreadKey="environment-local:thread-log"
         latestTurn={settled}
         timelineEntries={[
           buildUserTimelineEntry("Build it"),
-          tool("w1", 5),
-          assistant("a1", 10, "Building the shop now."),
-          assistant("a2", 60, "The shop builds."),
+          { ...built, entry: { ...built.entry, detail: "dist/index.js  48.2 kB" } },
+          assistant("a1", 60, "The shop builds."),
         ]}
       />,
     );
-    expect(markup).toContain('data-timeline-row-kind="log-activity"');
-    expect(markup).toContain("Ran 1 command");
-    expect(markup).toContain('data-timeline-row-kind="log-note"');
-    expect(markup).toContain('aria-expanded="true"');
+    expect(markup).toMatch(
+      /<div[^>]*data-chat-bubble="tool"[^>]*data-chat-kind="step:command"[^>]*>(?:<span class="absolute[^"]*">[\s\S]*?<\/svg><\/span><\/span><\/span>)<button aria-expanded="false" aria-label="pnpm build\. Show what it returned"/,
+    );
+    expect(markup).not.toContain("dist/index.js");
   });
 
   it("says the Mate is working from the moment a message is sent", () => {
@@ -1391,9 +1286,9 @@ describe("MessagesTimeline — the conversation", () => {
         timelineEntries={[buildUserTimelineEntry("Deploy it")]}
       />,
     );
-    expect(markup).toContain('data-timeline-row-id="work-line:msg:message-1"');
-    expect(markup).toContain("Assistant is working ·");
-    expect(markup).toContain("Thinking");
+    // The card stands from the first frame, the Mate's status its last line.
+    expect(markup).toContain('data-timeline-row-id="record:msg:message-1"');
+    expect(markup).toContain("Assistant is thinking");
     expect(markup).toContain('data-work-line="working"');
     expect(markup).toContain('data-message-receipt="sent"');
   });
@@ -1420,13 +1315,14 @@ describe("MessagesTimeline — the conversation", () => {
       />,
     );
 
-  it("streams the Mate's words at the live tail, a failure where it happened, the newest last", () => {
+  it("records the Mate's words and steps as they happen, a failure where it happened", () => {
     const markup = liveTimeline([
       assistant("a1", 5, "Checking the build."),
       {
         ...tool("t9", 10),
         entry: {
           ...tool("t9", 10).entry,
+          command: undefined,
           tone: "error" as const,
           label: "Run the type check",
           sourceActivityKind: "task.completed" as const,
@@ -1435,16 +1331,21 @@ describe("MessagesTimeline — the conversation", () => {
       assistant("a2", 15, "Fixing the types."),
       tool("w2", 16),
     ]);
+    const record = markup.slice(markup.indexOf('data-timeline-row-kind="record"'));
+    expect(record).toMatch(/data-chat-bubble="failed"[^>]*data-chat-kind="task"/);
+    expect(record).toContain("Run the type check failed");
+    // Oldest first, the step it took last.
+    expect(record.indexOf("Checking the build.")).toBeLessThan(
+      record.indexOf("Run the type check failed"),
+    );
+    expect(record.indexOf("Run the type check failed")).toBeLessThan(
+      record.indexOf("Fixing the types."),
+    );
+    expect(record.indexOf("Fixing the types.")).toBeLessThan(record.indexOf("pnpm build"));
+    // Between steps the status line says it thinks: no word of what it did twice.
+    expect(record).toContain("Assistant is thinking");
+    // What runs alongside stands under the record.
     expect(markup).toContain("data-conversation-working");
-    expect(markup.match(/data-stream-bubble="note"/g)).toHaveLength(2);
-    expect(markup).toContain('data-stream-bubble="failed"');
-    expect(markup).toContain("Run the type check failed");
-    // Oldest first: the newest bubble is last, and the only one of age 0.
-    expect(markup.indexOf("Checking the build.")).toBeLessThan(markup.indexOf("Fixing the types."));
-    expect(markup.match(/data-stream-age="0"/g)).toHaveLength(1);
-    const newest = markup.slice(markup.indexOf('data-stream-age="0"'));
-    expect(newest).toContain("Fixing the types.");
-    expect(newest).not.toContain("Checking the build.");
   });
 
   it("says the Mate is writing, and shows none of its words, until they are known", () => {
@@ -1453,15 +1354,14 @@ describe("MessagesTimeline — the conversation", () => {
       tool("w1", 5),
       { ...writing, message: { ...writing.message, streaming: true } },
     ]);
-    expect(markup).toContain('data-stream-activity="writing"');
-    expect(markup).toContain('aria-label="Writing"');
+    expect(markup).toContain("Assistant is writing");
     expect(markup).not.toContain("Checking /status next.");
   });
 
   it("shows the Mate composing before it said anything", () => {
     const markup = liveTimeline([tool("w1", 5)]);
-    expect(markup).toContain('data-stream-activity="thinking"');
-    expect(markup).not.toContain('data-stream-bubble="note"');
+    expect(markup).toContain("Assistant is thinking");
+    expect(markup).not.toContain('data-chat-kind="note"');
   });
 
   const call = (id: string, second: number, detail: string) => ({
@@ -1476,23 +1376,29 @@ describe("MessagesTimeline — the conversation", () => {
     },
   });
 
-  it("says what the Mate is on beside its face, once, and never a call's arguments", () => {
+  // The step it is taking, in words and with what it is on — the page it
+  // reads, the command it runs (the owner, 2026-09-27: "why isn't the chat
+  // showing even the commands it runs?") — once, beside its face.
+  it("says the step the Mate is taking beside its face, once, with what it is on", () => {
     const markup = liveTimeline([
       assistant("a1", 5, "Reading the docs first."),
-      call("c1", 8, 'WebFetch: {"url":"https://docs.example.dev"}'),
+      call("c1", 8, 'WebFetch: {"url":"https://docs.example.dev/guides"}'),
     ]);
-    expect(markup).toContain('data-stream-activity="doing"');
-    // The panel says it; the line above keeps to its clock.
-    expect(markup.match(/Reading a web page/g)).toHaveLength(1);
-    expect(markup).not.toContain("docs.example.dev");
+    expect(markup).toContain('data-chat-kind="step:web"');
+    expect(markup).toContain('data-mate-face-state="working"');
+    // Beside the face and nowhere else: the chat keeps the same bubble once it returns.
+    expect(markup.match(/docs\.example\.dev\/guides/g)).toHaveLength(1);
+    expect(markup).toContain(">Reading<");
+    expect(markup).not.toContain("WebFetch");
   });
 
   it("waits on the person when the Mate asked with its question tool", () => {
     const markup = liveTimeline([
       call("c1", 8, 'AskUserQuestion: {"questions":[{"question":"Teal or amber?"}]}'),
     ]);
-    expect(markup).toContain('data-stream-activity="waiting"');
-    expect(markup).toContain("Waiting for your answer");
+    expect(markup).toContain('data-run-status="waiting"');
+    expect(markup).toContain('data-mate-face-state="needs"');
+    expect(markup).toContain("Assistant is waiting for your answer");
     expect(markup).not.toContain("AskUserQuestion");
   });
 
@@ -1535,7 +1441,9 @@ describe("MessagesTimeline — the conversation", () => {
       />,
     );
     const answer = markup.slice(markup.indexOf("data-person-answer"));
-    expect(answer).toContain('data-mate-speech="said"');
+    // The question in the Mate's prose, as its answers stand: no bubble on the page.
+    expect(answer).toContain("data-mate-question");
+    expect(markup).not.toContain("data-mate-speech");
     expect(answer.indexOf("Which accent do you prefer?")).toBeLessThan(answer.indexOf("Teal"));
     // The question's short header was never the person's words.
     expect(markup).not.toContain("Accent colour");
@@ -1558,14 +1466,20 @@ describe("MessagesTimeline — the conversation", () => {
                 label: "Run the smoke tests",
                 sourceActivityKind: "task.completed",
                 taskId: "task-1",
+                detail: "4 passed",
               },
             },
           ] as Parameters<typeof MessagesTimeline>[0]["timelineEntries"]
         }
       />,
     );
-    expect(markup).toContain("Background task finished");
-    expect(markup).toContain("Run the smoke tests");
+    // The task in its own words, and where it ran; what it reported opens
+    // under it.
+    expect(markup).toContain("Run the smoke tests finished");
+    expect(markup).toContain("in the background");
+    expect(markup).toContain(
+      'aria-label="Run the smoke tests finished, in the background. Show what it reported"',
+    );
     expect(markup).not.toContain("1 background task ");
   });
 
@@ -1591,6 +1505,7 @@ describe("MessagesTimeline — the conversation", () => {
                 taskId: "task-1",
                 agentRole: "general-purpose",
                 tone: "info",
+                detail: "No issues found.",
                 // Spawned mid-run, it finished once the run had ended.
                 updatedAt: at(45),
               },
@@ -1601,11 +1516,12 @@ describe("MessagesTimeline — the conversation", () => {
         }
       />,
     );
-    const line = markup.indexOf("Helper finished");
+    const line = markup.indexOf("Review the endpoint finished");
     expect(line).toBeGreaterThan(markup.indexOf("It reports back when done."));
     expect(line).toBeLessThan(markup.indexOf("The review came back clean."));
-    expect(markup).toContain("Review the endpoint");
-    expect(markup).not.toContain("Background task finished");
+    expect(markup).toContain(
+      'aria-label="Review the endpoint finished, helper. Show what it reported"',
+    );
   });
 
   it.each([

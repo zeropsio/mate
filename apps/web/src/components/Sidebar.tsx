@@ -222,19 +222,43 @@ import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { useNowMs } from "../zerops/useNowMs";
 import { useZeropsContainers } from "../zerops/zeropsContainers";
-import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
-import { SidebarZeropsTree, type SidebarProjectFlow } from "./zerops/SidebarZeropsTree";
+import {
+  SidebarZeropsTree,
+  type SidebarDrawn,
+  type SidebarProjectFlow,
+  type SidebarRemembered,
+} from "./zerops/SidebarZeropsTree";
 import { sidebarStopReads } from "./zerops/SidebarZeropsTree.logic";
 import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
+import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
+import { useSidebarWaiting } from "../zerops/useSidebarWaiting";
+import { shownInScope, useMateScope } from "../zerops/mateScope";
+import { SidebarJumpRow } from "./zerops/SidebarJumpRow";
+import { useOpenMate } from "../zerops/useOpenMate";
+import { SidebarWaitingStack } from "./zerops/SidebarWaitingStack";
+
+import { SidebarMatePeekLive } from "./zerops/SidebarMatePeekLive";
 import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
 import { placedBirthsIn, useZeropsBirths } from "../zerops/zeropsBirths";
 import {
   canCreateProjectsInOrganization,
   flowVerbKey,
+  readZeropsGroupTags,
   type EnvironmentRow,
-  resolvePrimaryConversation,
 } from "@t3tools/client-runtime/zerops";
+import {
+  menuMemory,
+  rememberedActivity,
+  rememberedChangeOf,
+  rememberedChanges,
+  rememberedRowOf,
+  rememberMenu,
+  withChanges,
+  withRows,
+  withStops,
+  type RememberedRow,
+} from "../zerops/menuMemory";
 import {
   candidatesNotice,
   findCandidate,
@@ -1795,7 +1819,8 @@ export default function Sidebar() {
         : candidatesNotice(zeropsListing, ZEROPS_SIDEBAR_SURFACE, zeropsNowMs),
     [zeropsListing, zeropsNowMs, zeropsSession.organizationStatus],
   );
-  const zeropsLinks = useEnvironmentLinks();
+  // A Mate's conversation, from its row — the jump box opens it the same way.
+  const openMate = useOpenMate();
   // Each project's flow — what its Mates have waiting, what its environments
   // run, whether there is something to release — read once for the account
   // (`ZeropsProjectFlowProvider`) and drawn under the project as a timeline.
@@ -1809,6 +1834,8 @@ export default function Sidebar() {
       const stopReads = sidebarStopReads({ flow, deployments: zeropsProjectFlow.deployments });
       return {
         pullRequests: flow.pullRequests,
+        // Until Gitea answers, the tree draws the change rows it remembers.
+        changesKnown: flow.changesKnown,
         // The pull requests that have landed on `main`: without it `groupFlow`
         // never sees a group's own merged code, so it read `main` as empty and
         // *Add production* — `groupFlow.ts`'s own `add-production` case — could
@@ -2287,6 +2314,74 @@ export default function Sidebar() {
   // screen reads too (`agentActivity.ts`), so a Mate says the same thing in
   // both places.
   const zeropsAgentActivity = useZeropsAgentActivity();
+  // Each Mate's own menu: the projects screen's verbs, and this viewer's own.
+  const zeropsMateMenus = useSidebarMateMenus({ threads });
+  // What a Mate's row says: its conversation's once read through an open
+  // socket, and until then what this browser remembers it saying
+  // (`menuMemory.ts`) — a reload paints whole rows, not names that grow as
+  // each Mate connects.
+  const zeropsRowActivity = useCallback(
+    (candidate: (typeof zeropsCandidates)[number]) => {
+      const live =
+        candidate.group === "connected" && candidate.environmentId !== undefined
+          ? zeropsAgentActivity.get(candidate.environmentId)
+          : undefined;
+      return live ?? rememberedActivity(candidate.project.id);
+    },
+    [zeropsAgentActivity],
+  );
+  // Remember each connected Mate's row as its conversation says it, and
+  // forget whatever the listing no longer holds.
+  useEffect(() => {
+    if (!zeropsHeld.complete) return;
+    const rows: Record<string, RememberedRow> = {};
+    const listed = new Set<string>();
+    const groups = new Set<string>();
+    for (const candidate of zeropsCandidates) {
+      listed.add(candidate.project.id);
+      const { groupId } = readZeropsGroupTags(candidate.project.tagList);
+      if (groupId !== undefined) groups.add(groupId);
+      if (candidate.group !== "connected" || candidate.environmentId === undefined) continue;
+      const live = zeropsAgentActivity.get(candidate.environmentId);
+      if (live !== undefined) rows[candidate.project.id] = rememberedRowOf(live);
+    }
+    rememberMenu((memory) =>
+      withStops(withChanges(withRows(memory, rows, listed), {}, groups), {}, listed),
+    );
+  }, [zeropsAgentActivity, zeropsCandidates, zeropsHeld.complete]);
+  // The change rows and stop lines the tree drew of what it read, for the
+  // next reload to paint while Gitea and the platform answer again.
+  const zeropsRemembered = useMemo<SidebarRemembered>(
+    () => ({
+      changes: rememberedChanges,
+      stop: (projectId) => menuMemory().stops[projectId],
+    }),
+    [],
+  );
+  const rememberZeropsDrawn = useCallback((drawn: SidebarDrawn) => {
+    rememberMenu((memory) =>
+      withStops(
+        withChanges(
+          memory,
+          Object.fromEntries(
+            Object.entries(drawn.changes).map(([groupId, pulls]) => [
+              groupId,
+              pulls.map(rememberedChangeOf),
+            ]),
+          ),
+        ),
+        drawn.stops,
+      ),
+    );
+  }, []);
+  // The Mates waiting on the viewer, for the header's faces and ⌥↓.
+  const zeropsActivityOf = useCallback(
+    (candidate: (typeof zeropsCandidates)[number]) =>
+      candidate.environmentId === undefined
+        ? undefined
+        : zeropsAgentActivity.get(candidate.environmentId),
+    [zeropsAgentActivity],
+  );
 
   // The row for the environment whose conversation is open. A fresh draft
   // has no thread yet, but it knows its environment — and that is the one
@@ -2300,6 +2395,30 @@ export default function Sidebar() {
     );
     return open.kind === "found" ? open.row.project.id : null;
   }, [routeDraftThread?.environmentId, routeThreadRef?.environmentId, zeropsListing]);
+  // Whose Mates the menu lists (the account menu's Mine / Everyone): the
+  // tree and the waiting faces read the same answer.
+  const [zeropsMateScope] = useMateScope();
+  const zeropsShown = useCallback(
+    (candidate: (typeof zeropsCandidates)[number]) =>
+      shownInScope(
+        zeropsMateScope,
+        zeropsMateOwner(candidate),
+        candidate.project.id === activeZeropsProjectId,
+      ),
+    [activeZeropsProjectId, zeropsMateOwner, zeropsMateScope],
+  );
+  const zeropsWaiting = useSidebarWaiting({
+    candidates: zeropsCandidates,
+    activityOf: zeropsActivityOf,
+    shown: zeropsShown,
+    activeProjectId: activeZeropsProjectId,
+    beforeReveal: isMobile
+      ? () => {
+          setOpenMobile(true);
+        }
+      : undefined,
+    enabled: zeropsSignedIn,
+  });
 
   // Settled threads stay in the live shell stream (settled ≠ archived), so
   // the partition works directly off live shells: no archived-snapshot
@@ -3785,7 +3904,14 @@ export default function Sidebar() {
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
   return (
     <>
-      <SidebarChromeHeader isElectron={isElectron} />
+      <SidebarChromeHeader
+        isElectron={isElectron}
+        waiting={
+          zeropsSignedIn ? (
+            <SidebarWaitingStack mates={zeropsWaiting.mates} onNext={zeropsWaiting.next} />
+          ) : undefined
+        }
+      />
       <SidebarContent
         fixedHeader={
           // Lifted above the stage backdrop, whose fade bleeds below the
@@ -3793,16 +3919,21 @@ export default function Sidebar() {
           <SidebarGroup className="z-[1] gap-1">
             {rosterOnly ? (
               // Every environment is in the roster: there is no thread list to
-              // search and no project to start a thread in. The one thing to
-              // make from here is another project.
-              <SidebarMenuButton
-                type="button"
-                className="h-8 w-full justify-start gap-2 px-2 text-sm font-medium text-sidebar-muted-foreground hover:text-sidebar-foreground"
-                onClick={navigateToNewZeropsProject}
-              >
-                <PlusIcon className="size-4 shrink-0" />
-                <span>New project</span>
-              </SidebarMenuButton>
+              // search and no project to start a thread in. The jump box finds
+              // anything the menu holds, and the one thing to make from here
+              // is another project.
+              <SidebarJumpRow
+                onJump={() => {
+                  // A phone's menu steps aside for the box, and comes back
+                  // to show what is found in it (`SidebarRevealBridge`).
+                  if (isMobile) setOpenMobile(false);
+                  openCommandPalette();
+                }}
+                onNewProject={navigateToNewZeropsProject}
+                shortcut={
+                  shortcutLabelForCommand(keybindings, "commandPalette.toggle") ?? undefined
+                }
+              />
             ) : (
               <div className="flex items-center gap-1">
                 <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground">
@@ -4029,51 +4160,25 @@ export default function Sidebar() {
               onBrowseProjects={navigateToZeropsProjects}
               getFlow={zeropsSidebarFlowWithAsk}
               getOwner={zeropsMateOwner}
+              getMateActions={zeropsMateMenus.getMateActions}
+              phone={isMobile}
+              renderPeek={(peek) => <SidebarMatePeekLive peek={peek} />}
+              shown={zeropsShown}
+              timestampFormat={timestampFormat}
               onOpenGroup={openGroup}
-              getActivity={(candidate) =>
-                candidate.environmentId === undefined
-                  ? undefined
-                  : zeropsAgentActivity.get(candidate.environmentId)
-              }
+              getActivity={zeropsRowActivity}
+              remembered={zeropsRemembered}
+              onDrawn={rememberZeropsDrawn}
               onSelect={(candidate) => {
                 if (isMobile) {
                   setOpenMobile(false);
                 }
-                // Registered here and not gone or replaced: open it, whatever
-                // its socket is doing — the route says what the Mate is up
-                // to. Otherwise hand off to the projects screen, which owns
-                // the connect flow — better than a row that looks clickable
-                // and quietly does nothing.
-                const environmentId = zeropsLinks.linkTarget(candidate);
-                if (environmentId === undefined) {
-                  void router.navigate({ to: "/zerops" });
-                  return;
-                }
-                // Open the Mate's main chat, not whichever project anywhere
-                // was touched last — which is what landing on the index
-                // would pick. Its other chats are in its conversation strip.
-                const { primary } = resolvePrimaryConversation(
-                  threads.filter((thread) => thread.environmentId === environmentId),
-                );
-                if (primary !== undefined) {
-                  void router.navigate({
-                    to: "/$environmentId/$threadId",
-                    params: buildThreadRouteParams(scopeThreadRef(environmentId, primary.id)),
-                  });
-                  return;
-                }
-                // No conversation yet: start one in the environment's project.
-                const project = projects.find((entry) => entry.environmentId === environmentId);
-                if (project !== undefined) {
-                  void handleNewThreadRef.current(
-                    scopeProjectRef(project.environmentId, project.id),
-                  );
-                  return;
-                }
-                void router.navigate({ to: "/" });
+                openMate(candidate);
               }}
             />
           ) : null}
+          {/* The dialogs a Mate's own menu opens: rename, hand over, move. */}
+          {zeropsSignedIn ? zeropsMateMenus.dialogs : null}
           {isSearchingThreads ? (
             threadSearchResults.length > 0 ? (
               <TooltipProvider

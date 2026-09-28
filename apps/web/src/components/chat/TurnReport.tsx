@@ -1,78 +1,68 @@
 /**
- * What a settled turn did, as the report its panel settles into — made of
- * the same parts the person watched run: each thing leads with the disc its
- * status bar wore, now in the tone it ended in. Each service it left live
- * with its link, a failure it came back from, the changes that landed, the
- * files it changed, the checks with every take in its device's shape, what
- * it created and removed, and what it could not do — pills and takes on the
- * run's card, on its text edge, where the panel was: under the line and
- * before the answer.
+ * What a settled run did, as its result — made of the same parts the person
+ * watched run: each service it left live with its link, a failure it came
+ * back from, the changes that landed, the files it changed, the checks, what
+ * it created and removed, what it could not do, and what its calls came to
+ * ("Edited 7 files", "Ran 5 commands", "Started 11 helpers" — the owner,
+ * 2026-09-27: "why isn't [that line] in the 'result' style?"). Pills at the
+ * bottom of the run's card, under its chat and before the answer.
+ *
+ * A pill leads with a dot only where it has a state to say — deployed,
+ * failed, all passed; a count needs none. One with more behind it opens it:
+ * the diff, the app, or — in place, under the pills — the calls it counts as
+ * the chat's own bubbles, and the pictures the checks took.
  */
 import type { TurnId } from "@t3tools/contracts";
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
-import {
-  ArrowUpRightIcon,
-  CheckIcon,
-  CircleAlertIcon,
-  FileDiffIcon,
-  GitMergeIcon,
-  MinusIcon,
-  MonitorCheckIcon,
-  MonitorXIcon,
-  PlusIcon,
-  RocketIcon,
-  RotateCcwIcon,
-  XIcon,
-} from "lucide-react";
+import { ArrowUpRightIcon } from "lucide-react";
+import { useState } from "react";
 
 import { cn } from "~/lib/utils";
 import { ServiceBrowserLink } from "../ServiceBrowserLink";
-import { browserCheckDevice, TAKE_ASPECT } from "./BrowserStrip";
-import {
-  browserCheckCaption,
-  browserTakeState,
-  type OutcomeModel,
-  type OutcomeService,
-} from "./conversation.logic";
-import { Pill, StatusDisc, type DiscTone } from "./ConversationPills";
+import { BrowserTakes } from "./BrowserStrip";
+import type { OutcomeActivity, OutcomeModel, OutcomeService } from "./conversation.logic";
+import { Pill } from "./ConversationPills";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
-import { useTakeThumbnail } from "./takeThumbnail";
+import { CallGroup, HelpersBubble, StepBubble } from "./RunChat";
+import { stepOf } from "./workSteps.logic";
 
-const SERVICE_DISC: Record<OutcomeService["tone"], DiscTone> = {
-  ok: "ok",
-  failed: "failed",
-  attention: "attention",
-  busy: "busy",
+type DotTone = "ok" | "failed" | "attention" | "busy" | "idle";
+
+const DOT_TONE: Record<DotTone, string> = {
+  ok: "bg-status-ok",
+  failed: "bg-status-failed",
+  attention: "bg-status-attention",
+  busy: "bg-status-busy",
+  idle: "bg-muted-foreground/40",
 };
 
-const SERVICE_ICON: Record<OutcomeService["tone"], typeof CheckIcon> = {
-  ok: CheckIcon,
-  failed: XIcon,
-  attention: CircleAlertIcon,
-  busy: RocketIcon,
-};
-
-/** A take in the report, in the shape of the device it was taken on. */
-const TAKE_CLASS = {
-  desktop: "w-32",
-  tablet: "w-15",
-  phone: "w-9",
-} as const;
+/** A pill's state, where it has one: a dot in its tone, the pill's first thing. */
+function Dot({ tone }: { readonly tone: DotTone }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn("ms-1.5 size-1.5 shrink-0 rounded-full", DOT_TONE[tone])}
+    />
+  );
+}
 
 function compactCount(value: number): string {
   return value >= 1000 ? `${(value / 1000).toFixed(value >= 10_000 ? 0 : 1)}k` : String(value);
 }
 
 const SERVICE_PILL_CLASS =
-  "inline-flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-full border border-border/60 bg-card ps-1 pe-2.5 text-line";
+  "inline-flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-full border border-border/60 bg-card pe-2.5 text-line";
+
+const SERVICE_DOT: Record<OutcomeService["tone"], DotTone> = {
+  ok: "ok",
+  failed: "failed",
+  attention: "attention",
+  busy: "busy",
+};
 
 function ServicePill({ service }: { readonly service: OutcomeService }) {
-  const Icon = SERVICE_ICON[service.tone];
   const words = (
     <>
-      <StatusDisc size="sm" tone={SERVICE_DISC[service.tone]}>
-        <Icon aria-hidden="true" className="size-3" />
-      </StatusDisc>
+      <Dot tone={SERVICE_DOT[service.tone]} />
       <span className="shrink-0 font-medium text-foreground">{service.hostname}</span>
       <span
         className={cn(
@@ -83,7 +73,7 @@ function ServicePill({ service }: { readonly service: OutcomeService }) {
         {service.word}
       </span>
       {service.version ? (
-        <span className="shrink-0 font-mono text-muted-foreground">{service.version}</span>
+        <span className="shrink-0 font-mono text-muted-foreground text-xs">{service.version}</span>
       ) : null}
     </>
   );
@@ -112,63 +102,18 @@ function ServicePill({ service }: { readonly service: OutcomeService }) {
   );
 }
 
-/** A take's picture, its content cropped in when the page is mostly empty. */
-function TakeThumbnail({ src, aspect }: { readonly src: string; readonly aspect: number }) {
-  const thumbnail = useTakeThumbnail(src, aspect);
-  return <img alt="" className="block size-full object-cover object-top" src={thumbnail} />;
-}
-
-function Takes({
-  takes,
-  onOpenImage,
-}: {
-  readonly takes: ReadonlyArray<ZeropsOperation>;
-  readonly onOpenImage: (preview: ExpandedImagePreview) => void;
-}) {
-  // A structure check has no picture: the report's pill counts it.
-  const shots = takes.flatMap((take) =>
-    take.screenshot
-      ? [{ key: take.key, src: take.screenshot.src, name: browserCheckCaption(take) }]
-      : [],
-  );
-  if (shots.length === 0) return null;
+/** What an activity pill counts, opened under the pills: each call as its row in the chat's card. */
+function ActivityCalls({ activity }: { readonly activity: OutcomeActivity }) {
   return (
-    // The first take on the text edge: the room its scroller keeps for a
-    // take's ring and the focus ring hangs outside it.
-    <div
-      className="-m-1 flex min-w-0 items-end gap-2 overflow-x-auto p-1 scrollbar-none"
-      data-report-takes
-    >
-      {takes.map((take) => {
-        const src = take.screenshot?.src;
-        if (src === undefined) return null;
-        const state = browserTakeState(take, takes);
-        const device = browserCheckDevice(take);
-        const index = shots.findIndex((shot) => shot.key === take.key);
-        return (
-          <button
-            key={take.key}
-            aria-label={`${browserCheckCaption(take)}${take.deviceName ? ` on ${take.deviceName}` : ""}${state === "failed" ? ", failed" : state === "retried" ? ", retried" : ""}. Open the screenshot`}
-            className={cn(
-              "h-20 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-              TAKE_CLASS[device],
-              state === "failed"
-                ? "border-status-failed ring-1 ring-status-failed"
-                : state === "retried"
-                  ? "border-status-attention"
-                  : "border-border",
-            )}
-            data-report-take={device}
-            onClick={() =>
-              onOpenImage({ images: shots.map(({ src, name }) => ({ src, name })), index })
-            }
-            type="button"
-          >
-            <TakeThumbnail aspect={TAKE_ASPECT[device]} src={src} />
-          </button>
-        );
-      })}
-    </div>
+    <CallGroup>
+      {activity.entries.map((entry) =>
+        activity.kind === "helpers" ? (
+          <HelpersBubble entry={entry} key={entry.id} />
+        ) : (
+          <StepBubble key={entry.id} step={stepOf(entry, undefined, false)} />
+        ),
+      )}
+    </CallGroup>
   );
 }
 
@@ -181,16 +126,21 @@ export function TurnReport({
   readonly outcome: OutcomeModel;
   readonly onOpenTurnDiff: (turnId: TurnId) => void;
   readonly onOpenImage: (preview: ExpandedImagePreview) => void;
-  /** The person watched the turn run: the report arrives as its panel settles. */
+  /** The person watched the turn run: the result arrives as what ran alongside settles. */
   readonly settling?: boolean;
 }) {
   const checks = outcome.checks;
+  // One pill open at a time: what it holds stands under the pills.
+  const [open, setOpen] = useState<string | null>(null);
+  const toggle = (key: string) => setOpen((current) => (current === key ? null : key));
+  const openActivity = outcome.activity.find((activity) => `activity:${activity.words}` === open);
+  const hasTakes = checks !== null && checks.takes.some((take) => take.screenshot);
   return (
     <section
-      aria-label="What this turn did"
-      // The stretch's card is the report's tray: its pills and takes sit on it.
+      aria-label="What this run did"
       className={cn(
-        "grid w-fit max-w-full gap-2 pb-1",
+        "grid max-w-full gap-2 pt-1 pb-1",
+        open === null ? "w-fit" : "w-full",
         settling && "origin-top-left animate-report-in motion-reduce:animate-none",
       )}
       data-turn-report
@@ -206,9 +156,7 @@ export function TurnReport({
                   key={`${service.hostname}:recovered`}
                   label={`${service.hostname}: ${service.recovered}`}
                 >
-                  <StatusDisc size="sm" tone="attention">
-                    <RotateCcwIcon aria-hidden="true" className="size-3" />
-                  </StatusDisc>
+                  <Dot tone="attention" />
                   <span className="min-w-0 truncate text-status-attention-text">
                     {service.recovered}
                   </span>
@@ -218,9 +166,7 @@ export function TurnReport({
         )}
         {outcome.landed.map((change) => (
           <Pill key={change.key} label={`${change.line} landed: ${change.title}`}>
-            <StatusDisc size="sm" tone="ok">
-              <GitMergeIcon aria-hidden="true" className="size-3" />
-            </StatusDisc>
+            <Dot tone="ok" />
             <span className="shrink-0 font-medium text-foreground">{change.line}</span>
             <span className="min-w-0 max-w-80 truncate text-muted-foreground">{change.title}</span>
           </Pill>
@@ -230,10 +176,7 @@ export function TurnReport({
             label={`${outcome.files.count} files changed. Review the diff`}
             onClick={() => onOpenTurnDiff(outcome.files!.turnId)}
           >
-            <StatusDisc size="sm" tone="idle">
-              <FileDiffIcon aria-hidden="true" className="size-3" />
-            </StatusDisc>
-            <span className="shrink-0 text-foreground">
+            <span className="ms-1.5 shrink-0 text-foreground">
               {outcome.files.count === 1 ? "1 file" : `${outcome.files.count} files`}
             </span>
             <span className="shrink-0 text-diff-addition-foreground tabular-nums">
@@ -248,15 +191,11 @@ export function TurnReport({
         ) : null}
         {checks !== null ? (
           <Pill
-            label={`${checks.count} checks of ${checks.views} pages, ${checks.failures > 0 ? `${checks.failures} failed` : "all passed"}`}
+            expanded={hasTakes ? open === "checks" : undefined}
+            label={`${checks.count} checks of ${checks.views} pages, ${checks.failures > 0 ? `${checks.failures} failed` : "all passed"}${hasTakes ? ". Show the pictures" : ""}`}
+            onClick={hasTakes ? () => toggle("checks") : null}
           >
-            <StatusDisc size="sm" tone={checks.failures > 0 ? "failed" : "ok"}>
-              {checks.failures > 0 ? (
-                <MonitorXIcon aria-hidden="true" className="size-3" />
-              ) : (
-                <MonitorCheckIcon aria-hidden="true" className="size-3" />
-              )}
-            </StatusDisc>
+            <Dot tone={checks.failures > 0 ? "failed" : "ok"} />
             <span className="shrink-0 text-foreground">
               {checks.views === 1 ? "1 page" : `${checks.views} pages`}
             </span>
@@ -266,41 +205,60 @@ export function TurnReport({
                 checks.failures > 0 ? "text-status-failed-text" : "text-muted-foreground",
               )}
             >
-              · {checks.count === 1 ? "1 check" : `${checks.count} checks`} ·{" "}
               {checks.failures > 0
                 ? checks.failures === 1
-                  ? "1 failed"
-                  : `${checks.failures} failed`
-                : "all passed"}
+                  ? "1 check failed"
+                  : `${checks.failures} checks failed`
+                : checks.count === 1
+                  ? "checked"
+                  : `${checks.count} checks passed`}
             </span>
           </Pill>
         ) : null}
         {outcome.created.map((name) => (
           <Pill key={`created:${name}`} label={`Created ${name}`}>
-            <StatusDisc size="sm" tone="ok">
-              <PlusIcon aria-hidden="true" className="size-3" />
-            </StatusDisc>
+            <Dot tone="ok" />
+            <span className="text-muted-foreground">Created</span>
             <span className="min-w-0 truncate text-foreground">{name}</span>
           </Pill>
         ))}
         {outcome.removed.map((name) => (
           <Pill key={`removed:${name}`} label={`Removed ${name}`}>
-            <StatusDisc size="sm" tone="idle">
-              <MinusIcon aria-hidden="true" className="size-3" />
-            </StatusDisc>
-            <span className="min-w-0 truncate text-muted-foreground">{name}</span>
+            <Dot tone="idle" />
+            <span className="text-muted-foreground">Removed</span>
+            <span className="min-w-0 truncate text-foreground">{name}</span>
           </Pill>
         ))}
         {outcome.notDone.map((line) => (
           <Pill key={`not-done:${line}`} label={`Not done: ${line}`}>
-            <StatusDisc size="sm" tone="failed">
-              <XIcon aria-hidden="true" className="size-3" />
-            </StatusDisc>
+            <Dot tone="failed" />
             <span className="min-w-0 truncate text-status-failed-text">{line}</span>
           </Pill>
         ))}
+        {outcome.activity.map((activity) => {
+          const key = `activity:${activity.words}`;
+          return (
+            <Pill
+              key={key}
+              expanded={open === key}
+              label={`${activity.words}. ${open === key ? "Hide" : "Show"} them`}
+              onClick={() => toggle(key)}
+            >
+              <span className="ms-1.5 min-w-0 truncate text-foreground">{activity.words}</span>
+            </Pill>
+          );
+        })}
       </div>
-      {checks !== null ? <Takes onOpenImage={onOpenImage} takes={checks.takes} /> : null}
+      {open === "checks" && checks !== null ? (
+        <div className="min-w-0" data-report-detail>
+          <BrowserTakes onOpenImage={onOpenImage} takes={checks.takes} />
+        </div>
+      ) : null}
+      {openActivity !== undefined ? (
+        <div className="max-h-110 min-w-0 overflow-y-auto overscroll-contain" data-report-detail>
+          <ActivityCalls activity={openActivity} />
+        </div>
+      ) : null}
     </section>
   );
 }

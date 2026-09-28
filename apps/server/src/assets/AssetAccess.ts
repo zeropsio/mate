@@ -1,3 +1,5 @@
+import * as NodeOS from "node:os";
+
 import type { AssetResource } from "@t3tools/contracts";
 import {
   AssetAttachmentNotFoundError,
@@ -27,6 +29,7 @@ import {
 } from "@t3tools/shared/imageDimensions";
 import { PROJECT_FAVICON_FALLBACK_MARKER } from "@t3tools/shared/projectFavicon";
 import * as Clock from "effect/Clock";
+import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Encoding from "effect/Encoding";
@@ -34,6 +37,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
 import {
@@ -50,6 +54,18 @@ import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { openMediaFile, readMediaFileHeader, type OpenMediaFile } from "./MediaFile.ts";
 
 export const ASSET_ROUTE_PREFIX = "/api/assets";
+
+/**
+ * Where an image outside the thread's workspace root may still be served
+ * from: the server user's home and the OS temp dir. A Mate's container is
+ * the person's own dev box, and a Mate saves the screenshots it shows in a
+ * reply there (`~/shots/home.png`, `/tmp/v1.png`). A reference so a test can
+ * stand in its own directories for the real ones.
+ */
+export const OutsideWorkspaceImageRoots = Context.Reference<ReadonlyArray<string>>(
+  "t3/assets/OutsideWorkspaceImageRoots",
+  { defaultValue: () => [NodeOS.homedir(), NodeOS.tmpdir()] },
+);
 
 const SIGNING_SECRET_NAME = "asset-access-signing-key";
 const ASSET_TOKEN_TTL_MS = 60 * 60 * 1000;
@@ -160,6 +176,16 @@ const optionOnNotFound = <A, R>(
     }),
   );
 
+/** Whether a canonical file lies below a canonical root, never the root itself. */
+const isStrictlyInside = (path: Path.Path, root: string, file: string): boolean => {
+  const relative = path.relative(root, file);
+  return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+};
+
+/** By the literal extension, as `media-file-exact` serves it: `shot.png#x.txt` is text. */
+const isLiteralImageFile = (path: Path.Path, filePath: string): boolean =>
+  mediaMimeTypeFromExtension(path.extname(filePath))?.startsWith("image/") === true;
+
 const resolveCanonicalFile = Effect.fn("AssetAccess.resolveCanonicalFile")(function* (
   filePath: string,
 ) {
@@ -190,8 +216,7 @@ const resolveCanonicalWorkspaceFile = Effect.fn("AssetAccess.resolveCanonicalWor
     if (Option.isNone(canonicalRoot) || Option.isNone(canonicalFile)) return null;
 
     const path = yield* Path.Path;
-    const relative = path.relative(canonicalRoot.value, canonicalFile.value);
-    if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) return null;
+    if (!isStrictlyInside(path, canonicalRoot.value, canonicalFile.value)) return null;
 
     const info = yield* optionOnNotFound(fileSystem.stat(canonicalFile.value));
     return Option.isSome(info) && info.value.type === "File" ? canonicalFile.value : null;
@@ -241,6 +266,81 @@ const readImageDimensionsFromHeader = (filePath: string) =>
     Effect.orElseSucceed((): ImageDimensions | null => null),
   );
 
+/**
+ * Opens a canonical media file once to pin its identity for a
+ * `media-file-exact` claim, reading an image's pixel size from the same
+ * descriptor. Null when the path is no longer a regular file.
+ */
+const pinExactMediaFile = Effect.fn("AssetAccess.pinExactMediaFile")(function* (
+  canonicalFile: string,
+) {
+  const path = yield* Path.Path;
+  const wantsDimensions = HEADER_IMAGE_EXTENSIONS.has(path.extname(canonicalFile).toLowerCase());
+  return yield* openMediaFile(canonicalFile).pipe(
+    Effect.flatMap((file) =>
+      file === null
+        ? Effect.succeed(null)
+        : Effect.map(
+            wantsDimensions
+              ? readImageDimensionsFromOpenFile(canonicalFile, file)
+              : Effect.succeed(null),
+            (dimensions) => ({
+              identity: { device: file.info.dev.toString(), inode: file.info.ino.toString() },
+              dimensions,
+            }),
+          ),
+    ),
+    Effect.scoped,
+  );
+});
+
+/**
+ * An image the Mate put in a reply from outside the thread's workspace root.
+ * Served only when its canonical path, every symlink resolved, lies inside
+ * one of {@link OutsideWorkspaceImageRoots} (resolved the same way) and is
+ * literally an image; pinned by device and inode like a `media-file`. A root
+ * that resolves to the filesystem root is skipped, or it would open every
+ * image on the host.
+ */
+const resolveOutsideWorkspaceImage = Effect.fn("AssetAccess.resolveOutsideWorkspaceImage")(
+  function* (
+    resource: Extract<AssetResource, { readonly _tag: "workspace-file" }>,
+    outsideRoot: AssetWorkspacePathValidationError,
+  ) {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const inspectionFailed = (cause: unknown) =>
+      new AssetWorkspaceAssetInspectionError({ resource, cause });
+    const canonicalFile = yield* resolveCanonicalFile(resource.path).pipe(
+      Effect.mapError(inspectionFailed),
+    );
+    if (!canonicalFile) {
+      return yield* new AssetWorkspaceAssetNotFoundError({ resource });
+    }
+    const roots = yield* Effect.forEach(
+      (yield* OutsideWorkspaceImageRoots).filter((root) => path.isAbsolute(root)),
+      (root) => optionOnNotFound(fileSystem.realPath(root)),
+    ).pipe(Effect.mapError(inspectionFailed));
+    const insideRoot = roots.some(
+      (root) =>
+        Option.isSome(root) &&
+        path.parse(root.value).root !== root.value &&
+        isStrictlyInside(path, root.value, canonicalFile),
+    );
+    if (!insideRoot) {
+      return yield* outsideRoot;
+    }
+    if (!isLiteralImageFile(path, canonicalFile)) {
+      return yield* new AssetPreviewTypeValidationError({ resource });
+    }
+    const pinned = yield* pinExactMediaFile(canonicalFile).pipe(Effect.mapError(inspectionFailed));
+    if (!pinned) {
+      return yield* new AssetWorkspaceAssetNotFoundError({ resource });
+    }
+    return { canonicalFile, ...pinned };
+  },
+);
+
 export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (input: {
   readonly resource: AssetResource;
   readonly workspaceRoot?: string;
@@ -283,24 +383,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
       if (mediaMimeTypeFromExtension(path.extname(canonicalFile)) === null) {
         return yield* new AssetPreviewTypeValidationError({ resource: input.resource });
       }
-      const wantsDimensions = HEADER_IMAGE_EXTENSIONS.has(
-        path.extname(canonicalFile).toLowerCase(),
-      );
-      const opened = yield* openMediaFile(canonicalFile).pipe(
-        Effect.flatMap((file) =>
-          file === null
-            ? Effect.succeed(null)
-            : Effect.map(
-                wantsDimensions
-                  ? readImageDimensionsFromOpenFile(canonicalFile, file)
-                  : Effect.succeed(null),
-                (dimensions) => ({
-                  identity: { device: file.info.dev.toString(), inode: file.info.ino.toString() },
-                  dimensions,
-                }),
-              ),
-        ),
-        Effect.scoped,
+      const opened = yield* pinExactMediaFile(canonicalFile).pipe(
         Effect.mapError(
           (cause) => new AssetWorkspaceAssetInspectionError({ resource: input.resource, cause }),
         ),
@@ -308,13 +391,12 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
       if (!opened) {
         return yield* new AssetWorkspaceAssetNotFoundError({ resource: input.resource });
       }
-      const identity = opened.identity;
       imageDimensions = opened.dimensions;
       claims = {
         version: 1,
         kind: "media-file-exact",
         filePath: canonicalFile,
-        ...identity,
+        ...opened.identity,
         expiresAt,
       };
       fileName = path.basename(canonicalFile);
@@ -338,17 +420,33 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
       const relativePath = path.isAbsolute(input.resource.path)
         ? path.relative(workspaceRoot, input.resource.path)
         : input.resource.path;
-      const resolved = yield* workspacePaths
+      const withinRoot = yield* workspacePaths
         .resolveRelativePathWithinRoot({ workspaceRoot, relativePath })
-        .pipe(
-          Effect.mapError(
-            (cause) =>
-              new AssetWorkspacePathValidationError({
-                resource: input.resource,
-                cause,
-              }),
-          ),
-        );
+        .pipe(Effect.result);
+      if (Result.isFailure(withinRoot)) {
+        const outsideRoot = new AssetWorkspacePathValidationError({
+          resource: input.resource,
+          cause: withinRoot.failure,
+        });
+        if (
+          !path.isAbsolute(input.resource.path) ||
+          !isWorkspaceImagePreviewPath(input.resource.path)
+        ) {
+          return yield* outsideRoot;
+        }
+        const image = yield* resolveOutsideWorkspaceImage(input.resource, outsideRoot);
+        imageDimensions = image.dimensions;
+        claims = {
+          version: 1,
+          kind: "media-file-exact",
+          filePath: image.canonicalFile,
+          ...image.identity,
+          expiresAt,
+        };
+        fileName = path.basename(image.canonicalFile);
+        break;
+      }
+      const resolved = withinRoot.success;
       if (!isWorkspacePreviewEntryPath(resolved.relativePath)) {
         return yield* new AssetPreviewTypeValidationError({
           resource: input.resource,

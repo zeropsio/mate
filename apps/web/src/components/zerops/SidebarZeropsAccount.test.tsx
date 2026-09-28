@@ -1,7 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
+
+import { setLocalStorageItem } from "~/hooks/useLocalStorage";
+import { MATE_SCOPE_STORAGE_KEY, MateScopeSchema } from "~/zerops/mateScope";
+import { PROJECT_ORDER_STORAGE_KEY, ProjectOrderSchema } from "~/zerops/projectOrderPreference";
 
 import { Menu } from "../ui/menu";
 import { SidebarZeropsAccount, SidebarZeropsAccountMenu } from "./SidebarZeropsAccount";
@@ -87,10 +91,28 @@ describe("SidebarZeropsAccountMenu", () => {
       </Menu>,
     );
 
-  it("names the account in full, with its address", () => {
-    const html = renderMenu();
+  // As the approved prototype drew it: the person, and what they are in the
+  // organization the list shows; the address only while none is known.
+  it("names the account in full, and what it is in the organization the list shows", () => {
+    const html = renderMenu({ activeOrganization: { ...ZEROPS, roleCode: "OWNER" } });
     expect(html).toContain("Ada Lovelace");
-    expect(html).toContain("ada@example.com");
+    expect(html).toContain("Owner of Zerops");
+    expect(html).not.toContain("ada@example.com");
+    expect(renderMenu({ activeOrganization: null })).toContain("ada@example.com");
+  });
+
+  // Show and Order are switches — a label and its choices on one track, the
+  // chosen one raised — never a list of rows whose chosen one is only grey.
+  it("draws Show and Order as switches, each choice on one track", () => {
+    const html = renderMenu();
+    const track = (attribute: string) =>
+      /<div class="[^"]*rounded-lg[^"]*">(.*?)<\/div><\/div>/u.exec(
+        html.slice(html.indexOf(attribute) - 400),
+      )?.[0] ?? "";
+    expect(html.match(/data-zerops-account-scope="/g)).toHaveLength(2);
+    expect(html.match(/data-zerops-account-order="/g)).toHaveLength(3);
+    expect(track("data-zerops-account-scope")).toContain("Everyone");
+    expect(html).toContain("data-checked:bg-popover");
   });
 
   it("folds every place the foot used to spend a glyph on", () => {
@@ -120,6 +142,66 @@ describe("SidebarZeropsAccountMenu", () => {
     const html = renderMenu({ organizations: [ZEROPS, ACME] });
     expect(html).toContain("Organization");
     expect(html).toContain(">Acme<");
+  });
+
+  describe("whose Mates the list above shows", () => {
+    afterEach(() => {
+      setLocalStorageItem(MATE_SCOPE_STORAGE_KEY, "everyone", MateScopeSchema);
+    });
+    const checked = (html: string, scope: string) =>
+      new RegExp(
+        `<[^>]*aria-checked="true"[^>]*data-zerops-account-scope="${scope}"|<[^>]*data-zerops-account-scope="${scope}"[^>]*aria-checked="true"`,
+        "u",
+      ).test(html);
+
+    it("offers Mine and Everyone, Everyone until the viewer chose otherwise, before the order", () => {
+      const html = renderMenu();
+      expect(html).toContain(">Show<");
+      expect(checked(html, "everyone")).toBe(true);
+      expect(checked(html, "mine")).toBe(false);
+      expect(html.indexOf(">Show<")).toBeLessThan(html.indexOf(">Order<"));
+    });
+
+    it("checks Mine once the viewer chose it", () => {
+      setLocalStorageItem(MATE_SCOPE_STORAGE_KEY, "mine", MateScopeSchema);
+      expect(checked(renderMenu(), "mine")).toBe(true);
+    });
+  });
+
+  describe("the order of the projects above", () => {
+    afterEach(() => {
+      setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "newest", ProjectOrderSchema);
+    });
+    const checked = (html: string, order: string) =>
+      new RegExp(
+        `<[^>]*aria-checked="true"[^>]*data-zerops-account-order="${order}"|<[^>]*data-zerops-account-order="${order}"[^>]*aria-checked="true"`,
+        "u",
+      ).test(html);
+
+    it("offers Name, Creation date and Custom, in the words the projects page uses", () => {
+      const html = renderMenu();
+      expect(html).toContain(">Order<");
+      for (const [order, label] of [
+        ["name", "Name"],
+        ["newest", "Creation date"],
+        ["custom", "Custom"],
+      ]) {
+        expect(html).toContain(`data-zerops-account-order="${order}"`);
+        expect(html).toContain(`>${label}<`);
+      }
+    });
+
+    it.each(["name", "newest", "custom"] as const)(
+      "checks %s when it is the order chosen",
+      (order) => {
+        setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, order, ProjectOrderSchema);
+        const html = renderMenu();
+        expect(checked(html, order)).toBe(true);
+        for (const other of ["name", "newest", "custom"].filter((entry) => entry !== order)) {
+          expect(checked(html, other)).toBe(false);
+        }
+      },
+    );
   });
 
   it("keeps the item while a sign-out runs, and says where a failed one landed", () => {

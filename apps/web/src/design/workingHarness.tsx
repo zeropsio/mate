@@ -1,32 +1,50 @@
 /**
- * The Mate at work in every state it reaches, and the report it settles into.
+ * A run's card in every state it reaches: its heading, its chat in one
+ * scroll with the Mate's face beside what it is on, what runs alongside it,
+ * and the result it settles into.
  *
  * Served by the dev server at `/design-working.html` (`?theme=dark` for the
- * dark theme). The panel takes what it shows as props — the conversation's
- * rows hold the reads — so a batch deploy, a question that waits, a failure
- * that came back and a helper still at it all stand side by side without a
- * Mate doing any of them.
+ * dark theme). The card's parts take what they show as rows and props, so a
+ * batch deploy, a question that waits and a helper still at it all stand side
+ * by side without a Mate doing any of them.
  *
  * Fixtures only. Nothing here ships — `design-working.html` is not
  * `index.html`, and no route imports this module.
  */
-import { StrictMode, useEffect, useState, type ReactNode } from "react";
+import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { TurnId } from "@t3tools/contracts";
+import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
+import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
+import * as Stream from "effect/Stream";
 
-import {
-  ConversationAfterWork,
-  ConversationWorking,
-  THOUGHT_WORDS_CLASS,
-  type WorkingActivity,
-  type WorkingBubble,
-} from "~/components/chat/ConversationWorking";
+import { ConversationAfterWork, ConversationWorking } from "~/components/chat/ConversationWorking";
 import type { ConversationSpeaker } from "~/components/chat/ConversationRows";
-import { splitBatchDeploy, type OutcomeModel } from "~/components/chat/conversation.logic";
+import {
+  activityPills,
+  splitBatchDeploy,
+  type OutcomeModel,
+} from "~/components/chat/conversation.logic";
 import type { DockModel } from "~/components/chat/conversationDock.logic";
+import type {
+  MessagesTimelineRow,
+  RunStatus,
+  RecordItem,
+  TurnHeaderActivity,
+} from "~/components/chat/MessagesTimeline.logic";
+import { BrowserStrip } from "~/components/chat/BrowserStrip";
+import { RunChat } from "~/components/chat/RunChat";
+import {
+  TimelineRowActivityCtx,
+  TimelineRowCtx,
+  type TimelineRowActivityState,
+  type TimelineRowSharedState,
+} from "~/components/chat/timelineContext";
 import { TurnReport } from "~/components/chat/TurnReport";
+import { foldSteps, stepOf } from "~/components/chat/workSteps.logic";
+import type { WorkLogEntry } from "~/session-logic";
+import type { ChatMessage } from "~/types";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
@@ -36,36 +54,18 @@ const SPEAKER: ConversationSpeaker = { name: "Nova", tint: "sky" };
 const NOW = Date.now();
 const ago = (seconds: number) => new Date(NOW - seconds * 1000).toISOString();
 
-// The bodies read as the app's `NoteWords` and `ThoughtWords` render them: the
-// log's body — its words in the 80 % ink, its thinking in the muted one.
-const note = (key: string, words: string): WorkingBubble => ({
-  kind: "note",
-  key,
-  body: <p className="text-foreground/80 text-sm leading-relaxed">{words}</p>,
-});
-
-const thought = (key: string, words: string): WorkingBubble => ({
-  kind: "thought",
-  key,
-  body: <p className={THOUGHT_WORDS_CLASS}>{words}</p>,
-});
-
-/** A stretch some way in: it thought, said, thought again — oldest first. */
-const MIXED: ReadonlyArray<WorkingBubble> = [
-  note("m1", "Checking why the readiness check fails."),
-  thought(
-    "m2",
-    "The readiness check asks for /status, but the router only registers /health. Either the route was renamed in the last change and the config never followed, or the config was copied from another service. Nothing else in the app calls /status, so the smaller change is the route, not the config.",
-  ),
-  note("m3", "Found it: the check and the route disagree on the path."),
-  thought("m4", "Renaming the route keeps zerops.yml as it is."),
-  note("m5", "Renaming the route to /status and deploying again."),
-];
-
-const MIXED_THEN_THINKING: ReadonlyArray<WorkingBubble> = [
-  ...MIXED,
-  thought("m6", "If the deploy passes, the check should turn healthy within a minute."),
-];
+function status(overrides: Partial<RunStatus>): RunStatus {
+  return {
+    live: true,
+    face: "working",
+    startedAt: ago(134),
+    endedAt: null,
+    waitedMs: 0,
+    waitingSince: null,
+    worked: true,
+    ...overrides,
+  };
+}
 
 function deploy(overrides: Partial<ZeropsOperation>): ZeropsOperation {
   return {
@@ -88,6 +88,74 @@ function deploy(overrides: Partial<ZeropsOperation>): ZeropsOperation {
     ...overrides,
   };
 }
+
+/** A settled browser check with no picture, as a real one reads. */
+function readCheck(
+  key: string,
+  subject: string,
+  overrides: Partial<ZeropsOperation>,
+): ZeropsOperation {
+  return {
+    key,
+    kind: "browser",
+    phase: "done",
+    anchorAt: ago(40),
+    anchorActivityId: key,
+    settledAt: ago(29),
+    turnId: "turn-1",
+    subject,
+    kicker: `Browser · ${subject}`,
+    voice: `Checking ${subject}`,
+    voiceSource: "mate",
+    statusWord: "Checked",
+    steps: [],
+    links: [],
+    callIds: [key],
+    hasResult: true,
+    viewport: { width: 1640, height: 1000 },
+    browserSummary: { stepCount: 3, errorCount: 0, failedRequestCount: 0, line: "" },
+    ...overrides,
+  };
+}
+
+/** Takes that read the page, asked it how many of a thing it had, and read only its errors. */
+const READ_CHECKS = [
+  readCheck("op:read-page", "https://shop.example.dev/status", {
+    browserRead: {
+      page: {
+        kind: "tree",
+        text: [
+          "- banner",
+          '  - link "Snap"',
+          '  - link "Docs"',
+          '- heading "Service status" [level=1]',
+          "- paragraph",
+          '  - StaticText "Everything runs as it should."',
+          "- list",
+          "  - listitem",
+          '    - StaticText "Hostname: app"',
+          "  - listitem",
+          '    - StaticText "Node v22.22.3"',
+          "  - listitem",
+          '    - StaticText "Uptime 3 days"',
+          '- img "Requests over the last hour"',
+          '- textbox "Email for updates"',
+          '- button "Subscribe"',
+        ].join("\n"),
+      },
+      answers: [],
+    },
+  }),
+  readCheck("op:read-answers", "https://shop.example.dev/cz", {
+    browserRead: {
+      answers: [
+        { asked: "main h3", answer: "6 found" },
+        { asked: "main section[aria-label] ol li", answer: "3 found" },
+      ],
+    },
+  }),
+  readCheck("op:read-findings", "https://shop.example.dev/cz/kosik", {}),
+];
 
 const BATCH = splitBatchDeploy(
   deploy({
@@ -238,61 +306,381 @@ const REPORT: OutcomeModel = {
   created: [],
   removed: [],
   notDone: [],
+  activity: [],
 };
 
-function Working({
-  bubbles,
-  activity,
-  dock = EMPTY_DOCK,
-}: {
-  readonly bubbles: ReadonlyArray<WorkingBubble>;
-  readonly activity: WorkingActivity | null;
-  readonly dock?: DockModel;
-}) {
-  // The stretch's card is the panel's frame in the conversation; drawn here
-  // as its top, body and edge would draw it.
-  return (
-    <div className="rounded-3xl border border-border/70 bg-card px-4 pt-2 pb-4">
-      <ConversationWorking
-        activity={activity}
-        answering={false}
-        browser={null}
-        bubbles={bubbles}
-        dock={dock}
-        environmentId={null}
-        incidents={[]}
-        onOpenAgents={() => undefined}
-        speaker={SPEAKER}
-        threadRef={null}
-      />
-    </div>
-  );
+const TURN = TurnId.make("turn-1");
+
+function said(
+  id: string,
+  role: "assistant" | "reasoning",
+  text: string,
+  seconds: number,
+  streaming = false,
+): ChatMessage {
+  return {
+    id: MessageId.make(id),
+    role,
+    text,
+    turnId: TURN,
+    streaming,
+    createdAt: ago(seconds),
+    updatedAt: ago(seconds),
+  };
 }
 
-/**
- * The panel some way into a stretch. Drawn at once it opens onto the newest
- * bubble and a peek of the one before; live, a long paragraph grows the
- * window — it only grows — and the words after it age in the room it left.
- * So it is drawn first as that paragraph arrived, and what came after it
- * arrives a moment later, live.
- */
-function Later({
-  bubbles,
-  grownBy,
-  activity,
-}: {
-  readonly bubbles: ReadonlyArray<WorkingBubble>;
-  /** The newest bubble when the panel was first drawn: the one that grew the window. */
-  readonly grownBy: string;
-  readonly activity: WorkingActivity | null;
-}) {
-  const [arrived, setArrived] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setArrived(true), 300);
-    return () => clearTimeout(timer);
-  }, []);
-  const grown = bubbles.findIndex((bubble) => bubble.key === grownBy) + 1;
-  return <Working activity={activity} bubbles={arrived ? bubbles : bubbles.slice(0, grown)} />;
+function call(partial: Partial<WorkLogEntry> & { readonly id: string }): WorkLogEntry {
+  return {
+    createdAt: ago(100),
+    label: "Tool call",
+    tone: "tool",
+    sourceActivityKind: "tool.completed",
+    toolLifecycleStatus: "completed",
+    ...partial,
+  };
+}
+
+function run(
+  id: string,
+  command: string,
+  description: string | null,
+  seconds: number,
+  took: number,
+  extra: Partial<WorkLogEntry> = {},
+): WorkLogEntry {
+  return call({
+    id,
+    label: "Command run",
+    itemType: "command_execution",
+    command,
+    ...(description === null ? {} : { callInput: { description } }),
+    startedAt: ago(seconds + took),
+    createdAt: ago(seconds + took),
+    updatedAt: ago(seconds),
+    ...extra,
+  });
+}
+
+const HEALTH_SCRIPT = [
+  "cat > src/routes/status.ts <<'EOF'",
+  'import { Router } from "express";',
+  'import { pool } from "../db";',
+  "",
+  "export const status = Router();",
+  "",
+  'status.get("/status", async (_request, response) => {',
+  "  const started = Date.now();",
+  "  try {",
+  '    await pool.query("select 1");',
+  "    response.json({",
+  '      build: process.env.BUILD_NUMBER ?? "dev",',
+  '      database: "up",',
+  "      ms: Date.now() - started,",
+  "    });",
+  "  } catch (error) {",
+  '    response.status(503).json({ database: "down", error: String(error) });',
+  "  }",
+  "});",
+  "EOF",
+].join("\n");
+
+const LONG_THOUGHT = [
+  "**Planning the check**",
+  "",
+  "The build takes about two minutes. While it runs I'll plan the check: /status should show the build number in its first row and the database in its second, green when it answers and red after two seconds without one.",
+  "",
+  "On a phone the number must not wrap onto a second line, so I'll look at an iPhone 13 first, then a desktop at 1280. If the number reads \"dev\", the pipeline didn't pass BUILD_NUMBER, which would mean the variable in zerops.yml sits under run instead of build — I'd move it and push again before saying it's done.",
+].join("\n");
+
+const edits = foldSteps(
+  [
+    call({
+      id: "e1",
+      itemType: "file_change",
+      label: "File change",
+      detail: 'Edit: {"file_path":"/var/www/app/src/routes.ts"}',
+      createdAt: ago(80),
+    }),
+    call({
+      id: "e2",
+      itemType: "file_change",
+      label: "File change",
+      detail: 'Edit: {"file_path":"/var/www/app/src/status.test.ts"}',
+      createdAt: ago(79),
+    }),
+  ],
+  undefined,
+  false,
+)[0]!;
+
+/** The run's chat some way in: each kind of bubble once. */
+const SO_FAR: ReadonlyArray<RecordItem> = [
+  {
+    kind: "thought",
+    key: "thought:r1",
+    at: ago(130),
+    messages: [
+      said(
+        "r1",
+        "reasoning",
+        "The readiness check asks for /status, but the router only registers /health. Either the route or zerops.yml is wrong.",
+        130,
+      ),
+    ],
+    durationMs: 6000,
+  },
+  {
+    kind: "step",
+    key: "step:w1",
+    at: ago(124),
+    step: stepOf(
+      call({ id: "w1", detail: 'Read: {"file_path":"/var/www/app/src/routes.ts"}' }),
+      undefined,
+      false,
+    ),
+  },
+  {
+    kind: "step",
+    key: "step:w2",
+    at: ago(122),
+    step: stepOf(
+      call({
+        id: "w2",
+        detail: 'Grep: {"pattern":"readinessCheck"}',
+        callInput: { pattern: "readinessCheck" },
+      }),
+      undefined,
+      false,
+    ),
+  },
+  {
+    kind: "step",
+    key: "step:w3",
+    at: ago(118),
+    step: stepOf(
+      run(
+        "w3",
+        "cd /var/www/app && grep -rn status src/routes.ts",
+        "Find where the route is registered",
+        118,
+        1,
+        {
+          detail:
+            'src/routes.ts:14:  app.get("/health", health);\nsrc/routes.ts:22:  // status lives on the dashboard',
+        },
+      ),
+      undefined,
+      false,
+    ),
+  },
+  {
+    kind: "note",
+    key: "note:a1",
+    at: ago(110),
+    message: said(
+      "a1",
+      "assistant",
+      "Found it: the check asks for `/status` and the router only has `/health`. I'll add `/status` and keep `/health` for the load balancer.",
+      110,
+    ),
+  },
+  {
+    kind: "person",
+    key: "person:u2",
+    at: ago(90),
+    message: {
+      id: MessageId.make("u2"),
+      role: "user",
+      text: "Keep /health working too, the load balancer still calls it",
+      turnId: TURN,
+      streaming: false,
+      createdAt: ago(90),
+    } as ChatMessage,
+    imageOnly: false,
+  },
+  { kind: "step", key: "step:e1", at: ago(79), step: edits },
+  {
+    kind: "step",
+    key: "step:w4",
+    at: ago(76),
+    step: stepOf(run("w4", HEALTH_SCRIPT, "Write the status route", 76, 1), undefined, false),
+  },
+  {
+    kind: "thought",
+    key: "thought:r2",
+    at: ago(74),
+    messages: [said("r2", "reasoning", LONG_THOUGHT, 74)],
+    durationMs: 21_000,
+  },
+  {
+    kind: "step",
+    key: "step:w5",
+    at: ago(50),
+    step: stepOf(
+      run("w5", "cd /var/www/app && npm run build", "Run the production build", 50, 24, {
+        detail:
+          "> app@0.1.1 build\n> tsc -p . && vite build\n\n✓ 214 modules transformed.\ndist/index.js  48.2 kB",
+      }),
+      undefined,
+      false,
+    ),
+  },
+  {
+    kind: "operation",
+    key: "operation:op:deploy-done",
+    at: ago(40),
+    operation: deploy({
+      key: "op:deploy-done",
+      phase: "done",
+      statusWord: "Deployed",
+      anchorAt: ago(112),
+      settledAt: ago(40),
+      version: { name: "v0.1.1" },
+      steps: [
+        { id: "build", label: "Build", state: "done", stateLabel: "Done" },
+        { id: "deploy", label: "Deploy", state: "done", stateLabel: "Done" },
+        { id: "run", label: "Run", state: "done", stateLabel: "Done" },
+      ],
+    } as Partial<ZeropsOperation>),
+  },
+  {
+    kind: "step",
+    key: "step:w6",
+    at: ago(33),
+    step: stepOf(
+      run("w6", "npm test -- status", "Run the tests for the page", 33, 6, {
+        toolLifecycleStatus: "failed",
+        detail:
+          "FAIL src/status.test.ts\n  ✕ answers 200 with the build number (12 ms)\n    Expected: 200\n    Received: 503",
+      }),
+      undefined,
+      false,
+    ),
+  },
+  {
+    kind: "event",
+    key: "event:c1",
+    at: ago(30),
+    event: { type: "compaction", label: "Context compacted" },
+  },
+  {
+    kind: "step",
+    key: "step:w7",
+    at: ago(24),
+    step: stepOf(
+      call({
+        id: "w7",
+        itemType: "web_search",
+        toolTitle: "WebFetch",
+        callInput: { url: "https://docs.example.dev/zerops-yml#readiness" },
+      }),
+      undefined,
+      false,
+    ),
+  },
+  {
+    kind: "task",
+    key: "task:k1",
+    at: ago(18),
+    entry: call({
+      id: "k1",
+      label: "Watch the pull request's checks",
+      toolTitle: "Watch the pull request's checks",
+      tone: "info",
+      sourceActivityKind: "task.completed",
+      taskId: "bk1",
+      detail: "checks: 3 passed, 0 failed\nmerge: allowed",
+    }),
+  },
+];
+
+type RecordRow = Extract<MessagesTimelineRow, { kind: "record" }>;
+
+function record(overrides: Partial<RecordRow>): RecordRow {
+  return {
+    kind: "record",
+    id: "record:turn-1",
+    createdAt: ago(134),
+    turnKey: "turn-1",
+    live: true,
+    items: SO_FAR,
+    now: null,
+    answering: false,
+    status: status({}),
+    ...overrides,
+  };
+}
+
+const THINKING: TurnHeaderActivity = {
+  kind: "thinking",
+  key: "thought:r9",
+  messages: [
+    said(
+      "r9",
+      "reasoning",
+      "The test fails with 503, so the database didn't answer inside the test. The test database isn't seeded in CI — the pool connects to nothing and the route says \"down\", which is right. The test should start the database the same way the other route tests do, with the shared fixture, rather than the route learning to lie about it.\n\nThe users tests already do this with `withDatabase()`: it starts a throwaway database, runs the migrations and hands the pool to the test. Reusing it keeps one way of starting a database in the suite.\n\nThe catch is time: every test file that calls it pays for a migration run, about two seconds. Four files use it today; a fifth is fine, but the fixture should cache the migrated template if this grows.\n\nI'll reuse `withDatabase()` from the users tests, run the suite again, and only then deploy.",
+      9,
+      true,
+    ),
+  ],
+};
+
+const RUNNING_STEP: TurnHeaderActivity = {
+  kind: "step",
+  step: stepOf(
+    call({
+      id: "w9",
+      label: "Command run",
+      itemType: "command_execution",
+      command: "npm run lint",
+      callInput: { description: "Lint the page" },
+      toolLifecycleStatus: "inProgress",
+      sourceActivityKind: "tool.started",
+      startedAt: ago(4),
+      createdAt: ago(4),
+    }),
+  ),
+};
+
+const SHARED: TimelineRowSharedState = {
+  timestampFormat: "24-hour",
+  routeThreadKey: "harness",
+  threadRef: null,
+  markdownCwd: undefined,
+  resolvedTheme: "light",
+  workspaceRoot: undefined,
+  skills: [],
+  activeThreadEnvironmentId: EnvironmentId.make("environment-local"),
+  onRevertToTurnCount: () => undefined,
+  onRunShellCommand: undefined,
+  onImageExpand: () => undefined,
+  onOpenTurnDiff: () => undefined,
+  speaker: SPEAKER,
+  livePauseId: null,
+  usagePause: null,
+  onUsageAutoResumeChange: null,
+  agentPanelModel: emptyAgentPanelModel(),
+  onOpenAgents: () => undefined,
+  onStopBackgroundWork: () => undefined,
+  onSteerQueuedMessage: () => undefined,
+  steerQueuedMessageShortcutLabel: null,
+  onRemoveQueuedMessage: () => undefined,
+};
+
+const WORKING: TimelineRowActivityState = {
+  isWorking: true,
+  isCompacting: false,
+  isRevertingCheckpoint: false,
+  latestTurnId: null,
+  workingStepLabel: null,
+  stoppingBackgroundWork: false,
+};
+
+/** A run's card: its heading, its chat, what runs alongside, its result. */
+function Card({ children }: { readonly children: ReactNode }) {
+  return (
+    <div className="rounded-3xl border border-border/70 bg-card px-4 pt-2 pb-3">{children}</div>
+  );
 }
 
 function State({
@@ -305,112 +693,135 @@ function State({
   readonly children: ReactNode;
 }) {
   return (
-    <section className="grid gap-2">
+    <section className="grid gap-2" data-harness-state={label}>
       <div>
         <h2 className="font-medium text-foreground text-sm">{label}</h2>
         <p className="text-muted-foreground text-xs">{caption}</p>
       </div>
-      {/* The conversation's column: 768 px, the Mate's side inset by its gutter. */}
-      <div className="ps-5">{children}</div>
+      {children}
     </section>
   );
 }
+
+// Its edits are the files pill's: the report's own diff counts them.
+const REPORT_WITH_ACTIVITY: OutcomeModel = {
+  ...REPORT,
+  activity: activityPills(
+    [
+      {
+        id: "c1",
+        createdAt: ago(90),
+        label: "Ran command",
+        tone: "tool",
+        command: "npm run build",
+      },
+      { id: "c2", createdAt: ago(60), label: "Ran command", tone: "tool", command: "npm test" },
+    ],
+    [
+      {
+        id: "s1",
+        createdAt: ago(80),
+        label: "Review the change",
+        tone: "tool",
+        agentSpawn: { workflowId: null, agentTaskIds: ["h1", "h2", "h3"] },
+      },
+    ],
+  ),
+};
 
 function Harness() {
   return (
     <div className="min-h-screen bg-background px-6 py-8">
       <div className="mx-auto grid w-full max-w-3xl gap-10">
-        <State label="Thinking" note="Nothing said yet: the dots beside the face.">
-          <Working activity={{ kind: "thinking" }} bubbles={[]} />
+        <State
+          label="Thinking"
+          note="The thought it is thinking, whole, beside its face; the bubbles before it folded where long."
+        >
+          <Card>
+            <RunChat row={record({ now: THINKING })} />
+          </Card>
         </State>
         <State
-          label="Doing"
-          note="Its words above, what its hands are on under the newest — never the call's arguments."
+          label="Doing, with work alongside"
+          note="The call it is making, its clock in the busy blue; the bars under the chat."
         >
-          <Working
-            activity={{ kind: "doing", words: "Reading package.json" }}
-            bubbles={[
-              note("a1", "Reading the package manifest first."),
-              note("a2", "A small web app with a server; checking the server next."),
-            ]}
-          />
+          <Card>
+            <RunChat row={record({ now: RUNNING_STEP })} />
+            <ConversationWorking
+              dock={BUSY_DOCK}
+              environmentId={null}
+              incidents={[]}
+              onOpenAgents={() => undefined}
+              threadRef={null}
+            />
+          </Card>
+        </State>
+        <State label="Waiting for you" note="A question stops the clock; its face waits.">
+          <Card>
+            <RunChat
+              row={record({ now: { kind: "waiting" }, status: status({ waitingSince: ago(30) }) })}
+            />
+          </Card>
+        </State>
+        <State label="Writing" note="Words on their way, not placed yet.">
+          <Card>
+            <RunChat row={record({ now: { kind: "writing" } })} />
+          </Card>
         </State>
         <State
-          label="Thinking and saying, a few steps in"
-          note="A long thought grew the window; the words after it push it up, dimmer each step."
+          label="Finished"
+          note="The chat stays, in the same scroll; the result under it, its pills opening in place."
         >
-          <Later
-            activity={{ kind: "doing", words: "Editing src/routes.ts" }}
-            bubbles={MIXED}
-            grownBy="m2"
-          />
+          <Card>
+            <RunChat
+              row={record({
+                live: false,
+                status: status({ live: false, face: "produced", endedAt: ago(2) }),
+              })}
+            />
+            <div className="-mx-4 border-border/60 border-t px-4 pt-2.5">
+              <TurnReport
+                onOpenImage={() => undefined}
+                onOpenTurnDiff={() => undefined}
+                outcome={REPORT_WITH_ACTIVITY}
+              />
+            </div>
+          </Card>
         </State>
         <State
-          label="Saying, then thinking again"
-          note="The newest a thought, the note before it fading."
+          label="Settled bars"
+          note="A deploy that landed and a batch that failed, as the bars say it."
         >
-          <Later activity={{ kind: "thinking" }} bubbles={MIXED_THEN_THINKING} grownBy="m2" />
+          <Card>
+            <ConversationWorking
+              dock={SETTLED_DOCK}
+              environmentId={null}
+              incidents={[]}
+              onOpenAgents={() => undefined}
+              threadRef={null}
+            />
+          </Card>
         </State>
         <State
-          label="Waiting for the person"
-          note="Its question is its newest bubble; the amber says who is next."
+          label="Checked without a picture"
+          note="The frame draws what the check read: the page, else its answers, else its findings."
         >
-          <Working
-            activity={{ kind: "waiting" }}
-            bubbles={[
-              note("a1", "One question before the long part."),
-              {
-                kind: "question",
-                key: "q1",
-                body: <p className="text-sm leading-relaxed">Shall I go on?</p>,
-              },
-            ]}
-          />
-        </State>
-        <State
-          label="A failure, and one that came back"
-          note="Red where it failed; amber once a later attempt passed."
-        >
-          <Working
-            activity={{ kind: "doing", words: "Running pnpm" }}
-            bubbles={[
-              {
-                kind: "failure",
-                key: "f1",
-                failure: {
-                  subject: null,
-                  words: "Run the type check failed",
-                  recovered: "then passed",
-                },
-              },
-              note("a1", "Fixed the types; re-running the checks."),
-              {
-                kind: "failure",
-                key: "f2",
-                failure: { subject: "appdev", words: "Unhealthy", recovered: null },
-              },
-            ]}
-          />
-        </State>
-        <State
-          label="Everything running at once"
-          note="A batch deploy is a bar per service; helpers and background tasks their own."
-        >
-          <Working
-            activity={null}
-            bubbles={[note("a1", "Deploying both stages together, then the smoke tests.")]}
-            dock={BUSY_DOCK}
-          />
-        </State>
-        <State
-          label="Settled bars, before the report"
-          note="A deploy that landed is whole; a batch service that failed stops where it failed."
-        >
-          <Working
-            activity={{ kind: "thinking" }}
-            bubbles={[note("a1", "apistage is live; webstage failed its build.")]}
-            dock={SETTLED_DOCK}
-          />
+          {READ_CHECKS.map((check) => (
+            <Card key={check.key}>
+              <BrowserStrip
+                environmentId={null}
+                onOpenImage={() => undefined}
+                strip={{
+                  key: `strip:${check.key}`,
+                  checks: [check],
+                  views: 1,
+                  failures: 0,
+                  live: false,
+                }}
+                threadRef={null}
+              />
+            </Card>
+          ))}
         </State>
         <State
           label="After the turn"
@@ -425,13 +836,6 @@ function Harness() {
             state="monitoring"
             stopping={false}
             threadRef={null}
-          />
-        </State>
-        <State label="The report" note="What the turn left, each service once.">
-          <TurnReport
-            onOpenImage={() => undefined}
-            onOpenTurnDiff={() => undefined}
-            outcome={REPORT}
           />
         </State>
       </div>
@@ -452,7 +856,9 @@ function Standins({ children }: { readonly children: ReactNode }) {
     lost: new Set(),
   };
   const data: ZeropsDataContextValue = {
-    runtime: {} as ManagedZeropsDataRuntime,
+    // The markdown's commands ask the account's grant what they may do: a
+    // grant that never answers, since nothing here is run.
+    runtime: { access: { changes: Stream.empty } } as unknown as ManagedZeropsDataRuntime,
     signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
     organizationRef: () => {
       throw new Error("not in the harness");
@@ -481,7 +887,11 @@ if (host) {
   createRoot(host).render(
     <StrictMode>
       <Standins>
-        <Harness />
+        <TimelineRowCtx value={{ ...SHARED, resolvedTheme: appearance }}>
+          <TimelineRowActivityCtx value={WORKING}>
+            <Harness />
+          </TimelineRowActivityCtx>
+        </TimelineRowCtx>
       </Standins>
     </StrictMode>,
   );

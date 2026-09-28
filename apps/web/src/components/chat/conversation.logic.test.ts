@@ -3,10 +3,11 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { TimelineEntry } from "../../session-logic";
 import type { TurnDiffSummary } from "../../types";
+import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
   browserCheckCaption,
   browserCheckFailure,
-  browserStrip,
+  checksStrip,
   browserTakeState,
   deriveConversationStructure,
   deriveOutcome,
@@ -15,6 +16,7 @@ import {
   messageReceipt,
   namedToolCall,
   noteLine,
+  operationLineWords,
   readCrewCard,
   readSlashCommand,
   readsAsAnswer,
@@ -24,7 +26,8 @@ import {
   stretchFace,
   stretchIncidents,
   stretchNotes,
-  summarizeActivity,
+  stretchOperations,
+  activityPills,
 } from "./conversation.logic";
 import {
   assistant,
@@ -781,39 +784,66 @@ describe("messageReceipt", () => {
   });
 });
 
-describe("summarizeActivity", () => {
-  it("says what the calls did in one fixed order", () => {
+describe("activityPills", () => {
+  const words = (pills: ReturnType<typeof activityPills>) => pills.map((pill) => pill.words);
+
+  it("says what the calls did, a pill per kind, in one fixed order", () => {
     const entry = (overrides: Parameters<typeof tool>[3], noCommand = false) => {
       const { command: _command, ...rest } = (
         tool("x", "t1", 0, overrides) as Extract<TimelineEntry, { kind: "work" }>
       ).entry;
       return noCommand ? rest : { ...rest, command: "pnpm test" };
     };
-    expect(
-      summarizeActivity([
-        entry({ requestKind: "file-read" }, true),
-        entry({}),
-        entry({ changedFiles: ["a.ts", "b.ts"] }, true),
-        entry({ changedFiles: ["a.ts"] }, true),
-        entry({ itemType: "mcp_tool_call" }, true),
-        entry({ requestKind: "file-read" }, true),
-      ]),
-    ).toBe("Edited 2 files · ran 1 command · read 2 files · used 1 tool");
+    const pills = activityPills([
+      entry({ requestKind: "file-read" }, true),
+      entry({}),
+      entry({ changedFiles: ["a.ts", "b.ts"] }, true),
+      entry({ changedFiles: ["a.ts"] }, true),
+      entry({ itemType: "mcp_tool_call" }, true),
+      entry({ requestKind: "file-read" }, true),
+    ]);
+    expect(words(pills)).toEqual([
+      "Edited 2 files",
+      "Ran 1 command",
+      "Read 2 files",
+      "Used 1 tool",
+    ]);
+    // Each pill opens the calls it counts.
+    expect(pills.map((pill) => [pill.kind, pill.count, pill.entries.length])).toEqual([
+      ["edit", 2, 2],
+      ["command", 1, 1],
+      ["read", 2, 2],
+      ["other", 1, 1],
+    ]);
+  });
+
+  // Starting a helper is work the result counts, a batch by its helpers
+  // (the owner, 2026-09-27: "started 11 helpers" belongs in the result).
+  it("counts the helpers a run started, a batch by its helpers", () => {
+    const spawn = (ids: string[]) =>
+      (
+        tool("s", "t1", 0, {
+          label: "Review",
+          agentSpawn: { workflowId: null, agentTaskIds: ids },
+        }) as Extract<TimelineEntry, { kind: "work" }>
+      ).entry;
+    expect(words(activityPills([], [spawn(["a", "b", "c"]), spawn([])]))).toEqual([
+      "Started 4 helpers",
+    ]);
+    expect(words(activityPills([], [spawn(["a"])]))).toEqual(["Started 1 helper"]);
+    expect(activityPills([], [])).toEqual([]);
   });
 
   // A tool the runtime names only in its detail is said by its name: "used 1
   // tool" over a Workflow call hid what the Mate did.
   it.each([
-    { details: ["Workflow: {}"], summary: "Used Workflow" },
-    { details: ["Workflow: {}", "Workflow: {}"], summary: "Used Workflow twice" },
-    { details: ["Workflow: {}", "Workflow: {}", "Workflow: {}"], summary: "Used Workflow 3 times" },
-    { details: ["Workflow: {}", "SendMessage: {}"], summary: "Used Workflow and SendMessage" },
-    {
-      details: ["Workflow: {}", "SendMessage: {}", "Skill: {}"],
-      summary: "Used 3 tools",
-    },
-    { details: ["Workflow: {}", "not a name"], summary: "Used 2 tools" },
-  ])("$summary", ({ details, summary }) => {
+    { details: ["Workflow: {}"], pills: ["Used Workflow"] },
+    { details: ["Workflow: {}", "Workflow: {}"], pills: ["Used Workflow twice"] },
+    { details: ["Workflow: {}", "Workflow: {}", "Workflow: {}"], pills: ["Used Workflow 3 times"] },
+    { details: ["Workflow: {}", "SendMessage: {}"], pills: ["Used Workflow and SendMessage"] },
+    { details: ["Workflow: {}", "SendMessage: {}", "Skill: {}"], pills: ["Used 3 tools"] },
+    { details: ["Workflow: {}", "not a name"], pills: ["Used 2 tools"] },
+  ])("$pills", ({ details, pills }) => {
     const call = (detail: string) =>
       (
         tool("x", "t1", 0, {
@@ -826,13 +856,13 @@ describe("summarizeActivity", () => {
       const { command: _command, ...rest } = call(detail);
       return rest;
     });
-    expect(summarizeActivity(entries)).toBe(summary);
+    expect(words(activityPills(entries))).toEqual(pills);
   });
 });
 
-describe("summarizeActivity, the Zerops tools", () => {
-  // A Zerops tool with no card of its own is said by what it did; any other
-  // connected tool by its own title.
+describe("activityPills, the Zerops tools", () => {
+  // A Zerops tool with no card of its own is said by what it did, a pill of
+  // its own; any other connected tool by its own title.
   const mcp = (label: string, toolTitle: string) => {
     const { command: _command, ...rest } = (
       tool("x", "t1", 0, { label, toolTitle, itemType: "mcp_tool_call" }) as Extract<
@@ -843,18 +873,18 @@ describe("summarizeActivity, the Zerops tools", () => {
     return rest;
   };
   it.each([
-    { entries: [mcp("zerops_workflow", "Workflow")], summary: "Checked the workflow" },
+    { entries: [mcp("zerops_workflow", "Workflow")], pills: ["Checked the workflow"] },
     {
       entries: [mcp("zerops_workflow", "Workflow"), mcp("zerops_workflow", "Workflow")],
-      summary: "Checked the workflow",
+      pills: ["Checked the workflow"],
     },
-    { entries: [mcp("zerops_knowledge", "Knowledge")], summary: "Read the Zerops guides" },
+    { entries: [mcp("zerops_knowledge", "Knowledge")], pills: ["Read the Zerops guides"] },
     {
       entries: [mcp("zerops_workflow", "Workflow"), mcp("figma_get", "Figma")],
-      summary: "Checked the workflow · used Figma",
+      pills: ["Checked the workflow", "Used Figma"],
     },
-  ])("$summary", ({ entries, summary }) => {
-    expect(summarizeActivity(entries)).toBe(summary);
+  ])("$pills", ({ entries, pills }) => {
+    expect(activityPills(entries).map((pill) => pill.words)).toEqual(pills);
   });
 });
 
@@ -976,7 +1006,10 @@ describe("browser checks", () => {
       latest: { id: "t1", state: "completed", completed: true },
     }).turns;
     // Two hosts' front pages are two pages, both captioned "/".
-    expect(browserStrip(only!.stretches[0]!)).toMatchObject({ views: 2, failures: 0 });
+    const checks = stretchOperations(only!.stretches[0]!).filter(
+      (operation) => operation.kind === "browser",
+    );
+    expect(checksStrip(checks, false)).toMatchObject({ views: 2, failures: 0 });
     expect(deriveOutcome({ turn: only!, landed: [], diff: null })?.checks).toMatchObject({
       count: 3,
       views: 2,
@@ -1010,19 +1043,13 @@ describe("browser checks", () => {
     ]);
   });
 
-  it("gathers a stretch's checks into one strip", () => {
-    const entries = [
-      user("m0", 0),
+  it("counts a run of checks' pages, and the failures it did not come back from", () => {
+    const checks = [
       operation("b1", "t1", 1, { kind: "browser", subject: "https://a.dev/" }),
-      tool("w1", "t1", 2),
       operation("b2", "t1", 3, { kind: "browser", subject: "https://a.dev/cart" }),
       operation("b3", "t1", 4, { kind: "browser", subject: "https://a.dev/cart", phase: "failed" }),
-      assistant("a1", "t1", 5),
-    ];
-    const [only] = structure(entries, {
-      latest: { id: "t1", state: "completed", completed: true },
-    }).turns;
-    expect(browserStrip(only!.stretches[0]!)).toMatchObject({
+    ].map((entry) => (entry as Extract<TimelineEntry, { kind: "operation" }>).operation);
+    expect(checksStrip(checks, false)).toMatchObject({
       key: "strip:op:b1",
       views: 2,
       failures: 1,
@@ -1143,6 +1170,7 @@ describe("deriveOutcome", () => {
     expect(outcome).toEqual({
       key: "outcome:msg:m0",
       turnKey: "msg:m0",
+      activity: [],
       live: [
         {
           hostname: "medusastage",
@@ -1247,6 +1275,34 @@ describe("deriveOutcome", () => {
     expect(deriveOutcome({ turn: refused.turns[0]!, landed: [], diff: diff(2) })).toBeNull();
   });
 
+  // What its calls came to is the result's too: a run that only ran commands
+  // has a result. The files it changed say what it edited, so an edit pill
+  // beside them would say it twice.
+  const edited = { kind: "edit" as const, count: 1, words: "Edited 1 file", entries: [] };
+  const ran = { kind: "command" as const, count: 2, words: "Ran 2 commands", entries: [] };
+  it.each([
+    { name: "only commands ran", changed: null, pills: ["Ran 2 commands"], files: null },
+    {
+      name: "edits, no diff yet",
+      changed: null,
+      pills: ["Edited 1 file", "Ran 2 commands"],
+      files: null,
+    },
+    { name: "edits, the files changed known", changed: 2, pills: ["Ran 2 commands"], files: 2 },
+  ])("counts what a run's calls came to: $name", ({ changed, pills, files }) => {
+    const outcome = deriveOutcome({
+      turn: structure(
+        [user("m0", 0), tool("w1", "t1", 1), tool("w2", "t1", 2), assistant("a1", "t1", 3)],
+        settled,
+      ).turns[0]!,
+      landed: [],
+      diff: changed === null ? null : diff(changed),
+      activity: pills.length > 1 || changed !== null ? [edited, ran] : [ran],
+    });
+    expect(outcome?.activity.map((pill) => pill.words)).toEqual(pills);
+    expect(outcome?.files?.count ?? null).toBe(files);
+  });
+
   it("reports checks alone, with every take: the report is where a settled turn's checks are seen", () => {
     const entries = [
       user("m0", 0),
@@ -1317,6 +1373,128 @@ describe("deriveOutcome", () => {
       diff: null,
     });
     expect(outcome?.notDone).toEqual(["Importing gitea: Gitea isn't connected yet"]);
+  });
+
+  // A call that failed on the way is a stumble the log keeps, never an
+  // outcome: a run that went on past a workflow asked for a service that is
+  // not there read "not done" in red under a finished deploy (Nova,
+  // 2026-09-27). Its words were the voice's sentence with a colon after it.
+  it("names no call that failed on the way, and never doubles a sentence's stop", () => {
+    const entries = [
+      user("m0", 0),
+      operation("e1", "t1", 1, {
+        kind: "error",
+        subject: "Workflow",
+        phase: "failed",
+        voice: "Workflow failed.",
+        statusWord: "Failed",
+        explanation: { reason: "scope contains unknown hostnames" },
+      }),
+      operation("i1", "t1", 2, {
+        kind: "import",
+        subject: "gitea",
+        phase: "failed",
+        voice: "Creating gitea.",
+        statusWord: "Import failed",
+        explanation: { reason: "Gitea isn't connected yet." },
+      }),
+      assistant("a1", "t1", 3),
+    ];
+    const outcome = deriveOutcome({
+      turn: structure(entries, settled).turns[0]!,
+      landed: [],
+      diff: null,
+    });
+    expect(outcome?.notDone).toEqual(["Creating gitea: Gitea isn't connected yet"]);
+  });
+});
+
+describe("operationLineWords", () => {
+  const op = (overrides: Partial<ZeropsOperation> & Pick<ZeropsOperation, "kind">) =>
+    (operation("x", "t1", 1, overrides) as Extract<TimelineEntry, { kind: "operation" }>).operation;
+  it.each([
+    {
+      kind: "deploy",
+      phase: "running",
+      voice: "Deploying app.",
+      statusWord: "Deploying",
+      words: "Deploying app",
+    },
+    {
+      kind: "deploy",
+      phase: "done",
+      voice: "Deploying app.",
+      statusWord: "Deployed",
+      words: "Deployed app",
+    },
+    {
+      kind: "deploy",
+      phase: "failed",
+      voice: "Deploying app.",
+      statusWord: "Failed",
+      words: "Deploy to app failed",
+    },
+    {
+      kind: "verify",
+      phase: "done",
+      voice: "Checking app.",
+      statusWord: "Healthy",
+      words: "app is healthy",
+    },
+    // "Running app" read as work still going on, under a finished bar (Nova,
+    // 2026-09-28): a dev server's line says what it came to, as its pill does.
+    {
+      kind: "devServer",
+      phase: "done",
+      voice: "Starting the dev server on app.",
+      statusWord: "Running",
+      words: "Dev server running on app",
+    },
+    {
+      kind: "devServer",
+      phase: "done",
+      voice: "Stopping the dev server on app.",
+      statusWord: "Not running",
+      words: "Dev server not running on app",
+    },
+    {
+      kind: "devServer",
+      phase: "failed",
+      voice: "Starting the dev server on app.",
+      statusWord: "Failed",
+      words: "Dev server on app failed",
+    },
+    {
+      kind: "devServer",
+      phase: "done",
+      voice: "Checking the dev server on app.",
+      statusWord: "Done",
+      words: "Dev server on app",
+    },
+    {
+      kind: "verify",
+      phase: "failed",
+      voice: "Checking app.",
+      statusWord: "Checks failed",
+      words: "app: checks failed",
+    },
+    {
+      kind: "error",
+      phase: "failed",
+      voice: "Workflow failed.",
+      statusWord: "Failed",
+      words: "Workflow failed",
+      subject: "Workflow",
+    },
+    {
+      kind: "logs",
+      phase: "done",
+      voice: "Reading the app log.",
+      statusWord: "Read",
+      words: "Read the app log",
+    },
+  ] as const)("$kind $phase: $words", ({ words, ...fields }) => {
+    expect(operationLineWords(op({ subject: "app", ...fields }))).toBe(words);
   });
 });
 
@@ -1420,12 +1598,12 @@ describe("tool calls in words", () => {
       detail: `${name}: ${args}`,
     });
     expect(
-      summarizeActivity([
+      activityPills([
         call("Read", '{"file_path":"/a/package.json"}'),
         call("Read", '{"file_path":"/a/README.md"}'),
         call("Grep", '{"pattern":"x"}'),
-      ]),
-    ).toBe("Read 2 files · searched the code once");
+      ]).map((pill) => pill.words),
+    ).toEqual(["Read 2 files", "Searched the code once"]);
   });
 
   it.each([

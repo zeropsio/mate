@@ -183,19 +183,17 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-status-ping: status-ping 2s infinite;
   /* A verb arriving in a row: it fades into the place a skeleton held, once. */
   --animate-zerops-appear: zerops-appear 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
-  /* A Mate's new words: a small rise into place, once. */
-  --animate-speech-in: speech-in 240ms cubic-bezier(0.23, 1, 0.32, 1) both;
-  /* The Mate at work. Its panel rises in under the line once; each new
-     bubble opens its room, pushing what was said before it up and away,
-     and pops in beside the face, which nods; the browser slides out from
-     under the panel; the report settles where the panel was. All once. */
+  /* The Mate at work. Its panel after the turn rises in once; a status bar
+     arriving opens its room; the result settles where the bars were. All
+     once. */
   --animate-panel-in: panel-in 420ms cubic-bezier(0.32, 0.72, 0, 1) both;
   --animate-room-in: room-in 420ms cubic-bezier(0.32, 0.72, 0, 1) both;
-  --animate-bubble-pop: bubble-pop 520ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  --animate-face-nod: face-nod 520ms cubic-bezier(0.34, 1.56, 0.64, 1);
-  --animate-tray-out: room-in 640ms cubic-bezier(0.32, 0.72, 0, 1) both;
-  --animate-tray-slide: tray-slide 640ms cubic-bezier(0.32, 0.72, 0, 1) both;
   --animate-report-in: report-in 480ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  /* The run's chat. A bubble that arrives while the person watches rises in
+     from the spine, once — quick, since one arrives every few seconds; what
+     a bar or a bubble holds opens its room at the pace of a click. */
+  --animate-bubble-in: bubble-in 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-room-open: room-in 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
   /* The Mate composing its first words: three dots lit in turn, stepped. */
   --animate-typing-first: typing-first 1.2s infinite;
   --animate-typing-second: typing-second 1.2s infinite;
@@ -327,12 +325,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
       opacity: 0;
     }
   }
-  @keyframes speech-in {
-    from {
-      opacity: 0;
-      transform: translateY(4px) scale(0.985);
-    }
-  }
   @keyframes panel-in {
     from {
       opacity: 0;
@@ -347,27 +339,16 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
       grid-template-rows: 1fr;
     }
   }
-  @keyframes bubble-pop {
-    from {
-      opacity: 0;
-      transform: translateY(10px) scale(0.86);
-    }
-  }
-  @keyframes face-nod {
-    35% {
-      transform: translateY(-3px) rotate(-6deg) scale(1.1);
-    }
-  }
-  @keyframes tray-slide {
-    from {
-      opacity: 0.4;
-      transform: translateY(-4rem);
-    }
-  }
   @keyframes report-in {
     from {
       opacity: 0;
       transform: translateY(6px) scale(0.985);
+    }
+  }
+  @keyframes bubble-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.97);
     }
   }
   @keyframes typing-first {
@@ -570,13 +551,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 }
 
-/* The Mate's stream: what was said before the newest bubble drifts up and
-   fades out through the top edge. */
-@utility stream-fade {
-  -webkit-mask-image: linear-gradient(to bottom, transparent, black 3rem);
-  mask-image: linear-gradient(to bottom, transparent, black 3rem);
-}
-
 /* Virtualizers own their native scroll element, so they cannot use ScrollArea's
    viewport fade. Keep the scrollbar lane opaque while sharing the same fade
    contract across those lists. */
@@ -637,6 +611,39 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      focus outline takes over, so exactly one indicator shows at a time. */
   [data-settings-page-scroll] .settings-search-target-pulse:focus {
     outline: none;
+  }
+
+  /* The left menu's row a jump landed on — a project's heading, a stop, a
+     change — rings once where it stands, so the eye finds it after the
+     scroll. Once, never a loop. While it rings, the focus ring of the
+     control in it waits, and takes over once it is done; with reduced motion
+     the focus ring says it alone. */
+  @keyframes zerops-reveal-flash {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 transparent;
+    }
+    18%,
+    55% {
+      box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-ring) 60%, transparent);
+    }
+  }
+
+  [data-zerops-flash] {
+    border-radius: var(--radius-md);
+    animation: zerops-reveal-flash 1.3s ease-out 1;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    [data-zerops-flash] :focus-visible {
+      box-shadow: none !important;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-zerops-flash] {
+      animation: none;
+    }
   }
 
   .chat-composer-shoulder-tab {
@@ -2197,6 +2204,26 @@ code {
   vertical-align: middle;
 }
 
+/* A task list the Mate wrote is its steps, not a form: an open step is a
+   ring and a done one the to-do list's green dot, where a disabled checkbox
+   looked pressable and never was (Nova, 2026-09-28, a plan of nine). A list
+   the person may tick keeps its checkboxes. */
+.chat-markdown li.task-list-item input[type="checkbox"]:disabled {
+  appearance: none;
+  width: 0.55em;
+  height: 0.55em;
+  margin-inline-end: 0.6em;
+  border: 1.5px solid color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  vertical-align: 0.1em;
+}
+
+.chat-markdown li.task-list-item input[type="checkbox"]:disabled:checked {
+  border-color: var(--color-status-ok);
+  background: var(--color-status-ok);
+}
+
 /* Markdown assumes inline images — GitHub comments lay button images out in a row — and the
    Tailwind preflight's block-level img would stack them one per line. */
 .chat-markdown img {
@@ -2222,16 +2249,20 @@ code {
   color: var(--contrast-muted-foreground);
 }
 
-/* GitHub's alerts (`> [!NOTE]` to `> [!CAUTION]`) as callouts in the status
-   grammar: a 3 px edge and a faint tint in the tone, a small label in its ink,
-   then ordinary text in the body's. A note is neutral, a tip the ok green, the
-   important thing the blue of what the person can act on, a warning the
-   attention amber, a caution the failure red. */
+/* GitHub's alerts (`> [!NOTE]` to `> [!CAUTION]`) as the chat's one bubble
+   (the run card's `BUBBLE_SHAPE`: 16 px round, 10 px down) on a faint tint
+   of their tone, their words 20 px in, on the edge a list item's start, the
+   label run into the first line in the tone's ink: no edge bar, no heading of
+   its own (the owner, 2026-09-28: "it looks like some default card of some
+   basic docs software"). A note is neutral, a tip the ok green, the important
+   thing the blue of what the person can act on, a warning the attention
+   amber, a caution the failure red. */
 .chat-markdown .chat-markdown-callout {
-  border-left: 3px solid var(--callout-tone);
-  border-radius: 0 0.5rem 0.5rem 0;
-  background: color-mix(in srgb, var(--callout-tone) 8%, transparent);
-  padding: 0.6em 0.9em;
+  display: flow-root;
+  border: 0;
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--callout-tone) 9%, transparent);
+  padding: 0.625rem 1.25rem;
   color: inherit;
 }
 
@@ -2260,18 +2291,15 @@ code {
   --callout-ink: var(--zerops-status-failed-text);
 }
 
-/* The label's ink is its tone's pulled a quarter toward the text: the status
-   inks are set for white cards, and on the canvas, under the tint, a 13 px
-   label needs the extra contrast in both themes. */
+/* The label runs into the first line at the text's own size, set off by its
+   weight and its tone's ink pulled a quarter toward the text: the status inks
+   are set for white cards, and on the canvas, under the tint, the label needs
+   the extra contrast in both themes. */
 .chat-markdown .chat-markdown-callout-label {
-  display: flex;
-  align-items: center;
-  gap: 0.4em;
-  margin: 0 0 0.25em;
+  float: left;
+  margin: 0 0.45em 0 0;
   color: color-mix(in oklab, var(--callout-ink) 75%, var(--contrast-foreground));
-  font-size: calc(13em / 15);
   font-weight: 600;
-  line-height: calc(20 / 13);
 }
 
 .chat-markdown .chat-markdown-callout-label + * {
@@ -2324,6 +2352,39 @@ code {
 .chat-markdown .chat-markdown-file-link:hover {
   color: var(--contrast-foreground);
   text-decoration: none;
+}
+
+/* A thought's code and file names are words it thinks, not things to press:
+   mono in the thought's own faint ink, no chip — a chip stood out of the
+   italics as the loudest thing in them (Nova, 2026-09-28). A file name still
+   opens its file, underlined under the pointer. */
+.chat-markdown.chat-markdown-aside :not(pre) > code {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+.chat-markdown.chat-markdown-aside .chat-markdown-file-link {
+  display: inline;
+  height: auto;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  font-weight: inherit;
+  color: inherit;
+}
+
+.chat-markdown.chat-markdown-aside .chat-markdown-file-link > :first-child {
+  display: none;
+}
+
+.chat-markdown.chat-markdown-aside .chat-markdown-file-link:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .chat-markdown .chat-markdown-file-link:focus-visible {

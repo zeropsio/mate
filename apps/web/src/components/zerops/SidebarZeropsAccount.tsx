@@ -20,6 +20,12 @@ import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import { cn } from "~/lib/utils";
+import {
+  PROJECT_ORDER_CHOICES,
+  readProjectsOnScreen,
+  useProjectOrder,
+} from "~/zerops/projectOrderPreference";
+import { MATE_SCOPE_CHOICES, useMateScope } from "~/zerops/mateScope";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useSidebar } from "../ui/sidebar";
 import {
@@ -30,6 +36,7 @@ import {
   MenuRadioGroup,
   MenuRadioItem,
   MenuSeparator,
+  MenuSwitch,
   MenuTrigger,
 } from "../ui/menu";
 import { Avatar } from "./primitives";
@@ -42,6 +49,7 @@ import {
   sidebarAccountDestinationOf,
   sidebarAccountLines,
   sidebarAccountOrganizationChoices,
+  sidebarAccountRoleLine,
   type SidebarAccountDestination,
 } from "./SidebarZeropsAccount.logic";
 
@@ -112,7 +120,7 @@ export function SidebarZeropsAccount({
           </>
         )}
       </MenuTrigger>
-      <MenuPopup align="start" className="w-64" side="top">
+      <MenuPopup align="start" className="w-72" side="top">
         <SidebarZeropsAccountMenu
           account={account}
           activeOrganization={activeOrganization}
@@ -131,9 +139,9 @@ export function SidebarZeropsAccount({
 }
 
 /**
- * The menu's body: who, then which organization, then where to go, then the
- * way out. Split from the trigger so it can be rendered — and read — without
- * a popup being open.
+ * The menu's body: who, then how the list above reads, then which
+ * organization, then where to go, then the way out. Split from the trigger so
+ * it can be rendered — and read — without a popup being open.
  */
 export function SidebarZeropsAccountMenu({
   account,
@@ -148,6 +156,8 @@ export function SidebarZeropsAccountMenu({
   signOutError = null,
 }: Omit<SidebarZeropsAccountProps, "collapsed">) {
   const choices = sidebarAccountOrganizationChoices(organizations);
+  const projectOrder = useProjectOrder();
+  const [mateScope, setMateScope] = useMateScope();
   return (
     <>
       <div className="flex items-center gap-3 px-2 py-2" data-zerops-account-identity="true">
@@ -156,11 +166,68 @@ export function SidebarZeropsAccountMenu({
           <p className="truncate text-sm font-medium text-foreground">
             {account.fullName ?? account.name}
           </p>
-          {account.email === null ? null : (
-            <p className="truncate text-xs text-muted-foreground">{account.email}</p>
+          {/* What they are in the organization the list shows, as the prototype
+              said it; the address where no organization is known yet. */}
+          {(sidebarAccountRoleLine(activeOrganization) ?? account.email) === null ? null : (
+            <p className="truncate text-xs text-muted-foreground">
+              {sidebarAccountRoleLine(activeOrganization) ?? account.email}
+            </p>
           )}
         </div>
       </div>
+
+      {/* How the list above reads — whose Mates, and in which order the
+          projects — both set once and left alone, so they live here rather
+          than as chrome over the list; moving one project is the project's own
+          heading and menu. *Custom* starts from the order on screen
+          (`projectOrderPreference.ts`). */}
+      <MenuSeparator />
+      {/* Each a switch, as the approved prototype drew them: its label, then
+          its choices on one track with the chosen one raised — a list of
+          radio rows only greyed the chosen one, which read as the pointer
+          (the owner, 2026-09-28: "much more shit"). Still the menu's own
+          radio items, so the keys and the reader treat them as before; the
+          menu stays open to show the list changing under it. */}
+      <MenuSwitch
+        label="Show"
+        onValueChange={(value) => {
+          const choice = MATE_SCOPE_CHOICES.find((entry) => entry.value === value);
+          if (choice !== undefined) setMateScope(choice.value);
+        }}
+        value={mateScope}
+      >
+        {MATE_SCOPE_CHOICES.map((choice) => (
+          <MenuRadioItem
+            closeOnClick={false}
+            data-zerops-account-scope={choice.value}
+            key={choice.value}
+            value={choice.value}
+            variant="segment"
+          >
+            {choice.label}
+          </MenuRadioItem>
+        ))}
+      </MenuSwitch>
+      <MenuSwitch
+        label="Order"
+        onValueChange={(value) => {
+          const choice = PROJECT_ORDER_CHOICES.find((entry) => entry.value === value);
+          if (choice !== undefined) projectOrder.choose(choice.value, readProjectsOnScreen());
+        }}
+        value={projectOrder.order}
+      >
+        {PROJECT_ORDER_CHOICES.map((choice) => (
+          <MenuRadioItem
+            closeOnClick={false}
+            data-zerops-account-order={choice.value}
+            key={choice.value}
+            value={choice.value}
+            variant="segment"
+          >
+            {choice.label}
+          </MenuRadioItem>
+        ))}
+      </MenuSwitch>
 
       {choices.length === 0 ? null : (
         <>
@@ -172,13 +239,16 @@ export function SidebarZeropsAccountMenu({
             value={activeOrganization?.membershipId ?? ""}
           >
             <MenuGroupLabel>Organization</MenuGroupLabel>
+            {/* The one the list shows wears a check, as the prototype drew it:
+                a grey fill alone read as the pointer resting there. */}
             {choices.map((organization) => (
               <MenuRadioItem
                 closeOnClick
                 key={organization.membershipId}
                 value={organization.membershipId}
+                variant="check"
               >
-                <span className="min-w-0 truncate">{organization.name}</span>
+                {organization.name}
               </MenuRadioItem>
             ))}
           </MenuRadioGroup>

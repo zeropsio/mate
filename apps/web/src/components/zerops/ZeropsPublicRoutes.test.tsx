@@ -84,6 +84,10 @@ describe("ZeropsRoutesMenu", () => {
     expect(bubble?.[1]?.split(" ")).toEqual(
       expect.arrayContaining(["absolute", "-top-1", "-end-1"]),
     );
+    // A count, not a call for attention: never the menu's full ink, which
+    // outshouted the dots of what waits on the person.
+    expect(bubble?.[1]).not.toContain("bg-sidebar-foreground");
+    expect(bubble?.[1]).toContain("bg-sidebar-row-active");
     // The bubble sits inside the globe's own box, not beside it.
     const trigger =
       /<button[^>]*data-zerops-surface="public-routes-menu"[^>]*>(.*?)<\/button>/u.exec(html)?.[1];

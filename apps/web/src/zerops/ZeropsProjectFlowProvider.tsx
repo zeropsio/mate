@@ -314,6 +314,7 @@ function projectFlow(
     mainHeads: deployed?.mainHeads ?? EMPTY_HEADS,
     missing: deployed?.missing ?? [],
     pullRequests: forge?.pullRequests ?? [],
+    changesKnown: forge !== undefined,
     merged: forge?.merged ?? [],
     releases: releaseRows,
     release: {

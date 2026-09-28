@@ -1,11 +1,11 @@
 /**
- * What the Mate at work and its report are made of: a status bar per thing
- * that runs, and a pill per thing a turn did — a service left live, the
- * checks, a change that landed — its mark, its name and a few words. The
- * live panel and the report share them, so the report a turn settles into is
- * visibly what the person watched run.
+ * What the Mate at work and its result are made of: a status bar per thing
+ * that runs, and a pill per thing a run did — a service left live, the
+ * checks, a change that landed, what its calls came to — a dot where it has a
+ * state, its name and a few words. The live panel and the result share them,
+ * so the result a run settles into is visibly what the person watched run.
+ * Nothing about them opens a dialog: what one holds opens in place.
  */
-import { ChevronDownIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
@@ -18,30 +18,30 @@ const TONE_CLASS: Record<PillTone, string> = {
   attention: "border-status-attention/40 bg-status-attention-surface text-status-attention-text",
 };
 
-/** One thing, as a pill; given `onToggle`, a click opens its detail in place. */
+/**
+ * One thing, as a pill; given `onClick`, a click opens what it stands for —
+ * in place, under the pills, when `expanded` says whether it is open.
+ */
 export function Pill({
-  open = false,
-  onToggle = null,
   onClick = null,
+  expanded,
   label,
   tone = "plain",
   children,
 }: {
-  readonly open?: boolean;
-  readonly onToggle?: (() => void) | null;
-  /** A pill that goes somewhere rather than opening in place. */
   readonly onClick?: (() => void) | null;
+  /** It opens in place: whether it is open now. */
+  readonly expanded?: boolean | undefined;
   readonly label: string;
   readonly tone?: PillTone;
   readonly children: ReactNode;
 }) {
-  // The live status bars' size: a 20 px line in the 28 px pill, beside its 20 px disc.
+  // The live status bars' size: a 20 px line in the 28 px pill.
   const className = cn(
     "inline-flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-full border ps-1 pe-2.5 text-line transition-colors",
     TONE_CLASS[tone],
   );
-  const action = onToggle ?? onClick;
-  if (action === null) {
+  if (onClick === null) {
     return (
       <span aria-label={label} className={className} data-pill={tone}>
         {children}
@@ -50,68 +50,20 @@ export function Pill({
   }
   return (
     <button
-      aria-expanded={onToggle !== null ? open : undefined}
+      aria-expanded={expanded}
       aria-label={label}
       className={cn(
         className,
         "cursor-pointer hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-        open && "border-ring/60 bg-accent/60",
+        expanded === true && "border-border bg-accent/60",
       )}
       data-pill={tone}
       data-scroll-anchor-ignore
-      onClick={action}
+      onClick={onClick}
       type="button"
     >
       {children}
-      {onToggle !== null ? (
-        <ChevronDownIcon
-          aria-hidden="true"
-          className={cn(
-            "size-3.5 shrink-0 opacity-70 transition-transform duration-150",
-            open && "rotate-180",
-          )}
-        />
-      ) : null}
     </button>
-  );
-}
-
-export type DiscTone = "busy" | "ok" | "failed" | "attention" | "idle";
-
-const DISC_CLASS: Record<DiscTone, string> = {
-  busy: "bg-status-busy-surface text-status-busy-text",
-  ok: "bg-status-ok-surface text-status-ok-text",
-  failed: "bg-status-failed-surface text-status-failed-text",
-  attention: "bg-status-attention-surface text-status-attention-text",
-  // A share of the ink, as the Mate's bubble: `muted` all but vanishes on the dark card.
-  idle: "bg-foreground/8 text-muted-foreground",
-};
-
-/**
- * A thing's mark in a disc of its state's tone — the same disc on a status
- * bar while it runs and on its pill once the turn is done, so a finished
- * deploy's green check is visibly what its blue rocket became.
- */
-export function StatusDisc({
-  tone,
-  size = "md",
-  children,
-}: {
-  readonly tone: DiscTone;
-  readonly size?: "sm" | "md";
-  readonly children: ReactNode;
-}) {
-  return (
-    <span
-      className={cn(
-        "flex shrink-0 items-center justify-center rounded-full transition-colors duration-500",
-        size === "md" ? "size-6" : "size-5",
-        DISC_CLASS[tone],
-      )}
-      data-status-disc={tone}
-    >
-      {children}
-    </span>
   );
 }
 

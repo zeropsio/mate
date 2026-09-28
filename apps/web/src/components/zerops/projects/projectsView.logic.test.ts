@@ -105,6 +105,7 @@ const FLOWS = {
     release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1 },
   }),
   answer: flowOf({ mates: [{ ...MATE, waiting: true }] }),
+  stopped: flowOf({ mates: [{ ...MATE, waiting: true, failed: true }] }),
   addProduction: flowOf({
     mainHasCode: true,
     productionAddable: true,
@@ -203,10 +204,10 @@ describe("foldGroups", () => {
     ["a release waits in the strip", { flow: FLOWS.release, ...settled }, "active", true],
     ["a Mate waiting waits in the strip", { flow: FLOWS.answer, ...settled }, "active", true],
     [
-      "adding production waits in the strip",
+      "adding production is the row's offer, never a step in the strip",
       { flow: FLOWS.addProduction, ...settled },
       "active",
-      true,
+      false,
     ],
   ];
   for (const [name, entry, place, waits] of cases) {
@@ -254,6 +255,8 @@ describe("where a group's next step sits", () => {
     [string, GroupFlow, ReturnType<typeof nextStepCell>, ReturnType<typeof nextStepTone>]
   > = [
     ["a Mate waiting is answered in the Mates' cell", FLOWS.answer, "mates", "attention"],
+    // Its face waits as a question's does; the approved menu draws its dot red.
+    ["a Mate stopped on an error is the Mates' cell's, red", FLOWS.stopped, "mates", "failed"],
     // The Mate itself is the way in to a first task: no verb in any cell.
     ["a first task gives no cell a verb", FLOWS.firstTask, undefined, "off"],
     ["a merge is the pull request's", FLOWS.merge, "pull-requests", "attention"],
@@ -277,11 +280,14 @@ describe("nextStepAwaitsSomebody", () => {
   // Every kind, so a new one fails typecheck until it is placed.
   const AWAITS: Record<GroupNextStepKind, boolean> = {
     "answer-mate": true,
+    "fix-mate": true,
     "fix-deploy": true,
     merge: true,
     unblock: true,
     release: true,
-    "add-production": true,
+    // A project needs no production (the owner, 2026-09-28: "production not
+    // required, this shouldn't be there"): the page offers it, nothing nags.
+    "add-production": false,
     // The Mate is the way in to a first task; nothing waits on anybody.
     "first-task": false,
     none: false,
@@ -588,6 +594,11 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
     subject,
     at: "2026-09-24T10:00:00.000Z",
     snippet: undefined,
+    progress: undefined,
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread",
+    task: undefined,
   });
   const cases: ReadonlyArray<
     [

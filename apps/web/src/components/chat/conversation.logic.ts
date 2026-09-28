@@ -624,6 +624,26 @@ export function deriveConversationStructure(input: {
   const spanByTurnId = new Map(
     spans.flatMap((span) => (span.turnId ? [[span.turnId, span] as const] : [])),
   );
+  // A call can be seen before the session names its turn — its start arrives
+  // turnless, and was drawn as background work finishing "in the background"
+  // over the run it began (Nova, 2026-09-28). The same call, reported with
+  // its turn, says whose it is.
+  const turnIdByCall = new Map<string, TurnId>();
+  for (const entry of entries) {
+    if (
+      (entry.kind === "work" || entry.kind === "generic-call") &&
+      entry.entry.toolCallId !== undefined &&
+      entry.entry.turnId
+    ) {
+      turnIdByCall.set(entry.entry.toolCallId, entry.entry.turnId);
+    }
+  }
+  const turnIdOf = (entry: TimelineEntry): TurnId | null => {
+    const own = timelineEntryTurnId(entry);
+    if (own !== null || (entry.kind !== "work" && entry.kind !== "generic-call")) return own;
+    const call = entry.entry.toolCallId;
+    return call === undefined ? null : (turnIdByCall.get(call) ?? null);
+  };
   for (const [index, entry] of entries.entries()) {
     let span: TurnSpan | undefined;
     if (isUserMessageEntry(entry)) {
@@ -631,7 +651,7 @@ export function deriveConversationStructure(input: {
         ? spans.find((candidate) => candidate.openerIndex === index)
         : ownerOf(index);
     } else {
-      const turnId = timelineEntryTurnId(entry);
+      const turnId = turnIdOf(entry);
       span = turnId === null ? ownerOf(index) : spanByTurnId.get(turnId);
     }
     if (span === undefined) {
@@ -909,19 +929,34 @@ function times(count: number, one: string, many: string): string {
   return count === 1 ? one : many.replace("#", String(count));
 }
 
+/** What a run did, counted by kind: a pill of its result each. */
+export interface OutcomeActivity {
+  readonly kind: ActivityAction | "helpers";
+  readonly count: number;
+  /** "Edited 7 files", "Ran 5 commands", "Started 11 helpers". */
+  readonly words: string;
+  /** The calls it counts, in order, for its detail. */
+  readonly entries: ReadonlyArray<WorkLogEntry>;
+}
+
 /**
- * What a run of tool calls did, in one fixed order so the clauses never
- * reorder between two lines: "Edited 2 files · ran 3 commands · read 4 files".
+ * What a run's calls came to, a pill per kind, in one fixed order so a
+ * result's pills never reorder: "Edited 2 files", "Ran 3 commands", "Read 4
+ * files" — then the helpers it started, a batch or a workflow counted by its
+ * helpers.
  */
-export function summarizeActivity(entries: ReadonlyArray<WorkLogEntry>): string {
+export function activityPills(
+  calls: ReadonlyArray<WorkLogEntry>,
+  launches: ReadonlyArray<WorkLogEntry> = [],
+): OutcomeActivity[] {
   const byAction = new Map<ActivityAction, WorkLogEntry[]>();
-  for (const entry of entries) {
+  for (const entry of calls) {
     const action = activityAction(entry);
     const list = byAction.get(action);
     if (list) list.push(entry);
     else byAction.set(action, [entry]);
   }
-  const clauses = ACTIVITY_ORDER.flatMap((action) => {
+  const pills = ACTIVITY_ORDER.flatMap((action): OutcomeActivity[] => {
     const list = byAction.get(action);
     if (!list) return [];
     if (action === "edit") {
@@ -932,24 +967,40 @@ export function summarizeActivity(entries: ReadonlyArray<WorkLogEntry>): string 
         else for (const file of entry.changedFiles) files.add(file);
       }
       const count = files.size + unnamed;
-      return [times(count, "edited 1 file", "edited # files")];
+      return [
+        {
+          kind: action,
+          count,
+          words: times(count, "Edited 1 file", "Edited # files"),
+          entries: list,
+        },
+      ];
     }
+    if (action === "other") return otherToolPills(list);
     const count = list.length;
-    switch (action) {
-      case "command":
-        return [times(count, "ran 1 command", "ran # commands")];
-      case "read":
-        return [times(count, "read 1 file", "read # files")];
-      case "code-search":
-        return [times(count, "searched the code once", "searched the code # times")];
-      case "search":
-        return [times(count, "searched the web once", "searched the web # times")];
-      case "other":
-        return [otherToolsClause(list)];
-    }
+    const words =
+      action === "command"
+        ? times(count, "Ran 1 command", "Ran # commands")
+        : action === "read"
+          ? times(count, "Read 1 file", "Read # files")
+          : action === "code-search"
+            ? times(count, "Searched the code once", "Searched the code # times")
+            : times(count, "Searched the web once", "Searched the web # times");
+    return [{ kind: action, count, words, entries: list }];
   });
-  const sentence = clauses.join(" · ");
-  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+  const helpers = launches.reduce(
+    (sum, entry) => sum + Math.max(1, entry.agentSpawn?.agentTaskIds.length ?? 1),
+    0,
+  );
+  if (helpers > 0) {
+    pills.push({
+      kind: "helpers",
+      count: helpers,
+      words: times(helpers, "Started 1 helper", "Started # helpers"),
+      entries: launches,
+    });
+  }
+  return pills;
 }
 
 /** Zerops tools with no card of their own, said by what they did. */
@@ -966,15 +1017,26 @@ function calledToolName(entry: WorkLogEntry): string | null {
 }
 
 /**
- * Tools no action names. A Zerops tool is said by what it did, once however
- * often it ran; the rest by name where each call names its tool and at most
- * two tools ran — "used Workflow", "used Workflow twice", "used Workflow and
- * SendMessage" — and counted otherwise.
+ * Tools no action names, a pill each. A Zerops tool is said by what it did,
+ * once however often it ran; the rest in one pill, by name where each call
+ * names its tool and at most two tools ran — "Used Workflow", "Used Workflow
+ * twice", "Used Workflow and SendMessage" — and counted otherwise.
  */
-function otherToolsClause(entries: ReadonlyArray<WorkLogEntry>): string {
-  const zerops = [...new Set(entries.flatMap((entry) => ZEROPS_TOOL_WORDS[entry.label] ?? []))];
-  const rest = entries.filter((entry) => ZEROPS_TOOL_WORDS[entry.label] === undefined);
-  return [...zerops, ...(rest.length === 0 ? [] : [namedToolsClause(rest)])].join(" · ");
+function otherToolPills(entries: ReadonlyArray<WorkLogEntry>): OutcomeActivity[] {
+  const byWords = new Map<string, WorkLogEntry[]>();
+  const rest: WorkLogEntry[] = [];
+  for (const entry of entries) {
+    const words = ZEROPS_TOOL_WORDS[entry.label];
+    if (words === undefined) rest.push(entry);
+    else byWords.set(words, [...(byWords.get(words) ?? []), entry]);
+  }
+  if (rest.length > 0) byWords.set(namedToolsClause(rest), rest);
+  return [...byWords].map(([words, list]) => ({
+    kind: "other",
+    count: list.length,
+    words: words.charAt(0).toUpperCase() + words.slice(1),
+    entries: list,
+  }));
 }
 
 function namedToolsClause(entries: ReadonlyArray<WorkLogEntry>): string {
@@ -1075,10 +1137,11 @@ export function isQuestionToolCall(
   );
 }
 
-/** A work entry that is a tool call on the way — the log's activity lines. */
+/** A work entry that is a tool call on the way — the log's steps. A task is none: it runs one. */
 export function isActivityWork(entry: WorkLogEntry): boolean {
   return (
     entry.agentSpawn === undefined &&
+    entry.sourceActivityKind?.startsWith("task.") !== true &&
     entry.questionAnswer === undefined &&
     entry.sourceActivityKind !== "context-compaction" &&
     entry.tone !== "error" &&
@@ -1087,6 +1150,46 @@ export function isActivityWork(entry: WorkLogEntry): boolean {
 }
 
 export type WorkLineFace = "working" | "idle" | "produced" | "failed" | "paused" | "stopped";
+
+/**
+ * A platform operation as a step's words: running, its own voice ("Deploying
+ * app"); settled, what it came to in a sentence — "Deployed app", "app is
+ * healthy", "Workflow failed" — never its status word before its name
+ * ("Failed Workflow", 2026-09-27).
+ */
+export function operationLineWords(operation: ZeropsOperation): string {
+  const voice = operation.voice.replace(/\.$/, "");
+  const { subject, statusWord } = operation;
+  if (operation.kind === "error" || operation.phase === "running") return voice;
+  const failed = operation.phase === "failed";
+  switch (operation.kind) {
+    case "verify":
+      return failed ? `${subject}: ${statusWord.toLowerCase()}` : `${subject} is healthy`;
+    case "deploy":
+      return failed && !isGitPushOnly(operation)
+        ? `Deploy to ${subject} failed`
+        : `${statusWord} ${subject}`;
+    case "subdomain":
+      return failed
+        ? `The subdomain of ${subject} failed`
+        : `${statusWord} the subdomain of ${subject}`;
+    case "logs":
+      return `Read the ${subject} log`;
+    case "events":
+      return `Read the events of ${subject}`;
+    case "discover":
+      return `Looked at ${subject}`;
+    case "devServer":
+      // What it came to, as its pill says it: "Running app" read as work
+      // still going on, under a finished bar.
+      if (failed) return `Dev server on ${subject} failed`;
+      return statusWord === "Running" || statusWord === "Not running"
+        ? `Dev server ${statusWord.toLowerCase()} on ${subject}`
+        : `Dev server on ${subject}`;
+    default:
+      return failed ? `${subject}: ${statusWord.toLowerCase()}` : `${statusWord} ${subject}`;
+  }
+}
 
 /** A setback the turn did not come back from, on the operation's own target. */
 export function unrecoveredFailures(
@@ -1323,15 +1426,20 @@ export interface BrowserStripModel {
   readonly live: boolean;
 }
 
-export function browserStrip(stretch: Stretch): BrowserStripModel | null {
-  const checks = stretchOperations(stretch).filter((operation) => operation.kind === "browser");
-  if (checks.length === 0) return null;
+/**
+ * Browser checks made one after another, as the one row of the chat they
+ * share: a page checked on a desktop and then on a phone is one row of takes.
+ */
+export function checksStrip(
+  checks: ReadonlyArray<ZeropsOperation>,
+  live: boolean,
+): BrowserStripModel {
   return {
     key: `strip:${checks[0]!.key}`,
     checks,
     views: browserCheckViews(checks),
     failures: unrecoveredCheckFailures(checks).length,
-    live: stretch.live,
+    live,
   };
 }
 
@@ -1463,6 +1571,8 @@ export interface OutcomeModel {
   readonly created: ReadonlyArray<string>;
   readonly removed: ReadonlyArray<string>;
   readonly notDone: ReadonlyArray<string>;
+  /** What its calls came to, a pill per kind; its edits are the files pill's where the diff is known. */
+  readonly activity: ReadonlyArray<OutcomeActivity>;
 }
 
 function shortVersion(operation: ZeropsOperation): string | null {
@@ -1493,13 +1603,16 @@ export function isGitPushOnly(operation: ZeropsOperation): boolean {
 /**
  * What a settled turn produced, each fact once and in its own register: the
  * services it left live, the changes that landed and the files it changed,
- * the checks, what it created and removed, and what it could not do. Built
- * only from what the turn already carries — null when it produced nothing.
+ * the checks, what it created and removed, what it could not do, and what its
+ * calls came to. Built only from what the turn already carries — null when it
+ * did nothing.
  */
 export function deriveOutcome(input: {
   readonly turn: ConversationTurn;
   readonly landed: ReadonlyArray<ChangeLandedEntry>;
   readonly diff: TurnDiffSummary | null;
+  /** What its calls came to (`activityPills`). */
+  readonly activity?: ReadonlyArray<OutcomeActivity>;
 }): OutcomeModel | null {
   const { turn } = input;
   if (turn.live || turn.limitOnly) return null;
@@ -1578,6 +1691,10 @@ export function deriveOutcome(input: {
   const removed = settled.flatMap((operation) =>
     operation.kind === "delete" && operation.phase === "done" ? [operation.subject] : [],
   );
+  // What the turn set out to do and did not: a push, a service it could not
+  // create, remove or change. A call that failed on the way (the "error"
+  // kind — a workflow asked for a service that is not there) is a stumble
+  // the log keeps, never an outcome: the run went on past it.
   const notDone = unrecoveredFailures(settled)
     .filter(
       (operation) =>
@@ -1585,9 +1702,10 @@ export function deriveOutcome(input: {
         operation.kind !== "verify" &&
         operation.kind !== "devServer" &&
         operation.kind !== "browser" &&
+        operation.kind !== "error" &&
         !isReadOperationKind(operation.kind),
     )
-    .map((operation) => `${operation.voice}: ${failureWords(operation)}`);
+    .map((operation) => `${operation.voice.replace(/\.$/, "")}: ${failureWords(operation)}`);
 
   const files =
     input.diff && input.diff.files.length > 0 && input.diff.turnId
@@ -1623,8 +1741,11 @@ export function deriveOutcome(input: {
     created,
     removed,
     notDone,
+    // The files the diff counts are its edits: one pill, not two.
+    activity: (input.activity ?? []).filter((pill) => pill.kind !== "edit" || files === null),
   };
   const empty =
+    outcome.activity.length === 0 &&
     outcome.live.length === 0 &&
     outcome.landed.length === 0 &&
     outcome.files === null &&

@@ -70,8 +70,14 @@ describe("ZeropsBuildLog", () => {
     expect(plain).not.toContain("text-destructive-foreground");
   });
 
+  // A log the build has not written a line of is nothing to open: the
+  // container may not even run yet (the owner, 2026-09-27: "you shouldn't be
+  // able to open build log when the container is not even running").
+  it.each(["live", "ended"] as const)("offers nothing while the log is empty (%s)", (status) => {
+    expect(render([], status)).toBe("");
+  });
+
   it.each([
-    { name: "none yet", lines: 0, count: undefined },
     { name: "one", lines: 1, count: "1 line" },
     { name: "a build's worth", lines: 1_229, count: "1,229 lines" },
   ])(

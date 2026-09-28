@@ -310,14 +310,24 @@ describe("the chat markdown stylesheet", () => {
     expect(declarationsOf(".chat-markdown table").get("overflow-wrap")).toBeUndefined();
   });
 
-  it("draws a callout as a 3 px edge and a faint tint in its tone", () => {
+  // The chat's one bubble on a faint tint of its tone, not a docs card's edge
+  // bar (the owner, 2026-09-28): 16 px round, its words 20 px in, on the edge
+  // an answer's list items start on, the label run into the first line.
+  it("draws a callout as the chat's bubble on a faint tint in its tone", () => {
     const callout = declarationsOf(".chat-markdown .chat-markdown-callout");
     const label = declarationsOf(".chat-markdown .chat-markdown-callout-label");
 
-    expect(callout.get("border-left")).toBe("3px solid var(--callout-tone)");
+    expect(callout.get("border-left")).toBeUndefined();
+    expect(callout.get("border")).toBe("0");
+    expect(callout.get("border-radius")).toBe("1rem");
+    expect(callout.get("padding")).toBe("0.625rem 1.25rem");
+    expect(callout.get("display")).toBe("flow-root");
     expect(callout.get("background")).toMatch(
       /^color-mix\(in srgb, var\(--callout-tone\) \d+%, transparent\)$/,
     );
+    // Run in: at the text's own size, floated to the first line's start.
+    expect(label.get("float")).toBe("left");
+    expect(label.get("font-size")).toBeUndefined();
     // The body is ordinary text: not the muted ink of a plain quote.
     expect(callout.get("color")).toBe("inherit");
     // The label is the tone's ink pulled toward the text, which measured

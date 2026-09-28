@@ -633,8 +633,10 @@ describe("ChatMarkdown callouts", () => {
     expect(open).toContain(`data-alert="${kind}"`);
     expect(open).toContain('role="note"');
     expect(open).toContain("chat-markdown-callout");
-    // A small label: the glyph and the word, then the content without its marker line.
-    expect(label).toMatch(new RegExp(`<svg[\\s\\S]*</svg>${word}</p>$`));
+    // The word alone, run into the first line — no glyph heading it as a docs
+    // card would (the owner, 2026-09-28) — then the content without its marker line.
+    expect(label).toMatch(new RegExp(`>${word}</p>$`));
+    expect(label).not.toContain("<svg");
     expect(body.trim()).toBe("<p>Stripe is empty.</p>");
     expect(html.replace(/<[^>]+>/g, "")).not.toContain("[!");
     // Copying gives back the alert it was written as.
@@ -745,5 +747,27 @@ describe("ChatMarkdown heading levels", () => {
     const html = renderToStaticMarkup(<ChatMarkdown cwd="/tmp/project" text="# Top" />);
 
     expect(html).toContain("<h1>Top</h1>");
+  });
+});
+
+// The Mate's pictures open large, the text's other pictures beside them (the
+// owner, 2026-09-27, of a picture in an answer: "why aren't these opening in
+// modal?").
+describe("ChatMarkdown pictures", () => {
+  const text = "Here it is:\n\n![The home page](https://shop.example.dev/home.png)";
+  it.each([
+    { name: "where something opens them", opens: true },
+    { name: "as they are where nothing does", opens: false },
+  ])("draws a picture $name", ({ opens }) => {
+    const markup = renderToStaticMarkup(
+      <ChatMarkdown
+        cwd={undefined}
+        onOpenImage={opens ? () => undefined : undefined}
+        text={text}
+      />,
+    );
+    expect(markup).toContain("data-markdown-image");
+    expect(markup.includes('aria-label="Open The home page"')).toBe(opens);
+    expect(markup.includes("<button")).toBe(opens);
   });
 });

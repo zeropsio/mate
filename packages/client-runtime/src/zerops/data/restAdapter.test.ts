@@ -1419,6 +1419,55 @@ describe("ZeropsDataAdapter receiver", () => {
     }),
   );
 
+  it.effect.each([
+    ["answered 429", () => new Response("{}", { status: 429 }), "registration", 429],
+    ["answered 503", () => new Response("{}", { status: 503 }), "server", 503],
+    ["answered 403", () => new Response("{}", { status: 403 }), "forbidden", 403],
+    [
+      "lost on the network",
+      () => Promise.reject(new TypeError("Failed to fetch")),
+      "network",
+      null,
+    ],
+    [
+      "answered 200 without confirming",
+      () => new Response("{}", { status: 200 }),
+      "malformed",
+      null,
+    ],
+  ] as const)(
+    "a registration %s carries the status the platform refused it with, or none",
+    ([, answer, kind, status]) =>
+      Effect.gen(function* () {
+        const sockets: FakeSocket[] = [];
+        const client = clientFor((url) =>
+          url.endsWith("/web-socket/login")
+            ? new Response('{"webSocketToken":"socket-token"}', { status: 200 })
+            : answer(),
+        );
+        const adapter = makeZeropsDataAdapter({
+          client,
+          makeSocket: socketFactory(sockets),
+          timers,
+        });
+        const result = yield* Effect.scoped(
+          Effect.gen(function* () {
+            const receiver = yield* adapter.openReceiver(
+              scope,
+              organization,
+              receiverIdentity,
+              context(),
+            );
+            return yield* adapter
+              .register(receiver, updateRegistration(), context())
+              .pipe(Effect.result);
+          }),
+        );
+        expect(result).toMatchObject({ _tag: "Failure", failure: { kind } });
+        expect(Result.isFailure(result) ? (result.failure.status ?? null) : undefined).toBe(status);
+      }),
+  );
+
   it.effect(
     "falls back to /project/search when the direct projects-of-organization read is forbidden",
     () =>

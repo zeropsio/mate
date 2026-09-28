@@ -14,7 +14,6 @@
 import type { MateTintId } from "@t3tools/shared/brand";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
-  ChevronRightIcon,
   CircleAlertIcon,
   ClockIcon,
   GitMergeIcon,
@@ -26,13 +25,10 @@ import { useEffect, useRef, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
-import { MateFace } from "../zerops/primitives";
 import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { formatWorkDuration, type IncidentModel } from "./conversation.logic";
-import type { ConversationEvent, MessagesTimelineRow } from "./MessagesTimeline.logic";
-
-type WorkLineRow = Extract<MessagesTimelineRow, { kind: "work-line" }>;
+import { formatWorkDuration } from "./conversation.logic";
+import type { ConversationEvent, MessagesTimelineRow, RunStatus } from "./MessagesTimeline.logic";
 
 /** Who the conversation is with: a Mate's colour, or the neutral one for a thread without a Mate. */
 export interface ConversationSpeaker {
@@ -41,9 +37,11 @@ export interface ConversationSpeaker {
 }
 
 /**
- * A row's mark, leading its words on the text edge. It used to hang in a
- * gutter left of that edge, which put it outside the column the composer
- * draws — and, inside a card, past the card's own border.
+ * A row's mark, leading its words on the text edge: 20 px, the column an
+ * answer's list bullets hang in, so the words after it start where a list
+ * item's and a callout's do. It used to hang in a gutter left of that edge,
+ * which put it outside the column the composer draws — and, inside a card,
+ * past the card's own border.
  */
 export function LineMark({
   children,
@@ -53,11 +51,7 @@ export function LineMark({
   readonly className?: string;
 }) {
   return (
-    <span
-      aria-hidden="true"
-      className={cn("flex w-4 shrink-0 justify-center", className)}
-      data-line-mark
-    >
+    <span aria-hidden="true" className={cn("flex w-5 shrink-0", className)} data-line-mark>
       {children}
     </span>
   );
@@ -113,143 +107,91 @@ function spanText(startedAt: string, endedAt: string | null, waitedMs = 0): stri
   );
 }
 
+/** What a run that is over did, after the Mate's name: "worked", "stopped", "thought". */
+export function settledRunVerb(status: RunStatus): string {
+  if (status.face === "stopped") return "stopped";
+  if (status.face === "paused") return "stopped at the usage limit";
+  return status.worked ? "worked" : "thought";
+}
+
 /**
- * The line for one stretch of the Mate's work: how long, and one click to
- * everything the stretch did under it, thinking included — "Working for
- * 1m 12s" while it runs, "Worked for 2m 57s", "Thought for 16s" once done.
- * What the Mate is on right now is the Mate at work's to say, beside its
- * face, never the line's. The line never changes height.
+ * A run's clock, in the card's time column: the Mate's own time — it stands
+ * still while a question waits on the person — counting while the run goes
+ * on. Its tooltip keeps the run's whole span.
+ */
+export function RunClock({
+  status,
+  timestampFormat,
+  className,
+}: {
+  readonly status: RunStatus;
+  readonly timestampFormat: TimestampFormat;
+  readonly className?: string | undefined;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            className={cn("w-14 shrink-0 text-end tabular-nums", className)}
+            data-work-line-clock
+          />
+        }
+      >
+        {status.live ? (
+          <ElapsedSince
+            leftOutMs={status.waitedMs}
+            since={status.startedAt}
+            standingSince={status.waitingSince}
+          />
+        ) : (
+          spanText(status.startedAt, status.endedAt, status.waitedMs)
+        )}
+      </TooltipTrigger>
+      <TooltipPopup>
+        {formatChatTimestampTooltip(status.startedAt, timestampFormat)}
+        {status.endedAt ? ` – ${formatDayAwareTimestamp(status.endedAt, timestampFormat)}` : ""}
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
+/**
+ * The line of a run with no chat to end on — one that only asked for a plan's
+ * approval, or paused before it did anything: who, what the run is, and its
+ * clock. A run with a chat says the same on the chat's last line.
  */
 export function WorkLine({
   row,
   speaker,
-  summarized,
   timestampFormat,
-  onToggle,
 }: {
-  readonly row: WorkLineRow;
+  readonly row: RunStatus;
   /** Who worked: a line that says only "Worked" says nobody did (the owner, 2026-09-26: "'worked' who where?"). */
   readonly speaker: ConversationSpeaker;
-  /** A line with nothing under it says what the work came to; a card's body says it itself. */
-  readonly summarized: boolean;
   readonly timestampFormat: TimestampFormat;
-  readonly onToggle: () => void;
 }) {
-  const live = row.live;
-  // A stretch that did nothing but think says so, and nothing more.
-  const thoughtOnly = !live && !row.worked && row.note === null && row.fallback === null;
-  const verb = live
-    ? "is working ·"
-    : row.face === "stopped"
-      ? "stopped after"
-      : thoughtOnly
-        ? "thought for"
-        : "worked for";
-  const summary = summarized && !live ? row.summary : null;
-  const words = (
-    <>
-      <Tooltip>
-        <TooltipTrigger render={<span className="shrink-0 tabular-nums" data-work-line-clock />}>
-          {speaker.name} {verb}{" "}
-          {live ? (
-            // The Mate's own time: it stands still while a question waits on
-            // the person, so it never drops as the run settles.
-            <ElapsedSince
-              leftOutMs={row.waitedMs}
-              since={row.startedAt}
-              standingSince={row.waitingSince}
-            />
-          ) : (
-            // How long the Mate worked: the time its questions waited on the
-            // person is theirs. The tooltip keeps the run's whole span.
-            spanText(row.startedAt, row.endedAt, row.waitedMs)
-          )}
-        </TooltipTrigger>
-        <TooltipPopup>
-          {formatChatTimestampTooltip(row.startedAt, timestampFormat)}
-          {row.endedAt ? ` – ${formatDayAwareTimestamp(row.endedAt, timestampFormat)}` : ""}
-        </TooltipPopup>
-      </Tooltip>
-      {summary === null ? null : (
-        // A clause of the line's sentence, after its clock.
-        <span className="min-w-0 truncate" data-work-line-summary>
-          · {summary.charAt(0).toLowerCase() + summary.slice(1)}
-        </span>
-      )}
-      {row.hasLog ? (
-        <ChevronRightIcon
-          aria-hidden="true"
-          className={cn(
-            "size-3.5 shrink-0 opacity-70 transition-transform duration-150",
-            row.open && "rotate-90",
-          )}
-        />
-      ) : null}
-    </>
-  );
-  const className =
-    "inline-flex min-h-7 max-w-full min-w-0 items-center gap-1.5 text-left text-line text-muted-foreground";
   return (
-    <div className="relative flex min-h-7 min-w-0 items-center" data-work-line={row.face}>
-      {row.hasLog ? (
-        <button
-          type="button"
-          aria-expanded={row.open}
-          aria-label={`${speaker.name} ${verb} ${spanText(row.startedAt, row.endedAt, row.waitedMs)}${summary === null ? "" : `, ${summary.charAt(0).toLowerCase() + summary.slice(1)}`}. ${row.open ? "Hide" : "Show"} what it did`}
-          className={cn(
-            className,
-            "cursor-pointer rounded-sm transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-          )}
-          data-scroll-anchor-ignore
-          onClick={onToggle}
-        >
-          {words}
-        </button>
-      ) : (
-        <div className={className} role={live ? "status" : undefined}>
-          {words}
-        </div>
-      )}
+    <div
+      className="flex min-h-7 min-w-0 items-center gap-2.5 text-line text-muted-foreground"
+      data-work-line={row.face}
+      role={row.live ? "status" : undefined}
+    >
+      <span className="min-w-0 flex-1 truncate">
+        {speaker.name} {row.live ? "is working" : settledRunVerb(row)}
+      </span>
+      <RunClock status={row} timestampFormat={timestampFormat} />
     </div>
   );
 }
 
 /**
- * The Mate's bubble fill, wherever its words to the person stand — the panel,
- * an opened log, the page: a share of the ink over whatever it sits on, so
- * both palettes show it (muted and secondary all but vanish on one card or
- * the other).
+ * The Mate's bubble fill, wherever it speaks from a bubble — the panel and an
+ * opened log, never the page, where its words are prose: a share of the ink
+ * over whatever it sits on, so both palettes show it (muted and secondary all
+ * but vanish on one card or the other).
  */
 export const MATE_BUBBLE_FILL = "bg-foreground/8";
-
-/**
- * The Mate's words the person answered: its face and the words in full in a
- * bubble beside it — the mirror of the person's bubbles on the right — drawn
- * as the Mate at work drew its newest words, and left where they were said.
- */
-export function MateSpeech({
-  speaker,
-  children,
-}: {
-  readonly speaker: ConversationSpeaker;
-  readonly children: ReactNode;
-}) {
-  return (
-    <div className="flex min-w-0 items-end gap-2.5" data-mate-speech="said">
-      <span aria-hidden="true" className="mb-0.5 shrink-0">
-        <MateFace size="md" state="idle" tint={speaker.tint} />
-      </span>
-      <div
-        className={cn(
-          "min-w-0 max-w-full rounded-2xl rounded-es-md px-3.5 py-2 text-foreground",
-          MATE_BUBBLE_FILL,
-        )}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
 
 /**
  * A message the Mate has not read yet: a small clock beside it, gone once the
@@ -356,7 +298,7 @@ function EventShell({
 }) {
   return (
     <div
-      className="flex min-h-7 min-w-0 items-center gap-1.5 text-line text-muted-foreground"
+      className="flex min-h-7 min-w-0 items-center text-line text-muted-foreground"
       data-conversation-event
     >
       <LineMark>{icon}</LineMark>
@@ -465,7 +407,7 @@ export function ErrorLine({
   const extra = detail !== undefined && detail.trim() !== label.trim() ? detail : null;
   return (
     <div
-      className="flex min-h-7 min-w-0 items-start gap-1.5 py-1 text-line text-status-failed-text"
+      className="flex min-h-7 min-w-0 items-start py-1 text-line text-status-failed-text"
       data-conversation-error
       role="alert"
     >
@@ -554,7 +496,8 @@ export function PauseBlock({
       role="status"
     >
       <div className="flex min-w-0 items-center gap-1.5 text-line" data-pause-head>
-        <LineMark>
+        {/* Its words keep their gap, so its mark gives the gap back: 14 + 6 px. */}
+        <LineMark className="w-3.5">
           <PauseIcon
             className={cn("size-3.5", resumed ? "text-muted-foreground" : "text-status-attention")}
           />
@@ -585,12 +528,12 @@ export function PauseBlock({
         ) : null}
       </div>
       {/* Under its words: past the mark's w-4 and the head's gap-1.5. */}
-      <p className="ps-5.5 text-line text-muted-foreground" data-pause-detail>
+      <p className="ps-5 text-line text-muted-foreground" data-pause-detail>
         {detail}
       </p>
       {!resumed && serverPause !== null && onAutoResumeChange !== null ? (
         <label
-          className="flex w-fit cursor-pointer items-center gap-2 ps-5.5 text-line text-foreground"
+          className="flex w-fit cursor-pointer items-center gap-2 ps-5 text-line text-foreground"
           data-pause-switch
         >
           <Switch
@@ -600,30 +543,6 @@ export function PauseBlock({
           Resume by itself at the reset
         </label>
       ) : null}
-    </div>
-  );
-}
-
-const INCIDENT_TONE = {
-  attention: { dot: "bg-status-attention", text: "text-status-attention-text" },
-  ok: { dot: "bg-status-ok", text: "text-muted-foreground" },
-  failed: { dot: "bg-status-failed", text: "text-status-failed-text" },
-} as const;
-
-/** A service that stopped answering, as one line: its history at its start, its state at its end. */
-export function IncidentLine({ incident }: { readonly incident: IncidentModel }) {
-  const tone = INCIDENT_TONE[incident.tone];
-  return (
-    <div
-      className="relative flex min-h-7 min-w-0 items-center gap-1.5 text-line"
-      data-conversation-incident={incident.tone}
-      role={incident.tone === "ok" ? undefined : "status"}
-    >
-      <LineMark>
-        <span className={cn("size-1.5 rounded-full", tone.dot)} />
-      </LineMark>
-      <span className="shrink-0 font-medium text-foreground">{incident.hostname}</span>
-      <span className={cn("min-w-0 truncate", tone.text)}>{incident.phases.join(" · ")}</span>
     </div>
   );
 }

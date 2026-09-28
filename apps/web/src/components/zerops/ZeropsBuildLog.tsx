@@ -1,8 +1,9 @@
 /**
- * A deploy's build log, under the step that runs the build: while it runs,
- * its newest lines — a glance at what the build is doing — and one link to
- * the whole log, which opens in a dialog of its own: every line, scrollable,
- * following the newest while it is read at the bottom. The log itself is
+ * A deploy's build log, under the step that runs the build, once the build
+ * has written a line: while it runs, its newest lines — a glance at what the
+ * build is doing — and one link to the whole log, which opens in a dialog of
+ * its own: every line, scrollable, following the newest while it is read at
+ * the bottom. The log itself is
  * never inline: a fixed tail could not be scrolled where it stood,
  * stood apart from its step and was context nobody reading the conversation
  * needs (the owner, 2026-09-26: "it should be opened in like a live dialog or
@@ -61,7 +62,10 @@ export function ZeropsBuildLog({
   open,
   status,
   subject,
-}: ZeropsBuildLogProps): JSX.Element {
+}: ZeropsBuildLogProps): JSX.Element | null {
+  // Nothing to open until the build writes its first line: before that the
+  // log is empty, and its container may not even run yet.
+  if (lines.length === 0) return null;
   const count = lineCount(lines.length);
   const glance = status === "live" ? foldBuildLogLines(lines).slice(-GLANCE_ROWS) : [];
   return (

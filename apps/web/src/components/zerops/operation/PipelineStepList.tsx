@@ -1,16 +1,16 @@
 /**
  * A deploy's pipeline as the Zerops GUI's pipeline detail lists it: one row
- * per step the pipeline has — a 16 px state glyph, the step's sentence, its
- * duration at the right in tabular figures. The step that is running or
- * failed reads in the foreground, every other one muted. Before the platform
- * has worked the steps out of zerops.yml, one row says so.
+ * per step the pipeline has — the state's mark (`StepGlyph`, the one every
+ * step list in the card uses), the step's sentence at the card's row size,
+ * its duration at the right in tabular figures. The step that is running or
+ * failed reads in the ink, a finished one muted, one still to come fainter.
+ * Before the platform has worked the steps out of zerops.yml, one row says so.
  *
  * Presentational, props only (R2): every sentence is `readPipeline`'s, every
- * duration `formatDuration`'s. A running step's glyph is the busy dot, whose
- * only motion is the stepped `status-pulse` (R6).
+ * duration `formatDuration`'s. A running step's mark steps in the busy blue,
+ * its only motion (R6).
  */
 import type { JSX, ReactNode } from "react";
-import { CheckIcon, CircleAlertIcon, CircleIcon, XIcon, type LucideIcon } from "lucide-react";
 
 import {
   CALCULATING_SENTENCE,
@@ -20,7 +20,7 @@ import {
 } from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
 
 import { cn } from "~/lib/utils";
-import { StatusDot } from "../primitives";
+import { StepGlyph, type StepGlyphState } from "../primitives";
 
 /** The row's state for a reader who does not see the glyph. */
 const STATE_WORD: Readonly<Record<PipelineSpokenState, string>> = {
@@ -32,39 +32,17 @@ const STATE_WORD: Readonly<Record<PipelineSpokenState, string>> = {
   cancelled: "Cancelled",
 };
 
-const ICON_GLYPH: Readonly<
-  Record<Exclude<PipelineSpokenState, "running" | "activating">, { Icon: LucideIcon; tone: string }>
-> = {
-  waiting: { Icon: CircleIcon, tone: "text-muted-foreground" },
-  finished: { Icon: CheckIcon, tone: "text-success-foreground" },
-  failed: { Icon: CircleAlertIcon, tone: "text-destructive-foreground" },
-  cancelled: { Icon: XIcon, tone: "text-muted-foreground" },
+const GLYPH_STATE: Readonly<Record<PipelineSpokenState, StepGlyphState>> = {
+  waiting: "waiting",
+  running: "running",
+  activating: "running",
+  finished: "done",
+  failed: "failed",
+  cancelled: "stopped",
 };
 
 const isInFlight = (state: PipelineSpokenState): state is "running" | "activating" =>
   state === "running" || state === "activating";
-
-function StepGlyph({ state }: { readonly state: PipelineSpokenState }) {
-  if (isInFlight(state)) {
-    return (
-      <span
-        aria-hidden="true"
-        className="flex size-4 shrink-0 items-center justify-center"
-        data-zerops-pipeline-glyph={state}
-      >
-        <StatusDot dotOnly label={STATE_WORD[state]} tone="busy" />
-      </span>
-    );
-  }
-  const { Icon, tone } = ICON_GLYPH[state];
-  return (
-    <Icon
-      aria-hidden="true"
-      className={cn("size-4 shrink-0", tone)}
-      data-zerops-pipeline-glyph={state}
-    />
-  );
-}
 
 function Row({
   beneath,
@@ -89,14 +67,18 @@ function Row({
       data-zerops-pipeline-step={id}
       data-zerops-pipeline-state={state}
     >
-      <span className="flex h-5 shrink-0 items-center">
-        <StepGlyph state={state} />
+      <span className="flex h-5 shrink-0 items-center" data-zerops-pipeline-glyph={state}>
+        <StepGlyph state={GLYPH_STATE[state]} />
       </span>
       <span className="min-w-0 flex-1">
         <span
           className={cn(
-            "block text-sm leading-5",
-            emphasised ? "text-foreground" : "text-muted-foreground",
+            "block text-line leading-5",
+            emphasised
+              ? "text-foreground"
+              : state === "waiting"
+                ? "text-muted-foreground/70"
+                : "text-muted-foreground",
           )}
         >
           {sentence}

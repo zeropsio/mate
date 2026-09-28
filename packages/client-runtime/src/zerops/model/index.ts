@@ -27,6 +27,7 @@ export {
   type ZeropsThreadModelInput,
 } from "./deriveThreadModel.ts";
 export type {
+  ZeropsBrowserRead,
   ZeropsCall,
   ZeropsCallImage,
   ZeropsCallStatus,

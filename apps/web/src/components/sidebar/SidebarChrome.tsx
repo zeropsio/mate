@@ -31,8 +31,15 @@ import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUp
 
 export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   isElectron,
+  waiting,
 }: {
   isElectron: boolean;
+  /**
+   * The Mates waiting on the viewer (`SidebarWaitingStack`), in a slot kept
+   * whether or not anybody waits, so the header never moves. Absent where the
+   * menu lists no Mates.
+   */
+  waiting?: ReactNode;
 }) {
   return (
     <SidebarHeader
@@ -43,6 +50,14 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
     >
       <SidebarTrigger className="md:hidden" />
       <SidebarBrand />
+      {waiting === undefined ? null : (
+        <div
+          className="ms-auto flex w-24 shrink-0 items-center justify-end md:pe-3"
+          data-zerops-surface="sidebar-waiting-slot"
+        >
+          {waiting}
+        </div>
+      )}
     </SidebarHeader>
   );
 });

@@ -339,7 +339,33 @@ describe("groupFlow", () => {
     ],
   };
 
+  const WREN_FAILED = {
+    ...SM_FIXTURE,
+    mates: [
+      {
+        projectId: "p-wren",
+        name: "Wren",
+        preview: undefined,
+        waiting: true,
+        failed: true,
+        talked: true,
+      },
+    ],
+  };
+
   it.each([
+    {
+      // Its face waits like a question's, but it asks nothing: the step is
+      // the failure it stopped on, in the failure's own tone.
+      case: "a Mate stopped on an error is the step, ahead of the merge",
+      input: WREN_FAILED,
+      step: {
+        kind: "fix-mate",
+        text: "Wren stopped on an error",
+        verb: "Open",
+        target: { kind: "mate", projectId: "p-wren" },
+      },
+    },
     {
       case: "a Mate waiting on an answer outranks the merge",
       input: WREN_WAITING,

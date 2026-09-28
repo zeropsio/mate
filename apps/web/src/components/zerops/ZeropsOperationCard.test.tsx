@@ -242,17 +242,28 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
     expect(rows[2]?.inner).not.toContain("tabular-nums");
   });
 
+  // One mark per state across every step list of the card: a ring, what is
+  // inside it saying the state; the running one the busy blue, stepping.
   it.each([
-    { state: "finished", shows: ["lucide-check", "text-success-foreground"] },
-    { state: "running", shows: ['data-zerops-status-tone="busy"', "animate-status-pulse"] },
-    { state: "waiting", shows: ["lucide-circle", "text-muted-foreground"] },
+    {
+      state: "finished",
+      shows: ['data-step-glyph="done"', "lucide-circle-check", "text-status-ok"],
+    },
+    {
+      state: "running",
+      shows: [
+        'data-step-glyph="running"',
+        "lucide-circle-dot",
+        "text-status-busy",
+        "animate-status-pulse",
+      ],
+    },
+    { state: "waiting", shows: ['data-step-glyph="waiting"', "lucide-circle", "text-status-off"] },
   ])("a $state step's glyph", ({ state, shows }) => {
     const row = rowsOf(render(running, observedOf(building))).find(
       (entry) => entry.state === state,
     );
-    const glyph = row?.inner.match(
-      /<(svg|span)[^>]*data-zerops-pipeline-glyph="[a-z]+"[\s\S]*?<\/\1>/,
-    )?.[0];
+    const glyph = row?.inner.match(/<svg[^>]*data-step-glyph="[a-z]+"[\s\S]*?<\/svg>/)?.[0];
     for (const text of shows) expect(glyph ?? "").toContain(text);
   });
 
@@ -268,7 +279,7 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
         600,
       ),
       state: "failed",
-      shows: ["lucide-circle-alert", "text-destructive-foreground"],
+      shows: ['data-step-glyph="failed"', "lucide-circle-x", "text-status-failed"],
     },
     {
       name: "cancelled",
@@ -277,7 +288,7 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
         600,
       ),
       state: "cancelled",
-      shows: ["lucide-x", "text-muted-foreground"],
+      shows: ['data-step-glyph="stopped"', "lucide-circle-minus", "text-status-off"],
     },
   ])("a $name step's glyph", ({ pipeline, state, shows }) => {
     const row = rowsOf(render(deploy({ status: "failed" }), observedOf(pipeline))).find(
@@ -286,7 +297,7 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
     for (const text of shows) expect(row?.inner).toContain(text);
   });
 
-  it("the running and the failed step read in the foreground, every other one muted", () => {
+  it("the running and the failed step read in the ink, a finished one muted, one to come fainter", () => {
     const failed = readout(
       {
         name: SHA,
@@ -296,11 +307,15 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
       600,
     );
     const sentenceTone = (inner: string) =>
-      inner.includes("text-sm leading-5 text-foreground") ? "foreground" : "muted";
+      inner.includes("text-line leading-5 text-foreground")
+        ? "foreground"
+        : inner.includes("text-muted-foreground/70")
+          ? "faint"
+          : "muted";
 
     expect(
       rowsOf(render(running, observedOf(building))).map((row) => sentenceTone(row.inner)),
-    ).toEqual(["muted", "foreground", "muted"]);
+    ).toEqual(["muted", "foreground", "faint"]);
     expect(
       rowsOf(render(deploy({ status: "failed" }), observedOf(failed))).map((row) =>
         sentenceTone(row.inner),
@@ -325,14 +340,32 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
     );
   });
 
-  it("the header reads the pipeline's word, the service and the overall line — never a clock", () => {
+  // One word, one time: "Deploying weatherdash · 1m 9s", never "Running …
+  // Running for 1m 9s" (the owner, 2026-09-27: "font sizes, indicators etc.
+  // are pretty poorly done").
+  it("the header says the deploy's own word, the service and how long — never a clock", () => {
     const header = headerOf(render(running, observedOf(building)));
 
-    expect(header).toMatch(/data-zerops-primitive="status-dot"[^>]*>[\s\S]*?>Running</);
+    expect(header).toMatch(/data-zerops-primitive="status-dot"[^>]*>[\s\S]*?>Deploying</);
+    expect(header).not.toContain(">Running<");
     expect(header).not.toContain('data-zerops-primitive="micro-label"');
     expect(header).toMatch(/data-zerops-subject-chip[^>]*>weatherdash</);
-    expect(durationOf(header)).toBe("Running for 1m 9s");
+    expect(durationOf(header)).toBe("1m 9s");
     expect(header).not.toMatch(/\d:\d\d/);
+  });
+
+  it("under the line that names it, a card is its body alone", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard
+        headless
+        now={NOW_MS}
+        observed={observedOf(building)}
+        operation={running}
+      />,
+    );
+    expect(html).not.toContain("<header");
+    expect(html).toContain("data-zerops-card-headless");
+    expect(rowsOf(html)).toHaveLength(3);
   });
 
   it.each([
@@ -347,7 +380,7 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
 
     expect(rows).toHaveLength(1);
     expect(rows[0]?.inner).toContain("Calculating steps from zerops.yml");
-    expect(rows[0]?.inner).toContain('data-zerops-status-tone="busy"');
+    expect(rows[0]?.inner).toContain('data-step-glyph="running"');
     expect(durationOf(headerOf(html))).toBe("1m 14s");
   });
 
@@ -394,7 +427,7 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
     expect(html).toContain("build-log-tail");
   });
 
-  it("a settled deploy whose pipeline ended reads the pipeline's word and overall line", () => {
+  it("a settled deploy whose pipeline ended says its own word and the pipeline's time", () => {
     const active = readout(
       {
         name: SHA,
@@ -416,8 +449,8 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
     });
     const header = headerOf(render(done, observedOf(active)));
 
-    expect(header).toMatch(/>Finished</);
-    expect(durationOf(header)).toBe("Finished in 1m 35s");
+    expect(header).toMatch(/>Deployed</);
+    expect(durationOf(header)).toBe("1m 35s");
   });
 
   it("a settled deploy whose readout stopped mid-way keeps the result's own word and time", () => {
@@ -503,7 +536,7 @@ describe("ZeropsOperationCard — the pipeline row", () => {
         stateLabel: "Done",
         durationMs: 171_000,
       } as const,
-      shows: ["Build", "2m 51s", 'data-zerops-segment-glyph="done"'],
+      shows: ["Build", "2m 51s", 'data-step-glyph="done"'],
       hides: ['tabular-nums">Done<'],
     },
     {
@@ -521,7 +554,7 @@ describe("ZeropsOperationCard — the pipeline row", () => {
         stateLabel: "Running",
         durationMs: 7_000,
       } as const,
-      shows: ["Deploy", "7 s"],
+      shows: ["Deploy", "7s"],
       hides: ['tabular-nums">Running<'],
     },
     {

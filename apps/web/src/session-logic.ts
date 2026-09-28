@@ -108,6 +108,37 @@ export interface InputAnswer {
   readonly answer: string;
 }
 
+/** A call's own words and target: see `WorkLogEntry.callInput`. */
+export interface WorkCallInput {
+  readonly description?: string;
+  readonly filePath?: string;
+  readonly path?: string;
+  readonly pattern?: string;
+  readonly glob?: string;
+  readonly url?: string;
+  readonly query?: string;
+}
+
+const CALL_INPUT_KEYS: ReadonlyArray<readonly [string, keyof WorkCallInput]> = [
+  ["description", "description"],
+  ["file_path", "filePath"],
+  ["path", "path"],
+  ["pattern", "pattern"],
+  ["glob", "glob"],
+  ["url", "url"],
+  ["query", "query"],
+];
+
+function readCallInput(input: Record<string, unknown> | null): WorkCallInput | undefined {
+  if (input === null) return undefined;
+  const read: { -readonly [Key in keyof WorkCallInput]: string } = {};
+  for (const [wire, key] of CALL_INPUT_KEYS) {
+    const value = asTrimmedString(input[wire]);
+    if (value !== null) read[key] = value;
+  }
+  return Object.keys(read).length > 0 ? read : undefined;
+}
+
 export interface WorkLogEntry {
   questionAnswer?: UserInputAttachmentAnswerPayload;
   /** `user-input.requested`/`.resolved`: which request the entry belongs to. */
@@ -151,6 +182,17 @@ export interface WorkLogEntry {
    * Read this before falling back to `toolData` for a call's arguments.
    */
   toolInput?: Record<string, unknown>;
+  /**
+   * What a call said of itself and named as its target, from the input the
+   * server passes on (`data.input`): Claude Code's one-line description of a
+   * command ("Screenshot the home page at laptop width"), the file, pattern,
+   * address or query a tool names.
+   */
+  callInput?: WorkCallInput;
+  /** A task's: the tool call it tracks — Claude Code tracks a long command as a task. */
+  taskToolUseId?: string;
+  /** A task's kind, as the runtime names it ("local_bash", "local_agent", …). */
+  taskType?: string;
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
   /** From runtime item / task payload `status` when present (e.g. tool.updated). */
@@ -1011,6 +1053,9 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
         entry.toolInput = input;
       }
     }
+  } else if (!isTaskActivity) {
+    const callInput = readCallInput(asRecord(data?.input));
+    if (callInput !== undefined) entry.callInput = callInput;
   }
   if (itemType) {
     entry.itemType = itemType;
@@ -1034,6 +1079,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (isTaskActivity && typeof payload?.role === "string" && payload.role.length > 0) {
     entry.agentRole = payload.role;
   }
+  const taskToolUseId = isTaskActivity ? asTrimmedString(payload?.toolUseId) : null;
+  if (taskToolUseId !== null) entry.taskToolUseId = taskToolUseId;
+  const taskType = isTaskActivity ? asTrimmedString(payload?.taskType) : null;
+  if (taskType !== null) entry.taskType = taskType;
   if (
     isTaskActivity &&
     (payload?.taskType === "local_workflow" ||
@@ -1232,6 +1281,7 @@ function mergeDerivedWorkLogEntries(
   const toolLifecycleStatus = next.toolLifecycleStatus ?? previous.toolLifecycleStatus;
   const toolData = next.toolData ?? previous.toolData;
   const toolInput = next.toolInput ?? previous.toolInput;
+  const callInput = next.callInput ?? previous.callInput;
   const startedAt = previous.startedAt ?? previous.createdAt;
   return {
     ...previous,
@@ -1256,6 +1306,7 @@ function mergeDerivedWorkLogEntries(
     ...(toolLifecycleStatus !== undefined ? { toolLifecycleStatus } : {}),
     ...(toolData !== undefined ? { toolData } : {}),
     ...(toolInput !== undefined ? { toolInput } : {}),
+    ...(callInput !== undefined ? { callInput } : {}),
   };
 }
 

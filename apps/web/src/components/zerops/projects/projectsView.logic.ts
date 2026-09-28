@@ -78,14 +78,19 @@ export function parseProjectsSearch(raw: Record<string, unknown>): ProjectsSearc
   };
 }
 
-/** The steps somebody has something to do for: the strip gathers them, the left menu dots them. */
+/**
+ * The steps somebody has something to do for: the strip gathers them, the
+ * left menu dots them. A project without production owes nobody anything —
+ * production is not required (the owner, 2026-09-28) — so adding one is the
+ * page's offer, never a step that waits.
+ */
 const STRIP_STEPS: ReadonlySet<GroupNextStepKind> = new Set([
   "answer-mate",
+  "fix-mate",
   "fix-deploy",
   "merge",
   "unblock",
   "release",
-  "add-production",
 ]);
 
 /** Whether a next step waits on somebody — never a first task (the Mate is the way in) or none. */
@@ -176,6 +181,7 @@ export function nextStepCell(flow: GroupFlow): FlowCell | undefined {
   const { nextStep } = flow;
   switch (nextStep.kind) {
     case "answer-mate":
+    case "fix-mate":
       return "mates";
     case "merge":
     case "unblock":
@@ -204,6 +210,8 @@ export function nextStepCell(flow: GroupFlow): FlowCell | undefined {
  */
 const NEXT_STEP_TONE: Record<GroupNextStepKind, ServiceStatusToneId> = {
   "answer-mate": "attention",
+  // Stopped on an error: the failure red, as the approved menu draws it.
+  "fix-mate": "failed",
   "fix-deploy": "failed",
   merge: "attention",
   unblock: "attention",
@@ -458,6 +466,8 @@ export interface GroupMemberFacts {
         readonly name: string;
         /** Its face reads `needs`. */
         readonly waiting: boolean;
+        /** Its last run stopped on an error: its face reads `needs`, and it asks nothing. */
+        readonly failed?: boolean;
         /**
          * Somebody has spoken into its conversation — `undefined` while that
          * is not known: its container is not connected, or its conversations
@@ -506,6 +516,7 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
         ? {
             name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
             waiting: mateFaceFor(connected, activity) === "needs",
+            ...(connected && activity?.kind === "failed" ? { failed: true } : {}),
             talked: !connected
               ? undefined
               : activity !== undefined
@@ -595,6 +606,7 @@ export function groupFlowInputOf(input: {
               name: member.mate.name,
               preview: pairPreviewRoute(member.routes, member.hostnames)?.url,
               waiting: member.mate.waiting,
+              ...(member.mate.failed === true ? { failed: true } : {}),
               // Unknown is not spoken to as far as the flow can say; where a
               // group is drawn waits for it (`groupPlacement`).
               talked: member.mate.talked ?? false,

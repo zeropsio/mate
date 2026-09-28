@@ -101,17 +101,38 @@ describe("the Overview", () => {
     vi.unstubAllGlobals();
   });
 
+  // A project needs no production (the owner, 2026-09-28: "production not
+  // required, this shouldn't be there"): its row offers it, the strip does not.
+  it("offers + Add production in its row, never as a step in the strip", () => {
+    const group = entry([WREN], {
+      mainHasCode: true,
+      productionAddable: true,
+      missing: [{ tier: "production" }],
+    });
+    const renderNextStep = (value: typeof group, placement: "cell" | "strip") => (
+      <button
+        data-test-placement={placement}
+        data-test-verb={value.flow.nextStep.kind}
+        type="button"
+      >
+        {value.flow.nextStep.verb}
+      </button>
+    );
+    const tree = mount(
+      <ZeropsProjectsFlow<Item> {...FLOW_PROPS} groups={[group]} renderNextStep={renderNextStep} />,
+    );
+    expect(tree.root.findAll((node) => node.props["data-test-placement"] === "strip")).toHaveLength(
+      0,
+    );
+    const [inRow] = tree.root
+      .findByProps({ "data-zerops-surface": "flow-rows" })
+      .findAll((node) => node.props["data-test-verb"] !== undefined);
+    expect(inRow?.props["data-test-placement"]).toBe("cell");
+  });
+
   it.each([
     ["Merge", MERGING],
     ["Release v0.1.0", RELEASING],
-    [
-      "+ Add production",
-      entry([WREN], {
-        mainHasCode: true,
-        productionAddable: true,
-        missing: [{ tier: "production" }],
-      }),
-    ],
   ])("carries the step's verb %s on each strip item, the row's own verb", (_verb, group) => {
     const act_ = vi.fn();
     const renderNextStep = (value: typeof group, placement: "cell" | "strip") => (

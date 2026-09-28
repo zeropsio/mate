@@ -139,6 +139,10 @@ import {
   ThreadCommandSubtitle,
 } from "./ThreadCommandSubtitle";
 import { ThreadRowLeadingStatus, ThreadRowTrailingStatus } from "./ThreadStatusIndicators";
+import { SidebarJumpBox } from "./zerops/SidebarJumpBox";
+import { useSidebarJump } from "../zerops/sidebarJump";
+import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
+import { slashKeyOpensJumpBox } from "../zerops/jumpSlash";
 import { primaryServerKeybindingsAtom, primaryServerProvidersAtom } from "../state/server";
 import { deriveProviderInstanceEntries, type ProviderInstanceEntry } from "../providerInstances";
 import { resolveShortcutCommand, threadJumpIndexFromCommand } from "../keybindings";
@@ -453,6 +457,12 @@ export function CommandPalette({ children }: { children: ReactNode }) {
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented) return;
+      // "/" opens the palette too, wherever nothing is being typed.
+      if (slashKeyOpensJumpBox(event)) {
+        event.preventDefault();
+        setOpen(true);
+        return;
+      }
       // Resolve with the complete shortcut context so customized bindings
       // using any documented `when` condition work.
       const command = resolveShortcutCommand(event, keybindings, {
@@ -608,7 +618,7 @@ function CommandPaletteDialog(props: {
       ) : props.mode === "content" ? (
         <ProjectContentSearchDialog onOpenChange={props.setOpen} />
       ) : (
-        <OpenCommandPaletteDialog
+        <CommandRootDialog
           openIntent={props.openIntent}
           setOpen={props.setOpen}
           openOverlayMode={props.openOverlayMode}
@@ -619,15 +629,54 @@ function CommandPaletteDialog(props: {
   );
 }
 
-function OpenCommandPaletteDialog(props: {
+/**
+ * Signed in to Zerops, the palette opens as the jump box (`SidebarJumpBox`),
+ * which finds what the left menu holds; its `>` hands over to the commands
+ * here, from that `>`. Anything opened for a purpose — a theme, a new
+ * thread's project — is the commands' own.
+ */
+function CommandRootDialog(props: {
   readonly openIntent: CommandPaletteOpenIntent | null;
   readonly setOpen: (open: boolean) => void;
   readonly openOverlayMode: (mode: SearchOverlayMode) => void;
   readonly clearOpenIntent: () => void;
 }) {
+  const zeropsSignedIn = useZeropsSessionOptional()?.status === "signed-in";
+  const jumpIndex = useSidebarJump((store) => store.index);
+  const [commandsFrom, setCommandsFrom] = useState<string | null>(null);
+  if (zeropsSignedIn && jumpIndex !== null && props.openIntent === null && commandsFrom === null) {
+    return (
+      <SidebarJumpBox index={jumpIndex} onCommands={setCommandsFrom} setOpen={props.setOpen} />
+    );
+  }
+  return (
+    <OpenCommandPaletteDialog
+      {...props}
+      initialQuery={commandsFrom ?? ""}
+      {...(commandsFrom === null
+        ? {}
+        : {
+            // The ">" taken away again: back to finding.
+            onLeaveCommands: () => {
+              setCommandsFrom(null);
+            },
+          })}
+    />
+  );
+}
+
+function OpenCommandPaletteDialog(props: {
+  readonly openIntent: CommandPaletteOpenIntent | null;
+  readonly setOpen: (open: boolean) => void;
+  readonly openOverlayMode: (mode: SearchOverlayMode) => void;
+  readonly clearOpenIntent: () => void;
+  readonly initialQuery?: string;
+  /** Opened from the jump box's ">": its query without the ">" hands back to it. */
+  readonly onLeaveCommands?: () => void;
+}) {
   const navigate = useNavigate();
   const { clearOpenIntent, openIntent, openOverlayMode, setOpen } = props;
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(props.initialQuery ?? "");
   const deferredQuery = useDeferredValue(query);
   const isActionsOnly = deferredQuery.startsWith(">");
   const [highlightedItemValue, setHighlightedItemValue] = useState<string | null>(null);
@@ -1240,6 +1289,10 @@ function OpenCommandPaletteDialog(props: {
   }
 
   function handleQueryChange(nextQuery: string): void {
+    if (props.onLeaveCommands !== undefined && currentView === null && !nextQuery.startsWith(">")) {
+      props.onLeaveCommands();
+      return;
+    }
     browseNavigation.invalidate();
     setHighlightedItemValue(null);
     setQuery(nextQuery);

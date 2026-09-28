@@ -176,6 +176,47 @@ function projectCommandValue(data: Record<string, unknown>): unknown {
   return undefined;
 }
 
+/**
+ * What a non-MCP tool call says it is doing, in its own input: Claude's
+ * one-line Bash `description`, a Read/Edit/Write `file_path`, a Grep/Glob
+ * `pattern`/`path`/`glob`, a WebFetch `url`, a WebSearch `query`. Only string
+ * values survive, trimmed and capped. The rest of an input stays in
+ * persistence only — `content`, `old_string`, `new_string` and `prompt` can
+ * each run to megabytes — and `command` already rides at `data.command`.
+ */
+const TOOL_INPUT_KEPT_FIELDS = [
+  "description",
+  "file_path",
+  "path",
+  "pattern",
+  "glob",
+  "url",
+  "query",
+] as const;
+
+const TOOL_INPUT_FIELD_MAX_LENGTH = 300;
+
+function projectToolInput(data: Record<string, unknown>): Record<string, string> | undefined {
+  const input = asRecord(data.input);
+  if (!input) {
+    return undefined;
+  }
+  const projected: Record<string, string> = {};
+  for (const key of TOOL_INPUT_KEPT_FIELDS) {
+    const value = asTrimmedString(input[key]);
+    if (!value) {
+      continue;
+    }
+    // A cut copies its characters, as `summarizeToolTextOutput` does, so the
+    // kept prefix does not pin the whole input string in memory.
+    projected[key] =
+      value.length <= TOOL_INPUT_FIELD_MAX_LENGTH
+        ? value
+        : Array.from(`${value.slice(0, TOOL_INPUT_FIELD_MAX_LENGTH - 1).trimEnd()}…`).join("");
+  }
+  return Object.keys(projected).length > 0 ? projected : undefined;
+}
+
 function projectViewedImagePath(data: Record<string, unknown>): string | undefined {
   const directPath = asTrimmedString(data.imagePath);
   if (directPath && isWorkspaceImagePreviewPath(directPath)) {
@@ -447,6 +488,10 @@ export function projectActivityPayload(
   const command = projectCommandValue(data);
   if (command !== undefined) {
     projectedData.command = command;
+  }
+  const input = projectToolInput(data);
+  if (input) {
+    projectedData.input = input;
   }
   const imagePath = projectViewedImagePath(data);
   if (imagePath) {

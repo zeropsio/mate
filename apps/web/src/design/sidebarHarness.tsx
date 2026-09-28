@@ -23,7 +23,7 @@
  * Fixtures only. Nothing here ships in the app bundle — `design.html` is not
  * `index.html`, and no route imports this module.
  */
-import { StrictMode } from "react";
+import { StrictMode, useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -33,10 +33,52 @@ import {
   type FlowPullRequest,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
-import { ThreadId } from "@t3tools/contracts";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 
-import { SidebarZeropsTree, type SidebarProjectFlow } from "~/components/zerops/SidebarZeropsTree";
+import { onOpenCommandPalette } from "~/commandPaletteBus";
+import { MateLockup } from "~/components/MateLockup";
+import { CommandDialog, CommandDialogPopup } from "~/components/ui/command";
+import {
+  chooseJumpItem,
+  JumpBoxView,
+  jumpSearchText,
+  useJumpBoxModel,
+  useJumpBoxState,
+} from "~/components/zerops/JumpBox";
+import {
+  jumpWritePlan,
+  type JumpHit,
+  type SidebarJumpIndex,
+} from "~/components/zerops/JumpBox.logic";
+import { SidebarJumpRow } from "~/components/zerops/SidebarJumpRow";
+import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountControl.logic";
+import { SidebarZeropsAccount } from "~/components/zerops/SidebarZeropsAccount";
+import { SidebarWaitingStack } from "~/components/zerops/SidebarWaitingStack";
+import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
+import { MatePeekCard, useMatePeekKeys } from "~/components/zerops/SidebarMatePeek";
+import type {
+  MatePeekChoice,
+  MatePeekDecision,
+  MatePeekStep,
+} from "~/components/zerops/SidebarMatePeek.logic";
+import { askedLabelFor } from "~/components/zerops/SidebarMatePeek.logic";
+import {
+  SidebarZeropsTree,
+  type SidebarPeekRender,
+  type SidebarProjectFlow,
+} from "~/components/zerops/SidebarZeropsTree";
+import { useComposerDraftStore } from "~/composerDraftStore";
+import { setLocalStorageItem } from "~/hooks/useLocalStorage";
+import { openAccountLifetime } from "~/zerops/accountLifetime";
+import { shownInScope, useMateScope } from "~/zerops/mateScope";
+import { isMacPlatform } from "~/lib/utils";
+import { formatShortTimestamp } from "~/timestampFormat";
+import { slashKeyOpensJumpBox } from "~/zerops/jumpSlash";
+import { useSidebarJump } from "~/zerops/sidebarJump";
+import { useSidebarPeek } from "~/zerops/sidebarPeek";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { PROJECT_ORDER_STORAGE_KEY, ProjectOrderSchema } from "~/zerops/projectOrderPreference";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 
 import "../index.css";
@@ -72,6 +114,8 @@ function candidate(
     key: `${id}:zcp`,
     project: { id, name, status: "ACTIVE", tagList: tags },
     group: connected ? ("connected" as const) : ("ready" as const),
+    // Where its conversation lives: what the jump box searches.
+    ...(connected && container ? { environmentId: EnvironmentId.make(`env-${id}`) } : {}),
   };
   const withRoutes = theRoutes === undefined ? base : { ...base, routes: theRoutes };
   return container
@@ -85,23 +129,93 @@ function candidate(
 }
 
 function activity(input: {
+  readonly id?: string;
   readonly subject?: string;
   readonly snippet?: string;
   readonly hours: number;
   readonly face: ZeropsAgentActivity["face"];
+  readonly kind?: ZeropsAgentActivity["kind"];
+  readonly progress?: ZeropsAgentActivity["progress"];
+  readonly unread?: boolean;
+  readonly pausedUntil?: string;
+  readonly task?: string;
 }): ZeropsAgentActivity {
+  const id = input.id ?? "thread";
   return {
-    threadId: ThreadId.make("thread"),
-    kind: "idle",
+    threadId: ThreadId.make(`thread-${id}`),
+    kind: input.kind ?? "idle",
     status: null,
     face: input.face,
     subject: input.subject,
     snippet: input.snippet,
     at: hoursAgo(input.hours),
+    progress: input.progress,
+    unread: input.unread ?? false,
+    pausedUntil: input.pausedUntil,
+    threadKey: `env-${id}:thread-${id}`,
+    task: input.task ?? input.subject,
   };
 }
 
 const group = (id: string, name: string) => [`mate:g:${id}`, `mate:name:${name}`];
+
+/** What a waiting Mate's thread says it waits on, as a peek reads it. */
+const PEEK_DECISIONS = new Map<string, MatePeekDecision>([
+  [
+    "links-theo",
+    {
+      kind: "approval",
+      requestId: "req-theo",
+      title: "Theo wants to run",
+      detail: "psql \"$DATABASE_URL\" -c 'DROP TABLE link_previews_legacy;'",
+      choices: [
+        { label: "Approve", value: "accept", primary: true },
+        { label: "Deny", value: "decline", primary: false },
+      ],
+    },
+  ],
+  [
+    "todo-vera",
+    {
+      kind: "question",
+      requestId: "req-vera",
+      questionId: "finished",
+      question: "Should finished items sink to the bottom, or hide behind a toggle?",
+      choices: [
+        { label: "Sink to the bottom", value: "sink", primary: false },
+        { label: "Hide behind a toggle", value: "hide", primary: false },
+        { label: "Both, the toggle off by default", value: "both", primary: false },
+      ],
+      allowText: true,
+    },
+  ],
+  [
+    "todo-fen",
+    { kind: "failure", message: "The deploy to stage failed: the build timed out after 120 s." },
+  ],
+]);
+
+/** The plans a peek reads off a working Mate's thread. */
+const PEEK_STEPS = new Map<string, ReadonlyArray<MatePeekStep>>([
+  [
+    "links-enzo",
+    [
+      { text: "Read how the list is rendered", state: "done" },
+      { text: "Add the search box and its filter", state: "done" },
+      { text: "Run the build", state: "running" },
+      { text: "Deploy to stage", state: "waiting" },
+      { text: "Open a change", state: "waiting" },
+    ],
+  ],
+  [
+    "shop-mira",
+    [
+      { text: "Split the checkout into two steps", state: "done" },
+      { text: "Keep the basket across a reload", state: "running" },
+      { text: "Deploy to stage", state: "waiting" },
+    ],
+  ],
+]);
 
 const LINKS = group("links", "Links");
 const SHOP = group("shop", "Shop");
@@ -177,34 +291,53 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
   [
     "links-enzo",
     activity({
-      subject: "Add a search box above the list that filters the saved links",
-      snippet: "Done. The search box is live on both services. What changes…",
-      hours: 11,
+      id: "links-enzo",
+      task: "Add a search box above the list that filters the saved links",
+      subject: "Run the build",
+      snippet: "The search box filters as you type. Running the build now.",
+      hours: 0.053,
       face: "working",
+      kind: "working",
+      progress: { completed: 2, total: 5 },
     }),
   ],
-  ["links-theo", activity({ subject: "/compact", hours: 9, face: "idle" })],
+  [
+    "links-theo",
+    activity({
+      id: "links-theo",
+      subject: "Drop the old previews table once the cache is live",
+      snippet: "The cache holds every preview. Dropping the old table needs your OK.",
+      hours: 0.05,
+      face: "needs",
+      kind: "approval",
+    }),
+  ],
   [
     "shop-mira",
     activity({
+      id: "shop-mira",
       subject: "Split the checkout into a two-step flow with a saved basket",
-      snippet: "The basket survives a reload now. Six branches are open…",
+      snippet: "I hit the usage limit. I pick up again when it resets.",
       hours: 1,
-      face: "working",
+      face: "sleep",
+      pausedUntil: new Date(Date.now() + 2.5 * 3_600_000).toISOString(),
     }),
   ],
   [
     "shop-otto",
     activity({
+      id: "shop-otto",
       subject: "Why does the VAT come out wrong for Irish orders?",
       snippet: "Because the rate table is keyed by country and Ireland has…",
       hours: 30,
-      face: "idle",
+      face: "done",
+      unread: true,
     }),
   ],
   [
     "notes-iris",
     activity({
+      id: "notes-iris",
       subject: "Show a live character count under the body field of the note form",
       snippet: 'Healthy, and the rendered body confirms "0 characters"…',
       hours: 20,
@@ -213,15 +346,24 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
   ],
   [
     "todo-vera",
-    activity({ subject: "Reply with just: done", snippet: "done", hours: 14, face: "idle" }),
+    activity({
+      id: "todo-vera",
+      subject: "Move finished items out of the way",
+      snippet: "Should finished items sink to the bottom, or hide behind a toggle?",
+      hours: 0.2,
+      face: "needs",
+      kind: "input",
+    }),
   ],
   [
     "todo-fen",
     activity({
+      id: "todo-fen",
       subject: "Rename the app in the page title and the main heading",
-      snippet: "Done. Both the browser tab title and the <h1> now read…",
-      hours: 20,
-      face: "idle",
+      snippet: "The deploy to stage failed: the build timed out after 120 s.",
+      hours: 0.3,
+      face: "needs",
+      kind: "failed",
     }),
   ],
   [
@@ -229,7 +371,8 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
     activity({
       subject: "Pull the spacing scale out of the components into one file",
       snippet: "There were four scales. They are one now, and nothing moved…",
-      hours: 52,
+      // Untouched for more than a week: it folds into its project's quiet Mates.
+      hours: 9 * 24,
       face: "idle",
     }),
   ],
@@ -555,50 +698,357 @@ const PORTRAIT = `data:image/svg+xml,${encodeURIComponent(
  * Mate whose owner the member list could not name — which wears no badge.
  */
 const OWNERS = new Map<string, ZeropsMateOwner>([
-  ["links-enzo", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT }],
-  ["links-theo", { name: "Jan Beneš", initials: "JB", avatarUrl: null }],
-  ["shop-mira", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT }],
-  ["notes-iris", { name: "Eva Dvořák", initials: "ED", avatarUrl: null }],
-  ["todo-vera", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT }],
+  ["links-enzo", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: true }],
+  ["links-theo", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
+  ["shop-mira", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: false }],
+  ["notes-iris", { name: "Eva Dvořák", initials: "ED", avatarUrl: null, isViewer: false }],
+  ["todo-vera", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: false }],
 ]);
 
-/**
- * One sidebar at one width. The panel is resizable (`SIDEBAR_WIDTH` is the
- * 256px default, and the owner runs it near 368), so every width in that range
- * is a width this has to read at — the narrow one is where truncation bites.
- */
-function Panel({ label, width }: { readonly label: string; readonly width: number }) {
+const activityOfCandidate = (item: ZeropsCandidate) => ACTIVITY.get(item.project.id);
+
+/** What the peek's keys and buttons did, and which Mate was opened, for the audit browser. */
+const peekActions: string[] = [];
+(window as unknown as { __peekActions?: string[] }).__peekActions = peekActions;
+
+/** A peek drawn from fixtures, with the app's own keys (`useMatePeekKeys`). */
+function HarnessPeek({ peek }: { readonly peek: SidebarPeekRender<ZeropsCandidate> }) {
+  const decision = PEEK_DECISIONS.get(peek.candidate.project.id);
+  const choose = (choice: MatePeekChoice) => {
+    peekActions.push(`${peek.name}: ${choice.label}`);
+  };
+  const stop =
+    peek.face === "working"
+      ? () => {
+          peekActions.push(`${peek.name}: stop`);
+        }
+      : undefined;
+  useMatePeekKeys({
+    choices: decision?.kind === "question" || decision?.kind === "approval" ? decision.choices : [],
+    answerable: true,
+    onChoose: choose,
+    onStop: stop,
+    onClose: peek.onClose,
+  });
   return (
-    <div className="flex flex-col gap-2">
-      <span className="px-2 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-        {label}
-      </span>
-      <div
-        className="h-[1600px] overflow-y-auto border border-border bg-sidebar py-2"
-        style={{ width }}
-      >
+    <MatePeekCard
+      appUrl={peek.appUrl ?? "https://example.com"}
+      askedLabel={askedLabelFor(peek.owner)}
+      changeCount={peek.changeCount}
+      changes={peek.changes}
+      decision={decision}
+      face={peek.face}
+      lastWords={peek.activity?.snippet}
+      name={peek.name}
+      onChoose={choose}
+      onMore={peek.onMore}
+      onOpen={peek.onOpen}
+      onStop={stop}
+      onText={(text) => {
+        peekActions.push(`${peek.name}: “${text}”`);
+      }}
+      projectName={peek.projectName}
+      responding={false}
+      steps={PEEK_STEPS.get(peek.candidate.project.id)}
+      stepsLabel={
+        peek.activity?.pausedUntil === undefined ? "Plan" : "Plan, paused at a usage limit"
+      }
+      task={peek.activity?.task}
+      time={peek.time}
+      tint={peek.tint}
+      waitingOn={undefined}
+    />
+  );
+}
+
+const ACCOUNT = zeropsAccountDisplay({
+  email: "ada@example.com",
+  fullName: "Ada Lovelace",
+  firstName: "Ada",
+});
+const ORGANIZATION = { id: "org-acme", name: "Acme", membershipId: "m-acme" };
+
+/**
+ * One sidebar, as the app lays it out: its header, the listing, its foot —
+ * one of it, as in the app. Two trees on one page share the one peek (a
+ * module store, as in the app), and each one's peek lands over the other.
+ * `?w=` sets its width; the owner runs it near 368, the default is 256.
+ */
+function SidebarFrame({
+  width,
+  phone,
+  onJump,
+}: {
+  readonly width: number;
+  readonly phone: boolean;
+  readonly onJump: () => void;
+}) {
+  // Mine / Everyone, from the account menu, as the app reads it.
+  const [scope] = useMateScope();
+  const shown = useCallback(
+    (item: ZeropsCandidate) =>
+      shownInScope(scope, OWNERS.get(item.project.id), item.project.id === "links-enzo"),
+    [scope],
+  );
+  const waiting = useSidebarWaiting({
+    candidates: CANDIDATES,
+    activityOf: activityOfCandidate,
+    shown,
+    activeProjectId: "links-enzo",
+    enabled: true,
+  });
+  return (
+    <aside
+      className="flex h-screen shrink-0 flex-col border-e border-border bg-sidebar text-sidebar-foreground"
+      data-sidebar="sidebar"
+      style={{ width }}
+    >
+      <header className="flex h-13 shrink-0 items-center gap-2 ps-4">
+        <MateLockup className="h-6 w-auto" decorative />
+        <div className="ms-auto flex w-24 shrink-0 items-center justify-end pe-3">
+          <SidebarWaitingStack mates={waiting.mates} onNext={waiting.next} />
+        </div>
+      </header>
+      <div className="shrink-0 px-2 pb-2">
+        <SidebarJumpRow onJump={onJump} onNewProject={() => {}} shortcut={JUMP_KEY} />
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto ps-2.25 pe-2 pb-1">
         <SidebarZeropsTree
           candidates={CANDIDATES}
-          className="px-1"
+          className="mb-2"
           complete
-          getActivity={(item) => ACTIVITY.get(item.project.id)}
+          getActivity={activityOfCandidate}
           getFlow={(groupId) => FLOWS.get(groupId)}
           getOwner={(item) => OWNERS.get(item.project.id)}
+          getMateActions={(item, live) => ({
+            muted: item.project.id === "notes-iris",
+            toggleMute: () => {},
+            toggleUnread: () => {},
+            copyLink: () => {},
+            rename: {
+              initialValue:
+                item.project.tagList
+                  ?.find((tag) => tag.startsWith("mate:bot:"))
+                  ?.slice("mate:bot:".length) ?? item.project.name,
+              validate: (value) => (value.trim() === "" ? "Give the Mate a name." : undefined),
+              commit: () => {},
+            },
+            ...(live?.face === "working" ? { stop: () => {} } : {}),
+            entries: [
+              { id: "restart", label: "Restart", onSelect: () => {} },
+              { id: "assign", label: "Hand over…", onSelect: () => {} },
+              { id: "move", label: "Move to project…", onSelect: () => {} },
+            ],
+          })}
           onBrowseProjects={() => {}}
-          onSelect={() => {}}
+          onSelect={(item) => {
+            peekActions.push(`open ${item.project.id}`);
+          }}
           activeProjectId="links-enzo"
+          phone={phone}
+          renderPeek={(peek) => <HarnessPeek peek={peek} />}
+          shown={shown}
+          timestampFormat="24-hour"
         />
       </div>
-    </div>
+      <footer className="flex shrink-0 items-center gap-1 p-2">
+        <div className="min-w-0 flex-1">
+          <SidebarZeropsAccount
+            account={ACCOUNT}
+            activeOrganization={ORGANIZATION}
+            destination={null}
+            destinationIcon={() => null}
+            onGo={() => {}}
+            onSelectOrganization={() => {}}
+            onSignOut={() => {}}
+            organizations={[ORGANIZATION]}
+          />
+        </div>
+      </footer>
+    </aside>
+  );
+}
+
+const JUMP_KEY = isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K";
+
+/**
+ * Who may write to whom, as the conversation's rule (D6) would read it here:
+ * Vera's agent is Petra's own login, so only Petra writes to Vera, and `@`
+ * never offers her; Theo's is the project's token, so anyone may.
+ */
+const READ_ONLY_MATES: ReadonlySet<string> = new Set(["todo-vera"]);
+
+/**
+ * The server's search of the conversations, as the harness has them: the
+ * last words and the task of each Mate, and one message further back.
+ */
+function harnessHits(text: string): ReadonlyArray<JumpHit> {
+  if (text.length < 2) return [];
+  const needle = text.toLocaleLowerCase();
+  const history = [
+    ["shop-mira", "Keep the saved basket across a reload, even when signed out"],
+    ["links-theo", "Is the previews table still read by the export job?"],
+  ] as const;
+  return [
+    ...[...ACTIVITY.entries()].flatMap(([projectId, entry]) =>
+      [entry.snippet, entry.task]
+        .filter((said): said is string => said !== undefined)
+        .map((said) => [projectId, said] as const),
+    ),
+    ...history,
+  ]
+    .filter(([, said]) => said.toLocaleLowerCase().includes(needle))
+    .map(([projectId, said]) => ({
+      environmentId: `env-${projectId}`,
+      threadId: String(ACTIVITY.get(projectId)?.threadId ?? `thread-${projectId}`),
+      source: "user" as const,
+      snippet: said,
+    }));
+}
+
+/** What the harness's jump box did, for the audit browser to read. */
+const jumpActions: string[] = [];
+(window as unknown as { __jumpActions?: string[] }).__jumpActions = jumpActions;
+
+/** The jump box over the harness's menu: its index, fixture hits, and a send that is recorded. */
+function HarnessJumpBox({
+  index,
+  onClose,
+}: {
+  readonly index: SidebarJumpIndex;
+  readonly onClose: () => void;
+}) {
+  const showable = useSidebarJump((store) => store.showable);
+  const state = useJumpBoxState();
+  const searchText = jumpSearchText(state);
+  const hits = useMemo(() => harnessHits(searchText), [searchText]);
+  const model = useJumpBoxModel(state, index, hits, READ_ONLY_MATES);
+  const { target } = model;
+  const plan =
+    target?.conversation === undefined
+      ? undefined
+      : jumpWritePlan({
+          name: target.name,
+          owner: target.owner,
+          conversation: target.conversation,
+          pausedUntilLabel:
+            target.pausedUntil === undefined
+              ? undefined
+              : formatShortTimestamp(target.pausedUntil, "24-hour"),
+          started: true,
+          readOnly: READ_ONLY_MATES.has(target.projectId),
+          decision: PEEK_DECISIONS.get(target.projectId),
+        });
+  const enter: Record<string, string | undefined> = {
+    send: "Send without opening",
+    answer: "Answer",
+    "open-and-send": "Open and send",
+    open: "Open",
+    wait: "Send without opening",
+    none: undefined,
+  };
+  const pages = {
+    openMate: (mate: { readonly name: string }) => {
+      jumpActions.push(`open ${mate.name}`);
+    },
+    openProject: (groupId: string) => {
+      jumpActions.push(`page ${groupId}`);
+    },
+    openStop: (stop: { readonly projectId: string }) => {
+      jumpActions.push(`page ${stop.projectId}`);
+    },
+    openChange: (change: { readonly key: string }) => {
+      jumpActions.push(`page ${change.key}`);
+    },
+  };
+  return (
+    <JumpBoxView
+      model={model}
+      onChoose={(item) => {
+        jumpActions.push(`choose ${item.value}`);
+        chooseJumpItem(item, { model, showable, close: onClose, pages });
+      }}
+      onCommands={(value) => {
+        jumpActions.push(`commands ${value}`);
+      }}
+      onSend={(text) => {
+        if (target === undefined || plan === undefined || plan.action === "none") return;
+        if (text.trim().length === 0) return;
+        jumpActions.push(`${plan.action} ${target.name}: ${text.trim()}`);
+        onClose();
+      }}
+      searching={false}
+      write={
+        plan === undefined
+          ? undefined
+          : { hint: plan.hint, enter: enter[plan.action], error: undefined, sending: false }
+      }
+    />
   );
 }
 
 function Harness() {
+  const params = new URLSearchParams(location.search);
+  const width = Number(params.get("w") ?? 256);
+  const phone = window.matchMedia("(max-width: 767px)").matches;
+  const [jumping, setJumping] = useState(false);
+  const index = useSidebarJump((store) => store.index);
+  // ⌘K, "/" and the menu's own row open the box, as in the app.
+  useEffect(() => {
+    const stop = onOpenCommandPalette(() => {
+      setJumping(true);
+    });
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setJumping((open) => !open);
+        return;
+      }
+      if (slashKeyOpensJumpBox(event)) {
+        event.preventDefault();
+        setJumping(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      stop();
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
   return (
-    <div className="flex min-h-screen items-start gap-8 bg-background p-6">
-      {[256, 320, 368].map((width) => (
-        <Panel key={width} label={`${width}px`} width={width} />
-      ))}
+    <div className="flex min-h-screen bg-background">
+      <CommandDialog onOpenChange={setJumping} open={jumping}>
+        {index === null ? null : (
+          <CommandDialogPopup
+            aria-label="Jump to"
+            data-command-palette="true"
+            onBackdropPointerDown={() => {
+              setJumping(false);
+            }}
+          >
+            <HarnessJumpBox
+              index={index}
+              onClose={() => {
+                setJumping(false);
+              }}
+            />
+          </CommandDialogPopup>
+        )}
+      </CommandDialog>
+      <SidebarFrame
+        onJump={() => {
+          setJumping(true);
+        }}
+        phone={phone}
+        width={phone ? window.innerWidth : width}
+      />
+      {phone ? null : (
+        <main className="flex min-w-0 flex-1 items-start justify-center p-10">
+          <p className="max-w-md text-sm text-muted-foreground">
+            The conversation opens here. A Mate&apos;s peek floats over it, beside the menu.
+          </p>
+        </main>
+      )}
     </div>
   );
 }
@@ -610,6 +1060,27 @@ document.documentElement.classList.toggle(
   "dark",
   new URLSearchParams(location.search).get("theme") === "dark",
 );
+
+// An account is open, as in the app: the order and the mutes are kept under
+// its key. A draft stands in Iris's composer, as the composer would keep it.
+openAccountLifetime("design-harness");
+const params = new URLSearchParams(location.search);
+const order = params.get("order");
+if (order === "custom" || order === "name" || order === "newest") {
+  setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, order, ProjectOrderSchema);
+}
+useComposerDraftStore
+  .getState()
+  .setPrompt(
+    scopeThreadRef(EnvironmentId.make("env-notes-iris"), ThreadId.make("thread-notes-iris")),
+    "also count the title",
+  );
+
+// The menu is always on screen here: a find is shown in it, as on a desktop.
+useSidebarJump.getState().setShowable(true);
+
+// A handle for the audit browser: which Mate is peeked, and how.
+(window as unknown as { __sidebarPeek?: typeof useSidebarPeek }).__sidebarPeek = useSidebarPeek;
 
 const host = document.getElementById("design");
 if (host) {

@@ -431,6 +431,7 @@ function useGroupMates(groupId: string): {
           name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
           tint: tints.get(item.project.id) ?? "slate",
           face: mateFaceFor(item.group === "connected", live),
+          ...(live?.kind === "failed" ? { failed: true } : {}),
           subject,
           snippet: subject === undefined ? undefined : live?.snippet,
           when:
@@ -537,7 +538,11 @@ function useProjectAttention(
         // A face wearing `needs` is a Mate that has stopped and asked
         // something: the one state where nothing moves until a person answers.
         waitingMates: mates
-          .filter((mate) => mate.face === "needs")
+          .filter((mate) => mate.face === "needs" && mate.failed !== true)
+          .map((mate) => ({ projectId: mate.projectId, name: mate.name })),
+        // Stopped on an error, it wears the same face and asks nothing.
+        failedMates: mates
+          .filter((mate) => mate.failed === true)
           .map((mate) => ({ projectId: mate.projectId, name: mate.name })),
         failedStops: environments
           .filter((environment) => environment.tone === "bad")
@@ -2192,6 +2197,7 @@ function ChangeVerdictPanel({
  */
 const ATTENTION_TONE: Record<ProjectAttentionKind, ServiceStatusToneId> = {
   "mate-waiting": "attention",
+  "mate-failed": "failed",
   "deploy-failed": "failed",
   "change-blocked": "attention",
   "not-live": "busy",
@@ -2203,6 +2209,8 @@ export interface GroupMate {
   readonly name: string;
   readonly tint: MateTintId;
   readonly face: MateMarkState;
+  /** Its last run stopped on an error: its face reads `needs`, and it asks nothing. */
+  readonly failed?: boolean;
   /** What it is on, or was last on; absent until somebody has spoken to it. */
   readonly subject: string | undefined;
   readonly snippet: string | undefined;

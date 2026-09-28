@@ -8,12 +8,12 @@
  * take keeps its frame outlined red, saying why. Fixed height from the first
  * check on: the stage and the takes change inside it, the block never grows.
  *
- * A take the Mate screenshot has its picture. One it did not read the
- * page's structure — its errors, console and requests — and says so: a
- * structure glyph and "structure", never an empty frame (the owner,
- * 2026-09-26, of a frame saying "Screenshot not kept": "when there is no
- * screenshot it means its checking just the structure right? we could somehow
- * reflect as well"). With no picture to stage, the block is its list of takes.
+ * A take the Mate screenshot has its picture. One it did not, the frame
+ * draws what it read of the page in the picture's place — the page itself as
+ * a wireframe, else what it asked of the page with the answers, else what its
+ * errors, console and requests came to — never an empty box (the owner,
+ * 2026-09-27: "show the structure output or mock in the space where the
+ * window would have been").
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
@@ -34,6 +34,7 @@ import {
   type BrowserTakeState,
 } from "./conversation.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
+import { CheckRead } from "./CheckRead";
 import { useTakeThumbnail } from "./takeThumbnail";
 
 type Device = "desktop" | "tablet" | "phone";
@@ -165,9 +166,13 @@ export function BrowserStrip({
     : strip.checks.find((check) => check.key === pickedKey && check !== latest);
   const stream = useZeropsBrowserStream(running ? environmentId : null);
   const liveFrame = stream !== undefined && stream !== "unavailable" ? stream.frame : undefined;
-  // Settled, the stage holds the newest take with a picture.
+  // Settled, the stage holds the newest take with a page to show — its
+  // picture, else what it read of the page — else the newest take.
   const onStage =
-    picked ?? (running ? latest : (strip.checks.findLast((check) => check.screenshot) ?? latest));
+    picked ??
+    (running
+      ? latest
+      : (strip.checks.findLast((check) => check.screenshot || check.browserRead) ?? latest));
   const device = browserCheckDevice(onStage);
   const stageSrc =
     onStage === latest && running
@@ -175,7 +180,9 @@ export function BrowserStrip({
         ? frameImageSrc(liveFrame)
         : undefined
       : onStage.screenshot?.src;
-  const staged = running || stageSrc !== undefined;
+  // A settled take with no picture: what it read stands in the picture's place.
+  const readOnStage = stageSrc === undefined && onStage.phase !== "running";
+  const staged = running || stageSrc !== undefined || readOnStage;
   const caption = browserCheckCaption(onStage);
   const stageState = browserTakeState(onStage, strip.checks);
   const failedOnStage = stageState === "failed";
@@ -229,19 +236,66 @@ export function BrowserStrip({
           .join(" · ");
   const viewport = onStage.viewport;
   const duration = checkDuration(onStage);
-  // No picture of a take that passed: it read the page's structure. A take
-  // that failed or was retried has no picture because it never got one.
-  const structureOnStage = stageState === "passed" && onStage.screenshot === undefined;
   const facts = [
     onStage.deviceName ?? DEVICE_WORD[device],
     viewport && onStage.deviceName === undefined ? `${viewport.width}×${viewport.height}` : null,
     frames > 1 && !running ? caption : null,
-    structureOnStage ? "structure" : null,
-    structureOnStage ? takeFindings(onStage) : null,
+    readOnStage && stageState === "passed" ? takeFindings(onStage) : null,
     duration,
   ]
     .filter(Boolean)
     .join(" · ");
+
+  const frameClass = cn(
+    "relative flex min-h-0 flex-1 shrink-0 flex-col self-center overflow-hidden border border-border bg-card @xl/strip:h-66 @xl/strip:flex-none",
+    FRAME_CLASS[device],
+    stageState === "failed" && "border-status-failed",
+    stageState === "retried" && "border-status-attention",
+  );
+  const frameBody = (
+    <>
+      {device === "desktop" ? (
+        <span className="flex h-6 shrink-0 items-center gap-1 border-border border-b px-2">
+          <span className="size-1.5 rounded-full bg-muted-foreground/30" />
+          <span className="size-1.5 rounded-full bg-muted-foreground/30" />
+          <span className="size-1.5 rounded-full bg-muted-foreground/30" />
+          <span className="ms-2 min-w-0 flex-1 truncate rounded-sm bg-foreground/8 px-2 text-start text-2xs text-muted-foreground leading-4">
+            {caption}
+          </span>
+        </span>
+      ) : null}
+      <span
+        className={cn(
+          "relative block min-h-0 flex-1 overflow-hidden bg-background",
+          SCREEN_CLASS[device],
+        )}
+      >
+        {readOnStage ? (
+          <CheckRead
+            failure={stageState === "failed" ? browserCheckFailure(onStage) : null}
+            findings={takeFindings(onStage)}
+            read={onStage.browserRead}
+          />
+        ) : stageSrc && onStage === latest && running ? (
+          <img alt="" className="block size-full object-cover object-top" src={stageSrc} />
+        ) : stageSrc ? (
+          <TakeThumbnail aspect={TAKE_ASPECT[device]} src={stageSrc} />
+        ) : (
+          <span className="flex size-full items-center justify-center px-3 text-center text-muted-foreground text-xs">
+            Opening the page…
+          </span>
+        )}
+      </span>
+      {running && onStage === latest ? (
+        // Live is busy, never failure: the blue its take pulses in the
+        // list. A hairline, not a shadow, keeps it off the page under it.
+        <span className="absolute end-2 bottom-2 inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/90 px-2 text-2xs text-foreground leading-5">
+          <span className="size-1.5 animate-status-pulse rounded-full bg-status-busy motion-reduce:animate-none" />
+          Live
+        </span>
+      ) : null}
+    </>
+  );
 
   return (
     <div
@@ -258,66 +312,43 @@ export function BrowserStrip({
     >
       <div className="flex size-full min-w-0 flex-col-reverse gap-2 @xl/strip:flex-row @xl/strip:gap-4">
         {staged ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  aria-label={
-                    stageSrc
-                      ? `${running && onStage === latest ? "Live view of" : "View of"} ${caption} on ${DEVICE_WORD[device].toLowerCase()}`
-                      : "Open the Browser panel"
-                  }
-                  className={cn(
-                    "relative flex min-h-0 flex-1 shrink-0 cursor-pointer flex-col self-center overflow-hidden border border-border bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 @xl/strip:h-66 @xl/strip:flex-none",
-                    FRAME_CLASS[device],
-                    stageState === "failed" && "border-status-failed",
-                    stageState === "retried" && "border-status-attention",
-                  )}
-                  data-browser-strip-stage={running && onStage === latest ? "live" : "still"}
-                  onClick={onStageClick}
-                  type="button"
-                />
-              }
+          readOnStage ? (
+            // What it read has nothing to open: a frame, not a button.
+            <div
+              aria-label={`${caption} as the check read it on ${DEVICE_WORD[device].toLowerCase()}`}
+              className={frameClass}
+              data-browser-strip-stage="read"
+              role="img"
             >
-              {device === "desktop" ? (
-                <span className="flex h-6 shrink-0 items-center gap-1 border-border border-b px-2">
-                  <span className="size-1.5 rounded-full bg-muted-foreground/30" />
-                  <span className="size-1.5 rounded-full bg-muted-foreground/30" />
-                  <span className="size-1.5 rounded-full bg-muted-foreground/30" />
-                  <span className="ms-2 min-w-0 flex-1 truncate rounded-sm bg-foreground/8 px-2 text-start text-2xs text-muted-foreground leading-4">
-                    {caption}
-                  </span>
-                </span>
-              ) : null}
-              <span
-                className={cn(
-                  "relative block min-h-0 flex-1 overflow-hidden bg-background",
-                  SCREEN_CLASS[device],
-                )}
+              {frameBody}
+            </div>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    aria-label={
+                      stageSrc
+                        ? `${running && onStage === latest ? "Live view of" : "View of"} ${caption} on ${DEVICE_WORD[device].toLowerCase()}`
+                        : "Open the Browser panel"
+                    }
+                    className={cn(
+                      frameClass,
+                      "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
+                    )}
+                    data-browser-strip-stage={running && onStage === latest ? "live" : "still"}
+                    onClick={onStageClick}
+                    type="button"
+                  />
+                }
               >
-                {stageSrc && onStage === latest && running ? (
-                  <img alt="" className="block size-full object-cover object-top" src={stageSrc} />
-                ) : stageSrc ? (
-                  <TakeThumbnail aspect={TAKE_ASPECT[device]} src={stageSrc} />
-                ) : (
-                  <span className="flex size-full items-center justify-center px-3 text-center text-muted-foreground text-xs">
-                    Opening the page…
-                  </span>
-                )}
-              </span>
-              {running && onStage === latest ? (
-                // Live is busy, never failure: the blue its take pulses in the
-                // list. A hairline, not a shadow, keeps it off the page under it.
-                <span className="absolute end-2 bottom-2 inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/90 px-2 text-2xs text-foreground leading-5">
-                  <span className="size-1.5 animate-status-pulse rounded-full bg-status-busy motion-reduce:animate-none" />
-                  Live
-                </span>
-              ) : null}
-            </TooltipTrigger>
-            <TooltipPopup side="bottom">
-              {running && onStage === latest ? "Open the Browser panel" : "Open the screenshot"}
-            </TooltipPopup>
-          </Tooltip>
+                {frameBody}
+              </TooltipTrigger>
+              <TooltipPopup side="bottom">
+                {running && onStage === latest ? "Open the Browser panel" : "Open the screenshot"}
+              </TooltipPopup>
+            </Tooltip>
+          )
         ) : null}
         <div className="flex min-w-0 flex-none flex-col gap-0.5 @xl/strip:flex-1 @xl/strip:py-1">
           <p
@@ -347,11 +378,16 @@ export function BrowserStrip({
               const state = browserTakeState(check, strip.checks);
               const live = state === "running";
               const takeDevice = browserCheckDevice(check);
-              const structure = state === "passed" && check.screenshot === undefined;
+              // No picture and no page read: it looked only at errors, the
+              // console and requests.
+              const unseen =
+                state === "passed" &&
+                check.screenshot === undefined &&
+                check.browserRead === undefined;
               const takeWords = [
                 check.deviceName ?? DEVICE_WORD[takeDevice],
                 browserCheckCaption(check),
-                structure ? "structure" : state === "passed" || live ? null : state,
+                state === "passed" || live ? null : state,
                 live ? "running" : checkDuration(check),
               ]
                 .filter(Boolean)
@@ -375,7 +411,6 @@ export function BrowserStrip({
                     check === onStage ? "bg-accent/70 text-foreground" : "text-muted-foreground",
                   )}
                   data-browser-strip-frame={live ? "live" : state === "passed" ? "done" : state}
-                  disabled={check.screenshot === undefined && !live}
                   onClick={() => (live ? openPanel() : setPickedKey(check.key))}
                   type="button"
                 >
@@ -394,8 +429,14 @@ export function BrowserStrip({
                           aspect={TAKE_ASPECT[takeDevice]}
                           src={check.screenshot.src}
                         />
-                      ) : structure ? (
-                        // No screenshot: the take read the page's structure.
+                      ) : check.browserRead !== undefined ? (
+                        <CheckRead
+                          failure={null}
+                          findings={null}
+                          read={check.browserRead}
+                          size="thumbnail"
+                        />
+                      ) : unseen ? (
                         <CodeXmlIcon aria-hidden="true" className="size-3 text-muted-foreground" />
                       ) : null}
                     </span>
@@ -420,5 +461,155 @@ export function BrowserStrip({
         </div>
       </div>
     </div>
+  );
+}
+
+/** A take among a run's pictures, in the shape of the device it was taken on. */
+const TAKE_PICTURE_CLASS: Record<Device, string> = {
+  desktop: "w-32",
+  tablet: "w-15",
+  phone: "w-9",
+};
+
+/**
+ * The pictures a run's checks took, side by side in their devices' shapes — a
+ * failed take outlined red, a retried one amber — each opening the picture
+ * viewer with the others beside it; the one being taken now, the page as the
+ * browser streams it; one that failed with no picture, its frame outlined red
+ * saying what went wrong. Any other check with no picture is left out: what
+ * it read is the stage's to show.
+ */
+export function BrowserTakes({
+  takes,
+  onOpenImage,
+  environmentId = null,
+}: {
+  readonly takes: ReadonlyArray<ZeropsOperation>;
+  readonly onOpenImage: (preview: ExpandedImagePreview) => void;
+  /** Where the browser streams from, for a take still being taken. */
+  readonly environmentId?: EnvironmentId | null;
+}) {
+  const shots = takes.flatMap((take) =>
+    take.screenshot
+      ? [{ key: take.key, src: take.screenshot.src, name: browserCheckCaption(take) }]
+      : [],
+  );
+  const failedBare = (take: ZeropsOperation) =>
+    take.screenshot === undefined && browserTakeState(take, takes) === "failed";
+  if (shots.length === 0 && !takes.some((take) => take.phase === "running" || failedBare(take)))
+    return null;
+  return (
+    // The first take on the text edge: the room its scroller keeps for a
+    // take's ring and the focus ring hangs outside it.
+    <div
+      className="-m-1 flex min-w-0 items-end gap-2 overflow-x-auto p-1 scrollbar-none"
+      data-report-takes
+    >
+      {takes.map((take) => {
+        if (take.phase === "running") {
+          return <LiveTake key={take.key} environmentId={environmentId} take={take} />;
+        }
+        if (failedBare(take)) return <FailedTake key={take.key} take={take} />;
+        const src = take.screenshot?.src;
+        if (src === undefined) return null;
+        const state = browserTakeState(take, takes);
+        const device = browserCheckDevice(take);
+        const index = shots.findIndex((shot) => shot.key === take.key);
+        return (
+          <button
+            key={take.key}
+            aria-label={`${browserCheckCaption(take)}${take.deviceName ? ` on ${take.deviceName}` : ""}${state === "failed" ? ", failed" : state === "retried" ? ", retried" : ""}. Open the screenshot`}
+            className={cn(
+              "h-20 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
+              TAKE_PICTURE_CLASS[device],
+              state === "failed"
+                ? "border-status-failed ring-1 ring-status-failed"
+                : state === "retried"
+                  ? "border-status-attention"
+                  : "border-border",
+            )}
+            data-report-take={device}
+            onClick={() =>
+              onOpenImage({ images: shots.map(({ src, name }) => ({ src, name })), index })
+            }
+            type="button"
+          >
+            <TakeThumbnail aspect={TAKE_ASPECT[device]} src={src} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * The take being taken now: the page as the browser streams it, in the frame
+ * its picture will stand in, so the row keeps its height when the picture
+ * comes. Busy, never failure: the blue dot the stage's Live wears.
+ */
+function LiveTake({
+  take,
+  environmentId,
+}: {
+  readonly take: ZeropsOperation;
+  readonly environmentId: EnvironmentId | null;
+}) {
+  const device = browserCheckDevice(take);
+  const stream = useZeropsBrowserStream(environmentId);
+  const frame = stream !== undefined && stream !== "unavailable" ? stream.frame : undefined;
+  return (
+    <span
+      aria-label={`Checking ${browserCheckCaption(take)}`}
+      className={cn(
+        "relative block h-20 shrink-0 overflow-hidden rounded-lg border border-border bg-background",
+        TAKE_PICTURE_CLASS[device],
+      )}
+      data-report-take={device}
+      data-report-take-live
+      role="img"
+    >
+      {frame === undefined ? null : (
+        <img
+          alt=""
+          className="block size-full object-cover object-top"
+          src={frameImageSrc(frame)}
+        />
+      )}
+      <span
+        aria-hidden="true"
+        className="absolute end-1.5 bottom-1.5 size-1.5 animate-status-pulse rounded-full bg-status-busy motion-reduce:animate-none"
+      />
+    </span>
+  );
+}
+
+/**
+ * A take that failed and took no picture: its frame all the same, outlined red
+ * as a failed picture is, with what went wrong — so a row saying a check
+ * failed shows which (Nova, 2026-09-28: port 9 refused, and the row's only
+ * picture was of the page that passed). A phone's frame is too narrow for
+ * words: its mark says it.
+ */
+function FailedTake({ take }: { readonly take: ZeropsOperation }) {
+  const device = browserCheckDevice(take);
+  const reason = browserCheckFailure(take);
+  return (
+    <span
+      aria-label={`${browserCheckCaption(take)} failed${reason === null ? "" : `: ${reason}`}`}
+      className={cn(
+        "flex h-20 shrink-0 flex-col items-center justify-center gap-1 overflow-hidden rounded-lg border border-status-failed bg-card px-2 text-center ring-1 ring-status-failed",
+        TAKE_PICTURE_CLASS[device],
+      )}
+      data-report-take={device}
+      data-report-take-failed
+      role="img"
+    >
+      <XIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-failed-text" />
+      {device === "desktop" && reason !== null ? (
+        <span className="line-clamp-3 break-words text-2xs text-status-failed-text leading-3.5">
+          {reason}
+        </span>
+      ) : null}
+    </span>
   );
 }

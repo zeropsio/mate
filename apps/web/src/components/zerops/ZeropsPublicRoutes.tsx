@@ -175,7 +175,9 @@ export function ZeropsRoutesMenu({
     <Menu>
       {/* A globe and a number say nothing on their own: the single-route case
           has always had a tooltip and this one had none, so `10` was a number
-          with no noun anywhere near it. */}
+          with no noun anywhere near it. The number is a count, not a call for
+          attention: a soft chip, never the menu's full ink, which made it the
+          loudest mark in the menu, over the dots of what waits on the person. */}
       <Tooltip>
         <TooltipTrigger
           render={
@@ -187,7 +189,7 @@ export function ZeropsRoutesMenu({
               <GlobeIcon aria-hidden="true" className="size-3.5" />
               <span
                 aria-hidden="true"
-                className="absolute -top-1 -end-1 inline-flex h-3 min-w-3 items-center justify-center rounded-full bg-sidebar-foreground px-0.5 text-[9px] leading-none font-semibold text-sidebar tabular-nums ring-1 ring-sidebar"
+                className="absolute -top-1 -end-1 inline-flex h-3 min-w-3 items-center justify-center rounded-full bg-sidebar-row-active px-0.5 text-[9px] leading-none font-semibold text-sidebar-foreground tabular-nums ring-1 ring-sidebar"
                 data-zerops-surface="public-routes-count"
               >
                 {routes.length}
