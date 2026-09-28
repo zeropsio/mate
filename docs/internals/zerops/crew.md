@@ -1,6 +1,6 @@
 # Crew mode — the map
 
-2026-09-28, as built at `da6a5f8f58` on `feat/crew-mode`. What crew mode is in code and where each
+2026-09-28, as built at `feat/crew-mode` 2026-09-28 on `feat/crew-mode`. What crew mode is in code and where each
 part lives. It holds facts about the tree, not decisions: `../../../../zcp/docs/spec-mate.md` has
 no crew section yet, so until it has one each rule is stated in the header of the module named
 beside it. Words the UI uses are the glossary's ([`design-system.md`](design-system.md) §2).
