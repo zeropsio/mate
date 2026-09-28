@@ -850,24 +850,27 @@ it.live("Try again re-reads an organization whose data stalled and starts no rou
       const heard: Array<Invalidation> = [];
       const stop = onZeropsInvalidation((invalidation) => heard.push(invalidation));
       yield* Effect.addFinalizer(() => Effect.sync(stop));
-      // The organization's receiver is replaced and its registration never answers.
+      // The organization's receiver is replaced and its registration never answers: each
+      // recovery round waits out its establishment deadline, on a receiver of its own, until
+      // the organization's interests run out of attempts.
       harness.holdRenewal();
       invalidateZerops({ topic: "inventory", organization: harness.organization });
       yield* harness.advance(250);
       for (
         let second = 0;
-        second < 300 && !harness.container.textContent.includes("could not be verified");
+        second < 600 && !harness.container.textContent.includes("could not be verified");
         second++
       )
         yield* harness.advance(1_000);
       expect(harness.container.textContent).toContain("Project access could not be verified.");
       heard.length = 0;
+      const reread = harness.refreshed().length;
 
       const [retry] = buttonsLabelled(harness.container as never, "Try again");
       yield* Effect.promise(async () => act(async () => press(retry!)));
       yield* harness.advance(250);
       expect(heard).toEqual([{ topic: "inventory", organization: harness.organization }]);
-      expect(harness.refreshed()).toEqual([harness.organization, harness.organization]);
+      expect(harness.refreshed().slice(reread)).toEqual([harness.organization]);
       expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
     }),
   ),

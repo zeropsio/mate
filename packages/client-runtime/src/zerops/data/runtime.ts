@@ -2283,18 +2283,34 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           }),
         );
         if (due.length === 0) continue;
-        // The retries that came due log in once more, over the receiver they wait on.
+        // The retries that came due log in once more, over the receiver they wait on, a bounded
+        // number at a time and the organization's project list first: the sidebar and the
+        // projects page read it before any project in it.
         round.receiver.openFailure = null;
-        let receiverFailure: string | null = null;
-        for (const interest of due) {
-          // A retry superseded mid-flight ends in interruption; it is no failure of the cycle's.
-          const exit = yield* Effect.exit(establishInterest(interest));
-          if (Exit.isSuccess(exit) && exit.value.kind === "receiver-failed")
-            receiverFailure ??= exit.value.reason;
-        }
+        const listFirst = [...due].sort(
+          (left, right) =>
+            Number(right.descriptor.kind === "organization-inventory") -
+            Number(left.descriptor.kind === "organization-inventory"),
+        );
+        // A retry that failed at the receiver has it replaced, and the round's later retries do
+        // not start on it. One superseded mid-flight ends in interruption: no failure of the
+        // cycle's.
+        yield* Effect.forEach(
+          listFirst,
+          (interest) =>
+            Effect.suspend(() =>
+              cycle.replace !== null
+                ? Effect.void
+                : Effect.exit(establishInterest(interest)).pipe(
+                    Effect.map((exit) => {
+                      if (Exit.isSuccess(exit) && exit.value.kind === "receiver-failed")
+                        cycle.replace ??= { receiver: round.receiver, reason: exit.value.reason };
+                    }),
+                  ),
+            ),
+          { concurrency: policy.recoveryConcurrency, discard: true },
+        );
         yield* awaitIngress;
-        if (receiverFailure !== null)
-          cycle.replace ??= { receiver: round.receiver, reason: receiverFailure };
       }
     });
 

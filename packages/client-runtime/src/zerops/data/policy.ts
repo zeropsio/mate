@@ -14,6 +14,8 @@ export interface ZeropsDataPolicy {
   readonly ingressPublicationBatchEvents: number;
   readonly readConcurrency: number;
   readonly hydrationConcurrency: number;
+  /** The interests one recovery round re-establishes at once; the rest wait for a slot. */
+  readonly recoveryConcurrency: number;
   readonly queuedReadRequestsPerAccount: number;
   readonly activeSharedReadsPerAccount: number;
   readonly retainedCompletedReadsPerAccount: number;
@@ -75,6 +77,7 @@ export const DEFAULT_ZEROPS_DATA_POLICY: ZeropsDataPolicy = Object.freeze({
   ingressMaxFrameBytes: 1 * 1_024 * 1_024,
   readConcurrency: 8,
   hydrationConcurrency: 4,
+  recoveryConcurrency: 4,
   queuedReadRequestsPerAccount: 1_024,
   activeSharedReadsPerAccount: 256,
   retainedCompletedReadsPerAccount: 2_048,
