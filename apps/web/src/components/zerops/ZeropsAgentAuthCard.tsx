@@ -36,7 +36,7 @@ import {
   type ZeropsAgentOwnership,
 } from "@t3tools/client-runtime/zerops/agentOwnership";
 
-import { crewLoginCrewmatesWord } from "@t3tools/client-runtime/zerops/crew/phrases";
+import { crewLoginRunsWord } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { mateLoginSignerLine, type MateLoginRow } from "@t3tools/client-runtime/zerops/logins";
 import { Fragment, useId, useState } from "react";
 
@@ -356,7 +356,7 @@ function RunsOnLine({
   if (runsOn === undefined || runsOn.crewmates.length === 0) return null;
   return (
     <p className="mt-0.5 text-xs leading-4 text-muted-foreground" data-zerops-login-crewmates>
-      {crewLoginCrewmatesWord(runsOn.crewmates, runsOn.lead)}
+      {crewLoginRunsWord(runsOn.crewmates, runsOn.lead)}
     </p>
   );
 }
