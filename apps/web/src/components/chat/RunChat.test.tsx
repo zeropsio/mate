@@ -480,6 +480,32 @@ describe("RunChat", () => {
     expect(column?.split(" ")).toEqual(expect.arrayContaining(["hidden", "@md/chat:block"]));
   });
 
+  // Two pages of one host are said by name, as one is; more by their count,
+  // and so are pages of two hosts, whose paths do not say which is which.
+  it.each([
+    { subjects: ["https://shop.dev/", "https://shop.dev/health"], words: "Checked / and /health" },
+    { subjects: ["https://shop.dev/", "https://api.dev/"], words: "Checked 2 pages" },
+    // A path names a page on one host only: "/" on another port is not the
+    // app's front page (Nova, 2026-09-28: "/missing and /" for port 9's "/").
+    { subjects: ["https://shop.dev/missing", "http://shop.dev:9/"], words: "Checked 2 pages" },
+    {
+      subjects: ["https://shop.dev/", "https://shop.dev/cart", "https://shop.dev/health"],
+      words: "Checked 3 pages",
+    },
+  ])("names the pages a row of checks looked at: $words", ({ subjects, words }) => {
+    const checks = subjects.map((subject, index) => {
+      const entry = operation(`b${String(index)}`, "turn-1", 1, { kind: "browser", subject });
+      if (entry.kind !== "operation") throw new Error("an operation");
+      return entry.operation;
+    });
+    const markup = draw(
+      record([
+        { kind: "strip", key: "operation:op:b0", at: at(1), strip: checksStrip(checks, false) },
+      ]),
+    );
+    expect(markup).toContain(`>${words}<`);
+  });
+
   it("opens nothing on a step that printed nothing", () => {
     const markup = draw(record([step(command("w1", "git status"))]));
     expect(markup).not.toContain("data-chat-disclose");

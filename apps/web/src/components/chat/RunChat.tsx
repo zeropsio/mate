@@ -1446,6 +1446,11 @@ function OperationBubble({
   );
 }
 
+/** The host a check's address names, its port included: what tells two sites' pages apart. */
+function checkHost(subject: string): string {
+  return subject.replace(/^[a-z][a-z0-9+.-]*:\/\//iu, "").split(/[/?#]/u)[0] ?? subject;
+}
+
 /**
  * The pages it checked in the browser, as their row of the chat from the
  * first check's start: what it checks, and each take in its device's shape
@@ -1459,11 +1464,18 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
   const latest = strip.checks.at(-1)!;
   const running = latest.phase === "running";
   const settled = strip.checks.filter((check) => check.phase !== "running");
+  // Two pages of one host by name, as one is; more by their count, and so
+  // are pages of two hosts, whose paths do not say which is which ("/" on
+  // another port is not the app's front page).
+  const pages = [...new Set(strip.checks.map(browserCheckCaption))];
+  const hosts = new Set(strip.checks.map((check) => checkHost(check.subject)));
   const words = running
     ? `Checking ${browserCheckCaption(latest)}`
     : strip.views === 1
       ? `Checked ${browserCheckCaption(latest)}`
-      : `Checked ${strip.views} pages`;
+      : strip.views === 2 && pages.length === 2 && hosts.size === 1
+        ? `Checked ${pages[0]} and ${pages[1]}`
+        : `Checked ${strip.views} pages`;
   const verdict = running
     ? null
     : strip.failures > 0
