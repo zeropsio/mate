@@ -153,11 +153,12 @@ function errorFrom(cause: unknown, fallback: AdapterError["kind"]): AdapterError
                   : cause.kind === "invalid-input"
                     ? "rejected"
                     : fallback;
-    return adapterError(
+    const error = adapterError(
       kind,
       kind === "rejected" ? refusedMessage(cause.detail) : fixedApiErrorMessage(kind),
       !["forbidden", "not-found", "rejected"].includes(kind),
     );
+    return cause.status === null ? error : { ...error, status: cause.status };
   }
   return adapterError(fallback, "Zerops adapter failed.");
 }

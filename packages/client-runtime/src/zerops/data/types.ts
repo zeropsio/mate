@@ -1507,6 +1507,12 @@ export interface AdapterError {
   readonly retryable: boolean;
   /** A background 401 is scoped failure evidence and cannot revoke the account by itself. */
   readonly accountRevocationEvidence: false;
+  /**
+   * The HTTP error status the platform refused the request with. Absent when no answer came back
+   * (a timeout, a lost connection, a cancellation), when an answer could not be read, and when
+   * the request failed before it was sent.
+   */
+  readonly status?: number;
 }
 
 export type ReceiverEvent =
