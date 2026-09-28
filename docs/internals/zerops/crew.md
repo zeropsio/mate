@@ -205,10 +205,28 @@ pauses the run with that limit as its reason; a refused dispatch pauses it with 
 run paused by its budget or time limit resumes with through the run dialog; a budget must exceed
 what the run has spent, and a limit still reached refuses the resume by name ("The run has spent
 its $3 budget — raise it or choose No limit to resume").
-Spend is every crew turn's `totalCostUsd`, time is wall time running, usage the fullest window of
-the crewmates' logins; a crew session starts with `maxBudgetUsd` = what the run has left. While
-running, the run starts queued tasks, sends rework back, lands per its mode, nudges a turn that
-ended without a report once per attempt, and with the dev grant allows a request to show on dev.
+Spend is each crew turn's own cost: what its session's `totalCostUsd` — a running total, carried
+over a resume — rose by since the last total the engine kept for that thread (a `turn-cost` note
+in `crew_log`). A live session with no kept total (its turns ran before totals were logged), or
+one whose total comes back below the kept one, counts nothing for that turn and counts from its
+new total on. Time is wall time running, usage the fullest window of the crewmates' logins. A crew
+session's `maxBudgetUsd` is what the run has left — the CLI caps a process's own spend (§8) — and
+a run's start or resume restarts the crew's sessions so each takes the new cap: an idle one at
+once, a working one when its turn ends. While running, the run starts queued tasks, sends rework
+back, lands per its mode, nudges a turn that ended without a report once per attempt, and with the
+dev grant allows a request to show on dev. A run's start or resume, and a boot inside a running
+run, give every crewmate whose task stands `working` with no turn running a carry-on turn as the
+run's starter; a turn the run's own pause stopped carries on in the pause's words.
+
+**A task stopped mid-way** (`crewTurns.ts`, `crewBoot.ts`, `crewSnapshot.ts`): a turn that leaves
+its task `working` ends the task's attempt — `crew_attempt.ending` is `budget`, `run-paused`,
+`run-stopped`, `interrupted`, `failed` or `no-report`, with its words in `ending_detail` and
+`ended_at` — and the attempt's next turn opens it again; a rework's new attempt has a row of its
+own. At boot an attempt a turn left open without the engine seeing it end ends at the task's last
+move. A task standing `working` with no turn running for five minutes waits on the person as a
+`stalled` row, its text the attempt's words and its time when the turn ended; the feed publishes
+again when the five minutes pass. Its crewmate's queue waits behind it until it lands, parks or
+is discarded.
 
 **The lead** (`crewLead.ts`): the person talks to it like any crewmate, and _Tell the crew_ goes
 to its chat (`crewRouting.ts`). In a running run the engine wakes it, one wake at a time, at least
@@ -246,7 +264,9 @@ is the same sentence (`failureWords` in `crewCore.ts`, `crewFailureSentence` in
 
 **Client:** run meters show while a run is running or paused; _Start run_ is offered while no run
 is on and the crew has a lead or a queued task; _+ Add lead_ whenever the crew has none; a
-task that could not start offers _Try again_ (`taskRetry`) in _Waiting on you_.
+task that could not start offers _Try again_ (`taskRetry`) in _Waiting on you_; a task stopped
+mid-way reads "Backend's task #16 stopped mid-way: <why>" and offers _Continue_ (a `message`
+"Carry on with your task." as you), _Land now_ (`landNow`) and _Discard_ (`discard`).
 
 ## 8. Measured facts the design stands on
 
@@ -265,3 +285,8 @@ Measured 2026-09-27 against Claude Code 2.1.283; the measurements are the ledger
 - **An SDK `SessionStart` callback never runs for a process's own startup or resume**, while
   `UserPromptSubmit` does and its context reaches the model. So a crew session's start is handed
   over with its first prompt (§6, _Provider SPI_).
+- **A turn's `total_cost_usd` is its session's running total, carried over a resume, while
+  `maxBudgetUsd` caps the process's own spend** (the rig's lead, 2026-09-28; a haiku session
+  resumed with a $0.005 cap over a carried $0.0185 ran two responses and stopped once its own
+  spend reached $0.0065). So a turn costs its total's rise, and a session's cap is the run's
+  remainder (`crewRuns.ts`, `crewDirectory.ts`).
