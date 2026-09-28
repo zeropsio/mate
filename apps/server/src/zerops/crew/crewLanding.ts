@@ -52,7 +52,7 @@ import { readDeclaredPorts } from "./crewPorts.ts";
 import { leadReviews } from "./crewRuns.ts";
 import { appendSeam } from "./crewSeamLines.ts";
 import type { CrewAssignmentRow } from "./CrewStore.ts";
-import { readTaskCheck, readTaskWait } from "./crewTaskData.ts";
+import { readTaskCheck, readTaskReview, readTaskWait } from "./crewTaskData.ts";
 import {
   continueTask,
   parkTask,
@@ -101,10 +101,18 @@ export const restartApp = (core: CrewCore, member: CrewMember) =>
     core.memory.apps.set(row.handle, status.state === "running" ? "running" : "stopped");
   });
 
+/**
+ * A passed check goes to the lead's review in a run that lands after it —
+ * once an attempt: an accept stands through a merge-in again (your tree
+ * moved before the landing).
+ */
+const goesToReview = (applied: AppliedCrew, task: CrewAssignmentRow) =>
+  leadReviews(applied) && readTaskReview(task.review)?.verdict !== "accept";
+
 const runCheck = (core: CrewCore, member: CrewMember, task: CrewAssignmentRow) =>
   Effect.gen(function* () {
     const command = member.spec.check;
-    const reviewed = leadReviews(yield* requireApplied(core));
+    const reviewed = goesToReview(yield* requireApplied(core), task);
     if (command === undefined || member.row.host === null) {
       return yield* stepTask(core, task, { type: "check-passed", reviewed });
     }
@@ -181,7 +189,7 @@ const integrateMerging = (core: CrewCore, task: CrewAssignmentRow) =>
       const clean = yield* stepTask(core, task, { type: "merge-clean" });
       return yield* stepTask(core, clean, {
         type: "check-passed",
-        reviewed: leadReviews(applied),
+        reviewed: goesToReview(applied, task),
       });
     }
     const key = { crew: CREW_ID, handle: member.row.handle };

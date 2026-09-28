@@ -54,7 +54,7 @@ import { pauseRun } from "./crewRuns.ts";
 import { isOpenTask } from "./crewSnapshot.ts";
 import { currentOrFirstStint, rotate } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
-import { readTaskCard, type TaskCard, type TaskWait } from "./crewTaskData.ts";
+import { readTaskCard, readTaskReview, type TaskCard, type TaskWait } from "./crewTaskData.ts";
 import {
   CREW_ROTATE_AFTER_DEFAULT,
   rotationDecision,
@@ -447,8 +447,15 @@ export const continueTask = (
       createdAt: yield* core.now,
     });
     yield* admitCrewTurn(core, probe, principal);
+    // A rework is a new attempt: an accept of the last one no longer stands (a reject's note stays).
     const working = yield* stepTask(core, task, { type: "message" }, (next) =>
-      task.state === "rework" ? { ...next, waiting: null } : next,
+      task.state === "rework"
+        ? {
+            ...next,
+            waiting: null,
+            review: readTaskReview(next.review)?.verdict === "accept" ? null : next.review,
+          }
+        : next,
     );
     const key = `${working.assignment}:${working.attempt}`;
     core.memory.turns.set(key, (core.memory.turns.get(key) ?? 0) + 1);
