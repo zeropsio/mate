@@ -71,10 +71,11 @@ through it would make the two directories import each other.
   stint; Claude ignores it, its gate already refuses the writes); every `turn/start` carries the same
   policy and sandbox, so the runtime mode never restores its own. `CodexSessionRuntime.ts` answers
   that thread's approval requests from the gate and parks none for a person: a command is a `Bash`
-  call `{ command }`; a patch, whose request names no file, is an `Edit` per updated or deleted
-  file and a `Write` per added file or move target, from the changes its `fileChange` item listed
-  when it started, relative paths against the session's cwd — every call must allow. A failing or
-  silent (15 s) gate declines, and so does an allow that rewrites the call: Codex's answer carries a
+  call `{ command }`, the command inside Codex's `<shell> -lc|-c "<command>"` wrapper (zsh, bash,
+  sh; its argv read back from the quoted string the approval names); a patch, whose request names
+  no file, is an `Edit` per updated or deleted file and a `Write` per added file or move target,
+  from the changes its `fileChange` item listed when it started, relative paths against the
+  session's cwd — every call must allow. A failing or silent (15 s) gate declines, and so does an allow that rewrites the call: Codex's answer carries a
   decision only, so it would run what it asked, not what the gate allowed. So a profile may carry
   `exactCallsContext`, how to write calls the gate allows as they are, which the Codex setup adds
   after the session context in `developerInstructions`: the crew sets it for a writer, whose

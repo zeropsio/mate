@@ -99,6 +99,70 @@ const gate = (
     ),
   );
 
+/**
+ * A command's words as a POSIX shell splits them, or undefined when it is
+ * more than words and quotes. Codex names the argv it runs as one string,
+ * each word quoted for sh, so this reads that argv back.
+ */
+const commandWords = (command: string): ReadonlyArray<string> | undefined => {
+  const words: Array<string> = [];
+  let current = "";
+  let inWord = false;
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index]!;
+    if (char === "'") {
+      const end = command.indexOf("'", index + 1);
+      if (end < 0) return undefined;
+      current += command.slice(index + 1, end);
+      index = end;
+      inWord = true;
+    } else if (char === '"') {
+      index += 1;
+      while (index < command.length && command[index] !== '"') {
+        if (command[index] === "\\" && '$`"\\\n'.includes(command[index + 1] ?? "")) index += 1;
+        current += command[index];
+        index += 1;
+      }
+      if (index >= command.length) return undefined;
+      inWord = true;
+    } else if (char === "\\") {
+      if (index + 1 >= command.length) return undefined;
+      index += 1;
+      current += command[index];
+      inWord = true;
+    } else if (/\s/u.test(char)) {
+      if (inWord) words.push(current);
+      current = "";
+      inWord = false;
+    } else if (";&|<>()`$*?[]{}~#!".includes(char)) {
+      return undefined;
+    } else {
+      current += char;
+      inWord = true;
+    }
+  }
+  if (inWord) words.push(current);
+  return words;
+};
+
+/** The shells Codex runs a command in. */
+const COMMAND_SHELLS = new Set(["sh", "bash", "zsh"]);
+
+/**
+ * What a command runs: Codex runs the model's command as `<shell> -lc
+ * <command>` (or `-c`), so the gate judges the command inside. Anything
+ * else is judged as it is.
+ */
+const shellCommand = (command: string): string => {
+  const words = commandWords(command);
+  if (words?.length !== 3) return command;
+  const [shell, flag, inner] = words as [string, string, string];
+  return COMMAND_SHELLS.has(shell.slice(shell.lastIndexOf("/") + 1)) &&
+    (flag === "-lc" || flag === "-c")
+    ? inner
+    : command;
+};
+
 const absoluteIn = (cwd: string, path: string): string =>
   path.startsWith("/") ? path : `${cwd.replace(/\/+$/u, "")}/${path}`;
 
@@ -188,7 +252,11 @@ export function codexThreadSetup(profile: ThreadToolProfile): CodexThreadSetup {
     },
     decideCommand: ({ itemId, command }) =>
       command
-        ? gate(profile, { toolName: "Bash", input: { command }, toolUseId: itemId })
+        ? gate(profile, {
+            toolName: "Bash",
+            input: { command: shellCommand(command) },
+            toolUseId: itemId,
+          })
         : Effect.succeed("decline"),
     decideFileChange: ({ itemId, cwd, changes }) =>
       acceptAll(
