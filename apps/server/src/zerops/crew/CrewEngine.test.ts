@@ -1165,6 +1165,25 @@ describe("CrewEngine", () => {
     },
   );
 
+  it.live("Allow with no dev server running says what to do", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const thread = yield* firstTurn(world, () => undefined);
+        const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
+        yield* (yield* CrewToolHost).showOnDev(member, { reason: "See the camera" });
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        yield* snapshotWhere((snapshot) => snapshot.hosts[0]?.claim.state === "requested");
+        yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.ahead === 0);
+        const refused = yield* Effect.flip(command({ _tag: "claimGrant", host: TEST_HOST }));
+        assert.deepStrictEqual(
+          [refused.reason, refused.detail],
+          ["wrong-state", "Start appdev's dev server first — ask your Mate to run it"],
+        );
+      }),
+    ),
+  );
+
   it.live("an Allow waiting on a turn that a restart ended goes out when the engine boots", () => {
     const started: Array<number> = [];
     return withCrewEngines([

@@ -171,7 +171,7 @@ const sendShaped = (
     }
     const shape = yield* devServerShape(core, host);
     if (shape === undefined) {
-      return yield* refuse("wrong-state", `no dev server runs on ${host}; start it first`);
+      return yield* refuse("wrong-state", noDevServer(host));
     }
     const stint = yield* stintForTurn(core, applied, member, "turn-start", false);
     core.memory.shaped.set(stint.threadId, { turn: kind, devServer: shape });
@@ -189,6 +189,10 @@ const sendShaped = (
         : claimReleaseCard({ host, devServer: shape }),
     ).pipe(Effect.tapError(() => Effect.sync(() => core.memory.shaped.delete(stint.threadId))));
   });
+
+/** Why a claim cannot start: the dev service runs no dev server zcp started. */
+const noDevServer = (host: string): string =>
+  `Start ${host}'s dev server first — ask your Mate to run it`;
 
 /** A waiting *Allow* is gone: sent, or its claim moved on. */
 const settleGrant = (core: CrewCore, host: string) =>
@@ -214,7 +218,7 @@ export const grantClaim = (core: CrewCore, principal: TurnPrincipal, host: strin
     }
     yield* settleGrant(core, host);
     if ((yield* devServerShape(core, host)) === undefined) {
-      return yield* refuse("wrong-state", `no dev server runs on ${host}; start it first`);
+      return yield* refuse("wrong-state", noDevServer(host));
     }
     yield* asRefusal(core.runtime.grant(host, principalUser(principal)));
     yield* refreshClaims(core);
