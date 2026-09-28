@@ -379,6 +379,55 @@ describe("CrewEngine lead", () => {
       ),
   );
 
+  it.live(
+    "without a run a task the review sent back names itself; asking its crewmate reworks it",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* withLead(world);
+          yield* startRun({ landing: "lead" });
+          const runId = (yield* snapshotWhere((current) => current.run?.state === "running")).run!
+            .id;
+          const thread = yield* firstTurn(world, () =>
+            write(world.root, ".crew/backend/ok.txt", "ok\n"),
+          );
+          yield* reportDone(thread);
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          const lead = yield* leadThread(world);
+          yield* wokenWith(world, lead, "review @backend's work");
+          yield* command({ _tag: "stop", runId });
+          yield* snapshotWhere((current) => current.run?.state === "stopped");
+          const task = (yield* latest).board.tasks[0]!;
+          yield* command({
+            _tag: "review",
+            taskId: task.id,
+            verdict: "reject",
+            note: "Name the file hud.ts.",
+          });
+          const sentBack = yield* snapshotWhere((current) => current.attention.length > 0);
+          yield* command({
+            _tag: "message",
+            handle: "backend",
+            text: "Rework #1 after its review: Name the file hud.ts.",
+            attachments: [],
+          });
+          const reworking = yield* snapshotWhere(
+            (current) => current.board.tasks[0]?.state === "working",
+          );
+          assert.deepStrictEqual(
+            {
+              sentBack: sentBack.attention.map((row) => [row.kind, row.handle, row.text]),
+              reworking: [reworking.board.tasks[0]!.attempts, reworking.attention],
+            },
+            {
+              sentBack: [["sent-back", "backend", "Name the file hud.ts."]],
+              reworking: [2, []],
+            },
+          );
+        }),
+      ),
+  );
+
   it.live("Resume wakes the lead again for the review its pause interrupted", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {

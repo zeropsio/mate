@@ -374,7 +374,8 @@ export const CrewAttention = Schema.Struct({
   taskId: Schema.NullOr(CrewTaskId),
   /**
    * The question for `question`; the reason for `parked` and `cant-start`; the
-   * check's last line for `check-failed`; why its last turn ended for `stalled`.
+   * check's last line for `check-failed`; why its last turn ended for `stalled`;
+   * the review's note for `sent-back`.
    */
   text: Schema.NullOr(Schema.String),
   /** Your tree's paths for `landing-wait`; the conflicting paths for `conflict`. */

@@ -368,6 +368,12 @@ const taskAttention = (
       return attention("parked", { text: wait?.reason ?? null });
     case "rework":
       if (wait?.on === "conflict") return attention("conflict", { paths: wait.paths });
+      // A running run sends it back to its crewmate itself (`crewRunFlow`).
+      if (wait?.on === "review") {
+        return input.run?.state === "running"
+          ? undefined
+          : attention("sent-back", { text: wait.reason });
+      }
       if (wait?.on === "check-failed") {
         const output = readTaskCheck(row.check)?.output ?? "";
         const last = output.trimEnd().split("\n").at(-1)?.trim();

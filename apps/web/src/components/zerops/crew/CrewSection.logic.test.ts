@@ -203,8 +203,29 @@ describe("crewAttentionActions", () => {
         { kind: "command", label: "Land it myself", command: { _tag: "land", taskId: "task-12" } },
       ],
     },
+    {
+      kind: "sent-back" as const,
+      actions: [
+        {
+          kind: "command",
+          label: "Ask Backend to rework",
+          command: {
+            _tag: "message",
+            handle: "backend",
+            text: "Rework #12 after its review: Name the file hud.ts.",
+            attachments: [],
+          },
+        },
+        { kind: "command", label: "Discard", command: { _tag: "discard", taskId: "task-12" } },
+      ],
+    },
   ])("$kind", ({ kind, actions }) => {
-    const input = attention({ kind, paths: ["src/ui/hud.ts"], host: "appdev" });
+    const input = attention({
+      kind,
+      paths: ["src/ui/hud.ts"],
+      host: "appdev",
+      ...(kind === "sent-back" ? { text: "Name the file hud.ts." } : {}),
+    });
     expect(crewAttentionActions(input, snapshot, { board: true })).toEqual(actions);
   });
 

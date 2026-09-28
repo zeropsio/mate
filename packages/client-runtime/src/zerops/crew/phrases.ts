@@ -293,6 +293,21 @@ export function crewAttentionSentence(
       return task === undefined
         ? `${name}'s task waits for the lead's review`
         : `#${task.number} waits for the lead's review`;
+    case "sent-back": {
+      const by = task?.review?.by;
+      const reviewer =
+        by === null
+          ? "you"
+          : by === undefined ||
+              crew.crewmates.find((candidate) => candidate.handle === by)?.kind === "lead"
+            ? "the lead"
+            : (crew.crewmates.find((candidate) => candidate.handle === by)?.displayName ??
+              `@${by}`);
+      const which = task === undefined ? `${name}'s task` : `#${task.number}`;
+      return row.text === null
+        ? `${which} was sent back by ${reviewer}`
+        : `${which} was sent back by ${reviewer}: ${row.text}`;
+    }
   }
 }
 
@@ -483,6 +498,14 @@ export const CREW_CARRY_ON_MESSAGE = "Carry on with your task.";
 export const crewAskToResolveWord = (name: string): string => `Ask ${name} to resolve`;
 
 export const crewAskToFixWord = (name: string): string => `Ask ${name} to fix`;
+
+export const crewAskToReworkWord = (name: string): string => `Ask ${name} to rework`;
+
+/** *Ask <name> to rework*: one turn as you, carrying the review's note. */
+export const crewReworkMessage = (taskNumber: number, note: string | null): string =>
+  note === null || note.trim() === ""
+    ? `Rework #${taskNumber} after its review.`
+    : `Rework #${taskNumber} after its review: ${note}`;
 
 /** `a.ts`, `a.ts and b.ts`, `a.ts, b.ts and c.ts`. */
 function pathList(paths: ReadonlyArray<string>): string {

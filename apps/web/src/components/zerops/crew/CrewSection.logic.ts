@@ -17,7 +17,9 @@ import {
   crewAskLeadToReviewMessage,
   crewAskToFixWord,
   crewAskToResolveWord,
+  crewAskToReworkWord,
   crewCommitEditAsk,
+  crewReworkMessage,
   crewServedWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewmateView, CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
@@ -294,6 +296,29 @@ export function crewAttentionActions(
               command: { _tag: "discard", taskId: row.taskId },
             },
           ];
+    case "sent-back": {
+      // No run sends it back: ask its crewmate as you, with the review's note, or drop it.
+      const task = crew.board.tasks.find((entry) => entry.id === row.taskId);
+      return row.taskId === null || row.handle === null || task === undefined
+        ? []
+        : [
+            {
+              kind: "command",
+              label: crewAskToReworkWord(name),
+              command: {
+                _tag: "message",
+                handle: row.handle,
+                text: crewReworkMessage(task.number, row.text),
+                attachments: [],
+              },
+            },
+            {
+              kind: "command",
+              label: CREW_ATTENTION_VERBS.discard,
+              command: { _tag: "discard", taskId: row.taskId },
+            },
+          ];
+    }
     case "review-wait": {
       // Nobody reviews it: ask the lead as you, or land it yourself (your accept).
       if (row.taskId === null) return [];

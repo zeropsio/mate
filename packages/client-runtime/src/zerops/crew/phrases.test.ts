@@ -33,6 +33,7 @@ import {
   crewTaskSourceWord,
   crewApplyWord,
   crewAskToFixWord,
+  crewAskToReworkWord,
   crewAskToResolveWord,
   crewBriefPlainText,
   crewAttentionSentence,
@@ -344,6 +345,36 @@ describe("crewAttentionSentence", () => {
     expect(crewAttentionSentence(rowOf("plan"), threeProposed)).toBe("Lead proposes 3 tasks");
   });
 
+  it.each([
+    ["lead", "#12 was sent back by the lead: Name the file hud.ts."],
+    ["erik", "#12 was sent back by Erik: Name the file hud.ts."],
+    [null, "#12 was sent back by you: Name the file hud.ts."],
+  ] as const)("words a task the review of %s sent back", (by, words) => {
+    const sentBack = {
+      ...crew,
+      board: {
+        ...crew.board,
+        tasks: crew.board.tasks.map((entry) =>
+          entry.id === "task-12"
+            ? {
+                ...entry,
+                state: "rework" as const,
+                review: { verdict: "reject" as const, note: "Name the file hud.ts.", by },
+              }
+            : entry,
+        ),
+      },
+    };
+    const row = {
+      ...rowOf("question"),
+      kind: "sent-back" as const,
+      handle: "backend",
+      taskId: "task-12",
+      text: "Name the file hud.ts.",
+    };
+    expect(crewAttentionSentence(row, sentBack)).toBe(words);
+  });
+
   it("words every attention kind", () => {
     for (const kind of CrewAttentionKind.literals) {
       expect(sentence({ ...rowOf("question"), kind }), kind).toMatch(/\S/);
@@ -533,6 +564,7 @@ describe("the section's words (PRD §4.3)", () => {
     ]);
     expect(crewAskToResolveWord("Backend")).toBe("Ask Backend to resolve");
     expect(crewAskToFixWord("Backend")).toBe("Ask Backend to fix");
+    expect(crewAskToReworkWord("Backend")).toBe("Ask Backend to rework");
   });
 });
 

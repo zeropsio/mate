@@ -94,6 +94,7 @@ export const CrewAttentionKind = Schema.Literals([
   "check-failed",
   "stalled",
   "review-wait",
+  "sent-back",
 ]);
 export type CrewAttentionKind = typeof CrewAttentionKind.Type;
 
