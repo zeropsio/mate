@@ -7,6 +7,7 @@ import type { CrewAssignmentRow, CrewLaneRow, CrewMemberRow } from "./CrewStore.
 import {
   appliedSnapshot,
   CREW_OFF_SNAPSHOT,
+  STOPPED_MIDWAY_MS,
   crewNoneSnapshot,
   EMPTY_RUNTIME,
   type AppliedSnapshotInput,
@@ -147,6 +148,7 @@ const base = (fields: Partial<AppliedSnapshotInput> = {}): AppliedSnapshotInput 
   hosts: [{ host: "appdev", crewPorts: [{ port: 3001, routed: false }] }],
   claims: [],
   memory: new Map(),
+  midway: new Map(),
   runtime: EMPTY_RUNTIME,
   ...fields,
 });
@@ -317,4 +319,26 @@ describe("crew snapshot", () => {
       ["t-2", null],
     ]);
   });
+
+  it.each([
+    ["a moment ago", STOPPED_MIDWAY_MS - 1, []],
+    [
+      "long enough ago",
+      STOPPED_MIDWAY_MS,
+      [["stalled:t-1", "stalled", "the run reached its budget", "2026-09-27T09:55:00.000Z"]],
+    ],
+  ] as const)(
+    "a working task with no turn running, stopped %s, waits on you",
+    (_, idleMs, rows) => {
+      const since = "2026-09-27T09:55:00.000Z";
+      const snapshot = appliedSnapshot(
+        base({
+          nowMs: Date.parse(since) + idleMs,
+          tasks: [task("t-1", 1, { state: "working", attempt: 1 }), task("t-2", 2)],
+          midway: new Map([["t-1", { since, why: "the run reached its budget" }]]),
+        }),
+      );
+      expect(snapshot.attention.map((row) => [row.id, row.kind, row.text, row.at])).toEqual(rows);
+    },
+  );
 });

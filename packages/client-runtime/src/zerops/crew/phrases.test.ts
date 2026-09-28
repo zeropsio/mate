@@ -296,6 +296,20 @@ describe("crewAttentionSentence", () => {
     ],
     [{ kind: "check-failed", handle: "backend" }, "Backend's check failed"],
     [
+      { kind: "stalled", handle: "frontend", taskId: "task-13" },
+      "Frontend's task #13 stopped mid-way",
+    ],
+    [
+      {
+        kind: "stalled",
+        handle: "frontend",
+        taskId: "task-13",
+        text: "the run reached its budget",
+      },
+      "Frontend's task #13 stopped mid-way: the run reached its budget",
+    ],
+    [{ kind: "stalled", handle: "backend" }, "Backend's task stopped mid-way"],
+    [
       { kind: "landing-wait", handle: "frontend", paths: ["src/ui/hud.ts", "src/ui/ammo.ts"] },
       "Frontend's landing waits: src/ui/hud.ts and 1 more are edited in your tree",
     ],
@@ -507,6 +521,8 @@ describe("the section's words (PRD §4.3)", () => {
       "Allow",
       "Not now",
       "Try again",
+      "Continue",
+      "Discard",
     ]);
     expect(crewAskToResolveWord("Backend")).toBe("Ask Backend to resolve");
     expect(crewAskToFixWord("Backend")).toBe("Ask Backend to fix");

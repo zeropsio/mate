@@ -283,6 +283,12 @@ export function crewAttentionSentence(
       return `${name}'s copy conflicts with what landed: ${pathSummary(row.paths)}`;
     case "check-failed":
       return `${name}'s check failed`;
+    case "stalled": {
+      const which = task === undefined ? "task" : `task #${task.number}`;
+      return row.text === null
+        ? `${name}'s ${which} stopped mid-way`
+        : `${name}'s ${which} stopped mid-way: ${row.text}`;
+    }
   }
 }
 
@@ -457,7 +463,12 @@ export const CREW_ATTENTION_VERBS = {
   allow: "Allow",
   notNow: "Not now",
   tryAgain: "Try again",
+  carryOn: "Continue",
+  discard: "Discard",
 } as const;
+
+/** *Continue* on a task that stopped mid-way: one turn as you, in its crewmate's chat. */
+export const CREW_CARRY_ON_MESSAGE = "Carry on with your task.";
 
 export const crewAskToResolveWord = (name: string): string => `Ask ${name} to resolve`;
 

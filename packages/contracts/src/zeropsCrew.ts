@@ -372,12 +372,16 @@ export const CrewAttention = Schema.Struct({
   /** Whose row it is (the asker, the lander, the lead for a plan). */
   handle: Schema.NullOr(CrewHandle),
   taskId: Schema.NullOr(CrewTaskId),
-  /** The question for `question`; the reason for `parked` and `cant-start`; the check's last line for `check-failed`. */
+  /**
+   * The question for `question`; the reason for `parked` and `cant-start`; the
+   * check's last line for `check-failed`; why its last turn ended for `stalled`.
+   */
   text: Schema.NullOr(Schema.String),
   /** Your tree's paths for `landing-wait`; the conflicting paths for `conflict`. */
   paths: Schema.Array(Schema.String),
   /** The dev service for `show-on-dev`. */
   host: Schema.NullOr(TrimmedNonEmptyString),
+  /** Since when the row stands; for `stalled`, when the task's last turn ended. */
   at: IsoDateTime,
 });
 export type CrewAttention = typeof CrewAttention.Type;

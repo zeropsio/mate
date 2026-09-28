@@ -191,7 +191,7 @@ describe("CrewEngine tasks stopped mid-way", () => {
             yield* endedAttempts;
             const store = yield* CrewStore;
             const [attempt] = yield* store.attemptsOf((yield* firstTask).assignment);
-            const idle = yield* snapshotWhere((current) => current.board.tasks.length === 3);
+            const idle = yield* snapshotWhere((current) => current.attention[0]?.text != null);
             const quiet = yield* turnsAfter(world, before, 0);
             yield* command({
               _tag: "start",
@@ -205,6 +205,7 @@ describe("CrewEngine tasks stopped mid-way", () => {
               {
                 closed: [attempt!.ending, attempt!.endingDetail, attempt!.endedAt],
                 idle: idle.board.tasks.map((task) => task.state),
+                waiting: idle.attention.map((row) => [row.kind, row.handle, row.text, row.at]),
                 quiet: quiet.length,
                 carried: carried.map((turn) => [
                   turn.threadId,
@@ -212,14 +213,19 @@ describe("CrewEngine tasks stopped mid-way", () => {
                 ]),
                 principal: (yield* Ref.get(world.admitted)).at(-1)?.principal,
                 board: board.board.tasks.map((task) => task.state),
+                after: board.attention,
               },
               {
                 closed: ["no-report", "its turn ended without a report", RIG_IDLE_SINCE],
                 idle: ["working", "queued", "queued"],
+                waiting: [
+                  ["stalled", "backend", "its turn ended without a report", RIG_IDLE_SINCE],
+                ],
                 quiet: 0,
                 carried: [[thread!, true]],
                 principal: { kind: "crew", startedBy: "user-karel" },
                 board: ["working", "queued", "queued"],
+                after: [],
               },
             );
           }),
