@@ -22,9 +22,10 @@ import {
   firstTurn,
   latest,
   reportDone,
+  seamsOf,
   snapshotWhere,
 } from "./testing/crewEngineSteps.ts";
-import { read, write } from "./testing/crewGitFixture.ts";
+import { git, read, write } from "./testing/crewGitFixture.ts";
 
 const RUN: CrewRunOptions = {
   budgetUsd: "unlimited",
@@ -35,8 +36,8 @@ const RUN: CrewRunOptions = {
   leadMayStart: false,
 };
 
-/** A crew with a lead and a writer, applied. */
-const withLead = (world: CrewWorld) =>
+/** A crew with a lead and a writer, applied; the writer's check is `check`, none when null. */
+const withLead = (world: CrewWorld, check: string | null = "test -f ok.txt") =>
   Effect.gen(function* () {
     writeCrewHome(world.workspace, {
       "crew.yaml": [
@@ -49,7 +50,7 @@ const withLead = (world: CrewWorld) =>
         "  - handle: backend",
         "    displayName: Backend",
         "    host: appdev",
-        "    check: test -f ok.txt",
+        ...(check === null ? [] : [`    check: ${check}`]),
         "",
       ].join("\n"),
       "jobs/lead.md": "Plan the work.\n",
@@ -263,7 +264,7 @@ describe("CrewEngine lead", () => {
           {
             review: "review",
             wake: true,
-            answer: "#1 is accepted.",
+            answer: "Accepted — landing…",
             verdict: { verdict: "accept", note: "Looks right.", by: "lead" },
             tree: "ok\n",
           },
@@ -428,6 +429,73 @@ describe("CrewEngine lead", () => {
       ),
   );
 
+  it.live(
+    "the rig: an accepted review of a copy with nothing of its own closes the task, and the queue moves",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* withLead(world, null);
+          yield* startRun({ budgetUsd: 3, landing: "lead" });
+          const thread = yield* firstTurn(world, () => undefined);
+          yield* command({
+            _tag: "taskCreate",
+            owner: "backend",
+            title: "Health check",
+            brief: "Add /health.",
+            doneWhen: "",
+            dependsOn: [],
+          });
+          yield* reportDone(thread);
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          const lead = yield* leadThread(world);
+          yield* wokenWith(world, lead, "review @backend's work");
+          // Another landing moved your tree after the check, as on the rig.
+          write(world.root, "docs/person.md", "person\n");
+          git(world.root, ["add", "-A"]);
+          git(world.root, ["commit", "-q", "-m", "person edits"]);
+          yield* world.publish(spiEvent("turn.started", lead, {}));
+          const answer = yield* (yield* CrewToolHost).review(yield* memberOf(lead), {
+            task: 1,
+            verdict: "accept",
+            note: "Nothing to change.",
+          });
+          yield* world.publish(spiEvent("turn.completed", lead, { state: "completed" }));
+          const closed = yield* snapshotWhere(
+            (current) =>
+              current.board.tasks[0]?.state === "landed" &&
+              current.board.tasks[1]?.state === "working",
+          );
+          const log = yield* (yield* CrewStore).logOf(CREW_ID, ["closed"]);
+          assert.deepStrictEqual(
+            {
+              answer: answer.text,
+              task: [closed.board.tasks[0]!.landedCommit, closed.board.tasks[0]!.delivered],
+              notDelivered: closed.landedNotDelivered,
+              seams: (yield* seamsOf(world)).map(([threadId, words, payload]) => [
+                threadId,
+                words,
+                payload,
+              ]),
+              log: log.map((entry) => entry.payload),
+            },
+            {
+              answer: "Accepted — #1 had no changes, closed",
+              task: [null, false],
+              notDelivered: 0,
+              seams: [
+                [
+                  thread,
+                  "Task #1 closed — nothing to land",
+                  { seam: "closed", taskId: closed.board.tasks[0]!.id, number: 1 },
+                ],
+              ],
+              log: [{ task: closed.board.tasks[0]!.id, reason: "nothing to land" }],
+            },
+          );
+        }),
+      ),
+  );
+
   it.live("Resume wakes the lead again for the review its pause interrupted", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
@@ -465,6 +533,78 @@ describe("CrewEngine lead", () => {
         yield* startRun({ landing: "check" });
         yield* snapshotWhere((current) => current.board.tasks[0]?.state === "landed");
         assert.strictEqual(read(world.root, "ok.txt"), "ok\n");
+      }),
+    ),
+  );
+
+  it.live(
+    "an accepted task whose landing finds your tree moved merges again and lands, without a second review",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* withLead(world);
+          yield* startRun({ landing: "lead" });
+          const thread = yield* firstTurn(world, () =>
+            write(world.root, ".crew/backend/ok.txt", "ok\n"),
+          );
+          yield* reportDone(thread);
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          const lead = yield* leadThread(world);
+          yield* wokenWith(world, lead, "review @backend's work");
+          write(world.root, "docs/person.md", "person\n");
+          git(world.root, ["add", "-A"]);
+          git(world.root, ["commit", "-q", "-m", "person edits"]);
+          yield* world.publish(spiEvent("turn.started", lead, {}));
+          yield* (yield* CrewToolHost).review(yield* memberOf(lead), {
+            task: 1,
+            verdict: "accept",
+            note: "Looks right.",
+          });
+          yield* world.publish(spiEvent("turn.completed", lead, { state: "completed" }));
+          yield* snapshotWhere((current) => current.board.tasks[0]?.state === "landed");
+          yield* Effect.sleep("300 millis");
+          assert.deepStrictEqual(
+            [
+              read(world.root, "ok.txt"),
+              read(world.root, "docs/person.md"),
+              yield* wakes(world, lead),
+            ],
+            ["ok\n", "person\n", 1],
+          );
+        }),
+      ),
+  );
+
+  it.live("a task back from rework is reviewed afresh, its earlier accept gone", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* withLead(world);
+        yield* startRun({ landing: "lead" });
+        const thread = yield* firstTurn(world, () =>
+          write(world.root, ".crew/backend/ok.txt", "ok\n"),
+        );
+        yield* reportDone(thread);
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        const inReview = yield* snapshotWhere(
+          (current) => current.board.tasks[0]?.state === "review",
+        );
+        const store = yield* CrewStore;
+        const [row] = yield* store.assignments(CREW_ID);
+        // An accept an earlier landing left on a task its crewmate took back as rework.
+        yield* store.putAssignment({
+          ...row!,
+          state: "rework",
+          review: { verdict: "accept", note: "Fine.", by: "lead" },
+          waiting: { on: "conflict", reason: null, paths: ["ok.txt"] },
+        });
+        yield* command({ _tag: "askResolve", taskId: inReview.board.tasks[0]!.id });
+        const reworking = yield* snapshotWhere(
+          (current) => current.board.tasks[0]?.state === "working",
+        );
+        assert.deepStrictEqual(
+          [reworking.board.tasks[0]!.attempts, reworking.board.tasks[0]!.review],
+          [2, null],
+        );
       }),
     ),
   );

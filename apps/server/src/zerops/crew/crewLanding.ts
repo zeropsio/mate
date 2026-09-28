@@ -26,6 +26,7 @@ import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 import {
   afterLandCard,
   fixCard,
+  closedSeamWords,
   landedSeamWords,
   resolveCard,
   reviewReworkCard,
@@ -51,7 +52,7 @@ import { readDeclaredPorts } from "./crewPorts.ts";
 import { leadReviews } from "./crewRuns.ts";
 import { appendSeam } from "./crewSeamLines.ts";
 import type { CrewAssignmentRow } from "./CrewStore.ts";
-import { readTaskCheck, readTaskWait } from "./crewTaskData.ts";
+import { readTaskCheck, readTaskReview, readTaskWait } from "./crewTaskData.ts";
 import {
   continueTask,
   parkTask,
@@ -100,10 +101,18 @@ export const restartApp = (core: CrewCore, member: CrewMember) =>
     core.memory.apps.set(row.handle, status.state === "running" ? "running" : "stopped");
   });
 
+/**
+ * A passed check goes to the lead's review in a run that lands after it —
+ * once an attempt: an accept stands through a merge-in again (your tree
+ * moved before the landing).
+ */
+const goesToReview = (applied: AppliedCrew, task: CrewAssignmentRow) =>
+  leadReviews(applied) && readTaskReview(task.review)?.verdict !== "accept";
+
 const runCheck = (core: CrewCore, member: CrewMember, task: CrewAssignmentRow) =>
   Effect.gen(function* () {
     const command = member.spec.check;
-    const reviewed = leadReviews(yield* requireApplied(core));
+    const reviewed = goesToReview(yield* requireApplied(core), task);
     if (command === undefined || member.row.host === null) {
       return yield* stepTask(core, task, { type: "check-passed", reviewed });
     }
@@ -180,7 +189,7 @@ const integrateMerging = (core: CrewCore, task: CrewAssignmentRow) =>
       const clean = yield* stepTask(core, task, { type: "merge-clean" });
       return yield* stepTask(core, clean, {
         type: "check-passed",
-        reviewed: leadReviews(applied),
+        reviewed: goesToReview(applied, task),
       });
     }
     const key = { crew: CREW_ID, handle: member.row.handle };
@@ -295,9 +304,24 @@ const afterLand = (
     );
   });
 
+/** A landing that did not happen now, and why, in the crew log. */
+export const landingHeld = (core: CrewCore, task: CrewAssignmentRow, detail: string) =>
+  Effect.gen(function* () {
+    yield* asRefusal(
+      core.store.appendLog({
+        crew: CREW_ID,
+        run: null,
+        at: yield* core.now,
+        kind: "landing-held",
+        payload: { task: task.assignment, detail },
+      }),
+    );
+  });
+
 /**
  * *Land* (PRD §5.2 step 5); from `waiting-on-you` it merges again first, since
- * your tree moved, and from `review` it is your accept first.
+ * your tree moved, and from `review` it is your accept first. A landing that
+ * does not happen says why in the crew log; its task's state names it too.
  */
 export const land = (
   core: CrewCore,
@@ -386,7 +410,37 @@ export const land = (
         yield* pump(core, member.row.handle);
         return;
       }
+      case "nothing": {
+        // Nothing of its own to land: the task closes, and its crewmate's queue moves.
+        yield* stepTask(core, landing, { type: "fast-forward" }, (next) => ({
+          ...next,
+          landedCommit: null,
+          waiting: null,
+        }));
+        yield* asRefusal(
+          core.store.appendLog({
+            crew: CREW_ID,
+            run: null,
+            at: yield* core.now,
+            kind: "closed",
+            payload: { task: landing.assignment, reason: "nothing to land" },
+          }),
+        );
+        const stint = currentStint((yield* core.applied) ?? applied, member.row.handle);
+        if (stint !== undefined) {
+          yield* appendSeam(core, stint.threadId, closedSeamWords(landing.number), {
+            seam: "closed",
+            taskId: landing.assignment,
+            number: landing.number,
+          });
+        }
+        yield* dropHandoff(core, member.row.handle, landing.assignment);
+        yield* refreshLaneStats(core, member);
+        yield* pump(core, member.row.handle);
+        return;
+      }
       case "head-moved": {
+        yield* landingHeld(core, landing, "your tree moved since its check; it merges again");
         const again = yield* stepTask(core, landing, { type: "head-moved" });
         if (
           again.state === "merging" &&
@@ -400,6 +454,11 @@ export const land = (
         const { refusal } = outcome;
         switch (refusal.action) {
           case "wait":
+            yield* landingHeld(
+              core,
+              landing,
+              `your tree has ${refusal.kind === "dirty" ? "uncommitted edits" : "untracked files"} in its way: ${refusal.paths.join(", ")}`,
+            );
             yield* stepTask(
               core,
               landing,
@@ -411,6 +470,11 @@ export const land = (
             );
             return;
           case "redo": {
+            yield* landingHeld(
+              core,
+              landing,
+              "your tree moved during the landing; it merges again",
+            );
             const again = yield* stepTask(core, landing, { type: "not-fast-forward" });
             if ((yield* integrate(core, again.assignment)).state === "ready") {
               return yield* land(core, principal, again.assignment);
@@ -418,12 +482,18 @@ export const land = (
             return;
           }
           case "backoff":
+            yield* landingHeld(core, landing, "another git process holds your tree's index");
             yield* stepTask(core, landing, { type: "index-lock" });
             return yield* refuse(
               "wrong-state",
               "another git process holds your tree's index; try again",
             );
           case "retry": {
+            yield* landingHeld(
+              core,
+              landing,
+              "an object the landing needs was missing; it lands again",
+            );
             const again = yield* stepTask(core, landing, { type: "missing-object" });
             return yield* land(core, principal, again.assignment);
           }

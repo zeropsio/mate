@@ -142,8 +142,9 @@ describe("crewTaskWord", () => {
       { waitingOn: ["src/ui/hud.ts", "src/ui/ammo.ts", "README.md"] },
       "Waits on your tree: src/ui/hud.ts +2",
     ],
-    ["landed", { delivered: false }, "Landed · not delivered"],
-    ["landed", { delivered: true }, "Delivered"],
+    ["landed", { delivered: false, landedCommit: "9f3c2e1" }, "Landed · not delivered"],
+    ["landed", { delivered: true, landedCommit: "9f3c2e1" }, "Delivered"],
+    ["landed", { delivered: false, landedCommit: null }, "Closed · no changes"],
     ["parked", { reason: "The check timed out twice" }, "Stopped: The check timed out twice"],
     ["parked", { reason: null }, "Stopped"],
     ["discarded", {}, "Discarded"],
@@ -600,6 +601,22 @@ describe("the drafts a crew surface hands the Mate", () => {
     );
     expect(crewCommitEditAsk(["a.ts", "b.ts"])).toBe(
       "Commit my edits to a.ts and b.ts locally, without pushing: a crew landing waits on them.",
+    );
+  });
+
+  it("leaves a task closed with nothing to land out of Deliver", () => {
+    const closed = {
+      ...crew,
+      board: {
+        ...crew.board,
+        tasks: [
+          ...crew.board.tasks,
+          { ...taskOf("task-11"), id: "task-18", number: 18, landedCommit: null },
+        ],
+      },
+    };
+    expect(crewDeliverAsk(closed, [])).toBe(
+      "Ship the crew's landed work on appdev: #11 Health endpoint for the load balancer.",
     );
   });
 

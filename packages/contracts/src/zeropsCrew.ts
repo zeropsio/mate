@@ -404,7 +404,8 @@ export type CrewSummary = typeof CrewSummary.Type;
  * A seam line in a crewmate's chat that no card carries (PRD §4.5, *Seams*):
  * a thread activity of kind {@link CREW_SEAM_ACTIVITY_KIND} on the
  * conversation the person reads at that moment, its `summary` the line's
- * words. `landed`: a task landed. `saved`: a saved brief, job or login that
+ * words. `landed`: a task landed. `closed`: a task was accepted or landed with
+ * nothing of its own to land, and closed. `saved`: a saved brief, job or login that
  * reaches this conversation later, by `apply`. `stint`: a conversation opened
  * between turns (*Start fresh*, a save applied at once) opens with its
  * reason; one opened for a turn carries the reason in that turn's card.
@@ -418,6 +419,7 @@ export const CrewSeam = Schema.Union([
     number: PositiveInt,
     commit: TrimmedNonEmptyString,
   }),
+  Schema.Struct({ seam: Schema.Literal("closed"), taskId: CrewTaskId, number: PositiveInt }),
   Schema.Struct({ seam: Schema.Literal("saved"), apply: CrewApplyChoice }),
   Schema.Struct({ seam: Schema.Literal("stint"), previousThreadId: Schema.NullOr(ThreadId) }),
 ]);

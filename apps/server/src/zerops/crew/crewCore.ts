@@ -146,6 +146,8 @@ export interface EngineMemory {
   readonly costedTurns: Set<string>;
   /** Crew threads whose session ran turns no total was kept for: the next total is history. */
   readonly costUnknown: Set<string>;
+  /** Why a run's landing of each task was last held, so the crew log says each reason once. */
+  readonly heldLandings: Map<string, string>;
   /** Crew threads whose session restarts at its turn's end to take a run's new budget. */
   readonly sessionRestart: Set<string>;
   /** An *Allow* pressed while its crewmate's turn ran, per dev service, sent at that turn's end. */
@@ -229,6 +231,7 @@ export const makeMemory = (): EngineMemory => ({
   costSeen: new Map(),
   costedTurns: new Set(),
   costUnknown: new Set(),
+  heldLandings: new Map(),
   sessionRestart: new Set(),
   grantsWaiting: new Map(),
   devHosts: new Map(),
