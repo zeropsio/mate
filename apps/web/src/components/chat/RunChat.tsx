@@ -381,7 +381,9 @@ function ChatScroll({
 
   return (
     <ChatScrollContext value={api}>
-      <div className="relative min-w-0" data-run-chat>
+      {/* A container: on a card too narrow for the face's column, the
+          column is the text's (`ChatRow`). */}
+      <div className="@container/chat relative min-w-0" data-run-chat>
         <div
           ref={scrollerRef}
           className={cn(
@@ -2031,7 +2033,9 @@ function ChatRow({
   }
   return (
     <li className="flex min-w-0 items-end gap-2.5" data-chat-row>
-      <span aria-hidden="true" className="w-7 shrink-0" />
+      {/* The face's column: on a card narrower than 28 rem — a phone — its
+          38 px are the text's, 280 of the card's 318 px at 390 wide. */}
+      <span aria-hidden="true" className="hidden w-7 shrink-0 @md/chat:block" />
       {/* Only what arrives while the person watches rises in. */}
       <div
         className={cn(

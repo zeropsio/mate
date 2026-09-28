@@ -468,6 +468,18 @@ describe("RunChat", () => {
     expect(said).toEqual(expect.arrayContaining(["pt-2", "pb-4"]));
   });
 
+  // The face's column lines the Mate's lines up over the face at the chat's
+  // foot; on a card narrower than 28 rem — a phone — the 38 px it keeps is
+  // the text's (390 px wide, the chat's text had 280 px of the card's 318).
+  it("keeps the face's column only where the chat has room for it", () => {
+    const markup = draw(record([thought("r1", "The route and the check disagree.")]));
+    expect(markup).toMatch(/<div class="[^"]*@container\/chat[^"]*" data-run-chat="true">/u);
+    const column = /<li[^>]*data-chat-row[^>]*><span aria-hidden="true" class="([^"]*)"/u.exec(
+      markup,
+    )?.[1];
+    expect(column?.split(" ")).toEqual(expect.arrayContaining(["hidden", "@md/chat:block"]));
+  });
+
   it("opens nothing on a step that printed nothing", () => {
     const markup = draw(record([step(command("w1", "git status"))]));
     expect(markup).not.toContain("data-chat-disclose");
