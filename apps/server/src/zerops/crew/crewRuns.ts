@@ -84,6 +84,27 @@ export const runLimitReached = (facts: RunLimitFacts): "budget" | "time" | "usag
         ? "usage"
         : undefined;
 
+const amount = (value: number): string =>
+  Number.isInteger(value) ? String(value) : value.toFixed(2);
+
+/**
+ * Why a paused run cannot go on under these limits, in words the section
+ * shows; `undefined` when it may. A limit that paused it and still stands
+ * must be raised, or set to *No limit*, first.
+ */
+export const resumeRefusal = (facts: RunLimitFacts): string | undefined => {
+  switch (runLimitReached(facts)) {
+    case "budget":
+      return `The run has spent its $${amount(facts.budgetUsd ?? 0)} budget — raise it or choose No limit to resume`;
+    case "time":
+      return `The run has used its ${amount(facts.timeLimitHours === "unlimited" ? 0 : facts.timeLimitHours)} h — raise the time limit or choose No limit to resume`;
+    case "usage":
+      return `The usage window is at ${amount(facts.usagePercent ?? 0)} % — raise the stop or turn it off to resume`;
+    case undefined:
+      return undefined;
+  }
+};
+
 /**
  * A passed check goes to the lead's review first: a run is on, its landing
  * is *The lead lands after its review*, and the crew has a lead.
@@ -295,11 +316,51 @@ export const pressPause = (core: CrewCore, runId: string) =>
     yield* pauseRun(core, "person");
   });
 
-export const resumeRun = (core: CrewCore, runId: string) =>
+/**
+ * *Resume*, with the limits the person raised: a limit given replaces the
+ * run's, an absent one keeps it. A limit that still stands refuses, naming
+ * it. The crew's sessions follow the new budget from their next start.
+ */
+export const resumeRun = (
+  core: CrewCore,
+  input: {
+    readonly runId: string;
+    readonly budgetUsd?: CrewRunOptions["budgetUsd"] | undefined;
+    readonly timeLimitHours?: CrewRunOptions["timeLimitHours"] | undefined;
+    readonly stopAtUsagePercent?: CrewRunOptions["stopAtUsagePercent"] | undefined;
+  },
+) =>
   Effect.gen(function* () {
-    const { run } = yield* requireRun(core, runId);
+    const { applied, run } = yield* requireRun(core, input.runId);
     yield* moved(run, { type: "resume", admitted: true });
-    yield* saveRun(core, { ...run, state: "running", reason: null, reasonDetail: null });
+    const current = runOptionsOf(run);
+    if (current === undefined) return yield* refuse("io", "the run's options could not be read");
+    const options: CrewRunOptions = {
+      ...current,
+      ...(input.budgetUsd === undefined ? {} : { budgetUsd: input.budgetUsd }),
+      ...(input.timeLimitHours === undefined ? {} : { timeLimitHours: input.timeLimitHours }),
+      ...(input.stopAtUsagePercent === undefined
+        ? {}
+        : { stopAtUsagePercent: input.stopAtUsagePercent }),
+    };
+    const budgetUsd = options.budgetUsd === "unlimited" ? null : options.budgetUsd;
+    const refusal = resumeRefusal({
+      budgetUsd,
+      spentUsd: run.spentUsd,
+      elapsedMs: run.wallMs,
+      timeLimitHours: options.timeLimitHours,
+      usagePercent: usagePercentOf(core, applied),
+      stopAtUsagePercent: options.stopAtUsagePercent,
+    });
+    if (refusal !== undefined) return yield* refuse("wrong-state", refusal);
+    yield* saveRun(core, {
+      ...run,
+      state: "running",
+      reason: null,
+      reasonDetail: null,
+      budgetUsd,
+      options,
+    });
     core.memory.runningSince = yield* Clock.currentTimeMillis;
     yield* ensureRunTick(core);
   });

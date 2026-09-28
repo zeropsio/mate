@@ -285,6 +285,24 @@ describe("CrewCommand", () => {
   });
 });
 
+describe("CrewCommand resume", () => {
+  it.each([
+    { _tag: "resume", runId: "run-1" },
+    { _tag: "resume", runId: "run-1", budgetUsd: 5 },
+    { _tag: "resume", runId: "run-1", budgetUsd: "unlimited", timeLimitHours: "unlimited" },
+    { _tag: "resume", runId: "run-1", timeLimitHours: 12, stopAtUsagePercent: null },
+  ])("decodes a resume that keeps or raises the run's limits", (command) => {
+    expect(decodeCommand(command)).toEqual(command);
+  });
+
+  it.each([
+    { _tag: "resume", runId: "run-1", budgetUsd: 0 },
+    { _tag: "resume", runId: "run-1", stopAtUsagePercent: 120 },
+  ])("refuses a limit no run can have", (command) => {
+    expect(() => decodeCommand(command)).toThrow();
+  });
+});
+
 describe("CrewFiles", () => {
   it.each(["crew.yaml", "brief.md", "jobs/backend.md", "jobs/erik-2.md"])(
     "accepts the crew home's %s",

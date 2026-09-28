@@ -69,6 +69,45 @@ describe("CrewEngine runs", () => {
     ),
   );
 
+  it.live(
+    "Resume on a spent budget is refused by name; a raised budget runs on with the new remainder",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          const runId = yield* started(world);
+          const thread = yield* firstTurn(world, () => undefined);
+          yield* ended(world, thread, 1.25);
+          yield* snapshotWhere((current) => current.run?.reason === "budget");
+          const refused = yield* Effect.flip(command({ _tag: "resume", runId }));
+          const tooLow = yield* Effect.flip(command({ _tag: "resume", runId, budgetUsd: 1.2 }));
+          yield* command({ _tag: "resume", runId, budgetUsd: 2 });
+          const raised = (yield* snapshotWhere((current) => current.run?.state === "running")).run!;
+          const left = yield* budgetOf(thread);
+          yield* command({ _tag: "pause", runId });
+          yield* snapshotWhere((current) => current.run?.state === "paused");
+          yield* command({ _tag: "resume", runId, budgetUsd: "unlimited" });
+          yield* snapshotWhere((current) => current.run?.options.budgetUsd === "unlimited");
+          assert.deepStrictEqual(
+            {
+              refused: [refused.reason, refused.detail],
+              tooLow: tooLow.detail,
+              raised: [raised.options.budgetUsd, raised.options.timeLimitHours, left],
+              noLimit: yield* budgetOf(thread),
+            },
+            {
+              refused: [
+                "wrong-state",
+                "The run has spent its $1 budget — raise it or choose No limit to resume",
+              ],
+              tooLow: "The run has spent its $1.20 budget — raise it or choose No limit to resume",
+              raised: [2, 8, 0.75],
+              noLimit: undefined,
+            },
+          );
+        }),
+      ),
+  );
+
   it.live("a run with No limit sets no session budget and still meters the spend", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {

@@ -497,7 +497,19 @@ export const CrewCommand = Schema.TaggedUnion({
   apply: {},
   start: CrewRunOptions.fields,
   pause: runRef,
-  resume: runRef,
+  /**
+   * Resumes a paused run. A limit given replaces the run's (a budget above
+   * what it has spent, or *No limit*); an absent one keeps the run's current
+   * value.
+   */
+  resume: {
+    ...runRef,
+    budgetUsd: Schema.optional(CrewLimit),
+    timeLimitHours: Schema.optional(CrewLimit),
+    stopAtUsagePercent: Schema.optional(
+      Schema.NullOr(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 }))),
+    ),
+  },
   stop: runRef,
   finish: runRef,
   /** A crewmate chat's send (PRD §5.2a): steers the open task, or opens an implicit one. */
