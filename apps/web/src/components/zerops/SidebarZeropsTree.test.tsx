@@ -2184,6 +2184,15 @@ describe("a Mate's row says more without words", () => {
     expect(slot(row(live()))).toContain(">2h<");
   });
 
+  // Work left running in the background wears the working face and offers
+  // Stop: its slot counts it up as any working face's does, never a grey age
+  // beside a working face (the approved menu; the 2026-09-28 audit's gap).
+  it("counts up work left running in the background, as it counts a run", () => {
+    const time = slot(row(working({ kind: "monitoring", progress: undefined })));
+    expect(time).toContain("3:12");
+    expect(time).toContain("text-status-busy-text");
+  });
+
   it.each([
     { case: "while it works on them", activity: working({ snippet: undefined }) },
     {

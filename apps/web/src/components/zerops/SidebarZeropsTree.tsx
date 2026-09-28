@@ -2335,8 +2335,9 @@ function MateRow<T extends RosterCandidate>({
 
 /**
  * The row's right edge: when the Mate last did something, as a messenger
- * dates its rows — or, while it works, how long it has been at it, counting
- * up in the busy blue; or, paused at a usage limit, when it picks up again.
+ * dates its rows — or, while it works, its work left running in the
+ * background included, how long it has been at it, counting up in the busy
+ * blue; or, paused at a usage limit, when it picks up again.
  * Nothing at all for a Mate nobody has spoken to yet.
  */
 function MateTime({
@@ -2366,7 +2367,13 @@ function MateTime({
       </Tooltip>
     );
   }
-  if (activity.kind === "working" || activity.kind === "connecting") {
+  // Work left running in the background wears the working face and offers
+  // Stop: it counts up as a run does, from the run that left it running.
+  if (
+    activity.kind === "working" ||
+    activity.kind === "connecting" ||
+    activity.kind === "monitoring"
+  ) {
     return <MateWorkingTime since={activity.at} />;
   }
   if (activity.subject === undefined) return null;
