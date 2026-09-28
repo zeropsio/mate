@@ -1305,6 +1305,22 @@ describe("deriveMessagesTimelineRows", () => {
     expect(lines(list)).toEqual(["> Green", "· pnpm test"]);
   });
 
+  it("says a pick the Mate recommended in the person's words, without its mark", () => {
+    const list = rows({
+      entries: [
+        user("m0", 0),
+        asked("rq", 1),
+        answeredWith("rs", 2, "Use the green accent (Recommended)"),
+        tool("w1", "t1", 3),
+        assistant("a1", "t1", 4, "Green it is."),
+      ],
+      settled: "t1",
+    });
+    const answer = list.find((row) => row.kind === "answer");
+    expect(answer?.kind === "answer" ? answer.pairs[0]?.answer : null).toBe("Use the green accent");
+    expect(lines(list)?.[0]).toBe("> Use the green accent");
+  });
+
   it("draws a settled stretch's browser checks in the record, where they happened", () => {
     const list = rows({
       entries: [

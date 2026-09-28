@@ -812,6 +812,16 @@ function buildRevertTurnCountByUserMessageId(input: {
   return byUserMessageId;
 }
 
+/**
+ * The person's pick, in their words: the "(Recommended)" the Mate put on an
+ * option was its advice, not what the person answered (Nova, 2026-09-28: the
+ * mark stood in the person's own bubble).
+ */
+export function answerWords(answer: string): string {
+  const words = answer.replace(/\s*\(recommended\)\s*$/iu, "").trim();
+  return words.length > 0 ? words : answer;
+}
+
 /** The question the Mate asked and the person has not answered yet, if one waits. */
 function pendingQuestion(stretch: Stretch): Extract<TimelineEntry, { kind: "work" }> | null {
   const asked = stretch.entries.findLast(
@@ -1183,7 +1193,7 @@ function stretchRecord(input: {
             kind: "person",
             key: `person:${entry.id}`,
             at: entry.createdAt,
-            words: work.inputAnswers.map((given) => given.answer).join(" · "),
+            words: work.inputAnswers.map((given) => answerWords(given.answer)).join(" · "),
             imageOnly: false,
           });
           rows.push({
@@ -1197,7 +1207,7 @@ function stretchRecord(input: {
               return {
                 key: answer.key,
                 question: question?.question ?? question?.header ?? answer.key,
-                answer: answer.answer,
+                answer: answerWords(answer.answer),
               };
             }),
           });
