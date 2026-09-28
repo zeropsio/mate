@@ -42,6 +42,7 @@ import {
   crewDescribeAsk,
   crewLandedWord,
   crewLaneWord,
+  crewNamingTheMate,
   crewNoDevHostWord,
   crewLoginRunsWord,
   crewPendingWord,
@@ -328,6 +329,30 @@ describe("crewAttentionSentence", () => {
     for (const kind of CrewAttentionKind.literals) {
       expect(sentence({ ...rowOf("question"), kind }), kind).toMatch(/\S/);
     }
+  });
+});
+
+describe("a Show-on-dev grant waiting on a turn", () => {
+  it("reads as allowed and waiting, naming whose turn", () => {
+    const [host] = crew.hosts;
+    const waiting = {
+      ...crew,
+      hosts: [
+        { ...host!, claim: { state: "requested" as const, handle: "backend", grantWaiting: true } },
+      ],
+    };
+    const row = crew.attention.find((candidate) => candidate.kind === "show-on-dev")!;
+    expect(crewAttentionSentence(row, waiting)).toBe("Allowed · waits for Backend's turn to end");
+    expect(crewAttentionSentence(row, crew)).toBe("Backend asks to show its work on appdev");
+  });
+});
+
+describe("crewNamingTheMate", () => {
+  it("names the Mate where the engine says your Mate", () => {
+    expect(
+      crewNamingTheMate("Start appdev's dev server first — ask your Mate to run it.", "Fen"),
+    ).toBe("Start appdev's dev server first — ask Fen to run it.");
+    expect(crewNamingTheMate("Nothing to name here.", "Fen")).toBe("Nothing to name here.");
   });
 });
 

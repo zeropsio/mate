@@ -17,6 +17,7 @@ import {
   crewBoardLinkWord,
   crewLandedWord,
   crewLaneWord,
+  crewNamingTheMate,
   crewPendingWord,
   crewPortsOffWord,
   crewRunMeters,
@@ -80,6 +81,8 @@ export interface CrewSectionProps {
   readonly pending: boolean;
   /** The last refusal's sentence at `origin`; `null` asks for one no row owns. */
   readonly errorAt: (origin: string | null) => string | null;
+  /** The Mate who lives here, named where the engine's words say "your Mate". */
+  readonly mateName: string;
   /** *Tell the crew*'s own sends, so its refusal stays under its line. */
   readonly tell: {
     readonly send: (command: CrewCommand) => Promise<CrewCommandResult | null>;
@@ -106,7 +109,15 @@ export interface CrewSectionProps {
   readonly onAddCrewPorts: (host: string) => void;
 }
 
-export function CrewSection(props: CrewSectionProps) {
+export function CrewSection(unnamed: CrewSectionProps) {
+  // Every refusal and engine failure this section shows names the Mate.
+  const props: CrewSectionProps = {
+    ...unnamed,
+    errorAt: (origin) => {
+      const words = unnamed.errorAt(origin);
+      return words === null ? null : crewNamingTheMate(words, unnamed.mateName);
+    },
+  };
   const { view, snapshot } = props;
   const run = snapshot.run;
   const runOn = run !== null && (run.state === "running" || run.state === "paused");
@@ -116,7 +127,12 @@ export function CrewSection(props: CrewSectionProps) {
       <CrewHeader {...props} runOn={runOn} />
       {(
         [
-          ["engine", snapshot.lastError],
+          [
+            "engine",
+            snapshot.lastError === null
+              ? null
+              : crewNamingTheMate(snapshot.lastError, props.mateName),
+          ],
           ["press", props.errorAt(null)],
         ] as const
       ).map(([source, line]) =>

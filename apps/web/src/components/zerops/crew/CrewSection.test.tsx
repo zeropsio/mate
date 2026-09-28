@@ -15,6 +15,7 @@ const render = (snapshot: CrewSnapshot, overrides: Partial<CrewSectionProps> = {
     <CrewSection
       environmentId={EnvironmentId.make("env-crew")}
       errorAt={() => null}
+      mateName="Fen"
       onAddCrewPorts={noop}
       onAddLead={noop}
       onResumeRun={noop}
@@ -151,6 +152,15 @@ describe("CrewSection", () => {
     });
     expect(template).toContain("data-crew-brief-placeholder");
     expect(template).toContain(">Describe what the crew builds<");
+  });
+
+  it("names the Mate where the engine's words say your Mate", () => {
+    const markup = render({
+      ...crewSnapshotFixture(),
+      lastError: "Start appdev's dev server first — ask your Mate to run it",
+    });
+    expect(markup).toContain("ask Fen to run it");
+    expect(markup).not.toContain("your Mate");
   });
 
   it("says a refused press beside its own row, not in the section's line", () => {

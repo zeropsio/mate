@@ -175,7 +175,7 @@ function displayName(crewmates: ReadonlyArray<Crewmate>, handle: string | null):
  */
 export function crewAttentionActions(
   row: CrewAttention,
-  crew: Pick<CrewSnapshot, "crewmates">,
+  crew: Pick<CrewSnapshot, "crewmates" | "hosts">,
   can: { readonly board: boolean },
 ): ReadonlyArray<CrewAttentionAction> {
   const name = displayName(crew.crewmates, row.handle);
@@ -211,21 +211,27 @@ export function crewAttentionActions(
           ];
     case "plan":
       return can.board ? [{ kind: "board", label: CREW_ATTENTION_VERBS.reviewPlan }] : [];
-    case "show-on-dev":
-      return row.host === null
-        ? []
+    case "show-on-dev": {
+      if (row.host === null) return [];
+      const notNow: CrewAttentionAction = {
+        kind: "command",
+        label: CREW_ATTENTION_VERBS.notNow,
+        command: { _tag: "claimDeny", host: row.host },
+      };
+      // Already allowed and waiting on the crewmate's turn: Not now cancels it.
+      const waiting =
+        crew.hosts.find((host) => host.host === row.host)?.claim.grantWaiting === true;
+      return waiting
+        ? [notNow]
         : [
             {
               kind: "command",
               label: CREW_ATTENTION_VERBS.allow,
               command: { _tag: "claimGrant", host: row.host },
             },
-            {
-              kind: "command",
-              label: CREW_ATTENTION_VERBS.notNow,
-              command: { _tag: "claimDeny", host: row.host },
-            },
+            notNow,
           ];
+    }
     case "conflict":
       return row.taskId === null
         ? []

@@ -252,7 +252,7 @@ function pathSummary(paths: ReadonlyArray<string>): string {
  */
 export function crewAttentionSentence(
   row: CrewAttention,
-  crew: Pick<CrewSnapshot, "crewmates" | "board">,
+  crew: Pick<CrewSnapshot, "crewmates" | "board" | "hosts">,
 ): string {
   const mate = crew.crewmates.find((candidate) => candidate.handle === row.handle);
   const name = mate?.displayName ?? (row.handle === null ? "The crew" : `@${row.handle}`);
@@ -271,7 +271,10 @@ export function crewAttentionSentence(
       return `${name} proposes ${count} ${count === 1 ? "task" : "tasks"}`;
     }
     case "show-on-dev":
-      return `${name} asks to show its work on ${row.host ?? "dev"}`;
+      // Allowed while its turn ran: the claim goes out when that turn ends.
+      return crew.hosts.find((host) => host.host === row.host)?.claim.grantWaiting === true
+        ? `Allowed · waits for ${name}'s turn to end`
+        : `${name} asks to show its work on ${row.host ?? "dev"}`;
     case "parked":
       return row.text === null ? `${name} stopped` : `${name} stopped: ${row.text}`;
     case "cant-start":
@@ -300,6 +303,10 @@ const REFUSALS: Readonly<Record<CrewRefusalReason, string>> = {
   "login-needs-fresh": "A different login needs a fresh conversation",
   io: "The crew files could not be read or saved",
 };
+
+/** The engine's words name "your Mate"; a surface that knows the Mate says its name. */
+export const crewNamingTheMate = (words: string, mateName: string): string =>
+  words.replace(/\byour Mate\b/gu, mateName);
 
 /**
  * A refused command or files request as one sentence: the engine's detail,
