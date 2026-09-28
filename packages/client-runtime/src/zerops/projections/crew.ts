@@ -240,3 +240,25 @@ export function crewFeedRead(read: Known<CrewSnapshot> | undefined): CrewFeedRea
   }
   return { status: null, snapshot: null, current: false };
 }
+
+/**
+ * Whose app answers on each crew port, by dev service (PRD §5.7): the
+ * crewmate that holds the port, `null` for one nobody holds. The service
+ * map names its routes by it (`ZeropsCrewPortOwners`).
+ */
+export function crewPortOwners(
+  snapshot: Pick<CrewSnapshot, "hosts" | "crewmates">,
+): ReadonlyMap<string, ReadonlyMap<number, string | null>> {
+  return new Map(
+    snapshot.hosts.map((host) => [
+      host.host,
+      new Map(
+        host.crewPorts.map(({ port }): [number, string | null] => [
+          port,
+          snapshot.crewmates.find((mate) => mate.host === host.host && mate.app?.port === port)
+            ?.displayName ?? null,
+        ]),
+      ),
+    ]),
+  );
+}

@@ -38,6 +38,7 @@ import { compareZeropsHostnames } from "./listingOrder.ts";
 import { isZcpServiceType } from "./topology.ts";
 import type {
   ZeropsScalingRange,
+  ZeropsServiceRoute,
   ZeropsServiceScaling,
   ZeropsServiceUsage,
   ZeropsTopologyGroup,
@@ -163,6 +164,12 @@ export interface ZeropsServiceRow {
   readonly stageMetrics?: ReadonlyArray<ZeropsServiceMetric>;
   readonly stageTrends?: ZeropsServiceTrends;
   readonly stagePortLabel?: string;
+  /** The service's public routes as its card offers them (`zeropsRouteChoices`). */
+  readonly routes: ReadonlyArray<ZeropsRouteChoice>;
+  /** Too many for a button each: the main route's button and one *Open* menu (`zeropsRoutesFolded`). */
+  readonly routesFolded: boolean;
+  readonly stageRoutes?: ReadonlyArray<ZeropsRouteChoice>;
+  readonly stageRoutesFolded?: boolean;
   /** Production projects this service feeds, from the lifecycle envelope. */
   readonly production: ReadonlyArray<ZeropsProductionLink>;
 }
@@ -248,9 +255,80 @@ const serviceDashboardUrl = (serviceId: string): string =>
   `https://app.zerops.io/service-stack/${serviceId}`;
 
 /** `:80`, or `:80, :443` — the ports the service declares, after its name. */
-export function zeropsPortLabel(service: ZeropsTopologyService): string | undefined {
+/**
+ * Who serves a dev service's crew ports (PRD §5.7), by hostname: each crew
+ * port's crewmate by name, `null` for a crew port nobody holds. A port not in
+ * it is the service's own.
+ */
+export type ZeropsCrewPortOwners = ReadonlyMap<string, ReadonlyMap<number, string | null>>;
+
+/** More routes than this fold into one *Open* menu beside the main route's button. */
+const ROUTE_MENU_AFTER = 2;
+
+/** Whether a card folds its routes into one *Open* menu: more than it has room for as buttons. */
+export const zeropsRoutesFolded = (routes: ReadonlyArray<ZeropsRouteChoice>): boolean =>
+  routes.length > ROUTE_MENU_AFTER;
+
+/** A service's ports in the card's order: its own first, then its crew ports, each ascending. */
+function orderedPorts(
+  ports: ReadonlyArray<number>,
+  crew: ReadonlyMap<number, string | null> | undefined,
+): ReadonlyArray<number> {
+  const isCrew = (port: number) => crew?.has(port) === true;
+  return [...ports].sort(
+    (left, right) => Number(isCrew(left)) - Number(isCrew(right)) || left - right,
+  );
+}
+
+export function zeropsPortLabel(
+  service: ZeropsTopologyService,
+  crew?: ReadonlyMap<number, string | null>,
+): string | undefined {
   if (service.ports.length === 0) return undefined;
-  return service.ports.map((port) => `:${port.port}`).join(", ");
+  return orderedPorts(
+    service.ports.map((port) => port.port),
+    crew,
+  )
+    .map((port) => `:${port}`)
+    .join(", ");
+}
+
+/** One public route as the card offers it: its port and who it serves. */
+export interface ZeropsRouteChoice {
+  readonly route: ZeropsServiceRoute;
+  /** `:3000 · the service's own`, `:3001 · Backend's app`, or the port alone. */
+  readonly label: string;
+}
+
+/**
+ * A service's public routes in the card's order — the service's own first
+ * (the main route), then its crew ports — each named by its port and who it
+ * serves: the service's own, a crewmate's app, or, for a crew port nobody
+ * holds, the port alone.
+ */
+export function zeropsRouteChoices(
+  service: ZeropsTopologyService,
+  crew?: ReadonlyMap<number, string | null>,
+): ReadonlyArray<ZeropsRouteChoice> {
+  const byPort = new Map(service.routes.map((route) => [route.port, route]));
+  const ports = orderedPorts(
+    service.routes.map((route) => route.port),
+    crew,
+  );
+  return ports.flatMap((port, index): ReadonlyArray<ZeropsRouteChoice> => {
+    const route = byPort.get(port);
+    if (route === undefined) return [];
+    const owner = crew?.get(port);
+    const label =
+      owner !== undefined
+        ? owner === null
+          ? `:${port}`
+          : `:${port} · ${owner}'s app`
+        : index === 0
+          ? `:${port} · the service's own`
+          : `:${port}`;
+    return [{ route, label }];
+  });
 }
 
 /**
@@ -494,6 +572,7 @@ export function buildZeropsServiceMap(
   topology: ZeropsTopologyView | undefined,
   lifecycle?: Known<ZeropsLifecycle>,
   runningTool?: string,
+  crewPorts?: ZeropsCrewPortOwners,
 ): ZeropsServiceMapView | undefined {
   if (topology === undefined) {
     return undefined;
@@ -526,7 +605,9 @@ export function buildZeropsServiceMap(
             folded.has(candidate.hostname) &&
             devPartnerHostname(candidate, byHostname) === entry.hostname,
         );
-        const portLabel = zeropsPortLabel(entry);
+        const crew = crewPorts?.get(entry.hostname);
+        const portLabel = zeropsPortLabel(entry, crew);
+        const routes = zeropsRouteChoices(entry, crew);
         // The control plane is named by its glossary word; its hostname and
         // port move down a line so the name reads as one thing.
         const isControlPlane = isZcpServiceType(entry.type);
@@ -543,6 +624,8 @@ export function buildZeropsServiceMap(
           ...(isControlPlane ? {} : { typeShort: zeropsTypeShort(entry) }),
           title,
           ...(isControlPlane || portLabel === undefined ? {} : { portLabel }),
+          routes,
+          routesFolded: zeropsRoutesFolded(routes),
           meta: [...hostnameFact, ...zeropsServiceFacts(entry, title)],
           dashboardUrl: serviceDashboardUrl(entry.serviceId),
           metrics: zeropsServiceMetrics(entry.usage, entry.scaling),
@@ -556,6 +639,8 @@ export function buildZeropsServiceMap(
                 stageMetrics: zeropsServiceMetrics(stage.usage, stage.scaling),
                 ...withKey("stageTrends", zeropsUsageTrends(stage.history)),
                 ...withKey("stagePortLabel", zeropsPortLabel(stage)),
+                stageRoutes: zeropsRouteChoices(stage),
+                stageRoutesFolded: zeropsRoutesFolded(zeropsRouteChoices(stage)),
               }),
           production: productionOf(entry.hostname, lifecycle),
         };

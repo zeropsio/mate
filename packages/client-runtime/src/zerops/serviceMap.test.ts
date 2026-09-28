@@ -9,6 +9,8 @@ import {
   formatRange,
   serviceStatusTone,
   zeropsPortLabel,
+  zeropsRouteChoices,
+  zeropsRoutesFolded,
   zeropsServiceFacts,
   zeropsServiceMetrics,
   zeropsStatusWord,
@@ -483,9 +485,89 @@ describe("zeropsStatusWord", () => {
   });
 });
 
+/** appdev as the owner saw it: its own :3000 and four crew ports, declared crew ports first. */
+const appdev = service({
+  hostname: "appdev",
+  ports: [3001, 3002, 3003, 3004, 3000].map((port) => ({ port, httpSupport: true })),
+  routes: [3001, 3002, 3003, 3004, 3000].map((port) => ({
+    port,
+    url: `https://appdev-1df2-${port}.prg1.zerops.app`,
+    host: `appdev-1df2-${port}.prg1.zerops.app`,
+  })),
+});
+const crewPorts = new Map([
+  [
+    "appdev",
+    new Map<number, string | null>([
+      [3001, "Backend"],
+      [3002, "Frontend"],
+      [3003, null],
+      [3004, null],
+    ]),
+  ],
+]);
+
 describe("zeropsPortLabel", () => {
   it("is absent for a service with no ports", () => {
     expect(zeropsPortLabel(service({ hostname: "worker" }))).toBeUndefined();
+  });
+
+  it("puts the service's own port first, then the rest ascending", () => {
+    expect(zeropsPortLabel(appdev)).toBe(":3000, :3001, :3002, :3003, :3004");
+    expect(zeropsPortLabel(appdev, crewPorts.get("appdev"))).toBe(
+      ":3000, :3001, :3002, :3003, :3004",
+    );
+    const crewLow = new Map<number, string | null>([[2000, null]]);
+    expect(
+      zeropsPortLabel(service({ hostname: "x", ports: [{ port: 3000 }, { port: 2000 }] }), crewLow),
+    ).toBe(":3000, :2000");
+  });
+});
+
+describe("zeropsRouteChoices", () => {
+  it("names each route by its port and who it serves, the service's own first", () => {
+    expect(
+      zeropsRouteChoices(appdev, crewPorts.get("appdev")).map((choice) => choice.label),
+    ).toEqual([
+      ":3000 · the service's own",
+      ":3001 · Backend's app",
+      ":3002 · Frontend's app",
+      ":3003",
+      ":3004",
+    ]);
+  });
+
+  it("without the crew's ports, names only the lowest as the service's own", () => {
+    expect(zeropsRouteChoices(appdev).map((choice) => choice.label)).toEqual([
+      ":3000 · the service's own",
+      ":3001",
+      ":3002",
+      ":3003",
+      ":3004",
+    ]);
+  });
+
+  it("folds more than two routes into a menu", () => {
+    const choices = zeropsRouteChoices(appdev);
+    expect([1, 2, 3, 5].map((count) => zeropsRoutesFolded(choices.slice(0, count)))).toEqual([
+      false,
+      false,
+      true,
+      true,
+    ]);
+  });
+
+  it("gives every row its routes in that order", () => {
+    const view = buildZeropsServiceMap(
+      { project: { id: "p", name: "p" }, services: [appdev], warnings: [], usageRead: false },
+      undefined,
+      undefined,
+      crewPorts,
+    );
+    const row = view?.groups.flatMap((group) => group.rows)[0];
+    expect(row?.routes.map((choice) => choice.route.port)).toEqual([3000, 3001, 3002, 3003, 3004]);
+    expect(row?.portLabel).toBe(":3000, :3001, :3002, :3003, :3004");
+    expect(row?.routesFolded).toBe(true);
   });
 });
 
