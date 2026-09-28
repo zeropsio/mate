@@ -2627,3 +2627,194 @@ code {
     transform: scaleX(0.9);
   }
 }
+
+/* A Mate's face in motion (MateFace.tsx). Every pose is one drawing, so a
+   change of state morphs — the eyes narrow into work, the "o" opens when it
+   needs you — instead of one picture replacing another. What moves on its own
+   belongs to the state: at work the shape turns a notch at a time (its own
+   symmetry, so it never looks like somebody else) and the eyes glance about;
+   needing you, it hops; done while you watch, it pops once. Idle and asleep
+   it is still: a menu of faces must not fidget. Transform and opacity only,
+   each Mate on its own beat (`--mate-face-phase`) so a menu of them never
+   ticks in unison. */
+:root {
+  /* A spring: 8 % past the mark and back, settled by two thirds of its time. */
+  --ease-spring: linear(
+    0,
+    0.088,
+    0.285,
+    0.51,
+    0.716,
+    0.877,
+    0.988,
+    1.052,
+    1.08,
+    1.082,
+    1.071,
+    1.053,
+    1.034,
+    1.018,
+    1.006,
+    0.999,
+    0.994,
+    0.993,
+    0.993,
+    0.995,
+    0.996,
+    0.998,
+    0.999,
+    1
+  );
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+:is([data-mate-face-hop], [data-mate-face-body], [data-mate-face-look], [data-mate-face-glance]) {
+  transform-box: view-box;
+}
+
+[data-mate-face-body] {
+  transform-origin: var(--mate-face-origin, 50px 50px);
+}
+
+/* It hops from its feet. */
+[data-mate-face-hop] {
+  transform-origin: 50px 96px;
+}
+
+[data-mate-face-eye] {
+  transition:
+    x 280ms var(--ease-out-strong),
+    y 280ms var(--ease-out-strong),
+    width 280ms var(--ease-out-strong),
+    height 280ms var(--ease-out-strong),
+    rx 280ms var(--ease-out-strong),
+    opacity 160ms ease;
+}
+
+[data-mate-face-shut],
+[data-mate-face-arc],
+[data-mate-face-mouth="smile"] {
+  transition: opacity 200ms ease;
+}
+
+[data-mate-face-mouth="o"] {
+  transition:
+    r 260ms var(--ease-spring),
+    opacity 160ms ease;
+}
+
+[data-mate-face-look] {
+  transition: translate 240ms var(--ease-out-strong);
+}
+
+/* Thinking, it looks up and aside; writing, down along its line. */
+[data-mate-face-gaze="up"] [data-mate-face-look] {
+  translate: 5px -5px;
+}
+
+[data-mate-face-gaze="down"] [data-mate-face-look] {
+  translate: 0 4px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-mate-face-state="working"] [data-mate-face-body] {
+    animation: mate-face-turn 2.4s infinite;
+    animation-delay: calc(var(--mate-face-phase, 0) * -0.3s);
+  }
+
+  [data-mate-face-state="working"] [data-mate-face-glance] {
+    animation: mate-face-glance 5.6s infinite;
+    animation-delay: calc(var(--mate-face-phase, 0) * -0.7s);
+  }
+
+  [data-mate-face-state="needs"] [data-mate-face-hop] {
+    animation: mate-face-hop 2.8s infinite;
+    animation-delay: calc(var(--mate-face-phase, 0) * -0.35s);
+  }
+
+  [data-mate-face-arrived="done"] [data-mate-face-hop] {
+    animation: mate-face-pop 620ms var(--ease-out-strong) 1;
+  }
+
+  /* A Mate's row under the pointer: its face looks up at you. */
+  [data-zerops-surface="sidebar-mate"]:hover [data-mate-face-look] {
+    translate: 0 -5px;
+  }
+}
+
+@keyframes mate-face-turn {
+  0%,
+  55% {
+    rotate: 0deg;
+    animation-timing-function: var(--ease-spring);
+  }
+  100% {
+    rotate: var(--mate-face-step, 0deg);
+  }
+}
+
+@keyframes mate-face-glance {
+  0%,
+  30% {
+    translate: 0 0;
+    animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+  }
+  36%,
+  54% {
+    translate: -5px 0;
+    animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+  }
+  62%,
+  80% {
+    translate: 5px 0;
+    animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+  }
+  86%,
+  100% {
+    translate: 0 0;
+  }
+}
+
+/* Crouch, jump, land: squash and stretch, from its feet. */
+@keyframes mate-face-hop {
+  0%,
+  70% {
+    translate: 0 0;
+    scale: 1 1;
+    animation-timing-function: cubic-bezier(0.33, 0, 0.67, 1);
+  }
+  76% {
+    translate: 0 0;
+    scale: 1.07 0.9;
+    animation-timing-function: cubic-bezier(0.2, 0.8, 0.4, 1);
+  }
+  84% {
+    translate: 0 -13px;
+    scale: 0.96 1.05;
+    animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.6);
+  }
+  91% {
+    translate: 0 0;
+    scale: 1.05 0.94;
+    animation-timing-function: cubic-bezier(0.2, 0.8, 0.4, 1);
+  }
+  100% {
+    translate: 0 0;
+    scale: 1 1;
+  }
+}
+
+@keyframes mate-face-pop {
+  0% {
+    scale: 1;
+  }
+  32% {
+    scale: 1.18;
+  }
+  58% {
+    scale: 0.95;
+  }
+  100% {
+    scale: 1;
+  }
+}
