@@ -140,6 +140,27 @@ describe("CrewEngine runs", () => {
   );
 
   it.live(
+    "a session total below the kept one starts the count again from it, counting nothing",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* started(world, { budgetUsd: 10 });
+          const thread = yield* firstTurn(world, () => undefined);
+          yield* ended(world, thread, 0.5);
+          yield* snapshotWhere((current) => current.run?.spentUsd === 0.5);
+          for (const total of [0.2, 0.35]) {
+            yield* command({ _tag: "message", handle: "backend", text: "More", attachments: [] });
+            yield* world.publish(spiEvent("turn.started", thread, {}));
+            // A resume that carried over less than the last total, then a turn on top of it.
+            yield* ended(world, thread, total);
+          }
+          const run = (yield* snapshotWhere((current) => current.run?.spentUsd !== 0.5)).run!;
+          assert.strictEqual(run.spentUsd.toFixed(2), "0.65");
+        }),
+      ),
+  );
+
+  it.live(
     "a run caps each session at the run's remainder, whatever it spent before, after a restart too",
     () =>
       withCrewEngines([

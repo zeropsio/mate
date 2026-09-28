@@ -86,11 +86,9 @@ const apply = (memory: EngineMemory, note: CrewNote, run: string | null, at: str
       memory.grantsWaiting.delete(note.host);
       return;
     case "turn-cost":
+      // The latest total is the baseline, a lower one too: a resume may carry over less.
       memory.costedTurns.add(note.turnId);
-      memory.costSeen.set(
-        note.threadId,
-        Math.max(memory.costSeen.get(note.threadId) ?? 0, note.total),
-      );
+      memory.costSeen.set(note.threadId, note.total);
       return;
   }
 };

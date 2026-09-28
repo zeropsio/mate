@@ -407,8 +407,9 @@ export const finishRun = (core: CrewCore, runId: string) =>
  * A turn's own cost. The CLI reports a session's cumulative total
  * (`total_cost_usd`, across its resumes too), so a turn costs what the total
  * rose by since the thread's last turn; a turn is counted once, whatever
- * delivers its end again. A session whose earlier total was never kept
- * counts nothing for this turn and keeps its total from now on.
+ * delivers its end again. A session whose earlier total was never kept, or
+ * whose total came back below the kept one, counts nothing for this turn and
+ * counts from its new total on.
  */
 export const turnCost = (
   core: CrewCore,
