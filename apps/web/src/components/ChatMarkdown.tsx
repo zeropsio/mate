@@ -6,10 +6,6 @@ import {
   ChevronRightIcon,
   CopyIcon,
   GlobeIcon,
-  InfoIcon,
-  LightbulbIcon,
-  MessageSquareWarningIcon,
-  OctagonAlertIcon,
   PlayIcon,
   TriangleAlertIcon,
   WrapTextIcon,
@@ -309,16 +305,16 @@ const CHAT_MARKDOWN_REHYPE_PLUGINS = [
 ] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
 
 /**
- * GitHub's five alert kinds, drawn as callouts: the glyph names the urgency,
- * the word says it. Their tones are the product's status grammar and live in
- * the stylesheet (`.chat-markdown-callout[data-alert]`).
+ * GitHub's five alert kinds, drawn as callouts: the word run into the first line
+ * says the urgency, the tone says it again. Their tones are the product's status
+ * grammar and live in the stylesheet (`.chat-markdown-callout[data-alert]`).
  */
-const CALLOUTS = new Map<string, { label: string; Icon: typeof InfoIcon }>([
-  ["note", { label: "Note", Icon: InfoIcon }],
-  ["tip", { label: "Tip", Icon: LightbulbIcon }],
-  ["important", { label: "Important", Icon: MessageSquareWarningIcon }],
-  ["warning", { label: "Warning", Icon: TriangleAlertIcon }],
-  ["caution", { label: "Caution", Icon: OctagonAlertIcon }],
+const CALLOUTS = new Map<string, string>([
+  ["note", "Note"],
+  ["tip", "Tip"],
+  ["important", "Important"],
+  ["warning", "Warning"],
+  ["caution", "Caution"],
 ]);
 
 function extractFenceLanguage(className: string | undefined): string {
@@ -1945,8 +1941,8 @@ const CHAT_MARKDOWN_COMPONENTS = {
   },
   blockquote: function MarkdownBlockquote({ node: _node, children, ...props }) {
     const kind = String((props as Record<string, unknown>)["data-alert"] ?? "");
-    const callout = CALLOUTS.get(kind);
-    if (!callout) {
+    const label = CALLOUTS.get(kind);
+    if (label === undefined) {
       return <blockquote {...props}>{children}</blockquote>;
     }
     // Still a quote underneath, so copying it out gives back `> [!KIND]` and
@@ -1957,8 +1953,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           className="chat-markdown-callout-label"
           data-markdown-copy={`[!${kind.toUpperCase()}]\n`}
         >
-          <callout.Icon aria-hidden className="size-3.5 shrink-0" />
-          {callout.label}
+          {label}
         </p>
         {children}
       </blockquote>
