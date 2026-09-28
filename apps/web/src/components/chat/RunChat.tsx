@@ -249,10 +249,17 @@ const CHAT_MAX_HEIGHT = "max-h-110";
 function ChatScroll({
   live,
   label,
+  empty,
   children,
 }: {
   readonly live: boolean;
   readonly label: string;
+  /**
+   * Nothing in it yet: the card is its status line alone, the face as far
+   * from the card's top as from its foot — the list's own room stood it
+   * 31 px down and 22 px up (Nova, 2026-09-28).
+   */
+  readonly empty: boolean;
   readonly children: ReactNode;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -397,7 +404,7 @@ function ChatScroll({
           <ol
             ref={contentRef}
             aria-label={label}
-            className="mt-auto flex min-w-0 flex-col gap-4 pt-2 pb-4"
+            className={cn("mt-auto flex min-w-0 flex-col gap-4", empty ? "pt-3" : "pt-2 pb-4")}
           >
             {children}
           </ol>
@@ -2155,7 +2162,11 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const shown = gatherCalls(from > 0 ? lines.slice(from) : lines);
   return (
     <>
-      <ChatScroll label={`${ctx.speaker.name}'s work`} live={row.live}>
+      <ChatScroll
+        empty={shown.length === 0 && from === 0}
+        label={`${ctx.speaker.name}'s work`}
+        live={row.live}
+      >
         {from > 0 ? <EarlierLine count={from} onShow={() => setFrom(0)} /> : null}
         {shown.map((entry) =>
           "calls" in entry ? (

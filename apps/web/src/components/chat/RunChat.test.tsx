@@ -455,6 +455,19 @@ describe("RunChat", () => {
     expect(done).toMatch(/<button[^>]*data-report-take="desktop"/);
   });
 
+  // Before anything is in the chat the card is its status line alone, the
+  // first thing seen after every message: the face as far from the card's
+  // top as from its foot, where the empty list's room stood it 31 px down
+  // and 22 px up (Nova, 2026-09-28).
+  it("keeps an empty chat's room to the card's own, so the face stands in its middle", () => {
+    const list = (markup: string) => /<ol[^>]*class="([^"]*)"/u.exec(markup)?.[1]?.split(" ") ?? [];
+    const empty = list(draw(record([], { live: true, status: status() })));
+    expect(empty).toContain("pt-3");
+    expect(empty).not.toContain("pb-4");
+    const said = list(draw(record([thought("r1", "The route and the check disagree.")])));
+    expect(said).toEqual(expect.arrayContaining(["pt-2", "pb-4"]));
+  });
+
   it("opens nothing on a step that printed nothing", () => {
     const markup = draw(record([step(command("w1", "git status"))]));
     expect(markup).not.toContain("data-chat-disclose");
