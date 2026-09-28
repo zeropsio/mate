@@ -72,6 +72,12 @@ export interface ZeropsAgentActivity {
    */
   readonly snippet: string | undefined;
   /**
+   * The person's words are the last thing said and the run answering them
+   * has not ended (`agentActivityAwaitsWords`): where the last words will
+   * stand, the row holds its line for them.
+   */
+  readonly awaitingWords?: true;
+  /**
    * The plan's steps while it works, counted — what the ring around a
    * working face is drawn from, one segment a step. Absent while it rests
    * and where the server reports no plan: a ring nobody can fill is not
@@ -123,6 +129,25 @@ export function agentActivitySnippet(
   if (preview === undefined || preview === null || preview.role !== "assistant") return undefined;
   // A server from before previews were masked still hands over what was pasted.
   return maskSecrets(preview.text);
+}
+
+/**
+ * The person's words are the last thing said and no run has ended since they
+ * were sent: the Mate is on them, or about to be — its last run over and the
+ * next not running yet, the second after a message is sent.
+ */
+export function agentActivityAwaitsWords(
+  thread: Pick<
+    EnvironmentThreadShell,
+    "latestMessagePreview" | "latestUserMessageAt" | "latestTurn"
+  >,
+): boolean {
+  const said = thread.latestMessagePreview;
+  if (said === undefined || said === null || said.role === "assistant") return false;
+  const asked = thread.latestUserMessageAt;
+  if (asked === null) return false;
+  const ended = thread.latestTurn?.completedAt ?? null;
+  return ended === null || Date.parse(ended) < Date.parse(asked);
 }
 
 export function agentActivityAt(
@@ -201,6 +226,7 @@ export function deriveZeropsAgentActivity(
       subject: agentActivitySubject(primary, resolved.kind),
       at: agentActivityAt(primary),
       snippet: agentActivitySnippet(primary),
+      ...(agentActivityAwaitsWords(primary) ? { awaitingWords: true as const } : {}),
       progress:
         resolved.kind === "working" && plan !== undefined && plan.totalSteps > 0
           ? { completed: plan.completedSteps, total: plan.totalSteps }

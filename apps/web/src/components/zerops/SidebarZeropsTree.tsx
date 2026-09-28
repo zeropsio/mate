@@ -2256,9 +2256,14 @@ function MateRow<T extends RosterCandidate>({
               {subject}
             </span>
           )}
-          {snippet === undefined ? null : (
+          {snippet !== undefined ? (
             <MateSnippet snippet={snippet} threadKey={live?.threadKey} />
-          )}
+          ) : subject !== undefined &&
+            (live?.awaitingWords === true ||
+              live?.kind === "working" ||
+              live?.kind === "connecting") ? (
+            <MateReplyPending />
+          ) : null}
         </span>
       </button>
       {actions === undefined ? null : (
@@ -2425,6 +2430,25 @@ function MateSnippet({
           <span className="font-medium text-sidebar-foreground">Draft:</span> {unsent}
         </>
       )}
+    </span>
+  );
+}
+
+/**
+ * The last line while the Mate's words are still to come — sent, or being
+ * worked on: the messenger's "is typing", held still (R6). The row keeps its
+ * height from the message sent to the first words back, where it used to lose
+ * its last line and grow it again, moving every row under it twice (Nova,
+ * 2026-09-28: 76 → 58 → 76 px, the first dip in the second before the run
+ * started).
+ */
+function MateReplyPending() {
+  return (
+    <span className="flex h-4.5 items-center gap-1" data-zerops-surface="sidebar-mate-pending">
+      <span aria-hidden="true" className="size-1 rounded-full bg-sidebar-muted-foreground/45" />
+      <span aria-hidden="true" className="size-1 rounded-full bg-sidebar-muted-foreground/45" />
+      <span aria-hidden="true" className="size-1 rounded-full bg-sidebar-muted-foreground/45" />
+      <span className="sr-only">Working on a reply</span>
     </span>
   );
 }

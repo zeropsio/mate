@@ -5,6 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   agentActivityAt,
+  agentActivityAwaitsWords,
   agentActivitySnippet,
   agentActivitySubject,
   deriveZeropsAgentActivity,
@@ -231,6 +232,67 @@ describe("a row's words never quote a credential", () => {
       `log in with SHOP_PASSWORD ${SECRET_MASK} please`,
     );
     expect(agentActivitySnippet(pasted)).toBe(`Signed in. Heslo: ${SECRET_MASK} works on dev.`);
+  });
+});
+
+// Sent, the person's words are the last thing said until the Mate's first
+// words back — also in the second before its run starts, when its last run
+// has ended and the new one is not running yet (Nova, 2026-09-28: the row
+// lost its last line in that second, 76 → 58 → 76 px).
+describe("agentActivityAwaitsWords", () => {
+  const asked = (text: string, at: string) => ({
+    latestMessagePreview: { role: "user" as const, text, createdAt: at },
+    latestUserMessageAt: at,
+  });
+  const turn = (state: "running" | "completed", completedAt: string | null) => ({
+    latestTurn: {
+      turnId: TurnId.make("turn-1"),
+      state,
+      requestedAt: "2026-09-05T10:01:00.000Z",
+      startedAt: "2026-09-05T10:01:00.000Z",
+      completedAt,
+      assistantMessageId: null,
+    },
+  });
+
+  it.each([
+    [
+      "sent after the last run ended, before the next one starts",
+      {
+        ...asked("and the footer", "2026-09-05T10:05:00.000Z"),
+        ...turn("completed", "2026-09-05T10:04:00.000Z"),
+      },
+    ],
+    [
+      "the run answering them is under way",
+      { ...asked("and the footer", "2026-09-05T10:05:00.000Z"), ...turn("running", null) },
+    ],
+    ["no run has answered anything yet", asked("add the login page", "2026-09-05T10:00:00.000Z")],
+  ] as const)("waits for words when %s", (_, overrides) => {
+    expect(agentActivityAwaitsWords(shell(overrides))).toBe(true);
+  });
+
+  it.each([
+    [
+      "the Mate's words are the last thing said",
+      {
+        latestMessagePreview: {
+          role: "assistant" as const,
+          text: "Done.",
+          createdAt: "2026-09-05T10:06:00.000Z",
+        },
+      },
+    ],
+    [
+      "the run that answered them ended without words",
+      {
+        ...asked("stop", "2026-09-05T10:05:00.000Z"),
+        ...turn("completed", "2026-09-05T10:05:30.000Z"),
+      },
+    ],
+    ["nobody has said anything", { latestMessagePreview: null, latestUserMessageAt: null }],
+  ] as const)("waits for nothing when %s", (_, overrides) => {
+    expect(agentActivityAwaitsWords(shell(overrides))).toBe(false);
   });
 });
 

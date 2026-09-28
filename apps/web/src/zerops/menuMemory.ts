@@ -25,6 +25,8 @@ export const MENU_MEMORY_STORAGE_KEY = "mate:zerops:menu-memory";
 const RowSchema = Schema.Struct({
   subject: Schema.optionalKey(Schema.String),
   snippet: Schema.optionalKey(Schema.String),
+  /** The row held its last line for words still to come (`MateReplyPending`). */
+  awaitingWords: Schema.optionalKey(Schema.Boolean),
   task: Schema.optionalKey(Schema.String),
   at: Schema.String,
   unread: Schema.Boolean,
@@ -84,11 +86,22 @@ export type MenuMemory = typeof MenuMemorySchema.Type;
 
 export const EMPTY_MENU_MEMORY: MenuMemory = { rows: {}, changes: {}, stops: {}, members: {} };
 
-/** A row's words as a Mate's activity last said them. */
+/**
+ * A row's words as a Mate's activity last said them — and whether it held its
+ * last line for words still to come, which is the row's height: a reload
+ * mid-run draws the line again rather than growing it when the socket answers.
+ */
 export function rememberedRowOf(activity: ZeropsAgentActivity): RememberedRow {
+  const awaiting =
+    activity.subject !== undefined &&
+    activity.snippet === undefined &&
+    (activity.awaitingWords === true ||
+      activity.kind === "working" ||
+      activity.kind === "connecting");
   return {
     ...(activity.subject === undefined ? {} : { subject: activity.subject }),
     ...(activity.snippet === undefined ? {} : { snippet: activity.snippet }),
+    ...(awaiting ? { awaitingWords: true } : {}),
     ...(activity.task === undefined ? {} : { task: activity.task }),
     at: activity.at,
     unread: activity.unread,
@@ -111,6 +124,7 @@ export function activityFromMemory(row: RememberedRow): ZeropsAgentActivity {
     subject: row.subject,
     at: row.at,
     snippet: row.snippet,
+    ...(row.awaitingWords === true ? { awaitingWords: true as const } : {}),
     progress: undefined,
     unread: row.unread,
     pausedUntil: undefined,

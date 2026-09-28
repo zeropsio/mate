@@ -2144,6 +2144,30 @@ describe("a Mate's row says more without words", () => {
     expect(slot(row(live()))).toContain(">2h<");
   });
 
+  it.each([
+    { case: "while it works on them", activity: working({ snippet: undefined }) },
+    {
+      case: "in the second after they were asked, before its run starts",
+      activity: live({ snippet: undefined, awaitingWords: true }),
+    },
+  ])("keeps its last line for words still to come $case", ({ activity }) => {
+    const html = row(activity);
+    expect(html).toContain('data-zerops-surface="sidebar-mate-pending"');
+    expect(html).toContain("Working on a reply");
+    expect(html).not.toContain("sidebar-mate-snippet");
+  });
+
+  it.each([
+    { case: "a working Mate with words back already", activity: working() },
+    { case: "a resting Mate with no last words", activity: live({ snippet: undefined }) },
+    {
+      case: "a working Mate nobody has asked anything",
+      activity: working({ subject: undefined, snippet: undefined }),
+    },
+  ])("draws no waiting line on $case", ({ activity }) => {
+    expect(row(activity)).not.toContain("sidebar-mate-pending");
+  });
+
   it("sleeps through a usage limit, and says in the time slot when it picks up", () => {
     const resets = new Date(2026, 8, 27, 14, 20).toISOString();
     const html = row(live({ face: "sleep", pausedUntil: resets }), { timestampFormat: "24-hour" });
