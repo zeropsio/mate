@@ -22,10 +22,11 @@ import { ServiceBrowserLink, ServiceBrowserLinkIndicator } from "../ServiceBrows
  * of its bottom edge rather than standing on its own further down the panel.
  */
 import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
-import { ArrowUpRightIcon, DatabaseIcon } from "lucide-react";
+import { ArrowUpRightIcon, ChevronDownIcon, DatabaseIcon } from "lucide-react";
 import { useContext, type ReactElement, type ReactNode } from "react";
 
 import type {
+  ZeropsRouteChoice,
   ZeropsServiceFact,
   ZeropsServiceMapGroup,
   ZeropsServiceMapView,
@@ -40,6 +41,7 @@ import type {
   ZeropsTopologyService,
 } from "@t3tools/client-runtime/zerops/topology";
 import { Button } from "~/components/ui/button";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { Skeleton } from "~/components/ui/skeleton";
 import { cn } from "~/lib/utils";
@@ -133,6 +135,8 @@ function ServiceHeader({
   title,
   portLabel,
   aside,
+  routes,
+  folded,
 }: {
   service: ZeropsTopologyService;
   tone: ZeropsServiceTone;
@@ -140,33 +144,50 @@ function ServiceHeader({
   title: string;
   portLabel: string | undefined;
   aside: string | undefined;
+  /** Its public routes, the main one first (`zeropsRouteChoices`). */
+  routes: ReadonlyArray<ZeropsRouteChoice>;
+  /** Too many for a button each: the main route's button and one Open menu. */
+  folded: boolean;
 }) {
   const dataLink = useContext(ZeropsDataLinkContext);
   const openData = service.group === "data" ? dataLink : null;
+  // Folded, the buttons would be a row of identical icons: the main route
+  // keeps its button and every route is named in one Open menu.
+  const [main] = routes;
   return (
-    <div className="flex min-w-0 max-w-full items-center justify-between gap-3">
+    <div className="flex min-w-0 max-w-full items-start justify-between gap-3">
       <div className="min-w-0 flex-1">
         <ServiceStatus label={statusLabel} service={service} tone={tone} />
-        <div className="mt-0.5 flex min-w-0 max-w-full flex-wrap items-baseline gap-x-2">
-          <span className="flex min-w-0 max-w-full items-baseline gap-1 text-sm leading-snug">
-            <span className="min-w-0 max-w-full break-all font-semibold tracking-tight">
-              {title}
-            </span>
+        {/* The name is one line of its own: never squeezed to wrap, cut only where the
+            card is narrower — the hover pop names it whole. */}
+        <span className="mt-0.5 block min-w-0 truncate text-sm leading-snug font-semibold tracking-tight">
+          {title}
+        </span>
+        {portLabel === undefined && aside === undefined ? null : (
+          <div
+            className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-sm leading-snug"
+            data-zerops-service-ports
+          >
             {portLabel === undefined ? null : (
-              <span className="shrink-0 font-normal text-muted-foreground">{portLabel}</span>
+              <span className="min-w-0 text-muted-foreground">{portLabel}</span>
             )}
-          </span>
-          {aside === undefined ? null : (
-            <span className="text-xs text-muted-foreground">{aside}</span>
-          )}
-        </div>
+            {aside === undefined ? null : (
+              <span className="text-xs text-muted-foreground">{aside}</span>
+            )}
+          </div>
+        )}
       </div>
-      {service.routes.length === 0 && openData === null ? null : (
+      {routes.length === 0 && openData === null ? null : (
         <div className="flex shrink-0 items-center gap-1" data-zerops-service-routes-buttons>
           {openData === null ? null : <DataButton hostname={service.hostname} onOpen={openData} />}
-          {service.routes.map((route) => (
-            <RouteButton key={route.url} route={route} />
-          ))}
+          {folded ? (
+            <>
+              {main === undefined ? null : <RouteButton route={main.route} />}
+              <RouteMenu routes={routes} />
+            </>
+          ) : (
+            routes.map((choice) => <RouteButton key={choice.route.url} route={choice.route} />)
+          )}
         </div>
       )}
     </div>
@@ -339,6 +360,42 @@ function RouteButton({ route }: { route: ZeropsServiceRoute }) {
     >
       <ServiceBrowserLinkIndicator href={route.url} />
     </Button>
+  );
+}
+
+/** Every public route by its port and who it serves, where there are too many for buttons. */
+function RouteMenu({ routes }: { routes: ReadonlyArray<ZeropsRouteChoice> }) {
+  return (
+    <Menu>
+      <MenuTrigger
+        onClick={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+        render={<Button data-zerops-service-route-menu size="sm" variant="outline" />}
+      >
+        Open
+        <ChevronDownIcon aria-hidden="true" />
+      </MenuTrigger>
+      <MenuPopup align="end">
+        {routes.map((choice) => (
+          <MenuItem
+            key={choice.route.url}
+            render={
+              <ServiceBrowserLink
+                href={choice.route.url}
+                rel="noreferrer"
+                showIndicator={false}
+                target="_blank"
+              />
+            }
+          >
+            <span className="shrink-0 font-medium">{choice.label}</span>
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">
+              {choice.route.host}
+            </span>
+          </MenuItem>
+        ))}
+      </MenuPopup>
+    </Menu>
   );
 }
 
@@ -529,9 +586,13 @@ function StageLine({
   metrics,
   trends,
   portLabel,
+  routes,
+  folded,
   usageRead,
 }: {
   stage: ZeropsTopologyService;
+  routes: ReadonlyArray<ZeropsRouteChoice>;
+  folded: boolean;
   tone: ZeropsServiceTone;
   label: string;
   metrics: ReadonlyArray<ZeropsServiceMetric>;
@@ -544,6 +605,8 @@ function StageLine({
       <ServiceHeader
         aside="stage"
         portLabel={portLabel}
+        folded={folded}
+        routes={routes}
         service={stage}
         statusLabel={label}
         title={stage.hostname}
@@ -584,6 +647,8 @@ function ServiceCardBody({ row, usageRead }: { row: ZeropsServiceRow; usageRead:
       <ServiceHeader
         aside={row.isControlPlane ? row.service.hostname : row.typeShort}
         portLabel={row.portLabel}
+        folded={row.routesFolded}
+        routes={row.routes}
         service={row.service}
         statusLabel={row.statusLabel}
         title={row.title}
@@ -597,6 +662,8 @@ function ServiceCardBody({ row, usageRead }: { row: ZeropsServiceRow; usageRead:
           label={row.stageStatusLabel}
           metrics={row.stageMetrics ?? []}
           portLabel={row.stagePortLabel}
+          folded={row.stageRoutesFolded ?? false}
+          routes={row.stageRoutes ?? []}
           stage={row.stage}
           tone={row.stageTone}
           trends={row.stageTrends}
