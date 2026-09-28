@@ -1,6 +1,7 @@
 import * as Equal from "effect/Equal";
 import type { ChangeLandedEvent } from "@t3tools/client-runtime/zerops";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import { type MessageId, type OrchestrationLatestTurn, type TurnId } from "@t3tools/contracts";
 
 import {
@@ -810,6 +811,37 @@ function buildRevertTurnCountByUserMessageId(input: {
   return byUserMessageId;
 }
 
+/** A helper's finish, as the helpers panel knows it: which one, and when. */
+export interface HelperFinish {
+  readonly id: string;
+  readonly title: string;
+  readonly finishedAt: string;
+  readonly failed: boolean;
+}
+
+/** Every helper the panel knows to have finished, done or failed, with its time. */
+export function helperFinishesOf(model: AgentPanelModel): HelperFinish[] {
+  const agents = [
+    ...model.directAgents,
+    ...model.workflows.flatMap((group) => [
+      ...group.phases.flatMap((phase) => phase.members),
+      ...group.unphasedMembers,
+    ]),
+  ];
+  return agents.flatMap((agent) =>
+    (agent.status === "completed" || agent.status === "failed") && agent.completedAt
+      ? [
+          {
+            id: agent.id,
+            title: agent.title,
+            finishedAt: agent.completedAt,
+            failed: agent.status === "failed",
+          },
+        ]
+      : [],
+  );
+}
+
 /**
  * The person's pick, in their words: the "(Recommended)" the Mate put on an
  * option was its advice, not what the person answered (Nova, 2026-09-28: the
@@ -1376,6 +1408,8 @@ export function deriveMessagesTimelineRows(input: {
   afterTurnWork?: "working" | "monitoring" | null;
   /** The clock a running turn's last words wait against (`LAST_WORDS_GRACE_MS`). */
   nowMs?: number;
+  /** When each helper finished, as the helpers panel knows it (`helperFinishesOf`). */
+  helperFinishes?: ReadonlyArray<HelperFinish>;
 }): MessagesTimelineRow[] {
   const entries = input.timelineEntries;
   const structure = deriveConversationStructure({
@@ -1564,13 +1598,45 @@ export function deriveMessagesTimelineRows(input: {
   };
   /** When a background task or a helper finished: a helper's row takes each report as it comes. */
   const finishedAt = (work: WorkLogEntry) => Date.parse(work.updatedAt ?? work.createdAt);
+  // Helpers one launch started together share its row, so which of them
+  // finished is the helpers panel's to say. Each finish wakes the Mate once:
+  // the runs nothing else woke take them in the order they finished. A helper
+  // that reported in a row of its own is that row's (`wokeBy`).
+  const reported = new Set(
+    entries.flatMap((entry) =>
+      entry.kind === "work" &&
+      entry.entry.sourceActivityKind === "task.completed" &&
+      entry.entry.taskId !== undefined &&
+      (entry.entry.agentSpawn?.agentTaskIds.length ?? 1) <= 1
+        ? [entry.entry.taskId]
+        : [],
+    ),
+  );
+  const gathered = new Set(
+    entries.flatMap((entry) =>
+      entry.kind === "work" && (entry.entry.agentSpawn?.agentTaskIds.length ?? 0) > 1
+        ? entry.entry.agentSpawn!.agentTaskIds
+        : [],
+    ),
+  );
+  const helperQueue = (input.helperFinishes ?? [])
+    .filter((finish) => gathered.has(finish.id) && !reported.has(finish.id))
+    .toSorted((left, right) => Date.parse(left.finishedAt) - Date.parse(right.finishedAt));
+  /** The next gathered helper that finished before a run nothing else woke began, taken. */
+  const helperWoke = (startedAt: string): HelperFinish | null => {
+    const next = helperQueue[0];
+    if (next === undefined || Date.parse(next.finishedAt) > Date.parse(startedAt)) return null;
+    helperQueue.shift();
+    return next;
+  };
   /**
    * What woke a run nobody wrote to start: the helpers and background tasks
    * that finished after the run before it ended and before it began, for a
    * result delivered then wakes the Mate. What finished while the run before
    * still worked was that run's to take in. Rows gathering several helpers
-   * say only the latest report, so which of them finished is not known. Work
-   * no turn owns says itself in its own line, and is never said again here.
+   * say only the latest report: which of them finished is the helpers
+   * panel's to say (`helperWoke`). Work no turn owns says itself in its own
+   * line, and is never said again here.
    */
   const wokeBy = (turn: ConversationTurn): WorkLogEntry[] => {
     const untilMs = Date.parse(turn.stretches[0]?.startedAt ?? "");
@@ -1695,12 +1761,14 @@ export function deriveMessagesTimelineRows(input: {
       // shows anything at all. One that did nothing to see is nothing to
       // announce (the owner, 2026-09-27, of a lone "Background task
       // finished" line: "why does it say here?").
+      const woke = wokeBy(turn);
+      // Taken even by a run that shows nothing: it was woken all the same.
+      const helper = woke.length === 0 ? helperWoke(first.startedAt) : null;
       if (!carded && answer === null) {
         lastEnd = last.endedAt ?? last.startedAt;
         return;
       }
       seamBefore(first.startedAt, first.key);
-      const woke = wokeBy(turn);
       if (woke.length > 0) {
         rows.push({
           kind: "background",
@@ -1708,6 +1776,17 @@ export function deriveMessagesTimelineRows(input: {
           createdAt: first.startedAt,
           entries: woke,
           ...backgroundRunSummary(woke),
+        });
+      } else if (helper !== null) {
+        rows.push({
+          kind: "background",
+          id: `woke:${first.key}`,
+          createdAt: first.startedAt,
+          entries: [],
+          tasks: 1,
+          failed: helper.failed ? 1 : 0,
+          helpers: true,
+          title: helper.title,
         });
       }
     }

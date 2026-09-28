@@ -94,6 +94,7 @@ import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRows,
+  helperFinishesOf,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
   resolveTimelineIsAtEnd,
@@ -390,6 +391,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     );
     return () => clearTimeout(timer);
   }, [finishedWordsAt]);
+  // Which of the helpers one launch started woke a run: the panel knows when
+  // each finished.
+  const helperFinishes = useMemo(
+    () => helperFinishesOf(agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL),
+    [agentPanelModel],
+  );
   const rawRows = useMemo(
     () =>
       deriveMessagesTimelineRows({
@@ -404,6 +411,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         supportsConversationRollback,
         queuedMessages,
         afterTurnWork,
+        helperFinishes,
       }),
     [
       nowMs,
@@ -417,6 +425,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       supportsConversationRollback,
       queuedMessages,
       afterTurnWork,
+      helperFinishes,
     ],
   );
   const rows = useStableRows(rawRows);

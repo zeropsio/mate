@@ -10,6 +10,7 @@ import {
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
   shouldPreserveAssistantLineBreaks,
+  type HelperFinish,
   type MessagesTimelineRow,
   type RecordItem,
 } from "./MessagesTimeline.logic";
@@ -32,6 +33,8 @@ type Scene = {
   working?: boolean;
   /** The minute the latest turn started, when not the conversation's first. */
   startedAt?: number;
+  /** When each helper finished, as the helpers panel knows it. */
+  helperFinishes?: ReadonlyArray<HelperFinish>;
 };
 
 /** The conversation as the list draws it, its cards' frames included. */
@@ -52,6 +55,7 @@ function framed(scene: Scene): MessagesTimelineRow[] {
     activeTurnStartedAt: scene.live ? at(scene.startedAt ?? 0) : null,
     turnDiffSummaries: [],
     supportsConversationRollback: false,
+    ...(scene.helperFinishes === undefined ? {} : { helperFinishes: scene.helperFinishes }),
   });
 }
 
@@ -848,6 +852,50 @@ describe("deriveMessagesTimelineRows", () => {
     // It stands where the person's message would: first in the run.
     expect(line).toMatchObject({ kind: "background", ...woke });
     expect(list[list.indexOf(line!) + 1]?.id).toBe("a3");
+  });
+
+  // One launch that starts helpers together is one row, so which of them
+  // finished is the helpers panel's to say. Each finish wakes the Mate once:
+  // the runs nothing else woke take them in the order they finished — Nova's
+  // two helpers each woke a run, the second finishing before the first run it
+  // woke was done, and neither run said why it began (2026-09-28).
+  it("says which of the helpers one launch started woke each run, in the order they finished", () => {
+    const launch = tool("l1", "t1", 2, {
+      label: "List routes",
+      toolTitle: "List routes",
+      taskId: "task-routes",
+      agentRole: "Explore",
+      sourceActivityKind: "task.completed",
+      tone: "info",
+      agentSpawn: { workflowId: null, agentTaskIds: ["task-routes", "task-components"] },
+    });
+    const entries = [
+      user("m0", 0),
+      assistant("a1", "t1", 1, "Started them."),
+      launch,
+      assistant("a2", "t1", 4, "They report back when done."),
+      assistant("a3", "t2", 6, "One is back."),
+      assistant("a4", "t3", 8, "Both are back."),
+    ];
+    const helperFinishes: ReadonlyArray<HelperFinish> = [
+      { id: "task-routes", title: "List routes", finishedAt: at(5, 40), failed: false },
+      { id: "task-components", title: "Count components", finishedAt: at(5), failed: false },
+    ];
+    const list = rows({ entries, settled: "t3", helperFinishes });
+    expect(list.find((row) => row.id === "woke:turn:t2")).toMatchObject({
+      kind: "background",
+      tasks: 1,
+      helpers: true,
+      title: "Count components",
+    });
+    expect(list.find((row) => row.id === "woke:turn:t3")).toMatchObject({
+      kind: "background",
+      tasks: 1,
+      helpers: true,
+      title: "List routes",
+    });
+    // Without the panel's word, which of them finished stays unknown: no line.
+    expect(rows({ entries, settled: "t3" }).some((row) => row.id.startsWith("woke:"))).toBe(false);
   });
 
   // A helper's row stands where it was spawned and takes each report as it
