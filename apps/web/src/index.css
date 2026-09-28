@@ -2655,6 +2655,25 @@ code {
   pointer-events: none;
 }
 
+/* The timeline shows a conversation once the list has put it in place (its
+   rows are held at opacity 0 until then). It was a cut from nothing to the
+   whole conversation in one frame on every switch between Mates; it now
+   comes in over 140 ms. Only the showing is eased: hiding stays instant, so
+   rows the list has not placed yet are never seen on their way out. */
+.legend-list-content-container > div[style*="opacity"] {
+  transition: opacity 140ms ease-out;
+}
+
+.legend-list-content-container > div[style*="opacity: 0"] {
+  transition-duration: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .legend-list-content-container > div[style*="opacity"] {
+    transition: none;
+  }
+}
+
 /* A Mate's face in motion (MateFace.tsx). Every pose is one drawing, so a
    change of state morphs — the eyes narrow into work, the "o" opens when it
    needs you — instead of one picture replacing another. What moves on its own
