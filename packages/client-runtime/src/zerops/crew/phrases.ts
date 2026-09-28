@@ -301,10 +301,17 @@ const REFUSALS: Readonly<Record<CrewRefusalReason, string>> = {
   io: "The crew files could not be read or saved",
 };
 
-/** A refused command or files request as one sentence, with the engine's detail after a colon. */
+/**
+ * A refused command or files request as one sentence: the engine's detail,
+ * which names the specifics ("no dev server runs on appdev; start it first"),
+ * said as a sentence of its own — capitalised, ended — and the reason's own
+ * sentence when there is none. Never the reason's code.
+ */
 export function crewRefusalSentence(reason: CrewRefusalReason, detail: string | null): string {
-  const base = REFUSALS[reason];
-  return detail === null ? `${base}.` : `${base}: ${detail.replace(/\.$/u, "")}.`;
+  const said = detail?.trim() ?? "";
+  if (said === "") return `${REFUSALS[reason]}.`;
+  const sentence = `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
+  return /[.!?]$/u.test(sentence) ? sentence : `${sentence}.`;
 }
 
 /** A crewmate's copy of the code in a few words (PRD §4.3 item 5); `null` when there is nothing to say. */

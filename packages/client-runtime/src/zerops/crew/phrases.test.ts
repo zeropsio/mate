@@ -338,9 +338,24 @@ describe("crewRefusalSentence", () => {
     );
   });
 
-  it("appends the engine's detail once", () => {
-    expect(crewRefusalSentence("invalid-definition", "backend has no check command.")).toBe(
-      "The crew files need a fix: backend has no check command.",
+  it.each([
+    [
+      "wrong-state",
+      "no dev server runs on appdev; start it first",
+      "No dev server runs on appdev; start it first.",
+    ],
+    ["invalid-definition", "backend has no check command.", "Backend has no check command."],
+    ["not-allowed", "  Backend's login is not yours!  ", "Backend's login is not yours!"],
+  ] as const)("says the engine's %s detail as a sentence of its own", (reason, detail, words) => {
+    expect(crewRefusalSentence(reason, detail)).toBe(words);
+  });
+
+  it("falls back to the reason's own sentence without a detail", () => {
+    expect(crewRefusalSentence("wrong-state", null)).toBe(
+      "That can't be done in its current state.",
+    );
+    expect(crewRefusalSentence("wrong-state", "  ")).toBe(
+      "That can't be done in its current state.",
     );
   });
 
