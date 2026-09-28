@@ -75,8 +75,9 @@ through it would make the two directories import each other.
   sh; its argv read back from the quoted string the approval names); a patch, whose request names
   no file, is an `Edit` per updated or deleted file and a `Write` per added file or move target,
   from the changes its `fileChange` item listed when it started, relative paths against the
-  session's cwd — every call must allow. A failing or silent (15 s) gate declines, and so does an allow that rewrites the call: Codex's answer carries a
-  decision only, so it would run what it asked, not what the gate allowed. So a profile may carry
+  session's cwd — every call must allow. A failing or silent (15 s) gate declines, and so does an
+  allow that rewrites the call: Codex's answer carries a decision only, so it would run what it
+  asked, not what the gate allowed. So a profile may carry
   `exactCallsContext`, how to write calls the gate allows as they are, which the Codex setup adds
   after the session context in `developerInstructions`: the crew sets it for a writer, whose
   commands the gate allows unchanged only in their lane form, byte for byte (`ssh` to its host,
