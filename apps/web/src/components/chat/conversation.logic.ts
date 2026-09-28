@@ -607,6 +607,26 @@ export function deriveConversationStructure(input: {
   const spanByTurnId = new Map(
     spans.flatMap((span) => (span.turnId ? [[span.turnId, span] as const] : [])),
   );
+  // A call can be seen before the session names its turn — its start arrives
+  // turnless, and was drawn as background work finishing "in the background"
+  // over the run it began (Nova, 2026-09-28). The same call, reported with
+  // its turn, says whose it is.
+  const turnIdByCall = new Map<string, TurnId>();
+  for (const entry of entries) {
+    if (
+      (entry.kind === "work" || entry.kind === "generic-call") &&
+      entry.entry.toolCallId !== undefined &&
+      entry.entry.turnId
+    ) {
+      turnIdByCall.set(entry.entry.toolCallId, entry.entry.turnId);
+    }
+  }
+  const turnIdOf = (entry: TimelineEntry): TurnId | null => {
+    const own = timelineEntryTurnId(entry);
+    if (own !== null || (entry.kind !== "work" && entry.kind !== "generic-call")) return own;
+    const call = entry.entry.toolCallId;
+    return call === undefined ? null : (turnIdByCall.get(call) ?? null);
+  };
   for (const [index, entry] of entries.entries()) {
     let span: TurnSpan | undefined;
     if (isUserMessageEntry(entry)) {
@@ -614,7 +634,7 @@ export function deriveConversationStructure(input: {
         ? spans.find((candidate) => candidate.openerIndex === index)
         : ownerOf(index);
     } else {
-      const turnId = timelineEntryTurnId(entry);
+      const turnId = turnIdOf(entry);
       span = turnId === null ? ownerOf(index) : spanByTurnId.get(turnId);
     }
     if (span === undefined) {
@@ -1142,6 +1162,13 @@ export function operationLineWords(operation: ZeropsOperation): string {
       return `Read the events of ${subject}`;
     case "discover":
       return `Looked at ${subject}`;
+    case "devServer":
+      // What it came to, as its pill says it: "Running app" read as work
+      // still going on, under a finished bar.
+      if (failed) return `Dev server on ${subject} failed`;
+      return statusWord === "Running" || statusWord === "Not running"
+        ? `Dev server ${statusWord.toLowerCase()} on ${subject}`
+        : `Dev server on ${subject}`;
     default:
       return failed ? `${subject}: ${statusWord.toLowerCase()}` : `${statusWord} ${subject}`;
   }
@@ -1382,15 +1409,20 @@ export interface BrowserStripModel {
   readonly live: boolean;
 }
 
-export function browserStrip(stretch: Stretch): BrowserStripModel | null {
-  const checks = stretchOperations(stretch).filter((operation) => operation.kind === "browser");
-  if (checks.length === 0) return null;
+/**
+ * Browser checks made one after another, as the one row of the chat they
+ * share: a page checked on a desktop and then on a phone is one row of takes.
+ */
+export function checksStrip(
+  checks: ReadonlyArray<ZeropsOperation>,
+  live: boolean,
+): BrowserStripModel {
   return {
     key: `strip:${checks[0]!.key}`,
     checks,
     views: browserCheckViews(checks),
     failures: unrecoveredCheckFailures(checks).length,
-    live: stretch.live,
+    live,
   };
 }
 

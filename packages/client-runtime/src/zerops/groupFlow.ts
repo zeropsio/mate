@@ -82,6 +82,8 @@ export interface GroupFlowMate {
   readonly preview: string | undefined;
   /** It has stopped and asks something — its face reads `needs`. */
   readonly waiting: boolean;
+  /** Its last run stopped on an error: its face reads `needs` too, but it asks nothing. */
+  readonly failed?: boolean;
   /** Somebody has spoken into its conversation (`ZeropsAgentActivity.subject` is present). */
   readonly talked: boolean;
   /** Present while it is being created: where its birth has got to. */
@@ -226,6 +228,7 @@ export type GroupFlowProduction =
 
 export type GroupNextStepKind =
   | "answer-mate"
+  | "fix-mate"
   | "fix-deploy"
   | "merge"
   | "unblock"
@@ -387,7 +390,8 @@ function nextStepOf(
     .filter((stage) => stage.state === "failed")
     .map((stage) => ({ projectId: stage.projectId, name: stage.name }));
   const attention = projectAttention({
-    waitingMates: input.mates.filter((mate) => mate.waiting),
+    waitingMates: input.mates.filter((mate) => mate.waiting && mate.failed !== true),
+    failedMates: input.mates.filter((mate) => mate.failed === true),
     failedStops: [...failedProduction, ...failedStages],
     pullRequests: input.pullRequests,
     notLive: input.release.waiting,
@@ -400,6 +404,8 @@ function nextStepOf(
 
   const waiting = first("mate-waiting");
   if (waiting !== undefined) return fromAttention("answer-mate", waiting);
+  const stopped = first("mate-failed");
+  if (stopped !== undefined) return fromAttention("fix-mate", stopped);
   const failed = first("deploy-failed");
   if (failed !== undefined) return fromAttention("fix-deploy", failed);
 

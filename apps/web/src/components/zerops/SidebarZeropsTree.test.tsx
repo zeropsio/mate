@@ -757,6 +757,42 @@ describe("the project's flow under it", () => {
     expect(html).not.toContain(">Passing</span>");
   });
 
+  // The menu has one text column (the owner, 2026-09-25: "everything jumps
+  // around differently"): a Mate's name, a change's title and a stop's pill
+  // start on it. A change's cell is wider — the spine, its branch and dot —
+  // so its gap is narrower: at the Mates' gap its title stood 4 px right of
+  // the column (57 against 53 px, measured 2026-09-28).
+  it("starts a change's title on the menu's one text column, as a Mate's name and a stop's pill", () => {
+    const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
+    const PX: Record<string, number> = {
+      "w-5": 20,
+      "w-7": 28,
+      "gap-1.5": 6,
+      "gap-2.5": 10,
+      "gap-3.5": 14,
+    };
+    const inset = (tag: string | undefined, cell: string | undefined) => {
+      const gap = /\bgap-[\d.]+\b/u.exec(tag ?? "")?.[0] ?? "";
+      const width = /\bw-[57]\b/u.exec(cell ?? "")?.[0] ?? "";
+      return (PX[width] ?? Number.NaN) + (PX[gap] ?? Number.NaN);
+    };
+    const mate =
+      /<button class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate"[^>]*><span class="([^"]*)"/u.exec(
+        html,
+      );
+    const change =
+      /<li class="([^"]*)"[^>]*data-zerops-surface="sidebar-pull-request"[^>]*><span class="([^"]*)"/u.exec(
+        html,
+      );
+    const stop =
+      /<li class="([^"]*)"[^>]*data-zerops-surface="sidebar-environment"[^>]*><span class="([^"]*)"/u.exec(
+        html,
+      );
+    expect(inset(mate?.[1], mate?.[2])).toBe(34);
+    expect(inset(stop?.[1], stop?.[2])).toBe(34);
+    expect(inset(change?.[1], change?.[2])).toBe(34);
+  });
+
   it("hands a change nobody here can fix back to the Mate that wrote it", () => {
     const stale = flow({
       pullRequests: [pull(4, { mergeability: "conflicting" })],
@@ -1301,7 +1337,10 @@ describe("the project's flow under it", () => {
       expect(failed.indexOf(">3f9c1b2<")).toBeGreaterThan(failed.indexOf(">Failed on<"));
     });
 
-    it("ends in a fixed cluster, a globe slot then a menu slot, so nothing moves on hover", () => {
+    // The globe stands on the row's right edge, in the column every Mate's
+    // time, every change's Merge and every project's dot end in; the menu
+    // shows beside it on hover, in a slot kept for it, so nothing moves.
+    it("ends in a fixed cluster, a menu slot then the globe on the right edge, so nothing moves on hover", () => {
       const html = render([CRM_DEV, CRM_STAGE, CRM_PROD], { getFlow: () => flow() });
       for (const id of ["crm-stage", "crm-prod"]) {
         const row = stop(html, id);
@@ -1326,8 +1365,8 @@ describe("the project's flow under it", () => {
         expect(globe.some((cls) => cls.includes("hover") || cls.includes("opacity"))).toBe(false);
         // Still in the tab order at rest.
         expect(row).toContain('data-zerops-surface="stop-menu"');
-        expect(row.indexOf("sidebar-stop-globe-slot")).toBeLessThan(
-          row.indexOf("sidebar-stop-menu-slot"),
+        expect(row.indexOf("sidebar-stop-menu-slot")).toBeLessThan(
+          row.indexOf("sidebar-stop-globe-slot"),
         );
       }
     });
@@ -1380,7 +1419,7 @@ describe("the project's flow under it", () => {
       const production = routed(3);
       const globeAt = production.indexOf('data-zerops-surface="public-routes-menu"');
       expect(globeAt).toBeGreaterThan(production.indexOf("sidebar-stop-globe-slot"));
-      expect(globeAt).toBeLessThan(production.indexOf("sidebar-stop-menu-slot"));
+      expect(globeAt).toBeGreaterThan(production.indexOf("sidebar-stop-menu-slot"));
     });
   });
 
@@ -1490,6 +1529,7 @@ describe("the project's flow under it", () => {
     // A dot says somebody must act: a first task has none, the Mate is the way in.
     const KINDS: Record<GroupNextStepKind, { readonly dot: boolean }> = {
       "answer-mate": { dot: true },
+      "fix-mate": { dot: true },
       "fix-deploy": { dot: true },
       merge: { dot: true },
       unblock: { dot: true },
@@ -2144,6 +2184,39 @@ describe("a Mate's row says more without words", () => {
     expect(slot(row(live()))).toContain(">2h<");
   });
 
+  // Work left running in the background wears the working face and offers
+  // Stop: its slot counts it up as any working face's does, never a grey age
+  // beside a working face (the approved menu; the 2026-09-28 audit's gap).
+  it("counts up work left running in the background, as it counts a run", () => {
+    const time = slot(row(working({ kind: "monitoring", progress: undefined })));
+    expect(time).toContain("3:12");
+    expect(time).toContain("text-status-busy-text");
+  });
+
+  it.each([
+    { case: "while it works on them", activity: working({ snippet: undefined }) },
+    {
+      case: "in the second after they were asked, before its run starts",
+      activity: live({ snippet: undefined, awaitingWords: true }),
+    },
+  ])("keeps its last line for words still to come $case", ({ activity }) => {
+    const html = row(activity);
+    expect(html).toContain('data-zerops-surface="sidebar-mate-pending"');
+    expect(html).toContain("Working on a reply");
+    expect(html).not.toContain("sidebar-mate-snippet");
+  });
+
+  it.each([
+    { case: "a working Mate with words back already", activity: working() },
+    { case: "a resting Mate with no last words", activity: live({ snippet: undefined }) },
+    {
+      case: "a working Mate nobody has asked anything",
+      activity: working({ subject: undefined, snippet: undefined }),
+    },
+  ])("draws no waiting line on $case", ({ activity }) => {
+    expect(row(activity)).not.toContain("sidebar-mate-pending");
+  });
+
   it("sleeps through a usage limit, and says in the time slot when it picks up", () => {
     const resets = new Date(2026, 8, 27, 14, 20).toISOString();
     const html = row(live({ face: "sleep", pausedUntil: resets }), { timestampFormat: "24-hour" });
@@ -2190,6 +2263,24 @@ describe("a Mate's row says more without words", () => {
       );
       const snippet = text(surface(mounted, "sidebar-mate-snippet"));
       expect(snippet).toBe("Draft: also check the thumbnails");
+    });
+
+    // Where the last line waits for the Mate's words, an unsent draft is the
+    // more pressing thing to say there: the face and the clock say it works.
+    it("stands in the line kept for words still to come", () => {
+      useComposerDraftStore.getState().setPrompt(ref, "also check the thumbnails");
+      const mounted = mount(
+        <SidebarZeropsTree
+          candidates={[CRM_DEV_CONNECTED]}
+          complete
+          getActivity={() => working({ snippet: undefined })}
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+        />,
+      );
+      expect(text(surface(mounted, "sidebar-mate-snippet"))).toBe(
+        "Draft: also check the thumbnails",
+      );
     });
 
     it("never grows a row that has no last words: the composer holds the draft", () => {

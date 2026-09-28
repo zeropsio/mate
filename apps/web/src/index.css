@@ -2204,6 +2204,26 @@ code {
   vertical-align: middle;
 }
 
+/* A task list the Mate wrote is its steps, not a form: an open step is a
+   ring and a done one the to-do list's green dot, where a disabled checkbox
+   looked pressable and never was (Nova, 2026-09-28, a plan of nine). A list
+   the person may tick keeps its checkboxes. */
+.chat-markdown li.task-list-item input[type="checkbox"]:disabled {
+  appearance: none;
+  width: 0.55em;
+  height: 0.55em;
+  margin-inline-end: 0.6em;
+  border: 1.5px solid color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  vertical-align: 0.1em;
+}
+
+.chat-markdown li.task-list-item input[type="checkbox"]:disabled:checked {
+  border-color: var(--color-status-ok);
+  background: var(--color-status-ok);
+}
+
 /* Markdown assumes inline images — GitHub comments lay button images out in a row — and the
    Tailwind preflight's block-level img would stack them one per line. */
 .chat-markdown img {
@@ -2331,6 +2351,39 @@ code {
 .chat-markdown .chat-markdown-file-link:hover {
   color: var(--contrast-foreground);
   text-decoration: none;
+}
+
+/* A thought's code and file names are words it thinks, not things to press:
+   mono in the thought's own faint ink, no chip — a chip stood out of the
+   italics as the loudest thing in them (Nova, 2026-09-28). A file name still
+   opens its file, underlined under the pointer. */
+.chat-markdown.chat-markdown-aside :not(pre) > code {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+.chat-markdown.chat-markdown-aside .chat-markdown-file-link {
+  display: inline;
+  height: auto;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  font-weight: inherit;
+  color: inherit;
+}
+
+.chat-markdown.chat-markdown-aside .chat-markdown-file-link > :first-child {
+  display: none;
+}
+
+.chat-markdown.chat-markdown-aside .chat-markdown-file-link:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .chat-markdown .chat-markdown-file-link:focus-visible {

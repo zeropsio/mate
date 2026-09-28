@@ -2256,9 +2256,13 @@ function MateRow<T extends RosterCandidate>({
               {subject}
             </span>
           )}
-          {snippet === undefined ? null : (
-            <MateSnippet snippet={snippet} threadKey={live?.threadKey} />
-          )}
+          {snippet !== undefined ||
+          (subject !== undefined &&
+            (live?.awaitingWords === true ||
+              live?.kind === "working" ||
+              live?.kind === "connecting")) ? (
+            <MateSnippet snippet={snippet ?? null} threadKey={live?.threadKey} />
+          ) : null}
         </span>
       </button>
       {actions === undefined ? null : (
@@ -2331,8 +2335,9 @@ function MateRow<T extends RosterCandidate>({
 
 /**
  * The row's right edge: when the Mate last did something, as a messenger
- * dates its rows — or, while it works, how long it has been at it, counting
- * up in the busy blue; or, paused at a usage limit, when it picks up again.
+ * dates its rows — or, while it works, its work left running in the
+ * background included, how long it has been at it, counting up in the busy
+ * blue; or, paused at a usage limit, when it picks up again.
  * Nothing at all for a Mate nobody has spoken to yet.
  */
 function MateTime({
@@ -2362,7 +2367,13 @@ function MateTime({
       </Tooltip>
     );
   }
-  if (activity.kind === "working" || activity.kind === "connecting") {
+  // Work left running in the background wears the working face and offers
+  // Stop: it counts up as a run does, from the run that left it running.
+  if (
+    activity.kind === "working" ||
+    activity.kind === "connecting" ||
+    activity.kind === "monitoring"
+  ) {
     return <MateWorkingTime since={activity.at} />;
   }
   if (activity.subject === undefined) return null;
@@ -2398,21 +2409,24 @@ function MateWorkingTime({ since }: { readonly since: string }) {
 }
 
 /**
- * The Mate's last words — or, while a message to it waits unsent in its
- * composer, that draft, led by *Draft:*. Only where the row already says
- * something here: a draft never grows a row, the composer holds it anyway.
+ * The Mate's last words — or, while its words are still to come, the dots
+ * that wait for them — or, while a message to it waits unsent in its
+ * composer, that draft, led by *Draft:*. Only where the row already keeps
+ * this line: a draft never grows a row, the composer holds it anyway.
  */
 function MateSnippet({
   snippet,
   threadKey,
 }: {
-  readonly snippet: string;
+  /** Null while its words are still to come. */
+  readonly snippet: string | null;
   readonly threadKey: string | undefined;
 }) {
   const draft = useComposerDraftStore((state) =>
     threadKey === undefined ? undefined : state.draftsByThreadKey[threadKey]?.prompt,
   );
   const unsent = draft?.trim() ?? "";
+  if (snippet === null && unsent.length === 0) return <MateReplyPending />;
   return (
     <span
       className="truncate text-xs leading-4.5 text-sidebar-muted-foreground/70"
@@ -2425,6 +2439,25 @@ function MateSnippet({
           <span className="font-medium text-sidebar-foreground">Draft:</span> {unsent}
         </>
       )}
+    </span>
+  );
+}
+
+/**
+ * The last line while the Mate's words are still to come — sent, or being
+ * worked on: the messenger's "is typing", held still (R6). The row keeps its
+ * height from the message sent to the first words back, where it used to lose
+ * its last line and grow it again, moving every row under it twice (Nova,
+ * 2026-09-28: 76 → 58 → 76 px, the first dip in the second before the run
+ * started).
+ */
+function MateReplyPending() {
+  return (
+    <span className="flex h-4.5 items-center gap-1" data-zerops-surface="sidebar-mate-pending">
+      <span aria-hidden="true" className="size-1 rounded-full bg-sidebar-muted-foreground/45" />
+      <span aria-hidden="true" className="size-1 rounded-full bg-sidebar-muted-foreground/45" />
+      <span aria-hidden="true" className="size-1 rounded-full bg-sidebar-muted-foreground/45" />
+      <span className="sr-only">Working on a reply</span>
     </span>
   );
 }
@@ -2701,8 +2734,11 @@ function PullRequestRow({
   const label = sidebarChangeLabel(pull);
   const blocked = pullRequestBlocked(pull);
   return (
+    // The fork's cell is the spine's 20 px and its branch's 8: the gap after
+    // it is the rest of the Mates' 14, so the title starts on the menu's one
+    // text column, as a Mate's name and a stop's pill do (it stood 4 px right).
     <li
-      className={cn("flex h-8 min-w-0 items-center gap-2.5 px-2.5 text-xs", !underMate && "pe-0.5")}
+      className={cn("flex h-8 min-w-0 items-center gap-1.5 px-2.5 text-xs", !underMate && "pe-0.5")}
       data-zerops-change={changeRowKey(pull)}
       data-zerops-surface="sidebar-pull-request"
     >
@@ -3415,18 +3451,15 @@ function StopRowItem({
                 releasing={release.releasing}
               />
             )}
-            {/* The row ends in two slots that are always there: the globe, and
-                the stop's menu. Reserved, so the globes stand in one column down
-                every stop and nothing moves when the menu shows — "the globe
-                jumping because of the dots is exactly the problematic detail"
-                (the owner, 2026-09-25). */}
+            {/* The row ends in two slots that are always there: the stop's
+                menu, then the globe. Reserved, so nothing moves when the menu
+                shows — "the globe jumping because of the dots is exactly the
+                problematic detail" (the owner, 2026-09-25) — and the globe
+                last, on the row's right edge, in the column every Mate's time,
+                every change's Merge and every project's dot end in: in front of
+                the menu's slot it stood 20 px short of them, a ragged edge down
+                the menu (2026-09-28). */}
             <span className="flex shrink-0 items-center">
-              <span
-                className="flex w-5 shrink-0 justify-center"
-                data-zerops-surface="sidebar-stop-globe-slot"
-              >
-                <ZeropsRoutesMenu label={`Public access of ${projectName}`} routes={routes} />
-              </span>
               {/* Invisible at rest, never gone: shown on hover and while anything
                   in the row has focus, its own button included, so a keyboard
                   reaches it. A finger never hovers, so a coarse pointer keeps it. */}
@@ -3442,6 +3475,12 @@ function StopRowItem({
                   stop={view}
                   triggerClassName={ROW_ACTION_CLASS}
                 />
+              </span>
+              <span
+                className="flex w-5 shrink-0 justify-center"
+                data-zerops-surface="sidebar-stop-globe-slot"
+              >
+                <ZeropsRoutesMenu label={`Public access of ${projectName}`} routes={routes} />
               </span>
             </span>
           </span>

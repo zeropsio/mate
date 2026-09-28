@@ -748,7 +748,6 @@ function Harness() {
           <Card>
             <RunChat row={record({ now: RUNNING_STEP })} />
             <ConversationWorking
-              browser={null}
               dock={BUSY_DOCK}
               environmentId={null}
               incidents={[]}
@@ -795,7 +794,6 @@ function Harness() {
         >
           <Card>
             <ConversationWorking
-              browser={null}
               dock={SETTLED_DOCK}
               environmentId={null}
               incidents={[]}

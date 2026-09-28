@@ -105,6 +105,7 @@ const FLOWS = {
     release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1 },
   }),
   answer: flowOf({ mates: [{ ...MATE, waiting: true }] }),
+  stopped: flowOf({ mates: [{ ...MATE, waiting: true, failed: true }] }),
   addProduction: flowOf({
     mainHasCode: true,
     productionAddable: true,
@@ -254,6 +255,8 @@ describe("where a group's next step sits", () => {
     [string, GroupFlow, ReturnType<typeof nextStepCell>, ReturnType<typeof nextStepTone>]
   > = [
     ["a Mate waiting is answered in the Mates' cell", FLOWS.answer, "mates", "attention"],
+    // Its face waits as a question's does; the approved menu draws its dot red.
+    ["a Mate stopped on an error is the Mates' cell's, red", FLOWS.stopped, "mates", "failed"],
     // The Mate itself is the way in to a first task: no verb in any cell.
     ["a first task gives no cell a verb", FLOWS.firstTask, undefined, "off"],
     ["a merge is the pull request's", FLOWS.merge, "pull-requests", "attention"],
@@ -277,6 +280,7 @@ describe("nextStepAwaitsSomebody", () => {
   // Every kind, so a new one fails typecheck until it is placed.
   const AWAITS: Record<GroupNextStepKind, boolean> = {
     "answer-mate": true,
+    "fix-mate": true,
     "fix-deploy": true,
     merge: true,
     unblock: true,

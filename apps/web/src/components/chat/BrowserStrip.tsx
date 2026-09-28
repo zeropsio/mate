@@ -474,22 +474,30 @@ const TAKE_PICTURE_CLASS: Record<Device, string> = {
 /**
  * The pictures a run's checks took, side by side in their devices' shapes — a
  * failed take outlined red, a retried one amber — each opening the picture
- * viewer with the others beside it. A check with no picture is left out: what
+ * viewer with the others beside it; the one being taken now, the page as the
+ * browser streams it; one that failed with no picture, its frame outlined red
+ * saying what went wrong. Any other check with no picture is left out: what
  * it read is the stage's to show.
  */
 export function BrowserTakes({
   takes,
   onOpenImage,
+  environmentId = null,
 }: {
   readonly takes: ReadonlyArray<ZeropsOperation>;
   readonly onOpenImage: (preview: ExpandedImagePreview) => void;
+  /** Where the browser streams from, for a take still being taken. */
+  readonly environmentId?: EnvironmentId | null;
 }) {
   const shots = takes.flatMap((take) =>
     take.screenshot
       ? [{ key: take.key, src: take.screenshot.src, name: browserCheckCaption(take) }]
       : [],
   );
-  if (shots.length === 0) return null;
+  const failedBare = (take: ZeropsOperation) =>
+    take.screenshot === undefined && browserTakeState(take, takes) === "failed";
+  if (shots.length === 0 && !takes.some((take) => take.phase === "running" || failedBare(take)))
+    return null;
   return (
     // The first take on the text edge: the room its scroller keeps for a
     // take's ring and the focus ring hangs outside it.
@@ -498,6 +506,10 @@ export function BrowserTakes({
       data-report-takes
     >
       {takes.map((take) => {
+        if (take.phase === "running") {
+          return <LiveTake key={take.key} environmentId={environmentId} take={take} />;
+        }
+        if (failedBare(take)) return <FailedTake key={take.key} take={take} />;
         const src = take.screenshot?.src;
         if (src === undefined) return null;
         const state = browserTakeState(take, takes);
@@ -527,5 +539,77 @@ export function BrowserTakes({
         );
       })}
     </div>
+  );
+}
+
+/**
+ * The take being taken now: the page as the browser streams it, in the frame
+ * its picture will stand in, so the row keeps its height when the picture
+ * comes. Busy, never failure: the blue dot the stage's Live wears.
+ */
+function LiveTake({
+  take,
+  environmentId,
+}: {
+  readonly take: ZeropsOperation;
+  readonly environmentId: EnvironmentId | null;
+}) {
+  const device = browserCheckDevice(take);
+  const stream = useZeropsBrowserStream(environmentId);
+  const frame = stream !== undefined && stream !== "unavailable" ? stream.frame : undefined;
+  return (
+    <span
+      aria-label={`Checking ${browserCheckCaption(take)}`}
+      className={cn(
+        "relative block h-20 shrink-0 overflow-hidden rounded-lg border border-border bg-background",
+        TAKE_PICTURE_CLASS[device],
+      )}
+      data-report-take={device}
+      data-report-take-live
+      role="img"
+    >
+      {frame === undefined ? null : (
+        <img
+          alt=""
+          className="block size-full object-cover object-top"
+          src={frameImageSrc(frame)}
+        />
+      )}
+      <span
+        aria-hidden="true"
+        className="absolute end-1.5 bottom-1.5 size-1.5 animate-status-pulse rounded-full bg-status-busy motion-reduce:animate-none"
+      />
+    </span>
+  );
+}
+
+/**
+ * A take that failed and took no picture: its frame all the same, outlined red
+ * as a failed picture is, with what went wrong — so a row saying a check
+ * failed shows which (Nova, 2026-09-28: port 9 refused, and the row's only
+ * picture was of the page that passed). A phone's frame is too narrow for
+ * words: its mark says it.
+ */
+function FailedTake({ take }: { readonly take: ZeropsOperation }) {
+  const device = browserCheckDevice(take);
+  const reason = browserCheckFailure(take);
+  return (
+    <span
+      aria-label={`${browserCheckCaption(take)} failed${reason === null ? "" : `: ${reason}`}`}
+      className={cn(
+        "flex h-20 shrink-0 flex-col items-center justify-center gap-1 overflow-hidden rounded-lg border border-status-failed bg-card px-2 text-center ring-1 ring-status-failed",
+        TAKE_PICTURE_CLASS[device],
+      )}
+      data-report-take={device}
+      data-report-take-failed
+      role="img"
+    >
+      <XIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-failed-text" />
+      {device === "desktop" && reason !== null ? (
+        <span className="line-clamp-3 break-words text-2xs text-status-failed-text leading-3.5">
+          {reason}
+        </span>
+      ) : null}
+    </span>
   );
 }

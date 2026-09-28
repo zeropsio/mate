@@ -16,8 +16,9 @@
  *
  * A Mate that has stopped and is waiting for an answer is first: it is the
  * only item where work is *not happening* until somebody acts, and it is the
- * one this product exists to surface. Then a deploy that failed, which is
- * something broken rather than something pending. Then a change that cannot
+ * one this product exists to surface. Then a Mate whose run stopped on an
+ * error, halted as the first is and broken as the next is. Then a deploy that
+ * failed, which is something broken rather than something pending. Then a change that cannot
  * land. Then work merged and not live, which is the mildest — it is waiting
  * on a decision, not on a fix.
  *
@@ -29,7 +30,12 @@
 import { pullRequestBlocked } from "./gitTab.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
 
-export type ProjectAttentionKind = "mate-waiting" | "deploy-failed" | "change-blocked" | "not-live";
+export type ProjectAttentionKind =
+  | "mate-waiting"
+  | "mate-failed"
+  | "deploy-failed"
+  | "change-blocked"
+  | "not-live";
 
 /** One thing a project needs somebody for. */
 export interface ProjectAttentionItem {
@@ -53,6 +59,11 @@ export interface ProjectAttentionItem {
 export interface ProjectAttentionInput {
   /** Mates that have stopped and are waiting on an answer. */
   readonly waitingMates: ReadonlyArray<{ readonly projectId: string; readonly name: string }>;
+  /**
+   * Mates whose last run stopped on an error: their face waits as a
+   * question's does, but they ask nothing.
+   */
+  readonly failedMates?: ReadonlyArray<{ readonly projectId: string; readonly name: string }>;
   /** Stops whose last deploy failed. */
   readonly failedStops: ReadonlyArray<{ readonly projectId: string; readonly name: string }>;
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
@@ -74,6 +85,17 @@ export function projectAttention(
     items.push({
       kind: "mate-waiting",
       text: `${mate.name} is waiting on an answer`,
+      verb: "Open",
+      target: { kind: "mate", projectId: mate.projectId },
+    });
+  }
+
+  // Stopped as a question stops the Mate, and broken as a failed deploy is:
+  // between the two.
+  for (const mate of input.failedMates ?? []) {
+    items.push({
+      kind: "mate-failed",
+      text: `${mate.name} stopped on an error`,
       verb: "Open",
       target: { kind: "mate", projectId: mate.projectId },
     });

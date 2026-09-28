@@ -71,6 +71,25 @@ describe("a remembered row", () => {
     });
   });
 
+  // A row keeping its last line for words still to come draws it from
+  // memory too, so a reload mid-run before the Mate's first words stands the
+  // row at the height it had rather than growing it when the socket answers.
+  it("keeps the line a row held for words still to come, and only that", () => {
+    const waiting = activityFromMemory(rememberedRowOf({ ...WORKING, snippet: undefined }));
+    expect(waiting).toMatchObject({ awaitingWords: true, snippet: undefined });
+    const sent = activityFromMemory(
+      rememberedRowOf({ ...WORKING, kind: "idle", snippet: undefined, awaitingWords: true }),
+    );
+    expect(sent.awaitingWords).toBe(true);
+    for (const row of [
+      WORKING,
+      { ...WORKING, kind: "idle" as const, snippet: undefined },
+      { ...WORKING, subject: undefined, snippet: undefined },
+    ]) {
+      expect(activityFromMemory(rememberedRowOf(row))).not.toHaveProperty("awaitingWords");
+    }
+  });
+
   it("keeps no word the row did not say", () => {
     const quiet = rememberedRowOf({ ...WORKING, subject: undefined, snippet: undefined });
     expect(quiet).not.toHaveProperty("subject");

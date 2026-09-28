@@ -1,6 +1,7 @@
 import * as Equal from "effect/Equal";
 import type { ChangeLandedEvent } from "@t3tools/client-runtime/zerops";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import { type MessageId, type OrchestrationLatestTurn, type TurnId } from "@t3tools/contracts";
 
 import {
@@ -15,7 +16,7 @@ import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../..
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
 import {
   activityPills,
-  browserStrip,
+  checksStrip,
   deriveConversationStructure,
   deriveOutcome,
   isActivityWork,
@@ -468,9 +469,8 @@ type MessagesTimelineRowBody =
       /**
        * What runs alongside the Mate while it works, under its record: a
        * status bar each for a deploy, a service in trouble, the task list,
-       * the helpers and the background tasks, and the browser while it
-       * checks pages. It is the card's bottom, so it may change; settling
-       * turns it into the run's result.
+       * the helpers and the background tasks. It is the card's bottom, so it
+       * may change; settling turns it into the run's result.
        */
       kind: "working";
       id: string;
@@ -479,7 +479,6 @@ type MessagesTimelineRowBody =
       turnKey: string;
       /** The card it stands in: its line and edge are keyed by it. */
       cardKey: string;
-      strip: BrowserStripModel | null;
       incidents: ReadonlyArray<IncidentModel>;
     }
   | {
@@ -812,6 +811,70 @@ function buildRevertTurnCountByUserMessageId(input: {
   return byUserMessageId;
 }
 
+/**
+ * The row a load of earlier turns keeps in place: the first row of the
+ * conversation in sight, never a seam — a day's seam moves to the top of what
+ * loads, and the list kept it in place while the conversation under it was
+ * thrown 3,300 px down (Nova, 2026-09-28).
+ */
+export function earlierTurnsAnchor(
+  rows: ReadonlyArray<{
+    readonly id: string;
+    readonly kind: string | undefined;
+    readonly top: number;
+    readonly bottom: number;
+  }>,
+  viewportTop: number,
+): { readonly id: string; readonly top: number } | null {
+  let anchor: { readonly id: string; readonly top: number } | null = null;
+  for (const row of rows) {
+    if (row.kind === "seam" || row.bottom <= viewportTop) continue;
+    if (anchor === null || row.top < anchor.top) anchor = { id: row.id, top: row.top };
+  }
+  return anchor;
+}
+
+/** A helper's finish, as the helpers panel knows it: which one, and when. */
+export interface HelperFinish {
+  readonly id: string;
+  readonly title: string;
+  readonly finishedAt: string;
+  readonly failed: boolean;
+}
+
+/** Every helper the panel knows to have finished, done or failed, with its time. */
+export function helperFinishesOf(model: AgentPanelModel): HelperFinish[] {
+  const agents = [
+    ...model.directAgents,
+    ...model.workflows.flatMap((group) => [
+      ...group.phases.flatMap((phase) => phase.members),
+      ...group.unphasedMembers,
+    ]),
+  ];
+  return agents.flatMap((agent) =>
+    (agent.status === "completed" || agent.status === "failed") && agent.completedAt
+      ? [
+          {
+            id: agent.id,
+            title: agent.title,
+            finishedAt: agent.completedAt,
+            failed: agent.status === "failed",
+          },
+        ]
+      : [],
+  );
+}
+
+/**
+ * The person's pick, in their words: the "(Recommended)" the Mate put on an
+ * option was its advice, not what the person answered (Nova, 2026-09-28: the
+ * mark stood in the person's own bubble).
+ */
+export function answerWords(answer: string): string {
+  const words = answer.replace(/\s*\(recommended\)\s*$/iu, "").trim();
+  return words.length > 0 ? words : answer;
+}
+
 /** The question the Mate asked and the person has not answered yet, if one waits. */
 function pendingQuestion(stretch: Stretch): Extract<TimelineEntry, { kind: "work" }> | null {
   const asked = stretch.entries.findLast(
@@ -969,9 +1032,9 @@ export function thoughtPreview(messages: ReadonlyArray<Pick<ChatMessage, "text">
  *
  * Live, the thought the Mate is thinking and the call it is making are not in
  * it: they stand beside its face at the record's end and join it once they
- * end, so nothing is ever drawn twice. The browser's frames and a service's
- * trouble are the working row's while the stretch runs — its drawer, its
- * status bars — and the record's once it is over.
+ * end, so nothing is ever drawn twice. A browser check is its row from its
+ * start, its take filling in when it ends. A service's trouble is the working
+ * row's status bar while the stretch runs, and the record's once it is over.
  */
 function stretchRecord(input: {
   stretch: Stretch;
@@ -989,12 +1052,39 @@ function stretchRecord(input: {
   const push = (item: RecordItem) => {
     placed.push({ order: order++, item });
   };
+  /**
+   * A browser check is its row of the chat from the moment it starts, live
+   * as settled, and a check that follows it with nothing between shares the
+   * row: a page checked on a desktop and then on a phone is one row of takes.
+   * A check after other work starts a row of its own, so a row above the
+   * newest never grows (Nova, 2026-09-28: the checks stood in a drawer under
+   * the chat for the rest of the run, a stale picture while it deployed, and
+   * reached the chat only when the run was over).
+   */
+  const joinCheck = (check: ZeropsOperation) => {
+    const last = placed.at(-1);
+    if (last !== undefined && last.item.kind === "strip") {
+      placed[placed.length - 1] = {
+        order: last.order,
+        item: {
+          ...last.item,
+          strip: checksStrip([...last.item.strip.checks, check], stretch.live),
+        },
+      };
+      return;
+    }
+    push({
+      kind: "strip",
+      key: `operation:${check.key}`,
+      at: check.anchorAt,
+      strip: checksStrip([check], stretch.live),
+    });
+  };
 
-  // While the run goes on its checks and its services in trouble are what
-  // runs alongside, the whole run's: a message sent into it must not move
-  // the checks before it into the record's middle.
+  // While the run goes on its services in trouble are what runs alongside,
+  // the whole run's: a message sent into it must not move them into the
+  // record's middle.
   const runLive = input.until === null;
-  const strip = runLive ? null : browserStrip(stretch);
   const incidentsByKey = new Map(
     (runLive ? [] : stretchIncidents(stretch)).map((incident) => [incident.key, incident] as const),
   );
@@ -1128,14 +1218,14 @@ function stretchRecord(input: {
     switch (entry.kind) {
       case "operation": {
         const op = entry.operation;
-        if (strip !== null && op === strip.checks[0]) {
-          push({ kind: "strip", key: strip.key, at: op.anchorAt, strip });
+        if (op.kind === "browser") {
+          joinCheck(op);
+          break;
         }
         const incident = incidentsByKey.get(`incident:${op.key}`);
         if (incident !== undefined) {
           push({ kind: "incident", key: incident.key, at: incident.appearedAt, incident });
         }
-        if (op.kind === "browser") break;
         // What it runs stands beside its face and in its bar until it settles.
         if (stretch.live && op.phase === "running") break;
         push({
@@ -1183,7 +1273,7 @@ function stretchRecord(input: {
             kind: "person",
             key: `person:${entry.id}`,
             at: entry.createdAt,
-            words: work.inputAnswers.map((given) => given.answer).join(" · "),
+            words: work.inputAnswers.map((given) => answerWords(given.answer)).join(" · "),
             imageOnly: false,
           });
           rows.push({
@@ -1197,7 +1287,7 @@ function stretchRecord(input: {
               return {
                 key: answer.key,
                 question: question?.question ?? question?.header ?? answer.key,
-                answer: answer.answer,
+                answer: answerWords(answer.answer),
               };
             }),
           });
@@ -1341,6 +1431,8 @@ export function deriveMessagesTimelineRows(input: {
   afterTurnWork?: "working" | "monitoring" | null;
   /** The clock a running turn's last words wait against (`LAST_WORDS_GRACE_MS`). */
   nowMs?: number;
+  /** When each helper finished, as the helpers panel knows it (`helperFinishesOf`). */
+  helperFinishes?: ReadonlyArray<HelperFinish>;
 }): MessagesTimelineRow[] {
   const entries = input.timelineEntries;
   const structure = deriveConversationStructure({
@@ -1529,13 +1621,45 @@ export function deriveMessagesTimelineRows(input: {
   };
   /** When a background task or a helper finished: a helper's row takes each report as it comes. */
   const finishedAt = (work: WorkLogEntry) => Date.parse(work.updatedAt ?? work.createdAt);
+  // Helpers one launch started together share its row, so which of them
+  // finished is the helpers panel's to say. Each finish wakes the Mate once:
+  // the runs nothing else woke take them in the order they finished. A helper
+  // that reported in a row of its own is that row's (`wokeBy`).
+  const reported = new Set(
+    entries.flatMap((entry) =>
+      entry.kind === "work" &&
+      entry.entry.sourceActivityKind === "task.completed" &&
+      entry.entry.taskId !== undefined &&
+      (entry.entry.agentSpawn?.agentTaskIds.length ?? 1) <= 1
+        ? [entry.entry.taskId]
+        : [],
+    ),
+  );
+  const gathered = new Set(
+    entries.flatMap((entry) =>
+      entry.kind === "work" && (entry.entry.agentSpawn?.agentTaskIds.length ?? 0) > 1
+        ? entry.entry.agentSpawn!.agentTaskIds
+        : [],
+    ),
+  );
+  const helperQueue = (input.helperFinishes ?? [])
+    .filter((finish) => gathered.has(finish.id) && !reported.has(finish.id))
+    .toSorted((left, right) => Date.parse(left.finishedAt) - Date.parse(right.finishedAt));
+  /** The next gathered helper that finished before a run nothing else woke began, taken. */
+  const helperWoke = (startedAt: string): HelperFinish | null => {
+    const next = helperQueue[0];
+    if (next === undefined || Date.parse(next.finishedAt) > Date.parse(startedAt)) return null;
+    helperQueue.shift();
+    return next;
+  };
   /**
    * What woke a run nobody wrote to start: the helpers and background tasks
    * that finished after the run before it ended and before it began, for a
    * result delivered then wakes the Mate. What finished while the run before
    * still worked was that run's to take in. Rows gathering several helpers
-   * say only the latest report, so which of them finished is not known. Work
-   * no turn owns says itself in its own line, and is never said again here.
+   * say only the latest report: which of them finished is the helpers
+   * panel's to say (`helperWoke`). Work no turn owns says itself in its own
+   * line, and is never said again here.
    */
   const wokeBy = (turn: ConversationTurn): WorkLogEntry[] => {
     const untilMs = Date.parse(turn.stretches[0]?.startedAt ?? "");
@@ -1660,12 +1784,14 @@ export function deriveMessagesTimelineRows(input: {
       // shows anything at all. One that did nothing to see is nothing to
       // announce (the owner, 2026-09-27, of a lone "Background task
       // finished" line: "why does it say here?").
+      const woke = wokeBy(turn);
+      // Taken even by a run that shows nothing: it was woken all the same.
+      const helper = woke.length === 0 ? helperWoke(first.startedAt) : null;
       if (!carded && answer === null) {
         lastEnd = last.endedAt ?? last.startedAt;
         return;
       }
       seamBefore(first.startedAt, first.key);
-      const woke = wokeBy(turn);
       if (woke.length > 0) {
         rows.push({
           kind: "background",
@@ -1673,6 +1799,17 @@ export function deriveMessagesTimelineRows(input: {
           createdAt: first.startedAt,
           entries: woke,
           ...backgroundRunSummary(woke),
+        });
+      } else if (helper !== null) {
+        rows.push({
+          kind: "background",
+          id: `woke:${first.key}`,
+          createdAt: first.startedAt,
+          entries: [],
+          tasks: 1,
+          failed: helper.failed ? 1 : 0,
+          helpers: true,
+          title: helper.title,
         });
       }
     }
@@ -1738,7 +1875,6 @@ export function deriveMessagesTimelineRows(input: {
           stretchKey: last.key,
           turnKey: turn.key,
           cardKey: first.key,
-          strip: browserStrip(wholeRun),
           incidents: stretchIncidents(wholeRun),
         });
       }

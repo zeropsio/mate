@@ -3,7 +3,7 @@ import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRunt
 import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { WorkLogEntry } from "../../session-logic";
 import type { ChatMessage } from "../../types";
@@ -15,6 +15,8 @@ import {
   type TimelineRowActivityState,
   type TimelineRowSharedState,
 } from "./timelineContext";
+import { checksStrip, formatWorkDuration } from "./conversation.logic";
+import { at as atMinute, operation } from "./conversationFixtures";
 import { stepOf } from "./workSteps.logic";
 
 const at = (second: number) => new Date(Date.UTC(2026, 8, 27, 10, 0, second)).toISOString();
@@ -319,6 +321,29 @@ describe("RunChat", () => {
   // A script arrives whole, so it is never "being written": four of its
   // lines from its first frame, running or done (the owner, 2026-09-28: "I
   // see 100s of LoC printed directly").
+  // What a command was for leads; its code is how, in the muted ink under it
+  // — failed too, where the headline, the surface and the time already say so.
+  it("sets a command's code quieter than what it was for, failed or not", () => {
+    const codeTone = (markup: string) =>
+      /<code class="([^"]*)"/u
+        .exec(markup)?.[1]
+        ?.split(" ")
+        .filter((name) => name.startsWith("text-"));
+    for (const status of ["completed", "failed"] as const) {
+      const markup = draw(
+        record([
+          step(
+            command("w1", "npm test", {
+              callInput: { description: "Run the tests" },
+              toolLifecycleStatus: status,
+            }),
+          ),
+        ]),
+      );
+      expect(codeTone(markup)).toEqual(["text-xs", "text-muted-foreground"]);
+    }
+  });
+
   it("folds a command past its fourth line from its first frame, saying how many there are", () => {
     const done = draw(
       record([
@@ -382,6 +407,175 @@ describe("RunChat", () => {
     expect(markup).toContain(">echo 59<");
     expect(markup).not.toContain(">echo 19<");
     expect(draw(record(many.slice(0, 40)))).not.toContain("earlier<");
+  });
+
+  // A check is its row from its start: while it runs, what it checks and the
+  // page as the browser streams it, in the frame its picture will stand in —
+  // never a line of its own beside the face as well (Nova, 2026-09-28: the
+  // checks stood in a drawer under the chat until the run was over).
+  it("draws a check being taken as its row, a live frame where its picture will stand", () => {
+    const check = (id: string, phase: "running" | "done") => {
+      const entry = operation(id, "turn-1", 1, {
+        kind: "browser",
+        subject: "https://shop.dev/health",
+        phase,
+        ...(phase === "done"
+          ? { screenshot: { src: `/shots/${id}.png`, width: 1280, height: 800 } }
+          : {}),
+      });
+      if (entry.kind !== "operation") throw new Error("an operation");
+      if (phase === "done") return entry.operation;
+      // Still being taken: it has not settled.
+      const { settledAt: _settled, ...taking } = entry.operation;
+      return taking;
+    };
+    const running = check("b1", "running");
+    const live = draw(
+      record(
+        [{ kind: "strip", key: "operation:op:b1", at: at(1), strip: checksStrip([running], true) }],
+        { live: true, now: { kind: "operation", operation: running }, status: status() },
+      ),
+    );
+    expect(bubbles(live).map(({ kind }) => kind)).toEqual(["checks"]);
+    expect(live).toContain("Checking /health");
+    expect(live).toContain("data-report-take-live");
+    const done = draw(
+      record([
+        {
+          kind: "strip",
+          key: "operation:op:b1",
+          at: at(1),
+          strip: checksStrip([check("b1", "done")], false),
+        },
+      ]),
+    );
+    expect(done).toContain("Checked /health");
+    expect(done).toContain("passed");
+    expect(done).not.toContain("data-report-take-live");
+    expect(done).toMatch(/<button[^>]*data-report-take="desktop"/);
+  });
+
+  // Before anything is in the chat the card is its status line alone, the
+  // first thing seen after every message: the face as far from the card's
+  // top as from its foot, where the empty list's room stood it 31 px down
+  // and 22 px up (Nova, 2026-09-28).
+  it("keeps an empty chat's room to the card's own, so the face stands in its middle", () => {
+    const list = (markup: string) => /<ol[^>]*class="([^"]*)"/u.exec(markup)?.[1]?.split(" ") ?? [];
+    const empty = list(draw(record([], { live: true, status: status() })));
+    expect(empty).toContain("pt-3");
+    expect(empty).not.toContain("pb-4");
+    const said = list(draw(record([thought("r1", "The route and the check disagree.")])));
+    expect(said).toEqual(expect.arrayContaining(["pt-2", "pb-4"]));
+  });
+
+  // The face's column lines the Mate's lines up over the face at the chat's
+  // foot; on a card narrower than 28 rem — a phone — the 38 px it keeps is
+  // the text's (390 px wide, the chat's text had 280 px of the card's 318).
+  it("keeps the face's column only where the chat has room for it", () => {
+    const markup = draw(record([thought("r1", "The route and the check disagree.")]));
+    expect(markup).toMatch(/<div class="[^"]*@container\/chat[^"]*" data-run-chat="true">/u);
+    const column = /<li[^>]*data-chat-row[^>]*><span aria-hidden="true" class="([^"]*)"/u.exec(
+      markup,
+    )?.[1];
+    expect(column?.split(" ")).toEqual(expect.arrayContaining(["hidden", "@md/chat:block"]));
+  });
+
+  // Two pages of one host are said by name, as one is; more by their count,
+  // and so are pages of two hosts, whose paths do not say which is which.
+  it.each([
+    { subjects: ["https://shop.dev/", "https://shop.dev/health"], words: "Checked / and /health" },
+    { subjects: ["https://shop.dev/", "https://api.dev/"], words: "Checked 2 pages" },
+    // A path names a page on one host only: "/" on another port is not the
+    // app's front page (Nova, 2026-09-28: "/missing and /" for port 9's "/").
+    { subjects: ["https://shop.dev/missing", "http://shop.dev:9/"], words: "Checked 2 pages" },
+    {
+      subjects: ["https://shop.dev/", "https://shop.dev/cart", "https://shop.dev/health"],
+      words: "Checked 3 pages",
+    },
+  ])("names the pages a row of checks looked at: $words", ({ subjects, words }) => {
+    const checks = subjects.map((subject, index) => {
+      const entry = operation(`b${String(index)}`, "turn-1", 1, { kind: "browser", subject });
+      if (entry.kind !== "operation") throw new Error("an operation");
+      return entry.operation;
+    });
+    const markup = draw(
+      record([
+        { kind: "strip", key: "operation:op:b0", at: at(1), strip: checksStrip(checks, false) },
+      ]),
+    );
+    expect(markup).toContain(`>${words}<`);
+  });
+
+  // A row saying a check failed showed only the pictures of the ones that
+  // passed: a failed check took none (Nova, 2026-09-28, port 9 refused). Its
+  // frame stands all the same, outlined red, saying what went wrong.
+  it("keeps a failed check's frame among the takes, saying what went wrong", () => {
+    const passed = operation("b1", "turn-1", 1, {
+      kind: "browser",
+      subject: "https://shop.dev/",
+      screenshot: { src: "/shots/b1.png", width: 1280, height: 800 },
+    });
+    const refused = operation("b2", "turn-1", 2, {
+      kind: "browser",
+      subject: "http://shop.dev:9/",
+      phase: "failed",
+      browserSummary: {
+        failedStep: { label: "open http://shop.dev:9/", note: "net::ERR_UNSAFE_PORT" },
+      } as never,
+    });
+    const checks = [passed, refused].map((entry) => {
+      if (entry.kind !== "operation") throw new Error("an operation");
+      return entry.operation;
+    });
+    const markup = draw(
+      record([
+        { kind: "strip", key: "operation:op:b1", at: at(1), strip: checksStrip(checks, false) },
+      ]),
+    );
+    expect(markup).toMatch(/<button[^>]*data-report-take="desktop"/u);
+    expect(markup).toContain("data-report-take-failed");
+    expect(markup).toContain("couldn&#x27;t open http://shop.dev:9/: net::ERR_UNSAFE_PORT");
+  });
+
+  // One clock for a row of checks, from its first: a second check running
+  // started it again from nothing, then the settled row said the whole time.
+  it("runs one clock for a row of checks, from its first check", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(atMinute(5)));
+    try {
+      const first = operation("b1", "turn-1", 1, {
+        kind: "browser",
+        subject: "https://shop.dev/",
+        screenshot: { src: "/shots/b1.png", width: 1280, height: 800 },
+      });
+      const second = operation("b2", "turn-1", 3, {
+        kind: "browser",
+        subject: "https://shop.dev/",
+        phase: "running",
+        deviceName: "iPhone 16",
+      });
+      if (first.kind !== "operation" || second.kind !== "operation") throw new Error("operations");
+      const { settledAt: _settled, ...taking } = second.operation;
+      const markup = draw(
+        record(
+          [
+            {
+              kind: "strip",
+              key: "operation:op:b1",
+              at: at(1),
+              strip: checksStrip([first.operation, taking], true),
+            },
+          ],
+          { live: true, status: status() },
+        ),
+      );
+      const since = (minute: number) =>
+        formatWorkDuration(Date.parse(atMinute(5)) - Date.parse(atMinute(minute)));
+      expect(markup).toContain(`>${since(1)}<`);
+      expect(markup).not.toContain(`>${since(3)}<`);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("opens nothing on a step that printed nothing", () => {

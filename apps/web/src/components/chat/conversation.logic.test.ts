@@ -6,7 +6,7 @@ import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
   browserCheckCaption,
   browserCheckFailure,
-  browserStrip,
+  checksStrip,
   browserTakeState,
   deriveConversationStructure,
   deriveOutcome,
@@ -24,6 +24,7 @@ import {
   stretchFace,
   stretchIncidents,
   stretchNotes,
+  stretchOperations,
   activityPills,
 } from "./conversation.logic";
 import {
@@ -981,7 +982,10 @@ describe("browser checks", () => {
       latest: { id: "t1", state: "completed", completed: true },
     }).turns;
     // Two hosts' front pages are two pages, both captioned "/".
-    expect(browserStrip(only!.stretches[0]!)).toMatchObject({ views: 2, failures: 0 });
+    const checks = stretchOperations(only!.stretches[0]!).filter(
+      (operation) => operation.kind === "browser",
+    );
+    expect(checksStrip(checks, false)).toMatchObject({ views: 2, failures: 0 });
     expect(deriveOutcome({ turn: only!, landed: [], diff: null })?.checks).toMatchObject({
       count: 3,
       views: 2,
@@ -1015,19 +1019,13 @@ describe("browser checks", () => {
     ]);
   });
 
-  it("gathers a stretch's checks into one strip", () => {
-    const entries = [
-      user("m0", 0),
+  it("counts a run of checks' pages, and the failures it did not come back from", () => {
+    const checks = [
       operation("b1", "t1", 1, { kind: "browser", subject: "https://a.dev/" }),
-      tool("w1", "t1", 2),
       operation("b2", "t1", 3, { kind: "browser", subject: "https://a.dev/cart" }),
       operation("b3", "t1", 4, { kind: "browser", subject: "https://a.dev/cart", phase: "failed" }),
-      assistant("a1", "t1", 5),
-    ];
-    const [only] = structure(entries, {
-      latest: { id: "t1", state: "completed", completed: true },
-    }).turns;
-    expect(browserStrip(only!.stretches[0]!)).toMatchObject({
+    ].map((entry) => (entry as Extract<TimelineEntry, { kind: "operation" }>).operation);
+    expect(checksStrip(checks, false)).toMatchObject({
       key: "strip:op:b1",
       views: 2,
       failures: 1,
@@ -1418,6 +1416,36 @@ describe("operationLineWords", () => {
       voice: "Checking app.",
       statusWord: "Healthy",
       words: "app is healthy",
+    },
+    // "Running app" read as work still going on, under a finished bar (Nova,
+    // 2026-09-28): a dev server's line says what it came to, as its pill does.
+    {
+      kind: "devServer",
+      phase: "done",
+      voice: "Starting the dev server on app.",
+      statusWord: "Running",
+      words: "Dev server running on app",
+    },
+    {
+      kind: "devServer",
+      phase: "done",
+      voice: "Stopping the dev server on app.",
+      statusWord: "Not running",
+      words: "Dev server not running on app",
+    },
+    {
+      kind: "devServer",
+      phase: "failed",
+      voice: "Starting the dev server on app.",
+      statusWord: "Failed",
+      words: "Dev server on app failed",
+    },
+    {
+      kind: "devServer",
+      phase: "done",
+      voice: "Checking the dev server on app.",
+      statusWord: "Done",
+      words: "Dev server on app",
     },
     {
       kind: "verify",

@@ -81,6 +81,7 @@ import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
 import { BrowserStrip, BrowserTakes } from "./BrowserStrip";
 import {
   browserCheckCaption,
+  browserTakeState,
   formatWorkDuration,
   operationLineWords,
   type BrowserStripModel,
@@ -249,10 +250,17 @@ const CHAT_MAX_HEIGHT = "max-h-110";
 function ChatScroll({
   live,
   label,
+  empty,
   children,
 }: {
   readonly live: boolean;
   readonly label: string;
+  /**
+   * Nothing in it yet: the card is its status line alone, the face as far
+   * from the card's top as from its foot — the list's own room stood it
+   * 31 px down and 22 px up (Nova, 2026-09-28).
+   */
+  readonly empty: boolean;
   readonly children: ReactNode;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -374,7 +382,9 @@ function ChatScroll({
 
   return (
     <ChatScrollContext value={api}>
-      <div className="relative min-w-0" data-run-chat>
+      {/* A container: on a card too narrow for the face's column, the
+          column is the text's (`ChatRow`). */}
+      <div className="@container/chat relative min-w-0" data-run-chat>
         <div
           ref={scrollerRef}
           className={cn(
@@ -397,7 +407,7 @@ function ChatScroll({
           <ol
             ref={contentRef}
             aria-label={label}
-            className="mt-auto flex min-w-0 flex-col gap-4 pt-2 pb-4"
+            className={cn("mt-auto flex min-w-0 flex-col gap-4", empty ? "pt-3" : "pt-2 pb-4")}
           >
             {children}
           </ol>
@@ -849,8 +859,8 @@ function NoteBubble({ message }: { readonly message: ChatMessage }) {
   );
 }
 
-/** A thought's hand: small, faint italics, the Mate talking to itself. */
-const THOUGHT_TEXT = "text-xs leading-4.5 text-muted-foreground/85";
+/** A thought's hand: small, faint italics, the Mate talking to itself — its code and file names too. */
+const THOUGHT_TEXT = "chat-markdown-aside text-xs leading-4.5 text-muted-foreground/85";
 
 /** Eight of a thought's 18 px lines: past them it scrolls while it is thought, and folds once it is. */
 const THOUGHT_CAP_PX = 144;
@@ -1206,16 +1216,16 @@ function CallRow({
 /**
  * A command's code, in mono: four lines of it from its first frame and a fade
  * where it goes on — a script never prints whole into the chat (the owner,
- * 2026-09-28: "I see 100s of LoC printed directly").
+ * 2026-09-28: "I see 100s of LoC printed directly"). It is how, under what the
+ * command was for: in the muted ink, failed too — the headline, the surface
+ * and the time say that it failed.
  */
 function CommandCode({
   script,
-  failed,
   folded,
   watch,
 }: {
   readonly script: string;
-  readonly failed: boolean;
   /** Cut to its first four lines. */
   readonly folded: boolean | null;
   readonly watch: (element: HTMLElement | null) => void;
@@ -1230,10 +1240,7 @@ function CommandCode({
     >
       <code
         ref={watch}
-        className={cn(
-          "block whitespace-pre-wrap break-words font-mono text-xs leading-4.5",
-          failed ? "text-status-failed-text" : "text-foreground/75",
-        )}
+        className="block whitespace-pre-wrap break-words font-mono text-xs leading-4.5 text-muted-foreground"
       >
         {script}
       </code>
@@ -1302,12 +1309,7 @@ export function StepBubble({ step }: { readonly step: WorkStep }) {
       )}
       {script !== null ? (
         <div className="pe-3 pb-2.5 ps-8.5">
-          <CommandCode
-            failed={failed}
-            folded={cut ? !disclosure.open : null}
-            script={script}
-            watch={watchCode}
-          />
+          <CommandCode folded={cut ? !disclosure.open : null} script={script} watch={watchCode} />
         </div>
       ) : null}
       <StepPictures paths={step.images} />
@@ -1445,34 +1447,67 @@ function OperationBubble({
   );
 }
 
+/** The host a check's address names, its port included: what tells two sites' pages apart. */
+function checkHost(subject: string): string {
+  return subject.replace(/^[a-z][a-z0-9+.-]*:\/\//iu, "").split(/[/?#]/u)[0] ?? subject;
+}
+
 /**
- * The pages it checked in the browser, as the pictures it took: each take in
- * its device's shape, opening the picture viewer; the stage with every take
- * opens under them.
+ * The pages it checked in the browser, as their row of the chat from the
+ * first check's start: what it checks, and each take in its device's shape
+ * as it comes back — the one it is taking now a live frame of the page, in
+ * the frame its picture will stand in, so the row never changes height when
+ * the picture comes. The stage with every take opens under it.
  */
 function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
   const ctx = use(TimelineRowCtx);
   const disclosure = useDisclosure();
   const latest = strip.checks.at(-1)!;
-  const words =
-    strip.views === 1 ? `Checked ${browserCheckCaption(latest)}` : `Checked ${strip.views} pages`;
-  const verdict =
-    strip.failures > 0
+  const running = latest.phase === "running";
+  const settled = strip.checks.filter((check) => check.phase !== "running");
+  // Two pages of one host by name, as one is; more by their count, and so
+  // are pages of two hosts, whose paths do not say which is which ("/" on
+  // another port is not the app's front page).
+  const pages = [...new Set(strip.checks.map(browserCheckCaption))];
+  const hosts = new Set(strip.checks.map((check) => checkHost(check.subject)));
+  const words = running
+    ? `Checking ${browserCheckCaption(latest)}`
+    : strip.views === 1
+      ? `Checked ${browserCheckCaption(latest)}`
+      : strip.views === 2 && pages.length === 2 && hosts.size === 1
+        ? `Checked ${pages[0]} and ${pages[1]}`
+        : `Checked ${strip.views} pages`;
+  const verdict = running
+    ? null
+    : strip.failures > 0
       ? strip.failures === 1
         ? "1 check failed"
         : `${strip.failures} checks failed`
-      : strip.checks.length === 1
+      : settled.length === 1
         ? "passed"
-        : `${strip.checks.length} checks passed`;
+        : `${settled.length} checks passed`;
   const startedMs = Date.parse(strip.checks[0]!.anchorAt);
   const endedMs = Date.parse(latest.settledAt ?? latest.anchorAt);
   const tookMs = endedMs - startedMs;
+  // One clock for the row, from its first check: a second check running
+  // never starts it again from nothing.
+  const time = running ? (
+    <ElapsedSince since={strip.checks[0]!.anchorAt} />
+  ) : Number.isFinite(tookMs) && tookMs >= 1000 ? (
+    formatWorkDuration(tookMs)
+  ) : null;
   const failed = strip.failures > 0;
+  const takes = strip.checks.some(
+    (check) =>
+      check.screenshot ||
+      check.phase === "running" ||
+      browserTakeState(check, strip.checks) === "failed",
+  );
   return (
     <CallRow failed={failed} kind="checks">
       <DisclosureButton
         className="px-3 py-2"
-        label={`${words}, ${verdict}. ${disclosure.open ? "Hide" : "Show"} the checks`}
+        label={`${words}${verdict === null ? "" : `, ${verdict}`}. ${disclosure.open ? "Hide" : "Show"} the checks`}
         onToggle={disclosure.toggle}
         open={disclosure.open}
       >
@@ -1480,20 +1515,26 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
           column
           lead={<DidMark failed={failed} icon={AppWindowIcon} />}
           opens
-          time={Number.isFinite(tookMs) && tookMs >= 1000 ? formatWorkDuration(tookMs) : null}
-          timeTone={failed ? "failed" : "muted"}
+          time={time}
+          timeTone={running ? "busy" : failed ? "failed" : "muted"}
         >
           <span className="text-line">
             <span className="text-foreground/90">{words}</span>
-            <span className={failed ? "text-status-failed-text" : "text-muted-foreground"}>
-              {` · ${verdict}`}
-            </span>
+            {verdict === null ? null : (
+              <span className={failed ? "text-status-failed-text" : "text-muted-foreground"}>
+                {` · ${verdict}`}
+              </span>
+            )}
           </span>
         </Headline>
       </DisclosureButton>
-      {disclosure.open || !strip.checks.some((check) => check.screenshot) ? null : (
+      {disclosure.open || !takes ? null : (
         <div className="pe-3 pb-2.5 ps-8.5">
-          <BrowserTakes onOpenImage={ctx.onImageExpand} takes={strip.checks} />
+          <BrowserTakes
+            environmentId={ctx.activeThreadEnvironmentId}
+            onOpenImage={ctx.onImageExpand}
+            takes={strip.checks}
+          />
         </div>
       )}
       {disclosure.open ? (
@@ -1975,6 +2016,8 @@ function nowLine(now: TurnHeaderActivity | null): ChatLine | null {
     case "step":
       return { key: `step:${now.step.key}`, bubble: <StepBubble step={now.step} />, call: true };
     case "operation":
+      // A check is its row of the chat from its start: it is there already.
+      if (now.operation.kind === "browser") return null;
       return {
         key: `operation:${now.operation.key}`,
         bubble: <OperationBubble newest operation={now.operation} />,
@@ -2010,7 +2053,9 @@ function ChatRow({
   }
   return (
     <li className="flex min-w-0 items-end gap-2.5" data-chat-row>
-      <span aria-hidden="true" className="w-7 shrink-0" />
+      {/* The face's column: on a card narrower than 28 rem — a phone — its
+          38 px are the text's, 280 of the card's 318 px at 390 wide. */}
+      <span aria-hidden="true" className="hidden w-7 shrink-0 @md/chat:block" />
       {/* Only what arrives while the person watches rises in. */}
       <div
         className={cn(
@@ -2141,7 +2186,11 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const shown = gatherCalls(from > 0 ? lines.slice(from) : lines);
   return (
     <>
-      <ChatScroll label={`${ctx.speaker.name}'s work`} live={row.live}>
+      <ChatScroll
+        empty={shown.length === 0 && from === 0}
+        label={`${ctx.speaker.name}'s work`}
+        live={row.live}
+      >
         {from > 0 ? <EarlierLine count={from} onShow={() => setFrom(0)} /> : null}
         {shown.map((entry) =>
           "calls" in entry ? (

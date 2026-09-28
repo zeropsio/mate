@@ -94,6 +94,8 @@ import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRows,
+  earlierTurnsAnchor,
+  helperFinishesOf,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
   resolveTimelineIsAtEnd,
@@ -134,7 +136,6 @@ import {
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
-import { BrowserStrip } from "./BrowserStrip";
 import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic";
 import { TurnReport } from "./TurnReport";
 import { ConversationAfterWork, ConversationWorking } from "./ConversationWorking";
@@ -167,6 +168,9 @@ import {
   parseReviewCommentMessageSegments,
   type ReviewCommentContext,
 } from "../../reviewCommentContext";
+
+/** What hands the page back to the person while earlier turns are being placed. */
+const GESTURES = ["wheel", "touchmove", "keydown", "pointerdown"] as const;
 
 /** The rows above keep their place as rows arrive and change size under them. */
 const MAINTAIN_VISIBLE_CONTENT_POSITION = { data: true, size: true } as const;
@@ -391,6 +395,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     );
     return () => clearTimeout(timer);
   }, [finishedWordsAt]);
+  // Which of the helpers one launch started woke a run: the panel knows when
+  // each finished.
+  const helperFinishes = useMemo(
+    () => helperFinishesOf(agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL),
+    [agentPanelModel],
+  );
   const rawRows = useMemo(
     () =>
       deriveMessagesTimelineRows({
@@ -405,6 +415,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         supportsConversationRollback,
         queuedMessages,
         afterTurnWork,
+        helperFinishes,
       }),
     [
       nowMs,
@@ -418,9 +429,83 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       supportsConversationRollback,
       queuedMessages,
       afterTurnWork,
+      helperFinishes,
     ],
   );
   const rows = useStableRows(rawRows);
+
+  // Loading earlier turns keeps the row the person was reading where it
+  // stood. The list keeps the first row in sight in place, and at the top of
+  // a loaded window that is the day's seam, which moves to the top of what
+  // loads: the conversation under it was thrown 3,300 px down (Nova,
+  // 2026-09-28). The first row of the conversation in sight, never a seam, is
+  // taken back to where it stood once the earlier turns are drawn above it.
+  const earlierAnchorRef = useRef<{
+    readonly id: string;
+    readonly top: number;
+    readonly firstId: string | undefined;
+  } | null>(null);
+  const onLoadEarlier = useCallback(() => {
+    const viewport = listRef.current?.getScrollableNode() as HTMLElement | undefined;
+    if (viewport !== undefined) {
+      const anchor = earlierTurnsAnchor(
+        [...viewport.querySelectorAll<HTMLElement>("[data-timeline-row-id]")].map((element) => {
+          const box = element.getBoundingClientRect();
+          return {
+            id: element.dataset.timelineRowId ?? "",
+            kind: element.dataset.timelineRowKind,
+            top: box.top,
+            bottom: box.bottom,
+          };
+        }),
+        viewport.getBoundingClientRect().top,
+      );
+      earlierAnchorRef.current =
+        anchor === null
+          ? null
+          : { ...anchor, firstId: rows.find((row) => row.kind !== "seam")?.id };
+    }
+    loadEarlier?.onLoadEarlier();
+  }, [listRef, loadEarlier, rows]);
+  useLayoutEffect(() => {
+    const anchor = earlierAnchorRef.current;
+    const viewport = listRef.current?.getScrollableNode() as HTMLElement | undefined;
+    if (anchor === null || viewport === undefined) return;
+    // Nothing came in above it yet: the earlier turns are still on their way.
+    if (rows.find((row) => row.kind !== "seam")?.id === anchor.firstId) return;
+    earlierAnchorRef.current = null;
+    // The list places what arrived in frames of its own: the row is taken
+    // back each time it writes a row's place, before the page paints it.
+    const settle = () => {
+      const element = viewport.querySelector(`[data-timeline-row-id="${CSS.escape(anchor.id)}"]`);
+      if (element === null) return;
+      const moved = element.getBoundingClientRect().top - anchor.top;
+      if (Math.abs(moved) > 0.5) viewport.scrollTop += moved;
+    };
+    settle();
+    const observer = new MutationObserver(settle);
+    observer.observe(viewport, {
+      attributes: true,
+      attributeFilter: ["style"],
+      childList: true,
+      subtree: true,
+    });
+    // The list moves the page itself as it measures what arrived: taken back
+    // then too. The person moving the page takes it over at once.
+    viewport.addEventListener("scroll", settle, { passive: true });
+    const release = () => {
+      observer.disconnect();
+      viewport.removeEventListener("scroll", settle);
+      for (const type of GESTURES) viewport.removeEventListener(type, release);
+    };
+    for (const type of GESTURES) viewport.addEventListener(type, release, { passive: true });
+    const done = setTimeout(release, 1000);
+    return () => {
+      clearTimeout(done);
+      release();
+    };
+  }, [listRef, rows]);
+
   const livePauseId = useMemo(
     () => rows.findLast((row) => row.kind === "pause" && row.resumedAt === null)?.id ?? null,
     [rows],
@@ -824,7 +909,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 loadEarlier !== null ? (
                   <TimelineLoadEarlierHeader
                     loading={loadEarlier.loading}
-                    onLoadEarlier={loadEarlier.onLoadEarlier}
+                    onLoadEarlier={onLoadEarlier}
                     fade={topFadeEnabled}
                   />
                 ) : topFadeEnabled ? (
@@ -1443,7 +1528,7 @@ function FoldRoom({ fold }: { readonly fold: FoldsFrom | undefined }) {
   return <div ref={roomRef} aria-hidden="true" data-fold-room />;
 }
 
-/** What runs alongside the Mate, under its record, and the browser while it checks. */
+/** What runs alongside the Mate, under its record. */
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
   const ctx = use(TimelineRowCtx);
   const dock = use(TimelineWorkingCtx);
@@ -1454,17 +1539,6 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
   return (
     <div ref={standRef} className="contents">
       <ConversationWorking
-        browser={
-          row.strip === null ? null : (
-            <BrowserStrip
-              bare
-              environmentId={ctx.activeThreadEnvironmentId}
-              onOpenImage={ctx.onImageExpand}
-              strip={row.strip}
-              threadRef={ctx.threadRef}
-            />
-          )
-        }
         dock={dock}
         environmentId={ctx.activeThreadEnvironmentId}
         incidents={row.incidents}
