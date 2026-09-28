@@ -405,12 +405,11 @@ export const crewResumeBudgetHint = (spentUsd: number): string =>
 export const crewResumeTimeHint = (elapsedMs: number): string =>
   `Raise it past the ${formatCrewDuration(elapsedMs)} already run, or pick No limit.`;
 
-/** The section's two groups of rows: the lead, set apart, then everyone else. */
-export const CREW_LEAD_WORD = "Lead";
+/** The section's second group of rows, after the lead's (`CREW_LEAD_WORD`). */
 export const CREW_CREWMATES_WORD = "Crewmates";
 
 /** Which crewmates run on a login, the lead named as the lead. */
-export function crewRunsOnWord(crewmates: ReadonlyArray<string>, lead: string | null): string {
+export function crewLoginRunsWord(crewmates: ReadonlyArray<string>, lead: string | null): string {
   return `Runs: ${crewmates.map((handle) => (handle === lead ? `${handle} (lead)` : handle)).join(", ")}`;
 }
 

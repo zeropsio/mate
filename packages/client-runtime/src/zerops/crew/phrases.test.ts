@@ -11,7 +11,6 @@ import {
   CREW_ATTENTION_VERBS,
   CREW_BOARD_COLUMNS,
   CREW_CREWMATES_WORD,
-  CREW_LEAD_WORD,
   CREW_RESUME_TITLE,
   crewResumeBudgetHint,
   crewResumeTimeHint,
@@ -44,7 +43,7 @@ import {
   crewLandedWord,
   crewLaneWord,
   crewNoDevHostWord,
-  crewRunsOnWord,
+  crewLoginRunsWord,
   crewPendingWord,
   crewPortsAsk,
   crewPortsOffWord,
@@ -390,8 +389,8 @@ describe("the section's words (PRD §4.3)", () => {
 
   it("names the lead apart from the crewmates, and on the logins it runs on", () => {
     expect([CREW_LEAD_WORD, CREW_CREWMATES_WORD]).toEqual(["Lead", "Crewmates"]);
-    expect(crewRunsOnWord(["lead", "backend"], "lead")).toBe("Runs: lead (lead), backend");
-    expect(crewRunsOnWord(["backend"], null)).toBe("Runs: backend");
+    expect(crewLoginRunsWord(["lead", "backend"], "lead")).toBe("Runs: lead (lead), backend");
+    expect(crewLoginRunsWord(["backend"], null)).toBe("Runs: backend");
   });
 
   it("words resuming a run its limit stopped", () => {
