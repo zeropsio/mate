@@ -325,9 +325,14 @@ describe("the chat markdown stylesheet", () => {
     expect(callout.get("background")).toMatch(
       /^color-mix\(in srgb, var\(--callout-tone\) \d+%, transparent\)$/,
     );
-    // Run in: at the text's own size, floated to the first line's start.
-    expect(label.get("float")).toBe("left");
+    // At the text's own size, on its own line over what follows; it runs into
+    // the first line only before a paragraph — a list's first bullet hangs in
+    // the gutter it would stand in (the owner, 2026-09-28: "this is broken").
     expect(label.get("font-size")).toBeUndefined();
+    expect(label.get("float")).toBeUndefined();
+    expect(
+      declarationsOf(".chat-markdown .chat-markdown-callout-label:has(+ p)").get("float"),
+    ).toBe("left");
     // The body is ordinary text: not the muted ink of a plain quote.
     expect(callout.get("color")).toBe("inherit");
     // The label is the tone's ink pulled toward the text, which measured
