@@ -1493,6 +1493,7 @@ describe("the project's flow under it", () => {
     // A dot says somebody must act: a first task has none, the Mate is the way in.
     const KINDS: Record<GroupNextStepKind, { readonly dot: boolean }> = {
       "answer-mate": { dot: true },
+      "fix-mate": { dot: true },
       "fix-deploy": { dot: true },
       merge: { dot: true },
       unblock: { dot: true },

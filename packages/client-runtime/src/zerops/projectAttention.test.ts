@@ -57,6 +57,30 @@ describe("projectAttention", () => {
     ]);
   });
 
+  // A Mate whose run ended on an error wears the same waiting face as one that
+  // asked something, but it asks nothing: it says so, and it stands with the
+  // broken things, after a question and before a failed deploy (the approved
+  // menu: a failed Mate's dot is the failure red, never amber).
+  it("says a Mate stopped on an error, after one waiting on an answer", () => {
+    const items = projectAttention({
+      ...EMPTY,
+      waitingMates: [{ projectId: "p-theo", name: "Theo" }],
+      failedMates: [{ projectId: "p-wren", name: "Wren" }],
+      failedStops: [{ projectId: "shop-stage", name: "stage" }],
+    });
+    expect(items.map((item) => item.kind)).toEqual([
+      "mate-waiting",
+      "mate-failed",
+      "deploy-failed",
+    ]);
+    expect(items[1]).toEqual({
+      kind: "mate-failed",
+      text: "Wren stopped on an error",
+      verb: "Open",
+      target: { kind: "mate", projectId: "p-wren" },
+    });
+  });
+
   it("names the Mate on the verb, so the hand-over says who takes it", () => {
     const [item] = projectAttention({
       ...EMPTY,
