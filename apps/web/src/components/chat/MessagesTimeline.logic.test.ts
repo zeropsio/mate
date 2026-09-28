@@ -2354,3 +2354,20 @@ describe("earlierTurnsAnchor", () => {
     expect(earlierTurnsAnchor([row("seam:day", "seam", 100, 30)], 56)).toBeNull();
   });
 });
+
+describe("rowGap between speakers", () => {
+  const person = { kind: "message", message: { role: "user" } } as unknown as MessagesTimelineRow;
+  const mate = {
+    kind: "message",
+    message: { role: "assistant" },
+  } as unknown as MessagesTimelineRow;
+  const answer = { kind: "answer" } as unknown as MessagesTimelineRow;
+  it.each([
+    ["two messages of the person's", person, person, "tight"],
+    ["the Mate's question under the person's words", person, answer, "block"],
+    ["the person's words after the Mate's", mate, person, "block"],
+    ["a question after the Mate's words", mate, answer, "block"],
+  ] as const)("%s", (_, previous, row, gap) => {
+    expect(rowGap(previous, row)).toBe(gap);
+  });
+});
