@@ -371,6 +371,29 @@ export const crewLandedWord = (count: number): string => `Landed, not delivered 
 export const crewNoDevHostWord = (mateName: string): string =>
   `No dev service is mounted yet — ask ${mateName} to start development first.`;
 
+/** The Brief row while the brief is still the template's placeholder, or empty. */
+export const CREW_BRIEF_EMPTY_WORD = "Describe what the crew builds";
+
+/**
+ * The brief's excerpt as the Brief row shows it (PRD §4.3 item 3): markdown
+ * read as plain text — heading lines dropped, list, quote and emphasis markers
+ * stripped — at most two lines.
+ */
+export function crewBriefPlainText(excerpt: string): string {
+  return excerpt
+    .split(/\r?\n/u)
+    .filter((line) => !/^\s*#/u.test(line))
+    .map((line) =>
+      line
+        .replace(/^\s*(?:[-*+]|\d+[.)]|>)\s+/u, "")
+        .replace(/\*\*|__|`/gu, "")
+        .trim(),
+    )
+    .filter((line) => line !== "")
+    .slice(0, 2)
+    .join("\n");
+}
+
 /** The run dialog resuming a run its budget or time limit stopped. */
 export const CREW_RESUME_TITLE = "Resume the run";
 

@@ -41,6 +41,7 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Chip, FlatCard, MateFace, MicroLabel, Pill, StatusDot } from "../primitives";
 import {
   crewAttentionActions,
+  crewBriefLine,
   crewLoginMark,
   crewOffersStart,
   crewRowLead,
@@ -123,20 +124,7 @@ export function CrewSection(props: CrewSectionProps) {
           </p>
         ),
       )}
-      {view.crew === null ? null : (
-        <FlatCard className="space-y-1.5 p-3" data-crew-brief>
-          <div className="flex items-center gap-2">
-            <MicroLabel>Brief</MicroLabel>
-            <Chip label={`v${view.crew.briefVersion}`} tone="off" />
-            <Button className="ms-auto" onClick={props.onEditBrief} size="xs" variant="ghost">
-              Edit
-            </Button>
-          </div>
-          <p className="line-clamp-2 text-sm whitespace-pre-line text-muted-foreground">
-            {view.crew.briefExcerpt}
-          </p>
-        </FlatCard>
-      )}
+      {view.crew === null ? null : <CrewBriefRow {...props} />}
       {snapshot.attention.length === 0 ? null : <CrewAttentionBlock {...props} />}
       {view.lead === null ? null : (
         <div className="space-y-1" data-crew-lead>
@@ -177,6 +165,33 @@ export function CrewSection(props: CrewSectionProps) {
       />
       <CrewFooter {...props} boardCount={boardCount} />
     </section>
+  );
+}
+
+/** The Brief row: its version, its first lines as plain text — or, still the template's, a prompt. */
+function CrewBriefRow(props: CrewSectionProps) {
+  const crew = props.view.crew;
+  if (crew === null) return null;
+  const line = crewBriefLine(crew);
+  return (
+    <FlatCard className="space-y-1.5 p-3" data-crew-brief>
+      <div className="flex items-center gap-2">
+        <MicroLabel>Brief</MicroLabel>
+        <Chip label={`v${crew.briefVersion}`} tone="off" />
+        <Button className="ms-auto" onClick={props.onEditBrief} size="xs" variant="ghost">
+          Edit
+        </Button>
+      </div>
+      {line.placeholder ? (
+        <p className="text-sm text-muted-foreground italic" data-crew-brief-placeholder>
+          {line.text}
+        </p>
+      ) : (
+        <p className="line-clamp-2 text-sm whitespace-pre-line text-muted-foreground">
+          {line.text}
+        </p>
+      )}
+    </FlatCard>
   );
 }
 

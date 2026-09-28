@@ -7,6 +7,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { readCrewThread } from "../../../zerops/crew/useCrew";
 import {
   crewAttentionActions,
+  crewBriefLine,
   crewFaceStack,
   crewOffersStart,
   crewLoginMark,
@@ -246,6 +247,29 @@ describe("crewServedLine", () => {
     { name: "unknown", served: { by: "unknown" as const }, line: null },
   ])("$name", ({ served, line }) => {
     expect(crewServedLine({ ...host, served }, snapshot.crewmates)).toEqual(line);
+  });
+});
+
+describe("crewBriefLine", () => {
+  const crew = snapshot.crew!;
+  it.each([
+    {
+      name: "a written brief, as plain text",
+      excerpt: "Sell handmade goods.\n## Binding decisions",
+      line: { placeholder: false, text: "Sell handmade goods." },
+    },
+    {
+      name: "the template's placeholder asks for a brief",
+      excerpt: "Describe what the crew builds and why.\n## Binding decisions",
+      line: { placeholder: true, text: "Describe what the crew builds" },
+    },
+    {
+      name: "an empty brief asks for one too",
+      excerpt: "",
+      line: { placeholder: true, text: "Describe what the crew builds" },
+    },
+  ])("$name", ({ excerpt, line }) => {
+    expect(crewBriefLine({ ...crew, briefExcerpt: excerpt })).toEqual(line);
   });
 });
 

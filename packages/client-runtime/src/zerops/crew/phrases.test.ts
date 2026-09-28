@@ -32,6 +32,7 @@ import {
   crewApplyWord,
   crewAskToFixWord,
   crewAskToResolveWord,
+  crewBriefPlainText,
   crewAttentionSentence,
   crewBoardLinkWord,
   crewCommitEditAsk,
@@ -398,6 +399,23 @@ describe("the section's words (PRD §4.3)", () => {
     expect(crewResumeTimeHint(72 * 60_000)).toBe(
       "Raise it past the 1 h 12 m already run, or pick No limit.",
     );
+  });
+
+  it.each([
+    [
+      "headings dropped",
+      "The camera follows the player.\n## Binding decisions",
+      "The camera follows the player.",
+    ],
+    [
+      "list, quote and emphasis markers stripped",
+      "- **Money** as integer cents\n> keep `REST`",
+      "Money as integer cents\nkeep REST",
+    ],
+    ["at most two lines", "One.\n\nTwo.\nThree.", "One.\nTwo."],
+    ["nothing left", "## Done when", ""],
+  ])("reads the brief's excerpt as plain text: %s", (_name, excerpt, plain) => {
+    expect(crewBriefPlainText(excerpt)).toBe(plain);
   });
 
   it("says why a writer has no service to pick yet", () => {

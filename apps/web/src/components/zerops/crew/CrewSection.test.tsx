@@ -133,6 +133,26 @@ describe("CrewSection", () => {
     expect(refused).toContain("Paused · Backend&#x27;s login is not yours");
   });
 
+  it("reads the brief as plain text, and asks for one while it is the template's", () => {
+    const snapshot = crewSnapshotFixture();
+    const written = render({
+      ...snapshot,
+      crew: { ...snapshot.crew!, briefExcerpt: "Sell handmade goods.\n## Binding decisions" },
+    });
+    expect(written).toContain("Sell handmade goods.");
+    expect(written).not.toContain("## Binding decisions");
+
+    const template = render({
+      ...snapshot,
+      crew: {
+        ...snapshot.crew!,
+        briefExcerpt: "Describe what the crew builds and why.\n## Binding decisions",
+      },
+    });
+    expect(template).toContain("data-crew-brief-placeholder");
+    expect(template).toContain(">Describe what the crew builds<");
+  });
+
   it("sets the lead apart: first, under its own label, with a Lead chip", () => {
     const markup = render(crewSnapshotFixture());
     const lead = markup.slice(markup.indexOf("data-crew-lead"), markup.indexOf("data-crew-rows"));

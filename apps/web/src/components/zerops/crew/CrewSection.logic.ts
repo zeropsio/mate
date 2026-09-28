@@ -9,6 +9,8 @@
  */
 import {
   CREW_ATTENTION_VERBS,
+  CREW_BRIEF_EMPTY_WORD,
+  crewBriefPlainText,
   CREW_IDLE_WORD,
   crewAskToFixWord,
   crewAskToResolveWord,
@@ -16,6 +18,7 @@ import {
   crewServedWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewmateView, CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
+import { CREW_BRIEF_TEMPLATE } from "@t3tools/shared/crewTemplates";
 import type {
   CrewAttention,
   CrewCommand,
@@ -23,6 +26,7 @@ import type {
   CrewLogin,
   CrewRun,
   CrewSnapshot,
+  CrewSummary,
   CrewTaskState,
   Crewmate,
   ThreadId,
@@ -85,6 +89,22 @@ export function crewRowState(row: CrewmateView, tasks: CrewView["tasks"]): CrewR
     if (word !== null) return { word, tone: TASK_DOT_TONE[task.state], pulse: false };
   }
   return thread ?? { word: CREW_IDLE_WORD, tone: "off", pulse: false };
+}
+
+const TEMPLATE_BRIEF_OPENING = crewBriefPlainText(CREW_BRIEF_TEMPLATE).split("\n")[0];
+
+/**
+ * The Brief row's text: the brief's first lines as plain text, or — while the
+ * brief is still the template's placeholder, or empty — a prompt to write it.
+ */
+export function crewBriefLine(crew: Pick<CrewSummary, "briefExcerpt">): {
+  readonly placeholder: boolean;
+  readonly text: string;
+} {
+  const text = crewBriefPlainText(crew.briefExcerpt);
+  return text === "" || text.split("\n")[0] === TEMPLATE_BRIEF_OPENING
+    ? { placeholder: true, text: CREW_BRIEF_EMPTY_WORD }
+    : { placeholder: false, text };
 }
 
 /** The row's muted line: the open task as `#N title`, or the job's first line. */
