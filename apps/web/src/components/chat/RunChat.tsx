@@ -2304,8 +2304,12 @@ function StatusLine({
           </span>
           {doing?.composing ? <TypingDots className="shrink-0 scale-75" /> : null}
         </span>
+        {/* The run's clock stands in the calls' time column — 14 px of the
+            bubble's padding and the chevron's 20 px slot in from the edge —
+            so every time in the card ends on one edge; it stood under the
+            chevrons, 34 px right of the times it sums. */}
         <RunClock
-          className={doing !== null && !doing.waiting ? "text-status-busy-text" : undefined}
+          className={cn("me-8.5", doing !== null && !doing.waiting && "text-status-busy-text")}
           status={status}
           timestampFormat={ctx.timestampFormat}
         />

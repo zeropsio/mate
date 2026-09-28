@@ -334,6 +334,8 @@ describe("RunChat", () => {
     );
     expect(markup).toContain("Nova worked");
     expect(markup).toMatch(/data-work-line-clock[^>]*>1m 12s</);
+    // It ends on the calls' time column, not under their chevrons.
+    expect(markup).toMatch(/class="[^"]*me-8\.5[^"]*" data-work-line-clock/);
     expect(markup).toContain('data-mate-face-state="done"');
     expect(draw(record([thought("r1", "One.")]))).not.toContain("data-mate-face-state");
   });
