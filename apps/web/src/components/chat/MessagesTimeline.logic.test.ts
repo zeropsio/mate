@@ -859,6 +859,33 @@ describe("deriveMessagesTimelineRows", () => {
   // the runs nothing else woke take them in the order they finished — Nova's
   // two helpers each woke a run, the second finishing before the first run it
   // woke was done, and neither run said why it began (2026-09-28).
+  // A command's start can arrive before the session names its run: turnless,
+  // it was drawn as background work that "finished in the background" over
+  // the run it began (Nova, 2026-09-28). The same call, reported with its
+  // run, says whose it is: one step of that run, and no line of its own.
+  it("gives a call seen before its run was named to the run its own report names", () => {
+    const started = tool("c1", "t2", 5, {
+      label: "Command run",
+      sourceActivityKind: "tool.updated",
+      toolLifecycleStatus: "inProgress",
+      toolCallId: "call-shared",
+    }) as Extract<TimelineEntry, { kind: "work" }>;
+    const entries = [
+      user("m0", 0),
+      tool("w1", "t1", 1),
+      assistant("a1", "t1", 4, "Done."),
+      { ...started, entry: { ...started.entry, turnId: null } } as TimelineEntry,
+      tool("c2", "t2", 6, { label: "Command run", toolCallId: "call-shared" }),
+      assistant("a2", "t2", 7, "And the rest."),
+    ];
+    const list = rows({ entries, settled: "t2" });
+    expect(list.some((row) => row.kind === "background")).toBe(false);
+    const second = list.findLast((row) => row.kind === "record");
+    expect(second?.kind === "record" ? second.items.map((item) => item.kind) : null).toEqual([
+      "step",
+    ]);
+  });
+
   it("says which of the helpers one launch started woke each run, in the order they finished", () => {
     const launch = tool("l1", "t1", 2, {
       label: "List routes",

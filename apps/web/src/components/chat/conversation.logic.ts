@@ -607,6 +607,26 @@ export function deriveConversationStructure(input: {
   const spanByTurnId = new Map(
     spans.flatMap((span) => (span.turnId ? [[span.turnId, span] as const] : [])),
   );
+  // A call can be seen before the session names its turn — its start arrives
+  // turnless, and was drawn as background work finishing "in the background"
+  // over the run it began (Nova, 2026-09-28). The same call, reported with
+  // its turn, says whose it is.
+  const turnIdByCall = new Map<string, TurnId>();
+  for (const entry of entries) {
+    if (
+      (entry.kind === "work" || entry.kind === "generic-call") &&
+      entry.entry.toolCallId !== undefined &&
+      entry.entry.turnId
+    ) {
+      turnIdByCall.set(entry.entry.toolCallId, entry.entry.turnId);
+    }
+  }
+  const turnIdOf = (entry: TimelineEntry): TurnId | null => {
+    const own = timelineEntryTurnId(entry);
+    if (own !== null || (entry.kind !== "work" && entry.kind !== "generic-call")) return own;
+    const call = entry.entry.toolCallId;
+    return call === undefined ? null : (turnIdByCall.get(call) ?? null);
+  };
   for (const [index, entry] of entries.entries()) {
     let span: TurnSpan | undefined;
     if (isUserMessageEntry(entry)) {
@@ -614,7 +634,7 @@ export function deriveConversationStructure(input: {
         ? spans.find((candidate) => candidate.openerIndex === index)
         : ownerOf(index);
     } else {
-      const turnId = timelineEntryTurnId(entry);
+      const turnId = turnIdOf(entry);
       span = turnId === null ? ownerOf(index) : spanByTurnId.get(turnId);
     }
     if (span === undefined) {
