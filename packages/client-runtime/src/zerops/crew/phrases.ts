@@ -293,6 +293,28 @@ export function crewAttentionSentence(
       return task === undefined
         ? `${name}'s task waits for the lead's review`
         : `#${task.number} waits for the lead's review`;
+    case "dependency-gone": {
+      const gone = task === undefined ? undefined : crewGoneDependency(task, crew.board.tasks);
+      const which = task === undefined ? `${name}'s task` : `#${task.number}`;
+      return gone === undefined
+        ? `${which} waits for a task that will not land`
+        : `${which} waits for #${gone.number}, ${gone.state === "discarded" ? "which was discarded" : "which stopped"}`;
+    }
+    case "sent-back": {
+      const by = task?.review?.by;
+      const reviewer =
+        by === null
+          ? "you"
+          : by === undefined ||
+              crew.crewmates.find((candidate) => candidate.handle === by)?.kind === "lead"
+            ? "the lead"
+            : (crew.crewmates.find((candidate) => candidate.handle === by)?.displayName ??
+              `@${by}`);
+      const which = task === undefined ? `${name}'s task` : `#${task.number}`;
+      return row.text === null
+        ? `${which} was sent back by ${reviewer}`
+        : `${which} was sent back by ${reviewer}: ${row.text}`;
+    }
   }
 }
 
@@ -471,6 +493,7 @@ export const CREW_ATTENTION_VERBS = {
   discard: "Discard",
   askLeadToReview: "Ask lead to review",
   landMyself: "Land it myself",
+  dropWait: "Drop the wait",
 } as const;
 
 /** *Ask lead to review*: one turn of the lead's, as you. */
@@ -483,6 +506,23 @@ export const CREW_CARRY_ON_MESSAGE = "Carry on with your task.";
 export const crewAskToResolveWord = (name: string): string => `Ask ${name} to resolve`;
 
 export const crewAskToFixWord = (name: string): string => `Ask ${name} to fix`;
+
+export const crewAskToReworkWord = (name: string): string => `Ask ${name} to rework`;
+
+/** The first task `task` depends on that will not land: discarded or stopped (parked). */
+export const crewGoneDependency = (
+  task: Pick<CrewTask, "dependsOn">,
+  tasks: ReadonlyArray<CrewTask>,
+): CrewTask | undefined =>
+  task.dependsOn
+    .map((id) => tasks.find((entry) => entry.id === id))
+    .find((entry) => entry?.state === "discarded" || entry?.state === "parked");
+
+/** *Ask <name> to rework*: one turn as you, carrying the review's note. */
+export const crewReworkMessage = (taskNumber: number, note: string | null): string =>
+  note === null || note.trim() === ""
+    ? `Rework #${taskNumber} after its review.`
+    : `Rework #${taskNumber} after its review: ${note}`;
 
 /** `a.ts`, `a.ts and b.ts`, `a.ts, b.ts and c.ts`. */
 function pathList(paths: ReadonlyArray<string>): string {

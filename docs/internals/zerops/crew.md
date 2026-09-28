@@ -215,22 +215,38 @@ a run's start or resume restarts the crew's sessions so each takes the new cap: 
 once, a working one when its turn ends. While running, the run starts queued tasks, sends rework
 back, lands per its mode, nudges a turn that ended without a report once per attempt, and with the
 dev grant allows a request to show on dev. A run's start or resume, and a boot inside a running
-run, give every crewmate whose task stands `working` with no turn running a carry-on turn as the
-run's starter; a turn the run's own pause stopped carries on in the pause's words.
+run, take up what waits on someone (`takeUpWaiting` in `crewRunFlow.ts`): every crewmate whose
+task stands `working` with no turn running gets a carry-on turn as the run's starter (a turn the
+run's own pause stopped carries on in the pause's words), and every review, and every question
+not passed on to the person, that the lead was woken for and no running turn of the lead's serves
+wakes the lead again (`wakesToRenew` in `crewLead.ts`).
 
-**A task stopped mid-way** (`crewTurns.ts`, `crewBoot.ts`, `crewSnapshot.ts`): a turn that leaves
-its task `working` ends the task's attempt — `crew_attempt.ending` is `budget`, `run-paused`,
-`run-stopped`, `interrupted`, `failed` or `no-report`, with its words in `ending_detail` and
-`ended_at` — and the attempt's next turn opens it again; a rework's new attempt has a row of its
-own. At boot an attempt a turn left open without the engine seeing it end ends at the task's last
-move. A task standing `working` with no turn running for five minutes waits on the person as a
-`stalled` row, its text the attempt's words and its time when the turn ended; the feed publishes
-again when the five minutes pass. Its crewmate's queue waits behind it until it lands, parks or
-is discarded.
+**What waits on someone** (`crewRunFlow.ts`, `crewLead.ts`, `crewSnapshot.ts`): a task that
+stands still is either taken up by a running run or named in _Waiting on you_. A crewmate's queue
+waits behind its open task until that task lands, parks or is discarded, so a task nobody acts on
+holds every task after it.
+
+| A task stands                               | A running run                                                                                         | _Waiting on you_                                                       |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `working`, no turn running                  | carries it on at start, resume and boot; nudges it once an attempt after a turn ends without a report | `stalled` once nobody has acted for five minutes, in a run too         |
+| `review`, no turn of the lead's on it       | wakes the lead again at start, resume and boot                                                        | `review-wait` once nobody has acted for five minutes, in a run too     |
+| `ready`                                     | lands it when its landing is _check_, or _lead_ after the lead's accept                               | `ready-to-land`, always                                                |
+| `blocked` on a question                     | wakes the lead first, again at start, resume and boot                                                 | `question` at once without a run; in one after 15 minutes or passed on |
+| `rework` after a review's reject            | sends it back to its crewmate at once                                                                 | `sent-back` when no run is running                                     |
+| `queued` behind a discarded or stopped task | nothing starts it                                                                                     | `dependency-gone`                                                      |
+
+A turn that leaves its task `working` ends the task's attempt — `crew_attempt.ending` is `budget`,
+`run-paused`, `run-stopped`, `interrupted`, `failed` or `no-report`, with its words in
+`ending_detail` and `ended_at` — and the attempt's next turn opens it again; a rework's new
+attempt has a row of its own. At boot an attempt a turn left open without the engine seeing it end
+ends at the task's last move. The five minutes are one rule (`UNATTENDED_MS`): a `stalled` row
+counts from the attempt's end, a `review-wait` row from the task's move into review, and the feed
+publishes again when they pass.
 
 **The lead** (`crewLead.ts`): the person talks to it like any crewmate, and _Tell the crew_ goes
 to its chat (`crewRouting.ts`). In a running run the engine wakes it, one wake at a time, at least
-two minutes apart and at most 30 per run: for a review (`crew_review` accepts, or rejects with the
+two minutes apart (across a restart too; the person's Start or Resume wakes it at once) and at
+most 30 per run: for a review (`crew_review` accepts, or rejects with the
 note as rework) and for a crewmate's question (`crew_report` blocked goes to the lead first; its
 reply is the crewmate's next turn; a question only the person can answer reaches them at once, and
 any question reaches them after 15 minutes). `crew_propose` puts tasks on the board as `proposed`
@@ -266,7 +282,14 @@ is the same sentence (`failureWords` in `crewCore.ts`, `crewFailureSentence` in
 is on and the crew has a lead or a queued task; _+ Add lead_ whenever the crew has none; a
 task that could not start offers _Try again_ (`taskRetry`) in _Waiting on you_; a task stopped
 mid-way reads "Backend's task #16 stopped mid-way: <why>" and offers _Continue_ (a `message`
-"Carry on with your task." as you), _Land now_ (`landNow`) and _Discard_ (`discard`).
+"Carry on with your task." as you), _Land now_ (`landNow`) and _Discard_ (`discard`); a review
+nobody takes up reads "#16 waits for the lead's review" and offers _Ask lead to review_ (a
+`message` to the lead as you) and _Land it myself_ (`land`, which on a task in review is your
+accept first); a task its review sent back reads "#16 was sent back by the lead: <note>" and
+offers _Ask Backend to rework_ (a `message` to the crewmate as you, carrying the note) and
+_Discard_; a queued task behind one that will not land reads "#21 waits for #16, which was
+discarded" and offers _Drop the wait_ (`taskEdit` without that dependency, after which it starts
+when its crewmate is free) and _Discard_.
 
 ## 8. Measured facts the design stands on
 

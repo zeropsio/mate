@@ -374,7 +374,8 @@ export const CrewAttention = Schema.Struct({
   taskId: Schema.NullOr(CrewTaskId),
   /**
    * The question for `question`; the reason for `parked` and `cant-start`; the
-   * check's last line for `check-failed`; why its last turn ended for `stalled`.
+   * check's last line for `check-failed`; why its last turn ended for `stalled`;
+   * the review's note for `sent-back`.
    */
   text: Schema.NullOr(Schema.String),
   /** Your tree's paths for `landing-wait`; the conflicting paths for `conflict`. */
@@ -544,7 +545,10 @@ export const CrewCommand = Schema.TaggedUnion({
     doneWhen: Schema.String,
     dependsOn: Schema.Array(CrewTaskId),
   },
-  /** Only the fields present change. */
+  /**
+   * Only the fields present change; a queued task whose dependencies change
+   * starts at once when its crewmate is free (*Drop the wait*).
+   */
   taskEdit: {
     ...taskRef,
     title: Schema.optional(TrimmedNonEmptyString),

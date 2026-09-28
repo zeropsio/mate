@@ -363,4 +363,71 @@ describe("crew snapshot", () => {
     );
     expect(snapshot.attention.map((row) => [row.id, row.kind, row.handle, row.at])).toEqual(rows);
   });
+
+  it.each([
+    ["no run", null, [["sent-back:t-1", "sent-back", "backend", "Name the file hud.ts."]]],
+    [
+      "a paused run",
+      "paused",
+      [["sent-back:t-1", "sent-back", "backend", "Name the file hud.ts."]],
+    ],
+    ["a running run, which sends it back itself", "running", []],
+  ] as const)("a task the review sent back, with %s", (_, runState, rows) => {
+    const snapshot = appliedSnapshot(
+      base({
+        run:
+          runState === null
+            ? null
+            : {
+                id: "run-1",
+                state: runState,
+                reason: null,
+                reasonDetail: null,
+                startedBy: "user-1",
+                startedAt: AT,
+                elapsedMs: 0,
+                spentUsd: 0,
+                usagePercent: null,
+                options: {
+                  budgetUsd: "unlimited",
+                  timeLimitHours: "unlimited",
+                  stopAtUsagePercent: null,
+                  landing: "lead",
+                  devGrant: false,
+                  leadMayStart: false,
+                },
+              },
+        tasks: [
+          task("t-1", 1, {
+            state: "rework",
+            attempt: 1,
+            review: { verdict: "reject", note: "Name the file hud.ts.", by: "lead" },
+            waiting: { on: "review", reason: "Name the file hud.ts.", paths: [] },
+          }),
+        ],
+      }),
+    );
+    expect(snapshot.attention.map((row) => [row.id, row.kind, row.handle, row.text])).toEqual(rows);
+  });
+
+  it.each([
+    ["was discarded", "discarded", [["dependency-gone:t-2", "dependency-gone", "backend"]]],
+    ["stopped", "parked", [["dependency-gone:t-2", "dependency-gone", "backend"]]],
+    ["is still being worked", "working", []],
+    ["landed", "landed", []],
+  ] as const)("a queued task whose dependency %s", (_, state, rows) => {
+    const snapshot = appliedSnapshot(
+      base({
+        tasks: [
+          task("t-1", 1, { state, attempt: 1 }),
+          task("t-2", 2, { state: "queued", dependsOn: ["t-1"] }),
+        ],
+      }),
+    );
+    expect(
+      snapshot.attention
+        .filter((row) => row.taskId === "t-2")
+        .map((row) => [row.id, row.kind, row.handle]),
+    ).toEqual(rows);
+  });
 });

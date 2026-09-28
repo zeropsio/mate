@@ -203,8 +203,29 @@ describe("crewAttentionActions", () => {
         { kind: "command", label: "Land it myself", command: { _tag: "land", taskId: "task-12" } },
       ],
     },
+    {
+      kind: "sent-back" as const,
+      actions: [
+        {
+          kind: "command",
+          label: "Ask Backend to rework",
+          command: {
+            _tag: "message",
+            handle: "backend",
+            text: "Rework #12 after its review: Name the file hud.ts.",
+            attachments: [],
+          },
+        },
+        { kind: "command", label: "Discard", command: { _tag: "discard", taskId: "task-12" } },
+      ],
+    },
   ])("$kind", ({ kind, actions }) => {
-    const input = attention({ kind, paths: ["src/ui/hud.ts"], host: "appdev" });
+    const input = attention({
+      kind,
+      paths: ["src/ui/hud.ts"],
+      host: "appdev",
+      ...(kind === "sent-back" ? { text: "Name the file hud.ts." } : {}),
+    });
     expect(crewAttentionActions(input, snapshot, { board: true })).toEqual(actions);
   });
 
@@ -241,6 +262,27 @@ describe("crewAttentionActions", () => {
       crewAttentionActions(attention({ kind: "review-wait" }), noLead, { board: true }),
     ).toEqual([
       { kind: "command", label: "Land it myself", command: { _tag: "land", taskId: "task-12" } },
+    ]);
+  });
+
+  it("drops the wait on the dependency that will not land, or discards the task", () => {
+    const waiting = {
+      ...snapshot,
+      board: {
+        ...snapshot.board,
+        tasks: snapshot.board.tasks.map((entry) =>
+          entry.id === "task-15" ? { ...entry, dependsOn: ["task-12", "task-9"] } : entry,
+        ),
+      },
+    };
+    const row = attention({ kind: "dependency-gone", handle: "frontend", taskId: "task-15" });
+    expect(crewAttentionActions(row, waiting, { board: true })).toEqual([
+      {
+        kind: "command",
+        label: "Drop the wait",
+        command: { _tag: "taskEdit", taskId: "task-15", dependsOn: ["task-12"] },
+      },
+      { kind: "command", label: "Discard", command: { _tag: "discard", taskId: "task-15" } },
     ]);
   });
 
