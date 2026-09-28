@@ -1168,20 +1168,53 @@ describe("CrewEngine", () => {
     },
   );
 
-  it.live("Allow with no dev server running says what to do", () =>
+  it.live("an Allow with no dev server of the Mate's says the way out, in the section too", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
-        yield* applied(world);
+        write(
+          world.root,
+          "zerops.yaml",
+          [
+            "zerops:",
+            "  - setup: appdev",
+            "    run:",
+            "      ports:",
+            "        - port: 3000",
+            "          httpSupport: true",
+            "        - port: 3001",
+            "          httpSupport: true",
+            "",
+          ].join("\n"),
+        );
+        git(world.root, ["add", "-A"]);
+        git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
+        writeCrewHome(world.workspace, {
+          "crew.yaml": [
+            "name: Game team",
+            "briefTitle: Space shooter",
+            "members:",
+            "  - handle: backend",
+            "    displayName: Backend",
+            "    host: appdev",
+            "    run: sleep 30",
+            "",
+          ].join("\n"),
+        });
+        yield* command({ _tag: "apply" });
+        yield* eventually(Effect.map(latest, everyCopyReady));
         const thread = yield* firstTurn(world, () => undefined);
         const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
         yield* (yield* CrewToolHost).showOnDev(member, { reason: "See the camera" });
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
         yield* snapshotWhere((snapshot) => snapshot.hosts[0]?.claim.state === "requested");
-        yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.ahead === 0);
+        yield* command({ _tag: "claimGrant", host: TEST_HOST });
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        const failed = yield* snapshotWhere((snapshot) => snapshot.lastError !== null);
         const refused = yield* Effect.flip(command({ _tag: "claimGrant", host: TEST_HOST }));
+        const words =
+          "appdev has no dev server started by your Mate — ask your Mate to start it, or open Backend's own app on :3001";
         assert.deepStrictEqual(
-          [refused.reason, refused.detail],
-          ["wrong-state", "Start appdev's dev server first — ask your Mate to run it"],
+          [failed.lastError, refused.reason, refused.detail],
+          [words, "wrong-state", words],
         );
       }),
     ),

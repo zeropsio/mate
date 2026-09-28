@@ -264,6 +264,32 @@ export const refuse = (reason: CrewRefusalReason, detail: string | null = null) 
 
 const isCrewCommandError = Schema.is(CrewCommandError);
 
+/** A refusal's own words when it names no detail (the client's are `crewRefusalSentence`). */
+const REFUSAL_WORDS: Readonly<Record<CrewRefusalReason, string>> = {
+  unavailable: "Crew mode is off in this Mate",
+  "no-crew": "No crew is set up yet",
+  "invalid-definition": "The crew files need a fix",
+  "handle-taken": "That handle is already taken",
+  "no-free-disk": "The service has no free disk for another copy of the code",
+  "database-undeclared":
+    "A crewmate on a service with a database needs `env:` or `database: shared`",
+  "no-mention": "Name a crewmate with @, or add a lead to split the work",
+  "unknown-crewmate": "There is no such crewmate on the crew",
+  "unknown-task": "That task is no longer on the board",
+  "wrong-state": "That can't be done in its current state",
+  "not-allowed": "That crewmate's turn could not start",
+  "unlanded-commits": "Its copy of the code has commits that never landed",
+  "login-needs-fresh": "A different login needs a fresh conversation",
+  io: "The crew could not reach its files or a service",
+};
+
+/**
+ * What the section's last error shows for a failure: a refusal's own
+ * sentence, never its tagged message ("Crew command refused (…): …").
+ */
+export const failureWords = (error: { readonly message: string }): string =>
+  isCrewCommandError(error) ? (error.detail ?? REFUSAL_WORDS[error.reason]) : error.message;
+
 /** Any failure the command cannot name otherwise: the crew home or a service could not be reached. */
 export const asRefusal = <A, E extends { readonly message: string }, R>(
   effect: Effect.Effect<A, E, R>,
@@ -458,7 +484,7 @@ export const makeCrewCore = Effect.gen(function* () {
       effect.pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
-            memory.lastError = error.message;
+            memory.lastError = failureWords(error);
           }).pipe(Effect.andThen(changed)),
         ),
         Effect.forkIn(scope),

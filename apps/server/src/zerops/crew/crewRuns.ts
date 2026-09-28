@@ -40,6 +40,7 @@ import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 import {
   asRefusal,
   DEFAULT_CREW_LOGIN,
+  failureWords,
   principalUser,
   refuse,
   requireApplied,
@@ -238,7 +239,7 @@ export const ensureRunTick = (core: CrewCore) =>
       checkRunLimits(core).pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
-            core.memory.lastError = error.message;
+            core.memory.lastError = failureWords(error);
           }),
         ),
         Effect.repeat(Schedule.spaced(RUN_TICK)),
