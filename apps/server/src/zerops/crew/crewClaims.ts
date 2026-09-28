@@ -24,11 +24,13 @@ import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 import { claimReleaseCard, claimStartCard, type DevServerShape } from "./crewCards.ts";
 import {
   asRefusal,
+  failureWords,
   isWorking,
   memberOf,
   principalUser,
   refuse,
   requireApplied,
+  type AppliedCrew,
   type CrewCore,
 } from "./crewCore.ts";
 import { crewLane } from "./CrewDefinition.ts";
@@ -171,7 +173,7 @@ const sendShaped = (
     }
     const shape = yield* devServerShape(core, host);
     if (shape === undefined) {
-      return yield* refuse("wrong-state", noDevServer(host));
+      return yield* refuse("wrong-state", noDevServer(applied, host, handle));
     }
     const stint = yield* stintForTurn(core, applied, member, "turn-start", false);
     core.memory.shaped.set(stint.threadId, { turn: kind, devServer: shape });
@@ -190,9 +192,17 @@ const sendShaped = (
     ).pipe(Effect.tapError(() => Effect.sync(() => core.memory.shaped.delete(stint.threadId))));
   });
 
-/** Why a claim cannot start: the dev service runs no dev server zcp started. */
-const noDevServer = (host: string): string =>
-  `Start ${host}'s dev server first — ask your Mate to run it`;
+/**
+ * Why a claim cannot start: the dev service runs no dev server zcp started
+ * (Show on dev restarts that one), and the way out — the Mate starts it, or
+ * the crewmate's own app on its crew port shows its work meanwhile.
+ */
+const noDevServer = (applied: AppliedCrew, host: string, handle: string): string => {
+  const row = applied.members.get(handle);
+  const app =
+    row?.crewPort == null ? "" : `, or open ${row.displayName}'s own app on :${row.crewPort}`;
+  return `${host} has no dev server started by your Mate — ask your Mate to start it${app}`;
+};
 
 /** A waiting *Allow* is gone: sent, or its claim moved on. */
 const settleGrant = (core: CrewCore, host: string) =>
@@ -218,7 +228,7 @@ export const grantClaim = (core: CrewCore, principal: TurnPrincipal, host: strin
     }
     yield* settleGrant(core, host);
     if ((yield* devServerShape(core, host)) === undefined) {
-      return yield* refuse("wrong-state", noDevServer(host));
+      return yield* refuse("wrong-state", noDevServer(applied, host, claim.handle));
     }
     yield* asRefusal(core.runtime.grant(host, principalUser(principal)));
     yield* refreshClaims(core);
@@ -263,7 +273,7 @@ export const grantAfterTurn = (core: CrewCore, handle: string) =>
       yield* grantClaim(core, principal, host).pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
-            core.memory.lastError = error.message;
+            core.memory.lastError = failureWords(error);
           }),
         ),
       );
@@ -294,7 +304,7 @@ export const settleAllClaims = (core: CrewCore) =>
       yield* settleClaim(core, host).pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
-            core.memory.lastError = error.message;
+            core.memory.lastError = failureWords(error);
           }),
         ),
       );

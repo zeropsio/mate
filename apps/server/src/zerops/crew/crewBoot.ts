@@ -20,7 +20,7 @@ import * as Option from "effect/Option";
 import { ThreadId } from "@t3tools/contracts";
 
 import { grantAfterTurn, settleAllClaims } from "./crewClaims.ts";
-import { asRefusal, memberOf, type CrewCore } from "./crewCore.ts";
+import { asRefusal, failureWords, memberOf, type CrewCore } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
 import { laneSpecsOn } from "./crewTurns.ts";
@@ -86,7 +86,7 @@ export const boot = (core: CrewCore) =>
       yield* sweepHost(core, host).pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
-            core.memory.lastError = error.message;
+            core.memory.lastError = failureWords(error);
           }),
         ),
       );

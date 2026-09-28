@@ -60,7 +60,13 @@ import {
 import { boot } from "./crewBoot.ts";
 import { grantClaim, moveClaim, releaseClaim, showOnDevNow } from "./crewClaims.ts";
 import * as CrewChecks from "./CrewChecks.ts";
-import { DEFAULT_CREW_LOGIN, makeCrewCore, runtimeOf, type CrewCore } from "./crewCore.ts";
+import {
+  DEFAULT_CREW_LOGIN,
+  failureWords,
+  makeCrewCore,
+  runtimeOf,
+  type CrewCore,
+} from "./crewCore.ts";
 import {
   board,
   diff,
@@ -392,7 +398,7 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
           retryRefused(core).pipe(
             Effect.catch((error) =>
               Effect.sync(() => {
-                core.memory.lastError = error.message;
+                core.memory.lastError = failureWords(error);
               }),
             ),
           ),
@@ -418,7 +424,7 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
     ).pipe(
       Effect.catch((error) =>
         Effect.sync(() => {
-          core.memory.lastError = error.message;
+          core.memory.lastError = failureWords(error);
         }),
       ),
       Effect.forkIn(scope),
@@ -450,7 +456,7 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
       Effect.andThen(Effect.sleep(SNAPSHOT_INTERVAL)),
       Effect.catch((error) =>
         Effect.sync(() => {
-          core.memory.lastError = error.message;
+          core.memory.lastError = failureWords(error);
         }),
       ),
       Effect.forever,

@@ -20,7 +20,7 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
-import { asRefusal, type CrewCore } from "./crewCore.ts";
+import { asRefusal, failureWords, type CrewCore } from "./crewCore.ts";
 
 export const appendSeam = (core: CrewCore, threadId: string, words: string, seam: CrewSeam) =>
   Effect.gen(function* () {
@@ -46,7 +46,7 @@ export const appendSeam = (core: CrewCore, threadId: string, words: string, seam
   }).pipe(
     Effect.catch((error) =>
       Effect.sync(() => {
-        core.memory.lastError = error.message;
+        core.memory.lastError = failureWords(error);
       }).pipe(Effect.andThen(core.changed)),
     ),
   );

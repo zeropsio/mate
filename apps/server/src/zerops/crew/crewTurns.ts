@@ -24,6 +24,7 @@ import * as Effect from "effect/Effect";
 import {
   asRefusal,
   currentStint,
+  failureWords,
   memberOf,
   runningRun,
   type AppliedCrew,
@@ -422,7 +423,7 @@ export const makeTurnHandler = (core: CrewCore) => {
     }).pipe(
       Effect.catch((error) =>
         Effect.sync(() => {
-          core.memory.lastError = error.message;
+          core.memory.lastError = failureWords(error);
         }),
       ),
     );

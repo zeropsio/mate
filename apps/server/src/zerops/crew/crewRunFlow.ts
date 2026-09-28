@@ -26,6 +26,7 @@ import {
   asRefusal,
   currentStint,
   dispatchPrincipal,
+  failureWords,
   isWorking,
   leadOf,
   memberOf,
@@ -202,7 +203,7 @@ export const advanceAll = (core: CrewCore) =>
       yield* advance(core, handle).pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
-            core.memory.lastError = error.message;
+            core.memory.lastError = failureWords(error);
           }),
         ),
       );
