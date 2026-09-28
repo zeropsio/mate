@@ -38,7 +38,8 @@ const REVIEWER_JOB = `Review each change against its task and the brief: correct
 Say what must change and why; you never change files.
 `;
 
-const BRIEF_TEXT = `Describe what the crew builds and why.
+/** The brief every template starts from: a placeholder the person replaces. */
+export const CREW_BRIEF_TEMPLATE = `Describe what the crew builds and why.
 
 ## Binding decisions
 - Decisions every crewmate must follow.
@@ -112,7 +113,7 @@ export const crewFromTemplate = (input: CrewTemplateInput): CrewDefinition => {
   return {
     crew: input.crew,
     name: TEMPLATE_NAMES[input.template],
-    brief: parseBrief("New brief", BRIEF_TEXT),
+    brief: parseBrief("New brief", CREW_BRIEF_TEMPLATE),
     members,
   };
 };

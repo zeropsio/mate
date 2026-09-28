@@ -808,6 +808,7 @@ describe("logins", () => {
     token: false,
     title: "Claude Code",
     crewmates: [],
+    lead: null,
     ...overrides,
   });
   const agents = snapshot([
@@ -821,7 +822,13 @@ describe("logins", () => {
     agent({ agentId: "codex" }),
   ]);
   const LOGINS: ReadonlyArray<MateLoginRow> = [
-    row({ id: "claudeAgent", default: true, signedInBy: VIEWER, crewmates: ["backend"] }),
+    row({
+      id: "claudeAgent",
+      default: true,
+      signedInBy: VIEWER,
+      crewmates: ["lead", "backend"],
+      lead: "lead",
+    }),
     row({
       id: "claudeAgent-work",
       label: "work",
@@ -891,8 +898,8 @@ describe("logins", () => {
     expect(rowOf(html, "claudeAgent-work")).toContain("Runs: frontend, erik");
     expect(rowOf(html, "claudeAgent-api-key")).toContain("Added by you");
     expect(rowOf(html, "codex-home")).toContain("Not signed in");
-    // The default login's crewmates ride its agent row.
-    expect(html).toContain("Runs: backend");
+    // The default login's crewmates ride its agent row, the lead named as the lead.
+    expect(html).toContain("Runs: lead (lead), backend");
   });
 
   it("says a teammate's login serves only their crews (N9)", () => {

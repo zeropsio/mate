@@ -36,6 +36,7 @@ import {
   type ZeropsAgentOwnership,
 } from "@t3tools/client-runtime/zerops/agentOwnership";
 
+import { crewRunsOnWord } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { mateLoginSignerLine, type MateLoginRow } from "@t3tools/client-runtime/zerops/logins";
 import { Fragment, useId, useState } from "react";
 
@@ -200,9 +201,7 @@ export function ZeropsAgentAuthRows({
         <Fragment key={agent.agentId}>
           <ZeropsAgentAuthRow
             agent={agent}
-            crewmates={
-              logins.find((login) => login.default && login.agent === agent.agentId)?.crewmates
-            }
+            runsOn={logins.find((login) => login.default && login.agent === agent.agentId)}
             onCancel={onCancel}
             onRetryRecord={onRetryRecord}
             onSignIn={onSignIn}
@@ -240,7 +239,7 @@ export function ZeropsAgentAuthRows({
 
 function ZeropsAgentAuthRow({
   agent,
-  crewmates,
+  runsOn,
   viewerSubject,
   quiet,
   recordFailed,
@@ -253,8 +252,8 @@ function ZeropsAgentAuthRow({
   signOutError,
 }: {
   readonly agent: ZeropsAgentAuth;
-  /** The crewmates that run on this agent's own login. */
-  readonly crewmates?: ReadonlyArray<string> | undefined;
+  /** This agent's own login, for the crewmates that run on it. */
+  readonly runsOn?: Pick<MateLoginRow, "crewmates" | "lead"> | undefined;
   readonly viewerSubject?: string | undefined;
   /** Another agent is signed in, so this one's sign-in is an offer. */
   readonly quiet: boolean;
@@ -303,7 +302,7 @@ function ZeropsAgentAuthRow({
               <span className="min-w-0 text-xs leading-4 text-muted-foreground">{label}</span>
             )}
           </div>
-          <RunsOnLine crewmates={crewmates} />
+          <RunsOnLine runsOn={runsOn} />
         </div>
       </div>
       <div className="flex min-w-0 flex-col items-stretch gap-1.5 sm:items-end">
@@ -348,12 +347,16 @@ function ZeropsAgentAuthRow({
   );
 }
 
-/** Which crewmates run on a login; nothing when none does. */
-function RunsOnLine({ crewmates }: { readonly crewmates?: ReadonlyArray<string> | undefined }) {
-  if (crewmates === undefined || crewmates.length === 0) return null;
+/** Which crewmates run on a login, the lead named as the lead; nothing when none does. */
+function RunsOnLine({
+  runsOn,
+}: {
+  readonly runsOn?: Pick<MateLoginRow, "crewmates" | "lead"> | undefined;
+}) {
+  if (runsOn === undefined || runsOn.crewmates.length === 0) return null;
   return (
     <p className="mt-0.5 text-xs leading-4 text-muted-foreground" data-zerops-login-crewmates>
-      Runs: {crewmates.join(", ")}
+      {crewRunsOnWord(runsOn.crewmates, runsOn.lead)}
     </p>
   );
 }
@@ -447,7 +450,7 @@ function ZeropsLoginRow({
               <span className="min-w-0 text-xs leading-4 text-muted-foreground">{signer}</span>
             )}
           </div>
-          <RunsOnLine crewmates={login.crewmates} />
+          <RunsOnLine runsOn={login} />
         </div>
       </div>
       <div className="flex min-w-0 flex-col items-stretch gap-1.5 sm:items-end">

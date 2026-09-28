@@ -14,9 +14,10 @@ const render = (snapshot: CrewSnapshot, overrides: Partial<CrewSectionProps> = {
   renderToStaticMarkup(
     <CrewSection
       environmentId={EnvironmentId.make("env-crew")}
-      error={null}
+      errorAt={() => null}
       onAddCrewPorts={noop}
       onAddLead={noop}
+      onResumeRun={noop}
       onStartRun={noop}
       onAsk={noop}
       onDeliver={noop}
@@ -130,6 +131,62 @@ describe("CrewSection", () => {
       },
     });
     expect(refused).toContain("Paused · Backend&#x27;s login is not yours");
+  });
+
+  it("reads the brief as plain text, and asks for one while it is the template's", () => {
+    const snapshot = crewSnapshotFixture();
+    const written = render({
+      ...snapshot,
+      crew: { ...snapshot.crew!, briefExcerpt: "Sell handmade goods.\n## Binding decisions" },
+    });
+    expect(written).toContain("Sell handmade goods.");
+    expect(written).not.toContain("## Binding decisions");
+
+    const template = render({
+      ...snapshot,
+      crew: {
+        ...snapshot.crew!,
+        briefExcerpt: "Describe what the crew builds and why.\n## Binding decisions",
+      },
+    });
+    expect(template).toContain("data-crew-brief-placeholder");
+    expect(template).toContain(">Describe what the crew builds<");
+  });
+
+  it("says a refused press beside its own row, not in the section's line", () => {
+    const snapshot = crewSnapshotFixture();
+    const refused = "That can't be done in its current state.";
+    const markup = render(snapshot, {
+      errorAt: (origin) => (origin === "attention:show-on-dev:appdev" ? refused : null),
+    });
+    const row = markup.slice(markup.indexOf("asks to show its work on appdev"));
+
+    expect(markup.split("can&#x27;t be done")).toHaveLength(2);
+    expect(row.indexOf("can&#x27;t be done")).toBeLessThan(row.indexOf("</li>"));
+    expect(markup.indexOf("can&#x27;t be done")).toBeGreaterThan(
+      markup.indexOf("data-crew-attention"),
+    );
+  });
+
+  it("sets the lead apart: first, under its own label, with a Lead chip", () => {
+    const markup = render(crewSnapshotFixture());
+    const lead = markup.slice(markup.indexOf("data-crew-lead"), markup.indexOf("data-crew-rows"));
+    const rows = markup.slice(markup.indexOf("data-crew-rows"));
+
+    expect(markup.indexOf("data-crew-lead")).toBeLessThan(markup.indexOf("data-crew-rows"));
+    expect(lead).toContain(">Lead<");
+    expect(lead).toContain("@lead");
+    expect(lead).toContain("data-crew-lead-chip");
+    expect(rows).toContain(">Crewmates<");
+    expect(rows).not.toContain("@lead");
+    expect(rows).toContain("@backend");
+  });
+
+  it("has no lead group without a lead", () => {
+    const snapshot = crewSnapshotFixture();
+    const markup = render({ ...snapshot, crewmates: snapshot.crewmates.slice(1) });
+    expect(markup).not.toContain("data-crew-lead=");
+    expect(markup).toContain(">Crewmates<");
   });
 
   it("offers + Add lead exactly while the crew has no lead", () => {

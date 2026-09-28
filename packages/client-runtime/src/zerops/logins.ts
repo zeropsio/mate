@@ -35,6 +35,8 @@ export interface MateLoginRow extends ZeropsLogin {
   readonly title: string;
   /** The handles of the crewmates that run on it, in roster order. */
   readonly crewmates: ReadonlyArray<string>;
+  /** The lead's handle when the lead is one of them; the card names it as the lead. */
+  readonly lead: string | null;
 }
 
 /**
@@ -45,13 +47,15 @@ export function mateLoginRows(
   snapshot: ZeropsAgentAuthSnapshot | null | undefined,
   crew: Pick<CrewSnapshot, "crewmates"> | null | undefined,
 ): ReadonlyArray<MateLoginRow> {
-  return (snapshot?.logins ?? []).map((login) => ({
-    ...login,
-    title: zeropsLoginTitle(login),
-    crewmates: (crew?.crewmates ?? [])
-      .filter((crewmate) => crewmate.login.id === login.id)
-      .map((crewmate) => crewmate.handle),
-  }));
+  return (snapshot?.logins ?? []).map((login) => {
+    const running = (crew?.crewmates ?? []).filter((crewmate) => crewmate.login.id === login.id);
+    return {
+      ...login,
+      title: zeropsLoginTitle(login),
+      crewmates: running.map((crewmate) => crewmate.handle),
+      lead: running.find((crewmate) => crewmate.kind === "lead")?.handle ?? null,
+    };
+  });
 }
 
 /**

@@ -317,14 +317,17 @@ const CrewLimit = Schema.Union([
   Schema.Literal("unlimited"),
 ]);
 
+/** "Stop at 80 % of the usage window"; `null` when the option is off. */
+const CrewUsageStop = Schema.NullOr(
+  Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 })),
+);
+
 /** The run dialog's choices (PRD §4.8); `start` carries exactly these. */
 export const CrewRunOptions = Schema.Struct({
   budgetUsd: CrewLimit,
   timeLimitHours: CrewLimit,
   /** "Stop at 80 % of the usage window"; `null` when the option is off. */
-  stopAtUsagePercent: Schema.NullOr(
-    Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 })),
-  ),
+  stopAtUsagePercent: CrewUsageStop,
   landing: CrewLandingMode,
   /** "The crew may show work on dev" (otherwise the person grants each claim). */
   devGrant: Schema.Boolean,
@@ -506,9 +509,7 @@ export const CrewCommand = Schema.TaggedUnion({
     ...runRef,
     budgetUsd: Schema.optional(CrewLimit),
     timeLimitHours: Schema.optional(CrewLimit),
-    stopAtUsagePercent: Schema.optional(
-      Schema.NullOr(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 }))),
-    ),
+    stopAtUsagePercent: Schema.optional(CrewUsageStop),
   },
   stop: runRef,
   finish: runRef,

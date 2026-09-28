@@ -40,6 +40,7 @@ describe("mateLoginRows", () => {
         {
           ...first!,
           handle: "backend",
+          kind: "writer",
           login: { id: "claudeAgent", label: "", agent: "claude-code" },
         },
         {
@@ -59,10 +60,21 @@ describe("mateLoginRows", () => {
       crew,
     );
 
-    expect(rows.map((row) => [row.id, row.title, row.crewmates])).toEqual([
-      ["claudeAgent", "Claude Code", ["backend"]],
-      ["claudeAgent-work", "Claude Code · work", ["frontend"]],
-      ["codex", "Codex", []],
+    expect(rows.map((row) => [row.id, row.title, row.crewmates, row.lead])).toEqual([
+      ["claudeAgent", "Claude Code", ["backend"], null],
+      ["claudeAgent-work", "Claude Code · work", ["frontend"], null],
+      ["codex", "Codex", [], null],
+    ]);
+  });
+
+  it("names the lead among the crewmates of the login it runs on", () => {
+    const base = crewSnapshotFixture();
+    const rows = mateLoginRows(
+      snapshot([login({ id: "claudeAgent", default: true, signedInBy: EVA })]),
+      base,
+    );
+    expect(rows.map((row) => [row.crewmates, row.lead])).toEqual([
+      [["lead", "backend", "frontend"], "lead"],
     ]);
   });
 

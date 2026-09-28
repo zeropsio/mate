@@ -9,6 +9,8 @@
  */
 import {
   CREW_ATTENTION_VERBS,
+  CREW_BRIEF_EMPTY_WORD,
+  crewBriefPlainText,
   CREW_IDLE_WORD,
   crewAskToFixWord,
   crewAskToResolveWord,
@@ -16,6 +18,7 @@ import {
   crewServedWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewmateView, CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
+import { CREW_BRIEF_TEMPLATE } from "@t3tools/shared/crewTemplates";
 import type {
   CrewAttention,
   CrewCommand,
@@ -23,6 +26,7 @@ import type {
   CrewLogin,
   CrewRun,
   CrewSnapshot,
+  CrewSummary,
   CrewTaskState,
   Crewmate,
   ThreadId,
@@ -87,6 +91,22 @@ export function crewRowState(row: CrewmateView, tasks: CrewView["tasks"]): CrewR
   return thread ?? { word: CREW_IDLE_WORD, tone: "off", pulse: false };
 }
 
+const TEMPLATE_BRIEF_OPENING = crewBriefPlainText(CREW_BRIEF_TEMPLATE).split("\n")[0];
+
+/**
+ * The Brief row's text: the brief's first lines as plain text, or — while the
+ * brief is still the template's placeholder, or empty — a prompt to write it.
+ */
+export function crewBriefLine(crew: Pick<CrewSummary, "briefExcerpt">): {
+  readonly placeholder: boolean;
+  readonly text: string;
+} {
+  const text = crewBriefPlainText(crew.briefExcerpt);
+  return text === "" || text.split("\n")[0] === TEMPLATE_BRIEF_OPENING
+    ? { placeholder: true, text: CREW_BRIEF_EMPTY_WORD }
+    : { placeholder: false, text };
+}
+
 /** The row's muted line: the open task as `#N title`, or the job's first line. */
 export function crewRowLead(row: CrewmateView): {
   readonly kind: "task" | "job";
@@ -120,6 +140,20 @@ export function crewOffersStart(view: CrewView, run: CrewRun | null): boolean {
   const idle = run === null || run.state === "finished" || run.state === "stopped";
   return idle && (view.lead !== null || view.tasks.some((row) => row.task.state === "queued"));
 }
+
+/**
+ * Where a press came from, so its refusal shows beside it
+ * (`useCrewCommand`'s `origin`): the run controls, *Deliver*, *Add crew
+ * ports*, one *Waiting on you* row, one crewmate row, one dev service's line.
+ */
+export const CREW_ORIGIN = {
+  run: "run",
+  deliver: "deliver",
+  ports: "ports",
+  attention: (id: string) => `attention:${id}`,
+  crewmate: (handle: string) => `crewmate:${handle}`,
+  host: (host: string) => `host:${host}`,
+} as const;
 
 export type CrewAttentionAction =
   | { readonly kind: "answer"; readonly label: string }

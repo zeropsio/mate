@@ -1,4 +1,5 @@
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
+import type { CrewRun } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -16,7 +17,11 @@ const textOf = (html: string) =>
     .replace(/\s+/gu, " ")
     .trim();
 
-function renderBody(hasLead: boolean, lastRun = crewSnapshotFixture().run) {
+function renderBody(
+  hasLead: boolean,
+  lastRun = crewSnapshotFixture().run,
+  resume: CrewRun | null = null,
+) {
   return renderToStaticMarkup(
     <Dialog open>
       <CrewRunDialogBody
@@ -25,6 +30,7 @@ function renderBody(hasLead: boolean, lastRun = crewSnapshotFixture().run) {
         canAct
         error={null}
         onStart={() => undefined}
+        resume={resume}
       />
     </Dialog>,
   );
@@ -62,5 +68,22 @@ describe("CrewRunDialogBody", () => {
     const later = renderBody(true);
     expect(budgetOf(later)).toContain(' checked="" value="amount"');
     expect(later).not.toMatch(/<button[^>]*disabled=""[^>]*>Start<\/button>/u);
+  });
+
+  it("resumes a budget-stopped run: its budget set apart, the other options as they stand", () => {
+    const run = crewSnapshotFixture().run!;
+    const paused = { ...run, state: "paused" as const, reason: "budget" as const, spentUsd: 20 };
+    const html = renderBody(true, paused, paused);
+    const text = textOf(html);
+
+    expect(text.startsWith("Resume the run Paused · budget reached")).toBe(true);
+    expect(html).toContain('data-crew-run-limit-reached="budget"');
+    expect(text).toContain("Raise it above the $20.00 already spent, or pick No limit.");
+    expect(text).toContain("Landing I land everything");
+    expect(text).toContain("Dev Ask me before showing a crewmate's work on dev");
+    expect(text).not.toContain("The lead lands after its review");
+    expect(text).not.toContain("The crew may show work on dev");
+    expect(text.endsWith("Cancel Resume")).toBe(true);
+    expect(html).toMatch(/<button[^>]*disabled[^>]*>Resume<\/button>/u);
   });
 });

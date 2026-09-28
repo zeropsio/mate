@@ -371,6 +371,49 @@ export const crewLandedWord = (count: number): string => `Landed, not delivered 
 export const crewNoDevHostWord = (mateName: string): string =>
   `No dev service is mounted yet — ask ${mateName} to start development first.`;
 
+/** The Brief row while the brief is still the template's placeholder, or empty. */
+export const CREW_BRIEF_EMPTY_WORD = "Describe what the crew builds";
+
+/**
+ * The brief's excerpt as the Brief row shows it (PRD §4.3 item 3): markdown
+ * read as plain text — heading lines dropped, list, quote and emphasis markers
+ * stripped — at most two lines.
+ */
+export function crewBriefPlainText(excerpt: string): string {
+  return excerpt
+    .split(/\r?\n/u)
+    .filter((line) => !/^\s*#/u.test(line))
+    .map((line) =>
+      line
+        .replace(/^\s*(?:[-*+]|\d+[.)]|>)\s+/u, "")
+        .replace(/\*\*|__|`/gu, "")
+        .trim(),
+    )
+    .filter((line) => line !== "")
+    .slice(0, 2)
+    .join("\n");
+}
+
+/** The run dialog resuming a run its budget or time limit stopped. */
+export const CREW_RESUME_TITLE = "Resume the run";
+
+/** Under a budget that would stop the run again at once. */
+export const crewResumeBudgetHint = (spentUsd: number): string =>
+  `Raise it above the ${dollars(spentUsd, true)} already spent, or pick No limit.`;
+
+/** Under a time limit the run has already used up. */
+export const crewResumeTimeHint = (elapsedMs: number): string =>
+  `Raise it past the ${formatCrewDuration(elapsedMs)} already run, or pick No limit.`;
+
+/** The section's two groups of rows: the lead, set apart, then everyone else. */
+export const CREW_LEAD_WORD = "Lead";
+export const CREW_CREWMATES_WORD = "Crewmates";
+
+/** Which crewmates run on a login, the lead named as the lead. */
+export function crewRunsOnWord(crewmates: ReadonlyArray<string>, lead: string | null): string {
+  return `Runs: ${crewmates.map((handle) => (handle === lead ? `${handle} (lead)` : handle)).join(", ")}`;
+}
+
 /** A dev service without crew ports (PRD §5.7). */
 export const crewPortsOffWord = (host: string): string => `${host} · Crew ports: off`;
 

@@ -11,6 +11,8 @@
  */
 import {
   CREW_BOARD_COLUMNS,
+  CREW_CREWMATES_WORD,
+  CREW_LEAD_WORD,
   crewAttentionSentence,
   crewBoardLinkWord,
   crewLandedWord,
@@ -38,7 +40,9 @@ import { Input } from "../../ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Chip, FlatCard, MateFace, MicroLabel, Pill, StatusDot } from "../primitives";
 import {
+  CREW_ORIGIN,
   crewAttentionActions,
+  crewBriefLine,
   crewLoginMark,
   crewOffersStart,
   crewRowLead,
@@ -46,6 +50,7 @@ import {
   crewServedLine,
   crewStateTone,
 } from "./CrewSection.logic";
+import { crewResumeNeedsDialog } from "./CrewRunDialog.logic";
 import { CrewTellComposer } from "./CrewTellComposer";
 
 const WAITING_ON_YOU = CREW_BOARD_COLUMNS[0].title;
@@ -70,10 +75,11 @@ export interface CrewSectionProps {
   readonly view: CrewView;
   readonly snapshot: CrewSnapshot;
   /** Sends one press; its result, or `null` when it was refused. */
-  readonly send: (command: CrewCommand) => Promise<CrewCommandResult | null>;
+  /** Sends one press; `origin` (`CREW_ORIGIN`) is where its refusal shows. */
+  readonly send: (command: CrewCommand, origin?: string) => Promise<CrewCommandResult | null>;
   readonly pending: boolean;
-  /** The last refusal's sentence. */
-  readonly error: string | null;
+  /** The last refusal's sentence at `origin`; `null` asks for one no row owns. */
+  readonly errorAt: (origin: string | null) => string | null;
   /** *Tell the crew*'s own sends, so its refusal stays under its line. */
   readonly tell: {
     readonly send: (command: CrewCommand) => Promise<CrewCommandResult | null>;
@@ -90,6 +96,8 @@ export interface CrewSectionProps {
   readonly onAddLead: () => void;
   /** (C) Opens the run dialog. */
   readonly onStartRun: () => void;
+  /** Opens the run dialog to resume a run its budget or time limit paused, with new limits. */
+  readonly onResumeRun: () => void;
   readonly onStartFresh: (row: CrewmateView) => void;
   readonly onRemove: (row: CrewmateView) => void;
   /** Hands Fen a draft, confirmed first: `what` says why. */
@@ -109,7 +117,7 @@ export function CrewSection(props: CrewSectionProps) {
       {(
         [
           ["engine", snapshot.lastError],
-          ["press", props.error],
+          ["press", props.errorAt(null)],
         ] as const
       ).map(([source, line]) =>
         line === null ? null : (
@@ -118,26 +126,26 @@ export function CrewSection(props: CrewSectionProps) {
           </p>
         ),
       )}
-      {view.crew === null ? null : (
-        <FlatCard className="space-y-1.5 p-3" data-crew-brief>
-          <div className="flex items-center gap-2">
-            <MicroLabel>Brief</MicroLabel>
-            <Chip label={`v${view.crew.briefVersion}`} tone="off" />
-            <Button className="ms-auto" onClick={props.onEditBrief} size="xs" variant="ghost">
-              Edit
-            </Button>
-          </div>
-          <p className="line-clamp-2 text-sm whitespace-pre-line text-muted-foreground">
-            {view.crew.briefExcerpt}
-          </p>
-        </FlatCard>
-      )}
+      {view.crew === null ? null : <CrewBriefRow {...props} />}
       {snapshot.attention.length === 0 ? null : <CrewAttentionBlock {...props} />}
-      <ul className="space-y-1" data-crew-rows>
-        {view.crewmates.map((row) => (
-          <CrewmateRow key={row.crewmate.handle} {...props} row={row} />
-        ))}
-      </ul>
+      {view.lead === null ? null : (
+        <div className="space-y-1" data-crew-lead>
+          <MicroLabel>{CREW_LEAD_WORD}</MicroLabel>
+          <ul>
+            <CrewmateRow {...props} row={view.lead} />
+          </ul>
+        </div>
+      )}
+      <div className="space-y-1" data-crew-rows>
+        <MicroLabel>{CREW_CREWMATES_WORD}</MicroLabel>
+        <ul className="space-y-1">
+          {view.crewmates
+            .filter((row) => row !== view.lead)
+            .map((row) => (
+              <CrewmateRow key={row.crewmate.handle} {...props} row={row} />
+            ))}
+        </ul>
+      </div>
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => props.onEditCrewmate(null)} size="xs" variant="ghost">
           + Add crewmate
@@ -159,6 +167,33 @@ export function CrewSection(props: CrewSectionProps) {
       />
       <CrewFooter {...props} boardCount={boardCount} />
     </section>
+  );
+}
+
+/** The Brief row: its version, its first lines as plain text — or, still the template's, a prompt. */
+function CrewBriefRow(props: CrewSectionProps) {
+  const crew = props.view.crew;
+  if (crew === null) return null;
+  const line = crewBriefLine(crew);
+  return (
+    <FlatCard className="space-y-1.5 p-3" data-crew-brief>
+      <div className="flex items-center gap-2">
+        <MicroLabel>Brief</MicroLabel>
+        <Chip label={`v${crew.briefVersion}`} tone="off" />
+        <Button className="ms-auto" onClick={props.onEditBrief} size="xs" variant="ghost">
+          Edit
+        </Button>
+      </div>
+      {line.placeholder ? (
+        <p className="text-sm text-muted-foreground italic" data-crew-brief-placeholder>
+          {line.text}
+        </p>
+      ) : (
+        <p className="line-clamp-2 text-sm whitespace-pre-line text-muted-foreground">
+          {line.text}
+        </p>
+      )}
+    </FlatCard>
   );
 }
 
@@ -186,21 +221,25 @@ function CrewHeader(props: CrewSectionProps & { readonly runOn: boolean }) {
             {run.state === "running" ? (
               <Pill
                 label="Pause"
-                onClick={() => void send({ _tag: "pause", runId: run.id })}
+                onClick={() => void send({ _tag: "pause", runId: run.id }, CREW_ORIGIN.run)}
                 size="sm"
                 tone="outline"
               />
             ) : (
               <Pill
                 label="Resume"
-                onClick={() => void send({ _tag: "resume", runId: run.id })}
+                onClick={() =>
+                  crewResumeNeedsDialog(run)
+                    ? props.onResumeRun()
+                    : void send({ _tag: "resume", runId: run.id }, CREW_ORIGIN.run)
+                }
                 size="sm"
                 tone="outline"
               />
             )}
             <Pill
               label="Stop"
-              onClick={() => void send({ _tag: "stop", runId: run.id })}
+              onClick={() => void send({ _tag: "stop", runId: run.id }, CREW_ORIGIN.run)}
               size="sm"
               tone="outline"
             />
@@ -220,6 +259,7 @@ function CrewHeader(props: CrewSectionProps & { readonly runOn: boolean }) {
           {[meters.spend, meters.time, meters.usage].filter((meter) => meter !== null).join(" · ")}
         </p>
       )}
+      <CrewPressError message={props.errorAt(CREW_ORIGIN.run)} />
     </div>
   );
 }
@@ -247,7 +287,10 @@ function CrewAttentionRow(props: CrewSectionProps & { readonly row: CrewAttentio
   const submitAnswer = () => {
     const text = answer.trim();
     if (text === "" || row.handle === null) return;
-    void send({ _tag: "answer", handle: row.handle, taskId: row.taskId, text }).then((result) => {
+    void send(
+      { _tag: "answer", handle: row.handle, taskId: row.taskId, text },
+      CREW_ORIGIN.attention(row.id),
+    ).then((result) => {
       if (result === null) return;
       setAnswer("");
       setAnswering(false);
@@ -277,7 +320,7 @@ function CrewAttentionRow(props: CrewSectionProps & { readonly row: CrewAttentio
                     props.onOpenThread(action.threadId);
                     return;
                   case "command":
-                    void send(action.command);
+                    void send(action.command, CREW_ORIGIN.attention(row.id));
                     return;
                 }
               }}
@@ -287,6 +330,7 @@ function CrewAttentionRow(props: CrewSectionProps & { readonly row: CrewAttentio
           ))}
         </div>
       </div>
+      <CrewPressError message={props.errorAt(CREW_ORIGIN.attention(row.id))} />
       {answering ? (
         <form
           className="flex gap-2"
@@ -332,6 +376,9 @@ function CrewmateRow(props: CrewSectionProps & { readonly row: CrewmateView }) {
       <span className="min-w-0 flex-1 space-y-0.5">
         <span className="flex min-w-0 items-baseline gap-1.5">
           <span className="truncate text-sm font-medium text-foreground">{mate.displayName}</span>
+          {mate.kind === "lead" ? (
+            <Chip className="shrink-0" data-crew-lead-chip label={CREW_LEAD_WORD} tone="off" />
+          ) : null}
           <span className="shrink-0 text-xs text-muted-foreground">@{mate.handle}</span>
           {loginMark === null ? null : (
             <span className="shrink-0 text-xs text-muted-foreground">· {loginMark}</span>
@@ -357,48 +404,60 @@ function CrewmateRow(props: CrewSectionProps & { readonly row: CrewmateView }) {
     </>
   );
   return (
-    <li className="flex min-w-0 items-center gap-1" data-crewmate={mate.handle}>
-      {threadId === null ? (
-        <div className="flex min-w-0 flex-1 items-center gap-3 rounded-md px-2 py-2">{body}</div>
-      ) : (
-        <button
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted"
-          onClick={() => props.onOpenThread(threadId)}
-          type="button"
-        >
-          {body}
-        </button>
-      )}
-      {mate.app?.state === "running" && mate.app.url !== null ? (
-        <a
-          aria-label={`Open ${mate.displayName}'s app`}
-          className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
-          href={mate.app.url}
-          rel="noreferrer"
-          target="_blank"
-        >
-          <ExternalLinkIcon className="size-3.5" />
-        </a>
-      ) : null}
-      <Menu>
-        <MenuTrigger
-          render={
-            <Button
-              aria-label={`${mate.displayName}'s actions`}
-              size="icon-xs"
-              variant="ghost-muted"
-            />
-          }
-        >
-          <EllipsisIcon className="size-4" />
-        </MenuTrigger>
-        <MenuPopup align="end">
-          <MenuItem onClick={() => props.onEditCrewmate(mate.handle)}>Edit job</MenuItem>
-          <MenuItem onClick={() => props.onStartFresh(row)}>Start fresh</MenuItem>
-          <MenuItem onClick={() => props.onRemove(row)}>Remove from crew</MenuItem>
-        </MenuPopup>
-      </Menu>
+    <li className="space-y-1" data-crewmate={mate.handle}>
+      <div className="flex min-w-0 items-center gap-1">
+        {threadId === null ? (
+          <div className="flex min-w-0 flex-1 items-center gap-3 rounded-md px-2 py-2">{body}</div>
+        ) : (
+          <button
+            className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted"
+            onClick={() => props.onOpenThread(threadId)}
+            type="button"
+          >
+            {body}
+          </button>
+        )}
+        {mate.app?.state === "running" && mate.app.url !== null ? (
+          <a
+            aria-label={`Open ${mate.displayName}'s app`}
+            className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
+            href={mate.app.url}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <ExternalLinkIcon className="size-3.5" />
+          </a>
+        ) : null}
+        <Menu>
+          <MenuTrigger
+            render={
+              <Button
+                aria-label={`${mate.displayName}'s actions`}
+                size="icon-xs"
+                variant="ghost-muted"
+              />
+            }
+          >
+            <EllipsisIcon className="size-4" />
+          </MenuTrigger>
+          <MenuPopup align="end">
+            <MenuItem onClick={() => props.onEditCrewmate(mate.handle)}>Edit job</MenuItem>
+            <MenuItem onClick={() => props.onStartFresh(row)}>Start fresh</MenuItem>
+            <MenuItem onClick={() => props.onRemove(row)}>Remove from crew</MenuItem>
+          </MenuPopup>
+        </Menu>
+      </div>
+      <CrewPressError message={props.errorAt(CREW_ORIGIN.crewmate(mate.handle))} />
     </li>
+  );
+}
+
+/** A refused press, said beside the row or button it came from. */
+function CrewPressError({ message }: { readonly message: string | null }) {
+  return message === null ? null : (
+    <p className="text-xs text-status-failed-text" role="alert">
+      {message}
+    </p>
   );
 }
 
@@ -420,6 +479,7 @@ function CrewFooter(props: CrewSectionProps & { readonly boardCount: number }) {
           <Pill className="ms-auto" label="Deliver" onClick={props.onDeliver} size="sm" />
         </div>
       )}
+      <CrewPressError message={props.errorAt(CREW_ORIGIN.deliver)} />
     </div>
   );
 }
@@ -429,13 +489,16 @@ function CrewHostLine(props: CrewSectionProps & { readonly host: CrewHost }) {
   const served = crewServedLine(host, snapshot.crewmates);
   return (
     <div className="space-y-1" data-crew-host={host.host}>
+      <CrewPressError message={props.errorAt(CREW_ORIGIN.host(host.host))} />
       {served === null ? null : (
         <div className="flex items-center gap-2">
           <span className="min-w-0 truncate">{served.text}</span>
           {served.release ? (
             <Button
               className="ms-auto"
-              onClick={() => void send({ _tag: "claimRelease", host: host.host })}
+              onClick={() =>
+                void send({ _tag: "claimRelease", host: host.host }, CREW_ORIGIN.host(host.host))
+              }
               size="xs"
               variant="ghost"
             >

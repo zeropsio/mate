@@ -10,6 +10,11 @@ import { crewSnapshotFixture } from "./testing/fixtures.ts";
 import {
   CREW_ATTENTION_VERBS,
   CREW_BOARD_COLUMNS,
+  CREW_CREWMATES_WORD,
+  CREW_LEAD_WORD,
+  CREW_RESUME_TITLE,
+  crewResumeBudgetHint,
+  crewResumeTimeHint,
   CREW_IDLE_WORD,
   CREW_LANE_VERBS,
   CREW_LEAD_ROLE_LINE,
@@ -30,6 +35,7 @@ import {
   crewApplyWord,
   crewAskToFixWord,
   crewAskToResolveWord,
+  crewBriefPlainText,
   crewAttentionSentence,
   crewBoardLinkWord,
   crewCommitEditAsk,
@@ -38,6 +44,7 @@ import {
   crewLandedWord,
   crewLaneWord,
   crewNoDevHostWord,
+  crewRunsOnWord,
   crewPendingWord,
   crewPortsAsk,
   crewPortsOffWord,
@@ -379,6 +386,39 @@ describe("the section's words (PRD §4.3)", () => {
     [{ job: null, brief: null }, null],
   ] as const)("pending %j reads %j", (pending, word) => {
     expect(crewPendingWord(pending)).toBe(word);
+  });
+
+  it("names the lead apart from the crewmates, and on the logins it runs on", () => {
+    expect([CREW_LEAD_WORD, CREW_CREWMATES_WORD]).toEqual(["Lead", "Crewmates"]);
+    expect(crewRunsOnWord(["lead", "backend"], "lead")).toBe("Runs: lead (lead), backend");
+    expect(crewRunsOnWord(["backend"], null)).toBe("Runs: backend");
+  });
+
+  it("words resuming a run its limit stopped", () => {
+    expect(CREW_RESUME_TITLE).toBe("Resume the run");
+    expect(crewResumeBudgetHint(6.4)).toBe(
+      "Raise it above the $6.40 already spent, or pick No limit.",
+    );
+    expect(crewResumeTimeHint(72 * 60_000)).toBe(
+      "Raise it past the 1 h 12 m already run, or pick No limit.",
+    );
+  });
+
+  it.each([
+    [
+      "headings dropped",
+      "The camera follows the player.\n## Binding decisions",
+      "The camera follows the player.",
+    ],
+    [
+      "list, quote and emphasis markers stripped",
+      "- **Money** as integer cents\n> keep `REST`",
+      "Money as integer cents\nkeep REST",
+    ],
+    ["at most two lines", "One.\n\nTwo.\nThree.", "One.\nTwo."],
+    ["nothing left", "## Done when", ""],
+  ])("reads the brief's excerpt as plain text: %s", (_name, excerpt, plain) => {
+    expect(crewBriefPlainText(excerpt)).toBe(plain);
   });
 
   it("says why a writer has no service to pick yet", () => {
