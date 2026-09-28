@@ -7,3 +7,5 @@ Use Cmd/Ctrl-click or **Open in new tab** to open the public address in your bro
 This is your interactive view of the public website. The **Browser** tab continues to show the agent’s separate browser session. Web and desktop use the same preview; native mobile and public-access menus outside the conversation retain external links.
 
 A known service can still redirect to another site or prohibit embedding. Browser origin restrictions prevent Mate from reliably detecting those cases; use **Open in new tab** if the preview cannot load.
+
+Signing in, a cart and anything else a site keeps in cookies usually needs **Open in new tab**. The preview shows the site inside Mate, so it counts as a different site, and browsers block most cookies it sets there. The panel says so once; **Got it** hides the note in this browser.
