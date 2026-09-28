@@ -128,6 +128,8 @@ export interface ConversationStripEntry {
   readonly threadId: ThreadId | null;
   readonly label: string;
   readonly face?: { readonly tint: MateTintId; readonly state: MateMarkState };
+  /** The crew's lead wears the lead's mark beside its face. */
+  readonly mark?: "lead";
   readonly status: ConversationStripStatus | null;
   readonly current: boolean;
   /**
@@ -240,6 +242,7 @@ export function crewEntries(input: {
             key: `crew:${crewmate.handle}`,
             threadId: crewmate.currentThreadId,
             label: `@${crewmate.handle}`,
+            ...(crewmate.kind === "lead" ? { mark: "lead" as const } : {}),
             face: {
               tint: crewmate.tint,
               state: mateFaceFor(

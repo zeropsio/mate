@@ -12,6 +12,8 @@ import {
   CREW_BOARD_COLUMNS,
   CREW_IDLE_WORD,
   CREW_LANE_VERBS,
+  CREW_LEAD_ROLE_LINE,
+  CREW_LEAD_WORD,
   crewAheadWord,
   crewAppWord,
   crewConflictWord,
@@ -553,5 +555,12 @@ describe("crewDevHostDatabaseWord", () => {
     [null, "Database unknown"],
   ] as const)("says a dev service's database %s as %s", (database, word) => {
     expect(crewDevHostDatabaseWord(database)).toBe(word);
+  });
+});
+
+describe("the lead's words", () => {
+  it("names the lead and what it does in place of a copy of the code", () => {
+    expect(CREW_LEAD_WORD).toBe("Lead");
+    expect(CREW_LEAD_ROLE_LINE).toBe("Plans and reviews · no copy of the code");
   });
 });

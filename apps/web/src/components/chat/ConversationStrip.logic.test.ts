@@ -319,6 +319,15 @@ describe("crewEntries", () => {
     );
   });
 
+  it("marks the lead's chip as the lead's, and no one else's", () => {
+    expect(entries().map((entry) => [entry.key, entry.mark])).toEqual([
+      ["crew:lead", "lead"],
+      ["crew:backend", undefined],
+      ["crew:frontend", undefined],
+      ["crew:erik", undefined],
+    ]);
+  });
+
   it("wears the working face and the resolver's word while its current stint works", () => {
     const backend = entries().find((entry) => entry.key === "crew:backend");
     expect(backend?.face?.state).toBe("working");

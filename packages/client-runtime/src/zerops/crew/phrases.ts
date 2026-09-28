@@ -557,3 +557,9 @@ export function crewDevHostDatabaseWord(database: boolean | null): string {
   if (database === null) return "Database unknown";
   return database ? "Has a database" : "No database";
 }
+
+/** The lead's mark beside its name (PRD §2.3, §4.6), and its accessible name in the strip. */
+export const CREW_LEAD_WORD = "Lead";
+
+/** What the lead does, where a writer's chat shows its copy of the code (PRD §4.6). */
+export const CREW_LEAD_ROLE_LINE = "Plans and reviews · no copy of the code";

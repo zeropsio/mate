@@ -86,6 +86,12 @@ describe("crewmateHeaderModel", () => {
     ]);
   });
 
+  it("tells the lead from a crewmate", () => {
+    const LEAD = { crew: "shop", crewmate: "lead", stint: 1 } as const;
+    expect(crewmateHeaderModel(view(), LEAD, ThreadId.make("thread-crew-lead-1"))?.lead).toBe(true);
+    expect(crewmateHeaderModel(view(), BACKEND, ON_BACKEND)?.lead).toBe(false);
+  });
+
   it("counts what Remove from crew would discard and what Forget memory would clear", () => {
     expect(crewmateHeaderModel(view(), BACKEND, ON_BACKEND)).toMatchObject({
       unlandedCommits: 3,

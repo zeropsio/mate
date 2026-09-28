@@ -55,6 +55,20 @@ describe("CrewmateHeader", () => {
     expect(html).toContain('aria-label="More for @backend"');
   });
 
+  it("marks the lead as the lead beside its name", () => {
+    const html = renderToStaticMarkup(
+      <CrewmateHeader
+        environmentId={FEN}
+        onEditJob={() => {}}
+        origin={{ crew: "shop", crewmate: "lead", stint: 1 }}
+        threadId={ThreadId.make("thread-crew-lead-1")}
+      />,
+    );
+    expect(html).toContain('data-crew-lead-chip="true"');
+    expect(html).toContain(">Lead<");
+    expect(render()).not.toContain("data-crew-lead-chip");
+  });
+
   it("names the crewmate by the thread's own origin while the crew is not read yet", () => {
     state.view = null;
     const html = render();
