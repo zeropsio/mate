@@ -492,8 +492,12 @@ describe("RunChat, as the person uses it", () => {
             <RunChat row={record([step(command("w1", "git status"))])} />
           </Rows>,
           {
+            // The chat's scroll is the one element that listens to its scrolling.
             createNodeMock: (element) =>
-              element.type === "div" && element.props["onScroll"] !== undefined ? scroller : {},
+              element.type === "div" &&
+              (element.props as { readonly onScroll?: unknown }).onScroll !== undefined
+                ? scroller
+                : {},
           },
         );
       });
