@@ -30,6 +30,7 @@ import { cn } from "~/lib/utils";
 
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { buildZeropsServiceMap } from "@t3tools/client-runtime/zerops/serviceMap";
+import { crewPortOwners } from "@t3tools/client-runtime/zerops/projections/crew";
 import { useEnvironment } from "~/state/environments";
 import { useAgentLogin } from "../../zerops/useAgentLogin";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
@@ -88,13 +89,19 @@ export function ZeropsPanel({
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
   // D6: recorded by the conversation view, whichever door the sign-in used.
   const signerRecord = useZeropsAgentSignerRecordState(threadRef?.environmentId);
-  const view = buildZeropsServiceMap(topology.view, lifecycle, runningToolLabel);
+  const crew = useCrew(threadRef?.environmentId ?? null);
+  // A dev service's crew ports name their routes by whose app answers there.
+  const view = buildZeropsServiceMap(
+    topology.view,
+    lifecycle,
+    runningToolLabel,
+    crew.snapshot === null ? undefined : crewPortOwners(crew.snapshot),
+  );
   const authorizationSnapshot = agentAuthSnapshot ?? agentAuthCard;
   const authorizationAgent = authorizationSnapshot?.agents.find(
     (agent) => agent.agentId === authorizationAgentId,
   );
   // The logins beyond each agent's own, and the one being signed in.
-  const crew = useCrew(threadRef?.environmentId ?? null);
   const logins = mateLoginRows(authorizationSnapshot, crew.snapshot);
   const mateLogins = useMateLogins(threadRef?.environmentId ?? null);
   const loginsSupported =

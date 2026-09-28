@@ -12,6 +12,7 @@ import type { Known } from "../knowledge/known.ts";
 import { statusLabel } from "../statusPresentation.ts";
 import {
   crewFeedRead,
+  crewPortOwners,
   deriveCrewView as deriveWith,
   type CrewShellInput,
   type CrewThreadRead,
@@ -383,5 +384,24 @@ describe("crewFeedRead", () => {
     for (const [name, read, expected] of table) {
       expect([name, crewFeedRead(read)]).toEqual([name, expected]);
     }
+  });
+});
+
+describe("crewPortOwners", () => {
+  it("names each crew port by the crewmate whose app it is, a free one by nobody", () => {
+    const snapshot = crewSnapshotFixture();
+    expect(crewPortOwners(snapshot)).toEqual(
+      new Map([
+        [
+          "appdev",
+          new Map([
+            [3001, "Backend"],
+            [3002, "Frontend"],
+            [3003, "Erik"],
+            [3004, null],
+          ]),
+        ],
+      ]),
+    );
   });
 });

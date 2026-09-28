@@ -4,7 +4,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
-import { buildZeropsServiceMap } from "@t3tools/client-runtime/zerops/serviceMap";
+import {
+  buildZeropsServiceMap,
+  type ZeropsCrewPortOwners,
+} from "@t3tools/client-runtime/zerops/serviceMap";
 import type {
   ZeropsTopologyService,
   ZeropsTopologyView,
@@ -80,6 +83,7 @@ const render = (
     readonly mateUpdate?: ReactNode;
     readonly agents?: ReactNode;
     readonly currentServiceId?: string;
+    readonly crewPorts?: ZeropsCrewPortOwners;
   },
 ): string =>
   renderToStaticMarkup(
@@ -94,6 +98,7 @@ const render = (
         view,
         options?.lifecycle === undefined ? undefined : liveLifecycle(options.lifecycle),
         options?.runningTool,
+        options?.crewPorts,
       )}
     />,
   );
@@ -248,15 +253,57 @@ describe("ZeropsServiceMap — the card", () => {
     expect(html).not.toContain("<svg");
   });
 
-  it("wraps long service identity without hiding status", () => {
+  it("keeps a long name on one line, cut only where the card is narrower, without hiding status", () => {
     const hostname = "application-runtime-with-a-hostname-too-long-for-the-right-panel";
     const html = render(topology([service({ hostname })]));
 
     expect(classNamesForText(html, hostname)).toEqual(
-      expect.arrayContaining(["min-w-0", "max-w-full", "break-all"]),
+      expect.arrayContaining(["min-w-0", "truncate"]),
     );
-    expect(html).not.toContain("truncate");
+    expect(classNamesForText(html, hostname)).not.toContain("break-all");
     expect(html).toContain("Active");
+  });
+
+  it("reads a service with five ports: its name whole, its ports on their own line, one button and an Open menu", () => {
+    const ports = [3001, 3002, 3003, 3004, 3000];
+    const html = render(
+      topology([
+        service({
+          hostname: "appdev",
+          typeName: "Node.js",
+          version: "v22.22.3",
+          ports: ports.map((port) => ({ port, httpSupport: true })),
+          routes: ports.map((port) => ({
+            port,
+            url: `https://appdev-1df2-${port}.prg1.zerops.app`,
+            host: `appdev-1df2-${port}.prg1.zerops.app`,
+          })),
+        }),
+      ]),
+      {
+        crewPorts: new Map([
+          [
+            "appdev",
+            new Map([
+              [3001, "Backend"],
+              [3002, null],
+              [3003, null],
+              [3004, null],
+            ]),
+          ],
+        ]),
+      },
+    );
+
+    // The name is one line of its own; the ports sit under it and may wrap.
+    expect(classNamesForText(html, "appdev")).toEqual(expect.arrayContaining(["truncate"]));
+    expect(html).toContain(">:3000, :3001, :3002, :3003, :3004</span>");
+    expect(html.indexOf(">appdev<")).toBeLessThan(html.indexOf("data-zerops-service-ports"));
+    // One direct button, for the service's own port; the rest behind Open.
+    expect(html.match(/data-zerops-service-route-button/gu)).toHaveLength(1);
+    expect(html).toContain('href="https://appdev-1df2-3000.prg1.zerops.app"');
+    expect(html).toContain("data-zerops-service-route-menu");
+    expect(html).toContain(">Open<");
   });
 
   it("shows a stage service nested under its dev partner", () => {
