@@ -2533,6 +2533,17 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         (runtimeInterest) => establishInterest(runtimeInterest).pipe(forkOwned),
         { discard: true },
       );
+      // A receiver kept through a short absence can still have interests recovering on it, whose
+      // cycle stopped while the tab was hidden: it resumes, retrying whatever came due meanwhile.
+      const resumed = yield* Ref.get(model);
+      yield* Effect.forEach(
+        [...receivers].filter(
+          ([organizationKey, receiver]) =>
+            nextRecoveryAtMs(organizationKey, receiver, resumed) !== null,
+        ),
+        ([, receiver]) => retryOnReceiver(receiver),
+        { discard: true },
+      );
     }),
   );
 

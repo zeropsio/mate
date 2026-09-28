@@ -42,6 +42,7 @@ import {
   type RuntimeInterestDescriptor,
   type ServiceRef,
   type ZeropsDataAdapter,
+  type ZeropsVisibility,
 } from "./types.ts";
 import type { ZeropsDataState } from "./state.ts";
 import type { AccessVerifier } from "./access/verifier.ts";
@@ -4211,6 +4212,7 @@ describe("a failure's scope: its own interest, or the receiver", () => {
     readonly register?: (request: RegistrationRequest) => AdapterError | null;
     readonly read?: (ticket: ReadTicket) => AdapterError | null;
     readonly policy?: Partial<ZeropsDataPolicy>;
+    readonly visibility?: ZeropsVisibility;
   }) =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();
@@ -4259,6 +4261,7 @@ describe("a failure's scope: its own interest, or the receiver", () => {
           recoveryBackoffMaxMs: 40,
           ...options.policy,
         }),
+        ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
       });
       const leaseScope = yield* Scope.make();
       const list = yield* runtime.acquire(listDescriptor).pipe(Scope.provide(leaseScope));
@@ -4562,6 +4565,47 @@ describe("a failure's scope: its own interest, or the receiver", () => {
         ]);
         yield* rig.dispose;
       }),
+  );
+  it.effect("a tab back before its pause resumes the project list waiting on its receiver", () =>
+    Effect.gen(function* () {
+      const visibilityState = yield* Ref.make<"visible" | "hidden">("visible");
+      const visibilityChanges = yield* Queue.unbounded<"visible" | "hidden">();
+      const rig = yield* setup({
+        register: failFirst(1, isProjectList, refused(429, "registration")),
+        policy: { hiddenReceiverPauseAfterMs: 1_000 },
+        visibility: {
+          current: Ref.get(visibilityState),
+          changes: Stream.fromQueue(visibilityChanges),
+        },
+      });
+      yield* settleUntil(
+        rig.runtime,
+        (state) => rig.settled(state) && rig.interestOf(state, rig.list)?.status === "recovering",
+      );
+
+      // Hidden through the list's backoff: nothing retries behind a hidden tab.
+      yield* Ref.set(visibilityState, "hidden");
+      yield* Queue.offer(visibilityChanges, "hidden");
+      yield* settleUntil(rig.runtime, () => false, 20);
+      yield* TestClock.adjust("100 millis");
+      const hidden = yield* settleUntil(rig.runtime, () => false, 20);
+      expect(rig.interestOf(hidden, rig.list)?.status).toBe("recovering");
+      expect(rig.registrations.filter(isProjectList)).toHaveLength(1);
+
+      // Back long before the receiver would pause: the list retries on the receiver it waits on.
+      yield* Ref.set(visibilityState, "visible");
+      yield* Queue.offer(visibilityChanges, "visible");
+      const shown = yield* settleUntil(
+        rig.runtime,
+        (state) => rig.interestOf(state, rig.list)?.status === "observing",
+      );
+      expect(rig.interestOf(shown, rig.list)).toMatchObject({
+        status: "observing",
+        identity: { receiver: rig.live },
+      });
+      expect(yield* Queue.size(rig.opened)).toBe(0);
+      yield* rig.dispose;
+    }),
   );
 });
 
