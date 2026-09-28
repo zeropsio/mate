@@ -170,15 +170,11 @@ export const memberFor = (core: CrewCore) => (threadId: string) =>
       },
       contextWindow: spec.context ?? CREW_CONTEXT_DEFAULT,
       // What the running run has left; a run with No limit sets none (PRD Δ16).
-      // The CLI caps a session's cumulative cost, what it spent before the run
-      // included, so the cap is that plus what the run has left.
+      // The CLI caps a session process's own spend, not the total its resume
+      // carries over, and a run's start or new budget restarts the sessions.
       ...(budget === null
         ? {}
-        : {
-            maxBudgetUsd:
-              Math.max(0, budget - (applied.run?.spentUsd ?? 0)) +
-              (core.memory.costSeen.get(stint.threadId) ?? 0),
-          }),
+        : { maxBudgetUsd: Math.max(0, budget - (applied.run?.spentUsd ?? 0)) }),
       ...(row.model === null ? {} : { model: row.model }),
       ...(row.effort === null ? {} : { effort: row.effort }),
     });
