@@ -1417,6 +1417,36 @@ describe("operationLineWords", () => {
       statusWord: "Healthy",
       words: "app is healthy",
     },
+    // "Running app" read as work still going on, under a finished bar (Nova,
+    // 2026-09-28): a dev server's line says what it came to, as its pill does.
+    {
+      kind: "devServer",
+      phase: "done",
+      voice: "Starting the dev server on app.",
+      statusWord: "Running",
+      words: "Dev server running on app",
+    },
+    {
+      kind: "devServer",
+      phase: "done",
+      voice: "Stopping the dev server on app.",
+      statusWord: "Not running",
+      words: "Dev server not running on app",
+    },
+    {
+      kind: "devServer",
+      phase: "failed",
+      voice: "Starting the dev server on app.",
+      statusWord: "Failed",
+      words: "Dev server on app failed",
+    },
+    {
+      kind: "devServer",
+      phase: "done",
+      voice: "Checking the dev server on app.",
+      statusWord: "Done",
+      words: "Dev server on app",
+    },
     {
       kind: "verify",
       phase: "failed",

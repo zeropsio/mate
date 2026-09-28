@@ -1142,6 +1142,13 @@ export function operationLineWords(operation: ZeropsOperation): string {
       return `Read the events of ${subject}`;
     case "discover":
       return `Looked at ${subject}`;
+    case "devServer":
+      // What it came to, as its pill says it: "Running app" read as work
+      // still going on, under a finished bar.
+      if (failed) return `Dev server on ${subject} failed`;
+      return statusWord === "Running" || statusWord === "Not running"
+        ? `Dev server ${statusWord.toLowerCase()} on ${subject}`
+        : `Dev server on ${subject}`;
     default:
       return failed ? `${subject}: ${statusWord.toLowerCase()}` : `${statusWord} ${subject}`;
   }
