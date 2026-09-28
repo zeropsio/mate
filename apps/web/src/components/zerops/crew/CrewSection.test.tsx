@@ -17,6 +17,7 @@ const render = (snapshot: CrewSnapshot, overrides: Partial<CrewSectionProps> = {
       error={null}
       onAddCrewPorts={noop}
       onAddLead={noop}
+      onResumeRun={noop}
       onStartRun={noop}
       onAsk={noop}
       onDeliver={noop}

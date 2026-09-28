@@ -92,7 +92,8 @@ function CrewSectionFor({
   const [editor, setEditor] = useState<Editor>(null);
   const [homeVersion, setHomeVersion] = useState(0);
   const [portsHost, setPortsHost] = useState<string | null>(null);
-  const [runOpen, setRunOpen] = useState(false);
+  /** The run dialog: to start a run, or to resume one its limit paused. */
+  const [runDialog, setRunDialog] = useState<"start" | "resume" | null>(null);
   const [ask, setAsk] = useState<{ readonly ask: string; readonly what: string } | null>(null);
   const mateName = mate?.name ?? "the Mate";
   const devHosts = crewDevHosts(snapshot).map((host) => host.host);
@@ -177,7 +178,8 @@ function CrewSectionFor({
           error={commands.error}
           onAddCrewPorts={setPortsHost}
           onAddLead={() => setEditor({ kind: "crewmate", target: { handle: null, lead: true } })}
-          onStartRun={() => setRunOpen(true)}
+          onResumeRun={() => setRunDialog("resume")}
+          onStartRun={() => setRunDialog("start")}
           onAsk={(draft, what) => setAsk({ ask: draft, what })}
           onDeliver={deliver}
           onEditBrief={() => setEditor({ kind: "brief" })}
@@ -226,7 +228,14 @@ function CrewSectionFor({
         onClose={() => closeEditor(false)}
         target={editor?.kind === "crewmate" ? editor.target : null}
       />
-      <CrewRunDialog environmentId={environmentId} onOpenChange={setRunOpen} open={runOpen} />
+      <CrewRunDialog
+        environmentId={environmentId}
+        onOpenChange={(open) => {
+          if (!open) setRunDialog(null);
+        }}
+        open={runDialog !== null}
+        resume={runDialog === "resume"}
+      />
       <CrewPortsDialog
         error={commands.error}
         host={portsHost}

@@ -48,6 +48,7 @@ import {
   crewServedLine,
   crewStateTone,
 } from "./CrewSection.logic";
+import { crewResumeNeedsDialog } from "./CrewRunDialog.logic";
 import { CrewTellComposer } from "./CrewTellComposer";
 
 const WAITING_ON_YOU = CREW_BOARD_COLUMNS[0].title;
@@ -92,6 +93,8 @@ export interface CrewSectionProps {
   readonly onAddLead: () => void;
   /** (C) Opens the run dialog. */
   readonly onStartRun: () => void;
+  /** Opens the run dialog to resume a run its budget or time limit paused, with new limits. */
+  readonly onResumeRun: () => void;
   readonly onStartFresh: (row: CrewmateView) => void;
   readonly onRemove: (row: CrewmateView) => void;
   /** Hands Fen a draft, confirmed first: `what` says why. */
@@ -208,7 +211,11 @@ function CrewHeader(props: CrewSectionProps & { readonly runOn: boolean }) {
             ) : (
               <Pill
                 label="Resume"
-                onClick={() => void send({ _tag: "resume", runId: run.id })}
+                onClick={() =>
+                  crewResumeNeedsDialog(run)
+                    ? props.onResumeRun()
+                    : void send({ _tag: "resume", runId: run.id })
+                }
                 size="sm"
                 tone="outline"
               />

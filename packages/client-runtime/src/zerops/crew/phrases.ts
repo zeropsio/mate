@@ -371,6 +371,17 @@ export const crewLandedWord = (count: number): string => `Landed, not delivered 
 export const crewNoDevHostWord = (mateName: string): string =>
   `No dev service is mounted yet — ask ${mateName} to start development first.`;
 
+/** The run dialog resuming a run its budget or time limit stopped. */
+export const CREW_RESUME_TITLE = "Resume the run";
+
+/** Under a budget that would stop the run again at once. */
+export const crewResumeBudgetHint = (spentUsd: number): string =>
+  `Raise it above the ${dollars(spentUsd, true)} already spent, or pick No limit.`;
+
+/** Under a time limit the run has already used up. */
+export const crewResumeTimeHint = (elapsedMs: number): string =>
+  `Raise it past the ${formatCrewDuration(elapsedMs)} already run, or pick No limit.`;
+
 /** The section's two groups of rows: the lead, set apart, then everyone else. */
 export const CREW_LEAD_WORD = "Lead";
 export const CREW_CREWMATES_WORD = "Crewmates";

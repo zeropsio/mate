@@ -5,6 +5,11 @@
  *
  * The first run preselects no budget, so spending without a limit is never an
  * accident; every later run starts from the last one's options.
+ *
+ * A run its budget or time limit paused resumes through the same dialog with
+ * new limits (`crewResumeCommand`): a budget above what is spent and a time
+ * limit past the time already run, or *No limit*. Any other pause resumes with
+ * one press.
  */
 import type { CrewCommand, CrewLandingMode, CrewRun } from "@t3tools/contracts";
 
@@ -98,5 +103,32 @@ export function crewStartCommand(draft: CrewRunDraft, hasLead: boolean): CrewCom
     landing: draft.landing,
     devGrant: draft.devGrant,
     leadMayStart: hasLead && draft.leadMayStart,
+  };
+}
+
+/** A paused run whose budget or time limit stopped it: resuming it needs a new limit. */
+export function crewResumeNeedsDialog(run: CrewRun | null): boolean {
+  return (
+    run !== null && run.state === "paused" && (run.reason === "budget" || run.reason === "time")
+  );
+}
+
+/**
+ * The dialog's *Resume*: the run's limits as the dialog holds them. `null`
+ * while a limit would stop the run again at once — a budget at or under what
+ * is spent, a time limit within the time already run — or reads as nothing.
+ */
+export function crewResumeCommand(draft: CrewRunDraft, run: CrewRun): CrewCommand | null {
+  const budgetUsd = draft.budget === null ? null : limitOf(draft.budget, draft.budgetText);
+  const timeLimitHours = limitOf(draft.time, draft.timeText);
+  if (budgetUsd === null || timeLimitHours === null) return null;
+  if (budgetUsd !== "unlimited" && budgetUsd <= run.spentUsd) return null;
+  if (timeLimitHours !== "unlimited" && timeLimitHours * 3_600_000 <= run.elapsedMs) return null;
+  return {
+    _tag: "resume",
+    runId: run.id,
+    budgetUsd,
+    timeLimitHours,
+    stopAtUsagePercent: draft.usageStop ? draft.usagePercent : null,
   };
 }

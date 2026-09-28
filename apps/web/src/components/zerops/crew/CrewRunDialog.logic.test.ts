@@ -1,7 +1,13 @@
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import { describe, expect, it } from "vite-plus/test";
 
-import { crewLandingOptions, crewRunDraft, crewStartCommand } from "./CrewRunDialog.logic";
+import {
+  crewLandingOptions,
+  crewResumeCommand,
+  crewResumeNeedsDialog,
+  crewRunDraft,
+  crewStartCommand,
+} from "./CrewRunDialog.logic";
 
 const lastRun = crewSnapshotFixture().run!;
 
@@ -184,5 +190,54 @@ describe("crewStartCommand", () => {
     },
   ] as const)("$name", ({ draft, hasLead, command }) => {
     expect(crewStartCommand(draft, hasLead)).toEqual(command);
+  });
+});
+
+describe("crewResumeNeedsDialog", () => {
+  it.each([
+    { name: "a budget stop asks for a new budget", reason: "budget", dialog: true },
+    { name: "a time stop asks for a new time limit", reason: "time", dialog: true },
+    { name: "your own pause resumes with one press", reason: "person", dialog: false },
+    { name: "a usage stop resumes with one press", reason: "usage", dialog: false },
+    { name: "a refused dispatch resumes with one press", reason: "refused", dialog: false },
+  ] as const)("$name", ({ reason, dialog }) => {
+    expect(crewResumeNeedsDialog({ ...lastRun, state: "paused", reason })).toBe(dialog);
+  });
+
+  it("is never for a run that is not paused", () => {
+    expect(crewResumeNeedsDialog({ ...lastRun, reason: "budget" })).toBe(false);
+    expect(crewResumeNeedsDialog(null)).toBe(false);
+  });
+});
+
+describe("crewResumeCommand", () => {
+  // $6.40 spent of $20, 1 h 12 m of 8 h, stop at 80 %.
+  const paused = { ...lastRun, state: "paused" as const, reason: "budget" as const };
+  const draft = crewRunDraft(paused, true);
+
+  it("resumes with the limits as they stand, changed or not", () => {
+    expect(crewResumeCommand({ ...draft, budgetText: "40" }, paused)).toEqual({
+      _tag: "resume",
+      runId: "run-3",
+      budgetUsd: 40,
+      timeLimitHours: 8,
+      stopAtUsagePercent: 80,
+    });
+    expect(crewResumeCommand({ ...draft, budget: "unlimited", usageStop: false }, paused)).toEqual({
+      _tag: "resume",
+      runId: "run-3",
+      budgetUsd: "unlimited",
+      timeLimitHours: 8,
+      stopAtUsagePercent: null,
+    });
+  });
+
+  it.each([
+    { name: "a budget at what is spent", fields: { budgetText: "6.4" } },
+    { name: "a budget under what is spent", fields: { budgetText: "5" } },
+    { name: "a time limit within the time already run", fields: { timeText: "1" } },
+    { name: "no amount", fields: { budgetText: "" } },
+  ])("holds $name", ({ fields }) => {
+    expect(crewResumeCommand({ ...draft, ...fields }, paused)).toBeNull();
   });
 });

@@ -12,6 +12,9 @@ import {
   CREW_BOARD_COLUMNS,
   CREW_CREWMATES_WORD,
   CREW_LEAD_WORD,
+  CREW_RESUME_TITLE,
+  crewResumeBudgetHint,
+  crewResumeTimeHint,
   CREW_IDLE_WORD,
   CREW_LANE_VERBS,
   crewAheadWord,
@@ -385,6 +388,16 @@ describe("the section's words (PRD §4.3)", () => {
     expect([CREW_LEAD_WORD, CREW_CREWMATES_WORD]).toEqual(["Lead", "Crewmates"]);
     expect(crewRunsOnWord(["lead", "backend"], "lead")).toBe("Runs: lead (lead), backend");
     expect(crewRunsOnWord(["backend"], null)).toBe("Runs: backend");
+  });
+
+  it("words resuming a run its limit stopped", () => {
+    expect(CREW_RESUME_TITLE).toBe("Resume the run");
+    expect(crewResumeBudgetHint(6.4)).toBe(
+      "Raise it above the $6.40 already spent, or pick No limit.",
+    );
+    expect(crewResumeTimeHint(72 * 60_000)).toBe(
+      "Raise it past the 1 h 12 m already run, or pick No limit.",
+    );
   });
 
   it("says why a writer has no service to pick yet", () => {
