@@ -811,6 +811,29 @@ function buildRevertTurnCountByUserMessageId(input: {
   return byUserMessageId;
 }
 
+/**
+ * The row a load of earlier turns keeps in place: the first row of the
+ * conversation in sight, never a seam — a day's seam moves to the top of what
+ * loads, and the list kept it in place while the conversation under it was
+ * thrown 3,300 px down (Nova, 2026-09-28).
+ */
+export function earlierTurnsAnchor(
+  rows: ReadonlyArray<{
+    readonly id: string;
+    readonly kind: string | undefined;
+    readonly top: number;
+    readonly bottom: number;
+  }>,
+  viewportTop: number,
+): { readonly id: string; readonly top: number } | null {
+  let anchor: { readonly id: string; readonly top: number } | null = null;
+  for (const row of rows) {
+    if (row.kind === "seam" || row.bottom <= viewportTop) continue;
+    if (anchor === null || row.top < anchor.top) anchor = { id: row.id, top: row.top };
+  }
+  return anchor;
+}
+
 /** A helper's finish, as the helpers panel knows it: which one, and when. */
 export interface HelperFinish {
   readonly id: string;

@@ -4,6 +4,7 @@ import type { TimelineEntry, WorkLogEntry } from "../../session-logic";
 import {
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRows,
+  earlierTurnsAnchor,
   rowGap,
   thoughtParagraphs,
   thoughtPreview,
@@ -2215,5 +2216,36 @@ describe("resolveAssistantMessageCopyState", () => {
     ],
   ])("%j", (input, expected) => {
     expect(resolveAssistantMessageCopyState(input)).toEqual(expected);
+  });
+});
+
+// Loading earlier turns keeps the row the person was reading where it stood:
+// the first row of the conversation in sight — a day's seam moves to the top
+// of what loads, and keeping it in place threw the rest 3,300 px down.
+describe("earlierTurnsAnchor", () => {
+  const row = (id: string, kind: string, top: number, height = 40) => ({
+    id,
+    kind,
+    top,
+    bottom: top + height,
+  });
+  it("takes the first row of the conversation in sight, never a seam", () => {
+    expect(
+      earlierTurnsAnchor(
+        [row("seam:day", "seam", 100, 30), row("m1", "message", 136), row("r1", "record", 190)],
+        56,
+      ),
+    ).toEqual({ id: "m1", top: 136 });
+  });
+  it("takes a row still partly in sight over one below it, and none above it", () => {
+    expect(
+      earlierTurnsAnchor(
+        [row("r0", "record", -60, 50), row("r1", "record", 20, 200), row("m2", "message", 230)],
+        56,
+      ),
+    ).toEqual({ id: "r1", top: 20 });
+  });
+  it("takes nothing where nothing of the conversation is in sight", () => {
+    expect(earlierTurnsAnchor([row("seam:day", "seam", 100, 30)], 56)).toBeNull();
   });
 });
