@@ -31,7 +31,7 @@ import {
   type CrewMember,
 } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
-import { moveClaim, releaseAfterTurn, settleClaim } from "./crewClaims.ts";
+import { grantAfterTurn, moveClaim, releaseAfterTurn, settleClaim } from "./crewClaims.ts";
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
 import { crewStateRef } from "./CrewStateRef.ts";
 import { attemptRef, type LaneSpec } from "./CrewWorkspace.ts";
@@ -193,6 +193,7 @@ const turnEnded = (
       yield* core.background(settleClaim(core, host));
     } else {
       yield* releaseAfterTurn(core, handle);
+      yield* grantAfterTurn(core, handle);
     }
     yield* endedHow(core, member, stint, event);
     if (member.row.kind === "lead") yield* settleLeadWake(core, applied, member);

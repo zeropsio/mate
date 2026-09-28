@@ -137,6 +137,8 @@ export interface EngineMemory {
   readonly integration: Map<string, Integration>;
   /** Why a crewmate asked to show its work on each dev service, while it asks. */
   readonly showReasons: Map<string, string>;
+  /** An *Allow* pressed while its crewmate's turn ran, per dev service, sent at that turn's end. */
+  readonly grantsWaiting: Map<string, TurnPrincipal>;
   /** The dev services this Mate mounts: whether each reaches a database, `null` until read. */
   readonly devHosts: Map<string, boolean | null>;
   /** When the running run's time last started counting (clock ms); `null` while none runs. */
@@ -213,6 +215,7 @@ export const makeMemory = (): EngineMemory => ({
   served: new Map(),
   integration: new Map(),
   showReasons: new Map(),
+  grantsWaiting: new Map(),
   devHosts: new Map(),
   runningSince: null,
   runTick: false,

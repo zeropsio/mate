@@ -1165,6 +1165,102 @@ describe("CrewEngine", () => {
     },
   );
 
+  it.live(
+    "Allow pressed while the crewmate's turn runs is kept and sent when the turn ends",
+    () => {
+      const started: Array<number> = [];
+      return withCrewEngine((world) =>
+        Effect.gen(function* () {
+          write(
+            world.root,
+            "zerops.yaml",
+            "zerops:\n  - setup: appdev\n    run:\n      ports:\n        - port: 3000\n          httpSupport: true\n",
+          );
+          git(world.root, ["add", "-A"]);
+          git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
+          yield* applied(world);
+          started.push(startDevServer(world.root));
+          const thread = yield* firstTurn(world, () => undefined);
+          const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
+          yield* (yield* CrewToolHost).showOnDev(member, { reason: "See the camera" });
+          yield* snapshotWhere((snapshot) => snapshot.hosts[0]?.claim.state === "requested");
+          yield* command({ _tag: "claimGrant", host: TEST_HOST });
+          const turnsWhileRunning = (yield* dispatchedOf(world, "thread.turn.start")).length;
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          const starting = yield* snapshotWhere(
+            (snapshot) => snapshot.hosts[0]?.claim.state === "starting",
+          );
+          const turns = yield* dispatchedOf(world, "thread.turn.start");
+          assert.deepStrictEqual(
+            [
+              turns.length - turnsWhileRunning,
+              starting.hosts[0]!.claim.handle,
+              turns.at(-1)!.message.text.split("\n")[1],
+              (yield* Ref.get(world.admitted)).at(-1)?.principal,
+            ],
+            [1, "backend", "Show your work on appdev", KAREL],
+          );
+        }),
+      ).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            for (const pid of started) {
+              try {
+                process.kill(pid);
+              } catch {}
+            }
+            NodeFS.rmSync(DEV_SERVER_PIDFILE, { force: true });
+          }),
+        ),
+      );
+    },
+  );
+
+  it.live("Show on dev pressed while the crewmate's turn runs goes out when the turn ends", () => {
+    const started: Array<number> = [];
+    return withCrewEngine((world) =>
+      Effect.gen(function* () {
+        write(
+          world.root,
+          "zerops.yaml",
+          "zerops:\n  - setup: appdev\n    run:\n      ports:\n        - port: 3000\n          httpSupport: true\n",
+        );
+        git(world.root, ["add", "-A"]);
+        git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
+        yield* applied(world);
+        started.push(startDevServer(world.root));
+        const thread = yield* firstTurn(world, () => undefined);
+        yield* command({ _tag: "showOnDev", handle: "backend" });
+        const turnsWhileRunning = (yield* dispatchedOf(world, "thread.turn.start")).length;
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        const starting = yield* snapshotWhere(
+          (snapshot) => snapshot.hosts[0]?.claim.state === "starting",
+        );
+        const turns = yield* dispatchedOf(world, "thread.turn.start");
+        assert.deepStrictEqual(
+          [
+            turns.length - turnsWhileRunning,
+            starting.hosts[0]!.claim.handle,
+            turns.at(-1)!.message.text.split("\n")[1],
+            (yield* Ref.get(world.admitted)).at(-1)?.principal,
+          ],
+          [1, "backend", "Show your work on appdev", KAREL],
+        );
+      }),
+    ).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          for (const pid of started) {
+            try {
+              process.kill(pid);
+            } catch {}
+          }
+          NodeFS.rmSync(DEV_SERVER_PIDFILE, { force: true });
+        }),
+      ),
+    );
+  });
+
   it.live("a run that lets the crew show work on dev allows a request when its turn ends", () => {
     const started: Array<number> = [];
     return withCrewEngine((world) =>
