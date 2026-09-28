@@ -675,7 +675,8 @@ describe("MessagesTimeline", () => {
 
     expect(markup).not.toContain("Show full message");
     expect(markup).toContain('data-user-message-collapsible="false"');
-    expect(markup).toMatch(/rounded-2xl bg-message[^"]* px-4 py-2\.5/);
+    // The chat's one bubble: 14 px in, 10 px down, as every bubble of the run is.
+    expect(markup).toMatch(/rounded-2xl bg-message[^"]* px-3\.5 py-2\.5/);
   });
 
   it("preserves arbitrary XML-like tags and comparisons in rendered user messages", async () => {
@@ -1152,7 +1153,7 @@ describe("MessagesTimeline — the conversation", () => {
       />,
     );
     expect(markup).toMatch(
-      /<div[^>]*data-chat-bubble="tool"[^>]*data-chat-kind="step:command"[^>]*><button aria-expanded="false" aria-label="pnpm build\. Show what it returned"/,
+      /<div[^>]*data-chat-bubble="tool"[^>]*data-chat-kind="step:command"[^>]*>(?:<span class="absolute[^"]*">[\s\S]*?<\/svg><\/span><\/span><\/span>)<button aria-expanded="false" aria-label="pnpm build\. Show what it returned"/,
     );
     expect(markup).not.toContain("dist/index.js");
   });

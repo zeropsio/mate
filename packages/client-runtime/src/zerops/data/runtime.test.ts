@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -18,9 +19,11 @@ import {
   planZeropsInterest,
   makeZeropsBoundedIngress,
   makeZeropsDataRuntime,
+  makeZeropsPriorityPermits,
   type ZeropsBoundedIngress,
+  type ZeropsPermitPriority,
 } from "./runtime.ts";
-import { makeZeropsDataPolicy } from "./policy.ts";
+import { makeZeropsDataPolicy, type ZeropsDataPolicy } from "./policy.ts";
 import {
   AccountEpoch,
   makeZeropsApiOrigin,
@@ -32,14 +35,17 @@ import {
   type AccountScope,
   type AdapterError,
   type DesiredInterestState,
+  type InterestLease,
   type ProjectRef,
   type PlatformObservation,
+  type ReadTicket,
   type ReceiverEvent,
   type ReceiverHandle,
   type RegistrationRequest,
   type RuntimeInterestDescriptor,
   type ServiceRef,
   type ZeropsDataAdapter,
+  type ZeropsVisibility,
 } from "./types.ts";
 import type { ZeropsDataState } from "./state.ts";
 import type { AccessVerifier } from "./access/verifier.ts";
@@ -145,6 +151,117 @@ describe("makeZeropsBoundedIngress", () => {
         peakBytes: 8,
         discardedEvents: 0,
       });
+    }),
+  );
+});
+
+describe("makeZeropsPriorityPermits", () => {
+  it.effect.each([
+    [
+      "first work ahead of later work that waited longer",
+      ["later:a", "later:b", "first:c"],
+      ["first:c", "later:a", "later:b"],
+    ],
+    [
+      "first work in arrival order before any later work",
+      ["first:a", "later:b", "first:c"],
+      ["first:a", "first:c", "later:b"],
+    ],
+    [
+      "later work in arrival order",
+      ["later:a", "later:b", "later:c"],
+      ["later:a", "later:b", "later:c"],
+    ],
+  ] as const)("admits %s as the permit frees", ([, arrivals, admitted]) =>
+    Effect.gen(function* () {
+      const permits = yield* makeZeropsPriorityPermits(1);
+      const holder = yield* Deferred.make<void>();
+      const order: string[] = [];
+      const held = yield* Effect.forkChild(permits.withPermit("later")(Deferred.await(holder)));
+      yield* Effect.yieldNow;
+      const waiting: Array<Fiber.Fiber<void>> = [];
+      for (const arrival of arrivals) {
+        const priority = arrival.split(":")[0] as ZeropsPermitPriority;
+        waiting.push(
+          yield* Effect.forkChild(
+            permits.withPermit(priority)(Effect.sync(() => void order.push(arrival))),
+          ),
+        );
+        yield* Effect.yieldNow;
+      }
+      expect(order).toEqual([]);
+
+      yield* Deferred.succeed(holder, undefined);
+      yield* Fiber.join(held);
+      for (const fiber of waiting) yield* Fiber.join(fiber);
+      expect(order).toEqual(admitted);
+    }),
+  );
+
+  it.effect("never runs more work at once than it has permits", () =>
+    Effect.gen(function* () {
+      const permits = yield* makeZeropsPriorityPermits(2);
+      let running = 0;
+      let peak = 0;
+      yield* Effect.forEach(
+        ["first", "later", "later", "first", "later", "first"] as const,
+        (priority) =>
+          permits.withPermit(priority)(
+            Effect.gen(function* () {
+              running += 1;
+              peak = Math.max(peak, running);
+              for (let turn = 0; turn < 3; turn++) yield* Effect.yieldNow;
+              running -= 1;
+            }),
+          ),
+        { concurrency: "unbounded", discard: true },
+      );
+      expect(peak).toBe(2);
+      expect(running).toBe(0);
+    }),
+  );
+
+  it.effect.each(["first", "later"] as const)(
+    "a %s waiter interrupted before its turn takes no permit and holds no later work back",
+    (priority) =>
+      Effect.gen(function* () {
+        const permits = yield* makeZeropsPriorityPermits(1);
+        const holder = yield* Deferred.make<void>();
+        const held = yield* Effect.forkChild(permits.withPermit("later")(Deferred.await(holder)));
+        yield* Effect.yieldNow;
+        const leaving = yield* Effect.forkChild(permits.withPermit(priority)(Effect.void));
+        yield* Effect.yieldNow;
+        let admitted = false;
+        const staying = yield* Effect.forkChild(
+          permits.withPermit("later")(Effect.sync(() => void (admitted = true))),
+        );
+        yield* Effect.yieldNow;
+        yield* Fiber.interrupt(leaving);
+
+        yield* Deferred.succeed(holder, undefined);
+        yield* Fiber.join(held);
+        yield* Fiber.join(staying);
+        expect(admitted).toBe(true);
+        const probe = yield* Effect.forkChild(permits.withPermit("later")(Effect.void));
+        for (let turn = 0; turn < 10; turn++) yield* Effect.yieldNow;
+        expect(probe.pollUnsafe()).toBeDefined();
+      }),
+  );
+
+  it.effect("work that fails or is interrupted while holding a permit gives it back", () =>
+    Effect.gen(function* () {
+      const permits = yield* makeZeropsPriorityPermits(1);
+      const refused = yield* permits
+        .withPermit("first")(Effect.fail("refused"))
+        .pipe(Effect.result);
+      expect(refused).toMatchObject({ _tag: "Failure", failure: "refused" });
+      const holding = yield* Effect.forkChild(permits.withPermit("later")(Effect.never));
+      yield* Effect.yieldNow;
+      yield* Fiber.interrupt(holding);
+
+      const probe = yield* Effect.forkChild(permits.withPermit("later")(Effect.void));
+      for (let turn = 0; turn < 10; turn++) yield* Effect.yieldNow;
+      expect(probe.pollUnsafe()).toBeDefined();
     }),
   );
 });
@@ -4138,6 +4255,819 @@ it.effect("aborts an in-flight direct inventory baseline when its final lease is
     registry.dispose();
   }),
 );
+
+/** Lets ready work run until `predicate` holds of the runtime's state, or `turns` run out. */
+const settleUntil = (
+  runtime: { readonly state: Effect.Effect<ZeropsDataState> },
+  predicate: (state: ZeropsDataState) => boolean,
+  turns = 200,
+): Effect.Effect<ZeropsDataState> =>
+  Effect.gen(function* () {
+    for (let turn = 0; turn < turns; turn++) {
+      const state = yield* runtime.state;
+      if (predicate(state)) return state;
+      yield* Effect.yieldNow;
+    }
+    return yield* runtime.state;
+  });
+
+describe("a failure's scope: its own interest, or the receiver", () => {
+  const organization = project("project-a").organization;
+  const listDescriptor: RuntimeInterestDescriptor = {
+    kind: "organization-inventory",
+    organization,
+  };
+  const inventoryDescriptors: ReadonlyArray<RuntimeInterestDescriptor> = ["b", "c"].map((id) => ({
+    kind: "project-inventory",
+    project: project(`project-${id}`),
+  }));
+  const isProjectList = (request: RegistrationRequest) =>
+    request.descriptor.kind === "query-membership" &&
+    request.descriptor.query.kind === "projects-of-organization";
+  const readsProject = (ticket: ReadTicket, projectId: string) =>
+    ticket.target.kind === "project" && ticket.target.ref.projectId === projectId;
+
+  /** A request the platform refused with an HTTP status, as the adapter reports it. */
+  const refused = (status: number, kind: AdapterError["kind"]): AdapterError => ({
+    _tag: "ZeropsDataAdapterError",
+    kind,
+    message: `Zerops answered ${status}.`,
+    retryable: true,
+    accountRevocationEvidence: false,
+    status,
+  });
+  /** A request that brought back no answer the adapter could hold the platform to. */
+  const unanswered = (kind: AdapterError["kind"]): AdapterError => ({
+    _tag: "ZeropsDataAdapterError",
+    kind,
+    message: `No answer (${kind}).`,
+    retryable: true,
+    accountRevocationEvidence: false,
+  });
+  /** Fails the first `times` requests `matches` with `failure`. */
+  const failFirst = <Request>(
+    times: number,
+    matches: (request: Request) => boolean,
+    failure: AdapterError,
+  ) => {
+    let failed = 0;
+    return (request: Request): AdapterError | null => {
+      if (!matches(request) || failed >= times) return null;
+      failed += 1;
+      return failure;
+    };
+  };
+
+  /**
+   * The organization's project list and two projects' inventories on one receiver. `register`
+   * and `read` answer each request with the failure it meets, or `null` for an answer.
+   */
+  const setup = (options: {
+    readonly register?: (request: RegistrationRequest) => AdapterError | null;
+    readonly read?: (ticket: ReadTicket) => AdapterError | null;
+    readonly policy?: Partial<ZeropsDataPolicy>;
+    readonly visibility?: ZeropsVisibility;
+  }) =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const opened = yield* Queue.unbounded<{
+        readonly handle: ReceiverHandle;
+        readonly events: Queue.Queue<ReceiverEvent>;
+      }>();
+      const registrations: RegistrationRequest[] = [];
+      let closes = 0;
+      const adapter: ZeropsDataAdapter = {
+        openReceiver: (_scope, organization, identity) =>
+          Effect.gen(function* () {
+            const events = yield* Queue.unbounded<ReceiverEvent>();
+            const handle: ReceiverHandle = {
+              identity,
+              organization,
+              delivery: "hot-single-consumer-buffered-before-open-resolves",
+              events: Stream.fromQueue(events),
+            };
+            yield* Queue.offer(opened, { handle, events });
+            return handle;
+          }),
+        register: (_receiver, request) =>
+          Effect.suspend(() => {
+            registrations.push(request);
+            const failure = options.register?.(request) ?? null;
+            return failure === null
+              ? Effect.succeed({ responseObservations: [] })
+              : Effect.fail(failure);
+          }),
+        read: (ticket) =>
+          Effect.suspend(() => {
+            const failure = options.read?.(ticket) ?? null;
+            return failure === null ? Effect.succeed({ observations: [] }) : Effect.fail(failure);
+          }),
+        execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+        closeReceiver: () => Effect.sync(() => void (closes += 1)),
+      };
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter,
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+        policy: makeZeropsDataPolicy({
+          recoveryBackoffStartMs: 10,
+          recoveryBackoffMaxMs: 40,
+          ...options.policy,
+        }),
+        ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
+      });
+      const leaseScope = yield* Scope.make();
+      const list = yield* runtime.acquire(listDescriptor).pipe(Scope.provide(leaseScope));
+      const inventories = yield* Effect.forEach(inventoryDescriptors, (descriptor) =>
+        runtime.acquire(descriptor).pipe(Scope.provide(leaseScope)),
+      );
+      const first = yield* Queue.take(opened);
+      const leases = [list, ...inventories];
+      const interestOf = (state: ZeropsDataState, lease: InterestLease) =>
+        state.interests.get(lease.interest)?.interest;
+      return {
+        runtime,
+        opened,
+        registrations,
+        closes: () => closes,
+        live: first.handle.identity,
+        events: first.events,
+        list,
+        inventories,
+        leases,
+        interestOf,
+        /** Every lease arrived somewhere: observing, failed, or recovering on a schedule. */
+        settled: (state: ZeropsDataState) =>
+          leases.every((lease) => {
+            const interest = interestOf(state, lease);
+            return (
+              interest?.status === "observing" ||
+              interest?.status === "failed" ||
+              (interest?.status === "recovering" && interest.nextRetryAtMs > 0)
+            );
+          }),
+        dispose: Effect.gen(function* () {
+          yield* runtime.shutdown("application-close");
+          yield* Scope.close(leaseScope, Exit.void);
+          registry.dispose();
+        }),
+      };
+    });
+
+  it.effect.each([
+    ["429", refused(429, "registration")],
+    ["503", refused(503, "server")],
+    ["403", refused(403, "forbidden")],
+  ] as const)(
+    "a project list registration refused with %s retries alone, on the live receiver",
+    ([, refusal]) =>
+      Effect.gen(function* () {
+        const rig = yield* setup({ register: failFirst(2, isProjectList, refusal) });
+        const first = yield* settleUntil(
+          rig.runtime,
+          (state) => rig.settled(state) && rig.interestOf(state, rig.list)?.status === "recovering",
+        );
+        expect(rig.interestOf(first, rig.list)).toMatchObject({
+          status: "recovering",
+          attempt: 1,
+          nextRetryAtMs: 10,
+          identity: { receiver: rig.live },
+        });
+        const projects = rig.inventories.map((lease) => rig.interestOf(first, lease));
+        expect(projects).toEqual([
+          expect.objectContaining({
+            status: "observing",
+            identity: expect.objectContaining({ receiver: rig.live }),
+          }),
+          expect.objectContaining({
+            status: "observing",
+            identity: expect.objectContaining({ receiver: rig.live }),
+          }),
+        ]);
+
+        yield* TestClock.adjust("10 millis");
+        const second = yield* settleUntil(rig.runtime, (state) => {
+          const list = rig.interestOf(state, rig.list);
+          return list?.status === "recovering" && list.attempt === 2 && list.nextRetryAtMs > 10;
+        });
+        expect(rig.interestOf(second, rig.list)).toMatchObject({
+          nextRetryAtMs: 30,
+          identity: { receiver: rig.live },
+        });
+
+        yield* TestClock.adjust("20 millis");
+        const recovered = yield* settleUntil(
+          rig.runtime,
+          (state) => rig.interestOf(state, rig.list)?.status === "observing",
+        );
+        expect(rig.interestOf(recovered, rig.list)).toMatchObject({
+          status: "observing",
+          identity: { receiver: rig.live },
+        });
+        expect(rig.inventories.map((lease) => rig.interestOf(recovered, lease))).toEqual(projects);
+        expect(rig.registrations.filter(isProjectList)).toHaveLength(3);
+        expect(yield* Queue.size(rig.opened)).toBe(0);
+        expect(rig.closes()).toBe(0);
+        yield* rig.dispose;
+      }),
+  );
+
+  it.effect.each([
+    ["was refused with 503", refused(503, "server")],
+    ["timed out", unanswered("timeout")],
+  ] as const)(
+    "a project's direct read that %s recovers that project alone, on the live receiver",
+    ([, failure]) =>
+      Effect.gen(function* () {
+        const rig = yield* setup({
+          read: failFirst(1, (ticket: ReadTicket) => readsProject(ticket, "project-b"), failure),
+        });
+        const [failing, sibling] = rig.inventories as [InterestLease, InterestLease];
+        const first = yield* settleUntil(
+          rig.runtime,
+          (state) => rig.settled(state) && rig.interestOf(state, failing)?.status === "recovering",
+        );
+        expect(rig.interestOf(first, failing)).toMatchObject({
+          status: "recovering",
+          attempt: 1,
+          identity: { receiver: rig.live },
+        });
+        const untouched = [rig.list, sibling].map((lease) => rig.interestOf(first, lease));
+        expect(untouched).toEqual([
+          expect.objectContaining({
+            status: "observing",
+            identity: expect.objectContaining({ receiver: rig.live }),
+          }),
+          expect.objectContaining({
+            status: "observing",
+            identity: expect.objectContaining({ receiver: rig.live }),
+          }),
+        ]);
+
+        yield* TestClock.adjust("10 millis");
+        const recovered = yield* settleUntil(
+          rig.runtime,
+          (state) => rig.interestOf(state, failing)?.status === "observing",
+        );
+        expect(rig.interestOf(recovered, failing)).toMatchObject({
+          status: "observing",
+          identity: { receiver: rig.live },
+        });
+        expect([rig.list, sibling].map((lease) => rig.interestOf(recovered, lease))).toEqual(
+          untouched,
+        );
+        expect(yield* Queue.size(rig.opened)).toBe(0);
+        expect(rig.closes()).toBe(0);
+        yield* rig.dispose;
+      }),
+  );
+
+  it.effect.each([
+    ["timed out", unanswered("timeout")],
+    ["was lost on the network", unanswered("network")],
+    ["was cancelled in flight", unanswered("cancelled")],
+    ["was answered without a readable confirmation", unanswered("malformed")],
+  ] as const)(
+    "a project list registration that %s leaves its ownership uncertain and replaces the receiver",
+    ([, failure]) =>
+      Effect.gen(function* () {
+        const rig = yield* setup({ register: failFirst(1, isProjectList, failure) });
+        const moved = yield* settleUntil(rig.runtime, (state) =>
+          rig.leases.every((lease) => {
+            const interest = rig.interestOf(state, lease);
+            return (
+              interest?.status === "recovering" &&
+              interest.identity.receiver.receiverId !== rig.live.receiverId
+            );
+          }),
+        );
+        expect(rig.leases.map((lease) => rig.interestOf(moved, lease)?.status)).toEqual([
+          "recovering",
+          "recovering",
+          "recovering",
+        ]);
+        expect(rig.closes()).toBe(1);
+
+        yield* TestClock.adjust("10 millis");
+        const replacement = yield* Queue.take(rig.opened);
+        const recovered = yield* settleUntil(rig.runtime, (state) =>
+          rig.leases.every((lease) => rig.interestOf(state, lease)?.status === "observing"),
+        );
+        expect(replacement.handle.identity.receiverId).not.toBe(rig.live.receiverId);
+        expect(
+          rig.leases.map((lease) => rig.interestOf(recovered, lease)?.identity.receiver),
+        ).toEqual([
+          replacement.handle.identity,
+          replacement.handle.identity,
+          replacement.handle.identity,
+        ]);
+        yield* rig.dispose;
+      }),
+  );
+
+  it.effect(
+    "a project list refused past its attempt limit fails with its own retry, on the live receiver",
+    () =>
+      Effect.gen(function* () {
+        let healed = false;
+        const rig = yield* setup({
+          register: (request) =>
+            isProjectList(request) && !healed ? refused(429, "registration") : null,
+          policy: { recoveryAttemptLimit: 2 },
+        });
+        const first = yield* settleUntil(
+          rig.runtime,
+          (state) => rig.settled(state) && rig.interestOf(state, rig.list)?.status === "recovering",
+        );
+        expect(rig.interestOf(first, rig.list)).toMatchObject({
+          attempt: 1,
+          identity: { receiver: rig.live },
+        });
+        yield* TestClock.adjust("10 millis");
+        yield* settleUntil(rig.runtime, (state) => {
+          const list = rig.interestOf(state, rig.list);
+          return list?.status === "recovering" && list.attempt === 2 && list.nextRetryAtMs > 10;
+        });
+        yield* TestClock.adjust("20 millis");
+        const failed = yield* settleUntil(
+          rig.runtime,
+          (state) => rig.interestOf(state, rig.list)?.status === "failed",
+        );
+        expect(rig.interestOf(failed, rig.list)).toMatchObject({
+          status: "failed",
+          attempts: 3,
+          retryAtMs: 70,
+          identity: { receiver: rig.live },
+        });
+        expect(rig.inventories.map((lease) => rig.interestOf(failed, lease)?.status)).toEqual([
+          "observing",
+          "observing",
+        ]);
+
+        healed = true;
+        yield* TestClock.adjust("40 millis");
+        const recovered = yield* settleUntil(
+          rig.runtime,
+          (state) => rig.interestOf(state, rig.list)?.status === "observing",
+        );
+        expect(rig.interestOf(recovered, rig.list)).toMatchObject({
+          status: "observing",
+          identity: { receiver: rig.live },
+        });
+        expect(yield* Queue.size(rig.opened)).toBe(0);
+        expect(rig.closes()).toBe(0);
+        yield* rig.dispose;
+      }),
+  );
+
+  it.effect.each([
+    ["its socket closes", (): ReceiverEvent => ({ kind: "closed", reason: "network lost" })],
+    [
+      "a frame arrives for the registration the platform refused",
+      (name: RegistrationRequest["subscriptionName"]): ReceiverEvent => ({
+        kind: "malformed",
+        subscriptionName: name,
+      }),
+    ],
+  ] as const)(
+    "while the project list waits out its backoff on a live receiver, %s: the receiver goes at once",
+    ([, event]) =>
+      Effect.gen(function* () {
+        const rig = yield* setup({
+          register: failFirst(1, isProjectList, refused(502, "server")),
+          policy: { recoveryBackoffStartMs: 1_000, recoveryBackoffMaxMs: 1_000 },
+        });
+        const waiting = yield* settleUntil(
+          rig.runtime,
+          (state) => rig.settled(state) && rig.interestOf(state, rig.list)?.status === "recovering",
+        );
+        expect(rig.interestOf(waiting, rig.list)).toMatchObject({
+          identity: { receiver: rig.live },
+        });
+
+        // Had the platform registered it after all, the adapter would report its frames as naming
+        // a registration it does not hold.
+        yield* Queue.offer(
+          rig.events,
+          event(rig.registrations.find(isProjectList)!.subscriptionName),
+        );
+        const moved = yield* settleUntil(rig.runtime, (state) =>
+          rig.leases.every(
+            (lease) =>
+              rig.interestOf(state, lease)?.identity.receiver.receiverId !== rig.live.receiverId,
+          ),
+        );
+        expect(rig.leases.map((lease) => rig.interestOf(moved, lease)?.status)).toEqual([
+          "recovering",
+          "recovering",
+          "recovering",
+        ]);
+        expect(rig.closes()).toBe(1);
+
+        yield* TestClock.adjust("1 second");
+        const replacement = yield* Queue.take(rig.opened);
+        const recovered = yield* settleUntil(rig.runtime, (state) =>
+          rig.leases.every((lease) => rig.interestOf(state, lease)?.status === "observing"),
+        );
+        expect(
+          rig.leases.map((lease) => rig.interestOf(recovered, lease)?.identity.receiver),
+        ).toEqual([
+          replacement.handle.identity,
+          replacement.handle.identity,
+          replacement.handle.identity,
+        ]);
+        yield* rig.dispose;
+      }),
+  );
+  it.effect("a tab back before its pause resumes the project list waiting on its receiver", () =>
+    Effect.gen(function* () {
+      const visibilityState = yield* Ref.make<"visible" | "hidden">("visible");
+      const visibilityChanges = yield* Queue.unbounded<"visible" | "hidden">();
+      const rig = yield* setup({
+        register: failFirst(1, isProjectList, refused(429, "registration")),
+        policy: { hiddenReceiverPauseAfterMs: 1_000 },
+        visibility: {
+          current: Ref.get(visibilityState),
+          changes: Stream.fromQueue(visibilityChanges),
+        },
+      });
+      yield* settleUntil(
+        rig.runtime,
+        (state) => rig.settled(state) && rig.interestOf(state, rig.list)?.status === "recovering",
+      );
+
+      // Hidden through the list's backoff: nothing retries behind a hidden tab.
+      yield* Ref.set(visibilityState, "hidden");
+      yield* Queue.offer(visibilityChanges, "hidden");
+      yield* settleUntil(rig.runtime, () => false, 20);
+      yield* TestClock.adjust("100 millis");
+      const hidden = yield* settleUntil(rig.runtime, () => false, 20);
+      expect(rig.interestOf(hidden, rig.list)?.status).toBe("recovering");
+      expect(rig.registrations.filter(isProjectList)).toHaveLength(1);
+
+      // Back long before the receiver would pause: the list retries on the receiver it waits on.
+      yield* Ref.set(visibilityState, "visible");
+      yield* Queue.offer(visibilityChanges, "visible");
+      const shown = yield* settleUntil(
+        rig.runtime,
+        (state) => rig.interestOf(state, rig.list)?.status === "observing",
+      );
+      expect(rig.interestOf(shown, rig.list)).toMatchObject({
+        status: "observing",
+        identity: { receiver: rig.live },
+      });
+      expect(yield* Queue.size(rig.opened)).toBe(0);
+      yield* rig.dispose;
+    }),
+  );
+});
+
+describe("a recovery round", () => {
+  it.effect(
+    "re-establishes the interests that are due concurrently, under its bound, the project list first",
+    () =>
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const opened = yield* Queue.unbounded<{
+          readonly handle: ReceiverHandle;
+          readonly events: Queue.Queue<ReceiverEvent>;
+        }>();
+        const release = yield* Deferred.make<void>();
+        let gated = false;
+        /** The interests with a direct read in flight while reads are held. */
+        const reading = new Set<string>();
+        let peak = 0;
+        const adapter: ZeropsDataAdapter = {
+          ...makeAdapterHarness().adapter,
+          openReceiver: (_scope, organization, identity) =>
+            Effect.gen(function* () {
+              const events = yield* Queue.unbounded<ReceiverEvent>();
+              const handle: ReceiverHandle = {
+                identity,
+                organization,
+                delivery: "hot-single-consumer-buffered-before-open-resolves",
+                events: Stream.fromQueue(events),
+              };
+              yield* Queue.offer(opened, { handle, events });
+              return handle;
+            }),
+          read: (ticket) => {
+            if (!gated || ticket.owner.kind !== "interest")
+              return Effect.succeed({ observations: [] });
+            const interest = ticket.owner.identity.key;
+            return Effect.sync(() => {
+              reading.add(interest);
+              peak = Math.max(peak, reading.size);
+            }).pipe(
+              Effect.andThen(Deferred.await(release)),
+              Effect.ensuring(Effect.sync(() => reading.delete(interest))),
+              Effect.as({ observations: [] }),
+            );
+          },
+        };
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter,
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+          policy: makeZeropsDataPolicy({
+            recoveryConcurrency: 2,
+            recoveryBackoffStartMs: 10,
+            recoveryBackoffMaxMs: 10,
+          }),
+        });
+        const leaseScope = yield* Scope.make();
+        // Leased before the list, the projects come first in the organization's own order.
+        const projects = yield* Effect.forEach(["b", "c", "d"], (id) =>
+          runtime
+            .acquire({ kind: "project-inventory", project: project(`project-${id}`) })
+            .pipe(Scope.provide(leaseScope)),
+        );
+        const list = yield* runtime
+          .acquire({
+            kind: "organization-inventory",
+            organization: project("project-a").organization,
+          })
+          .pipe(Scope.provide(leaseScope));
+        const leases = [...projects, list];
+        const statuses = (state: ZeropsDataState) =>
+          leases.map((lease) => state.interests.get(lease.interest)?.interest.status);
+        const first = yield* Queue.take(opened);
+        yield* settleUntil(runtime, (state) =>
+          statuses(state).every((status) => status === "observing"),
+        );
+
+        gated = true;
+        yield* Queue.offer(first.events, { kind: "closed", reason: "network lost" });
+        yield* settleUntil(runtime, (state) =>
+          leases.every((lease) => {
+            const interest = state.interests.get(lease.interest)?.interest;
+            return (
+              interest?.status === "recovering" &&
+              interest.identity.receiver.receiverId !== first.handle.identity.receiverId
+            );
+          }),
+        );
+        yield* TestClock.adjust("10 millis");
+        yield* settleUntil(runtime, () => reading.size === 2);
+        // Room for a third establishment to show itself, were the bound not held.
+        yield* settleUntil(runtime, () => false, 50);
+        expect([...reading].sort()).toEqual([list.interest, projects[0]!.interest].sort());
+
+        yield* Deferred.succeed(release, undefined);
+        const recovered = yield* settleUntil(runtime, (state) =>
+          statuses(state).every((status) => status === "observing"),
+        );
+        expect(statuses(recovered)).toEqual(["observing", "observing", "observing", "observing"]);
+        expect(peak).toBe(2);
+
+        yield* runtime.shutdown("application-close");
+        yield* Scope.close(leaseScope, Exit.void);
+        registry.dispose();
+      }),
+  );
+
+  it.effect("starts no more of its retries on a receiver that failed under one of them", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const opened = yield* Queue.unbounded<{
+        readonly handle: ReceiverHandle;
+        readonly events: Queue.Queue<ReceiverEvent>;
+      }>();
+      const receiversOpened: string[] = [];
+      /** How many registrations each receiver was sent, by the order it opened in. */
+      const sentTo = new Map<string, number>();
+      const adapter: ZeropsDataAdapter = {
+        ...makeAdapterHarness().adapter,
+        openReceiver: (_scope, organization, identity) =>
+          Effect.gen(function* () {
+            receiversOpened.push(identity.receiverId);
+            const events = yield* Queue.unbounded<ReceiverEvent>();
+            const handle: ReceiverHandle = {
+              identity,
+              organization,
+              delivery: "hot-single-consumer-buffered-before-open-resolves",
+              events: Stream.fromQueue(events),
+            };
+            yield* Queue.offer(opened, { handle, events });
+            return handle;
+          }),
+        register: (receiver) =>
+          Effect.suspend(() => {
+            const sent = (sentTo.get(receiver.identity.receiverId) ?? 0) + 1;
+            sentTo.set(receiver.identity.receiverId, sent);
+            // The second receiver's first registration never gets its answer.
+            return receiversOpened.indexOf(receiver.identity.receiverId) === 1 && sent === 1
+              ? Effect.fail({
+                  _tag: "ZeropsDataAdapterError",
+                  kind: "timeout",
+                  message: "Zerops request exceeded its deadline.",
+                  retryable: true,
+                  accountRevocationEvidence: false,
+                } satisfies AdapterError)
+              : Effect.succeed({ responseObservations: [] });
+          }),
+      };
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter,
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+        policy: makeZeropsDataPolicy({
+          recoveryConcurrency: 1,
+          recoveryBackoffStartMs: 10,
+          recoveryBackoffMaxMs: 10,
+        }),
+      });
+      const leaseScope = yield* Scope.make();
+      const leases = yield* Effect.forEach(["b", "c", "d"], (id) =>
+        runtime
+          .acquire({ kind: "project-inventory", project: project(`project-${id}`) })
+          .pipe(Scope.provide(leaseScope)),
+      );
+      const statuses = (state: ZeropsDataState) =>
+        leases.map((lease) => state.interests.get(lease.interest)?.interest.status);
+      const first = yield* Queue.take(opened);
+      yield* settleUntil(runtime, (state) =>
+        statuses(state).every((status) => status === "observing"),
+      );
+
+      yield* Queue.offer(first.events, { kind: "closed", reason: "network lost" });
+      yield* settleUntil(runtime, (state) =>
+        statuses(state).every((status) => status === "recovering"),
+      );
+      // The round's first retry loses its registration's answer: the round's other retries never
+      // reach that receiver, and every interest moves to the next one at once.
+      yield* TestClock.adjust("10 millis");
+      yield* settleUntil(runtime, () => receiversOpened.length === 2);
+      const replaced = yield* settleUntil(runtime, (state) =>
+        leases.every(
+          (lease) =>
+            state.interests.get(lease.interest)?.interest.identity.receiver.receiverEpoch === 3,
+        ),
+      );
+      expect(sentTo.get(receiversOpened[1]!)).toBe(1);
+      expect(statuses(replaced)).toEqual(["recovering", "recovering", "recovering"]);
+
+      yield* TestClock.adjust("10 millis");
+      const recovered = yield* settleUntil(runtime, (state) =>
+        statuses(state).every((status) => status === "observing"),
+      );
+      expect(statuses(recovered)).toEqual(["observing", "observing", "observing"]);
+      expect(receiversOpened).toHaveLength(3);
+
+      yield* runtime.shutdown("application-close");
+      yield* Scope.close(leaseScope, Exit.void);
+      registry.dispose();
+    }),
+  );
+});
+
+describe("registrations", () => {
+  const label = (request: RegistrationRequest): string => {
+    const descriptor = request.descriptor;
+    if (descriptor.kind === "entity-updates") return `${descriptor.entity} updates`;
+    if (descriptor.kind === "query-membership" && descriptor.query.kind === "services-of-project")
+      return `services of ${descriptor.query.project.projectId}`;
+    return descriptor.kind === "query-membership" ? descriptor.query.kind : descriptor.kind;
+  };
+
+  it.effect(
+    "are sent a bounded number at a time, the project list's ahead of the projects' already waiting",
+    () =>
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const servicesAnswer = yield* Deferred.make<void>();
+        const sent: string[] = [];
+        let inFlight = 0;
+        let peak = 0;
+        const adapter: ZeropsDataAdapter = {
+          ...makeAdapterHarness().adapter,
+          register: (_receiver, request) =>
+            Effect.gen(function* () {
+              sent.push(label(request));
+              inFlight += 1;
+              peak = Math.max(peak, inFlight);
+              if (label(request).startsWith("services of")) yield* Deferred.await(servicesAnswer);
+              return { responseObservations: [] };
+            }).pipe(Effect.ensuring(Effect.sync(() => void (inFlight -= 1)))),
+        };
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter,
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+          policy: makeZeropsDataPolicy({ registrationConcurrency: 1 }),
+        });
+        const leaseScope = yield* Scope.make();
+        const projects = yield* Effect.forEach(["b", "c", "d"], (id) =>
+          runtime
+            .acquire({ kind: "project-inventory", project: project(`project-${id}`) })
+            .pipe(Scope.provide(leaseScope)),
+        );
+        yield* settleUntil(runtime, () => sent.includes("services of project-b"));
+        // project-c's and project-d's service lists queue behind project-b's.
+        yield* settleUntil(runtime, () => false, 50);
+        const list = yield* runtime
+          .acquire({
+            kind: "organization-inventory",
+            organization: project("project-a").organization,
+          })
+          .pipe(Scope.provide(leaseScope));
+        yield* settleUntil(runtime, () => false, 50);
+        expect(sent).toEqual(["project updates", "service updates", "services of project-b"]);
+
+        yield* Deferred.succeed(servicesAnswer, undefined);
+        const leases = [...projects, list];
+        yield* settleUntil(runtime, (state) =>
+          leases.every(
+            (lease) => state.interests.get(lease.interest)?.interest.status === "observing",
+          ),
+        );
+        expect(sent).toEqual([
+          "project updates",
+          "service updates",
+          "services of project-b",
+          "projects-of-organization",
+          "services of project-c",
+          "services of project-d",
+        ]);
+        expect(peak).toBe(1);
+
+        yield* runtime.shutdown("application-close");
+        yield* Scope.close(leaseScope, Exit.void);
+        registry.dispose();
+      }),
+  );
+
+  it.effect("a registration that waits for its turn is sent with its whole deadline", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const sent: Array<{
+        readonly organizationId: string;
+        readonly atMs: number;
+        readonly remainingMs: number;
+      }> = [];
+      const adapter: ZeropsDataAdapter = {
+        ...makeAdapterHarness().adapter,
+        register: (_receiver, request, context) =>
+          Effect.gen(function* () {
+            const descriptor = request.descriptor;
+            if (descriptor.kind === "entity-updates" && descriptor.entity === "project") {
+              const now = yield* Clock.currentTimeMillis;
+              sent.push({
+                organizationId: descriptor.organization.organizationId,
+                atMs: now,
+                remainingMs: context.deadlineMs - now,
+              });
+              if (descriptor.organization.organizationId === "org-a")
+                yield* Effect.sleep("60 millis");
+            }
+            return { responseObservations: [] };
+          }),
+      };
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter,
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+        policy: makeZeropsDataPolicy({ registrationConcurrency: 1, registrationDeadlineMs: 100 }),
+      });
+      const elsewhere = project("project-x");
+      const leaseScope = yield* Scope.make();
+      yield* runtime
+        .acquireMany([
+          { kind: "project-inventory", project: project("project-a") },
+          {
+            kind: "project-inventory",
+            project: {
+              ...elsewhere,
+              organization: {
+                ...elsewhere.organization,
+                organizationId: ZeropsOrganizationId.make("org-b"),
+              },
+            },
+          },
+        ])
+        .pipe(Scope.provide(leaseScope));
+      yield* settleUntil(runtime, () => sent.length > 0);
+      yield* settleUntil(runtime, () => false, 50);
+      expect(sent).toEqual([{ organizationId: "org-a", atMs: 0, remainingMs: 100 }]);
+
+      yield* TestClock.adjust("60 millis");
+      yield* settleUntil(runtime, () => sent.length > 1);
+      expect(sent).toEqual([
+        { organizationId: "org-a", atMs: 0, remainingMs: 100 },
+        { organizationId: "org-b", atMs: 60, remainingMs: 100 },
+      ]);
+
+      yield* runtime.shutdown("application-close");
+      yield* Scope.close(leaseScope, Exit.void);
+      registry.dispose();
+    }),
+  );
+});
 
 describe("I8: after resume every leased interest reaches observing or failed(retryAt)", () => {
   const policy = makeZeropsDataPolicy({

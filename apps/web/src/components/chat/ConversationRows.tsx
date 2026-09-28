@@ -37,9 +37,11 @@ export interface ConversationSpeaker {
 }
 
 /**
- * A row's mark, leading its words on the text edge. It used to hang in a
- * gutter left of that edge, which put it outside the column the composer
- * draws — and, inside a card, past the card's own border.
+ * A row's mark, leading its words on the text edge: 20 px, the column an
+ * answer's list bullets hang in, so the words after it start where a list
+ * item's and a callout's do. It used to hang in a gutter left of that edge,
+ * which put it outside the column the composer draws — and, inside a card,
+ * past the card's own border.
  */
 export function LineMark({
   children,
@@ -49,11 +51,7 @@ export function LineMark({
   readonly className?: string;
 }) {
   return (
-    <span
-      aria-hidden="true"
-      className={cn("flex w-4 shrink-0 justify-center", className)}
-      data-line-mark
-    >
+    <span aria-hidden="true" className={cn("flex w-5 shrink-0", className)} data-line-mark>
       {children}
     </span>
   );
@@ -300,7 +298,7 @@ function EventShell({
 }) {
   return (
     <div
-      className="flex min-h-7 min-w-0 items-center gap-1.5 text-line text-muted-foreground"
+      className="flex min-h-7 min-w-0 items-center text-line text-muted-foreground"
       data-conversation-event
     >
       <LineMark>{icon}</LineMark>
@@ -409,7 +407,7 @@ export function ErrorLine({
   const extra = detail !== undefined && detail.trim() !== label.trim() ? detail : null;
   return (
     <div
-      className="flex min-h-7 min-w-0 items-start gap-1.5 py-1 text-line text-status-failed-text"
+      className="flex min-h-7 min-w-0 items-start py-1 text-line text-status-failed-text"
       data-conversation-error
       role="alert"
     >
@@ -498,7 +496,8 @@ export function PauseBlock({
       role="status"
     >
       <div className="flex min-w-0 items-center gap-1.5 text-line" data-pause-head>
-        <LineMark>
+        {/* Its words keep their gap, so its mark gives the gap back: 14 + 6 px. */}
+        <LineMark className="w-3.5">
           <PauseIcon
             className={cn("size-3.5", resumed ? "text-muted-foreground" : "text-status-attention")}
           />
@@ -529,12 +528,12 @@ export function PauseBlock({
         ) : null}
       </div>
       {/* Under its words: past the mark's w-4 and the head's gap-1.5. */}
-      <p className="ps-5.5 text-line text-muted-foreground" data-pause-detail>
+      <p className="ps-5 text-line text-muted-foreground" data-pause-detail>
         {detail}
       </p>
       {!resumed && serverPause !== null && onAutoResumeChange !== null ? (
         <label
-          className="flex w-fit cursor-pointer items-center gap-2 ps-5.5 text-line text-foreground"
+          className="flex w-fit cursor-pointer items-center gap-2 ps-5 text-line text-foreground"
           data-pause-switch
         >
           <Switch

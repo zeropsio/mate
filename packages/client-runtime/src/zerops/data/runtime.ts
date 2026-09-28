@@ -291,6 +291,91 @@ export const makeZeropsBoundedIngress = Effect.fn("ZeropsDataRuntime.makeBounded
   },
 );
 
+/** Which waiting work a freed permit goes to: `first` work before any `later` work. */
+export type ZeropsPermitPriority = "first" | "later";
+
+export interface ZeropsPriorityPermits {
+  /**
+   * Runs `effect` holding one permit, given back however it ends. While permits are short, no
+   * `later` work is admitted while `first` work waits.
+   */
+  readonly withPermit: (
+    priority: ZeropsPermitPriority,
+  ) => <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
+}
+
+/**
+ * Counting permits with two admission classes. A woken waiter checks its turn again inside an
+ * uninterruptible region before it takes a permit, as `Semaphore` does, so work interrupted
+ * while it waits neither takes a permit nor keeps later work waiting behind it.
+ */
+export const makeZeropsPriorityPermits = (permits: number): Effect.Effect<ZeropsPriorityPermits> =>
+  Effect.sync(() => {
+    let taken = 0;
+    /** Work waiting for a permit, counted from its first wait until it takes one or leaves. */
+    const waiting: Record<ZeropsPermitPriority, number> = { first: 0, later: 0 };
+    const wakers: Record<ZeropsPermitPriority, Set<() => void>> = {
+      first: new Set(),
+      later: new Set(),
+    };
+    const admissible = (priority: ZeropsPermitPriority): boolean =>
+      taken < permits && (priority === "first" || waiting.first === 0);
+    // Over a snapshot, first work ahead: a woken waiter may wait again before the loop ends.
+    const wake = (): void => {
+      for (const waker of [...wakers.first, ...wakers.later]) waker();
+    };
+    const turn = (priority: ZeropsPermitPriority): Effect.Effect<void> =>
+      Effect.callback<void>((resume) => {
+        const waker = () => {
+          if (!admissible(priority)) return;
+          wakers[priority].delete(waker);
+          resume(Effect.void);
+        };
+        wakers[priority].add(waker);
+        return Effect.sync(() => void wakers[priority].delete(waker));
+      });
+    const release = Effect.sync(() => {
+      taken -= 1;
+      wake();
+    });
+    return {
+      withPermit:
+        (priority) =>
+        <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+          Effect.uninterruptibleMask((restore) =>
+            Effect.suspend(() => {
+              let queued = false;
+              const leave = () => {
+                if (!queued) return;
+                queued = false;
+                waiting[priority] -= 1;
+              };
+              const acquire: Effect.Effect<A, E, R> = Effect.suspend(() => {
+                if (admissible(priority)) {
+                  leave();
+                  taken += 1;
+                  return restore(effect).pipe(Effect.ensuring(release));
+                }
+                if (!queued) {
+                  queued = true;
+                  waiting[priority] += 1;
+                }
+                return restore(turn(priority)).pipe(
+                  Effect.onInterrupt(() =>
+                    Effect.sync(() => {
+                      leave();
+                      wake();
+                    }),
+                  ),
+                  Effect.andThen(acquire),
+                );
+              });
+              return acquire;
+            }),
+          ),
+    } satisfies ZeropsPriorityPermits;
+  });
+
 type PlannedRegistration = {
   readonly descriptor: RegistrationDescriptor;
   readonly baseline: ReadTarget | null;
@@ -454,6 +539,18 @@ function registrationKeyOf(descriptor: RegistrationDescriptor): string {
   return JSON.stringify([descriptor.kind, queryKeyOf(descriptor.query)]);
 }
 
+/**
+ * The organization inventory's own registrations, its project feed and its project list, go
+ * first: the sidebar and the projects page read the list before any project in it.
+ */
+function registrationPriority(organization: OrganizationRef, key: string): ZeropsPermitPriority {
+  return planZeropsInterest({ kind: "organization-inventory", organization }).registrations.some(
+    (planned) => registrationKeyOf(planned.descriptor) === key,
+  )
+    ? "first"
+    : "later";
+}
+
 type RuntimeIngressInput =
   | {
       readonly kind: "observation";
@@ -503,12 +600,27 @@ type RecoveryReason = Extract<
   { readonly status: "recovering" }
 >["reason"];
 
-/** Where a recovery cycle waits: the receiver it retries on and its earliest due interest. */
-interface PreparedRecovery {
-  readonly replacement: RuntimeReceiver;
-  readonly hidden: boolean;
-  readonly minRecoveringRetryAtMs: number | null;
+/** An organization's one recovery cycle: what wakes its wait, and a receiver to replace first. */
+interface RecoveryCycle {
+  wake: Deferred.Deferred<void>;
+  replace: { readonly receiver: RuntimeReceiver; readonly reason: string } | null;
 }
+
+/** How one establishment attempt ended, for the recovery cycle that ran it. */
+type EstablishmentOutcome =
+  /** Its registrations and reads completed, or it was superseded or released before they did. */
+  | { readonly kind: "done" }
+  /** It failed alone: the interest waits out its own backoff on the receiver that serves it. */
+  | { readonly kind: "interest-failed" }
+  /** The receiver failed under it: the receiver is replaced. */
+  | { readonly kind: "receiver-failed"; readonly reason: string };
+
+const establishmentDone: EstablishmentOutcome = { kind: "done" };
+const interestFailed: EstablishmentOutcome = { kind: "interest-failed" };
+const receiverFailed = (reason: string): EstablishmentOutcome => ({
+  kind: "receiver-failed",
+  reason,
+});
 
 interface RuntimeInterest {
   readonly descriptor: RuntimeInterestDescriptor;
@@ -729,6 +841,13 @@ function failureKind(error: AdapterError): ReadFailureKind {
 }
 
 /**
+ * A registration the platform refused with an HTTP error status never took effect: the receiver
+ * holds no subscription for it, so its interests may register again on that receiver. One that got
+ * no answer, or an answer that could not be read, may have left a subscription nobody owns.
+ */
+const registrationRefused = (error: AdapterError): boolean => error.status !== undefined;
+
+/**
  * Creates one account-scoped owner. The returned runtime owns its Effect scope
  * and transports, while the caller continues to own the supplied AtomRegistry.
  */
@@ -786,6 +905,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const registrationLock = yield* Semaphore.make(1);
   const readSemaphore = yield* Semaphore.make(policy.readConcurrency);
   const hydrationSemaphore = yield* Semaphore.make(policy.hydrationConcurrency);
+  const registrationPermits = yield* makeZeropsPriorityPermits(policy.registrationConcurrency);
   const commandSemaphore = yield* Semaphore.make(1);
   const rootAtom = Atom.make(yield* Ref.get(model));
   const unmountRootAtom = options.atomRegistry.mount(rootAtom);
@@ -794,13 +914,10 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const interests = new Map<InterestKey, RuntimeInterest>();
   const leases = new Map<string, RuntimeInterest>();
   const receivers = new Map<string, RuntimeReceiver>();
-  // Maps an organization currently being recovered to a "wake" signal for its active
-  // scheduleRecovery cycle. A second interest failing while that cycle is asleep toward
-  // some other interest's own (later) backoff succeeds this signal instead of starting a
-  // competing cycle, so the sleeping loop wakes immediately and can fold the new
-  // interest's earlier due time into its next wait — rather than leaving it stranded
-  // until whichever interest the cycle already knew about happens to become due.
-  const recoveringOrganizations = new Map<string, Deferred.Deferred<void>>();
+  // Each organization being recovered has one cycle. A failure while it runs wakes it instead of
+  // starting a competing cycle, so it recomputes its wait from current state, which by then holds
+  // the new failure's own due time; one that needs the receiver replaced also says so.
+  const recoveryCycles = new Map<string, RecoveryCycle>();
   const hydrations = new Map<string, RuntimeHydration>();
   const hydrationFailures = new Map<string, { readonly organizationKey: string; count: number }>();
   let receiptOrdinal = 0;
@@ -814,6 +931,12 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   let recoverSubscription: (
     receiver: RuntimeReceiver,
     registration: RuntimeRegistration,
+  ) => Effect.Effect<void> = () => Effect.void;
+  let recoverInterest: (
+    receiver: RuntimeReceiver,
+    identity: InterestIdentity,
+    reason: RecoveryReason,
+    message: string,
   ) => Effect.Effect<void> = () => Effect.void;
   // Bounded, backoff-capped retry out of the `failed` interest state. Assigned once
   // `establishInterest` exists; referenced from both `establishInterest` and `scheduleRecovery`.
@@ -1747,7 +1870,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
    * the network is back (§4.0, §6.4). One whose interest was paused, given a new identity or
    * released meanwhile is left to whatever did that.
    */
-  const establishInterest = (runtimeInterest: RuntimeInterest): Effect.Effect<void> =>
+  const establishInterest = (
+    runtimeInterest: RuntimeInterest,
+  ): Effect.Effect<EstablishmentOutcome> =>
     Effect.suspend(() => {
       const waitedAs = runtimeInterest.identity;
       return network.await.pipe(
@@ -1757,14 +1882,14 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           runtimeInterest.leases.size > 0 &&
           state.interests.get(runtimeInterest.key)?.interest.status !== "paused"
             ? establish(runtimeInterest)
-            : Effect.void,
+            : Effect.succeed(establishmentDone),
         ),
       );
     });
 
-  const establish = (runtimeInterest: RuntimeInterest): Effect.Effect<void> =>
+  const establish = (runtimeInterest: RuntimeInterest): Effect.Effect<EstablishmentOutcome> =>
     Effect.gen(function* () {
-      if (yield* Ref.get(closed)) return;
+      if (yield* Ref.get(closed)) return establishmentDone;
       const organization = organizationOfInterest(runtimeInterest.descriptor);
       const receiver = receiverFor(organization);
       if (runtimeInterest.identity.receiver !== receiver.identity) {
@@ -1776,7 +1901,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       const handle = yield* ensureReceiver(receiver);
       const plan = planZeropsInterest(runtimeInterest.descriptor);
       for (const planned of plan.registrations) {
-        if (runtimeInterest.identity !== identity || runtimeInterest.leases.size === 0) return;
+        if (runtimeInterest.identity !== identity || runtimeInterest.leases.size === 0)
+          return establishmentDone;
         const logicalTicket =
           planned.baseline === null
             ? null
@@ -1835,9 +1961,15 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           // deadline, only to force a spurious extra recovery cycle once that stale
           // timeout finally fires. Delete the entry and fail the deferred.
           yield* Effect.gen(function* () {
-            const result = yield* context(policy.registrationDeadlineMs, (requestContext) =>
-              options.adapter.register(handle, registration.request, requestContext),
-            ).pipe(Effect.result);
+            // A bounded number of registrations are in flight across the account, the
+            // organization inventory's admitted first. The deadline starts once it is sent.
+            const result = yield* registrationPermits
+              .withPermit(registrationPriority(receiver.organization, registration.key))(
+                context(policy.registrationDeadlineMs, (requestContext) =>
+                  options.adapter.register(handle, registration.request, requestContext),
+                ),
+              )
+              .pipe(Effect.result);
             const outcome: PhysicalRegistrationOutcome = Result.isFailure(result)
               ? { kind: "failed", error: result.failure }
               : { kind: "succeeded", receipt: result.success };
@@ -1890,7 +2022,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           );
         }
         const outcome = yield* Deferred.await(registration.outcome);
-        if (runtimeInterest.identity !== identity || runtimeInterest.leases.size === 0) return;
+        if (runtimeInterest.identity !== identity || runtimeInterest.leases.size === 0)
+          return establishmentDone;
         if (outcome.kind === "failed") {
           if (logicalTicket !== null)
             yield* enqueue({
@@ -1940,10 +2073,17 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               });
               yield* scheduleFailedRetry(runtimeInterest, identity, retryAtMs);
             }
-            return;
+            return interestFailed;
+          }
+          // A refusal left nothing registered: this interest registers again, alone, on the
+          // receiver its siblings keep observing on. Without an answer the receiver may hold a
+          // subscription nobody owns, whose frames would name no registration: it is replaced.
+          if (registrationRefused(outcome.error)) {
+            yield* recoverInterest(receiver, identity, "registration", outcome.error.message);
+            return interestFailed;
           }
           yield* scheduleRecovery(receiver, outcome.error.message);
-          return;
+          return receiverFailed(outcome.error.message);
         }
         if (logicalTicket !== null) {
           yield* enqueue({
@@ -1959,7 +2099,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         });
       }
       for (const target of plan.directReads) {
-        if (runtimeInterest.identity !== identity || runtimeInterest.leases.size === 0) return;
+        if (runtimeInterest.identity !== identity || runtimeInterest.leases.size === 0)
+          return establishmentDone;
         const ticket = yield* requestTicket(
           identity,
           target.kind === "query" ? "baseline" : "direct",
@@ -1967,12 +2108,15 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         );
         if (!(yield* admitRead(ticket))) return yield* Effect.fail(readCapacityError());
         const succeeded = yield* runRead(ticket, identity);
-        if (runtimeInterest.identity !== identity || runtimeInterest.leases.size === 0) return;
+        if (runtimeInterest.identity !== identity || runtimeInterest.leases.size === 0)
+          return establishmentDone;
+        // A read registers nothing on the receiver: it fails its own interest alone.
         if (!succeeded) {
-          yield* scheduleRecovery(receiver, "required direct read failed");
-          return;
+          yield* recoverInterest(receiver, identity, "disconnect", "required direct read failed");
+          return interestFailed;
         }
       }
+      return establishmentDone;
     }).pipe(
       Effect.timeoutOrElse({
         duration: Duration.millis(policy.establishmentDeadlineMs),
@@ -1989,6 +2133,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         const receiver = receiverFor(organizationOfInterest(runtimeInterest.descriptor));
         return markRecovering(runtimeInterest.identity, "disconnect").pipe(
           Effect.andThen(scheduleRecovery(receiver, error.message)),
+          Effect.as(receiverFailed(error.message)),
         );
       }),
     );
@@ -2070,26 +2215,23 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       return { failedRetryAtMs: null, recoveringRetryAtMs: retryAtMs };
     });
 
-  // A genuine failure (the receiver itself, or an interest's own re-establishment attempt)
-  // replaces the receiver and bumps `recoveryAttempts` for every interest still sharing the
-  // organization. This must run only in response to an actual failure — never merely because
-  // some other interest's own backoff hasn't elapsed — so it is a plain callable, not
-  // something the wait loop below invokes on a timer.
+  // A receiver-level failure replaces the receiver and bumps `recoveryAttempts` for every interest
+  // still sharing the organization: each re-establishes on the replacement on its own backoff.
+  // It runs only in response to such a failure, never because some interest's backoff elapsed.
   const replaceReceiver = (
     organizationKey: string,
     staleReceiver: RuntimeReceiver,
     cycleReason: string,
-  ): Effect.Effect<PreparedRecovery | null> =>
+  ): Effect.Effect<void> =>
     lifecycleLock.withPermit(
       Effect.gen(function* () {
-        if ((yield* Ref.get(closed)) || receivers.get(organizationKey) !== staleReceiver)
-          return null;
+        if ((yield* Ref.get(closed)) || receivers.get(organizationKey) !== staleReceiver) return;
         const affected = [...interests.values()].filter(
           (interest) =>
             organizationKeyOf(organizationOfInterest(interest.descriptor)) === organizationKey &&
             interest.leases.size > 0,
         );
-        if (affected.length === 0) return null;
+        if (affected.length === 0) return;
 
         const hidden = (yield* Ref.get(currentVisibility)) === "hidden";
         const replacement = makeReceiver(staleReceiver.organization);
@@ -2102,10 +2244,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               ? "registration"
               : "disconnect";
         const now = yield* Clock.currentTimeMillis;
-        // Per-interest, not the max across all affected: an interest at its 5th attempt
-        // must not force every other interest of the organization onto its own backoff
-        // ceiling.
-        let minRecoveringRetryAtMs: number | null = null;
         const failedRetries: Array<{
           readonly interest: RuntimeInterest;
           readonly identity: InterestIdentity;
@@ -2124,12 +2262,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               identity: interest.identity,
               retryAtMs: outcome.failedRetryAtMs,
             });
-          }
-          if (outcome.recoveringRetryAtMs !== null) {
-            minRecoveringRetryAtMs =
-              minRecoveringRetryAtMs === null
-                ? outcome.recoveringRetryAtMs
-                : Math.min(minRecoveringRetryAtMs, outcome.recoveringRetryAtMs);
           }
         }
         if (staleReceiver.handle !== null)
@@ -2151,7 +2283,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           ([key, hydration]) => cancelHydration(key, hydration),
           { discard: true },
         );
-        return { replacement, hidden, minRecoveringRetryAtMs };
       }),
     );
 
@@ -2177,136 +2308,196 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     return next;
   };
 
-  // Registers the organization's one recovery cycle and runs it from `first`. A cycle that
-  // is already running (asleep toward some interest's own backoff) is woken instead, so it
-  // recomputes the next due time from current state — which by now includes whatever asked
-  // for recovery — instead of competing with it or silently doing nothing.
-  const startRecoveryCycle = (
+  // The organization's recovery cycle, one round at a time: replace a receiver that failed under
+  // it, or wait for the earliest recovering interest to come due (or to be woken) and retry the
+  // interests that are due, only those. A retry that fails alone waits out its own next backoff on
+  // the same receiver; only a retry that failed at the receiver replaces it. The round that finds
+  // nothing left to recover ends the cycle in the same step, so any later failure starts a new one.
+  const runRecoveryCycle = (organizationKey: string, cycle: RecoveryCycle): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      while (true) {
+        const round = yield* Effect.sync(
+          ():
+            | {
+                readonly kind: "replace";
+                readonly receiver: RuntimeReceiver;
+                readonly reason: string;
+              }
+            | {
+                readonly kind: "wait";
+                readonly receiver: RuntimeReceiver;
+                readonly dueAtMs: number;
+              }
+            | { readonly kind: "end" } => {
+            cycle.wake = Deferred.makeUnsafe<void>();
+            if (cycle.replace !== null) {
+              const { receiver, reason } = cycle.replace;
+              cycle.replace = null;
+              return { kind: "replace", receiver, reason };
+            }
+            const receiver = receivers.get(organizationKey);
+            const dueAtMs =
+              receiver === undefined ||
+              Ref.getUnsafe(closed) ||
+              Ref.getUnsafe(currentVisibility) === "hidden"
+                ? null
+                : nextRecoveryAtMs(organizationKey, receiver, Ref.getUnsafe(model));
+            if (receiver === undefined || dueAtMs === null) {
+              if (recoveryCycles.get(organizationKey) === cycle)
+                recoveryCycles.delete(organizationKey);
+              return { kind: "end" };
+            }
+            return { kind: "wait", receiver, dueAtMs };
+          },
+        );
+        if (round.kind === "end") return;
+        if (round.kind === "replace") {
+          yield* replaceReceiver(organizationKey, round.receiver, round.reason);
+          continue;
+        }
+        const beforeSleep = yield* Clock.currentTimeMillis;
+        yield* Effect.raceFirst(
+          Effect.sleep(Duration.millis(Math.max(0, round.dueAtMs - beforeSleep))),
+          Deferred.await(cycle.wake),
+        );
+        // Woken to replace the receiver: nothing retries on it first.
+        if (cycle.replace !== null) continue;
+        const due = yield* lifecycleLock.withPermit(
+          Effect.gen(function* () {
+            if (
+              (yield* Ref.get(closed)) ||
+              (yield* Ref.get(currentVisibility)) === "hidden" ||
+              receivers.get(organizationKey) !== round.receiver
+            )
+              return [];
+            const state = yield* Ref.get(model);
+            const now = yield* Clock.currentTimeMillis;
+            return [...interests.values()].filter((interest) => {
+              const desired = state.interests.get(interest.key);
+              return (
+                interest.leases.size > 0 &&
+                organizationKeyOf(organizationOfInterest(interest.descriptor)) ===
+                  organizationKey &&
+                interest.identity.receiver.receiverId === round.receiver.identity.receiverId &&
+                desired?.interest.status === "recovering" &&
+                // Each interest's own backoff: one coming due pulls no other forward.
+                desired.interest.nextRetryAtMs <= now
+              );
+            });
+          }),
+        );
+        if (due.length === 0) continue;
+        // The retries that came due log in once more, over the receiver they wait on, a bounded
+        // number at a time and the organization's project list first: the sidebar and the
+        // projects page read it before any project in it.
+        round.receiver.openFailure = null;
+        const listFirst = [...due].sort(
+          (left, right) =>
+            Number(right.descriptor.kind === "organization-inventory") -
+            Number(left.descriptor.kind === "organization-inventory"),
+        );
+        // A retry that failed at the receiver has it replaced, and the round's later retries do
+        // not start on it. One superseded mid-flight ends in interruption: no failure of the
+        // cycle's.
+        yield* Effect.forEach(
+          listFirst,
+          (interest) =>
+            Effect.suspend(() =>
+              cycle.replace !== null
+                ? Effect.void
+                : Effect.exit(establishInterest(interest)).pipe(
+                    Effect.map((exit) => {
+                      if (Exit.isSuccess(exit) && exit.value.kind === "receiver-failed")
+                        cycle.replace ??= { receiver: round.receiver, reason: exit.value.reason };
+                    }),
+                  ),
+            ),
+          { concurrency: policy.recoveryConcurrency, discard: true },
+        );
+        yield* awaitIngress;
+      }
+    });
+
+  // Asks the organization's one recovery cycle to recover on `receiver`, starting it when none
+  // runs; `replace` names a receiver-level failure. A running cycle is woken to recompute what is
+  // due rather than raced by a second one. It replaces an open receiver at once; a receiver whose
+  // socket login failed gets that login retried on the cycle's backoff (one login per rung), and
+  // is replaced only when the cycle's own retry is what failed.
+  const requestRecovery = (
     receiver: RuntimeReceiver,
-    reason: string,
-    first: (organizationKey: string) => Effect.Effect<PreparedRecovery | null>,
+    replace: string | null,
   ): Effect.Effect<void> =>
     Effect.suspend(() => {
       const organizationKey = organizationKeyOf(receiver.organization);
       if (receivers.get(organizationKey) !== receiver) return Effect.void;
-      const existingWake = recoveringOrganizations.get(organizationKey);
-      if (existingWake !== undefined) {
-        return Deferred.succeed(existingWake, undefined).pipe(Effect.asVoid);
+      const running = recoveryCycles.get(organizationKey);
+      if (running !== undefined) {
+        if (replace !== null && receiver.handle !== null)
+          running.replace = { receiver, reason: replace };
+        return Deferred.succeed(running.wake, undefined).pipe(Effect.asVoid);
       }
-      recoveringOrganizations.set(organizationKey, Deferred.makeUnsafe<void>());
-
-      return Effect.gen(function* () {
-        let prepared = yield* first(organizationKey);
-        // Wait out each interest's own backoff in turn, retrying only interests that are
-        // actually due. A receiver replacement (and the attempt/backoff bump that comes
-        // with it) happens only when a retried interest actually fails again — never
-        // merely because a sibling interest simply isn't due yet. That keeps a
-        // fast-failing interest from forcing every other interest of the organization
-        // through a fresh receiver churn while it waits its own turn.
-        while (prepared !== null && !prepared.hidden && prepared.minRecoveringRetryAtMs !== null) {
-          const currentReplacement = prepared.replacement;
-          // A fresh wake signal for this iteration: a sibling interest failing while this
-          // sleep is in progress succeeds it (see the guard above), waking this loop
-          // immediately instead of leaving the new interest stranded until whichever
-          // interest this iteration's own sleep target was computed from becomes due.
-          const iterationWake = Deferred.makeUnsafe<void>();
-          recoveringOrganizations.set(organizationKey, iterationWake);
-          const beforeSleep = yield* Clock.currentTimeMillis;
-          yield* Effect.raceFirst(
-            Effect.sleep(
-              Duration.millis(Math.max(0, prepared.minRecoveringRetryAtMs - beforeSleep)),
-            ),
-            Deferred.await(iterationWake),
-          );
-          const now2 = yield* Clock.currentTimeMillis;
-          const retryable = yield* lifecycleLock.withPermit(
-            Effect.gen(function* () {
-              if (
-                (yield* Ref.get(closed)) ||
-                (yield* Ref.get(currentVisibility)) === "hidden" ||
-                receivers.get(organizationKey) !== currentReplacement
-              )
-                return [];
-              const state = yield* Ref.get(model);
-              return [...interests.values()].filter((interest) => {
-                const desired = state.interests.get(interest.key);
-                return (
-                  interest.leases.size > 0 &&
-                  organizationKeyOf(organizationOfInterest(interest.descriptor)) ===
-                    organizationKey &&
-                  interest.identity.receiver.receiverId ===
-                    currentReplacement.identity.receiverId &&
-                  desired?.interest.status === "recovering" &&
-                  // Honour this interest's own backoff: one interest becoming due does not
-                  // pull forward another interest whose own nextRetryAtMs hasn't elapsed.
-                  desired.interest.nextRetryAtMs <= now2
-                );
-              });
-            }),
-          );
-          if (
-            (yield* Ref.get(closed)) ||
-            (yield* Ref.get(currentVisibility)) === "hidden" ||
-            receivers.get(organizationKey) !== currentReplacement
-          ) {
-            // Something else (background pause, shutdown, or a concurrent
-            // overflow/malformed-frame signal) already replaced or paused this
-            // organization's receiver; let whichever cycle owns that own recovery.
-            prepared = null;
-            break;
-          }
-          // The retries that came due log in once more, over the receiver they wait on.
-          if (retryable.length > 0) currentReplacement.openFailure = null;
-          for (const interest of retryable) {
-            yield* establishInterest(interest);
-          }
-          if (retryable.length > 0) yield* awaitIngress;
-          if (receivers.get(organizationKey) !== currentReplacement) {
-            prepared = null;
-            break;
-          }
-          const settled = yield* Ref.get(model);
-          // Did any interest we just retried fail again? That is the one case that
-          // legitimately re-runs the full prepare (bump attempts, maybe replace the
-          // receiver) — never a sibling interest that simply wasn't due this round, and
-          // never a wake that fired before anything was actually due yet.
-          const failedAgain = retryable.some(
-            (interest) => settled.interests.get(interest.key)?.interest.status === "recovering",
-          );
-          if (failedAgain) {
-            prepared = yield* replaceReceiver(organizationKey, currentReplacement, reason);
-            continue;
-          }
-          prepared = {
-            replacement: currentReplacement,
-            hidden: false,
-            minRecoveringRetryAtMs: nextRecoveryAtMs(organizationKey, currentReplacement, settled),
-          };
-        }
-      }).pipe(
-        Effect.ensuring(Effect.sync(() => recoveringOrganizations.delete(organizationKey))),
+      const cycle: RecoveryCycle = {
+        wake: Deferred.makeUnsafe<void>(),
+        replace: replace === null ? null : { receiver, reason: replace },
+      };
+      recoveryCycles.set(organizationKey, cycle);
+      return runRecoveryCycle(organizationKey, cycle).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (recoveryCycles.get(organizationKey) === cycle)
+              recoveryCycles.delete(organizationKey);
+          }),
+        ),
         forkOwned,
         Effect.asVoid,
       );
     });
 
-  scheduleRecovery = (receiver, reason) =>
-    startRecoveryCycle(receiver, reason, (organizationKey) =>
-      replaceReceiver(organizationKey, receiver, reason),
-    );
+  scheduleRecovery = (receiver, reason) => requestRecovery(receiver, reason);
 
-  // Retries the organization's recovering interests on `receiver` without replacing it; a
-  // retried interest that fails again replaces the receiver as in any other cycle.
-  const retryOnReceiver = (receiver: RuntimeReceiver, reason: string): Effect.Effect<void> =>
-    startRecoveryCycle(receiver, reason, (organizationKey) =>
-      Ref.get(model).pipe(
-        Effect.map((state) => ({
-          replacement: receiver,
-          hidden: false,
-          minRecoveringRetryAtMs: nextRecoveryAtMs(organizationKey, receiver, state),
-        })),
-      ),
-    );
+  // Retries the organization's recovering interests on `receiver` without replacing it.
+  const retryOnReceiver = (receiver: RuntimeReceiver): Effect.Effect<void> =>
+    requestRecovery(receiver, null);
+
+  // Re-establishes these interests alone on `receiver`, each under a fresh identity on its own
+  // backoff (paused while the tab is hidden, `failed` with its own retry past the attempt limit);
+  // every other interest keeps observing there. Runs under the lifecycle lock and answers whether
+  // any of them now waits for the receiver's recovery cycle.
+  const reestablishOnReceiver = (
+    receiver: RuntimeReceiver,
+    identities: Iterable<InterestIdentity>,
+    reason: RecoveryReason,
+    message: string,
+  ): Effect.Effect<boolean> =>
+    Effect.gen(function* () {
+      const hidden = (yield* Ref.get(currentVisibility)) === "hidden";
+      const now = yield* Clock.currentTimeMillis;
+      let recovering = false;
+      for (const identity of identities) {
+        const runtimeInterest = interests.get(identity.key);
+        if (
+          runtimeInterest === undefined ||
+          runtimeInterest.identity !== identity ||
+          runtimeInterest.leases.size === 0
+        )
+          continue;
+        const outcome = yield* reestablishLater(runtimeInterest, receiver, {
+          hidden,
+          now,
+          reason,
+          message,
+        });
+        if (outcome.failedRetryAtMs !== null) {
+          yield* scheduleFailedRetry(
+            runtimeInterest,
+            runtimeInterest.identity,
+            outcome.failedRetryAtMs,
+          );
+        }
+        recovering ||= outcome.recoveringRetryAtMs !== null;
+      }
+      return recovering;
+    });
 
   // A malformed frame that names its subscription lost data of that subscription alone. The
   // subscription leaves the receiver, so its later frames are dropped and re-establishment
@@ -2326,40 +2517,32 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           receiver.registrationOwners.delete(subscriptionName);
           if (receiver.registrations.get(registration.key) === registration)
             receiver.registrations.delete(registration.key);
-          const hidden = (yield* Ref.get(currentVisibility)) === "hidden";
-          const now = yield* Clock.currentTimeMillis;
-          let recovering = false;
-          for (const identity of registration.dependents.values()) {
-            const runtimeInterest = interests.get(identity.key);
-            if (
-              runtimeInterest === undefined ||
-              runtimeInterest.identity !== identity ||
-              runtimeInterest.leases.size === 0
-            )
-              continue;
-            const outcome = yield* reestablishLater(runtimeInterest, receiver, {
-              hidden,
-              now,
-              reason: "malformed",
-              message: "malformed receiver frame",
-            });
-            if (outcome.failedRetryAtMs !== null) {
-              yield* scheduleFailedRetry(
-                runtimeInterest,
-                runtimeInterest.identity,
-                outcome.failedRetryAtMs,
-              );
-            }
-            recovering ||= outcome.recoveringRetryAtMs !== null;
-          }
-          return recovering;
+          return yield* reestablishOnReceiver(
+            receiver,
+            registration.dependents.values(),
+            "malformed",
+            "malformed receiver frame",
+          );
         }),
       )
-      .pipe(
-        Effect.flatMap((recovering) =>
-          recovering ? retryOnReceiver(receiver, "malformed receiver frame") : Effect.void,
-        ),
-      );
+      .pipe(Effect.flatMap((recovering) => (recovering ? retryOnReceiver(receiver) : Effect.void)));
+
+  // An interest failed on a receiver that keeps serving the others (a read of its own, or a
+  // registration the platform refused): it alone re-establishes there. A receiver replaced or
+  // paused meanwhile has already moved it along with every other interest.
+  recoverInterest = (receiver, identity, reason, message) =>
+    lifecycleLock
+      .withPermit(
+        Effect.gen(function* () {
+          if (
+            (yield* Ref.get(closed)) ||
+            receivers.get(organizationKeyOf(receiver.organization)) !== receiver
+          )
+            return false;
+          return yield* reestablishOnReceiver(receiver, [identity], reason, message);
+        }),
+      )
+      .pipe(Effect.flatMap((recovering) => (recovering ? retryOnReceiver(receiver) : Effect.void)));
 
   // The retry leaves `failed` under a fresh identity, so its own failure enters `recovering`
   // and the organization's recovery cycle owns its exit; a failure still arriving under the
@@ -2468,6 +2651,17 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       yield* Effect.forEach(
         toResume,
         (runtimeInterest) => establishInterest(runtimeInterest).pipe(forkOwned),
+        { discard: true },
+      );
+      // A receiver kept through a short absence can still have interests recovering on it, whose
+      // cycle stopped while the tab was hidden: it resumes, retrying whatever came due meanwhile.
+      const resumed = yield* Ref.get(model);
+      yield* Effect.forEach(
+        [...receivers].filter(
+          ([organizationKey, receiver]) =>
+            nextRecoveryAtMs(organizationKey, receiver, resumed) !== null,
+        ),
+        ([, receiver]) => retryOnReceiver(receiver),
         { discard: true },
       );
     }),
@@ -2622,10 +2816,10 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         // one's in-flight establishInterest call loses to the other's receiver swap
         // (the identity/receiver mismatch guards abort it), so neither ever survives
         // long enough to complete a registration — a livelock. Wake the existing
-        // cycle instead, which pulls its next retry forward to now.
-        const activeRecoveryWake = recoveringOrganizations.get(organizationKey);
-        if (activeRecoveryWake !== undefined) {
-          yield* Deferred.succeed(activeRecoveryWake, undefined);
+        // cycle instead, which recomputes its wait from current state.
+        const activeRecovery = recoveryCycles.get(organizationKey);
+        if (activeRecovery !== undefined) {
+          yield* Deferred.succeed(activeRecovery.wake, undefined);
           return;
         }
         const state = yield* Ref.get(model);
@@ -3301,7 +3495,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         interests.clear();
         leases.clear();
         receivers.clear();
-        recoveringOrganizations.clear();
+        recoveryCycles.clear();
         hydrations.clear();
         hydrationFailures.clear();
       }),

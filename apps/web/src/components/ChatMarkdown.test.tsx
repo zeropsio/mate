@@ -633,8 +633,10 @@ describe("ChatMarkdown callouts", () => {
     expect(open).toContain(`data-alert="${kind}"`);
     expect(open).toContain('role="note"');
     expect(open).toContain("chat-markdown-callout");
-    // A small label: the glyph and the word, then the content without its marker line.
-    expect(label).toMatch(new RegExp(`<svg[\\s\\S]*</svg>${word}</p>$`));
+    // The word alone, run into the first line — no glyph heading it as a docs
+    // card would (the owner, 2026-09-28) — then the content without its marker line.
+    expect(label).toMatch(new RegExp(`>${word}</p>$`));
+    expect(label).not.toContain("<svg");
     expect(body.trim()).toBe("<p>Stripe is empty.</p>");
     expect(html.replace(/<[^>]+>/g, "")).not.toContain("[!");
     // Copying gives back the alert it was written as.

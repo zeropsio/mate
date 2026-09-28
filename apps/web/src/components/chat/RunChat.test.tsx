@@ -208,11 +208,14 @@ describe("RunChat", () => {
     expect(markup).toContain("Context condensed");
   });
 
-  // Its words and what it did cannot be taken for one another (the owner,
-  // 2026-09-28: "command looks exactly like responses"): only its words are a
-  // filled, round bubble; a call is a row of an outlined card, led by its
-  // kind's mark.
-  it("fills only the Mate's words; what it did is a row of an outlined card", () => {
+  // Every element of the chat is one bubble (the owner, 2026-09-28: "the
+  // design of every element has to be largely the same, differences subtle but
+  // obvious"): one round, 14 px in, 10 px down, at the prose size. Only the
+  // surface tells them apart — its words the fullest fill, a thought half of
+  // it, what it did the card's white in a hairline — and the mark each wears
+  // in the Mate's column, beside it rather than in it, so every bubble's words
+  // start on one edge.
+  it("draws every bubble in one shape, told apart by its surface and its mark", () => {
     const markup = draw(
       record([
         {
@@ -221,15 +224,31 @@ describe("RunChat", () => {
           at: at(10),
           message: message("a1", "assistant", "Found it."),
         },
+        thought("r1", "The build script is missing."),
         step(command("w1", "npm test", { callInput: { description: "Run the tests" } })),
       ]),
     );
-    const [said, did] = bubbles(markup);
-    expect(said?.tag).toContain("bg-foreground/8");
-    expect(said?.tag).toContain("rounded-2xl");
-    expect(did?.tag).not.toContain("bg-foreground/8");
-    expect(markup).toMatch(/<div class="[^"]*rounded-xl border[^"]*" data-chat-calls="true">/);
-    expect(markup).toContain("lucide-square-terminal");
+    const classes = (tag: string | undefined) => /class="([^"]*)"/u.exec(tag ?? "")?.[1] ?? "";
+    const [said, thought_] = bubbles(markup);
+    const card = /<div class="([^"]*)" data-chat-calls="true">/u.exec(markup)?.[1] ?? "";
+    for (const shape of [classes(said?.tag), classes(thought_?.tag)]) {
+      expect(shape.split(" ")).toEqual(
+        expect.arrayContaining(["w-full", "rounded-2xl", "text-prose", "px-3.5", "py-2.5"]),
+      );
+    }
+    expect(card.split(" ")).toEqual(expect.arrayContaining(["w-full", "rounded-2xl"]));
+    expect(classes(said?.tag)).toContain("bg-foreground/8");
+    expect(classes(thought_?.tag)).toContain("bg-foreground/4");
+    expect(card).toContain("bg-card ring-1 ring-foreground/12");
+    // Each mark stands in the Mate's column, out of its bubble.
+    const column = (icon: string) =>
+      new RegExp(
+        `<span aria-hidden="true" class="w-7 shrink-0 flex justify-center pt-2\\.5 text-prose"><span class="flex h-\\[1lh\\] items-center"><svg[^>]*lucide-${icon}`,
+        "u",
+      );
+    expect(markup).toMatch(column("brain"));
+    expect(markup).toMatch(column("square-terminal"));
+    expect(markup).not.toMatch(/data-chat-bubble="speech"[^>]*>\s*<span aria-hidden/u);
   });
 
   // Ten reads in a row are one stretch of work (the owner, 2026-09-28: "there
@@ -293,14 +312,14 @@ describe("RunChat", () => {
   // words in sight, and folds to its top once it ends — at the same height
   // (the owner, 2026-09-28: "the long thinking blocks needs to start inner
   // scrolling with fade at the same cutoff").
-  it("keeps the thought it is thinking to eight lines that scroll, and offers no fold under it", () => {
+  it("keeps the thought it is thinking to six lines that scroll, and offers no fold under it", () => {
     const markup = draw(
       record([], {
         live: true,
         now: { kind: "thinking", key: "thought:r9", messages: [message("r9", "reasoning", LONG)] },
       }),
     );
-    expect(markup).toMatch(/class="[^"]*max-h-36[^"]*overflow-y-auto/);
+    expect(markup).toMatch(/class="[^"]*max-h-34[^"]*overflow-y-auto/);
     expect(markup).not.toContain("data-chat-folded");
     expect(markup).not.toContain("Show more");
   });
@@ -340,7 +359,8 @@ describe("RunChat", () => {
           ),
         ]),
       );
-      expect(codeTone(markup)).toEqual(["text-xs", "text-muted-foreground"]);
+      // Mono at 13 px, the chat's quiet size: as tall as the words it follows.
+      expect(codeTone(markup)).toEqual(["text-muted-foreground", "text-line"]);
     }
   });
 
@@ -468,16 +488,26 @@ describe("RunChat", () => {
     expect(said).toEqual(expect.arrayContaining(["pt-2", "pb-4"]));
   });
 
-  // The face's column lines the Mate's lines up over the face at the chat's
-  // foot; on a card narrower than 28 rem — a phone — the 38 px it keeps is
-  // the text's (390 px wide, the chat's text had 280 px of the card's 318).
-  it("keeps the face's column only where the chat has room for it", () => {
-    const markup = draw(record([thought("r1", "The route and the check disagree.")]));
-    expect(markup).toMatch(/<div class="[^"]*@container\/chat[^"]*" data-run-chat="true">/u);
-    const column = /<li[^>]*data-chat-row[^>]*><span aria-hidden="true" class="([^"]*)"/u.exec(
-      markup,
-    )?.[1];
-    expect(column?.split(" ")).toEqual(expect.arrayContaining(["hidden", "@md/chat:block"]));
+  // The Mate's column lines its bubbles up over the face at the chat's foot,
+  // and holds the marks that tell them apart — on a phone's card too, 8 px off
+  // the bubbles there and 10 where the card has room, so no bubble loses its
+  // edge.
+  it("keeps the Mate's column beside every bubble, the gap narrower on a phone's card", () => {
+    const markup = draw(
+      record([
+        { kind: "note", key: "note:a1", at: at(10), message: message("a1", "assistant", "Hi.") },
+      ]),
+    );
+    // One container holds the chat and its status line, so both keep one gap.
+    expect(markup).toMatch(
+      /<div class="@container\/chat min-w-0"><div class="[^"]*" data-run-chat="true">/u,
+    );
+    const row =
+      /<li class="([^"]*)" data-chat-row="true"><span aria-hidden="true" class="([^"]*)"/u.exec(
+        markup,
+      );
+    expect(row?.[1]?.split(" ")).toEqual(expect.arrayContaining(["gap-2", "@md/chat:gap-2.5"]));
+    expect(row?.[2]).toBe("w-7 shrink-0");
   });
 
   // Two pages of one host are said by name, as one is; more by their count,

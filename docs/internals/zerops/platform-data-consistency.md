@@ -101,13 +101,29 @@ Terminal records remain available to retained history/operation views.
    completions have crossed the ingestion queue's completion markers. Do not wait
    for a quiet source, empty queue or uncontested field replacement.
 8. On disconnect, registration failure, malformed required data or overflow mark
-   affected interests recovering before any lossy discard. Fence old generations;
-   use a new receiver on reconnect and uncertain registration ownership. Rebuild
-   active registrations and direct anchors through the same algorithm.
+   affected interests recovering before any lossy discard, and fence old
+   generations. The failure's scope decides what recovers. A required direct read
+   that failed, a registration the platform refused with an HTTP error status
+   (429 included: a refusal took no effect) and a malformed frame naming its
+   subscription fail only the interests that depend on them: each re-establishes
+   on the live receiver under a new generation and its own backoff, and every
+   other interest keeps observing. Socket login or greeting failure, close or
+   missed pong, overflow, a malformed frame naming no subscription the receiver
+   holds, the registration churn budget, an establishment past its deadline and
+   uncertain registration ownership (no answer, or one that could not be read)
+   use a new receiver, and every interest on the old one recovers there. Optional
+   interests never replace it: they fail with their own retry. Rebuild active
+   registrations and direct anchors through the same algorithm. One recovery
+   cycle per organization re-establishes the interests that are due concurrently
+   under a bound, the organization inventory first. Only a retry that failed at
+   the receiver replaces it, and the round then starts no more retries there. An
+   open receiver that fails while the cycle waits is replaced at once; a failed
+   socket login is retried on the cycle's backoff, one login per rung.
 9. Bound establishment/token/open/greeting/read deadlines and recovery attempts.
    Repeated failures reach an explicit failed state with controlled retry, never
-   an endless initial spinner. Foreground return also checks expired access and
-   recovers paused interests before reporting observing.
+   an endless initial spinner. Foreground return also checks expired access,
+   recovers paused interests and resumes recovery that stopped while the tab was
+   hidden, before reporting observing.
 
 Example: GET starts → push observes FINISHED → GET returns RUNNING. Retain FINISHED,
 record the GET's successful completion and finish recovery when other prerequisites
@@ -156,6 +172,17 @@ Successful establishment resets that interest's recovery budget; the limit bound
 consecutive failed recovery attempts. A shared physical observation is admitted
 once, using a still-current dependent selected when ingestion runs.
 
+Registration requests share one account-wide concurrency bound. The organization
+inventory's own registrations, its project feed and project list, are admitted
+ahead of waiting project registrations; a registration's deadline starts when it
+is sent, not while it waits for its turn. A registration the platform refused
+with an HTTP error status took no effect, so its interests register again on the
+same receiver. A required interest's registration without an answer, or with an
+answer that could not be read, may have left a subscription nobody owns, so its
+receiver is replaced. A subscription nobody owns names no registration the
+adapter holds: should a refused or optional registration have taken effect after
+all, its first frame replaces the receiver.
+
 Native frames are the ordinary data path. A valid admitted update performs no REST
 reread. Repair triggers are reconnect, foreground recovery, failed decoding/loss,
 unresolved references and explicit refresh. Healthy receivers have no periodic
@@ -179,11 +206,11 @@ waits for no interest, and from 2.3 it re-reads no inventory; data traffic does 
 renew access.
 
 Operational constants live in one tested runtime policy module: HTTP, heartbeat,
-open, greeting and registration deadlines; ingress bytes/events; hydration
-concurrency; retained terminal processes; telemetry buckets; log lines; receiver
-registrations; and background receiver lifetime. Their values are not part of public view
-semantics. A budget breach is visible as partial/recovering/failed, never silently
-discarded data reported live.
+open, greeting and registration deadlines; ingress bytes/events; hydration,
+registration and recovery concurrency; retained terminal processes; telemetry
+buckets; log lines; receiver registrations; and background receiver lifetime.
+Their values are not part of public view semantics. A budget breach is visible as
+partial/recovering/failed, never silently discarded data reported live.
 
 Keep ingestion and access deadlines independent of animation frames. Coalesce
 publication to affected atoms; bounded log/metric rendering can use its own cadence.
