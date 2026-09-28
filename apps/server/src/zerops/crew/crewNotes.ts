@@ -3,8 +3,9 @@
  * restart, kept in the crew log beside the engine's memory: the one nudge an
  * attempt gets, each wake of the lead (and so the run's wake count), a
  * question the lead passed on to the person, the lead's own question
- * until the person answers it, and an *Allow* waiting on its crewmate's
- * turn. The engine rebuilds its memory from them when it starts.
+ * until the person answers it, an *Allow* waiting on its crewmate's turn,
+ * and each turn's cost as counted. The engine rebuilds its memory from them
+ * when it starts.
  *
  * @module crewNotes
  */
@@ -23,7 +24,13 @@ export type CrewNote =
   | { readonly kind: "lead-asked"; readonly handle: string; readonly text: string }
   | { readonly kind: "lead-answered"; readonly handle: string }
   | { readonly kind: "grant-waiting"; readonly host: string; readonly principal: TurnPrincipal }
-  | { readonly kind: "grant-settled"; readonly host: string };
+  | { readonly kind: "grant-settled"; readonly host: string }
+  | {
+      readonly kind: "turn-cost";
+      readonly threadId: string;
+      readonly turnId: string;
+      readonly total: number;
+    };
 
 const NOTE_KINDS: ReadonlyArray<CrewNote["kind"]> = [
   "nudged",
@@ -33,6 +40,7 @@ const NOTE_KINDS: ReadonlyArray<CrewNote["kind"]> = [
   "lead-answered",
   "grant-waiting",
   "grant-settled",
+  "turn-cost",
 ];
 
 const NotePayload = Schema.Struct({
@@ -40,6 +48,9 @@ const NotePayload = Schema.Struct({
   handle: Schema.optional(Schema.String),
   text: Schema.optional(Schema.String),
   host: Schema.optional(Schema.String),
+  threadId: Schema.optional(Schema.String),
+  turnId: Schema.optional(Schema.String),
+  total: Schema.optional(Schema.Number),
   principal: Schema.optional(
     Schema.Union([
       Schema.Struct({ kind: Schema.Literal("session"), subject: Schema.String }),
@@ -73,6 +84,13 @@ const apply = (memory: EngineMemory, note: CrewNote, run: string | null, at: str
       return;
     case "grant-settled":
       memory.grantsWaiting.delete(note.host);
+      return;
+    case "turn-cost":
+      memory.costedTurns.add(note.turnId);
+      memory.costSeen.set(
+        note.threadId,
+        Math.max(memory.costSeen.get(note.threadId) ?? 0, note.total),
+      );
       return;
   }
 };
@@ -118,6 +136,12 @@ const noteOf = (
         : { kind, host: payload.host, principal: payload.principal };
     case "grant-settled":
       return payload?.host === undefined ? undefined : { kind, host: payload.host };
+    case "turn-cost":
+      return payload?.threadId === undefined ||
+        payload.turnId === undefined ||
+        payload.total === undefined
+        ? undefined
+        : { kind, threadId: payload.threadId, turnId: payload.turnId, total: payload.total };
     default:
       return undefined;
   }

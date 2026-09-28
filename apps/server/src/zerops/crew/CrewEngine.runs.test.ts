@@ -4,12 +4,14 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 
+import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 import { CrewThreadDirectory } from "./crewSeams.ts";
 import { CrewStore } from "./CrewStore.ts";
 import {
   eventually,
   spiEvent,
   withCrewEngine,
+  withCrewEngines,
   type CrewWorld,
 } from "./testing/crewEngineFixture.ts";
 import {
@@ -17,6 +19,7 @@ import {
   command,
   dispatchedOf,
   firstTurn,
+  latest,
   reportDone,
   snapshotWhere,
 } from "./testing/crewEngineSteps.ts";
@@ -59,12 +62,11 @@ describe("CrewEngine runs", () => {
         const left = yield* budgetOf(thread);
         yield* command({ _tag: "message", handle: "backend", text: "More", attachments: [] });
         yield* world.publish(spiEvent("turn.started", thread, {}));
-        yield* ended(world, thread, 0.75);
+        // A session's total is cumulative: 1.0 is this turn's 0.75 on top of the first's 0.25.
+        yield* ended(world, thread, 1);
         const paused = (yield* snapshotWhere((current) => current.run?.state === "paused")).run!;
-        assert.deepStrictEqual(
-          [first, left, paused.reason, paused.spentUsd],
-          [1, 0.75, "budget", 1],
-        );
+        // The CLI caps a session's cumulative cost: what it spent before plus the run's remainder.
+        assert.deepStrictEqual([first, left, paused.reason, paused.spentUsd], [1, 1, "budget", 1]);
       }),
     ),
   );
@@ -100,12 +102,68 @@ describe("CrewEngine runs", () => {
                 "The run has spent its $1 budget — raise it or choose No limit to resume",
               ],
               tooLow: "The run has spent its $1.20 budget — raise it or choose No limit to resume",
-              raised: [2, 8, 0.75],
+              raised: [2, 8, 2],
               noLimit: undefined,
             },
           );
         }),
       ),
+  );
+
+  it.live("spend counts each turn's own cost, once, from a session's cumulative totals", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* started(world, { budgetUsd: 10 });
+        const thread = yield* firstTurn(world, () => undefined);
+        const first = spiEvent("turn.completed", thread, { state: "completed", totalCostUsd: 0.3 });
+        yield* world.publish(first);
+        yield* snapshotWhere((current) => current.run?.spentUsd === 0.3);
+        // The same end delivered twice, and a turn stopped before it cost anything.
+        yield* world.publish(first);
+        yield* command({ _tag: "message", handle: "backend", text: "More", attachments: [] });
+        yield* world.publish(spiEvent("turn.started", thread, {}));
+        yield* world.publish(
+          spiEvent("turn.completed", thread, { state: "interrupted", totalCostUsd: 0.3 }),
+        );
+        yield* command({ _tag: "message", handle: "backend", text: "Again", attachments: [] });
+        yield* world.publish(spiEvent("turn.started", thread, {}));
+        yield* ended(world, thread, 0.5);
+        const run = (yield* snapshotWhere((current) => current.run?.spentUsd !== 0.3)).run!;
+        const [task] = (yield* latest).board.tasks;
+        const attempts = yield* (yield* CrewStore).attemptsOf(task!.id);
+        assert.deepStrictEqual([run.spentUsd, attempts.map((row) => row.costUsd)], [0.5, [0.5]]);
+      }),
+    ),
+  );
+
+  it.live(
+    "a run caps each session at what it spent before plus the run's remainder, after a restart too",
+    () =>
+      withCrewEngines([
+        (world) =>
+          Effect.gen(function* () {
+            yield* applied(world);
+            const thread = yield* firstTurn(world, () => undefined);
+            yield* ended(world, thread, 0.4);
+            yield* snapshotWhere((current) => current.crewmates[0]!.lane?.ahead === 0);
+          }),
+        (world) =>
+          Effect.gen(function* () {
+            yield* (yield* ServerCommandReadiness).complete;
+            yield* command({ _tag: "start", ...OPTIONS });
+            yield* snapshotWhere((current) => current.run?.state === "running");
+            const thread = (yield* dispatchedOf(world, "thread.crew.create")).find(
+              (entry) => entry.crew.crewmate === "backend",
+            )!.threadId;
+            const stopped = (yield* dispatchedOf(world, "thread.session.stop")).map(
+              (entry) => entry.threadId,
+            );
+            assert.deepStrictEqual(
+              [yield* budgetOf(thread), stopped.includes(thread)],
+              [1.4, true],
+            );
+          }),
+      ]),
   );
 
   it.live("a run with No limit sets no session budget and still meters the spend", () =>
@@ -247,7 +305,7 @@ describe("CrewEngine runs", () => {
           ),
         );
         yield* world.publish(spiEvent("turn.started", thread, {}));
-        yield* ended(world, thread, 0.1);
+        yield* ended(world, thread, 0.2);
         yield* snapshotWhere((current) => current.run?.spentUsd === 0.2);
         const turns = yield* dispatchedOf(world, "thread.turn.start");
         assert.deepStrictEqual(

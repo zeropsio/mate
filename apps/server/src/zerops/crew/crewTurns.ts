@@ -36,7 +36,7 @@ import { grantAfterTurn, moveClaim, releaseAfterTurn, settleClaim } from "./crew
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
 import { crewStateRef } from "./CrewStateRef.ts";
 import { attemptRef, type LaneSpec } from "./CrewWorkspace.ts";
-import { RUN_PAUSED, recordRunSpend, recordUsage } from "./crewRuns.ts";
+import { RUN_PAUSED, recordRunSpend, recordUsage, turnCost } from "./crewRuns.ts";
 import { rotate, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
 import { continueAfterSave, openTaskOf, parkTask, requeueTask, stepTask } from "./crewTasks.ts";
@@ -132,8 +132,8 @@ const commitAndPolice = (
     }
   });
 
-const recordCost = (core: CrewCore, task: CrewAssignmentRow, costUsd: number | undefined) =>
-  costUsd === undefined || costUsd <= 0
+const recordCost = (core: CrewCore, task: CrewAssignmentRow, costUsd: number) =>
+  costUsd <= 0
     ? Effect.void
     : Effect.gen(function* () {
         const attempts = yield* asRefusal(core.store.attemptsOf(task.assignment));
@@ -167,8 +167,20 @@ const turnEnded = (
     if (applied === undefined || member === undefined) return;
     const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
     const open = openTaskOf(tasks, stint.member);
-    if (open !== undefined) yield* recordCost(core, open, event.payload.totalCostUsd);
-    yield* recordRunSpend(core, event.payload.totalCostUsd);
+    const cost = yield* turnCost(core, stint.threadId, event);
+    if (open !== undefined) yield* recordCost(core, open, cost);
+    yield* recordRunSpend(core, cost);
+    if (memory.sessionRestart.delete(stint.threadId)) {
+      // The run's budget changed during this turn: the next resumes under the new cap.
+      yield* asRefusal(
+        core.orchestration.dispatch({
+          type: "thread.session.stop",
+          commandId: CommandId.make(`crew:budget:${stint.threadId}:${yield* core.now}`),
+          threadId: ThreadId.make(stint.threadId),
+          createdAt: yield* core.now,
+        }),
+      );
+    }
     if (member.row.kind === "writer") {
       yield* commitAndPolice(
         core,
