@@ -474,22 +474,26 @@ const TAKE_PICTURE_CLASS: Record<Device, string> = {
 /**
  * The pictures a run's checks took, side by side in their devices' shapes — a
  * failed take outlined red, a retried one amber — each opening the picture
- * viewer with the others beside it. A check with no picture is left out: what
- * it read is the stage's to show.
+ * viewer with the others beside it; the one being taken now, the page as the
+ * browser streams it. A check with no picture is left out: what it read is
+ * the stage's to show.
  */
 export function BrowserTakes({
   takes,
   onOpenImage,
+  environmentId = null,
 }: {
   readonly takes: ReadonlyArray<ZeropsOperation>;
   readonly onOpenImage: (preview: ExpandedImagePreview) => void;
+  /** Where the browser streams from, for a take still being taken. */
+  readonly environmentId?: EnvironmentId | null;
 }) {
   const shots = takes.flatMap((take) =>
     take.screenshot
       ? [{ key: take.key, src: take.screenshot.src, name: browserCheckCaption(take) }]
       : [],
   );
-  if (shots.length === 0) return null;
+  if (shots.length === 0 && !takes.some((take) => take.phase === "running")) return null;
   return (
     // The first take on the text edge: the room its scroller keeps for a
     // take's ring and the focus ring hangs outside it.
@@ -498,6 +502,9 @@ export function BrowserTakes({
       data-report-takes
     >
       {takes.map((take) => {
+        if (take.phase === "running") {
+          return <LiveTake key={take.key} environmentId={environmentId} take={take} />;
+        }
         const src = take.screenshot?.src;
         if (src === undefined) return null;
         const state = browserTakeState(take, takes);
@@ -527,5 +534,46 @@ export function BrowserTakes({
         );
       })}
     </div>
+  );
+}
+
+/**
+ * The take being taken now: the page as the browser streams it, in the frame
+ * its picture will stand in, so the row keeps its height when the picture
+ * comes. Busy, never failure: the blue dot the stage's Live wears.
+ */
+function LiveTake({
+  take,
+  environmentId,
+}: {
+  readonly take: ZeropsOperation;
+  readonly environmentId: EnvironmentId | null;
+}) {
+  const device = browserCheckDevice(take);
+  const stream = useZeropsBrowserStream(environmentId);
+  const frame = stream !== undefined && stream !== "unavailable" ? stream.frame : undefined;
+  return (
+    <span
+      aria-label={`Checking ${browserCheckCaption(take)}`}
+      className={cn(
+        "relative block h-20 shrink-0 overflow-hidden rounded-lg border border-border bg-background",
+        TAKE_PICTURE_CLASS[device],
+      )}
+      data-report-take={device}
+      data-report-take-live
+      role="img"
+    >
+      {frame === undefined ? null : (
+        <img
+          alt=""
+          className="block size-full object-cover object-top"
+          src={frameImageSrc(frame)}
+        />
+      )}
+      <span
+        aria-hidden="true"
+        className="absolute end-1.5 bottom-1.5 size-1.5 animate-status-pulse rounded-full bg-status-busy motion-reduce:animate-none"
+      />
+    </span>
   );
 }

@@ -1438,33 +1438,47 @@ function OperationBubble({
 }
 
 /**
- * The pages it checked in the browser, as the pictures it took: each take in
- * its device's shape, opening the picture viewer; the stage with every take
- * opens under them.
+ * The pages it checked in the browser, as their row of the chat from the
+ * first check's start: what it checks, and each take in its device's shape
+ * as it comes back — the one it is taking now a live frame of the page, in
+ * the frame its picture will stand in, so the row never changes height when
+ * the picture comes. The stage with every take opens under it.
  */
 function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
   const ctx = use(TimelineRowCtx);
   const disclosure = useDisclosure();
   const latest = strip.checks.at(-1)!;
-  const words =
-    strip.views === 1 ? `Checked ${browserCheckCaption(latest)}` : `Checked ${strip.views} pages`;
-  const verdict =
-    strip.failures > 0
+  const running = latest.phase === "running";
+  const settled = strip.checks.filter((check) => check.phase !== "running");
+  const words = running
+    ? `Checking ${browserCheckCaption(latest)}`
+    : strip.views === 1
+      ? `Checked ${browserCheckCaption(latest)}`
+      : `Checked ${strip.views} pages`;
+  const verdict = running
+    ? null
+    : strip.failures > 0
       ? strip.failures === 1
         ? "1 check failed"
         : `${strip.failures} checks failed`
-      : strip.checks.length === 1
+      : settled.length === 1
         ? "passed"
-        : `${strip.checks.length} checks passed`;
+        : `${settled.length} checks passed`;
   const startedMs = Date.parse(strip.checks[0]!.anchorAt);
   const endedMs = Date.parse(latest.settledAt ?? latest.anchorAt);
   const tookMs = endedMs - startedMs;
+  const time = running ? (
+    <ElapsedSince since={latest.anchorAt} />
+  ) : Number.isFinite(tookMs) && tookMs >= 1000 ? (
+    formatWorkDuration(tookMs)
+  ) : null;
   const failed = strip.failures > 0;
+  const takes = strip.checks.some((check) => check.screenshot || check.phase === "running");
   return (
     <CallRow failed={failed} kind="checks">
       <DisclosureButton
         className="px-3 py-2"
-        label={`${words}, ${verdict}. ${disclosure.open ? "Hide" : "Show"} the checks`}
+        label={`${words}${verdict === null ? "" : `, ${verdict}`}. ${disclosure.open ? "Hide" : "Show"} the checks`}
         onToggle={disclosure.toggle}
         open={disclosure.open}
       >
@@ -1472,20 +1486,26 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
           column
           lead={<DidMark failed={failed} icon={AppWindowIcon} />}
           opens
-          time={Number.isFinite(tookMs) && tookMs >= 1000 ? formatWorkDuration(tookMs) : null}
-          timeTone={failed ? "failed" : "muted"}
+          time={time}
+          timeTone={running ? "busy" : failed ? "failed" : "muted"}
         >
           <span className="text-line">
             <span className="text-foreground/90">{words}</span>
-            <span className={failed ? "text-status-failed-text" : "text-muted-foreground"}>
-              {` · ${verdict}`}
-            </span>
+            {verdict === null ? null : (
+              <span className={failed ? "text-status-failed-text" : "text-muted-foreground"}>
+                {` · ${verdict}`}
+              </span>
+            )}
           </span>
         </Headline>
       </DisclosureButton>
-      {disclosure.open || !strip.checks.some((check) => check.screenshot) ? null : (
+      {disclosure.open || !takes ? null : (
         <div className="pe-3 pb-2.5 ps-8.5">
-          <BrowserTakes onOpenImage={ctx.onImageExpand} takes={strip.checks} />
+          <BrowserTakes
+            environmentId={ctx.activeThreadEnvironmentId}
+            onOpenImage={ctx.onImageExpand}
+            takes={strip.checks}
+          />
         </div>
       )}
       {disclosure.open ? (
@@ -1967,6 +1987,8 @@ function nowLine(now: TurnHeaderActivity | null): ChatLine | null {
     case "step":
       return { key: `step:${now.step.key}`, bubble: <StepBubble step={now.step} />, call: true };
     case "operation":
+      // A check is its row of the chat from its start: it is there already.
+      if (now.operation.kind === "browser") return null;
       return {
         key: `operation:${now.operation.key}`,
         bubble: <OperationBubble newest operation={now.operation} />,

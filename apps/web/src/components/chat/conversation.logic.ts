@@ -1382,15 +1382,20 @@ export interface BrowserStripModel {
   readonly live: boolean;
 }
 
-export function browserStrip(stretch: Stretch): BrowserStripModel | null {
-  const checks = stretchOperations(stretch).filter((operation) => operation.kind === "browser");
-  if (checks.length === 0) return null;
+/**
+ * Browser checks made one after another, as the one row of the chat they
+ * share: a page checked on a desktop and then on a phone is one row of takes.
+ */
+export function checksStrip(
+  checks: ReadonlyArray<ZeropsOperation>,
+  live: boolean,
+): BrowserStripModel {
   return {
     key: `strip:${checks[0]!.key}`,
     checks,
     views: browserCheckViews(checks),
     failures: unrecoveredCheckFailures(checks).length,
-    live: stretch.live,
+    live,
   };
 }
 

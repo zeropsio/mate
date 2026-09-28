@@ -113,7 +113,7 @@ const said = (item: RecordItem): string => {
     case "plan":
       return "plan";
     case "strip":
-      return "strip";
+      return `strip ${item.strip.checks.map((check) => check.key).join(" ")}`;
     case "incident":
       return `incident ${item.incident.hostname}`;
     case "event":
@@ -286,7 +286,6 @@ describe("deriveMessagesTimelineRows", () => {
       kind: "working",
       turnKey: "msg:m0",
       cardKey: "msg:m0",
-      strip: null,
       incidents: [],
     });
   });
@@ -992,14 +991,14 @@ describe("deriveMessagesTimelineRows", () => {
       ],
     },
     {
-      name: "a settled operation is a line; a check is the browser's while it runs",
+      name: "a settled operation is a line; a check is its row where it happened",
       entries: [
         operation("v1", "t1", 1, { kind: "verify", phase: "failed", statusWord: "Unhealthy" }),
         operation("d1", "t1", 2, { kind: "deploy", phase: "failed", statusWord: "Failed" }),
         operation("b1", "t1", 3, { kind: "browser", phase: "failed", statusWord: "Failed" }),
         operation("v2", "t1", 4, { kind: "verify", phase: "done", statusWord: "Healthy" }),
       ],
-      record: ["✗ verify appdev", "✗ deploy appdev", "✓ verify appdev"],
+      record: ["✗ verify appdev", "✗ deploy appdev", "strip op:b1", "✓ verify appdev"],
     },
     {
       name: "words that are only space are no note; a step it took is a line",
@@ -1030,11 +1029,11 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
   });
 
-  // What runs alongside is the whole run's while it goes on: a message sent
-  // into the run moved the checks before it into the record's middle as the
-  // Mate went on (a real thread, replayed 2026-09-27). Settled, they are
-  // lines where they happened.
-  it("keeps a run's checks alongside while it goes on, however often the person wrote into it", () => {
+  // A check is its row of the chat from its start, where it happened, live
+  // as settled — however often the person wrote into the run. It stood in a
+  // drawer under the chat until the run was over, a stale picture while the
+  // Mate deployed (Nova, 2026-09-28).
+  it("draws a check where it happened from its start, the same live and settled", () => {
     const entries = [
       user("m0", 0),
       operation("b1", "t1", 1, { kind: "browser", subject: "https://shop.dev/" }),
@@ -1043,15 +1042,42 @@ describe("deriveMessagesTimelineRows", () => {
       tool("w2", "t1", 4),
     ];
     const live = rows({ entries, live: "t1" });
-    expect(lines(live)).toEqual(["· pnpm test", "> and the footer", "· pnpm test"]);
-    expect(live.find((row) => row.kind === "working")).toMatchObject({
-      strip: { checks: [expect.objectContaining({ kind: "browser" })] },
-    });
+    const drawn = ["strip op:b1", "· pnpm test", "> and the footer", "· pnpm test"];
+    expect(lines(live)).toEqual(drawn);
+    expect(live.find((row) => row.kind === "working")).not.toHaveProperty("strip");
     const settled = rows({
       entries: [...entries, assistant("a1", "t1", 5, "Done.")],
       settled: "t1",
     });
-    expect(lines(settled)).toEqual(["strip", "· pnpm test", "> and the footer", "· pnpm test"]);
+    expect(lines(settled)).toEqual(drawn);
+  });
+
+  // A page checked on a desktop and then a phone is one row of takes; a check
+  // after other work starts a row of its own, so no row above the newest
+  // grows. The one being taken is in its row already, never a line of its own.
+  it("gathers checks one after another into one row, and starts another after other work", () => {
+    const entries = [
+      user("m0", 0),
+      operation("b1", "t1", 1, { kind: "browser", subject: "https://shop.dev/" }),
+      operation("b2", "t1", 2, {
+        kind: "browser",
+        subject: "https://shop.dev/",
+        deviceName: "iPhone 16",
+      }),
+      tool("w1", "t1", 3),
+      operation("b3", "t1", 4, {
+        kind: "browser",
+        subject: "https://shop.dev/cart",
+        phase: "running",
+      }),
+    ];
+    const live = rows({ entries, live: "t1" });
+    expect(lines(live)).toEqual(["strip op:b1 op:b2", "· pnpm test", "strip op:b3"]);
+    expect(recordOf(live)?.items.map((item) => item.key)).toEqual([
+      "operation:op:b1",
+      "step:w1",
+      "operation:op:b3",
+    ]);
   });
 
   it("records a settled run: thinking, notes in full, each call a step", () => {
@@ -1257,7 +1283,7 @@ describe("deriveMessagesTimelineRows", () => {
       "message:a1",
     ]);
     expect(lines(list)).toEqual([
-      "strip",
+      "strip op:b1",
       "event landed",
       "event compaction",
       "error Claude API is overloaded (529)",
@@ -1331,7 +1357,7 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       settled: "t1",
     });
-    expect(lines(list)).toEqual(["· pnpm test", "strip"]);
+    expect(lines(list)).toEqual(["· pnpm test", "strip op:b1"]);
   });
 
   it("draws one pause for a usage limit, however many attempts ran into it", () => {

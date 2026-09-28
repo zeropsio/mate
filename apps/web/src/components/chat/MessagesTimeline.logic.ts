@@ -15,7 +15,7 @@ import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../..
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
 import {
   activityPills,
-  browserStrip,
+  checksStrip,
   deriveConversationStructure,
   deriveOutcome,
   isActivityWork,
@@ -468,9 +468,8 @@ type MessagesTimelineRowBody =
       /**
        * What runs alongside the Mate while it works, under its record: a
        * status bar each for a deploy, a service in trouble, the task list,
-       * the helpers and the background tasks, and the browser while it
-       * checks pages. It is the card's bottom, so it may change; settling
-       * turns it into the run's result.
+       * the helpers and the background tasks. It is the card's bottom, so it
+       * may change; settling turns it into the run's result.
        */
       kind: "working";
       id: string;
@@ -479,7 +478,6 @@ type MessagesTimelineRowBody =
       turnKey: string;
       /** The card it stands in: its line and edge are keyed by it. */
       cardKey: string;
-      strip: BrowserStripModel | null;
       incidents: ReadonlyArray<IncidentModel>;
     }
   | {
@@ -979,9 +977,9 @@ export function thoughtPreview(messages: ReadonlyArray<Pick<ChatMessage, "text">
  *
  * Live, the thought the Mate is thinking and the call it is making are not in
  * it: they stand beside its face at the record's end and join it once they
- * end, so nothing is ever drawn twice. The browser's frames and a service's
- * trouble are the working row's while the stretch runs — its drawer, its
- * status bars — and the record's once it is over.
+ * end, so nothing is ever drawn twice. A browser check is its row from its
+ * start, its take filling in when it ends. A service's trouble is the working
+ * row's status bar while the stretch runs, and the record's once it is over.
  */
 function stretchRecord(input: {
   stretch: Stretch;
@@ -999,12 +997,39 @@ function stretchRecord(input: {
   const push = (item: RecordItem) => {
     placed.push({ order: order++, item });
   };
+  /**
+   * A browser check is its row of the chat from the moment it starts, live
+   * as settled, and a check that follows it with nothing between shares the
+   * row: a page checked on a desktop and then on a phone is one row of takes.
+   * A check after other work starts a row of its own, so a row above the
+   * newest never grows (Nova, 2026-09-28: the checks stood in a drawer under
+   * the chat for the rest of the run, a stale picture while it deployed, and
+   * reached the chat only when the run was over).
+   */
+  const joinCheck = (check: ZeropsOperation) => {
+    const last = placed.at(-1);
+    if (last !== undefined && last.item.kind === "strip") {
+      placed[placed.length - 1] = {
+        order: last.order,
+        item: {
+          ...last.item,
+          strip: checksStrip([...last.item.strip.checks, check], stretch.live),
+        },
+      };
+      return;
+    }
+    push({
+      kind: "strip",
+      key: `operation:${check.key}`,
+      at: check.anchorAt,
+      strip: checksStrip([check], stretch.live),
+    });
+  };
 
-  // While the run goes on its checks and its services in trouble are what
-  // runs alongside, the whole run's: a message sent into it must not move
-  // the checks before it into the record's middle.
+  // While the run goes on its services in trouble are what runs alongside,
+  // the whole run's: a message sent into it must not move them into the
+  // record's middle.
   const runLive = input.until === null;
-  const strip = runLive ? null : browserStrip(stretch);
   const incidentsByKey = new Map(
     (runLive ? [] : stretchIncidents(stretch)).map((incident) => [incident.key, incident] as const),
   );
@@ -1138,14 +1163,14 @@ function stretchRecord(input: {
     switch (entry.kind) {
       case "operation": {
         const op = entry.operation;
-        if (strip !== null && op === strip.checks[0]) {
-          push({ kind: "strip", key: strip.key, at: op.anchorAt, strip });
+        if (op.kind === "browser") {
+          joinCheck(op);
+          break;
         }
         const incident = incidentsByKey.get(`incident:${op.key}`);
         if (incident !== undefined) {
           push({ kind: "incident", key: incident.key, at: incident.appearedAt, incident });
         }
-        if (op.kind === "browser") break;
         // What it runs stands beside its face and in its bar until it settles.
         if (stretch.live && op.phase === "running") break;
         push({
@@ -1748,7 +1773,6 @@ export function deriveMessagesTimelineRows(input: {
           stretchKey: last.key,
           turnKey: turn.key,
           cardKey: first.key,
-          strip: browserStrip(wholeRun),
           incidents: stretchIncidents(wholeRun),
         });
       }

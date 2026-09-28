@@ -15,6 +15,8 @@ import {
   type TimelineRowActivityState,
   type TimelineRowSharedState,
 } from "./timelineContext";
+import { checksStrip } from "./conversation.logic";
+import { operation } from "./conversationFixtures";
 import { stepOf } from "./workSteps.logic";
 
 const at = (second: number) => new Date(Date.UTC(2026, 8, 27, 10, 0, second)).toISOString();
@@ -405,6 +407,52 @@ describe("RunChat", () => {
     expect(markup).toContain(">echo 59<");
     expect(markup).not.toContain(">echo 19<");
     expect(draw(record(many.slice(0, 40)))).not.toContain("earlier<");
+  });
+
+  // A check is its row from its start: while it runs, what it checks and the
+  // page as the browser streams it, in the frame its picture will stand in —
+  // never a line of its own beside the face as well (Nova, 2026-09-28: the
+  // checks stood in a drawer under the chat until the run was over).
+  it("draws a check being taken as its row, a live frame where its picture will stand", () => {
+    const check = (id: string, phase: "running" | "done") => {
+      const entry = operation(id, "turn-1", 1, {
+        kind: "browser",
+        subject: "https://shop.dev/health",
+        phase,
+        ...(phase === "done"
+          ? { screenshot: { src: `/shots/${id}.png`, width: 1280, height: 800 } }
+          : {}),
+      });
+      if (entry.kind !== "operation") throw new Error("an operation");
+      if (phase === "done") return entry.operation;
+      // Still being taken: it has not settled.
+      const { settledAt: _settled, ...taking } = entry.operation;
+      return taking;
+    };
+    const running = check("b1", "running");
+    const live = draw(
+      record(
+        [{ kind: "strip", key: "operation:op:b1", at: at(1), strip: checksStrip([running], true) }],
+        { live: true, now: { kind: "operation", operation: running }, status: status() },
+      ),
+    );
+    expect(bubbles(live).map(({ kind }) => kind)).toEqual(["checks"]);
+    expect(live).toContain("Checking /health");
+    expect(live).toContain("data-report-take-live");
+    const done = draw(
+      record([
+        {
+          kind: "strip",
+          key: "operation:op:b1",
+          at: at(1),
+          strip: checksStrip([check("b1", "done")], false),
+        },
+      ]),
+    );
+    expect(done).toContain("Checked /health");
+    expect(done).toContain("passed");
+    expect(done).not.toContain("data-report-take-live");
+    expect(done).toMatch(/<button[^>]*data-report-take="desktop"/);
   });
 
   it("opens nothing on a step that printed nothing", () => {

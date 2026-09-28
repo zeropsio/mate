@@ -2,9 +2,10 @@
  * What runs alongside the Mate while it works, under its record: a status
  * bar for each thing that runs — a deploy stepping through its pipeline in the
  * Zerops GUI's words, a service in trouble, the task list, the helpers, the
- * background tasks — and, while the Mate checks pages, the browser sliding
- * out under them. A bar says what runs now; the chat says when it started
- * and how it ended. Each bar opens its detail in place, under it: a deploy's
+ * background tasks. A bar says what runs now; the chat says when it started
+ * and how it ended. The browser is no drawer here: a check is its row of the
+ * chat, from its start (Nova, 2026-09-28: the drawer held a stale picture
+ * under the chat for the rest of the run). Each bar opens its detail in place, under it: a deploy's
  * pipeline and build log, the list, each helper, each task (the owner,
  * 2026-09-27: "so much better expandable inline").
  *
@@ -585,15 +586,12 @@ function Instruments({
 export function ConversationWorking({
   incidents,
   dock,
-  browser,
   environmentId,
   threadRef,
   onOpenAgents,
 }: {
   readonly incidents: ReadonlyArray<IncidentModel>;
   readonly dock: DockModel | null;
-  /** The browser while the stretch checks pages. */
-  readonly browser: ReactNode;
   readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | null;
   readonly onOpenAgents: () => void;
@@ -621,12 +619,6 @@ export function ConversationWorking({
             onToggle={release}
             threadRef={threadRef}
           />
-          {browser !== null ? (
-            // The browser opens inside the card, under what runs.
-            <div className="-mx-4 border-border/60 border-t px-4 pt-3" data-working-tray>
-              {browser}
-            </div>
-          ) : null}
         </div>
       </div>
     </PanelShownContext>

@@ -83,7 +83,6 @@ const INCIDENT: IncidentModel = {
 const render = (dock: DockModel | null, incidents: ReadonlyArray<IncidentModel> = []) =>
   renderToStaticMarkup(
     <ConversationWorking
-      browser={null}
       dock={dock}
       environmentId={null}
       incidents={incidents}
@@ -169,7 +168,6 @@ describe("what runs alongside the Mate", () => {
       act(() => {
         renderer = create(
           <ConversationWorking
-            browser={null}
             dock={DOCK}
             environmentId={null}
             incidents={[]}

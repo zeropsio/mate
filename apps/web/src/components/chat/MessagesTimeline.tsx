@@ -134,7 +134,6 @@ import {
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
-import { BrowserStrip } from "./BrowserStrip";
 import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic";
 import { TurnReport } from "./TurnReport";
 import { ConversationAfterWork, ConversationWorking } from "./ConversationWorking";
@@ -1443,7 +1442,7 @@ function FoldRoom({ fold }: { readonly fold: FoldsFrom | undefined }) {
   return <div ref={roomRef} aria-hidden="true" data-fold-room />;
 }
 
-/** What runs alongside the Mate, under its record, and the browser while it checks. */
+/** What runs alongside the Mate, under its record. */
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
   const ctx = use(TimelineRowCtx);
   const dock = use(TimelineWorkingCtx);
@@ -1454,17 +1453,6 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
   return (
     <div ref={standRef} className="contents">
       <ConversationWorking
-        browser={
-          row.strip === null ? null : (
-            <BrowserStrip
-              bare
-              environmentId={ctx.activeThreadEnvironmentId}
-              onOpenImage={ctx.onImageExpand}
-              strip={row.strip}
-              threadRef={ctx.threadRef}
-            />
-          )
-        }
         dock={dock}
         environmentId={ctx.activeThreadEnvironmentId}
         incidents={row.incidents}
