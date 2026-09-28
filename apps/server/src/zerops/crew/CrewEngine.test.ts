@@ -1247,6 +1247,12 @@ describe("CrewEngine", () => {
           const starting = yield* snapshotWhere(
             (snapshot) => snapshot.hosts[0]?.claim.state === "starting",
           );
+          // The claim reads starting a moment before its turn is dispatched.
+          yield* eventually(
+            Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) =>
+              turns.at(-1)!.message.text.includes("Show your work on appdev"),
+            ),
+          );
           assert.deepStrictEqual(
             [
               starting.hosts[0]!.claim,
@@ -1300,6 +1306,12 @@ describe("CrewEngine", () => {
           const starting = yield* snapshotWhere(
             (snapshot) => snapshot.hosts[0]?.claim.state === "starting",
           );
+          // The claim reads starting a moment before its turn is dispatched.
+          yield* eventually(
+            Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) =>
+              turns.at(-1)!.message.text.includes("Show your work on appdev"),
+            ),
+          );
           const turns = yield* dispatchedOf(world, "thread.turn.start");
           assert.deepStrictEqual(
             [
@@ -1352,6 +1364,12 @@ describe("CrewEngine", () => {
         yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
         const starting = yield* snapshotWhere(
           (snapshot) => snapshot.hosts[0]?.claim.state === "starting",
+        );
+        // The claim reads starting a moment before its turn is dispatched.
+        yield* eventually(
+          Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) =>
+            turns.at(-1)!.message.text.includes("Show your work on appdev"),
+          ),
         );
         const turns = yield* dispatchedOf(world, "thread.turn.start");
         assert.deepStrictEqual(
@@ -1407,6 +1425,12 @@ describe("CrewEngine", () => {
         const starting = yield* snapshotWhere(
           (snapshot) => snapshot.hosts[0]?.claim.state === "starting",
         );
+        // The claim reads starting a moment before its turn is dispatched.
+        yield* eventually(
+          Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) =>
+            turns.at(-1)!.message.text.includes("Show your work on appdev"),
+          ),
+        );
         assert.deepStrictEqual(
           [
             starting.hosts[0]!.claim.handle,
@@ -1454,6 +1478,12 @@ describe("CrewEngine", () => {
         );
         const starting = yield* snapshotWhere(
           (snapshot) => snapshot.hosts[0]?.claim.state === "starting",
+        );
+        // The claim reads starting a moment before its turn is dispatched.
+        yield* eventually(
+          Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) =>
+            turns.at(-1)!.message.text.includes("Show your work on appdev"),
+          ),
         );
         assert.deepStrictEqual(
           [
