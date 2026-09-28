@@ -11,9 +11,12 @@ import {
 describe("crewFailureSentence", () => {
   it.each<{ readonly name: string; readonly cause: unknown; readonly sentence: string }>([
     {
-      name: "a refusal reads as its phrase, with the engine's detail",
-      cause: new CrewCommandError({ reason: "handle-taken", detail: "backend" }),
-      sentence: "That handle is already taken: backend.",
+      name: "a refusal reads as the engine's detail, as a sentence, never its code",
+      cause: new CrewCommandError({
+        reason: "wrong-state",
+        detail: "no dev server runs on appdev; start it first",
+      }),
+      sentence: "No dev server runs on appdev; start it first.",
     },
     {
       name: "a refusal without detail reads as its phrase alone",

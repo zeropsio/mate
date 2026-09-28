@@ -3,8 +3,8 @@
  *
  * Each caller holds its own pending and error state, so a sheet or a row shows
  * its own outcome inline; the state a command changes arrives on the crew feed,
- * never through this hook. A refusal reads as its crew phrase
- * (`crewRefusalSentence`), with the engine's detail after it.
+ * never through this hook. A refusal reads as one sentence
+ * (`crewRefusalSentence`): the engine's detail, or its reason's own words.
  *
  * A press may name its `origin` — the row or button it came from — so its
  * failure shows there (`errorAt`), not in a line of its own. A failure lasts
