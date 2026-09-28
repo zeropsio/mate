@@ -43,7 +43,7 @@ const readyClaude = provider({
   driver: CLAUDE,
   models: [
     { slug: "claude-opus-5", name: "Opus 5", isCustom: false, capabilities: null },
-    { slug: "claude-fable-5-1", name: "Fable 5.1", isCustom: false, capabilities: null },
+    { slug: "claude-opus-5-5", name: "Opus 5.5", isCustom: false, capabilities: null },
   ],
 });
 
