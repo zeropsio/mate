@@ -202,6 +202,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-typing-third: typing-wave 1.3s cubic-bezier(0.45, 0, 0.55, 1) 0.32s infinite;
   /* A status line's new words: in from just below, out of a blur, once. */
   --animate-words-in: words-in 260ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  /* What a call returned, opened: down out of its header, once. The room it
+     takes opens at once, so the chat can still bring its end into sight. */
+  --animate-detail-in: detail-in 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
   --color-warning-foreground: var(--warning-foreground);
   --color-warning: var(--warning);
   --color-warning-surface: var(--warning-surface);
@@ -365,6 +368,12 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     28% {
       opacity: 1;
       transform: translateY(-2px);
+    }
+  }
+  @keyframes detail-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
     }
   }
   @keyframes words-in {

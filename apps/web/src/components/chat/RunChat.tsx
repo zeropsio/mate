@@ -750,7 +750,8 @@ function OutputBlock({
       {label === null ? null : <h4 className={cn(META, "text-muted-foreground")}>{label}</h4>}
       <pre
         className={cn(
-          "max-h-64 min-w-0 overflow-auto overscroll-contain whitespace-pre-wrap break-words rounded-xl bg-foreground/4 px-3 py-2 text-foreground/80 select-text",
+          // Past its ends the page scrolls on, as it does past the chat's.
+          "max-h-64 min-w-0 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-foreground/4 px-3 py-2 text-foreground/80 select-text",
           META,
           mono ? "font-mono" : "font-sans",
         )}
@@ -1392,7 +1393,10 @@ export function StepBubble({ step }: { readonly step: WorkStep }) {
       ) : null}
       <StepPictures paths={step.images} />
       {disclosure.open && outputs.length > 0 ? (
-        <div className="grid gap-2 px-3.5 pb-2.5" data-chat-detail>
+        <div
+          className="grid animate-detail-in gap-2 px-3.5 pb-2.5 motion-reduce:animate-none"
+          data-chat-detail
+        >
           {outputs.map((output) => (
             <OutputBlock key={output.key} label={output.label}>
               {output.text}
@@ -1509,7 +1513,10 @@ function OperationBubble({
         </Headline>
       </DisclosureButton>
       {disclosure.open ? (
-        <div className="px-3.5 pb-2.5" data-chat-detail>
+        <div
+          className="animate-detail-in px-3.5 pb-2.5 motion-reduce:animate-none"
+          data-chat-detail
+        >
           <OperationDetail
             environmentId={ctx.activeThreadEnvironmentId}
             operation={operation}
@@ -1611,7 +1618,10 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
         </div>
       )}
       {disclosure.open ? (
-        <div className="px-3.5 pb-2.5" data-chat-detail>
+        <div
+          className="animate-detail-in px-3.5 pb-2.5 motion-reduce:animate-none"
+          data-chat-detail
+        >
           <BrowserStrip
             bare
             environmentId={ctx.activeThreadEnvironmentId}
@@ -1769,7 +1779,10 @@ export function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
       </DisclosureButton>
       {disclosure.open ? (
         // Its helpers' words on the bubble's text edge: 8 px in, and their own 6.
-        <div className="grid gap-2 px-2 pb-2.5" data-chat-detail>
+        <div
+          className="grid animate-detail-in gap-2 px-2 pb-2.5 motion-reduce:animate-none"
+          data-chat-detail
+        >
           <ul className="grid gap-0.5">
             {agents.map((agent) => (
               <HelperRow key={agent.id} agent={agent} />
@@ -1845,7 +1858,10 @@ function TaskBubble({ entry }: { readonly entry: WorkLogEntry }) {
         <div className={BUBBLE_PAD}>{line}</div>
       )}
       {disclosure.open ? (
-        <div className="px-3.5 pb-2.5" data-chat-detail>
+        <div
+          className="animate-detail-in px-3.5 pb-2.5 motion-reduce:animate-none"
+          data-chat-detail
+        >
           <TaskReport entry={entry} />
         </div>
       ) : null}
@@ -1880,7 +1896,10 @@ function PlanBubble({ plan }: { readonly plan: TurnPlanEntry }) {
         </Headline>
       </DisclosureButton>
       {disclosure.open ? (
-        <div className="px-3.5 pb-2.5" data-chat-detail>
+        <div
+          className="animate-detail-in px-3.5 pb-2.5 motion-reduce:animate-none"
+          data-chat-detail
+        >
           <PlanSteps steps={steps} />
         </div>
       ) : null}
@@ -1917,7 +1936,10 @@ function ErrorBubble({ entry }: { readonly entry: WorkLogEntry }) {
         </DisclosureButton>
       )}
       {disclosure.open && more !== null ? (
-        <div className="px-3.5 pb-2.5" data-chat-detail>
+        <div
+          className="animate-detail-in px-3.5 pb-2.5 motion-reduce:animate-none"
+          data-chat-detail
+        >
           <OutputBlock>{more}</OutputBlock>
         </div>
       ) : null}
@@ -2460,7 +2482,10 @@ export function BackgroundLine({
         <div className="flex min-h-7 items-center">{line}</div>
       )}
       {open ? (
-        <ul className="grid min-w-0 gap-3 ps-5" data-chat-detail>
+        <ul
+          className="grid min-w-0 animate-detail-in gap-3 ps-5 motion-reduce:animate-none"
+          data-chat-detail
+        >
           {reported.map((entry) => (
             <li key={entry.id} className="grid min-w-0 gap-1">
               <span className="text-line text-foreground/85">
