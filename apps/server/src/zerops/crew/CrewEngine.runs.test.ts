@@ -5,7 +5,7 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 
 import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
-import { CrewThreadDirectory } from "./crewSeams.ts";
+import { CrewThreadDirectory, CrewToolHost } from "./crewSeams.ts";
 import { CrewStore } from "./CrewStore.ts";
 import {
   eventually,
@@ -164,6 +164,45 @@ describe("CrewEngine runs", () => {
             assert.deepStrictEqual([yield* budgetOf(thread), stopped.includes(thread)], [1, true]);
           }),
       ]),
+  );
+
+  it.live(
+    "a session whose turns the engine never costed counts nothing for its next turn, not its history",
+    () => {
+      let thread: ThreadId | undefined;
+      return withCrewEngines([
+        (world) =>
+          Effect.gen(function* () {
+            yield* applied(world);
+            thread = yield* firstTurn(world, () => undefined);
+            // A build before turn costs: the session ran, nothing counted its total.
+            write(world.workspace, "lead.jsonl", "{}\n");
+            const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
+            yield* (yield* CrewToolHost).sessionStart(member, {
+              source: "startup",
+              sessionId: "session-before",
+              transcriptPath: `${world.workspace}/lead.jsonl`,
+            });
+            yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+            yield* snapshotWhere((current) => current.crewmates[0]!.stints[0]?.state === "active");
+          }),
+        (world) =>
+          Effect.gen(function* () {
+            yield* (yield* ServerCommandReadiness).complete;
+            yield* command({ _tag: "start", ...OPTIONS });
+            yield* snapshotWhere((current) => current.run?.state === "running");
+            yield* command({ _tag: "message", handle: "backend", text: "More", attachments: [] });
+            yield* world.publish(spiEvent("turn.started", thread!, {}));
+            // The resumed session's total carries its history: 1.59 before, 0.19 this turn.
+            yield* ended(world, thread!, 1.78);
+            yield* command({ _tag: "message", handle: "backend", text: "More", attachments: [] });
+            yield* world.publish(spiEvent("turn.started", thread!, {}));
+            yield* ended(world, thread!, 1.98);
+            const run = (yield* snapshotWhere((current) => current.run?.spentUsd !== 0)).run!;
+            assert.deepStrictEqual([run.state, run.spentUsd.toFixed(2)], ["running", "0.20"]);
+          }),
+      ]);
+    },
   );
 
   it.live("a run with No limit sets no session budget and still meters the spend", () =>
