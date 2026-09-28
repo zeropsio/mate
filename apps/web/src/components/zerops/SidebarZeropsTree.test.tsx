@@ -1301,7 +1301,10 @@ describe("the project's flow under it", () => {
       expect(failed.indexOf(">3f9c1b2<")).toBeGreaterThan(failed.indexOf(">Failed on<"));
     });
 
-    it("ends in a fixed cluster, a globe slot then a menu slot, so nothing moves on hover", () => {
+    // The globe stands on the row's right edge, in the column every Mate's
+    // time, every change's Merge and every project's dot end in; the menu
+    // shows beside it on hover, in a slot kept for it, so nothing moves.
+    it("ends in a fixed cluster, a menu slot then the globe on the right edge, so nothing moves on hover", () => {
       const html = render([CRM_DEV, CRM_STAGE, CRM_PROD], { getFlow: () => flow() });
       for (const id of ["crm-stage", "crm-prod"]) {
         const row = stop(html, id);
@@ -1326,8 +1329,8 @@ describe("the project's flow under it", () => {
         expect(globe.some((cls) => cls.includes("hover") || cls.includes("opacity"))).toBe(false);
         // Still in the tab order at rest.
         expect(row).toContain('data-zerops-surface="stop-menu"');
-        expect(row.indexOf("sidebar-stop-globe-slot")).toBeLessThan(
-          row.indexOf("sidebar-stop-menu-slot"),
+        expect(row.indexOf("sidebar-stop-menu-slot")).toBeLessThan(
+          row.indexOf("sidebar-stop-globe-slot"),
         );
       }
     });
@@ -1380,7 +1383,7 @@ describe("the project's flow under it", () => {
       const production = routed(3);
       const globeAt = production.indexOf('data-zerops-surface="public-routes-menu"');
       expect(globeAt).toBeGreaterThan(production.indexOf("sidebar-stop-globe-slot"));
-      expect(globeAt).toBeLessThan(production.indexOf("sidebar-stop-menu-slot"));
+      expect(globeAt).toBeGreaterThan(production.indexOf("sidebar-stop-menu-slot"));
     });
   });
 

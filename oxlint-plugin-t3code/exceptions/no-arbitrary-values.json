@@ -1610,7 +1610,7 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
     "kind": "Literal",
-    "fingerprint": "<> text-[9px] in \"absolute -top-1 -end-1 inline-flex h-3 min-w-3 items-center justify-center rounded-full bg-sidebar-foreground px-0.5 text-[9px] leading-none font-semibold text-sidebar tabular-nums ring-1 ring-sidebar\"",
+    "fingerprint": "<> text-[9px] in \"absolute -top-1 -end-1 inline-flex h-3 min-w-3 items-center justify-center rounded-full bg-sidebar-row-active px-0.5 text-[9px] leading-none font-semibold text-sidebar-foreground tabular-nums ring-1 ring-sidebar\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
     "expires": "F6"

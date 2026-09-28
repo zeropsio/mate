@@ -3439,18 +3439,15 @@ function StopRowItem({
                 releasing={release.releasing}
               />
             )}
-            {/* The row ends in two slots that are always there: the globe, and
-                the stop's menu. Reserved, so the globes stand in one column down
-                every stop and nothing moves when the menu shows — "the globe
-                jumping because of the dots is exactly the problematic detail"
-                (the owner, 2026-09-25). */}
+            {/* The row ends in two slots that are always there: the stop's
+                menu, then the globe. Reserved, so nothing moves when the menu
+                shows — "the globe jumping because of the dots is exactly the
+                problematic detail" (the owner, 2026-09-25) — and the globe
+                last, on the row's right edge, in the column every Mate's time,
+                every change's Merge and every project's dot end in: in front of
+                the menu's slot it stood 20 px short of them, a ragged edge down
+                the menu (2026-09-28). */}
             <span className="flex shrink-0 items-center">
-              <span
-                className="flex w-5 shrink-0 justify-center"
-                data-zerops-surface="sidebar-stop-globe-slot"
-              >
-                <ZeropsRoutesMenu label={`Public access of ${projectName}`} routes={routes} />
-              </span>
               {/* Invisible at rest, never gone: shown on hover and while anything
                   in the row has focus, its own button included, so a keyboard
                   reaches it. A finger never hovers, so a coarse pointer keeps it. */}
@@ -3466,6 +3463,12 @@ function StopRowItem({
                   stop={view}
                   triggerClassName={ROW_ACTION_CLASS}
                 />
+              </span>
+              <span
+                className="flex w-5 shrink-0 justify-center"
+                data-zerops-surface="sidebar-stop-globe-slot"
+              >
+                <ZeropsRoutesMenu label={`Public access of ${projectName}`} routes={routes} />
               </span>
             </span>
           </span>
