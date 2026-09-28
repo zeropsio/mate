@@ -170,6 +170,30 @@
   {
     "path": "apps/web/src/index.css",
     "kind": "css-declaration",
+    "fingerprint": "@theme inline{--animate-typing-first:typing-wave 1.3s cubic-bezier(0.45, 0, 0.55, 1) infinite}",
+    "owner": "ales",
+    "reason": "The composing dots rise in a wave while the Mate writes: opacity and transform on three spans, composited, shown only during a live run; stepped they read as blinking",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "@theme inline{--animate-typing-second:typing-wave 1.3s cubic-bezier(0.45, 0, 0.55, 1) 0.16s infinite}",
+    "owner": "ales",
+    "reason": "The composing dots rise in a wave while the Mate writes: opacity and transform on three spans, composited, shown only during a live run; stepped they read as blinking",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "@theme inline{--animate-typing-third:typing-wave 1.3s cubic-bezier(0.45, 0, 0.55, 1) 0.32s infinite}",
+    "owner": "ales",
+    "reason": "The composing dots rise in a wave while the Mate writes: opacity and transform on three spans, composited, shown only during a live run; stepped they read as blinking",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
     "fingerprint": "[data-mate-face-state=\"working\"] [data-mate-face-body]{animation:mate-face-turn 2.4s infinite}",
     "owner": "ales",
     "reason": "A Mate's face moves only while its state holds (at work it turns and glances, needing you it hops): transform-only, stopped by reduced motion; the owner asked for the motion (2026-09-29)",

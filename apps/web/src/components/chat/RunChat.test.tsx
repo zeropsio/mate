@@ -274,20 +274,35 @@ describe("RunChat", () => {
   // The Mate's status is the chat's last line, never a heading over the card
   // (the owner, 2026-09-28: "it doesn't need to be at the top"): its face,
   // what it is doing, its clock — the one face in the chat.
+  // The face does what the words say: it looks up and aside while it thinks,
+  // down along its line while it writes, and simply works otherwise.
   it.each([
-    { name: "thinking", now: null, says: "Nova is thinking", face: "working" },
-    { name: "writing", now: { kind: "writing" }, says: "Nova is writing", face: "working" },
+    { name: "thinking", now: null, says: "Nova is thinking", face: "working", gaze: "up" },
+    {
+      name: "writing",
+      now: { kind: "writing" },
+      says: "Nova is writing",
+      face: "working",
+      gaze: "down",
+    },
     {
       name: "waiting on the person",
       now: { kind: "waiting" },
       says: "Nova is waiting for your answer",
       face: "needs",
+      gaze: null,
     },
-  ] as const)("says under its chat what the Mate is doing: $name", ({ now, says, face }) => {
+  ] as const)("says under its chat what the Mate is doing: $name", ({ now, says, face, gaze }) => {
     const markup = draw(record([thought("r1", "One.")], { live: true, now, status: status() }));
     expect(markup.match(/data-mate-face-state="[a-z]+"/g)).toEqual([
       `data-mate-face-state="${face}"`,
     ]);
+    expect(markup.match(/data-mate-face-gaze="[a-z]+"/g)).toEqual(
+      gaze === null ? null : [`data-mate-face-gaze="${gaze}"`],
+    );
+    // What it opened onto is simply there: only words that change while
+    // watched rise in.
+    expect(markup).not.toContain("animate-words-in");
     expect(markup).toContain(says);
     // It stands under the chat's scroll, not in it.
     expect(markup.indexOf(says)).toBeGreaterThan(markup.lastIndexOf("data-chat-row"));

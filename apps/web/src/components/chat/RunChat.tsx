@@ -78,7 +78,7 @@ import ChatMarkdown from "../ChatMarkdown";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import { CrewSeamActivity } from "../zerops/crew/CrewTaskCard";
 import { KindGlyph, ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
-import { MateFace } from "../zerops/primitives";
+import { MateFace, type MateFaceGaze } from "../zerops/primitives";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
 import { BrowserStrip, BrowserTakes } from "./BrowserStrip";
@@ -2185,23 +2185,41 @@ interface Doing {
   readonly composing: boolean;
   /** It waits on the person: the clock stands still, the line in the attention hand. */
   readonly waiting: boolean;
+  /** Where its face looks while it does it: up and aside thinking, down along its line writing. */
+  readonly gaze?: MateFaceGaze;
 }
 
 function liveDoing(now: TurnHeaderActivity | null, compacting: boolean, answering: boolean): Doing {
   if (compacting) return { verb: "is condensing the context", composing: true, waiting: false };
-  if (answering) return { verb: "is writing", composing: true, waiting: false };
-  if (now === null) return { verb: "is thinking", composing: true, waiting: false };
+  if (answering) return { verb: "is writing", composing: true, waiting: false, gaze: "down" };
+  if (now === null) return { verb: "is thinking", composing: true, waiting: false, gaze: "up" };
   switch (now.kind) {
     case "waiting":
       return { verb: "is waiting for your answer", composing: false, waiting: true };
     case "writing":
-      return { verb: "is writing", composing: true, waiting: false };
+      return { verb: "is writing", composing: true, waiting: false, gaze: "down" };
     case "thinking":
-      return { verb: "is thinking", composing: now.messages.length === 0, waiting: false };
+      return {
+        verb: "is thinking",
+        composing: now.messages.length === 0,
+        waiting: false,
+        gaze: "up",
+      };
     case "step":
     case "operation":
       return { verb: "is working", composing: false, waiting: false };
   }
+}
+
+/**
+ * Whether a value has changed since the component first drew it: what it
+ * opened onto is simply there, and only a change the person watches moves.
+ */
+function useChangedSinceShown<T>(value: T): boolean {
+  const [first] = useState(value);
+  const [changed, setChanged] = useState(false);
+  if (!changed && value !== first) setChanged(true);
+  return changed || value !== first;
 }
 
 /**
@@ -2225,12 +2243,16 @@ function StatusLine({
   const doing = status.live ? liveDoing(now, isCompacting, answering) : null;
   const face: MateMarkState =
     doing === null ? SETTLED_FACE[status.face] : doing.waiting ? "needs" : "working";
+  const words = `${ctx.speaker.name} ${doing?.verb ?? settledRunVerb(status)}`;
+  // The line's words change in place as the run goes: the new ones rise into
+  // it, so a change reads as the same line saying something new, not a flicker.
+  const wordsChanged = useChangedSinceShown(words);
   return (
     <div
       className={cn("flex min-w-0 items-center pb-1", MARK_GAP)}
       data-run-status={doing === null ? status.face : doing.waiting ? "waiting" : "working"}
     >
-      <MateFace size="md" state={face} tint={ctx.speaker.tint} />
+      <MateFace gaze={doing?.gaze} size="md" state={face} tint={ctx.speaker.tint} />
       <div
         className={cn(
           "flex min-h-7 min-w-0 flex-1 items-center gap-2.5 text-line",
@@ -2240,8 +2262,14 @@ function StatusLine({
         role={status.live ? "status" : undefined}
       >
         <span className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="min-w-0 truncate">
-            {ctx.speaker.name} {doing?.verb ?? settledRunVerb(status)}
+          <span
+            className={cn(
+              "min-w-0 truncate",
+              wordsChanged && "animate-words-in motion-reduce:animate-none",
+            )}
+            key={words}
+          >
+            {words}
           </span>
           {doing?.composing ? <TypingDots className="shrink-0 scale-75" /> : null}
         </span>
