@@ -70,7 +70,7 @@
   "providers": {
     "claudeAgent": {
       "defaults": {
-        "chat": "claude-fable-5-1"
+        "chat": "claude-opus-5-5"
       },
       "profiles": {
         "fable-5": {
@@ -686,7 +686,7 @@
           "slug": "claude-opus-5",
           "name": "Claude Opus 5",
           "aliases": ["opus", "opus-5", "claude-opus-5.0", "claude-opus-5-0"],
-          "status": "current",
+          "status": "legacy",
           "profile": "opus-5",
           "adapter": {
             "claudeCode": {
