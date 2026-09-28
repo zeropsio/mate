@@ -1684,7 +1684,7 @@ function AnswerTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "answer"
             <MateProseWords at={row.createdAt} streaming={false} text={pair.question} />
           </div>
           <div className="flex justify-end">
-            <div className="max-w-4/5 rounded-2xl bg-message px-4 py-2.5 text-message-foreground">
+            <div className="max-w-4/5 rounded-2xl bg-message px-3.5 py-2.5 text-message-foreground">
               <MessageAuthorHeading>You</MessageAuthorHeading>
               <p className="whitespace-pre-wrap text-prose">{pair.answer}</p>
             </div>
@@ -1836,7 +1836,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       {/* One bubble for every message: a message sent as a turn ended can
           become the next turn's opener, and it must not change its size. */}
       <div
-        className="relative max-w-4/5 rounded-2xl bg-message px-4 py-2.5 text-prose text-message-foreground"
+        className="relative max-w-4/5 rounded-2xl bg-message px-3.5 py-2.5 text-prose text-message-foreground"
         data-message-aside={row.aside ? "true" : undefined}
       >
         <MessageAuthorHeading>You</MessageAuthorHeading>
