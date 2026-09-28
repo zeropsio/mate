@@ -310,7 +310,7 @@ const run = (core: CrewCore, command: CrewCommand, principal: TurnPrincipal, act
         yield* pressPause(core, command.runId);
         return done;
       case "resume":
-        yield* resumeRun(core, command.runId);
+        yield* resumeRun(core, command);
         yield* advanceAll(core);
         return done;
       case "stop":
