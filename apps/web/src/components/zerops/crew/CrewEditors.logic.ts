@@ -122,6 +122,29 @@ export function crewModelOptions(
   return (provider?.models ?? []).map((model) => ({ slug: model.slug, name: model.name }));
 }
 
+/**
+ * What a crewmate runs on, named as its login's catalog names them: the login,
+ * then the model and effort it sets (`null` where it keeps the login's default).
+ */
+export function crewRunsOn(
+  crewmate: Pick<Crewmate, "login" | "model" | "effort">,
+  providers: ReadonlyArray<ServerProvider>,
+): { readonly login: string; readonly model: string | null; readonly effort: string | null } {
+  const model =
+    crewmate.model === null
+      ? null
+      : (crewModelOptions(providers, crewmate.login.id).find(
+          (option) => option.slug === crewmate.model,
+        )?.name ?? crewmate.model);
+  const effort =
+    crewmate.effort === null
+      ? null
+      : (crewEffortOptions(providers, crewmate.login.id, crewmate.model).find(
+          (option) => option.id === crewmate.effort,
+        )?.label ?? crewmate.effort);
+  return { login: crewmate.login.label, model, effort };
+}
+
 /** A model's effort levels: its `effort` (Claude) or `reasoningEffort` (Codex) choices. */
 export function crewEffortOptions(
   providers: ReadonlyArray<ServerProvider>,
