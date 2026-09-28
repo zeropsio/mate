@@ -73,7 +73,10 @@ describe("CrewEngine", () => {
     withCrewEngine((world) =>
       Effect.gen(function* () {
         yield* applied(world);
-        const snapshot = yield* latest;
+        // The first conversation opens once the copy is ready.
+        const snapshot = yield* snapshotWhere(
+          (current) => current.crewmates[0]!.promptVersions.running !== null,
+        );
         const backend = snapshot.crewmates[0]!;
         assert.deepStrictEqual(
           {
