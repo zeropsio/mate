@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -18,7 +19,9 @@ import {
   planZeropsInterest,
   makeZeropsBoundedIngress,
   makeZeropsDataRuntime,
+  makeZeropsPriorityPermits,
   type ZeropsBoundedIngress,
+  type ZeropsPermitPriority,
 } from "./runtime.ts";
 import { makeZeropsDataPolicy, type ZeropsDataPolicy } from "./policy.ts";
 import {
@@ -148,6 +151,117 @@ describe("makeZeropsBoundedIngress", () => {
         peakBytes: 8,
         discardedEvents: 0,
       });
+    }),
+  );
+});
+
+describe("makeZeropsPriorityPermits", () => {
+  it.effect.each([
+    [
+      "first work ahead of later work that waited longer",
+      ["later:a", "later:b", "first:c"],
+      ["first:c", "later:a", "later:b"],
+    ],
+    [
+      "first work in arrival order before any later work",
+      ["first:a", "later:b", "first:c"],
+      ["first:a", "first:c", "later:b"],
+    ],
+    [
+      "later work in arrival order",
+      ["later:a", "later:b", "later:c"],
+      ["later:a", "later:b", "later:c"],
+    ],
+  ] as const)("admits %s as the permit frees", ([, arrivals, admitted]) =>
+    Effect.gen(function* () {
+      const permits = yield* makeZeropsPriorityPermits(1);
+      const holder = yield* Deferred.make<void>();
+      const order: string[] = [];
+      const held = yield* Effect.forkChild(permits.withPermit("later")(Deferred.await(holder)));
+      yield* Effect.yieldNow;
+      const waiting: Array<Fiber.Fiber<void>> = [];
+      for (const arrival of arrivals) {
+        const priority = arrival.split(":")[0] as ZeropsPermitPriority;
+        waiting.push(
+          yield* Effect.forkChild(
+            permits.withPermit(priority)(Effect.sync(() => void order.push(arrival))),
+          ),
+        );
+        yield* Effect.yieldNow;
+      }
+      expect(order).toEqual([]);
+
+      yield* Deferred.succeed(holder, undefined);
+      yield* Fiber.join(held);
+      for (const fiber of waiting) yield* Fiber.join(fiber);
+      expect(order).toEqual(admitted);
+    }),
+  );
+
+  it.effect("never runs more work at once than it has permits", () =>
+    Effect.gen(function* () {
+      const permits = yield* makeZeropsPriorityPermits(2);
+      let running = 0;
+      let peak = 0;
+      yield* Effect.forEach(
+        ["first", "later", "later", "first", "later", "first"] as const,
+        (priority) =>
+          permits.withPermit(priority)(
+            Effect.gen(function* () {
+              running += 1;
+              peak = Math.max(peak, running);
+              for (let turn = 0; turn < 3; turn++) yield* Effect.yieldNow;
+              running -= 1;
+            }),
+          ),
+        { concurrency: "unbounded", discard: true },
+      );
+      expect(peak).toBe(2);
+      expect(running).toBe(0);
+    }),
+  );
+
+  it.effect.each(["first", "later"] as const)(
+    "a %s waiter interrupted before its turn takes no permit and holds no later work back",
+    (priority) =>
+      Effect.gen(function* () {
+        const permits = yield* makeZeropsPriorityPermits(1);
+        const holder = yield* Deferred.make<void>();
+        const held = yield* Effect.forkChild(permits.withPermit("later")(Deferred.await(holder)));
+        yield* Effect.yieldNow;
+        const leaving = yield* Effect.forkChild(permits.withPermit(priority)(Effect.void));
+        yield* Effect.yieldNow;
+        let admitted = false;
+        const staying = yield* Effect.forkChild(
+          permits.withPermit("later")(Effect.sync(() => void (admitted = true))),
+        );
+        yield* Effect.yieldNow;
+        yield* Fiber.interrupt(leaving);
+
+        yield* Deferred.succeed(holder, undefined);
+        yield* Fiber.join(held);
+        yield* Fiber.join(staying);
+        expect(admitted).toBe(true);
+        const probe = yield* Effect.forkChild(permits.withPermit("later")(Effect.void));
+        for (let turn = 0; turn < 10; turn++) yield* Effect.yieldNow;
+        expect(probe.pollUnsafe()).toBeDefined();
+      }),
+  );
+
+  it.effect("work that fails or is interrupted while holding a permit gives it back", () =>
+    Effect.gen(function* () {
+      const permits = yield* makeZeropsPriorityPermits(1);
+      const refused = yield* permits
+        .withPermit("first")(Effect.fail("refused"))
+        .pipe(Effect.result);
+      expect(refused).toMatchObject({ _tag: "Failure", failure: "refused" });
+      const holding = yield* Effect.forkChild(permits.withPermit("later")(Effect.never));
+      yield* Effect.yieldNow;
+      yield* Fiber.interrupt(holding);
+
+      const probe = yield* Effect.forkChild(permits.withPermit("later")(Effect.void));
+      for (let turn = 0; turn < 10; turn++) yield* Effect.yieldNow;
+      expect(probe.pollUnsafe()).toBeDefined();
     }),
   );
 });
@@ -4802,6 +4916,151 @@ describe("a recovery round", () => {
       );
       expect(statuses(recovered)).toEqual(["observing", "observing", "observing"]);
       expect(receiversOpened).toHaveLength(3);
+
+      yield* runtime.shutdown("application-close");
+      yield* Scope.close(leaseScope, Exit.void);
+      registry.dispose();
+    }),
+  );
+});
+
+describe("registrations", () => {
+  const label = (request: RegistrationRequest): string => {
+    const descriptor = request.descriptor;
+    if (descriptor.kind === "entity-updates") return `${descriptor.entity} updates`;
+    if (descriptor.kind === "query-membership" && descriptor.query.kind === "services-of-project")
+      return `services of ${descriptor.query.project.projectId}`;
+    return descriptor.kind === "query-membership" ? descriptor.query.kind : descriptor.kind;
+  };
+
+  it.effect(
+    "are sent a bounded number at a time, the project list's ahead of the projects' already waiting",
+    () =>
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const servicesAnswer = yield* Deferred.make<void>();
+        const sent: string[] = [];
+        let inFlight = 0;
+        let peak = 0;
+        const adapter: ZeropsDataAdapter = {
+          ...makeAdapterHarness().adapter,
+          register: (_receiver, request) =>
+            Effect.gen(function* () {
+              sent.push(label(request));
+              inFlight += 1;
+              peak = Math.max(peak, inFlight);
+              if (label(request).startsWith("services of")) yield* Deferred.await(servicesAnswer);
+              return { responseObservations: [] };
+            }).pipe(Effect.ensuring(Effect.sync(() => void (inFlight -= 1)))),
+        };
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter,
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+          policy: makeZeropsDataPolicy({ registrationConcurrency: 1 }),
+        });
+        const leaseScope = yield* Scope.make();
+        const projects = yield* Effect.forEach(["b", "c", "d"], (id) =>
+          runtime
+            .acquire({ kind: "project-inventory", project: project(`project-${id}`) })
+            .pipe(Scope.provide(leaseScope)),
+        );
+        yield* settleUntil(runtime, () => sent.includes("services of project-b"));
+        // project-c's and project-d's service lists queue behind project-b's.
+        yield* settleUntil(runtime, () => false, 50);
+        const list = yield* runtime
+          .acquire({
+            kind: "organization-inventory",
+            organization: project("project-a").organization,
+          })
+          .pipe(Scope.provide(leaseScope));
+        yield* settleUntil(runtime, () => false, 50);
+        expect(sent).toEqual(["project updates", "service updates", "services of project-b"]);
+
+        yield* Deferred.succeed(servicesAnswer, undefined);
+        const leases = [...projects, list];
+        yield* settleUntil(runtime, (state) =>
+          leases.every(
+            (lease) => state.interests.get(lease.interest)?.interest.status === "observing",
+          ),
+        );
+        expect(sent).toEqual([
+          "project updates",
+          "service updates",
+          "services of project-b",
+          "projects-of-organization",
+          "services of project-c",
+          "services of project-d",
+        ]);
+        expect(peak).toBe(1);
+
+        yield* runtime.shutdown("application-close");
+        yield* Scope.close(leaseScope, Exit.void);
+        registry.dispose();
+      }),
+  );
+
+  it.effect("a registration that waits for its turn is sent with its whole deadline", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const sent: Array<{
+        readonly organizationId: string;
+        readonly atMs: number;
+        readonly remainingMs: number;
+      }> = [];
+      const adapter: ZeropsDataAdapter = {
+        ...makeAdapterHarness().adapter,
+        register: (_receiver, request, context) =>
+          Effect.gen(function* () {
+            const descriptor = request.descriptor;
+            if (descriptor.kind === "entity-updates" && descriptor.entity === "project") {
+              const now = yield* Clock.currentTimeMillis;
+              sent.push({
+                organizationId: descriptor.organization.organizationId,
+                atMs: now,
+                remainingMs: context.deadlineMs - now,
+              });
+              if (descriptor.organization.organizationId === "org-a")
+                yield* Effect.sleep("60 millis");
+            }
+            return { responseObservations: [] };
+          }),
+      };
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter,
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+        policy: makeZeropsDataPolicy({ registrationConcurrency: 1, registrationDeadlineMs: 100 }),
+      });
+      const elsewhere = project("project-x");
+      const leaseScope = yield* Scope.make();
+      yield* runtime
+        .acquireMany([
+          { kind: "project-inventory", project: project("project-a") },
+          {
+            kind: "project-inventory",
+            project: {
+              ...elsewhere,
+              organization: {
+                ...elsewhere.organization,
+                organizationId: ZeropsOrganizationId.make("org-b"),
+              },
+            },
+          },
+        ])
+        .pipe(Scope.provide(leaseScope));
+      yield* settleUntil(runtime, () => sent.length > 0);
+      yield* settleUntil(runtime, () => false, 50);
+      expect(sent).toEqual([{ organizationId: "org-a", atMs: 0, remainingMs: 100 }]);
+
+      yield* TestClock.adjust("60 millis");
+      yield* settleUntil(runtime, () => sent.length > 1);
+      expect(sent).toEqual([
+        { organizationId: "org-a", atMs: 0, remainingMs: 100 },
+        { organizationId: "org-b", atMs: 60, remainingMs: 100 },
+      ]);
 
       yield* runtime.shutdown("application-close");
       yield* Scope.close(leaseScope, Exit.void);

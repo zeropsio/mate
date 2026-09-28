@@ -16,6 +16,11 @@ export interface ZeropsDataPolicy {
   readonly hydrationConcurrency: number;
   /** The interests one recovery round re-establishes at once; the rest wait for a slot. */
   readonly recoveryConcurrency: number;
+  /**
+   * Registration requests in flight at once across the account, the organization inventory's
+   * admitted first; a registration's deadline starts when it is sent, not while it waits.
+   */
+  readonly registrationConcurrency: number;
   readonly queuedReadRequestsPerAccount: number;
   readonly activeSharedReadsPerAccount: number;
   readonly retainedCompletedReadsPerAccount: number;
@@ -78,6 +83,7 @@ export const DEFAULT_ZEROPS_DATA_POLICY: ZeropsDataPolicy = Object.freeze({
   readConcurrency: 8,
   hydrationConcurrency: 4,
   recoveryConcurrency: 4,
+  registrationConcurrency: 6,
   queuedReadRequestsPerAccount: 1_024,
   activeSharedReadsPerAccount: 256,
   retainedCompletedReadsPerAccount: 2_048,
