@@ -7,6 +7,7 @@ import type {
 import { describe, expect, it } from "@effect/vitest";
 
 import {
+  attemptEndingOf,
   CLAIM_EVENTS,
   claimTransition,
   runTransition,
@@ -633,4 +634,80 @@ describe("taskTransition", () => {
       }
     }
   });
+});
+
+describe("attemptEndingOf", () => {
+  const paused = (reason: "person" | "budget" | "time" | "usage" | "refused") =>
+    ({ state: "paused", reason }) as const;
+  it.each([
+    ["completed", undefined, undefined, undefined, "no-report", "its turn ended without a report"],
+    [
+      "completed",
+      "budget_exhausted",
+      undefined,
+      paused("budget"),
+      "budget",
+      "its session reached the run's budget",
+    ],
+    ["interrupted", undefined, undefined, paused("person"), "run-paused", "you paused the run"],
+    [
+      "interrupted",
+      undefined,
+      undefined,
+      paused("budget"),
+      "run-paused",
+      "the run reached its budget",
+    ],
+    [
+      "interrupted",
+      undefined,
+      undefined,
+      paused("time"),
+      "run-paused",
+      "the run reached its time limit",
+    ],
+    [
+      "interrupted",
+      undefined,
+      undefined,
+      paused("usage"),
+      "run-paused",
+      "the usage window reached the run's stop",
+    ],
+    [
+      "interrupted",
+      undefined,
+      undefined,
+      paused("refused"),
+      "run-paused",
+      "the run's turn was refused",
+    ],
+    [
+      "cancelled",
+      undefined,
+      undefined,
+      { state: "stopped", reason: null },
+      "run-stopped",
+      "the run stopped",
+    ],
+    [
+      "interrupted",
+      undefined,
+      undefined,
+      { state: "running", reason: null },
+      "interrupted",
+      "its turn was interrupted",
+    ],
+    ["interrupted", undefined, undefined, undefined, "interrupted", "its turn was interrupted"],
+    ["failed", undefined, "Overloaded", undefined, "failed", "Overloaded"],
+    ["failed", undefined, undefined, undefined, "failed", "its turn failed"],
+  ] as const)(
+    "a %s turn (%s, %s) in a %o run ends its attempt as %s",
+    (state, terminalReason, errorMessage, run, ending, detail) => {
+      expect(attemptEndingOf({ state, terminalReason, errorMessage, run })).toEqual({
+        ending,
+        detail,
+      });
+    },
+  );
 });

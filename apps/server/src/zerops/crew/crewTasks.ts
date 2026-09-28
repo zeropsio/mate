@@ -453,7 +453,40 @@ export const continueTask = (
     const key = `${working.assignment}:${working.attempt}`;
     core.memory.turns.set(key, (core.memory.turns.get(key) ?? 0) + 1);
     yield* sendTurn(core, member, stint, principal, sent, attachments);
+    yield* openAttempt(core, working, stint);
     return working;
+  });
+
+/**
+ * The attempt a further turn works in, open while it runs: a rework's new
+ * attempt gets its row, from the copy its last attempt started from; an
+ * attempt its last turn ended opens again.
+ */
+const openAttempt = (core: CrewCore, task: CrewAssignmentRow, stint: CrewStintRow) =>
+  Effect.gen(function* () {
+    const attempts = yield* asRefusal(core.store.attemptsOf(task.assignment));
+    const attempt = attempts.find((row) => row.attempt === task.attempt);
+    if (attempt === undefined) {
+      yield* asRefusal(
+        core.store.putAttempt({
+          assignment: task.assignment,
+          attempt: task.attempt,
+          threadId: stint.threadId,
+          dispatchCommit: attempts.at(-1)?.dispatchCommit ?? null,
+          tipRef: null,
+          rotations: 0,
+          ending: null,
+          endingDetail: null,
+          costUsd: 0,
+          startedAt: yield* core.now,
+          endedAt: null,
+        }),
+      );
+    } else if (attempt.endedAt !== null) {
+      yield* asRefusal(
+        core.store.putAttempt({ ...attempt, ending: null, endingDetail: null, endedAt: null }),
+      );
+    }
   });
 
 /** A turn of the lead's, outside any task: the person's message, or a wake as the run's starter. */
