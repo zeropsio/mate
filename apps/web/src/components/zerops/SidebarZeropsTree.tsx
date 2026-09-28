@@ -2727,8 +2727,11 @@ function PullRequestRow({
   const label = sidebarChangeLabel(pull);
   const blocked = pullRequestBlocked(pull);
   return (
+    // The fork's cell is the spine's 20 px and its branch's 8: the gap after
+    // it is the rest of the Mates' 14, so the title starts on the menu's one
+    // text column, as a Mate's name and a stop's pill do (it stood 4 px right).
     <li
-      className={cn("flex h-8 min-w-0 items-center gap-2.5 px-2.5 text-xs", !underMate && "pe-0.5")}
+      className={cn("flex h-8 min-w-0 items-center gap-1.5 px-2.5 text-xs", !underMate && "pe-0.5")}
       data-zerops-change={changeRowKey(pull)}
       data-zerops-surface="sidebar-pull-request"
     >

@@ -757,6 +757,42 @@ describe("the project's flow under it", () => {
     expect(html).not.toContain(">Passing</span>");
   });
 
+  // The menu has one text column (the owner, 2026-09-25: "everything jumps
+  // around differently"): a Mate's name, a change's title and a stop's pill
+  // start on it. A change's cell is wider — the spine, its branch and dot —
+  // so its gap is narrower: at the Mates' gap its title stood 4 px right of
+  // the column (57 against 53 px, measured 2026-09-28).
+  it("starts a change's title on the menu's one text column, as a Mate's name and a stop's pill", () => {
+    const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
+    const PX: Record<string, number> = {
+      "w-5": 20,
+      "w-7": 28,
+      "gap-1.5": 6,
+      "gap-2.5": 10,
+      "gap-3.5": 14,
+    };
+    const inset = (tag: string | undefined, cell: string | undefined) => {
+      const gap = /\bgap-[\d.]+\b/u.exec(tag ?? "")?.[0] ?? "";
+      const width = /\bw-[57]\b/u.exec(cell ?? "")?.[0] ?? "";
+      return (PX[width] ?? Number.NaN) + (PX[gap] ?? Number.NaN);
+    };
+    const mate =
+      /<button class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate"[^>]*><span class="([^"]*)"/u.exec(
+        html,
+      );
+    const change =
+      /<li class="([^"]*)"[^>]*data-zerops-surface="sidebar-pull-request"[^>]*><span class="([^"]*)"/u.exec(
+        html,
+      );
+    const stop =
+      /<li class="([^"]*)"[^>]*data-zerops-surface="sidebar-environment"[^>]*><span class="([^"]*)"/u.exec(
+        html,
+      );
+    expect(inset(mate?.[1], mate?.[2])).toBe(34);
+    expect(inset(stop?.[1], stop?.[2])).toBe(34);
+    expect(inset(change?.[1], change?.[2])).toBe(34);
+  });
+
   it("hands a change nobody here can fix back to the Mate that wrote it", () => {
     const stale = flow({
       pullRequests: [pull(4, { mergeability: "conflicting" })],
