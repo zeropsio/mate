@@ -128,6 +128,7 @@ import {
   formatUpcomingTimestamp,
 } from "~/timestampFormat";
 import { useComposerDraftStore } from "~/composerDraftStore";
+import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -2012,6 +2013,8 @@ function MateRow<T extends RosterCandidate>({
   const live = drawnActivity(candidate, activity);
   const subject = live?.subject;
   const snippet = subject === undefined ? undefined : live?.snippet;
+  // A new task rises into the row's second line as the person sets it.
+  const subjectChanged = useChangedSinceShown(subject);
   const face = mateFaceFor(candidate.group === "connected", activity);
   // The plan as a ring around the face while it works: one segment a step.
   const progress = face === "working" ? live?.progress : undefined;
@@ -2253,8 +2256,10 @@ function MateRow<T extends RosterCandidate>({
               className={cn(
                 "mt-0.5 truncate text-xs leading-4.5",
                 unread ? "font-medium text-sidebar-foreground" : "text-sidebar-muted-foreground",
+                subjectChanged && "animate-words-in motion-reduce:animate-none",
               )}
               data-zerops-surface="sidebar-mate-subject"
+              key={subject}
             >
               {subject}
             </span>
@@ -2437,11 +2442,19 @@ function MateSnippet({
     threadKey === undefined ? undefined : state.draftsByThreadKey[threadKey]?.prompt,
   );
   const unsent = draft?.trim() ?? "";
+  // The Mate's newest words rise into their line when they arrive, as its
+  // status line's do in the chat; what the menu opened onto is simply there.
+  const said = unsent.length === 0 ? (snippet ?? "") : `Draft: ${unsent}`;
+  const saidChanged = useChangedSinceShown(said);
   if (snippet === null && unsent.length === 0) return <MateReplyPending />;
   return (
     <span
-      className="truncate text-xs leading-4.5 text-sidebar-muted-foreground/70"
+      className={cn(
+        "truncate text-xs leading-4.5 text-sidebar-muted-foreground/70",
+        saidChanged && "animate-words-in motion-reduce:animate-none",
+      )}
       data-zerops-surface="sidebar-mate-snippet"
+      key={said}
     >
       {unsent.length === 0 ? (
         snippet

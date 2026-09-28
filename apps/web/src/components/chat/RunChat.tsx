@@ -79,6 +79,7 @@ import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import { CrewSeamActivity } from "../zerops/crew/CrewTaskCard";
 import { KindGlyph, ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { MateFace, type MateFaceGaze } from "../zerops/primitives";
+import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
 import { BrowserStrip, BrowserTakes } from "./BrowserStrip";
@@ -2241,17 +2242,6 @@ function liveDoing(now: TurnHeaderActivity | null, compacting: boolean, answerin
     case "operation":
       return { verb: "is working", composing: false, waiting: false };
   }
-}
-
-/**
- * Whether a value has changed since the component first drew it: what it
- * opened onto is simply there, and only a change the person watches moves.
- */
-function useChangedSinceShown<T>(value: T): boolean {
-  const [first] = useState(value);
-  const [changed, setChanged] = useState(false);
-  if (!changed && value !== first) setChanged(true);
-  return changed || value !== first;
 }
 
 /**
