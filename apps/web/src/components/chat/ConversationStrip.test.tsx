@@ -198,6 +198,24 @@ describe("ConversationStripView", () => {
     expect(html).toContain(">@backend</span>");
   });
 
+  it("marks the lead's chip with the lead's glyph, named for assistive technology", () => {
+    const html = view(
+      [
+        { id: "chats", label: "Chats", entries: [entry("main")] },
+        {
+          id: "crew",
+          label: "Crew",
+          entries: [entry("@lead", { mark: "lead" }), entry("@backend")],
+        },
+      ],
+      null,
+    );
+    expect(html.match(/data-crew-lead-mark/g)).toHaveLength(1);
+    expect(html).toMatch(
+      /aria-label="Lead"[^>]*data-crew-lead-mark|data-crew-lead-mark[^>]*aria-label="Lead"/,
+    );
+  });
+
   it("says the status word beside its dot, and keeps it only as the dot's name when narrow", () => {
     const groups = [
       { id: "chats", label: "Chats", entries: [entry("main"), entry("logs", { status: working })] },

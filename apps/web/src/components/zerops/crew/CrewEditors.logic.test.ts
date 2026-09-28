@@ -14,6 +14,7 @@ import {
   crewLoginNote,
   crewLoginOptions,
   crewModelOptions,
+  crewRunsOn,
   freeTints,
   jobChangedMostly,
 } from "./CrewEditors.logic";
@@ -154,6 +155,39 @@ describe("Runs on", () => {
     expect(crewLoginOptions([cursor, codex, claude], true)).toEqual([
       { id: "claudeAgent", label: "Claude Code", agent: "claude-code" },
     ]);
+  });
+
+  it.each<{
+    readonly name: string;
+    readonly model: string | null;
+    readonly effort: string | null;
+    readonly runsOn: ReturnType<typeof crewRunsOn>;
+  }>([
+    {
+      name: "names a crewmate's login, model and effort as the catalog does",
+      model: "claude-opus-5-5",
+      effort: "high",
+      runsOn: { login: "Claude Code", model: "Opus 5.5", effort: "High" },
+    },
+    {
+      name: "leaves out what runs on the login's defaults",
+      model: null,
+      effort: null,
+      runsOn: { login: "Claude Code", model: null, effort: null },
+    },
+    {
+      name: "keeps a model or effort the catalog does not list as written",
+      model: "claude-next",
+      effort: "max",
+      runsOn: { login: "Claude Code", model: "claude-next", effort: "max" },
+    },
+  ])("$name", ({ model, effort, runsOn }) => {
+    expect(
+      crewRunsOn(
+        { login: { id: "claudeAgent", label: "Claude Code", agent: "claude-code" }, model, effort },
+        [claude, codex],
+      ),
+    ).toEqual(runsOn);
   });
 
   it("offers a login's models and a model's effort levels", () => {

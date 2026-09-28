@@ -24,6 +24,8 @@ import {
 export interface CrewmateHeaderModel {
   readonly handle: string;
   readonly name: string;
+  /** The crew's lead (PRD §4.6): marked as the lead beside its name. */
+  readonly lead: boolean;
   readonly tint: CrewTint;
   readonly job: string;
   /** The login's label beside the name, for a crewmate not on the Mate's own Claude Code. */
@@ -54,6 +56,7 @@ export function crewmateHeaderModel(
   return {
     handle: crewmate.handle,
     name: crewmate.displayName,
+    lead: crewmate.kind === "lead",
     tint: crewmate.tint,
     job: crewmate.jobFirstLine,
     login:

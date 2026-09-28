@@ -181,13 +181,18 @@ import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
 import { CrewLaneBar } from "./zerops/crew/CrewLaneBar";
+import { CrewLeadBar } from "./zerops/crew/CrewLeadBar";
 import { CrewLeadPlan } from "./zerops/crew/CrewLeadPlan";
 import { CrewmateEditor } from "./zerops/crew/CrewmateEditor";
 import { CrewTimelineContext, type CrewTimeline } from "./zerops/crew/CrewTaskCard";
 import { crewCardOrigin } from "./zerops/crew/CrewTaskCard.logic";
+import { crewRunsOn } from "./zerops/crew/CrewEditors.logic";
 import { crewChatNotices } from "./zerops/crew/crewChatNotices";
 import { crewComposerMentions, crewMessageCommand } from "./zerops/crew/crewComposerSend";
-import { crewMessagePlaceholder } from "@t3tools/client-runtime/zerops/crew/phrases";
+import {
+  crewMessagePlaceholder,
+  crewRunsOnWord,
+} from "@t3tools/client-runtime/zerops/crew/phrases";
 import { crewCommands } from "../zerops/crew/crewCommands";
 import { crewFailureSentence } from "../zerops/crew/useCrewCommand";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
@@ -5294,6 +5299,12 @@ export default function ChatView(props: ChatViewProps) {
       ? null
       : (crew.view?.crewmates.find((row) => row.crewmate.handle === activeCrewOrigin.crewmate) ??
         null);
+  // A crewmate's model, effort and permissions are its own (*Runs on*, the
+  // crew gate): the composer says them, and opens its editor to change them.
+  const crewRunsOnLabel =
+    activeCrewmate === null
+      ? null
+      : crewRunsOnWord(crewRunsOn(activeCrewmate.crewmate, providerStatuses));
   // The lead's chat names crewmates on `@`; no other chat does (PRD §5.3).
   const crewMentions = useMemo(
     () => crewComposerMentions(activeCrewmate, crew.snapshot?.crewmates ?? []),
@@ -8060,8 +8071,10 @@ export default function ChatView(props: ChatViewProps) {
           extraGroups={crewStripGroups}
         />
         {/* A crewmate with a copy of the code shows it where a person's chat
-            shows its lifecycle (seam S7); a reader and the lead have none. */}
-        {activeCrewmate?.crewmate.lane != null && activeThreadRef !== null ? (
+            shows its lifecycle (seam S7); the lead says what it does instead. */}
+        {activeCrewmate?.crewmate.kind === "lead" ? (
+          <CrewLeadBar />
+        ) : activeCrewmate?.crewmate.lane != null && activeThreadRef !== null ? (
           <CrewLaneBar
             handle={activeCrewmate.crewmate.handle}
             onOpenChanges={onOpenCrewChanges}
@@ -8330,6 +8343,15 @@ export default function ChatView(props: ChatViewProps) {
                                 crewComposerPlaceholder ?? connectedComposerPlaceholder
                               }
                               mentionCrewmates={crewMentions}
+                              {...(crewRunsOnLabel === null || activeCrewmate === null
+                                ? {}
+                                : {
+                                    crewRunsOn: {
+                                      label: crewRunsOnLabel,
+                                      onEdit: () =>
+                                        setEditingCrewmate(activeCrewmate.crewmate.handle),
+                                    },
+                                  })}
                               {...(crewComposerPlaceholder !== null
                                 ? { idlePlaceholder: crewComposerPlaceholder }
                                 : zeropsChrome.panel === "available"

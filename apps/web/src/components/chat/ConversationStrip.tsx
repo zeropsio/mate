@@ -8,7 +8,8 @@ import type { CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
-import { ChevronDownIcon, MessagesSquareIcon, PlusIcon, XIcon } from "lucide-react";
+import { CREW_LEAD_WORD } from "@t3tools/client-runtime/zerops/crew/phrases";
+import { ChevronDownIcon, CompassIcon, MessagesSquareIcon, PlusIcon, XIcon } from "lucide-react";
 import { useLayoutEffect, useMemo, useState } from "react";
 
 import { cn } from "~/lib/utils";
@@ -84,6 +85,18 @@ function EntryStatus({
   );
 }
 
+/** The crew's lead, told apart from its crewmates at a glance. */
+function LeadMark() {
+  return (
+    <CompassIcon
+      aria-label={CREW_LEAD_WORD}
+      className="size-3 shrink-0 text-muted-foreground"
+      data-crew-lead-mark
+      role="img"
+    />
+  );
+}
+
 function StripChip({
   entry,
   narrow,
@@ -123,6 +136,7 @@ function StripChip({
         {entry.face === undefined ? null : (
           <MateFace size="dot" state={entry.face.state} tint={entry.face.tint} />
         )}
+        {entry.mark === "lead" ? <LeadMark /> : null}
         <span className="truncate">{entry.label}</span>
       </button>
       <EntryStatus entry={entry} narrow={narrow} />
@@ -240,6 +254,7 @@ export function ConversationStripView({
                 {entry.face === undefined ? null : (
                   <MateFace size="dot" state={entry.face.state} tint={entry.face.tint} />
                 )}
+                {entry.mark === "lead" ? <LeadMark /> : null}
                 <span className="min-w-0 flex-1 truncate">{entry.label}</span>
                 <EntryStatus entry={entry} narrow={false} />
               </MenuItem>

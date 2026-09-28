@@ -14,6 +14,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, ThreadCrewOrigin, ThreadId } from "@t3tools/contracts";
+import { CREW_LEAD_WORD } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { mateMarkStateForThreadStatus } from "@t3tools/shared/threadStatus";
 import { useRouter } from "@tanstack/react-router";
 import { EllipsisIcon } from "lucide-react";
@@ -122,6 +123,9 @@ export function CrewmateHeader({
     <span className="inline-flex min-w-0 items-center gap-2" data-zerops-surface="header-crewmate">
       <MateFace size="sm" state={face} tint={model.tint} />
       <span className="max-w-40 shrink-0 truncate font-medium text-foreground">{model.name}</span>
+      {model.lead ? (
+        <Chip className="shrink-0" data-crew-lead-chip label={CREW_LEAD_WORD} tone="off" />
+      ) : null}
       <span className="shrink-0 text-muted-foreground">@{handle}</span>
       {model.login === null ? null : (
         <span className="shrink-0 text-xs text-muted-foreground">{model.login}</span>

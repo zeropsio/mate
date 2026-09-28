@@ -30,6 +30,7 @@ import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
 import { useZeropsAgentSignInDialog } from "../../zerops/useZeropsAgentSignInDialog";
 import { ZEROPS_AGENT_NAMES } from "../zerops/ZeropsAgentAuthorizationDialog.logic";
 import { ZeropsAgentPickerPanel } from "../zerops/ZeropsAgentPickerPanel";
+import { CrewRunsOnControl } from "../zerops/crew/CrewRunsOnControl";
 import { crewmateMenuItems } from "../zerops/crew/CrewTellComposer.logic";
 import {
   memo,
@@ -649,6 +650,12 @@ export interface ChatComposerProps {
    * to files and data.
    */
   mentionCrewmates?: ReadonlyArray<Crewmate> | undefined;
+  /**
+   * A crewmate's chat (PRD §2.3): what the crewmate runs on, read-only in
+   * place of the model, effort and permission-mode pickers — its *Runs on* and
+   * the crew gate decide those — with a way into its editor.
+   */
+  crewRunsOn?: { readonly label: string; readonly onEdit: () => void } | undefined;
 
   // Session phase
   phase: SessionPhase;
@@ -799,6 +806,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     connectedPlaceholder = DEFAULT_CONNECTED_COMPOSER_PLACEHOLDER,
     idlePlaceholder = DISCONNECTED_COMPOSER_PLACEHOLDER,
     mentionCrewmates,
+    crewRunsOn,
     phase,
     isConnecting,
     isSendBusy,
@@ -3921,7 +3929,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   )}
                 >
                   <div className="-m-1 -ms-3.5 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 ps-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    {showProviderUnavailable && !zeropsSignInRequired ? (
+                    {crewRunsOn !== undefined ? (
+                      <CrewRunsOnControl label={crewRunsOn.label} onEdit={crewRunsOn.onEdit} />
+                    ) : showProviderUnavailable && !zeropsSignInRequired ? (
                       <Button
                         type="button"
                         size="sm"
@@ -3982,7 +3992,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       />
                     )}
 
-                    {isComposerFooterCompact ? (
+                    {crewRunsOn !== undefined ? null : isComposerFooterCompact ? (
                       <CompactComposerControlsMenu
                         interactionMode={interactionMode}
                         runtimeMode={runtimeMode}

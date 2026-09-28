@@ -896,12 +896,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   }, [timelineViewportElement, rows.length]);
 
   const mate = useZeropsMate(activeThreadEnvironmentId);
+  // A crewmate's conversation is the crewmate's: its name and its face speak
+  // on every line — the work line too (ARCHITECTURE §6).
+  const crewmate = crew?.crewmate ?? null;
   const speaker = useMemo<ConversationSpeaker>(
     () =>
-      mate.kind === "mate"
-        ? { name: mate.mate.name, tint: mate.mate.tint }
-        : { name: "Assistant", tint: "slate" },
-    [mate],
+      crewmate !== null
+        ? {
+            name: crewmate.profile?.displayName ?? `@${crewmate.handle}`,
+            tint: crewmate.profile?.tint ?? "slate",
+          }
+        : mate.kind === "mate"
+          ? { name: mate.mate.name, tint: mate.mate.tint }
+          : { name: "Assistant", tint: "slate" },
+    [crewmate, mate],
   );
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({

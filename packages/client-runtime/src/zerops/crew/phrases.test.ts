@@ -12,6 +12,8 @@ import {
   CREW_BOARD_COLUMNS,
   CREW_IDLE_WORD,
   CREW_LANE_VERBS,
+  CREW_LEAD_ROLE_LINE,
+  CREW_LEAD_WORD,
   crewAheadWord,
   crewAppWord,
   crewConflictWord,
@@ -22,6 +24,7 @@ import {
   crewLandedAsWord,
   crewMessagePlaceholder,
   crewPendingNotice,
+  crewRunsOnWord,
   crewStintWord,
   crewTaskSourceWord,
   crewApplyWord,
@@ -553,5 +556,25 @@ describe("crewDevHostDatabaseWord", () => {
     [null, "Database unknown"],
   ] as const)("says a dev service's database %s as %s", (database, word) => {
     expect(crewDevHostDatabaseWord(database)).toBe(word);
+  });
+});
+
+describe("the lead's words", () => {
+  it("names the lead and what it does in place of a copy of the code", () => {
+    expect(CREW_LEAD_WORD).toBe("Lead");
+    expect(CREW_LEAD_ROLE_LINE).toBe("Plans and reviews · no copy of the code");
+  });
+});
+
+describe("crewRunsOnWord", () => {
+  it.each([
+    [
+      { login: "Claude Code", model: "Haiku 4.5", effort: "high" },
+      "Runs on Claude Code · Haiku 4.5 · high",
+    ],
+    [{ login: "Codex", model: null, effort: null }, "Runs on Codex"],
+    [{ login: "work", model: "Opus 5.5", effort: null }, "Runs on work · Opus 5.5"],
+  ] as const)("says what a crewmate runs on: %o", (runsOn, word) => {
+    expect(crewRunsOnWord(runsOn)).toBe(word);
   });
 });

@@ -1288,6 +1288,36 @@ describe("MessagesTimeline — the conversation", () => {
     ...overrides,
   });
 
+  it("names the crewmate, never the Mate, on a crewmate's work line", async () => {
+    const { CrewTimelineContext } = await import("../zerops/crew/CrewTaskCard");
+    const { crewSnapshotFixture } =
+      await import("@t3tools/client-runtime/zerops/crew/testing/fixtures");
+    const backend = crewSnapshotFixture().crewmates.find((mate) => mate.handle === "backend")!;
+    const markup = renderToStaticMarkup(
+      <CrewTimelineContext
+        value={{
+          firstCardId: null,
+          origin: null,
+          tasks: [],
+          crewmate: { handle: "backend", profile: backend },
+          onOpenThread: () => {},
+        }}
+      >
+        <MessagesTimeline
+          {...buildProps()}
+          latestTurn={settled}
+          timelineEntries={[
+            buildUserTimelineEntry("Build it"),
+            tool("w1", 5),
+            assistant("a2", 60, "The shop builds."),
+          ]}
+        />
+      </CrewTimelineContext>,
+    );
+    expect(markup).toContain("Backend worked for");
+    expect(markup).not.toContain("Assistant worked for");
+  });
+
   it("draws a settled turn as the message, one work line and the answer", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline
