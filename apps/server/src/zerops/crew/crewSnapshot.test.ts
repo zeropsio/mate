@@ -409,4 +409,25 @@ describe("crew snapshot", () => {
     );
     expect(snapshot.attention.map((row) => [row.id, row.kind, row.handle, row.text])).toEqual(rows);
   });
+
+  it.each([
+    ["was discarded", "discarded", [["dependency-gone:t-2", "dependency-gone", "backend"]]],
+    ["stopped", "parked", [["dependency-gone:t-2", "dependency-gone", "backend"]]],
+    ["is still being worked", "working", []],
+    ["landed", "landed", []],
+  ] as const)("a queued task whose dependency %s", (_, state, rows) => {
+    const snapshot = appliedSnapshot(
+      base({
+        tasks: [
+          task("t-1", 1, { state, attempt: 1 }),
+          task("t-2", 2, { state: "queued", dependsOn: ["t-1"] }),
+        ],
+      }),
+    );
+    expect(
+      snapshot.attention
+        .filter((row) => row.taskId === "t-2")
+        .map((row) => [row.id, row.kind, row.handle]),
+    ).toEqual(rows);
+  });
 });

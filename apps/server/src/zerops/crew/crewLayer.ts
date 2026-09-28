@@ -266,7 +266,7 @@ const run = (core: CrewCore, command: CrewCommand, principal: TurnPrincipal, act
         yield* newTask(core, principal, command);
         return done;
       case "taskEdit":
-        yield* editTask(core, command);
+        yield* editTask(core, principal, command);
         return done;
       case "discard":
         yield* discard(core, command.taskId);

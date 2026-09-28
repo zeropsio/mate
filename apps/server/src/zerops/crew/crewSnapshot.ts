@@ -393,6 +393,12 @@ const taskAttention = (
         ? undefined
         : attention("review-wait");
     case "queued": {
+      // A dependency that will not land holds it for good.
+      const gone = row.dependsOn.some((id) => {
+        const state = input.tasks.find((task) => task.assignment === id)?.state;
+        return state === "discarded" || state === "parked";
+      });
+      if (gone) return attention("dependency-gone");
       const refused = runtime.cantStart.get(row.assignment);
       return refused === undefined
         ? undefined

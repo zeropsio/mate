@@ -265,6 +265,27 @@ describe("crewAttentionActions", () => {
     ]);
   });
 
+  it("drops the wait on the dependency that will not land, or discards the task", () => {
+    const waiting = {
+      ...snapshot,
+      board: {
+        ...snapshot.board,
+        tasks: snapshot.board.tasks.map((entry) =>
+          entry.id === "task-15" ? { ...entry, dependsOn: ["task-12", "task-9"] } : entry,
+        ),
+      },
+    };
+    const row = attention({ kind: "dependency-gone", handle: "frontend", taskId: "task-15" });
+    expect(crewAttentionActions(row, waiting, { board: true })).toEqual([
+      {
+        kind: "command",
+        label: "Drop the wait",
+        command: { _tag: "taskEdit", taskId: "task-15", dependsOn: ["task-12"] },
+      },
+      { kind: "command", label: "Discard", command: { _tag: "discard", taskId: "task-15" } },
+    ]);
+  });
+
   it("offers nothing on a stopped task the row does not name", () => {
     expect(
       crewAttentionActions(attention({ kind: "stalled", taskId: null }), snapshot, {

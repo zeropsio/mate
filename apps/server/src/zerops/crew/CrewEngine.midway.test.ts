@@ -292,4 +292,47 @@ describe("CrewEngine tasks stopped mid-way", () => {
         }),
     ]);
   });
+
+  it.live(
+    "a queued task whose dependency was discarded names itself; Drop the wait starts it",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          const thread = yield* firstTurn(world, () => undefined);
+          const first = yield* firstTask;
+          yield* command({
+            _tag: "taskCreate",
+            owner: "backend",
+            title: "Health check",
+            brief: "Add /health.",
+            doneWhen: "",
+            dependsOn: [first.assignment],
+          });
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          yield* endedAttempts;
+          yield* command({ _tag: "discard", taskId: first.assignment });
+          const waiting = yield* snapshotWhere((current) =>
+            current.attention.some((row) => row.kind === "dependency-gone"),
+          );
+          const second = waiting.board.tasks.find((task) => task.number === 2)!;
+          yield* command({ _tag: "taskEdit", taskId: second.id, dependsOn: [] });
+          const started = yield* snapshotWhere(
+            (current) => current.board.tasks.find((task) => task.number === 2)?.state === "working",
+          );
+          assert.deepStrictEqual(
+            {
+              waiting: waiting.attention.map((row) => [row.kind, row.handle, row.taskId]),
+              second: second.state,
+              started: started.attention,
+            },
+            {
+              waiting: [["dependency-gone", "backend", second.id]],
+              second: "queued",
+              started: [],
+            },
+          );
+        }),
+      ),
+  );
 });

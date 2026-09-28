@@ -19,6 +19,7 @@ import {
   crewAskToResolveWord,
   crewAskToReworkWord,
   crewCommitEditAsk,
+  crewGoneDependency,
   crewReworkMessage,
   crewServedWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
@@ -296,6 +297,31 @@ export function crewAttentionActions(
               command: { _tag: "discard", taskId: row.taskId },
             },
           ];
+    case "dependency-gone": {
+      // What it waits for will not land: stop waiting for it, or drop the task too.
+      if (row.taskId === null) return [];
+      const task = crew.board.tasks.find((entry) => entry.id === row.taskId);
+      const gone = task === undefined ? undefined : crewGoneDependency(task, crew.board.tasks);
+      const discard: CrewAttentionAction = {
+        kind: "command",
+        label: CREW_ATTENTION_VERBS.discard,
+        command: { _tag: "discard", taskId: row.taskId },
+      };
+      return task === undefined || gone === undefined
+        ? [discard]
+        : [
+            {
+              kind: "command",
+              label: CREW_ATTENTION_VERBS.dropWait,
+              command: {
+                _tag: "taskEdit",
+                taskId: row.taskId,
+                dependsOn: task.dependsOn.filter((id) => id !== gone.id),
+              },
+            },
+            discard,
+          ];
+    }
     case "sent-back": {
       // No run sends it back: ask its crewmate as you, with the review's note, or drop it.
       const task = crew.board.tasks.find((entry) => entry.id === row.taskId);

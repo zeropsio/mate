@@ -293,6 +293,13 @@ export function crewAttentionSentence(
       return task === undefined
         ? `${name}'s task waits for the lead's review`
         : `#${task.number} waits for the lead's review`;
+    case "dependency-gone": {
+      const gone = task === undefined ? undefined : crewGoneDependency(task, crew.board.tasks);
+      const which = task === undefined ? `${name}'s task` : `#${task.number}`;
+      return gone === undefined
+        ? `${which} waits for a task that will not land`
+        : `${which} waits for #${gone.number}, ${gone.state === "discarded" ? "which was discarded" : "which stopped"}`;
+    }
     case "sent-back": {
       const by = task?.review?.by;
       const reviewer =
@@ -486,6 +493,7 @@ export const CREW_ATTENTION_VERBS = {
   discard: "Discard",
   askLeadToReview: "Ask lead to review",
   landMyself: "Land it myself",
+  dropWait: "Drop the wait",
 } as const;
 
 /** *Ask lead to review*: one turn of the lead's, as you. */
@@ -500,6 +508,15 @@ export const crewAskToResolveWord = (name: string): string => `Ask ${name} to re
 export const crewAskToFixWord = (name: string): string => `Ask ${name} to fix`;
 
 export const crewAskToReworkWord = (name: string): string => `Ask ${name} to rework`;
+
+/** The first task `task` depends on that will not land: discarded or stopped (parked). */
+export const crewGoneDependency = (
+  task: Pick<CrewTask, "dependsOn">,
+  tasks: ReadonlyArray<CrewTask>,
+): CrewTask | undefined =>
+  task.dependsOn
+    .map((id) => tasks.find((entry) => entry.id === id))
+    .find((entry) => entry?.state === "discarded" || entry?.state === "parked");
 
 /** *Ask <name> to rework*: one turn as you, carrying the review's note. */
 export const crewReworkMessage = (taskNumber: number, note: string | null): string =>

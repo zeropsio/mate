@@ -545,7 +545,10 @@ export const CrewCommand = Schema.TaggedUnion({
     doneWhen: Schema.String,
     dependsOn: Schema.Array(CrewTaskId),
   },
-  /** Only the fields present change. */
+  /**
+   * Only the fields present change; a queued task whose dependencies change
+   * starts at once when its crewmate is free (*Drop the wait*).
+   */
   taskEdit: {
     ...taskRef,
     title: Schema.optional(TrimmedNonEmptyString),

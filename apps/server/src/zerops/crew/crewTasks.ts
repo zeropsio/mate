@@ -691,8 +691,10 @@ export const tell = (
     }
   });
 
+/** Edits a task; one whose wait is dropped starts when its crewmate is free, as the editor. */
 export const editTask = (
   core: CrewCore,
+  principal: TurnPrincipal,
   input: {
     readonly taskId: string;
     readonly title?: string | undefined;
@@ -717,6 +719,9 @@ export const editTask = (
       },
       dependsOn: input.dependsOn ?? row.dependsOn,
     });
+    if (input.dependsOn !== undefined && row.state === "queued") {
+      yield* pump(core, row.member, { taskId: row.assignment, principal });
+    }
   });
 
 export const markFresh = (core: CrewCore, taskId: string) =>

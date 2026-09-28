@@ -375,6 +375,30 @@ describe("crewAttentionSentence", () => {
     expect(crewAttentionSentence(row, sentBack)).toBe(words);
   });
 
+  it.each([
+    [["task-12", "task-9"], "#15 waits for #9, which was discarded"],
+    [["task-17"], "#15 waits for #17, which stopped"],
+    [["task-12"], "#15 waits for a task that will not land"],
+  ] as const)("words a queued task waiting on %j", (dependsOn, words) => {
+    const waiting = {
+      ...crew,
+      board: {
+        ...crew.board,
+        tasks: crew.board.tasks.map((entry) =>
+          entry.id === "task-15" ? { ...entry, dependsOn: [...dependsOn] } : entry,
+        ),
+      },
+    };
+    const row = {
+      ...rowOf("question"),
+      kind: "dependency-gone" as const,
+      handle: "frontend",
+      taskId: "task-15",
+      text: null,
+    };
+    expect(crewAttentionSentence(row, waiting)).toBe(words);
+  });
+
   it("words every attention kind", () => {
     for (const kind of CrewAttentionKind.literals) {
       expect(sentence({ ...rowOf("question"), kind }), kind).toMatch(/\S/);
@@ -561,6 +585,7 @@ describe("the section's words (PRD §4.3)", () => {
       "Discard",
       "Ask lead to review",
       "Land it myself",
+      "Drop the wait",
     ]);
     expect(crewAskToResolveWord("Backend")).toBe("Ask Backend to resolve");
     expect(crewAskToFixWord("Backend")).toBe("Ask Backend to fix");
