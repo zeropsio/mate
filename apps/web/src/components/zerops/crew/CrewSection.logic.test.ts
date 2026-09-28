@@ -187,6 +187,22 @@ describe("crewAttentionActions", () => {
         { kind: "command", label: "Discard", command: { _tag: "discard", taskId: "task-12" } },
       ],
     },
+    {
+      kind: "review-wait" as const,
+      actions: [
+        {
+          kind: "command",
+          label: "Ask lead to review",
+          command: {
+            _tag: "message",
+            handle: "lead",
+            text: "Review #12 and answer with crew_review.",
+            attachments: [],
+          },
+        },
+        { kind: "command", label: "Land it myself", command: { _tag: "land", taskId: "task-12" } },
+      ],
+    },
   ])("$kind", ({ kind, actions }) => {
     const input = attention({ kind, paths: ["src/ui/hud.ts"], host: "appdev" });
     expect(crewAttentionActions(input, snapshot, { board: true })).toEqual(actions);
@@ -213,6 +229,18 @@ describe("crewAttentionActions", () => {
     const plan = attention({ kind: "plan", handle: "lead", taskId: null });
     expect(crewAttentionActions(plan, snapshot, { board: true })).toEqual([
       { kind: "board", label: "Review plan" },
+    ]);
+  });
+
+  it("offers only Land it myself on a review where the crew has no lead", () => {
+    const noLead = {
+      ...snapshot,
+      crewmates: snapshot.crewmates.filter((mate) => mate.kind !== "lead"),
+    };
+    expect(
+      crewAttentionActions(attention({ kind: "review-wait" }), noLead, { board: true }),
+    ).toEqual([
+      { kind: "command", label: "Land it myself", command: { _tag: "land", taskId: "task-12" } },
     ]);
   });
 

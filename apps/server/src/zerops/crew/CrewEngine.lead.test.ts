@@ -3,7 +3,9 @@ import type { CrewRunOptions, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
+import { CREW_ID } from "./CrewHome.ts";
 import { CrewThreadDirectory, CrewToolHost, type CrewThreadMember } from "./crewSeams.ts";
+import { CrewStore } from "./CrewStore.ts";
 import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 import {
   eventually,
@@ -82,6 +84,13 @@ const lastTurnText = (world: CrewWorld, thread: ThreadId) =>
   Effect.map(
     dispatchedOf(world, "thread.turn.start"),
     (turns) => turns.findLast((turn) => turn.threadId === thread)?.message.text ?? "",
+  );
+
+/** Turns sent into the lead's conversation. */
+const wakes = (world: CrewWorld, lead: ThreadId) =>
+  Effect.map(
+    dispatchedOf(world, "thread.turn.start"),
+    (turns) => turns.filter((turn) => turn.threadId === lead).length,
   );
 
 /** The engine woke the lead with a card that says `words`. */
@@ -263,6 +272,154 @@ describe("CrewEngine lead", () => {
     ),
   );
 
+  it.live(
+    "the rig: a review whose wake a stopped run cut off wakes the lead at the next Start; its accept moves the queue",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* withLead(world);
+          yield* startRun({ budgetUsd: 3, landing: "lead" });
+          const stopped = (yield* snapshotWhere((current) => current.run?.state === "running")).run!
+            .id;
+          const thread = yield* firstTurn(world, () =>
+            write(world.root, ".crew/backend/ok.txt", "ok\n"),
+          );
+          for (const title of ["Health check", "Metrics"]) {
+            yield* command({
+              _tag: "taskCreate",
+              owner: "backend",
+              title,
+              brief: title,
+              doneWhen: "",
+              dependsOn: [],
+            });
+          }
+          yield* reportDone(thread);
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          const lead = yield* leadThread(world);
+          yield* wokenWith(world, lead, "review @backend's work");
+          yield* world.publish(spiEvent("turn.started", lead, {}));
+          yield* command({ _tag: "stop", runId: stopped });
+          yield* world.publish(spiEvent("turn.completed", lead, { state: "interrupted" }));
+          yield* snapshotWhere((current) => current.run?.state === "stopped");
+          const before = yield* wakes(world, lead);
+          yield* startRun({ budgetUsd: 0.5, landing: "lead" });
+          yield* eventually(Effect.map(wakes(world, lead), (count) => count === before + 1));
+          const waiting = (yield* latest).board.tasks.map((task) => task.state);
+          yield* world.publish(spiEvent("turn.started", lead, {}));
+          yield* (yield* CrewToolHost).review(yield* memberOf(lead), {
+            task: 1,
+            verdict: "accept",
+            note: "Looks right.",
+          });
+          yield* world.publish(spiEvent("turn.completed", lead, { state: "completed" }));
+          const moved = yield* snapshotWhere(
+            (current) =>
+              current.board.tasks[0]?.state === "landed" &&
+              current.board.tasks[1]?.state === "working",
+          );
+          assert.deepStrictEqual(
+            {
+              waiting,
+              wake: (yield* lastTurnText(world, lead)).includes("review @backend's work"),
+              moved: moved.board.tasks.map((task) => task.state),
+            },
+            {
+              waiting: ["review", "queued", "queued"],
+              wake: true,
+              moved: ["landed", "working", "queued"],
+            },
+          );
+        }),
+      ),
+  );
+
+  it.live(
+    "without a run a review left waiting names itself in Waiting on you; Land it myself lands it",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* withLead(world);
+          yield* startRun({ landing: "lead" });
+          const runId = (yield* snapshotWhere((current) => current.run?.state === "running")).run!
+            .id;
+          const thread = yield* firstTurn(world, () =>
+            write(world.root, ".crew/backend/ok.txt", "ok\n"),
+          );
+          yield* reportDone(thread);
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          const lead = yield* leadThread(world);
+          yield* wokenWith(world, lead, "review @backend's work");
+          yield* world.publish(spiEvent("turn.started", lead, {}));
+          yield* command({ _tag: "stop", runId });
+          yield* world.publish(spiEvent("turn.completed", lead, { state: "interrupted" }));
+          yield* snapshotWhere((current) => current.run?.state === "stopped");
+          // The review has waited ten minutes with nobody on it.
+          const store = yield* CrewStore;
+          const task = (yield* store.assignments(CREW_ID))[0]!;
+          yield* store.putAssignment({ ...task, updatedAt: "2026-09-28T07:00:00.000Z" });
+          const waiting = yield* snapshotWhere((current) => current.attention.length > 0);
+          yield* command({ _tag: "land", taskId: task.assignment });
+          const landed = yield* snapshotWhere(
+            (current) => current.board.tasks[0]?.state === "landed",
+          );
+          assert.deepStrictEqual(
+            {
+              waiting: waiting.attention.map((row) => [row.kind, row.handle, row.taskId, row.at]),
+              review: landed.board.tasks[0]!.review,
+              tree: read(world.root, "ok.txt"),
+            },
+            {
+              waiting: [["review-wait", "backend", task.assignment, "2026-09-28T07:00:00.000Z"]],
+              review: { verdict: "accept", note: "", by: null },
+              tree: "ok\n",
+            },
+          );
+        }),
+      ),
+  );
+
+  it.live("Resume wakes the lead again for the review its pause interrupted", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* withLead(world);
+        yield* startRun({ landing: "lead" });
+        const runId = (yield* snapshotWhere((current) => current.run?.state === "running")).run!.id;
+        const thread = yield* firstTurn(world, () =>
+          write(world.root, ".crew/backend/ok.txt", "ok\n"),
+        );
+        yield* reportDone(thread);
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        const lead = yield* leadThread(world);
+        yield* wokenWith(world, lead, "review @backend's work");
+        yield* world.publish(spiEvent("turn.started", lead, {}));
+        yield* command({ _tag: "pause", runId });
+        yield* world.publish(spiEvent("turn.completed", lead, { state: "interrupted" }));
+        yield* snapshotWhere((current) => current.run?.state === "paused");
+        yield* command({ _tag: "resume", runId });
+        yield* eventually(Effect.map(wakes(world, lead), (count) => count === 2));
+        assert.isTrue((yield* lastTurnText(world, lead)).includes("review @backend's work"));
+      }),
+    ),
+  );
+
+  it.live("Start lands a ready task when the run's landing lands it", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* withLead(world);
+        const thread = yield* firstTurn(world, () =>
+          write(world.root, ".crew/backend/ok.txt", "ok\n"),
+        );
+        yield* reportDone(thread);
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        yield* snapshotWhere((current) => current.board.tasks[0]?.state === "ready");
+        yield* startRun({ landing: "check" });
+        yield* snapshotWhere((current) => current.board.tasks[0]?.state === "landed");
+        assert.strictEqual(read(world.root, "ok.txt"), "ok\n");
+      }),
+    ),
+  );
+
   it.live("the lead's reject sends the task back to its crewmate with the note", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
@@ -426,37 +583,33 @@ describe("CrewEngine lead", () => {
     ),
   );
 
-  it.live("a restart does not wake the lead again for a review it was woken for", () => {
-    const wakes = (world: CrewWorld) =>
-      Effect.gen(function* () {
-        const lead = yield* leadThread(world);
-        return (yield* dispatchedOf(world, "thread.turn.start")).filter(
-          (turn) => turn.threadId === lead,
-        ).length;
-      });
-    let before = 0;
-    return withCrewEngines([
-      (world) =>
-        Effect.gen(function* () {
-          yield* withLead(world);
-          yield* startRun({ landing: "lead" });
-          const thread = yield* firstTurn(world, () =>
-            write(world.root, ".crew/backend/ok.txt", "ok\n"),
-          );
-          yield* reportDone(thread);
-          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-          yield* wokenWith(world, yield* leadThread(world), "review @backend's work");
-          before = yield* wakes(world);
-        }),
-      (world) =>
-        Effect.gen(function* () {
-          yield* (yield* ServerCommandReadiness).complete;
-          yield* snapshotWhere((current) => current.run?.state === "running");
-          yield* Effect.sleep("500 millis");
-          assert.deepStrictEqual([before, yield* wakes(world)], [1, 1]);
-        }),
-    ]);
-  });
+  it.live(
+    "a restart wakes the lead again for a pending review only two minutes after its last wake",
+    () => {
+      let before = 0;
+      return withCrewEngines([
+        (world) =>
+          Effect.gen(function* () {
+            yield* withLead(world);
+            yield* startRun({ landing: "lead" });
+            const thread = yield* firstTurn(world, () =>
+              write(world.root, ".crew/backend/ok.txt", "ok\n"),
+            );
+            yield* reportDone(thread);
+            yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+            yield* wokenWith(world, yield* leadThread(world), "review @backend's work");
+            before = yield* wakes(world, yield* leadThread(world));
+          }),
+        (world) =>
+          Effect.gen(function* () {
+            yield* (yield* ServerCommandReadiness).complete;
+            yield* snapshotWhere((current) => current.run?.state === "running");
+            yield* Effect.sleep("500 millis");
+            assert.deepStrictEqual([before, yield* wakes(world, yield* leadThread(world))], [1, 1]);
+          }),
+      ]);
+    },
+  );
 
   it.live("the lead's own question still waits on you after a restart", () =>
     withCrewEngines([

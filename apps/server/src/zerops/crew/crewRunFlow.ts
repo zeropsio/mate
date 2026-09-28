@@ -40,7 +40,7 @@ import { CREW_ID } from "./CrewHome.ts";
 import { grantClaim } from "./crewClaims.ts";
 import { land, reworkCard } from "./crewLanding.ts";
 import { remember } from "./crewNotes.ts";
-import { wakeLead } from "./crewLead.ts";
+import { renewLeadWakes, wakeLead } from "./crewLead.ts";
 import { pauseRun, runOptionsOf } from "./crewRuns.ts";
 import type { CrewAssignmentRow } from "./CrewStore.ts";
 import { readTaskReview, readTaskWait } from "./crewTaskData.ts";
@@ -182,16 +182,9 @@ export const advance = (core: CrewCore, handle: string) =>
     yield* core.changed;
   });
 
-/**
- * A run starts, resumes, or goes on after a restart: every crewmate whose
- * task stands `working` with no turn running carries it on, as the run's
- * starter — words the run's own pause left keep theirs. Its queue waits on
- * that task until it lands, parks or is discarded.
- */
-export const carryOnStopped = (core: CrewCore) =>
+/** Every crewmate whose task stands `working` with no turn running carries it on, as the run's starter. */
+const carryOnStopped = (core: CrewCore, applied: AppliedCrew) =>
   Effect.gen(function* () {
-    const applied = yield* core.applied;
-    if (applied === undefined || runningRun(applied) === undefined) return;
     const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
     for (const handle of applied.members.keys()) {
       const stint = currentStint(applied, handle);
@@ -205,6 +198,22 @@ export const carryOnStopped = (core: CrewCore) =>
       }
       core.memory.carryOn.set(stint.threadId, STOPPED_MIDWAY);
     }
+  });
+
+/**
+ * A run starts, resumes, or goes on after a restart: what waits on someone in
+ * it is taken up by the next `advanceAll`. A task standing `working` with no
+ * turn running carries on (a pause's own words kept), and a review or
+ * question the lead was woken for that no turn of the lead's serves wakes it
+ * again. A ready task the run's landing lands, lands there too. Every other
+ * wait is the person's, named in a row (`crewSnapshot`).
+ */
+export const takeUpWaiting = (core: CrewCore) =>
+  Effect.gen(function* () {
+    const applied = yield* core.applied;
+    if (applied === undefined || runningRun(applied) === undefined) return;
+    yield* carryOnStopped(core, applied);
+    yield* renewLeadWakes(core);
   });
 
 /**

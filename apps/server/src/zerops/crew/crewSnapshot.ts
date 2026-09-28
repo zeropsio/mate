@@ -48,8 +48,12 @@ import {
 /** How long a crewmate's question waits on the lead before the person sees it too (PRD §5.4). */
 export const QUESTION_TO_PERSON_MS = 15 * 60_000;
 
-/** How long a task stands `working` with no turn running before it waits on the person. */
-export const STOPPED_MIDWAY_MS = 5 * 60_000;
+/**
+ * How long a task stands with nobody acting on it — `working` with no turn
+ * running, `review` with no turn of the lead's on it — before it waits on
+ * the person.
+ */
+export const UNATTENDED_MS = 5 * 60_000;
 
 /** A crewmate's question, once per asking: its task and when it asked. */
 export const questionKey = (task: Pick<CrewAssignmentRow, "assignment" | "updatedAt">): string =>
@@ -201,6 +205,8 @@ export interface AppliedSnapshotInput {
   readonly memory: ReadonlyMap<string, { readonly entries: number; readonly unfiled: number }>;
   /** Tasks standing `working` with no turn running: since when, and why their last turn ended. */
   readonly midway: ReadonlyMap<string, { readonly since: string; readonly why: string | null }>;
+  /** Tasks in `review` a running turn of the lead's was woken for. */
+  readonly reviewing: ReadonlySet<string>;
   readonly runtime: SnapshotRuntime;
 }
 
@@ -371,10 +377,15 @@ const taskAttention = (
     case "working": {
       // Its queue waits behind it: after a few idle minutes the person sees why.
       const stopped = input.midway.get(row.assignment);
-      return stopped === undefined || input.nowMs - Date.parse(stopped.since) < STOPPED_MIDWAY_MS
+      return stopped === undefined || input.nowMs - Date.parse(stopped.since) < UNATTENDED_MS
         ? undefined
         : attention("stalled", { text: stopped.why, at: stopped.since });
     }
+    case "review":
+      return input.reviewing.has(row.assignment) ||
+        input.nowMs - Date.parse(row.updatedAt) < UNATTENDED_MS
+        ? undefined
+        : attention("review-wait");
     case "queued": {
       const refused = runtime.cantStart.get(row.assignment);
       return refused === undefined

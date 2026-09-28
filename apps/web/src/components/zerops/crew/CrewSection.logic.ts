@@ -14,6 +14,7 @@ import {
   CREW_LANE_VERBS,
   crewBriefPlainText,
   CREW_IDLE_WORD,
+  crewAskLeadToReviewMessage,
   crewAskToFixWord,
   crewAskToResolveWord,
   crewCommitEditAsk,
@@ -177,7 +178,7 @@ function displayName(crewmates: ReadonlyArray<Crewmate>, handle: string | null):
  */
 export function crewAttentionActions(
   row: CrewAttention,
-  crew: Pick<CrewSnapshot, "crewmates" | "hosts">,
+  crew: Pick<CrewSnapshot, "crewmates" | "hosts" | "board">,
   can: { readonly board: boolean },
 ): ReadonlyArray<CrewAttentionAction> {
   const name = displayName(crew.crewmates, row.handle);
@@ -293,6 +294,32 @@ export function crewAttentionActions(
               command: { _tag: "discard", taskId: row.taskId },
             },
           ];
+    case "review-wait": {
+      // Nobody reviews it: ask the lead as you, or land it yourself (your accept).
+      if (row.taskId === null) return [];
+      const lead = crew.crewmates.find((mate) => mate.kind === "lead");
+      const task = crew.board.tasks.find((entry) => entry.id === row.taskId);
+      const land: CrewAttentionAction = {
+        kind: "command",
+        label: CREW_ATTENTION_VERBS.landMyself,
+        command: { _tag: "land", taskId: row.taskId },
+      };
+      return lead === undefined || task === undefined
+        ? [land]
+        : [
+            {
+              kind: "command",
+              label: CREW_ATTENTION_VERBS.askLeadToReview,
+              command: {
+                _tag: "message",
+                handle: lead.handle,
+                text: crewAskLeadToReviewMessage(task.number),
+                attachments: [],
+              },
+            },
+            land,
+          ];
+    }
   }
 }
 

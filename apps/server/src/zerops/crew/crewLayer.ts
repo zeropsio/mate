@@ -64,6 +64,7 @@ import {
   DEFAULT_CREW_LOGIN,
   failureWords,
   isWorking,
+  leadOf,
   makeCrewCore,
   runtimeOf,
   type CrewCore,
@@ -110,7 +111,7 @@ import {
 import { makeTurnHandler } from "./crewTurns.ts";
 import { restoreNotes } from "./crewNotes.ts";
 import { MIRRORED_TABLES } from "./crewState.ts";
-import { advanceAll, carryOnStopped, retryRefused } from "./crewRunFlow.ts";
+import { advanceAll, takeUpWaiting, retryRefused } from "./crewRunFlow.ts";
 import {
   finishRun,
   pressPause,
@@ -196,9 +197,20 @@ const buildSnapshot = (core: CrewCore, seq: number) =>
         why: attempt?.endingDetail ?? null,
       });
     }
+    const lead = applied === undefined ? undefined : leadOf(applied);
+    const wake = lead === undefined ? undefined : core.memory.leadWakes.get(lead.row.handle);
+    const reviewing = new Set(
+      applied !== undefined &&
+        lead !== undefined &&
+        wake?.kind === "review" &&
+        isWorking(core, applied, lead.row.handle)
+        ? [wake.taskId]
+        : [],
+    );
     return appliedSnapshot({
       memory,
       midway,
+      reviewing,
       seq,
       run: applied === undefined ? null : runView(core, applied, nowMs),
       leadAnswers: applied !== undefined && leadAnswers(applied),
@@ -328,7 +340,7 @@ const run = (core: CrewCore, command: CrewCommand, principal: TurnPrincipal, act
       case "start": {
         const { _tag: _, ...options } = command;
         yield* startRun(core, principal, options);
-        yield* carryOnStopped(core);
+        yield* takeUpWaiting(core);
         yield* advanceAll(core);
         return done;
       }
@@ -337,7 +349,7 @@ const run = (core: CrewCore, command: CrewCommand, principal: TurnPrincipal, act
         return done;
       case "resume":
         yield* resumeRun(core, command);
-        yield* carryOnStopped(core);
+        yield* takeUpWaiting(core);
         yield* advanceAll(core);
         return done;
       case "stop":

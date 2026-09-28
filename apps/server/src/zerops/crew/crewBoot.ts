@@ -25,15 +25,16 @@ import {
   asRefusal,
   currentStint,
   failureWords,
+  feedWhenUnattended,
   isWorking,
   memberOf,
   type CrewCore,
 } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
-import { laneSpecsOn, snapshotAtMidway } from "./crewTurns.ts";
+import { laneSpecsOn } from "./crewTurns.ts";
 import { NO_REPORT } from "./crewMachines.ts";
-import { advanceAll, carryOnStopped } from "./crewRunFlow.ts";
+import { advanceAll, takeUpWaiting } from "./crewRunFlow.ts";
 import { repairWorktrees } from "./CrewStints.ts";
 import { requeueTask, saveTask, stepTask } from "./crewTasks.ts";
 
@@ -133,7 +134,7 @@ export const boot = (core: CrewCore) =>
                 endedAt: task.updatedAt,
               }),
             );
-            yield* snapshotAtMidway(core);
+            yield* feedWhenUnattended(core);
           }
           break;
         }
@@ -157,7 +158,7 @@ export const boot = (core: CrewCore) =>
     // An Allow that waited on a turn the restart ended goes out now.
     for (const handle of applied.members.keys()) yield* grantAfterTurn(core, handle);
     yield* repairWorktrees(core, (yield* core.applied) ?? applied);
-    yield* carryOnStopped(core);
+    yield* takeUpWaiting(core);
     yield* advanceAll(core);
     yield* core.changed;
   });

@@ -7,7 +7,7 @@ import type { CrewAssignmentRow, CrewLaneRow, CrewMemberRow } from "./CrewStore.
 import {
   appliedSnapshot,
   CREW_OFF_SNAPSHOT,
-  STOPPED_MIDWAY_MS,
+  UNATTENDED_MS,
   crewNoneSnapshot,
   EMPTY_RUNTIME,
   type AppliedSnapshotInput,
@@ -149,6 +149,7 @@ const base = (fields: Partial<AppliedSnapshotInput> = {}): AppliedSnapshotInput 
   claims: [],
   memory: new Map(),
   midway: new Map(),
+  reviewing: new Set(),
   runtime: EMPTY_RUNTIME,
   ...fields,
 });
@@ -321,10 +322,10 @@ describe("crew snapshot", () => {
   });
 
   it.each([
-    ["a moment ago", STOPPED_MIDWAY_MS - 1, []],
+    ["a moment ago", UNATTENDED_MS - 1, []],
     [
       "long enough ago",
-      STOPPED_MIDWAY_MS,
+      UNATTENDED_MS,
       [["stalled:t-1", "stalled", "the run reached its budget", "2026-09-27T09:55:00.000Z"]],
     ],
   ] as const)(
@@ -341,4 +342,25 @@ describe("crew snapshot", () => {
       expect(snapshot.attention.map((row) => [row.id, row.kind, row.text, row.at])).toEqual(rows);
     },
   );
+
+  it.each([
+    ["a moment ago, nobody reviewing", UNATTENDED_MS - 1, false, []],
+    [
+      "long enough ago, nobody reviewing",
+      UNATTENDED_MS,
+      false,
+      [["review-wait:t-1", "review-wait", "backend", "2026-09-27T09:55:00.000Z"]],
+    ],
+    ["long ago, the lead's turn reviewing it", UNATTENDED_MS * 3, true, []],
+  ] as const)("a task in review since %s", (_, idleMs, reviewing, rows) => {
+    const since = "2026-09-27T09:55:00.000Z";
+    const snapshot = appliedSnapshot(
+      base({
+        nowMs: Date.parse(since) + idleMs,
+        tasks: [task("t-1", 1, { state: "review", attempt: 1, updatedAt: since })],
+        reviewing: new Set(reviewing ? ["t-1"] : []),
+      }),
+    );
+    expect(snapshot.attention.map((row) => [row.id, row.kind, row.handle, row.at])).toEqual(rows);
+  });
 });
