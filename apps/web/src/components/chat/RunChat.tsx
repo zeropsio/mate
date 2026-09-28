@@ -2311,6 +2311,10 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     const line = itemLine(item);
     return line === null ? [] : [line];
   });
+  // A mark says where in the run the person spoke; before anything the Mate
+  // did it marks nothing — their words stand on the page right above the
+  // card, and the card opened on a second copy of them.
+  while (lines[0]?.theirs === true) lines.shift();
   if (row.live && !row.answering) {
     const line = nowLine(row.now);
     if (line !== null) lines.push(line);

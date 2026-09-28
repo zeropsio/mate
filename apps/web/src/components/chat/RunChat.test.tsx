@@ -424,25 +424,33 @@ describe("RunChat", () => {
   // The person's words stand on the page above the card; the chat marks, in
   // short and on their side, where they reached the Mate (the owner,
   // 2026-09-28: "shown the user message in short inside the working group").
+  const personItem = {
+    kind: "person",
+    key: "person:u2",
+    at: at(5),
+    message: {
+      ...message("u2", "assistant", "Keep /health working too\nThe load balancer calls it."),
+      role: "user",
+    },
+    imageOnly: false,
+  } as const;
   it("marks where the person's words reached the Mate, in one line on their side", () => {
-    const markup = draw(
-      record([
-        {
-          kind: "person",
-          key: "person:u2",
-          at: at(5),
-          message: {
-            ...message("u2", "assistant", "Keep /health working too\nThe load balancer calls it."),
-            role: "user",
-          },
-          imageOnly: false,
-        },
-      ]),
-    );
+    const markup = draw(record([step(command("w1", "ls")), personItem]));
     expect(markup).toMatch(
       /justify-end[^>]*><p[^>]*data-chat-kind="person"[^>]*>Keep \/health working too</,
     );
     expect(markup).not.toContain("The load balancer calls it.");
+  });
+
+  // A mark says where in the run the person spoke. Before anything the Mate
+  // did it marks nothing: their words (an answer to its question, as a rule)
+  // stand on the page right above the card, and the card opened on a second
+  // copy of them (Nova, 2026-09-29).
+  it("drops a mark that would open the chat, before anything the Mate did", () => {
+    const markup = draw(record([personItem, step(command("w1", "ls"))]));
+    expect(markup).not.toContain('data-chat-kind="person"');
+    expect(markup).toContain(">ls<");
+    expect(draw(record([personItem]))).not.toContain('data-chat-kind="person"');
   });
 
   // A two-hour run drew nine hundred bubbles as its conversation opened and
