@@ -297,6 +297,12 @@ const TURN_ENDINGS: Readonly<Record<string, TurnEnding>> = {
 export const turnEndingOf = (terminalReason: string | undefined): TurnEnding =>
   (terminalReason === undefined ? undefined : TURN_ENDINGS[terminalReason]) ?? "agent";
 
+/** A turn that ended without the crewmate's report: its task stands `working`. */
+export const NO_REPORT = {
+  ending: "no-report",
+  detail: "its turn ended without a report",
+} as const;
+
 const RUN_PAUSE_WORDS: Readonly<Record<CrewRunReason, string>> = {
   person: "you paused the run",
   budget: "the run reached its budget",
@@ -335,7 +341,7 @@ export const attemptEndingOf = (input: {
     case "failed":
       return { ending: "failed", detail: input.errorMessage ?? "its turn failed" };
     case "completed":
-      return { ending: "no-report", detail: "its turn ended without a report" };
+      return NO_REPORT;
   }
 };
 
