@@ -254,7 +254,7 @@ export function MateRenameField({
   };
   return (
     <span
-      className="absolute start-11 end-15.5 top-2.75 flex h-5"
+      className="absolute start-11 end-15.5 top-2.25 flex h-5"
       data-zerops-surface="sidebar-mate-rename"
     >
       <input

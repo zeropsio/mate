@@ -22,7 +22,7 @@ import { BrowserTakes } from "./BrowserStrip";
 import type { OutcomeActivity, OutcomeModel, OutcomeService } from "./conversation.logic";
 import { Pill } from "./ConversationPills";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
-import { HelpersBubble, StepBubble } from "./RunChat";
+import { CallGroup, HelpersBubble, StepBubble } from "./RunChat";
 import { stepOf } from "./workSteps.logic";
 
 type DotTone = "ok" | "failed" | "attention" | "busy" | "idle";
@@ -102,20 +102,18 @@ function ServicePill({ service }: { readonly service: OutcomeService }) {
   );
 }
 
-/** What an activity pill counts, opened under the pills: each call as the chat's bubble. */
+/** What an activity pill counts, opened under the pills: each call as its row in the chat's card. */
 function ActivityCalls({ activity }: { readonly activity: OutcomeActivity }) {
   return (
-    <ul className="grid min-w-0 gap-1">
-      {activity.entries.map((entry) => (
-        <li key={entry.id} className="flex min-w-0">
-          {activity.kind === "helpers" ? (
-            <HelpersBubble entry={entry} />
-          ) : (
-            <StepBubble step={stepOf(entry, undefined, false)} />
-          )}
-        </li>
-      ))}
-    </ul>
+    <CallGroup>
+      {activity.entries.map((entry) =>
+        activity.kind === "helpers" ? (
+          <HelpersBubble entry={entry} key={entry.id} />
+        ) : (
+          <StepBubble key={entry.id} step={stepOf(entry, undefined, false)} />
+        ),
+      )}
+    </CallGroup>
   );
 }
 

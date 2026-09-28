@@ -89,6 +89,11 @@ function scrollParentOf(element: HTMLElement | null): HTMLElement | null {
   return null;
 }
 
+/** The room a project keeps above itself; the first keeps none, so its line takes 16px. */
+function roomAbove(section: HTMLElement): number {
+  return Number.parseFloat(getComputedStyle(section).marginTop) || 16;
+}
+
 function drawnSections(tree: HTMLElement, except: string) {
   return Array.from(tree.querySelectorAll<HTMLElement>("section[data-zerops-group]")).filter(
     (section) => section.dataset.zeropsGroup !== except,
@@ -167,12 +172,14 @@ export function useProjectReorder(treeRef: RefObject<HTMLElement | null>): Proje
         }),
         event.clientY,
       );
-      // The line sits in the middle of the 16px gap between two projects.
+      // The line sits in the middle of the room above the project it lands
+      // before: a full breath between projects, a sliver in a run of
+      // collapsed ones.
       const landing = sections.find((section) => section.dataset.zeropsGroup === before);
       const last = sections.at(-1);
       const lineTop =
         landing !== undefined
-          ? landing.offsetTop - 9
+          ? landing.offsetTop - Math.round(roomAbove(landing) / 2) - 1
           : last !== undefined
             ? last.offsetTop + last.offsetHeight + 7
             : undefined;
@@ -253,7 +260,7 @@ export function ProjectGrip({
   return (
     <button
       aria-label={`Move ${name}: drag, or use the arrow keys`}
-      className="absolute -start-2 top-1 flex h-6 w-4 cursor-grab touch-none items-center justify-center rounded-sm text-sidebar-muted-foreground opacity-0 outline-none transition-opacity group-hover/project:opacity-100 hover:text-sidebar-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing pointer-coarse:opacity-100"
+      className="absolute -start-2 top-0.5 flex h-6 w-4 cursor-grab touch-none items-center justify-center rounded-sm text-sidebar-muted-foreground opacity-0 outline-none transition-opacity group-hover/project:opacity-100 hover:text-sidebar-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing pointer-coarse:opacity-100"
       data-zerops-grip={groupId}
       data-zerops-surface="sidebar-project-grip"
       onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
