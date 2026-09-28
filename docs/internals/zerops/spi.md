@@ -71,11 +71,13 @@ through it would make the two directories import each other.
   stint; Claude ignores it, its gate already refuses the writes); every `turn/start` carries the same
   policy and sandbox, so the runtime mode never restores its own. `CodexSessionRuntime.ts` answers
   that thread's approval requests from the gate and parks none for a person: a command is a `Bash`
-  call `{ command }`; a patch, whose request names no file, is an `Edit` per updated or deleted
-  file and a `Write` per added file or move target, from the changes its `fileChange` item listed
-  when it started, relative paths against the session's cwd — every call must allow. A failing or
-  silent (15 s) gate declines, and so does an allow that rewrites the call: Codex's answer carries a
-  decision only, so it would run what it asked, not what the gate allowed. So a profile may carry
+  call `{ command }`, the command inside Codex's `<shell> -lc|-c "<command>"` wrapper (zsh, bash,
+  sh; its argv read back from the quoted string the approval names); a patch, whose request names
+  no file, is an `Edit` per updated or deleted file and a `Write` per added file or move target,
+  from the changes its `fileChange` item listed when it started, relative paths against the
+  session's cwd — every call must allow. A failing or silent (15 s) gate declines, and so does an
+  allow that rewrites the call: Codex's answer carries a decision only, so it would run what it
+  asked, not what the gate allowed. So a profile may carry
   `exactCallsContext`, how to write calls the gate allows as they are, which the Codex setup adds
   after the session context in `developerInstructions`: the crew sets it for a writer, whose
   commands the gate allows unchanged only in their lane form, byte for byte (`ssh` to its host,
@@ -262,5 +264,5 @@ no-crew goldens (`fixtures/claude-options/no-crew.expected.json`,
 - Codex's collab-agent synthesis (`CodexSessionRuntime`'s child-registration step) is not replayed — `replay/codexReplay.ts` addresses each captured notification at its own wire `threadId` directly rather than through that synthesis path (covered elsewhere by `CodexCollabWire.test.ts`/`CodexCollabRuntime.integration.test.ts`).
 - Claude's `onUserDialog` control line is not replayed — `replay/claudeReplay.ts` implements `canUseTool` and `hook` lines only; a fixture with an `onUserDialog` line throws naming the gap.
 - `recording/record-claude.mjs` records no hook callbacks, so the crew fixture is hand-authored until a live crew turn is recorded.
-- Codex non-MCP tool items (`commandExecution`, `fileChange`, `collabAgentToolCall`, `webSearch`, ...) are `unrecognized` by design — the Codex reader only decodes the `mcpToolCall` item variant.
+- Codex's own `commandExecution` and `fileChange` items resolve `notATool` deliberately — its shell and patch tools, never an MCP call, and nothing downstream reads them, so a Codex crewmate's commands raise no enrichment warning. Its other non-MCP tool items (`collabAgentToolCall`, `webSearch`, ...) stay `unrecognized` by design — the Codex reader only decodes the `mcpToolCall` item variant.
 - `openCodeRuntimeCapability`'s Effect keeps the driver's own `OpenCodeRuntime.OpenCodeRuntime` Context.Service tag identity rather than declaring an owned tag — the narrowing is in the returned shape, not the dependency it resolves through.

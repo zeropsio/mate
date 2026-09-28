@@ -16,6 +16,7 @@ import {
   readClaudeThreadRegistries,
   resolveClaudeThreadSetup,
 } from "../../spi/claudeThreadProfile.ts";
+import { codexThreadSetup } from "../../spi/codexThreadProfile.ts";
 import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
 import { crewLane } from "./CrewDefinition.ts";
 import { crewExactCommandRule, crewRefusedRoots, type LiveGateContext } from "./CrewPolicy.ts";
@@ -319,6 +320,59 @@ describe("CrewThreadPolicy", () => {
             reason: "This crew conversation is retired; nothing runs in it.",
           });
         }
+      }),
+    ),
+  );
+});
+
+describe("a Codex crewmate's command approval, through the crew's gate", () => {
+  // The writer's lane form, and the argv Codex names in its approval for it:
+  // its login shell, `-lc`, the command double-quoted (the live probe's shape).
+  const LANE_FORM =
+    "ssh appdev 'cd /var/www/.crew/backend && CREW_PORT=3001 timeout 600 sh -c '\\''npm test'\\'''";
+  const inZsh = (command: string) =>
+    `/usr/bin/zsh -lc "${command.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+
+  it.effect.each([
+    ["the lane form in zsh -lc, as the live probe saw it", backend, inZsh(LANE_FORM), "accept"],
+    ["the lane form with no shell around it", backend, LANE_FORM, "accept"],
+    [
+      "the lane form in bash -c",
+      backend,
+      inZsh(LANE_FORM).replace("/usr/bin/zsh -lc", "bash -c"),
+      "accept",
+    ],
+    ["a command the gate would rewrite", backend, inZsh("ssh appdev 'npm test'"), "decline"],
+    ["a command on the zcp container", backend, inZsh("npm test"), "decline"],
+    [
+      "the lane form with another timeout",
+      backend,
+      inZsh(LANE_FORM.replace("timeout 600", "timeout 9999")),
+      "decline",
+    ],
+    [
+      "the lane form and more after it",
+      backend,
+      inZsh(`${LANE_FORM} && rm -rf /var/www`),
+      "decline",
+    ],
+    [
+      "the lane form from a reader",
+      {
+        ...backend,
+        kind: "reader" as const,
+        gate: { ...gate, member: { handle: "backend", kind: "reader" as const, env: {} } },
+      },
+      inZsh(LANE_FORM),
+      "decline",
+    ],
+  ] as const)("%s", ([, member, command, decision]) =>
+    withPolicy(new Map([[CREW_THREAD, member]]), () =>
+      Effect.gen(function* () {
+        const profile = (yield* setupFor(CREW_THREAD))!.profile;
+        expect(
+          yield* codexThreadSetup(profile).decideCommand({ itemId: "call_exec_1", command }),
+        ).toBe(decision);
       }),
     ),
   );

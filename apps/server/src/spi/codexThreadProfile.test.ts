@@ -108,6 +108,82 @@ describe("a Codex command approval, answered by the thread's gate", () => {
   );
 });
 
+describe("a Codex command wrapped in its shell, as its approval names it", () => {
+  // The lane form a writer must write (CrewPolicy), and Codex's rendering of
+  // the argv it runs it with: its login shell, `-lc`, the command double-quoted.
+  const LANE_FORM =
+    "ssh appdev 'cd /var/www/.crew/cx && CREW_PORT=3003 timeout 600 sh -c '\\''npm test'\\'''";
+  const LIVE =
+    "/usr/bin/zsh -lc \"ssh appdev 'cd /var/www/.crew/cx && CREW_PORT=3003 timeout 600 sh -c '\\\\''npm test'\\\\'''\"";
+
+  const CASES: ReadonlyArray<{
+    readonly name: string;
+    readonly command: string;
+    readonly gateSees: string;
+  }> = [
+    { name: "zsh -lc, as the live probe saw it", command: LIVE, gateSees: LANE_FORM },
+    {
+      name: "a backslash left as it is inside the double quotes",
+      command: `/usr/bin/zsh -lc "${LANE_FORM}"`,
+      gateSees: LANE_FORM,
+    },
+    { name: "bash -c", command: LIVE.replace("/usr/bin/zsh -lc", "bash -c"), gateSees: LANE_FORM },
+    {
+      name: "sh -lc",
+      command: LIVE.replace("/usr/bin/zsh -lc", "/bin/sh -lc"),
+      gateSees: LANE_FORM,
+    },
+    {
+      name: "a single-quoted script",
+      command: "/bin/bash -lc 'ssh appdev \"npm test\"'",
+      gateSees: 'ssh appdev "npm test"',
+    },
+    {
+      name: "a double-quoted script with an escaped dollar",
+      command: '/usr/bin/zsh -lc "echo \\$HOME"',
+      gateSees: "echo $HOME",
+    },
+    { name: "no shell around it", command: LANE_FORM, gateSees: LANE_FORM },
+    {
+      name: "another shell, as it is",
+      command: `/usr/bin/fish -c "${LANE_FORM}"`,
+      gateSees: `/usr/bin/fish -c "${LANE_FORM}"`,
+    },
+    {
+      name: "another flag, as it is",
+      command: '/usr/bin/zsh -x -c "npm test"',
+      gateSees: '/usr/bin/zsh -x -c "npm test"',
+    },
+    {
+      name: "a word after the script, as it is",
+      command: '/usr/bin/zsh -lc "npm test" extra',
+      gateSees: '/usr/bin/zsh -lc "npm test" extra',
+    },
+    {
+      name: "an operator outside the quotes, as it is",
+      command: '/usr/bin/zsh -lc "npm test"; rm -rf /var/www',
+      gateSees: '/usr/bin/zsh -lc "npm test"; rm -rf /var/www',
+    },
+    {
+      name: "an unclosed quote, as it is",
+      command: '/usr/bin/zsh -lc "npm test',
+      gateSees: '/usr/bin/zsh -lc "npm test',
+    },
+  ];
+
+  for (const { name, command, gateSees } of CASES) {
+    it.effect(`hands the gate the command its shell runs: ${name}`, () =>
+      Effect.gen(function* () {
+        const { calls, profile } = recording(() => Effect.succeed({ kind: "allow" }));
+        yield* codexThreadSetup(profile).decideCommand({ itemId: "call_exec_1", command });
+        assert.deepStrictEqual(calls, [
+          { toolName: "Bash", input: { command: gateSees }, toolUseId: "call_exec_1" },
+        ]);
+      }),
+    );
+  }
+});
+
 describe("a Codex file change approval, answered by the thread's gate", () => {
   const CWD = "/var/www/.crew/backend";
   const change = (path: string, kind: CodexFileChange["kind"]): CodexFileChange => ({

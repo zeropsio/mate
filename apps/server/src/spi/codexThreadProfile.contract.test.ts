@@ -300,4 +300,20 @@ describe("a profiled Codex thread's approval requests, answered by its gate", ()
         );
       }).pipe(Effect.scoped, Effect.provide(contractLayer)),
   );
+
+  it.effect("resolves each gated approval with its request kind", () =>
+    Effect.gen(function* () {
+      const harness = yield* withProfile(PROFILE, [turnMessages]);
+      yield* harness.adapter.startSession(startInput());
+      yield* harness.adapter.sendTurn({ threadId: CREW_THREAD, input: "work", attachments: [] });
+      yield* harness.answers(4);
+      const resolved = yield* harness.eventsOfType("request.resolved", 4);
+      const kindOf = (itemId: string) =>
+        resolved.find((event) => event.itemId === itemId)?.payload.requestType;
+      assert.deepStrictEqual(
+        [kindOf(FILE_CHANGE_ITEM), kindOf("call_exec_1"), kindOf("call_perm_1")],
+        ["file_change_approval", "command_execution_approval", "permission_approval"],
+      );
+    }).pipe(Effect.scoped, Effect.provide(contractLayer)),
+  );
 });

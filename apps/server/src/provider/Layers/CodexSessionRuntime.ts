@@ -2110,10 +2110,34 @@ export const makeCodexSessionRuntime = (
         }),
       );
     }
+    // Its answers still resolve with their request kind, as a person's do.
+    const correlateGated = (
+      key: string,
+      requestKind: ProviderRequestKind,
+      purpose: CodexErrors.CodexAppServerIdentifierPurpose,
+      payload: { readonly turnId: string; readonly itemId: string },
+    ) =>
+      Effect.gen(function* () {
+        const requestId = ApprovalRequestId.make(yield* randomUUIDv4(purpose));
+        yield* Ref.update(approvalCorrelationsRef, (current) =>
+          new Map(current).set(key, {
+            requestId,
+            requestKind,
+            turnId: TurnId.make(payload.turnId),
+            itemId: ProviderItemId.make(payload.itemId),
+          }),
+        );
+      });
 
     yield* client.handleServerRequest("item/commandExecution/requestApproval", (payload) =>
       Effect.gen(function* () {
         if (threadSetup) {
+          yield* correlateGated(
+            payload.approvalId ?? payload.itemId,
+            "command",
+            "command-approval-request",
+            payload,
+          );
           return {
             decision: yield* threadSetup.decideCommand({
               itemId: payload.itemId,
@@ -2178,6 +2202,12 @@ export const makeCodexSessionRuntime = (
     yield* client.handleServerRequest("item/fileChange/requestApproval", (payload) =>
       Effect.gen(function* () {
         if (threadSetup) {
+          yield* correlateGated(
+            payload.itemId,
+            "file-change",
+            "file-change-approval-request",
+            payload,
+          );
           return {
             decision: yield* threadSetup.decideFileChange({
               itemId: payload.itemId,
@@ -2315,6 +2345,12 @@ export const makeCodexSessionRuntime = (
     yield* client.handleServerRequest("item/permissions/requestApproval", (payload) =>
       Effect.gen(function* () {
         if (threadSetup) {
+          yield* correlateGated(
+            payload.itemId,
+            "permission",
+            "app-permission-approval-request",
+            payload,
+          );
           return {
             permissions: {},
           } satisfies EffectCodexSchema.PermissionsRequestApprovalResponse;

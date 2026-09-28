@@ -316,6 +316,23 @@ describe("readToolCall — not a tool call (silent)", () => {
     expect(result.kind).toBe("notATool");
   });
 
+  it.each([
+    ["commandExecution", "command_execution", { command: "/usr/bin/zsh -lc 'npm test'" }],
+    ["fileChange", "file_change", { changes: [] }],
+  ] as const)(
+    "a Codex %s item: Codex's own tool, never an MCP call, and nothing downstream reads it",
+    (type, itemType, fields) => {
+      const result = readToolCall(
+        itemEvent({
+          provider: "codex",
+          itemType,
+          data: { item: { type, id: "call_1", ...fields } },
+        }),
+      );
+      expect(result.kind).toBe("notATool");
+    },
+  );
+
   it("a Codex item that is not an mcpToolCall, and not a tool-lifecycle itemType either", () => {
     const result = readToolCall(
       itemEvent({

@@ -15,9 +15,12 @@
  *   `file_change`; an `itemType` gate would drop it.
  * - Codex's MCP tool calls put the raw `V2Item(Started|Completed)Notification`
  *   there, whose `item` is the `mcpToolCall` variant (`CodexAdapter.ts:466-501`).
- *   Codex's OTHER tool-lifecycle item variants (`commandExecution`,
- *   `fileChange`, `collabAgentToolCall`, `webSearch`, ...) carry unrelated
- *   field layouts this module does not read — see `unrecognized` below.
+ *   Its `commandExecution` and `fileChange` items are its own shell and
+ *   patch tools, never an MCP call, and nothing downstream reads them: they
+ *   come back `notATool`, deliberately, so a Codex crewmate's every command
+ *   does not warn. Its OTHER tool-lifecycle item variants
+ *   (`collabAgentToolCall`, `webSearch`, ...) carry unrelated field layouts
+ *   this module does not read — see `unrecognized` below.
  *
  * This is the ONE place that reads `payload.data`: everything downstream
  * (`apps/server/src/zerops/**`) reads `event.toolCall`
@@ -227,6 +230,9 @@ const readClaudeToolCall = (payload: ItemLifecyclePayload): ToolCallReadResult =
   };
 };
 
+/** Codex's own shell and patch items: tools, but never an MCP call, and read by nothing. */
+const CODEX_OWN_TOOL_ITEMS: ReadonlySet<unknown> = new Set(["commandExecution", "fileChange"]);
+
 /** Codex: `data = {item: {...}}`; only the `mcpToolCall` variant is read. */
 const readCodexToolCall = (payload: ItemLifecyclePayload): ToolCallReadResult => {
   const isToolItem = isToolLifecycleItemType(payload.itemType);
@@ -237,6 +243,9 @@ const readCodexToolCall = (payload: ItemLifecyclePayload): ToolCallReadResult =>
   const item = data.item;
   if (!isRecord(item)) {
     return shapeMismatch(payload.itemType, isToolItem, "payload.data.item is missing");
+  }
+  if (CODEX_OWN_TOOL_ITEMS.has(item.type)) {
+    return { kind: "notATool" };
   }
   if (item.type !== "mcpToolCall") {
     // A real, classified tool item (commandExecution/fileChange/

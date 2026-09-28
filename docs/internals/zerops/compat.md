@@ -165,8 +165,9 @@ checklist step 5) — never edited in place; a later row supersedes an earlier o
   `codexTurnModelSelection` in `sendTurn`. `CodexSessionRuntime.ts`: `threadSetup` on the runtime
   options; `overrides` through `buildThreadStartParams`, `openCodexThread` and
   `buildTurnStartParams` (laid over the runtime mode's policy and sandbox); the `item/started` and
-  `item/completed` handlers that keep a gated thread's file changes; and the gated branch at the
-  top of the command, file change, MCP elicitation and permissions approval handlers. A port that
+  `item/completed` handlers that keep a gated thread's file changes; `correlateGated`, which
+  records a gated answer's request kind for its `serverRequest/resolved`; and the gated branch at
+  the top of the command, file change, MCP elicitation and permissions approval handlers. A port that
   rewrites those lines re-applies them; `codexNoCrewSnapshot.test.ts` fails if a port changes what
   a thread without a profile gets, `codexThreadProfile.contract.test.ts` if the seam is lost, and
   the Ported↔spi zone rule if either file imports any other `spi/` file.
