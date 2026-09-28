@@ -10,6 +10,8 @@
 import {
   CREW_ATTENTION_VERBS,
   CREW_BRIEF_EMPTY_WORD,
+  CREW_CARRY_ON_MESSAGE,
+  CREW_LANE_VERBS,
   crewBriefPlainText,
   CREW_IDLE_WORD,
   crewAskToFixWord,
@@ -265,6 +267,32 @@ export function crewAttentionActions(
           ];
     case "parked":
       return [];
+    case "stalled":
+      // Its queue waits behind it: carry it on as you, land it as it stands, or drop it.
+      return row.taskId === null || row.handle === null
+        ? []
+        : [
+            {
+              kind: "command",
+              label: CREW_ATTENTION_VERBS.carryOn,
+              command: {
+                _tag: "message",
+                handle: row.handle,
+                text: CREW_CARRY_ON_MESSAGE,
+                attachments: [],
+              },
+            },
+            {
+              kind: "command",
+              label: CREW_LANE_VERBS.landNow,
+              command: { _tag: "landNow", taskId: row.taskId },
+            },
+            {
+              kind: "command",
+              label: CREW_ATTENTION_VERBS.discard,
+              command: { _tag: "discard", taskId: row.taskId },
+            },
+          ];
   }
 }
 

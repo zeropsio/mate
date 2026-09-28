@@ -48,6 +48,9 @@ import {
 /** How long a crewmate's question waits on the lead before the person sees it too (PRD §5.4). */
 export const QUESTION_TO_PERSON_MS = 15 * 60_000;
 
+/** How long a task stands `working` with no turn running before it waits on the person. */
+export const STOPPED_MIDWAY_MS = 5 * 60_000;
+
 /** A crewmate's question, once per asking: its task and when it asked. */
 export const questionKey = (task: Pick<CrewAssignmentRow, "assignment" | "updatedAt">): string =>
   `question:${task.assignment}:${task.updatedAt}`;
@@ -196,6 +199,8 @@ export interface AppliedSnapshotInput {
   readonly claims: ReadonlyArray<SnapshotClaim>;
   /** Each crewmate's memory: its entries and its unfiled lessons. */
   readonly memory: ReadonlyMap<string, { readonly entries: number; readonly unfiled: number }>;
+  /** Tasks standing `working` with no turn running: since when, and why their last turn ended. */
+  readonly midway: ReadonlyMap<string, { readonly since: string; readonly why: string | null }>;
   readonly runtime: SnapshotRuntime;
 }
 
@@ -363,6 +368,13 @@ const taskAttention = (
         return attention("check-failed", { text: last === undefined || last === "" ? null : last });
       }
       return undefined;
+    case "working": {
+      // Its queue waits behind it: after a few idle minutes the person sees why.
+      const stopped = input.midway.get(row.assignment);
+      return stopped === undefined || input.nowMs - Date.parse(stopped.since) < STOPPED_MIDWAY_MS
+        ? undefined
+        : attention("stalled", { text: stopped.why, at: stopped.since });
+    }
     case "queued": {
       const refused = runtime.cantStart.get(row.assignment);
       return refused === undefined

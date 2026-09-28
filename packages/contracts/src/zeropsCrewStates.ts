@@ -92,6 +92,7 @@ export const CrewAttentionKind = Schema.Literals([
   "cant-start",
   "conflict",
   "check-failed",
+  "stalled",
 ]);
 export type CrewAttentionKind = typeof CrewAttentionKind.Type;
 

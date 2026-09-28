@@ -170,6 +170,23 @@ describe("crewAttentionActions", () => {
         { kind: "command", label: "Try again", command: { _tag: "taskRetry", taskId: "task-12" } },
       ],
     },
+    {
+      kind: "stalled" as const,
+      actions: [
+        {
+          kind: "command",
+          label: "Continue",
+          command: {
+            _tag: "message",
+            handle: "backend",
+            text: "Carry on with your task.",
+            attachments: [],
+          },
+        },
+        { kind: "command", label: "Land now", command: { _tag: "landNow", taskId: "task-12" } },
+        { kind: "command", label: "Discard", command: { _tag: "discard", taskId: "task-12" } },
+      ],
+    },
   ])("$kind", ({ kind, actions }) => {
     const input = attention({ kind, paths: ["src/ui/hud.ts"], host: "appdev" });
     expect(crewAttentionActions(input, snapshot, { board: true })).toEqual(actions);
@@ -197,6 +214,14 @@ describe("crewAttentionActions", () => {
     expect(crewAttentionActions(plan, snapshot, { board: true })).toEqual([
       { kind: "board", label: "Review plan" },
     ]);
+  });
+
+  it("offers nothing on a stopped task the row does not name", () => {
+    expect(
+      crewAttentionActions(attention({ kind: "stalled", taskId: null }), snapshot, {
+        board: true,
+      }),
+    ).toEqual([]);
   });
 
   it("offers Try again on a crewmate that could not start only with its task", () => {

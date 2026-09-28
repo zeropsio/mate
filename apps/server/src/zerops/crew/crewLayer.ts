@@ -63,6 +63,7 @@ import * as CrewChecks from "./CrewChecks.ts";
 import {
   DEFAULT_CREW_LOGIN,
   failureWords,
+  isWorking,
   makeCrewCore,
   runtimeOf,
   type CrewCore,
@@ -179,8 +180,25 @@ const buildSnapshot = (core: CrewCore, seq: number) =>
     }
     const applied = yield* core.applied;
     const nowMs = yield* Clock.currentTimeMillis;
+    const tasks = yield* store.assignments(CrewHome.CREW_ID);
+    const midway = new Map<string, { readonly since: string; readonly why: string | null }>();
+    for (const task of tasks) {
+      if (
+        task.state !== "working" ||
+        (applied !== undefined && isWorking(core, applied, task.member))
+      ) {
+        continue;
+      }
+      const attempts = yield* store.attemptsOf(task.assignment);
+      const attempt = attempts.find((entry) => entry.attempt === task.attempt);
+      midway.set(task.assignment, {
+        since: attempt?.endedAt ?? task.updatedAt,
+        why: attempt?.endingDetail ?? null,
+      });
+    }
     return appliedSnapshot({
       memory,
+      midway,
       seq,
       run: applied === undefined ? null : runView(core, applied, nowMs),
       leadAnswers: applied !== undefined && leadAnswers(applied),
@@ -190,7 +208,7 @@ const buildSnapshot = (core: CrewCore, seq: number) =>
       members,
       lanes: yield* store.lanes(CrewHome.CREW_ID),
       stints: yield* store.stints(CrewHome.CREW_ID),
-      tasks: yield* store.assignments(CrewHome.CREW_ID),
+      tasks,
       hosts: hostRows,
       claims: [...core.memory.claims].flatMap(([host, claim]) =>
         claim.handle === null
