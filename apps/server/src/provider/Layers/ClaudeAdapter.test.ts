@@ -5128,6 +5128,172 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  // What Claude Code writes when a background task's notification is still in
+  // its queue as a /compact arrives (Claude Code 2.1.271 and 2.1.278 in
+  // stream-json mode, against a local stand-in for the API): the CLI runs the
+  // notification's wake as a turn of its own first, then the /compact's turn.
+  // Each result carries whatever the producer echoes about the send it ends.
+  const WAKE_SESSION = "sdk-session-wake-compact";
+  const wakeAheadOfCompact = (results: {
+    readonly wake: Record<string, unknown>;
+    readonly compact: Record<string, unknown>;
+  }) => [
+    { type: "system", subtype: "init", session_id: WAKE_SESSION, uuid: "init-wake" },
+    {
+      type: "system",
+      subtype: "status",
+      status: "requesting",
+      session_id: WAKE_SESSION,
+      uuid: "status-wake",
+    },
+    {
+      type: "assistant",
+      session_id: WAKE_SESSION,
+      uuid: "assistant-wake",
+      parent_tool_use_id: null,
+      message: {
+        id: "assistant-message-wake",
+        role: "assistant",
+        content: [{ type: "text", text: "The job log shows the 21:50 run finished." }],
+      },
+    },
+    {
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      num_turns: 1,
+      result: "The job log shows the 21:50 run finished.",
+      stop_reason: "end_turn",
+      session_id: WAKE_SESSION,
+      uuid: "result-wake",
+      ...results.wake,
+    },
+    {
+      type: "system",
+      subtype: "status",
+      status: "compacting",
+      session_id: WAKE_SESSION,
+      uuid: "status-compacting",
+    },
+    {
+      type: "system",
+      subtype: "status",
+      status: null,
+      compact_result: "success",
+      session_id: WAKE_SESSION,
+      uuid: "status-compacted",
+    },
+    { type: "system", subtype: "init", session_id: WAKE_SESSION, uuid: "init-compact" },
+    {
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "manual", pre_tokens: 386_000, post_tokens: 9_890 },
+      session_id: WAKE_SESSION,
+      uuid: "compact-boundary",
+    },
+    {
+      type: "user",
+      message: { role: "user", content: "This session is being continued from a summary." },
+      parent_tool_use_id: null,
+      session_id: WAKE_SESSION,
+      uuid: "compact-summary",
+    },
+    {
+      type: "user",
+      message: { role: "user", content: "<local-command-stdout>Compacted </local-command-stdout>" },
+      parent_tool_use_id: null,
+      isReplay: true,
+      session_id: WAKE_SESSION,
+      uuid: "compact-stdout",
+    },
+    {
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      num_turns: 0,
+      result: "",
+      stop_reason: null,
+      session_id: WAKE_SESSION,
+      uuid: "result-compact",
+      ...results.compact,
+    },
+  ];
+  // A notice the adapter drains the stream up to, so every case reads the
+  // same, complete set of events.
+  const DRAINED = "claude-sdk-messages-drained";
+  const drainedNotice = {
+    type: "system",
+    subtype: "notification",
+    key: "drained",
+    text: DRAINED,
+    priority: "high",
+    session_id: WAKE_SESSION,
+    uuid: "notification-drained",
+  };
+  // The session lifecycle a thread projects from the adapter's events. A
+  // working state no turn carries has nothing that will ever settle it.
+  const lifecycleOf = (events: ReadonlyArray<ProviderRuntimeEvent>) =>
+    events.flatMap((event) =>
+      event.type === "turn.started" || event.type === "turn.completed"
+        ? [event.type]
+        : event.type === "session.state.changed"
+          ? [event.turnId === undefined ? `${event.payload.state}, no turn` : event.payload.state]
+          : [],
+    );
+
+  it.effect.each([
+    {
+      name: "the /compact whose turn a background wake's result closed",
+      sendsCompact: true,
+      messages: wakeAheadOfCompact({ wake: {}, compact: {} }),
+      lifecycle: ["ready, no turn", "turn.started", "running", "turn.completed"],
+    },
+    {
+      name: "a permission mode change between turns",
+      sendsCompact: false,
+      messages: [
+        {
+          type: "system",
+          subtype: "status",
+          status: null,
+          permissionMode: "plan",
+          session_id: WAKE_SESSION,
+          uuid: "status-permission-mode",
+        },
+      ],
+      lifecycle: ["ready, no turn"],
+    },
+  ])("leaves the session settled after $name", ({ sendsCompact, messages, lifecycle }) => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil(
+          (event) => event.type === "runtime.warning" && event.payload.message === DRAINED,
+        ),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      if (sendsCompact) {
+        // ProviderService.compactThread's slash-command fallback for Claude.
+        yield* adapter.sendTurn({ threadId: THREAD_ID, input: "/compact", attachments: [] });
+      }
+      for (const message of [...messages, drainedNotice]) {
+        harness.query.emit(message as unknown as SDKMessage);
+      }
+
+      assert.deepEqual(lifecycleOf(Array.from(yield* Fiber.join(runtimeEventsFiber))), lifecycle);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("re-announces a Claude limit for a synthetic turn", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {

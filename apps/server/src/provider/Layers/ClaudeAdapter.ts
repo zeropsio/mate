@@ -3663,6 +3663,14 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         });
         return;
       case "status":
+        // A status notice is progress inside a turn. With none open it
+        // belongs to a turn this adapter is not tracking (a queued /compact
+        // whose turn a background wake's result already closed), or it only
+        // reports a permission mode change. Nothing would settle a working
+        // state reported now: that turn's result finds no turn to complete.
+        if (!context.turnState) {
+          return;
+        }
         yield* offerRuntimeEvent({
           ...base,
           type: "session.state.changed",
