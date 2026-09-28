@@ -1329,6 +1329,9 @@ const CARD_SLICE: Record<CardSlice, string> = {
   middle: "border-x border-border/70 bg-card px-4",
   bottom: "h-4 rounded-b-3xl border-x border-b border-border/70 bg-card",
 };
+// Where two slices meet, each row's clip snapped away from the joint and the
+// page showed through as a hairline (2026-09-29): a slice with another under
+// it lays its ground across the joint (`[data-card-slice]` in index.css).
 
 const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: TimelineRow }) {
   const gap = GAP_CLASS[row.gap ?? "none"];

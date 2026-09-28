@@ -2616,6 +2616,36 @@ code {
   }
 }
 
+/* A run's card is drawn a slice per row, and rows stand on eighth-of-a-pixel
+   positions, each clipped to its own box by the list (`contain: content`):
+   where two slices met, each row's clip snapped away from the joint and the
+   page showed through as a hairline across the card and a notch in its side
+   (under a run's status line, 2026-09-29). A slice with another under it now
+   paints past its box — its row keeps layout and style containment, not
+   paint — and lays a strip of its ground and its sides across the joint, so
+   no edge falls in the joint's pixel. (An outer shadow is clipped at the very
+   edge it had to cover; a strip beneath went under the pane's own ground.) */
+.legend-list-content-container
+  > div
+  > div:has(> div > :is([data-card-slice="top"], [data-card-slice="middle"])) {
+  contain: layout style !important;
+}
+
+:is([data-card-slice="top"], [data-card-slice="middle"]) > div {
+  position: relative;
+}
+
+:is([data-card-slice="top"], [data-card-slice="middle"]) > div::after {
+  content: "";
+  position: absolute;
+  inset-inline: -1px;
+  bottom: -1.5px;
+  height: 3px;
+  border-inline: 1px solid color-mix(in oklab, var(--contrast-border) 70%, transparent);
+  background: var(--card);
+  pointer-events: none;
+}
+
 /* A Mate's face in motion (MateFace.tsx). Every pose is one drawing, so a
    change of state morphs — the eyes narrow into work, the "o" opens when it
    needs you — instead of one picture replacing another. What moves on its own
