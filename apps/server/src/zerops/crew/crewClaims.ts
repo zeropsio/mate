@@ -107,7 +107,12 @@ const request = (core: CrewCore, handle: string, reason: string | null) =>
       yield* core.background(
         Effect.gen(function* () {
           const claim = core.memory.claims.get(host);
-          if (claim?.state === "requested" && claim.requestedAt === requestedAt) {
+          // An *Allow* waiting on the crewmate's turn keeps the request standing.
+          if (
+            claim?.state === "requested" &&
+            claim.requestedAt === requestedAt &&
+            !core.memory.grantsWaiting.has(host)
+          ) {
             yield* moveClaim(core, host, "timeout");
           }
         }).pipe(Effect.delay(CLAIM_REQUEST_TIMEOUT)),
@@ -127,14 +132,11 @@ export const showOnDev = (
 
 /**
  * *Show on dev* pressed by the person (`showOnDev {handle}`): the crewmate's
- * request and the person's grant at once, the claim turn sent as them.
+ * request and the person's grant at once, the claim turn sent as them — at
+ * the end of the crewmate's turn when one runs.
  */
 export const showOnDevNow = (core: CrewCore, principal: TurnPrincipal, handle: string) =>
   Effect.gen(function* () {
-    const applied = yield* requireApplied(core);
-    if (isWorking(core, applied, handle)) {
-      return yield* refuse("wrong-state", `@${handle}'s turn is running`);
-    }
     const { outcome, answer, host } = yield* request(core, handle, null);
     if (host === undefined || (outcome.kind !== "requested" && outcome.kind !== "pending")) {
       if (outcome.kind === "shown") return;
@@ -187,7 +189,11 @@ const sendShaped = (
     ).pipe(Effect.tapError(() => Effect.sync(() => core.memory.shaped.delete(stint.threadId))));
   });
 
-/** *Allow*: the claim starts and its holder gets the claim turn, as the person who allowed it. */
+/**
+ * *Allow*: the claim starts and its holder gets the claim turn, as the person
+ * who allowed it. A crewmate asks while it works, so an *Allow* pressed
+ * during its turn is kept and goes out when the turn ends.
+ */
 export const grantClaim = (core: CrewCore, principal: TurnPrincipal, host: string) =>
   Effect.gen(function* () {
     const applied = yield* requireApplied(core);
@@ -196,8 +202,10 @@ export const grantClaim = (core: CrewCore, principal: TurnPrincipal, host: strin
       return yield* refuse("wrong-state", `nobody asks to show work on ${host}`);
     }
     if (isWorking(core, applied, claim.handle)) {
-      return yield* refuse("wrong-state", `@${claim.handle}'s turn is running`);
+      core.memory.grantsWaiting.set(host, principal);
+      return;
     }
+    core.memory.grantsWaiting.delete(host);
     if ((yield* devServerShape(core, host)) === undefined) {
       return yield* refuse("wrong-state", `no dev server runs on ${host}; start it first`);
     }
@@ -209,6 +217,7 @@ export const grantClaim = (core: CrewCore, principal: TurnPrincipal, host: strin
 /** A press or an event that moves a claim without reading dev (deny, the person's own dev server, a deploy). */
 export const moveClaim = (core: CrewCore, host: string, event: CrewClaimPress) =>
   Effect.gen(function* () {
+    core.memory.grantsWaiting.delete(host);
     yield* asRefusal(core.runtime.apply(host, event));
     yield* refreshClaims(core);
   });
@@ -232,6 +241,21 @@ export const releaseClaim = (
     const applied = yield* requireApplied(core);
     if (!isWorking(core, applied, claim.handle)) {
       yield* sendShaped(core, principal, host, claim.handle, "claim-release");
+    }
+  });
+
+/** At a turn's end: an *Allow* pressed during it goes out now, as whoever pressed it. */
+export const grantAfterTurn = (core: CrewCore, handle: string) =>
+  Effect.gen(function* () {
+    for (const [host, principal] of core.memory.grantsWaiting) {
+      if (core.memory.claims.get(host)?.handle !== handle) continue;
+      yield* grantClaim(core, principal, host).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            core.memory.lastError = error.message;
+          }),
+        ),
+      );
     }
   });
 
