@@ -27,6 +27,7 @@ import { useEnvironmentProjectRef } from "../../../zerops/useZeropsFeeds";
 import { ZeropsAskDialog } from "../ZeropsAskDialog";
 import { CrewBriefSheet } from "./CrewBriefSheet";
 import { crewDevHosts } from "./CrewEditors.logic";
+import { CREW_ORIGIN } from "./CrewSection.logic";
 import { CrewSection, CrewSectionEmpty } from "./CrewSection";
 import { CrewmateEditor } from "./CrewmateEditor";
 import type { CrewmateSheetTarget } from "./CrewmateSheet";
@@ -118,7 +119,12 @@ function CrewSectionFor({
     void requestConfirmDialog(
       `Start a fresh conversation for ${row.crewmate.displayName}? Its task, its copy of the code and its memory stay.`,
     )?.then((ok) => {
-      if (ok) void commands.send({ _tag: "startFresh", handle: row.crewmate.handle });
+      if (ok) {
+        void commands.send(
+          { _tag: "startFresh", handle: row.crewmate.handle },
+          CREW_ORIGIN.crewmate(row.crewmate.handle),
+        );
+      }
     });
   };
 
@@ -132,22 +138,24 @@ function CrewSectionFor({
     const handle = row.crewmate.handle;
     void requestConfirmDialog(`Remove ${name} from the crew?`)?.then(async (ok) => {
       if (!ok) return;
-      const removed = await commands.send({
-        _tag: "removeCrewmate",
-        handle,
-        discardUnlanded: false,
-      });
+      const origin = CREW_ORIGIN.crewmate(handle);
+      const removed = await commands.send(
+        { _tag: "removeCrewmate", handle, discardUnlanded: false },
+        origin,
+      );
       if (removed !== null || commands.lastRefusal() !== "unlanded-commits") return;
       const discard = await requestConfirmDialog(
         `${name}'s copy of the code has commits that never landed. Discard them and remove ${name}?`,
         { variant: "destructive" },
       );
-      if (discard) void commands.send({ _tag: "removeCrewmate", handle, discardUnlanded: true });
+      if (discard) {
+        void commands.send({ _tag: "removeCrewmate", handle, discardUnlanded: true }, origin);
+      }
     });
   };
 
   const deliver = () => {
-    void commands.send({ _tag: "deliverDraft" }).then((result) => {
+    void commands.send({ _tag: "deliverDraft" }, CREW_ORIGIN.deliver).then((result) => {
       if (result?._tag !== "deliverDraft") return;
       const count = snapshot.landedNotDelivered;
       setAsk({
@@ -161,7 +169,7 @@ function CrewSectionFor({
   const askFen = (draft: string) => askMate(projectId, draft, { threadId: threadId ?? undefined });
 
   const addCrewPorts = (host: string, count: number) => {
-    void commands.send({ _tag: "addCrewPorts", host, count }).then((result) => {
+    void commands.send({ _tag: "addCrewPorts", host, count }, CREW_ORIGIN.ports).then((result) => {
       if (result?._tag !== "crewPorts") return;
       setPortsHost(null);
       askFen(crewPortsAsk(result.host, result.ports));
@@ -175,7 +183,7 @@ function CrewSectionFor({
       ) : (
         <CrewSection
           environmentId={environmentId}
-          error={commands.error}
+          errorAt={commands.errorAt}
           onAddCrewPorts={setPortsHost}
           onAddLead={() => setEditor({ kind: "crewmate", target: { handle: null, lead: true } })}
           onResumeRun={() => setRunDialog("resume")}
@@ -237,7 +245,7 @@ function CrewSectionFor({
         resume={runDialog === "resume"}
       />
       <CrewPortsDialog
-        error={commands.error}
+        error={commands.errorAt(CREW_ORIGIN.ports)}
         host={portsHost}
         mateName={mateName}
         onConfirm={addCrewPorts}

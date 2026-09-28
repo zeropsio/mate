@@ -141,6 +141,20 @@ export function crewOffersStart(view: CrewView, run: CrewRun | null): boolean {
   return idle && (view.lead !== null || view.tasks.some((row) => row.task.state === "queued"));
 }
 
+/**
+ * Where a press came from, so its refusal shows beside it
+ * (`useCrewCommand`'s `origin`): the run controls, *Deliver*, *Add crew
+ * ports*, one *Waiting on you* row, one crewmate row, one dev service's line.
+ */
+export const CREW_ORIGIN = {
+  run: "run",
+  deliver: "deliver",
+  ports: "ports",
+  attention: (id: string) => `attention:${id}`,
+  crewmate: (handle: string) => `crewmate:${handle}`,
+  host: (host: string) => `host:${host}`,
+} as const;
+
 export type CrewAttentionAction =
   | { readonly kind: "answer"; readonly label: string }
   | { readonly kind: "ask"; readonly label: string; readonly ask: string }

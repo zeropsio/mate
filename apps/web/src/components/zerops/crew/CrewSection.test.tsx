@@ -14,7 +14,7 @@ const render = (snapshot: CrewSnapshot, overrides: Partial<CrewSectionProps> = {
   renderToStaticMarkup(
     <CrewSection
       environmentId={EnvironmentId.make("env-crew")}
-      error={null}
+      errorAt={() => null}
       onAddCrewPorts={noop}
       onAddLead={noop}
       onResumeRun={noop}
@@ -151,6 +151,21 @@ describe("CrewSection", () => {
     });
     expect(template).toContain("data-crew-brief-placeholder");
     expect(template).toContain(">Describe what the crew builds<");
+  });
+
+  it("says a refused press beside its own row, not in the section's line", () => {
+    const snapshot = crewSnapshotFixture();
+    const refused = "That can't be done in its current state.";
+    const markup = render(snapshot, {
+      errorAt: (origin) => (origin === "attention:show-on-dev:appdev" ? refused : null),
+    });
+    const row = markup.slice(markup.indexOf("asks to show its work on appdev"));
+
+    expect(markup.split("can&#x27;t be done")).toHaveLength(2);
+    expect(row.indexOf("can&#x27;t be done")).toBeLessThan(row.indexOf("</li>"));
+    expect(markup.indexOf("can&#x27;t be done")).toBeGreaterThan(
+      markup.indexOf("data-crew-attention"),
+    );
   });
 
   it("sets the lead apart: first, under its own label, with a Lead chip", () => {
