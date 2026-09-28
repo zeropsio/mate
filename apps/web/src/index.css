@@ -2070,6 +2070,12 @@ code {
   margin-bottom: 0;
 }
 
+/* A paragraph never ends on one word alone: the last lines are balanced
+   where the browser can (a progressive refinement; elsewhere it wraps as ever). */
+.chat-markdown :where(p, li, blockquote) {
+  text-wrap: pretty;
+}
+
 /* The blocks' rhythm, at the lowest specificity so any rule below can adjust it. */
 .chat-markdown :where(p, ul, ol, blockquote, pre, .chat-markdown-table-container) {
   margin: 0.65rem 0;
@@ -2325,11 +2331,13 @@ code {
   font-weight: 600;
 }
 
+/* Code in a sentence is marked, not caged: a tint of the ink behind it and no
+   rule round it. With a border every token drew four lines, and a sentence
+   naming five files read as a row of buttons. */
 .chat-markdown :not(pre) > code {
-  border: 1px solid var(--contrast-border);
-  border-radius: 0.375rem;
-  background: var(--muted);
-  padding: 0.1rem 0.35rem;
+  border-radius: 0.3125rem;
+  background: color-mix(in srgb, var(--contrast-foreground) 7%, transparent);
+  padding: 0.125rem 0.3125rem;
   color: var(--contrast-foreground);
   /* 12 px in the log's 14, 13 in an answer's 15: a step below its sentence. */
   font-size: 0.86em;
