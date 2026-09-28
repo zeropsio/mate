@@ -196,6 +196,7 @@ const buildSnapshot = (core: CrewCore, seq: number) =>
                 state: claim.state,
                 requestedAt: claim.requestedAt,
                 reason: core.memory.showReasons.get(host) ?? null,
+                grantWaiting: core.memory.grantsWaiting.has(host),
               },
             ],
       ),

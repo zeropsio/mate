@@ -292,38 +292,38 @@ describe("crewLaneBarModel", () => {
   }>([
     {
       name: "shows its work on dev at your press, asked for or not",
-      claim: { state: "none", handle: null },
+      claim: { state: "none", handle: null, grantWaiting: false },
       showOnDev: { kind: "showOnDev", host: "appdev", label: "Show on dev", enabled: true },
     },
     {
       name: "shows it at your press when it asked first",
-      claim: { state: "requested", handle: "backend" },
+      claim: { state: "requested", handle: "backend", grantWaiting: false },
       showOnDev: { kind: "showOnDev", host: "appdev", label: "Show on dev", enabled: true },
     },
     {
       name: "shows it in place of another crewmate's request",
-      claim: { state: "requested", handle: "frontend" },
+      claim: { state: "requested", handle: "frontend", grantWaiting: false },
       showOnDev: { kind: "showOnDev", host: "appdev", label: "Show on dev", enabled: true },
     },
     {
       name: "waits for its turn to end before showing its work",
-      claim: { state: "none", handle: null },
+      claim: { state: "none", handle: null, grantWaiting: false },
       working: true,
       showOnDev: { kind: "showOnDev", host: "appdev", label: "Show on dev", enabled: false },
     },
     {
       name: "gives dev back to your tree while its crewmate's work is shown",
-      claim: { state: "held", handle: "backend" },
+      claim: { state: "held", handle: "backend", grantWaiting: false },
       showOnDev: { kind: "claimRelease", host: "appdev", label: "Back to my tree", enabled: true },
     },
     {
       name: "has nothing to press while another crewmate's work is shown",
-      claim: { state: "held", handle: "frontend" },
+      claim: { state: "held", handle: "frontend", grantWaiting: false },
       showOnDev: null,
     },
     {
       name: "has nothing to press while dev is going back to your tree",
-      claim: { state: "releasing", handle: "backend" },
+      claim: { state: "releasing", handle: "backend", grantWaiting: false },
       showOnDev: null,
     },
   ])("$name", ({ claim, working, showOnDev }) => {

@@ -2,9 +2,9 @@
  * crewNotes — what the engine did once and must not do again after a
  * restart, kept in the crew log beside the engine's memory: the one nudge an
  * attempt gets, each wake of the lead (and so the run's wake count), a
- * question the lead passed on to the person, and the lead's own question
- * until the person answers it. The engine rebuilds its memory from them when
- * it starts.
+ * question the lead passed on to the person, the lead's own question
+ * until the person answers it, and an *Allow* waiting on its crewmate's
+ * turn. The engine rebuilds its memory from them when it starts.
  *
  * @module crewNotes
  */
@@ -12,6 +12,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 import { asRefusal, type CrewCore, type EngineMemory } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
 
@@ -20,7 +21,9 @@ export type CrewNote =
   | { readonly kind: "lead-woken"; readonly key: string }
   | { readonly kind: "escalated"; readonly key: string }
   | { readonly kind: "lead-asked"; readonly handle: string; readonly text: string }
-  | { readonly kind: "lead-answered"; readonly handle: string };
+  | { readonly kind: "lead-answered"; readonly handle: string }
+  | { readonly kind: "grant-waiting"; readonly host: string; readonly principal: TurnPrincipal }
+  | { readonly kind: "grant-settled"; readonly host: string };
 
 const NOTE_KINDS: ReadonlyArray<CrewNote["kind"]> = [
   "nudged",
@@ -28,12 +31,21 @@ const NOTE_KINDS: ReadonlyArray<CrewNote["kind"]> = [
   "escalated",
   "lead-asked",
   "lead-answered",
+  "grant-waiting",
+  "grant-settled",
 ];
 
 const NotePayload = Schema.Struct({
   key: Schema.optional(Schema.String),
   handle: Schema.optional(Schema.String),
   text: Schema.optional(Schema.String),
+  host: Schema.optional(Schema.String),
+  principal: Schema.optional(
+    Schema.Union([
+      Schema.Struct({ kind: Schema.Literal("session"), subject: Schema.String }),
+      Schema.Struct({ kind: Schema.Literal("crew"), startedBy: Schema.String }),
+    ]),
+  ),
 });
 const decodePayload = Schema.decodeUnknownOption(NotePayload);
 
@@ -55,6 +67,12 @@ const apply = (memory: EngineMemory, note: CrewNote, run: string | null, at: str
       return;
     case "lead-answered":
       memory.leadQuestions.delete(note.handle);
+      return;
+    case "grant-waiting":
+      memory.grantsWaiting.set(note.host, note.principal);
+      return;
+    case "grant-settled":
+      memory.grantsWaiting.delete(note.host);
       return;
   }
 };
@@ -94,6 +112,12 @@ const noteOf = (
         : { kind, handle: payload.handle, text: payload.text };
     case "lead-answered":
       return payload?.handle === undefined ? undefined : { kind, handle: payload.handle };
+    case "grant-waiting":
+      return payload?.host === undefined || payload.principal === undefined
+        ? undefined
+        : { kind, host: payload.host, principal: payload.principal };
+    case "grant-settled":
+      return payload?.host === undefined ? undefined : { kind, host: payload.host };
     default:
       return undefined;
   }

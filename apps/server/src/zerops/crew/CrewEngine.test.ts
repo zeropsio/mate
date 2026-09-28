@@ -73,7 +73,10 @@ describe("CrewEngine", () => {
     withCrewEngine((world) =>
       Effect.gen(function* () {
         yield* applied(world);
-        const snapshot = yield* latest;
+        // The first conversation opens once the copy is ready.
+        const snapshot = yield* snapshotWhere(
+          (current) => current.crewmates[0]!.promptVersions.running !== null,
+        );
         const backend = snapshot.crewmates[0]!;
         assert.deepStrictEqual(
           {
@@ -1165,6 +1168,79 @@ describe("CrewEngine", () => {
     },
   );
 
+  it.live("Allow with no dev server running says what to do", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const thread = yield* firstTurn(world, () => undefined);
+        const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
+        yield* (yield* CrewToolHost).showOnDev(member, { reason: "See the camera" });
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        yield* snapshotWhere((snapshot) => snapshot.hosts[0]?.claim.state === "requested");
+        yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.ahead === 0);
+        const refused = yield* Effect.flip(command({ _tag: "claimGrant", host: TEST_HOST }));
+        assert.deepStrictEqual(
+          [refused.reason, refused.detail],
+          ["wrong-state", "Start appdev's dev server first — ask your Mate to run it"],
+        );
+      }),
+    ),
+  );
+
+  it.live("an Allow waiting on a turn that a restart ended goes out when the engine boots", () => {
+    const started: Array<number> = [];
+    return withCrewEngines([
+      (world) =>
+        Effect.gen(function* () {
+          write(
+            world.root,
+            "zerops.yaml",
+            "zerops:\n  - setup: appdev\n    run:\n      ports:\n        - port: 3000\n          httpSupport: true\n",
+          );
+          git(world.root, ["add", "-A"]);
+          git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
+          yield* applied(world);
+          started.push(startDevServer(world.root));
+          const thread = yield* firstTurn(world, () => undefined);
+          const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
+          yield* (yield* CrewToolHost).showOnDev(member, { reason: "See the camera" });
+          yield* snapshotWhere((snapshot) => snapshot.hosts[0]?.claim.state === "requested");
+          yield* command({ _tag: "claimGrant", host: TEST_HOST });
+          yield* snapshotWhere((snapshot) => snapshot.hosts[0]!.claim.grantWaiting);
+        }),
+      (world) =>
+        Effect.gen(function* () {
+          yield* (yield* ServerCommandReadiness).complete;
+          const starting = yield* snapshotWhere(
+            (snapshot) => snapshot.hosts[0]?.claim.state === "starting",
+          );
+          assert.deepStrictEqual(
+            [
+              starting.hosts[0]!.claim,
+              (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!.message.text.split("\n")[1],
+              (yield* Ref.get(world.admitted)).at(-1)?.principal,
+            ],
+            [
+              { state: "starting", handle: "backend", grantWaiting: false },
+              "Show your work on appdev",
+              KAREL,
+            ],
+          );
+        }),
+    ]).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          for (const pid of started) {
+            try {
+              process.kill(pid);
+            } catch {}
+          }
+          NodeFS.rmSync(DEV_SERVER_PIDFILE, { force: true });
+        }),
+      ),
+    );
+  });
+
   it.live(
     "Allow pressed while the crewmate's turn runs is kept and sent when the turn ends",
     () => {
@@ -1185,6 +1261,7 @@ describe("CrewEngine", () => {
           yield* (yield* CrewToolHost).showOnDev(member, { reason: "See the camera" });
           yield* snapshotWhere((snapshot) => snapshot.hosts[0]?.claim.state === "requested");
           yield* command({ _tag: "claimGrant", host: TEST_HOST });
+          const waiting = yield* snapshotWhere((snapshot) => snapshot.hosts[0]!.claim.grantWaiting);
           const turnsWhileRunning = (yield* dispatchedOf(world, "thread.turn.start")).length;
           yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
           const starting = yield* snapshotWhere(
@@ -1193,12 +1270,19 @@ describe("CrewEngine", () => {
           const turns = yield* dispatchedOf(world, "thread.turn.start");
           assert.deepStrictEqual(
             [
+              waiting.hosts[0]!.claim,
               turns.length - turnsWhileRunning,
-              starting.hosts[0]!.claim.handle,
+              starting.hosts[0]!.claim,
               turns.at(-1)!.message.text.split("\n")[1],
               (yield* Ref.get(world.admitted)).at(-1)?.principal,
             ],
-            [1, "backend", "Show your work on appdev", KAREL],
+            [
+              { state: "requested", handle: "backend", grantWaiting: true },
+              1,
+              { state: "starting", handle: "backend", grantWaiting: false },
+              "Show your work on appdev",
+              KAREL,
+            ],
           );
         }),
       ).pipe(
