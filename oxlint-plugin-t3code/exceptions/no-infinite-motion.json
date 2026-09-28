@@ -206,5 +206,13 @@
     "owner": "ales",
     "reason": "A Mate's face moves only while its state holds (at work it turns and glances, needing you it hops): transform-only, stopped by reduced motion; the owner asked for the motion (2026-09-29)",
     "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-run-shimmer]{animation:run-shimmer 2s linear infinite}",
+    "owner": "ales",
+    "reason": "A light sweeps across the words of the one call a Mate is running now, until it returns: the card's live moment, on one small element, stopped by reduced motion",
+    "expires": "never"
   }
 ]

@@ -2677,6 +2677,38 @@ code {
   }
 }
 
+/* A call the Mate is running now: a band of light sweeps across its words,
+   left to right, in their own inks (a mask, not a colour, so the verb stays
+   muted and the file name full), until the call returns. One element at a
+   time; with reduced motion the words simply stand. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-run-shimmer] {
+    /* A mask reads only alpha: the words' own ink, at 70 % and whole. */
+    --run-shimmer-mask: linear-gradient(
+      100deg,
+      color-mix(in srgb, currentColor 70%, transparent) 40%,
+      currentColor 50%,
+      color-mix(in srgb, currentColor 70%, transparent) 60%
+    );
+    -webkit-mask-image: var(--run-shimmer-mask);
+    mask-image: var(--run-shimmer-mask);
+    -webkit-mask-size: 300% 100%;
+    mask-size: 300% 100%;
+    animation: run-shimmer 2s linear infinite;
+  }
+}
+
+@keyframes run-shimmer {
+  from {
+    -webkit-mask-position: 100% 0;
+    mask-position: 100% 0;
+  }
+  to {
+    -webkit-mask-position: 0% 0;
+    mask-position: 0% 0;
+  }
+}
+
 /* A Mate's face in motion (MateFace.tsx). Every pose is one drawing, so a
    change of state morphs — the eyes narrow into work, the "o" opens when it
    needs you — instead of one picture replacing another. What moves on its own

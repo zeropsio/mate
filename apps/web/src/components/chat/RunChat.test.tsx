@@ -421,6 +421,30 @@ describe("RunChat", () => {
     expect(running).toContain('data-chat-folded="true"');
   });
 
+  // The call running now is the card's "this, now": a light sweeps across
+  // its words until it returns — and across nothing else.
+  it("sweeps a light across the words of the call running now, and only that one", () => {
+    const running = draw(
+      record([step(command("w1", "ls"))], {
+        live: true,
+        now: {
+          kind: "step",
+          step: stepOf(
+            command("w9", "npm run build", {
+              toolLifecycleStatus: "inProgress",
+              sourceActivityKind: "tool.started",
+            }),
+            undefined,
+            true,
+          ),
+        },
+      }),
+    );
+    expect(running.match(/data-run-shimmer/g)).toHaveLength(1);
+    expect(running.indexOf("data-run-shimmer")).toBeGreaterThan(running.indexOf(">ls<"));
+    expect(draw(record([step(command("w1", "ls"))]))).not.toContain("data-run-shimmer");
+  });
+
   // The person's words stand on the page above the card; the chat marks, in
   // short and on their side, where they reached the Mate (the owner,
   // 2026-09-28: "shown the user message in short inside the working group").

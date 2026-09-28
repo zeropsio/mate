@@ -776,6 +776,7 @@ function Headline({
   timeTone = "muted",
   opens = false,
   column = false,
+  running = false,
 }: {
   readonly children: ReactNode;
   readonly time?: ReactNode;
@@ -783,10 +784,17 @@ function Headline({
   readonly opens?: boolean;
   /** A row of a card of calls: the time and the chevron keep their column. */
   readonly column?: boolean;
+  /**
+   * The call is running now: a light sweeps across its words, in their own
+   * inks, until it returns — the card's "this, now" without a spinner.
+   */
+  readonly running?: boolean;
 }) {
   return (
     <span className={cn("flex min-w-0 items-start gap-2", WORDS)}>
-      <span className="min-w-0 flex-1">{children}</span>
+      <span className="min-w-0 flex-1" data-run-shimmer={running ? "" : undefined}>
+        {children}
+      </span>
       {time !== null || opens || column ? (
         <span className="flex h-[1lh] shrink-0 items-center gap-1.5 ps-2">
           <span
@@ -1349,6 +1357,7 @@ export function StepBubble({ step }: { readonly step: WorkStep }) {
     <Headline
       column
       opens={opens}
+      running={running}
       time={timeWords}
       timeTone={running ? "busy" : failed ? "failed" : "muted"}
     >
