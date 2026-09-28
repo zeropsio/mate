@@ -282,6 +282,8 @@ export const startRun = (core: CrewCore, principal: TurnPrincipal, options: Crew
       finishedAt: null,
     });
     core.memory.runningSince = yield* Clock.currentTimeMillis;
+    // The person's press wakes the lead at once; the spacing is between the engine's own wakes.
+    core.memory.lastWakeAt = null;
     yield* ensureRunTick(core);
     yield* restartSessions(core, (yield* core.applied) ?? applied);
   });
@@ -365,6 +367,8 @@ export const resumeRun = (
       options,
     });
     core.memory.runningSince = yield* Clock.currentTimeMillis;
+    // The person's press wakes the lead at once; the spacing is between the engine's own wakes.
+    core.memory.lastWakeAt = null;
     yield* ensureRunTick(core);
     yield* restartSessions(core, (yield* core.applied) ?? applied);
   });

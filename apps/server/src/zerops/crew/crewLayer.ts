@@ -110,7 +110,7 @@ import {
 import { makeTurnHandler } from "./crewTurns.ts";
 import { restoreNotes } from "./crewNotes.ts";
 import { MIRRORED_TABLES } from "./crewState.ts";
-import { advanceAll, carryOnStopped, retryRefused } from "./crewRunFlow.ts";
+import { advanceAll, takeUpWaiting, retryRefused } from "./crewRunFlow.ts";
 import {
   finishRun,
   pressPause,
@@ -328,7 +328,7 @@ const run = (core: CrewCore, command: CrewCommand, principal: TurnPrincipal, act
       case "start": {
         const { _tag: _, ...options } = command;
         yield* startRun(core, principal, options);
-        yield* carryOnStopped(core);
+        yield* takeUpWaiting(core);
         yield* advanceAll(core);
         return done;
       }
@@ -337,7 +337,7 @@ const run = (core: CrewCore, command: CrewCommand, principal: TurnPrincipal, act
         return done;
       case "resume":
         yield* resumeRun(core, command);
-        yield* carryOnStopped(core);
+        yield* takeUpWaiting(core);
         yield* advanceAll(core);
         return done;
       case "stop":

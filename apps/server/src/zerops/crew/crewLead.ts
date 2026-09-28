@@ -18,7 +18,10 @@
  * - **Finish.** `crew_finish` ends the run.
  *
  * Wakes stop at 30 per run (CONCEPT §5 caps); what is left waits for the
- * person on the board.
+ * person on the board. The engine's own wakes stand two minutes apart; the
+ * person's Start or Resume wakes the lead at once. A wake a pause, a stop or
+ * a restart cut off, or one that ended without an answer, is taken up again
+ * when a run starts, resumes or goes on after a restart.
  *
  * @module crewLead
  */
@@ -64,7 +67,8 @@ const LEAD_WAKE_SPACING_MS = 2 * 60_000;
 const text = (value: string): CrewToolText => ({ text: value, isError: false });
 const error = (value: string): CrewToolText => ({ text: value, isError: true });
 
-const reviewKey = (task: CrewAssignmentRow) => `review:${task.assignment}:${task.attempt}`;
+const reviewKey = (task: Pick<CrewAssignmentRow, "assignment" | "attempt">) =>
+  `review:${task.assignment}:${task.attempt}`;
 
 /** Whether the lead takes the crew's questions first: a run is running and the crew has a lead. */
 export const leadAnswers = (applied: AppliedCrew): boolean =>
@@ -109,6 +113,46 @@ const nextWake = (
   }
   return undefined;
 };
+
+/**
+ * The wakes a run takes up again when it starts, resumes or goes on after a
+ * restart: each review, and each question the lead has not passed on to the
+ * person, that the lead was woken for and no running turn of the lead's
+ * serves — a pause, a stop or a restart cut that turn off, or it ended
+ * without an answer.
+ */
+export const wakesToRenew = (
+  tasks: ReadonlyArray<Pick<CrewAssignmentRow, "assignment" | "state" | "attempt" | "updatedAt">>,
+  woken: ReadonlySet<string>,
+  escalated: ReadonlySet<string>,
+  serving: string | undefined,
+): ReadonlyArray<string> =>
+  tasks.flatMap((task) => {
+    const key =
+      task.state === "review"
+        ? reviewKey(task)
+        : task.state === "blocked"
+          ? questionKey(task)
+          : undefined;
+    return key !== undefined && woken.has(key) && !escalated.has(key) && key !== serving
+      ? [key]
+      : [];
+  });
+
+/** Lets the lead be woken again for what {@link wakesToRenew} finds. */
+export const renewLeadWakes = (core: CrewCore) =>
+  Effect.gen(function* () {
+    const applied = yield* core.applied;
+    const lead = applied === undefined ? undefined : leadOf(applied);
+    if (applied === undefined || lead === undefined) return;
+    const serving = isWorking(core, applied, lead.row.handle)
+      ? core.memory.leadWakes.get(lead.row.handle)?.key
+      : undefined;
+    const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
+    for (const key of wakesToRenew(tasks, core.memory.woken, core.memory.escalated, serving)) {
+      core.memory.woken.delete(key);
+    }
+  });
 
 /**
  * Wakes a free lead for the next review or question, in a running run; a
