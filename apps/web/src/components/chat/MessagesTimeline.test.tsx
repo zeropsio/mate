@@ -1152,7 +1152,7 @@ describe("MessagesTimeline — the conversation", () => {
       />,
     );
     expect(markup).toMatch(
-      /<div[^>]*data-chat-bubble="tool"[^>]*data-chat-kind="step:command"[^>]*><button aria-expanded="false" aria-label="pnpm build\. Show what it returned"/,
+      /<div[^>]*data-chat-bubble="tool"[^>]*data-chat-kind="step:command"[^>]*>(?:<span class="absolute[^"]*">[\s\S]*?<\/svg><\/span><\/span><\/span>)<button aria-expanded="false" aria-label="pnpm build\. Show what it returned"/,
     );
     expect(markup).not.toContain("dist/index.js");
   });
