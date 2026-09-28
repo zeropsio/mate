@@ -2220,6 +2220,24 @@ describe("a Mate's row says more without words", () => {
       expect(snippet).toBe("Draft: also check the thumbnails");
     });
 
+    // Where the last line waits for the Mate's words, an unsent draft is the
+    // more pressing thing to say there: the face and the clock say it works.
+    it("stands in the line kept for words still to come", () => {
+      useComposerDraftStore.getState().setPrompt(ref, "also check the thumbnails");
+      const mounted = mount(
+        <SidebarZeropsTree
+          candidates={[CRM_DEV_CONNECTED]}
+          complete
+          getActivity={() => working({ snippet: undefined })}
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+        />,
+      );
+      expect(text(surface(mounted, "sidebar-mate-snippet"))).toBe(
+        "Draft: also check the thumbnails",
+      );
+    });
+
     it("never grows a row that has no last words: the composer holds the draft", () => {
       useComposerDraftStore.getState().setPrompt(ref, "also check the thumbnails");
       const html = row(live({ snippet: undefined }));

@@ -2256,13 +2256,12 @@ function MateRow<T extends RosterCandidate>({
               {subject}
             </span>
           )}
-          {snippet !== undefined ? (
-            <MateSnippet snippet={snippet} threadKey={live?.threadKey} />
-          ) : subject !== undefined &&
+          {snippet !== undefined ||
+          (subject !== undefined &&
             (live?.awaitingWords === true ||
               live?.kind === "working" ||
-              live?.kind === "connecting") ? (
-            <MateReplyPending />
+              live?.kind === "connecting")) ? (
+            <MateSnippet snippet={snippet ?? null} threadKey={live?.threadKey} />
           ) : null}
         </span>
       </button>
@@ -2403,21 +2402,24 @@ function MateWorkingTime({ since }: { readonly since: string }) {
 }
 
 /**
- * The Mate's last words — or, while a message to it waits unsent in its
- * composer, that draft, led by *Draft:*. Only where the row already says
- * something here: a draft never grows a row, the composer holds it anyway.
+ * The Mate's last words — or, while its words are still to come, the dots
+ * that wait for them — or, while a message to it waits unsent in its
+ * composer, that draft, led by *Draft:*. Only where the row already keeps
+ * this line: a draft never grows a row, the composer holds it anyway.
  */
 function MateSnippet({
   snippet,
   threadKey,
 }: {
-  readonly snippet: string;
+  /** Null while its words are still to come. */
+  readonly snippet: string | null;
   readonly threadKey: string | undefined;
 }) {
   const draft = useComposerDraftStore((state) =>
     threadKey === undefined ? undefined : state.draftsByThreadKey[threadKey]?.prompt,
   );
   const unsent = draft?.trim() ?? "";
+  if (snippet === null && unsent.length === 0) return <MateReplyPending />;
   return (
     <span
       className="truncate text-xs leading-4.5 text-sidebar-muted-foreground/70"
