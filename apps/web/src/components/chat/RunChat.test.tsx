@@ -254,6 +254,21 @@ describe("RunChat", () => {
   // Ten reads in a row are one stretch of work (the owner, 2026-09-28: "there
   // is no spacing between items"): a run of calls shares one card, a hairline
   // between them; a thought or its words between two calls start a new one.
+  // A wheel over a long run's chat moves the chat, and past its ends the
+  // page: contained, the page stood still under the pointer until it left
+  // the card (2026-09-29). Its fades are always drawn, eased in and out.
+  it("lets the page scroll on past its chat's ends, and eases its fades", () => {
+    const markup = draw(record([step(command("w1", "ls"))]));
+    expect(markup).toContain("overflow-y-auto");
+    expect(markup).not.toContain("overscroll-contain");
+    expect(markup).toMatch(
+      /class="[^"]*transition-opacity[^"]*opacity-0[^"]*" data-chat-fade="above"/,
+    );
+    expect(markup).toMatch(
+      /class="[^"]*transition-opacity[^"]*opacity-0[^"]*" data-chat-fade="below"/,
+    );
+  });
+
   it("gathers each run of calls into one card, and breaks it where anything else stands", () => {
     const markup = draw(
       record([

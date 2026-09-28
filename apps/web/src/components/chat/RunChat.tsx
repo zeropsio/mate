@@ -397,8 +397,12 @@ function ChatScroll({
           className={cn(
             CHAT_MAX_HEIGHT,
             // A column, so the bubbles stand at its foot beside the face when
-            // the room it keeps is taller than they are.
-            "-mx-1.5 flex flex-col overflow-x-hidden overflow-y-auto overscroll-contain px-1.5 scrollbar-none",
+            // the room it keeps is taller than they are. The page scrolls on
+            // past its ends: contained, a wheel over a long run stopped dead
+            // at the chat's top, and the page stood still under the pointer
+            // until it left the card. A gesture begun inside stays inside
+            // (the browser latches it), so a flick never throws the page.
+            "-mx-1.5 flex flex-col overflow-x-hidden overflow-y-auto px-1.5 scrollbar-none",
           )}
           onKeyDown={markGesture}
           onScroll={onScroll}
@@ -420,20 +424,26 @@ function ChatScroll({
           </ol>
           <span ref={endRef} aria-hidden="true" className="-mt-px block h-px shrink-0" />
         </div>
-        {above ? (
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-card to-transparent"
-          />
-        ) : null}
+        {/* The fades ease in and out with the scroll rather than snapping on
+            at its first pixel. */}
+        <div
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-card to-transparent transition-opacity duration-200 ease-out",
+            above ? "opacity-100" : "opacity-0",
+          )}
+          data-chat-fade="above"
+        />
         {/* Read back, the chat fades into the status line under it rather
             than being cut off against it. */}
-        {below ? (
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-card to-transparent"
-          />
-        ) : null}
+        <div
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-card to-transparent transition-opacity duration-200 ease-out",
+            below ? "opacity-100" : "opacity-0",
+          )}
+          data-chat-fade="below"
+        />
       </div>
     </ChatScrollContext>
   );
