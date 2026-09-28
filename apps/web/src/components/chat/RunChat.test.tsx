@@ -208,8 +208,9 @@ describe("RunChat", () => {
 
   // Its words and what it did cannot be taken for one another (the owner,
   // 2026-09-28: "command looks exactly like responses"): only its words are a
-  // filled, round bubble; a call is an outline led by its kind's mark.
-  it("fills only the Mate's words; what it did is an outline led by its kind", () => {
+  // filled, round bubble; a call is a row of an outlined card, led by its
+  // kind's mark.
+  it("fills only the Mate's words; what it did is a row of an outlined card", () => {
     const markup = draw(
       record([
         {
@@ -224,9 +225,29 @@ describe("RunChat", () => {
     const [said, did] = bubbles(markup);
     expect(said?.tag).toContain("bg-foreground/8");
     expect(said?.tag).toContain("rounded-2xl");
-    expect(did?.tag).toContain("border");
     expect(did?.tag).not.toContain("bg-foreground/8");
+    expect(markup).toMatch(/<div class="[^"]*rounded-xl border[^"]*" data-chat-calls="true">/);
     expect(markup).toContain("lucide-square-terminal");
+  });
+
+  // Ten reads in a row are one stretch of work (the owner, 2026-09-28: "there
+  // is no spacing between items"): a run of calls shares one card, a hairline
+  // between them; a thought or its words between two calls start a new one.
+  it("gathers each run of calls into one card, and breaks it where anything else stands", () => {
+    const markup = draw(
+      record([
+        step(command("w1", "ls")),
+        step(command("w2", "cat package.json")),
+        thought("r1", "The build script is missing."),
+        step(command("w3", "npm run build")),
+      ]),
+    );
+    const cards = markup.split("data-chat-calls").slice(1);
+    expect(cards).toHaveLength(2);
+    expect(cards[0]?.match(/data-chat-kind="step:command"/g)).toHaveLength(2);
+    expect(cards[1]?.match(/data-chat-kind="step:command"/g)).toHaveLength(1);
+    // A hairline between the calls of a card, not a gap.
+    expect(markup).toMatch(/class="[^"]*divide-y[^"]*" data-chat-calls="true"/);
   });
 
   // The Mate's status is the chat's last line, never a heading over the card
