@@ -3,7 +3,7 @@ import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRunt
 import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { WorkLogEntry } from "../../session-logic";
 import type { ChatMessage } from "../../types";
@@ -15,8 +15,8 @@ import {
   type TimelineRowActivityState,
   type TimelineRowSharedState,
 } from "./timelineContext";
-import { checksStrip } from "./conversation.logic";
-import { operation } from "./conversationFixtures";
+import { checksStrip, formatWorkDuration } from "./conversation.logic";
+import { at as atMinute, operation } from "./conversationFixtures";
 import { stepOf } from "./workSteps.logic";
 
 const at = (second: number) => new Date(Date.UTC(2026, 8, 27, 10, 0, second)).toISOString();
@@ -535,6 +535,47 @@ describe("RunChat", () => {
     expect(markup).toMatch(/<button[^>]*data-report-take="desktop"/u);
     expect(markup).toContain("data-report-take-failed");
     expect(markup).toContain("couldn&#x27;t open http://shop.dev:9/: net::ERR_UNSAFE_PORT");
+  });
+
+  // One clock for a row of checks, from its first: a second check running
+  // started it again from nothing, then the settled row said the whole time.
+  it("runs one clock for a row of checks, from its first check", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(atMinute(5)));
+    try {
+      const first = operation("b1", "turn-1", 1, {
+        kind: "browser",
+        subject: "https://shop.dev/",
+        screenshot: { src: "/shots/b1.png", width: 1280, height: 800 },
+      });
+      const second = operation("b2", "turn-1", 3, {
+        kind: "browser",
+        subject: "https://shop.dev/",
+        phase: "running",
+        deviceName: "iPhone 16",
+      });
+      if (first.kind !== "operation" || second.kind !== "operation") throw new Error("operations");
+      const { settledAt: _settled, ...taking } = second.operation;
+      const markup = draw(
+        record(
+          [
+            {
+              kind: "strip",
+              key: "operation:op:b1",
+              at: at(1),
+              strip: checksStrip([first.operation, taking], true),
+            },
+          ],
+          { live: true, status: status() },
+        ),
+      );
+      const since = (minute: number) =>
+        formatWorkDuration(Date.parse(atMinute(5)) - Date.parse(atMinute(minute)));
+      expect(markup).toContain(`>${since(1)}<`);
+      expect(markup).not.toContain(`>${since(3)}<`);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("opens nothing on a step that printed nothing", () => {

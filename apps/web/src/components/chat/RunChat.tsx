@@ -1489,8 +1489,10 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
   const startedMs = Date.parse(strip.checks[0]!.anchorAt);
   const endedMs = Date.parse(latest.settledAt ?? latest.anchorAt);
   const tookMs = endedMs - startedMs;
+  // One clock for the row, from its first check: a second check running
+  // never starts it again from nothing.
   const time = running ? (
-    <ElapsedSince since={latest.anchorAt} />
+    <ElapsedSince since={strip.checks[0]!.anchorAt} />
   ) : Number.isFinite(tookMs) && tookMs >= 1000 ? (
     formatWorkDuration(tookMs)
   ) : null;
