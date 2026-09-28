@@ -316,6 +316,27 @@ function ChatScroll({
     shownRef.current = true;
   }, []);
 
+  // The list the chat stands in moves its rows' nodes as it lays them out,
+  // and the browser forgets a moved node's scroll without a scroll event: a
+  // chat that was at its newest opened at its first bubble (2026-09-28, a
+  // reload into a run three hours back). Its end leaving sight while it
+  // follows is the one sign of that, so the end is watched and taken back.
+  const endRef = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    const end = endRef.current;
+    if (scroller === null || end === null || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry === undefined || entry.isIntersecting) return;
+        if (followingRef.current && heldRef.current === null) settleRef.current();
+      },
+      { root: scroller },
+    );
+    observer.observe(end);
+    return () => observer.disconnect();
+  }, []);
+
   const [api] = useState<ChatScrollApi>(() => ({
     scroller: () => scrollerRef.current,
     hold: (element, reveal) => {
@@ -377,6 +398,7 @@ function ChatScroll({
           >
             {children}
           </ol>
+          <span ref={endRef} aria-hidden="true" className="-mt-px block h-px shrink-0" />
         </div>
         {above ? (
           <div

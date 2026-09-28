@@ -465,6 +465,48 @@ describe("RunChat, as the person uses it", () => {
     expect(details()).toHaveLength(0);
   });
 
+  // The timeline moves its rows' nodes as it lays them out, and the browser
+  // forgets a moved node's scroll with no event to say so: a chat at its
+  // newest opened at its first bubble after a reload (2026-09-28).
+  it("takes its newest bubble back when its end leaves sight while it follows", () => {
+    const savedObserver = globalThis.IntersectionObserver;
+    let report: ((entries: ReadonlyArray<{ readonly isIntersecting: boolean }>) => void) | null =
+      null;
+    globalThis.IntersectionObserver = class {
+      constructor(callback: typeof report) {
+        report = callback;
+      }
+      observe() {}
+      disconnect() {}
+    } as unknown as typeof IntersectionObserver;
+    const scroller = {
+      scrollTop: 0,
+      scrollHeight: 900,
+      clientHeight: 440,
+      getBoundingClientRect: () => ({ top: 0, bottom: 440, height: 440 }),
+    };
+    try {
+      act(() => {
+        create(
+          <Rows>
+            <RunChat row={record([step(command("w1", "git status"))])} />
+          </Rows>,
+          {
+            createNodeMock: (element) =>
+              element.type === "div" && element.props["onScroll"] !== undefined ? scroller : {},
+          },
+        );
+      });
+      expect(scroller.scrollTop).toBe(900);
+      // The row's node moved: the browser put the chat back at its top.
+      scroller.scrollTop = 0;
+      act(() => report?.([{ isIntersecting: false }]));
+      expect(scroller.scrollTop).toBe(900);
+    } finally {
+      globalThis.IntersectionObserver = savedObserver;
+    }
+  });
+
   it("draws the earlier bubbles when the person asks for them", () => {
     const many = Array.from({ length: 50 }, (_, index) =>
       step(command(`w${index}`, `echo ${index}`)),
