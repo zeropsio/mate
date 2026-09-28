@@ -2682,10 +2682,10 @@ code {
    needs you — instead of one picture replacing another. What moves on its own
    belongs to the state: at work the shape turns a notch at a time (its own
    symmetry, so it never looks like somebody else) and the eyes glance about;
-   needing you, it hops; done while you watch, it pops once. Idle and asleep
-   it is still: a menu of faces must not fidget. Transform and opacity only,
-   each Mate on its own beat (`--mate-face-phase`) so a menu of them never
-   ticks in unison. */
+   as it starts to need you, it hops; done after work while you watch, it pops
+   once. Idle and asleep it is still: a menu of faces must not fidget.
+   Transform and opacity only, each Mate on its own beat (`--mate-face-phase`)
+   so a menu of them never ticks in unison. */
 :root {
   /* A spring: 8 % past the mark and back, settled by two thirds of its time. */
   --ease-spring: linear(
@@ -2776,8 +2776,11 @@ code {
     animation-delay: calc(var(--mate-face-phase, 0) * -0.7s);
   }
 
+  /* Three hops as it starts to need you, then it waits with its eyes wide:
+     a person can be away for hours, and a face hopping all that while in the
+     corner of the eye would wear on them. */
   [data-mate-face-state="needs"] [data-mate-face-hop] {
-    animation: mate-face-hop 2.8s infinite;
+    animation: mate-face-hop 2.8s 3;
     animation-delay: calc(var(--mate-face-phase, 0) * -0.35s);
   }
 

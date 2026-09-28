@@ -81,9 +81,9 @@ function useArrived(state: MateMarkState): MateMarkState | undefined {
  * narrowing into work, the "o" opening when it needs you) rather than
  * swapping one picture for another. The motion itself is the stylesheet's
  * (`[data-mate-face-*]` in index.css): at work the shape turns a notch at a
- * time and the eyes glance about; needing you, it hops; done while you watch,
- * it pops once. Idle and asleep it is still, and with reduced motion only the
- * morph remains. Decorative on its own — the name and the state are always
+ * time and the eyes glance about; starting to need you, it hops three times;
+ * done while you watch, it pops once. Idle and asleep it is still, and with
+ * reduced motion only the morph remains. Decorative on its own — the name and the state are always
  * written beside it — so it carries no accessible name.
  */
 function MateFace({ className, size = "md", state, tint, gaze, style, ...props }: MateFaceProps) {
