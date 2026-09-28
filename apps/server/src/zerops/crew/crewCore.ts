@@ -137,6 +137,14 @@ export interface EngineMemory {
   readonly integration: Map<string, Integration>;
   /** Why a crewmate asked to show its work on each dev service, while it asks. */
   readonly showReasons: Map<string, string>;
+  /**
+   * Each crew thread's session total as last reported (`totalCostUsd` is
+   * cumulative per session, a resume included), and the turns counted.
+   */
+  readonly costSeen: Map<string, number>;
+  readonly costedTurns: Set<string>;
+  /** Crew threads whose session restarts at its turn's end to take a run's new budget. */
+  readonly sessionRestart: Set<string>;
   /** An *Allow* pressed while its crewmate's turn ran, per dev service, sent at that turn's end. */
   readonly grantsWaiting: Map<string, TurnPrincipal>;
   /** The dev services this Mate mounts: whether each reaches a database, `null` until read. */
@@ -215,6 +223,9 @@ export const makeMemory = (): EngineMemory => ({
   served: new Map(),
   integration: new Map(),
   showReasons: new Map(),
+  costSeen: new Map(),
+  costedTurns: new Set(),
+  sessionRestart: new Set(),
   grantsWaiting: new Map(),
   devHosts: new Map(),
   runningSince: null,

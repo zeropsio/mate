@@ -49,6 +49,7 @@ import {
 } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { runTransition, type RunEvent } from "./crewMachines.ts";
+import { remember } from "./crewNotes.ts";
 import type { CrewRunRow } from "./CrewStore.ts";
 
 /** Why a turn stopped by a run's pause goes on when the run does. */
@@ -282,6 +283,7 @@ export const startRun = (core: CrewCore, principal: TurnPrincipal, options: Crew
     });
     core.memory.runningSince = yield* Clock.currentTimeMillis;
     yield* ensureRunTick(core);
+    yield* restartSessions(core, (yield* core.applied) ?? applied);
   });
 
 /** Pauses the running run: the person's press, a limit, or a refused dispatch. */
@@ -364,6 +366,7 @@ export const resumeRun = (
     });
     core.memory.runningSince = yield* Clock.currentTimeMillis;
     yield* ensureRunTick(core);
+    yield* restartSessions(core, (yield* core.applied) ?? applied);
   });
 
 export const stopRun = (core: CrewCore, runId: string) =>
@@ -400,11 +403,60 @@ export const finishRun = (core: CrewCore, runId: string) =>
     });
   });
 
+/**
+ * A turn's own cost. The CLI reports a session's cumulative total
+ * (`total_cost_usd`, across its resumes too), so a turn costs what the total
+ * rose by since the thread's last turn; a turn is counted once, whatever
+ * delivers its end again.
+ */
+export const turnCost = (
+  core: CrewCore,
+  threadId: string,
+  event: Extract<SpiEvent, { readonly type: "turn.completed" }>,
+) =>
+  Effect.gen(function* () {
+    const total = event.payload.totalCostUsd;
+    const turnId = event.turnId;
+    if (total === undefined || turnId === undefined || core.memory.costedTurns.has(turnId)) {
+      return 0;
+    }
+    const seen = core.memory.costSeen.get(threadId) ?? 0;
+    const run = (yield* core.applied)?.run?.run ?? null;
+    yield* remember(core, { kind: "turn-cost", threadId, turnId, total }, run);
+    return Math.max(0, total - seen);
+  });
+
+/**
+ * A running session keeps the budget cap it started with, so a run whose
+ * budget changes restarts its crew's sessions: an idle one now, a working
+ * one when its turn ends. The next turn resumes the same conversation under
+ * the new cap.
+ */
+const restartSessions = (core: CrewCore, applied: AppliedCrew) =>
+  Effect.gen(function* () {
+    const now = yield* core.now;
+    for (const stint of applied.stints) {
+      if (stint.retiredAt !== null) continue;
+      if (core.memory.working.has(stint.threadId)) {
+        core.memory.sessionRestart.add(stint.threadId);
+        continue;
+      }
+      yield* core.orchestration
+        .dispatch({
+          type: "thread.session.stop",
+          commandId: CommandId.make(`crew:budget:${stint.threadId}:${now}`),
+          threadId: ThreadId.make(stint.threadId),
+          createdAt: now,
+        })
+        .pipe(Effect.ignore);
+    }
+  });
+
 /** A crew turn's cost, counted while a run is on; the budget reached pauses it. */
-export const recordRunSpend = (core: CrewCore, costUsd: number | undefined) =>
+export const recordRunSpend = (core: CrewCore, costUsd: number) =>
   Effect.gen(function* () {
     const run = (yield* core.applied)?.run;
-    if (costUsd === undefined || costUsd <= 0) return;
+    if (costUsd <= 0) return;
     if (run?.state !== "running" && run?.state !== "paused") return;
     yield* asRefusal(core.store.putRun({ ...run, spentUsd: run.spentUsd + costUsd }));
     yield* asRefusal(core.reload);
