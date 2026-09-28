@@ -33,6 +33,7 @@ import {
 import {
   asRefusal,
   currentStint,
+  feedWhenUnattended,
   isWorking,
   memberOf,
   refuse,
@@ -44,6 +45,7 @@ import {
 } from "./crewCore.ts";
 import { claimShown } from "./crewClaims.ts";
 import { CREW_ID } from "./CrewHome.ts";
+import { reviewTask } from "./crewLead.ts";
 import { dropHandoff } from "./crewMemoryCommands.ts";
 import { readDeclaredPorts } from "./crewPorts.ts";
 import { leadReviews } from "./crewRuns.ts";
@@ -164,6 +166,8 @@ export const integrate = (core: CrewCore, taskId: string) =>
     if (task.state !== "merging" || core.memory.integrating.has(taskId)) return task;
     core.memory.integrating.add(taskId);
     return yield* integrateMerging(core, task).pipe(
+      // A review nobody takes up waits on the person after a while (`crewSnapshot`).
+      Effect.tap((row) => (row.state === "review" ? feedWhenUnattended(core) : Effect.void)),
       Effect.ensuring(Effect.sync(() => core.memory.integrating.delete(taskId))),
     );
   });
@@ -291,7 +295,10 @@ const afterLand = (
     );
   });
 
-/** *Land* (PRD §5.2 step 5); from `waiting-on-you` it merges again first, since your tree moved. */
+/**
+ * *Land* (PRD §5.2 step 5); from `waiting-on-you` it merges again first, since
+ * your tree moved, and from `review` it is your accept first.
+ */
 export const land = (
   core: CrewCore,
   principal: TurnPrincipal,
@@ -306,6 +313,10 @@ export const land = (
         core,
         (yield* stepTask(core, task, { type: "tree-clean" })).assignment,
       );
+    }
+    // *Land it myself* on a task waiting for the lead's review: your accept, then the landing.
+    if (task.state === "review") {
+      task = yield* reviewTask(core, task, { verdict: "accept", note: "", by: null });
     }
     if (task.state !== "ready")
       return yield* refuse("wrong-state", `#${task.number} is ${task.state}`);

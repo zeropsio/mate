@@ -30,6 +30,7 @@ import {
 import type { CrewDefinition, CrewMemberSpec } from "@t3tools/shared/crewHome";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
@@ -69,7 +70,7 @@ import {
 } from "./CrewStore.ts";
 import { CrewWorkspace } from "./CrewWorkspace.ts";
 import type { GateTurn } from "./CrewPolicy.ts";
-import type { LaneProgress, SnapshotRuntime } from "./crewSnapshot.ts";
+import { UNATTENDED_MS, type LaneProgress, type SnapshotRuntime } from "./crewSnapshot.ts";
 import type { PromptChange } from "./crewCards.ts";
 import type { Integration, LaneStats } from "./CrewReads.ts";
 import type { RotationReason } from "./rotationDecision.ts";
@@ -583,3 +584,7 @@ export const dispatchPrincipal = (
   const run = runningRun(applied);
   return run === undefined ? laterPrincipal(task) : { kind: "crew", startedBy: run.startedBy };
 };
+
+/** The feed again once a task nobody acts on has stood long enough to wait on the person. */
+export const feedWhenUnattended = (core: CrewCore) =>
+  core.background(Effect.sleep(Duration.millis(UNATTENDED_MS)).pipe(Effect.andThen(core.changed)));

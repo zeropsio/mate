@@ -381,7 +381,10 @@ export const CrewAttention = Schema.Struct({
   paths: Schema.Array(Schema.String),
   /** The dev service for `show-on-dev`. */
   host: Schema.NullOr(TrimmedNonEmptyString),
-  /** Since when the row stands; for `stalled`, when the task's last turn ended. */
+  /**
+   * Since when the row stands; for `stalled`, when the task's last turn ended;
+   * for `review-wait`, when the task went into review.
+   */
   at: IsoDateTime,
 });
 export type CrewAttention = typeof CrewAttention.Type;
@@ -563,7 +566,7 @@ export const CrewCommand = Schema.TaggedUnion({
   planDiscard: { taskIds: Schema.NonEmptyArray(CrewTaskId) },
   /** Your review of a task in `review`. */
   review: { ...taskRef, verdict: CrewReviewVerdict, note: Schema.String },
-  /** *Land* on a `ready` task. */
+  /** *Land* on a `ready` task; on one in `review`, your accept first (*Land it myself*). */
   land: taskRef,
   /** *Land* on a task whose crewmate never reported: WIP commit, merge-in, check, land. */
   landNow: taskRef,

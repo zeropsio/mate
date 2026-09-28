@@ -25,13 +25,14 @@ import {
   asRefusal,
   currentStint,
   failureWords,
+  feedWhenUnattended,
   isWorking,
   memberOf,
   type CrewCore,
 } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
-import { laneSpecsOn, snapshotAtMidway } from "./crewTurns.ts";
+import { laneSpecsOn } from "./crewTurns.ts";
 import { NO_REPORT } from "./crewMachines.ts";
 import { advanceAll, takeUpWaiting } from "./crewRunFlow.ts";
 import { repairWorktrees } from "./CrewStints.ts";
@@ -133,7 +134,7 @@ export const boot = (core: CrewCore) =>
                 endedAt: task.updatedAt,
               }),
             );
-            yield* snapshotAtMidway(core);
+            yield* feedWhenUnattended(core);
           }
           break;
         }

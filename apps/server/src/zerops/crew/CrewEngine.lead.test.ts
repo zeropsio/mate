@@ -3,7 +3,9 @@ import type { CrewRunOptions, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
+import { CREW_ID } from "./CrewHome.ts";
 import { CrewThreadDirectory, CrewToolHost, type CrewThreadMember } from "./crewSeams.ts";
+import { CrewStore } from "./CrewStore.ts";
 import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 import {
   eventually,
@@ -326,6 +328,51 @@ describe("CrewEngine lead", () => {
               waiting: ["review", "queued", "queued"],
               wake: true,
               moved: ["landed", "working", "queued"],
+            },
+          );
+        }),
+      ),
+  );
+
+  it.live(
+    "without a run a review left waiting names itself in Waiting on you; Land it myself lands it",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* withLead(world);
+          yield* startRun({ landing: "lead" });
+          const runId = (yield* snapshotWhere((current) => current.run?.state === "running")).run!
+            .id;
+          const thread = yield* firstTurn(world, () =>
+            write(world.root, ".crew/backend/ok.txt", "ok\n"),
+          );
+          yield* reportDone(thread);
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          const lead = yield* leadThread(world);
+          yield* wokenWith(world, lead, "review @backend's work");
+          yield* world.publish(spiEvent("turn.started", lead, {}));
+          yield* command({ _tag: "stop", runId });
+          yield* world.publish(spiEvent("turn.completed", lead, { state: "interrupted" }));
+          yield* snapshotWhere((current) => current.run?.state === "stopped");
+          // The review has waited ten minutes with nobody on it.
+          const store = yield* CrewStore;
+          const task = (yield* store.assignments(CREW_ID))[0]!;
+          yield* store.putAssignment({ ...task, updatedAt: "2026-09-28T07:00:00.000Z" });
+          const waiting = yield* snapshotWhere((current) => current.attention.length > 0);
+          yield* command({ _tag: "land", taskId: task.assignment });
+          const landed = yield* snapshotWhere(
+            (current) => current.board.tasks[0]?.state === "landed",
+          );
+          assert.deepStrictEqual(
+            {
+              waiting: waiting.attention.map((row) => [row.kind, row.handle, row.taskId, row.at]),
+              review: landed.board.tasks[0]!.review,
+              tree: read(world.root, "ok.txt"),
+            },
+            {
+              waiting: [["review-wait", "backend", task.assignment, "2026-09-28T07:00:00.000Z"]],
+              review: { verdict: "accept", note: "", by: null },
+              tree: "ok\n",
             },
           );
         }),

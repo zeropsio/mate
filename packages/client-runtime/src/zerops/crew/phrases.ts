@@ -289,6 +289,10 @@ export function crewAttentionSentence(
         ? `${name}'s ${which} stopped mid-way`
         : `${name}'s ${which} stopped mid-way: ${row.text}`;
     }
+    case "review-wait":
+      return task === undefined
+        ? `${name}'s task waits for the lead's review`
+        : `#${task.number} waits for the lead's review`;
   }
 }
 
@@ -465,7 +469,13 @@ export const CREW_ATTENTION_VERBS = {
   tryAgain: "Try again",
   carryOn: "Continue",
   discard: "Discard",
+  askLeadToReview: "Ask lead to review",
+  landMyself: "Land it myself",
 } as const;
+
+/** *Ask lead to review*: one turn of the lead's, as you. */
+export const crewAskLeadToReviewMessage = (taskNumber: number): string =>
+  `Review #${taskNumber} and answer with crew_review.`;
 
 /** *Continue* on a task that stopped mid-way: one turn as you, in its crewmate's chat. */
 export const CREW_CARRY_ON_MESSAGE = "Carry on with your task.";

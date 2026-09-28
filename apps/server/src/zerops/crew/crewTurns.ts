@@ -20,13 +20,13 @@
  * @module crewTurns
  */
 import { CommandId, ThreadId, type CrewRunReason, type SpiEvent } from "@t3tools/contracts";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 
 import {
   asRefusal,
   currentStint,
   failureWords,
+  feedWhenUnattended,
   isWorking,
   memberOf,
   runningRun,
@@ -45,7 +45,6 @@ import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
 import { continueAfterSave, openTaskOf, parkTask, requeueTask, stepTask } from "./crewTasks.ts";
 import { attemptEndingOf, turnEndingOf } from "./crewMachines.ts";
 import { settleLeadWake } from "./crewLead.ts";
-import { STOPPED_MIDWAY_MS } from "./crewSnapshot.ts";
 import { flushState } from "./crewState.ts";
 import { CREW_ROTATE_AFTER_DEFAULT } from "./rotationDecision.ts";
 import { advance, advanceAll } from "./crewRunFlow.ts";
@@ -309,14 +308,8 @@ const endAttempt = (
         endedAt: yield* core.now,
       }),
     );
-    yield* snapshotAtMidway(core);
+    yield* feedWhenUnattended(core);
   });
-
-/** The feed again once a task that stopped has stood long enough to wait on the person. */
-export const snapshotAtMidway = (core: CrewCore) =>
-  core.background(
-    Effect.sleep(Duration.millis(STOPPED_MIDWAY_MS)).pipe(Effect.andThen(core.changed)),
-  );
 
 /** Keeps a thread's last assistant message: the streamed text, closed by its item's end. */
 const recordLeadText = (core: CrewCore, stint: CrewStintRow, event: SpiEvent) => {

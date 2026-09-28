@@ -64,6 +64,7 @@ import {
   DEFAULT_CREW_LOGIN,
   failureWords,
   isWorking,
+  leadOf,
   makeCrewCore,
   runtimeOf,
   type CrewCore,
@@ -196,9 +197,20 @@ const buildSnapshot = (core: CrewCore, seq: number) =>
         why: attempt?.endingDetail ?? null,
       });
     }
+    const lead = applied === undefined ? undefined : leadOf(applied);
+    const wake = lead === undefined ? undefined : core.memory.leadWakes.get(lead.row.handle);
+    const reviewing = new Set(
+      applied !== undefined &&
+        lead !== undefined &&
+        wake?.kind === "review" &&
+        isWorking(core, applied, lead.row.handle)
+        ? [wake.taskId]
+        : [],
+    );
     return appliedSnapshot({
       memory,
       midway,
+      reviewing,
       seq,
       run: applied === undefined ? null : runView(core, applied, nowMs),
       leadAnswers: applied !== undefined && leadAnswers(applied),
