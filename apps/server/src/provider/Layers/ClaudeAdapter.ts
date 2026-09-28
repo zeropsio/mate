@@ -1703,6 +1703,20 @@ function isOverloadedResult(result: SDKResultMessage): boolean {
   return result.subtype === "success" && result.api_error_status === 529;
 }
 
+/**
+ * Whether a result ends a Claude turn other than the sent one open here. The
+ * CLI names every send a turn consumed, and marks a turn it started itself (a
+ * background task's wake) with an origin. A result that says neither stays
+ * the open turn's, as it always was for producers that echo nothing.
+ */
+function resultEndsAnotherTurn(result: SDKResultMessage, turnId: string): boolean {
+  const consumed =
+    result.user_message_uuids ??
+    (result.user_message_uuid === undefined ? [] : [result.user_message_uuid]);
+  if (consumed.includes(turnId)) return false;
+  return consumed.length > 0 || (result.origin !== undefined && result.origin.kind !== "human");
+}
+
 /** Derives turn status and its error from the same provider result. */
 function resultOutcome(
   result: SDKResultMessage,
@@ -3523,6 +3537,23 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     // The end of a wake the closed usage window held: no turn, no failure to report.
     if (turn === undefined && context.heldLimitWake === true) {
       context.heldLimitWake = false;
+      return;
+    }
+    // A background task's notification the CLI already queued runs as a turn
+    // of its own before a send queued behind it, so the next result is not
+    // always the sent turn's. Ending the sent turn on it closed a /compact
+    // before its compaction ran, which then had no turn to belong to.
+    if (
+      turn !== undefined &&
+      turn.synthetic !== true &&
+      resultEndsAnotherTurn(message, turn.turnId)
+    ) {
+      yield* Effect.logInfo("claude.turn.result-for-another-turn", {
+        threadId: context.session.threadId,
+        turnId: turn.turnId,
+        origin: message.origin?.kind,
+        userMessageUuid: message.user_message_uuid,
+      });
       return;
     }
     const failureHint =

@@ -5294,6 +5294,177 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("keeps a /compact turn open through a background wake the CLI ran ahead of it", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil(
+          (event) => event.type === "runtime.warning" && event.payload.message === DRAINED,
+        ),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      const turn = yield* adapter.sendTurn({
+        threadId: THREAD_ID,
+        input: "/compact",
+        attachments: [],
+      });
+      // As the CLI writes them: the wake's result is marked as a turn it
+      // started itself, the /compact's names the send it answers.
+      const messages = wakeAheadOfCompact({
+        wake: { origin: { kind: "task-notification" } },
+        compact: {
+          user_message_uuid: turn.turnId,
+          user_message_uuids: [turn.turnId],
+          local_command: "compact",
+        },
+      });
+      for (const message of [...messages, drainedNotice]) {
+        harness.query.emit(message as unknown as SDKMessage);
+      }
+      const events = Array.from(yield* Fiber.join(runtimeEventsFiber));
+
+      assert.deepEqual(lifecycleOf(events), [
+        "ready, no turn",
+        "turn.started",
+        "running",
+        "waiting",
+        "running",
+        "turn.completed",
+      ]);
+      // ProviderService.compactThread settles on this turn's completion, and
+      // the compaction it reports belongs to the turn that ran it.
+      const compactedAt = events.findIndex(
+        (event) => event.type === "thread.state.changed" && event.payload.state === "compacted",
+      );
+      const completedAt = events.findIndex((event) => event.type === "turn.completed");
+      assert.equal(events[compactedAt]?.turnId, turn.turnId);
+      assert.equal(events[completedAt]?.turnId, turn.turnId);
+      assert.ok(compactedAt < completedAt, "the turn ends after its compaction");
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect.each([
+    {
+      name: "a background wake's result",
+      result: () => ({ origin: { kind: "task-notification" } }),
+      closes: false,
+    },
+    {
+      name: "the result of another send",
+      result: () => ({ user_message_uuid: "another-send", user_message_uuids: ["another-send"] }),
+      closes: false,
+    },
+    {
+      name: "a wake's result that took this turn's message in",
+      result: (turnId: string) => ({
+        origin: { kind: "task-notification" },
+        user_message_uuid: turnId,
+        user_message_uuids: [turnId],
+      }),
+      closes: true,
+    },
+    {
+      name: "this turn's own result",
+      result: (turnId: string) => ({ user_message_uuid: turnId, user_message_uuids: [turnId] }),
+      closes: true,
+    },
+    {
+      name: "a result that names no send",
+      result: () => ({}),
+      closes: true,
+    },
+  ])("a sent turn is ended by $name: $closes", ({ result, closes }) => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil(
+          (event) => event.type === "runtime.warning" && event.payload.message === DRAINED,
+        ),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      const turn = yield* adapter.sendTurn({
+        threadId: THREAD_ID,
+        input: "hello",
+        attachments: [],
+      });
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        num_turns: 1,
+        result: "done",
+        stop_reason: "end_turn",
+        session_id: WAKE_SESSION,
+        uuid: "result-attribution",
+        ...result(turn.turnId),
+      } as unknown as SDKMessage);
+      harness.query.emit(drainedNotice as unknown as SDKMessage);
+
+      assert.deepEqual(
+        lifecycleOf(Array.from(yield* Fiber.join(runtimeEventsFiber))),
+        closes
+          ? ["ready, no turn", "turn.started", "turn.completed"]
+          : ["ready, no turn", "turn.started"],
+      );
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("ends a background wake's own turn on its result", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil(
+          (event) => event.type === "runtime.warning" && event.payload.message === DRAINED,
+        ),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      // The wake's turn alone, with nothing sent: its reply opens the turn.
+      const wakeTurn = wakeAheadOfCompact({
+        wake: { origin: { kind: "task-notification" } },
+        compact: {},
+      }).slice(0, 4);
+      for (const message of [...wakeTurn, drainedNotice]) {
+        harness.query.emit(message as unknown as SDKMessage);
+      }
+
+      assert.deepEqual(lifecycleOf(Array.from(yield* Fiber.join(runtimeEventsFiber))), [
+        "ready, no turn",
+        "turn.started",
+        "turn.completed",
+      ]);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("re-announces a Claude limit for a synthetic turn", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
