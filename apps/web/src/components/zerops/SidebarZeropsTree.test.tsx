@@ -1402,14 +1402,18 @@ describe("the project's flow under it", () => {
     const changes = count('data-zerops-surface="sidebar-pull-request"');
     const painted = count('class="w-px flex-1 bg-[var(--zerops-rail)]"');
     const blank = count('class="w-px flex-1"');
+    // The air between a Mate's block and the stops carries the line through
+    // it, painted, so the blocks stand apart and the spine stays whole.
+    const gaps = count('data-zerops-rail="gap"');
     expect(rows).toBeGreaterThan(0);
     expect(changes).toBeGreaterThan(0);
+    expect(gaps).toBeGreaterThan(0);
     // Every row carries both halves wherever it sits on the line, a change
     // included: its fork builds the spine the same way so it lands on the same
     // half pixel. Leaving one out lets the other take the free space, which shoved the
     // first face of every group 24px above its row and every last badge 17px
     // below it.
-    expect(painted + blank).toBe(rows * 2);
+    expect(painted + blank).toBe(rows * 2 + gaps);
     // Unpainted only at the two ends: the first node of the group, and the
     // last stop, production. The stage stands on the line like any stop.
     expect(blank).toBe(2);
@@ -1571,6 +1575,31 @@ describe("a project collapsed to its heading", () => {
       "sidebar-stop-badge",
     ])
       expect(html).not.toContain(`data-zerops-surface="${gone}"`);
+  });
+
+  // A heading belongs to the rows under it, never halfway between two
+  // projects (the owner, 2026-09-28: "the gap between project name and under
+  // project is the same"): a full breath above a project, and a run of
+  // collapsed ones closed up into a list of their names.
+  it("keeps a full breath between projects, and closes a run of collapsed ones into a list", () => {
+    const notes = named("notes-dev", "Notes - dev", [
+      "mate",
+      "mate:g:notes",
+      "mate:name:Notes",
+      "mate:role:dev",
+    ]);
+    stored.collapsed = new Set(["links", "notes"]);
+    const html = render([CRM_DEV, LINKS_MATE, notes]);
+    const sections = [...html.matchAll(/<section class="([^"]*)" data-zerops-group="([^"]*)"/g)];
+    expect(sections.map(([, , group]) => group)).toEqual(["aaa", "links", "notes"]);
+    const room = (group: string) =>
+      sections
+        .find(([, , id]) => id === group)?.[1]
+        ?.split(" ")
+        .filter((name) => name.startsWith("mt-")) ?? [];
+    expect(room("aaa")).toEqual([]);
+    expect(room("links")).toEqual(["mt-9"]);
+    expect(room("notes")).toEqual(["mt-1"]);
   });
 
   it("points its chevron right while collapsed and always shows it; down, on hover, while open", () => {

@@ -111,6 +111,7 @@ import {
   TriangleAlertIcon,
 } from "lucide-react";
 import {
+  Fragment,
   useEffect,
   useRef,
   useState,
@@ -1115,94 +1116,101 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       ...(quiet.length === 0 ? [] : [{ kind: "fold" as const, count: quiet.length }]),
       ...(quietOpen ? quiet.map(({ item }) => ({ kind: "mate" as const, item })) : []),
     ];
-    return (
-      <>
-        {header}
-        {slots.map((slot, index) => {
-          const first = index === 0;
-          const last = endsOnMates && index === slots.length - 1;
-          if (slot.kind === "coming") {
-            return (
+    // Each block — a Mate with its changes, one being created, the quiet
+    // fold, the changes nobody's Mate owns, the stops — stands apart from the
+    // next by a gap the spine runs through; the heading stands on the first.
+    const blocks: Array<{ readonly key: string; readonly node: ReactNode }> = [
+      ...slots.map((slot, index) => {
+        const first = index === 0;
+        const last = endsOnMates && index === slots.length - 1;
+        if (slot.kind === "coming") {
+          return {
+            key: `coming:${slot.member.projectId}`,
+            node: (
               <ComingMateRow
                 coming={slot.member}
-                key={`coming:${slot.member.projectId}`}
                 name={slot.member.name}
                 railCap={railCapFor({ first, last })}
               />
-            );
-          }
-          if (slot.kind === "fold") {
-            return (
+            ),
+          };
+        }
+        if (slot.kind === "fold") {
+          return {
+            key: "quiet",
+            node: (
               <QuietMatesRow
                 count={slot.count}
-                key="quiet"
                 onToggle={() => {
                   setOpenQuiet((current) => withCollapsed(current, id, !current.has(id)));
                 }}
                 open={quietOpen}
                 railCap={railCapFor({ first, last })}
               />
-            );
-          }
-          const { item } = slot;
-          const pulls = grouped.byMate.get(item.project.id) ?? [];
-          const listKey = `${id}:${item.project.id}`;
-          const ownRow = pulls.length === 0 || changeRows === undefined;
-          const appUrl = projectFlow.mates.find(
-            (mate) => mate.projectId === item.project.id,
-          )?.preview;
-          numbered += 1;
-          if (renderPeek !== undefined && peekState?.projectId === item.project.id) {
-            const activity = getActivity?.(item);
-            const live = drawnActivity(item, activity);
-            const tags = readZeropsGroupTags(item.project.tagList);
-            // Every change it has open, as under its row: the one the peek was
-            // asked to show — a jump to it — first, then the rest newest first.
-            const asked = pulls.find((pull) => changeRowKey(pull) === peekState.change);
-            const peekPulls =
-              !changesKnown || flow === undefined
-                ? []
-                : asked === undefined
-                  ? pulls
-                  : [asked, ...pulls.filter((pull) => pull !== asked)];
-            peekTarget = {
-              candidate: item,
-              activity: live,
-              name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
-              face: mateFaceFor(item.group === "connected", activity),
-              tint: tints.get(item.project.id) ?? "slate",
-              projectName: groupName,
-              owner: getOwner?.(item),
-              time:
-                live === undefined ? null : (
-                  <MateTime activity={live} timestampFormat={timestampFormat} />
-                ),
-              changes:
-                peekPulls.length === 0 || flow === undefined ? undefined : (
-                  <div className="grid gap-1.5">
-                    {peekPulls.map((pull) => (
-                      <PeekChangeLine key={changeRowKey(pull)} flow={flow} pull={pull} />
-                    ))}
-                  </div>
-                ),
-              changeCount: peekPulls.length,
-              appUrl,
-              phone,
-              onOpen: () => {
-                selectMate(item);
-              },
-              onClose: closePeek,
-              onMore:
-                phone && getMateActions !== undefined
-                  ? () => {
-                      useSidebarPeek.getState().close();
-                      useSidebarPeek.getState().askForMenu(item.project.id);
-                    }
-                  : undefined,
-            };
-          }
-          return (
-            <div className="flex flex-col" key={item.key}>
+            ),
+          };
+        }
+        const { item } = slot;
+        const pulls = grouped.byMate.get(item.project.id) ?? [];
+        const listKey = `${id}:${item.project.id}`;
+        const ownRow = pulls.length === 0 || changeRows === undefined;
+        const appUrl = projectFlow.mates.find(
+          (mate) => mate.projectId === item.project.id,
+        )?.preview;
+        numbered += 1;
+        if (renderPeek !== undefined && peekState?.projectId === item.project.id) {
+          const activity = getActivity?.(item);
+          const live = drawnActivity(item, activity);
+          const tags = readZeropsGroupTags(item.project.tagList);
+          // Every change it has open, as under its row: the one the peek was
+          // asked to show — a jump to it — first, then the rest newest first.
+          const asked = pulls.find((pull) => changeRowKey(pull) === peekState.change);
+          const peekPulls =
+            !changesKnown || flow === undefined
+              ? []
+              : asked === undefined
+                ? pulls
+                : [asked, ...pulls.filter((pull) => pull !== asked)];
+          peekTarget = {
+            candidate: item,
+            activity: live,
+            name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
+            face: mateFaceFor(item.group === "connected", activity),
+            tint: tints.get(item.project.id) ?? "slate",
+            projectName: groupName,
+            owner: getOwner?.(item),
+            time:
+              live === undefined ? null : (
+                <MateTime activity={live} timestampFormat={timestampFormat} />
+              ),
+            changes:
+              peekPulls.length === 0 || flow === undefined ? undefined : (
+                <div className="grid gap-1.5">
+                  {peekPulls.map((pull) => (
+                    <PeekChangeLine key={changeRowKey(pull)} flow={flow} pull={pull} />
+                  ))}
+                </div>
+              ),
+            changeCount: peekPulls.length,
+            appUrl,
+            phone,
+            onOpen: () => {
+              selectMate(item);
+            },
+            onClose: closePeek,
+            onMore:
+              phone && getMateActions !== undefined
+                ? () => {
+                    useSidebarPeek.getState().close();
+                    useSidebarPeek.getState().askForMenu(item.project.id);
+                  }
+                : undefined,
+          };
+        }
+        return {
+          key: item.key,
+          node: (
+            <div className="flex flex-col">
               <MateRow
                 actions={getMateActions?.(item, getActivity?.(item))}
                 active={item.project.id === activeProjectId}
@@ -1235,43 +1243,68 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 />
               )}
             </div>
-          );
-        })}
-        {grouped.others.length === 0 || changeRows === undefined ? null : (
-          // Nobody's Mate's: a person's own branch. Indented under the last
-          // Mate it read as that Mate's work, which is a lie the row's own
-          // `· ada` could not undo at 256px, where it is truncated away.
-          // The dedent is the whole signal; a rule as well would make this
-          // read as the start of the stops, which is the next block's rule.
-          <ul className="flex flex-col" data-zerops-surface="sidebar-other-pull-requests">
-            {grouped.others.map((pull, index) => (
-              <PullRequestRow
-                key={`${pull.repository}#${pull.number}`}
-                merging={changeRows.merging(pull)}
-                onAsk={changeRows.onAsk}
-                onMerge={changeRows.onMerge}
-                onOpenChange={changeRows.onOpenChange}
-                pull={pull}
-                remembered={changeRows.remembered === true}
-                railCap={
-                  stopRows.length === 0 && index === otherPulls.length - 1 ? "end" : undefined
-                }
-                underMate={false}
-              />
-            ))}
-          </ul>
-        )}
-        {stopRows.length > 0 ? (
-          <EnvironmentRows
-            deployments={deployments}
-            flow={flow}
-            groupName={groupName}
-            onOpenProject={onBrowseProjects}
-            projectFlow={projectFlow}
-            rememberedStop={remembered?.stop}
-            stops={stopRows}
-          />
-        ) : null}
+          ),
+        };
+      }),
+      ...(grouped.others.length === 0 || changeRows === undefined
+        ? []
+        : [
+            {
+              key: "others",
+              node: (
+                // Nobody's Mate's: a person's own branch. Indented under the last
+                // Mate it read as that Mate's work, which is a lie the row's own
+                // `· ada` could not undo at 256px, where it is truncated away.
+                // The dedent is the whole signal; a rule as well would make this
+                // read as the start of the stops, which is the next block's rule.
+                <ul className="flex flex-col" data-zerops-surface="sidebar-other-pull-requests">
+                  {grouped.others.map((pull, index) => (
+                    <PullRequestRow
+                      key={`${pull.repository}#${pull.number}`}
+                      merging={changeRows.merging(pull)}
+                      onAsk={changeRows.onAsk}
+                      onMerge={changeRows.onMerge}
+                      onOpenChange={changeRows.onOpenChange}
+                      pull={pull}
+                      remembered={changeRows.remembered === true}
+                      railCap={
+                        stopRows.length === 0 && index === otherPulls.length - 1 ? "end" : undefined
+                      }
+                      underMate={false}
+                    />
+                  ))}
+                </ul>
+              ),
+            },
+          ]),
+      ...(stopRows.length === 0
+        ? []
+        : [
+            {
+              key: "stops",
+              node: (
+                <EnvironmentRows
+                  deployments={deployments}
+                  flow={flow}
+                  groupName={groupName}
+                  onOpenProject={onBrowseProjects}
+                  projectFlow={projectFlow}
+                  rememberedStop={remembered?.stop}
+                  stops={stopRows}
+                />
+              ),
+            },
+          ]),
+    ];
+    return (
+      <>
+        {header}
+        {blocks.map((block, index) => (
+          <Fragment key={block.key}>
+            {index === 0 ? null : <RailGap />}
+            {block.node}
+          </Fragment>
+        ))}
       </>
     );
   };
@@ -1321,6 +1354,11 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     <section
       className={cn(
         "flex flex-col transition-opacity",
+        sectionRoom({
+          first: index === 0,
+          collapsed: collapsed.has(group.groupId),
+          afterCollapsed: index > 0 && collapsed.has(groups[index - 1]!.group.groupId),
+        }),
         reorder.dragging === group.groupId && "opacity-40",
       )}
       data-zerops-group={group.groupId}
@@ -1374,7 +1412,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     </section>
   ));
   const ungroupedSection = ungroupedMates ? (
-    <section className="flex flex-col" data-zerops-ungrouped="true">
+    <section
+      className={cn("flex flex-col", groups.length > 0 && SECTION_ROOM)}
+      data-zerops-ungrouped="true"
+    >
       {section(
         "ungrouped",
         ungrouped,
@@ -1400,7 +1441,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   return (
     <nav
       aria-label="Mates"
-      className={cn("relative flex flex-col gap-6", className)}
+      className={cn("relative flex flex-col", className)}
       data-zerops-surface="sidebar-environments"
       ref={treeRef}
     >
@@ -1409,7 +1450,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
 
       {/* Rows already held, and the listing not all read: they may not be all
           the Mates there are, so the notice stays under them (§3.4). */}
-      {notice === null ? null : <ListingNotice notice={notice} onAct={onNoticeAct} />}
+      {notice === null ? null : (
+        <ListingNotice className="mt-6" notice={notice} onAct={onNoticeAct} />
+      )}
       {reorder.overlay}
       {renderPeek === undefined ? null : (
         <MatePeekHost
@@ -1439,6 +1482,23 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       )}
     </nav>
   );
+}
+
+/**
+ * The room above a project. A full breath separates it from the one before,
+ * much more than its heading keeps from its own rows, so the heading belongs
+ * to what is under it rather than floating halfway between two projects. A
+ * run of collapsed projects closes up into a list of their names.
+ */
+const SECTION_ROOM = "mt-9";
+
+function sectionRoom(at: {
+  readonly first: boolean;
+  readonly collapsed: boolean;
+  readonly afterCollapsed: boolean;
+}): string | undefined {
+  if (at.first) return undefined;
+  return at.collapsed && at.afterCollapsed ? "mt-1" : SECTION_ROOM;
 }
 
 /** The listing's notice (`candidatesNotice`) with its one affordance, at the menu's left edge. */
@@ -1548,7 +1608,7 @@ export function ProjectHeader({
   const title = group?.name ?? name ?? "";
   return (
     <div
-      className="group/project relative mb-1 flex h-9 min-w-0 items-center gap-1 px-2.5"
+      className="group/project relative flex h-7 min-w-0 items-center gap-1 px-2.5"
       data-zerops-surface="sidebar-project"
     >
       {reorder?.custom === true && group !== undefined ? (
@@ -2143,7 +2203,7 @@ function MateRow<T extends RosterCandidate>({
         </RailCell>
         {/* The row's own vertical padding lives here: the rail has to run the
             full height of the row to meet the rows either side of it. */}
-        <span className="flex min-w-0 flex-1 flex-col py-2.5">
+        <span className="flex min-w-0 flex-1 flex-col py-2">
           <span className="flex min-w-0 items-center gap-2">
             <span className={cn("flex min-w-0 flex-1 items-center gap-1", renaming && "invisible")}>
               <span
@@ -2203,7 +2263,7 @@ function MateRow<T extends RosterCandidate>({
       </button>
       {actions === undefined ? null : (
         <span
-          className="absolute end-2.5 top-2.75 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100"
+          className="absolute end-2.5 top-2.25 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100"
           data-zerops-surface="sidebar-mate-actions"
         >
           {actions.stop === undefined ? null : (
@@ -2395,7 +2455,7 @@ function ComingMateRow({
           <MateFace size="md" state="sleep" tint="slate" />
         </span>
       </RailCell>
-      <span className="flex min-w-0 flex-1 flex-col py-2.5">
+      <span className="flex min-w-0 flex-1 flex-col py-2">
         <span className="min-w-0 truncate text-sm leading-5.5 font-medium">{name}</span>
         <span className="mt-0.5 truncate text-xs leading-4.5 text-sidebar-muted-foreground">
           {comingMateLine(coming)}
@@ -2509,6 +2569,25 @@ function RailFork({ cap }: { readonly cap?: RailCap }) {
         aria-hidden="true"
         className="absolute start-[23.5px] top-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--zerops-rail)]"
       />
+    </span>
+  );
+}
+
+/**
+ * The air between two of a project's blocks, with the spine carried through
+ * it. A Mate with its changes, the quiet fold and the stops each stand apart,
+ * so the heading reads as theirs and a Mate's three lines as one thing (the
+ * owner, 2026-09-28: "the gap between project name and under project is the
+ * same"). The line stays unbroken, from the first node to the last. It is
+ * built as a row builds its own share, the same column at the same inset, so
+ * it lands on the same half pixel.
+ */
+function RailGap() {
+  return (
+    <span aria-hidden="true" className="flex h-2 px-2.5" data-zerops-rail="gap">
+      <span className="flex w-5 shrink-0 flex-col items-center">
+        <span className={RAIL_LINE} />
+      </span>
     </span>
   );
 }
