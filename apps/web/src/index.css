@@ -2291,15 +2291,22 @@ code {
   --callout-ink: var(--zerops-status-failed-text);
 }
 
-/* The label runs into the first line at the text's own size, set off by its
-   weight and its tone's ink pulled a quarter toward the text: the status inks
-   are set for white cards, and on the canvas, under the tint, the label needs
-   the extra contrast in both themes. */
+/* The label, at the text's own size, set off by its weight and its tone's ink
+   pulled a quarter toward the text: the status inks are set for white cards,
+   and on the canvas, under the tint, the label needs the extra contrast in
+   both themes. It stands on its own line over what follows. */
 .chat-markdown .chat-markdown-callout-label {
-  float: left;
-  margin: 0 0.45em 0 0;
+  margin: 0 0 0.25em;
   color: color-mix(in oklab, var(--callout-ink) 75%, var(--contrast-foreground));
   font-weight: 600;
+}
+
+/* Before a paragraph it runs into the first line. Only there: a list's first
+   bullet hangs in the gutter the label would stand in, and a code block or a
+   table has no first line to run into. */
+.chat-markdown .chat-markdown-callout-label:has(+ p) {
+  float: left;
+  margin: 0 0.45em 0 0;
 }
 
 .chat-markdown .chat-markdown-callout-label + * {
