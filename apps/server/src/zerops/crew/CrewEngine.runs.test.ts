@@ -167,6 +167,40 @@ describe("CrewEngine runs", () => {
   );
 
   it.live(
+    "a session's kept total comes back after a restart: its next turn counts its own rise",
+    () => {
+      let thread: ThreadId | undefined;
+      return withCrewEngines([
+        (world) =>
+          Effect.gen(function* () {
+            yield* applied(world);
+            thread = yield* firstTurn(world, () => undefined);
+            write(world.workspace, "backend.jsonl", "{}\n");
+            const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
+            yield* (yield* CrewToolHost).sessionStart(member, {
+              source: "startup",
+              sessionId: "session-kept",
+              transcriptPath: `${world.workspace}/backend.jsonl`,
+            });
+            yield* ended(world, thread, 0.4);
+            yield* snapshotWhere((current) => current.crewmates[0]!.stints[0]?.state === "active");
+          }),
+        (world) =>
+          Effect.gen(function* () {
+            yield* (yield* ServerCommandReadiness).complete;
+            yield* command({ _tag: "start", ...OPTIONS });
+            yield* snapshotWhere((current) => current.run?.state === "running");
+            yield* command({ _tag: "message", handle: "backend", text: "More", attachments: [] });
+            yield* world.publish(spiEvent("turn.started", thread!, {}));
+            yield* ended(world, thread!, 1);
+            const run = (yield* snapshotWhere((current) => current.run?.spentUsd !== 0)).run!;
+            assert.deepStrictEqual([run.state, run.spentUsd.toFixed(2)], ["running", "0.60"]);
+          }),
+      ]);
+    },
+  );
+
+  it.live(
     "a session whose turns the engine never costed counts nothing for its next turn, not its history",
     () => {
       let thread: ThreadId | undefined;
