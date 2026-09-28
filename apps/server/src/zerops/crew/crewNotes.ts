@@ -104,7 +104,11 @@ export const remember = (core: CrewCore, note: CrewNote, run: string | null) =>
     yield* asRefusal(core.store.appendLog({ crew: CREW_ID, run, at, kind, payload }));
   });
 
-/** Rebuilds the engine's memory of what it did once, from the crew log. */
+/**
+ * Rebuilds the engine's memory of what it did once, from the crew log. A live
+ * session with no total kept ran turns before totals were logged: its next
+ * total is its history, and counts as none.
+ */
 export const restoreNotes = (core: CrewCore) =>
   Effect.gen(function* () {
     const entries = yield* asRefusal(core.store.logOf(CREW_ID, NOTE_KINDS));
@@ -112,6 +116,15 @@ export const restoreNotes = (core: CrewCore) =>
       const payload = Option.getOrUndefined(decodePayload(entry.payload));
       const note = noteOf(entry.kind, payload);
       if (note !== undefined) apply(core.memory, note, entry.run, entry.at);
+    }
+    for (const stint of yield* asRefusal(core.store.stints(CREW_ID))) {
+      if (
+        stint.retiredAt === null &&
+        stint.sessionId !== null &&
+        !core.memory.costSeen.has(stint.threadId)
+      ) {
+        core.memory.costUnknown.add(stint.threadId);
+      }
     }
   });
 
