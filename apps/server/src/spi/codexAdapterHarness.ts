@@ -9,7 +9,9 @@
  * The peer answers `thread/start` and `thread/resume` with a captured
  * response (`provider/testFixtures/codexMultiAgentWire.json`) and, after
  * answering each `turn/start`, sends that turn's scripted messages — the
- * notifications and approval requests a turn of a real Codex would send.
+ * notifications and approval requests a turn of a real Codex would send. Once
+ * an approval request is answered it sends `serverRequest/resolved`, naming
+ * the request by its approval or item id as Codex does, or by its own id.
  *
  * @module codexAdapterHarness
  */
@@ -98,21 +100,28 @@ export const makeCodexAdapterHarness = Effect.fn("makeCodexAdapterHarness")(func
       const stdout = yield* Queue.unbounded<Uint8Array>();
       const encoder = new TextEncoder();
       const decoder = new TextDecoder();
-      const peerRequests = new Map<number, string>();
+      /** Each open peer request: its method, and the id `serverRequest/resolved` names it by. */
+      const peerRequests = new Map<
+        number,
+        { readonly method: string; readonly resolves: unknown }
+      >();
       const send = (message: Record<string, unknown>) =>
         Queue.offer(stdout, encoder.encode(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`));
 
       const receive = (message: ReturnType<typeof decodeAdapterLine>) =>
         Effect.gen(function* () {
           if (message.method === undefined) {
-            const method = message.id === undefined ? undefined : peerRequests.get(message.id);
-            if (method === undefined) return;
+            const request = message.id === undefined ? undefined : peerRequests.get(message.id);
+            if (request === undefined) return;
             wire.push({
-              answered: method,
+              answered: request.method,
               ...("result" in message ? { result: message.result } : {}),
               ...("error" in message ? { error: message.error } : {}),
             });
-            return;
+            return yield* send({
+              method: "serverRequest/resolved",
+              params: { threadId: PEER_THREAD_ID, requestId: request.resolves },
+            });
           }
           wire.push({
             method: message.method,
@@ -148,7 +157,10 @@ export const makeCodexAdapterHarness = Effect.fn("makeCodexAdapterHarness")(func
                 } else {
                   const id = nextPeerRequestId;
                   nextPeerRequestId += 1;
-                  peerRequests.set(id, entry.request);
+                  peerRequests.set(id, {
+                    method: entry.request,
+                    resolves: entry.params.approvalId ?? entry.params.itemId ?? id,
+                  });
                   yield* send({ id, method: entry.request, params: entry.params });
                 }
               }
