@@ -268,6 +268,7 @@ function ChatScroll({
   const shownRef = useRef(false);
   const [minHeight, setMinHeight] = useState<number | undefined>(undefined);
   const [above, setAbove] = useState(false);
+  const [below, setBelow] = useState(false);
 
   const settleRef = useRef<() => void>(() => {});
   useLayoutEffect(() => {
@@ -293,6 +294,7 @@ function ChatScroll({
         scroller.scrollTop = scroller.scrollHeight;
       }
       setAbove(scroller.scrollTop > 1);
+      setBelow(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > 1);
       if (live) {
         const height = scroller.getBoundingClientRect().height;
         if (height > tallestRef.current) {
@@ -361,6 +363,7 @@ function ChatScroll({
   const onScroll = (event: UIEvent<HTMLDivElement>) => {
     const scroller = event.currentTarget;
     setAbove(scroller.scrollTop > 1);
+    setBelow(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > 1);
     const atEnd = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 2;
     if (atEnd) followingRef.current = true;
     else if (performance.now() - gestureAtRef.current < 400) followingRef.current = false;
@@ -404,6 +407,14 @@ function ChatScroll({
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-card to-transparent"
+          />
+        ) : null}
+        {/* Read back, the chat fades into the status line under it rather
+            than being cut off against it. */}
+        {below ? (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-card to-transparent"
           />
         ) : null}
       </div>
