@@ -2326,6 +2326,35 @@ describe("a Mate's row says more without words", () => {
     }
   });
 
+  // T6: a run that finishes out of sight pops the face and scales the blue
+  // dot in — once, as it arrives; a menu opened onto an unread Mate shows it
+  // there, still.
+  it("scales a dot in as it arrives while watched, never on the first paint", () => {
+    const tree = (activity: ZeropsAgentActivity) => (
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getActivity={() => activity}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />
+    );
+    const dot = (mounted: ReactTestRenderer) =>
+      mounted.root.find(
+        (node) =>
+          typeof node.type === "string" && node.props["data-zerops-surface"] === "sidebar-mate-dot",
+      );
+    const opened = mount(tree(live({ kind: "done", face: "done", unread: true })));
+    expect(dot(opened).props["data-arrived"]).toBeUndefined();
+
+    const watched = mount(tree(working()));
+    act(() => {
+      watched.update(tree(live({ kind: "done", face: "done", unread: true })));
+    });
+    expect(dot(watched).props["data-tone"]).toBe("unread");
+    expect(dot(watched).props["data-arrived"]).toBe("");
+  });
+
   it("writes the live step's command in mono under the sweep", () => {
     const html = row(working({ liveStep: { words: "Build the app", code: "pnpm build" } }));
     expect(html).toContain('data-run-shimmer=""');
