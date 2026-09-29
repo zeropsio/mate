@@ -2,10 +2,11 @@
  * A change's review: a pull request, read before it is merged (R2–R6).
  *
  * The verdict and the button come from the flow the moment it opens — the flow already knows
- * whether the change merges and how its checks went — and what the flow does not carry is read
- * as it opens (`useZeropsChangeReadout`): its files, how many commits it squashes, and what
- * `main` changed under it; its diff once a file is opened. The run that made it is its Mate's
- * newest answer linking it.
+ * whether the change merges and how its checks went, and carries the change's description — and
+ * what the flow does not carry is read as it opens (`useZeropsChangeReadout`): its files, the
+ * commits it squashes, and what `main` changed under it; its diff once a file is opened. The run
+ * that made it is its Mate's newest answer linking it: what it said stands in for a description
+ * nobody wrote.
  *
  * After Merge the review stays: it says what happened, and where production waits, its button
  * opens the release's review in place.
@@ -36,6 +37,7 @@ import {
   type ReadoutPart,
 } from "~/zerops/useZeropsChangeReadout";
 import { useZeropsChangeRun } from "~/zerops/useZeropsChangeRun";
+import { useGiteaPictureSource, type GiteaPictureSource } from "~/zerops/useGiteaPicture";
 import { useZeropsLandedChange } from "~/zerops/useZeropsLandedChange";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useFixMates } from "~/zerops/fixMates";
@@ -50,18 +52,18 @@ import {
   sizeWords,
   type ReviewKind,
 } from "./ZeropsReview.logic";
+import { ReviewDescription } from "./ReviewDescription";
 import {
   ReviewChecks,
   ReviewFiles,
   ReviewSection,
   ReviewSize,
-  ReviewWords,
   ZeropsReviewSurface,
   type ReviewDiffState,
 } from "./ZeropsReviewSurface";
 
 const KIND: ReviewKind = "change";
-/** How long "What it does" holds its lines for the Mate's conversation to answer. */
+/** How long a change with no description holds the room of its run's words for them. */
 const RUN_WORDS_WAIT_MS = 3_000;
 
 type ChangeTarget = Extract<ReviewTarget, { readonly kind: "change" }>;
@@ -164,6 +166,7 @@ function ChangeReviewData({
   const mates = useZeropsReviewMates(target.groupId);
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
   const [diffWanted, setDiffWanted] = useState(false);
+  const pictures = useGiteaPictureSource(flowValue?.giteaOrigin);
 
   const mate = pull.mateProjectId === undefined ? undefined : mates.get(pull.mateProjectId);
   // Only the Mate that wrote it can push to its branch: the fix goes to it, if it is the
@@ -217,6 +220,7 @@ function ChangeReviewData({
         production: flow.environmentInputs.some((entry) => entry.tier === "production"),
         stage: flow.environmentInputs.some((entry) => entry.tier === "stage"),
       }}
+      giteaOrigin={flowValue?.giteaOrigin}
       live={flow.releases.find((entry) => entry.standing === "live")?.tag}
       mate={
         mate === undefined
@@ -261,6 +265,7 @@ function ChangeReviewData({
       onReviewRelease={() => {
         onReplace({ kind: "release", groupId: target.groupId });
       }}
+      pictures={pictures}
       press={press}
       pull={pull}
       readout={readout}
@@ -284,6 +289,10 @@ export interface ChangeReviewViewProps {
     readonly mainSince: ReadoutPart<ReadonlyArray<GiteaCommit>>;
   };
   readonly run: { readonly words: string | undefined; readonly reading: boolean };
+  /** The account's Gitea, which its description's pictures and links are on. */
+  readonly giteaOrigin: string | undefined;
+  /** Where its description's pictures are read from, as the person. */
+  readonly pictures: GiteaPictureSource | undefined;
   readonly downstream: { readonly production: boolean; readonly stage: boolean };
   /** How many changes wait for production, as the flow last read it. */
   readonly waitingForProduction: number;
@@ -439,10 +448,12 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       titleId={props.titleId}
       verdict={model.verdict}
     >
-      <ReviewWords
+      <ReviewDescription
+        description={pull.description}
+        giteaOrigin={props.giteaOrigin}
         onOpenRun={props.onOpenRun}
-        reading={props.run.reading}
-        words={props.run.words}
+        pictures={props.pictures}
+        run={props.run}
       />
       <ReviewSection
         aside={

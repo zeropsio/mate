@@ -19,8 +19,10 @@
  * Fixtures only. Nothing here ships in the app bundle — `design-change.html`
  * is not `index.html`, and no route imports this module.
  */
-import { StrictMode } from "react";
+import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
+import type { ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
+import * as Stream from "effect/Stream";
 
 import {
   changeRemarks,
@@ -32,6 +34,8 @@ import {
 import { ZeropsChangePane } from "~/components/zerops/ZeropsGroupDetail";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { ZeropsChangeComments } from "~/zerops/useZeropsChangeComments";
+import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
+import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 
 import { SidebarProvider } from "~/components/ui/sidebar";
@@ -354,6 +358,35 @@ function ChangePages() {
   );
 }
 
+/** A description's markdown asks the account what its commands may do: stand-ins that answer nothing. */
+function Standins({ children }: { readonly children: ReactNode }) {
+  const inventory: Inventory = {
+    projects: [],
+    services: new Map(),
+    isLoading: false,
+    error: null,
+    projectRefs: new Map(),
+    authority: new Map(),
+    account: { kind: "authorized" },
+    lost: new Set(),
+  };
+  const data: ZeropsDataContextValue = {
+    runtime: { access: { changes: Stream.empty } } as unknown as ManagedZeropsDataRuntime,
+    signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
+    organizationRef: () => {
+      throw new Error("not in the harness");
+    },
+    projectRef: () => {
+      throw new Error("not in the harness");
+    },
+  };
+  return (
+    <ZeropsDataContext value={data}>
+      <InventoryContext value={inventory}>{children}</InventoryContext>
+    </ZeropsDataContext>
+  );
+}
+
 // The app sets the theme on the document element (`themePalette.ts`), so the harness does the
 // same, in the Zerops palette a fresh install wears.
 const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
@@ -368,7 +401,9 @@ if (host) {
           draws its lockup as a router link; inside a sidebar it draws none,
           so the harness needs no router. */}
       <SidebarProvider className="block">
-        <Harness />
+        <Standins>
+          <Harness />
+        </Standins>
       </SidebarProvider>
     </StrictMode>,
   );

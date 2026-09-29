@@ -23,6 +23,8 @@ import {
 } from "~/components/zerops/review/ZeropsReleaseReview";
 import { ZeropsReviewDialog } from "~/components/zerops/review/ZeropsReviewDialog";
 
+import { HARNESS_GITEA, HARNESS_PICTURES, harnessDescription } from "./reviewHarnessPictures";
+
 const NOW = Date.now();
 const minutesAgo = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
 const noop = () => {};
@@ -249,6 +251,7 @@ function Change({
   return (
     <ChangeReviewView
       downstream={{ production: true, stage: true }}
+      giteaOrigin={HARNESS_GITEA}
       initiallyOpen={open}
       live="v0.1.0"
       mate={value.mateProjectId === undefined ? undefined : NOVA}
@@ -259,6 +262,7 @@ function Change({
       onMerge={noop}
       onOpenRun={noop}
       onReviewRelease={noop}
+      pictures={HARNESS_PICTURES}
       press={press}
       pull={value}
       readout={{
@@ -382,6 +386,26 @@ export const REVIEW_STATES: ReadonlyArray<{
   readonly node: ReactNode;
 }> = [
   { id: "ready", label: "A change, ready", node: <Change open={["src/server/index.ts"]} /> },
+  {
+    id: "description",
+    label: "Its description, two pictures in it",
+    node: <Change over={{ description: harnessDescription({ after: 0 }) }} />,
+  },
+  {
+    id: "description-slow",
+    label: "Its description, its pictures arriving slowly",
+    node: <Change over={{ description: harnessDescription({ after: 2_500 }) }} />,
+  },
+  {
+    id: "description-missing",
+    label: "Its description, a picture that cannot be read",
+    node: <Change over={{ description: harnessDescription({ after: 0, missing: true }) }} />,
+  },
+  {
+    id: "no-words",
+    label: "No description, and the run said nothing of it",
+    node: <Change run={{ words: undefined, reading: false }} />,
+  },
   { id: "reading", label: "Its files being read", node: <Change readout={FILES_UNREAD.reading} /> },
   { id: "unread", label: "Its files unread", node: <Change readout={FILES_UNREAD.failed} /> },
   {
@@ -635,6 +659,7 @@ export function ReviewDialogTry() {
       >
         <ChangeReviewView
           downstream={{ production: true, stage: true }}
+          giteaOrigin={HARNESS_GITEA}
           live="v0.1.0"
           mate={NOVA}
           now={NOW}
@@ -646,8 +671,9 @@ export function ReviewDialogTry() {
           onMerge={noop}
           onOpenRun={noop}
           onReviewRelease={noop}
+          pictures={HARNESS_PICTURES}
           press={IDLE}
-          pull={pull()}
+          pull={pull({ description: harnessDescription({ after: TRY_READ_MS }) })}
           readout={read ? READ : { ...READ, ...FILES_UNREAD.reading }}
           run={RUN}
           titleId="review-try-title"

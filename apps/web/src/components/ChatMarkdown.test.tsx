@@ -61,6 +61,8 @@ vi.mock("~/lib/openPullRequestLink", () => ({
 import ChatMarkdown, {
   canUseMarkdownFileShellActions,
   hasMarkdownFilePrimaryAction,
+  MarkdownPictureContext,
+  type MarkdownPicture,
 } from "./ChatMarkdown";
 
 /** The rendered root: its class list and the reading it declares. */
@@ -492,6 +494,45 @@ describe("ChatMarkdown brand link icons", () => {
     );
     expect(markup).not.toContain("google.com/s2/favicons");
     expect(markup).toContain("<svg");
+  });
+});
+
+describe("ChatMarkdown pictures its host draws", () => {
+  const draw = (picture: MarkdownPicture) => (
+    <i
+      data-alt={picture.alt}
+      data-height={String(picture.height)}
+      data-uri={picture.uri}
+      data-width={String(picture.width)}
+    />
+  );
+
+  it.each([
+    [
+      "a Markdown picture",
+      "![The page](https://git.example.test/attachments/5f1c2a)",
+      '<i data-alt="The page" data-height="undefined" data-uri="https://git.example.test/attachments/5f1c2a" data-width="undefined"></i>',
+    ],
+    [
+      "an HTML picture, with the size it gives",
+      '<img src="https://git.example.test/attachments/5f1c2a" alt="The page" width="640" height="400">',
+      '<i data-alt="The page" data-height="400" data-uri="https://git.example.test/attachments/5f1c2a" data-width="640"></i>',
+    ],
+  ])("hands %s to the host, which draws it", (_case, text, drawn) => {
+    const html = renderToStaticMarkup(
+      <MarkdownPictureContext value={draw}>
+        <ChatMarkdown cwd={undefined} text={text} />
+      </MarkdownPictureContext>,
+    );
+    expect(html).toContain(drawn);
+    expect(html).not.toContain("<img");
+  });
+
+  it("loads a picture itself where no host draws them", () => {
+    const html = renderToStaticMarkup(
+      <ChatMarkdown cwd={undefined} text="![The page](https://pictures.example/page.png)" />,
+    );
+    expect(html).toContain('src="https://pictures.example/page.png"');
   });
 });
 

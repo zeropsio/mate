@@ -233,38 +233,6 @@ export function ReviewSkeleton({ lines }: { readonly lines: number }) {
   );
 }
 
-/** What it does, in the Mate's words, and the way back to the run that said them (R3). */
-export function ReviewWords({
-  words,
-  reading,
-  onOpenRun,
-}: {
-  readonly words: string | undefined;
-  readonly reading: boolean;
-  readonly onOpenRun: (() => void) | undefined;
-}) {
-  if (words === undefined && !reading) return null;
-  return (
-    <ReviewSection title="What it does">
-      {words === undefined ? (
-        <ReviewSkeleton lines={2} />
-      ) : (
-        <p className="rv-words">
-          {words}
-          {onOpenRun === undefined ? null : (
-            <>
-              {" "}
-              <button className="rv-link" onClick={onOpenRun} type="button">
-                The run that made it
-              </button>
-            </>
-          )}
-        </p>
-      )}
-    </ReviewSection>
-  );
-}
-
 /** `+42 −3`, each in its colour. */
 export function ReviewSize({
   additions,

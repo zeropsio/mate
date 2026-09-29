@@ -5272,6 +5272,179 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   width: 62%;
 }
 
+/* The description: the change's own words, drawn as the Mate's other words are. Its pictures
+   fill the column and hold their room from the first frame — their own shape where they give
+   one, a screenshot's otherwise — so nothing under them moves when their bytes arrive. */
+/* Its headings keep to the review's scale: 16 for a heading, 14 under it. */
+.rv-desc .chat-markdown :is(h1, h2) {
+  margin: 20px 0 6px;
+  font-size: 16px;
+  line-height: 24px;
+}
+.rv-desc .chat-markdown h3 {
+  margin: 16px 0 4px;
+  font-size: 14px;
+  line-height: 22px;
+}
+.rv-desc .chat-markdown > :first-child {
+  margin-top: 0;
+}
+.rv-pic {
+  position: relative;
+  display: block;
+  width: 100%;
+  margin: 12px 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--foreground) 4%, transparent);
+}
+/* The hairline sits over the picture, so a screenshot's white edge still meets the page. */
+.rv-pic::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
+  content: "";
+  pointer-events: none;
+}
+.rv-pic-open {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: zoom-in;
+}
+.rv-pic-open:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.rv-pic img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: scale-down;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .rv-pic[data-fresh] img {
+    animation: rv-pic-in 180ms var(--ease-out-strong) both;
+  }
+}
+@keyframes rv-pic-in {
+  from {
+    opacity: 0;
+  }
+}
+.rv-pic-missing {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  font-size: 13px;
+  line-height: 18px;
+  text-align: center;
+  color: var(--muted-foreground);
+}
+.rv-pic-missing svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+/* A picture opened large, over the review: the picture, its words, a way through the others. */
+.rv-viewer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: color-mix(in oklab, var(--color-black) 78%, transparent);
+  transition: opacity 180ms var(--ease-out-strong);
+}
+.rv-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 72px;
+}
+.rv-viewer-popup {
+  display: flex;
+  max-width: 100%;
+  max-height: 100%;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  outline: none;
+  transition: opacity 180ms var(--ease-out-strong);
+}
+.rv-viewer-backdrop[data-starting-style],
+.rv-viewer-backdrop[data-ending-style],
+.rv-viewer-popup[data-starting-style],
+.rv-viewer-popup[data-ending-style] {
+  opacity: 0;
+}
+.rv-viewer-popup img {
+  min-height: 0;
+  max-width: 100%;
+  max-height: calc(100dvh - 160px);
+  border-radius: 12px;
+  object-fit: contain;
+  box-shadow: 0 30px 80px -30px color-mix(in oklab, var(--color-black) 60%, transparent);
+}
+.rv-viewer-words {
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 18px;
+  color: color-mix(in oklab, var(--color-white) 86%, transparent);
+}
+.rv-viewer-words span {
+  color: color-mix(in oklab, var(--color-white) 56%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+.rv-viewer-x,
+.rv-viewer-step {
+  position: fixed;
+  display: flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  color: color-mix(in oklab, var(--color-white) 86%, transparent);
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+.rv-viewer-x:hover,
+.rv-viewer-step:hover {
+  background: color-mix(in oklab, var(--color-white) 12%, transparent);
+}
+.rv-viewer-x:focus-visible,
+.rv-viewer-step:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.rv-viewer-x {
+  top: 16px;
+  right: 16px;
+}
+.rv-viewer-step {
+  top: 50%;
+  translate: 0 -50%;
+}
+.rv-viewer-step[data-side="before"] {
+  left: 16px;
+}
+.rv-viewer-step[data-side="after"] {
+  right: 16px;
+}
+.rv-viewer-x svg,
+.rv-viewer-step svg {
+  width: 20px;
+  height: 20px;
+}
+
 /* The files, each a 36 px row; a file's diff opens in place under it, its long lines wrapped. */
 .rv-files {
   overflow: hidden;
