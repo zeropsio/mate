@@ -17,6 +17,12 @@
  * copy; a storage event from another tab is a `reload`. Storage that refuses reads or writes
  * leaves the ledger in this tab's memory.
  */
+import {
+  MATE_SHAPE_IDS,
+  MATE_TINT_IDS,
+  type MateShapeId,
+  type MateTintId,
+} from "@t3tools/shared/brand";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
 export const BIRTHS_KEY = "zerops-mate.births.v1";
@@ -25,6 +31,8 @@ export type BirthStep = "tags" | "registry" | "harden" | "health";
 
 const STEPS: ReadonlySet<string> = new Set<BirthStep>(["tags", "registry", "harden", "health"]);
 const KINDS: ReadonlySet<string> = new Set<RoleProjectKind>(["mate", "stage", "production"]);
+const TINTS: ReadonlySet<string> = new Set<string>(MATE_TINT_IDS);
+const SHAPES: ReadonlySet<string> = new Set<string>(MATE_SHAPE_IDS);
 
 /** The group writes a birth owes, as the creation that started it knew them. */
 export interface BirthRegistration {
@@ -50,6 +58,14 @@ export interface BirthPlacement {
   readonly kind: RoleProjectKind;
   /** What the person called the environment. */
   readonly displayName: string;
+  /** What a Mate is called — its name, not its environment's — drawn while it comes up. */
+  readonly botName?: string;
+  /**
+   * The face its person picked for a Mate (the New Mate dialog), worn asleep while it comes up —
+   * before the listing holds its project and its `mate:face:` tag can be read. Absent for a stage
+   * or a production, and for a face this build cannot read.
+   */
+  readonly face?: { readonly tint: MateTintId; readonly shape: MateShapeId };
 }
 
 export interface BirthRecord {
@@ -139,6 +155,15 @@ function parseRegistration(value: unknown): BirthRegistration | null | undefined
   return { giteaProjectId, giteaOrigin, groupId, kind: kind as RoleProjectKind, displayName };
 }
 
+/** A placement's face, where this build knows both its tint and its shape. */
+function parseFace(value: unknown): BirthPlacement["face"] {
+  if (!isObject(value)) return undefined;
+  const { tint, shape } = value;
+  if (typeof tint !== "string" || !TINTS.has(tint)) return undefined;
+  if (typeof shape !== "string" || !SHAPES.has(shape)) return undefined;
+  return { tint: tint as MateTintId, shape: shape as MateShapeId };
+}
+
 function parsePlacement(value: unknown): BirthPlacement | null | undefined {
   // A record stored before births were placed names none: it is placed nowhere.
   if (value === null || value === undefined) return null;
@@ -153,7 +178,17 @@ function parsePlacement(value: unknown): BirthPlacement | null | undefined {
   ) {
     return undefined;
   }
-  return { groupId, groupName, kind: kind as RoleProjectKind, displayName };
+  // A face or a name it cannot read is not drawn: the record stands without it.
+  const face = parseFace(value.face);
+  const botName = nonEmpty(value.botName) ? value.botName : undefined;
+  return {
+    groupId,
+    groupName,
+    kind: kind as RoleProjectKind,
+    displayName,
+    ...(botName === undefined ? {} : { botName }),
+    ...(face === undefined ? {} : { face }),
+  };
 }
 
 function parseRecord(value: unknown): BirthRecord | undefined {

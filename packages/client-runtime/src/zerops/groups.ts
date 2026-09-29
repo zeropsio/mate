@@ -415,12 +415,14 @@ export interface ZeropsPlacedBirth {
 export interface ZeropsGroupPendingMember {
   readonly projectId: string;
   readonly kind: RoleProjectKind;
-  /** What the person called the environment. */
+  /** A Mate's name, as it will be listed; anything else's, what the person called it. */
   readonly name: string;
   /** When the platform accepted the creation, wall ms. */
   readonly startedAt: number;
   readonly step: BirthStep;
   readonly overdue: boolean;
+  /** The face its person picked for a Mate, worn asleep until the listing holds it. */
+  readonly face?: ZeropsMateFace | undefined;
 }
 
 export interface ZeropsGroup {
@@ -628,10 +630,11 @@ export function deriveZeropsGroups(
       pending: coming.map((birth): ZeropsGroupPendingMember => ({
         projectId: birth.projectId,
         kind: birth.placement.kind,
-        name: birth.placement.displayName,
+        name: birth.placement.botName ?? birth.placement.displayName,
         startedAt: birth.startedAt,
         step: birth.step,
         overdue: birth.overdue,
+        ...(birth.placement.face === undefined ? {} : { face: birth.placement.face }),
       })),
       production: production.length === 1 ? production[0] : undefined,
     } satisfies ZeropsGroup;

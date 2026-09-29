@@ -111,6 +111,92 @@ describe("the birth store's records", () => {
     });
   });
 
+  // The face its person picked in the New Mate dialog: the Mate wears it asleep in its group
+  // while it comes up, before the listing holds the project and its tag can be read.
+  it.each([
+    {
+      case: "a picked face",
+      stored: { tint: "coral", shape: "gem" },
+      read: { tint: "coral", shape: "gem" },
+    },
+    { case: "no face (a stage, an older build)", stored: undefined, read: undefined },
+    {
+      case: "a tint this build does not know",
+      stored: { tint: "teal", shape: "gem" },
+      read: undefined,
+    },
+    {
+      case: "a shape this build does not know",
+      stored: { tint: "coral", shape: "star" },
+      read: undefined,
+    },
+  ])("keeps $case on its placement", ({ stored, read }) => {
+    const storage = memoryStorage();
+    const placement = { ...mate.placement!, ...(stored === undefined ? {} : { face: stored }) };
+    storage.setItem(
+      BIRTHS_KEY,
+      JSON.stringify({
+        births: [
+          {
+            projectId: "project-1",
+            organizationId: "org-1",
+            startedAt: STARTED_AT,
+            step: "tags",
+            overdue: false,
+            registration: null,
+            container: true,
+            serviceId: null,
+            origin: null,
+            placement,
+          },
+        ],
+      }),
+    );
+    const born = makeBirthStore({ storage, now: () => STARTED_AT }).birth("project-1");
+    // The record stands whatever its face says: a face it cannot read is simply not worn.
+    expect(born?.placement).toEqual({
+      ...mate.placement,
+      ...(read === undefined ? {} : { face: read }),
+    });
+  });
+
+  it.each([
+    { case: "a Mate's name", stored: "Quinn", read: "Quinn" },
+    { case: "none (a stage, an older build)", stored: undefined, read: undefined },
+    { case: "a blank one", stored: "", read: undefined },
+  ])("keeps $case on its placement", ({ stored, read }) => {
+    const storage = memoryStorage();
+    const placement = { ...mate.placement!, ...(stored === undefined ? {} : { botName: stored }) };
+    storage.setItem(
+      BIRTHS_KEY,
+      JSON.stringify({
+        births: [
+          {
+            projectId: "project-1",
+            organizationId: "org-1",
+            startedAt: STARTED_AT,
+            step: "tags",
+            overdue: false,
+            registration: null,
+            container: true,
+            serviceId: null,
+            origin: null,
+            placement,
+          },
+        ],
+      }),
+    );
+    const born = makeBirthStore({ storage, now: () => STARTED_AT }).birth("project-1");
+    expect(born?.placement?.botName).toBe(read);
+  });
+
+  it("carries the face a creation began with into the record", () => {
+    const store = makeBirthStore({ storage: memoryStorage(), now: () => STARTED_AT });
+    const face = { tint: "violet", shape: "clover" } as const;
+    store.begin({ ...mate, placement: { ...mate.placement!, face } });
+    expect(store.birth("project-1")?.placement?.face).toEqual(face);
+  });
+
   it("a birth begun again keeps the place it already had", () => {
     const store = makeBirthStore({ storage: memoryStorage(), now: () => STARTED_AT });
     store.begin(mate);

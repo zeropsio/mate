@@ -715,6 +715,31 @@ describe("deriveZeropsGroups — creations under way", () => {
     ]);
   });
 
+  it("names a pending Mate as the Mate it will be, and anything else as its environment", () => {
+    const [group] = deriveZeropsGroups([], {
+      order: "name",
+      births: [
+        birth("p-quinn", "aaa", 1, { displayName: "Todo - Quinn", botName: "Quinn" }),
+        birth("p-stage", "aaa", 2, { kind: "stage", displayName: "Todo - stage" }),
+      ],
+    }).groups;
+    expect(group?.pending.map((entry) => entry.name)).toEqual(["Quinn", "Todo - stage"]);
+  });
+
+  it("wears the face its person picked while it is pending, and none it was not given", () => {
+    const [group] = deriveZeropsGroups([], {
+      order: "name",
+      births: [
+        birth("p-quinn", "aaa", 1, { face: { tint: "coral", shape: "gem" } }),
+        birth("p-stage", "aaa", 2, { kind: "stage" }),
+      ],
+    }).groups;
+    expect(group?.pending.map((entry) => entry.face)).toEqual([
+      { tint: "coral", shape: "gem" },
+      undefined,
+    ]);
+  });
+
   it.each([
     { case: "the store's name first", names: { aaa: "Stored" }, tags: [], expected: "Stored" },
     { case: "then the members' label", names: {}, tags: ["mate:name:Label"], expected: "Label" },

@@ -58,6 +58,7 @@ import {
 } from "./flow/deployment.ts";
 import { pullRequestBlocked, type PullRequestBlocked } from "./gitTab.ts";
 import type { GroupEnvironmentTier, MissingEnvironmentRow } from "./groupEnvironments.ts";
+import type { ZeropsMateFace } from "./groups.ts";
 import type { DeployedVersion, EnvironmentRow } from "./groupRows.ts";
 import type { Shown } from "./knowledge/known.ts";
 import {
@@ -91,6 +92,8 @@ export interface GroupFlowComing {
   readonly step: BirthStep;
   /** The step outlasted its cap: the words say so. */
   readonly overdue: boolean;
+  /** The face its person picked for a Mate, worn asleep while it comes up. */
+  readonly face?: ZeropsMateFace | undefined;
 }
 
 /** A creation under way in the group, as its birth knows it (`ZeropsGroupPendingMember`). */
@@ -480,7 +483,11 @@ export function groupFlow(input: GroupFlowInput): GroupFlow {
       preview: undefined,
       waiting: false,
       talked: false,
-      coming: { step: entry.step, overdue: entry.overdue },
+      coming: {
+        step: entry.step,
+        overdue: entry.overdue,
+        ...(entry.face === undefined ? {} : { face: entry.face }),
+      },
     }));
   return {
     groupId: input.groupId,
