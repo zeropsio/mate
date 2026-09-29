@@ -447,9 +447,10 @@ function QuestionSignIn({
 }
 
 /**
- * Below the stand-up's headline, each in a layer of its own: the sign-in rows (the headline
- * already says why) — held once the sign-in is known, so a sign-in landing fades them where they
- * stand — and the sign-in still being read.
+ * Below the stand-up's headline, each in a layer of its own: its Authorize buttons (the headline
+ * already says why), bare — the sign-in rows' card drew a white bar behind them — held once the
+ * sign-in is known, so a sign-in landing fades them where they stand; and the sign-in still being
+ * read.
  */
 function StandUpSlot({
   phase,
@@ -467,7 +468,7 @@ function StandUpSlot({
       {signIn === null ? null : (
         <StandUpLayer shown={rows}>
           <section className="w-full" data-zerops-surface="mate-sign-in">
-            <FlatCard className="overflow-hidden">{signIn}</FlatCard>
+            {signIn}
           </section>
         </StandUpLayer>
       )}
