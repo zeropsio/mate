@@ -2738,13 +2738,22 @@ function easeFeedHeight(feed: HTMLElement, from: number): void {
  * start — the strong ease-out threw a fifth of it in the first frame.
  */
 const SETTLE_FOLD_MS = 360;
-const SETTLE_FOLD_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
+/** Frames a fold waits for the list to lay out what the settle brought (`foldAway`). */
+const SETTLE_FOLD_WAIT_FRAMES = 3;
 
 /**
  * Folds the work over a run's line shut: from its height, less `shift` — how
  * much higher the line stands without its hairline and room, which the fold
  * starts by keeping — to nothing, its newest lines the last to go, fading as
- * it closes. The line keeps its place; `done` once it is shut.
+ * it closes; `done` once it is shut.
+ *
+ * In a conversation that follows its end, the line keeps its place. The list
+ * moves its rows a frame after a row changes height, so the line rode up by
+ * each frame's step and back down by the last one's (±45 px on a real run,
+ * 2026-09-29). Each step is taken once the list has moved the rows for the
+ * last one, and the card's row is carried as far as this step takes, for the
+ * frame until the list moves it; whatever else moves the list — the answer
+ * arriving as the run settles — is the list's to do.
  */
 function foldAway(above: HTMLElement, shift: number, done: () => void): () => void {
   const from = above.getBoundingClientRect().height + shift;
@@ -2752,18 +2761,94 @@ function foldAway(above: HTMLElement, shift: number, done: () => void): () => vo
     done();
     return () => undefined;
   }
-  const animation = above.animate(
-    [
-      { height: `${from}px`, opacity: 1 },
-      { opacity: 0, offset: 0.6 },
-      { height: "0px", opacity: 0 },
-    ],
-    { duration: SETTLE_FOLD_MS, easing: SETTLE_FOLD_EASING, fill: "forwards" },
-  );
-  animation.onfinish = done;
-  return () => {
-    animation.onfinish = null;
-    animation.cancel();
+  const row = rowFollowingTheEnd(above);
+  let start: number | null = null;
+  let frame = 0;
+  let height = from;
+  let over = false;
+  // The settle's own rows (the answer done, the result) land in the list
+  // first: it lays those out at once, and would this fold's first steps too.
+  let settling = row === null ? 0 : SETTLE_FOLD_WAIT_FRAMES;
+  const stop = () => {
+    over = true;
+    cancelAnimationFrame(frame);
+    observer?.disconnect();
+    if (row !== null) row.style.translate = "";
+  };
+  const step = (now: number) => {
+    frame = 0;
+    if (over) return;
+    if (settling > 0) {
+      settling -= 1;
+      frame = requestAnimationFrame(step);
+      return;
+    }
+    start ??= now;
+    const t = Math.min(1, (now - start) / SETTLE_FOLD_MS);
+    const shut = settleFoldEase(t);
+    const next = from * (1 - shut);
+    // What this step takes, which the list will move the rows for a frame
+    // from now: the card's row is carried that far until it does.
+    const taken = height - next;
+    height = next;
+    above.style.height = `${next}px`;
+    above.style.opacity = String(Math.max(0, 1 - shut / 0.6));
+    if (row !== null) row.style.translate = taken >= 1 / 64 ? `0 ${taken}px` : "";
+    if (t < 1 || taken >= 1 / 64) {
+      // The next step waits on the list's hearing this one (`observer`); a
+      // step too small to change the height has nothing to wait on.
+      if (observer === null || taken < 1 / 64) frame = requestAnimationFrame(step);
+      return;
+    }
+    stop();
+    done();
+  };
+  // Made after the list's own, it hears the row after the list does: the
+  // step it asks for runs once the list has moved the rows for the last one.
+  const observer =
+    row === null
+      ? null
+      : new ResizeObserver(() => {
+          if (frame === 0 && !over) frame = requestAnimationFrame(step);
+        });
+  observer?.observe(above);
+  above.style.height = `${from}px`;
+  frame = requestAnimationFrame(step);
+  return stop;
+}
+
+/**
+ * The card row a fold takes from, in a conversation that follows its end
+ * (`data-timeline-follows-end`); else null. Read from the timeline, not the
+ * scroll: the answer arriving as the run settles puts the scroll off its end
+ * until the list catches up.
+ */
+function rowFollowingTheEnd(above: HTMLElement): HTMLElement | null {
+  const row = above.closest<HTMLElement>("[data-card-slice]");
+  return row?.closest("[data-timeline-follows-end]") ? row : null;
+}
+
+/** The drawer's curve, gentler at the start than the strong ease-out, stepped by hand. */
+const settleFoldEase = cubicBezier(0.32, 0.72, 0, 1);
+
+/** A CSS cubic-bezier timing function, by bisection. */
+function cubicBezier(x1: number, y1: number, x2: number, y2: number): (x: number) => number {
+  const at = (p1: number, p2: number, t: number) =>
+    3 * p1 * (1 - t) * (1 - t) * t + 3 * p2 * (1 - t) * t * t + t * t * t;
+  return (x) => {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    let low = 0;
+    let high = 1;
+    let t = x;
+    for (let round = 0; round < 30; round += 1) {
+      const reached = at(x1, x2, t);
+      if (Math.abs(reached - x) < 1e-6) break;
+      if (reached < x) low = t;
+      else high = t;
+      t = (low + high) / 2;
+    }
+    return at(y1, y2, t);
   };
 }
 
