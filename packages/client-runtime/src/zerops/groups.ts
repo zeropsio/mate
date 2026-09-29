@@ -224,23 +224,38 @@ export interface ZeropsMateFace {
 export interface ZeropsMateFaceTag {
   readonly tint: MateTintId | undefined;
   readonly shape: MateShapeId | undefined;
+  /**
+   * The Mate wore its name's tint before this face was picked for it, and its
+   * name keeps its place among the names the tints are shared out over
+   * (`mate:face:<tint>:<shape>:named`, `assignCandidateMateTints`): so picking
+   * it a face recoloured nobody else. Absent on a face picked at its birth.
+   */
+  readonly named?: true;
 }
 
 const TINT_VALUES: ReadonlySet<string> = new Set(MATE_TINT_IDS);
 const SHAPE_VALUES: ReadonlySet<string> = new Set(MATE_SHAPE_IDS);
 
+/** The part after the shape saying the Mate's name keeps its place (`ZeropsMateFaceTag.named`). */
+const NAMED_FACE_PART = "named";
+
 function readFaceTag(value: string): ZeropsMateFaceTag | undefined {
-  // Parts past the shape are a newer client's; the two this one knows still read.
-  const [tint, shape] = value.split(":");
+  // Parts past these three are a newer client's; the ones this one knows still read.
+  const [tint, shape, named] = value.split(":");
   const face = {
     tint: tint !== undefined && TINT_VALUES.has(tint) ? (tint as MateTintId) : undefined,
     shape: shape !== undefined && SHAPE_VALUES.has(shape) ? (shape as MateShapeId) : undefined,
   };
-  return face.tint === undefined && face.shape === undefined ? undefined : face;
+  if (face.tint === undefined && face.shape === undefined) return undefined;
+  return named === NAMED_FACE_PART ? { ...face, named: true } : face;
 }
 
-export function formatFaceTag(face: ZeropsMateFace): string {
-  return `${FACE_TAG_PREFIX}${face.tint}:${face.shape}`;
+export function formatFaceTag(
+  face: ZeropsMateFace,
+  options: { readonly named?: boolean } = {},
+): string {
+  const tag = `${FACE_TAG_PREFIX}${face.tint}:${face.shape}`;
+  return options.named === true ? `${tag}:${NAMED_FACE_PART}` : tag;
 }
 
 /**
@@ -322,9 +337,27 @@ export function withZeropsBotTag(
 export function withZeropsFaceTag(
   tagList: ReadonlyArray<string> | undefined,
   face: ZeropsMateFace,
+  options: { readonly named?: boolean } = {},
 ): ReadonlyArray<string> {
   const kept = (tagList ?? []).filter((tag) => !tag.startsWith(FACE_TAG_PREFIX));
-  return [...kept, formatFaceTag(face)];
+  return [...kept, formatFaceTag(face, options)];
+}
+
+/**
+ * Changes the face of a Mate already born, touching nothing else. A Mate
+ * that wore its name's tint — no face this client reads a tint from, or one
+ * changed before — keeps its name's place among the names the tints are
+ * shared out over (`named`), so no other Mate changes colour; one whose face
+ * was picked at its birth never had a place there, and takes none now.
+ */
+export function withZeropsChangedFace(
+  tagList: ReadonlyArray<string> | undefined,
+  face: ZeropsMateFace,
+): ReadonlyArray<string> {
+  const worn = readZeropsGroupTags(tagList).face;
+  return withZeropsFaceTag(tagList, face, {
+    named: worn?.tint === undefined || worn.named === true,
+  });
 }
 
 /**

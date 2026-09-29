@@ -10,6 +10,7 @@ import {
   generateZeropsGroupId,
   readZeropsGroupTags,
   withZeropsBotTag,
+  withZeropsChangedFace,
   withZeropsFaceTag,
   withZeropsGroupTags,
   withZeropsMateTag,
@@ -920,6 +921,74 @@ describe("a Mate's face on the tag", () => {
     ]);
     expect(tags).toContain("mate:face:violet:flower");
     expect(readZeropsGroupTags(tags).face).toEqual({ tint: "violet", shape: "flower" });
+  });
+});
+
+/**
+ * A face changed after the Mate's birth. A Mate that wore its name's tint —
+ * no face picked, or one picked since — keeps its name among the names the
+ * tints are shared out over (`mate:face:<tint>:<shape>:named`), so nobody else
+ * changes colour; a Mate whose face was picked at its birth never had a place
+ * there and takes none now.
+ */
+describe("a Mate's face changed after its birth", () => {
+  const SKY_SEAL = { tint: "sky", shape: "seal" } as const;
+
+  it.each([
+    {
+      case: "a Mate that wore its name's tint keeps its name's place",
+      before: ["mate", "mate:bot:Ada"],
+      tag: "mate:face:sky:seal:named",
+    },
+    {
+      case: "a Mate whose face was picked at its birth takes no place",
+      before: ["mate", "mate:bot:Ada", "mate:face:coral:gem"],
+      tag: "mate:face:sky:seal",
+    },
+    {
+      case: "a Mate changed before keeps the place it kept",
+      before: ["mate", "mate:bot:Ada", "mate:face:coral:gem:named"],
+      tag: "mate:face:sky:seal:named",
+    },
+    {
+      case: "a Mate whose face this client reads no tint from wore its name's",
+      before: ["mate", "mate:bot:Ada", "mate:face:teal:gem"],
+      tag: "mate:face:sky:seal:named",
+    },
+  ])("$case", ({ before, tag }) => {
+    const after = withZeropsChangedFace(before, SKY_SEAL);
+    expect(after.filter((entry) => entry.startsWith("mate:face:"))).toEqual([tag]);
+    expect(readZeropsGroupTags(after).face).toMatchObject(SKY_SEAL);
+  });
+
+  it.each([
+    { tagList: ["mate:face:sky:seal:named"], face: { ...SKY_SEAL, named: true } },
+    { tagList: ["mate:face:sky:seal"], face: SKY_SEAL },
+    { tagList: ["mate:face:sky:seal:wink"], face: SKY_SEAL },
+    { tagList: ["mate:face:teal:blob:named"], face: undefined },
+  ] as const)("reads $tagList", ({ tagList, face }) => {
+    expect(readZeropsGroupTags(tagList).face).toStrictEqual(face);
+  });
+
+  it("keeps every other tag, a person's own and every other kind of ours", () => {
+    const before = [
+      "billing:team-a",
+      "mate:g:aaa",
+      "mate:role:dev",
+      "mate:name:Acme Docs",
+      "mate:bot:Ada",
+      "mate",
+      "mate:standup:user-1",
+      "mate:signer:claude:user-1",
+      "mate:face:coral:gem",
+    ];
+    const after = withZeropsChangedFace(before, SKY_SEAL);
+    expect(after).toEqual([...before.slice(0, -1), "mate:face:sky:seal"]);
+  });
+
+  it("changes nothing when it is the face the Mate already wears", () => {
+    const once = withZeropsChangedFace(["mate", "mate:bot:Ada"], SKY_SEAL);
+    expect(withZeropsChangedFace(once, SKY_SEAL)).toEqual(once);
   });
 });
 

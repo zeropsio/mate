@@ -89,6 +89,7 @@ export {
   readZeropsGroupTags,
   withZeropsBotTag,
   ZEROPS_BOT_NAME_MAX_LENGTH,
+  withZeropsChangedFace,
   withZeropsFaceTag,
   withZeropsGroupTags,
   withZeropsMateTag,
