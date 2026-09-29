@@ -33,7 +33,7 @@ import {
   type GroupFlowStop,
 } from "@t3tools/client-runtime/zerops";
 
-import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
+import { deployBuilding, type Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
 import type { FixProblem } from "~/zerops/fixRequest";
@@ -314,8 +314,9 @@ export function productionChip(input: {
 export function buildingOf(
   deployment: Shown<Deployment> | undefined,
 ): { readonly from: string | undefined; readonly to: string | undefined } | undefined {
-  if (deployment?.state !== "known" || deployment.value.kind !== "deploying") return undefined;
-  const { previous, version } = deployment.value;
+  const building = deployBuilding(deployment);
+  if (building === undefined) return undefined;
+  const { previous, version } = building;
   return {
     from: previous?.kind === "running" ? previous.version.label : undefined,
     to: version.label,

@@ -73,6 +73,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { deployActivatedAt } from "@t3tools/client-runtime/zerops/flow";
 import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
@@ -954,11 +955,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     const down = chipServing.kind === "down" ? chipServing.services : [];
     const failure = gitea.kind === "answered" ? gitea.failure : undefined;
     const stopDeployedAt = (projectId: string) => {
-      const deployment = deployments?.get(projectId);
-      const activated =
-        deployment?.state === "known" && deployment.value.kind === "running"
-          ? deployment.value.activatedAt
-          : null;
+      const activated = deployActivatedAt(deployments?.get(projectId));
       return activated ?? stopItem(projectId)?.services?.deployedAt;
     };
     const stopName = (stop: GroupFlowStop) =>
