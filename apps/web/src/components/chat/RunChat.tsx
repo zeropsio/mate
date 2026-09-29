@@ -217,8 +217,8 @@ export const FOLD_FADE_MASK = `linear-gradient(to bottom, black calc(100% - ${FO
 /** A thought's surface: the Mate's own fill, halved. */
 const THOUGHT_FILL = "bg-foreground/4";
 
-/** What the Mate did: the card's white inside a hairline drawn outside the box, so it takes no room. */
-const CALL_SURFACE = "bg-card ring-1 ring-foreground/12";
+/** What the Mate did: a hairline drawn outside the box, so it takes no room — outlined on the tray, never filled. */
+const CALL_SURFACE = "ring-1 ring-foreground/12";
 
 // ---------------------------------------------------------------------------
 // The chat's scroll
@@ -430,7 +430,7 @@ function ChatScroll({
         <div
           aria-hidden="true"
           className={cn(
-            "pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-card to-transparent transition-opacity duration-200 ease-out",
+            "pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-run-tray to-transparent transition-opacity duration-200 ease-out",
             above ? "opacity-100" : "opacity-0",
           )}
           data-chat-fade="above"
@@ -440,7 +440,7 @@ function ChatScroll({
         <div
           aria-hidden="true"
           className={cn(
-            "pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-card to-transparent transition-opacity duration-200 ease-out",
+            "pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-run-tray to-transparent transition-opacity duration-200 ease-out",
             below ? "opacity-100" : "opacity-0",
           )}
           data-chat-fade="below"
@@ -481,8 +481,8 @@ const BUBBLE_TONE: Record<BubbleTone, string> = {
   speech: `${MATE_BUBBLE_FILL} text-foreground`,
   // Talking to itself: the same bubble, half the fill, the words italic and faint.
   thought: `${THOUGHT_FILL} text-muted-foreground`,
-  // A thing it did: the card's own white inside a hairline, never a fill, so a
-  // call never reads as something said.
+  // A thing it did: a hairline on the tray, never a fill, so a call never
+  // reads as something said.
   tool: `${CALL_SURFACE} text-foreground`,
   failed: "bg-status-failed-surface text-foreground ring-1 ring-status-failed/30",
   attention: "bg-status-attention-surface text-status-attention-text",

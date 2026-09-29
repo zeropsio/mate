@@ -2674,8 +2674,8 @@ code {
   inset-inline: -1px;
   bottom: -1.5px;
   height: 3px;
-  border-inline: 1px solid color-mix(in oklab, var(--contrast-border) 70%, transparent);
-  background: var(--card);
+  border-inline: 1px solid var(--run-tray-ring);
+  background: var(--run-tray);
   pointer-events: none;
 }
 
@@ -2949,6 +2949,48 @@ code {
 /* ==== end of the menu's projects and production ==== */
 
 /* ==== Pass 16 · the run's card ==== */
+
+/* The run's card is a quiet tray, not a white slab: one small step above the
+   canvas with a hairline edge, so the machinery sits under the words instead
+   of being the brightest thing on screen — the composer keeps the only white
+   (the plan's K11 and S5). */
+:root {
+  --run-tray: oklch(0.968 0.004 255.5);
+  @variant dark {
+    --run-tray: oklch(0.19 0.007 180);
+  }
+}
+
+@theme inline {
+  --color-run-tray: var(--run-tray);
+}
+
+.run-tray {
+  --run-tray-ring: color-mix(in oklab, var(--foreground) 7%, transparent);
+  background: var(--run-tray);
+  border-color: var(--run-tray-ring);
+  border-style: solid;
+  border-width: 0 1px;
+}
+
+.run-tray-top {
+  border-top-width: 1px;
+  border-top-left-radius: 1.5rem;
+  border-top-right-radius: 1.5rem;
+  padding-top: 0.5rem;
+  padding-inline: 1rem;
+}
+
+.run-tray-middle {
+  padding-inline: 1rem;
+}
+
+.run-tray-bottom {
+  height: 1rem;
+  border-bottom-width: 1px;
+  border-bottom-left-radius: 1.5rem;
+  border-bottom-right-radius: 1.5rem;
+}
 
 /* ==== end of the run's card ==== */
 

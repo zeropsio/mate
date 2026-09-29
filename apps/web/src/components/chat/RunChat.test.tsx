@@ -241,7 +241,9 @@ describe("RunChat", () => {
     expect(card.split(" ")).toEqual(expect.arrayContaining(["w-full", "rounded-2xl"]));
     expect(classes(said?.tag)).toContain("bg-foreground/8");
     expect(classes(thought_?.tag)).toContain("bg-foreground/4");
-    expect(card).toContain("bg-card ring-1 ring-foreground/12");
+    // Outlined on the tray, never filled: the composer keeps the only white.
+    expect(card).toContain("ring-1 ring-foreground/12");
+    expect(card).not.toContain("bg-card");
     // Each mark stands in the Mate's column, out of its bubble.
     const column = (icon: string) =>
       new RegExp(
