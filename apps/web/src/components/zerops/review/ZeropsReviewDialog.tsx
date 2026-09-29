@@ -37,6 +37,16 @@ function isSafe(primary: HTMLButtonElement): boolean {
   return primary.dataset.safe === "true" && !primary.disabled;
 }
 
+/** A field somebody types into: its keys are its own, ⌘↵ included. */
+export function isField(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.isContentEditable ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLInputElement
+  );
+}
+
 export function ZeropsReviewDialog({
   open,
   onOpenChange,
@@ -111,7 +121,13 @@ export function ZeropsReviewDialog({
     if (primary === null) return;
     if (
       !pressesPrimary(
-        { key: event.key, metaKey: event.metaKey, ctrlKey: event.ctrlKey, repeat: event.repeat },
+        {
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          repeat: event.repeat,
+          inField: isField(event.target),
+        },
         { safe: primary.dataset.safe === "true", enabled: !primary.disabled },
       )
     ) {
