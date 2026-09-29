@@ -519,9 +519,9 @@ describe("agentActivityErrorLine", () => {
   }>([
     {
       name: "a stopped Mate says the error's first line",
-      lastError: "Build failed: tsc found 3 errors\n  at src/net/session.ts",
+      lastError: "The type check found 2 errors\n  at src/gallery/grid.ts",
       kind: "failed",
-      line: "Build failed: tsc found 3 errors",
+      line: "The type check found 2 errors",
     },
     {
       name: "blank leading lines are skipped",
@@ -531,7 +531,7 @@ describe("agentActivityErrorLine", () => {
     },
     {
       name: "a Mate that is not stopped says none, whatever its session kept",
-      lastError: "Build failed",
+      lastError: "The type check failed",
       kind: "idle",
       line: undefined,
     },
@@ -551,10 +551,10 @@ const building: ThreadLiveStep = {
       activityKind: "tool.updated",
       itemType: "command_execution",
       title: "Command run",
-      detail: "Bash: pnpm build",
+      detail: "Bash: npm run compile",
       toolName: "Bash",
-      command: "pnpm build",
-      input: { description: "Build the app" },
+      command: "npm run compile",
+      input: { description: "Compile the gallery" },
       startedAt: since,
     },
   ],
@@ -584,7 +584,7 @@ describe("the row's live step", () => {
     {
       name: "a working Mate says the step its card's now line says",
       thread: shell({ ...RUNNING, liveStep: building }),
-      liveStep: { words: "Build the app", code: "pnpm build" },
+      liveStep: { words: "Compile the gallery", code: "npm run compile" },
     },
     {
       name: "between steps it thinks",

@@ -99,7 +99,7 @@ describe("a remembered row", () => {
       row: {
         ...WORKING,
         snippet: undefined,
-        liveStep: { words: "Build the app", code: "pnpm build" },
+        liveStep: { words: "Compile the gallery", code: "npm run compile" },
       },
       holds: true,
     },
@@ -292,8 +292,8 @@ describe("the memory in this browser", () => {
   // A memory written before crews were kept reads with none, rather than
   // being forgotten whole for want of them.
   it("reads a memory from before crews were kept, crews and all none", () => {
-    openAccountLifetime("user-ales");
-    const key = `mate:account:user-ales:${MENU_MEMORY_STORAGE_KEY}`;
+    openAccountLifetime("user-ada");
+    const key = `mate:account:user-ada:${MENU_MEMORY_STORAGE_KEY}`;
     const before: Record<string, unknown> = {
       ...EMPTY_MENU_MEMORY,
       rows: { nova: rememberedRowOf(WORKING) },
@@ -302,7 +302,7 @@ describe("the memory in this browser", () => {
     stored.set(key, JSON.stringify(before));
     closeAccountLifetime();
     stored.set(key, JSON.stringify(before));
-    openAccountLifetime("user-ales");
+    openAccountLifetime("user-ada");
     expect(menuMemory().crews).toEqual({});
     expect(menuMemory().rows.nova?.subject).toBe("Add a /status page");
   });

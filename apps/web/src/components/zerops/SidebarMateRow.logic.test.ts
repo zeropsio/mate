@@ -44,7 +44,7 @@ describe("ownerMark — whose Mate it is, as a 16 px mark before its name", () =
 
   it("tells people apart by their hue", () => {
     const hues = new Set(
-      ["Petra Malá", "Jan Beneš", "Eva Dvořák", "Aleš Rechtorik", "Karlos Mika"].map(
+      ["Petra Malá", "Jan Beneš", "Eva Dvořák", "Tomáš Holý", "Dana Krausová"].map(
         (name) => ownerMark({ name, initials: name.slice(0, 1), avatarUrl: null }).hue,
       ),
     );
@@ -98,13 +98,13 @@ describe("mateRowView — a row's state lives in its right slot and its third li
     kind: "idle",
     status: null,
     face: "idle",
-    subject: "Tune the storefront",
+    subject: "Speed up the photo gallery",
     at: AT,
-    snippet: "Merged the image pipeline; the cart renders in 80 ms.",
+    snippet: "Thumbnails load lazily now; the gallery opens in 90 ms.",
     unread: false,
     pausedUntil: undefined,
     threadKey: "env:thread-1",
-    task: "Tune the storefront",
+    task: "Speed up the photo gallery",
     ...overrides,
   });
   const face = (overrides: Partial<ZeropsAgentActivity> = {}) => activity(overrides).face;
@@ -122,7 +122,7 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       strong: false,
       reply: {
         kind: "words",
-        text: "Merged the image pipeline; the cart renders in 80 ms.",
+        text: "Thumbnails load lazily now; the gallery opens in 90 ms.",
         tone: "muted",
       },
     },
@@ -131,15 +131,15 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       input: activity({
         kind: "working",
         face: "working",
-        subject: "Build the app",
-        liveStep: { words: "Build the app", code: "pnpm build" },
+        subject: "Compile the gallery",
+        liveStep: { words: "Compile the gallery", code: "npm run compile" },
       }),
       state: "working",
       rowFace: "working",
       slot: { kind: "clock", since: AT },
       dot: undefined,
       strong: false,
-      reply: { kind: "live", words: "Build the app", code: "pnpm build" },
+      reply: { kind: "live", words: "Compile the gallery", code: "npm run compile" },
     },
     {
       case: "working, no step relayed",
@@ -156,7 +156,7 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       input: activity({
         kind: "input",
         face: "needs",
-        question: "Merge #54 into production now, or wait for tonight's window?",
+        question: "Ship the new gallery today, or after the weekend?",
       }),
       state: "needs",
       rowFace: "needs",
@@ -165,7 +165,7 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       strong: false,
       reply: {
         kind: "words",
-        text: "Merge #54 into production now, or wait for tonight's window?",
+        text: "Ship the new gallery today, or after the weekend?",
         tone: "ink",
       },
     },
@@ -179,7 +179,7 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       strong: false,
       reply: {
         kind: "words",
-        text: "Merged the image pipeline; the cart renders in 80 ms.",
+        text: "Thumbnails load lazily now; the gallery opens in 90 ms.",
         tone: "ink",
       },
     },
@@ -193,7 +193,7 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       strong: true,
       reply: {
         kind: "words",
-        text: "Merged the image pipeline; the cart renders in 80 ms.",
+        text: "Thumbnails load lazily now; the gallery opens in 90 ms.",
         tone: "ink-2",
       },
     },
@@ -202,7 +202,7 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       input: activity({
         kind: "failed",
         face: "needs",
-        errorLine: "Build failed: tsc found 3 errors in src/net/session.ts",
+        errorLine: "The type check found 2 errors in src/gallery/grid.ts",
       }),
       state: "failed",
       rowFace: "idle",
@@ -211,7 +211,7 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       strong: false,
       reply: {
         kind: "words",
-        text: "Build failed: tsc found 3 errors in src/net/session.ts",
+        text: "The type check found 2 errors in src/gallery/grid.ts",
         tone: "failed",
       },
     },
@@ -225,7 +225,7 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       strong: false,
       reply: {
         kind: "words",
-        text: "Merged the image pipeline; the cart renders in 80 ms.",
+        text: "Thumbnails load lazily now; the gallery opens in 90 ms.",
         tone: "muted",
       },
     },
@@ -239,7 +239,7 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       strong: false,
       reply: {
         kind: "words",
-        text: "Merged the image pipeline; the cart renders in 80 ms.",
+        text: "Thumbnails load lazily now; the gallery opens in 90 ms.",
         tone: "muted",
       },
     },
@@ -262,7 +262,7 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       strong: false,
       reply: {
         kind: "words",
-        text: "Merged the image pipeline; the cart renders in 80 ms.",
+        text: "Thumbnails load lazily now; the gallery opens in 90 ms.",
         tone: "muted",
       },
     },
@@ -293,7 +293,7 @@ describe("mateRowView — a row's state lives in its right slot and its third li
     expect(view.slot).toEqual(slot);
     expect(view.dot).toBe(dot);
     expect(view.strongName).toBe(strong);
-    expect(view.ask).toBe("Tune the storefront");
+    expect(view.ask).toBe("Speed up the photo gallery");
     expect(view.reply).toEqual(reply);
   });
 
