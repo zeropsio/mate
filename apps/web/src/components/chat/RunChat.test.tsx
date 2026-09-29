@@ -1103,6 +1103,63 @@ describe("RunChat, as the person uses it", () => {
     });
   });
 
+  // D4: what the now line holds is never out of reach while it runs — its
+  // one line opens to the whole of it in place: a script's every line, the
+  // thought so far; still one clock.
+  it("opens the now line to the whole of what runs, one clock still", () => {
+    const renderer = mount(
+      record([], {
+        live: true,
+        status: status(),
+        now: {
+          kind: "step",
+          step: stepOf(
+            command("w9", SCRIPT, {
+              callInput: { description: "Write the status route" },
+              toolLifecycleStatus: "inProgress",
+              updatedAt: undefined as never,
+            }),
+          ),
+        },
+      }),
+    );
+    const words = () =>
+      renderer.root.find(
+        (node) => node.type === "button" && node.props["data-run-now-words"] !== undefined,
+      );
+    expect(words().props["aria-expanded"]).toBe(false);
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("line 13");
+    act(() => words().props.onClick());
+    expect(words().props["aria-expanded"]).toBe(true);
+    const shown = JSON.stringify(renderer.toJSON());
+    expect(shown).toContain("line 13");
+    expect(shown).toContain("EOF");
+    expect(
+      renderer.root.findAll((node) => node.props["data-work-line-clock"] !== undefined),
+    ).toHaveLength(1);
+  });
+
+  it("opens a thought on the now line to the whole of it so far", () => {
+    const thinking = "The app is a Hono server. So the page belongs on the server as its own route";
+    const renderer = mount(
+      record([], {
+        live: true,
+        status: status(),
+        now: {
+          kind: "thinking",
+          key: "thought:r9",
+          messages: [message("r9", "reasoning", thinking)],
+        },
+      }),
+    );
+    const words = renderer.root.find(
+      (node) => node.type === "button" && node.props["data-run-now-words"] !== undefined,
+    );
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("The app is a Hono server.");
+    act(() => words.props.onClick());
+    expect(JSON.stringify(renderer.toJSON())).toContain(thinking);
+  });
+
   // A control that goes once pressed hands the focus on: the thought's way to
   // the rest to its "Show less" and back, the last "Show N earlier" to the
   // lines it drew — never to the page's body.

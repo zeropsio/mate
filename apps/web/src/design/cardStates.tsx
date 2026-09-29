@@ -397,6 +397,17 @@ const THINKING: TurnHeaderActivity = {
 setRunFold(CONVERSATION, "status-watched", "watched");
 setRunFold(CONVERSATION, "status-shown", "shown");
 
+/** A command longer than its line: a route written with a heredoc. */
+const ROUTE_SCRIPT = [
+  "cat > src/routes/status.ts <<'EOF'",
+  'import { Hono } from "hono";',
+  "",
+  'export const status = new Hono().get("/status", (c) =>',
+  "  c.html(`<p>${process.version} · ${new Date().toISOString()}</p>`),",
+  ");",
+  "EOF",
+].join("\n");
+
 const FAILED = command("f1", "npm test -- status", "Run the tests for the page", 30, 6, {
   toolLifecycleStatus: "failed",
   detail:
@@ -438,6 +449,20 @@ export function CardStates() {
               ),
             },
             status: status({ startedAt: ago(66) }),
+          })}
+        />
+      </CardState>
+      <CardState
+        label="A whole command"
+        note="A command longer than its line: a click on the line shows every line of it in place; the run keeps its one clock."
+      >
+        <Turn
+          row={record("status-writing", {
+            items: upTo("step:w3"),
+            now: {
+              kind: "step",
+              step: stepOf(running(command("w5", ROUTE_SCRIPT, "Write the status route", 0, 3))),
+            },
           })}
         />
       </CardState>

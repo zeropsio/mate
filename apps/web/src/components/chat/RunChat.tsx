@@ -847,20 +847,29 @@ const THOUGHT_TEXT = "chat-markdown-aside text-muted-foreground";
 const THOUGHT_GUESS_CHARS = 180;
 
 /**
- * Whether what `watch` is given runs past the lines it is clamped to. Until
- * it is measured — the first render, before the page paints it — `guess`.
+ * Whether what `watch` is given runs past the lines it is clamped to — or,
+ * `across`, past the width of its one line. Until it is measured — the first
+ * render, before the page paints it — `guess`.
  */
-function useRunsPast(guess: boolean): readonly [boolean, (element: HTMLElement | null) => void] {
+function useRunsPast(
+  guess: boolean,
+  across = false,
+): readonly [boolean, (element: HTMLElement | null) => void] {
   const [element, setElement] = useState<HTMLElement | null>(null);
   const [past, setPast] = useState(guess);
   useLayoutEffect(() => {
     if (element === null) return;
-    const measure = () => setPast(element.scrollHeight > element.clientHeight + 1);
+    const measure = () =>
+      setPast(
+        across
+          ? element.scrollWidth > element.clientWidth + 1
+          : element.scrollHeight > element.clientHeight + 1,
+      );
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [element]);
+  }, [element, across]);
   const [watch] = useState(() => (node: HTMLElement | null) => setElement(node));
   return [past, watch];
 }
@@ -2207,10 +2216,13 @@ function LongStepTime({ since }: { readonly since: string }) {
 function StepNowWords({
   step,
   sweeps = true,
+  codeAfter = true,
 }: {
   readonly step: WorkStep;
   /** The one step on the line sweeps; a line each of several at once stands still. */
   readonly sweeps?: boolean;
+  /** A command's first line after its words — not where its whole stands under them. */
+  readonly codeAfter?: boolean;
 }) {
   const sweep = sweeps ? "" : undefined;
   if (step.kind === "command" && step.words === null) {
@@ -2239,27 +2251,55 @@ function StepNowWords({
       <span className="run-now-verb" data-run-shimmer={sweep}>
         {stepNowWords(step)}
       </span>
-      {step.kind === "command" && step.code !== null ? (
+      {codeAfter && step.kind === "command" && step.code !== null ? (
         <span className="run-now-code">{step.code}</span>
       ) : null}
     </>
   );
 }
 
+/** Whether a step's one line leaves some of what it runs unsaid: a command's lines past its first. */
+function saysLess(step: WorkStep): boolean {
+  return step.kind === "command" && step.script !== null && step.codeLines > 1;
+}
+
+/**
+ * A command's code under its words on the opened now line, as its call row
+ * shows it opened: in mono, in the muted ink, every line of it — past the
+ * first where the command, saying nothing of itself, leads with it.
+ */
+function NowScript({ step }: { readonly step: WorkStep }) {
+  if (!saysLess(step) || step.script === null) return null;
+  const script = step.words === null ? step.script.split("\n").slice(1).join("\n") : step.script;
+  return <code className="run-now-script">{script}</code>;
+}
+
 /** The now line's words, by what the run is doing. */
-function NowWords({ line }: { readonly line: NowLineModel }) {
+function NowWords({
+  line,
+  open = false,
+  thoughtSoFar = null,
+}: {
+  readonly line: NowLineModel;
+  /** Opened to the whole of what runs: the thought so far, a command's code under its words. */
+  readonly open?: boolean;
+  /** The thought so far, where the line shows only its latest words. */
+  readonly thoughtSoFar?: string | null;
+}) {
   switch (line.kind) {
-    case "thinking":
+    case "thinking": {
+      const thought = open && thoughtSoFar !== null ? thoughtSoFar : line.thought;
       return (
         <>
           <span className="run-now-verb">Thinking</span>
-          {line.thought === null ? null : <span className="run-now-thought">{line.thought}</span>}
+          {thought === null ? null : <span className="run-now-thought">{thought}</span>}
         </>
       );
+    }
     case "step":
       return (
         <>
-          <StepNowWords step={line.step} />
+          <StepNowWords codeAfter={!(open && saysLess(line.step))} step={line.step} />
           <LongStepTime since={line.step.startedAt} />
         </>
       );
@@ -2344,9 +2384,40 @@ function NowLine({
   // The line's words change in place as the run goes: the new ones rise into
   // it, so a change reads as the same line saying something new.
   const wordsChanged = useChangedSinceShown(words);
+  // D4: its one line opens to the whole of what runs — a command every line
+  // of it, the thought so far — for as long as the line says the same.
+  const hold = useHoldReading();
+  const [openFor, setOpenFor] = useState<string | null>(null);
+  if (openFor !== null && openFor !== words) setOpenFor(null);
+  const open = status.live && openFor === words;
+  const [clipped, watchHead] = useRunsPast(false, true);
+  const thoughtSoFar =
+    now?.kind === "thinking"
+      ? thoughtRunText(now.messages.map((message) => message.text).join("\n\n"))
+      : null;
+  const opens =
+    status.live &&
+    (clipped ||
+      (line.kind === "thinking" && thoughtSoFar !== null && thoughtSoFar !== line.thought) ||
+      (line.kind === "step" && saysLess(line.step)) ||
+      (line.kind === "several" && line.steps.some(saysLess)));
+  const head = (
+    <span
+      ref={watchHead}
+      key={words}
+      className={cn(
+        "run-now-head",
+        open && "run-now-head-open",
+        wordsChanged && "animate-words-in motion-reduce:animate-none",
+      )}
+    >
+      <NowWords line={line} open={open} thoughtSoFar={thoughtSoFar} />
+    </span>
+  );
   return (
     <div
       className="run-now"
+      data-open={open ? "" : undefined}
       data-run-now={line.kind}
       data-run-status={
         line.kind === "worked" ? status.face : line.kind === "waiting" ? "waiting" : "working"
@@ -2361,15 +2432,24 @@ function NowLine({
         tint={ctx.speaker.tint}
       />
       <div className="run-now-words" data-work-line={status.face}>
-        <span
-          key={words}
-          className={cn(
-            "run-now-head",
-            wordsChanged && "animate-words-in motion-reduce:animate-none",
-          )}
-        >
-          <NowWords line={line} />
-        </span>
+        {opens || open ? (
+          <button
+            aria-expanded={open}
+            className="run-now-reveal"
+            data-run-now-words=""
+            onClick={() => {
+              hold();
+              setOpenFor(open ? null : words);
+            }}
+            type="button"
+          >
+            {head}
+            <ChevronDownIcon aria-hidden="true" className="run-now-reveal-icon" />
+          </button>
+        ) : (
+          head
+        )}
+        {open && line.kind === "step" ? <NowScript step={line.step} /> : null}
         {/* What a screen reader hears: the line's words as they change —
             never the thought's latest words or a step's ticking time. */}
         {status.live ? (
@@ -2381,7 +2461,8 @@ function NowLine({
           <ul className="run-now-several">
             {line.steps.map((step) => (
               <li key={step.key}>
-                <StepNowWords step={step} sweeps={false} />
+                <StepNowWords codeAfter={!(open && saysLess(step))} step={step} sweeps={false} />
+                {open ? <NowScript step={step} /> : null}
               </li>
             ))}
           </ul>
