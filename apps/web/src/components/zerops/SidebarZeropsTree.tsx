@@ -939,18 +939,20 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             mine: getOwner?.(item)?.isViewer,
             threadKey: getActivity?.(item)?.threadKey,
           }))}
-          menu={chipMenu({
-            chip,
-            failure,
-            down,
-            stages: projectFlow.stages.map((stop) => ({
-              name: stopName(stop),
-              stop,
-              deployedAt: stopDeployedAt(stop.projectId),
-            })),
-            waiting: projectFlow.main.notLive,
-            nowMs,
-          })}
+          menu={(openedAt) =>
+            chipMenu({
+              chip,
+              failure,
+              down,
+              stages: projectFlow.stages.map((stop) => ({
+                name: stopName(stop),
+                stop,
+                deployedAt: stopDeployedAt(stop.projectId),
+              })),
+              waiting: projectFlow.main.notLive,
+              nowMs: openedAt,
+            })
+          }
           onAskToFix={onAskToFix}
           onOpenStop={
             chipDeclared === undefined || flow?.onOpenStop === undefined

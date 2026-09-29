@@ -62,8 +62,11 @@ export function SidebarProductionChip({
   onOpenStop,
 }: {
   readonly chip: ProductionChip;
-  /** What the menu says (`chipMenu`): the state in words, what broke, the stages, what waits. */
-  readonly menu: ChipMenuModel;
+  /**
+   * What the menu says as of a moment (`chipMenu`): the state in words, what
+   * broke, the stages and how long ago each was deployed, what waits.
+   */
+  readonly menu: (nowMs: number) => ChipMenuModel;
   readonly projectName: string;
   readonly groupId: string;
   /** The chip's own stop's Zerops project, for *Open in Zerops*. */
@@ -107,7 +110,7 @@ export function SidebarProductionChip({
       <ChipPortal>
         <PopoverPrimitive.Positioner align="end" className="z-130" side="bottom" sideOffset={6}>
           <PopoverPrimitive.Popup
-            aria-label={`${projectName}: ${menu.main.name}`}
+            aria-label={`${projectName}: ${chip.label === "prod" ? "production" : "stage"}`}
             className="zerops-envpop"
             data-zerops-surface="sidebar-production-menu"
           >
@@ -152,7 +155,10 @@ export function EnvDot({ dot, className }: { readonly dot: ChipDot; readonly cla
   return <span aria-hidden="true" className={cn("zerops-envdot", className)} data-dot={dot} />;
 }
 
-/** The chip's menu, drawn from its model; exported for the menu's own tests. */
+/**
+ * The chip's menu, drawn from its model as of the moment it opens — the
+ * heading drew the chip long before — and exported for the menu's own tests.
+ */
 export function ProductionMenu({
   menu,
   projectName,
@@ -166,7 +172,7 @@ export function ProductionMenu({
   onReview,
   reviewFrom,
 }: {
-  readonly menu: ChipMenuModel;
+  readonly menu: (nowMs: number) => ChipMenuModel;
   readonly projectName: string;
   readonly groupId: string;
   readonly stopProjectId: string | undefined;
@@ -181,7 +187,10 @@ export function ProductionMenu({
   readonly reviewFrom: { readonly current: HTMLElement | null };
 }) {
   const openReview = useOpenReview();
-  const { main } = menu;
+  // Drawn only while open, so this is the moment it opened.
+  const [openedAt] = useState(Date.now);
+  const model = menu(openedAt);
+  const { main } = model;
   const mainRow = (
     <>
       <EnvDot dot={main.dot} />
@@ -213,12 +222,12 @@ export function ProductionMenu({
           {mainRow}
         </button>
       )}
-      {menu.note === undefined ? null : (
+      {model.note === undefined ? null : (
         <p className="zerops-envpop-note" data-zerops-surface="sidebar-production-note">
-          {menu.note}
+          {model.note}
         </p>
       )}
-      {!menu.trouble || fixProblem === undefined || onAskToFix === undefined ? null : (
+      {!model.trouble || fixProblem === undefined || onAskToFix === undefined ? null : (
         <AskToFix
           groupId={groupId}
           mates={mates}
@@ -240,7 +249,7 @@ export function ProductionMenu({
           <ArrowUpRightIcon aria-hidden="true" className="size-3.25 shrink-0" />
         </a>
       ))}
-      {menu.stages.map((stage) => (
+      {model.stages.map((stage) => (
         <div
           className="zerops-envpop-stop"
           data-zerops-surface="sidebar-production-stage"
@@ -258,14 +267,14 @@ export function ProductionMenu({
           </span>
         </div>
       ))}
-      {menu.waiting === 0 ? null : (
+      {model.waiting === 0 ? null : (
         <>
           <Separator />
           <div className="zerops-envpop-act" data-zerops-surface="sidebar-production-waiting">
             <span className="min-w-0 truncate tabular-nums">
-              {menu.waiting === 1
+              {model.waiting === 1
                 ? "1 change waits for production"
-                : `${String(menu.waiting)} changes wait for production`}
+                : `${String(model.waiting)} changes wait for production`}
             </span>
             <button
               className="zerops-envpop-review"

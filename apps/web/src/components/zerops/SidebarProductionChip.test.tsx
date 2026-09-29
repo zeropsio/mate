@@ -53,13 +53,16 @@ const menuOf = (chip: ProductionChip, over: Partial<Parameters<typeof chipMenu>[
 const FAILED = menuOf({ label: "prod", state: "failed", version: "v0.1.56" });
 const HEALTHY = menuOf({ label: "prod", state: "ok", version: "v0.1.0" });
 
-function menu(model: ChipMenuModel, props: Partial<Parameters<typeof ProductionMenu>[0]> = {}) {
+function menu(
+  model: ChipMenuModel | ((nowMs: number) => ChipMenuModel),
+  props: Partial<Parameters<typeof ProductionMenu>[0]> = {},
+) {
   return (
     <ProductionMenu
       fixProblem={PROBLEM}
       groupId="shop"
       mates={[ORSA]}
-      menu={model}
+      menu={typeof model === "function" ? model : () => model}
       onAskToFix={() => {}}
       onOpenStop={undefined}
       onReview={() => {}}
@@ -83,6 +86,7 @@ afterEach(() => {
   }
   useUiStateStore.setState({ threadLastVisitedAtById: {} });
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 function mount(element: ReactElement): ReactTestRenderer {
@@ -119,7 +123,7 @@ describe("the production chip", () => {
         fixProblem={undefined}
         groupId="quillmark"
         mates={[]}
-        menu={menuOf({ label: "prod", state: "waiting", version: "v0.1.44", waiting: 1 })}
+        menu={() => menuOf({ label: "prod", state: "waiting", version: "v0.1.44", waiting: 1 })}
         onAskToFix={undefined}
         onOpenStop={undefined}
         projectName="Quillmark"
@@ -141,6 +145,39 @@ describe("the production chip's menu", () => {
     expect(html).toContain(">v0.1.56</span>");
     expect(html).toContain('data-tone="amber">Release failed</span>');
     expect(html).toContain(">The last deploy failed. v0.1.56 is still serving.</p>");
+  });
+
+  // The heading drew the chip long before anybody pressed it: the menu's ages
+  // are as of the moment it opens.
+  it("says how long ago each stage was deployed as of when it opens", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-29T09:01:00Z"));
+    const element = menu((nowMs) =>
+      chipMenu({
+        chip: { label: "prod", state: "ok", version: "v0.1.0" },
+        failure: undefined,
+        down: [],
+        stages: [
+          {
+            name: "stage",
+            stop: {
+              projectId: "shop-stage",
+              name: "stage",
+              state: "deployed",
+              version: undefined,
+              source: "main",
+              route: undefined,
+            },
+            deployedAt: "2026-09-29T09:00:00Z",
+          },
+        ],
+        waiting: 0,
+        nowMs,
+      }),
+    );
+    vi.setSystemTime(new Date("2026-09-29T12:00:00Z"));
+    const tree = mount(element);
+    expect(text(surface(tree, "sidebar-production-stage"))).toContain("Deployed 3 h ago");
   });
 
   it("links every public route, in a new tab, and opens the project in Zerops", () => {
