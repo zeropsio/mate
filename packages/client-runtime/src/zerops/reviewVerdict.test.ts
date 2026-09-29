@@ -739,3 +739,23 @@ describe("crewTaskReview: only a landed task has landed (Land's answer is not it
     else expect(review.primary).toMatchObject(primary);
   });
 });
+
+describe("changeReview: a change closed without merging", () => {
+  it("says so, and offers no Merge", () => {
+    const review = changeReview(change({ pull: pull({ state: "closed", merged: false }) }));
+    expect(review.verdict).toMatchObject({
+      state: "closed",
+      tone: "done",
+      title: "Closed without merging",
+    });
+    expect(review.primary).toBeUndefined();
+    expect(review.consequence).toBe("It never reached main; nothing merges from here.");
+  });
+
+  it.each([
+    ["an open one", { state: "open" }, "ready"],
+    ["a landed one", { state: "closed", merged: true, mergedAt: minutesAgo(5) }, "merged"],
+  ] as const)("does not take %s for it", (_case, over, state) => {
+    expect(changeReview(change({ pull: pull(over) })).verdict.state).toBe(state);
+  });
+});

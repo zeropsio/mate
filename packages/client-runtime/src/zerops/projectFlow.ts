@@ -78,6 +78,12 @@ export interface FlowPullRequest {
   readonly merged: boolean;
   /** When it landed — the moment a timeline places it. Absent unless `merged`. */
   readonly mergedAt: string | undefined;
+  /**
+   * `open` or `closed`, as Gitea says. A change read on its own by number may be closed without
+   * ever merging: its review must not offer to merge it. Optional, as every flow built before a
+   * review read it carries none.
+   */
+  readonly state?: string | undefined;
   readonly headSha: string | undefined;
   readonly baseBranch: string;
   /** `appdev #4`, or `appdev #4 · ada` for a person's; `recipe #6` on the group repo. */
@@ -140,6 +146,7 @@ export function flowPullRequest(input: {
     mergeability: input.mergeability,
     merged: pull.merged === true,
     mergedAt: pull.merged_at,
+    state: pull.state,
     headSha: pull.head?.sha,
     baseBranch: pull.base?.ref ?? FALLBACK_BASE,
     line,

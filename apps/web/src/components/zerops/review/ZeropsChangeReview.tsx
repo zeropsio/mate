@@ -344,10 +344,12 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   const mine = mate?.mine === true ? mate : undefined;
   const fix = model.verdict.fix;
   const next = model.primary?.label === "Review release";
+  // Merged or closed: nothing more to ask of it here.
+  const over = model.verdict.state === "merged" || model.verdict.state === "closed";
   return (
     <ZeropsReviewSurface
       consequence={model.consequence}
-      dismiss={model.verdict.state === "merged" ? "Close" : undefined}
+      dismiss={over ? "Close" : undefined}
       fix={
         fix === undefined || mine === undefined
           ? undefined
@@ -409,7 +411,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
             }
       }
       secondary={
-        mine === undefined || model.verdict.state === "merged"
+        mine === undefined || over
           ? undefined
           : {
               label: `Ask ${mine.name} for changes`,

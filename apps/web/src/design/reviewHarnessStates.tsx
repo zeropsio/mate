@@ -381,6 +381,11 @@ export const REVIEW_STATES: ReadonlyArray<{
     ),
   },
   { id: "merged", label: "After Merge", node: <Change press={{ kind: "done" }} /> },
+  {
+    id: "closed",
+    label: "Closed without merging",
+    node: <Change over={{ state: "closed", merged: false }} />,
+  },
   { id: "release", label: "A release", node: <Release /> },
   {
     id: "releasing",

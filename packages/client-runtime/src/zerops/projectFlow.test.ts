@@ -126,6 +126,16 @@ describe("one pull request in the flow", () => {
     });
   });
 
+  it.each(["open", "closed"] as const)("carries whether it is %s", (state) => {
+    const row = flowPullRequest({
+      mergeability: "mergeable",
+      repository: "appdev",
+      pull: pull({ state }),
+      checks: [],
+    });
+    expect(row.state).toBe(state);
+  });
+
   it("leaves a review's reads unknown where Gitea did not send them, never zero", () => {
     const row = flowPullRequest({
       mergeability: "mergeable",
@@ -352,6 +362,7 @@ describe("types", () => {
         "mergedAt",
         "number",
         "repository",
+        "state",
         "title",
         "updatedAt",
         "url",

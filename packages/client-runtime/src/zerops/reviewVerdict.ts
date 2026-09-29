@@ -56,6 +56,7 @@ export type ReviewState =
   | "merging"
   | "merge-refused"
   | "merged"
+  | "closed"
   | "release-ready"
   | "release-blocked"
   | "releasing"
@@ -175,6 +176,8 @@ export interface ChangeReviewInput {
     readonly checkRows?: ReadonlyArray<GitCheckRow> | undefined;
     readonly merged: boolean;
     readonly mergedAt: string | undefined;
+    /** `closed` for one Gitea closed — merged, or never. */
+    readonly state?: string | undefined;
     readonly mergeBase?: string | undefined;
     readonly baseSha?: string | undefined;
   };
@@ -451,6 +454,20 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
         input.releaseOffered === true
           ? { label: "Review release", enabled: true, safe: true }
           : undefined,
+    };
+  }
+
+  if (pull.state === "closed") {
+    return {
+      verdict: {
+        state: "closed",
+        tone: "done",
+        title: "Closed without merging",
+        why: "Somebody closed it in Gitea; its branch is still there",
+        fix: undefined,
+      },
+      consequence: `It never reached ${base}; nothing merges from here.`,
+      primary: undefined,
     };
   }
 
