@@ -11,10 +11,10 @@
  * The same three places as `ZeropsEnvironmentRow`, so the eye runs one column
  * down the page: the title with its kind as a tag, who and where in one
  * line, and at the end where the change stands as a dot and the one verb —
- * *Merge* where Gitea allows it. The title opens the change's own page, which
- * is where its conversation, its commits and its *Merge* are; it used to open
- * Gitea instead (the owner, 2026-09-19). Structural: every word is the
- * caller's (R5).
+ * *Review*, the door to its review, which is where it merges (pass 16, R1):
+ * nothing merges from a row. The title opens the change's own page, which is
+ * where its conversation and its commits are; it used to open Gitea instead
+ * (the owner, 2026-09-19). Structural: every word is the caller's (R5).
  */
 import type { ReactNode } from "react";
 
@@ -31,7 +31,7 @@ export interface ZeropsPullRequestRowProps {
   readonly line: ReactNode;
   /** A `StatusDot` for the checks, when any ran. */
   readonly status?: ReactNode;
-  /** The one verb, when the caller has one — *Merge*, *Review*. */
+  /** The one verb, when the caller has one — *Review*. */
   readonly action?: ReactNode;
   readonly className?: string;
 }

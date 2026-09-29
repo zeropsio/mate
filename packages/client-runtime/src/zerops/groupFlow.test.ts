@@ -213,7 +213,7 @@ describe("groupFlow", () => {
     expect(flow.nextStep).toEqual({
       kind: "release",
       text: "1 change not live",
-      verb: "Release v0.1.0",
+      verb: "Review release",
       target: { kind: "release", tag: "v0.1.0" },
     });
   });
@@ -223,7 +223,7 @@ describe("groupFlow", () => {
     expect(flow.nextStep).toEqual({
       kind: "merge",
       text: "Pull request #1 waits for your merge",
-      verb: "Merge",
+      verb: "Review",
       target: { kind: "change", repository: "app", number: 1 },
     });
     expect(flow.pullRequests).toEqual([
@@ -420,7 +420,7 @@ describe("groupFlow", () => {
       step: {
         kind: "merge",
         text: "Pull request #1 waits for your merge",
-        verb: "Merge",
+        verb: "Review",
         target: { kind: "change", repository: "app", number: 1 },
       },
     },
@@ -430,7 +430,7 @@ describe("groupFlow", () => {
       step: {
         kind: "merge",
         text: "Pull request #5 waits for your merge",
-        verb: "Merge",
+        verb: "Review",
         target: { kind: "change", repository: "app", number: 5 },
       },
     },
@@ -443,7 +443,7 @@ describe("groupFlow", () => {
       step: {
         kind: "release",
         text: "1 change not live",
-        verb: "Release v0.1.0",
+        verb: "Review release",
         target: { kind: "release", tag: "v0.1.0" },
       },
     },

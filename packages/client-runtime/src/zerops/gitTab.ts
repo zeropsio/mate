@@ -53,6 +53,7 @@ import type { MergeabilityKind } from "./forge/mergeState.ts";
 import type { GiteaCommitStatus, GiteaPullRequest, GiteaRepository } from "./giteaClient.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
 import { branchLabel } from "./mateIdentity.ts";
+import { REVIEW_LABEL } from "./reviewVerdict.ts";
 import { foldedStageHostnames } from "./serviceMap.ts";
 import type { ZeropsTopologyService } from "./topology.ts";
 
@@ -134,7 +135,7 @@ export type GitBlockState =
 /** How the checks on the branch's head went — a dot's tone, with one word. */
 export type GitCheckTone = "none" | "pending" | "passing" | "failing";
 
-export type GitBlockActionKind = "open-pull-request" | "update-from-main" | "push" | "merge";
+export type GitBlockActionKind = "open-pull-request" | "update-from-main" | "push" | "review";
 
 export interface GitBlockAction {
   readonly kind: GitBlockActionKind;
@@ -614,11 +615,13 @@ function stateOf(checkout: GitCheckoutState, forge: GitForgeState): GitBlockStat
 
 /**
  * The one verb, in the order the work happens: push what is local, then take
- * what is remote, then ask for it to be merged.
+ * what is remote, then review what is open.
  *
- * A branch that *is* the default never offers a pull request — there would be
- * nothing to merge it into — and a merged one offers nothing at all: the
- * broker is deploying it, and the person's part is over.
+ * An open pull request offers *Review* whatever Gitea says about it — the one
+ * door to merging (pass 16, R1): the review says whether it can merge and why
+ * not, and carries *Merge*. A branch that *is* the default never offers a pull
+ * request — there would be nothing to merge it into — and a merged one offers
+ * nothing at all: the broker is deploying it, and the person's part is over.
  */
 function actionOf(
   checkout: GitCheckoutState,
@@ -638,11 +641,7 @@ function actionOf(
     };
   }
   if (state === "in-review") {
-    // Gitea decides whether this person may merge; the app only offers it
-    // where Gitea already said yes for that branch.
-    return forge.pullRequest?.mergeability === "mergeable"
-      ? { kind: "merge", label: "Merge", running: "Merging…", ownerOnly: false }
-      : undefined;
+    return { kind: "review", label: REVIEW_LABEL, running: REVIEW_LABEL, ownerOnly: false };
   }
   const defaultBranch = forge.repository?.default_branch ?? FALLBACK_DEFAULT_BRANCH;
   if (checkout.headRef === null || checkout.headRef === defaultBranch) return undefined;
