@@ -123,7 +123,7 @@ function Answers({ answers }: { readonly answers: ZeropsBrowserRead["answers"] }
           key={key}
           className="flex min-w-0 items-baseline justify-between gap-3 border-border/60 border-b pb-2"
         >
-          <code className="min-w-0 truncate font-mono text-muted-foreground text-xs">
+          <code className="min-w-0 truncate font-mono text-line text-muted-foreground">
             {answer.asked}
           </code>
           <span className="shrink-0 font-medium text-foreground text-sm">{answer.answer}</span>
@@ -151,7 +151,7 @@ export function CheckRead({
     return size === "stage" ? (
       <Answers answers={read.answers} />
     ) : (
-      <span className="truncate px-1 text-3xs text-muted-foreground" data-check-answers>
+      <span className="truncate px-1 text-muted-foreground text-xs" data-check-answers>
         {read.answers[0]!.answer}
       </span>
     );
@@ -171,7 +171,7 @@ export function CheckRead({
         {failure ??
           (findings === null ? "Checked" : findings.charAt(0).toUpperCase() + findings.slice(1))}
       </span>
-      <span className="text-muted-foreground text-xs">Read its errors, console and requests</span>
+      <span className="text-line text-muted-foreground">Read its errors, console and requests</span>
     </span>
   );
 }

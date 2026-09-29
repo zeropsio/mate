@@ -530,39 +530,7 @@
   {
     "path": "apps/web/src/components/chat/ChatComposer.tsx",
     "kind": "Literal",
-    "fingerprint": "<Button> bg-background/80 in \"absolute right-1 top-1 bg-background/80 hover:bg-background/90\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ChatComposer.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> bg-background/85 in \"absolute bottom-1 left-1 bg-background/85 hover:bg-background/95\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ChatComposer.tsx",
-    "kind": "Literal",
     "fingerprint": "<Button> gap-2 in \"shrink-0 gap-2 px-2 text-secondary-label sm:px-3\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ChatComposer.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> hover:bg-background/90 in \"absolute right-1 top-1 bg-background/80 hover:bg-background/90\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ChatComposer.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> hover:bg-background/95 in \"absolute bottom-1 left-1 bg-background/85 hover:bg-background/95\"",
     "owner": "web-intake",
     "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
     "expires": "F6"

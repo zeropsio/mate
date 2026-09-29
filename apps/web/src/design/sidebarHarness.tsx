@@ -68,9 +68,11 @@ import type { SidebarCrewRead } from "~/components/zerops/crew/SidebarCrewLine";
 import { SidebarZeropsTree, type SidebarProjectFlow } from "~/components/zerops/SidebarZeropsTree";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
+import { writeCollapsedProjects } from "~/zerops/collapsedProjects";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
 import { shownInScope, useMateScope } from "~/zerops/mateScope";
 import { isMacPlatform } from "~/lib/utils";
+import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { formatShortTimestamp } from "~/timestampFormat";
 import { slashKeyOpensJumpBox } from "~/zerops/jumpSlash";
 import { useSidebarJump } from "~/zerops/sidebarJump";
@@ -79,6 +81,14 @@ import { PROJECT_ORDER_STORAGE_KEY, ProjectOrderSchema } from "~/zerops/projectO
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 
 import "../index.css";
+import {
+  PLAN_ACTIVE,
+  PLAN_ACTIVITY,
+  PLAN_CANDIDATES,
+  PLAN_COLLAPSED,
+  PLAN_FLOWS,
+  PLAN_OWNERS,
+} from "./sidebarPlanFixtures";
 
 const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
 
@@ -115,10 +125,22 @@ function candidate(
     ...(connected && container ? { environmentId: EnvironmentId.make(`env-${id}`) } : {}),
   };
   const withRoutes = theRoutes === undefined ? base : { ...base, routes: theRoutes };
+  // A stop's services, as the platform reads them: up, so its chip settles.
+  const read = container
+    ? withRoutes
+    : {
+        ...withRoutes,
+        services: {
+          hostnames: ["app"],
+          deployedAt: hoursAgo(3),
+          deployable: [],
+          statuses: [{ hostname: "app", status: "ACTIVE" }],
+        },
+      };
   return container
     ? { ...withRoutes, service: { id: "zcp", name: "zcp", status: "ACTIVE" } }
     : {
-        ...withRoutes,
+        ...read,
         group: "unavailable",
         reason: "no Zerops Mate container in this project",
         missingContainer: true,
@@ -132,7 +154,6 @@ function activity(input: {
   readonly hours: number;
   readonly face: ZeropsAgentActivity["face"];
   readonly kind?: ZeropsAgentActivity["kind"];
-  readonly progress?: ZeropsAgentActivity["progress"];
   readonly unread?: boolean;
   readonly pausedUntil?: string;
   readonly task?: string;
@@ -146,7 +167,6 @@ function activity(input: {
     subject: input.subject,
     snippet: input.snippet,
     at: hoursAgo(input.hours),
-    progress: input.progress,
     unread: input.unread ?? false,
     pausedUntil: input.pausedUntil,
     threadKey: `env-${id}:thread-${id}`,
@@ -277,7 +297,6 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
         hours: 0.053,
         face: "working",
         kind: "working",
-        progress: { completed: 2, total: 5 },
       }),
       liveStep: { words: "Build the app", code: "pnpm build" },
     },
@@ -492,8 +511,6 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
         "Rename the app in the page title",
         "Cache the link previews",
       ),
-      releasing: false,
-      onRelease: () => {},
     },
   ],
   [
@@ -588,8 +605,6 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
         "Add a health check to the worker",
         "Drop the unused coupons table",
       ),
-      releasing: false,
-      onRelease: () => {},
     },
   ],
   [
@@ -613,8 +628,6 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
       missing: [
         { kind: "missing-environment", tier: "stage", name: "Stage", line: "not set up yet" },
       ],
-      releasing: false,
-      onRelease: () => {},
     },
   ],
   [
@@ -645,8 +658,6 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
         ],
       ]),
       releaseOffered: false,
-      releasing: false,
-      onRelease: () => {},
     },
   ],
   [
@@ -664,8 +675,6 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           line: "not set up yet",
         },
       ],
-      releasing: false,
-      onRelease: () => {},
     },
   ],
 ]);
@@ -689,7 +698,30 @@ const OWNERS = new Map<string, ZeropsMateOwner>([
   ["todo-vera", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: false }],
 ]);
 
-const activityOfCandidate = (item: ZeropsCandidate) => ACTIVITY.get(item.project.id);
+/**
+ * Which fixtures the menu draws: the hostile set, or with `?set=plan` the pass
+ * 16 plan's own six projects (`sidebarPlanFixtures.ts`), to put beside its mock.
+ */
+const FIXTURES =
+  new URLSearchParams(location.search).get("set") === "plan"
+    ? {
+        candidates: PLAN_CANDIDATES,
+        activity: PLAN_ACTIVITY,
+        flows: PLAN_FLOWS,
+        owners: PLAN_OWNERS,
+        active: PLAN_ACTIVE,
+        collapsed: PLAN_COLLAPSED,
+      }
+    : {
+        candidates: CANDIDATES,
+        activity: ACTIVITY,
+        flows: FLOWS,
+        owners: OWNERS,
+        active: "links-enzo",
+        collapsed: [],
+      };
+
+const activityOfCandidate = (item: ZeropsCandidate) => FIXTURES.activity.get(item.project.id);
 
 /**
  * A crew of four under a Mate — the lead first — built from the crew's own
@@ -762,14 +794,14 @@ function SidebarFrame({ width, onJump }: { readonly width: number; readonly onJu
   const [scope] = useMateScope();
   // The Mate whose conversation is open: a row pressed opens it, as in the
   // app, and the selected band slides to it.
-  const [open, setOpen] = useState("links-enzo");
+  const [open, setOpen] = useState(FIXTURES.active);
   const shown = useCallback(
     (item: ZeropsCandidate) =>
-      shownInScope(scope, OWNERS.get(item.project.id), item.project.id === open),
+      shownInScope(scope, FIXTURES.owners.get(item.project.id), item.project.id === open),
     [open, scope],
   );
   const waiting = useSidebarWaiting({
-    candidates: CANDIDATES,
+    candidates: FIXTURES.candidates,
     activityOf: activityOfCandidate,
     shown,
     activeProjectId: open,
@@ -792,12 +824,12 @@ function SidebarFrame({ width, onJump }: { readonly width: number; readonly onJu
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto ps-2.25 pe-2 pb-1">
         <SidebarZeropsTree
-          candidates={CANDIDATES}
+          candidates={FIXTURES.candidates}
           className="mb-2"
           complete
           getActivity={activityOfCandidate}
-          getFlow={(groupId) => FLOWS.get(groupId)}
-          getOwner={(item) => OWNERS.get(item.project.id)}
+          getFlow={(groupId) => FIXTURES.flows.get(groupId)}
+          getOwner={(item) => FIXTURES.owners.get(item.project.id)}
           getCrew={(item) => CREWS.get(item.project.id)}
           getMateActions={(item, live) => ({
             muted: item.project.id === "notes-iris",
@@ -822,6 +854,9 @@ function SidebarFrame({ width, onJump }: { readonly width: number; readonly onJu
           onBrowseProjects={() => {}}
           onNewProject={() => {
             menuActions.push("new project");
+          }}
+          onAskToFix={(mateProjectId, problem) => {
+            menuActions.push(`ask ${mateProjectId}: ${problem.what}`);
           }}
           onSelect={(item) => {
             menuActions.push(`open ${item.project.id}`);
@@ -871,7 +906,7 @@ function harnessHits(text: string): ReadonlyArray<JumpHit> {
     ["links-theo", "Is the previews table still read by the export job?"],
   ] as const;
   return [
-    ...[...ACTIVITY.entries()].flatMap(([projectId, entry]) =>
+    ...[...FIXTURES.activity.entries()].flatMap(([projectId, entry]) =>
       [entry.snippet, entry.task]
         .filter((said): said is string => said !== undefined)
         .map((said) => [projectId, said] as const),
@@ -881,7 +916,7 @@ function harnessHits(text: string): ReadonlyArray<JumpHit> {
     .filter(([, said]) => said.toLocaleLowerCase().includes(needle))
     .map(([projectId, said]) => ({
       environmentId: `env-${projectId}`,
-      threadId: String(ACTIVITY.get(projectId)?.threadId ?? `thread-${projectId}`),
+      threadId: String(FIXTURES.activity.get(projectId)?.threadId ?? `thread-${projectId}`),
       source: "user" as const,
       snippet: said,
     }));
@@ -1041,10 +1076,20 @@ document.documentElement.classList.toggle(
   "dark",
   new URLSearchParams(location.search).get("theme") === "dark",
 );
+// The app's own palette with `?palette=zerops`, so a capture reads in the
+// colours the app paints — the base tokens are not the owner's menu.
+if (new URLSearchParams(location.search).get("palette") === "zerops") {
+  applyThemePalette(
+    ZEROPS_THEME_ID,
+    new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light",
+  );
+}
 
 // An account is open, as in the app: the order and the mutes are kept under
 // its key. A draft stands in Iris's composer, as the composer would keep it.
 openAccountLifetime("design-harness");
+// The fixture set's folded projects, as a person left them.
+writeCollapsedProjects(new Set(FIXTURES.collapsed));
 const params = new URLSearchParams(location.search);
 const order = params.get("order");
 if (order === "custom" || order === "name" || order === "newest") {

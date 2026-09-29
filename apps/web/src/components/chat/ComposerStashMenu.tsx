@@ -3,6 +3,7 @@ import { memo, useEffect, useRef, useState } from "react";
 
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { cn } from "~/lib/utils";
+import { stripInlinePicturePlaceholders } from "../../lib/composerPictures";
 import { type PromptStashEntry } from "../../promptStashStore";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
 import { Button } from "../ui/button";
@@ -15,7 +16,7 @@ function missingImageCount(entry: PromptStashEntry): number {
 }
 
 function stashEntrySnippet(entry: PromptStashEntry): string {
-  const trimmed = entry.prompt.trim().replace(/\s+/g, " ");
+  const trimmed = stripInlinePicturePlaceholders(entry.prompt).trim().replace(/\s+/g, " ");
   if (trimmed.length > 0) {
     return trimmed.length > SNIPPET_MAX_CHARS ? `${trimmed.slice(0, SNIPPET_MAX_CHARS)}…` : trimmed;
   }

@@ -280,6 +280,7 @@ import {
   useComposerDraftStore,
   type DraftId,
 } from "../composerDraftStore";
+import { materializePicturePrompt } from "../lib/composerPictures";
 import {
   appendTerminalContextsToPrompt,
   formatTerminalContextLabel,
@@ -340,6 +341,7 @@ import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog"
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
+import { TimelineSwitch } from "./chat/TimelineSwitch";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
 import {
@@ -6475,8 +6477,10 @@ export default function ChatView(props: ChatViewProps) {
     const composerImagesSnapshot = [...composerImages];
     const composerTerminalContextsSnapshot = [...sendableComposerTerminalContexts];
     const composerReviewCommentsSnapshot: ReviewCommentContext[] = [...composerReviewComments];
+    // Each picture's place becomes its label and notes, so the Mate reads words
+    // and pictures in the order they were written.
     const messageTextWithContexts = appendTerminalContextsToPrompt(
-      promptForSend,
+      materializePicturePrompt(promptForSend, composerImagesSnapshot),
       composerTerminalContextsSnapshot,
     );
     const messageTextForSend = appendReviewCommentsToPrompt(
@@ -6666,14 +6670,31 @@ export default function ChatView(props: ChatViewProps) {
         };
       }),
     );
-    const optimisticAttachments = composerImagesSnapshot.map((image) => ({
-      type: "image" as const,
-      id: image.id,
-      name: image.name,
-      mimeType: image.mimeType,
-      sizeBytes: image.sizeBytes,
-      previewUrl: image.previewUrl,
-    }));
+    const optimisticAttachments = composerImagesSnapshot.flatMap((image) => {
+      const original = image.picture?.keepOriginal ? image.picture.source : null;
+      return [
+        {
+          type: "image" as const,
+          id: image.id,
+          name: image.name,
+          mimeType: image.mimeType,
+          sizeBytes: image.sizeBytes,
+          previewUrl: image.previewUrl,
+        },
+        // A kept original rides right after its picture, as it is sent.
+        ...(original
+          ? [
+              {
+                type: "file" as const,
+                id: `${image.id}-original`,
+                name: original.name || image.name,
+                mimeType: original.type || "application/octet-stream",
+                sizeBytes: original.size,
+              },
+            ]
+          : []),
+      ];
+    });
     const shouldAnchorFirstMessage =
       activeThread.latestTurn === null &&
       !timelineMessages.some((message) => message.role === "user");
@@ -8138,66 +8159,69 @@ export default function ChatView(props: ChatViewProps) {
             />
             {/* Messages Wrapper */}
             <div className="relative flex min-h-0 flex-1 flex-col">
-              {/* Messages — LegendList handles virtualization and scrolling internally */}
-              <CrewTimelineContext value={crewTimeline}>
-                <MessagesTimeline
-                  agentPanelModel={agentPanelModel}
-                  onOpenAgents={addAgentsSurface}
-                  working={dockModel}
-                  afterTurnWork={activeBackgroundLiveness}
-                  onStopBackgroundWork={stopBackgroundWork}
-                  stoppingBackgroundWork={isStoppingBackgroundWork}
-                  key={activeThread.id}
-                  isWorking={isWorking}
-                  workingStepLabel={workingStepLabel}
-                  isCompacting={isCompacting}
-                  activeTurnStartedAt={activeWorkStartedAt}
-                  listRef={legendListRef}
-                  timelineEntries={displayedTimeline.entries}
-                  latestTurn={activeLatestTurn}
-                  runningTurnId={activeRunningTurnId}
-                  turnDiffSummaries={activeThread.checkpoints}
-                  activeThreadEnvironmentId={activeThread.environmentId}
-                  routeThreadKey={routeThreadKey}
-                  onOpenTurnDiff={onOpenTurnDiff}
-                  supportsConversationRollback={supportsConversationRollback}
-                  onRevertToTurnCount={onRevertTimelineTurn}
-                  {...(activeProject ? { onRunShellCommand: runShellCommand } : {})}
-                  isRevertingCheckpoint={isRevertingCheckpoint}
-                  onImageExpand={onExpandTimelineImage}
-                  markdownCwd={gitCwd ?? undefined}
-                  resolvedTheme={resolvedTheme}
-                  timestampFormat={timestampFormat}
-                  workspaceRoot={activeWorkspaceRoot}
-                  skills={
-                    activeProviderStatus
-                      ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
-                      : EMPTY_PROVIDER_SKILLS
-                  }
-                  anchorMessageId={timelineAnchorMessageId}
-                  onAnchorReady={onTimelineAnchorReady}
-                  contentInsetEndAdjustment={composerOverlayHeight}
-                  liveFollowEnabled={timelineLiveFollowEnabled}
-                  onIsAtEndChange={onIsAtEndChange}
-                  onManualNavigation={cancelTimelineLiveFollowForUserNavigation}
-                  cancelPositionRestoreRef={cancelPositionRestoreRef}
-                  hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
-                  loading={threadDetailLoading && !isDraftHeroState}
-                  syncing={threadSyncPhase !== null || threadDetailLoading}
-                  queuedMessages={queuedMessages}
-                  usagePause={activeThreadShell?.usagePause ?? null}
-                  onUsageAutoResumeChange={onUsageAutoResumeChange}
-                  onSteerQueuedMessage={onSteerQueuedMessage}
-                  steerQueuedMessageShortcutLabel={shortcutLabelForCommand(
-                    keybindings,
-                    "thread.steerQueuedMessage",
-                    { context: { terminalFocus: false } },
-                  )}
-                  onRemoveQueuedMessage={onRemoveQueuedMessage}
-                  topFadeEnabled={!hasTimelineTopBanner}
-                  loadEarlier={loadEarlierTurns}
-                />
-              </CrewTimelineContext>
+              {/* Messages — LegendList handles virtualization and scrolling
+                  internally; the switch keeps a conversation on screen while
+                  the next one is placed. */}
+              <TimelineSwitch switchKey={routeThreadKey}>
+                <CrewTimelineContext value={crewTimeline}>
+                  <MessagesTimeline
+                    agentPanelModel={agentPanelModel}
+                    onOpenAgents={addAgentsSurface}
+                    working={dockModel}
+                    afterTurnWork={activeBackgroundLiveness}
+                    onStopBackgroundWork={stopBackgroundWork}
+                    stoppingBackgroundWork={isStoppingBackgroundWork}
+                    isWorking={isWorking}
+                    workingStepLabel={workingStepLabel}
+                    isCompacting={isCompacting}
+                    activeTurnStartedAt={activeWorkStartedAt}
+                    listRef={legendListRef}
+                    timelineEntries={displayedTimeline.entries}
+                    latestTurn={activeLatestTurn}
+                    runningTurnId={activeRunningTurnId}
+                    turnDiffSummaries={activeThread.checkpoints}
+                    activeThreadEnvironmentId={activeThread.environmentId}
+                    routeThreadKey={routeThreadKey}
+                    onOpenTurnDiff={onOpenTurnDiff}
+                    supportsConversationRollback={supportsConversationRollback}
+                    onRevertToTurnCount={onRevertTimelineTurn}
+                    {...(activeProject ? { onRunShellCommand: runShellCommand } : {})}
+                    isRevertingCheckpoint={isRevertingCheckpoint}
+                    onImageExpand={onExpandTimelineImage}
+                    markdownCwd={gitCwd ?? undefined}
+                    resolvedTheme={resolvedTheme}
+                    timestampFormat={timestampFormat}
+                    workspaceRoot={activeWorkspaceRoot}
+                    skills={
+                      activeProviderStatus
+                        ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
+                        : EMPTY_PROVIDER_SKILLS
+                    }
+                    anchorMessageId={timelineAnchorMessageId}
+                    onAnchorReady={onTimelineAnchorReady}
+                    contentInsetEndAdjustment={composerOverlayHeight}
+                    liveFollowEnabled={timelineLiveFollowEnabled}
+                    onIsAtEndChange={onIsAtEndChange}
+                    onManualNavigation={cancelTimelineLiveFollowForUserNavigation}
+                    cancelPositionRestoreRef={cancelPositionRestoreRef}
+                    hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
+                    loading={threadDetailLoading && !isDraftHeroState}
+                    syncing={threadSyncPhase !== null || threadDetailLoading}
+                    queuedMessages={queuedMessages}
+                    usagePause={activeThreadShell?.usagePause ?? null}
+                    onUsageAutoResumeChange={onUsageAutoResumeChange}
+                    onSteerQueuedMessage={onSteerQueuedMessage}
+                    steerQueuedMessageShortcutLabel={shortcutLabelForCommand(
+                      keybindings,
+                      "thread.steerQueuedMessage",
+                      { context: { terminalFocus: false } },
+                    )}
+                    onRemoveQueuedMessage={onRemoveQueuedMessage}
+                    topFadeEnabled={!hasTimelineTopBanner}
+                    loadEarlier={loadEarlierTurns}
+                  />
+                </CrewTimelineContext>
+              </TimelineSwitch>
 
               {/* The way back to the end, once the person has scrolled away from
                   it: a round button floating over the timeline, always drawn and
@@ -8444,7 +8468,6 @@ export default function ChatView(props: ChatViewProps) {
                               focusComposer={focusComposer}
                               scheduleComposerFocus={scheduleComposerFocus}
                               setThreadError={setThreadError}
-                              onExpandImage={onExpandTimelineImage}
                             />
                           )}
                         </div>

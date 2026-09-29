@@ -46,6 +46,7 @@ import { createDeferredStorage } from "./lib/storage";
 import { getDefaultServerModel } from "./providerModels";
 import { UnifiedSettings } from "@t3tools/contracts/settings";
 import { ReviewCommentContextSchema, type ReviewCommentContext } from "./reviewCommentContext";
+import { type ComposerPicture, ensureInlinePicturePlaceholders } from "./lib/composerPictures";
 const isRuntimeMode = Schema.is(RuntimeMode);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 const isReviewCommentContext = Schema.is(ReviewCommentContextSchema);
@@ -107,18 +108,77 @@ if (typeof window !== "undefined" && typeof window.addEventListener === "functio
   });
 }
 
+const PersistedPictureRect = Schema.Struct({
+  x: Schema.Number,
+  y: Schema.Number,
+  w: Schema.Number,
+  h: Schema.Number,
+});
+
+const PersistedPictureMark = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("pin"),
+    id: Schema.String,
+    x: Schema.Number,
+    y: Schema.Number,
+    note: Schema.String,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("box"),
+    id: Schema.String,
+    x: Schema.Number,
+    y: Schema.Number,
+    w: Schema.Number,
+    h: Schema.Number,
+    note: Schema.String,
+  }),
+]);
+
+/**
+ * A picture's edits without the pasted file, which is too large to keep: after
+ * a reload the copy (the attachment's data) stands on its own, its notes intact.
+ */
+const PersistedComposerPicture = Schema.Struct({
+  sourceWidth: Schema.Number,
+  sourceHeight: Schema.Number,
+  crop: PersistedPictureRect,
+  marks: Schema.mutable(Schema.Array(PersistedPictureMark)),
+  width: Schema.Number,
+  height: Schema.Number,
+  asPasted: Schema.Boolean,
+});
+type PersistedComposerPicture = typeof PersistedComposerPicture.Type;
+const isPersistedComposerPicture = Schema.is(PersistedComposerPicture);
+
 export const PersistedComposerImageAttachment = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   mimeType: Schema.String,
   sizeBytes: Schema.Number,
   dataUrl: Schema.String,
+  picture: Schema.optionalKey(PersistedComposerPicture),
 });
 export type PersistedComposerImageAttachment = typeof PersistedComposerImageAttachment.Type;
 
 export interface ComposerImageAttachment extends Omit<ChatImageAttachment, "previewUrl"> {
   previewUrl: string;
+  /** What goes to the Mate: for a picture, its fitted copy. */
   file: File;
+  /** How a pasted picture's copy was made; absent for an image not yet made a picture. */
+  picture?: ComposerPicture;
+}
+
+/** A picture's edits as a draft keeps them. */
+export function persistedPicture(picture: ComposerPicture): PersistedComposerPicture {
+  return {
+    sourceWidth: picture.sourceWidth,
+    sourceHeight: picture.sourceHeight,
+    crop: { ...picture.crop },
+    marks: picture.marks.map((mark) => ({ ...mark })),
+    width: picture.width,
+    height: picture.height,
+    asPasted: picture.asPasted,
+  };
 }
 
 const PersistedTerminalContextDraft = Schema.Struct({
@@ -488,6 +548,20 @@ interface ComposerDraftStoreState {
   ) => void;
   addImage: (threadRef: ComposerThreadTarget, image: ComposerImageAttachment) => void;
   addImages: (threadRef: ComposerThreadTarget, images: ComposerImageAttachment[]) => void;
+  /**
+   * A picture pasted into the text: the prompt holding its new place, and the
+   * image at its index among the pictures, so the n-th place stays images[n].
+   */
+  insertImage: (
+    threadRef: ComposerThreadTarget,
+    prompt: string,
+    image: ComposerImageAttachment,
+    index: number,
+  ) => void;
+  /** An image made again (a picture's new copy), in its place. */
+  updateImage: (threadRef: ComposerThreadTarget, image: ComposerImageAttachment) => void;
+  /** The images the text still holds, in the text's order; the rest go. */
+  syncImages: (threadRef: ComposerThreadTarget, imageIds: ReadonlyArray<string>) => void;
   removeImage: (threadRef: ComposerThreadTarget, imageId: string) => void;
   insertTerminalContext: (
     threadRef: ComposerThreadTarget,
@@ -1119,6 +1193,7 @@ function normalizePersistedAttachment(value: unknown): PersistedComposerImageAtt
     mimeType,
     sizeBytes,
     dataUrl,
+    ...(isPersistedComposerPicture(candidate.picture) ? { picture: candidate.picture } : {}),
   };
 }
 
@@ -1672,9 +1747,9 @@ function normalizePersistedDraftsByThreadId(
       draftCandidate.interactionMode === "plan" || draftCandidate.interactionMode === "default"
         ? draftCandidate.interactionMode
         : null;
-    const prompt = ensureInlineTerminalContextPlaceholders(
-      promptCandidate,
-      terminalContexts.length,
+    const prompt = ensureInlinePicturePlaceholders(
+      ensureInlineTerminalContextPlaceholders(promptCandidate, terminalContexts.length),
+      attachments.length,
     );
     // If the draft already has the v3 shape, use it directly
     const legacyDraftCandidate = draftValue as LegacyPersistedComposerThreadDraftState;
@@ -2118,6 +2193,16 @@ export function hydrateImagesFromPersisted(
         sizeBytes: attachment.sizeBytes,
         previewUrl: attachment.dataUrl,
         file,
+        ...(attachment.picture
+          ? {
+              picture: {
+                ...attachment.picture,
+                source: null,
+                keepOriginal: false,
+                preparing: false,
+              },
+            }
+          : {}),
       } satisfies ComposerImageAttachment,
     ];
   });
@@ -2973,6 +3058,103 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             };
           });
         },
+        insertImage: (threadRef, prompt, image, index) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
+          if (threadKey.length === 0) {
+            return;
+          }
+          set((state) => {
+            const existing = state.draftsByThreadKey[threadKey] ?? createEmptyThreadDraft();
+            if (existing.images.some((entry) => entry.id === image.id)) {
+              return state;
+            }
+            const boundedIndex = Math.max(0, Math.min(existing.images.length, index));
+            return {
+              draftsByThreadKey: {
+                ...state.draftsByThreadKey,
+                [threadKey]: {
+                  ...existing,
+                  prompt,
+                  images: [
+                    ...existing.images.slice(0, boundedIndex),
+                    image,
+                    ...existing.images.slice(boundedIndex),
+                  ],
+                },
+              },
+            };
+          });
+        },
+        updateImage: (threadRef, image) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
+          const existing = threadKey ? get().draftsByThreadKey[threadKey] : undefined;
+          const previous = existing?.images.find((entry) => entry.id === image.id);
+          if (!existing || !previous) {
+            revokeObjectPreviewUrl(image.previewUrl);
+            return;
+          }
+          if (previous.previewUrl !== image.previewUrl) {
+            revokeObjectPreviewUrl(previous.previewUrl);
+          }
+          set((state) => {
+            const current = state.draftsByThreadKey[threadKey];
+            if (!current) {
+              return state;
+            }
+            return {
+              draftsByThreadKey: {
+                ...state.draftsByThreadKey,
+                [threadKey]: {
+                  ...current,
+                  images: current.images.map((entry) => (entry.id === image.id ? image : entry)),
+                },
+              },
+            };
+          });
+        },
+        syncImages: (threadRef, imageIds) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
+          const existing = threadKey ? get().draftsByThreadKey[threadKey] : undefined;
+          if (!existing) {
+            return;
+          }
+          const byId = new Map(existing.images.map((image) => [image.id, image]));
+          const images = imageIds.flatMap((id) => {
+            const image = byId.get(id);
+            return image ? [image] : [];
+          });
+          const kept = new Set(images.map((image) => image.id));
+          if (
+            images.length === existing.images.length &&
+            images.every((image, index) => image === existing.images[index])
+          ) {
+            return;
+          }
+          for (const image of existing.images) {
+            if (!kept.has(image.id)) revokeObjectPreviewUrl(image.previewUrl);
+          }
+          set((state) => {
+            const current = state.draftsByThreadKey[threadKey];
+            if (!current) {
+              return state;
+            }
+            const nextDraft: ComposerThreadDraftState = {
+              ...current,
+              images,
+              nonPersistedImageIds: current.nonPersistedImageIds.filter((id) => kept.has(id)),
+              persistedAttachments: current.persistedAttachments.filter((attachment) =>
+                kept.has(attachment.id),
+              ),
+            };
+            const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
+            if (shouldRemoveDraft(nextDraft)) {
+              delete nextDraftsByThreadKey[threadKey];
+            } else {
+              nextDraftsByThreadKey[threadKey] = nextDraft;
+            }
+            return { draftsByThreadKey: nextDraftsByThreadKey };
+          });
+        },
         removeImage: (threadRef, imageId) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
           if (threadKey.length === 0) {
@@ -3312,10 +3494,15 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             const destination = state.draftsByThreadKey[toKey] ?? createEmptyThreadDraft();
             // Inline placeholders reference the source's terminal contexts,
             // which stay behind; re-anchor the moved prompt to whatever
-            // contexts the destination already holds.
-            const movedPrompt = ensureInlineTerminalContextPlaceholders(
-              stripInlineTerminalContextPlaceholders(source.prompt),
-              destination.terminalContexts.length,
+            // contexts the destination already holds. The moved pictures
+            // keep their places; the destination's own go first, as their
+            // images do.
+            const movedPrompt = ensureInlinePicturePlaceholders(
+              ensureInlineTerminalContextPlaceholders(
+                stripInlineTerminalContextPlaceholders(source.prompt),
+                destination.terminalContexts.length,
+              ),
+              destination.images.length + source.images.length,
             );
             const nextDestination: ComposerThreadDraftState = {
               ...destination,

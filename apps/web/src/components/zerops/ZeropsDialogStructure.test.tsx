@@ -10,10 +10,8 @@
  * `PullRequestThreadDialog.tsx`) is `DialogPopup` > `DialogHeader`,
  * `DialogPanel`, `DialogFooter` as siblings, so this asserts exactly that
  * for the content each dialog puts inside its `DialogPopup`. It renders that
- * content wrapped in a bare `Dialog` (not `DialogPopup`), the same way
- * `ZeropsReleaseDialog.test.tsx` already does —
- * `DialogPopup` portals into `document`, which the `node` test environment
- * does not have.
+ * content wrapped in a bare `Dialog` (not `DialogPopup`): `DialogPopup`
+ * portals into `document`, which the `node` test environment does not have.
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
@@ -24,7 +22,6 @@ import { ZeropsAskConfirm } from "./ZeropsAskDialog";
 import { ZeropsEnvironmentCreationForm } from "./ZeropsEnvironmentCreationDialog";
 import { ZeropsMoveToGroupForm } from "./ZeropsMoveToGroupDialog";
 import { ZeropsRenameForm } from "./ZeropsRenameDialog";
-import { ZeropsReleaseConfirm } from "./ZeropsReleaseDialog";
 
 const noop = () => {};
 
@@ -129,18 +126,6 @@ const cases: ReadonlyArray<{ readonly name: string; readonly render: () => strin
           submitLabel="Rename"
           title="Rename Fen"
           validate={() => undefined}
-        />,
-      ),
-  },
-  {
-    name: "ZeropsReleaseDialog",
-    render: () =>
-      renderInDialog(
-        <ZeropsReleaseConfirm
-          contents={[{ commits: [{ sha: "a", subject: "Add a search box above the list" }] }]}
-          onConfirm={noop}
-          releasing={false}
-          tag="v0.1.3"
         />,
       ),
   },

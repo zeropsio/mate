@@ -22,6 +22,40 @@ describe("ComposerStashMenu", () => {
     expect(markup).not.toContain("Stashed prompts");
   });
 
+  it.each([
+    ["words around a picture show without its place", "\uFFFBCompare\uFFFB these", "Compare these"],
+    ["a picture alone shows as a picture", "\uFFFB", "(1 image)"],
+  ])("quotes a stashed prompt: %s", (_label, prompt, expected) => {
+    const markup = renderToStaticMarkup(
+      <ComposerStashMenu
+        entries={[
+          {
+            id: "with-a-picture",
+            createdAt: new Date(0).toISOString(),
+            prompt,
+            attachments: [
+              {
+                id: "picture-one",
+                name: "shot.png",
+                mimeType: "image/png",
+                sizeBytes: 128,
+                dataUrl: "data:image/png;base64,AA==",
+              },
+            ],
+            droppedImageNames: [],
+            unreadableImageNames: [],
+            pendingImageCount: 0,
+          },
+        ]}
+        onRestore={() => {}}
+        onDelete={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(markup).toContain(expected);
+    expect(markup).not.toContain("\uFFFB");
+  });
+
   it("shows saved image thumbnails and incomplete image states", () => {
     const markup = renderToStaticMarkup(
       <ComposerStashMenu

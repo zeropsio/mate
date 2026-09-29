@@ -255,6 +255,10 @@
       "types": "./src/imageDimensions.ts",
       "import": "./src/imageDimensions.ts"
     },
+    "./composerPictures": {
+      "types": "./src/composerPictures.ts",
+      "import": "./src/composerPictures.ts"
+    },
     "./chatList": {
       "types": "./src/chatList.ts",
       "import": "./src/chatList.ts"

@@ -1,22 +1,23 @@
 /**
- * Downscale + re-encode for image attachments that are too big for where
- * they're headed. Two consumers share the same pipeline:
+ * Downscale + re-encode for images headed somewhere with limits:
  *
+ * - A picture in the composer goes to the Mate as a copy fitted to what
+ *   Claude reads (`fitPictureCopy`): at most 2000 px a side and 3,932,160
+ *   bytes, which encode to its 5 MB of base64. PNG first, so text stays
+ *   sharp, then a JPEG quality ladder, then smaller sizes.
  * - The prompt stash persists images as base64 in localStorage (~5MB origin
  *   quota), so `compressImageForStash` targets a per-image character budget.
- * - The composer accepts pasted/dropped images larger than the provider's
- *   `PROVIDER_SEND_TURN_MAX_IMAGE_BYTES` wire cap and shrinks them to fit
- *   via `compressImageToByteLimit` instead of rejecting the paste.
  *
  * Supported images already within budget pass through untouched. HEIC/HEIF
  * photos are decoded to JPEG first because providers cannot consume them.
  */
+import { PICTURE_MAX_BYTES, PICTURE_MAX_EDGE } from "@t3tools/shared/composerPictures";
 
-/**
- * Longest edge kept when an image has to be re-encoded. Sized so a typical
- * retina screenshot (3024px wide) stays legible rather than being halved.
- */
-const MAX_DIMENSION = 2048;
+import type { PictureMark, PictureRect } from "./composerPictures";
+import { drawPictureComposite } from "./pictureDrawing";
+
+/** Longest edge kept when an image has to be re-encoded: what Claude reads. */
+const MAX_DIMENSION = PICTURE_MAX_EDGE;
 /** Base64 budget for a single stashed image (~975KB of binary). */
 export const MAX_STASH_IMAGE_DATA_URL_CHARS = 1_300_000;
 /**
@@ -506,4 +507,171 @@ export async function prepareImageForAttachment(
   });
 
   return result.ok ? { ...result, recompressed: true } : result;
+}
+
+// ---------------------------------------------------------------------------
+// Pictures: the copy the Mate sees
+// ---------------------------------------------------------------------------
+
+export interface PictureEncodeStep {
+  readonly type: "image/png" | "image/jpeg";
+  readonly quality?: number;
+}
+
+/** Fractions of the fitted size tried in turn when no encoding fits at full size. */
+const PICTURE_SCALE_STEPS = [1, ...FALLBACK_SCALE_STEPS] as const;
+/** What Claude reads, and so what may go as it was pasted. */
+const PICTURE_AS_PASTED_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+
+/** The copy's size: the crop, scaled down until its longer side is at most 2000 px. */
+export function pictureFitSize(crop: Pick<PictureRect, "w" | "h">): {
+  width: number;
+  height: number;
+} {
+  const scale = Math.min(1, PICTURE_MAX_EDGE / Math.max(crop.w, crop.h));
+  return {
+    width: Math.max(1, Math.round(crop.w * scale)),
+    height: Math.max(1, Math.round(crop.h * scale)),
+  };
+}
+
+/** PNG first so a screenshot's text stays sharp, then the JPEG ladder; a photo goes straight to JPEG. */
+export function pictureEncodeSteps(sourceType: string): PictureEncodeStep[] {
+  const jpeg = QUALITY_STEPS.map((quality) => ({ type: "image/jpeg" as const, quality }));
+  return sourceType === "image/jpeg" ? jpeg : [{ type: "image/png" }, ...jpeg];
+}
+
+export interface PictureSource {
+  readonly type: string;
+  readonly bytes: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export type PictureCopy<B> =
+  | { readonly kind: "as-pasted" }
+  | {
+      readonly kind: "fitted";
+      readonly blob: B;
+      readonly width: number;
+      readonly height: number;
+      readonly type: PictureEncodeStep["type"];
+    }
+  | { readonly kind: "too-large" };
+
+/**
+ * The copy the Mate sees: the pasted file itself when nothing was drawn on
+ * it, nothing cut, and it is within the limits; otherwise the crop drawn at
+ * the fitted size and walked down the encodings, then down in size, until it
+ * weighs at most `PICTURE_MAX_BYTES`. `encode` draws and encodes one try, or
+ * answers null when the browser cannot make that type.
+ */
+export async function fitPictureCopy<B extends { readonly size: number }>(input: {
+  readonly source: PictureSource;
+  readonly crop: PictureRect;
+  readonly markCount: number;
+  readonly encode: (
+    target: PictureEncodeStep & { readonly width: number; readonly height: number },
+  ) => Promise<B | null>;
+}): Promise<PictureCopy<B>> {
+  const { source, crop } = input;
+  const whole = crop.x === 0 && crop.y === 0 && crop.w === source.width && crop.h === source.height;
+  if (
+    input.markCount === 0 &&
+    whole &&
+    Math.max(source.width, source.height) <= PICTURE_MAX_EDGE &&
+    source.bytes <= PICTURE_MAX_BYTES &&
+    PICTURE_AS_PASTED_TYPES.has(source.type)
+  ) {
+    return { kind: "as-pasted" };
+  }
+  const fitted = pictureFitSize(crop);
+  for (const scale of PICTURE_SCALE_STEPS) {
+    const width = Math.max(1, Math.round(fitted.width * scale));
+    const height = Math.max(1, Math.round(fitted.height * scale));
+    for (const step of pictureEncodeSteps(source.type)) {
+      const blob = await input.encode({ ...step, width, height });
+      if (blob && blob.size <= PICTURE_MAX_BYTES) {
+        return { kind: "fitted", blob, width, height, type: step.type };
+      }
+    }
+  }
+  return { kind: "too-large" };
+}
+
+async function canvasBlob(
+  canvas: OffscreenCanvas | HTMLCanvasElement,
+  type: string,
+  quality: number | undefined,
+): Promise<Blob | null> {
+  const blob =
+    typeof HTMLCanvasElement !== "undefined" && canvas instanceof HTMLCanvasElement
+      ? await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality))
+      : await (canvas as OffscreenCanvas).convertToBlob({
+          type,
+          ...(quality !== undefined ? { quality } : {}),
+        });
+  // A browser that cannot make the type hands back a PNG instead.
+  return blob && blob.type === type ? blob : null;
+}
+
+/**
+ * An encoder for `fitPictureCopy` that draws the crop with its marks burnt in.
+ * A JPEG try draws on white, since JPEG has no transparency; one drawing
+ * serves every quality at the same size.
+ */
+export function pictureCanvasEncoder(input: {
+  readonly image: CanvasImageSource;
+  readonly crop: PictureRect;
+  readonly marks: ReadonlyArray<PictureMark>;
+}): (target: PictureEncodeStep & { width: number; height: number }) => Promise<Blob | null> {
+  let drawn: { key: string; canvas: OffscreenCanvas | HTMLCanvasElement } | null = null;
+  return async (target) => {
+    const matte = target.type === "image/jpeg";
+    const key = `${target.width}x${target.height}${matte ? ":matte" : ""}`;
+    if (drawn?.key !== key) {
+      const surface = createCanvas(target.width, target.height);
+      if (!surface) return null;
+      if (matte) {
+        surface.context.fillStyle = "#ffffff";
+        surface.context.fillRect(0, 0, target.width, target.height);
+      }
+      drawPictureComposite(surface.context, {
+        image: input.image,
+        crop: input.crop,
+        marks: input.marks,
+        width: target.width,
+        height: target.height,
+        mode: "fit",
+        minRadius: 12,
+      });
+      drawn = { key, canvas: surface.canvas };
+    }
+    return canvasBlob(drawn.canvas, target.type, target.quality);
+  };
+}
+
+/**
+ * The file a pasted picture is made from: a HEIC/HEIF photo decoded to JPEG
+ * (browsers cannot draw HEIC), anything else as it came.
+ */
+export async function pictureSourceFile(file: File): Promise<CompressImageFileResult> {
+  if (!isHeicImageFile(file)) return { ok: true, file, recompressed: false };
+  if (file.size > MAX_COMPRESSIBLE_SOURCE_BYTES) return { ok: false, reason: "too-large" };
+  try {
+    const dimensionError = await validateHeicImageDimensions(file);
+    if (dimensionError) return { ok: false, reason: dimensionError };
+    const { heicTo } = await import("heic-to/csp");
+    const converted = await heicTo({ blob: file, type: "image/jpeg", quality: QUALITY_STEPS[0] });
+    return {
+      ok: true,
+      file: new File([converted], fileNameForMimeType(file.name || "image", "image/jpeg"), {
+        type: "image/jpeg",
+        lastModified: file.lastModified,
+      }),
+      recompressed: true,
+    };
+  } catch {
+    return { ok: false, reason: "unreadable" };
+  }
 }

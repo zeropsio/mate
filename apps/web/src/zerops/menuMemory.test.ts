@@ -14,6 +14,7 @@ import {
   rememberedRowOf,
   rememberMenu,
   withChanges,
+  withChips,
   withMembers,
   withRows,
 } from "./menuMemory";
@@ -26,7 +27,6 @@ const WORKING: ZeropsAgentActivity = {
   subject: "Add a /status page",
   at: "2026-09-27T10:00:00.000Z",
   snippet: "The page reads the build number.",
-  progress: { completed: 2, total: 5 },
   unread: true,
   pausedUntil: undefined,
   threadKey: "env-nova:thread-nova",
@@ -62,7 +62,6 @@ describe("a remembered row", () => {
       subject: "Add a /status page",
       at: "2026-09-27T10:00:00.000Z",
       snippet: "The page reads the build number.",
-      progress: undefined,
       unread: true,
       pausedUntil: undefined,
       threadKey: "env-nova:thread-nova",
@@ -142,6 +141,27 @@ describe("what the memory keeps", () => {
         user: { id: "u-jan", fullName: "Jan Novák", avatar: null },
       },
     ]);
+  });
+});
+
+describe("a remembered production chip", () => {
+  const OK = { label: "prod", state: "ok", version: "v0.1.0" } as const;
+  const WAITING = { label: "prod", state: "waiting", version: "v0.1.44", waiting: 1 } as const;
+
+  it("keeps each project's chip as last drawn, and forgets one that is no more", () => {
+    const first = withChips(EMPTY_MENU_MEMORY, { g1: OK, g2: WAITING }, new Set(["g1", "g2"]));
+    expect(first.chips).toEqual({ g1: OK, g2: WAITING });
+    // Read again: g2 has no production any more.
+    const next = withChips(first, { g2: null }, new Set(["g1", "g2"]));
+    expect(next.chips).toEqual({ g1: OK });
+    // A project no longer listed takes its chip with it.
+    expect(withChips(next, {}, new Set(["g2"])).chips).toEqual({});
+  });
+
+  it("is the same memory when no chip changed, so nothing is written", () => {
+    const first = withChips(EMPTY_MENU_MEMORY, { g1: OK }, new Set(["g1"]));
+    expect(withChips(first, { g1: { ...OK } }, new Set(["g1"]))).toBe(first);
+    expect(withChips(first, {})).toBe(first);
   });
 });
 

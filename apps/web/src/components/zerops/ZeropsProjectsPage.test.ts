@@ -765,7 +765,6 @@ describe("a status word's hand", () => {
     ["the projects screen", projectsPageSource],
     ["a project's own page", groupDetailSource],
     ["the Git page", giteaPageSource],
-    ["the left menu", sidebarTreeSource],
     ["the Git tab", gitBlockSource],
     ["a deploy's run", deployRunSource],
     ["the verdict panel", verdictPanelSource],
@@ -779,10 +778,12 @@ describe("a status word's hand", () => {
     // "Needs a rebase" — one fact, two hands, on surfaces a click apart. R5:
     // the words are the runtime's, and so is their case.
     //
-    // Every surface that draws a change or an environment is listed here.
-    // A service's runtime status on a card is not one of them: the accepted
-    // `ServiceRow` principle sets that word as a `MicroLabel` over the name,
-    // and it reads as a label because that is what it is.
+    // Every surface that draws a change or an environment with a status dot
+    // is listed here. The left menu draws none: a change row says Review and
+    // production is a chip on its project's heading. A service's runtime
+    // status on a card is not one of them either: the accepted `ServiceRow`
+    // principle sets that word as a `MicroLabel` over the name, and it reads
+    // as a label because that is what it is.
     const dots = statusDots(source);
     expect(dots.length).toBeGreaterThan(0);
     for (const dot of dots) {

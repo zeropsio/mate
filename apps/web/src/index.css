@@ -3124,6 +3124,442 @@ code {
   line-height: 1;
 }
 
+/* The production chip on a project's heading (M2): a quiet 24 px pill with a
+   7 px dot, the stop's word, what it serves in mono and anything more in the
+   muted ink — amber while a release did not go through, red while it is down. */
+.zerops-envchip {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  max-width: 100%;
+  padding: 0 9px 0 8px;
+  border-radius: 12px;
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 5.5%, transparent);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 150ms ease;
+}
+
+.zerops-envchip:hover,
+.zerops-envchip[data-popup-open] {
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 9%, transparent);
+}
+
+.zerops-envchip:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.zerops-envchip-version {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: color-mix(in oklab, var(--sidebar-foreground) 76%, transparent);
+  font-family: var(--font-mono);
+}
+
+.zerops-envchip[data-tone="amber"] {
+  background-color: color-mix(in oklab, var(--zerops-status-attention) 16%, transparent);
+  color: var(--zerops-status-attention-text);
+}
+
+.zerops-envchip[data-tone="amber"]:is(:hover, [data-popup-open]) {
+  background-color: color-mix(in oklab, var(--zerops-status-attention) 24%, transparent);
+}
+
+.zerops-envchip[data-tone="amber"] .zerops-envchip-version {
+  color: var(--zerops-status-attention-text);
+}
+
+.zerops-envchip[data-tone="red"] {
+  background-color: color-mix(in oklab, var(--zerops-status-failed) 12%, transparent);
+  color: var(--zerops-status-failed-text);
+}
+
+.zerops-envchip[data-tone="red"]:is(:hover, [data-popup-open]) {
+  background-color: color-mix(in oklab, var(--zerops-status-failed) 18%, transparent);
+}
+
+.zerops-envchip[data-tone="red"] .zerops-envchip-label {
+  font-weight: 600;
+}
+
+/* A narrow menu keeps the heading's name: the chip's extra words go first,
+   then what it serves — its tone, dot and word stay, and its menu says the
+   rest. At 435 all of it shows, at 304 the words go, at 256 the version too. */
+[data-zerops-surface="sidebar-project"] {
+  container-type: inline-size;
+}
+
+@container (width < 340px) {
+  .zerops-envchip-extra {
+    display: none;
+  }
+}
+
+@container (width < 260px) {
+  .zerops-envchip-version {
+    display: none;
+  }
+}
+
+/* The heading's + gives its room to the name under 300 px; Add a Mate is the
+   first item of its ⋯ menu either way. */
+@container (width < 300px) {
+  [data-zerops-surface="sidebar-project-add-mate"] {
+    display: none;
+  }
+}
+
+/* A stop's dot: its state's colour, hollow for a stop on purpose, a small
+   stepped spinner while something is on its way. */
+.zerops-envdot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+}
+
+.zerops-envdot[data-dot="ok"] {
+  background-color: var(--zerops-status-ok);
+}
+
+.zerops-envdot[data-dot="attention"] {
+  background-color: var(--zerops-status-attention);
+}
+
+.zerops-envdot[data-dot="failed"] {
+  background-color: var(--zerops-status-failed);
+}
+
+.zerops-envdot[data-dot="off"] {
+  background-color: var(--zerops-status-off);
+}
+
+.zerops-envdot[data-dot="hollow"] {
+  box-shadow: inset 0 0 0 1.5px var(--muted-foreground);
+}
+
+.zerops-envdot[data-dot="spinner"] {
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid color-mix(in oklab, var(--muted-foreground) 35%, transparent);
+  border-top-color: var(--muted-foreground);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .zerops-envdot[data-dot="spinner"] {
+    animation: zerops-env-spin 1s steps(8) infinite;
+  }
+}
+
+@keyframes zerops-env-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+/* The chip's menu: a 330 px card under the chip, growing from its corner. */
+.zerops-envpop {
+  display: flex;
+  flex-direction: column;
+  width: min(330px, calc(100vw - 16px));
+  max-height: var(--available-height);
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background-color: var(--card);
+  color: var(--card-foreground);
+  box-shadow:
+    0 18px 40px -18px color-mix(in srgb, var(--color-black) 38%, transparent),
+    0 2px 6px -2px color-mix(in srgb, var(--color-black) 8%, transparent);
+  font-size: 13px;
+  line-height: 18px;
+  outline: none;
+  transform-origin: var(--transform-origin);
+  transition:
+    opacity 160ms var(--ease-out-strong),
+    scale 160ms var(--ease-out-strong),
+    translate 160ms var(--ease-out-strong);
+}
+
+.zerops-envpop:is([data-starting-style], [data-ending-style]) {
+  opacity: 0;
+  scale: 0.97;
+  translate: 0 -4px;
+}
+
+.dark .zerops-envpop {
+  box-shadow:
+    0 18px 44px -18px color-mix(in srgb, var(--color-black) 90%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--color-black) 35%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zerops-envpop {
+    transition: opacity 160ms ease;
+  }
+
+  .zerops-envpop:is([data-starting-style], [data-ending-style]) {
+    scale: 1;
+    translate: none;
+  }
+}
+
+.zerops-envpop-title {
+  padding: 6px 10px 4px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.zerops-envpop-stop {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: 9px;
+  text-align: start;
+}
+
+.zerops-envpop-stop > .zerops-envdot {
+  justify-self: center;
+}
+
+.zerops-envpop-version {
+  margin-inline-start: 6px;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.zerops-envpop-word {
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.zerops-envpop-word[data-tone="amber"] {
+  color: var(--zerops-status-attention-text);
+}
+
+.zerops-envpop-word[data-tone="red"] {
+  color: var(--zerops-status-failed-text);
+}
+
+.zerops-envpop-press {
+  cursor: pointer;
+  outline: none;
+  transition: background-color 150ms ease;
+}
+
+.zerops-envpop-press:is(:hover, :focus-visible) {
+  background-color: var(--accent);
+}
+
+.zerops-envpop-note {
+  padding: 0 10px 6px 36px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.zerops-envpop-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 36px;
+  border-radius: 8px;
+  color: var(--info-foreground);
+  outline: none;
+  transition: background-color 150ms ease;
+}
+
+.zerops-envpop-link:is(:hover, :focus-visible) {
+  background-color: color-mix(in oklab, var(--info-foreground) 10%, transparent);
+}
+
+.zerops-envpop-separator {
+  height: 1px;
+  margin: 6px 4px;
+  background-color: var(--border);
+}
+
+.zerops-envpop-act {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 6px 6px 10px;
+  border-radius: 9px;
+}
+
+.zerops-envpop-review {
+  padding: 3px 8px;
+  border-radius: 7px;
+  color: var(--info-foreground);
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 150ms ease;
+}
+
+.zerops-envpop-review:is(:hover, :focus-visible) {
+  background-color: color-mix(in oklab, var(--info-foreground) 10%, transparent);
+}
+
+/* "Ask <your Mate> to fix it" (S6): a soft blue button, the Mate's face in it,
+   and under it — once pressed — what goes into the Mate's composer. */
+.zerops-envpop-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 6px 8px 32px;
+}
+
+.zerops-envpop-askbutton,
+.zerops-envpop-askmore,
+.zerops-envpop-other {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px 0 6px;
+  border-radius: 9px;
+  background-color: color-mix(in oklab, var(--info-foreground) 10%, transparent);
+  color: var(--info-foreground);
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  transition:
+    background-color 150ms ease,
+    scale 120ms var(--ease-out-strong);
+}
+
+.zerops-envpop-askbutton {
+  align-self: flex-start;
+}
+
+.zerops-envpop-askmore {
+  justify-content: center;
+  width: 30px;
+  padding: 0;
+}
+
+.zerops-envpop-other {
+  background-color: transparent;
+  color: var(--card-foreground);
+  font-weight: 400;
+}
+
+.zerops-envpop-others {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.zerops-envpop-askbutton:is(:hover, :focus-visible),
+.zerops-envpop-askmore:is(:hover, :focus-visible),
+.zerops-envpop-other:is(:hover, :focus-visible) {
+  background-color: color-mix(in oklab, var(--info-foreground) 16%, transparent);
+}
+
+.zerops-envpop-askbutton:active {
+  scale: 0.98;
+}
+
+.zerops-envpop-draft {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background-color: var(--card);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--card-foreground) 12%, transparent);
+  color: var(--card-foreground);
+  line-height: 19px;
+  overflow-wrap: anywhere;
+}
+
+.zerops-envpop-draft-to {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.zerops-envpop-draft pre {
+  padding: 6px 8px;
+  border-radius: 7px;
+  background-color: color-mix(in oklab, var(--card-foreground) 7%, transparent);
+  color: color-mix(in oklab, var(--card-foreground) 76%, transparent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: pre-wrap;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .zerops-envpop-draft {
+    animation: zerops-envpop-rise 240ms var(--ease-out-strong) both;
+  }
+}
+
+@keyframes zerops-envpop-rise {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+
+/* A folded heading's busy face (M15): its dot on the face's corner, cut out of
+   the menu's ground by a 2 px ring. */
+.zerops-heading-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  box-shadow: 0 0 0 2px var(--sidebar);
+}
+
+.zerops-heading-dot[data-dot="attention"] {
+  background-color: var(--zerops-status-attention);
+}
+
+.zerops-heading-dot[data-dot="unread"] {
+  background-color: var(--info-foreground);
+}
+
+.zerops-heading-dot[data-dot="failed"] {
+  background-color: var(--zerops-status-failed);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .zerops-heading-dot {
+    animation: zerops-heading-dot-in 220ms var(--ease-out-strong) both;
+  }
+}
+
+@keyframes zerops-heading-dot-in {
+  from {
+    opacity: 0;
+    scale: 0;
+  }
+}
+
 /* ==== end of the menu's projects and production ==== */
 
 /* ==== Pass 16 · the run's card ==== */
@@ -3177,6 +3613,224 @@ code {
    colour that means "who" (S3). A crewmate speaks in its own. */
 .run-speech {
   background: color-mix(in oklab, var(--run-speaker-tint) 17%, transparent);
+}
+
+/* The now line, the card's foot (K10): the face in the card's 28 px column,
+   what the Mate is doing in words, the run's one clock on the right edge
+   (K3) in ink (S3). A hairline sets it off the chat above it, unless it is
+   all the card holds. */
+.run-now {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 8px;
+  padding: 4px 14px 0 0;
+  border-top: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
+}
+.run-now:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.run-now-words {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+/* One line: the step, and after it what it runs and for how long. */
+.run-now-head {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.run-now-verb {
+  font-weight: 500;
+  color: var(--color-foreground);
+}
+.run-now-mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.run-now-code {
+  margin-left: 8px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--color-muted-foreground);
+}
+.run-now-thought {
+  margin-left: 6px;
+  font-style: italic;
+  color: var(--color-muted-foreground);
+}
+.run-now-long:not(:empty) {
+  margin-left: 8px;
+  font-size: 13px;
+  color: var(--color-muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.run-now-dots {
+  display: inline-flex;
+  margin-left: 6px;
+  vertical-align: middle;
+  scale: 0.7;
+}
+.run-now-worked {
+  color: color-mix(in oklab, var(--color-foreground) 76%, transparent);
+}
+.run-now-effort {
+  color: var(--color-muted-foreground);
+}
+.run-now-clock {
+  font-size: 13px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-foreground);
+}
+/* Several at once: how many on the line, and one line each under it. */
+.run-now[data-run-now="several"] {
+  align-items: start;
+}
+.run-now[data-run-now="several"] > svg {
+  margin-top: 6px;
+}
+.run-now[data-run-now="several"] > .run-now-words {
+  padding-block: 10px 8px;
+}
+.run-now[data-run-now="several"] > :last-child {
+  margin-top: 10px;
+}
+.run-now-several > li {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+}
+.run-now-several .run-now-verb {
+  font-weight: 400;
+  color: var(--color-muted-foreground);
+}
+
+/* What runs alongside while the run goes on, and the result once it is over,
+   stand under the now line inside the tray (T5): a hairline 8 px under the
+   line, 6 px of room, then their rows in the card's grid; nothing at all
+   when they have no row. */
+.run-band {
+  position: relative;
+  padding-top: 15px;
+}
+.run-band::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  inset-inline: 0;
+  height: 1px;
+  background: color-mix(in oklab, var(--color-foreground) 8%, transparent);
+}
+.run-band:empty {
+  display: none;
+}
+
+/* A bar of what runs alongside, in the card's grid (K1): the 28 px column,
+   its name and state one column in, its figure on the card's right edge. */
+.run-bar {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-height: 32px;
+  padding-right: 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: start;
+}
+button.run-bar {
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+button.run-bar:hover {
+  background: color-mix(in oklab, var(--color-foreground) 4%, transparent);
+}
+button.run-bar:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
+  outline-offset: -2px;
+}
+
+/* A tray on its own, not sliced: the Mate at work once its turn is over. */
+.run-tray-whole {
+  border-width: 1px;
+  border-radius: 30px;
+  padding: 11px;
+}
+
+/* A run the person comes back to (K7): its worked line on top, what it said
+   under it 8 px down, and "Show work" on the line's right edge — its chevron
+   on the edge, turning over as the work opens (K12). */
+.run-later-feed:not(:empty) {
+  padding-top: 8px;
+}
+.run-now-fold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: -4px;
+  padding: 2px 4px 2px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease;
+}
+.run-now-fold:hover {
+  color: var(--color-foreground);
+  background: color-mix(in oklab, var(--color-foreground) 5%, transparent);
+}
+.run-now-fold:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
+  outline-offset: 1px;
+}
+.run-now-fold-icon {
+  width: 14px;
+  height: 14px;
+  transition: rotate 220ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.run-now-fold[aria-expanded="true"] .run-now-fold-icon {
+  rotate: 180deg;
+}
+@media (prefers-reduced-motion: reduce) {
+  .run-now-fold-icon {
+    transition: none;
+  }
+}
+
+/* T4: a step ending lands in the chat above the now line, rising 6 px into
+   its place over 320 ms, once; reduced motion fades only (T8). */
+@keyframes run-rise {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+@keyframes run-fade {
+  from {
+    opacity: 0;
+  }
+}
+.run-rise {
+  animation: run-rise 320ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .run-rise {
+    animation-name: run-fade;
+  }
 }
 
 /* A run's line with nothing under it keeps the tray's geometry in a frame
@@ -3500,6 +4154,725 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 /* ==== end of the composer ==== */
 
 /* ==== Pass 16 · composer pictures ==== */
+
+:root {
+  /* The notes' pink, burnt into the copy the Mate sees: the same in both themes. */
+  --picture-note: #e5267a;
+  --picture-note-ink: #ffffff;
+  /* The open picture sits on a dark stage in both themes, as a lightbox does. */
+  --picture-stage: #101114;
+  --picture-stage-ink: #f4f5f7;
+  --picture-stage-muted: rgb(244 245 247 / 62%);
+  --picture-stage-hover: rgb(255 255 255 / 10%);
+  --picture-frame-shadow: 0 24px 60px -24px rgb(0 0 0 / 90%);
+  --picture-pop-shadow: 0 18px 44px -18px rgb(0 0 0 / 85%), 0 0 0 1px rgb(0 0 0 / 35%);
+  --picture-chip-shadow: 0 6px 18px -8px rgb(0 0 0 / 60%);
+  --picture-crop-edge: rgb(255 255 255 / 95%);
+  --picture-crop-handle: #ffffff;
+  --picture-tag-surface: rgb(0 0 0 / 66%);
+  --picture-remove-shadow: 0 2px 6px -2px rgb(0 0 0 / 25%);
+}
+
+/* A picture in the composer's text: a block of its own line, 80 px tall. */
+.composer-picture-slot {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-block: 8px;
+  line-height: 0;
+}
+
+.composer-picture {
+  --picture-edge: color-mix(in srgb, var(--color-foreground) 14%, transparent);
+  position: relative;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 10px;
+}
+
+.composer-picture-open {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  cursor: pointer;
+  outline: none;
+}
+
+.composer-picture-img {
+  display: block;
+  max-width: 100%;
+  height: 80px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--color-muted);
+  box-shadow: 0 0 0 1px var(--picture-edge);
+  transition: box-shadow 120ms ease;
+}
+
+.composer-picture-open:hover .composer-picture-img {
+  box-shadow:
+    0 0 0 1px var(--picture-edge),
+    0 0 0 4px color-mix(in srgb, var(--color-ring) 20%, transparent);
+}
+
+.composer-picture-open:focus-visible .composer-picture-img,
+.composer-picture-slot[data-composer-chip-selected] .composer-picture-img {
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+
+.composer-picture[data-dragging] {
+  opacity: 0.35;
+}
+
+/* An upload that did not go through: amber, with its way to try again. */
+.composer-picture[data-failed] .composer-picture-img {
+  box-shadow: 0 0 0 2px var(--color-warning);
+}
+
+.composer-picture-remove,
+.composer-picture-retry {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-popover);
+  color: var(--color-muted-foreground);
+  box-shadow: var(--picture-remove-shadow);
+  cursor: pointer;
+}
+
+.composer-picture-remove {
+  top: -8px;
+  right: -8px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.composer-picture-retry {
+  right: 6px;
+  bottom: 6px;
+  color: var(--color-warning-foreground);
+}
+
+.composer-picture-remove svg,
+.composer-picture-retry svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2.5;
+}
+
+.composer-picture:hover .composer-picture-remove,
+.composer-picture:focus-within .composer-picture-remove,
+.composer-picture-remove:focus-visible {
+  opacity: 1;
+}
+
+.composer-picture-remove:hover {
+  color: var(--color-foreground);
+}
+
+@media (pointer: coarse) {
+  .composer-picture-remove {
+    opacity: 1;
+  }
+}
+
+.composer-picture-tag {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: var(--picture-tag-surface);
+  color: var(--picture-stage-ink);
+  font: 500 12px/18px var(--font-sans);
+  pointer-events: none;
+}
+
+.composer-picture-unsaved {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: flex;
+  padding: 2px;
+  border-radius: 5px;
+  background: var(--color-popover);
+  color: var(--color-warning-foreground);
+}
+
+.composer-picture-unsaved svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* The open picture: its stage, its marks and notes, and the bar that says what goes. */
+.picture-view {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: var(--picture-stage);
+  color: var(--picture-stage-ink);
+  font-family: var(--font-sans);
+  animation: picture-view-in 140ms ease-out;
+}
+
+@keyframes picture-view-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.picture-view-top {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  height: 48px;
+  padding: 0 8px 0 16px;
+}
+
+.picture-view-name {
+  min-width: 0;
+  overflow: hidden;
+  font: 500 14px/20px var(--font-sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picture-view-dims {
+  color: var(--picture-stage-muted);
+  font: 400 13px/20px var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.picture-view-close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-left: auto;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--picture-stage-ink);
+  cursor: pointer;
+}
+
+.picture-view-close svg {
+  width: 18px;
+  height: 18px;
+}
+
+.picture-view-close:hover {
+  background: var(--picture-stage-hover);
+}
+
+.picture-view-close:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: -2px;
+}
+
+.picture-view-stage {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.picture-view-frame {
+  position: relative;
+  flex: none;
+  box-shadow: var(--picture-frame-shadow);
+  touch-action: none;
+}
+
+.picture-view-frame[data-editable] {
+  cursor: crosshair;
+}
+
+.picture-view-frame[data-over-mark] {
+  cursor: pointer;
+}
+
+.picture-view-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.picture-chip {
+  position: absolute;
+  display: -webkit-box;
+  max-width: 220px;
+  padding: 5px 9px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 9px;
+  background: var(--color-popover);
+  color: var(--color-popover-foreground);
+  box-shadow:
+    var(--picture-chip-shadow),
+    0 0 0 1px var(--color-border);
+  font: 400 14px/20px var(--font-sans);
+  text-align: left;
+  white-space: normal;
+  cursor: pointer;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.picture-chip:hover,
+.picture-chip[data-selected] {
+  box-shadow:
+    var(--picture-chip-shadow),
+    0 0 0 2px var(--picture-note);
+}
+
+.picture-chip:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+.picture-crop {
+  position: absolute;
+  z-index: 4;
+  outline: 1.5px solid var(--picture-crop-edge);
+  cursor: move;
+  touch-action: none;
+}
+
+.picture-crop-handle {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  touch-action: none;
+}
+
+.picture-crop-handle::before {
+  position: absolute;
+  inset: 0;
+  border: 0 solid var(--picture-crop-handle);
+  content: "";
+  pointer-events: none;
+}
+
+.picture-crop-handle[data-handle="nw"] {
+  top: -4px;
+  left: -4px;
+  cursor: nwse-resize;
+}
+.picture-crop-handle[data-handle="nw"]::before {
+  border-top-width: 4px;
+  border-left-width: 4px;
+}
+.picture-crop-handle[data-handle="ne"] {
+  top: -4px;
+  right: -4px;
+  cursor: nesw-resize;
+}
+.picture-crop-handle[data-handle="ne"]::before {
+  border-top-width: 4px;
+  border-right-width: 4px;
+}
+.picture-crop-handle[data-handle="sw"] {
+  bottom: -4px;
+  left: -4px;
+  cursor: nesw-resize;
+}
+.picture-crop-handle[data-handle="sw"]::before {
+  border-bottom-width: 4px;
+  border-left-width: 4px;
+}
+.picture-crop-handle[data-handle="se"] {
+  right: -4px;
+  bottom: -4px;
+  cursor: nwse-resize;
+}
+.picture-crop-handle[data-handle="se"]::before {
+  border-right-width: 4px;
+  border-bottom-width: 4px;
+}
+.picture-crop-handle[data-handle="n"],
+.picture-crop-handle[data-handle="s"] {
+  left: 50%;
+  width: 32px;
+  height: 16px;
+  margin-left: -16px;
+  cursor: ns-resize;
+}
+.picture-crop-handle[data-handle="n"] {
+  top: -6px;
+}
+.picture-crop-handle[data-handle="s"] {
+  bottom: -6px;
+}
+.picture-crop-handle[data-handle="e"],
+.picture-crop-handle[data-handle="w"] {
+  top: 50%;
+  width: 16px;
+  height: 32px;
+  margin-top: -16px;
+  cursor: ew-resize;
+}
+.picture-crop-handle[data-handle="w"] {
+  left: -6px;
+}
+.picture-crop-handle[data-handle="e"] {
+  right: -6px;
+}
+.picture-crop-handle[data-handle="n"]::before,
+.picture-crop-handle[data-handle="s"]::before,
+.picture-crop-handle[data-handle="e"]::before,
+.picture-crop-handle[data-handle="w"]::before {
+  border-radius: 2px;
+  background: var(--picture-crop-handle);
+}
+.picture-crop-handle[data-handle="n"]::before {
+  inset: 5px 0 auto;
+  height: 4px;
+}
+.picture-crop-handle[data-handle="s"]::before {
+  inset: auto 0 5px;
+  height: 4px;
+}
+.picture-crop-handle[data-handle="w"]::before {
+  inset: 0 auto 0 5px;
+  width: 4px;
+}
+.picture-crop-handle[data-handle="e"]::before {
+  inset: 0 5px 0 auto;
+  width: 4px;
+}
+
+.picture-note {
+  position: absolute;
+  z-index: 6;
+  width: 250px;
+  padding: 10px 10px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-popover);
+  color: var(--color-popover-foreground);
+  box-shadow: var(--picture-pop-shadow);
+}
+
+.picture-note-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: var(--color-muted-foreground);
+  font: 500 12px/18px var(--font-sans);
+}
+
+.picture-note-number,
+.picture-note-badge {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--picture-note);
+  color: var(--picture-note-ink);
+  font: 500 12px/18px var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.picture-note-text {
+  display: block;
+  width: 100%;
+  min-height: 40px;
+  max-height: 120px;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--color-popover-foreground);
+  font: 400 14px/20px var(--font-sans);
+  field-sizing: content;
+  resize: none;
+}
+
+.picture-note-text::placeholder {
+  color: var(--color-placeholder);
+}
+
+.picture-note-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  color: var(--color-muted-foreground);
+  font: 500 12px/16px var(--font-sans);
+}
+
+.picture-note-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-muted-foreground);
+  font: 500 12px/16px var(--font-sans);
+  cursor: pointer;
+}
+
+.picture-note-remove svg {
+  width: 13px;
+  height: 13px;
+}
+
+.picture-note-remove:hover {
+  background: var(--color-accent);
+  color: var(--color-destructive);
+}
+
+.picture-note-remove:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: -2px;
+}
+
+.picture-view-bar {
+  display: flex;
+  flex: none;
+  justify-content: center;
+  padding: 10px 12px 14px;
+}
+
+.picture-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-popover);
+  color: var(--color-popover-foreground);
+  box-shadow: var(--picture-pop-shadow);
+}
+
+.picture-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: 500 13px/1 var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.picture-tool svg {
+  width: 15px;
+  height: 15px;
+}
+
+.picture-tool:hover {
+  background: var(--color-accent);
+}
+
+.picture-tool[aria-pressed="true"] {
+  background: var(--color-foreground);
+  color: var(--color-popover);
+}
+
+.picture-tool:focus-visible,
+.picture-done:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 1px;
+}
+
+.picture-keep {
+  gap: 8px;
+  padding: 0 8px;
+}
+
+.picture-tool-small {
+  height: 26px;
+  padding: 0 8px;
+  color: var(--color-muted-foreground);
+  font-size: 12px;
+}
+
+.picture-tool-small:hover {
+  color: var(--color-foreground);
+}
+
+.picture-tools-rule {
+  flex: none;
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--color-border);
+}
+
+.picture-tools-hint,
+.picture-tools-info,
+.picture-tools-out {
+  color: var(--color-muted-foreground);
+  font: 400 13px/20px var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.picture-tools-hint {
+  padding: 0 6px;
+}
+
+.picture-tools-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 6px;
+}
+
+.picture-tools-out {
+  min-width: 236px;
+  padding: 0 6px;
+}
+
+.picture-tools-out b,
+.picture-tools-plus {
+  color: var(--color-popover-foreground);
+  font-weight: 500;
+}
+
+.picture-done {
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--color-message-action);
+  color: var(--color-message-action-foreground);
+  font: 500 13px/1 var(--font-sans);
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.picture-done:hover {
+  background: var(--color-message-action-hover);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .picture-done {
+    transition:
+      background-color 120ms ease,
+      transform 100ms ease;
+  }
+
+  .picture-done:active {
+    transform: scale(0.97);
+  }
+}
+
+@media (max-width: 760px) {
+  .picture-tools-hint {
+    display: none;
+  }
+
+  .picture-tools-out {
+    min-width: 0;
+  }
+}
+
+/* The person's message: each picture where it was put, its notes under it. */
+.message-picture {
+  --picture-edge: color-mix(in srgb, var(--color-foreground) 14%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+}
+
+.message-picture-open {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  cursor: zoom-in;
+}
+
+.message-picture-img {
+  display: block;
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px var(--picture-edge);
+}
+
+.message-picture-open:focus-visible .message-picture-img {
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+
+.message-picture-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.message-picture-notes li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font: 400 14px/20px var(--font-sans);
+}
+
+.message-picture-notes .picture-note-badge {
+  margin-top: 1px;
+}
+
+.message-picture-original {
+  color: var(--color-muted-foreground);
+  font: 400 13px/18px var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+.message-pictures {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 
 /* ==== end of composer pictures ==== */
 
@@ -4167,5 +5540,42 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 /* ==== end of review ==== */
 
 /* ==== Pass 16 · motion across switches ==== */
+
+/* Switching Mates (T1): the conversation left stays on screen as a still
+   picture (`data-timeline-freeze`) until the next one stands where it stays.
+   While it holds, the pane is a stacking context of its own, so the picture
+   covers everything the next conversation draws (its minimap too) and stays
+   under the composer; and the next conversation shows whole the frame it is
+   in place, since the picture's fade is the only one. */
+[data-timeline-switch="holding"] {
+  isolation: isolate;
+}
+
+[data-timeline-switch="holding"]
+  .timeline-legend-list
+  .legend-list-content-container
+  > div[style*="opacity"],
+[data-timeline-switch="holding"] [data-timeline-thread] {
+  transition: none;
+}
+
+/* A conversation put back where the person left it is out of sight until it
+   stands there: the list places a row from estimates first, and the frame
+   after corrected it by 96 px. Out of a switch, it then eases in as the list
+   shows a conversation (140 ms); hiding is instant. */
+[data-timeline-thread] {
+  transition: opacity 140ms ease-out;
+}
+
+[data-timeline-thread][data-timeline-placing] {
+  opacity: 0;
+  transition-duration: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-timeline-thread] {
+    transition: none;
+  }
+}
 
 /* ==== end of motion across switches ==== */

@@ -10,6 +10,7 @@
  * attachments asks by its attachments, whatever placeholder text the client
  * put in front of them for the agent.
  */
+import { pictureWords } from "./composerPictures.ts";
 import { messagePreviewText } from "./messagePreview.ts";
 
 /**
@@ -82,15 +83,17 @@ export function userAskOf(message: UserAskSource): UserAsk | null {
   if (isSlashCommand(trimmed) || isUsageLimitResumePrompt(trimmed) || isCrewCard(trimmed)) {
     return null;
   }
-  const words = trimmed.startsWith(EFFORT_PREFIX)
-    ? trimmed.slice(EFFORT_PREFIX.length).trim()
-    : trimmed;
+  const attachments = message.attachments ?? [];
+  const images = attachments.filter((attachment) => attachment.type === "image").length;
+  // A picture's label is not something the person wrote; its notes are.
+  const words = pictureWords(
+    trimmed.startsWith(EFFORT_PREFIX) ? trimmed.slice(EFFORT_PREFIX.length).trim() : trimmed,
+    images,
+  );
   if (words.length > 0 && words !== IMAGE_ONLY_BOOTSTRAP_PROMPT) {
     return { kind: "text", text: words };
   }
-  const attachments = message.attachments ?? [];
   if (attachments.length === 0) return null;
-  const images = attachments.filter((attachment) => attachment.type === "image").length;
   return { kind: "attachments", images, files: attachments.length - images };
 }
 

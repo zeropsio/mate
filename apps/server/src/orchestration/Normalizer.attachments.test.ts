@@ -11,10 +11,13 @@ import {
   MessageId,
   ThreadId,
 } from "@t3tools/contracts";
+import { PICTURE_MAX_BYTES } from "@t3tools/shared/composerPictures";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as JpegJs from "jpeg-js";
+import { PNG } from "pngjs";
 
 import * as ServerConfig from "../config.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
@@ -28,11 +31,53 @@ const testLayer = Layer.mergeAll(
 const attachmentUuid = "00000000-0000-4000-8000-0000000000aa";
 const isClientCommand = Schema.is(ClientOrchestrationCommand);
 
+function encodePng(width: number, height: number, data: Uint8Array): Buffer {
+  const png = Object.assign(new PNG(), { width, height, data: Buffer.from(data.buffer) });
+  return PNG.sync.write(png, { colorType: 2 });
+}
+
+/**
+ * A random colour in every pixel: about 3 bytes a pixel as a PNG and 2 as a
+ * JPEG, so at 1500×1000 the PNG is over the byte limit and its JPEG under it.
+ */
+function noisePng(width: number, height: number): Buffer {
+  let state = 1;
+  const data = new Uint8Array(width * height * 4);
+  for (let offset = 0; offset < data.length; offset += 4) {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    data.set([state, state >>> 8, state >>> 16, 255], offset);
+  }
+  return encodePng(width, height, data);
+}
+
+/** A smooth gradient: a few kilobytes at any size. */
+function gradient(width: number, height: number): Uint8Array {
+  const data = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      data.set([(x * 255) / width, (y * 255) / height, 128, 255], (y * width + x) * 4);
+    }
+  }
+  return data;
+}
+
+/** A PNG header naming 10,000×10,000 pixels, more than a picture may have to be opened. */
+function hugePngHeader(): Buffer {
+  const bytes = Buffer.alloc(33);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+  bytes.writeUInt32BE(10_000, 16);
+  bytes.writeUInt32BE(10_000, 20);
+  bytes.set([8, 6, 0, 0, 0], 24);
+  return bytes;
+}
+
 function turnStartCommand(input: {
   readonly threadId?: string;
   readonly attachments: ReadonlyArray<
-    | { readonly id: string; readonly sizeBytes: number }
-    | { readonly dataUrl: string; readonly sizeBytes: number }
+    (
+      | { readonly id: string; readonly sizeBytes: number }
+      | { readonly dataUrl: string; readonly sizeBytes: number }
+    ) & { readonly name?: string; readonly mimeType?: string }
   >;
 }): ClientOrchestrationCommand {
   return {
@@ -410,7 +455,204 @@ describe("normalizeDispatchCommand attachments", () => {
   );
 });
 
+describe("normalizeDispatchCommand picture fitting", () => {
+  it.effect("stores an oversize uploaded PNG as the JPEG it fits as", () =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      const original = noisePng(1500, 1000);
+      expect(original.byteLength).toBeGreaterThan(PICTURE_MAX_BYTES);
+      const pendingPath = NodePath.join(config.attachmentsDir, `pending-${attachmentUuid}.png`);
+      NodeFS.writeFileSync(pendingPath, original);
+      const command = turnStartCommand({
+        attachments: [{ id: `pending-${attachmentUuid}`, sizeBytes: original.byteLength }],
+      });
+
+      const normalized = yield* normalizeDispatchCommand(command);
+      if (normalized.type !== "thread.turn.start") {
+        throw new Error("Expected a thread.turn.start command.");
+      }
+
+      const attachment = normalized.message.attachments[0]!;
+      expect(attachment.id.startsWith("thread-1-")).toBe(true);
+      const fitted = NodeFS.readFileSync(
+        NodePath.join(config.attachmentsDir, `${attachment.id}.jpg`),
+      );
+      expect(attachment).toEqual({
+        type: "image",
+        id: attachment.id,
+        name: "screenshot.jpg",
+        mimeType: "image/jpeg",
+        sizeBytes: fitted.byteLength,
+      });
+      expect(fitted.byteLength).toBeLessThanOrEqual(PICTURE_MAX_BYTES);
+      expect(JpegJs.decode(fitted, { useTArray: true })).toMatchObject({
+        width: 1500,
+        height: 1000,
+      });
+      expect(NodeFS.existsSync(NodePath.join(config.attachmentsDir, `${attachment.id}.png`))).toBe(
+        false,
+      );
+      expect(NodeFS.readFileSync(pendingPath).equals(original)).toBe(true);
+
+      yield* cleanupFailedUploadedAttachments(command, normalized);
+      expect(NodeFS.readdirSync(config.attachmentsDir)).toEqual([`pending-${attachmentUuid}.png`]);
+    }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.effect("fits an oversize inline JPEG from an older mobile client", () =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      const photo = JpegJs.encode(
+        { width: 2400, height: 1800, data: gradient(2400, 1800) },
+        90,
+      ).data;
+      const normalized = yield* normalizeDispatchCommand(
+        turnStartCommand({
+          attachments: [
+            {
+              name: "IMG_0412.jpg",
+              mimeType: "image/jpeg",
+              dataUrl: `data:image/jpeg;base64,${photo.toString("base64")}`,
+              sizeBytes: photo.byteLength,
+            },
+          ],
+        }),
+      );
+      if (normalized.type !== "thread.turn.start") {
+        throw new Error("Expected a thread.turn.start command.");
+      }
+
+      const attachment = normalized.message.attachments[0]!;
+      const fitted = NodeFS.readFileSync(
+        NodePath.join(config.attachmentsDir, `${attachment.id}.jpg`),
+      );
+      expect(attachment).toEqual({
+        type: "image",
+        id: attachment.id,
+        name: "IMG_0412.jpg",
+        mimeType: "image/jpeg",
+        sizeBytes: fitted.byteLength,
+      });
+      expect(JpegJs.decode(fitted, { useTArray: true })).toMatchObject({
+        width: 2000,
+        height: 1500,
+      });
+    }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.effect.each([
+    { label: "an upload", upload: true },
+    { label: "an inline picture", upload: false },
+  ])("leaves a picture within the limits byte for byte: $label", ({ upload }) =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      const picture = encodePng(1200, 800, gradient(1200, 800));
+      if (upload) {
+        NodeFS.writeFileSync(
+          NodePath.join(config.attachmentsDir, `pending-${attachmentUuid}.png`),
+          picture,
+        );
+      }
+      const normalized = yield* normalizeDispatchCommand(
+        turnStartCommand({
+          attachments: [
+            upload
+              ? { id: `pending-${attachmentUuid}`, sizeBytes: picture.byteLength }
+              : {
+                  dataUrl: `data:image/png;base64,${picture.toString("base64")}`,
+                  sizeBytes: picture.byteLength,
+                },
+          ],
+        }),
+      );
+      if (normalized.type !== "thread.turn.start") {
+        throw new Error("Expected a thread.turn.start command.");
+      }
+
+      const attachment = normalized.message.attachments[0]!;
+      expect(attachment).toMatchObject({
+        name: "screenshot.png",
+        mimeType: "image/png",
+        sizeBytes: picture.byteLength,
+      });
+      expect(
+        NodeFS.readFileSync(NodePath.join(config.attachmentsDir, `${attachment.id}.png`)),
+      ).toEqual(picture);
+    }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.effect("refuses a picture too big to open and keeps no copy it made", () =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      const fittedId = `pending-${attachmentUuid}`;
+      const hugeId = "pending-00000000-0000-4000-8000-0000000000bb";
+      const oversize = noisePng(1500, 1000);
+      NodeFS.writeFileSync(NodePath.join(config.attachmentsDir, `${fittedId}.png`), oversize);
+      NodeFS.writeFileSync(NodePath.join(config.attachmentsDir, `${hugeId}.png`), hugePngHeader());
+
+      const failure = yield* normalizeDispatchCommand(
+        turnStartCommand({
+          attachments: [
+            { id: fittedId, sizeBytes: oversize.byteLength },
+            { id: hugeId, name: "IMG_0412.png", sizeBytes: 33 },
+          ],
+        }),
+      ).pipe(Effect.flip);
+
+      expect(failure.message).toBe(
+        "Picture 'IMG_0412.png' is too large to send even after shrinking it. Send a smaller copy.",
+      );
+      expect(NodeFS.readdirSync(config.attachmentsDir).toSorted()).toEqual(
+        [`${fittedId}.png`, `${hugeId}.png`].toSorted(),
+      );
+    }).pipe(Effect.provide(testLayer)),
+  );
+});
+
 describe("question attachments", () => {
+  it.effect("fits an oversize picture answering a question", () =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      const id = `pending-${attachmentUuid}`;
+      const picture = encodePng(2400, 1200, gradient(2400, 1200));
+      NodeFS.writeFileSync(NodePath.join(config.attachmentsDir, `${id}.png`), picture);
+      const command: ClientOrchestrationCommand = {
+        type: "thread.user-input.respond",
+        commandId: CommandId.make("answer"),
+        threadId: ThreadId.make("thread-1"),
+        requestId: ApprovalRequestId.make("request"),
+        answers: { q1: "" },
+        createdAt: "2026-08-01T00:00:00.000Z",
+        attachmentsByQuestionId: {
+          q1: [
+            {
+              type: "image",
+              id,
+              name: "board.png",
+              mimeType: "image/png",
+              sizeBytes: picture.byteLength,
+            },
+          ],
+        },
+      };
+
+      const normalized = yield* normalizeDispatchCommand(command);
+      if (normalized.type !== "thread.user-input.respond") throw new Error("Wrong command");
+
+      const attachment = normalized.attachmentsByQuestionId!.q1![0]!;
+      const fittedPath = NodePath.join(config.attachmentsDir, `${attachment.id}.png`);
+      const fitted = PNG.sync.read(NodeFS.readFileSync(fittedPath));
+      expect([fitted.width, fitted.height]).toEqual([2000, 1000]);
+      expect(attachment).toMatchObject({
+        name: "board.png",
+        mimeType: "image/png",
+        sizeBytes: NodeFS.statSync(fittedPath).size,
+      });
+      yield* cleanupFailedUploadedAttachments(command, normalized);
+      expect(NodeFS.readdirSync(config.attachmentsDir)).toEqual([`${id}.png`]);
+    }).pipe(Effect.provide(testLayer)),
+  );
+
   it.effect("enforces the total response limit and claims duplicate filenames independently", () =>
     Effect.gen(function* () {
       const config = yield* ServerConfig.ServerConfig;

@@ -81,15 +81,21 @@ import {
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
+import { MessagePictureBody, useMessagePictureDimensions } from "./MessagePictures";
+import { placeMessagePictures, terminalContextsBySegment } from "./messagePictures.logic";
 import { useAssetUrls } from "../../assets/assetUrls";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import {
+  describeTimelineAnchor,
   keepTimelineEndVisibleAfterOverlayGrowth,
+  readTimelineFirstLineInset,
   readTimelinePosition,
   rememberTimelinePosition,
+  resolveTimelineRestoreTarget,
   resolveTimelineScrollAnchor,
   shouldRepinTimelineEndAfterRowResize,
 } from "./timelineScrollAnchoring";
+import { useTimelineSwitch } from "./TimelineSwitch";
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeStableMessagesTimelineRows,
@@ -140,7 +146,8 @@ import { SkillInlineText } from "./SkillInlineText";
 import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic";
 import { TurnReport } from "./TurnReport";
 import { ConversationAfterWork, ConversationWorking } from "./ConversationWorking";
-import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat } from "./RunChat";
+import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat, RunLine } from "./RunChat";
+import { forgetRunFolds } from "./runCard.logic";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -155,7 +162,6 @@ import {
   MessageReceipt,
   PauseBlock,
   Seam,
-  WorkLine,
   type ConversationSpeaker,
   type ServerUsagePause,
 } from "./ConversationRows";
@@ -530,14 +536,17 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [rows],
   );
   const minimapItems = useMemo(() => deriveTimelineMinimapItems(rows), [rows]);
-  const restoreRowIndex =
-    restoringReadingPosition && rememberedPosition
-      ? rows.findIndex((row) => row.id === rememberedPosition.rowId)
-      : -1;
-  const restoringAlwaysRender = useMemo(
-    () => (restoreRowIndex >= 0 ? { indices: [restoreRowIndex] } : undefined),
-    [restoreRowIndex],
-  );
+  // The rows a reading position may land on stay drawn while it is put
+  // back: its own, the run's line and the row above it.
+  const restoringAlwaysRender = useMemo(() => {
+    if (!restoringReadingPosition || !rememberedPosition) return undefined;
+    const { rowId, cardTopId, previousRowId } = rememberedPosition;
+    const indices = [rowId, cardTopId, previousRowId].flatMap((id) => {
+      const index = id === null ? -1 : rows.findIndex((row) => row.id === id);
+      return index >= 0 ? [index] : [];
+    });
+    return indices.length > 0 ? { indices } : undefined;
+  }, [rememberedPosition, restoringReadingPosition, rows]);
   useLayoutEffect(() => {
     const position = rememberedPosition;
     if (!restoringReadingPosition || !position || rows.length === 0) return;
@@ -572,59 +581,84 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     viewport?.addEventListener("touchmove", cancelForNavigation, { passive: true });
     viewport?.addEventListener("pointerdown", cancelForNavigation, { passive: true });
     viewport?.ownerDocument.addEventListener("keydown", onScrollKey);
-    const index = rows.findIndex((row) => row.id === position.rowId);
     onManualNavigation();
     if (cancelPositionRestoreRef) cancelPositionRestoreRef.current = cancelRestoration;
-    const scrolling =
-      index >= 0
-        ? list.scrollToIndex({
-            index,
-            animated: false,
-            viewPosition: 0,
-            viewOffset: -position.offsetWithinRow,
-          })
-        : list.scrollToOffset({ offset: position.scrollOffset, animated: false });
-    void Promise.resolve(scrolling).then(() => {
+    const rowIds = rows.map((row) => row.id);
+    const rowElement = (rowId: string) => {
+      const state = list.getState();
+      const index = state.indexByKey(rowId);
+      return index === undefined ? undefined : (state.elementAtIndex(index) ?? undefined);
+    };
+    // Where the position lands is read again each frame from the rows as
+    // measured: a run that folded since the person left shows it only once
+    // its row is measured. Index scrolling starts from estimates, so the
+    // place is held until the DOM agrees for two layout frames; the list
+    // stays out of sight meanwhile (`data-timeline-placing`).
+    const firstLine = viewport === null ? 0 : readTimelineFirstLineInset(viewport);
+    let aimedAt: string | null = null;
+    let stableFrames = 0;
+    const settleAfter = (scrolling: unknown) => {
+      void Promise.resolve(scrolling).then(() => {
+        if (!cancelled) settleFrame = requestAnimationFrame(settle);
+      });
+    };
+    const settle = () => {
       if (cancelled) return;
-      if (index < 0) {
-        setPositionRestored(true);
+      const target = resolveTimelineRestoreTarget({
+        position,
+        rowIds,
+        heightOf: (rowId) => rowElement(rowId)?.getBoundingClientRect().height,
+      });
+      if (target.kind === "end") {
+        void Promise.resolve(list.scrollToEnd({ animated: false })).then(() => {
+          if (!cancelled) setPositionRestored(true);
+        });
         return;
       }
-      // Index scrolling starts from estimates. Keep the saved row mounted
-      // until its measured position and the DOM agree for two layout frames.
-      let stableFrames = 0;
-      const reconcile = () => {
-        if (cancelled) return;
-        const state = list.getState();
-        const rowIndex = state.indexByKey(position.rowId);
-        const row = rowIndex === undefined ? undefined : state.elementAtIndex(rowIndex);
-        const element = list.getScrollableNode();
-        if (!row || !element) return;
-        const offset = Math.max(
-          0,
-          Math.min(
-            element.scrollTop +
-              row.getBoundingClientRect().top -
-              element.getBoundingClientRect().top +
-              position.offsetWithinRow,
-            element.scrollHeight - element.clientHeight,
-          ),
+      const row = rowElement(target.rowId);
+      // A line stands where a conversation's first line sits: a row's top,
+      // or its foot once it is measured.
+      const offsetWithinRow =
+        target.kind === "row"
+          ? target.offsetWithinRow
+          : (target.edge === "foot" ? (row?.getBoundingClientRect().height ?? 0) : 0) - firstLine;
+      const aim = `${target.rowId}@${offsetWithinRow}`;
+      const element = list.getScrollableNode();
+      if (aim !== aimedAt || !row || !element) {
+        aimedAt = aim;
+        stableFrames = 0;
+        settleAfter(
+          list.scrollToIndex({
+            index: rowIds.indexOf(target.rowId),
+            animated: false,
+            viewPosition: 0,
+            viewOffset: -offsetWithinRow,
+          }),
         );
-        if (Math.abs(element.scrollTop - offset) > 1) {
-          stableFrames = 0;
-          void list.scrollToOffset({ offset, animated: false }).then(() => {
-            if (!cancelled) settleFrame = requestAnimationFrame(reconcile);
-          });
-          return;
-        }
-        if (++stableFrames >= 2) {
-          setPositionRestored(true);
-        } else {
-          settleFrame = requestAnimationFrame(reconcile);
-        }
-      };
-      settleFrame = requestAnimationFrame(reconcile);
-    });
+        return;
+      }
+      const offset = Math.max(
+        0,
+        Math.min(
+          element.scrollTop +
+            row.getBoundingClientRect().top -
+            element.getBoundingClientRect().top +
+            offsetWithinRow,
+          element.scrollHeight - element.clientHeight,
+        ),
+      );
+      if (Math.abs(element.scrollTop - offset) > 1) {
+        stableFrames = 0;
+        settleAfter(list.scrollToOffset({ offset, animated: false }));
+        return;
+      }
+      if (++stableFrames >= 2) {
+        setPositionRestored(true);
+      } else {
+        settleFrame = requestAnimationFrame(settle);
+      }
+    };
+    settle();
     return () => {
       cancelled = true;
       if (cancelPositionRestoreRef?.current === cancelRestoration) {
@@ -647,6 +681,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(
     null,
   );
+  const timelineSwitch = useTimelineSwitch();
+  const [listReady, setListReady] = useState(false);
+  const onListLoad = useCallback(() => setListReady(true), []);
   const [minimapHasPersistentGutter, setMinimapHasPersistentGutter] = useState(false);
   const [minimapHitStripWidth, setMinimapHitStripWidth] = useState(0);
   const [minimapCurrentIndex, setMinimapCurrentIndex] = useState<number | null>(null);
@@ -702,25 +739,43 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [listRef],
   );
 
+  // Where the person is, kept as they move, by row: the row at the reading
+  // line, how far into it, how tall it was, the run's line and the row above
+  // it — what finds the place again once rows have changed (a watched run
+  // folds when the person leaves).
+  const rememberPosition = useCallback((): boolean | undefined => {
+    const state = listRef.current?.getState?.();
+    if (restoringReadingPosition || state === undefined || state.data !== rows) return undefined;
+    const isAtEnd = resolveTimelineIsAtEnd(state, contentInsetEndAdjustment);
+    const anchor = state.data.length ? resolveTimelineScrollAnchor(state) : undefined;
+    const row = anchor === undefined ? undefined : state.elementAtIndex(anchor.index);
+    const element = listRef.current?.getScrollableNode();
+    if (anchor && row && element && isAtEnd !== undefined) {
+      const box = row.getBoundingClientRect();
+      rememberTimelinePosition(routeThreadKey, {
+        rowId: anchor.rowId,
+        // DOM geometry includes the header and the virtualizer's layout adjustment.
+        offsetWithinRow: element.getBoundingClientRect().top - box.top,
+        rowHeight: box.height,
+        ...describeTimelineAnchor(rows, anchor.index),
+        atEnd: isAtEnd,
+      });
+    }
+    return isAtEnd;
+  }, [contentInsetEndAdjustment, listRef, restoringReadingPosition, routeThreadKey, rows]);
+  // Once more as the conversation goes, while it still stands on the page:
+  // what changed since the last scroll (a run opened or closed in place) is
+  // where the person left it.
+  const rememberPositionRef = useRef(rememberPosition);
+  useLayoutEffect(() => {
+    rememberPositionRef.current = rememberPosition;
+  }, [rememberPosition]);
+  useLayoutEffect(() => () => void rememberPositionRef.current(), []);
+
   const handleScroll = useCallback(() => {
     const state = listRef.current?.getState?.();
     if (restoringReadingPosition || state?.data !== rows) return;
-    const isAtEnd = resolveTimelineIsAtEnd(state, contentInsetEndAdjustment);
-    const position = state.data.length ? resolveTimelineScrollAnchor(state) : undefined;
-    if (position && isAtEnd !== undefined) {
-      const index = state.indexByKey(position.rowId);
-      const row = index === undefined ? undefined : state.elementAtIndex(index);
-      const element = listRef.current?.getScrollableNode();
-      if (row && element) {
-        rememberTimelinePosition(routeThreadKey, {
-          ...position,
-          // DOM geometry includes the header and the virtualizer's layout adjustment.
-          offsetWithinRow: element.getBoundingClientRect().top - row.getBoundingClientRect().top,
-          scrollOffset: element.scrollTop,
-          atEnd: isAtEnd,
-        });
-      }
-    }
+    const isAtEnd = rememberPosition();
     if (isAtEnd !== undefined) {
       onIsAtEndChange(isAtEnd);
     }
@@ -759,13 +814,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       current === nextCurrentIndex ? current : nextCurrentIndex,
     );
   }, [
-    contentInsetEndAdjustment,
     listRef,
     minimapItems,
     minimapStripMap,
     onIsAtEndChange,
+    rememberPosition,
     restoringReadingPosition,
-    routeThreadKey,
     rows,
   ]);
 
@@ -842,6 +896,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     setOpenedWith({ key: routeThreadKey, at: newestMessageAt });
   }
   const arrivedAfter = openedWith?.key === routeThreadKey ? openedWith.at : null;
+  // A run the person watched stays open while they are here; once they leave
+  // the conversation every run in it folds, so coming back it is folded from
+  // the first frame and nothing moves (K7). It folds as the timeline goes,
+  // never while it is still on screen: the switch has taken its picture by
+  // then.
+  const foldsOfRef = useRef(routeThreadKey);
+  useLayoutEffect(() => {
+    foldsOfRef.current = routeThreadKey;
+  }, [routeThreadKey]);
+  useEffect(() => () => forgetRunFolds(foldsOfRef.current), []);
 
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
@@ -869,6 +933,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onRemoveQueuedMessage,
       arrivedAfter,
       syncing,
+      onHoldReading: onManualNavigation,
     }),
     [
       timestampFormat,
@@ -894,6 +959,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onRemoveQueuedMessage,
       arrivedAfter,
       syncing,
+      onManualNavigation,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(
@@ -930,30 +996,24 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     crew === null
       ? rows.length === 0
       : rows.every((row) => row.kind === "seam" || row.kind === "crew-seam");
+  // The conversation says when it stands on screen where it stays (T1): the
+  // list has put its rows in place and a reading position is back — an
+  // empty conversation at once, one still on its way never. Until then the
+  // pane holds what it showed last over it.
+  const showsList = !empty || isWorking;
+  if (!showsList && listReady) setListReady(false);
+  const placed = showsList
+    ? listReady && !restoringReadingPosition
+    : !(hideEmptyPlaceholder && loading);
+  useEffect(() => {
+    if (!placed || timelineSwitch === null) return;
+    const frame = requestAnimationFrame(() => timelineSwitch.painted());
+    return () => cancelAnimationFrame(frame);
+  }, [placed, timelineSwitch]);
   if (empty && !isWorking) {
     if (hideEmptyPlaceholder) {
-      // Occupy the pane with the theme surface so a thread switch cannot
-      // punch a hole through to the window chrome (white in light mode). A
-      // conversation slow to come — a Mate opened for the first time, over
-      // the network — was a blank second: its Mate works in the middle of the
-      // pane instead, shown only once the wait passes 400 ms.
       return (
-        <div
-          className="flex h-full min-h-0 items-center justify-center bg-background"
-          data-timeline-loading="true"
-        >
-          {loading ? (
-            <span
-              aria-label={`Opening ${speaker.name}'s conversation`}
-              // Opacity alone, so it keeps its 400 ms hold under reduced
-              // motion too: without the hold a quick load flashed it.
-              className="flex animate-held-appear"
-              role="status"
-            >
-              <MateFace size="lg" state="working" tint={speaker.tint} />
-            </span>
-          ) : null}
-        </div>
+        <TimelineLoadingPane loading={loading} routeThreadKey={routeThreadKey} speaker={speaker} />
       );
     }
     return crew === null ? (
@@ -970,7 +1030,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     <TimelineRowCtx value={sharedState}>
       <TimelineRowActivityCtx value={activityState}>
         <TimelineWorkingCtx value={working}>
-          <div ref={setTimelineViewportElement} className="relative h-full min-h-0">
+          <div
+            ref={setTimelineViewportElement}
+            className="relative h-full min-h-0"
+            data-timeline-placing={restoringReadingPosition ? "" : undefined}
+            data-timeline-thread={routeThreadKey}
+          >
             <LegendList<MessagesTimelineRow>
               ref={listRef}
               data={rows}
@@ -989,6 +1054,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 restoringReadingPosition ? false : MAINTAIN_VISIBLE_CONTENT_POSITION
               }
               onScroll={handleScroll}
+              onLoad={onListLoad}
               className={cn(
                 "timeline-legend-list scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
                 topFadeEnabled && "topbar-scroll-fade",
@@ -1029,6 +1095,59 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     </TimelineRowCtx>
   );
 });
+
+/** When a conversation slow to come shows its Mate at work: `--animate-held-appear`'s delay. */
+const MATE_AT_WORK_AFTER_MS = 400;
+
+/**
+ * The pane of a conversation on its way. It occupies the pane with the theme
+ * surface so a thread switch cannot punch a hole through to the window chrome
+ * (white in light mode). A conversation slow to come — a Mate opened for the
+ * first time, over the network — was a blank second: its Mate works in the
+ * middle of the pane instead, shown only once the wait passes 400 ms. From
+ * then the pane is something on screen: the switch keeps it there while the
+ * rows that replace it are placed, as it keeps a conversation left (T1).
+ */
+function TimelineLoadingPane({
+  loading,
+  routeThreadKey,
+  speaker,
+}: {
+  readonly loading: boolean;
+  readonly routeThreadKey: string;
+  readonly speaker: ConversationSpeaker;
+}) {
+  const timelineSwitch = useTimelineSwitch();
+  useEffect(() => {
+    if (!loading || timelineSwitch === null) return;
+    const shown = setTimeout(timelineSwitch.waiting, MATE_AT_WORK_AFTER_MS);
+    return () => clearTimeout(shown);
+  }, [loading, timelineSwitch]);
+  // As it goes, while it still stands on the page.
+  useLayoutEffect(() => {
+    if (timelineSwitch === null) return;
+    return () => timelineSwitch.placing();
+  }, [timelineSwitch]);
+  return (
+    <div
+      className="flex h-full min-h-0 items-center justify-center bg-background"
+      data-timeline-loading="true"
+      data-timeline-thread={routeThreadKey}
+    >
+      {loading ? (
+        <span
+          aria-label={`Opening ${speaker.name}'s conversation`}
+          // Opacity alone, so it keeps its 400 ms hold under reduced
+          // motion too: without the hold a quick load flashed it.
+          className="flex animate-held-appear"
+          role="status"
+        >
+          <MateFace size="lg" state="working" tint={speaker.tint} />
+        </span>
+      ) : null}
+    </div>
+  );
+}
 
 function keyExtractor(item: MessagesTimelineRow) {
   return item.id;
@@ -1498,14 +1617,12 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "crew-seam" ? <CrewSeamActivity seam={row.seam} words={row.words} /> : null}
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "queued-message" ? <QueuedMessageTimelineRow row={row} /> : null}
-      {row.kind === "answer" ? <AnswerTimelineRow row={row} /> : null}
     </>
   );
 }
 
 function WorkLineTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "work-line" }> }) {
-  const ctx = use(TimelineRowCtx);
-  return <WorkLine row={row} speaker={ctx.speaker} timestampFormat={ctx.timestampFormat} />;
+  return <RunLine status={row} />;
 }
 
 /**
@@ -1801,8 +1918,10 @@ function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcom
     if (panelLeftRecently(turnKey)) return easeHeight(band, 0, band.getBoundingClientRect().height);
   }, [turnKey]);
   return (
-    // The result stands off the chat as the bars do, on the card's own hairline.
-    <div ref={markerRef} className="-mx-4 border-border/60 border-t px-4 pt-2 empty:hidden">
+    // The result stands under the worked line, inside the tray (T5): a
+    // hairline, then its rows in the card's grid; nothing at all when the run
+    // left none.
+    <div ref={markerRef} className="run-band">
       <TurnReport
         onOpenImage={ctx.onImageExpand}
         onOpenTurnDiff={(turnId) => ctx.onOpenTurnDiff(turnId)}
@@ -1816,31 +1935,6 @@ function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcom
 function SeamTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "seam" }> }) {
   const ctx = use(TimelineRowCtx);
   return <Seam row={row} timestampFormat={ctx.timestampFormat} />;
-}
-
-/**
- * A question the Mate asked and the person's answer, each in its speaker's
- * place: the question in the Mate's bubble beside its face, the answer in
- * the person's own bubble on their side.
- */
-function AnswerTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "answer" }> }) {
-  return (
-    <div className="grid gap-3" data-person-answer>
-      {row.pairs.map((pair) => (
-        <Fragment key={pair.key}>
-          <div data-mate-question>
-            <MateProseWords at={row.createdAt} streaming={false} text={pair.question} />
-          </div>
-          <div className="flex justify-end">
-            <div className="max-w-4/5 rounded-2xl bg-message px-3.5 py-2.5 text-message-foreground">
-              <MessageAuthorHeading>You</MessageAuthorHeading>
-              <p className="whitespace-pre-wrap text-prose">{pair.answer}</p>
-            </div>
-          </div>
-        </Fragment>
-      ))}
-    </div>
-  );
 }
 
 /**
@@ -1974,6 +2068,23 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     row.imageOnly ? "" : row.message.text,
   );
   const terminalContexts = displayedUserMessage.contexts;
+  // Pictures sit where the person put them; images no label places stay above the words.
+  const placedPictures = useMemo(
+    () =>
+      placeMessagePictures(displayedUserMessage.visibleText, messageWithPreviews.attachments ?? []),
+    [displayedUserMessage.visibleText, messageWithPreviews.attachments],
+  );
+  const pictureContexts = useMemo(
+    () =>
+      placedPictures ? terminalContextsBySegment(placedPictures.segments, terminalContexts) : null,
+    [placedPictures, terminalContexts],
+  );
+  const pictureDimensions = useMessagePictureDimensions(ctx.activeThreadEnvironmentId, resources);
+  const imagesAbove = placedPictures?.unplaced ?? userImages;
+  const expandImage = (image: ChatImageAttachment) => {
+    const preview = buildExpandedImagePreview(userImages, image.id);
+    if (preview) ctx.onImageExpand(preview);
+  };
   const revertTurnCount = row.revertTurnCount;
 
   return (
@@ -1988,9 +2099,9 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
         data-message-aside={row.aside ? "true" : undefined}
       >
         <MessageAuthorHeading>You</MessageAuthorHeading>
-        {userImages.length > 0 && (
+        {imagesAbove.length > 0 && (
           <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
-            {userImages.map((image: ChatImageAttachment) => (
+            {imagesAbove.map((image: ChatImageAttachment) => (
               <div
                 key={image.id}
                 className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
@@ -2000,11 +2111,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                     type="button"
                     className="h-full w-full cursor-zoom-in"
                     aria-label={`Preview ${image.name}`}
-                    onClick={() => {
-                      const preview = buildExpandedImagePreview(userImages, image.id);
-                      if (!preview) return;
-                      ctx.onImageExpand(preview);
-                    }}
+                    onClick={() => expandImage(image)}
                   >
                     <img
                       src={image.previewUrl}
@@ -2021,12 +2128,28 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             ))}
           </div>
         )}
-        <CollapsibleUserMessageBody
-          text={displayedUserMessage.visibleText}
-          terminalContexts={terminalContexts}
-          skills={ctx.skills}
-          markdownCwd={ctx.markdownCwd}
-        />
+        {placedPictures ? (
+          <MessagePictureBody
+            segments={placedPictures.segments}
+            dimensions={pictureDimensions}
+            onOpen={expandImage}
+            renderText={(segment) => (
+              <CollapsibleUserMessageBody
+                text={segment.text}
+                terminalContexts={[...(pictureContexts?.get(segment.after) ?? [])]}
+                skills={ctx.skills}
+                markdownCwd={ctx.markdownCwd}
+              />
+            )}
+          />
+        ) : (
+          <CollapsibleUserMessageBody
+            text={displayedUserMessage.visibleText}
+            terminalContexts={terminalContexts}
+            skills={ctx.skills}
+            markdownCwd={ctx.markdownCwd}
+          />
+        )}
       </div>
       {row.receipt ? (
         <span className="flex shrink-0 pb-1.5">

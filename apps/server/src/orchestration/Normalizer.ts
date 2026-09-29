@@ -12,6 +12,7 @@ import {
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
 } from "@t3tools/contracts";
 
+import { fitImageForProviders, withFittedPicture } from "../attachmentFit.ts";
 import {
   createAttachmentId,
   planAttachmentClaim,
@@ -73,6 +74,24 @@ const removeClaimedAttachmentPaths = Effect.fn("Normalizer.removeClaimedAttachme
     );
   },
 );
+
+/**
+ * The picture fitted to what the providers take, or null when it goes as it
+ * came. The composer fits its own pictures; mobile and older web clients send
+ * theirs as taken.
+ */
+const fitPicture = Effect.fn("Normalizer.fitPicture")(function* (
+  name: string,
+  picture: { readonly bytes: Uint8Array; readonly mimeType: string },
+) {
+  const fit = fitImageForProviders(picture);
+  if (fit._tag === "too-large") {
+    return yield* new OrchestrationDispatchCommandError({
+      message: `Picture '${name}' is too large to send even after shrinking it. Send a smaller copy.`,
+    });
+  }
+  return fit._tag === "fitted" ? fit : null;
+});
 
 export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
   Effect.gen(function* () {
@@ -194,19 +213,50 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
               });
             }
 
+            const claimFailed = (cause: unknown) =>
+              new OrchestrationDispatchCommandError({
+                message: `Failed to claim attachment '${attachment.name}' for this thread.`,
+                cause,
+              });
+            const picture =
+              normalizedAttachment.type === "image"
+                ? yield* fileSystem.readFile(claim.currentPath).pipe(
+                    Effect.mapError(claimFailed),
+                    Effect.flatMap((bytes) =>
+                      fitPicture(attachment.name, {
+                        bytes,
+                        mimeType: normalizedAttachment.mimeType,
+                      }),
+                    ),
+                  )
+                : null;
+            // A fitted picture is the claimed copy, under the path its own type
+            // gives it (`.png` may become `.jpg`).
+            if (picture !== null) {
+              const fittedAttachment = withFittedPicture(normalizedAttachment, picture);
+              const fittedPath = resolveAttachmentPath({
+                attachmentsDir: serverConfig.attachmentsDir,
+                attachment: fittedAttachment,
+              });
+              if (!fittedPath) {
+                return yield* new OrchestrationDispatchCommandError({
+                  message: `Failed to resolve persisted path for '${attachment.name}'.`,
+                });
+              }
+              yield* fileSystem
+                .writeFile(fittedPath, picture.bytes)
+                .pipe(Effect.mapError(claimFailed));
+              claimedAttachmentPaths.push(fittedPath);
+              return fittedAttachment;
+            }
+
             // Keep the pending copy until the turn succeeds. A failed thread
             // bootstrap can then retry with a fresh thread id. A copy, not a
             // hard link: an agent editing the delivered file in place must not
             // mutate the retry source.
-            yield* fileSystem.copyFile(claim.currentPath, claim.finalPath).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new OrchestrationDispatchCommandError({
-                    message: `Failed to claim attachment '${attachment.name}' for this thread.`,
-                    cause,
-                  }),
-              ),
-            );
+            yield* fileSystem
+              .copyFile(claim.currentPath, claim.finalPath)
+              .pipe(Effect.mapError(claimFailed));
             claimedAttachmentPaths.push(claim.finalPath);
 
             return normalizedAttachment;
@@ -219,12 +269,16 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
             });
           }
 
-          const bytes = Buffer.from(parsed.base64, "base64");
-          if (bytes.byteLength === 0 || bytes.byteLength > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
+          const decoded = Buffer.from(parsed.base64, "base64");
+          if (decoded.byteLength === 0 || decoded.byteLength > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
             return yield* new OrchestrationDispatchCommandError({
               message: `Image attachment '${attachment.name}' is empty or too large.`,
             });
           }
+          const picture = yield* fitPicture(attachment.name, {
+            bytes: decoded,
+            mimeType: parsed.mimeType,
+          });
 
           const attachmentId = createAttachmentId(canonicalCommand.threadId);
           if (!attachmentId) {
@@ -233,13 +287,16 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
             });
           }
 
-          const persistedAttachment = {
+          const decodedAttachment = {
             type: "image" as const,
             id: attachmentId,
             name: attachment.name,
             mimeType: parsed.mimeType.toLowerCase(),
-            sizeBytes: bytes.byteLength,
+            sizeBytes: decoded.byteLength,
           };
+          const persistedAttachment =
+            picture === null ? decodedAttachment : withFittedPicture(decodedAttachment, picture);
+          const bytes = picture === null ? decoded : picture.bytes;
           attachmentsWithDecodedSizes[index] = persistedAttachment;
           const decodedLimitError = getProviderAttachmentLimitError(attachmentsWithDecodedSizes);
           if (decodedLimitError) {

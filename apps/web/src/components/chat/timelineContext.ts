@@ -60,6 +60,12 @@ export interface TimelineRowSharedState {
    * the person looked, not while they watched.
    */
   syncing: boolean;
+  /**
+   * The person opened or closed something to read: the conversation stops
+   * following its end, so the line they clicked stays where it is and only
+   * what is under it moves (K12).
+   */
+  onHoldReading: () => void;
 }
 
 export interface TimelineRowActivityState {

@@ -12,6 +12,7 @@ import {
   replaceTextRange,
 } from "./composer-logic";
 import { carryDisplacedCustomAnswerIntoPrompt } from "./pendingUserInput";
+import { INLINE_PICTURE_PLACEHOLDER } from "./lib/composerPictures";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
 describe("composerSubmissionIntentForEnter", () => {
@@ -489,5 +490,32 @@ describe("parseStandaloneComposerSlashCommand", () => {
 
   it("ignores slash commands with extra message text", () => {
     expect(parseStandaloneComposerSlashCommand("/plan explain this")).toBeNull();
+  });
+});
+
+describe("the caret around a picture", () => {
+  const P = INLINE_PICTURE_PLACEHOLDER;
+  // "ab", a picture, then a mention: the picture counts one in both spaces.
+  const text = `ab${P}@AGENTS.md x`;
+
+  it.each([
+    ["before the picture", 2, 2],
+    ["after the picture", 3, 3],
+    ["after the mention that follows", 4, 13],
+  ])("expands a caret %s", (_label, collapsed, expanded) => {
+    expect(expandCollapsedComposerCursor(text, collapsed)).toBe(expanded);
+    expect(collapseExpandedComposerCursor(text, expanded)).toBe(collapsed);
+  });
+
+  it.each([
+    ["right after a picture", `ab${P}`, 3, "left", true],
+    ["right before a picture", `${P}ab`, 0, "right", true],
+    ["inside words", `ab${P}cd`, 1, "left", false],
+  ] as const)("is next to it %s", (_label, prompt, cursor, direction, expected) => {
+    expect(isCollapsedCursorAdjacentToInlineToken(prompt, cursor, direction)).toBe(expected);
+  });
+
+  it("a trigger does not reach back across a picture", () => {
+    expect(detectComposerTrigger(`@src${P}x`, 6)).toBeNull();
   });
 });

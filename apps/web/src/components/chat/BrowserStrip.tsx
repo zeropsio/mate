@@ -259,7 +259,7 @@ export function BrowserStrip({
           <span className="size-1.5 rounded-full bg-muted-foreground/30" />
           <span className="size-1.5 rounded-full bg-muted-foreground/30" />
           <span className="size-1.5 rounded-full bg-muted-foreground/30" />
-          <span className="ms-2 min-w-0 flex-1 truncate rounded-sm bg-foreground/8 px-2 text-start text-2xs text-muted-foreground leading-4">
+          <span className="ms-2 min-w-0 flex-1 truncate rounded-sm bg-foreground/8 px-2 text-start text-muted-foreground text-xs leading-4">
             {caption}
           </span>
         </span>
@@ -281,7 +281,7 @@ export function BrowserStrip({
         ) : stageSrc ? (
           <TakeThumbnail aspect={TAKE_ASPECT[device]} src={stageSrc} />
         ) : (
-          <span className="flex size-full items-center justify-center px-3 text-center text-muted-foreground text-xs">
+          <span className="flex size-full items-center justify-center px-3 text-center text-line text-muted-foreground">
             Opening the page…
           </span>
         )}
@@ -289,7 +289,7 @@ export function BrowserStrip({
       {running && onStage === latest ? (
         // Live is busy, never failure: the blue its take pulses in the
         // list. A hairline, not a shadow, keeps it off the page under it.
-        <span className="absolute end-2 bottom-2 inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/90 px-2 text-2xs text-foreground leading-5">
+        <span className="absolute end-2 bottom-2 inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/90 px-2 font-medium text-foreground text-xs leading-5">
           <span className="size-1.5 animate-status-pulse rounded-full bg-status-busy motion-reduce:animate-none" />
           Live
         </span>
@@ -360,9 +360,9 @@ export function BrowserStrip({
           >
             {heading}
           </p>
-          <p className="truncate text-muted-foreground text-xs">{facts}</p>
+          <p className="truncate text-line text-muted-foreground">{facts}</p>
           {failedOnStage ? (
-            <p className="line-clamp-1 text-status-failed-text text-xs @xl/strip:line-clamp-2">
+            <p className="line-clamp-1 text-line text-status-failed-text @xl/strip:line-clamp-2">
               {browserCheckFailure(onStage)}
             </p>
           ) : null}
@@ -407,7 +407,7 @@ export function BrowserStrip({
                   aria-label={label}
                   aria-pressed={check === onStage}
                   className={cn(
-                    "flex h-10 w-full min-w-0 shrink-0 cursor-pointer items-center gap-2.5 rounded-md px-1.5 text-start text-xs transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
+                    "flex h-10 w-full min-w-0 shrink-0 cursor-pointer items-center gap-2.5 rounded-md px-1.5 text-start text-line transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
                     check === onStage ? "bg-accent/70 text-foreground" : "text-muted-foreground",
                   )}
                   data-browser-strip-frame={live ? "live" : state === "passed" ? "done" : state}
@@ -606,7 +606,7 @@ function FailedTake({ take }: { readonly take: ZeropsOperation }) {
     >
       <XIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-failed-text" />
       {device === "desktop" && reason !== null ? (
-        <span className="line-clamp-3 break-words text-2xs text-status-failed-text leading-3.5">
+        <span className="line-clamp-3 break-words text-status-failed-text text-xs leading-4">
           {reason}
         </span>
       ) : null}

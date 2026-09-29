@@ -1810,6 +1810,64 @@ routing.layer("ProviderServiceLive routing", (it) => {
     }),
   );
 
+  it.effect.each([
+    {
+      name: "a picture is named as its label names it",
+      input: "The header feels off:\n[Picture 1]\nFix it",
+      withOriginal: false,
+      lines: ["[Picture 1 is saved at: "],
+    },
+    {
+      name: "a kept original is named as its picture's",
+      input: "[Picture 1]\nUse the original on the site",
+      withOriginal: true,
+      lines: ["[Picture 1 is saved at: ", '[Picture 1\'s original, "home-page.png", is saved at: '],
+    },
+    {
+      name: "an image no label places keeps the plain line",
+      input: "use this screenshot",
+      withOriginal: false,
+      lines: ['[Attached image "picture.png" is saved at: '],
+    },
+  ])("names pictures in the path lines: $name", ({ input, withOriginal, lines }) =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const session = yield* provider.startSession(asThreadId("thread-pictures"), {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: asThreadId("thread-pictures"),
+        cwd: fixtureCwd("project"),
+        runtimeMode: "full-access",
+      });
+      const picture = {
+        type: "image" as const,
+        id: "thread-pictures-12345678-1234-1234-1234-123456789abc",
+        name: "picture.png",
+        mimeType: "image/png",
+        sizeBytes: 123,
+      };
+      const original = {
+        type: "file" as const,
+        id: "thread-pictures-22345678-1234-1234-1234-123456789abc",
+        name: "home-page.png",
+        mimeType: "image/png",
+        sizeBytes: 456,
+      };
+      routing.codex.sendTurn.mockClear();
+      yield* provider.sendTurn({
+        threadId: session.threadId,
+        input,
+        attachments: withOriginal ? [picture, original] : [picture],
+      });
+      const turnInput = routing.codex.sendTurn.mock.calls[0]?.[0] as ProviderSendTurnInput;
+      const pathLines = (turnInput.input ?? "").split("\n\n").at(-1)?.split("\n") ?? [];
+      assert.deepEqual(
+        pathLines.map((line) => line.slice(0, line.indexOf(": ") + 2)),
+        lines,
+      );
+    }),
+  );
+
   it.effect("appends attachment file paths to the turn input text", () =>
     Effect.gen(function* () {
       const provider = yield* ProviderService.ProviderService;
