@@ -1,7 +1,7 @@
 /**
- * What the Mate at work is made of while it runs: a status bar per thing that
- * runs — a deploy's pipeline, a task list, the helpers at work — each segment
- * in its state's tone. Nothing about it opens a dialog.
+ * A status bar per thing that runs alongside the Mate at work — a deploy's
+ * pipeline, a task list, the helpers at work — each segment in its state's
+ * tone. Nothing about it opens a dialog.
  */
 import { cn } from "~/lib/utils";
 

@@ -36,7 +36,7 @@ import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { Button } from "../ui/button";
 import { MateFace } from "../zerops/primitives";
 import { formatWorkDuration, isGitPushOnly, type IncidentModel } from "./conversation.logic";
-import { StatusBar, type BarTone } from "./ConversationPills";
+import { StatusBar, type BarTone } from "./StatusBar";
 import type { DockBackgroundTask, DockModel } from "./conversationDock.logic";
 import { ElapsedSince, type ConversationSpeaker } from "./ConversationRows";
 import { OperationDetail, PlanSteps, useHoldReading } from "./RunChat";

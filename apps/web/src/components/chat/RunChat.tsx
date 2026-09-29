@@ -99,7 +99,7 @@ import {
   type OutcomeModel,
 } from "./conversation.logic";
 import { useRunEffortWords } from "./runResultFacts";
-import { StatusBar, type BarTone } from "./ConversationPills";
+import { StatusBar, type BarTone } from "./StatusBar";
 import { DOCKED_KINDS } from "./conversationDock.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
