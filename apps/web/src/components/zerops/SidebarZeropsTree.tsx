@@ -64,7 +64,6 @@ import {
   type GroupFlow,
   type GroupFlowComing,
   type GroupFlowStop,
-  type GroupNextStep,
   type MissingEnvironmentRow,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
@@ -130,6 +129,7 @@ import { ZeropsMateVerb } from "./ZeropsMateCard";
 import { formatWorkingTime, isQuietMate, sidebarMateKey } from "./SidebarZeropsTree.logic";
 import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
 import { SidebarProjectFold, type ProjectFoldMotion } from "./SidebarProjectFold";
+import { headingFaces, type HeadingFace, type HeadingFaceDot } from "./SidebarProjects.logic";
 import { SidebarProductionChip } from "./SidebarProductionChip";
 import {
   buildingOf,
@@ -169,8 +169,6 @@ import {
   comingMateLine,
   groupFlowInputOf,
   groupMemberFactsOf,
-  nextStepAwaitsSomebody,
-  nextStepTone,
   productionAddable,
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
@@ -963,9 +961,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     id: string,
     entries: ReadonlyArray<Entry<T>>,
     renderHeader: (heading: {
-      readonly nextStep: GroupNextStep | undefined;
       /** The production chip, where the project has a production or a stage. */
       readonly production: ReactNode;
+      /** Its busy Mates' faces, while it is folded. */
+      readonly faces: ReactNode;
     }) => ReactNode,
     flow: SidebarProjectFlow | undefined,
     groupName: string | undefined,
@@ -1144,9 +1143,31 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             },
           ]),
     ];
+    // Folded, the heading shows who is busy in it (M15): its Mates that need
+    // you, work, or finished unseen — once its rows have folded away.
+    const folded = collapsed.has(id) && folds.get(id) !== "closing";
+    const busy = folded
+      ? headingFaces(
+          mateEntries.map(({ item }) => {
+            const activity = getActivity?.(item);
+            const live = drawnActivity(item, activity);
+            return {
+              projectId: item.project.id,
+              name: botDisplayName({
+                bot: readZeropsGroupTags(item.project.tagList).bot,
+                projectName: item.project.name,
+              }),
+              tint: tints.get(item.project.id) ?? "slate",
+              face: mateFaceFor(item.group === "connected", activity),
+              failed: live?.kind === "failed",
+              unread: live?.unread === true,
+            };
+          }),
+        )
+      : [];
     const header = renderHeader({
-      nextStep: flow === undefined ? undefined : projectFlow.nextStep,
       production,
+      faces: busy.length === 0 ? null : <HeadingFaces faces={busy} />,
     });
     // Code only — a recipe change is the group's document, left to the
     // projects page, and is never one more thing a Mate's row here answers
@@ -1427,12 +1448,12 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       {section(
         group.groupId,
         environments,
-        ({ nextStep, production }) => (
+        ({ production, faces }) => (
           <ProjectHeader
             collapsed={collapsed.has(group.groupId)}
+            faces={faces}
             group={group}
             missing={getFlow?.(group.groupId)?.missing ?? []}
-            nextStep={nextStep}
             production={production}
             onAddMate={onAddMate}
             onBrowseProjects={onBrowseProjects}
@@ -1637,7 +1658,6 @@ export function ProjectHeader({
   name,
   muted = false,
   missing = NO_MISSING_TIERS,
-  nextStep,
   onAddMate,
   onBrowseProjects,
   onOpen,
@@ -1645,18 +1665,12 @@ export function ProjectHeader({
   onToggle,
   reorder,
   production,
+  faces,
 }: {
   readonly group?: ZeropsGroup;
   readonly name?: string;
   readonly muted?: boolean;
   readonly missing?: ReadonlyArray<MissingEnvironmentRow>;
-  /**
-   * The one thing the flow says is next for this project — `groupFlow`'s own
-   * derivation, so a dot here never claims a step the page would not offer.
-   * Absent while the flow is unread, and drawn only where it waits on somebody
-   * (`nextStepAwaitsSomebody`) — never for a first task, whose Mate is the way in.
-   */
-  readonly nextStep?: GroupNextStep | undefined;
   /** Records which project the add was asked for; absent in the harness. */
   readonly onAddMate?: ((groupId: string) => void) | undefined;
   readonly onBrowseProjects: () => void;
@@ -1677,6 +1691,8 @@ export function ProjectHeader({
    * end edge whether the project is open or folded.
    */
   readonly production?: ReactNode;
+  /** Its busy Mates' faces (`HeadingFaces`), after the title while it is folded. */
+  readonly faces?: ReactNode;
 }) {
   const placeholder = group !== undefined && groupNameIsPlaceholder(group);
   const title = group?.name ?? name ?? "";
@@ -1737,6 +1753,7 @@ export function ProjectHeader({
               differently"). The title hugs its text, so the chevron follows
               it. */}
           <DisclosureGlyph />
+          {faces}
         </button>
       )}
       {/* Hidden until hover keeps a list of five projects calm, but a finger
@@ -1822,31 +1839,49 @@ export function ProjectHeader({
         </span>
       )}
       <span aria-hidden="true" className="min-w-0 flex-1" />
-      {/* Always on, unlike the verbs before it: this says something is waiting
-          on the person, which is not a fact that should hide until they hover.
-          Last, so at rest it sits on the end edge, over the Mates' times. */}
-      {nextStep === undefined || !nextStepAwaitsSomebody(nextStep.kind) ? null : (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <StatusDot
-                className="relative z-1 shrink-0"
-                data-zerops-surface="sidebar-project-next-step"
-                dotOnly
-                label={nextStep.text}
-                tone={nextStepTone(nextStep.kind)}
-              />
-            }
-          />
-          <TooltipPopup side="right">{nextStep.text}</TooltipPopup>
-        </Tooltip>
-      )}
       {production}
     </div>
   );
 }
 
 const NO_MISSING_TIERS: ReadonlyArray<MissingEnvironmentRow> = [];
+
+/** A folded heading's face, in words: who, and why it is shown. */
+const HEADING_FACE_WORDS: Record<HeadingFaceDot | "working", string> = {
+  attention: "needs you",
+  failed: "stopped on an error",
+  unread: "finished",
+  working: "is working",
+};
+
+/**
+ * The faces of a folded project's busy Mates (M15), after its title: 18 px,
+ * each in its own pose — turning while it works, hopping when it needs you —
+ * with a 7 px dot at its corner for what is not work, cut out of the menu's
+ * ground: amber needs you, blue finished unseen, red stopped on an error.
+ */
+function HeadingFaces({ faces }: { readonly faces: ReadonlyArray<HeadingFace> }) {
+  return (
+    <span
+      className="ms-1 flex shrink-0 items-center gap-0.75"
+      data-zerops-surface="sidebar-project-faces"
+    >
+      {faces.map((face) => (
+        <span className="relative flex" key={face.projectId}>
+          <MateFace className="size-4.5" greets size="sm" state={face.face} tint={face.tint} />
+          {face.dot === undefined ? null : (
+            <span aria-hidden="true" className="zerops-heading-dot" data-dot={face.dot} />
+          )}
+        </span>
+      ))}
+      <span className="sr-only">
+        {faces
+          .map((face) => `${face.name} ${HEADING_FACE_WORDS[face.dot ?? "working"]}`)
+          .join(", ")}
+      </span>
+    </span>
+  );
+}
 
 /** One place in a project's run of Mates: a Mate, one being created, or the quiet ones' fold. */
 type MateSlot<T> =

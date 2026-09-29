@@ -3434,6 +3434,43 @@ code {
   }
 }
 
+/* A folded heading's busy face (M15): its dot on the face's corner, cut out of
+   the menu's ground by a 2 px ring. */
+.zerops-heading-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  box-shadow: 0 0 0 2px var(--sidebar);
+}
+
+.zerops-heading-dot[data-dot="attention"] {
+  background-color: var(--zerops-status-attention);
+}
+
+.zerops-heading-dot[data-dot="unread"] {
+  background-color: var(--info-foreground);
+}
+
+.zerops-heading-dot[data-dot="failed"] {
+  background-color: var(--zerops-status-failed);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .zerops-heading-dot {
+    animation: zerops-heading-dot-in 220ms var(--ease-out-strong) both;
+  }
+}
+
+@keyframes zerops-heading-dot-in {
+  from {
+    opacity: 0;
+    scale: 0;
+  }
+}
+
 /* ==== end of the menu's projects and production ==== */
 
 /* ==== Pass 16 · the run's card ==== */

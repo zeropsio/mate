@@ -58,8 +58,6 @@ afterEach(() => {
 import {
   groupFlowInputOf,
   groupMemberFactsOf,
-  nextStepAwaitsSomebody,
-  nextStepTone,
   productionAddable,
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
@@ -849,79 +847,11 @@ describe("the project's flow under it", () => {
     expect(html).not.toContain('data-zerops-surface="sidebar-pull-request"');
   });
 
-  describe("the group heading's next-step dot", () => {
-    it("carries a dot when groupFlow's own next step waits on somebody", () => {
-      const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
-      expect(html).toContain('data-zerops-surface="sidebar-project-next-step"');
-    });
-
-    it("sits the dot at the heading's end edge, after the verbs that show on hover", () => {
-      const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
-      const heading = html.slice(html.indexOf('data-zerops-surface="sidebar-project"'));
-      expect(heading.indexOf('data-zerops-surface="sidebar-project-more"')).toBeLessThan(
-        heading.indexOf('data-zerops-surface="sidebar-project-next-step"'),
-      );
-    });
-
-    it("carries no dot once the flow says nothing is left to do", () => {
-      const talked: ZeropsAgentActivity = {
-        threadId: "thread-x" as ZeropsAgentActivity["threadId"],
-        kind: "idle",
-        status: null,
-        face: "idle",
-        subject: "Ship it",
-        at: new Date().toISOString(),
-        snippet: undefined,
-        progress: undefined,
-        unread: false,
-        pausedUntil: undefined,
-        threadKey: "env:thread",
-        task: undefined,
-      };
-      const html = render([CRM_DEV_CONNECTED, CRM_STAGE, CRM_PROD], {
-        getActivity: () => talked,
-        getFlow: () => flow({ pullRequests: [], releaseOffered: false }),
-      });
-      expect(html).not.toContain('data-zerops-surface="sidebar-project-next-step"');
-    });
-
-    it("carries no dot while the flow is unread", () => {
-      const html = render([CRM_DEV, CRM_STAGE, CRM_PROD]);
-      expect(html).not.toContain('data-zerops-surface="sidebar-project-next-step"');
-    });
-
-    // Every kind, so a kind added to the flow cannot slip past the heading.
-    // A dot says somebody must act: a first task has none, the Mate is the way in.
-    const KINDS: Record<GroupNextStepKind, { readonly dot: boolean }> = {
-      "answer-mate": { dot: true },
-      "fix-mate": { dot: true },
-      "fix-deploy": { dot: true },
-      merge: { dot: true },
-      unblock: { dot: true },
-      release: { dot: true },
-      "add-production": { dot: false },
-      "first-task": { dot: false },
-      none: { dot: false },
-    };
-    const kinds = Object.keys(KINDS) as ReadonlyArray<GroupNextStepKind>;
-    const heading = (kind: GroupNextStepKind) =>
-      renderToStaticMarkup(
-        <ProjectHeader
-          name="Links"
-          nextStep={{ kind, text: `step ${kind}`, verb: undefined, target: undefined }}
-          onBrowseProjects={() => {}}
-        />,
-      );
-    const dotOf = (html: string) =>
-      /data-zerops-surface="sidebar-project-next-step"[^>]*/u.exec(html)?.[0];
-
-    it.each(kinds)("wears a dot only where somebody must act: %s", (kind) => {
-      expect(dotOf(heading(kind)) !== undefined).toBe(KINDS[kind].dot);
-    });
-
-    it.each(kinds.filter((kind) => KINDS[kind].dot))("wears the page's tone for %s", (kind) => {
-      expect(dotOf(heading(kind))).toContain(`data-zerops-status-tone="${nextStepTone(kind)}"`);
-    });
+  // The heading's lone amber dot said "something here needs you" without
+  // saying who, and beside a globe it read as production in trouble (M15).
+  it("wears no dot of its own: the rows and the chip say what waits", () => {
+    const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
+    expect(html).not.toContain("sidebar-project-next-step");
   });
 });
 
@@ -1144,7 +1074,7 @@ describe("a project collapsed to its heading", () => {
     expect(stored.written).toEqual(new Set());
   });
 
-  it("draws only the heading of a project collapsed last time, its next-step dot included", () => {
+  it("draws only the heading of a project collapsed last time", () => {
     stored.collapsed = new Set(["aaa"]);
     const html = renderToStaticMarkup(
       tree({
@@ -1159,7 +1089,7 @@ describe("a project collapsed to its heading", () => {
     );
     expect(html).toContain('data-zerops-surface="sidebar-project"');
     expect(html).toContain('aria-expanded="false"');
-    expect(html).toContain('data-zerops-surface="sidebar-project-next-step"');
+    expect(html).not.toContain("sidebar-project-next-step");
     // No summary and no small badges: a second design of the rows is what the
     // owner turned down.
     for (const gone of ["sidebar-mate", "sidebar-pull-request", "sidebar-project-rows"])
@@ -1188,6 +1118,44 @@ describe("a project collapsed to its heading", () => {
     ].map(([, classes]) => classes!.split(" "));
     expect(rows).toHaveLength(1);
     expect(rows[0]).toEqual(expect.arrayContaining(["pt-0.5", "pb-11"]));
+  });
+
+  // Folded, a heading shows who is busy in it (M15): the faces of its Mates
+  // that need you, work, or finished unseen, a dot for what is not work.
+  it("shows its busy Mates' faces while folded, and none while open", () => {
+    const MATES = [
+      { ...named("crm-a", "CRM - a", ["mate", "mate:g:aaa", "mate:role:dev", "mate:bot:Ada"]) },
+      { ...named("crm-b", "CRM - b", ["mate", "mate:g:aaa", "mate:role:dev", "mate:bot:Bo"]) },
+      { ...named("crm-c", "CRM - c", ["mate", "mate:g:aaa", "mate:role:dev", "mate:bot:Cy"]) },
+    ].map((item) => ({ ...item, group: "connected" }) as ZeropsCandidate);
+    const busy = (id: string): ZeropsAgentActivity => ({
+      threadId: `thread-${id}` as ZeropsAgentActivity["threadId"],
+      kind: id === "crm-a" ? "working" : id === "crm-b" ? "input" : "idle",
+      status: null,
+      face: id === "crm-a" ? "working" : id === "crm-b" ? "needs" : "idle",
+      subject: "Something",
+      at: new Date().toISOString(),
+      snippet: undefined,
+      progress: undefined,
+      unread: false,
+      pausedUntil: undefined,
+      threadKey: `env:${id}`,
+      task: undefined,
+    });
+    const faces = (html: string) =>
+      /data-zerops-surface="sidebar-project-faces">(.*?)<span class="sr-only">([^<]*)</u.exec(html);
+    stored.collapsed = new Set(["aaa"]);
+    const folded = render(MATES, { getActivity: (item: ZeropsCandidate) => busy(item.project.id) });
+    const shown = faces(folded);
+    expect(shown).not.toBeNull();
+    // Who needs you comes first, then who works; the idle one is not shown.
+    expect(shown![2]).toBe("Bo needs you, Ada is working");
+    expect(shown![1]!.match(/data-mate-face-state="/gu)).toHaveLength(2);
+    expect(shown![1]).toContain('data-dot="attention"');
+    stored.collapsed = new Set();
+    expect(
+      render(MATES, { getActivity: (item: ZeropsCandidate) => busy(item.project.id) }),
+    ).not.toContain("sidebar-project-faces");
   });
 
   it("keeps less room under the list's last project", () => {
@@ -1495,10 +1463,10 @@ describe("the sidebar and the projects page read one group the same way", () => 
       merging: () => false,
       onMerge: () => {},
     };
+    // The heading carries no step of its own any more (M15): its rows, its
+    // faces and its production chip say what waits, each where it is.
     const html = render(candidates, { getFlow: () => sidebar, health, mayCreate });
-    const dot = /data-zerops-surface="sidebar-project-next-step"[^>]*/u.exec(html)?.[0];
-    if (!nextStepAwaitsSomebody(page.kind)) expect(dot).toBeUndefined();
-    else expect(dot).toContain(`aria-label="${page.text}"`);
+    expect(html).not.toContain("sidebar-project-next-step");
   });
 });
 
