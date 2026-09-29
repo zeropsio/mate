@@ -10,6 +10,9 @@
 import { hasMate } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 
+/** What a Mate on its way off Zerops says: its dialog's button, and its row's line. */
+export const MATE_DELETING_WORD = "Deleting…";
+
 /** What the Delete dialog says. */
 export interface DeleteMateWords {
   /** "Delete Quinn?" */
@@ -57,7 +60,7 @@ export function deleteMateWords(input: {
       "This can't be undone.",
     label: `Type ${name} to confirm`,
     submit: `Delete ${name}`,
-    pending: "Deleting…",
+    pending: MATE_DELETING_WORD,
   };
 }
 

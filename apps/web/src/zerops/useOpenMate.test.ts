@@ -4,6 +4,7 @@ import { act, createElement as h } from "react";
 import { create } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { markMateDeleting, settleDeletingMates } from "./deletingMates";
 import { useOpenMate } from "./useOpenMate";
 
 const ENVIRONMENT = EnvironmentId.make("env-fen");
@@ -54,10 +55,15 @@ vi.mock("../hooks/useHandleNewThread", () => ({
     },
 }));
 
-const CANDIDATE = { key: "fen:zcp" } as unknown as ZeropsCandidate;
+const CANDIDATE = {
+  key: "fen:zcp",
+  project: { id: "acme-docs-fen", name: "Acme Docs - Fen", status: "ACTIVE" },
+} as unknown as ZeropsCandidate;
 
 /** Opens Fen as the left menu's item does, and hands back what was told of the conversation. */
-async function openFen(): Promise<ReadonlyArray<ScopedThreadRef>> {
+async function openFen(
+  candidate: ZeropsCandidate = CANDIDATE,
+): Promise<ReadonlyArray<ScopedThreadRef>> {
   const told: Array<ScopedThreadRef> = [];
   const opens: Array<ReturnType<typeof useOpenMate>> = [];
   function Harness() {
@@ -70,7 +76,7 @@ async function openFen(): Promise<ReadonlyArray<ScopedThreadRef>> {
     tree = create(h(Harness));
   });
   await act(async () => {
-    opens.at(-1)?.(CANDIDATE, (conversation) => {
+    opens.at(-1)?.(candidate, (conversation) => {
       app.log.push("told");
       told.push(conversation);
     });
@@ -92,6 +98,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.unstubAllGlobals();
+  settleDeletingMates(new Set());
 });
 
 describe("useOpenMate — what it tells the caller of the conversation it opened", () => {
@@ -118,5 +125,27 @@ describe("useOpenMate — what it tells the caller of the conversation it opened
     app.reachable = false;
     expect(await openFen()).toEqual([]);
     expect(app.navigate).toHaveBeenCalledExactlyOnceWith({ to: "/zerops" });
+  });
+
+  it.each([
+    {
+      case: "this tab deleted it, the listing not there yet",
+      candidate: CANDIDATE,
+      asked: true,
+    },
+    {
+      case: "the platform deleting it",
+      candidate: {
+        ...CANDIDATE,
+        project: { ...CANDIDATE.project, status: "DELETING" },
+      } as ZeropsCandidate,
+      asked: false,
+    },
+  ])("opens nothing of a Mate on its way off Zerops: $case", async ({ candidate, asked }) => {
+    if (asked) markMateDeleting(candidate.project.id);
+    app.threads = [shell("thread-main")];
+    expect(await openFen(candidate)).toEqual([]);
+    expect(app.navigate).not.toHaveBeenCalled();
+    expect(app.newThreadCalls).not.toHaveBeenCalled();
   });
 });

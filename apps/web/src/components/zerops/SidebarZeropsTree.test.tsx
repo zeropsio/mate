@@ -27,6 +27,7 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { markMateDeleting, settleDeletingMates } from "~/zerops/deletingMates";
 import { activityFromMemory } from "~/zerops/menuMemory";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import {
@@ -3129,5 +3130,89 @@ describe("a reload paints what the menu last drew (menuMemory)", () => {
       changes: { aaa: [change] },
       chips: { aaa: { prod: { label: "prod", state: "ok", version: "v2.5.0" }, stage: null } },
     });
+  });
+});
+
+// A Mate its person deleted, until the listing lets it go: its row says so
+// where its last line stood, offers nothing, and does not open.
+describe("a Mate on its way off Zerops", () => {
+  afterEach(() => {
+    settleDeletingMates(new Set());
+  });
+  const REMEMBERED = activityFromMemory({
+    subject: "Speed up the photo gallery",
+    snippet: "Thumbnails load lazily now.",
+    at: "2026-09-29T08:00:00.000Z",
+    unread: false,
+    threadId: "thread-crm",
+    threadKey: "env-crm-dev:thread-crm",
+    task: "Speed up the photo gallery",
+  });
+  const ACTIONS: MateRowActions = {
+    muted: false,
+    toggleMute: () => {},
+    copyLink: () => {},
+    entries: [{ id: "restart", label: "Restart", onSelect: () => {} }],
+  };
+  /** The platform's word: `DELETING`, its container already gone from the listing. */
+  const deleting = (): ZeropsCandidate => ({
+    key: "crm-dev",
+    group: "unavailable",
+    reason: "project is DELETING",
+    project: { ...CRM_DEV.project, status: "DELETING" },
+  });
+  /** This tab's word: the platform said yes, and the listing still says ACTIVE. */
+  const asked = (): ZeropsCandidate => {
+    markMateDeleting("crm-dev");
+    return { ...CRM_DEV, group: "connected", environmentId: EnvironmentId.make("env-crm-dev") };
+  };
+
+  it.each([
+    { case: "the platform deleting it", item: deleting },
+    { case: "this tab having asked", item: asked },
+  ])("says Deleting… where its words stood, asleep, with no time: $case", ({ item }) => {
+    const html = render([item()], { getActivity: () => REMEMBERED, getMateActions: () => ACTIONS });
+    expect(html).toMatch(
+      /<span[^>]*data-zerops-surface="sidebar-mate-deleting"[^>]*>Deleting…<\/span>/u,
+    );
+    // What was asked stays above the line; the Mate's last words gave it their place.
+    expect(html).toContain(">Speed up the photo gallery<");
+    expect(html).not.toContain("Thumbnails load lazily now.");
+    expect(html).toContain('data-mate-face-state="sleep"');
+    expect(html).not.toContain("sidebar-mate-actions");
+    expect(html).toMatch(
+      /<button[^>]*aria-disabled="true"[^>]*data-zerops-surface="sidebar-mate"/u,
+    );
+  });
+
+  it("takes the sign-in line's place where nothing was asked, so the row keeps its height", () => {
+    const html = render([deleting()], { getOwner: () => undefined });
+    expect(html).toContain(">Deleting…<");
+    expect(html).not.toContain("sidebar-mate-sign-in");
+  });
+
+  it("does not open when pressed", () => {
+    const opened: string[] = [];
+    const mounted = mount(
+      <SidebarZeropsTree
+        candidates={[asked()]}
+        complete
+        onBrowseProjects={() => {}}
+        onSelect={(item) => {
+          opened.push(item.project.id);
+        }}
+      />,
+    );
+    act(() => {
+      surface(mounted, "sidebar-mate").props.onClick();
+    });
+    expect(opened).toEqual([]);
+  });
+
+  it("lets it go once a complete listing no longer holds it", () => {
+    markMateDeleting("crm-dev");
+    settleDeletingMates(new Set(["crm-stage"]));
+    const html = render([{ ...CRM_DEV, group: "connected" }]);
+    expect(html).not.toContain("sidebar-mate-deleting");
   });
 });

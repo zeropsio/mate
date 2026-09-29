@@ -171,12 +171,15 @@ import {
 import {
   changeMarkTone,
   mateCrewItem,
+  mateDeletingView,
   mateOwnerView,
   mateRowView,
   type MateRowReply,
   type MateRowSlot,
   type OwnerSeat,
 } from "./SidebarMateRow.logic";
+import { MATE_DELETING_WORD } from "./ZeropsDeleteMateDialog.logic";
+import { mateDeleting, useDeletingMates } from "~/zerops/deletingMates";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarReveal, type SidebarRevealTarget } from "~/zerops/sidebarReveal";
 import {
@@ -2128,7 +2131,7 @@ function MateRow<T extends RosterCandidate>({
   onSelect,
   owner,
   timestampFormat,
-  actions,
+  actions: offered,
   crew,
   onOpenCrew,
   appUrl,
@@ -2162,13 +2165,19 @@ function MateRow<T extends RosterCandidate>({
 }) {
   const tags = readZeropsGroupTags(candidate.project.tagList);
   const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
+  // On its way off Zerops (`deletingMates.ts`): it says so in its last line,
+  // offers no menu and does not open, until the listing lets it go.
+  const deletingIds = useDeletingMates();
+  const deleting = mateDeleting(candidate.project, deletingIds);
+  const actions = deleting ? undefined : offered;
   // What it is on, or was last on, and since when — knowable only through an
   // open socket, and only once somebody has spoken to it; until the socket
   // opens, what this browser remembers the row saying.
   const live = drawnActivity(candidate, activity);
   // What the row says in its state (`mateRowView`, M7): the face, the right
   // of the name, what was asked and the third line.
-  const view = mateRowView(live, mateFaceFor(candidate.group === "connected", activity));
+  const read = mateRowView(live, mateFaceFor(candidate.group === "connected", activity));
+  const view = deleting ? mateDeletingView(read) : read;
   // Whose seat it is, and whether anybody has signed its agent in — read off
   // its own records, so from the first paint (`mateOwnerView`).
   const seated = mateOwnerView({
@@ -2255,13 +2264,15 @@ function MateRow<T extends RosterCandidate>({
         // the menu's edge and every word at 56 (the list starts at 9). It
         // paints nothing of its own: its unit is lit, under the pointer or
         // by the list's one band, which slides to it (`SidebarSelectedBand`).
-        className="menu-row grid w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-disabled={deleting || undefined}
+        className="menu-row grid w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default"
         data-zerops-surface="sidebar-mate"
         onClick={() => {
           if (longPress.current.fired) {
             longPress.current.fired = false;
             return;
           }
+          if (deleting) return;
           onSelect(candidate);
         }}
         onKeyDown={(event) => {
@@ -2388,10 +2399,13 @@ function MateRow<T extends RosterCandidate>({
               {view.ask}
             </span>
           )}
-          {seated.signInLine === undefined ? null : <MateSignInLine words={seated.signInLine} />}
+          {deleting || seated.signInLine === undefined ? null : (
+            <MateSignInLine words={seated.signInLine} />
+          )}
           {view.reply === undefined ? null : (
             <MateReply known={known} reply={view.reply} threadKey={live?.threadKey} />
           )}
+          {deleting ? <MateDeletingLine /> : null}
         </span>
       </button>
       {actions === undefined ? null : (
@@ -2794,6 +2808,21 @@ function MateSignInLine({ words }: { readonly words: string }) {
       data-zerops-surface="sidebar-mate-sign-in"
     >
       {words}
+    </span>
+  );
+}
+
+/**
+ * The row's last line while its Mate is on its way off Zerops
+ * (`mateDeletingView`): the fact, in the muted ink, where its words stood.
+ */
+function MateDeletingLine() {
+  return (
+    <span
+      className="truncate text-line leading-4.5 text-muted-foreground"
+      data-zerops-surface="sidebar-mate-deleting"
+    >
+      {MATE_DELETING_WORD}
     </span>
   );
 }
