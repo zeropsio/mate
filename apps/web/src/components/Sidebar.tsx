@@ -217,6 +217,7 @@ import {
 } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { useAddMateIntent } from "../zerops/addMateIntent";
+import { useMateRowActivity } from "../zerops/useMenuMateReadings";
 import { useAskMateToFix } from "../zerops/fixRequest";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
@@ -251,7 +252,6 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import {
   menuMemory,
-  rememberedActivity,
   rememberedChangeOf,
   rememberedChanges,
   rememberedRowOf,
@@ -2282,20 +2282,11 @@ export default function Sidebar() {
   const zeropsAgentActivity = useZeropsAgentActivity();
   // Each Mate's own menu: the projects screen's verbs, and this viewer's own.
   const zeropsMateMenus = useSidebarMateMenus({ threads });
-  // What a Mate's row says: its conversation's once read through an open
-  // socket, and until then what this browser remembers it saying
+  // What a Mate's row says: its conversation's while its socket is up or only
+  // blinking, and until then what this browser remembers it saying
   // (`menuMemory.ts`) — a reload paints whole rows, not names that grow as
-  // each Mate connects.
-  const zeropsRowActivity = useCallback(
-    (candidate: (typeof zeropsCandidates)[number]) => {
-      const live =
-        candidate.group === "connected" && candidate.environmentId !== undefined
-          ? zeropsAgentActivity.get(candidate.environmentId)
-          : undefined;
-      return live ?? rememberedActivity(candidate.project.id);
-    },
-    [zeropsAgentActivity],
-  );
+  // each Mate connects, and a Mate at work never falls asleep for a blink.
+  const zeropsRowActivity = useMateRowActivity(zeropsAgentActivity);
   // Remember each connected Mate's row as its conversation says it, and
   // forget whatever the listing no longer holds.
   useEffect(() => {

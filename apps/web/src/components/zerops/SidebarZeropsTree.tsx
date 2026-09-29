@@ -115,7 +115,7 @@ import { useComposerDraftStore } from "~/composerDraftStore";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
@@ -172,7 +172,7 @@ import {
   changeMarkTone,
   mateCrewItem,
   mateOwnerView,
-  mateRowView,
+  mateRowReading,
   type MateRowReply,
   type MateRowSlot,
   type OwnerSeat,
@@ -491,18 +491,6 @@ function chipsLearned(read: {
 }
 
 const NOTHING_DRAWN: SidebarDrawn = { changes: {}, chips: {} };
-
-/**
- * What a row may say of a Mate: its conversation's, read through an open
- * socket — or what this browser remembers it saying, until then
- * (`menuMemory.ts`); nothing where neither is known.
- */
-function drawnActivity(
-  candidate: Pick<RosterCandidate, "group">,
-  activity: ZeropsAgentActivity | undefined,
-): ZeropsAgentActivity | undefined {
-  return candidate.group === "connected" || activity?.remembered === true ? activity : undefined;
-}
 
 /** What a change row acts with: the project's flow, or nothing while it is remembered. */
 type ChangeRows = Pick<SidebarProjectFlow, "onOpenChange"> & {
@@ -1128,9 +1116,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     const busy = folded
       ? headingFaces(
           mateEntries.map(({ item }) => {
-            const activity = getActivity?.(item);
-            const live = drawnActivity(item, activity);
-            const view = mateRowView(live, mateFaceFor(item.group === "connected", activity));
+            const live = getActivity?.(item);
+            const view = mateRowReading({ connected: item.group === "connected", activity: live });
             return {
               projectId: item.project.id,
               name: botDisplayName({
@@ -1178,11 +1165,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // being created, then — folded behind their count at the end — the ones
     // untouched for a week (`isQuietMate`), open only when asked.
     const quietOf = (item: T) =>
-      isQuietMate(
-        drawnActivity(item, getActivity?.(item)),
-        nowMs,
-        item.project.id === activeProjectId,
-      );
+      isQuietMate(getActivity?.(item), nowMs, item.project.id === activeProjectId);
     const loud = mateEntries.filter(({ item }) => !quietOf(item));
     const quiet = mateEntries.filter(({ item }) => quietOf(item));
     // What the jump box finds here, drawn or folded: a jump opens the project.
@@ -2162,13 +2145,12 @@ function MateRow<T extends RosterCandidate>({
 }) {
   const tags = readZeropsGroupTags(candidate.project.tagList);
   const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
-  // What it is on, or was last on, and since when — knowable only through an
-  // open socket, and only once somebody has spoken to it; until the socket
-  // opens, what this browser remembers the row saying.
-  const live = drawnActivity(candidate, activity);
-  // What the row says in its state (`mateRowView`, M7): the face, the right
-  // of the name, what was asked and the third line.
-  const view = mateRowView(live, mateFaceFor(candidate.group === "connected", activity));
+  // What the row says in its state (`mateRowView`, M7): the face, the right of
+  // the name, what was asked and the third line — the face and the words from
+  // the one reading of it (`mateRowReading`): what it is on, or was last on,
+  // read through its socket, or until the socket opens what this browser
+  // remembers the row saying.
+  const view = mateRowReading({ connected: candidate.group === "connected", activity });
   // Whose seat it is, and whether anybody has signed its agent in — read off
   // its own records, so from the first paint (`mateOwnerView`).
   const seated = mateOwnerView({
@@ -2176,7 +2158,7 @@ function MateRow<T extends RosterCandidate>({
     records: mateOwnerRecords(candidate.project),
     asked: view.ask !== undefined,
   });
-  const known = live !== undefined && live.remembered !== true;
+  const known = activity !== undefined && activity.remembered !== true;
   // Its menu's door to its crew (`mateCrewItem`): whether crew mode is on and
   // a crew applied — a fixture's, or its feed's once it is connected.
   const liveCrewStatus = useCrewStatus(
@@ -2191,7 +2173,7 @@ function MateRow<T extends RosterCandidate>({
   // A new ask rises into the row's second line as the person sets it; the
   // ask this browser remembered gives way to the one read without a rise.
   const askChanged = useChangedSinceShown(view.ask, known);
-  const unread = live?.unread === true;
+  const unread = activity?.unread === true;
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuAt, setMenuAt] = useState<MenuPoint | undefined>(undefined);
   const [renaming, setRenaming] = useState(false);
@@ -2309,18 +2291,7 @@ function MateRow<T extends RosterCandidate>({
             {/* Until its socket answers the face stands in idle or asleep, the
                 row's words as this browser remembered them: a Mate found
                 waiting then is not arriving at it. */}
-            <MateFace
-              greets
-              known={
-                candidate.group === "connected" &&
-                activity !== undefined &&
-                activity.remembered !== true
-              }
-              shape={shape}
-              size="md"
-              state={view.face}
-              tint={tint}
-            />
+            <MateFace greets known={known} shape={shape} size="md" state={view.face} tint={tint} />
           </span>
         </span>
         {/* One even leading, three lines of one thing: the name 14/20, what
@@ -2367,7 +2338,7 @@ function MateRow<T extends RosterCandidate>({
                 )}
               >
                 <MateDot known={known} tone={view.dot} />
-                <MateSlot at={live?.at} slot={view.slot} timestampFormat={timestampFormat} />
+                <MateSlot at={activity?.at} slot={view.slot} timestampFormat={timestampFormat} />
               </span>
               {numbers && number !== undefined ? (
                 <KeyChip className="absolute end-0 top-0" data-zerops-surface="sidebar-mate-number">
@@ -2390,7 +2361,7 @@ function MateRow<T extends RosterCandidate>({
           )}
           {seated.signInLine === undefined ? null : <MateSignInLine words={seated.signInLine} />}
           {view.reply === undefined ? null : (
-            <MateReply known={known} reply={view.reply} threadKey={live?.threadKey} />
+            <MateReply known={known} reply={view.reply} threadKey={activity?.threadKey} />
           )}
         </span>
       </button>
@@ -2703,8 +2674,14 @@ function MateReply({
   const drafting =
     unsent.length > 0 &&
     (reply.kind === "pending" ||
+      reply.kind === "held" ||
       (reply.kind === "words" && (reply.tone === "muted" || reply.tone === "ink-2")));
   if (reply.kind === "pending" && !drafting) return <MateReplyPending />;
+  // Remembered as holding words to come: its place kept, empty — words on their way are only
+  // true now, and an asleep face over them said the opposite.
+  if (reply.kind === "held" && !drafting) {
+    return <span aria-hidden="true" className="h-4.5" data-zerops-surface="sidebar-mate-held" />;
+  }
   if (reply.kind === "live") {
     return (
       // The line rises as a new step arrives, and the sweep runs over its

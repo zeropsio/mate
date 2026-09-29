@@ -746,6 +746,67 @@ describe("a creation under way in the menu", () => {
   });
 });
 
+// The owner, 2026-09-29: a new Mate at work read "Working on a reply" under an asleep face. The
+// face and the words are one reading of the Mate (`mateRowReading`).
+describe("a Mate's face follows its work in the menu", () => {
+  const working: ZeropsAgentActivity = {
+    threadId: ThreadId.make("thread-1"),
+    kind: "working",
+    status: null,
+    face: "working",
+    subject: "Stand up development of the project.",
+    at: "2026-09-29T20:10:00.000Z",
+    snippet: undefined,
+    awaitingWords: true,
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread-1",
+    task: "Stand up development of the project.",
+  };
+  const faceOf = (html: string) =>
+    /<svg[^>]*data-mate-face-state="([a-z]+)"/u.exec(
+      html.slice(html.indexOf('data-zerops-surface="sidebar-mate"')),
+    )?.[1];
+
+  it.each([
+    {
+      case: "connected and at work",
+      group: "connected",
+      activity: working,
+      face: "working",
+      dots: true,
+    },
+    {
+      case: "at work while its socket reconnects",
+      group: "ready",
+      activity: working,
+      face: "working",
+      dots: true,
+    },
+    {
+      case: "remembered from before a reload, its socket not open yet",
+      group: "ready",
+      activity: activityFromMemory({
+        subject: "Stand up development of the project.",
+        task: "Stand up development of the project.",
+        awaitingWords: true,
+        at: working.at,
+        unread: false,
+        threadId: "thread-1",
+        threadKey: "env:thread-1",
+      }),
+      face: "sleep",
+      dots: false,
+    },
+  ] as const)("$case: the face and the line agree", ({ group, activity, face, dots }) => {
+    const html = render([{ ...CRM_DEV, group, environmentId: EnvironmentId.make("env-1") }], {
+      getActivity: () => activity,
+    });
+    expect(faceOf(html)).toBe(face);
+    expect(html.includes("Working on a reply")).toBe(dots);
+  });
+});
+
 describe("the project's flow under it", () => {
   const flow = (overrides: Partial<SidebarProjectFlow> = {}): SidebarProjectFlow => ({
     pullRequests: [pull(4)],
@@ -3068,22 +3129,6 @@ describe("a reload paints what the menu last drew (menuMemory)", () => {
     expect(html).toContain("The page reads the build number.");
     expect(html).toContain('data-mate-face-state="sleep"');
     expect(html).not.toContain('data-zerops-surface="sidebar-mate-stop"');
-  });
-
-  it("still draws nothing it heard through a socket that is not open now", () => {
-    const html = render([CRM_DEV, CRM_PROD], {
-      getActivity: (): ZeropsAgentActivity => ({
-        ...activityFromMemory({
-          subject: "Add a /status page",
-          at: "2026-09-27T10:00:00.000Z",
-          unread: false,
-          threadId: "thread-1",
-          threadKey: "env-crm-dev:thread-1",
-        }),
-        remembered: undefined as never,
-      }),
-    });
-    expect(html).not.toContain("Add a /status page");
   });
 
   it("draws the change rows it remembers until Gitea answers: their titles, and no verb", () => {
