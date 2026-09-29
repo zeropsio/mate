@@ -4,7 +4,8 @@ import {
   type ProviderDriverKind,
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
-import { memo, useEffect, useMemo, useState } from "react";
+import { ZapIcon } from "lucide-react";
+import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Badge } from "../ui/badge";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -22,7 +23,28 @@ import {
 } from "./providerIconUtils";
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
 import { ComposerControl, ComposerControlChevron } from "./ComposerControl";
+import {
+  composerModelControlLabel,
+  composerModelControlText,
+  type ComposerModelControlLabel,
+} from "./ComposerModelControl.logic";
 import { shortcutLabelForCommand } from "../../keybindings";
+
+/**
+ * The composer's one quiet control (C4): the trigger says the model and its
+ * effort, "Sonnet 5 · High", and the menu holds `choices` — the effort, the
+ * model's other choices and the access — beside the models.
+ */
+export interface ProviderModelPickerComposer {
+  /** The model's options as chosen now, and whether the prompt sets the effort. */
+  readonly traits: Pick<
+    Parameters<typeof composerModelControlLabel>[0],
+    "descriptors" | "ultrathinkPromptControlled"
+  >;
+  readonly choices: ReactNode;
+  /** The composer shortcuts that open it (`composer.effort`, and `composer.mode` while access has no control of its own). */
+  readonly shortcuts: string;
+}
 
 export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   /**
@@ -38,8 +60,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   keybindings?: ResolvedKeybindingsConfig;
   modelOptionsByInstance: ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>;
   activeProviderIconClassName?: string;
-  /** The composer lets the model name use the space it has instead of a fixed cap. */
-  isComposerOwned?: boolean;
+  /** The composer's one control: its label and menu (see `ProviderModelPickerComposer`). */
+  composer?: ProviderModelPickerComposer;
   disabled?: boolean;
   terminalOpen?: boolean;
   open?: boolean;
@@ -97,6 +119,16 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       : triggerTitle);
   const showInstanceBadge =
     activeEntry !== null && shouldShowInstanceBadge(activeEntry, props.instanceEntries);
+  const composerLabel: ComposerModelControlLabel | null =
+    props.composer === undefined || activeEntry === null
+      ? null
+      : props.triggerLabelOverride !== undefined || selectedModel === undefined
+        ? { model: triggerTitle, traits: [], fast: false }
+        : composerModelControlLabel({
+            provider: activeEntry.driverKind,
+            modelName: triggerTitle,
+            ...props.composer.traits,
+          });
 
   const setIsMenuOpen = (open: boolean) => {
     props.onOpenChange?.(open);
@@ -164,6 +196,93 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     : null;
   const triggerTooltipContent = shortcutLabel ? `${triggerLabel} · ${shortcutLabel}` : triggerLabel;
 
+  const content = (
+    <ModelPickerContent
+      activeInstanceId={activeInstanceId}
+      model={props.model}
+      lockedProvider={props.lockedProvider}
+      lockedContinuationGroupKey={props.lockedContinuationGroupKey ?? null}
+      instanceEntries={props.instanceEntries}
+      {...(props.keybindings ? { keybindings: props.keybindings } : {})}
+      modelOptionsByInstance={props.modelOptionsByInstance}
+      terminalOpen={props.terminalOpen ?? false}
+      onRequestClose={() => setIsMenuOpen(false)}
+      {...(props.onOpenProviderSetup ? { onOpenProviderSetup: props.onOpenProviderSetup } : {})}
+      {...(props.getModelDisabledReason
+        ? { getModelDisabledReason: props.getModelDisabledReason }
+        : {})}
+      {...(props.renderInstancePanel ? { renderInstancePanel: props.renderInstancePanel } : {})}
+      onInstanceModelChange={handleInstanceModelChange}
+    />
+  );
+
+  if (props.composer !== undefined) {
+    const text = composerLabel === null ? triggerLabel : composerModelControlText(composerLabel);
+    return (
+      <Popover
+        open={isMenuOpen}
+        onOpenChange={(open) => {
+          if (props.disabled) {
+            setIsMenuOpen(false);
+            return;
+          }
+          setIsMenuOpen(open);
+        }}
+      >
+        <PopoverTrigger
+          render={
+            <ComposerControl
+              aria-label={props.triggerAriaLabel ?? text}
+              className={cn("min-w-0 shrink", props.triggerClassName)}
+              data-chat-provider-model-picker="true"
+              data-composer-shortcut={props.composer.shortcuts}
+              disabled={props.disabled}
+              size="quiet"
+            />
+          }
+        >
+          {activeEntry ? (
+            <ProviderInstanceIcon
+              driverKind={activeEntry.driverKind}
+              displayName={activeEntry.displayName}
+              accentColor={activeEntry.accentColor}
+              showBadge={showInstanceBadge}
+              className="size-3.5"
+              iconClassName={cn("size-3.5", props.activeProviderIconClassName)}
+              indicatorBackground="var(--contrast-input)"
+            />
+          ) : null}
+          <Tooltip>
+            <TooltipTrigger render={<span className="min-w-0 truncate" />}>
+              {composerLabel === null ? triggerTitle : composerLabel.model}
+            </TooltipTrigger>
+            <TooltipPopup side="top">{triggerTooltipContent}</TooltipPopup>
+          </Tooltip>
+          {composerLabel === null || composerLabel.traits.length === 0 ? null : (
+            <span className="shrink-0 whitespace-nowrap">
+              {`· ${composerLabel.traits.join(" · ")}`}
+            </span>
+          )}
+          {composerLabel?.fast ? (
+            <ZapIcon aria-label="Fast mode on" className="size-3.5 shrink-0 fill-current" />
+          ) : null}
+          {selectedModel?.isUnavailable ? (
+            <Badge variant="outline" size="sm">
+              Unavailable
+            </Badge>
+          ) : null}
+          <ComposerControlChevron size="quiet" />
+        </PopoverTrigger>
+        <PopoverPopup align="start" className="before:hidden" padding="none">
+          <div className="composer-model-menu">
+            {content}
+            {props.composer.choices}
+          </div>
+        </PopoverPopup>
+      </Popover>
+    );
+  }
+
   return (
     <Popover
       open={isMenuOpen}
@@ -181,8 +300,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             aria-label={props.triggerAriaLabel}
             data-chat-provider-model-picker="true"
             className={cn(
-              "min-w-0 shrink justify-between whitespace-nowrap",
-              !props.isComposerOwned && "max-w-48 sm:max-w-56",
+              "min-w-0 max-w-48 shrink justify-between whitespace-nowrap sm:max-w-56",
               props.triggerClassName,
             )}
             disabled={props.disabled}
@@ -222,23 +340,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         </span>
       </PopoverTrigger>
       <PopoverPopup align="start" className="before:hidden" padding="none">
-        <ModelPickerContent
-          activeInstanceId={activeInstanceId}
-          model={props.model}
-          lockedProvider={props.lockedProvider}
-          lockedContinuationGroupKey={props.lockedContinuationGroupKey ?? null}
-          instanceEntries={props.instanceEntries}
-          {...(props.keybindings ? { keybindings: props.keybindings } : {})}
-          modelOptionsByInstance={props.modelOptionsByInstance}
-          terminalOpen={props.terminalOpen ?? false}
-          onRequestClose={() => setIsMenuOpen(false)}
-          {...(props.onOpenProviderSetup ? { onOpenProviderSetup: props.onOpenProviderSetup } : {})}
-          {...(props.getModelDisabledReason
-            ? { getModelDisabledReason: props.getModelDisabledReason }
-            : {})}
-          {...(props.renderInstancePanel ? { renderInstancePanel: props.renderInstancePanel } : {})}
-          onInstanceModelChange={handleInstanceModelChange}
-        />
+        {content}
       </PopoverPopup>
     </Popover>
   );

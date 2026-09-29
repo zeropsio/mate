@@ -102,8 +102,8 @@ export function mainChatToPin(threads: ReadonlyArray<EnvironmentThreadShell>): T
 }
 
 /**
- * The chat to pin when a new one is first sent, or null. *New session* in the
- * main chat archives it and its pin goes with it; the chat that takes its
+ * The chat to pin when a new one is first sent, or null. *Archive and start
+ * fresh* in the main chat archives it and its pin goes with it; the chat that takes its
  * place is the new main one, so its first send takes the pin. That is the one
  * moment other chats are open and none of them is main — a second chat
  * started from the strip pins the main chat before it exists.

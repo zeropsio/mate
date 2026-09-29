@@ -113,7 +113,7 @@ export function resolveZeropsAgentPickerPanelView(input: {
   const sessionLockNotice =
     input.lockedToAgentName === undefined
       ? undefined
-      : `This session runs on ${input.lockedToAgentName}. ${agentName} is used in a New session.`;
+      : `This session runs on ${input.lockedToAgentName}. ${agentName} is used after Archive and start fresh.`;
 
   switch (availability.kind) {
     case "unknown":

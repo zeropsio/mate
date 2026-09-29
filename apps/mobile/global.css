@@ -76,10 +76,10 @@
       --color-md-user-fence-bg: rgba(0, 0, 0, 0.16);
       --color-md-user-fence-text: #1a1a1a;
       --color-md-hr: #e0e0e0;
-      --color-user-bubble: #e3f4ff;
+      --color-user-bubble: #e1e4e8;
       --color-user-bubble-foreground: #1a1a1a;
       --color-user-bubble-foreground-muted: rgba(26, 26, 26, 0.78);
-      --color-user-bubble-skill-foreground: #0071c2;
+      --color-user-bubble-skill-foreground: #0068b3;
       --color-backdrop: rgba(0, 0, 0, 0.22);
       --color-drawer: rgba(236, 239, 243, 0.99);
       --color-drawer-shadow: rgba(0, 0, 0, 0.12);
@@ -154,10 +154,10 @@
       --color-md-user-fence-bg: rgba(0, 0, 0, 0.28);
       --color-md-user-fence-text: #e9eeec;
       --color-md-hr: #262f2d;
-      --color-user-bubble: #1e2e3b;
+      --color-user-bubble: #202524;
       --color-user-bubble-foreground: #e9eeec;
       --color-user-bubble-foreground-muted: rgba(233, 238, 236, 0.78);
-      --color-user-bubble-skill-foreground: #419ad9;
+      --color-user-bubble-skill-foreground: #3090d6;
       --color-backdrop: rgba(0, 0, 0, 0.48);
       --color-drawer: rgba(12, 15, 14, 0.99);
       --color-drawer-shadow: rgba(0, 0, 0, 0.32);

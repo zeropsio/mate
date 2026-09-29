@@ -227,7 +227,7 @@ describe("chatEntries", () => {
     expect(logsEntry?.close).toBe("busy");
   });
 
-  it("gives a Mate's only chat no close: starting over is the header's New session", () => {
+  it("gives a Mate's only chat no close: starting over is the header menu's Archive and start fresh", () => {
     const [only] = chatEntries({
       chats: [main],
       currentThreadId: ThreadId.make("main"),

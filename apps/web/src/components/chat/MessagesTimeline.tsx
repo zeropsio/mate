@@ -1352,13 +1352,22 @@ function TimelineMinimapNavigationButton({
 type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"][number];
 type TimelineRow = MessagesTimelineRow;
 
-/** The room a row keeps above itself (see `rowGap`). */
+/**
+ * The room a row keeps above itself (see `rowGap`), so the ink stands where
+ * the rhythm says: a part 24 px under the person's bubble or the card's
+ * edge, a turn 64 px under them. The answer's prose adds its own: 3 px of
+ * leading above its first line (21 + 3), and under its last line 3 px of
+ * leading and its 28 px copy line (33 + 31).
+ */
 const GAP_CLASS: Record<RowGap, string> = {
   none: "",
   tight: "pt-1",
   line: "pt-3",
   block: "pt-5",
-  turn: "pt-10",
+  part: "pt-6",
+  "part-words": "pt-5.25",
+  turn: "pt-16",
+  "turn-after-words": "pt-8.25",
 };
 
 /**
@@ -1380,7 +1389,7 @@ function rowInset(row: TimelineRow): string {
   }
   // A line with no card keeps the card's geometry in a frame nobody sees, so
   // opening it draws the card around the line without moving it.
-  if (row.kind === "work-line") return "border-x border-t border-transparent px-4 pt-2";
+  if (row.kind === "work-line") return "run-tray-ghost";
   return "px-4.25";
 }
 
@@ -1391,9 +1400,9 @@ function rowInset(row: TimelineRow): string {
  * edge. One frame, one surface, one inner edge — the composer's.
  */
 const CARD_SLICE: Record<CardSlice, string> = {
-  top: "rounded-t-3xl border-x border-t border-border/70 bg-card px-4 pt-2",
-  middle: "border-x border-border/70 bg-card px-4",
-  bottom: "h-4 rounded-b-3xl border-x border-b border-border/70 bg-card",
+  top: "run-tray run-tray-top",
+  middle: "run-tray run-tray-middle",
+  bottom: "run-tray run-tray-bottom",
 };
 // Where two slices meet, each row's clip snapped away from the joint and the
 // page showed through as a hairline (2026-09-29): a slice with another under
@@ -1793,7 +1802,7 @@ function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcom
   }, [turnKey]);
   return (
     // The result stands off the chat as the bars do, on the card's own hairline.
-    <div ref={markerRef} className="-mx-4 border-border/60 border-t px-4 pt-2">
+    <div ref={markerRef} className="-mx-4 border-border/60 border-t px-4 pt-2 empty:hidden">
       <TurnReport
         onOpenImage={ctx.onImageExpand}
         onOpenTurnDiff={(turnId) => ctx.onOpenTurnDiff(turnId)}

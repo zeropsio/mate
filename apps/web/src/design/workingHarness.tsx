@@ -22,7 +22,7 @@ import * as Stream from "effect/Stream";
 import { ConversationAfterWork, ConversationWorking } from "~/components/chat/ConversationWorking";
 import type { ConversationSpeaker } from "~/components/chat/ConversationRows";
 import {
-  activityPills,
+  activityCounts,
   splitBatchDeploy,
   type OutcomeModel,
 } from "~/components/chat/conversation.logic";
@@ -281,7 +281,7 @@ const REPORT: OutcomeModel = {
       word: "Healthy",
       version: "11ea406",
       url: "https://example.dev",
-      recovered: null,
+      failure: null,
     },
     {
       hostname: "apistage",
@@ -289,7 +289,7 @@ const REPORT: OutcomeModel = {
       word: "Deployed",
       version: null,
       url: null,
-      recovered: null,
+      failure: null,
     },
     {
       hostname: "webstage",
@@ -297,14 +297,13 @@ const REPORT: OutcomeModel = {
       word: "Failed",
       version: null,
       url: null,
-      recovered: null,
+      failure: null,
     },
   ],
   landed: [],
   files: { count: 3, additions: 42, deletions: 7, turnId: TurnId.make("turn-1") },
   checks: { count: 5, views: 2, failures: 0, takes: [] },
   created: [],
-  removed: [],
   notDone: [],
   activity: [],
 };
@@ -678,10 +677,13 @@ const WORKING: TimelineRowActivityState = {
   stoppingBackgroundWork: false,
 };
 
-/** A run's card: its heading, its chat, what runs alongside, its result. */
+/** A run's card as the conversation draws it: its slices on the tray, its bottom edge a slice of its own. */
 function Card({ children }: { readonly children: ReactNode }) {
   return (
-    <div className="rounded-3xl border border-border/70 bg-card px-4 pt-2 pb-3">{children}</div>
+    <div>
+      <div className="run-tray run-tray-top">{children}</div>
+      <div className="run-tray run-tray-bottom" />
+    </div>
   );
 }
 
@@ -705,10 +707,10 @@ function State({
   );
 }
 
-// Its edits are the files pill's: the report's own diff counts them.
+// What its calls came to: the worked line's effort, never a row.
 const REPORT_WITH_ACTIVITY: OutcomeModel = {
   ...REPORT,
-  activity: activityPills(
+  activity: activityCounts(
     [
       {
         id: "c1",
