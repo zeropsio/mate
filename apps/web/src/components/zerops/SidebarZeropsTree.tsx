@@ -140,7 +140,7 @@ import {
 } from "~/zerops/projectOrderPreference";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
-import { SidebarCrewFaces } from "./crew/SidebarCrewFaces";
+import { SidebarCrewLine, type SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { KeyChip, MateFace, PlanRing, StatusDot } from "./primitives";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { environmentRoleTag, groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
@@ -447,6 +447,11 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    * (`shownInScope`). Absent, every Mate.
    */
   readonly shown?: ((candidate: T) => boolean) | undefined;
+  /**
+   * A Mate's crew as a fixture draws it (a harness). Absent, each connected
+   * Mate's crew line reads its own crew feed (`useCrew`).
+   */
+  readonly getCrew?: ((candidate: T) => SidebarCrewRead | undefined) | undefined;
 }
 
 /** What the menu remembers drawing (`menuMemory.ts`). */
@@ -509,6 +514,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   timestampFormat = "locale",
   getMateActions,
   shown,
+  getCrew,
 }: SidebarZeropsTreeProps<T>) {
   const emptyReason = mateEnvironmentsEmptyReason(candidates);
   const [openLists, setOpenLists] = useState<ReadonlySet<string>>(() => new Set());
@@ -1035,6 +1041,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 timestampFormat={timestampFormat}
                 tint={tints.get(item.project.id) ?? "slate"}
               />
+              {/* Its crew, one line right under it, before its changes. */}
+              {item.group === "connected" && item.environmentId !== undefined ? (
+                <SidebarCrewLine environmentId={item.environmentId} read={getCrew?.(item)} />
+              ) : null}
               {pulls.length === 0 || changeRows === undefined ? null : (
                 <PullRequestList
                   groupId={id}
@@ -1801,9 +1811,7 @@ function MateRow<T extends RosterCandidate>({
     longPress.current.timer = null;
   };
 
-  // A connected Mate may have a crew: its faces follow the row (seam S8).
-  const crewAt = candidate.group === "connected" ? candidate.environmentId : undefined;
-  const row = (
+  return (
     // The row is the container, not the button: the menu's trigger sits in
     // the row beside the button, never inside it, and the row stays lit
     // while the pointer is on either.
@@ -2050,14 +2058,6 @@ function MateRow<T extends RosterCandidate>({
           rename={actions.rename}
         />
       ) : null}
-    </div>
-  );
-  return crewAt === undefined ? (
-    row
-  ) : (
-    <div className="flex min-w-0 items-center">
-      <div className="min-w-0 flex-1">{row}</div>
-      <SidebarCrewFaces environmentId={crewAt} />
     </div>
   );
 }

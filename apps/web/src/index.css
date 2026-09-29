@@ -2973,6 +2973,12 @@ code {
   .dark .menu-textbtn:hover {
     background: color-mix(in oklab, var(--info-foreground) 14%, transparent);
   }
+
+  /* A crewmate's face on its crew's line: a 24 px press around the 20 px
+     face, lit on hover like a row. */
+  .menu-crewface {
+    border-radius: 7px;
+  }
 }
 
 /* The owner's disc is lighter on a light menu and deeper on a dark one. */

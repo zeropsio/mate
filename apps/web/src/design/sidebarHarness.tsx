@@ -34,7 +34,14 @@ import {
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
+import {
+  deriveCrewView,
+  type CrewShellInput,
+} from "@t3tools/client-runtime/zerops/projections/crew";
+import { EnvironmentId, ThreadId, type CrewSnapshot } from "@t3tools/contracts";
+import type { MateTintId } from "@t3tools/shared/brand";
+import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
 import { onOpenCommandPalette } from "~/commandPaletteBus";
 import { MateLockup } from "~/components/MateLockup";
@@ -57,6 +64,7 @@ import { SidebarZeropsAccount } from "~/components/zerops/SidebarZeropsAccount";
 import { SidebarWaitingStack } from "~/components/zerops/SidebarWaitingStack";
 import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
 import type { MateDecision } from "~/components/zerops/mateDecision.logic";
+import type { SidebarCrewRead } from "~/components/zerops/crew/SidebarCrewLine";
 import { SidebarZeropsTree, type SidebarProjectFlow } from "~/components/zerops/SidebarZeropsTree";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
@@ -644,6 +652,56 @@ const OWNERS = new Map<string, ZeropsMateOwner>([
 
 const activityOfCandidate = (item: ZeropsCandidate) => ACTIVITY.get(item.project.id);
 
+/**
+ * A crew of four under a Mate — the lead first — built from the crew's own
+ * fixture, named and tinted as the plan's menu draws them: each crewmate's
+ * thread in the state given, and the board with its ready tasks.
+ */
+function harnessCrew(input: {
+  readonly states: Readonly<Record<string, ThreadStatusKind>>;
+  readonly ready: ReadonlyArray<string>;
+}): SidebarCrewRead {
+  const fixture = crewSnapshotFixture();
+  const names: Readonly<Record<string, readonly [string, MateTintId]>> = {
+    lead: ["Ada", "violet"],
+    backend: ["Bo", "sky"],
+    frontend: ["Cy", "coral"],
+    erik: ["Dee", "rose"],
+  };
+  const snapshot: CrewSnapshot = {
+    ...fixture,
+    crewmates: fixture.crewmates.map((mate) => {
+      const [displayName, tint] = names[mate.handle] ?? [mate.displayName, mate.tint];
+      return { ...mate, displayName, tint };
+    }),
+    board: {
+      tasks: fixture.board.tasks.map((task) =>
+        input.ready.includes(task.id) ? { ...task, state: "ready" as const } : task,
+      ),
+    },
+    attention: [],
+  };
+  const shells: ReadonlyArray<CrewShellInput> = snapshot.crewmates.flatMap((mate) =>
+    mate.currentThreadId === null ? [] : [{ id: mate.currentThreadId, archivedAt: null }],
+  );
+  const view = deriveCrewView(snapshot, shells, (shell) => {
+    const handle = snapshot.crewmates.find((mate) => mate.currentThreadId === shell.id)?.handle;
+    const kind = (handle === undefined ? undefined : input.states[handle]) ?? "idle";
+    return {
+      status: { kind, toneId: "neutral" },
+      word: kind === "idle" ? null : kind,
+      working: kind === "working",
+    };
+  });
+  return { status: "applied", view, attention: snapshot.attention };
+}
+
+/** Fen's crew as the plan draws it; Otto's with a crewmate waiting on you. */
+const CREWS = new Map<string, SidebarCrewRead>([
+  ["todo-fen", harnessCrew({ states: { backend: "working", erik: "done" }, ready: ["task-13"] })],
+  ["shop-otto", harnessCrew({ states: { backend: "input", frontend: "working" }, ready: [] })],
+]);
+
 /** Which Mate the menu opened, and what else it was asked to do, for the audit browser. */
 const menuActions: string[] = [];
 (window as unknown as { __menuActions?: string[] }).__menuActions = menuActions;
@@ -698,6 +756,7 @@ function SidebarFrame({ width, onJump }: { readonly width: number; readonly onJu
           getActivity={activityOfCandidate}
           getFlow={(groupId) => FLOWS.get(groupId)}
           getOwner={(item) => OWNERS.get(item.project.id)}
+          getCrew={(item) => CREWS.get(item.project.id)}
           getMateActions={(item, live) => ({
             muted: item.project.id === "notes-iris",
             toggleMute: () => {},
