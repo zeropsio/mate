@@ -87,6 +87,7 @@ import { useAssetUrls } from "../../assets/assetUrls";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import {
   describeTimelineAnchor,
+  judgeTimelinePlacing,
   keepTimelineEndVisibleAfterOverlayGrowth,
   readTimelineFirstLineInset,
   readTimelinePosition,
@@ -547,143 +548,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     });
     return indices.length > 0 ? { indices } : undefined;
   }, [rememberedPosition, restoringReadingPosition, rows]);
-  useLayoutEffect(() => {
-    const position = rememberedPosition;
-    if (!restoringReadingPosition || !position || rows.length === 0) return;
-    const list = listRef.current;
-    if (!list) return;
-    let cancelled = false;
-    let settleFrame: number | null = null;
-    const viewport: HTMLElement | null = list.getScrollableNode();
-    const cancelRestoration = () => {
-      if (cancelled) return;
-      cancelled = true;
-      if (settleFrame !== null) cancelAnimationFrame(settleFrame);
-      // Supersede any pending estimated-index scroll before the browser applies the gesture.
-      if (viewport) void list.scrollToOffset({ offset: viewport.scrollTop, animated: false });
-      setPositionRestored(true);
-    };
-    const cancelForNavigation = () => {
-      cancelRestoration();
-      onManualNavigation();
-    };
-    const onScrollKey = (event: globalThis.KeyboardEvent) => {
-      if (
-        ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key) &&
-        !(
-          event.target instanceof Element &&
-          event.target.closest("input, textarea, [contenteditable=true]")
-        )
-      )
-        cancelForNavigation();
-    };
-    viewport?.addEventListener("wheel", cancelForNavigation, { passive: true });
-    viewport?.addEventListener("touchmove", cancelForNavigation, { passive: true });
-    viewport?.addEventListener("pointerdown", cancelForNavigation, { passive: true });
-    viewport?.ownerDocument.addEventListener("keydown", onScrollKey);
-    onManualNavigation();
-    if (cancelPositionRestoreRef) cancelPositionRestoreRef.current = cancelRestoration;
-    const rowIds = rows.map((row) => row.id);
-    const rowElement = (rowId: string) => {
-      const state = list.getState();
-      const index = state.indexByKey(rowId);
-      return index === undefined ? undefined : (state.elementAtIndex(index) ?? undefined);
-    };
-    // Where the position lands is read again each frame from the rows as
-    // measured: a run that folded since the person left shows it only once
-    // its row is measured. Index scrolling starts from estimates, so the
-    // place is held until the DOM agrees for two layout frames; the list
-    // stays out of sight meanwhile (`data-timeline-placing`).
-    const firstLine = viewport === null ? 0 : readTimelineFirstLineInset(viewport);
-    let aimedAt: string | null = null;
-    let stableFrames = 0;
-    const settleAfter = (scrolling: unknown) => {
-      void Promise.resolve(scrolling).then(() => {
-        if (!cancelled) settleFrame = requestAnimationFrame(settle);
-      });
-    };
-    const settle = () => {
-      if (cancelled) return;
-      const target = resolveTimelineRestoreTarget({
-        position,
-        rowIds,
-        heightOf: (rowId) => rowElement(rowId)?.getBoundingClientRect().height,
-      });
-      if (target.kind === "end") {
-        void Promise.resolve(list.scrollToEnd({ animated: false })).then(() => {
-          if (!cancelled) setPositionRestored(true);
-        });
-        return;
-      }
-      const row = rowElement(target.rowId);
-      // A line stands where a conversation's first line sits: a row's top,
-      // or its foot once it is measured.
-      const offsetWithinRow =
-        target.kind === "row"
-          ? target.offsetWithinRow
-          : (target.edge === "foot" ? (row?.getBoundingClientRect().height ?? 0) : 0) - firstLine;
-      const aim = `${target.rowId}@${offsetWithinRow}`;
-      const element = list.getScrollableNode();
-      if (aim !== aimedAt || !row || !element) {
-        aimedAt = aim;
-        stableFrames = 0;
-        settleAfter(
-          list.scrollToIndex({
-            index: rowIds.indexOf(target.rowId),
-            animated: false,
-            viewPosition: 0,
-            viewOffset: -offsetWithinRow,
-          }),
-        );
-        return;
-      }
-      const offset = Math.max(
-        0,
-        Math.min(
-          element.scrollTop +
-            row.getBoundingClientRect().top -
-            element.getBoundingClientRect().top +
-            offsetWithinRow,
-          element.scrollHeight - element.clientHeight,
-        ),
-      );
-      if (Math.abs(element.scrollTop - offset) > 1) {
-        stableFrames = 0;
-        settleAfter(list.scrollToOffset({ offset, animated: false }));
-        return;
-      }
-      if (++stableFrames >= 2) {
-        setPositionRestored(true);
-      } else {
-        settleFrame = requestAnimationFrame(settle);
-      }
-    };
-    settle();
-    return () => {
-      cancelled = true;
-      if (cancelPositionRestoreRef?.current === cancelRestoration) {
-        cancelPositionRestoreRef.current = null;
-      }
-      if (settleFrame !== null) cancelAnimationFrame(settleFrame);
-      viewport?.removeEventListener("wheel", cancelForNavigation);
-      viewport?.removeEventListener("touchmove", cancelForNavigation);
-      viewport?.removeEventListener("pointerdown", cancelForNavigation);
-      viewport?.ownerDocument.removeEventListener("keydown", onScrollKey);
-    };
-  }, [
-    cancelPositionRestoreRef,
-    listRef,
-    onManualNavigation,
-    rememberedPosition,
-    restoringReadingPosition,
-    rows,
-  ]);
   const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(
     null,
   );
   const timelineSwitch = useTimelineSwitch();
   const [listReady, setListReady] = useState(false);
   const onListLoad = useCallback(() => setListReady(true), []);
+  // The list stands where it stays: a reading position put back, or the end
+  // reached. Until then it is out of sight (`data-timeline-placing`).
+  const [listPlaced, setListPlaced] = useState(false);
   const [minimapHasPersistentGutter, setMinimapHasPersistentGutter] = useState(false);
   const [minimapHitStripWidth, setMinimapHitStripWidth] = useState(0);
   const [minimapCurrentIndex, setMinimapCurrentIndex] = useState<number | null>(null);
@@ -745,7 +618,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // folds when the person leaves).
   const rememberPosition = useCallback((): boolean | undefined => {
     const state = listRef.current?.getState?.();
-    if (restoringReadingPosition || state === undefined || state.data !== rows) return undefined;
+    // Nothing is the person's place while the list is still being placed.
+    if (restoringReadingPosition || !listPlaced || state === undefined || state.data !== rows) {
+      return undefined;
+    }
     const isAtEnd = resolveTimelineIsAtEnd(state, contentInsetEndAdjustment);
     const anchor = state.data.length ? resolveTimelineScrollAnchor(state) : undefined;
     const row = anchor === undefined ? undefined : state.elementAtIndex(anchor.index);
@@ -762,7 +638,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       });
     }
     return isAtEnd;
-  }, [contentInsetEndAdjustment, listRef, restoringReadingPosition, routeThreadKey, rows]);
+  }, [
+    contentInsetEndAdjustment,
+    listPlaced,
+    listRef,
+    restoringReadingPosition,
+    routeThreadKey,
+    rows,
+  ]);
   // Once more as the conversation goes, while it still stands on the page:
   // what changed since the last scroll (a run opened or closed in place) is
   // where the person left it.
@@ -996,20 +879,156 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     crew === null
       ? rows.length === 0
       : rows.every((row) => row.kind === "seam" || row.kind === "crew-seam");
-  // The conversation says when it stands on screen where it stays (T1): the
-  // list has put its rows in place and a reading position is back — an
-  // empty conversation at once, one still on its way never. Until then the
-  // pane holds what it showed last over it.
   const showsList = !empty || isWorking;
-  if (!showsList && listReady) setListReady(false);
-  const placed = showsList
-    ? listReady && !restoringReadingPosition
-    : !(hideEmptyPlaceholder && loading);
+  if (!showsList && (listReady || listPlaced)) {
+    setListReady(false);
+    setListPlaced(false);
+  }
+  // Placing (T1): from the list's mount until it stands where it stays — a
+  // reading position put back, or the end reached — out of sight, then shown.
+  // One loop, however often the rows change: a Mate streaming its answer
+  // changes them every frame, and a restore restarted on each change never
+  // landed. It reads the rows as they are each frame and moves the page
+  // itself, since the list holds an imperative scroll back while its data
+  // changes. Overdue after a while, it lands on the best anchor it has and
+  // shows; the list's own placing at the end, which starts over on each
+  // change, is ended the same way.
+  const rowsRef = useRef(rows);
+  const listReadyRef = useRef(listReady);
+  useLayoutEffect(() => {
+    rowsRef.current = rows;
+    listReadyRef.current = listReady;
+  });
+  useLayoutEffect(() => {
+    if (!showsList || listPlaced) return;
+    const list = listRef.current;
+    const viewport: HTMLElement | null = list?.getScrollableNode() ?? null;
+    if (!list || !viewport) return;
+    const position = restoringReadingPosition ? rememberedPosition : undefined;
+    let cancelled = false;
+    let frame: number | null = null;
+    let stableFrames = 0;
+    const startedAt = performance.now();
+    const finish = () => {
+      if (cancelled) return;
+      cancelled = true;
+      if (frame !== null) cancelAnimationFrame(frame);
+      if (position !== undefined) setPositionRestored(true);
+      setListPlaced(true);
+    };
+    // A reading position being put back hands the page to the person's
+    // first gesture.
+    const takeOver = () => {
+      finish();
+      onManualNavigation();
+    };
+    const onScrollKey = (event: globalThis.KeyboardEvent) => {
+      if (
+        ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key) &&
+        !(
+          event.target instanceof Element &&
+          event.target.closest("input, textarea, [contenteditable=true]")
+        )
+      )
+        takeOver();
+    };
+    if (position !== undefined) {
+      viewport.addEventListener("wheel", takeOver, { passive: true });
+      viewport.addEventListener("touchmove", takeOver, { passive: true });
+      viewport.addEventListener("pointerdown", takeOver, { passive: true });
+      viewport.ownerDocument.addEventListener("keydown", onScrollKey);
+      onManualNavigation();
+      if (cancelPositionRestoreRef) cancelPositionRestoreRef.current = finish;
+    }
+    const rowElement = (rowId: string) => {
+      const state = list.getState();
+      const index = state.indexByKey(rowId);
+      return index === undefined ? undefined : (state.elementAtIndex(index) ?? undefined);
+    };
+    // Where the view should stand now: the remembered row's line where it
+    // was (a run folded since at its line), or the end; null until the row
+    // it lands on is drawn.
+    const aim = (): number | null => {
+      const end = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+      if (position === undefined) return end;
+      const target = resolveTimelineRestoreTarget({
+        position,
+        rowIds: rowsRef.current.map((row) => row.id),
+        heightOf: (rowId) => rowElement(rowId)?.getBoundingClientRect().height,
+      });
+      if (target.kind === "end") return end;
+      const row = rowElement(target.rowId);
+      if (row === undefined) return null;
+      const box = row.getBoundingClientRect();
+      const offsetWithinRow =
+        target.kind === "row"
+          ? target.offsetWithinRow
+          : (target.edge === "foot" ? box.height : 0) - readTimelineFirstLineInset(viewport);
+      return Math.max(
+        0,
+        Math.min(
+          viewport.scrollTop + box.top - viewport.getBoundingClientRect().top + offsetWithinRow,
+          end,
+        ),
+      );
+    };
+    const tick = () => {
+      if (cancelled) return;
+      const target = aim();
+      const judged = judgeTimelinePlacing(
+        {
+          elapsedMs: performance.now() - startedAt,
+          listReady: listReadyRef.current,
+          offBy: target === null ? null : viewport.scrollTop - target,
+        },
+        stableFrames,
+      );
+      stableFrames = judged.stableFrames;
+      if (judged.verdict === "placed") {
+        finish();
+        return;
+      }
+      if (judged.verdict === "overdue") {
+        // An imperative scroll supersedes the list's own placing at the end,
+        // which may never settle while its rows change; the list then shows
+        // its rows.
+        if (!listReadyRef.current) void list.scrollToEnd({ animated: false });
+        if (target !== null) viewport.scrollTop = target;
+        finish();
+        return;
+      }
+      if (judged.verdict === "correct" && target !== null) viewport.scrollTop = target;
+      frame = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => {
+      cancelled = true;
+      if (frame !== null) cancelAnimationFrame(frame);
+      if (position === undefined) return;
+      if (cancelPositionRestoreRef?.current === finish) cancelPositionRestoreRef.current = null;
+      viewport.removeEventListener("wheel", takeOver);
+      viewport.removeEventListener("touchmove", takeOver);
+      viewport.removeEventListener("pointerdown", takeOver);
+      viewport.ownerDocument.removeEventListener("keydown", onScrollKey);
+    };
+  }, [
+    cancelPositionRestoreRef,
+    listPlaced,
+    listRef,
+    onManualNavigation,
+    rememberedPosition,
+    restoringReadingPosition,
+    showsList,
+  ]);
+  // The conversation says when it stands on screen where it stays (T1): its
+  // list placed — an empty conversation at once, one still on its way never.
+  // Until then the pane holds what it showed last over it.
+  const standsInPlace = showsList ? listPlaced : !(hideEmptyPlaceholder && loading);
   useEffect(() => {
-    if (!placed || timelineSwitch === null) return;
+    if (!standsInPlace || timelineSwitch === null) return;
     const frame = requestAnimationFrame(() => timelineSwitch.painted());
     return () => cancelAnimationFrame(frame);
-  }, [placed, timelineSwitch]);
+  }, [standsInPlace, timelineSwitch]);
   if (empty && !isWorking) {
     if (hideEmptyPlaceholder) {
       return (
@@ -1033,7 +1052,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           <div
             ref={setTimelineViewportElement}
             className="relative h-full min-h-0"
-            data-timeline-placing={restoringReadingPosition ? "" : undefined}
+            data-timeline-placing={listPlaced ? undefined : ""}
             data-timeline-thread={routeThreadKey}
           >
             <LegendList<MessagesTimelineRow>
