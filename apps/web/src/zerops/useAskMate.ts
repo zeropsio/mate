@@ -36,11 +36,13 @@ import { useZeropsCandidates } from "./useZeropsCandidates";
 /**
  * Writes `ask` into the Mate's composer and goes there: its main chat, or the
  * person chat `options.threadId` names (*Deliver* asks in the chat you are in).
+ * Sent at once, unless `options.send` is false: then it waits in the composer
+ * for the person to read and send ("Ask <your Mate> to fix it").
  */
 export type AskMate = (
   mateProjectId: string | undefined,
   ask: string,
-  options?: { readonly threadId?: string | undefined },
+  options?: { readonly threadId?: string | undefined; readonly send?: boolean | undefined },
 ) => void;
 
 /**
@@ -105,10 +107,12 @@ export function useAskMate(
         return;
       }
       const threadRef = scopeThreadRef(target.environmentId, chat.id);
-      // Sent, not left in the box: every caller now confirms first, so the
-      // person has already read the exact request and pressed Send (spec §5.4
-      // retired for these surfaces by the owner, 2026-09-19).
-      useComposerDraftStore.getState().requestSend(threadRef, ask);
+      // Sent, not left in the box: every caller that sends confirms first, so
+      // the person has already read the exact request and pressed Send (spec
+      // §5.4 retired for these surfaces by the owner, 2026-09-19). A fix
+      // request is written, not sent: the composer is where it is read.
+      if (options?.send === false) useComposerDraftStore.getState().setPrompt(threadRef, ask);
+      else useComposerDraftStore.getState().requestSend(threadRef, ask);
       onNavigate?.();
       void router.navigate({
         to: "/$environmentId/$threadId",

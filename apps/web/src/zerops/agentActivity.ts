@@ -79,6 +79,12 @@ export interface ZeropsAgentActivity {
    */
   readonly awaitingWords?: true;
   /**
+   * The step the Mate is on right now, in the words its run's now line uses:
+   * what the menu's third line says while it works. The server relays it;
+   * absent where it relays none, and the row holds its dots.
+   */
+  readonly liveStep?: { readonly words: string; readonly code?: string | undefined };
+  /**
    * The plan's steps while it works, counted — what the ring around a
    * working face is drawn from, one segment a step. Absent while it rests
    * and where the server reports no plan: a ring nobody can fill is not
