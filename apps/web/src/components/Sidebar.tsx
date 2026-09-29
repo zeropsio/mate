@@ -256,6 +256,7 @@ import {
   withChanges,
   withRows,
   withChips,
+  withCrews,
   type RememberedRow,
 } from "../zerops/menuMemory";
 import {
@@ -2308,7 +2309,11 @@ export default function Sidebar() {
       if (live !== undefined) rows[candidate.project.id] = rememberedRowOf(live);
     }
     rememberMenu((memory) =>
-      withChips(withChanges(withRows(memory, rows, listed), {}, groups), {}, groups),
+      withCrews(
+        withChips(withChanges(withRows(memory, rows, listed), {}, groups), {}, groups),
+        {},
+        listed,
+      ),
     );
   }, [zeropsAgentActivity, zeropsCandidates, zeropsHeld.complete]);
   // The change rows and production chips the tree drew of what it read, for

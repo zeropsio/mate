@@ -4,8 +4,10 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestInstance } from "react-test-renderer";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { closeAccountLifetime, openAccountLifetime } from "../../../zerops/accountLifetime";
+import { menuMemory, rememberedCrewOf, rememberMenu, withCrews } from "../../../zerops/menuMemory";
 import { ReviewContext } from "../../../zerops/review";
 import { SidebarCrewLine } from "./SidebarCrewLine";
 
@@ -43,7 +45,9 @@ function applied(overrides: { readonly ready?: boolean; readonly waiting?: boole
 describe("SidebarCrewLine", () => {
   it("draws every crewmate's face whole, the lead first, each opening its chat", () => {
     read.current = applied();
-    const markup = renderToStaticMarkup(<SidebarCrewLine environmentId={ENVIRONMENT} />);
+    const markup = renderToStaticMarkup(
+      <SidebarCrewLine environmentId={ENVIRONMENT} projectId="crm-dev" />,
+    );
     expect(markup.match(/aria-label="Open [^"]+"/gu)).toEqual([
       'aria-label="Open Lead, the lead"',
       'aria-label="Open Backend"',
@@ -60,7 +64,9 @@ describe("SidebarCrewLine", () => {
 
   it("says who needs you, in the words' second ink, with no Review", () => {
     read.current = applied({ waiting: true, ready: true });
-    const markup = renderToStaticMarkup(<SidebarCrewLine environmentId={ENVIRONMENT} />);
+    const markup = renderToStaticMarkup(
+      <SidebarCrewLine environmentId={ENVIRONMENT} projectId="crm-dev" />,
+    );
     expect(markup).toContain(">Erik needs you</span>");
     expect(markup).toContain('class="menu-ink-2 min-w-0 truncate"');
     expect(markup).not.toContain("sidebar-crew-review");
@@ -81,7 +87,7 @@ describe("SidebarCrewLine", () => {
     act(() => {
       tree = create(
         <ReviewContext.Provider value={openReview}>
-          <SidebarCrewLine environmentId={ENVIRONMENT} />
+          <SidebarCrewLine environmentId={ENVIRONMENT} projectId="crm-dev" />
         </ReviewContext.Provider>,
       );
     });
@@ -116,6 +122,7 @@ describe("SidebarCrewLine", () => {
     const markup = renderToStaticMarkup(
       <SidebarCrewLine
         environmentId={ENVIRONMENT}
+        projectId="crm-dev"
         read={{ status: "applied", view, attention: snapshot.attention }}
       />,
     );
@@ -124,6 +131,95 @@ describe("SidebarCrewLine", () => {
 
   it("draws nothing without an applied crew", () => {
     read.current = { status: "none", snapshot: null, view: null, current: true };
-    expect(renderToStaticMarkup(<SidebarCrewLine environmentId={ENVIRONMENT} />)).toBe("");
+    expect(
+      renderToStaticMarkup(<SidebarCrewLine environmentId={ENVIRONMENT} projectId="crm-dev" />),
+    ).toBe("");
+  });
+});
+
+// A reload draws the line where it stood, so no row moves when the crew's
+// feed answers: the faces this browser last read, at rest, with nothing that
+// is only true now — no fact, no Review — until the feed says them again.
+describe("SidebarCrewLine across a reload", () => {
+  const stored = new Map<string, string>();
+  const withStorage = () => {
+    stored.clear();
+    const noDom = Object.fromEntries(
+      ["Node", "Element", "HTMLElement", "ShadowRoot"].map((name) => [name, function none() {}]),
+    );
+    vi.stubGlobal(
+      "window",
+      Object.assign(new EventTarget(), noDom, {
+        localStorage: {
+          getItem: (key: string) => stored.get(key) ?? null,
+          setItem: (key: string, value: string) => stored.set(key, value),
+          removeItem: (key: string) => stored.delete(key),
+        },
+      }),
+    );
+    for (const [name, type] of Object.entries(noDom)) vi.stubGlobal(name, type);
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    openAccountLifetime("user-ada");
+  };
+  afterEach(() => {
+    closeAccountLifetime();
+    vi.unstubAllGlobals();
+  });
+  const unread = { status: null, snapshot: null, view: null, current: false };
+
+  it("keeps the line's place with the faces it last read, until the feed answers", () => {
+    withStorage();
+    const { view } = applied();
+    const crew = rememberedCrewOf(
+      view.crewmates.map((row) => ({
+        handle: row.crewmate.handle,
+        displayName: row.crewmate.displayName,
+        tint: row.crewmate.tint,
+        lead: row.crewmate.kind === "lead",
+      })),
+    );
+    rememberMenu((memory) => withCrews(memory, { "crm-dev": crew }));
+    read.current = unread;
+    // Not connected yet: no environment to read a crew from.
+    const markup = renderToStaticMarkup(
+      <SidebarCrewLine environmentId={undefined} projectId="crm-dev" />,
+    );
+    expect(markup).toContain('data-zerops-surface="sidebar-crew"');
+    expect(markup.match(/data-mate-face-state="idle"/gu)).toHaveLength(4);
+    // At rest: no chat opened from memory, no fact and no Review.
+    expect(markup).not.toContain("<button");
+    expect(markup).toContain('data-zerops-surface="sidebar-crew-fact"></span>');
+    expect(markup).not.toContain("sidebar-crew-review");
+  });
+
+  it("draws nothing where no crew was read or remembered", () => {
+    withStorage();
+    read.current = unread;
+    expect(
+      renderToStaticMarkup(<SidebarCrewLine environmentId={undefined} projectId="crm-dev" />),
+    ).toBe("");
+  });
+
+  it("remembers the crew it reads, and forgets one that is gone", () => {
+    withStorage();
+    read.current = applied();
+    let tree: ReturnType<typeof create> | undefined;
+    act(() => {
+      tree = create(<SidebarCrewLine environmentId={ENVIRONMENT} projectId="crm-dev" />);
+    });
+    expect(menuMemory().crews["crm-dev"]?.faces.map((face) => face.handle)).toEqual([
+      "lead",
+      "backend",
+      "frontend",
+      "erik",
+    ]);
+    read.current = { status: "none", snapshot: null, view: null, current: true };
+    act(() => {
+      tree?.update(<SidebarCrewLine environmentId={ENVIRONMENT} projectId="crm-dev" />);
+    });
+    expect(menuMemory().crews["crm-dev"]).toBeUndefined();
+    act(() => {
+      tree?.unmount();
+    });
   });
 });

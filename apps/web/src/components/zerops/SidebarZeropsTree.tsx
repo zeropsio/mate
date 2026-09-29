@@ -1139,10 +1139,14 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 timestampFormat={timestampFormat}
                 tint={tints.get(item.project.id) ?? "slate"}
               />
-              {/* Its crew, one line right under it, before its changes. */}
-              {item.group === "connected" && item.environmentId !== undefined ? (
-                <SidebarCrewLine environmentId={item.environmentId} read={getCrew?.(item)} />
-              ) : null}
+              {/* Its crew, one line right under it, before its changes — read
+                  once its Mate is connected, and until then where this
+                  browser last saw it, so a reload moves no row. */}
+              <SidebarCrewLine
+                environmentId={item.group === "connected" ? item.environmentId : undefined}
+                projectId={item.project.id}
+                read={getCrew?.(item)}
+              />
               {pulls.length === 0 || changeRows === undefined ? null : (
                 <PullRequestList
                   groupId={id}

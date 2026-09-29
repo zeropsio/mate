@@ -11,10 +11,12 @@ import {
   MENU_MEMORY_STORAGE_KEY,
   menuMemory,
   rememberedChangeOf,
+  rememberedCrewOf,
   rememberedRowOf,
   rememberMenu,
   withChanges,
   withChips,
+  withCrews,
   withMembers,
   withRows,
 } from "./menuMemory";
@@ -216,6 +218,40 @@ describe("a remembered production chip", () => {
   });
 });
 
+describe("a remembered crew", () => {
+  const FACES = [
+    {
+      handle: "ada",
+      displayName: "Ada",
+      tint: "violet",
+      lead: true,
+      state: "working",
+      threadId: ThreadId.make("thread-ada"),
+    },
+    { handle: "bo", displayName: "Bo", tint: "sky", lead: false, state: "needs", threadId: null },
+  ] as const;
+
+  it("keeps its faces, lead first, at rest: no state, no chat, no fact", () => {
+    expect(rememberedCrewOf(FACES)).toEqual({
+      faces: [
+        { handle: "ada", displayName: "Ada", tint: "violet", lead: true },
+        { handle: "bo", displayName: "Bo", tint: "sky", lead: false },
+      ],
+    });
+  });
+
+  it("keeps each Mate's crew as last read, forgets one that is gone, and a Mate no longer listed", () => {
+    const crew = rememberedCrewOf(FACES);
+    const first = withCrews(EMPTY_MENU_MEMORY, { nova: crew, kai: crew });
+    expect(Object.keys(first.crews)).toEqual(["nova", "kai"]);
+    // Read again: Kai's crew was taken off.
+    expect(Object.keys(withCrews(first, { kai: null }).crews)).toEqual(["nova"]);
+    // The listing no longer holds Nova.
+    expect(Object.keys(withCrews(first, {}, new Set(["kai"])).crews)).toEqual(["kai"]);
+    expect(withCrews(first, { nova: rememberedCrewOf(FACES) })).toBe(first);
+  });
+});
+
 describe("the memory in this browser", () => {
   const stored = new Map<string, string>();
 
@@ -251,6 +287,24 @@ describe("the memory in this browser", () => {
     expect(stored.has(key)).toBe(false);
     openAccountLifetime("user-ales");
     expect(menuMemory()).toEqual(EMPTY_MENU_MEMORY);
+  });
+
+  // A memory written before crews were kept reads with none, rather than
+  // being forgotten whole for want of them.
+  it("reads a memory from before crews were kept, crews and all none", () => {
+    openAccountLifetime("user-ales");
+    const key = `mate:account:user-ales:${MENU_MEMORY_STORAGE_KEY}`;
+    const before: Record<string, unknown> = {
+      ...EMPTY_MENU_MEMORY,
+      rows: { nova: rememberedRowOf(WORKING) },
+    };
+    delete before.crews;
+    stored.set(key, JSON.stringify(before));
+    closeAccountLifetime();
+    stored.set(key, JSON.stringify(before));
+    openAccountLifetime("user-ales");
+    expect(menuMemory().crews).toEqual({});
+    expect(menuMemory().rows.nova?.subject).toBe("Add a /status page");
   });
 
   it("reads nothing another account remembered", () => {
