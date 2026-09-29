@@ -7,6 +7,7 @@
  * - a Mate's row: what was asked, its last words, when, and whether unread;
  * - a project's change rows, drawn without their verbs;
  * - a project's production chip, as it last said it;
+ * - a Mate's crew, its faces, so its line keeps its place;
  * - an organization's members, whose each Mate is.
  *
  * Kept per account, like the project order, and forgotten when the account
@@ -15,7 +16,11 @@
  */
 import type { FlowPullRequest, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { ThreadId } from "@t3tools/contracts";
+import { MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+
+import { mateRowView } from "~/components/zerops/SidebarMateRow.logic";
 
 import { accountLocalStorage, currentAccountId, onAccountLifetimeClose } from "./accountLifetime";
 import type { ZeropsAgentActivity } from "./agentActivity";
@@ -25,7 +30,7 @@ export const MENU_MEMORY_STORAGE_KEY = "mate:zerops:menu-memory";
 const RowSchema = Schema.Struct({
   subject: Schema.optionalKey(Schema.String),
   snippet: Schema.optionalKey(Schema.String),
-  /** The row held its last line for words still to come (`MateReplyPending`). */
+  /** The row held its third line with no words to keep (drawn again as `MateReplyPending`). */
   awaitingWords: Schema.optionalKey(Schema.Boolean),
   task: Schema.optionalKey(Schema.String),
   at: Schema.String,
@@ -64,6 +69,22 @@ const ChipSchema = Schema.Struct({
   waiting: Schema.optionalKey(Schema.Number),
 });
 
+/**
+ * A Mate's crew as its line under the row drew it: its faces, the lead first,
+ * at rest — which of them works or waits, and the crew's one fact, are only
+ * true now and are read again.
+ */
+const CrewSchema = Schema.Struct({
+  faces: Schema.Array(
+    Schema.Struct({
+      handle: Schema.String,
+      displayName: Schema.String,
+      tint: Schema.Literals(MATE_TINT_IDS),
+      lead: Schema.Boolean,
+    }),
+  ),
+});
+
 const MemberSchema = Schema.Struct({
   id: Schema.String,
   userId: Schema.optionalKey(Schema.String),
@@ -94,29 +115,39 @@ const MenuMemorySchema = Schema.Struct({
   rows: Schema.Record(Schema.String, RowSchema),
   changes: Schema.Record(Schema.String, Schema.Array(ChangeSchema)),
   chips: Schema.Record(Schema.String, ChipSchema),
+  // A memory written before crews were kept reads with none.
+  crews: Schema.Record(Schema.String, CrewSchema).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
   members: Schema.Record(Schema.String, Schema.Array(MemberSchema)),
 });
 
 export type RememberedRow = typeof RowSchema.Type;
 export type RememberedChange = typeof ChangeSchema.Type;
 export type RememberedChip = typeof ChipSchema.Type;
+export type RememberedCrew = typeof CrewSchema.Type;
 export type RememberedMember = typeof MemberSchema.Type;
 export type MenuMemory = typeof MenuMemorySchema.Type;
 
-export const EMPTY_MENU_MEMORY: MenuMemory = { rows: {}, changes: {}, chips: {}, members: {} };
+export const EMPTY_MENU_MEMORY: MenuMemory = {
+  rows: {},
+  changes: {},
+  chips: {},
+  crews: {},
+  members: {},
+};
 
 /**
- * A row's words as a Mate's activity last said them — and whether it held its
- * last line for words still to come, which is the row's height: a reload
- * mid-run draws the line again rather than growing it when the socket answers.
+ * A row's words as a Mate's activity last said them — and whether it held a
+ * third line with no words to keep, which is the row's height: a reload draws
+ * the line again rather than growing it when the socket answers.
  */
 export function rememberedRowOf(activity: ZeropsAgentActivity): RememberedRow {
+  // The row's third line stood without words to keep — words still to come,
+  // the step it was on, the question it asked, the error it stopped on before
+  // saying anything: a reload holds the line with the dots (`mateRowView`).
   const awaiting =
-    activity.subject !== undefined &&
-    activity.snippet === undefined &&
-    (activity.awaitingWords === true ||
-      activity.kind === "working" ||
-      activity.kind === "connecting");
+    activity.snippet === undefined && mateRowView(activity, activity.face).reply !== undefined;
   return {
     ...(activity.subject === undefined ? {} : { subject: activity.subject }),
     ...(activity.snippet === undefined ? {} : { snippet: activity.snippet }),
@@ -242,6 +273,42 @@ export function withChips(
   }
   for (const [key, chip] of Object.entries(chips)) if (chip !== null) next[key] = chip;
   return same(next, memory.chips) ? memory : { ...memory, chips: next };
+}
+
+/** A crew's faces as its line drew them, at rest: each crewmate, the lead first. */
+export function rememberedCrewOf(
+  faces: ReadonlyArray<{
+    readonly handle: string;
+    readonly displayName: string;
+    readonly tint: MateTintId;
+    readonly lead: boolean;
+  }>,
+): RememberedCrew {
+  return {
+    faces: faces.map(({ handle, displayName, tint, lead }) => ({
+      handle,
+      displayName,
+      tint,
+      lead,
+    })),
+  };
+}
+
+/**
+ * Each Mate's crew as last read, `null` forgetting one that is gone, and —
+ * given the listing — none for a Mate no longer listed.
+ */
+export function withCrews(
+  memory: MenuMemory,
+  crews: Readonly<Record<string, RememberedCrew | null>>,
+  listed?: ReadonlySet<string>,
+): MenuMemory {
+  const next: Record<string, RememberedCrew> = {};
+  for (const [key, crew] of Object.entries(memory.crews)) {
+    if ((listed === undefined || listed.has(key)) && crews[key] !== null) next[key] = crew;
+  }
+  for (const [key, crew] of Object.entries(crews)) if (crew !== null) next[key] = crew;
+  return same(next, memory.crews) ? memory : { ...memory, crews: next };
 }
 
 /** An organization's members as last read, what they carry beyond a member's record dropped. */

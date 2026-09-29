@@ -4,6 +4,7 @@ import {
   describeTimelineAnchor,
   getAnchoredTurnMetrics,
   getRowBottom,
+  judgeTimelinePlacing,
   keepTimelineEndVisibleAfterOverlayGrowth,
   readTimelinePosition,
   rememberTimelinePosition,
@@ -468,5 +469,71 @@ describe("where a conversation's first line sits", () => {
     { value: "calc(1rem + 2px)", px: 0 },
   ])("$value is $px px", ({ value, px }) => {
     expect(cssLengthToPx(value, 16)).toBe(px);
+  });
+});
+
+describe("placing a conversation where it stays", () => {
+  // From the list's mount until it stands where it stays — a reading position
+  // put back, or the end reached — frame by frame, one loop however often its
+  // rows change (a Mate streaming its answer changes them every frame), and
+  // never longer than a while: then it shows where the best anchor puts it.
+  it.each<{
+    readonly case: string;
+    readonly frame: Parameters<typeof judgeTimelinePlacing>[0];
+    readonly stableFrames: number;
+    readonly verdict: ReturnType<typeof judgeTimelinePlacing>["verdict"];
+    readonly next: number;
+  }>([
+    {
+      case: "waits for the list to show its rows",
+      frame: { elapsedMs: 40, listReady: false, offBy: 0 },
+      stableFrames: 1,
+      verdict: "wait",
+      next: 0,
+    },
+    {
+      case: "waits for the row it lands on to be drawn",
+      frame: { elapsedMs: 40, listReady: true, offBy: null },
+      stableFrames: 1,
+      verdict: "wait",
+      next: 0,
+    },
+    {
+      case: "puts back a place more than a pixel off",
+      frame: { elapsedMs: 60, listReady: true, offBy: 74 },
+      stableFrames: 1,
+      verdict: "correct",
+      next: 0,
+    },
+    {
+      case: "counts a frame that stands where it stays",
+      frame: { elapsedMs: 80, listReady: true, offBy: 0.5 },
+      stableFrames: 0,
+      verdict: "wait",
+      next: 1,
+    },
+    {
+      case: "is placed after two frames standing where it stays",
+      frame: { elapsedMs: 96, listReady: true, offBy: -1 },
+      stableFrames: 1,
+      verdict: "placed",
+      next: 2,
+    },
+    {
+      case: "is overdue after a while, whatever it measures",
+      frame: { elapsedMs: 350, listReady: false, offBy: null },
+      stableFrames: 0,
+      verdict: "overdue",
+      next: 0,
+    },
+    {
+      case: "is overdue while still being put back",
+      frame: { elapsedMs: 420, listReady: true, offBy: 35 },
+      stableFrames: 0,
+      verdict: "overdue",
+      next: 0,
+    },
+  ])("$case", ({ frame, stableFrames, verdict, next }) => {
+    expect(judgeTimelinePlacing(frame, stableFrames)).toEqual({ verdict, stableFrames: next });
   });
 });

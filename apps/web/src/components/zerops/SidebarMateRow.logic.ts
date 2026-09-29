@@ -184,9 +184,14 @@ export function mateRowView(
 
 /** Which of the table's states a row is in: what waits on the person first. */
 function mateRowState(activity: ZeropsAgentActivity, face: MateMarkState): MateRowState {
+  // Paused at a usage limit it sleeps, whatever its last turn said: a turn
+  // that hits the limit ends failed — "Claude usage limit reached…" — with
+  // the pause standing, and the resume picks the work up without anybody
+  // (`mateMarkStateForThread`). What waits on a person still wakes it: its
+  // face is not asleep then.
+  if (face === "sleep" && activity.pausedUntil !== undefined) return "paused";
   if (activity.kind === "failed") return "failed";
   if (face === "needs") return "needs";
-  if (activity.pausedUntil !== undefined) return "paused";
   if (
     activity.kind === "working" ||
     activity.kind === "connecting" ||

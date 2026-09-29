@@ -293,6 +293,24 @@ function serviceProblem(service: OutcomeService): FixProblem {
   };
 }
 
+/** What a service the platform says is down asks of its Mate, by how it is down. */
+const PLATFORM_PROBLEM: Readonly<
+  Record<"stopped" | "empty" | "failed", (hostname: string, word: string) => FixProblem>
+> = {
+  stopped: (hostname) => ({
+    what: `${hostname} stopped`,
+    ask: "Find out why it stopped, fix it, and start it again.",
+  }),
+  empty: (hostname) => ({
+    what: `${hostname} has nothing deployed`,
+    ask: "Find out why, fix it, and deploy it again.",
+  }),
+  failed: (hostname, word) => ({
+    what: `${hostname}: ${word.toLowerCase()}`,
+    ask: "Find out why it failed, fix it, and get it running again.",
+  }),
+};
+
 /** A service as the result shows it now, or null once it is no longer this run's to show. */
 function serviceRow(
   service: OutcomeService,
@@ -309,7 +327,14 @@ function serviceRow(
     version: service.version,
     url: service.url ?? pages[0]?.url ?? null,
   };
-  if (status !== null && (/FAIL/u.test(status) || NOT_RUNNING_STATUSES.has(status))) {
+  // The platform's word follows only what the run left running. One the run
+  // left broken stays its own failure — a first deploy that failed leaves the
+  // service ready to deploy, and the run's words say why.
+  if (
+    service.tone === "ok" &&
+    status !== null &&
+    (/FAIL/u.test(status) || NOT_RUNNING_STATUSES.has(status))
+  ) {
     const word = zeropsStatusWord(status);
     const since = now?.since ?? null;
     return {
@@ -325,12 +350,10 @@ function serviceRow(
       action: {
         kind: "fix",
         problem: {
-          what:
-            status === "STOPPED"
-              ? `${service.hostname} stopped`
-              : `${service.hostname}: ${word.toLowerCase()}`,
+          ...PLATFORM_PROBLEM[
+            status === "STOPPED" ? "stopped" : status === "READY_TO_DEPLOY" ? "empty" : "failed"
+          ](service.hostname, word),
           ...(since === null ? {} : { at: since }),
-          ask: "Find out why it stopped, fix it, and start it again.",
         },
       },
     };

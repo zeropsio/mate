@@ -209,14 +209,24 @@ describe("composerModelControlLabel", () => {
 });
 
 describe("showsAccessControl", () => {
-  // The access control stands in the toolbar only when it is not the usual
-  // setting; the usual one is reachable from the one control's menu.
-  it.each<{ readonly runtimeMode: RuntimeMode; readonly shown: boolean }>([
-    { runtimeMode: "full-access", shown: false },
-    { runtimeMode: "approval-required", shown: true },
-    { runtimeMode: "auto-accept-edits", shown: true },
-    { runtimeMode: "auto", shown: true },
-  ])("$runtimeMode: shown $shown", ({ runtimeMode, shown }) => {
-    expect(showsAccessControl(runtimeMode)).toBe(shown);
+  // The access control stands in the toolbar while it is not the usual
+  // setting — and whenever the one control's menu, which holds the access,
+  // cannot be opened: the provider's setup stands in its place, or the
+  // catalog is still being read. Access is reachable in every state.
+  it.each<{
+    readonly runtimeMode: RuntimeMode;
+    readonly menu: "opens" | "provider setup instead" | "catalog being read";
+    readonly shown: boolean;
+  }>([
+    { runtimeMode: "full-access", menu: "opens", shown: false },
+    { runtimeMode: "approval-required", menu: "opens", shown: true },
+    { runtimeMode: "auto-accept-edits", menu: "opens", shown: true },
+    { runtimeMode: "auto", menu: "opens", shown: true },
+    { runtimeMode: "full-access", menu: "provider setup instead", shown: true },
+    { runtimeMode: "approval-required", menu: "provider setup instead", shown: true },
+    { runtimeMode: "full-access", menu: "catalog being read", shown: true },
+    { runtimeMode: "auto", menu: "catalog being read", shown: true },
+  ])("$runtimeMode, the menu $menu: shown $shown", ({ runtimeMode, menu, shown }) => {
+    expect(showsAccessControl(runtimeMode, { modelMenuOpens: menu === "opens" })).toBe(shown);
   });
 });

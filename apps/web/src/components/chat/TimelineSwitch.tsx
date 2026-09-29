@@ -105,13 +105,14 @@ export function TimelineSwitch({
       host?.replaceChildren();
     }
     stateRef.current = state;
-    // Each picture held gets its own while; a picture giving way or gone
-    // waits for nothing.
-    if (holdRef.current !== null && (effect !== "none" || event.type === "switch")) {
+    // Each picture held gets its own while, from the switch and again from
+    // the rows' arrival (their list is placed within a while of its own); a
+    // picture giving way or gone waits for nothing.
+    const held = event.type === "switch" || event.type === "placing";
+    if (holdRef.current !== null && (effect !== "none" || held)) {
       clearTimeout(holdRef.current);
       holdRef.current = null;
     }
-    const held = event.type === "switch" || event.type === "placing";
     if (held && state.freeze !== null && !state.freeze.fading) {
       const key = state.key;
       holdRef.current = setTimeout(() => {
@@ -132,14 +133,16 @@ export function TimelineSwitch({
   }, []);
   const painted = useCallback((key: string) => step({ type: "painted", key }), [step]);
   const waiting = useCallback((key: string) => step({ type: "waiting", key }), [step]);
-  // Its Mate at work going for the rows is pictured the same way, unless a
-  // picture is on its way up already (the layer going too).
+  // The rows coming: its Mate at work, if it shows, is pictured the same way
+  // (unless a picture is on its way up already, the layer going too); a
+  // picture held over it waits for them to be placed.
   const placing = useCallback(
     (key: string, node: HTMLElement) => {
       const state = stateRef.current;
       if (closingRef.current || pictureRef.current !== null || state.key !== key) return;
-      if (!state.waiting || state.freeze !== null) return;
-      pictureRef.current = { key, frame: captureFreezeFrame(node) };
+      if (state.waiting && state.freeze === null) {
+        pictureRef.current = { key, frame: captureFreezeFrame(node) };
+      }
       step({ type: "placing", key });
     },
     [step],

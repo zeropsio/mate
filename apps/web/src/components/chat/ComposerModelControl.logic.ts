@@ -92,9 +92,15 @@ export function composerModelControlText(label: ComposerModelControlLabel): stri
 }
 
 /**
- * The access control stands in the toolbar only while it is not the person's
- * usual setting; the usual one stays in the one control's menu.
+ * Whether the access control stands in the toolbar on its own: while it is
+ * not the person's usual setting, and whenever the one control's menu — where
+ * the usual one is kept — cannot be opened, with the provider's setup in the
+ * control's place or the catalog still being read. Access is reachable in
+ * every state.
  */
-export function showsAccessControl(runtimeMode: RuntimeMode): boolean {
-  return runtimeMode !== DEFAULT_RUNTIME_MODE;
+export function showsAccessControl(
+  runtimeMode: RuntimeMode,
+  input: { readonly modelMenuOpens: boolean },
+): boolean {
+  return runtimeMode !== DEFAULT_RUNTIME_MODE || !input.modelMenuOpens;
 }

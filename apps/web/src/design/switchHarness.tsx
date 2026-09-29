@@ -2,13 +2,15 @@
  * Switching between Mates' conversations, as the conversation pane does it
  * (T1): four Mates with conversations of their own, one of them at work; a
  * first open that waits on the server; a Mate opened before that paints from
- * what the app remembers; and the run the person watched folding when they
- * leave (the one they were reading in, else the last), as the card will.
+ * what the app remembers; and a run the person opened folding as they leave
+ * (the card's own fold, K7). A live Mate streams its answer from the page's
+ * load, so a return to it meets rows changing under it.
  *
  * Served by the dev server at `/design-switch.html` (`?theme=dark`,
- * `?latency=<ms>` for the first open's wait, `?fold=0` to keep runs open on
- * leaving). `window.__switchHarness.switchTo("juno")` switches from a script,
- * so a per-frame sampler can watch a switch it started itself.
+ * `?latency=<ms>` for the first open's wait, `?stream=<ms>` for how often the
+ * live Mate's answer grows). `window.__switchHarness.switchTo("juno")`
+ * switches from a script, so a per-frame sampler can watch a switch it
+ * started itself.
  *
  * Fixtures only. Nothing here ships — `design-switch.html` is not
  * `index.html`, and no route imports this module.
@@ -39,7 +41,6 @@ import "../index.css";
 
 const params = new URLSearchParams(location.search);
 const LATENCY_MS = Number(params.get("latency") ?? 320);
-const FOLD_ON_LEAVE = params.get("fold") !== "0";
 const ENVIRONMENT = EnvironmentId.make("environment-harness");
 const BASE = Date.parse("2026-09-29T07:00:00.000Z");
 const at = (minute: number, second = 0) =>
@@ -178,8 +179,21 @@ const THREADS: ReadonlyArray<HarnessThread> = [
 const LIVE_STARTED = Date.now() - 95_000;
 const liveAt = (second: number) => new Date(LIVE_STARTED + second * 1000).toISOString();
 
-/** The run still going: its ask, three calls done and one running. */
-function liveTurnEntries(thread: string, turn: number): TimelineEntry[] {
+/**
+ * The live run streams from the page's load, shown or not: its answer grows
+ * every 50 ms and a call lands every second, so its rows change under a
+ * return to it.
+ */
+const STREAM_EVERY_MS = Number(params.get("stream") ?? 50);
+const STREAM_STARTED = Date.now();
+const streamTick = () => Math.floor((Date.now() - STREAM_STARTED) / STREAM_EVERY_MS);
+const STREAM_WORDS =
+  "The checkout now asks the payment service once per basket instead of once per line, so a basket of twelve items makes one call where it made twelve. I kept the old path behind the flag for a day in case the service rejects batched requests under load, and wrote down what to watch in the logs before we remove it.".split(
+    " ",
+  );
+
+/** The run still going: its ask, the calls it made, one running, its answer on its way. */
+function liveTurnEntries(thread: string, turn: number, tick: number): TimelineEntry[] {
   const turnId = TurnId.make(`${thread}-turn-${turn}`);
   const ask = `${thread}-ask-${turn}`;
   return [
@@ -197,7 +211,7 @@ function liveTurnEntries(thread: string, turn: number): TimelineEntry[] {
         streaming: false,
       },
     },
-    ...[0, 1, 2, 3].map((call): TimelineEntry => {
+    ...Array.from({ length: 4 + Math.floor(tick / 20) }, (_, call): TimelineEntry => {
       const id = `${thread}-call-${turn}-${call}`;
       return {
         id,
@@ -212,26 +226,42 @@ function liveTurnEntries(thread: string, turn: number): TimelineEntry[] {
           tone: "tool",
           itemType: "command_execution",
           command: COMMANDS[(turn + call) % COMMANDS.length]!,
-          toolLifecycleStatus: call === 3 ? "inProgress" : "completed",
+          toolLifecycleStatus: "completed",
         },
       };
     }),
+    {
+      id: `${thread}-answer-${turn}`,
+      kind: "message",
+      createdAt: liveAt(95),
+      message: {
+        id: MessageId.make(`${thread}-answer-${turn}`),
+        role: "assistant",
+        text: Array.from(
+          { length: 6 + tick },
+          (_, word) => STREAM_WORDS[word % STREAM_WORDS.length],
+        ).join(" "),
+        turnId,
+        createdAt: liveAt(95),
+        updatedAt: liveAt(95),
+        streaming: true,
+      },
+    },
   ];
 }
 
 /** A thread's conversation; the runs the person left fold to their Mate's words (K7). */
-function conversationOf(thread: HarnessThread, folded: ReadonlySet<number>): TimelineEntry[] {
+function conversationOf(thread: HarnessThread, tick: number): TimelineEntry[] {
   return Array.from({ length: thread.turns }, (_, turn) =>
-    (thread.live && turn === thread.turns - 1
-      ? liveTurnEntries(thread.key, turn)
+    thread.live && turn === thread.turns - 1
+      ? liveTurnEntries(thread.key, turn, tick)
       : turnEntries(
           thread.key,
           turn,
           turn === thread.turns - 1 && thread.lastCalls !== undefined
             ? thread.lastCalls
             : 3 + ((turn * 7) % 6),
-        )
-    ).filter((entry) => !(folded.has(turn) && entry.kind === "work")),
+        ),
   ).flat();
 }
 
@@ -257,7 +287,6 @@ const threadKeyOf = (key: string) => `${ENVIRONMENT}:${key}`;
  */
 function useHarnessThread(key: string) {
   const [opened] = useState(() => new Set<string>());
-  const [folded] = useState(() => new Map<string, Set<number>>());
   const [state, setState] = useState<{
     readonly key: string;
     readonly phase: "loading" | "syncing" | null;
@@ -271,27 +300,20 @@ function useHarnessThread(key: string) {
     }, wait);
     return () => clearTimeout(timer);
   }, [key, opened]);
-  // Leaving a thread folds the run the person watched (K7): the one they
-  // were reading in, else its last run.
-  const leaving = useRef(key);
-  useEffect(() => {
-    const left = leaving.current;
-    leaving.current = key;
-    const thread = THREADS.find((candidate) => candidate.key === left)!;
-    if (!FOLD_ON_LEAVE || left === key || thread.live) return;
-    const reading = /^(?:record|outcome|card-end):msg:.+-ask-(\d+)$/u.exec(
-      readTimelinePosition(threadKeyOf(left))?.rowId ?? "",
-    );
-    const run = reading === null ? thread.turns - 1 : Number(reading[1]);
-    folded.set(left, new Set([...(folded.get(left) ?? []), run]));
-  }, [folded, key]);
   const thread = THREADS.find((candidate) => candidate.key === key)!;
   const shown = state.key === key ? state.phase : opened.has(key) ? "syncing" : "loading";
+  // A live run's rows change every 50 ms while it is shown.
+  const [, setStreamed] = useState(0);
+  useEffect(() => {
+    if (!thread.live) return;
+    const stream = setInterval(() => setStreamed(streamTick), STREAM_EVERY_MS);
+    return () => clearInterval(stream);
+  }, [thread.live]);
+  const tick = thread.live ? streamTick() : 0;
+  const loading = shown === "loading";
   const entries = useMemo(
-    () => (shown === "loading" ? [] : conversationOf(thread, folded.get(key) ?? new Set<number>())),
-    // `folded` changes in place when the person leaves; the key change reads it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [key, shown === "loading", thread],
+    () => (loading ? [] : conversationOf(thread, tick)),
+    [loading, thread, tick],
   );
   return { thread, phase: shown, entries };
 }
@@ -302,20 +324,24 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
   const { thread, phase, entries } = useHarnessThread(threadKey);
   const listRef = useRef<LegendListRef | null>(null);
   const routeThreadKey = threadKeyOf(thread.key);
-  // As ChatView: a thread left mid-read reopens there, any other follows its end.
+  // As ChatView: a thread left mid-read reopens there, any other follows its
+  // end; following comes back only when the end is reached anew.
   const [follow, setFollow] = useState(() => ({
     key: routeThreadKey,
     enabled: readTimelinePosition(routeThreadKey)?.atEnd !== false,
+    atEnd: readTimelinePosition(routeThreadKey)?.atEnd !== false,
   }));
   if (follow.key !== routeThreadKey) {
-    setFollow({
-      key: routeThreadKey,
-      enabled: readTimelinePosition(routeThreadKey)?.atEnd !== false,
-    });
+    const atEnd = readTimelinePosition(routeThreadKey)?.atEnd !== false;
+    setFollow({ key: routeThreadKey, enabled: atEnd, atEnd });
   }
   const liveFollowEnabled = follow.enabled;
   const onIsAtEndChange = useCallback((isAtEnd: boolean) => {
-    if (isAtEnd) setFollow((current) => ({ ...current, enabled: true }));
+    setFollow((current) =>
+      current.atEnd === isAtEnd
+        ? current
+        : { ...current, atEnd: isAtEnd, enabled: isAtEnd || current.enabled },
+    );
   }, []);
   const onManualNavigation = useCallback(
     () => setFollow((current) => ({ ...current, enabled: false })),
@@ -325,7 +351,14 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
   const loading = phase === "loading";
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        className="relative flex min-h-0 flex-1 flex-col"
+        // As ChatView: a wheel up is the person reading history, and the end
+        // stops being followed.
+        onWheelCapture={(event) => {
+          if (event.deltaY < 0) onManualNavigation();
+        }}
+      >
         <TimelineSwitch switchKey={routeThreadKey}>
           <MessagesTimeline
             isWorking={thread.live === true}
