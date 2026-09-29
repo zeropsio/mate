@@ -391,6 +391,14 @@ export {
   type GroupNextStepTarget,
 } from "./groupFlow.ts";
 export {
+  stageMarks,
+  stageStandings,
+  type ServiceChanges,
+  type StageMark,
+  type StageStandings,
+  type StopChange,
+} from "./stageMarks.ts";
+export {
   changesNotLive,
   PROJECT_ALL_CLEAR,
   projectAttention,
