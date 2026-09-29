@@ -458,6 +458,29 @@ describe("RunChat", () => {
     expect(markup).not.toMatch(/<p class="[^"]*truncate[^"]*" data-chat-kind="person">/u);
   });
 
+  // Several at once (K10): how many on the line, a still line each under it.
+  it("says several steps at once by how many, a still line each under it", () => {
+    const runningCommand = (id: string, text: string) =>
+      stepOf(
+        command(id, text, { toolLifecycleStatus: "inProgress", updatedAt: undefined as never }),
+      );
+    const markup = draw(
+      record([], {
+        live: true,
+        status: status(),
+        now: {
+          kind: "step",
+          step: runningCommand("w3", "pnpm lint"),
+          others: [runningCommand("w1", "pnpm build"), runningCommand("w2", "pnpm test")],
+        },
+      }),
+    );
+    expect(markup).toContain('data-run-now="several"');
+    expect(markup).toContain(">Running 3 commands<");
+    expect(markup.match(/<li><span class="run-now-verb run-now-mono">/g)).toHaveLength(3);
+    expect(markup).not.toContain("data-run-shimmer");
+  });
+
   // Blue means something to click (S3): the run's clock counts in ink, and a
   // call running beside it counts in the calls' quiet ink.
   it("counts the run's time in ink, never in the busy blue", () => {

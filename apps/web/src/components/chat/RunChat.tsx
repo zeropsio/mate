@@ -2177,17 +2177,25 @@ function LongStepTime({ since }: { readonly since: string }) {
  * command's code after them, a command that said nothing of itself as its
  * code, a call said plainly with the names it took in mono.
  */
-function StepNowWords({ step }: { readonly step: WorkStep }) {
+function StepNowWords({
+  step,
+  sweeps = true,
+}: {
+  readonly step: WorkStep;
+  /** The one step on the line sweeps; a line each of several at once stands still. */
+  readonly sweeps?: boolean;
+}) {
+  const sweep = sweeps ? "" : undefined;
   if (step.kind === "command" && step.words === null) {
     return (
-      <span className="run-now-verb run-now-mono" data-run-shimmer="">
+      <span className="run-now-verb run-now-mono" data-run-shimmer={sweep}>
         {step.code}
       </span>
     );
   }
   if (step.kind !== "command" && step.phrase !== null) {
     return (
-      <span className="run-now-verb" data-run-shimmer="">
+      <span className="run-now-verb" data-run-shimmer={sweep}>
         {step.phrase.verb}
         {step.phrase.targets.map((target, index) => (
           <Fragment key={`${target}#${index}`}>
@@ -2201,7 +2209,7 @@ function StepNowWords({ step }: { readonly step: WorkStep }) {
   }
   return (
     <>
-      <span className="run-now-verb" data-run-shimmer="">
+      <span className="run-now-verb" data-run-shimmer={sweep}>
         {stepNowWords(step)}
       </span>
       {step.kind === "command" && step.code !== null ? (
@@ -2342,7 +2350,7 @@ function NowLine({
           <ul className="run-now-several">
             {line.steps.map((step) => (
               <li key={step.key}>
-                <StepNowWords step={step} />
+                <StepNowWords step={step} sweeps={false} />
               </li>
             ))}
           </ul>
