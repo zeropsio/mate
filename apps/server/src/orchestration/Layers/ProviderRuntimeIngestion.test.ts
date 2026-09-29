@@ -241,7 +241,10 @@ async function waitForThread(
 
 describe("ProviderRuntimeIngestion", () => {
   let runtime: ManagedRuntime.ManagedRuntime<
-    OrchestrationEngineService | ProviderRuntimeIngestionService | ProjectionSnapshotQuery,
+    | OrchestrationEngineService
+    | ProviderRuntimeIngestionService
+    | ProjectionSnapshotQuery
+    | ThreadLiveStep.ThreadLiveStepService,
     unknown
   > | null = null;
   let scope: Scope.Closeable | null = null;
@@ -5298,6 +5301,56 @@ describe("ProviderRuntimeIngestion", () => {
       const shell = await harness.readThreadShell();
       expect(shell.pendingQuestion).toBe(pendingQuestion);
       expect(shell.hasPendingUserInput).toBe(pendingQuestion !== undefined);
+    });
+
+    const relayed = async () =>
+      (
+        await runtime!.runPromise(Effect.service(ThreadLiveStep.ThreadLiveStepService))
+      ).getThreadLiveStep("thread-1");
+
+    it.each<{
+      readonly name: string;
+      readonly ending: LegacyProviderRuntimeEvent;
+    }>([
+      {
+        name: "a session that errors mid-turn",
+        ending: live(9, "session.state.changed", {
+          payload: { state: "error", reason: "The provider went away." },
+        }),
+      },
+      {
+        name: "a runtime error mid-turn",
+        ending: live(9, "runtime.error", { payload: { message: "The stream broke." } }),
+      },
+      {
+        name: "a session that goes ready with the turn still open",
+        ending: live(9, "session.state.changed", { payload: { state: "ready" } }),
+      },
+    ])("$name leaves nothing live, on the shell or behind it", async ({ ending }) => {
+      const harness = await createHarness();
+      await harness.emitAndDrain([turnStarted, bash(5, "item.started", {}), ending]);
+      expect((await harness.readThreadShell()).liveStep).toBeUndefined();
+      expect(await relayed()).toBeNull();
+    });
+
+    it.each([
+      { name: "deleted", command: "thread.delete" },
+      { name: "archived", command: "thread.archive" },
+    ] as const)("a thread $name mid-turn leaves nothing behind", async ({ command }) => {
+      const harness = await createHarness();
+      await harness.emitAndDrain([turnStarted, bash(5, "item.started", {})]);
+      expect(await relayed()).not.toBeNull();
+      await harness.dispatch({
+        type: command,
+        commandId: CommandId.make(`cmd-live-${command}`),
+        threadId: asThreadId("thread-1"),
+      });
+      // The domain event reaches ingestion's worker on its own subscription.
+      for (let attempt = 0; attempt < 200 && (await relayed()) !== null; attempt += 1) {
+        await harness.drain();
+        await Effect.runPromise(Effect.yieldNow);
+      }
+      expect(await relayed()).toBeNull();
     });
 
     it("the step is on the shell the call's own event refreshes", async () => {

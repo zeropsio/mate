@@ -853,10 +853,11 @@ export const OrchestrationThreadShell = Schema.Struct({
   ),
   /**
    * What the running turn is on this moment (see ThreadLiveStep), for a row
-   * that says it the way the run's card does. Kept in memory while the turn
-   * runs, cleared when it settles — never persisted. Absent from a server
-   * from before it, while no turn runs, and for a step of a kind this client
-   * does not know: the row holds its dots.
+   * that says it the way the run's card does. Kept in memory, never
+   * persisted, and on the shell only while its session runs a turn. Absent
+   * from a server from before it, while no turn runs, on an archived thread,
+   * and for a step of a kind this client does not know: the row holds its
+   * dots.
    */
   liveStep: ForwardCompatibleOptional(ThreadLiveStep),
   /**

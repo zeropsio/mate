@@ -1647,7 +1647,7 @@ describe("a Mate's row says more without words", () => {
   it.each([
     {
       case: "a working Mate whose step is relayed",
-      activity: working({ liveStep: { words: "Build the app", code: "pnpm build" } }),
+      activity: working({ liveStep: { words: "Compile the gallery", code: "npm run compile" } }),
     },
     { case: "a resting Mate with no last words", activity: live({ snippet: undefined }) },
     {
@@ -1694,7 +1694,7 @@ describe("a Mate's row says more without words", () => {
     },
     {
       case: "working, its step relayed",
-      activity: working({ liveStep: { words: "Build the app", code: "pnpm build" } }),
+      activity: working({ liveStep: { words: "Compile the gallery", code: "npm run compile" } }),
       face: "working",
       dot: undefined,
       third: 'data-zerops-surface="sidebar-mate-live-step"',
@@ -1715,7 +1715,7 @@ describe("a Mate's row says more without words", () => {
     },
     {
       case: "stopped on an error",
-      activity: live({ kind: "failed", face: "needs", errorLine: "Build failed" }),
+      activity: live({ kind: "failed", face: "needs", errorLine: "The type check failed" }),
       face: "idle",
       dot: "failed",
       third: 'data-zerops-reply-tone="failed"',
@@ -1764,9 +1764,46 @@ describe("a Mate's row says more without words", () => {
   });
 
   it("writes the live step's command in mono under the sweep", () => {
-    const html = row(working({ liveStep: { words: "Build the app", code: "pnpm build" } }));
+    const html = row(
+      working({ liveStep: { words: "Compile the gallery", code: "npm run compile" } }),
+    );
     expect(html).toContain('data-run-shimmer=""');
-    expect(html).toContain('Build the app · <span class="font-mono">pnpm build</span>');
+    expect(html).toContain('Compile the gallery · <span class="font-mono">npm run compile</span>');
+  });
+
+  // A new step rises into its line as the sweep keeps running over its words:
+  // the two are separate animations, so each stands on its own element — on
+  // one, the sweep's took the rise's place and a new step never rose.
+  it.each([
+    { case: "the step the menu opened onto", next: undefined, rises: false },
+    { case: "a new step while watched", next: "Deploy to stage", rises: true },
+  ])("sweeps the words and rises the line apart: $case", ({ next, rises }) => {
+    const tree = (words: string) => (
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getActivity={() => working({ liveStep: { words } })}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />
+    );
+    const mounted = mount(tree("Compile the gallery"));
+    if (next !== undefined) {
+      act(() => {
+        mounted.update(tree(next));
+      });
+    }
+    const line = mounted.root.find(
+      (node) =>
+        typeof node.type === "string" &&
+        node.props["data-zerops-surface"] === "sidebar-mate-live-step",
+    );
+    expect(String(line.props.className).includes("animate-words-in")).toBe(rises);
+    expect(line.props["data-run-shimmer"]).toBeUndefined();
+    const words = line.findAll(
+      (node) => typeof node.type === "string" && node.props["data-run-shimmer"] === "",
+    );
+    expect(words).toHaveLength(1);
   });
 
   describe("an unsent draft", () => {

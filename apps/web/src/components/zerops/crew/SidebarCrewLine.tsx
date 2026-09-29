@@ -7,6 +7,11 @@
  * own row keeps its full width above it: the crew used to hang outside the
  * row as overlapping slivers of faces with a "+1", narrowing both lines.
  * Nothing at all while there is no crew.
+ *
+ * A reload draws the line where it stood (`menuMemory.ts`), so no row moves
+ * when the crew's feed answers: the faces this browser last read, at rest —
+ * which of them works or waits, and the crew's fact, are only true now and
+ * wait for the feed.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { crewFaceWord } from "@t3tools/client-runtime/zerops/crew/phrases";
@@ -14,13 +19,15 @@ import type { CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { CrewAttention, CrewStatus, EnvironmentId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { UsersIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { buildThreadRouteParams } from "../../../threadRoutes";
 import { useCrew } from "../../../zerops/crew/useCrew";
+import { menuMemory, rememberedCrewOf, rememberMenu, withCrews } from "../../../zerops/menuMemory";
 import { useOpenReview } from "../../../zerops/review";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { MateFace } from "../primitives";
-import { crewLine } from "./SidebarCrewLine.logic";
+import { crewLine, type CrewLineFace, type CrewLineFact } from "./SidebarCrewLine.logic";
 
 /** What the line reads of a crew: `useCrew`'s answer, or a fixture's (a harness). */
 export interface SidebarCrewRead {
@@ -31,25 +38,76 @@ export interface SidebarCrewRead {
 
 export function SidebarCrewLine({
   environmentId,
+  projectId,
   read,
 }: {
-  readonly environmentId: EnvironmentId;
+  /** Its Mate's environment once connected; until then only what this browser remembers is drawn. */
+  readonly environmentId: EnvironmentId | undefined;
+  /** Its Mate's project: what the menu's memory keeps its crew under. */
+  readonly projectId: string;
   /** A crew handed in instead of the feed's; absent, the line reads its own. */
   readonly read?: SidebarCrewRead | undefined;
 }) {
-  const live = useCrew(environmentId);
-  const navigate = useNavigate();
-  const openReview = useOpenReview();
+  const live = useCrew(environmentId ?? null);
+  // What this browser last read of the crew, for the line's place on a reload.
+  const [remembered] = useState(() => menuMemory().crews[projectId]);
   // A crew surface exists only for a crew read and applied (seam 21): not
-  // read yet, or a read that failed, draws nothing here.
+  // read yet, or a read that failed, draws only what was remembered.
   const crew =
     read ??
     (live.snapshot === null
       ? undefined
       : { status: live.status, view: live.view, attention: live.snapshot.attention });
-  if (crew === undefined || crew.status !== "applied" || crew.view === null) return null;
-  if (crew.view.crewmates.length === 0) return null;
-  const { faces, fact } = crewLine(crew.view, crew.attention);
+  const line =
+    crew === undefined || crew.status !== "applied" || crew.view === null
+      ? undefined
+      : crew.view.crewmates.length === 0
+        ? undefined
+        : crewLine(crew.view, crew.attention);
+  // The crew as read, for the next reload to keep its place; a crew that is
+  // gone is forgotten. Not a fixture's, and not while unread.
+  const faces = line?.faces;
+  const gone = read === undefined && (live.status === "none" || live.status === "off");
+  useEffect(() => {
+    if (read !== undefined) return;
+    if (faces !== undefined) {
+      rememberMenu((memory) => withCrews(memory, { [projectId]: rememberedCrewOf(faces) }));
+    } else if (gone) {
+      rememberMenu((memory) => withCrews(memory, { [projectId]: null }));
+    }
+  }, [faces, gone, projectId, read]);
+  if (line !== undefined) {
+    return <CrewLineView environmentId={environmentId} fact={line.fact} faces={line.faces} known />;
+  }
+  if (crew !== undefined || remembered === undefined) return null;
+  return (
+    <CrewLineView
+      environmentId={undefined}
+      fact={null}
+      faces={remembered.faces.map((face) => ({ ...face, state: "idle", threadId: null }))}
+      known={false}
+    />
+  );
+}
+
+/**
+ * The line itself: the crew's faces, its fact and its Review. `known` is
+ * whether the faces' states are read or stand in from memory, where a change
+ * is no arrival to greet.
+ */
+function CrewLineView({
+  environmentId,
+  faces,
+  fact,
+  known,
+}: {
+  readonly environmentId: EnvironmentId | undefined;
+  readonly faces: ReadonlyArray<CrewLineFace>;
+  readonly fact: CrewLineFact | null;
+  readonly known: boolean;
+}) {
+  const navigate = useNavigate();
+  const openReview = useOpenReview();
   return (
     // 2 px under its Mate's row, one line of 30 px, its words on the menu's
     // text column and its verb on the right edge the changes' Review stands on.
@@ -63,8 +121,10 @@ export function SidebarCrewLine({
       <span className="-ms-0.75 flex gap-0.5">
         {faces.map((face) => {
           const who = crewFaceWord(face.displayName, face.lead);
-          const drawn = <MateFace greets size="sm" state={face.state} tint={face.tint} />;
-          if (face.threadId === null) {
+          const drawn = (
+            <MateFace greets known={known} size="sm" state={face.state} tint={face.tint} />
+          );
+          if (face.threadId === null || environmentId === undefined) {
             return (
               <span className="flex size-6 items-center justify-center" key={face.handle}>
                 {drawn}
@@ -115,7 +175,7 @@ export function SidebarCrewLine({
           <TooltipPopup side="right">{fact.words}</TooltipPopup>
         </Tooltip>
       )}
-      {fact?.kind === "land" ? (
+      {fact?.kind === "land" && environmentId !== undefined ? (
         <button
           aria-label={`Review: ${fact.words}`}
           className="menu-textbtn outline-none focus-visible:ring-2 focus-visible:ring-ring"

@@ -21,7 +21,7 @@ import {
   TriangleAlertIcon,
   UsersIcon,
 } from "lucide-react";
-import { useContext, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useContext, useMemo, useState, type CSSProperties } from "react";
 
 import { formatDayAwareTimestamp } from "../../timestampFormat";
 import { useFixMates } from "../../zerops/fixMates";
@@ -35,6 +35,8 @@ import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { resultRows, type ResultFacts, type ResultRow } from "./runResult.logic";
 import { useRunResultFacts } from "./runResultFacts";
 import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
+
+const NOTHING_RISING: ReadonlySet<string> = new Set();
 
 function compactCount(value: number): string {
   return value >= 1000 ? `${(value / 1000).toFixed(value >= 10_000 ? 0 : 1)}k` : String(value);
@@ -247,9 +249,21 @@ export function TurnReport({
   const read = useRunResultFacts(outcome);
   const now = facts ?? read;
   const rows = useMemo(() => resultRows(outcome, now), [now, outcome]);
-  // Once: rows that change later (a merge, a service that stops) never
-  // replay the arrival.
-  const [rising] = useState(settling);
+  // The rows the result arrived with, while the person watched, rise once
+  // and drop their rise as it ends: a row that turns up later is simply
+  // there, and one that moves later (a service stopping tonight moves up to
+  // the broken rows) never replays the arrival.
+  const [rising, setRising] = useState<ReadonlySet<string>>(() =>
+    settling ? new Set(rows.map((row) => row.key)) : NOTHING_RISING,
+  );
+  const risen = useCallback((key: string) => {
+    setRising((current) => {
+      if (!current.has(key)) return current;
+      const next = new Set(current);
+      next.delete(key);
+      return next;
+    });
+  }, []);
   if (rows.length === 0) return null;
   return (
     <section aria-label="What this run left" className="run-result" data-turn-report>
@@ -258,9 +272,16 @@ export function TurnReport({
           key={row.key}
           className="run-result-row"
           data-result-row={row.group}
-          data-rising={rising || undefined}
+          data-rising={rising.has(row.key) || undefined}
           data-tall={row.sub !== null || undefined}
-          style={rising ? ({ "--row-index": index } as CSSProperties) : undefined}
+          onAnimationEnd={
+            rising.has(row.key)
+              ? (event) => {
+                  if (event.target === event.currentTarget) risen(row.key);
+                }
+              : undefined
+          }
+          style={rising.has(row.key) ? ({ "--row-index": index } as CSSProperties) : undefined}
         >
           <RowMark row={row} />
           <div className="min-w-0">
