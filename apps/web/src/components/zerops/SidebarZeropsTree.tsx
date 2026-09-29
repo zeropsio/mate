@@ -1481,6 +1481,12 @@ export function ProjectHeader({
 }) {
   const placeholder = group !== undefined && groupNameIsPlaceholder(group);
   const title = group?.name ?? name ?? "";
+  const addMate = () => {
+    // The dialog belongs to the projects screen, so the ask travels with the
+    // navigation rather than being dropped.
+    if (group !== undefined) onAddMate?.(group.groupId);
+    onBrowseProjects();
+  };
   return (
     // The title on the menu's mark edge (x = 16: 7 px inside the list's own
     // 9), the heading 32 px tall, and its end 12 px short of the menu's edge.
@@ -1553,12 +1559,7 @@ export function ProjectHeader({
                   aria-label={`Add a Mate to ${title}`}
                   className={HEADING_ACTION_CLASS}
                   data-zerops-surface="sidebar-project-add-mate"
-                  onClick={() => {
-                    // The dialog belongs to the projects screen, so the ask
-                    // travels with the navigation rather than being dropped.
-                    if (group !== undefined) onAddMate?.(group.groupId);
-                    onBrowseProjects();
-                  }}
+                  onClick={addMate}
                   type="button"
                 />
               }
@@ -1586,6 +1587,9 @@ export function ProjectHeader({
                   not open it (the owner, 2026-09-19); now that the heading's
                   name collapses the project, this is the way in. */}
               <MenuItem onClick={onOpen ?? onBrowseProjects}>Open project</MenuItem>
+              {/* The + beside this menu, which a narrow menu drops to keep the
+                  project's name: here either way. */}
+              <MenuItem onClick={addMate}>Add a Mate</MenuItem>
               {reorder === undefined ? null : (
                 <>
                   <MenuSeparator />

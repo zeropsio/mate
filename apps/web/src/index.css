@@ -3209,6 +3209,14 @@ code {
   }
 }
 
+/* The heading's + gives its room to the name under 300 px; Add a Mate is the
+   first item of its ⋯ menu either way. */
+@container (width < 300px) {
+  [data-zerops-surface="sidebar-project-add-mate"] {
+    display: none;
+  }
+}
+
 /* A stop's dot: its state's colour, hollow for a stop on purpose, a small
    stepped spinner while something is on its way. */
 .zerops-envdot {
