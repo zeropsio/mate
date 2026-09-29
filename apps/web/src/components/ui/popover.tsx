@@ -61,23 +61,27 @@ function PopoverPopup({
   anchor?: PopoverPrimitive.Positioner.Props["anchor"];
   width?: keyof typeof popoverPopupWidthClassName;
 }) {
-  // Viewport rekeys its children when the active trigger clears on close. Persistent
-  // single-trigger forms need a stable container to retain drafts and submit guards.
-  const Viewport = keepMounted ? "div" : PopoverPrimitive.Viewport;
+  // The popup sizes itself in CSS, capped by the room Base UI measures
+  // (`--available-height`), from its first painted frame. Base UI's Viewport
+  // part is not used: it morphs one popup between several triggers' contents,
+  // which no popover here has, and its auto-resize measures the popup with
+  // that cap lifted, then pins the popup and its positioner to the uncapped
+  // size — a menu taller than the room opened at its full height and snapped
+  // to its cap once its entrance ended, and was placed by the uncapped size.
   return (
     <PopoverPortal keepMounted={keepMounted}>
       <PopoverPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}
         anchor={anchor}
-        className="z-[130] h-(--positioner-height) w-(--positioner-width) max-w-(--available-width) transition-transform data-instant:transition-none"
+        className="z-[130] max-w-(--available-width)"
         data-slot="popover-positioner"
         side={side}
         sideOffset={sideOffset}
       >
         <PopoverPrimitive.Popup
           className={cn(
-            "dropdown-glass relative flex h-(--popup-height,auto) w-(--popup-width,auto) origin-(--transform-origin) rounded-lg text-popover-foreground outline-none transition-[width,height,scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] has-data-[slot=calendar]:rounded-xl has-data-[slot=calendar]:before:rounded-[calc(var(--radius-xl)-1px)] data-starting-style:scale-98 data-starting-style:opacity-0 dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
+            "dropdown-glass relative flex origin-(--transform-origin) rounded-lg text-popover-foreground outline-none transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] has-data-[slot=calendar]:rounded-xl has-data-[slot=calendar]:before:rounded-[calc(var(--radius-xl)-1px)] data-starting-style:scale-98 data-starting-style:opacity-0 dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
             tooltipStyle &&
               "w-fit text-balance rounded-md text-xs shadow-md/5 before:rounded-[calc(var(--radius-md)-1px)]",
             !tooltipStyle &&
@@ -88,18 +92,18 @@ function PopoverPopup({
           data-slot="popover-popup"
           {...props}
         >
-          <Viewport
+          <div
             className={cn(
-              "relative size-full max-h-(--available-height) overflow-clip px-(--viewport-inline-padding) has-data-[slot=calendar]:p-2 data-instant:transition-none **:data-current:data-ending-style:opacity-0 **:data-current:data-starting-style:opacity-0 **:data-previous:data-ending-style:opacity-0 **:data-previous:data-starting-style:opacity-0 **:data-current:w-[calc(var(--popup-width)-2*var(--viewport-inline-padding)-2px)] **:data-previous:w-[calc(var(--popup-width)-2*var(--viewport-inline-padding)-2px)] **:data-current:opacity-100 **:data-previous:opacity-100 **:data-current:transition-opacity **:data-previous:transition-opacity",
+              "relative size-full max-h-(--available-height) overflow-clip px-(--viewport-inline-padding) has-data-[slot=calendar]:p-2",
               tooltipStyle && padding === "default"
                 ? "py-1 [--viewport-inline-padding:--spacing(2)]"
                 : popoverViewportPaddingClassName[padding],
-              !tooltipStyle && "not-data-transitioning:overflow-y-auto",
+              !tooltipStyle && "overflow-y-auto",
             )}
             data-slot="popover-viewport"
           >
             {children}
-          </Viewport>
+          </div>
         </PopoverPrimitive.Popup>
       </PopoverPrimitive.Positioner>
     </PopoverPortal>
