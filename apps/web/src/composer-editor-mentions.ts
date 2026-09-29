@@ -1,3 +1,4 @@
+import { INLINE_PICTURE_PLACEHOLDER } from "./lib/composerPictures";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
@@ -26,6 +27,11 @@ export type ComposerPromptSegment =
   | {
       type: "terminal-context";
       context: TerminalContextDraft | null;
+    }
+  | {
+      /** A picture's place, matched by order to the draft's images. */
+      type: "picture";
+      imageId: string | null;
     };
 
 function rangeIncludesIndex(start: number, end: number, index: number): boolean {
@@ -52,7 +58,7 @@ function forEachPromptSegmentSlice(
           promptOffset: number;
         }
       | {
-          type: "terminal-context";
+          type: "terminal-context" | "picture";
           promptOffset: number;
         },
   ) => boolean | void,
@@ -60,7 +66,8 @@ function forEachPromptSegmentSlice(
   let textCursor = 0;
 
   for (let index = 0; index < prompt.length; index += 1) {
-    if (prompt[index] !== INLINE_TERMINAL_CONTEXT_PLACEHOLDER) {
+    const char = prompt[index];
+    if (char !== INLINE_TERMINAL_CONTEXT_PLACEHOLDER && char !== INLINE_PICTURE_PLACEHOLDER) {
       continue;
     }
 
@@ -74,7 +81,8 @@ function forEachPromptSegmentSlice(
     ) {
       return true;
     }
-    if (visitor({ type: "terminal-context", promptOffset: index }) === true) {
+    const type = char === INLINE_PICTURE_PLACEHOLDER ? "picture" : "terminal-context";
+    if (visitor({ type, promptOffset: index }) === true) {
       return true;
     }
     textCursor = index + 1;
@@ -200,6 +208,7 @@ export function selectionTouchesMentionBoundary(
 export function splitPromptIntoComposerSegments(
   prompt: string,
   terminalContexts: ReadonlyArray<TerminalContextDraft> = [],
+  pictureIds: ReadonlyArray<string> = [],
 ): ComposerPromptSegment[] {
   if (!prompt) {
     return [];
@@ -207,9 +216,15 @@ export function splitPromptIntoComposerSegments(
 
   const segments: ComposerPromptSegment[] = [];
   let terminalContextIndex = 0;
+  let pictureIndex = 0;
   forEachPromptSegmentSlice(prompt, (slice) => {
     if (slice.type === "text") {
       segments.push(...splitPromptTextIntoComposerSegments(slice.text));
+      return false;
+    }
+    if (slice.type === "picture") {
+      segments.push({ type: "picture", imageId: pictureIds[pictureIndex] ?? null });
+      pictureIndex += 1;
       return false;
     }
 
@@ -245,9 +260,10 @@ export function splitPromptIntoEditorSegments(
   prompt: string,
   terminalContexts: ReadonlyArray<TerminalContextDraft>,
   crewmates: ReadonlyArray<{ readonly handle: string; readonly tint: MateTintId }>,
+  pictureIds: ReadonlyArray<string> = [],
 ): ComposerEditorSegment[] {
   const tints = new Map(crewmates.map((mate) => [mate.handle, mate.tint]));
-  return splitPromptIntoComposerSegments(prompt, terminalContexts).map((segment) => {
+  return splitPromptIntoComposerSegments(prompt, terminalContexts, pictureIds).map((segment) => {
     const tint = segment.type === "mention" ? tints.get(segment.path) : undefined;
     return segment.type === "mention" && tint !== undefined && segment.source === `@${segment.path}`
       ? { type: "crewmate", handle: segment.path, tint, source: segment.source }

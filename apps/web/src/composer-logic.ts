@@ -1,5 +1,6 @@
 import type { ClientSettings } from "@t3tools/contracts/settings";
 import { splitPromptIntoComposerSegments } from "./composer-editor-mentions";
+import { INLINE_PICTURE_PLACEHOLDER } from "./lib/composerPictures";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
 export type ComposerTriggerKind = "path" | "slash-command" | "skill" | "crewmate";
@@ -35,7 +36,8 @@ const isInlineTokenSegment = (
     | { type: "text"; text: string }
     | { type: "mention" }
     | { type: "skill" }
-    | { type: "terminal-context" },
+    | { type: "terminal-context" }
+    | { type: "picture" },
 ): boolean => segment.type !== "text";
 
 function clampCursor(text: string, cursor: number): number {
@@ -49,7 +51,8 @@ function isWhitespace(char: string): boolean {
     char === "\n" ||
     char === "\t" ||
     char === "\r" ||
-    char === INLINE_TERMINAL_CONTEXT_PLACEHOLDER
+    char === INLINE_TERMINAL_CONTEXT_PLACEHOLDER ||
+    char === INLINE_PICTURE_PLACEHOLDER
   );
 }
 
@@ -90,7 +93,7 @@ export function expandCollapsedComposerCursor(text: string, cursorInput: number)
       expandedCursor += expandedLength;
       continue;
     }
-    if (segment.type === "terminal-context") {
+    if (segment.type === "terminal-context" || segment.type === "picture") {
       if (remaining <= 1) {
         return expandedCursor + remaining;
       }
@@ -115,7 +118,8 @@ function collapsedSegmentLength(
     | { type: "text"; text: string }
     | { type: "mention" }
     | { type: "skill" }
-    | { type: "terminal-context" },
+    | { type: "terminal-context" }
+    | { type: "picture" },
 ): number {
   if (segment.type === "text") {
     return segment.text.length;
@@ -129,6 +133,7 @@ function clampCollapsedComposerCursorForSegments(
     | { type: "mention" }
     | { type: "skill" }
     | { type: "terminal-context" }
+    | { type: "picture" }
   >,
   cursorInput: number,
 ): number {
@@ -184,7 +189,7 @@ export function collapseExpandedComposerCursor(text: string, cursorInput: number
       collapsedCursor += 1;
       continue;
     }
-    if (segment.type === "terminal-context") {
+    if (segment.type === "terminal-context" || segment.type === "picture") {
       if (remaining <= 1) {
         return collapsedCursor + remaining;
       }

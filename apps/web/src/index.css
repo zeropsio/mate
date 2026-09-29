@@ -2966,6 +2966,161 @@ code {
 
 /* ==== Pass 16 · composer pictures ==== */
 
+:root {
+  /* The notes' pink, burnt into the copy the Mate sees: the same in both themes. */
+  --picture-note: #e5267a;
+  --picture-note-ink: #ffffff;
+  /* The open picture sits on a dark stage in both themes, as a lightbox does. */
+  --picture-stage: #101114;
+  --picture-stage-ink: #f4f5f7;
+  --picture-stage-muted: rgb(244 245 247 / 62%);
+  --picture-stage-hover: rgb(255 255 255 / 10%);
+  --picture-frame-shadow: 0 24px 60px -24px rgb(0 0 0 / 90%);
+  --picture-pop-shadow: 0 18px 44px -18px rgb(0 0 0 / 85%), 0 0 0 1px rgb(0 0 0 / 35%);
+  --picture-chip-shadow: 0 6px 18px -8px rgb(0 0 0 / 60%);
+  --picture-crop-edge: rgb(255 255 255 / 95%);
+  --picture-crop-handle: #ffffff;
+  --picture-tag-surface: rgb(0 0 0 / 66%);
+  --picture-remove-shadow: 0 2px 6px -2px rgb(0 0 0 / 25%);
+}
+
+/* A picture in the composer's text: a block of its own line, 80 px tall. */
+.composer-picture-slot {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-block: 8px;
+  line-height: 0;
+}
+
+.composer-picture {
+  --picture-edge: color-mix(in srgb, var(--color-foreground) 14%, transparent);
+  position: relative;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 10px;
+}
+
+.composer-picture-open {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  cursor: pointer;
+  outline: none;
+}
+
+.composer-picture-img {
+  display: block;
+  max-width: 100%;
+  height: 80px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--color-muted);
+  box-shadow: 0 0 0 1px var(--picture-edge);
+  transition: box-shadow 120ms ease;
+}
+
+.composer-picture-open:hover .composer-picture-img {
+  box-shadow:
+    0 0 0 1px var(--picture-edge),
+    0 0 0 4px color-mix(in srgb, var(--color-ring) 20%, transparent);
+}
+
+.composer-picture-open:focus-visible .composer-picture-img,
+.composer-picture-slot[data-composer-chip-selected] .composer-picture-img {
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+
+/* An upload that did not go through: amber, with its way to try again. */
+.composer-picture[data-failed] .composer-picture-img {
+  box-shadow: 0 0 0 2px var(--color-warning);
+}
+
+.composer-picture-remove,
+.composer-picture-retry {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-popover);
+  color: var(--color-muted-foreground);
+  box-shadow: var(--picture-remove-shadow);
+  cursor: pointer;
+}
+
+.composer-picture-remove {
+  top: -8px;
+  right: -8px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.composer-picture-retry {
+  right: 6px;
+  bottom: 6px;
+  color: var(--color-warning-foreground);
+}
+
+.composer-picture-remove svg,
+.composer-picture-retry svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2.5;
+}
+
+.composer-picture:hover .composer-picture-remove,
+.composer-picture:focus-within .composer-picture-remove,
+.composer-picture-remove:focus-visible {
+  opacity: 1;
+}
+
+.composer-picture-remove:hover {
+  color: var(--color-foreground);
+}
+
+@media (pointer: coarse) {
+  .composer-picture-remove {
+    opacity: 1;
+  }
+}
+
+.composer-picture-tag {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: var(--picture-tag-surface);
+  color: var(--picture-stage-ink);
+  font: 500 12px/18px var(--font-sans);
+  pointer-events: none;
+}
+
+.composer-picture-unsaved {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: flex;
+  padding: 2px;
+  border-radius: 5px;
+  background: var(--color-popover);
+  color: var(--color-warning-foreground);
+}
+
+.composer-picture-unsaved svg {
+  width: 12px;
+  height: 12px;
+}
+
 /* ==== end of composer pictures ==== */
 
 /* ==== Pass 16 · review ==== */

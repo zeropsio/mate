@@ -6,6 +6,7 @@ import {
   splitPromptIntoComposerSegments,
   splitPromptIntoEditorSegments,
 } from "./composer-editor-mentions";
+import { INLINE_PICTURE_PLACEHOLDER } from "./lib/composerPictures";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
 describe("splitPromptIntoComposerSegments", () => {
@@ -350,5 +351,44 @@ describe("splitPromptIntoEditorSegments", () => {
     },
   ])("$name", ({ prompt, handles, segments }) => {
     expect(splitPromptIntoEditorSegments(prompt, [], handles)).toEqual(segments);
+  });
+});
+
+describe("pictures among the segments", () => {
+  const P = INLINE_PICTURE_PLACEHOLDER;
+  const T = INLINE_TERMINAL_CONTEXT_PLACEHOLDER;
+
+  it.each([
+    [
+      "a picture between words, matched to the first image",
+      `off:${P}Fix`,
+      ["one"],
+      [
+        { type: "text", text: "off:" },
+        { type: "picture", imageId: "one" },
+        { type: "text", text: "Fix" },
+      ],
+    ],
+    [
+      "pictures and terminal contexts each matched to their own list",
+      `${T}${P}${P}`,
+      ["one", "two"],
+      [
+        { type: "terminal-context", context: null },
+        { type: "picture", imageId: "one" },
+        { type: "picture", imageId: "two" },
+      ],
+    ],
+    [
+      "a place with no image left is an empty picture",
+      `${P}${P}`,
+      ["one"],
+      [
+        { type: "picture", imageId: "one" },
+        { type: "picture", imageId: null },
+      ],
+    ],
+  ])("%s", (_label, prompt, pictureIds, expected) => {
+    expect(splitPromptIntoComposerSegments(prompt, [], pictureIds)).toEqual(expected);
   });
 });

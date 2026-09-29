@@ -66,6 +66,7 @@ import {
   selectionTouchesMentionBoundary,
   splitPromptIntoEditorSegments,
 } from "~/composer-editor-mentions";
+import { INLINE_PICTURE_PLACEHOLDER } from "~/lib/composerPictures";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
@@ -80,6 +81,12 @@ import {
   COMPOSER_INLINE_SKILL_CHIP_CLASS_NAME,
   SKILL_CHIP_ICON_SVG,
 } from "./composerInlineChip";
+import {
+  ComposerPicture,
+  ComposerPicturesContext,
+  type ComposerPicturesValue,
+  type ComposerPictureView,
+} from "./chat/ComposerPicture";
 import { FILE_TAG_CHIP_CLASS_NAME, FileTagChipContent } from "./chat/FileTagChip";
 import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTerminalContexts";
 import { formatProviderSkillDisplayName } from "@t3tools/client-runtime/providerSkills";
@@ -139,6 +146,15 @@ type SerializedComposerTerminalContextNode = Spread<
   {
     context: TerminalContextDraft;
     type: "composer-terminal-context";
+    version: 1;
+  },
+  SerializedLexicalNode
+>;
+
+type SerializedComposerPictureNode = Spread<
+  {
+    imageId: string;
+    type: "composer-picture";
     version: 1;
   },
   SerializedLexicalNode
@@ -527,18 +543,81 @@ function $createComposerTerminalContextNode(
   return $applyNodeReplacement(new ComposerTerminalContextNode(context));
 }
 
+/**
+ * A picture's place in the text: it holds the picture's id, is written as the
+ * picture placeholder, and draws what the composer says about the picture. Its
+ * slot is a block of its own line, so words sit above and below it.
+ */
+class ComposerPictureNode extends DecoratorNode<React.ReactElement> {
+  __imageId: string;
+
+  static override getType(): string {
+    return "composer-picture";
+  }
+
+  static override clone(node: ComposerPictureNode): ComposerPictureNode {
+    return new ComposerPictureNode(node.__imageId, node.__key);
+  }
+
+  static override importJSON(serializedNode: SerializedComposerPictureNode): ComposerPictureNode {
+    return $createComposerPictureNode(serializedNode.imageId).updateFromJSON(serializedNode);
+  }
+
+  constructor(imageId: string, key?: NodeKey) {
+    super(key);
+    this.__imageId = imageId;
+  }
+
+  override exportJSON(): SerializedComposerPictureNode {
+    return {
+      ...super.exportJSON(),
+      imageId: this.__imageId,
+      type: "composer-picture",
+      version: 1,
+    };
+  }
+
+  override createDOM(): HTMLElement {
+    const dom = document.createElement("span");
+    dom.className = "composer-picture-slot";
+    return dom;
+  }
+
+  override updateDOM(): false {
+    return false;
+  }
+
+  override getTextContent(): string {
+    return INLINE_PICTURE_PLACEHOLDER;
+  }
+
+  override isInline(): true {
+    return true;
+  }
+
+  override decorate(): React.ReactElement {
+    return <ComposerPicture id={this.__imageId} />;
+  }
+}
+
+function $createComposerPictureNode(imageId: string): ComposerPictureNode {
+  return $applyNodeReplacement(new ComposerPictureNode(imageId));
+}
+
 type ComposerInlineTokenNode =
   | ComposerMentionNode
   | ComposerCrewmateNode
   | ComposerSkillNode
-  | ComposerTerminalContextNode;
+  | ComposerTerminalContextNode
+  | ComposerPictureNode;
 
 function isComposerInlineTokenNode(candidate: unknown): candidate is ComposerInlineTokenNode {
   return (
     candidate instanceof ComposerMentionNode ||
     candidate instanceof ComposerCrewmateNode ||
     candidate instanceof ComposerSkillNode ||
-    candidate instanceof ComposerTerminalContextNode
+    candidate instanceof ComposerTerminalContextNode ||
+    candidate instanceof ComposerPictureNode
   );
 }
 
@@ -564,6 +643,8 @@ function terminalContextSignature(contexts: ReadonlyArray<TerminalContextDraft>)
 }
 
 const NO_CREWMATES: ReadonlyArray<ComposerCrewmateChip> = [];
+const NO_PICTURES: ReadonlyArray<ComposerPictureView> = [];
+const IGNORE_PICTURE = () => {};
 
 function crewmateSignature(crewmates: ReadonlyArray<ComposerCrewmateChip>): string {
   return crewmates.map((mate) => `${mate.handle}:${mate.tint}`).join("\u001f");
@@ -933,14 +1014,22 @@ function $setComposerEditorPrompt(
   terminalContexts: ReadonlyArray<TerminalContextDraft>,
   skillMetadata: ReadonlyMap<string, ComposerSkillMetadata>,
   crewmates: ReadonlyArray<ComposerCrewmateChip>,
+  pictureIds: ReadonlyArray<string>,
 ): void {
   const root = $getRoot();
   root.clear();
   const paragraph = $createParagraphNode();
   root.append(paragraph);
 
-  const segments = splitPromptIntoEditorSegments(prompt, terminalContexts, crewmates);
+  const segments = splitPromptIntoEditorSegments(prompt, terminalContexts, crewmates, pictureIds);
   for (const segment of segments) {
+    if (segment.type === "picture") {
+      // A place whose picture is gone draws nothing, and so drops out of the text.
+      if (segment.imageId !== null) {
+        paragraph.append($createComposerPictureNode(segment.imageId));
+      }
+      continue;
+    }
     if (segment.type === "mention") {
       paragraph.append($createComposerMentionNode(segment.path, segment.source));
       continue;
@@ -980,11 +1069,23 @@ function collectTerminalContextIds(node: LexicalNode): string[] {
   return [];
 }
 
+/** The pictures the text holds, in the order they sit. */
+function collectPictureIds(node: LexicalNode): string[] {
+  if (node instanceof ComposerPictureNode) {
+    return [node.__imageId];
+  }
+  if ($isElementNode(node)) {
+    return node.getChildren().flatMap((child) => collectPictureIds(child));
+  }
+  return [];
+}
+
 export interface ComposerEditorSnapshot {
   readonly value: string;
   readonly cursor: number;
   readonly expandedCursor: number;
   readonly terminalContextIds: ReadonlyArray<string>;
+  readonly pictureIds: ReadonlyArray<string>;
 }
 
 /**
@@ -1011,8 +1112,12 @@ function $readComposerEditorSnapshot(previous: ComposerEditorSnapshot): Composer
       ),
     ),
     terminalContextIds: collectTerminalContextIds($getRoot()),
+    pictureIds: collectPictureIds($getRoot()),
   };
 }
+
+const sameIds = (one: ReadonlyArray<string>, other: ReadonlyArray<string>): boolean =>
+  one.length === other.length && one.every((id, index) => id === other[index]);
 
 function composerSnapshotsAgree(
   one: ComposerEditorSnapshot,
@@ -1022,8 +1127,8 @@ function composerSnapshotsAgree(
     one.value === other.value &&
     one.cursor === other.cursor &&
     one.expandedCursor === other.expandedCursor &&
-    one.terminalContextIds.length === other.terminalContextIds.length &&
-    one.terminalContextIds.every((id, index) => id === other.terminalContextIds[index])
+    sameIds(one.terminalContextIds, other.terminalContextIds) &&
+    sameIds(one.pictureIds, other.pictureIds)
   );
 }
 
@@ -1048,6 +1153,11 @@ interface ComposerPromptEditorProps {
   skills: ReadonlyArray<ServerProviderSkill>;
   /** The crewmates `@` offers (the lead's chat): their `@handle`s are drawn as them. */
   crewmates?: ReadonlyArray<ComposerCrewmateChip> | undefined;
+  /** The draft's pictures in the order they sit, matched by order to the prompt's picture places. */
+  pictures?: ReadonlyArray<ComposerPictureView> | undefined;
+  onOpenPicture?: ((id: string) => void) | undefined;
+  onRemovePicture?: ((id: string) => void) | undefined;
+  onRetryPicture?: ((id: string) => void) | undefined;
   disabled: boolean;
   placeholder: string;
   className?: string;
@@ -1058,6 +1168,7 @@ interface ComposerPromptEditorProps {
     expandedCursor: number,
     cursorAdjacentToMention: boolean,
     terminalContextIds: string[],
+    pictureIds: string[],
   ) => void;
   onCommandKeyDown?: (
     key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab" | "Escape",
@@ -1496,9 +1607,11 @@ function ComposerSurroundSelectionPlugin(props: {
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   skills: ReadonlyArray<ServerProviderSkill>;
   crewmates: ReadonlyArray<ComposerCrewmateChip>;
+  pictureIds: ReadonlyArray<string>;
 }) {
   const [editor] = useLexicalComposerContext();
   const terminalContextsRef = useRef(props.terminalContexts);
+  const pictureIdsRef = useRef(props.pictureIds);
   const skillMetadataRef = useRef(skillMetadataByName(props.skills));
   const crewmatesRef = useRef(props.crewmates);
   const pendingSurroundSelectionRef = useRef<{
@@ -1523,6 +1636,10 @@ function ComposerSurroundSelectionPlugin(props: {
   useEffect(() => {
     crewmatesRef.current = props.crewmates;
   }, [props.crewmates]);
+
+  useEffect(() => {
+    pictureIdsRef.current = props.pictureIds;
+  }, [props.pictureIds]);
 
   const applySurroundInsertion = useEffectEvent((inputData: string): boolean => {
     const surroundCloseSymbol = SURROUND_SYMBOLS_MAP.get(inputData);
@@ -1573,6 +1690,7 @@ function ComposerSurroundSelectionPlugin(props: {
         terminalContextsRef.current,
         skillMetadataRef.current,
         crewmatesRef.current,
+        pictureIdsRef.current,
       );
       const selectionStart = collapseExpandedComposerCursor(
         nextValue,
@@ -1775,6 +1893,10 @@ function ComposerPromptEditorInner({
   terminalContexts,
   skills,
   crewmates = NO_CREWMATES,
+  pictures = NO_PICTURES,
+  onOpenPicture = IGNORE_PICTURE,
+  onRemovePicture = IGNORE_PICTURE,
+  onRetryPicture = IGNORE_PICTURE,
   disabled,
   placeholder,
   className,
@@ -1797,6 +1919,24 @@ function ComposerPromptEditorInner({
   const crewmatesSignature = crewmateSignature(crewmates);
   const crewmatesSignatureRef = useRef(crewmatesSignature);
   const crewmatesRef = useRef(crewmates);
+  // The pictures' order is what the text is rebuilt from; what each shows
+  // (its thumbnail, its upload) reaches the decorators through context alone.
+  const pictureIdsSignature = pictures.map((picture) => picture.id).join("\u001f");
+  const pictureIdsSignatureRef = useRef(pictureIdsSignature);
+  const pictureIds = useMemo(
+    () => (pictureIdsSignature.length > 0 ? pictureIdsSignature.split("\u001f") : []),
+    [pictureIdsSignature],
+  );
+  const pictureIdsRef = useRef(pictureIds);
+  const picturesValue = useMemo<ComposerPicturesValue>(
+    () => ({
+      pictures: new Map(pictures.map((picture) => [picture.id, picture])),
+      onOpenPicture,
+      onRemovePicture,
+      onRetryPicture,
+    }),
+    [onOpenPicture, onRemovePicture, onRetryPicture, pictures],
+  );
   // The contexts the sync below writes into the editor. Held in a ref because
   // the screen builds this list fresh on every render — a thread with no
   // contexts hands a new empty array each time — and keying the sync to the
@@ -1807,6 +1947,7 @@ function ComposerPromptEditorInner({
     cursor: initialCursor,
     expandedCursor: expandCollapsedComposerCursor(value, initialCursor),
     terminalContextIds: terminalContexts.map((context) => context.id),
+    pictureIds,
   });
   const terminalContextActions = useMemo(
     () => ({ onRemoveTerminalContext }),
@@ -1821,7 +1962,8 @@ function ComposerPromptEditorInner({
     skillMetadataRef.current = skillMetadataByName(skills);
     terminalContextsRef.current = terminalContexts;
     crewmatesRef.current = crewmates;
-  }, [crewmates, skills, terminalContexts]);
+    pictureIdsRef.current = pictureIds;
+  }, [crewmates, pictureIds, skills, terminalContexts]);
 
   useEffect(() => {
     editor.setEditable(!disabled);
@@ -1830,7 +1972,9 @@ function ComposerPromptEditorInner({
   useLayoutEffect(() => {
     const normalizedCursor = clampCollapsedComposerCursor(value, cursor);
     const previousSnapshot = snapshotRef.current;
-    const contextsChanged = terminalContextsSignatureRef.current !== terminalContextsSignature;
+    const contextsChanged =
+      terminalContextsSignatureRef.current !== terminalContextsSignature ||
+      pictureIdsSignatureRef.current !== pictureIdsSignature;
     const chipsChanged =
       skillsSignatureRef.current !== skillsSignature ||
       crewmatesSignatureRef.current !== crewmatesSignature;
@@ -1849,8 +1993,10 @@ function ComposerPromptEditorInner({
       cursor: normalizedCursor,
       expandedCursor: expandCollapsedComposerCursor(value, normalizedCursor),
       terminalContextIds: contexts.map((context) => context.id),
+      pictureIds: pictureIdsRef.current,
     };
     terminalContextsSignatureRef.current = terminalContextsSignature;
+    pictureIdsSignatureRef.current = pictureIdsSignature;
     skillsSignatureRef.current = skillsSignature;
     crewmatesSignatureRef.current = crewmatesSignature;
 
@@ -1864,7 +2010,13 @@ function ComposerPromptEditorInner({
       const shouldRewriteEditorState =
         previousSnapshot.value !== value || contextsChanged || chipsChanged;
       if (shouldRewriteEditorState) {
-        $setComposerEditorPrompt(value, contexts, skillMetadataRef.current, crewmatesRef.current);
+        $setComposerEditorPrompt(
+          value,
+          contexts,
+          skillMetadataRef.current,
+          crewmatesRef.current,
+          pictureIdsRef.current,
+        );
       }
       if (shouldRewriteEditorState || isFocused) {
         $setSelectionAtComposerOffset(normalizedCursor);
@@ -1879,7 +2031,15 @@ function ComposerPromptEditorInner({
       // (`verified.md`, 2026-09-18).
       snapshotRef.current = $readComposerEditorSnapshot(snapshotRef.current);
     });
-  }, [cursor, crewmatesSignature, editor, skillsSignature, terminalContextsSignature, value]);
+  }, [
+    cursor,
+    crewmatesSignature,
+    editor,
+    pictureIdsSignature,
+    skillsSignature,
+    terminalContextsSignature,
+    value,
+  ]);
 
   const focusAt = useCallback(
     (nextCursor: number) => {
@@ -1892,9 +2052,14 @@ function ComposerPromptEditorInner({
         snapshotRef.current = $readComposerEditorSnapshot(snapshotRef.current);
       });
       const snapshot = snapshotRef.current;
-      onChangeRef.current(snapshot.value, snapshot.cursor, snapshot.expandedCursor, false, [
-        ...snapshot.terminalContextIds,
-      ]);
+      onChangeRef.current(
+        snapshot.value,
+        snapshot.cursor,
+        snapshot.expandedCursor,
+        false,
+        [...snapshot.terminalContextIds],
+        [...snapshot.pictureIds],
+      );
     },
     [editor],
   );
@@ -1977,51 +2142,55 @@ function ComposerPromptEditorInner({
         snapshot.expandedCursor,
         cursorAdjacentToMention,
         [...snapshot.terminalContextIds],
+        [...snapshot.pictureIds],
       );
     });
   }, []);
 
   return (
     <ComposerTerminalContextActionsContext value={terminalContextActions}>
-      <div className="relative [font-family:var(--font-composer,var(--font-sans))] [font-size:var(--font-size-prompt,0.875rem)] [@media(max-width:39.999rem)_and_(pointer:coarse)]:[font-size:max(var(--font-size-prompt,1rem),16px)]">
-        <PlainTextPlugin
-          contentEditable={
-            <ContentEditable
-              className={cn(
-                // The wrapper owns the appearance preference; keep everything else here.
-                "block max-h-50 min-h-17.5 w-full overflow-y-auto whitespace-pre-wrap wrap-break-word bg-transparent leading-relaxed text-foreground focus:outline-none",
-                className,
-              )}
-              data-testid="composer-editor"
-              aria-placeholder={placeholder}
-              placeholder={<span />}
-              onPaste={onPaste}
-            />
-          }
-          placeholder={
-            terminalContexts.length > 0 ? null : (
-              <div className="pointer-events-none absolute inset-0 leading-relaxed text-placeholder">
-                {placeholder}
-              </div>
-            )
-          }
-          ErrorBoundary={LexicalErrorBoundary}
-        />
-        <OnChangePlugin onChange={handleEditorChange} />
-        <ComposerCommandKeyPlugin {...(onCommandKeyDown ? { onCommandKeyDown } : {})} />
-        <ComposerSurroundSelectionPlugin
-          crewmates={crewmates}
-          skills={skills}
-          terminalContexts={terminalContexts}
-        />
-        <ComposerHomeEndKeyPlugin />
-        <ComposerInlineTokenArrowPlugin />
-        <ComposerInlineTokenSelectionNormalizePlugin />
-        <ComposerInlineTokenBackspacePlugin />
-        <ComposerInlineTokenPastePlugin />
-        <ComposerChipSelectionPlugin />
-        <HistoryPlugin />
-      </div>
+      <ComposerPicturesContext value={picturesValue}>
+        <div className="relative [font-family:var(--font-composer,var(--font-sans))] [font-size:var(--font-size-prompt,0.875rem)] [@media(max-width:39.999rem)_and_(pointer:coarse)]:[font-size:max(var(--font-size-prompt,1rem),16px)]">
+          <PlainTextPlugin
+            contentEditable={
+              <ContentEditable
+                className={cn(
+                  // The wrapper owns the appearance preference; keep everything else here.
+                  "block max-h-50 min-h-17.5 w-full overflow-y-auto whitespace-pre-wrap wrap-break-word bg-transparent leading-relaxed text-foreground focus:outline-none",
+                  className,
+                )}
+                data-testid="composer-editor"
+                aria-placeholder={placeholder}
+                placeholder={<span />}
+                onPaste={onPaste}
+              />
+            }
+            placeholder={
+              terminalContexts.length > 0 || pictures.length > 0 ? null : (
+                <div className="pointer-events-none absolute inset-0 leading-relaxed text-placeholder">
+                  {placeholder}
+                </div>
+              )
+            }
+            ErrorBoundary={LexicalErrorBoundary}
+          />
+          <OnChangePlugin onChange={handleEditorChange} />
+          <ComposerCommandKeyPlugin {...(onCommandKeyDown ? { onCommandKeyDown } : {})} />
+          <ComposerSurroundSelectionPlugin
+            crewmates={crewmates}
+            pictureIds={pictureIds}
+            skills={skills}
+            terminalContexts={terminalContexts}
+          />
+          <ComposerHomeEndKeyPlugin />
+          <ComposerInlineTokenArrowPlugin />
+          <ComposerInlineTokenSelectionNormalizePlugin />
+          <ComposerInlineTokenBackspacePlugin />
+          <ComposerInlineTokenPastePlugin />
+          <ComposerChipSelectionPlugin />
+          <HistoryPlugin />
+        </div>
+      </ComposerPicturesContext>
     </ComposerTerminalContextActionsContext>
   );
 }
@@ -2032,6 +2201,10 @@ export function ComposerPromptEditor({
   terminalContexts,
   skills,
   crewmates = NO_CREWMATES,
+  pictures = NO_PICTURES,
+  onOpenPicture,
+  onRemovePicture,
+  onRetryPicture,
   disabled,
   placeholder,
   className,
@@ -2045,6 +2218,7 @@ export function ComposerPromptEditor({
   const initialTerminalContextsRef = useRef(terminalContexts);
   const initialSkillMetadataRef = useRef(skillMetadataByName(skills));
   const initialCrewmatesRef = useRef(crewmates);
+  const initialPictureIdsRef = useRef(pictures.map((picture) => picture.id));
   const initialConfig = useMemo<InitialConfigType>(
     () => ({
       namespace: "t3tools-composer-editor",
@@ -2054,6 +2228,7 @@ export function ComposerPromptEditor({
         ComposerCrewmateNode,
         ComposerSkillNode,
         ComposerTerminalContextNode,
+        ComposerPictureNode,
       ],
       editorState: () => {
         $setComposerEditorPrompt(
@@ -2061,6 +2236,7 @@ export function ComposerPromptEditor({
           initialTerminalContextsRef.current,
           initialSkillMetadataRef.current,
           initialCrewmatesRef.current,
+          initialPictureIdsRef.current,
         );
       },
       onError: (error) => {
@@ -2078,6 +2254,10 @@ export function ComposerPromptEditor({
         terminalContexts={terminalContexts}
         skills={skills}
         crewmates={crewmates}
+        pictures={pictures}
+        onOpenPicture={onOpenPicture}
+        onRemovePicture={onRemovePicture}
+        onRetryPicture={onRetryPicture}
         disabled={disabled}
         placeholder={placeholder}
         onRemoveTerminalContext={onRemoveTerminalContext}

@@ -2032,8 +2032,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       cursor: composerCursor,
       expandedCursor: expandCollapsedComposerCursor(promptRef.current, composerCursor),
       terminalContextIds: composerTerminalContexts.map((context) => context.id),
+      pictureIds: composerImages.map((image) => image.id),
     };
-  }, [composerCursor, composerTerminalContexts, promptRef]);
+  }, [composerCursor, composerImages, composerTerminalContexts, promptRef]);
 
   /**
    * Attaches a context at the caret: the same inline-placeholder insertion the
@@ -2048,6 +2049,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         cursor: composerCursor,
         expandedCursor: expandCollapsedComposerCursor(promptRef.current, composerCursor),
         terminalContextIds: composerTerminalContexts.map((context) => context.id),
+        pictureIds: composerImages.map((image) => image.id),
       };
       const insertion = insertInlineTerminalContextPlaceholder(
         snapshot.value,
