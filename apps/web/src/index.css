@@ -4107,9 +4107,12 @@ button.run-bar:focus-visible {
 .run-result-words {
   color: var(--color-muted-foreground);
 }
+/* The hash keeps to the row's 20 px: set on the sans baseline at its own
+   height, a mono line would stand a row with a version a pixel taller. */
 .run-result-version {
   font-family: var(--font-mono);
   font-size: 13px;
+  line-height: 1;
   color: var(--color-muted-foreground);
 }
 .run-result-sub {
