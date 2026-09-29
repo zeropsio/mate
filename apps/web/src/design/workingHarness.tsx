@@ -281,6 +281,7 @@ const REPORT: OutcomeModel = {
       word: "Healthy",
       version: "11ea406",
       url: "https://example.dev",
+      at: ago(20),
       failure: null,
     },
     {
@@ -289,6 +290,7 @@ const REPORT: OutcomeModel = {
       word: "Deployed",
       version: null,
       url: null,
+      at: ago(20),
       failure: null,
     },
     {
@@ -297,6 +299,7 @@ const REPORT: OutcomeModel = {
       word: "Failed",
       version: null,
       url: null,
+      at: ago(20),
       failure: null,
     },
   ],
@@ -305,7 +308,11 @@ const REPORT: OutcomeModel = {
   checks: { count: 5, views: 2, failures: 0, takes: [] },
   created: [],
   notDone: [],
+  planLeft: [],
+  change: null,
+  crewTask: null,
   activity: [],
+  later: { services: [], changes: [], tasks: [], pages: [], answered: false },
 };
 
 const TURN = TurnId.make("turn-1");

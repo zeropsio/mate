@@ -1158,6 +1158,7 @@ describe("deriveOutcome", () => {
           word: "Healthy",
           version: null,
           url: "https://medusastage.example.dev",
+          at: at(4, 30),
           failure: null,
         },
       ],
@@ -1179,6 +1180,10 @@ describe("deriveOutcome", () => {
       },
       created: [],
       notDone: [],
+      planLeft: [],
+      change: null,
+      crewTask: null,
+      later: { services: [], changes: [], tasks: [], pages: [], answered: false },
     });
   });
 
@@ -1337,6 +1342,172 @@ describe("deriveOutcome", () => {
     });
     expect(outcome?.live.map((service) => service.word) ?? []).toEqual(services);
     expect(outcome?.notDone.length ?? 0).toBe(notDone);
+  });
+
+  // What the runs after this one took over: a service deployed, started,
+  // stopped, created or removed again; a change pushed to again; a crew task
+  // worked again; a page checked again — and whether the person wrote since.
+  // A health check takes nothing over, and neither does a helper waking the
+  // Mate.
+  const pushedTo = (id: string, turnId: string, minute: number, number: number) =>
+    operation(id, turnId, minute, {
+      kind: "deploy",
+      strategy: "git-push",
+      statusWord: "Pushed",
+      pullRequest: { repository: "app", number },
+      steps: [{ id: "push", label: "Push", state: "done", stateLabel: "Done" }],
+    });
+  const devServer = (id: string, turnId: string, minute: number, action: string) =>
+    operation(id, turnId, minute, {
+      kind: "devServer",
+      statusWord: action === "stop" ? "Not running" : "Running",
+      steps: [{ id: action, label: action, state: "done", stateLabel: "Done" }],
+    });
+  const crewCard = (id: string, minute: number, title: string) =>
+    user(id, minute, `${CREW_CARD_OPENER}\n${title}\nDone when: it works`);
+  it.each([
+    {
+      name: "a later run redeploys a service and checks a page again",
+      after: [
+        user("m1", 10),
+        operation("d2", "t2", 11, { kind: "deploy" }),
+        operation("b2", "t2", 12, { kind: "browser", subject: "https://a.dev/status" }),
+        assistant("a2", "t2", 13),
+      ],
+      later: {
+        services: ["appdev"],
+        changes: [],
+        tasks: [],
+        pages: ["a.dev/status"],
+        answered: true,
+      },
+    },
+    {
+      name: "a later run starts, stops, creates and removes services",
+      after: [
+        user("m1", 10),
+        devServer("s2", "t2", 11, "start"),
+        devServer("s3", "t2", 12, "stop"),
+        operation("i2", "t2", 13, { kind: "import", subject: "db, cache" }),
+        operation("x2", "t2", 14, { kind: "delete", subject: "oldtier" }),
+        assistant("a2", "t2", 15),
+      ],
+      later: {
+        services: ["appdev", "db", "cache", "oldtier"],
+        changes: [],
+        tasks: [],
+        pages: [],
+        answered: true,
+      },
+    },
+    {
+      name: "a later run only checks a service's health: nothing taken over",
+      after: [user("m1", 10), devServer("s2", "t2", 11, "health check"), assistant("a2", "t2", 12)],
+      later: { services: [], changes: [], tasks: [], pages: [], answered: true },
+    },
+    {
+      name: "a later run pushes to the same change",
+      after: [user("m1", 10), pushedTo("p2", "t2", 11, 2), assistant("a2", "t2", 12)],
+      later: { services: [], changes: ["app#2"], tasks: [], pages: [], answered: true },
+    },
+    {
+      name: "a later run works the same crew task",
+      after: [
+        crewCard("m1", 10, "#12 Camera rig · rework"),
+        tool("w2", "t2", 11),
+        assistant("a2", "t2", 12),
+      ],
+      later: { services: [], changes: [], tasks: [12], pages: [], answered: true },
+    },
+    {
+      name: "no run after it",
+      after: [],
+      later: { services: [], changes: [], tasks: [], pages: [], answered: false },
+    },
+  ])("knows what the runs after it took over: $name", ({ after, later }) => {
+    const entries = [
+      user("m0", 0),
+      operation("d1", "t1", 1, { kind: "deploy" }),
+      assistant("a1", "t1", 2),
+      ...after,
+    ];
+    const turns = structure(entries, {
+      latest: { id: after.length > 0 ? "t2" : "t1", state: "completed", completed: true },
+    }).turns;
+    const outcome = deriveOutcome({
+      turn: turns[0]!,
+      landed: [],
+      diff: null,
+      later: turns.slice(1),
+    });
+    expect(outcome?.later).toEqual(later);
+  });
+
+  // The change a run leaves is the pull request its push landed through;
+  // the crew task it worked is the one its card named.
+  it("names the change its push went to, and the crew task its card named", () => {
+    const entries = [
+      user("m0", 0, `${CREW_CARD_OPENER}\n#12 Camera rig · from you\nDone when: it follows`),
+      pushedTo("p1", "t1", 1, 1),
+      pushedTo("p2", "t1", 2, 2),
+      assistant("a1", "t1", 3),
+    ];
+    const outcome = deriveOutcome({
+      turn: structure(entries, settled).turns[0]!,
+      landed: [],
+      diff: null,
+    });
+    expect(outcome?.change).toEqual({ repository: "app", number: 2 });
+    expect(outcome?.crewTask).toEqual({ number: 12, title: "Camera rig" });
+  });
+
+  // A step of its plan it did not finish is something it could not do.
+  it("keeps the steps of its plan it did not finish", () => {
+    const plan: TimelineEntry = {
+      id: "p1",
+      kind: "turn-plan",
+      createdAt: at(1),
+      turnPlan: {
+        id: "turn-plan:t1",
+        createdAt: at(1),
+        turnId: turn("t1"),
+        plan: {
+          createdAt: at(1),
+          turnId: turn("t1"),
+          steps: [
+            { step: "Add the route", status: "completed" },
+            { step: "Style the page", status: "inProgress" },
+            { step: "Write the tests", status: "pending" },
+          ],
+        },
+      },
+    };
+    const outcome = deriveOutcome({
+      turn: structure([user("m0", 0), plan, tool("w1", "t1", 2), assistant("a1", "t1", 3)], settled)
+        .turns[0]!,
+      landed: [],
+      diff: null,
+    });
+    expect(outcome?.planLeft).toEqual(["Style the page", "Write the tests"]);
+  });
+
+  // Each service says when the run last deployed or started it: a version
+  // the platform made after that is someone else's since.
+  it("says when the run last touched each service", () => {
+    const outcome = deriveOutcome({
+      turn: structure(
+        [
+          user("m0", 0),
+          operation("d1", "t1", 1, { kind: "deploy" }),
+          operation("d2", "t1", 4, { kind: "deploy" }),
+          assistant("a1", "t1", 5),
+        ],
+        settled,
+      ).turns[0]!,
+      landed: [],
+      diff: null,
+    });
+    expect(outcome?.live.map((service) => service.at)).toEqual([at(4, 30)]);
   });
 
   it("has nothing to say for a turn that produced nothing, or one a limit refused", () => {
