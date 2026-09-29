@@ -132,7 +132,7 @@ describe("crewAttentionActions", () => {
     },
     {
       kind: "ready-to-land" as const,
-      actions: [{ kind: "command", label: "Land", command: { _tag: "land", taskId: "task-12" } }],
+      actions: [{ kind: "review", label: "Review", taskId: "task-12" }],
     },
     { kind: "plan" as const, actions: [{ kind: "board", label: "Review plan" }] },
     {
@@ -182,7 +182,7 @@ describe("crewAttentionActions", () => {
             attachments: [],
           },
         },
-        { kind: "command", label: "Land now", command: { _tag: "landNow", taskId: "task-12" } },
+        { kind: "review", label: "Review", taskId: "task-12" },
         { kind: "command", label: "Discard", command: { _tag: "discard", taskId: "task-12" } },
       ],
     },
@@ -199,7 +199,7 @@ describe("crewAttentionActions", () => {
             attachments: [],
           },
         },
-        { kind: "command", label: "Land it myself", command: { _tag: "land", taskId: "task-12" } },
+        { kind: "review", label: "Review", taskId: "task-12" },
       ],
     },
     {
@@ -252,16 +252,14 @@ describe("crewAttentionActions", () => {
     ]);
   });
 
-  it("offers only Land it myself on a review where the crew has no lead", () => {
+  it("offers only the review, which lands it, where the crew has no lead to review it", () => {
     const noLead = {
       ...snapshot,
       crewmates: snapshot.crewmates.filter((mate) => mate.kind !== "lead"),
     };
     expect(
       crewAttentionActions(attention({ kind: "review-wait" }), noLead, { board: true }),
-    ).toEqual([
-      { kind: "command", label: "Land it myself", command: { _tag: "land", taskId: "task-12" } },
-    ]);
+    ).toEqual([{ kind: "review", label: "Review", taskId: "task-12" }]);
   });
 
   it("drops the wait on the dependency that will not land, or discards the task", () => {

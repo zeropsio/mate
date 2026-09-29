@@ -36,7 +36,9 @@ import {
   checkDotTone,
   checkTone,
   checkWord,
+  gitChecks,
   pullRequestBlocked,
+  type GitCheckRow,
   type GitCheckTone,
 } from "./gitTab.ts";
 import type { MergeabilityKind } from "./forge/mergeState.ts";
@@ -81,6 +83,25 @@ export interface FlowPullRequest {
   /** `appdev #4`, or `appdev #4 · ada` for a person's; `recipe #6` on the group repo. */
   readonly line: string;
   readonly updatedAt: string | undefined;
+  /*
+   * What a review reads before anyone merges (pass 16, R4/R8). Optional, because every flow
+   * built before a review existed carries none of them, and a surface that is not a review
+   * never needs them.
+   */
+  /** The branch it comes from — `mate/mate-{projectId}` for a Mate's. */
+  readonly headBranch?: string | undefined;
+  /** Every check on its head by name, with what each said — the broker's own left out. */
+  readonly checkRows?: ReadonlyArray<GitCheckRow> | undefined;
+  /** Lines added and removed and files touched, as Gitea counts them; absent where it did not. */
+  readonly additions?: number | undefined;
+  readonly deletions?: number | undefined;
+  readonly changedFiles?: number | undefined;
+  /** The commit its branch last shared with the base, as Gitea tested it. */
+  readonly mergeBase?: string | undefined;
+  /** The base branch's head as read: past {@link mergeBase}, `main` moved on since. */
+  readonly baseSha?: string | undefined;
+  /** When it was opened. */
+  readonly createdAt?: string | undefined;
 }
 
 /** The default branch until Gitea says otherwise. */
@@ -123,6 +144,14 @@ export function flowPullRequest(input: {
     baseBranch: pull.base?.ref ?? FALLBACK_BASE,
     line,
     updatedAt: pull.updated_at,
+    headBranch: pull.head?.ref,
+    checkRows: gitChecks(input.checks),
+    additions: pull.additions,
+    deletions: pull.deletions,
+    changedFiles: pull.changed_files,
+    mergeBase: pull.merge_base,
+    baseSha: pull.base?.sha,
+    createdAt: pull.created_at,
   };
 }
 

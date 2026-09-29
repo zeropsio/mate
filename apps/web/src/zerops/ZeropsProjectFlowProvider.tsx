@@ -66,6 +66,7 @@ import { useAccountGitea } from "./giteaProject";
 import { giteaClientFor, useGiteaSession } from "./accountGiteaSessions";
 import {
   ZeropsProjectFlowContext,
+  type FlowVerbOutcome,
   type ZeropsProjectFlow,
   type ZeropsProjectFlowValue,
 } from "./projectFlowContext";
@@ -101,6 +102,11 @@ const SIGNING_IN_AGAIN = "Signing in to Gitea again. Try it again in a moment.";
 export const MERGE_HEAD_MOVED = "This pull request changed since you opened it — review it again.";
 /** How long a verb whose call landed stays pending while the flow has not read its effect back. */
 export const HELD_VERB_MS = 30_000;
+/** What a second press of a verb that is still running says: the first one is the one that counts. */
+export const VERB_ALREADY_RUNNING = "It is already on its way.";
+
+const DONE: FlowVerbOutcome = { ok: true };
+const refused = (reason: string): FlowVerbOutcome => ({ ok: false, reason });
 
 /**
  * What a verb whose call landed waits for in its group's forge answer: any answer after the one
@@ -542,15 +548,22 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
    */
   const running = useRef(new Set<string>());
 
-  /** Holds the verb's key in `pending` while it runs, then re-reads what it changed. */
+  /**
+   * Holds the verb's key in `pending` while it runs, then re-reads what it changed; how it went is
+   * `act`'s answer, and a verb already running answers that it is.
+   */
   const run = useCallback(
-    async (verb: FlowVerb, groupId: string | undefined, act: () => Promise<void>) => {
+    async (
+      verb: FlowVerb,
+      groupId: string | undefined,
+      act: () => Promise<FlowVerbOutcome>,
+    ): Promise<FlowVerbOutcome> => {
       const key = flowVerbKey(verb);
-      if (running.current.has(key)) return;
+      if (running.current.has(key)) return refused(VERB_ALREADY_RUNNING);
       running.current.add(key);
       setPending((current) => new Set(current).add(key));
       try {
-        await act();
+        return await act();
       } finally {
         running.current.delete(key);
         setPending((current) => {
@@ -639,16 +652,22 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     return client;
   }, [giteaOrigin]);
 
+  /** Says a refusal where the verbs are, and hands it back to the surface that pressed it. */
+  const refuse = useCallback((reason: string): FlowVerbOutcome => {
+    setTrouble(reason);
+    return refused(reason);
+  }, []);
+
   const mergePullRequest = useCallback(
-    async (slug: string, pull: Pick<FlowPullRequest, "repository" | "number" | "headSha">) => {
+    async (
+      slug: string,
+      pull: Pick<FlowPullRequest, "repository" | "number" | "headSha">,
+    ): Promise<FlowVerbOutcome> => {
       const client = actingClient();
-      if (client === null) return;
+      if (client === null) return refused(SIGNING_IN_AGAIN);
       // Only the head the person was shown is merged; with none read there is nothing to hold.
       const head = pull.headSha;
-      if (head === undefined) {
-        setTrouble(MERGE_HEAD_MOVED);
-        return;
-      }
+      if (head === undefined) return refuse(MERGE_HEAD_MOVED);
       const verb: FlowVerb = {
         kind: "merge",
         slug,
@@ -656,13 +675,14 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         number: pull.number,
       };
       const groupId = groupOfSlug.get(slug);
-      await run(verb, groupId, async () => {
+      return run(verb, groupId, async () => {
         try {
           await client.mergePullRequest(slug, pull.repository, pull.number, head);
           setTrouble(null);
           hold(verb, groupId, { kind: "closed", repository: pull.repository, number: pull.number });
+          return DONE;
         } catch (cause) {
-          setTrouble(
+          return refuse(
             headMoved(cause)
               ? MERGE_HEAD_MOVED
               : `Gitea would not merge it: ${zeropsErrorMessage(cause)}`,
@@ -670,7 +690,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         }
       });
     },
-    [actingClient, groupOfSlug, hold, run],
+    [actingClient, groupOfSlug, hold, refuse, run],
   );
 
   const createPullRequest = useCallback(
@@ -696,18 +716,19 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
               title: input.title,
             });
             setTrouble(null);
+            return DONE;
           } catch (cause) {
-            setTrouble(`Gitea would not open the pull request: ${zeropsErrorMessage(cause)}`);
+            return refuse(`Gitea would not open the pull request: ${zeropsErrorMessage(cause)}`);
           }
         },
       );
     },
-    [actingClient, groupOfSlug, run],
+    [actingClient, groupOfSlug, refuse, run],
   );
 
   /**
    * A tag on a commit of the group repo's `main`, as the person; Gitea's tag protection is the
-   * real gate. Whether the tag was made.
+   * real gate. Whether the tag was made, or why not.
    */
   const tagAs = useCallback(
     async (
@@ -715,39 +736,35 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       target: string | undefined,
       tag: string,
       message: string,
-    ): Promise<boolean> => {
+    ): Promise<FlowVerbOutcome> => {
       const client = actingClient();
-      if (client === null) return false;
-      if (target === undefined) {
-        setTrouble("The group repository has no main to tag.");
-        return false;
-      }
+      if (client === null) return refused(SIGNING_IN_AGAIN);
+      if (target === undefined) return refuse("The group repository has no main to tag.");
       try {
         await client.createTag(slug, GROUP_REPOSITORY, { tag, target, message });
         setTrouble(null);
-        return true;
+        return DONE;
       } catch (cause) {
-        setTrouble(
+        return refuse(
           cause instanceof Error && "status" in cause && cause.status === 403
             ? "Only releasers can tag."
             : "Gitea would not create the tag.",
         );
-        return false;
       }
     },
-    [actingClient],
+    [actingClient, refuse],
   );
 
   const release = useCallback(
-    async (groupId: string) => {
+    async (groupId: string): Promise<FlowVerbOutcome> => {
       const flow = flows.get(groupId);
-      if (flow === undefined) return;
+      if (flow === undefined) return refused("This project has not been read yet.");
       // What the offer showed, not a second derivation of it: the two would
       // differ for a project releasing what is merged (D28).
       const entries = flow.release.entries;
-      if (entries.length === 0) return;
+      if (entries.length === 0) return refused("Nothing is merged to release.");
       const verb: FlowVerb = { kind: "release", groupId };
-      await run(verb, groupId, async () => {
+      return run(verb, groupId, async () => {
         // The `main` head the offer was computed from — never a head read at the press, which may
         // hold what the person was not shown.
         const made = await tagAs(
@@ -756,20 +773,21 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
           releaseTagName(flow.release.suggestion.replace(/^v/u, "")),
           releaseMessage(entries),
         );
-        if (made) hold(verb, groupId, { kind: "answer" });
+        if (made.ok) hold(verb, groupId, { kind: "answer" });
+        return made;
       });
     },
     [flows, hold, run, tagAs],
   );
 
   const rollBack = useCallback(
-    async (groupId: string, earlier: string) => {
+    async (groupId: string, earlier: string): Promise<FlowVerbOutcome> => {
       const flow = flows.get(groupId);
-      if (flow === undefined) return;
+      if (flow === undefined) return refused("This project has not been read yet.");
       const client = actingClient();
-      if (client === null) return;
+      if (client === null) return refused(SIGNING_IN_AGAIN);
       const verb: FlowVerb = { kind: "roll-back", groupId, tag: earlier };
-      await run(verb, groupId, async () => {
+      return run(verb, groupId, async () => {
         const tags = await client.listTags(flow.slug, GROUP_REPOSITORY).catch(() => []);
         const found = tags.find((entry) => entry.name === earlier);
         const plan =
@@ -780,18 +798,16 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
                 message: found.message ?? "",
                 existingTags: tags.map((entry) => entry.name),
               });
-        if (plan === undefined) {
-          setTrouble(`${earlier} does not list commits this build can read.`);
-          return;
-        }
+        if (plan === undefined)
+          return refuse(`${earlier} does not list commits this build can read.`);
         const { slug } = flow;
         const head = await client.getBranch(slug, GROUP_REPOSITORY, "main").catch(() => undefined);
-        if (await tagAs(slug, head?.commit?.id, plan.tag, plan.message)) {
-          hold(verb, groupId, { kind: "answer" });
-        }
+        const made = await tagAs(slug, head?.commit?.id, plan.tag, plan.message);
+        if (made.ok) hold(verb, groupId, { kind: "answer" });
+        return made;
       });
     },
-    [actingClient, flows, hold, run, tagAs],
+    [actingClient, flows, hold, refuse, run, tagAs],
   );
 
   // While the account's access lapses, the groups the registry names and what was read of them

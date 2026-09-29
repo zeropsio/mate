@@ -8,8 +8,10 @@
  * *Commit my edit* — to the ask it confirms. `null` for a crewmate without a
  * copy — a reader or the lead.
  *
- * Pure: no clock, no I/O. Every word comes from the crew phrases.
+ * Pure: no clock, no I/O. Every word comes from the crew phrases, and the door's from the
+ * review's (`REVIEW_LABEL`).
  */
+import { REVIEW_LABEL } from "@t3tools/client-runtime/zerops";
 import type { CrewmateView } from "@t3tools/client-runtime/zerops/projections/crew";
 import {
   CREW_ATTENTION_VERBS,
@@ -83,11 +85,11 @@ export interface CrewLaneBarModel {
     readonly enabled: boolean;
   } | null;
   /**
-   * The blue Pill: *Land* on a ready task; *Land now* between turns on work
-   * never reported — commits ahead of your tree, or changes no commit holds yet.
+   * The blue Pill: the door to the open task's review, which lands it (pass 16, R1) — pressable
+   * on a ready task, and between turns on work never reported (commits ahead of your tree, or
+   * changes no commit holds yet), whose review offers *Land now*.
    */
   readonly land: {
-    readonly kind: "land" | "landNow";
     readonly taskId: string | null;
     readonly label: string;
     readonly enabled: boolean;
@@ -246,14 +248,15 @@ export function crewLaneBarModel(
   })();
 
   const taskId = openTask?.id ?? null;
-  const land: CrewLaneBarModel["land"] =
-    openTask?.state === "ready"
-      ? { kind: "land", taskId, label: CREW_ATTENTION_VERBS.land, enabled: true }
-      : (openTask?.state === "working" || openTask?.state === "rework") &&
-          !row.working &&
-          (ahead !== null || lane.dirty)
-        ? { kind: "landNow", taskId, label: CREW_LANE_VERBS.landNow, enabled: true }
-        : { kind: "land", taskId, label: CREW_ATTENTION_VERBS.land, enabled: false };
+  const land: CrewLaneBarModel["land"] = {
+    taskId,
+    label: REVIEW_LABEL,
+    enabled:
+      openTask?.state === "ready" ||
+      ((openTask?.state === "working" || openTask?.state === "rework") &&
+        !row.working &&
+        (ahead !== null || lane.dirty)),
+  };
 
   return {
     branch: lane.branch,

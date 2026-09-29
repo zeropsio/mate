@@ -208,16 +208,7 @@ const RELEASE_WAITING: ReleaseOffer = {
   offered: true,
   releasing: false,
   tag: "v1.5.0",
-  contents: [
-    {
-      commits: [
-        { sha: "a", subject: "Two-step checkout: the basket step" },
-        { sha: "b", subject: "Fix the VAT rate table for Ireland" },
-        { sha: "c", subject: "Retry the payment webhook three times" },
-      ],
-    },
-  ],
-  onRelease: () => {},
+  onReview: () => {},
 };
 
 /** Nothing to release: production already runs every commit on main. */
@@ -225,8 +216,7 @@ const RELEASE_NONE: ReleaseOffer = {
   offered: false,
   releasing: false,
   tag: undefined,
-  contents: [],
-  onRelease: () => {},
+  onReview: () => {},
 };
 
 /** Opening a commit is what grew the row and dragged the node down the rail. */
@@ -421,8 +411,7 @@ const BEVIRO_BEHIND: ReleaseOffer = {
   offered: true,
   releasing: false,
   tag: "v0.1.14",
-  contents: BEVIRO_WAITING,
-  onRelease: () => {},
+  onReview: () => {},
 };
 
 const BEVIRO_RELEASING: ReleaseOffer = { ...BEVIRO_BEHIND, releasing: true };
@@ -518,6 +507,10 @@ interface StopFixture {
   readonly routes?: ReadonlyArray<ZeropsPublicRoute>;
   readonly offers?: ReadonlyArray<ZeropsRouteOffer>;
   readonly release?: ReleaseOffer;
+  /** What production does not run yet, per service; production only. */
+  readonly waiting?: ReadonlyArray<{
+    readonly commits: ReadonlyArray<{ readonly sha: string; readonly subject: string }>;
+  }>;
   /** The tag being released; production only. */
   readonly releasing?: string;
   /** Whether the failed deploy's job is known, so the verdict offers *Run again*. */
@@ -631,7 +624,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
   });
   const routes = fixture.routes ?? [];
   const release = fixture.release ?? RELEASE_NONE;
-  const waiting = production ? release.contents.flatMap((entry) => entry.commits) : [];
+  const waiting = production ? (fixture.waiting ?? []).flatMap((entry) => entry.commits) : [];
   const commits = fixture.commits ?? COMMITS;
   const services = serviceRows({
     environment: name,
@@ -893,6 +886,7 @@ function Harness() {
             services: BEVIRO_LIVE,
             routes: BEVIRO_ROUTES,
             release: BEVIRO_RELEASING,
+            waiting: BEVIRO_WAITING,
             releasing: "v0.1.14",
             releases: BEVIRO_RELEASES,
             reads: BEVIRO_READS,
@@ -966,6 +960,7 @@ function Harness() {
             services: BEVIRO_LIVE,
             routes: BEVIRO_ROUTES,
             release: BEVIRO_BEHIND,
+            waiting: BEVIRO_WAITING,
             releases: BEVIRO_RELEASES,
             reads: BEVIRO_READS,
           }}

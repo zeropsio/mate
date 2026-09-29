@@ -259,7 +259,11 @@ describe("CrewTaskSheetBody", () => {
   const sheet = crewTaskSheet(snapshot, view, "task-13")!;
   const task = view.tasks.find((row) => row.task.id === "task-13")!.task;
 
-  function renderSheet(onSend = () => undefined, onOpenChat = () => undefined) {
+  function renderSheet(
+    onSend = () => undefined,
+    onOpenChat = () => undefined,
+    onReview: (taskId: string) => void = () => undefined,
+  ) {
     return (
       <Sheet open>
         <CrewTaskSheetBody
@@ -268,6 +272,7 @@ describe("CrewTaskSheetBody", () => {
           canAct
           error={null}
           onSend={onSend}
+          onReview={onReview}
           onOpenChat={onOpenChat}
         />
       </Sheet>
@@ -285,7 +290,7 @@ describe("CrewTaskSheetBody", () => {
         "Report Ammo counter in the HUD, updated on fire and reload.",
         "Check Check passed Tests 31 passed (31)",
         "Changes +88 \u221230",
-        "Land Discard Edit",
+        "Review Discard Edit",
       ].join(" "),
     );
   });
@@ -301,6 +306,7 @@ describe("CrewTaskSheetBody", () => {
             canAct
             error={null}
             onSend={() => undefined}
+            onReview={() => undefined}
             onOpenChat={() => undefined}
           />
         </Sheet>,
@@ -309,18 +315,18 @@ describe("CrewTaskSheetBody", () => {
     expect(text).toContain(`Note ${note} Brief HUD shows the ammo count`);
   });
 
-  it("lands, discards and opens the owner's chat", async () => {
+  it("opens the task's review, discards and opens the owner's chat — and never lands itself", async () => {
     const onSend = vi.fn();
     const onOpenChat = vi.fn();
-    await mounted(renderSheet(onSend, onOpenChat), (container) => {
-      press(buttonsLabelled(container, "Land")[0]!);
+    const onReview = vi.fn();
+    await mounted(renderSheet(onSend, onOpenChat, onReview), (container) => {
+      expect(buttonsLabelled(container, "Land")).toEqual([]);
+      press(buttonsLabelled(container, "Review")[0]!);
       press(buttonsLabelled(container, "Discard")[0]!);
       press(buttonsLabelled(container, "Open Frontend's chat")[0]!);
     });
-    expect(onSend.mock.calls).toEqual([
-      [{ _tag: "land", taskId: "task-13" }],
-      [{ _tag: "discard", taskId: "task-13" }],
-    ]);
+    expect(onReview.mock.calls).toEqual([["task-13"]]);
+    expect(onSend.mock.calls).toEqual([[{ _tag: "discard", taskId: "task-13" }]]);
     expect(onOpenChat.mock.calls).toEqual([["thread-crew-frontend-1"]]);
   });
 });

@@ -11,7 +11,7 @@
  * `DialogPanel`, `DialogFooter` as siblings, so this asserts exactly that
  * for the content each dialog puts inside its `DialogPopup`. It renders that
  * content wrapped in a bare `Dialog` (not `DialogPopup`), the same way
- * `ZeropsMergeDialog.test.tsx` / `ZeropsReleaseDialog.test.tsx` already do —
+ * `ZeropsReleaseDialog.test.tsx` already does —
  * `DialogPopup` portals into `document`, which the `node` test environment
  * does not have.
  */
@@ -22,7 +22,6 @@ import { Dialog } from "../ui/dialog";
 import { ZeropsAssignMateForm } from "./ZeropsAssignMateDialog";
 import { ZeropsAskConfirm } from "./ZeropsAskDialog";
 import { ZeropsEnvironmentCreationForm } from "./ZeropsEnvironmentCreationDialog";
-import { ZeropsMergeConfirm } from "./ZeropsMergeDialog";
 import { ZeropsMoveToGroupForm } from "./ZeropsMoveToGroupDialog";
 import { ZeropsRenameForm } from "./ZeropsRenameDialog";
 import { ZeropsReleaseConfirm } from "./ZeropsReleaseDialog";
@@ -48,26 +47,6 @@ function extractSlot(html: string, slot: string): string | undefined {
   }
   throw new Error(`unbalanced <${tagName}> for data-slot="${slot}"`);
 }
-
-const pull = {
-  repository: "appdev",
-  number: 5,
-  title: "Cache the link previews",
-  kind: "code" as const,
-  mateProjectId: "p-theo",
-  author: "mate-p-theo",
-  url: undefined,
-  checks: "passing" as const,
-  checkWord: "checks passed",
-  mergeable: true,
-  mergeability: "mergeable" as const,
-  merged: false,
-  mergedAt: undefined,
-  headSha: "b21d904c",
-  baseBranch: "main",
-  line: "appdev #5",
-  updatedAt: undefined,
-};
 
 function renderInDialog(children: React.ReactNode): string {
   return renderToStaticMarkup(
@@ -121,13 +100,6 @@ const cases: ReadonlyArray<{ readonly name: string; readonly render: () => strin
           tierLoading={false}
           tierServices={[]}
         />,
-      ),
-  },
-  {
-    name: "ZeropsMergeDialog",
-    render: () =>
-      renderInDialog(
-        <ZeropsMergeConfirm mateName="Theo" merging={false} onConfirm={noop} pull={pull} />,
       ),
   },
   {

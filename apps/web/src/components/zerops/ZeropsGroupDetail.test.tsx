@@ -111,8 +111,7 @@ function render(
         offered: false,
         releasing: false,
         tag: undefined,
-        contents: [],
-        onRelease: () => {},
+        onReview: () => {},
       }}
       repo={undefined}
       waiting={releaseContentsSummary([], 20)}
@@ -239,8 +238,7 @@ const RELEASE_OFF = {
   offered: false,
   releasing: false,
   tag: undefined,
-  contents: [],
-  onRelease: () => {},
+  onReview: () => {},
 };
 
 /**
@@ -392,7 +390,7 @@ function renderStop(input: StopCase): string {
       release={
         input.offered === undefined
           ? RELEASE_OFF
-          : { ...RELEASE_OFF, offered: true, tag: input.offered, contents: [{ commits: waiting }] }
+          : { ...RELEASE_OFF, offered: true, tag: input.offered }
       }
       releaseReads={
         input.reads === undefined
@@ -466,7 +464,7 @@ describe("ZeropsStopPane", () => {
         "Waiting for release · 3",
         "Two-step checkout",
         "c200000",
-        ">Release v0.1.14</button>",
+        ">Review release</button>",
       ],
     },
     {
@@ -640,7 +638,7 @@ describe("ZeropsStopPane", () => {
       waiting: [{ sha: fullSha("c1"), subject: "Two-step checkout" }],
       offered: "v0.1.14",
     });
-    const button = /<button[^>]*>Release v0\.1\.14<\/button>/.exec(markup)?.[0];
+    const button = /<button[^>]*>Review release<\/button>/.exec(markup)?.[0];
     expect(button).toContain("bg-popover");
     expect(button).not.toContain("bg-primary");
   });

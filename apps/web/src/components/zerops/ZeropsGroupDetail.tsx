@@ -110,6 +110,7 @@ import { giteaSessionLogin } from "~/zerops/accountGiteaSessions";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsChangeComments } from "~/zerops/useZeropsChangeComments";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
+import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import type { ZeropsChangeComments } from "~/zerops/useZeropsChangeComments";
 import type { ZeropsCommitDetailResult } from "~/zerops/useZeropsCommitDetail";
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
@@ -134,8 +135,6 @@ import { ZeropsAskDialog } from "./ZeropsAskDialog";
 import { ZeropsChangeConversation } from "./ZeropsChangeConversation";
 import { failedJob, runAgainLabel, ZeropsDeployRunView } from "./ZeropsDeployRun";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
-import { ZeropsMergeDialog } from "./ZeropsMergeDialog";
-import { ZeropsReleaseDialog } from "./ZeropsReleaseDialog";
 import { ZeropsHistoryView, type HistoryNames } from "./ZeropsHistoryView";
 import {
   FlatCard,
@@ -600,22 +599,26 @@ function useOpenProjects(): () => void {
 function useReleaseOffer(groupId: string): ReleaseOffer {
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
-  const onRelease = useCallback(() => {
-    void flowValue?.release(groupId);
-  }, [flowValue, groupId]);
+  const openReview = useOpenReview();
+  const onReview = useCallback(
+    (from: HTMLElement) => {
+      openReview({ kind: "release", groupId }, { from });
+    },
+    [groupId, openReview],
+  );
   return {
     offered: flow?.release.gate.allowed ?? false,
-    releasing: flowValue?.pending.has(flowVerbKey({ kind: "release", groupId })) ?? false,
+    releasing:
+      flow?.release.inFlight !== undefined ||
+      (flowValue?.pending.has(flowVerbKey({ kind: "release", groupId })) ?? false),
     tag: flow?.release.suggestion,
-    contents: flow?.release.contents ?? [],
-    onRelease,
+    onReview,
   };
 }
 
 /**
- * *Release* where the projects page draws a project's next step, with the same
- * confirm the project's own page asks: one verb, one dialog, wherever it is
- * offered. `label` is the step's own words (`Release v0.1.0`).
+ * The door to the next release's review where the projects page draws a project's next step:
+ * the same review every other door opens (R1). `label` is the step's own words.
  */
 export function ZeropsReleaseVerb({
   groupId,
@@ -944,6 +947,7 @@ export function ZeropsStopDetailPage({
     services: production && withheld === null ? declared?.services : undefined,
   });
   const release = useReleaseOffer(groupId);
+  const openReview = useOpenReview();
   const stopGroupName = useGroupName(groupId);
   const crumbs = useCrumbs({ groupId, name: stopGroupName ?? groupId });
   const names = useHistoryNames(stopGroupName);
@@ -1040,8 +1044,8 @@ export function ZeropsStopDetailPage({
         void route.enable(projectId, serviceId);
       }}
       onOpenProject={openProjects}
-      onRollBack={(tag) => {
-        void flowValue.rollBack(groupId, tag);
+      onRollBack={(tag, from) => {
+        openReview({ kind: "rollback", groupId, tag }, { from });
       }}
       pending={flowValue.pending}
       readDetail={readDetail}
@@ -1238,7 +1242,8 @@ export function ZeropsStopPane({
   readonly releaseReads?: StopReleaseReads | undefined;
   /** The flow's verbs under way (`flowVerbKey`). */
   readonly pending: ReadonlySet<string>;
-  readonly onRollBack: (tag: string) => void;
+  /** Opens the roll back's review from the row pressed: nothing rolls back from a row (R1). */
+  readonly onRollBack: (tag: string, from: HTMLElement) => void;
   /** What the last flow verb's refusal said — a *Roll back* refused says so here. */
   readonly trouble: string | null;
   readonly commits: ZeropsCommitsState;
@@ -1298,12 +1303,7 @@ export function ZeropsStopPane({
       <div>
         <VerdictPanel detail={verdict.detail} text={verdict.text} tone={verdict.tone}>
           {verb?.kind === "release" ? (
-            <ReleaseAction
-              label={`${flowVerbLabel("release", false)} ${verb.tag}`}
-              release={release}
-              size="compact"
-              variant="outline"
-            />
+            <ReleaseAction release={release} size="compact" variant="outline" />
           ) : verb?.kind === "run-again" && runAgain !== undefined ? (
             <Button
               data-zerops-primary-action="Run again"
@@ -1698,15 +1698,13 @@ export function ZeropsChangeDetailPage({
   const crumbs = useCrumbs({ groupId, name: groupName ?? groupId });
   const names = useHistoryNames(groupName);
   const now = useNowMs();
-  const slug = flow?.slug;
-  const merge = useCallback(() => {
-    if (flowValue === null || slug === undefined || pull === undefined) return;
-    void flowValue.mergePullRequest(slug, {
-      repository: pull.repository,
-      number: pull.number,
-      headSha: pull.headSha,
-    });
-  }, [flowValue, pull, slug]);
+  const openReview = useOpenReview();
+  const review = useCallback(
+    (from: HTMLElement) => {
+      openReview({ kind: "change", groupId, repository, number }, { from });
+    },
+    [groupId, number, openReview, repository],
+  );
 
   if (flow === undefined || pull === undefined) {
     return (
@@ -1724,21 +1722,11 @@ export function ZeropsChangeDetailPage({
       mateName={
         pull.mateProjectId === undefined ? undefined : flowValue?.mateNames.get(pull.mateProjectId)
       }
-      merging={
-        flowValue?.pending.has(
-          flowVerbKey({
-            kind: "merge",
-            slug: flow.slug,
-            repository: pull.repository,
-            number: pull.number,
-          }),
-        ) ?? false
-      }
       names={names}
       onAsk={askMate}
       crumbs={crumbs}
 
-      onMerge={merge}
+      onReview={review}
       pull={pull}
       readDetail={readDetail}
       remarks={remarks}
@@ -1775,11 +1763,10 @@ export function ZeropsChangePane({
   comments,
   commits,
   mateName,
-  merging,
   names,
   onAsk,
   crumbs,
-  onMerge,
+  onReview,
   pull,
   readDetail,
   remarks,
@@ -1790,10 +1777,10 @@ export function ZeropsChangePane({
   readonly comments: ZeropsChangeComments;
   readonly commits: ZeropsCommitsState;
   readonly mateName: string | undefined;
-  readonly merging: boolean;
   readonly onAsk: (mateProjectId: string | undefined, ask: string) => void;
   readonly crumbs: ReadonlyArray<Crumb>;
-  readonly onMerge: () => void;
+  /** Opens the change's review, where it merges: nothing merges from this page (R1). */
+  readonly onReview: (from: HTMLElement) => void;
   readonly pull: FlowPullRequest;
   readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
   readonly remarks: ReadonlyArray<ChangeRemark>;
@@ -1801,7 +1788,6 @@ export function ZeropsChangePane({
   /** What the last verb's refusal said, where one refused. */
   readonly trouble: string | null;
 }) {
-  const [confirming, setConfirming] = useState(false);
   const [asking, setAsking] = useState(false);
   const verdict = changeVerdict(pull);
   const author = changeAuthorName(pull, mateName);
@@ -1822,30 +1808,16 @@ export function ZeropsChangePane({
       title={pull.title}
     >
       <ChangeVerdictPanel
-        merging={merging}
         onAsk={() => {
           setAsking(true);
         }}
-        onMerge={() => {
-          setConfirming(true);
-        }}
+        onReview={onReview}
         askLabel={changeAskLabel(mateName)}
         trouble={trouble}
         verdict={verdict}
       />
-      {/* Both confirms live outside the panel so neither reopens when the
-          verdict changes under them mid-flight. */}
-      <ZeropsMergeDialog
-        mateName={mateName}
-        merging={merging}
-        onConfirm={() => {
-          setConfirming(false);
-          onMerge();
-        }}
-        onOpenChange={setConfirming}
-        open={confirming}
-        pull={pull}
-      />
+      {/* The confirm lives outside the panel so it does not reopen when the
+          verdict changes under it mid-flight. */}
       <ZeropsAskDialog
         ask={verdict.ask ?? ""}
         mateName={mateName}
@@ -1969,65 +1941,48 @@ function groupSubtitle(stops: number, changes: number): string {
 export interface ReleaseOffer {
   /** False where the stage has nothing the production lacks, or there is no production. */
   readonly offered: boolean;
+  /** A release is on its way: its review shows how far it got. */
   readonly releasing: boolean;
   /** The version it would cut, where the flow suggested one. */
   readonly tag: string | undefined;
-  readonly contents: ReadonlyArray<{
-    readonly commits: ReadonlyArray<{ sha: string; subject: string }>;
-  }>;
-  readonly onRelease: () => void;
+  /** Opens the release's review from what was pressed: nothing is tagged from a page (R1). */
+  readonly onReview: (from: HTMLElement) => void;
 }
 
 /**
- * *Release*, on the page that shows what is waiting for it.
+ * The door to the next release's review, on the page that shows what is waiting for it.
  *
- * The menu row offered this and the page the row expands to did not, so the
- * one screen listing three changes merged and not live was the one screen that
- * could not put them live.
+ * The menu row offered *Release* and the page the row expands to did not, so the one screen
+ * listing three changes merged and not live was the one screen that could not put them live.
+ * Now every door to it says *Review release* and opens the same review, which carries *Release*
+ * and says what it does (pass 16, R1); while one is on its way the door opens its progress.
  */
 function ReleaseAction({
   release,
-  label,
+  label = REVIEW_RELEASE_LABEL,
   size = "sm",
   variant,
 }: {
   readonly release: ReleaseOffer;
-  /** The verb's words where the caller has them; *Release* otherwise. */
+  /** The door's words where the caller has them; *Review release* otherwise. */
   readonly label?: string;
   /** `compact` where it stands among the projects page's verbs. */
   readonly size?: "sm" | "compact";
   /** `outline` in a stop's verdict, where a verb stands beside the sentence it acts on. */
   readonly variant?: "outline";
 }) {
-  const [confirming, setConfirming] = useState(false);
-  if (!release.offered) return null;
+  if (!release.offered && !release.releasing) return null;
   return (
-    <>
-      <Button
-        data-zerops-primary-action="Release"
-        disabled={release.releasing}
-        onClick={() => {
-          setConfirming(true);
-        }}
-        size={size}
-        {...(variant === undefined ? {} : { variant })}
-      >
-        {release.releasing
-          ? flowVerbLabel("release", true)
-          : (label ?? flowVerbLabel("release", false))}
-      </Button>
-      <ZeropsReleaseDialog
-        contents={release.contents}
-        onConfirm={() => {
-          setConfirming(false);
-          release.onRelease();
-        }}
-        onOpenChange={setConfirming}
-        open={confirming}
-        releasing={release.releasing}
-        tag={release.tag}
-      />
-    </>
+    <Button
+      data-zerops-primary-action={REVIEW_RELEASE_LABEL}
+      onClick={(event) => {
+        release.onReview(event.currentTarget);
+      }}
+      size={size}
+      {...(variant === undefined ? {} : { variant })}
+    >
+      {release.releasing ? flowVerbLabel("release", true) : label}
+    </Button>
   );
 }
 
@@ -2137,23 +2092,22 @@ function AttentionPanel({
  * *Merge* whose reason was two lines below it. Here the sentence and the
  * buttons that act on it are one element, for the reason a count and its cure
  * became one on the menu: "why are `1 waiting` and `Release` two different
- * elements?" (the owner, 2026-09-19). *Merge* stays drawn where the forge
- * would refuse it, disabled and carrying the refusal as its name — a button
- * that vanishes teaches the reader that this page does not merge.
+ * elements?" (the owner, 2026-09-19). Its verb is *Review*, the one door to
+ * merging (pass 16, R1): the review reads the change, says whether it is safe,
+ * and carries *Merge* — so the verb is always there, a landed change included,
+ * whose review is where its diff is read.
  */
 function ChangeVerdictPanel({
   askLabel,
-  merging,
   onAsk,
-  onMerge,
+  onReview,
   trouble,
   verdict,
 }: {
   /** What the remedy verb is called: `Ask Theo`, or `Ask the Mate`. */
   readonly askLabel: string;
-  readonly merging: boolean;
   readonly onAsk: () => void;
-  readonly onMerge: () => void;
+  readonly onReview: (from: HTMLElement) => void;
   readonly trouble: string | null;
   readonly verdict: ChangeVerdict;
 }) {
@@ -2165,17 +2119,15 @@ function ChangeVerdictPanel({
             {askLabel}
           </Button>
         )}
-        {verdict.offersMerge ? (
-          <Button
-            aria-label={verdict.canMerge ? undefined : `Merge: ${verdict.text}`}
-            data-zerops-primary-action="Merge"
-            disabled={merging || !verdict.canMerge}
-            onClick={onMerge}
-            size="sm"
-          >
-            {flowVerbLabel("merge", merging)}
-          </Button>
-        ) : null}
+        <Button
+          data-zerops-primary-action={REVIEW_LABEL}
+          onClick={(event) => {
+            onReview(event.currentTarget);
+          }}
+          size="sm"
+        >
+          {REVIEW_LABEL}
+        </Button>
       </VerdictPanel>
       {/* A verb that refused says so under the verb that refused, not in a
           toast somewhere off the page. */}

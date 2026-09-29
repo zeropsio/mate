@@ -580,7 +580,6 @@ describe("the section's words (PRD §4.3)", () => {
     expect(Object.values(CREW_ATTENTION_VERBS)).toEqual([
       "Answer",
       "Commit my edit",
-      "Land",
       "Review plan",
       "Allow",
       "Not now",
@@ -588,7 +587,6 @@ describe("the section's words (PRD §4.3)", () => {
       "Continue",
       "Discard",
       "Ask lead to review",
-      "Land it myself",
       "Drop the wait",
     ]);
     expect(crewAskToResolveWord("Backend")).toBe("Ask Backend to resolve");
@@ -687,7 +685,6 @@ describe("the chat's words (PRD §4.5, §5.6, §5.7)", () => {
     expect(CREW_LANE_VERBS).toEqual({
       showOnDev: "Show on dev",
       backToTree: "Back to my tree",
-      landNow: "Land now",
       addCrewPorts: "Add crew ports",
     });
   });

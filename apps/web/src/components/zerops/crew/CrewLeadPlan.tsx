@@ -16,6 +16,7 @@ import { Sheet, SheetPopup } from "~/components/ui/sheet";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useCrew } from "~/zerops/crew/useCrew";
 import { useCrewCommand } from "~/zerops/crew/useCrewCommand";
+import { useOpenReview } from "~/zerops/review";
 
 import { CrewPlanCardView, CrewTaskSheetBody } from "./CrewBoardPanel";
 import { crewPlanCard, crewRunOn, crewTaskSheet } from "./CrewBoardPanel.logic";
@@ -24,6 +25,7 @@ import { CrewRunDialog } from "./CrewRunDialog";
 export function CrewLeadPlan({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const { snapshot, view, current } = useCrew(environmentId);
   const crewCommand = useCrewCommand(environmentId);
+  const openReview = useOpenReview();
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
@@ -84,6 +86,10 @@ export function CrewLeadPlan({ environmentId }: { readonly environmentId: Enviro
               error={crewCommand.error}
               key={sheet.taskId}
               onOpenChat={openChat}
+              onReview={(taskId) => {
+                setOpenTaskId(null);
+                openReview({ kind: "crew-task", environmentId, taskId });
+              }}
               onSend={send}
               sheet={sheet}
               task={sheetTask}

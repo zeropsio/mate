@@ -45,7 +45,6 @@ import sidebarTreeSource from "./SidebarZeropsTree.tsx?raw";
 import sidebarSource from "../Sidebar.tsx?raw";
 import wizardSource from "./ZeropsNewProjectWizard.tsx?raw";
 import gitBlockSource from "./ZeropsGitBlock.tsx?raw";
-import mergeDialogSource from "./ZeropsMergeDialog.tsx?raw";
 import deployRunSource from "./ZeropsDeployRun.tsx?raw";
 import verdictPanelSource from "./primitives/VerdictPanel.tsx?raw";
 import releaseRowsSource from "./ZeropsReleaseRows.tsx?raw";
@@ -768,7 +767,6 @@ describe("a status word's hand", () => {
     ["the Git page", giteaPageSource],
     ["the left menu", sidebarTreeSource],
     ["the Git tab", gitBlockSource],
-    ["the merge dialog", mergeDialogSource],
     ["a deploy's run", deployRunSource],
     ["the verdict panel", verdictPanelSource],
     ["a project's releases", releaseRowsSource],
@@ -815,12 +813,28 @@ describe("a project's next step on the projects page", () => {
     expect(projectsPageSource).not.toContain("ZeropsGroupAnswer");
   });
 
-  it("releases through the same confirm the project's own page asks, named Release beside the version its cell states and Release vX on the strip", () => {
+  it("opens the release's review, the door every other page opens, named Review release in its cell and on the strip", () => {
+    // The step's own words, which groupFlow writes as the door's: Release is the review's button.
     expect(projectsPageSource).toContain(
-      'label={placement === "strip" ? step.verb : flowVerbLabel("release", false)}',
+      "return <ZeropsReleaseVerb groupId={group.groupId} label={step.verb} />;",
     );
-    expect(projectsPageSource).toContain("<ZeropsReleaseVerb");
+    expect(projectsPageSource).toContain(
+      "<ZeropsReleaseVerb groupId={group.groupId} label={REVIEW_RELEASE_LABEL} />",
+    );
     expect(groupDetailSource).toContain("export function ZeropsReleaseVerb(");
+    expect(groupDetailSource).toContain('openReview({ kind: "release", groupId }, { from });');
+  });
+
+  it("merges, releases and rolls back from no row: every such verb opens a review", () => {
+    for (const source of [projectsPageSource, groupDetailSource]) {
+      expect(source).not.toContain("mergePullRequest(");
+      expect(source).not.toContain(".release(");
+      expect(source).not.toContain(".rollBack(");
+    }
+    expect(projectsPageSource).toContain('kind: "change",');
+    expect(projectsPageSource).toContain(
+      'openReview({ kind: "rollback", groupId: group.groupId, tag }, { from });',
+    );
   });
 
   it("releases at the height of every other verb on the page, the project's own page keeping its own", () => {

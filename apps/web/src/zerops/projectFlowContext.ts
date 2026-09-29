@@ -77,6 +77,14 @@ export interface ZeropsProjectFlow {
   readonly release: ZeropsReleaseOffer;
 }
 
+/**
+ * How a verb went, for the surface it was pressed on: the review stays open and says what
+ * happened (pass 16, R6). A refusal carries the sentence `trouble` says too.
+ */
+export type FlowVerbOutcome =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: string };
+
 export interface ZeropsProjectFlowValue {
   readonly giteaOrigin: string | undefined;
   /**
@@ -124,7 +132,7 @@ export interface ZeropsProjectFlowValue {
   readonly mergePullRequest: (
     slug: string,
     pull: Pick<FlowPullRequest, "repository" | "number" | "headSha">,
-  ) => Promise<void>;
+  ) => Promise<FlowVerbOutcome>;
   /** Opens one in Gitea as the person, from a branch onto the repository's default. */
   readonly createPullRequest: (
     slug: string,
@@ -136,9 +144,9 @@ export interface ZeropsProjectFlowValue {
     },
   ) => Promise<void>;
   /** Tags what the stage runs as the next release (`release.ts`). */
-  readonly release: (groupId: string) => Promise<void>;
+  readonly release: (groupId: string) => Promise<FlowVerbOutcome>;
   /** A new tag listing an earlier release's commits (guide 5.6). */
-  readonly rollBack: (groupId: string, tag: string) => Promise<void>;
+  readonly rollBack: (groupId: string, tag: string) => Promise<FlowVerbOutcome>;
 }
 
 export const ZeropsProjectFlowContext = createContext<ZeropsProjectFlowValue | null>(null);

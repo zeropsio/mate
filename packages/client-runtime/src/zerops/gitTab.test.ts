@@ -523,23 +523,22 @@ describe("every state of a block", () => {
     expect(answer.destination).toBe("stage picks it up on merge");
   });
 
-  it("offers a merge only where Gitea already said this person may", () => {
-    const mergeable = block(
-      checkout({ headRef: "feature/invoices" }),
-      forge({ pullRequest: request("mergeable") }),
-    );
-    expect(mergeable.action).toEqual({
-      kind: "merge",
-      label: "Merge",
-      running: "Merging…",
-      ownerOnly: false,
-    });
-    const blocked = block(
-      checkout({ headRef: "feature/invoices" }),
-      forge({ pullRequest: request("conflicting") }),
-    );
-    expect(blocked.action).toBeUndefined();
-  });
+  it.each(["mergeable", "conflicting", "checking"] as const)(
+    "offers the review of an open pull request whatever Gitea says of it (%s)",
+    (mergeability) => {
+      const open = block(
+        checkout({ headRef: "feature/invoices" }),
+        forge({ pullRequest: request(mergeability) }),
+      );
+      // The review says whether it merges, and carries Merge; the tab never merges itself.
+      expect(open.action).toEqual({
+        kind: "review",
+        label: "Review",
+        running: "Review",
+        ownerOnly: false,
+      });
+    },
+  );
 
   it("a merged pull request is the broker's business now, and offers nothing", () => {
     const answer = block(
@@ -623,7 +622,7 @@ describe("a setup proved broken offers no verb that would fail", () => {
       name: "a pull request Gitea says is mergeable",
       state: checkout({ headRef: "feature/invoices" }),
       forgeState: forge({ pullRequest: request("mergeable") }),
-      offered: "merge",
+      offered: "review",
     },
   ] as const)(
     "$name keeps its verb while nothing is proved wrong",
@@ -657,7 +656,7 @@ describe("a setup proved broken offers no verb that would fail", () => {
         forge({ pullRequest: request("mergeable") }),
         broken,
       ).action?.kind,
-    ).toBe("merge");
+    ).toBe("review");
   });
 });
 
@@ -692,11 +691,11 @@ describe("the owner-only gate on checkout verbs", () => {
       } as const,
     },
     {
-      name: "Merge",
+      name: "Review",
       action: {
-        kind: "merge",
-        label: "Merge",
-        running: "Merging…",
+        kind: "review",
+        label: "Review",
+        running: "Review",
         ownerOnly: false,
       } as const,
     },
@@ -790,6 +789,19 @@ describe("the checks, by name", () => {
   it("keeps the broker's deploy statuses out, as the collapsed word does", () => {
     // They are what happened after a change landed, not a verdict on it.
     expect(gitChecks([status("mate/deploy/stage/api", "failure")])).toEqual([]);
+  });
+
+  it.each([
+    [
+      "what the check said about itself, and where its own page is",
+      { description: " pnpm build · 34s ", target_url: "https://ci.example/runs/7" },
+      { description: "pnpm build · 34s", url: "https://ci.example/runs/7" },
+    ],
+    ["nothing where it said nothing", { description: "  ", target_url: "" }, {}],
+  ])("keeps %s", (_name, said, kept) => {
+    expect(gitChecks([{ ...status("ci/build", "success"), ...said }])).toEqual([
+      { name: "ci/build", tone: "ok", word: "Passed", ...kept },
+    ]);
   });
 
   it("says a state it does not know rather than guessing a colour for it", () => {
@@ -906,7 +918,8 @@ describe("one MergeState on every surface (DESIGN §4.7, A7, A11)", () => {
       expect(seen.page.kind).toBe("checking");
       expect(seen.tab.verdict?.text).toBe("Checking whether it merges cleanly.");
       expect(saysRebase(seen)).toEqual({ tab: false, page: false, row: false });
-      expect(seen.tab.action).toBeUndefined();
+      // Still in review: the tab's door to it is there, and the review says it is checking.
+      expect(seen.tab.action?.kind).toBe("review");
       expect(seen.banner).toBeUndefined();
     }
     const settled = surfaces(
@@ -918,7 +931,7 @@ describe("one MergeState on every surface (DESIGN §4.7, A7, A11)", () => {
       [],
     );
     expect(saysRebase(settled)).toEqual({ tab: false, page: false, row: false });
-    expect(settled.tab.action?.kind).toBe("merge");
+    expect(settled.tab.action?.kind).toBe("review");
     expect(settled.banner?.pull.number).toBe(12);
   });
 
@@ -986,7 +999,8 @@ describe("one MergeState on every surface (DESIGN §4.7, A7, A11)", () => {
         expect(seen.mergeability).toBe(state);
       }
       const offers = state === "mergeable";
-      expect(seen.tab.action?.kind === "merge").toBe(offers);
+      // The tab's door is the review's, on every open change; the review decides.
+      expect(seen.tab.action?.kind === "review").toBe(state !== "merged");
       expect(seen.banner !== undefined).toBe(offers);
       expect(seen.page.canMerge).toBe(offers);
       expect(seen.tab.verdict?.tone).toBe(seen.page.tone);
