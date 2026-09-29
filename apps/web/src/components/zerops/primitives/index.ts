@@ -19,7 +19,7 @@ export type { AvatarProps, AvatarSize } from "./Avatar";
 export { MateFace } from "./MateFace";
 export { PlanRing, planRingSegments } from "./PlanRing";
 export type { PlanRingSegment, PlanRingSegmentState } from "./PlanRing";
-export type { MateFaceProps, MateFaceSize } from "./MateFace";
+export type { MateFaceGaze, MateFaceProps, MateFaceSize } from "./MateFace";
 export { VERDICT_BORDER_CLASS, VerdictPanel, VerdictPanelWaiting } from "./VerdictPanel";
 export type { VerdictPanelProps } from "./VerdictPanel";
 export { StepGlyph } from "./StepGlyph";

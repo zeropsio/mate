@@ -1,10 +1,14 @@
 import {
   MATE_FACE,
   MATE_FACE_STROKES,
+  MATE_SHAPE_OF_TINT,
+  MATE_SHAPES,
+  MATE_TINT_IDS,
   mateFaceParts,
   type MateMarkState,
   type MateTintId,
 } from "@t3tools/shared/brand";
+import { useState, type CSSProperties } from "react";
 import type * as React from "react";
 
 import { cn } from "~/lib/utils";
@@ -39,95 +43,217 @@ const TINT_CLASS: Record<MateTintId, string> = {
 /** Below this an eye is shut, and a shut eye is a hairline, not a sliver of a pill. */
 const SHUT_EYE_HEIGHT = 0.3 * MATE_FACE.eyeUnit;
 
+/**
+ * Where a Mate's eyes go beyond its state: up and aside while it thinks,
+ * down along the line while it writes. Only the run's status line knows which
+ * of the two it is doing; everywhere else a working Mate simply works.
+ */
+type MateFaceGaze = "up" | "down";
+
 type MateFaceProps = Omit<React.ComponentProps<"svg">, "children" | "viewBox"> & {
   readonly tint: MateTintId;
   readonly state: MateMarkState;
   readonly size?: MateFaceSize;
+  readonly gaze?: MateFaceGaze | undefined;
+  /**
+   * Whether it greets an arrival it watches (`mateFaceArrival`): a face that
+   * stands for one Mate the whole time it is on screen and knows when its
+   * state is read — a menu row, a run's status line. Off by default: a face
+   * reused from one Mate to the next (a header, a peek) or first drawn asleep
+   * until its Mate connects would greet arrivals that never happened.
+   */
+  readonly greets?: boolean;
+  /**
+   * Whether the state is the Mate's as read, or a pose standing in until it
+   * is: a change from a stand-in is no arrival to greet. Known by default.
+   */
+  readonly known?: boolean;
 };
 
 /**
- * A Mate's face: its eyes on a disc of its colour, wearing the state the live
- * mark would — open when idle, narrowed and dropped when working, wide with
- * an "o" when it needs you, happy when done, shut when asleep. Still, by
- * design: what moves is the state, never the face. Decorative on its own —
- * the name and the state are always written beside it — so it carries no
- * accessible name.
+ * Whether a change of pose is an arrival the face greets: a run done after
+ * work or a question, a question raised. Marking a Mate unread (idle to done)
+ * is no run finishing, and waking to wait on a question already asked is no
+ * question raised.
  */
-function MateFace({ className, size = "md", state, tint, ...props }: MateFaceProps) {
+export function mateFaceArrival(
+  previous: MateMarkState,
+  next: MateMarkState,
+): MateMarkState | undefined {
+  if (next === "done") return previous === "working" || previous === "needs" ? "done" : undefined;
+  if (next === "needs") return previous === "needs" ? undefined : "needs";
+  return undefined;
+}
+
+/**
+ * The arrival this face last saw while it was on screen, marked until the
+ * next change of pose — never on a first paint: a reload, a remount, a list
+ * opening onto a waiting Mate shows the state as it is, without the flourish
+ * of arriving at it. Nor from a pose that only stood in until the Mate's state
+ * was read (`known`): a menu row wears idle or asleep for the second before
+ * its socket answers, and a Mate that had waited all along is not arriving.
+ */
+function useArrived(state: MateMarkState, known: boolean): MateMarkState | undefined {
+  const [seen, setSeen] = useState<{
+    readonly state: MateMarkState;
+    readonly known: boolean;
+    readonly arrived: MateMarkState | undefined;
+  }>({ state, known, arrived: undefined });
+  if (seen.state === state && seen.known === known) return seen.arrived;
+  const arrived =
+    seen.state === state
+      ? seen.arrived
+      : seen.known && known
+        ? mateFaceArrival(seen.state, state)
+        : undefined;
+  setSeen({ state, known, arrived });
+  return arrived;
+}
+
+/**
+ * A Mate's face: its eyes on its shape, in its colour (`MATE_SHAPE_OF_TINT`),
+ * wearing the state the live mark would — open when idle, narrowed and
+ * dropped when working, wide with an "o" when it needs you, happy when done,
+ * shut when asleep.
+ *
+ * Every pose is the same drawing: the eyes, the arcs and the mouth are always
+ * there and a state only moves them, so a change of state morphs (the eyes
+ * narrowing into work, the "o" opening when it needs you) rather than
+ * swapping one picture for another. The motion itself is the stylesheet's
+ * (`[data-mate-face-*]` in index.css): at work the shape turns a notch at a
+ * time and the eyes glance about; starting to need you, it hops three times;
+ * done while you watch, it pops once. Idle and asleep it is still, and with
+ * reduced motion only the morph remains. Decorative on its own — the name and the state are always
+ * written beside it — so it carries no accessible name.
+ */
+function MateFace({
+  className,
+  size = "md",
+  state,
+  tint,
+  gaze,
+  greets = false,
+  known = true,
+  style,
+  ...props
+}: MateFaceProps) {
   const parts = mateFaceParts(state);
+  const arrived = useArrived(state, greets && known);
+  const shapeId = MATE_SHAPE_OF_TINT[tint];
+  const shape = MATE_SHAPES[shapeId];
   const strokeWidth = STROKE_PX[size];
+  const shut = parts.eyes.length > 0 && parts.eyes[0]!.height < SHUT_EYE_HEIGHT;
+  // Done has no pills: they close to a slit where they stand, so the eyes
+  // open again from the arcs' place when the next run starts.
+  const pills =
+    parts.eyes.length > 0
+      ? parts.eyes
+      : mateFaceParts("idle").eyes.map((eye) => ({
+          ...eye,
+          y: eye.y + eye.height / 2 - SHUT_EYE_HEIGHT / 2,
+          height: SHUT_EYE_HEIGHT,
+          rx: SHUT_EYE_HEIGHT / 2,
+        }));
+  const shutY = MATE_FACE.eyeCentreY;
+  const faceStyle = {
+    "--mate-face-step": `${shape.step}deg`,
+    "--mate-face-origin": `${shape.origin[0]}px ${shape.origin[1]}px`,
+    // Mates at work do not turn in step: each its own beat in the cycle.
+    "--mate-face-phase": String(MATE_TINT_IDS.indexOf(tint)),
+    ...style,
+  } as CSSProperties;
   return (
     <svg
       {...props}
       aria-hidden="true"
-      className={cn("shrink-0", SIZE_CLASS[size], className)}
+      className={cn("shrink-0 overflow-visible", SIZE_CLASS[size], className)}
+      data-mate-face-arrived={arrived}
+      data-mate-face-gaze={gaze}
+      data-mate-face-shape={shapeId}
       data-mate-face-size={size}
       data-mate-face-state={state}
       data-mate-face-tint={tint}
       data-zerops-primitive="mate-face"
+      style={faceStyle}
       viewBox={MATE_FACE.viewBox}
     >
-      <circle className={TINT_CLASS[tint]} cx="50" cy="50" r={MATE_FACE.radius} />
-      <g className="fill-[var(--zerops-mate-face-ink)]">
-        {parts.eyes.map((eye) =>
-          eye.height < SHUT_EYE_HEIGHT ? (
-            <line
+      <g data-mate-face-hop="">
+        <g data-mate-face-body="">
+          <path className={TINT_CLASS[tint]} d={shape.d} />
+        </g>
+        <g data-mate-face-look="">
+          <g data-mate-face-glance="">
+            <g className="fill-[var(--zerops-mate-face-ink)]">
+              {pills.map((eye, index) => (
+                <rect
+                  data-mate-face-eye=""
+                  height={eye.height}
+                  key={MATE_FACE.eyeCentres[index]}
+                  opacity={parts.eyes.length > 0 && !shut ? 1 : 0}
+                  rx={eye.rx}
+                  width={eye.width}
+                  x={eye.x}
+                  y={eye.y}
+                />
+              ))}
+            </g>
+            <g
               className="stroke-[var(--zerops-mate-face-ink)]"
-              key={eye.x}
+              fill="none"
               strokeLinecap="round"
               strokeWidth={strokeWidth}
+            >
+              {MATE_FACE.eyeCentres.map((cx) => (
+                <line
+                  data-mate-face-shut=""
+                  key={cx}
+                  opacity={shut ? 1 : 0}
+                  vectorEffect="non-scaling-stroke"
+                  x1={cx - MATE_FACE.eyeUnit / 2}
+                  x2={cx + MATE_FACE.eyeUnit / 2}
+                  y1={shutY}
+                  y2={shutY}
+                />
+              ))}
+              {MATE_FACE.eyeCentres.map((cx) => (
+                <path
+                  d={MATE_FACE_STROKES.arc}
+                  data-mate-face-arc=""
+                  key={cx}
+                  opacity={parts.arcs.length > 0 ? 1 : 0}
+                  transform={`translate(${cx},${MATE_FACE.eyeCentreY + 0.05 * MATE_FACE.eyeUnit})`}
+                  vectorEffect="non-scaling-stroke"
+                />
+              ))}
+            </g>
+          </g>
+          <g
+            className="stroke-[var(--zerops-mate-face-ink)]"
+            fill="none"
+            strokeLinecap="round"
+            strokeWidth={strokeWidth}
+          >
+            <circle
+              cx="50"
+              cy={MATE_FACE.mouth.y}
+              data-mate-face-mouth="o"
+              opacity={parts.mouth === "o" ? 1 : 0}
+              r={parts.mouth === "o" ? MATE_FACE.mouth.r : 0}
               vectorEffect="non-scaling-stroke"
-              x1={eye.x}
-              x2={eye.x + eye.width}
-              y1={eye.y + eye.height / 2}
-              y2={eye.y + eye.height / 2}
             />
-          ) : (
-            <rect
-              height={eye.height}
-              key={eye.x}
-              rx={eye.rx}
-              width={eye.width}
-              x={eye.x}
-              y={eye.y}
+            <path
+              d={MATE_FACE_STROKES.smile}
+              data-mate-face-mouth="smile"
+              opacity={parts.mouth === "smile" ? 1 : 0}
+              transform={`translate(50,${MATE_FACE.mouth.y})`}
+              vectorEffect="non-scaling-stroke"
             />
-          ),
-        )}
-      </g>
-      <g
-        className="stroke-[var(--zerops-mate-face-ink)]"
-        fill="none"
-        strokeLinecap="round"
-        strokeWidth={strokeWidth}
-        vectorEffect="non-scaling-stroke"
-      >
-        {parts.arcs.map(([x, y]) => (
-          <path
-            d={MATE_FACE_STROKES.arc}
-            key={x}
-            transform={`translate(${x},${y})`}
-            vectorEffect="non-scaling-stroke"
-          />
-        ))}
-        {parts.mouth === "o" ? (
-          <circle
-            cx="50"
-            cy={MATE_FACE.mouth.y}
-            r={MATE_FACE.mouth.r}
-            vectorEffect="non-scaling-stroke"
-          />
-        ) : null}
-        {parts.mouth === "smile" ? (
-          <path
-            d={MATE_FACE_STROKES.smile}
-            transform={`translate(50,${MATE_FACE.mouth.y})`}
-            vectorEffect="non-scaling-stroke"
-          />
-        ) : null}
+          </g>
+        </g>
       </g>
     </svg>
   );
 }
 
 export { MateFace };
-export type { MateFaceProps, MateFaceSize };
+export type { MateFaceGaze, MateFaceProps, MateFaceSize };

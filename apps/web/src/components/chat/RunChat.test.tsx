@@ -45,6 +45,8 @@ const SHARED: TimelineRowSharedState = {
   onSteerQueuedMessage: () => undefined,
   steerQueuedMessageShortcutLabel: null,
   onRemoveQueuedMessage: () => undefined,
+  arrivedAfter: null,
+  syncing: false,
 };
 
 const ACTIVITY: TimelineRowActivityState = {
@@ -254,6 +256,21 @@ describe("RunChat", () => {
   // Ten reads in a row are one stretch of work (the owner, 2026-09-28: "there
   // is no spacing between items"): a run of calls shares one card, a hairline
   // between them; a thought or its words between two calls start a new one.
+  // A wheel over a long run's chat moves the chat, and past its ends the
+  // page: contained, the page stood still under the pointer until it left
+  // the card (2026-09-29). Its fades are always drawn, eased in and out.
+  it("lets the page scroll on past its chat's ends, and eases its fades", () => {
+    const markup = draw(record([step(command("w1", "ls"))]));
+    expect(markup).toContain("overflow-y-auto");
+    expect(markup).not.toContain("overscroll-contain");
+    expect(markup).toMatch(
+      /class="[^"]*transition-opacity[^"]*opacity-0[^"]*" data-chat-fade="above"/,
+    );
+    expect(markup).toMatch(
+      /class="[^"]*transition-opacity[^"]*opacity-0[^"]*" data-chat-fade="below"/,
+    );
+  });
+
   it("gathers each run of calls into one card, and breaks it where anything else stands", () => {
     const markup = draw(
       record([
@@ -274,20 +291,35 @@ describe("RunChat", () => {
   // The Mate's status is the chat's last line, never a heading over the card
   // (the owner, 2026-09-28: "it doesn't need to be at the top"): its face,
   // what it is doing, its clock — the one face in the chat.
+  // The face does what the words say: it looks up and aside while it thinks,
+  // down along its line while it writes, and simply works otherwise.
   it.each([
-    { name: "thinking", now: null, says: "Nova is thinking", face: "working" },
-    { name: "writing", now: { kind: "writing" }, says: "Nova is writing", face: "working" },
+    { name: "thinking", now: null, says: "Nova is thinking", face: "working", gaze: "up" },
+    {
+      name: "writing",
+      now: { kind: "writing" },
+      says: "Nova is writing",
+      face: "working",
+      gaze: "down",
+    },
     {
       name: "waiting on the person",
       now: { kind: "waiting" },
       says: "Nova is waiting for your answer",
       face: "needs",
+      gaze: null,
     },
-  ] as const)("says under its chat what the Mate is doing: $name", ({ now, says, face }) => {
+  ] as const)("says under its chat what the Mate is doing: $name", ({ now, says, face, gaze }) => {
     const markup = draw(record([thought("r1", "One.")], { live: true, now, status: status() }));
     expect(markup.match(/data-mate-face-state="[a-z]+"/g)).toEqual([
       `data-mate-face-state="${face}"`,
     ]);
+    expect(markup.match(/data-mate-face-gaze="[a-z]+"/g)).toEqual(
+      gaze === null ? null : [`data-mate-face-gaze="${gaze}"`],
+    );
+    // What it opened onto is simply there: only words that change while
+    // watched rise in.
+    expect(markup).not.toContain("animate-words-in");
     expect(markup).toContain(says);
     // It stands under the chat's scroll, not in it.
     expect(markup.indexOf(says)).toBeGreaterThan(markup.lastIndexOf("data-chat-row"));
@@ -304,6 +336,8 @@ describe("RunChat", () => {
     );
     expect(markup).toContain("Nova worked");
     expect(markup).toMatch(/data-work-line-clock[^>]*>1m 12s</);
+    // It ends on the calls' time column, not under their chevrons.
+    expect(markup).toMatch(/class="[^"]*me-8\.5[^"]*" data-work-line-clock/);
     expect(markup).toContain('data-mate-face-state="done"');
     expect(draw(record([thought("r1", "One.")]))).not.toContain("data-mate-face-state");
   });
@@ -391,28 +425,60 @@ describe("RunChat", () => {
     expect(running).toContain('data-chat-folded="true"');
   });
 
+  // The call running now is the card's "this, now": a light sweeps across
+  // its words until it returns — and across nothing else.
+  it("sweeps a light across the words of the call running now, and only that one", () => {
+    const running = draw(
+      record([step(command("w1", "ls"))], {
+        live: true,
+        now: {
+          kind: "step",
+          step: stepOf(
+            command("w9", "npm run build", {
+              toolLifecycleStatus: "inProgress",
+              sourceActivityKind: "tool.started",
+            }),
+            undefined,
+            true,
+          ),
+        },
+      }),
+    );
+    expect(running.match(/data-run-shimmer/g)).toHaveLength(1);
+    expect(running.indexOf("data-run-shimmer")).toBeGreaterThan(running.indexOf(">ls<"));
+    expect(draw(record([step(command("w1", "ls"))]))).not.toContain("data-run-shimmer");
+  });
+
   // The person's words stand on the page above the card; the chat marks, in
   // short and on their side, where they reached the Mate (the owner,
   // 2026-09-28: "shown the user message in short inside the working group").
+  const personItem = {
+    kind: "person",
+    key: "person:u2",
+    at: at(5),
+    message: {
+      ...message("u2", "assistant", "Keep /health working too\nThe load balancer calls it."),
+      role: "user",
+    },
+    imageOnly: false,
+  } as const;
   it("marks where the person's words reached the Mate, in one line on their side", () => {
-    const markup = draw(
-      record([
-        {
-          kind: "person",
-          key: "person:u2",
-          at: at(5),
-          message: {
-            ...message("u2", "assistant", "Keep /health working too\nThe load balancer calls it."),
-            role: "user",
-          },
-          imageOnly: false,
-        },
-      ]),
-    );
+    const markup = draw(record([step(command("w1", "ls")), personItem]));
     expect(markup).toMatch(
       /justify-end[^>]*><p[^>]*data-chat-kind="person"[^>]*>Keep \/health working too</,
     );
     expect(markup).not.toContain("The load balancer calls it.");
+  });
+
+  // A mark says where in the run the person spoke. Before anything the Mate
+  // did it marks nothing: their words (an answer to its question, as a rule)
+  // stand on the page right above the card, and the card opened on a second
+  // copy of them (Nova, 2026-09-29).
+  it("drops a mark that would open the chat, before anything the Mate did", () => {
+    const markup = draw(record([personItem, step(command("w1", "ls"))]));
+    expect(markup).not.toContain('data-chat-kind="person"');
+    expect(markup).toContain(">ls<");
+    expect(draw(record([personItem]))).not.toContain('data-chat-kind="person"');
   });
 
   // A two-hour run drew nine hundred bubbles as its conversation opened and

@@ -13,10 +13,15 @@ import {
   MATE_MARK_LIDS,
   MATE_MARK_LIVE,
   MATE_LOCKUP,
+  MATE_SHAPE_IDS,
+  MATE_SHAPE_OF_TINT,
+  MATE_SHAPES,
   MATE_TINT_IDS,
   MATE_TINTS,
   MATE_WORDMARK,
   mateFaceParts,
+  mateShapePoints,
+  polygonArea,
   IDENTITY,
   MINT_PANEL,
   PROVIDER_ACCENT_SWATCHES,
@@ -495,6 +500,85 @@ describe("the face (MATE_FACE)", () => {
     for (const state of Object.keys(MATE_MARK_LIDS) as Array<keyof typeof MATE_MARK_LIDS>) {
       const parts = mateFaceParts(state);
       expect(parts.eyes.length + parts.arcs.length).toBe(2);
+    }
+  });
+});
+
+describe("a Mate's shape (MATE_SHAPES)", () => {
+  type Point = readonly [number, number];
+  const inside = (points: ReadonlyArray<Point>, [x, y]: Point) => {
+    let odd = false;
+    for (let index = 0, prev = points.length - 1; index < points.length; prev = index++) {
+      const [xi, yi] = points[index]!;
+      const [xj, yj] = points[prev]!;
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) odd = !odd;
+    }
+    return odd;
+  };
+  const radiusAt = (points: ReadonlyArray<Point>, [ox, oy]: Point, angle: number) => {
+    // The outline's distance from its origin along one ray, by bisection on the inside test.
+    let lo = 0;
+    let hi = 60;
+    for (let step = 0; step < 30; step += 1) {
+      const mid = (lo + hi) / 2;
+      if (inside(points, [ox + mid * Math.cos(angle), oy + mid * Math.sin(angle)])) lo = mid;
+      else hi = mid;
+    }
+    return lo;
+  };
+
+  it("gives each of the eight tints its own shape", () => {
+    expect(MATE_SHAPE_IDS).toHaveLength(8);
+    expect(Object.keys(MATE_SHAPE_OF_TINT)).toEqual([...MATE_TINT_IDS]);
+    expect(new Set(Object.values(MATE_SHAPE_OF_TINT)).size).toBe(MATE_SHAPE_IDS.length);
+  });
+
+  it.each(MATE_SHAPE_IDS)("draws the %s at one weight, inside its box", (id) => {
+    const points = mateShapePoints(id);
+    // Every shape holds the same area within a few percent, so none reads as bigger.
+    expect(polygonArea(points)).toBeGreaterThan(6300 * 0.97);
+    expect(polygonArea(points)).toBeLessThan(6300 * 1.03);
+    for (const [x, y] of points) {
+      expect(x).toBeGreaterThanOrEqual(1);
+      expect(x).toBeLessThanOrEqual(99);
+      expect(y).toBeGreaterThanOrEqual(1);
+      expect(y).toBeLessThanOrEqual(99);
+    }
+    expect(MATE_SHAPES[id].d).toMatch(/^M[\d.,]+(C[\d., ]+)+Z$/u);
+  });
+
+  it.each(MATE_SHAPE_IDS)("holds the widest eyes and the mouth of every pose: %s", (id) => {
+    const points = mateShapePoints(id);
+    const margin = 4;
+    const corners: Point[] = [];
+    for (const state of Object.keys(MATE_MARK_LIDS) as Array<keyof typeof MATE_MARK_LIDS>) {
+      for (const eye of mateFaceParts(state).eyes) {
+        corners.push(
+          [eye.x - margin, eye.y - margin],
+          [eye.x + eye.width + margin, eye.y - margin],
+          [eye.x - margin, eye.y + eye.height + margin],
+          [eye.x + eye.width + margin, eye.y + eye.height + margin],
+        );
+      }
+    }
+    const mouthReach = MATE_FACE.mouth.r + margin;
+    corners.push(
+      [50 - mouthReach, MATE_FACE.mouth.y + mouthReach],
+      [50 + mouthReach, MATE_FACE.mouth.y + mouthReach],
+    );
+    for (const corner of corners) expect(inside(points, corner)).toBe(true);
+  });
+
+  it.each(MATE_SHAPE_IDS)("turns onto itself by its step, about its own centre: %s", (id) => {
+    const points = mateShapePoints(id);
+    const { origin } = MATE_SHAPES[id];
+    const step = (MATE_SHAPES[id].step * Math.PI) / 180;
+    for (let index = 0; index < 24; index += 1) {
+      const angle = (index / 24) * 2 * Math.PI;
+      expect(radiusAt(points, origin, angle + step)).toBeCloseTo(
+        radiusAt(points, origin, angle),
+        0,
+      );
     }
   });
 });

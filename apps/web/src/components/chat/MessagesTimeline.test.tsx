@@ -144,6 +144,7 @@ function matchMedia() {
 }
 
 let MessagesTimeline: typeof import("./MessagesTimeline").MessagesTimeline;
+let messageEnters: typeof import("./MessagesTimeline").messageEnters;
 
 const ElementStub = class ElementStub {};
 
@@ -184,7 +185,7 @@ function stubDomGlobals() {
 
 beforeAll(async () => {
   stubDomGlobals();
-  ({ MessagesTimeline } = await import("./MessagesTimeline"));
+  ({ MessagesTimeline, messageEnters } = await import("./MessagesTimeline"));
 }, 30_000);
 
 // The scroll-settling test clears every global stub; mounted timeline rows
@@ -274,6 +275,23 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain('aria-label="Previous turn"');
     expect(markup).toContain('aria-label="Next turn"');
+  });
+
+  // A conversation slow to come was a blank second: its Mate works in the
+  // middle of the pane, shown only once the wait passes 400 ms — and never in
+  // a new draft's pane, whose hero carries the Mate's mark already.
+  it("shows the Mate at work while a slow conversation is on its way", () => {
+    const loading = renderToStaticMarkup(
+      <MessagesTimeline {...buildProps()} hideEmptyPlaceholder loading timelineEntries={[]} />,
+    );
+    expect(loading).toContain('role="status"');
+    expect(loading).toContain("animate-held-appear");
+    expect(loading).toContain('data-mate-face-state="working"');
+    const hero = renderToStaticMarkup(
+      <MessagesTimeline {...buildProps()} hideEmptyPlaceholder timelineEntries={[]} />,
+    );
+    expect(hero).toContain('data-timeline-loading="true"');
+    expect(hero).not.toContain("data-mate-face-state");
   });
 
   it("uses the larger leading inset only when the top fade is enabled", () => {
@@ -1682,5 +1700,45 @@ describe("MessagesTimeline — the conversation", () => {
     expect(markup).toContain("data-turn-report");
     expect(markup).toContain("appstage");
     expect(markup).toContain("Deployed");
+  });
+});
+
+describe("messageEnters", () => {
+  // A message that arrived while the person watched rises into place once;
+  // what the conversation opened onto is simply there. The baseline is the
+  // newest message's time at opening, on the server's clock.
+  const opened = Date.parse("2026-09-29T01:00:00.000Z");
+  const message = (id: string, createdAt: string) =>
+    ({
+      kind: "message",
+      id,
+      createdAt,
+      message: { id, role: "assistant", createdAt },
+    }) as unknown as Parameters<typeof messageEnters>[0];
+  it.each([
+    ["a message after the opening", message("m2", "2026-09-29T01:00:05.000Z"), opened, true],
+    ["the newest message at the opening", message("m1", "2026-09-29T01:00:00.000Z"), opened, false],
+    [
+      "an older message scrolled back into sight",
+      message("m0", "2026-09-29T00:10:00.000Z"),
+      opened,
+      false,
+    ],
+    [
+      "anything before the conversation had a message",
+      message("m2", "2026-09-29T01:00:05.000Z"),
+      null,
+      false,
+    ],
+    [
+      "a row that is not a message",
+      { kind: "event", id: "e1", createdAt: "2026-09-29T01:00:05.000Z" } as unknown as Parameters<
+        typeof messageEnters
+      >[0],
+      opened,
+      false,
+    ],
+  ] as const)("%s", (_, row, after, enters) => {
+    expect(messageEnters(row, after)).toBe(enters);
   });
 });

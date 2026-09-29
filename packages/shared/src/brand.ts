@@ -306,9 +306,10 @@ export const MATE_TINTS = {
  * mouth, when a state has one, sits 2.08 u below the eye line, exactly where
  * the mark's does (60 % of the way to the window floor).
  *
- * Still, by design: a menu of faces must not blink at you. What moves is the
- * state, and `mateFaceParts` draws each state from `MATE_MARK_LIDS`, so the
- * face and the live mark can never disagree about what "working" looks like.
+ * What moves is the state, never idle eyes: a menu of faces must not blink at
+ * you. `mateFaceParts` draws each state from `MATE_MARK_LIDS`, so the face and
+ * the live mark can never disagree about what "working" looks like; how a
+ * state moves once it is drawn is the face component's (`MateFace`).
  */
 const FACE_UNIT = 12;
 const FACE_EYE_LINE = 50 - 0.25 * FACE_UNIT;
@@ -379,6 +380,186 @@ export function mateFaceParts(state: MateMarkState): MateFaceParts {
     arcs: [],
     mouth: state === "needs" || state === "surprise" ? "o" : null,
   };
+}
+
+/**
+ * A Mate's silhouette. Eight discs that differ only in hue read as eight
+ * copies at a menu's 28 px — sky beside slate, amber beside sand — and as one
+ * face to anybody who does not see the hue at all; a silhouette is read before
+ * either. So each Mate wears a shape as well as a colour, drawn from the
+ * modern shape vocabulary (a squircle, a gem, a hexagon, a pentagon, a clover,
+ * a flower, a seal, a pick), each the same weight — every one holds the same
+ * area of its box, so none reads as bigger.
+ *
+ * Every shape turns onto itself: `step` is its symmetry, the angle after which
+ * it looks the same again. That is how a Mate at work moves — a notch at a
+ * time — without ever looking like someone else. There is no plain disc: a
+ * disc turning looks like nothing at all.
+ */
+export const MATE_SHAPE_IDS = [
+  "squircle",
+  "gem",
+  "hexagon",
+  "pentagon",
+  "clover",
+  "flower",
+  "seal",
+  "pick",
+] as const;
+
+export type MateShapeId = (typeof MATE_SHAPE_IDS)[number];
+
+/**
+ * The shape each tint wears. One shape per tint, so the account's first eight
+ * Mates, which never share a tint (`client-runtime/zerops/mateTints.ts`),
+ * never share a shape either; past eight both repeat, as the palette does. And
+ * every place that knows a Mate's tint knows its shape. The pairs keep the hues that sit close apart in silhouette: the three
+ * blues are a pick, a squircle and a gem; the warm four a pentagon, a hexagon,
+ * a flower and a seal; the one green is the clover.
+ */
+export const MATE_SHAPE_OF_TINT = {
+  coral: "pentagon",
+  amber: "hexagon",
+  olive: "clover",
+  sky: "pick",
+  violet: "gem",
+  rose: "flower",
+  sand: "seal",
+  slate: "squircle",
+} as const satisfies Record<MateTintId, MateShapeId>;
+
+export interface MateShape {
+  /** The outline in the face's 100-box, its bounds centred on (50, 50). */
+  readonly d: string;
+  /** Its symmetry: the turn, in degrees, after which it looks the same again. */
+  readonly step: number;
+  /**
+   * The point it turns about: its own centre, which for an odd number of lobes
+   * or corners is not its bounds' — a pick's top lobe reaches further than the
+   * valley under it, so turned about the box's centre it would wobble.
+   */
+  readonly origin: readonly [number, number];
+}
+
+/** A polar outline, first lobe or corner straight up, as a function of the angle. */
+type Outline = (angle: number) => number;
+
+/** Lobes: `count` bumps `depth` deep, `sharpness` above 1 narrowing their tips. */
+function lobes(count: number, depth: number, sharpness = 1, turn = 0): Outline {
+  return (angle) => {
+    const lobe = (1 + Math.cos(count * (angle - turn + Math.PI / 2))) / 2;
+    return 1 - depth + depth * lobe ** sharpness;
+  };
+}
+
+/** A superellipse: 4 is a squircle, below 2 a gem with full sides. */
+function superellipse(power: number): Outline {
+  return (angle) =>
+    1 / (Math.abs(Math.cos(angle)) ** power + Math.abs(Math.sin(angle)) ** power) ** (1 / power);
+}
+
+/** A regular polygon, a corner up, eased toward its inscribed circle at the corners. */
+function softPolygon(corners: number, softness: number): Outline {
+  const half = Math.PI / corners;
+  const inscribed = Math.cos(half);
+  return (angle) => {
+    const local = ((((angle + Math.PI / 2) % (2 * half)) + 2 * half) % (2 * half)) - half;
+    const sharp = inscribed / Math.cos(local);
+    return sharp * (1 - softness) + softness * (inscribed + 0.35 * (1 - inscribed));
+  };
+}
+
+const tenth = (value: number) => Math.round(value * 10) / 10;
+
+/** The area every shape holds: a disc of radius 44.8, the old disc's weight less its rim. */
+const SHAPE_AREA = 6300;
+/** No shape reaches past this from the centre, so none touches the box's edge. */
+const SHAPE_HALF_MAX = 49;
+
+function outlinePoints(outline: Outline, samples: number): Array<readonly [number, number]> {
+  const points: Array<readonly [number, number]> = [];
+  for (let index = 0; index < samples; index += 1) {
+    const angle = (index / samples) * 2 * Math.PI - Math.PI / 2;
+    const radius = outline(angle);
+    points.push([radius * Math.cos(angle), radius * Math.sin(angle)]);
+  }
+  return points;
+}
+
+export function polygonArea(points: ReadonlyArray<readonly [number, number]>): number {
+  let twice = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    const [x1, y1] = points[index]!;
+    const [x2, y2] = points[(index + 1) % points.length]!;
+    twice += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(twice) / 2;
+}
+
+/**
+ * Scaled to the one area (or to the box, if that is smaller) and centred on its
+ * bounds; with it, where its own centre — the outline's origin — lands.
+ */
+function fitShape(points: ReadonlyArray<readonly [number, number]>): {
+  readonly points: Array<readonly [number, number]>;
+  readonly origin: readonly [number, number];
+} {
+  let scale = Math.sqrt(SHAPE_AREA / polygonArea(points));
+  const xs = points.map(([x]) => x);
+  const ys = points.map(([, y]) => y);
+  const half =
+    (scale * Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys))) / 2;
+  if (half > SHAPE_HALF_MAX) scale *= SHAPE_HALF_MAX / half;
+  const cx = (scale * (Math.max(...xs) + Math.min(...xs))) / 2;
+  const cy = (scale * (Math.max(...ys) + Math.min(...ys))) / 2;
+  return {
+    points: points.map(([x, y]) => [x * scale - cx + 50, y * scale - cy + 50] as const),
+    origin: [tenth(50 - cx), tenth(50 - cy)],
+  };
+}
+
+/** A closed curve through every point: Catmull-Rom, as cubic Béziers. */
+function smoothPath(points: ReadonlyArray<readonly [number, number]>): string {
+  const at = (index: number) => points[(index + points.length) % points.length]!;
+  let d = `M${tenth(at(0)[0])},${tenth(at(0)[1])}`;
+  for (let index = 0; index < points.length; index += 1) {
+    const [x0, y0] = at(index - 1);
+    const [x1, y1] = at(index);
+    const [x2, y2] = at(index + 1);
+    const [x3, y3] = at(index + 2);
+    d +=
+      `C${tenth(x1 + (x2 - x0) / 6)},${tenth(y1 + (y2 - y0) / 6)} ` +
+      `${tenth(x2 - (x3 - x1) / 6)},${tenth(y2 - (y3 - y1) / 6)} ${tenth(x2)},${tenth(y2)}`;
+  }
+  return `${d}Z`;
+}
+
+const SHAPE_OUTLINES: Record<
+  MateShapeId,
+  { readonly outline: Outline; readonly samples: number; readonly step: number }
+> = {
+  squircle: { outline: superellipse(4), samples: 64, step: 90 },
+  gem: { outline: superellipse(1.55), samples: 64, step: 90 },
+  hexagon: { outline: softPolygon(6, 0.35), samples: 72, step: 60 },
+  pentagon: { outline: softPolygon(5, 0.38), samples: 70, step: 72 },
+  clover: { outline: lobes(4, 0.3, 1, Math.PI / 4), samples: 64, step: 90 },
+  flower: { outline: lobes(5, 0.2), samples: 60, step: 72 },
+  seal: { outline: lobes(12, 0.1, 1.6), samples: 96, step: 30 },
+  pick: { outline: lobes(3, 0.16), samples: 48, step: 120 },
+};
+
+export const MATE_SHAPES = Object.fromEntries(
+  MATE_SHAPE_IDS.map((id) => {
+    const { outline, samples, step } = SHAPE_OUTLINES[id];
+    const { points, origin } = fitShape(outlinePoints(outline, samples));
+    return [id, { d: smoothPath(points), step, origin }];
+  }),
+) as Record<MateShapeId, MateShape>;
+
+/** The shape's own points, for the tests that hold every shape to the one weight and the eyes. */
+export function mateShapePoints(id: MateShapeId): ReadonlyArray<readonly [number, number]> {
+  const { outline, samples } = SHAPE_OUTLINES[id];
+  return fitShape(outlinePoints(outline, samples)).points;
 }
 
 export const ZEROPS_MARK = {

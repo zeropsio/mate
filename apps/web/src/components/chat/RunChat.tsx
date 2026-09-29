@@ -78,7 +78,8 @@ import ChatMarkdown from "../ChatMarkdown";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import { CrewSeamActivity } from "../zerops/crew/CrewTaskCard";
 import { KindGlyph, ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
-import { MateFace } from "../zerops/primitives";
+import { MateFace, type MateFaceGaze } from "../zerops/primitives";
+import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
 import { BrowserStrip, BrowserTakes } from "./BrowserStrip";
@@ -397,8 +398,12 @@ function ChatScroll({
           className={cn(
             CHAT_MAX_HEIGHT,
             // A column, so the bubbles stand at its foot beside the face when
-            // the room it keeps is taller than they are.
-            "-mx-1.5 flex flex-col overflow-x-hidden overflow-y-auto overscroll-contain px-1.5 scrollbar-none",
+            // the room it keeps is taller than they are. The page scrolls on
+            // past its ends: contained, a wheel over a long run stopped dead
+            // at the chat's top, and the page stood still under the pointer
+            // until it left the card. A gesture begun inside stays inside
+            // (the browser latches it), so a flick never throws the page.
+            "-mx-1.5 flex flex-col overflow-x-hidden overflow-y-auto px-1.5 scrollbar-none",
           )}
           onKeyDown={markGesture}
           onScroll={onScroll}
@@ -420,20 +425,26 @@ function ChatScroll({
           </ol>
           <span ref={endRef} aria-hidden="true" className="-mt-px block h-px shrink-0" />
         </div>
-        {above ? (
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-card to-transparent"
-          />
-        ) : null}
+        {/* The fades ease in and out with the scroll rather than snapping on
+            at its first pixel. */}
+        <div
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-card to-transparent transition-opacity duration-200 ease-out",
+            above ? "opacity-100" : "opacity-0",
+          )}
+          data-chat-fade="above"
+        />
         {/* Read back, the chat fades into the status line under it rather
             than being cut off against it. */}
-        {below ? (
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-card to-transparent"
-          />
-        ) : null}
+        <div
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-card to-transparent transition-opacity duration-200 ease-out",
+            below ? "opacity-100" : "opacity-0",
+          )}
+          data-chat-fade="below"
+        />
       </div>
     </ChatScrollContext>
   );
@@ -740,7 +751,8 @@ function OutputBlock({
       {label === null ? null : <h4 className={cn(META, "text-muted-foreground")}>{label}</h4>}
       <pre
         className={cn(
-          "max-h-64 min-w-0 overflow-auto overscroll-contain whitespace-pre-wrap break-words rounded-xl bg-foreground/4 px-3 py-2 text-foreground/80 select-text",
+          // Past its ends the page scrolls on, as it does past the chat's.
+          "max-h-64 min-w-0 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-foreground/4 px-3 py-2 text-foreground/80 select-text",
           META,
           mono ? "font-mono" : "font-sans",
         )}
@@ -764,6 +776,7 @@ function Headline({
   timeTone = "muted",
   opens = false,
   column = false,
+  running = false,
 }: {
   readonly children: ReactNode;
   readonly time?: ReactNode;
@@ -771,10 +784,17 @@ function Headline({
   readonly opens?: boolean;
   /** A row of a card of calls: the time and the chevron keep their column. */
   readonly column?: boolean;
+  /**
+   * The call is running now: a light sweeps across its words, in their own
+   * inks, until it returns — the card's "this, now" without a spinner.
+   */
+  readonly running?: boolean;
 }) {
   return (
     <span className={cn("flex min-w-0 items-start gap-2", WORDS)}>
-      <span className="min-w-0 flex-1">{children}</span>
+      <span className="min-w-0 flex-1" data-run-shimmer={running ? "" : undefined}>
+        {children}
+      </span>
       {time !== null || opens || column ? (
         <span className="flex h-[1lh] shrink-0 items-center gap-1.5 ps-2">
           <span
@@ -1337,6 +1357,7 @@ export function StepBubble({ step }: { readonly step: WorkStep }) {
     <Headline
       column
       opens={opens}
+      running={running}
       time={timeWords}
       timeTone={running ? "busy" : failed ? "failed" : "muted"}
     >
@@ -1382,7 +1403,10 @@ export function StepBubble({ step }: { readonly step: WorkStep }) {
       ) : null}
       <StepPictures paths={step.images} />
       {disclosure.open && outputs.length > 0 ? (
-        <div className="grid gap-2 px-3.5 pb-2.5" data-chat-detail>
+        <div
+          className="grid animate-detail-in gap-2 px-3.5 pb-2.5 motion-reduce:animate-none"
+          data-chat-detail
+        >
           {outputs.map((output) => (
             <OutputBlock key={output.key} label={output.label}>
               {output.text}
@@ -1499,7 +1523,10 @@ function OperationBubble({
         </Headline>
       </DisclosureButton>
       {disclosure.open ? (
-        <div className="px-3.5 pb-2.5" data-chat-detail>
+        <div
+          className="animate-detail-in px-3.5 pb-2.5 motion-reduce:animate-none"
+          data-chat-detail
+        >
           <OperationDetail
             environmentId={ctx.activeThreadEnvironmentId}
             operation={operation}
@@ -1601,7 +1628,10 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
         </div>
       )}
       {disclosure.open ? (
-        <div className="px-3.5 pb-2.5" data-chat-detail>
+        <div
+          className="animate-detail-in px-3.5 pb-2.5 motion-reduce:animate-none"
+          data-chat-detail
+        >
           <BrowserStrip
             bare
             environmentId={ctx.activeThreadEnvironmentId}
@@ -1759,7 +1789,10 @@ export function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
       </DisclosureButton>
       {disclosure.open ? (
         // Its helpers' words on the bubble's text edge: 8 px in, and their own 6.
-        <div className="grid gap-2 px-2 pb-2.5" data-chat-detail>
+        <div
+          className="grid animate-detail-in gap-2 px-2 pb-2.5 motion-reduce:animate-none"
+          data-chat-detail
+        >
           <ul className="grid gap-0.5">
             {agents.map((agent) => (
               <HelperRow key={agent.id} agent={agent} />
@@ -1835,7 +1868,10 @@ function TaskBubble({ entry }: { readonly entry: WorkLogEntry }) {
         <div className={BUBBLE_PAD}>{line}</div>
       )}
       {disclosure.open ? (
-        <div className="px-3.5 pb-2.5" data-chat-detail>
+        <div
+          className="animate-detail-in px-3.5 pb-2.5 motion-reduce:animate-none"
+          data-chat-detail
+        >
           <TaskReport entry={entry} />
         </div>
       ) : null}
@@ -1870,7 +1906,10 @@ function PlanBubble({ plan }: { readonly plan: TurnPlanEntry }) {
         </Headline>
       </DisclosureButton>
       {disclosure.open ? (
-        <div className="px-3.5 pb-2.5" data-chat-detail>
+        <div
+          className="animate-detail-in px-3.5 pb-2.5 motion-reduce:animate-none"
+          data-chat-detail
+        >
           <PlanSteps steps={steps} />
         </div>
       ) : null}
@@ -1907,7 +1946,10 @@ function ErrorBubble({ entry }: { readonly entry: WorkLogEntry }) {
         </DisclosureButton>
       )}
       {disclosure.open && more !== null ? (
-        <div className="px-3.5 pb-2.5" data-chat-detail>
+        <div
+          className="animate-detail-in px-3.5 pb-2.5 motion-reduce:animate-none"
+          data-chat-detail
+        >
           <OutputBlock>{more}</OutputBlock>
         </div>
       ) : null}
@@ -2185,19 +2227,26 @@ interface Doing {
   readonly composing: boolean;
   /** It waits on the person: the clock stands still, the line in the attention hand. */
   readonly waiting: boolean;
+  /** Where its face looks while it does it: up and aside thinking, down along its line writing. */
+  readonly gaze?: MateFaceGaze;
 }
 
 function liveDoing(now: TurnHeaderActivity | null, compacting: boolean, answering: boolean): Doing {
   if (compacting) return { verb: "is condensing the context", composing: true, waiting: false };
-  if (answering) return { verb: "is writing", composing: true, waiting: false };
-  if (now === null) return { verb: "is thinking", composing: true, waiting: false };
+  if (answering) return { verb: "is writing", composing: true, waiting: false, gaze: "down" };
+  if (now === null) return { verb: "is thinking", composing: true, waiting: false, gaze: "up" };
   switch (now.kind) {
     case "waiting":
       return { verb: "is waiting for your answer", composing: false, waiting: true };
     case "writing":
-      return { verb: "is writing", composing: true, waiting: false };
+      return { verb: "is writing", composing: true, waiting: false, gaze: "down" };
     case "thinking":
-      return { verb: "is thinking", composing: now.messages.length === 0, waiting: false };
+      return {
+        verb: "is thinking",
+        composing: now.messages.length === 0,
+        waiting: false,
+        gaze: "up",
+      };
     case "step":
     case "operation":
       return { verb: "is working", composing: false, waiting: false };
@@ -2225,12 +2274,23 @@ function StatusLine({
   const doing = status.live ? liveDoing(now, isCompacting, answering) : null;
   const face: MateMarkState =
     doing === null ? SETTLED_FACE[status.face] : doing.waiting ? "needs" : "working";
+  const words = `${ctx.speaker.name} ${doing?.verb ?? settledRunVerb(status)}`;
+  // The line's words change in place as the run goes: the new ones rise into
+  // it, so a change reads as the same line saying something new, not a flicker.
+  const wordsChanged = useChangedSinceShown(words);
   return (
     <div
       className={cn("flex min-w-0 items-center pb-1", MARK_GAP)}
       data-run-status={doing === null ? status.face : doing.waiting ? "waiting" : "working"}
     >
-      <MateFace size="md" state={face} tint={ctx.speaker.tint} />
+      <MateFace
+        gaze={doing?.gaze}
+        greets
+        known={ctx.arrivedAfter !== null && !ctx.syncing}
+        size="md"
+        state={face}
+        tint={ctx.speaker.tint}
+      />
       <div
         className={cn(
           "flex min-h-7 min-w-0 flex-1 items-center gap-2.5 text-line",
@@ -2240,13 +2300,23 @@ function StatusLine({
         role={status.live ? "status" : undefined}
       >
         <span className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="min-w-0 truncate">
-            {ctx.speaker.name} {doing?.verb ?? settledRunVerb(status)}
+          <span
+            className={cn(
+              "min-w-0 truncate",
+              wordsChanged && "animate-words-in motion-reduce:animate-none",
+            )}
+            key={words}
+          >
+            {words}
           </span>
           {doing?.composing ? <TypingDots className="shrink-0 scale-75" /> : null}
         </span>
+        {/* The run's clock stands in the calls' time column — 14 px of the
+            bubble's padding and the chevron's 20 px slot in from the edge —
+            so every time in the card ends on one edge; it stood under the
+            chevrons, 34 px right of the times it sums. */}
         <RunClock
-          className={doing !== null && !doing.waiting ? "text-status-busy-text" : undefined}
+          className={cn("me-8.5", doing !== null && !doing.waiting && "text-status-busy-text")}
           status={status}
           timestampFormat={ctx.timestampFormat}
         />
@@ -2273,6 +2343,10 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     const line = itemLine(item);
     return line === null ? [] : [line];
   });
+  // A mark says where in the run the person spoke; before anything the Mate
+  // did it marks nothing — their words stand on the page right above the
+  // card, and the card opened on a second copy of them.
+  while (lines[0]?.theirs === true) lines.shift();
   if (row.live && !row.answering) {
     const line = nowLine(row.now);
     if (line !== null) lines.push(line);
@@ -2418,7 +2492,10 @@ export function BackgroundLine({
         <div className="flex min-h-7 items-center">{line}</div>
       )}
       {open ? (
-        <ul className="grid min-w-0 gap-3 ps-5" data-chat-detail>
+        <ul
+          className="grid min-w-0 animate-detail-in gap-3 ps-5 motion-reduce:animate-none"
+          data-chat-detail
+        >
           {reported.map((entry) => (
             <li key={entry.id} className="grid min-w-0 gap-1">
               <span className="text-line text-foreground/85">

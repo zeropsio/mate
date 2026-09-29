@@ -776,6 +776,11 @@ export function rowGap(
   if (row.kind === "seam" || row.kind === "crew-seam") return "turn";
   if (previous.kind === "seam" || previous.kind === "crew-seam") return "block";
   if (isPersonRow(row)) {
+    // A question's row opens with the Mate asking it, the person's answer
+    // under it: after the person's own words that is a change of speaker,
+    // and it hung 3 px under their bubble as if they had asked it (Nova,
+    // 2026-09-29).
+    if (row.kind === "answer" && isPersonRow(previous)) return "block";
     if (isPersonRow(previous)) return "tight";
     if (isMateProse(previous)) return "block";
     return closesTurn(previous) ||

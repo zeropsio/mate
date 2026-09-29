@@ -127,6 +127,7 @@ import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsMateEmptyState } from "../zerops/ZeropsMateEmptyState";
+import { MateFace } from "../zerops/primitives";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 
@@ -275,6 +276,17 @@ interface MessagesTimelineProps {
   /** Filled while a remembered reading position is being restored; calling it hands scrolling back. */
   cancelPositionRestoreRef?: React.RefObject<(() => void) | null>;
   hideEmptyPlaceholder?: boolean;
+  /**
+   * The conversation is on its way: a slow one shows its Mate at work in the
+   * middle of the pane, and a quick one shows nothing at all.
+   */
+  loading?: boolean;
+  /**
+   * The conversation is still being read from the server (a remembered or
+   * cached copy may be showing): what arrives meanwhile is history, and
+   * nothing rises in until the read is done.
+   */
+  syncing?: boolean;
   topFadeEnabled?: boolean;
   /** Non-null when older turns exist beyond the loaded window. */
   loadEarlier?: { readonly loading: boolean; readonly onLoadEarlier: () => void } | null;
@@ -329,6 +341,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onManualNavigation,
   cancelPositionRestoreRef,
   hideEmptyPlaceholder = false,
+  loading = false,
+  syncing = false,
   topFadeEnabled = false,
   loadEarlier = null,
   queuedMessages = EMPTY_QUEUED_MESSAGES,
@@ -801,6 +815,34 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           : { name: "Assistant", tint: "slate" },
     [crewmate, mate],
   );
+  // What the conversation held when it opened, on the server's clock: a
+  // message newer than that arrived while the person watched. Measured per
+  // conversation, from the rows themselves, so a client clock that runs
+  // behind the server's never makes the history rise in as it opens.
+  const newestMessageAt = useMemo(() => {
+    let newest = Number.NEGATIVE_INFINITY;
+    for (const row of rows) {
+      if (row.kind !== "message") continue;
+      const at = Date.parse(row.createdAt);
+      if (at > newest) newest = at;
+    }
+    return newest;
+  }, [rows]);
+  const [openedWith, setOpenedWith] = useState<{
+    readonly key: string;
+    readonly at: number;
+  } | null>(null);
+  // Until the conversation is read, the baseline follows its newest message:
+  // a cached copy painting first, then the server's newer messages landing,
+  // is history arriving, not a message arriving while the person watched.
+  if (
+    newestMessageAt > Number.NEGATIVE_INFINITY &&
+    (openedWith?.key !== routeThreadKey || (syncing && newestMessageAt > openedWith.at))
+  ) {
+    setOpenedWith({ key: routeThreadKey, at: newestMessageAt });
+  }
+  const arrivedAfter = openedWith?.key === routeThreadKey ? openedWith.at : null;
+
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
       timestampFormat,
@@ -825,6 +867,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onSteerQueuedMessage,
       steerQueuedMessageShortcutLabel,
       onRemoveQueuedMessage,
+      arrivedAfter,
+      syncing,
     }),
     [
       timestampFormat,
@@ -848,6 +892,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onSteerQueuedMessage,
       steerQueuedMessageShortcutLabel,
       onRemoveQueuedMessage,
+      arrivedAfter,
+      syncing,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(
@@ -887,8 +933,28 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   if (empty && !isWorking) {
     if (hideEmptyPlaceholder) {
       // Occupy the pane with the theme surface so a thread switch cannot
-      // punch a hole through to the window chrome (white in light mode).
-      return <div className="h-full min-h-0 bg-background" data-timeline-loading="true" />;
+      // punch a hole through to the window chrome (white in light mode). A
+      // conversation slow to come — a Mate opened for the first time, over
+      // the network — was a blank second: its Mate works in the middle of the
+      // pane instead, shown only once the wait passes 400 ms.
+      return (
+        <div
+          className="flex h-full min-h-0 items-center justify-center bg-background"
+          data-timeline-loading="true"
+        >
+          {loading ? (
+            <span
+              aria-label={`Opening ${speaker.name}'s conversation`}
+              // Opacity alone, so it keeps its 400 ms hold under reduced
+              // motion too: without the hold a quick load flashed it.
+              className="flex animate-held-appear"
+              role="status"
+            >
+              <MateFace size="lg" state="working" tint={speaker.tint} />
+            </span>
+          ) : null}
+        </div>
+      );
     }
     return crew === null ? (
       <TimelineEmptyState environmentId={activeThreadEnvironmentId} threadKey={routeThreadKey} />
@@ -924,7 +990,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               }
               onScroll={handleScroll}
               className={cn(
-                "scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
+                "timeline-legend-list scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
                 topFadeEnabled && "topbar-scroll-fade",
               )}
               ListHeaderComponent={
@@ -1329,17 +1395,54 @@ const CARD_SLICE: Record<CardSlice, string> = {
   middle: "border-x border-border/70 bg-card px-4",
   bottom: "h-4 rounded-b-3xl border-x border-b border-border/70 bg-card",
 };
+// Where two slices meet, each row's clip snapped away from the joint and the
+// page showed through as a hairline (2026-09-29): a slice with another under
+// it lays its ground across the joint (`[data-card-slice]` in index.css).
+
+/**
+ * The messages that have risen into place once: the list draws a row again
+ * whenever it recycles it, and a message scrolled back into sight stays put.
+ */
+const enteredMessages = new Set<string>();
+
+/**
+ * Whether a row is a message that arrived while the person watched, and has
+ * not risen in yet: the person's words from their side, the Mate's up from
+ * just below. What the conversation opened onto is simply there.
+ */
+export function messageEnters(row: TimelineRow, arrivedAfter: number | null): boolean {
+  if (arrivedAfter === null || row.kind !== "message") return false;
+  if (enteredMessages.has(row.id)) return false;
+  return Date.parse(row.createdAt) > arrivedAfter;
+}
 
 const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: TimelineRow }) {
   const gap = GAP_CLASS[row.gap ?? "none"];
   const card = row.card;
   const content = <TimelineRowBody row={row} />;
+  const { arrivedAfter } = use(TimelineRowCtx);
+  const [entering] = useState(() => messageEnters(row, arrivedAfter));
+  useEffect(() => {
+    if (!entering) return;
+    // The oldest goes first: clearing them all would let every message of
+    // the open conversation newer than its opening rise in again.
+    if (enteredMessages.size >= 500) {
+      const oldest = enteredMessages.values().next();
+      if (!oldest.done) enteredMessages.delete(oldest.value);
+    }
+    enteredMessages.add(row.id);
+  }, [entering, row.id]);
+  const person = row.kind === "message" && row.message.role === "user";
   return (
     <div
       className={cn(
         card === undefined || card === "top" ? gap : null,
         card === undefined ? rowInset(row) : null,
         row.kind === "message" && row.message.role === "assistant" ? "group/assistant" : null,
+        entering &&
+          (person
+            ? "origin-bottom-right animate-bubble-in motion-reduce:animate-none"
+            : "animate-rise-in motion-reduce:animate-none"),
       )}
       data-card-slice={card}
       data-timeline-row-id={row.id}

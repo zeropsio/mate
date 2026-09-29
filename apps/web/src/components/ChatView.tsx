@@ -223,8 +223,8 @@ import { undoLatestThreadAction } from "../hooks/showUndoToast";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import {
   AlarmClockIcon,
+  ArrowDownIcon,
   CheckCircle2Icon,
-  ChevronDownIcon,
   DownloadIcon,
   GitBranchIcon,
   HistoryIcon,
@@ -8187,6 +8187,8 @@ export default function ChatView(props: ChatViewProps) {
                   onManualNavigation={cancelTimelineLiveFollowForUserNavigation}
                   cancelPositionRestoreRef={cancelPositionRestoreRef}
                   hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
+                  loading={threadDetailLoading && !isDraftHeroState}
+                  syncing={threadSyncPhase !== null || threadDetailLoading}
                   queuedMessages={queuedMessages}
                   usagePause={activeThreadShell?.usagePause ?? null}
                   onUsageAutoResumeChange={onUsageAutoResumeChange}
@@ -8202,24 +8204,27 @@ export default function ChatView(props: ChatViewProps) {
                 />
               </CrewTimelineContext>
 
-              {/* scroll to end pill — shown when user has scrolled away from the live edge */}
-              {showScrollToBottom && (
-                <div
-                  className="pointer-events-none absolute left-1/2 z-30 flex -translate-x-1/2 justify-center py-1.5"
-                  style={{ bottom: composerOverlayHeight + 4 }}
+              {/* The way back to the end, once the person has scrolled away from
+                  it: a round button floating over the timeline, always drawn and
+                  eased in and out, so it rises into place instead of popping. */}
+              <div
+                className="pointer-events-none absolute left-1/2 z-30 flex -translate-x-1/2 justify-center py-2"
+                style={{ bottom: composerOverlayHeight + 4 }}
+              >
+                {/* Hidden, it is inert: out of the tab order and the tree the
+                    reader hears, and a button still focused as it goes (a click
+                    or a key focused it) lets the focus go with it. */}
+                <button
+                  aria-label="Scroll to end"
+                  className="pointer-events-auto flex size-8 cursor-pointer items-center justify-center rounded-full border border-border/70 bg-popover text-foreground shadow-lg/8 transition-[opacity,translate,scale,background-color] duration-200 ease-out hover:bg-accent active:scale-95 not-data-shown:pointer-events-none not-data-shown:translate-y-1.5 not-data-shown:scale-96 not-data-shown:opacity-0"
+                  data-shown={showScrollToBottom ? "" : undefined}
+                  inert={!showScrollToBottom}
+                  onClick={() => scrollToEnd(true)}
+                  type="button"
                 >
-                  <Button
-                    aria-label="Scroll to end"
-                    onClick={() => scrollToEnd(true)}
-                    className="pointer-events-auto"
-                    size="xs"
-                    variant="glass"
-                  >
-                    <ChevronDownIcon className="size-3.5" />
-                    Scroll to end
-                  </Button>
-                </div>
-              )}
+                  <ArrowDownIcon aria-hidden="true" className="size-4" />
+                </button>
+              </div>
             </div>
 
             {/* Input bar — centered hero while a draft has no messages, docked at the bottom otherwise */}

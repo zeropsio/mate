@@ -583,7 +583,16 @@ export const ChatHeader = memo(function ChatHeader({
           </>
         ) : null}
         {crewOrigin !== null || (whoLivesHere.kind !== "nobody" && !spoken) ? null : (
-          <WorkspaceBreadcrumbItem current className="flex-1">
+          // Under a Mate the heading is the Mate; what it is on reads in the
+          // quiet voice after it, not as a second heading as loud as its name.
+          <WorkspaceBreadcrumbItem
+            current
+            className={cn(
+              "flex-1",
+              mate !== undefined &&
+                "font-normal text-muted-foreground transition-colors has-[button:hover]:text-foreground",
+            )}
+          >
             {renamingTitle !== null ? (
               <input
                 autoFocus
