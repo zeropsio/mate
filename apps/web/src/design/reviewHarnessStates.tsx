@@ -556,6 +556,19 @@ export const REVIEW_STATES: ReadonlyArray<{
     ),
   },
   {
+    id: "page-wide",
+    label: "The change's page, a diff with lines wider than its column open",
+    page: true,
+    node: (
+      <Change
+        frame="page"
+        open={["server/index.ts"]}
+        over={{ additions: 2, deletions: 1, changedFiles: 1 }}
+        readout={WIDE}
+      />
+    ),
+  },
+  {
     id: "settle",
     label: "Its reads landing after 1.5 s",
     node: <Settling after={SETTLE_MS} frame="dialog" />,
