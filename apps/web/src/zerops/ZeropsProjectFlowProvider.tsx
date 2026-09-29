@@ -743,7 +743,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       try {
         await client.createTag(slug, GROUP_REPOSITORY, { tag, target, message });
         setTrouble(null);
-        return DONE;
+        return { ok: true, tag };
       } catch (cause) {
         return refuse(
           cause instanceof Error && "status" in cause && cause.status === 403

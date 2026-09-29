@@ -220,7 +220,8 @@ function ReleaseData({
     setPress({ kind: "running" });
     const answer = await flowValue.release(flow.groupId);
     setPress(answer.ok ? { kind: "done" } : { kind: "refused", reason: answer.reason });
-    if (!answer.ok) setMade(undefined);
+    // The tag it made is the one the review follows from here.
+    setMade(answer.ok ? (answer.tag ?? flow.release.suggestion) : undefined);
   };
 
   return (
@@ -376,7 +377,20 @@ function RollbackData({
   readonly onClose: () => void;
 }) {
   const flowValue = useZeropsProjectFlowOptional();
+  const now = useNowMs();
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
+  // The tag the roll back made — its own read of the tags, not the flow's guess — which the
+  // review follows through the broker's verdict and production's deploy, as a release's.
+  const [made, setMade] = useState<string | undefined>(undefined);
+  const tagged = made === undefined ? undefined : flow.releases.find((entry) => entry.tag === made);
+  const clockMs = useSecondsNowMs(press.kind === "done" && tagged?.standing === undefined);
+  const outcome = releaseOutcomeOf({
+    tagged,
+    releasing: press.kind === "done",
+    pressing: false,
+    tag: made ?? flow.release.suggestion,
+    clockMs,
+  });
   const earlier = flow.releases.find((entry) => entry.tag === tag);
   const production = flow.environmentInputs.find((entry) => entry.tier === "production");
   const running = new Map(
@@ -390,6 +404,7 @@ function RollbackData({
     setPress({ kind: "running" });
     const answer = await flowValue.rollBack(flow.groupId, tag);
     setPress(answer.ok ? { kind: "done" } : { kind: "refused", reason: answer.reason });
+    if (answer.ok) setMade(answer.tag);
   };
   return (
     <RollbackReviewView
@@ -398,11 +413,13 @@ function RollbackData({
       // Rolling back is a release: only a releaser tags, whatever else holds Release back now.
       mayRelease={flow.release.gate.allowed || flow.release.gate.reason !== RELEASE_NOT_A_RELEASER}
       name={name}
-      nextTag={flow.release.suggestion}
+      nextTag={made ?? flow.release.suggestion}
+      now={now}
       onClose={onClose}
       onRollBack={() => {
         void rollBack();
       }}
+      outcome={outcome}
       press={press}
       services={
         moving.length === 0 ? (earlier?.entries.map((entry) => entry.service) ?? []) : moving
@@ -430,6 +447,9 @@ export interface RollbackReviewViewProps {
   readonly where: ReadonlyArray<{ readonly service: string; readonly line: string }>;
   readonly mayRelease: boolean;
   readonly press: ReviewPress;
+  /** Where the tag it made stands, once it was made. */
+  readonly outcome: ReleaseOutcome;
+  readonly now: number;
   readonly titleId?: string | undefined;
   readonly onRollBack: () => void;
   readonly onClose: () => void;
@@ -443,7 +463,9 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
     live: props.live,
     services: props.services,
     mayRelease: props.mayRelease,
-    outcome: press,
+    press,
+    outcome: props.outcome,
+    now: props.now,
   });
   return (
     <ZeropsReviewSurface

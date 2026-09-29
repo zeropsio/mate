@@ -488,7 +488,9 @@ function rollback(over: Partial<RollbackReviewInput> = {}): RollbackReviewInput 
     live: "v0.1.57",
     services: ["app", "api"],
     mayRelease: true,
-    outcome: { kind: "idle" },
+    press: { kind: "idle" },
+    outcome: { kind: "offered" },
+    now: NOW,
     ...over,
   };
 }
@@ -513,20 +515,59 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
       "Production keeps running v0.1.57.",
     ],
     [
-      "rolling back",
-      { outcome: { kind: "running" } },
-      { state: "rolling-back", tone: "busy", title: "Rolling back to v0.1.55" },
+      "tagging",
+      { press: { kind: "running" } },
+      {
+        state: "rolling-back",
+        tone: "busy",
+        title: "Rolling back to v0.1.55",
+        why: "Tagging main as v0.1.58",
+      },
       "You can close this. Production's chip in the menu follows the release.",
     ],
     [
-      "rolled back",
-      { outcome: { kind: "done" } },
-      { state: "rolled-back", tone: "done", title: "Rolled back to v0.1.55" },
+      // The tag existing is not production running it: the broker and the deploy still decide.
+      "tagged, on its way",
+      {
+        press: { kind: "done" },
+        outcome: { kind: "releasing", progress: "Production redeploys from v0.1.58 · 0:40" },
+      },
+      {
+        state: "rolling-back",
+        tone: "busy",
+        title: "Rolling back to v0.1.55",
+        why: "Production redeploys from v0.1.58 · 0:40",
+      },
+      "You can close this. Production's chip in the menu follows the release.",
+    ],
+    [
+      "rolled back once production runs it",
+      { press: { kind: "done" }, outcome: { kind: "released", at: minutesAgo(3) } },
+      {
+        state: "rolled-back",
+        tone: "done",
+        title: "Rolled back to v0.1.55",
+        why: "Production runs its commits again, as v0.1.58 · 3 minutes ago",
+      },
       "Production runs v0.1.55's commits again, as v0.1.58.",
     ],
     [
+      "the broker refused it, or its deploy failed",
+      {
+        press: { kind: "done" },
+        outcome: { kind: "failed", detail: "The deploy of app failed", service: "app" },
+      },
+      {
+        state: "rollback-failed",
+        tone: "failed",
+        title: "v0.1.58 didn't go out",
+        why: "The deploy of app failed",
+      },
+      "Production still runs v0.1.57.",
+    ],
+    [
       "refused",
-      { outcome: { kind: "refused", reason: "Gitea would not create the tag." } },
+      { press: { kind: "refused", reason: "Gitea would not create the tag." } },
       { state: "rollback-refused", tone: "attention", why: "Gitea would not create the tag." },
       "Production keeps running v0.1.57.",
     ],

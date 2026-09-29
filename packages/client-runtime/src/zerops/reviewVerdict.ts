@@ -66,6 +66,7 @@ export type ReviewState =
   | "rollback-blocked"
   | "rolling-back"
   | "rolled-back"
+  | "rollback-failed"
   | "rollback-refused"
   | "land-ready"
   | "land-now"
@@ -691,65 +692,92 @@ export function releaseReview(input: ReleaseReviewInput): ReviewModel {
 export interface RollbackReviewInput {
   /** The earlier release it goes back to. */
   readonly tag: string;
-  /** The tag it makes, listing that release's commits. */
+  /** The tag it makes, listing that release's commits — the one made, once it was. */
   readonly nextTag: string;
   readonly live: string | undefined;
   readonly services: ReadonlyArray<string>;
   readonly mayRelease: boolean;
-  readonly outcome: ReviewPress;
+  /** The press: tagging, refused, or the tag made. */
+  readonly press: ReviewPress;
+  /**
+   * Where the tag it made stands, as a release's does: the broker's verdict and production's
+   * deploy decide, never the tag existing.
+   */
+  readonly outcome: ReleaseOutcome;
   readonly eta?: string | undefined;
-  readonly baseBranch?: string | undefined;
+  readonly now: number;
 }
 
 export function rollbackReview(input: RollbackReviewInput): ReviewModel {
-  const { tag, nextTag, outcome } = input;
-  const base = input.baseBranch ?? "main";
+  const { tag, nextTag, outcome, press } = input;
   const keeps =
     input.live === undefined
       ? "Production keeps running what it runs."
       : `Production keeps running ${input.live}.`;
   // Production moves: a deliberate press, never the review's first focus, never ⌘↵.
   const primary = { label: `Roll back to ${tag}`, enabled: input.mayRelease, safe: false };
+  const onItsWay = (why: string): ReviewModel => ({
+    verdict: {
+      state: "rolling-back",
+      tone: "busy",
+      title: `Rolling back to ${tag}`,
+      why,
+      fix: undefined,
+    },
+    consequence: RELEASE_FOLLOWS,
+    primary: undefined,
+  });
+  if (press.kind === "running") return onItsWay(`Tagging main as ${nextTag}`);
+  if (press.kind === "refused") {
+    return {
+      verdict: {
+        state: "rollback-refused",
+        tone: "attention",
+        title: "Didn't roll back",
+        why: press.reason,
+        fix: undefined,
+      },
+      consequence: keeps,
+      primary,
+    };
+  }
   switch (outcome.kind) {
-    case "running":
-      return {
-        verdict: {
-          state: "rolling-back",
-          tone: "busy",
-          title: `Rolling back to ${tag}`,
-          why: `Production redeploys from ${nextTag}`,
-          fix: undefined,
-        },
-        consequence: RELEASE_FOLLOWS,
-        primary: undefined,
-      };
-    case "done":
+    case "releasing":
+      return onItsWay(outcome.progress ?? `Production redeploys from ${nextTag}`);
+    case "released": {
+      const age =
+        outcome.at === undefined ? undefined : reviewAge(outcome.at, input.now)?.toLowerCase();
       return {
         verdict: {
           state: "rolled-back",
           tone: "done",
           title: `Rolled back to ${tag}`,
-          why: `Tagged ${nextTag} · production redeploys`,
+          why: `Production runs its commits again, as ${nextTag}${age === undefined ? "" : ` · ${age}`}`,
           fix: undefined,
         },
         consequence: `Production runs ${tag}'s commits again, as ${nextTag}.`,
         primary: undefined,
       };
-    case "refused":
+    }
+    case "failed":
       return {
         verdict: {
-          state: "rollback-refused",
-          tone: "attention",
-          title: "Didn't roll back",
-          why: outcome.reason,
+          state: "rollback-failed",
+          tone: "failed",
+          title: `${nextTag} didn't go out`,
+          why: outcome.detail ?? "Its deploy failed",
           fix: undefined,
         },
-        consequence: keeps,
-        primary,
+        consequence:
+          input.live === undefined
+            ? "Production still runs what it ran before."
+            : `Production still runs ${input.live}.`,
+        primary: undefined,
       };
-    case "idle":
+    case "offered":
       break;
   }
+  if (press.kind === "done") return onItsWay(`Production redeploys from ${nextTag}`);
   if (!input.mayRelease) {
     return {
       verdict: {
@@ -774,7 +802,7 @@ export function rollbackReview(input: RollbackReviewInput): ReviewModel {
           : `Production runs ${input.live} now`,
       fix: undefined,
     },
-    consequence: `Tags ${base} as ${nextTag} with ${tag}'s commits. Production redeploys ${listed(
+    consequence: `Tags main as ${nextTag} with ${tag}'s commits. Production redeploys ${listed(
       input.services,
     )} from them${input.eta === undefined ? "" : `, ${input.eta}`}.`,
     primary,

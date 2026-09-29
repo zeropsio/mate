@@ -82,7 +82,8 @@ export interface ZeropsProjectFlow {
  * happened (pass 16, R6). A refusal carries the sentence `trouble` says too.
  */
 export type FlowVerbOutcome =
-  | { readonly ok: true }
+  /** Done; a release and a roll back name the tag they made, which their review follows. */
+  | { readonly ok: true; readonly tag?: string | undefined }
   | { readonly ok: false; readonly reason: string };
 
 export interface ZeropsProjectFlowValue {

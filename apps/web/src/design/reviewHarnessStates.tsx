@@ -427,9 +427,11 @@ export const REVIEW_STATES: ReadonlyArray<{
         mayRelease
         name="Beviro"
         nextTag="v0.1.58"
+        now={NOW}
         onClose={noop}
         onRollBack={noop}
-        press={{ kind: "idle" }}
+        outcome={OFFERED}
+        press={IDLE}
         services={["app", "api"]}
         tag="v0.1.55"
         where={[
