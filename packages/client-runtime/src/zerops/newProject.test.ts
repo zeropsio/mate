@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "@effect/vitest";
 
 import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient } from "./api.ts";
+import { planEnvironmentCreation } from "./createEnvironment.ts";
 import {
   buildCreateProjectBody,
   buildDevelopmentContainerImportBody,
@@ -325,6 +326,70 @@ describe("ZeropsApiClient.createProjectWithZeropsMate", () => {
     } finally {
       for (const spy of spies) spy.mockRestore();
     }
+  });
+
+  /**
+   * The New project wizard's first Mate is born who its person made it — its name and its face —
+   * and asking, on their behalf, for the project's development to be stood up: the tags a Mate
+   * added with New Mate is born with.
+   */
+  const FACE = { tint: "coral", shape: "gem" } as const;
+  const GROUP = { groupId: "g-acme", role: "dev", label: "Acme Docs" } as const;
+  const birthTags = async (input: Record<string, unknown>) => {
+    const { client, requests } = recordingClient();
+    await client.createProjectWithZeropsMate({
+      clientId: "org-1",
+      name: "Acme Docs - Ada",
+      ...input,
+    });
+    return JSON.parse(requests[0]?.body ?? "{}").tagList as ReadonlyArray<string>;
+  };
+
+  it.each([
+    {
+      case: "its name, its face and who asked for the stand-up",
+      input: { group: GROUP, botName: "Ada", face: FACE, standUpBy: "u-ada" },
+      has: ["mate", "mate:g:g-acme", "mate:bot:Ada", "mate:face:coral:gem", "mate:standup:u-ada"],
+      lacks: [],
+    },
+    {
+      case: "no face picked: none written, and its face is derived",
+      input: { group: GROUP, botName: "Ada", standUpBy: "u-ada" },
+      has: ["mate:bot:Ada", "mate:standup:u-ada"],
+      lacks: ["mate:face:"],
+    },
+    {
+      case: "nobody named as asking: no stand-up",
+      input: { group: GROUP, botName: "Ada", face: FACE },
+      has: ["mate:face:coral:gem"],
+      lacks: ["mate:standup:"],
+    },
+    {
+      case: "in no project: a Mate with nothing to stand up",
+      input: { botName: "Ada", face: FACE, standUpBy: "u-ada" },
+      has: ["mate", "mate:face:coral:gem"],
+      lacks: ["mate:standup:", "mate:g:"],
+    },
+  ])("tags the first Mate at birth with $case", async ({ input, has, lacks }) => {
+    const tags = await birthTags(input);
+    expect(tags).toEqual(expect.arrayContaining(has));
+    for (const prefix of lacks) expect(tags.some((tag) => tag.startsWith(prefix))).toBe(false);
+  });
+
+  it("tags it exactly as New Mate tags a Mate it adds", async () => {
+    const plan = planEnvironmentCreation({
+      clientId: "org-1",
+      groupId: GROUP.groupId,
+      groupName: GROUP.label,
+      role: "dev",
+      name: "Acme Docs - Ada",
+      botName: "Ada",
+      face: FACE,
+      standUpBy: "u-ada",
+    });
+    if (!plan.ok || plan.steps[0]?.kind !== "create-project") throw new Error("no birth tags");
+    const tags = await birthTags({ group: GROUP, botName: "Ada", face: FACE, standUpBy: "u-ada" });
+    expect([...tags].sort()).toEqual([...plan.steps[0].tagList].sort());
   });
 
   it("names the container around the ones a project already has", async () => {

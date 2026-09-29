@@ -1160,6 +1160,8 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
               ...(command.agents === undefined ? {} : { agents: command.agents }),
               ...(command.group === undefined ? {} : { group: command.group }),
               ...(command.botName === undefined ? {} : { botName: command.botName }),
+              ...(command.face === undefined ? {} : { face: command.face }),
+              ...(command.standUpBy === undefined ? {} : { standUpBy: command.standUpBy }),
             },
             signal,
             context.beforeProjectWrite,

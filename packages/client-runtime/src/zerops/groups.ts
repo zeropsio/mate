@@ -393,6 +393,30 @@ export function withoutZeropsStandUpTag(
   return (tagList ?? []).filter((tag) => !tag.startsWith(STAND_UP_TAG_PREFIX));
 }
 
+/**
+ * A Mate as it is born, after its membership: the marker, the agent's name, the face its person
+ * picked, and — for a dev Mate — who asked for the project's development to be stood up. The one
+ * birth whichever call creates the project: *New Mate* (`planEnvironmentCreation`) and the New
+ * project wizard's first Mate (`createProjectWithZeropsMate`). A stage or a production with an
+ * agent is a target, not a place development is stood up.
+ */
+export function withZeropsMateAtBirth(
+  tagList: ReadonlyArray<string> | undefined,
+  mate: {
+    readonly role?: ZeropsEnvironmentRole | undefined;
+    readonly botName?: string | undefined;
+    readonly face?: ZeropsMateFace | undefined;
+    readonly standUpBy?: string | undefined;
+  },
+): ReadonlyArray<string> {
+  const declared = withZeropsMateTag(tagList);
+  const named = mate.botName === undefined ? declared : withZeropsBotTag(declared, mate.botName);
+  const faced = mate.face === undefined ? named : withZeropsFaceTag(named, mate.face);
+  return mate.role === "dev" && mate.standUpBy !== undefined
+    ? withZeropsStandUpTag(faced, mate.standUpBy)
+    : faced;
+}
+
 export const ZEROPS_GROUP_ID_LENGTH = 12;
 
 /**

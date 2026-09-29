@@ -29,11 +29,8 @@
 
 import type { ZeropsAgentType } from "./newProject.ts";
 import {
-  withZeropsBotTag,
-  withZeropsFaceTag,
   withZeropsGroupTags,
-  withZeropsMateTag,
-  withZeropsStandUpTag,
+  withZeropsMateAtBirth,
   type ZeropsEnvironmentRole,
   type ZeropsMateFace,
 } from "./groups.ts";
@@ -338,11 +335,5 @@ function taggedAtBirth(input: EnvironmentCreationInput, withAgent: boolean): Rea
     ...(input.groupName === undefined ? {} : { label: input.groupName }),
   });
   if (!withAgent) return membership;
-  const declared = withZeropsMateTag(membership);
-  const named = input.botName === undefined ? declared : withZeropsBotTag(declared, input.botName);
-  const faced = input.face === undefined ? named : withZeropsFaceTag(named, input.face);
-  // Only a dev Mate stands development up; a stage or a production with an agent is a target.
-  return input.role === "dev" && input.standUpBy !== undefined
-    ? withZeropsStandUpTag(faced, input.standUpBy)
-    : faced;
+  return withZeropsMateAtBirth(membership, input);
 }
