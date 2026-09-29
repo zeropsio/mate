@@ -7,6 +7,9 @@
  * It opens PNG and JPEG only. The work is synchronous and CPU-bound, and runs
  * on whichever thread calls it: a 12-megapixel photo takes most of a second.
  */
+// @effect-diagnostics nodeBuiltinImport:off -- a synchronous inflate with an output cap
+import * as NodeZlib from "node:zlib";
+
 import { PICTURE_MAX_BYTES, PICTURE_MAX_EDGE } from "@t3tools/shared/composerPictures";
 import { readImageDimensions } from "@t3tools/shared/imageDimensions";
 import * as JpegJs from "jpeg-js";
@@ -187,10 +190,49 @@ function openedFormat(input: PictureInput): OpenedFormat | null {
   return null;
 }
 
+/** Channels a pixel has, by PNG colour type. */
+const PNG_CHANNELS: Readonly<Record<number, number>> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
+
+/**
+ * Whether an interlaced PNG's image data inflates within what its header
+ * says it holds. pngjs inflates interlaced data with no bound, so a small
+ * upload naming a small picture could make it allocate gigabytes; this
+ * inflates it once with the header's size as the cap, and a PNG past it is
+ * not opened. A non-interlaced PNG pngjs bounds by itself.
+ */
+function pngDataFitsItsHeader(bytes: Uint8Array): boolean {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (bytes.length < 33) return false;
+  const width = view.getUint32(16);
+  const height = view.getUint32(20);
+  const bitDepth = bytes[24]!;
+  const channels = PNG_CHANNELS[bytes[25]!];
+  if (bytes[28] !== 1) return true;
+  if (channels === undefined) return false;
+  const data: Uint8Array[] = [];
+  for (let offset = 8; offset + 12 <= bytes.length;) {
+    const length = view.getUint32(offset);
+    const type = String.fromCharCode(...bytes.subarray(offset + 4, offset + 8));
+    if (type === "IDAT") data.push(bytes.subarray(offset + 8, offset + 8 + length));
+    if (type === "IEND") break;
+    offset += 12 + length;
+  }
+  // Every row of each of the seven passes starts with a filter byte.
+  const bytesPerPixel = Math.ceil((bitDepth * channels) / 8);
+  const cap = width * height * bytesPerPixel + 7 * (height + 1) + 1;
+  try {
+    NodeZlib.inflateSync(Buffer.concat(data), { maxOutputLength: cap });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** RGBA pixels, or null for a file its decoder cannot read. */
 function decode(format: OpenedFormat, bytes: Uint8Array): Pixels | null {
   try {
     if (format === "jpeg") return JpegJs.decode(bytes, JPEG_DECODE_OPTIONS);
+    if (!pngDataFitsItsHeader(bytes)) return null;
     // pngjs hands back RGBA at 8 bits whatever the file held: palette, gray,
     // 16-bit, interlaced.
     const png = PNG.sync.read(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));

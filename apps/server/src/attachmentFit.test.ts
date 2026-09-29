@@ -4,7 +4,7 @@ import * as NodeZlib from "node:zlib";
 import { PICTURE_MAX_BYTES, PICTURE_MAX_EDGE } from "@t3tools/shared/composerPictures";
 import * as JpegJs from "jpeg-js";
 import { PNG } from "pngjs";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   fitImage,
@@ -629,6 +629,32 @@ describe("fitImage PNG kinds", () => {
     const fitted = decode(fit);
     expect(pixel(fitted, 8, 12)).toEqual(left);
     expect(pixel(fitted, 24, 12)).toEqual(right);
+  });
+});
+
+describe("fitImage PNG data past its header", () => {
+  // A small upload whose header names a small picture while its data inflates
+  // without end: pngjs inflates interlaced data unbounded, so it must not open it.
+  it.each([
+    { name: "interlaced", interlace: true, inflatedMegabytes: 64 },
+    { name: "interlaced, far past its size", interlace: true, inflatedMegabytes: 160 },
+  ])("refuses an $name PNG unopened", ({ interlace, inflatedMegabytes }) => {
+    const read = vi.spyOn(PNG.sync, "read");
+    const bytes = Uint8Array.from([
+      ...PNG_SIGNATURE,
+      ...pngHeaderChunk(PICTURE_MAX_EDGE + 1, 1, 8, 6, interlace),
+      ...pngChunk(
+        "IDAT",
+        NodeZlib.deflateSync(new Uint8Array(inflatedMegabytes * 1024 * 1024), { level: 9 }),
+      ),
+      ...pngChunk("IEND", new Uint8Array(0)),
+    ]);
+    try {
+      expect(fitImageForProviders({ bytes, mimeType: "image/png" })._tag).toBe("unsupported");
+      expect(read).not.toHaveBeenCalled();
+    } finally {
+      read.mockRestore();
+    }
   });
 });
 
