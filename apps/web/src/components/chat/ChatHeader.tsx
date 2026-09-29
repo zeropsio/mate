@@ -149,7 +149,7 @@ export function shouldShowOpenInPicker(input: {
  * conversation on a machine of one's own — the header's one button style,
  * the Zerops loop, and the label only where the header has room for it.
  */
-function ZeropsProjectLink({ projectUrl }: { readonly projectUrl: string }) {
+export function ZeropsProjectLink({ projectUrl }: { readonly projectUrl: string }) {
   return (
     <Button
       data-chat-header-ghost

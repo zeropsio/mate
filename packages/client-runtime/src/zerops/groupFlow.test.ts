@@ -745,6 +745,18 @@ describe("groupFlow — creations under way", () => {
     expect(flow.nextStep.target).toEqual({ kind: "mate", projectId: "p-uma" });
   });
 
+  it("draws a Mate being created in the face its person picked", () => {
+    const flow = groupFlow({
+      ...SM_BIRTH_1,
+      pending: [{ ...creating({ step: "health" }), face: { tint: "sky", shape: "flower" } }],
+    });
+    expect(flow.mates.find((mate) => mate.projectId === "p-new")?.coming).toEqual({
+      step: "health",
+      overdue: false,
+      face: { tint: "sky", shape: "flower" },
+    });
+  });
+
   it("draws a listed Mate once, whatever creation still names it", () => {
     const flow = groupFlow({ ...SM_BIRTH_1, pending: [creating({ projectId: "p-uma" })] });
     expect(flow.mates.map((mate) => mate.projectId)).toEqual(["p-uma"]);

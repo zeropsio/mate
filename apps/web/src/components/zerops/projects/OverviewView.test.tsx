@@ -476,6 +476,31 @@ describe("a creation under way on the Overview", () => {
     expect(row).toContain(">2 Mates · 1 open pull request<");
   });
 
+  // Picked in the New Mate dialog, its face is worn from its first moment — asleep, as the left
+  // menu's row wears it — and slate only where it was given none.
+  it.each([
+    {
+      case: "the face its person picked",
+      face: { tint: "coral", shape: "gem" },
+      tint: "coral",
+      shape: "gem",
+    },
+    { case: "no face given", face: undefined, tint: "slate", shape: "squircle" },
+  ] as const)("wears $case while it is being created", ({ face, tint, shape }) => {
+    const group = entry([WREN], {
+      pending: [face === undefined ? VERA_COMING : { ...VERA_COMING, face }],
+    });
+    const row = section(
+      render({ groups: [group], openMate: () => () => {} }),
+      'data-zerops-group="aaa"',
+    );
+    const at = row.indexOf('data-zerops-surface="mate-coming"');
+    const coming = row.slice(row.lastIndexOf("<span", at));
+    expect(coming).toContain(`data-mate-face-tint="${tint}"`);
+    expect(coming).toContain(`data-mate-face-shape="${shape}"`);
+    expect(coming).toContain('data-mate-face-state="sleep"');
+  });
+
   it("stands the listed Mate in its place once the listing holds it, never both", () => {
     const listed = entry([WREN], {
       pullRequests: [pull()],

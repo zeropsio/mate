@@ -88,6 +88,7 @@ import { buildThreadRouteParams } from "~/threadRoutes";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { mateFaceFor } from "~/zerops/agentActivity";
+import { useAddMate } from "~/zerops/newMate";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus, type MateUpdateStatus } from "~/zerops/mateUpdate";
@@ -633,6 +634,8 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
     repo,
   });
   const openProjects = useOpenProjects();
+  // The New Mate dialog over this page, as from every "Add a Mate" (`ZeropsNewMateHost`).
+  const addMate = useAddMate();
   const actions = useGroupActions(groupId);
   const mates_ = useMateMenus();
   const release = useReleaseOffer(groupId);
@@ -678,7 +681,9 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
         </>
       }
       menuForMate={mates_.menuForMate}
-      onAddMate={openProjects}
+      onAddMate={() => {
+        addMate(groupId);
+      }}
       onOpenMate={openMate}
       crumbs={crumbs}
 

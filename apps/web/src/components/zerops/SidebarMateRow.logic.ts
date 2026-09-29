@@ -2,12 +2,14 @@
  * What a Mate's row in the left menu draws, read from what the row knows —
  * pure, so each rule has its table.
  */
+import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import { pullRequestBlocked, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import { CREW_SET_UP_WORD } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewStatus } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
-import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import type { MateComing } from "~/zerops/mateComing";
 
 /** Whose Mate it is, as the mark before its name draws it. */
 export interface OwnerMark {
@@ -178,6 +180,11 @@ export type MateRowReply =
     }
   | { readonly kind: "live"; readonly words: string; readonly code: string | undefined }
   | { readonly kind: "pending" }
+  /**
+   * The line remembered as holding words still to come, drawn from memory: its place kept, so a
+   * socket opening grows no row, and nothing in it — words on their way are only true now.
+   */
+  | { readonly kind: "held" }
   | undefined;
 
 export interface MateRowView {
@@ -192,6 +199,8 @@ export interface MateRowView {
   /** The second line: the person's last ask, whatever step the Mate is on. */
   readonly ask: string | undefined;
   readonly reply: MateRowReply;
+  /** Still coming up, or never came (`mateComing`): its one line says so, in its place. */
+  readonly coming?: MateComing;
 }
 
 /**
@@ -227,10 +236,13 @@ export function mateRowView(
   }
   const ask = activity.task ?? activity.subject;
   const words = activity.snippet;
+  // Words still to come are only true now: from memory the line keeps its place, empty.
   const said = (tone: "muted" | "ink-2" | "ink" | "failed"): MateRowReply =>
     words === undefined
       ? activity.awaitingWords === true
-        ? { kind: "pending" }
+        ? activity.remembered === true
+          ? { kind: "held" }
+          : { kind: "pending" }
         : undefined
       : { kind: "words", text: words, tone };
   const age: MateRowSlot = ask === undefined ? { kind: "none" } : { kind: "age" };
@@ -296,6 +308,75 @@ export function mateDeletingView(view: MateRowView): MateRowView {
     strongName: false,
     ask: view.reply === undefined ? undefined : view.ask,
     reply: undefined,
+  };
+}
+
+/** The socket's phases in which a conversation read through it still stands. */
+const STANDING_PHASES: ReadonlySet<EnvironmentConnectionPhase> = new Set([
+  "connected",
+  "reconnecting",
+]);
+
+/**
+ * Which reading a Mate's row draws: its conversation's while its socket is up or only blinking —
+ * reconnecting, when the conversation it was read from still stands — and what this browser
+ * remembers of it otherwise (`menuMemory.ts`): a socket not opened yet this page, one that failed,
+ * none at all. A Mate at its first job must not fall asleep in the menu because its socket
+ * blinked (the owner, 2026-09-29).
+ */
+export function mateRowActivity(input: {
+  /** Its conversation's reading, where this page has one. */
+  readonly live: ZeropsAgentActivity | undefined;
+  /** Its registered environment's socket, where there is one. */
+  readonly phase: EnvironmentConnectionPhase | undefined;
+  readonly remembered: ZeropsAgentActivity | undefined;
+}): ZeropsAgentActivity | undefined {
+  const standing = input.phase !== undefined && STANDING_PHASES.has(input.phase);
+  return (standing ? input.live : undefined) ?? input.remembered;
+}
+
+/**
+ * A row's one reading of its Mate: the face and the words both from the activity it draws, so
+ * the two never disagree (the owner, 2026-09-29: a new Mate at work read "Working on a reply"
+ * under an asleep face — the words were this browser's memory of the row, drawn the moment its
+ * candidate was not connected, and the face that moment's socket).
+ *
+ * | the activity drawn                    | face                    | a line of words to come |
+ * | ------------------------------------- | ----------------------- | ----------------------- |
+ * | read live (its socket up, or blinking) | the conversation's own  | the dots                |
+ * | remembered (`menuMemory.ts`)          | asleep, idle if connected | held, empty             |
+ * | none                                  | asleep, idle if connected | —                       |
+ *
+ * A live reading stands while the socket blinks — reconnecting, a listing re-read — because the
+ * conversation it was read from still stands; memory is only ever at rest.
+ */
+export function mateRowReading(input: {
+  /** Its container is connected right now. */
+  readonly connected: boolean;
+  readonly activity: ZeropsAgentActivity | undefined;
+}): MateRowView {
+  const { activity } = input;
+  const live = activity !== undefined && activity.remembered !== true ? activity : undefined;
+  return mateRowView(activity, mateFaceFor(input.connected || live !== undefined, live));
+}
+
+/**
+ * A Mate still coming up, or one that never came (`mateComing`), in its row: its face in the
+ * coming pose — asleep, in the colours its person picked — its one line the projects page's words
+ * for where it has got, and none of what only a Mate that is up has: no time, no ask, no words.
+ * One that did not come wears the red dot of something broken (S3).
+ */
+export function mateComingRowView(view: MateRowView, coming: MateComing): MateRowView {
+  return {
+    ...view,
+    state: coming.kind === "failed" ? "failed" : "idle",
+    face: "sleep",
+    slot: { kind: "none" },
+    dot: coming.kind === "failed" ? "failed" : undefined,
+    strongName: false,
+    ask: undefined,
+    reply: undefined,
+    coming,
   };
 }
 

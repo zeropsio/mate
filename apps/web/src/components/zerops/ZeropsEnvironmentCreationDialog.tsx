@@ -74,6 +74,10 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly tierLoading: boolean;
   /** The tint the account gives a new Mate of this name (`newMateTint`). */
   readonly defaultTintFor: (name: string) => MateTintId;
+  /** A Mate's Add went through and the platform is taking its project (`ZeropsNewMateForm`). */
+  readonly adding?: boolean | undefined;
+  /** Why the platform refused a Mate's last Add, before it took any project. */
+  readonly addError?: string | undefined;
   readonly onCancel: () => void;
   readonly onCreate: (choice: EnvironmentCreationChoice) => void;
 }
@@ -82,9 +86,11 @@ export interface ZeropsEnvironmentCreationFormProps {
 export function ZeropsEnvironmentCreationForm(props: ZeropsEnvironmentCreationFormProps) {
   if (props.role !== "dev") return <EnvironmentForm {...props} />;
   const { groupName, defaultBotName, proposeName, takenBotNames, tier, tierLoading } = props;
-  const { defaultTintFor, onCancel, onCreate } = props;
+  const { defaultTintFor, adding, addError, onCancel, onCreate } = props;
   return (
     <ZeropsNewMateForm
+      addError={addError}
+      adding={adding}
       defaultBotName={defaultBotName}
       defaultTintFor={defaultTintFor}
       groupName={groupName}

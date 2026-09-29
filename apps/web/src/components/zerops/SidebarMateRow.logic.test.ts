@@ -5,9 +5,12 @@ import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 
 import {
   changeMarkTone,
+  mateComingRowView,
   mateCrewItem,
   mateDeletingView,
   mateOwnerView,
+  mateRowActivity,
+  mateRowReading,
   mateRowView,
   ownerMark,
 } from "./SidebarMateRow.logic";
@@ -504,5 +507,160 @@ describe("mateDeletingView — a Mate on its way off Zerops", () => {
       ask,
       reply: undefined,
     });
+  });
+});
+
+// The owner, 2026-09-29, of a new Mate at work on its first job: its row read "Working on a
+// reply" under an asleep face. The words came from one reading — what this browser remembered the
+// row saying, while its candidate was not connected that instant — and the face from another.
+// One reading now draws both, so they never disagree.
+describe("mateRowReading — the face follows the work, and the words never outrun the face", () => {
+  const AT = "2026-09-29T20:10:00.000Z";
+  const reading = (overrides: Partial<ZeropsAgentActivity> = {}): ZeropsAgentActivity => ({
+    threadId: ThreadId.make("thread-1"),
+    kind: "working",
+    status: null,
+    face: "working",
+    subject: "Stand up development of the project.",
+    at: AT,
+    snippet: undefined,
+    awaitingWords: true,
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread-1",
+    task: "Stand up development of the project.",
+    ...overrides,
+  });
+  // What `menuMemory.ts` hands back for the same row: at rest, its line held.
+  const remembered = reading({
+    kind: "idle",
+    face: "idle",
+    remembered: true,
+  });
+
+  it.each([
+    {
+      case: "connected, at work: the face works and the dots hold the line",
+      connected: true,
+      activity: reading(),
+      face: "working",
+      reply: { kind: "pending" },
+    },
+    {
+      case: "its socket blinking (reconnecting): still read live, the face still works",
+      connected: false,
+      activity: reading(),
+      face: "working",
+      reply: { kind: "pending" },
+    },
+    {
+      case: "remembered, not connected: asleep, and its line held without claiming a reply",
+      connected: false,
+      activity: remembered,
+      face: "sleep",
+      reply: { kind: "held" },
+    },
+    {
+      case: "remembered while connected, its conversation not read yet: idle, the line held",
+      connected: true,
+      activity: remembered,
+      face: "idle",
+      reply: { kind: "held" },
+    },
+    {
+      case: "nothing read, connected: idle and no lines",
+      connected: true,
+      activity: undefined,
+      face: "idle",
+      reply: undefined,
+    },
+    {
+      case: "nothing read, not connected: asleep and no lines",
+      connected: false,
+      activity: undefined,
+      face: "sleep",
+      reply: undefined,
+    },
+  ] as const)("$case", ({ connected, activity, face, reply }) => {
+    const view = mateRowReading({ connected, activity });
+    expect(view.face).toBe(face);
+    expect(view.reply).toEqual(reply);
+  });
+
+  it("never draws the working dots under an asleep face", () => {
+    for (const connected of [true, false]) {
+      for (const activity of [reading(), remembered, undefined]) {
+        const view = mateRowReading({ connected, activity });
+        if (view.face === "sleep") expect(view.reply?.kind).not.toBe("pending");
+      }
+    }
+  });
+});
+
+// A Mate still coming up is no ordinary row (the owner, 2026-09-29: "on the left it looks like
+// its ready to be opened, but it's not"): its face in the coming pose, the projects page's words
+// in its line, nothing that only a Mate that is up has.
+describe("mateComingRowView — a Mate coming up, or one that did not come", () => {
+  const view = mateRowView(undefined, "sleep");
+  it.each([
+    {
+      case: "coming up: asleep, no time, no dot",
+      coming: { kind: "coming", line: "Coming up. A few minutes.", verb: undefined },
+      dot: undefined,
+    },
+    {
+      case: "slow: asleep, no time, no dot — its line says it",
+      coming: { kind: "coming", line: "Taking longer than usual.", verb: "keep-waiting" },
+      dot: undefined,
+    },
+    {
+      case: "not created: asleep, the red dot of something broken",
+      coming: { kind: "failed", line: "Could not be created.", verb: "remove" },
+      dot: "failed",
+    },
+  ] as const)("$case", ({ coming, dot }) => {
+    expect(mateComingRowView(view, coming)).toMatchObject({
+      face: "sleep",
+      slot: { kind: "none" },
+      dot,
+      strongName: false,
+      ask: undefined,
+      reply: undefined,
+      coming,
+    });
+  });
+});
+
+// Which reading a row draws. Its conversation's while its socket is up — or only blinking,
+// reconnecting, when the conversation it was read from still stands (a Mate at its first job
+// must not fall asleep in the menu because its socket blinked) — and what this browser remembers
+// of it otherwise: a socket not opened yet this page, one that failed, or none at all.
+describe("mateRowActivity — the conversation's reading while its socket stands, memory otherwise", () => {
+  const live = { kind: "working", remembered: undefined } as unknown as ZeropsAgentActivity;
+  const remembered = { kind: "idle", remembered: true } as unknown as ZeropsAgentActivity;
+  it.each([
+    { case: "connected", phase: "connected", drawn: live },
+    { case: "reconnecting: the socket blinked", phase: "reconnecting", drawn: live },
+    {
+      case: "connecting for the first time this page: memory",
+      phase: "connecting",
+      drawn: remembered,
+    },
+    { case: "its socket failed", phase: "error", drawn: remembered },
+    { case: "offline", phase: "offline", drawn: remembered },
+    { case: "available, never opened", phase: "available", drawn: remembered },
+    { case: "no socket here at all", phase: undefined, drawn: remembered },
+  ] as const)("$case", ({ phase, drawn }) => {
+    expect(mateRowActivity({ live, phase, remembered })).toBe(drawn);
+  });
+
+  it("draws nothing where neither is known", () => {
+    expect(mateRowActivity({ live: undefined, phase: "connected", remembered: undefined })).toBe(
+      undefined,
+    );
+  });
+
+  it("draws memory where the socket stands but its conversation is not read yet", () => {
+    expect(mateRowActivity({ live: undefined, phase: "connected", remembered })).toBe(remembered);
   });
 });

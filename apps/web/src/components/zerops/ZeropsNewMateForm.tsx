@@ -75,6 +75,13 @@ export interface ZeropsNewMateFormProps {
   readonly tierLoading: boolean;
   /** The tint the account gives a new Mate of this name (`newMateTint`). */
   readonly defaultTintFor: (name: string) => MateTintId;
+  /**
+   * Add went through and the platform is being asked for the Mate's project: a second, and the
+   * person lands on the new Mate. Nothing is pressed twice or closed half way meanwhile.
+   */
+  readonly adding?: boolean | undefined;
+  /** Why the platform refused the last Add, before it took any project; Add tries again. */
+  readonly addError?: string | undefined;
   readonly onCancel: () => void;
   readonly onCreate: (choice: NewMateChoice) => void;
 }
@@ -115,6 +122,8 @@ export function ZeropsNewMateForm({
   tier,
   tierLoading,
   defaultTintFor,
+  adding = false,
+  addError,
   onCancel,
   onCreate,
 }: ZeropsNewMateFormProps) {
@@ -147,14 +156,16 @@ export function ZeropsNewMateForm({
     recipe,
     waitingOn: submit.kind === "wait" && waiting ? submit.on : null,
   });
-  const error = pressed && submit.kind === "refuse" ? submit.error : undefined;
-  const line = error ?? words.line;
+  const refused = pressed && submit.kind === "refuse" ? submit.error : undefined;
+  const error = refused ?? addError;
+  const bot = botName.replace(/\s+/g, " ").trim();
+  const line = adding ? `Adding ${bot}…` : (error ?? words.line);
 
   const create = (choice: EnvironmentRecipeChoice) => {
-    const bot = botName.replace(/\s+/g, " ").trim();
     onCreate({ name: proposeName(bot), botName: bot, recipe: choice, face });
   };
   const press = () => {
+    if (adding) return;
     setPressed(true);
     if (submit.kind === "create") create(submit.recipe);
     else setPressedFor(submit.kind === "wait" ? recipe : null);
@@ -212,7 +223,7 @@ export function ZeropsNewMateForm({
           <div className="flex w-full min-w-0 flex-1 flex-col gap-3.5">
             <Input
               aria-describedby={`${id}-line`}
-              aria-invalid={error === undefined ? undefined : true}
+              aria-invalid={refused === undefined ? undefined : true}
               aria-label="Name"
               autoComplete="off"
               onChange={(event) => {
@@ -228,6 +239,9 @@ export function ZeropsNewMateForm({
                 setSelected(true);
                 event.currentTarget.select();
               }}
+              // While the platform takes the Mate's project, what made it stays as it was: the
+              // name reads, and nothing typed or picked changes the Mate on its way.
+              readOnly={adding}
               placeholder="Name"
               size="lg"
               spellCheck={false}
@@ -237,7 +251,7 @@ export function ZeropsNewMateForm({
               <PickerRow
                 label="Color"
                 onPick={(tint) => {
-                  setPicked((current) => ({ ...current, tint }));
+                  if (!adding) setPicked((current) => ({ ...current, tint }));
                 }}
                 optionStyle={tintStyle}
                 options={MATE_TINT_IDS}
@@ -254,7 +268,7 @@ export function ZeropsNewMateForm({
               <PickerRow
                 label="Shape"
                 onPick={(shape) => {
-                  setPicked((current) => ({ ...current, shape }));
+                  if (!adding) setPicked((current) => ({ ...current, shape }));
                 }}
                 optionStyle={() => tintStyle(face.tint)}
                 options={MATE_SHAPE_IDS}
@@ -288,16 +302,20 @@ export function ZeropsNewMateForm({
           aria-live="polite"
           className={cn(
             "me-auto min-h-4 self-center text-line leading-4",
-            error === undefined ? "text-muted-foreground" : "text-status-failed-text",
+            adding || error === undefined ? "text-muted-foreground" : "text-status-failed-text",
           )}
           id={`${id}-line`}
         >
           {line}
         </p>
-        <Button onClick={onCancel} type="button" variant="ghost">
+        <Button disabled={adding} onClick={onCancel} type="button" variant="ghost">
           Cancel
         </Button>
-        <Button aria-busy={waiting || undefined} disabled={waiting} type="submit">
+        <Button
+          aria-busy={waiting || adding || undefined}
+          disabled={waiting || adding}
+          type="submit"
+        >
           {words.button}
         </Button>
       </DialogFooter>

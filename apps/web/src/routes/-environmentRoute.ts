@@ -3,9 +3,9 @@
  * for every other two-segment route. The root's route gate judges the
  * environment this names, so a non-environment prefix must never be mistaken
  * for one — `/draft/<id>` is a conversation that has no environment yet, not
- * a missing environment called "draft".
+ * a missing environment called "draft", and `/mate/<projectId>` a Mate still coming up.
  */
-const NON_ENVIRONMENT_PREFIXES = new Set(["draft", "settings", "zerops", "projects"]);
+const NON_ENVIRONMENT_PREFIXES = new Set(["draft", "settings", "zerops", "projects", "mate"]);
 
 export function environmentIdFromPathname(pathname: string): string | null {
   const match = /^\/([^/]+)\/[^/]+\/?$/.exec(pathname);

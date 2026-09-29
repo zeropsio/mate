@@ -65,7 +65,6 @@ import {
   type EnvironmentRow,
   type FlowPullRequest,
   type GroupFlow,
-  type GroupFlowComing,
   type GroupFlowStop,
   type MissingEnvironmentRow,
   type ZeropsEnvironmentRole,
@@ -115,7 +114,8 @@ import { useComposerDraftStore } from "~/composerDraftStore";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import type { MateComing } from "~/zerops/mateComing";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
@@ -170,10 +170,11 @@ import {
 } from "./SidebarProductionChip.logic";
 import {
   changeMarkTone,
+  mateComingRowView,
   mateCrewItem,
   mateDeletingView,
   mateOwnerView,
-  mateRowView,
+  mateRowReading,
   type MateRowReply,
   type MateRowSlot,
   type OwnerSeat,
@@ -346,9 +347,23 @@ export interface SidebarProjectFlow {
 export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly candidates: ReadonlyArray<T>;
   readonly onSelect: (candidate: T) => void;
-  /** Opens the projects screen — the way out of a menu whose projects have no Mate. */
-  /** Records which project an add was asked for, before navigating to answer it. */
+  /**
+   * Asks for a Mate in a project: the New Mate dialog opens over whatever is on screen
+   * (`useAddMate`). Absent — a harness — the heading's + does nothing.
+   */
   readonly onAddMate?: ((groupId: string) => void) | undefined;
+  /**
+   * A Mate in its first minutes (`mateComing`): still coming up, or never came. Its row says so
+   * in the projects page's words, asleep, with no menu, and a press opens its own view. Absent,
+   * a listed Mate is up as far as the tree knows.
+   */
+  readonly getComing?: ((candidate: T) => MateComing | undefined) | undefined;
+  /**
+   * Opens the view of a Mate being created that the listing does not hold yet — its row is its
+   * birth's (`group.pending`) — by the project the platform made for it.
+   */
+  readonly onOpenComing?: ((projectId: string) => void) | undefined;
+  /** Opens the projects screen — the way out of a menu whose projects have no Mate. */
   readonly onBrowseProjects: () => void;
   /**
    * "Ask <your Mate> to fix it" (S6): writes the problem into the Mate's
@@ -495,18 +510,6 @@ function chipsLearned(read: {
 
 const NOTHING_DRAWN: SidebarDrawn = { changes: {}, chips: {} };
 
-/**
- * What a row may say of a Mate: its conversation's, read through an open
- * socket — or what this browser remembers it saying, until then
- * (`menuMemory.ts`); nothing where neither is known.
- */
-function drawnActivity(
-  candidate: Pick<RosterCandidate, "group">,
-  activity: ZeropsAgentActivity | undefined,
-): ZeropsAgentActivity | undefined {
-  return candidate.group === "connected" || activity?.remembered === true ? activity : undefined;
-}
-
 /** What a change row acts with: the project's flow, or nothing while it is remembered. */
 type ChangeRows = Pick<SidebarProjectFlow, "onOpenChange"> & {
   readonly remembered?: true;
@@ -522,6 +525,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   candidates,
   onSelect,
   onAddMate,
+  getComing,
+  onOpenComing,
   onBrowseProjects,
   onAskToFix,
   onOpenGroup,
@@ -1131,9 +1136,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     const busy = folded
       ? headingFaces(
           mateEntries.map(({ item }) => {
-            const activity = getActivity?.(item);
-            const live = drawnActivity(item, activity);
-            const view = mateRowView(live, mateFaceFor(item.group === "connected", activity));
+            const live = getActivity?.(item);
+            const coming = getComing?.(item);
+            const read = mateRowReading({ connected: item.group === "connected", activity: live });
+            const view = coming === undefined ? read : mateComingRowView(read, coming);
             return {
               projectId: item.project.id,
               name: botDisplayName({
@@ -1181,11 +1187,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // being created, then — folded behind their count at the end — the ones
     // untouched for a week (`isQuietMate`), open only when asked.
     const quietOf = (item: T) =>
-      isQuietMate(
-        drawnActivity(item, getActivity?.(item)),
-        nowMs,
-        item.project.id === activeProjectId,
-      );
+      getComing?.(item) === undefined &&
+      isQuietMate(getActivity?.(item), nowMs, item.project.id === activeProjectId);
     const loud = mateEntries.filter(({ item }) => !quietOf(item));
     const quiet = mateEntries.filter(({ item }) => quietOf(item));
     // What the jump box finds here, drawn or folded: a jump opens the project.
@@ -1229,9 +1232,19 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     const blocks: Array<{ readonly key: string; readonly node: ReactNode }> = [
       ...slots.map((slot) => {
         if (slot.kind === "coming") {
+          const active = slot.member.projectId === activeProjectId;
           return {
             key: `coming:${slot.member.projectId}`,
-            node: <ComingMateRow coming={slot.member} name={slot.member.name} />,
+            node: (
+              <MateUnit active={active} projectId={slot.member.projectId}>
+                <ComingMateRow
+                  active={active}
+                  coming={slot.member}
+                  name={slot.member.name}
+                  onOpen={onOpenComing}
+                />
+              </MateUnit>
+            ),
           };
         }
         if (slot.kind === "fold") {
@@ -1267,6 +1280,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   activity={getActivity?.(item)}
                   appUrl={appUrl}
                   candidate={item}
+                  coming={getComing?.(item)}
                   crew={getCrew?.(item)}
                   onOpenCrew={onOpenCrew}
                   keys={mateKeys}
@@ -1653,7 +1667,7 @@ export function ProjectHeader({
   readonly name?: string;
   readonly muted?: boolean;
   readonly missing?: ReadonlyArray<MissingEnvironmentRow>;
-  /** Records which project the add was asked for; absent in the harness. */
+  /** Asks for the New Mate dialog over the view on screen; absent in the harness. */
   readonly onAddMate?: ((groupId: string) => void) | undefined;
   readonly onBrowseProjects: () => void;
   /** Absent for the ungrouped heading, which is not a group and has no page. */
@@ -1679,11 +1693,10 @@ export function ProjectHeader({
 }) {
   const placeholder = group !== undefined && groupNameIsPlaceholder(group);
   const title = group?.name ?? name ?? "";
+  // The New Mate dialog opens over whatever is on screen: the person stays where they were (the
+  // owner, 2026-09-29, of a + that took them to the projects screen).
   const addMate = () => {
-    // The dialog belongs to the projects screen, so the ask travels with the
-    // navigation rather than being dropped.
     if (group !== undefined) onAddMate?.(group.groupId);
-    onBrowseProjects();
   };
   return (
     // The heading is its band: 32 px tall, 10 px from the window and 10 from
@@ -2128,6 +2141,7 @@ function MateRow<T extends RosterCandidate>({
   shape,
   active,
   activity,
+  coming,
   onSelect,
   owner,
   timestampFormat,
@@ -2145,6 +2159,8 @@ function MateRow<T extends RosterCandidate>({
   readonly shape: MateShapeId;
   readonly active: boolean;
   readonly activity: ZeropsAgentActivity | undefined;
+  /** Still coming up, or never came (`mateComing`): its one line says so. */
+  readonly coming?: MateComing | undefined;
   readonly onSelect: (candidate: T) => void;
   readonly owner: ZeropsMateOwner | undefined;
   readonly timestampFormat: TimestampFormat;
@@ -2169,15 +2185,21 @@ function MateRow<T extends RosterCandidate>({
   // offers no menu and does not open, until the listing lets it go.
   const deletingIds = useDeletingMates();
   const deleting = mateDeleting(candidate.project, deletingIds);
-  const actions = deleting ? undefined : offered;
-  // What it is on, or was last on, and since when — knowable only through an
-  // open socket, and only once somebody has spoken to it; until the socket
-  // opens, what this browser remembers the row saying.
-  const live = drawnActivity(candidate, activity);
-  // What the row says in its state (`mateRowView`, M7): the face, the right
-  // of the name, what was asked and the third line.
-  const read = mateRowView(live, mateFaceFor(candidate.group === "connected", activity));
-  const view = deleting ? mateDeletingView(read) : read;
+  // What the row says in its state (`mateRowView`, M7): the face, the right of
+  // the name, what was asked and the third line — the face and the words from
+  // the one reading of it (`mateRowReading`): what it is on, or was last on,
+  // read through its socket, or until the socket opens what this browser
+  // remembers the row saying. A Mate still coming up says only that
+  // (`mateComingRowView`).
+  const read = mateRowReading({ connected: candidate.group === "connected", activity });
+  const view = deleting
+    ? mateDeletingView(read)
+    : coming === undefined
+      ? read
+      : mateComingRowView(read, coming);
+  // Nothing on its menu is about a Mate still being made, or one going: it
+  // offers none.
+  const actions = deleting || coming !== undefined ? undefined : offered;
   // Whose seat it is, and whether anybody has signed its agent in — read off
   // its own records, so from the first paint (`mateOwnerView`).
   const seated = mateOwnerView({
@@ -2185,7 +2207,7 @@ function MateRow<T extends RosterCandidate>({
     records: mateOwnerRecords(candidate.project),
     asked: view.ask !== undefined,
   });
-  const known = live !== undefined && live.remembered !== true;
+  const known = activity !== undefined && activity.remembered !== true;
   // Its menu's door to its crew (`mateCrewItem`): whether crew mode is on and
   // a crew applied — a fixture's, or its feed's once it is connected.
   const liveCrewStatus = useCrewStatus(
@@ -2200,7 +2222,7 @@ function MateRow<T extends RosterCandidate>({
   // A new ask rises into the row's second line as the person sets it; the
   // ask this browser remembered gives way to the one read without a rise.
   const askChanged = useChangedSinceShown(view.ask, known);
-  const unread = live?.unread === true;
+  const unread = activity?.unread === true;
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuAt, setMenuAt] = useState<MenuPoint | undefined>(undefined);
   const [renaming, setRenaming] = useState(false);
@@ -2320,18 +2342,7 @@ function MateRow<T extends RosterCandidate>({
             {/* Until its socket answers the face stands in idle or asleep, the
                 row's words as this browser remembered them: a Mate found
                 waiting then is not arriving at it. */}
-            <MateFace
-              greets
-              known={
-                candidate.group === "connected" &&
-                activity !== undefined &&
-                activity.remembered !== true
-              }
-              shape={shape}
-              size="md"
-              state={view.face}
-              tint={tint}
-            />
+            <MateFace greets known={known} shape={shape} size="md" state={view.face} tint={tint} />
           </span>
         </span>
         {/* One even leading, three lines of one thing: the name 14/20, what
@@ -2378,7 +2389,7 @@ function MateRow<T extends RosterCandidate>({
                 )}
               >
                 <MateDot known={known} tone={view.dot} />
-                <MateSlot at={live?.at} slot={view.slot} timestampFormat={timestampFormat} />
+                <MateSlot at={activity?.at} slot={view.slot} timestampFormat={timestampFormat} />
               </span>
               {numbers && number !== undefined ? (
                 <KeyChip className="absolute end-0 top-0" data-zerops-surface="sidebar-mate-number">
@@ -2399,11 +2410,13 @@ function MateRow<T extends RosterCandidate>({
               {view.ask}
             </span>
           )}
-          {deleting || seated.signInLine === undefined ? null : (
+          {view.coming !== undefined ? (
+            <MateComingLine coming={view.coming} />
+          ) : deleting || seated.signInLine === undefined ? null : (
             <MateSignInLine words={seated.signInLine} />
           )}
           {view.reply === undefined ? null : (
-            <MateReply known={known} reply={view.reply} threadKey={live?.threadKey} />
+            <MateReply known={known} reply={view.reply} threadKey={activity?.threadKey} />
           )}
           {deleting ? <MateDeletingLine /> : null}
         </span>
@@ -2717,8 +2730,14 @@ function MateReply({
   const drafting =
     unsent.length > 0 &&
     (reply.kind === "pending" ||
+      reply.kind === "held" ||
       (reply.kind === "words" && (reply.tone === "muted" || reply.tone === "ink-2")));
   if (reply.kind === "pending" && !drafting) return <MateReplyPending />;
+  // Remembered as holding words to come: its place kept, empty — words on their way are only
+  // true now, and an asleep face over them said the opposite.
+  if (reply.kind === "held" && !drafting) {
+    return <span aria-hidden="true" className="h-4.5" data-zerops-surface="sidebar-mate-held" />;
+  }
   if (reply.kind === "live") {
     return (
       // The line rises as a new step arrives, and the sweep runs over its
@@ -2828,36 +2847,88 @@ function MateDeletingLine() {
 }
 
 /**
- * A Mate being created, in the menu's own Mate row: its face asleep, as every
- * Mate's is while it comes up, in no colour of its own yet; its name; and how
- * far its birth has got in the words its card uses. Nothing to open until the
- * listing holds it and its own row stands in its place.
+ * The row's one line while its Mate is still coming up, or never came
+ * (`mateComing`): the projects page's words for where it has got — muted — or
+ * why it did not come, in red. It stands where the sign-in line would, and a
+ * new step's words rise into it as the person watches.
+ */
+function MateComingLine({ coming }: { readonly coming: MateComing }) {
+  const risen = useChangedSinceShown(coming.line, true);
+  return (
+    <span
+      className={cn(
+        "truncate text-line leading-4.5",
+        coming.kind === "failed" ? "text-status-failed-text" : "text-muted-foreground",
+        risen && "animate-words-in motion-reduce:animate-none",
+      )}
+      data-zerops-coming-tone={coming.kind === "failed" ? "failed" : "muted"}
+      data-zerops-surface="sidebar-mate-coming-line"
+      key={coming.line}
+    >
+      {coming.line}
+    </span>
+  );
+}
+
+/**
+ * A Mate being created that the listing does not hold yet, drawn from its
+ * birth as the row it will be: its face asleep, as every Mate's is while it
+ * comes up, in the colours its person picked (slate where it picked none); the
+ * empty seat before its name — nobody has signed its agent in yet — and how far
+ * its birth has got in the projects page's words. A press opens its own view,
+ * where it comes up; its listed row stands in its place with the same face,
+ * seat and words.
  */
 function ComingMateRow({
   name,
   coming,
+  active,
+  onOpen,
 }: {
   readonly name: string;
-  readonly coming: GroupFlowComing;
+  readonly coming: ZeropsGroupPendingMember;
+  readonly active: boolean;
+  readonly onOpen: ((projectId: string) => void) | undefined;
 }) {
+  const tint = coming.face?.tint ?? "slate";
   return (
-    <div
-      aria-busy="true"
-      className="grid w-full min-w-0 grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-sidebar-foreground select-none"
+    <button
+      aria-current={active ? "true" : undefined}
+      className="menu-row grid w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring"
+      data-zerops-mate-row={coming.projectId}
       data-zerops-surface="sidebar-mate-coming"
+      onClick={() => {
+        onOpen?.(coming.projectId);
+      }}
+      type="button"
     >
       <span className="relative flex size-7">
-        <MateFace size="md" state="sleep" tint="slate" />
+        <MateFace
+          shape={coming.face?.shape ?? mateShapeOf([], tint)}
+          size="md"
+          state="sleep"
+          tint={tint}
+        />
       </span>
       <span className="flex min-w-0 flex-col">
-        <span className="min-w-0 truncate text-sm leading-5 font-medium">{name}</span>
-        <span className="truncate text-line leading-4.5 text-muted-foreground">
-          {comingMateLine(coming)}
+        <span className="flex h-5 min-w-0 items-center gap-1.5">
+          <MateOwnerMark seat={COMING_SEAT} />
+          <span className="min-w-0 truncate text-sm leading-5 font-medium">{name}</span>
         </span>
+        <MateComingLine
+          coming={{ kind: "coming", line: comingMateLine(coming), verb: undefined }}
+        />
       </span>
-    </div>
+    </button>
   );
 }
+
+/** Nobody has signed a Mate's agent in while it is being made: the empty seat, in words. */
+const COMING_SEAT: OwnerSeat = mateOwnerView({
+  owner: undefined,
+  records: { named: false, signedIn: false },
+  asked: true,
+}).seat;
 
 /**
  * A Mate's open pull requests: the rows themselves while there are a few, a

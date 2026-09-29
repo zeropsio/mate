@@ -166,7 +166,10 @@ export const ALMOST_THERE_LINE = "Almost there.";
 export const TAKING_LONGER_LINE = "Taking longer than usual.";
 
 /** Service statuses the inventory files under provisioning that restart a container it has. */
-const RESTARTING_SERVICE_STATUSES: ReadonlySet<string> = new Set(["RESTARTING", "UPGRADING"]);
+export const RESTARTING_SERVICE_STATUSES: ReadonlySet<string> = new Set([
+  "RESTARTING",
+  "UPGRADING",
+]);
 
 /**
  * The line under a project the platform failed to create, with the

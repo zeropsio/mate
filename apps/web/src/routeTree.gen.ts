@@ -29,6 +29,7 @@ import { Route as SettingsConnectionsRouteImport } from './routes/settings.conne
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
+import { Route as ChatMateProjectIdRouteImport } from './routes/_chat.mate.$projectId'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
 import { Route as ChatGroupGroupIdFlowRouteImport } from './routes/_chat.group.$groupId.flow'
@@ -134,6 +135,11 @@ const ProjectsProjectKeyRoute = ProjectsProjectKeyRouteImport.update({
   path: '/projects/$projectKey',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ChatMateProjectIdRoute = ChatMateProjectIdRouteImport.update({
+  id: '/mate/$projectId',
+  path: '/mate/$projectId',
+  getParentRoute: () => ChatRoute,
+} as any)
 const ChatDraftDraftIdRoute = ChatDraftDraftIdRouteImport.update({
   id: '/draft/$draftId',
   path: '/draft/$draftId',
@@ -185,6 +191,7 @@ export interface FileRoutesByFullPath {
   '/zerops/new': typeof ZeropsNewRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/mate/$projectId': typeof ChatMateProjectIdRoute
   '/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
   '/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
   '/change/$groupId/$repository/$number': typeof ChatChangeGroupIdRepositoryNumberRoute
@@ -211,6 +218,7 @@ export interface FileRoutesByTo {
   '/': typeof ChatIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/mate/$projectId': typeof ChatMateProjectIdRoute
   '/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
   '/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
   '/change/$groupId/$repository/$number': typeof ChatChangeGroupIdRepositoryNumberRoute
@@ -239,6 +247,7 @@ export interface FileRoutesById {
   '/_chat/': typeof ChatIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/_chat/mate/$projectId': typeof ChatMateProjectIdRoute
   '/_chat/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
   '/_chat/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
   '/_chat/change/$groupId/$repository/$number': typeof ChatChangeGroupIdRepositoryNumberRoute
@@ -267,6 +276,7 @@ export interface FileRouteTypes {
     | '/zerops/new'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
+    | '/mate/$projectId'
     | '/group/$groupId/$projectId'
     | '/group/$groupId/flow'
     | '/change/$groupId/$repository/$number'
@@ -293,6 +303,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
+    | '/mate/$projectId'
     | '/group/$groupId/$projectId'
     | '/group/$groupId/flow'
     | '/change/$groupId/$repository/$number'
@@ -320,6 +331,7 @@ export interface FileRouteTypes {
     | '/_chat/'
     | '/_chat/$environmentId/$threadId'
     | '/_chat/draft/$draftId'
+    | '/_chat/mate/$projectId'
     | '/_chat/group/$groupId/$projectId'
     | '/_chat/group/$groupId/flow'
     | '/_chat/change/$groupId/$repository/$number'
@@ -480,6 +492,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectKeyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_chat/mate/$projectId': {
+      id: '/_chat/mate/$projectId'
+      path: '/mate/$projectId'
+      fullPath: '/mate/$projectId'
+      preLoaderRoute: typeof ChatMateProjectIdRouteImport
+      parentRoute: typeof ChatRoute
+    }
     '/_chat/draft/$draftId': {
       id: '/_chat/draft/$draftId'
       path: '/draft/$draftId'
@@ -522,6 +541,7 @@ interface ChatRouteChildren {
   ChatIndexRoute: typeof ChatIndexRoute
   ChatEnvironmentIdThreadIdRoute: typeof ChatEnvironmentIdThreadIdRoute
   ChatDraftDraftIdRoute: typeof ChatDraftDraftIdRoute
+  ChatMateProjectIdRoute: typeof ChatMateProjectIdRoute
   ChatGroupGroupIdProjectIdRoute: typeof ChatGroupGroupIdProjectIdRoute
   ChatGroupGroupIdFlowRoute: typeof ChatGroupGroupIdFlowRoute
   ChatChangeGroupIdRepositoryNumberRoute: typeof ChatChangeGroupIdRepositoryNumberRoute
@@ -531,6 +551,7 @@ const ChatRouteChildren: ChatRouteChildren = {
   ChatIndexRoute: ChatIndexRoute,
   ChatEnvironmentIdThreadIdRoute: ChatEnvironmentIdThreadIdRoute,
   ChatDraftDraftIdRoute: ChatDraftDraftIdRoute,
+  ChatMateProjectIdRoute: ChatMateProjectIdRoute,
   ChatGroupGroupIdProjectIdRoute: ChatGroupGroupIdProjectIdRoute,
   ChatGroupGroupIdFlowRoute: ChatGroupGroupIdFlowRoute,
   ChatChangeGroupIdRepositoryNumberRoute:

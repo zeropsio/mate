@@ -10,6 +10,7 @@ describe("environmentIdFromPathname", () => {
     ["/settings/archived", null],
     ["/zerops/authorized", null],
     ["/projects/key", null],
+    ["/mate/p-quinn", null],
     ["/", null],
     ["/env-1", null],
     ["/env-1/thread-1/extra", null],
