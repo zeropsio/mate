@@ -789,6 +789,9 @@ const ORGANIZATION = { id: "org-acme", name: "Acme", membershipId: "m-acme" };
  * one of it, as in the app. `?w=` sets its width; the owner runs it near
  * 435, the default is 256.
  */
+/** Where the logo row's mark starts: 16 px on the web, `?inset=` px beside a desktop's window controls. */
+const INSET = Number(new URLSearchParams(location.search).get("inset") ?? 16);
+
 function SidebarFrame({ width, onJump }: { readonly width: number; readonly onJump: () => void }) {
   // Mine / Everyone, from the account menu, as the app reads it.
   const [scope] = useMateScope();
@@ -813,10 +816,15 @@ function SidebarFrame({ width, onJump }: { readonly width: number; readonly onJu
       data-sidebar="sidebar"
       style={{ width }}
     >
-      <header className="flex h-13 shrink-0 items-center gap-2 ps-4">
-        <MateLockup className="h-5.5 w-auto" decorative />
-        <div className="ms-auto flex shrink-0 items-center gap-2 pe-3">
-          <div className="flex w-24 shrink-0 items-center justify-end">
+      {/* The logo row as the app's (`SidebarChromeHeader`): the mark 16 px in
+          on the web, or `?inset=90` beside macOS's traffic lights. */}
+      <header className="flex h-13 shrink-0 items-center" style={{ paddingInlineStart: INSET }}>
+        <MateLockup className="h-5.5 w-auto shrink-0" decorative />
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-2 pe-3">
+          <div
+            className="flex min-w-0 max-w-24 flex-1 items-center justify-end"
+            data-zerops-surface="sidebar-waiting-slot"
+          >
             <SidebarWaitingStack mates={waiting.mates} onNext={waiting.next} />
           </div>
           <SidebarJumpButton onJump={onJump} shortcut={JUMP_KEY} />

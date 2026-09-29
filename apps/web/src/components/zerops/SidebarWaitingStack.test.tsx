@@ -1,7 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { namesInOneBreath, SidebarWaitingStack, type WaitingMate } from "./SidebarWaitingStack";
+import {
+  namesInOneBreath,
+  SidebarWaitingStack,
+  waitingFacesThatFit,
+  type WaitingMate,
+} from "./SidebarWaitingStack";
 
 const waiting = (id: string): WaitingMate => ({
   projectId: id,
@@ -44,5 +49,47 @@ describe("SidebarWaitingStack — the Mates waiting on you, in the header", () =
     [["Kai", "Juno", "Mika"], "Kai, Juno and Mika"],
   ] as const)("names %j as %s", (names, said) => {
     expect(namesInOneBreath(names)).toBe(said);
+  });
+});
+
+// The logo row keeps the lockup and ⌘K whole; the waiting faces give way
+// first. The room the row leaves them, as measured in the harness: the
+// menu's width less its 1 px edge, the mark's inset (90 px beside macOS's
+// traffic lights, 16 on the web), the lockup (62.6), the gap before ⌘K (8),
+// ⌘K (49.5) and the row's end padding (12) — never more than the slot's 96.
+describe("waitingFacesThatFit — the faces give way before the lockup and ⌘K", () => {
+  const room = (width: number, inset: number) =>
+    Math.min(96, width - 1 - inset - 62.6 - 8 - 49.5 - 12);
+  it.each([
+    { name: "the web at 304: four", room: room(304, 16), count: 4, fit: { shown: 4, more: 0 } },
+    {
+      name: "the web at 304, six waiting: four and how many more",
+      room: room(304, 16),
+      count: 6,
+      fit: { shown: 4, more: 2 },
+    },
+    { name: "the desktop at 304: four", room: room(304, 90), count: 4, fit: { shown: 4, more: 0 } },
+    {
+      name: "the desktop at 304, six waiting: three and how many more",
+      room: room(304, 90),
+      count: 6,
+      fit: { shown: 3, more: 3 },
+    },
+    {
+      name: "the desktop at 256: one face, its count giving way too",
+      room: room(256, 90),
+      count: 2,
+      fit: { shown: 1, more: 0 },
+    },
+    {
+      name: "the web at its narrowest, 208: one and how many more",
+      room: room(208, 16),
+      count: 3,
+      fit: { shown: 1, more: 2 },
+    },
+    { name: "no room for a face: none", room: 30, count: 2, fit: { shown: 0, more: 0 } },
+    { name: "nobody waiting", room: 96, count: 0, fit: { shown: 0, more: 0 } },
+  ])("$name", ({ room: slot, count, fit }) => {
+    expect(waitingFacesThatFit(slot, count)).toEqual(fit);
   });
 });
