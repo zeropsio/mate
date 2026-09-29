@@ -6542,6 +6542,17 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   }
 }
 
+/* The composer while a new Mate's stand-up waits on its person (`ChatView`): kept in its place,
+   since it is what sends the stand-up, but unseen; once the stand-up has gone it fades back in
+   180 ms, and nothing around it moves. */
+[data-slot="composer-shell"] {
+  transition: opacity 180ms var(--ease-out-strong);
+}
+
+[data-standup-holds-composer] [data-slot="composer-shell"] {
+  opacity: 0;
+}
+
 /* ==== end of the stand-up ==== */
 
 /* ==== Pass 18 · motion ==== */

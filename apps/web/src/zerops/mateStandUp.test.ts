@@ -6,6 +6,7 @@ import {
   MATE_STAND_UP_MESSAGE,
   mateStandUpCleared,
   mateStandUpDecision,
+  mateStandUpHoldsComposer,
   mateStandUpHeadline,
   mateStandUpHeadlineClauses,
   mateStandUpPhase,
@@ -36,12 +37,12 @@ describe("the stand-up's words", () => {
     {
       phase: "sign-in" as const,
       project: "Acme Docs",
-      words: "Fen will stand up development of Acme Docs after you sign in your agent.",
+      words: "Fen will stand up development on Acme Docs after you authorize your agent.",
     },
     {
       phase: "standing-up" as const,
       project: "Acme Docs",
-      words: "Fen is standing up development of Acme Docs…",
+      words: "Fen is standing up development on Acme Docs…",
     },
     {
       phase: "failed" as const,
@@ -51,12 +52,12 @@ describe("the stand-up's words", () => {
     {
       phase: "sign-in" as const,
       project: undefined,
-      words: "Fen will stand up development of the project after you sign in your agent.",
+      words: "Fen will stand up development on the project after you authorize your agent.",
     },
     {
       phase: "standing-up" as const,
       project: undefined,
-      words: "Fen is standing up development of the project…",
+      words: "Fen is standing up development on the project…",
     },
   ])("say, $phase in $project: $words", ({ phase, project, words }) => {
     expect(mateStandUpHeadline({ name: "Fen", project }, phase)).toBe(words);
@@ -66,8 +67,8 @@ describe("the stand-up's words", () => {
     expect(
       mateStandUpHeadlineClauses({ name: "Fen", project: "Acme Docs Portal" }, "sign-in"),
     ).toEqual([
-      "Fen will stand up development of Acme\u00a0Docs\u00a0Portal",
-      "after you sign in your agent.",
+      "Fen will stand up development on Acme\u00a0Docs\u00a0Portal",
+      "after you authorize your agent.",
     ]);
   });
 });
@@ -120,6 +121,61 @@ describe("mateStandUpDecision", () => {
     }));
     expect(clients.map((client) => client.decision)).toEqual(["send", "send"]);
     expect(clients[0]?.ids).toEqual(clients[1]?.ids);
+  });
+});
+
+describe("mateStandUpHoldsComposer", () => {
+  it.each([
+    {
+      name: "its person, the conversation still empty",
+      marker: { by: "u-ada" },
+      viewer: "u-ada",
+      conversation: "empty" as const,
+      failed: false,
+      holds: true,
+    },
+    {
+      name: "its person, the conversation not read yet: nothing to type over the headline",
+      marker: { by: "u-ada" },
+      viewer: "u-ada",
+      conversation: "unknown" as const,
+      failed: false,
+      holds: true,
+    },
+    {
+      name: "the conversation under way",
+      marker: { by: "u-ada" },
+      viewer: "u-ada",
+      conversation: "started" as const,
+      failed: false,
+      holds: false,
+    },
+    {
+      name: "the stand-up did not go through: the person may write it themselves",
+      marker: { by: "u-ada" },
+      viewer: "u-ada",
+      conversation: "empty" as const,
+      failed: true,
+      holds: false,
+    },
+    {
+      name: "a colleague",
+      marker: { by: "u-ada" },
+      viewer: "u-otto",
+      conversation: "empty" as const,
+      failed: false,
+      holds: false,
+    },
+    {
+      name: "a Mate nobody asked it of",
+      marker: undefined,
+      viewer: "u-ada",
+      conversation: "empty" as const,
+      failed: false,
+      holds: false,
+    },
+  ])("$name: $holds", ({ marker, viewer, conversation, failed, holds }) => {
+    expect(mateStandUpHoldsComposer({ marker, viewer, conversation, failed })).toBe(holds);
   });
 });
 

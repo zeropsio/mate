@@ -138,7 +138,12 @@ const readable = (markup: string) =>
  * a stand-up only in the layer shown — a sign-in landing fades them where they stand.
  */
 const rowsReadable = (html: string) => {
-  if (!html.includes("data-zerops-agent-auth-rows")) return false;
+  if (
+    !html.includes("data-zerops-agent-auth-rows") &&
+    !html.includes('data-zerops-surface="mate-standup-authorize"')
+  ) {
+    return false;
+  }
   const layer =
     /data-standup-layer="(\w+)"[^>]*><section[^>]*data-zerops-surface="mate-sign-in"/u.exec(
       html,
@@ -228,21 +233,21 @@ describe("ZeropsMateEmptyState", () => {
       name: "a Mate just added, to the person who added it, before the sign-in",
       mate: ASKED,
       auth: known(NOT_SIGNED_IN),
-      says: "Fen will stand up development of Acme Docs after you sign in your agent.",
+      says: "Fen will stand up development on Acme Docs after you authorize your agent.",
       rows: true,
     },
     {
       name: "the same, while the sign-in is still being read",
       mate: ASKED,
       auth: READING,
-      says: "Fen will stand up development of Acme Docs after you sign in your agent.",
+      says: "Fen will stand up development on Acme Docs after you authorize your agent.",
       rows: false,
     },
     {
       name: "signed in, the message on its way",
       mate: ASKED,
       auth: known(SIGNED_IN_BY_ADA),
-      says: "Fen is standing up development of Acme Docs…",
+      says: "Fen is standing up development on Acme Docs…",
       rows: false,
     },
     {
@@ -250,7 +255,7 @@ describe("ZeropsMateEmptyState", () => {
       mate: ASKED,
       auth: known(SIGNED_IN_BY_ADA),
       attempt: "sending" as const,
-      says: "Fen is standing up development of Acme Docs…",
+      says: "Fen is standing up development on Acme Docs…",
       rows: false,
     },
     {
@@ -265,7 +270,7 @@ describe("ZeropsMateEmptyState", () => {
       name: "a Mate in no project",
       mate: { ...ASKED, project: undefined },
       auth: known(NOT_SIGNED_IN),
-      says: "Fen will stand up development of the project after you sign in your agent.",
+      says: "Fen will stand up development on the project after you authorize your agent.",
       rows: true,
     },
     {
@@ -307,6 +312,14 @@ describe("ZeropsMateEmptyState", () => {
     expect(phrases(html).some((phrase) => phrase.readable && phrase.retry)).toBe(
       attempt === "failed",
     );
+    // While the stand-up waits on the sign-in, its one message stands over the two buttons (the
+    // owner: "the only message here"): no row repeats it with a status.
+    const waitsOnSignIn = rows && !says.startsWith("What should");
+    expect(html.includes('data-zerops-surface="mate-standup-authorize"')).toBe(waitsOnSignIn);
+    if (waitsOnSignIn) {
+      expect(html.includes("Authorize Codex")).toBe(true);
+      expect(html.includes("data-zerops-agent-auth-rows")).toBe(false);
+    }
   });
 
   it("keeps every stand-up phase in the headline's one box, only the one in view read", () => {
@@ -318,13 +331,13 @@ describe("ZeropsMateEmptyState", () => {
       {
         readable: false,
         place: "past",
-        words: "Fen will stand up development of Acme Docs after you sign in your agent.",
+        words: "Fen will stand up development on Acme Docs after you authorize your agent.",
         retry: false,
       },
       {
         readable: false,
         place: "past",
-        words: "Fen is standing up development of Acme Docs…",
+        words: "Fen is standing up development on Acme Docs…",
         retry: false,
       },
       {
@@ -343,7 +356,7 @@ describe("ZeropsMateEmptyState", () => {
     const html = render({ ...ASKED, project: "Acme Docs Portal" });
 
     expect(html).toContain(
-      '<span class="inline-block">Fen will stand up development of Acme\u00a0Docs\u00a0Portal</span> <span class="inline-block">after you sign in your agent.</span>',
+      '<span class="inline-block">Fen will stand up development on Acme\u00a0Docs\u00a0Portal</span> <span class="inline-block">after you authorize your agent.</span>',
     );
   });
 });

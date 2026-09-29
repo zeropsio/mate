@@ -28,6 +28,7 @@ import {
   MATE_STAND_UP_MESSAGE,
   mateStandUpCleared,
   mateStandUpDecision,
+  mateStandUpHoldsComposer,
   mateStandUpSendIds,
   type MateStandUpConversation,
 } from "./mateStandUp";
@@ -104,7 +105,7 @@ export function useMateStandUp(input: {
   readonly canSend: boolean;
   /** A send is on its way in this conversation. */
   readonly sendBusy: boolean;
-}): void {
+}): { readonly holdsComposer: boolean } {
   const { environmentId, threadRef, messageCount, canSend, sendBusy } = input;
   const directory = useZeropsMateDirectory();
   const whoLivesHere = environmentId === null ? null : zeropsMateAt(directory, environmentId);
@@ -192,4 +193,13 @@ export function useMateStandUp(input: {
       clearing.delete(key);
     });
   }, [cleared, data, project]);
+
+  return {
+    holdsComposer: mateStandUpHoldsComposer({
+      marker,
+      viewer,
+      conversation,
+      failed: attempt?.state === "failed",
+    }),
+  };
 }

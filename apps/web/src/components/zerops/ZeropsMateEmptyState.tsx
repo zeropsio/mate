@@ -8,9 +8,10 @@
  * voice.
  *
  * A Mate just added to a project says instead what it is about to do, to the
- * person who added it (`mateStandUp.ts`): "Fen will stand up development of
- * Acme Docs after you sign in your agent." over the sign-in rows; once they
- * have signed in, "Fen is standing up development of Acme Docs…" while their
+ * person who added it (`mateStandUp.ts`): "Fen will stand up development on
+ * Acme Docs after you authorize your agent." over its two buttons, the composer
+ * held back (`mateStandUpHoldsComposer`); once they have signed in, "Fen is
+ * standing up development on Acme Docs…" while their
  * message is on its way, until it appears and the conversation takes over;
  * and if it did not go through, that, with a Try again. The sentences share
  * one box and cross-fade in place. A colleague sees the question: the stand-up
@@ -29,11 +30,17 @@
  */
 import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import {
+  agentAuthAction,
   zeropsAgentAuthView,
   zeropsAgentSignInRequired,
 } from "@t3tools/client-runtime/zerops/agentLogin";
 import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  ScopedThreadRef,
+  ZeropsAgentAuthSnapshot,
+  ZeropsAgentId,
+} from "@t3tools/contracts";
 import { Fragment, useMemo, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
@@ -57,6 +64,7 @@ import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { Button } from "../ui/button";
 import { FlatCard, MateFace } from "./primitives";
 import { ZeropsAgentAuthRows } from "./ZeropsAgentAuthCard";
+import { ZEROPS_AGENT_NAMES } from "./ZeropsAgentAuthorizationDialog.logic";
 
 export function ZeropsMateEmptyState({
   environmentId,
@@ -117,7 +125,9 @@ export function ZeropsMateEmptyState({
         mate={mate}
         phase={phase}
         signIn={
-          agentAuth === null ? null : (
+          agentAuth === null ? null : phase === "sign-in" ? (
+            <StandUpAuthorize onAuthorize={openAuthorizationDialog} snapshot={agentAuth} />
+          ) : (
             <ZeropsAgentAuthRows
               onCancel={cancelAgentLogin}
               onRetryRecord={retryRecord}
@@ -134,6 +144,41 @@ export function ZeropsMateEmptyState({
       />
       {authorizationDialog}
     </>
+  );
+}
+
+/**
+ * The stand-up's two buttons (the owner: "it should say … and the two buttons"): one per agent the
+ * Mate offers, each opening that agent's authorization. The headline above already says what a
+ * sign-in is for, so no row repeats it with a status.
+ */
+function StandUpAuthorize({
+  snapshot,
+  onAuthorize,
+}: {
+  readonly snapshot: ZeropsAgentAuthSnapshot;
+  readonly onAuthorize: (agentId: ZeropsAgentId) => void;
+}) {
+  const agents = snapshot.agents.filter((agent) => agentAuthAction(agent) === "sign-in");
+  return (
+    <div
+      className="flex flex-wrap items-center justify-center gap-3"
+      data-zerops-surface="mate-standup-authorize"
+    >
+      {agents.map((agent) => (
+        <Button
+          data-agent-id={agent.agentId}
+          key={agent.agentId}
+          onClick={() => {
+            onAuthorize(agent.agentId);
+          }}
+          size="compact"
+          variant="pill"
+        >
+          Authorize {ZEROPS_AGENT_NAMES[agent.agentId]}
+        </Button>
+      ))}
+    </div>
   );
 }
 
