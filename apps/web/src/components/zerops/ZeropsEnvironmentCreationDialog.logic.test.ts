@@ -1,7 +1,13 @@
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  faceName,
   hasCreationErrors,
+  newMateFace,
+  newMateRecipe,
+  newMateSubmit,
+  newMateWords,
   proposedEnvironmentName,
   recipeOptions,
   validateBotName,
@@ -289,5 +295,199 @@ describe("proposedEnvironmentName", () => {
         taken: ["Shortlink - dev", "Shortlink - dev 2"],
       }),
     ).toBe("Shortlink - stage");
+  });
+});
+
+/** A name's own tint as the account would give it: fixed per name here, so each case reads. */
+const TINTS: Readonly<Record<string, MateTintId>> = { Quinn: "olive", Ada: "sky", Otto: "violet" };
+const defaultTint = (name: string): MateTintId => TINTS[name] ?? "slate";
+
+describe("newMateFace — the face follows the name until its person picks", () => {
+  it.each<{
+    readonly case: string;
+    readonly name: string;
+    readonly picked: { readonly tint?: MateTintId; readonly shape?: MateShapeId };
+    readonly face: { readonly tint: MateTintId; readonly shape: MateShapeId };
+  }>([
+    {
+      case: "nothing picked: the name's tint and that tint's shape",
+      name: "Quinn",
+      picked: {},
+      face: { tint: "olive", shape: "clover" },
+    },
+    {
+      case: "nothing picked, another name: its own face",
+      name: "Ada",
+      picked: {},
+      face: { tint: "sky", shape: "pick" },
+    },
+    {
+      case: "a colour picked: that colour, and its shape until one is picked",
+      name: "Quinn",
+      picked: { tint: "rose" },
+      face: { tint: "rose", shape: "flower" },
+    },
+    {
+      case: "a shape picked: the name's colour still follows the name",
+      name: "Ada",
+      picked: { shape: "seal" },
+      face: { tint: "sky", shape: "seal" },
+    },
+    {
+      case: "both picked: the name moves neither",
+      name: "Otto",
+      picked: { tint: "amber", shape: "gem" },
+      face: { tint: "amber", shape: "gem" },
+    },
+  ])("$case", ({ name, picked, face }) => {
+    expect(newMateFace({ name, picked, defaultTint })).toEqual(face);
+  });
+
+  it.each([
+    { case: "the name as typed", typed: "  Ada  ", held: "Quinn", name: "Ada" },
+    { case: "the last name while the field is blank", typed: "   ", held: "Quinn", name: "Quinn" },
+    { case: "one space between words", typed: "Big   Otto", held: "Quinn", name: "Big Otto" },
+  ])("follows $case", ({ typed, held, name }) => {
+    expect(faceName(typed, held)).toBe(name);
+  });
+});
+
+describe("newMateSubmit — what pressing Add does now", () => {
+  const TAKEN = { names: ["Fen"], complete: true };
+  it.each<{
+    readonly case: string;
+    readonly botName: string;
+    readonly takenBotNames: { readonly names: ReadonlyArray<string>; readonly complete: boolean };
+    readonly tier: typeof TIER | undefined;
+    readonly tierLoading: boolean;
+    readonly submit: ReturnType<typeof newMateSubmit>;
+  }>([
+    {
+      case: "creates it with the project's recipe",
+      botName: "Quinn",
+      takenBotNames: TAKEN,
+      tier: TIER,
+      tierLoading: false,
+      submit: { kind: "create", recipe: TIER },
+    },
+    {
+      case: "creates it with nothing where the project has no recipe on main",
+      botName: "Quinn",
+      takenBotNames: TAKEN,
+      tier: undefined,
+      tierLoading: false,
+      submit: { kind: "create", recipe: { kind: "none" } },
+    },
+    {
+      case: "waits while the recipe is read",
+      botName: "Quinn",
+      takenBotNames: TAKEN,
+      tier: undefined,
+      tierLoading: true,
+      submit: { kind: "wait", on: "recipe" },
+    },
+    {
+      case: "waits while the names are read, the name not among them yet",
+      botName: "Quinn",
+      takenBotNames: { names: ["Fen"], complete: false },
+      tier: TIER,
+      tierLoading: false,
+      submit: { kind: "wait", on: "names" },
+    },
+    {
+      case: "refuses a blank name before waiting on anything",
+      botName: "  ",
+      takenBotNames: { names: [], complete: false },
+      tier: undefined,
+      tierLoading: true,
+      submit: { kind: "refuse", error: "Give the Mate a name." },
+    },
+    {
+      case: "refuses a name already taken, even while the rest are read",
+      botName: "fen",
+      takenBotNames: { names: ["Fen"], complete: false },
+      tier: undefined,
+      tierLoading: true,
+      submit: { kind: "refuse", error: "Another Mate already has that name." },
+    },
+    {
+      case: "refuses a name too long",
+      botName: "x".repeat(25),
+      takenBotNames: TAKEN,
+      tier: TIER,
+      tierLoading: false,
+      submit: { kind: "refuse", error: "Keep it under 24 characters." },
+    },
+  ])("$case", ({ botName, takenBotNames, tier, tierLoading, submit }) => {
+    expect(newMateSubmit({ botName, takenBotNames, tier, tierLoading })).toEqual(submit);
+  });
+});
+
+describe("newMateWords — what the Mate's dialog says", () => {
+  it.each<{
+    readonly case: string;
+    readonly input: Parameters<typeof newMateWords>[0];
+    readonly words: ReturnType<typeof newMateWords>;
+  }>([
+    {
+      case: "a project with a recipe",
+      input: { groupName: "Acme Docs", botName: "Quinn", recipe: "recipe", waitingOn: null },
+      words: {
+        description:
+          "It gets its own copy of Acme Docs with the recipe deployed. It takes a couple of minutes.",
+        button: "Add Quinn to Acme Docs",
+        line: undefined,
+      },
+    },
+    {
+      case: "the recipe still being read",
+      input: { groupName: "Acme Docs", botName: "Quinn", recipe: "reading", waitingOn: null },
+      words: {
+        description:
+          "It gets its own copy of Acme Docs with the recipe deployed. It takes a couple of minutes.",
+        button: "Add Quinn to Acme Docs",
+        line: "Reading the project's recipe…",
+      },
+    },
+    {
+      case: "a project with no recipe on main",
+      input: { groupName: "Acme Docs", botName: "Quinn", recipe: "none", waitingOn: null },
+      words: {
+        description:
+          "It gets its own copy of Acme Docs. There's no recipe yet, so it sets the application up itself. It takes a couple of minutes.",
+        button: "Add Quinn to Acme Docs",
+        line: undefined,
+      },
+    },
+    {
+      case: "Add pressed while the names are read",
+      input: { groupName: "Acme Docs", botName: "Quinn", recipe: "recipe", waitingOn: "names" },
+      words: {
+        description:
+          "It gets its own copy of Acme Docs with the recipe deployed. It takes a couple of minutes.",
+        button: "Add Quinn to Acme Docs",
+        line: "Checking which names are taken…",
+      },
+    },
+    {
+      case: "a blank name",
+      input: { groupName: "Acme Docs", botName: "  ", recipe: "recipe", waitingOn: null },
+      words: {
+        description:
+          "It gets its own copy of Acme Docs with the recipe deployed. It takes a couple of minutes.",
+        button: "Add a Mate to Acme Docs",
+        line: undefined,
+      },
+    },
+  ])("says so for $case", ({ input, words }) => {
+    expect(newMateWords(input)).toEqual(words);
+  });
+
+  it.each([
+    { tier: TIER, tierLoading: false, recipe: "recipe" },
+    { tier: undefined, tierLoading: true, recipe: "reading" },
+    { tier: undefined, tierLoading: false, recipe: "none" },
+  ] as const)("reads the recipe as $recipe", ({ tier, tierLoading, recipe }) => {
+    expect(newMateRecipe({ tier, tierLoading })).toBe(recipe);
   });
 });

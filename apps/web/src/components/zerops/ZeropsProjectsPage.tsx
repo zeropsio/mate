@@ -109,6 +109,7 @@ import {
   botDisplayName,
   buildZeropsGroupTree,
   mateShapeOf,
+  newMateTint,
   toolProjectName,
   flowVerbKey,
   flowVerbLabel,
@@ -2026,6 +2027,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         recipe: choice.recipe,
         withAgent: choice.withAgent,
         ...(choice.botName === undefined ? {} : { botName: choice.botName }),
+        ...(choice.face === undefined ? {} : { face: choice.face }),
       });
       if (!isCurrent()) return;
       if (!plan.ok) {
@@ -3125,6 +3127,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               taken: requestedGroup.environments.map(({ item }) => item.project.name),
             })
           }
+          defaultTintFor={(name) => newMateTint(candidates, name)}
           defaultWithAgent={defaultAgentForRole(creationRequest.role)}
           groupName={requestedGroup.group.name}
           key={`${creationRequest.groupId}:${creationRequest.role}`}
