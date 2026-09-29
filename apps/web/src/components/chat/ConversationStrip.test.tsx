@@ -43,6 +43,7 @@ import {
   ConversationStrip,
   ConversationStripView,
   useAlsoWorkingBanner,
+  useConversationStripShown,
   useLoneChatNewChat,
 } from "./ConversationStrip";
 
@@ -109,14 +110,15 @@ describe("ConversationStrip", () => {
     const html = strip("logs");
     const main = html.indexOf('data-conversation-strip-entry="main"');
     const logs = html.indexOf('data-conversation-strip-entry="logs"');
+    const newChat = html.indexOf('aria-label="New chat"');
     expect(main).toBeGreaterThan(-1);
     expect(logs).toBeGreaterThan(main);
+    expect(newChat).toBeGreaterThan(logs);
     expect(html).toContain(">Fen</span>");
     expect(html).toContain(">Logs</span>");
-    expect(html).toContain('data-zerops-primitive="mate-face"');
-    expect(html).toContain('aria-disabled="true" aria-label="Close Fen"');
+    expect(html.match(/data-zerops-primitive="mate-face"/g)).toHaveLength(2);
     expect(html).toContain('aria-label="Close Logs"');
-    expect(html).toContain("New chat");
+    expect(html).not.toContain('aria-label="Close Fen"');
   });
 });
 
@@ -157,6 +159,34 @@ describe("useLoneChatNewChat", () => {
   });
 });
 
+describe("useConversationStripShown", () => {
+  function shown(currentThreadId: string): boolean {
+    const found: Array<boolean> = [];
+    function Probe() {
+      found.push(
+        useConversationStripShown({
+          environmentId: FEN,
+          currentThreadId: ThreadId.make(currentThreadId),
+        }),
+      );
+      return null;
+    }
+    renderToStaticMarkup(<Probe />);
+    return found[0] ?? false;
+  }
+
+  it.each([
+    { name: "leaves the header to the Mate while it has one chat", chats: 1, strip: false },
+    { name: "gives the header's line to the strip with a second chat", chats: 2, strip: true },
+  ])("$name", ({ chats, strip }) => {
+    state.shells = [
+      shell("main", { latestUserMessageAt: "2026-09-05T12:00:00.000Z" }),
+      shell("logs", { title: "Logs", createdAt: "2026-09-05T11:00:00.000Z" }),
+    ].slice(0, chats);
+    expect(shown("main")).toBe(strip);
+  });
+});
+
 describe("ConversationStripView", () => {
   const entry = (
     key: string,
@@ -165,14 +195,14 @@ describe("ConversationStripView", () => {
     key,
     threadId: ThreadId.make(key),
     label: key,
+    face: { tint: "amber", state: "idle" },
     status: null,
     current: false,
     close: "none",
     canMakeMain: false,
     ...overrides,
   });
-  const working = { word: "Working", tone: "busy", pulse: true } as const;
-  const view = (groups: ReadonlyArray<ConversationStripGroup>, width: number | null) =>
+  const view = (groups: ReadonlyArray<ConversationStripGroup>) =>
     renderToStaticMarkup(
       <ConversationStripView
         canMakeMain
@@ -181,101 +211,124 @@ describe("ConversationStripView", () => {
         onMakeMain={() => {}}
         onNewChat={() => {}}
         onOpen={() => {}}
-        width={width}
       />,
     );
+  /** One entry's own classes: its band, and whether it is folded out of the row. */
+  const entryClass = (html: string, key: string) =>
+    new RegExp(`class="([^"]*)" data-conversation-strip-entry="${key}"`).exec(html)?.[1] ?? "";
+  /** One entry's button and its name, from the entry's tag to the name's end. */
+  const entryButton = (html: string, key: string) => {
+    const start = html.indexOf(`data-conversation-strip-entry="${key}"`);
+    return html.slice(start, html.indexOf("</span>", start));
+  };
 
-  it("draws a further group behind a divider, as the crew will join", () => {
-    const html = view(
-      [
-        { id: "chats", label: "Chats", entries: [entry("main"), entry("logs")] },
-        { id: "crew", label: "Crew", entries: [entry("@backend", { status: working })] },
-      ],
-      null,
-    );
-    expect(html).toMatch(/aria-label="Crew"[^>]*role="group"/);
-    expect(html).toContain('data-slot="separator"');
-    expect(html).toContain(">@backend</span>");
+  it("sets the crew a step apart from the chats, with no rule between them", () => {
+    const html = view([
+      { id: "chats", label: "Chats", entries: [entry("main"), entry("logs")] },
+      { id: "crew", label: "Crew", entries: [entry("crew:backend", { label: "Backend" })] },
+    ]);
+    expect(html).toMatch(/aria-label="Crew" class="[^"]*\bms-4\b[^"]*" role="group"/);
+    expect(html).not.toContain('data-slot="separator"');
+    expect(html).toContain(">Backend</span>");
   });
 
-  it("marks the lead's chip with the lead's glyph, named for assistive technology", () => {
-    const html = view(
-      [
-        { id: "chats", label: "Chats", entries: [entry("main")] },
-        {
-          id: "crew",
-          label: "Crew",
-          entries: [entry("@lead", { mark: "lead" }), entry("@backend")],
-        },
-      ],
-      null,
-    );
-    expect(html.match(/data-crew-lead-mark/g)).toHaveLength(1);
-    expect(html).toMatch(
-      /aria-label="Lead"[^>]*data-crew-lead-mark|data-crew-lead-mark[^>]*aria-label="Lead"/,
-    );
+  it("offers New chat after the Mate's chats, before the crew, as a quiet glyph", () => {
+    const html = view([
+      { id: "chats", label: "Chats", entries: [entry("main")] },
+      { id: "crew", label: "Crew", entries: [entry("crew:lead", { label: "Lead" })] },
+    ]);
+    const newChat = html.indexOf('aria-label="New chat"');
+    expect(newChat).toBeGreaterThan(html.indexOf('data-conversation-strip-entry="main"'));
+    expect(newChat).toBeLessThan(html.indexOf('data-conversation-strip-entry="crew:lead"'));
+    expect(html).not.toContain(">New chat<");
   });
 
-  it("says the status word beside its dot, and keeps it only as the dot's name when narrow", () => {
-    const groups = [
-      { id: "chats", label: "Chats", entries: [entry("main"), entry("logs", { status: working })] },
-    ];
-    expect(view(groups, null)).toContain(">Working</");
-    const narrow = view(groups, 460);
-    expect(narrow).toContain('aria-label="Working" role="img"');
-    expect(narrow).not.toContain(">Working</");
+  it("marks the entry on screen with the menu's band, and only that one", () => {
+    const html = view([
+      {
+        id: "chats",
+        label: "Chats",
+        entries: [entry("main"), entry("logs", { current: true, close: "open" })],
+      },
+    ]);
+    expect(entryClass(html, "logs")).toContain("bg-sidebar-row-active");
+    expect(entryButton(html, "logs")).toContain('aria-current="page"');
+    expect(entryClass(html, "main")).not.toContain("bg-sidebar-row-active");
+    expect(entryButton(html, "main")).not.toContain("aria-current");
   });
 
-  it("folds the tail into More when the row runs out, keeping the chat you are on", () => {
-    const html = view(
-      [
-        {
-          id: "chats",
-          label: "Chats",
-          entries: [
-            entry("main"),
-            entry("logs"),
-            entry("migration"),
-            entry("docs", { current: true }),
-          ],
-        },
-      ],
-      // Room for three slots and New chat: the main chat, the one you are on, and More.
-      3 * 148 + 104,
-    );
-    expect(html).toContain('data-conversation-strip-entry="main"');
-    expect(html).toContain('data-conversation-strip-entry="docs"');
-    expect(html).not.toContain('data-conversation-strip-entry="logs"');
-    expect(html).not.toContain('data-conversation-strip-entry="migration"');
-    expect(html).toContain("More");
+  it("leaves what an entry does to its face: the word is only its accessible name", () => {
+    const html = view([
+      {
+        id: "crew",
+        label: "Crew",
+        entries: [
+          entry("crew:backend", {
+            label: "Backend",
+            status: "Working",
+            face: { tint: "sky", state: "working" },
+          }),
+        ],
+      },
+    ]);
+    expect(html).toContain('aria-label="Backend, Working"');
+    expect(html).not.toContain(">Working<");
+    expect(html).not.toContain('data-zerops-primitive="status-dot"');
+    expect(html).toContain('data-mate-face-state="working"');
   });
 
-  it("counts the divider before a further group when deciding what fits", () => {
-    const html = view(
-      [
-        { id: "chats", label: "Chats", entries: [entry("main"), entry("logs")] },
-        { id: "crew", label: "Crew", entries: [entry("@lead"), entry("@backend")] },
-      ],
-      // Four slots and New chat, with nothing left for the divider.
-      4 * 148 + 104,
-    );
-    expect(html).toContain("More");
+  it("names an entry that has something for you in ink, and one at work muted", () => {
+    const html = view([
+      {
+        id: "crew",
+        label: "Crew",
+        entries: [
+          entry("crew:backend", { label: "Backend", face: { tint: "sky", state: "needs" } }),
+          entry("crew:erik", { label: "Erik", face: { tint: "amber", state: "working" } }),
+        ],
+      },
+    ]);
+    expect(entryButton(html, "crew:backend")).toMatch(/ text-foreground[^"]*">Backend$/);
+    expect(entryButton(html, "crew:erik")).toMatch(/ text-muted-foreground[^"]*">Erik$/);
+  });
+
+  it("marks the lead by no glyph: its place, and its role where its name does not say it", () => {
+    const html = view([
+      { id: "chats", label: "Chats", entries: [entry("main")] },
+      {
+        id: "crew",
+        label: "Crew",
+        entries: [
+          entry("crew:lead", { label: "Ada", role: "Ada, the lead" }),
+          entry("crew:backend"),
+        ],
+      },
+    ]);
+    expect(html).not.toContain("data-crew-lead-mark");
+    expect(html).toContain('aria-label="Ada, the lead"');
+    expect(html).toContain(">Ada</span>");
+  });
+
+  it("draws every entry in the row before the row is measured", () => {
+    const keys = ["main", "logs", "crew:lead", "crew:backend"];
+    const html = view([
+      { id: "chats", label: "Chats", entries: [entry("main"), entry("logs")] },
+      { id: "crew", label: "Crew", entries: [entry("crew:lead"), entry("crew:backend")] },
+    ]);
+    for (const key of keys) expect(entryClass(html, key)).not.toContain("invisible");
   });
 
   it("offers Make main and Close chat on the chat you are on", () => {
-    const html = view(
-      [
-        {
-          id: "chats",
-          label: "Chats",
-          entries: [
-            entry("main", { close: "main" }),
-            entry("logs", { current: true, close: "open", canMakeMain: true }),
-          ],
-        },
-      ],
-      null,
-    );
+    const html = view([
+      {
+        id: "chats",
+        label: "Chats",
+        entries: [
+          entry("main"),
+          entry("logs", { current: true, close: "open", canMakeMain: true }),
+        ],
+      },
+    ]);
     expect(html).toContain('aria-label="More for logs"');
     expect(html).not.toContain('aria-label="More for main"');
   });

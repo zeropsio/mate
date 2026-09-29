@@ -20,6 +20,7 @@ import { useRouter } from "@tanstack/react-router";
 import { EllipsisIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { cn } from "~/lib/utils";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { mateFaceFor } from "~/zerops/agentActivity";
@@ -53,6 +54,7 @@ export function CrewmateHeader({
   threadId,
   origin,
   onEditJob,
+  identity = true,
 }: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
@@ -60,6 +62,14 @@ export function CrewmateHeader({
   readonly origin: ThreadCrewOrigin;
   /** Opens the crew's Crewmate editor on this crewmate. */
   readonly onEditJob: (handle: string) => void;
+  /**
+   * Its face and name before the rest, the lead's chip beside the name. Off
+   * under the conversation strip, whose entry on the band draws them — the
+   * lead first in the crew, its role on hover where its name does not say it —
+   * and the rest reads on the line under it, its `@handle` first in ink, so
+   * the line says whose it is.
+   */
+  readonly identity?: boolean;
 }) {
   const { view, current } = useCrew(environmentId);
   // The dialogs show their own refusal inline; Start fresh has no surface of
@@ -121,12 +131,20 @@ export function CrewmateHeader({
 
   return (
     <span className="inline-flex min-w-0 items-center gap-2" data-zerops-surface="header-crewmate">
-      <MateFace size="sm" state={face} tint={model.tint} />
-      <span className="max-w-40 shrink-0 truncate font-medium text-foreground">{model.name}</span>
-      {model.lead ? (
-        <Chip className="shrink-0" data-crew-lead-chip label={CREW_LEAD_WORD} tone="off" />
+      {identity ? (
+        <>
+          <MateFace size="sm" state={face} tint={model.tint} />
+          <span className="max-w-40 shrink-0 truncate font-medium text-foreground">
+            {model.name}
+          </span>
+          {model.lead ? (
+            <Chip className="shrink-0" data-crew-lead-chip label={CREW_LEAD_WORD} tone="off" />
+          ) : null}
+        </>
       ) : null}
-      <span className="shrink-0 text-muted-foreground">@{handle}</span>
+      <span className={cn("shrink-0", identity ? "text-muted-foreground" : "text-foreground")}>
+        @{handle}
+      </span>
       {model.login === null ? null : (
         <span className="shrink-0 text-xs text-muted-foreground">{model.login}</span>
       )}

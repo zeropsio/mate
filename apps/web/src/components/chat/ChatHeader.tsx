@@ -1,6 +1,7 @@
 import {
   type EnvironmentId,
   type EditorId,
+  type ProjectId,
   type ProjectScript,
   type ResolvedKeybindingsConfig,
   type ThreadId,
@@ -51,6 +52,8 @@ import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import type { ZeropsMateAt } from "~/zerops/mateIdentities";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsMark } from "../ZeropsMark";
+import { ConversationStrip } from "./ConversationStrip";
+import type { ConversationStripGroup } from "./ConversationStrip.logic";
 import { registerThreadSyncSlot } from "./threadSyncSlot";
 import {
   WorkspaceBreadcrumb,
@@ -90,6 +93,18 @@ interface ChatHeaderProps {
   onNewChat?: (() => void) | undefined;
   /** In a crewmate's chat, *Edit job*: the crew's Crewmate editor on that crewmate. */
   onEditCrewmateJob: (handle: string) => void;
+  /**
+   * Where the Mate's page holds more than one conversation — a second chat, a
+   * crew — the conversation strip takes the header's line: the Mate's face
+   * and name are its first entry, not a crumb beside it. What the chat on
+   * screen is about moves to the line under the header (`subjectSlot`).
+   */
+  strip?: {
+    readonly projectId: ProjectId;
+    readonly extraGroups: ReadonlyArray<ConversationStripGroup>;
+  } | null;
+  /** The line under the header that holds the subject while the strip holds the header's line. */
+  subjectSlot?: HTMLElement | null;
   onOpenProjectSettings?: (() => void) | undefined;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;
@@ -232,6 +247,8 @@ export const ChatHeader = memo(function ChatHeader({
   onStartFresh,
   onNewChat,
   onEditCrewmateJob,
+  strip = null,
+  subjectSlot = null,
   onOpenProjectSettings,
   onRunProjectScript,
   onAddProjectScript,
@@ -426,8 +443,10 @@ export const ChatHeader = memo(function ChatHeader({
     (event: ReactMouseEvent) => {
       if (renamingTitle !== null || crewOrigin !== null) return;
       // The right-side controls (git, scripts, open-in) keep their own
-      // behavior; only the breadcrumb area opens the thread menu.
+      // behavior, and the strip's entries are other conversations; only the
+      // breadcrumb area and the subject open the thread menu.
       if ((event.target as HTMLElement).closest("[data-chat-header-actions]")) return;
+      if ((event.target as HTMLElement).closest("[data-conversation-strip]")) return;
       if (!isServerThread && onOpenProjectSettings === undefined) return;
       cancelPendingTitleMenu();
       event.preventDefault();
@@ -480,6 +499,77 @@ export const ChatHeader = memo(function ChatHeader({
     actionsCollapsed && (showProjectScripts || showOpenInPicker || showGitActions);
   const menuShown = startsFresh || projectActionsInMenu;
   if (!menuShown && actionsOpen) setActionsOpen(false);
+  // What the chat is on: renamed in place, and the thread's menu on a click.
+  const titleContent =
+    renamingTitle !== null ? (
+      <input
+        autoFocus
+        aria-label="Thread title"
+        className="min-w-0 flex-1 rounded-sm bg-transparent text-sm font-medium text-foreground outline-none ring-1 ring-ring/50 focus:ring-ring"
+        defaultValue={renamingTitle}
+        onBlur={(event) => {
+          if (renameCommittedRef.current) return;
+          commitRename(event.currentTarget.value);
+        }}
+        onFocus={(event) => event.currentTarget.select()}
+        onKeyDown={handleRenameKeyDown}
+      />
+    ) : isServerThread ? (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              ref={titleButtonRef}
+              type="button"
+              aria-label={`Thread actions for ${headline}`}
+              aria-haspopup="menu"
+              onClick={openMenuFromTitle}
+              onDoubleClick={handleTitleDoubleClick}
+              onBlur={cancelPendingTitleMenu}
+              className="group/thread-title inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          }
+        >
+          <h2 className="min-w-0 truncate">{headline}</h2>
+          <ChevronDownIcon
+            aria-hidden
+            data-thread-title-chevron
+            className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/thread-title:opacity-100 group-focus-visible/thread-title:opacity-100"
+          />
+        </TooltipTrigger>
+        <TooltipPopup side="top">{headline}</TooltipPopup>
+      </Tooltip>
+    ) : (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <h2 aria-label={headline} className="min-w-0 flex-1 truncate">
+              {headline}
+            </h2>
+          }
+        />
+        <TooltipPopup side="top">{headline}</TooltipPopup>
+      </Tooltip>
+    );
+  // With the strip on the header's line, what the chat on screen is about
+  // reads under it: a crewmate's job, or the task, on the names' edge.
+  const stripOn = strip !== null && mate !== undefined;
+  const subject = !stripOn ? null : crewOrigin !== null ? (
+    <CrewmateHeader
+      environmentId={activeThreadEnvironmentId}
+      identity={false}
+      onEditJob={onEditCrewmateJob}
+      origin={crewOrigin}
+      threadId={activeThreadId}
+    />
+  ) : spoken ? (
+    <div
+      className="flex min-w-0 flex-1 items-center text-muted-foreground transition-colors has-[button:hover]:text-foreground"
+      data-conversation-subject-title
+    >
+      {titleContent}
+    </div>
+  ) : null;
   // Upstream's project actions fold into one menu on a narrow header; the
   // Mate's own controls stay where they are.
   const headerActions = (
@@ -528,123 +618,84 @@ export const ChatHeader = memo(function ChatHeader({
       className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3"
       onContextMenu={handleHeaderContextMenu}
     >
-      <WorkspaceBreadcrumb ariaLabel="Thread breadcrumb" className="flex-1">
-        {/* The project always leads the header: knowing which project a
+      {stripOn ? (
+        <ConversationStrip
+          currentThreadId={isServerThread ? activeThreadId : null}
+          environmentId={activeThreadEnvironmentId}
+          extraGroups={strip.extraGroups}
+          projectId={strip.projectId}
+        />
+      ) : (
+        <WorkspaceBreadcrumb ariaLabel="Thread breadcrumb" className="flex-1">
+          {/* The project always leads the header: knowing which project a
             thread lives in is priority zero, and the thread title alone
             doesn't answer it. */}
-        {crewOrigin !== null ? (
-          <WorkspaceBreadcrumbItem current className="flex-1">
-            <CrewmateHeader
-              environmentId={activeThreadEnvironmentId}
-              onEditJob={onEditCrewmateJob}
-              origin={crewOrigin}
-              threadId={activeThreadId}
-            />
-          </WorkspaceBreadcrumbItem>
-        ) : mate !== undefined ? (
-          // The Mate, then what it is on in the muted voice: weight and ink
-          // tell them apart, no slash between them.
-          <WorkspaceBreadcrumbItem>
-            <span
-              className="inline-flex min-w-0 items-center gap-2.5 text-foreground"
-              data-zerops-surface="header-mate"
-            >
-              <MateFace size="sm" state={mateFace} tint={mate.tint} />
-              <span className="max-w-48 truncate font-medium">{mate.name}</span>
-            </span>
-          </WorkspaceBreadcrumbItem>
-        ) : whoLivesHere.kind === "nobody" && activeProjectName ? (
-          <>
-            <WorkspaceBreadcrumbItem>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      type="button"
-                      aria-label={`New thread in ${activeProjectName}`}
-                      onClick={onNewThreadInProject}
-                      className="inline-flex min-w-0 cursor-pointer items-center gap-1.5 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                    />
-                  }
-                >
-                  <ProjectFavicon
-                    environmentId={activeThreadEnvironmentId}
-                    cwd={activeProjectCwd ?? ""}
-                    faviconPath={activeProjectFaviconPath}
-                    className="size-3.5"
-                  />
-                  <span className="max-w-40 truncate">{activeProjectName}</span>
-                </TooltipTrigger>
-                <TooltipPopup side="top">New thread in {activeProjectName}</TooltipPopup>
-              </Tooltip>
-            </WorkspaceBreadcrumbItem>
-            <WorkspaceBreadcrumbSeparator />
-          </>
-        ) : null}
-        {crewOrigin !== null || (whoLivesHere.kind !== "nobody" && !spoken) ? null : (
-          // Under a Mate the heading is the Mate; what it is on reads in the
-          // quiet voice after it, not as a second heading as loud as its name.
-          <WorkspaceBreadcrumbItem
-            current
-            className={cn(
-              "flex-1",
-              mate !== undefined &&
-                "font-normal text-muted-foreground transition-colors has-[button:hover]:text-foreground",
-            )}
-          >
-            {renamingTitle !== null ? (
-              <input
-                autoFocus
-                aria-label="Thread title"
-                className="min-w-0 flex-1 rounded-sm bg-transparent text-sm font-medium text-foreground outline-none ring-1 ring-ring/50 focus:ring-ring"
-                defaultValue={renamingTitle}
-                onBlur={(event) => {
-                  if (renameCommittedRef.current) return;
-                  commitRename(event.currentTarget.value);
-                }}
-                onFocus={(event) => event.currentTarget.select()}
-                onKeyDown={handleRenameKeyDown}
+          {crewOrigin !== null ? (
+            <WorkspaceBreadcrumbItem current className="flex-1">
+              <CrewmateHeader
+                environmentId={activeThreadEnvironmentId}
+                onEditJob={onEditCrewmateJob}
+                origin={crewOrigin}
+                threadId={activeThreadId}
               />
-            ) : isServerThread ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      ref={titleButtonRef}
-                      type="button"
-                      aria-label={`Thread actions for ${headline}`}
-                      aria-haspopup="menu"
-                      onClick={openMenuFromTitle}
-                      onDoubleClick={handleTitleDoubleClick}
-                      onBlur={cancelPendingTitleMenu}
-                      className="group/thread-title inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            </WorkspaceBreadcrumbItem>
+          ) : mate !== undefined ? (
+            // The Mate, then what it is on in the muted voice: weight and ink
+            // tell them apart, no slash between them.
+            <WorkspaceBreadcrumbItem>
+              <span
+                className="inline-flex min-w-0 items-center gap-2.5 text-foreground"
+                data-zerops-surface="header-mate"
+              >
+                <MateFace size="sm" state={mateFace} tint={mate.tint} />
+                <span className="max-w-48 truncate font-medium">{mate.name}</span>
+              </span>
+            </WorkspaceBreadcrumbItem>
+          ) : whoLivesHere.kind === "nobody" && activeProjectName ? (
+            <>
+              <WorkspaceBreadcrumbItem>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        aria-label={`New thread in ${activeProjectName}`}
+                        onClick={onNewThreadInProject}
+                        className="inline-flex min-w-0 cursor-pointer items-center gap-1.5 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                      />
+                    }
+                  >
+                    <ProjectFavicon
+                      environmentId={activeThreadEnvironmentId}
+                      cwd={activeProjectCwd ?? ""}
+                      faviconPath={activeProjectFaviconPath}
+                      className="size-3.5"
                     />
-                  }
-                >
-                  <h2 className="min-w-0 truncate">{headline}</h2>
-                  <ChevronDownIcon
-                    aria-hidden
-                    data-thread-title-chevron
-                    className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/thread-title:opacity-100 group-focus-visible/thread-title:opacity-100"
-                  />
-                </TooltipTrigger>
-                <TooltipPopup side="top">{headline}</TooltipPopup>
-              </Tooltip>
-            ) : (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <h2 aria-label={headline} className="min-w-0 flex-1 truncate">
-                      {headline}
-                    </h2>
-                  }
-                />
-                <TooltipPopup side="top">{headline}</TooltipPopup>
-              </Tooltip>
-            )}
-          </WorkspaceBreadcrumbItem>
-        )}
-      </WorkspaceBreadcrumb>
+                    <span className="max-w-40 truncate">{activeProjectName}</span>
+                  </TooltipTrigger>
+                  <TooltipPopup side="top">New thread in {activeProjectName}</TooltipPopup>
+                </Tooltip>
+              </WorkspaceBreadcrumbItem>
+              <WorkspaceBreadcrumbSeparator />
+            </>
+          ) : null}
+          {crewOrigin !== null || (whoLivesHere.kind !== "nobody" && !spoken) ? null : (
+            // Under a Mate the heading is the Mate; what it is on reads in the
+            // quiet voice after it, not as a second heading as loud as its name.
+            <WorkspaceBreadcrumbItem
+              current
+              className={cn(
+                "flex-1",
+                mate !== undefined &&
+                  "font-normal text-muted-foreground transition-colors has-[button:hover]:text-foreground",
+              )}
+            >
+              {titleContent}
+            </WorkspaceBreadcrumbItem>
+          )}
+        </WorkspaceBreadcrumb>
+      )}
+      {subject === null || subjectSlot === null ? null : createPortal(subject, subjectSlot)}
       {/* The sync indicator's seat: always this size, so a thread catching up
           with its server spins here and moves nothing (`threadSyncSlot.ts`). */}
       <span
