@@ -2890,39 +2890,7 @@
   {
     "path": "apps/web/src/index.css",
     "kind": "css-declaration",
-    "fingerprint": "@layer components > .chat-composer-glass-host{box-shadow:0 12px 28px -18px rgb(0 0 0 / 40%)}",
-    "owner": "karel",
-    "reason": "chat composer shadow / tint outside semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/index.css",
-    "kind": "css-declaration",
-    "fingerprint": "@layer components > .chat-composer-glass-shell > @variant dark{--chat-composer-highlight:rgb(255 255 255 / 3%)}",
-    "owner": "karel",
-    "reason": "chat composer shadow / tint outside semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/index.css",
-    "kind": "css-declaration",
     "fingerprint": "@layer components > .chat-composer-glass-shell:is( .chat-composer-glass-shell-attached, :has(:is(.chat-composer-top-drawer, .chat-composer-shoulder-tab)) ) .chat-composer-context-strip > @variant dark > &::before{background:linear-gradient( to bottom, transparent 0 1rem, rgb(0 0 0 / 18%) 1rem, transparent calc(1rem + 10px) ), linear-gradient(rgb(255 255 255 / 2%), rgb(255 255 255 / 2%)), color-mix(in srgb, var(--chat-composer-glass-surface) var(--glass-opacity), transparent)}",
-    "owner": "karel",
-    "reason": "chat composer shadow / tint outside semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/index.css",
-    "kind": "css-declaration",
-    "fingerprint": "@layer components > .chat-composer-glass-shell:is( .chat-composer-glass-shell-attached, :has(:is(.chat-composer-top-drawer, .chat-composer-shoulder-tab)) ) .chat-composer-glass-host [data-chat-composer-main-surface=\"true\"]{box-shadow:0 12px 28px -18px rgb(0 0 0 / 40%)}",
-    "owner": "karel",
-    "reason": "chat composer shadow / tint outside semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/index.css",
-    "kind": "css-declaration",
-    "fingerprint": "@layer components > .chat-composer-glass-shell{--chat-composer-outline:rgb(0 0 0 / 8%)}",
     "owner": "karel",
     "reason": "chat composer shadow / tint outside semantic roles",
     "expires": "F4"

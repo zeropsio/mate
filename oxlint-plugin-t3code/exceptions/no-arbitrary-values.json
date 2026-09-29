@@ -80,14 +80,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/ChatView.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> rounded-[22px] in \"chat-composer-glass-host relative z-10 w-full rounded-[22px]\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/ComposerPromptEditor.tsx",
     "kind": "Literal",
     "fingerprint": "<> [@media(max-width:39.999rem)_and_(pointer:coarse)]:[font-size:max(var(--font-size-prompt,1rem),16px)] in \"relative [font-family:var(--font-composer,var(--font-sans))] [font-size:var(--font-size-prompt,0.875rem)] [@media(max-width:39.999rem)_and_(pointer:coarse)]:[font-size:max(var(--font-size-prompt,1rem),16px)]\"",
@@ -211,22 +203,6 @@
     "path": "apps/web/src/components/Sidebar.tsx",
     "kind": "Literal",
     "fingerprint": "<SidebarMenuButton> ps-[calc(var(--sidebar-row-content-inset)-1px)] in \"min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ChatComposer.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> rounded-[20px] in \"rounded-[20px] transition-[background-color] duration-200\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ChatComposer.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> rounded-[22px] in \"group relative z-10 rounded-[22px] p-px transition-colors duration-200\"",
     "owner": "web-intake",
     "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
     "expires": "F6"
@@ -1611,14 +1587,6 @@
     "path": "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[9px] in \"absolute -top-1 -end-1 inline-flex h-3 min-w-3 items-center justify-center rounded-full bg-sidebar-row-active px-0.5 text-[9px] leading-none font-semibold text-sidebar-foreground tabular-nums ring-1 ring-sidebar\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsReadOnlyConversationFooter.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> rounded-[22px] in \"relative z-10 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-[22px] px-4 py-3\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
     "expires": "F6"
