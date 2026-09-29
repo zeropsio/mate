@@ -3253,22 +3253,24 @@ code {
     0 0 0 2px var(--ring);
 }
 
+/* Amber and red take a strong ground, and their ink leans toward the
+   foreground so the word reads at 4.5:1 or better on it in either theme. */
 .zerops-envchip[data-tone="amber"] {
-  background-color: color-mix(in oklab, var(--zerops-status-attention) 24%, transparent);
-  color: var(--zerops-status-attention-text);
+  background-color: color-mix(in oklab, var(--zerops-status-attention) 34%, transparent);
+  color: color-mix(in oklab, var(--zerops-status-attention-text) 76%, var(--foreground));
 }
 
 .zerops-envchip[data-tone="amber"]:is(:hover, [data-popup-open]) {
-  background-color: color-mix(in oklab, var(--zerops-status-attention) 32%, transparent);
+  background-color: color-mix(in oklab, var(--zerops-status-attention) 42%, transparent);
 }
 
 .zerops-envchip[data-tone="red"] {
-  background-color: color-mix(in oklab, var(--zerops-status-failed) 20%, transparent);
-  color: var(--zerops-status-failed-text);
+  background-color: color-mix(in oklab, var(--zerops-status-failed) 26%, transparent);
+  color: color-mix(in oklab, var(--zerops-status-failed-text) 80%, var(--foreground));
 }
 
 .zerops-envchip[data-tone="red"]:is(:hover, [data-popup-open]) {
-  background-color: color-mix(in oklab, var(--zerops-status-failed) 28%, transparent);
+  background-color: color-mix(in oklab, var(--zerops-status-failed) 34%, transparent);
 }
 
 /* The heading's end edge measures its room: a narrow menu drops the + first. */
