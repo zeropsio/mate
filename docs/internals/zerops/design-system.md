@@ -167,17 +167,17 @@ Normalization: whitespace collapsed to one space, trimmed; for a CSS declaration
 `<selector>{<property>:<value>}` with the same collapsing. The loader, the reconcile function and
 their tests are shared (`oxlint-plugin-t3code/exceptions.ts`, W1-EXC).
 
-**Ledger sizes** (updated at every wave end and every intake; the machine files are the truth — counted 2026-09-25, R3 and R6 recounted 2026-09-29):
+**Ledger sizes** (updated at every wave end and every intake; the machine files are the truth — counted 2026-09-29, after pass 16):
 
 | Rule | File                                      |                Entries | `never` | Notes                                                                                                                                  |
 | ---- | ----------------------------------------- | ---------------------: | ------: | -------------------------------------------------------------------------------------------------------------------------------------- |
-| R3   | `exceptions/no-theme-escape-hatches.json` | 391 (358 ast + 33 css) |     232 | baseline = the violations outside the Zerops dirs; the vendor provider colours (Claude, Cursor, OpenCode, Antigravity) are `never`     |
+| R3   | `exceptions/no-theme-escape-hatches.json` | 385 (358 ast + 27 css) |     230 | baseline = the violations outside the Zerops dirs; the vendor provider colours (Claude, Cursor, OpenCode, Antigravity) are `never`     |
 | R4   | `exceptions/no-legacy-vocabulary.json`    |                     55 |      50 | the manual one-time-link fallback component's exact literals                                                                           |
 | R6   | `exceptions/no-infinite-motion.json`      |    27 (18 ast + 9 css) |      27 | the known continuous uses; since 2026-09-29 a working Mate's face (its turn and glance), the composing dots and a running call's sweep |
-| R9   | `exceptions/no-restyle.json`              |                    329 |       0 | restyles that predate the ui-kit pass (75 in the Zerops dirs); all expire at F6                                                        |
+| R9   | `exceptions/no-restyle.json`              |                    306 |       0 | restyles that predate the ui-kit pass (65 in the Zerops dirs); all expire at F6                                                        |
 | R10  | `exceptions/no-unknown-classes.json`      |                      3 |       3 | the `MateMark.css` classes — `@shadcn/lint` reads only `index.css` and its imports                                                     |
 | R10  | `exceptions/require-static-classes.json`  |                      4 |       0 | runtime-built `className`s on ui exports (1 in the Zerops dirs); expire at F6                                                          |
-| R11  | `exceptions/no-arbitrary-values.json`     |                    246 |       0 | arbitrary values that predate the token pass (141 in the Zerops dirs; 2 are the usage breakdown's 8px avatar initials); expire at F6   |
+| R11  | `exceptions/no-arbitrary-values.json`     |                    206 |       0 | arbitrary values that predate the token pass (118 in the Zerops dirs; 2 are the usage breakdown's 8px avatar initials); expire at F6   |
 
 ## 6. Decisions taken inside the programme
 
