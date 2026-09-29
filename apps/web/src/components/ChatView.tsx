@@ -3879,7 +3879,7 @@ export default function ChatView(props: ChatViewProps) {
   });
   // Beside the signer record: a new Mate's first sign-in sends its stand-up, as this person,
   // through this composer, into a conversation read live and still empty.
-  useMateStandUp({
+  const mateStandUp = useMateStandUp({
     environmentId: activeThreadEnvironmentId,
     threadRef: isServerThread && threadSyncPhase === null ? activeThreadRef : null,
     messageCount: activeThread?.messages.length ?? 0,
@@ -8248,7 +8248,13 @@ export default function ChatView(props: ChatViewProps) {
                     <ThreadSyncStatusPill phase={shownThreadSyncPhase} />
                   ) : null}
                   <div
+                    // While a new Mate's stand-up waits on this person, the conversation's one
+                    // message is its headline: the composer keeps its place (it is what sends the
+                    // stand-up) but is neither seen nor reached, and fades back once it has gone.
+                    aria-hidden={mateStandUp.holdsComposer ? true : undefined}
                     className="relative"
+                    data-standup-holds-composer={mateStandUp.holdsComposer ? "" : undefined}
+                    inert={mateStandUp.holdsComposer}
                     style={
                       forceExpandedMobileComposer
                         ? { viewTransitionName: MOBILE_COMPOSER_VIEW_TRANSITION_NAME }

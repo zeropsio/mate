@@ -4,8 +4,8 @@
  * Adding a Mate to a project deploys the project's recipe with its services
  * empty (`startWithoutCode`) and writes `mate:standup:<userId>` on the Mate's
  * project, naming the person who pressed Add. Their empty conversation with
- * the Mate says what will happen — "Fen will stand up development of Acme Docs
- * after you sign in your agent." — and the moment they have signed an agent
+ * the Mate says what will happen — "Fen will stand up development on Acme Docs
+ * after you authorize your agent." — and the moment they have signed an agent
  * in, their own client sends "Stand up development of the project." as them,
  * through the composer's own send, and clears the tag once the conversation
  * holds it (the owner, 2026-09-29).
@@ -68,6 +68,21 @@ export type MateStandUpDecision = "send" | "wait" | "nothing";
 
 function askedOf(marker: MateStandUpMarker, viewer: string | undefined): boolean {
   return marker !== undefined && viewer !== undefined && viewer.length > 0 && marker.by === viewer;
+}
+
+/**
+ * Whether the stand-up holds the composer back: while the person who asked it waits on it, the
+ * conversation's one message is the stand-up's headline, and nothing may be typed over it (the
+ * owner, 2026-09-29: "textarea should be hidden"). A conversation known to be under way, or a
+ * stand-up that did not go through, gives the composer back.
+ */
+export function mateStandUpHoldsComposer(input: {
+  readonly marker: MateStandUpMarker;
+  readonly viewer: string | undefined;
+  readonly conversation: MateStandUpConversation;
+  readonly failed: boolean;
+}): boolean {
+  return askedOf(input.marker, input.viewer) && input.conversation !== "started" && !input.failed;
 }
 
 /**
@@ -151,8 +166,8 @@ const keptWhole = (name: string) => name.replaceAll(" ", "\u00a0");
 
 /**
  * The empty conversation's headline in each phase, the owner's words for the first, in the
- * clauses it breaks between when it takes two lines — "Fen will stand up development of Acme
- * Docs / after you sign in your agent." — and with no name torn in two.
+ * clauses it breaks between when it takes two lines — "Fen will stand up development on Acme
+ * Docs / after you authorize your agent." — and with no name torn in two.
  */
 export function mateStandUpHeadlineClauses(
   mate: Pick<ZeropsMateIdentity, "name" | "project">,
@@ -162,9 +177,9 @@ export function mateStandUpHeadlineClauses(
   const project = mate.project === undefined ? "the project" : keptWhole(mate.project);
   switch (phase) {
     case "sign-in":
-      return [`${name} will stand up development of ${project}`, "after you sign in your agent."];
+      return [`${name} will stand up development on ${project}`, "after you authorize your agent."];
     case "standing-up":
-      return [`${name} is standing up development of ${project}…`];
+      return [`${name} is standing up development on ${project}…`];
     case "failed":
       return [`The message to ${name} didn't go through.`];
   }
