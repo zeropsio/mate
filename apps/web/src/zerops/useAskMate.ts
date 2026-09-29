@@ -46,6 +46,18 @@ export type AskMate = (
 ) => void;
 
 /**
+ * What the composer holds once a request is left in it unsent: the request alone in an empty box;
+ * after what the person had typed, a blank line apart, where they go on writing. Their words are
+ * never replaced, and the same request asked again is not written twice.
+ */
+export function askedDraft(draft: string | undefined, ask: string): string {
+  const kept = draft?.trimEnd() ?? "";
+  if (kept.length === 0) return ask;
+  if (kept.endsWith(ask.trimEnd())) return draft ?? ask;
+  return `${kept}\n\n${ask}`;
+}
+
+/**
  * The chat an ask goes to among a Mate's threads: the one named when it is a
  * person chat of this Mate (open, not a crewmate's), otherwise the main chat.
  */
@@ -111,8 +123,10 @@ export function useAskMate(
       // the person has already read the exact request and pressed Send (spec
       // §5.4 retired for these surfaces by the owner, 2026-09-19). A fix
       // request is written, not sent: the composer is where it is read.
-      if (options?.send === false) useComposerDraftStore.getState().setPrompt(threadRef, ask);
-      else useComposerDraftStore.getState().requestSend(threadRef, ask);
+      const drafts = useComposerDraftStore.getState();
+      if (options?.send === false) {
+        drafts.setPrompt(threadRef, askedDraft(drafts.getComposerDraft(threadRef)?.prompt, ask));
+      } else drafts.requestSend(threadRef, ask);
       onNavigate?.();
       void router.navigate({
         to: "/$environmentId/$threadId",
