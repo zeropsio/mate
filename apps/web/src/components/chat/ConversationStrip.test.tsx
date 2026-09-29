@@ -313,8 +313,18 @@ describe("ConversationStrip", () => {
   it("draws every face in the line before it is measured", () => {
     state.shells = [shell("main")];
     state.view = crewView();
-    expect(line({ current: "main" })).not.toContain(
-      'invisible absolute start-0 top-0" data-conversation-crewmate',
+    const html = line({ current: "main" });
+    expect(html.match(/data-conversation-seat="/g)).toHaveLength(4);
+    expect(html).not.toContain('invisible absolute start-0 top-0" data-conversation-seat');
+  });
+
+  it("draws the band behind the line, placed by its motion once the line stands", () => {
+    state.shells = [shell("main")];
+    state.view = crewView();
+    const html = line({ current: "main" });
+    expect(html).toMatch(/<nav [^>]*class="relative isolate -ms-2 /);
+    expect(html).toContain(
+      '<span aria-hidden="true" class="conversation-band"><span></span><span></span><span></span></span>',
     );
   });
 });
@@ -373,6 +383,99 @@ describe("ConversationStripView", () => {
     expect(onOpen).not.toHaveBeenCalled();
     act(() => mate.props.onDoubleClick({ ...KEYS, metaKey: true }));
     expect(onRename).toHaveBeenCalledOnce();
+  });
+
+  const crewOf = (open: string | null, handles = ["lead", "rules", "web"]) =>
+    handles.map((handle): LineCrewmate => ({
+      ...RULES,
+      handle,
+      name: handle,
+      open: handle === open,
+      threadId: ThreadId.make(`thread-crew-${handle}-1`),
+    }));
+  function drawn(open: string | null, handles?: ReadonlyArray<string>) {
+    return (
+      <ConversationStripView
+        chats={null}
+        crew={crewOf(open, handles ? [...handles] : undefined)}
+        mate={{
+          name: "Fen",
+          tint: "amber",
+          face: "idle",
+          open: open === null,
+          threadId: ThreadId.make("main"),
+          tooltip: null,
+        }}
+        onCloseChat={() => {}}
+        onOpen={() => {}}
+        onRename={null}
+        renameField={null}
+        renderCrewmateMenu={() => null}
+      />
+    );
+  }
+  const seatOf = (renderer: ReactTestRenderer, handle: string) =>
+    renderer.root.find(
+      (node) => node.type === "span" && node.props["data-conversation-seat"] === handle,
+    );
+  const labelsOf = (renderer: ReactTestRenderer) =>
+    renderer.root
+      .findAll(
+        (node) => node.type === "span" && node.props["data-conversation-label"] !== undefined,
+      )
+      .map((node) => node.props["data-conversation-label"] as string);
+
+  it("keeps each crewmate's seat through a switch: its face is drawn once, the press over it changes", () => {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(drawn("rules"));
+    });
+    const seat = seatOf(renderer, "lead");
+    const face = seat.findByProps({ "data-mate-face-size": "sm" });
+    act(() => renderer.update(drawn("lead")));
+    expect(seatOf(renderer, "lead")).toBe(seat);
+    expect(seatOf(renderer, "lead").findByProps({ "data-mate-face-size": "sm" })).toBe(face);
+    expect(
+      seat.find((node) => node.type === "button" && node.props["aria-current"] === "page").props[
+        "data-conversation-crewmate"
+      ],
+    ).toBe("lead");
+  });
+
+  it.each<{
+    readonly name: string;
+    readonly from: string | null;
+    readonly to: string | null;
+    readonly handles?: ReadonlyArray<string>;
+    readonly labels: ReadonlyArray<string>;
+  }>([
+    {
+      name: "a switch folds the name left while the one opened opens",
+      from: "rules",
+      to: "lead",
+      labels: ["open", "leaving"],
+    },
+    {
+      name: "the Mate's own chat folds the crewmate's name left",
+      from: "web",
+      to: null,
+      labels: ["leaving"],
+    },
+    { name: "leaving the Mate's own chat folds nothing", from: null, to: "web", labels: ["open"] },
+    {
+      name: "a crewmate added as the chat changes is placed: nothing folds",
+      from: "rules",
+      to: "lead",
+      handles: ["lead", "rules", "web", "docs"],
+      labels: ["open"],
+    },
+  ])("$name", ({ from, to, handles, labels }) => {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(drawn(from));
+    });
+    act(() => renderer.update(drawn(to, handles)));
+    expect(labelsOf(renderer)).toEqual(labels);
   });
 
   it("opens the Mate's own chat from a crewmate's, and renames nothing there", () => {

@@ -13,8 +13,9 @@
  * `?width=<px>` for every full-width frame, `?open=<frame>` to open that
  * frame's menu — the writer's by default, `none` for none). The `reload`
  * frame paints the crew this browser remembers and turns to the feed's a
- * moment later, as a reload does. Fixtures only: nothing here ships, and no
- * route imports this module.
+ * moment later, as a reload does. The first frame switches on a press
+ * (`SwitchFrame`). Fixtures only: nothing here ships, and no route imports
+ * this module.
  */
 import { StrictMode, useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
@@ -274,6 +275,8 @@ interface HeadState {
   readonly on: number | string;
   /** The crew this browser remembers, turning to the feed's a moment later. */
   readonly reload?: true;
+  /** Nothing remembered: the crewmate on screen alone, its crew's feed a moment later. */
+  readonly arrive?: true;
   /** What the chat on screen is about, where not its title; `null` for a chat nobody spoke into. */
   readonly subject?: string | null;
   /** The subject arrives a moment after the line is painted, as the first words sent. */
@@ -376,6 +379,15 @@ const STATES: ReadonlyArray<HeadState> = [
     reload: true,
   },
   {
+    id: "arrive",
+    title:
+      "A crewmate's chat opened with nothing remembered: that crewmate alone, then its crew as the feed answers — placed, never slid",
+    chats: [{ title: FEN_TASK, activity: "idle" }],
+    crew: CREW,
+    on: "game-rules",
+    arrive: true,
+  },
+  {
     id: "narrow",
     title: "A crew of six on a crewmate's chat at 570 px: the rest fold into N more",
     width: 570,
@@ -416,9 +428,16 @@ function HeaderActions() {
   );
 }
 
-function Frame({ state }: { readonly state: HeadState }) {
+function Frame({
+  state,
+  onSwitch,
+}: {
+  readonly state: HeadState;
+  /** Presses open the chat pressed: the Mate's own (`0`) or a crewmate's handle. */
+  readonly onSwitch?: (on: number | string) => void;
+}) {
   // A reload: what this browser remembers first, the feed's a moment later.
-  const [live, setLive] = useState(state.reload !== true);
+  const [live, setLive] = useState(state.reload !== true && state.arrive !== true);
   useEffect(() => {
     if (live) return;
     const timer = setTimeout(() => setLive(true), 1500);
@@ -544,7 +563,10 @@ function Frame({ state }: { readonly state: HeadState }) {
                 lastVisitedAtById,
               })}
               onCloseChat={() => {}}
-              onOpen={() => {}}
+              onOpen={(threadId) => {
+                const pressed = state.crew.find((each) => crewThread(each) === threadId);
+                onSwitch?.(pressed === undefined ? 0 : pressed.handle);
+              }}
               onRename={() => {}}
               renameField={null}
             />
@@ -570,9 +592,42 @@ function Conversation(): ReactNode {
   );
 }
 
+/**
+ * The line to press: Fen and its crew, a press on a face opening that
+ * crewmate's chat and one on Fen its own, as a route change does.
+ * `window.__stripHarness.switchTo("game-rules")` (or `0` for Fen's own chat)
+ * switches from a script, so a per-frame sampler can watch a switch it
+ * started itself; `setCrewSize(6)` adds the crew's two others, `setCrewSize(4)`
+ * takes them away.
+ */
+function SwitchFrame() {
+  const [on, setOn] = useState<number | string>(0);
+  // How many of the crew stand on the line: a crewmate added or removed is placed, never slid.
+  const [size, setSize] = useState(CREW.length);
+  useEffect(() => {
+    (window as unknown as { __stripHarness: unknown }).__stripHarness = {
+      switchTo: setOn,
+      setCrewSize: setSize,
+    };
+  }, []);
+  return (
+    <Frame
+      onSwitch={setOn}
+      state={{
+        id: "switch",
+        title: "Press a face, or Fen: the band travels, the faces slide, the names fold and open",
+        chats: [{ title: FEN_TASK, activity: "idle" }],
+        crew: [...CREW, ...EXTRA_CREW].slice(0, size),
+        on,
+      }}
+    />
+  );
+}
+
 function Harness() {
   return (
     <div className="flex min-h-screen flex-col gap-8 bg-background p-8 text-foreground">
+      <SwitchFrame />
       {STATES.map((state) => (
         <Frame key={state.id} state={state} />
       ))}

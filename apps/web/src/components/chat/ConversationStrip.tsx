@@ -44,14 +44,20 @@ import {
   foldCrew,
   lineChats,
   lineCrew,
+  lineLeaving,
   lineMate,
+  lineMotion,
+  lineStage,
   mateChats,
   mateWords,
+  sameLineStage,
   type CrewRoom,
   type LineChats,
   type LineCrewmate,
   type LineMate,
+  type LineStage,
 } from "./ConversationStrip.logic";
+import { LineMotion } from "./ConversationStripMotion";
 
 /** Between two faces of the crew (`gap-0.5`). */
 const CREW_GAP_PX = 2;
@@ -287,22 +293,14 @@ function MatePill({
 }
 
 /**
- * The crewmate whose chat is on screen, as a pill on the band — its face at
- * 20 where its face stood, its name at 14/500 and a ⌄ — pressing it opening
- * its menu.
+ * The pill's press, over its seat: pressing it opens the crewmate's menu.
+ * Transparent — the band under the seat is the pill's ground.
  */
-function OpenCrewmate({
+function PillPress({
   crewmate,
-  squeezed,
   menu,
 }: {
   readonly crewmate: LineCrewmate;
-  /**
-   * The line holds nothing else of the crew, not even *N more*: its name
-   * gives way. Otherwise it keeps its width, so what is measured is what it
-   * needs, and the other faces fold first.
-   */
-  readonly squeezed: boolean;
   readonly menu: ReactNode;
 }) {
   return (
@@ -313,35 +311,25 @@ function OpenCrewmate({
           <button
             aria-current="page"
             aria-label={crewmateAccessibleName(crewmate)}
-            className={cn(
-              "conversation-crewmate flex h-7 cursor-pointer items-center gap-2 rounded-lg ps-1 pe-2 outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
-              squeezed ? "min-w-15.5" : "shrink-0",
-            )}
+            className="conversation-crewmate absolute inset-0 cursor-pointer rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
             data-conversation-crewmate={crewmate.handle}
             data-current="true"
             type="button"
           />
         }
-      >
-        <CrewmateFace crewmate={crewmate} />
-        <span className="min-w-0 truncate text-sm leading-5 font-medium text-foreground">
-          {crewmate.name}
-        </span>
-        <ChevronDownIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-      </MenuTrigger>
+      />
       {menu}
     </Menu>
   );
 }
 
-/** A crewmate whose chat is not on screen: its face alone in a 28 px press, who it is on hover. */
-function CrewmateFacePress({
+/** A face's press, over its seat: pressing it opens the crewmate's chat; who it is on hover. */
+function FacePress({
   crewmate,
   folded,
   onOpen,
 }: {
   readonly crewmate: LineCrewmate;
-  /** Folded into *N more*: out of the line, kept only to be measured. */
   readonly folded: boolean;
   readonly onOpen: (threadId: ThreadId) => void;
 }) {
@@ -353,9 +341,8 @@ function CrewmateFacePress({
           <button
             aria-label={crewmateAccessibleName(crewmate)}
             className={cn(
-              "conversation-crewface flex size-7 shrink-0 items-center justify-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "conversation-crewface absolute inset-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring",
               threadId === null ? "cursor-default" : "cursor-pointer",
-              folded && "invisible absolute start-0 top-0",
             )}
             data-conversation-crewmate={crewmate.handle}
             onClick={() => {
@@ -365,13 +352,101 @@ function CrewmateFacePress({
             type="button"
           />
         }
-      >
-        <CrewmateFace crewmate={crewmate} />
-      </TooltipTrigger>
+      />
       <TooltipPopup align="start" side="bottom">
         <CrewmateTooltip crewmate={crewmate} />
       </TooltipPopup>
     </Tooltip>
+  );
+}
+
+/**
+ * A crewmate's name at 14/500 and its ⌄: in the pill while its chat is on
+ * screen, and for a moment after — out of the line's flow, where it stood —
+ * while it folds back into the face (`ConversationStripMotion.tsx`). It
+ * starts at the face's edge and clips there, so what folds back goes behind
+ * it; its words sit in a window the motion slides open and shut, the ⌄
+ * riding at the window's edge.
+ */
+function SeatName({ name, leaving }: { readonly name: string; readonly leaving: boolean }) {
+  return (
+    <span
+      aria-hidden={leaving ? "true" : undefined}
+      className={cn(
+        "pointer-events-none flex min-w-0 items-center gap-2 overflow-hidden ps-2",
+        leaving ? "absolute inset-y-0 start-6" : "relative",
+      )}
+      data-conversation-label={leaving ? "leaving" : "open"}
+    >
+      <span className="min-w-0 overflow-hidden" data-conversation-name="">
+        <span
+          className="block truncate text-sm leading-5 font-medium text-foreground"
+          data-conversation-name-text=""
+        >
+          {name}
+        </span>
+      </span>
+      <ChevronDownIcon
+        aria-hidden="true"
+        className="size-3.5 shrink-0 text-muted-foreground"
+        data-conversation-chevron=""
+      />
+    </span>
+  );
+}
+
+/**
+ * One crewmate's place on the line for as long as it is on it: its face at
+ * 20 in a 28 px seat, and — while its chat is on screen — its name and ⌄
+ * beside it, the seat a pill on the band. The seat is one element whichever
+ * it is, its face and name drawn once, so a switch turns a face into the pill
+ * and back without drawing either again; only the press over it changes —
+ * the pill's opens its menu, a face's opens its chat.
+ */
+function CrewSeat({
+  crewmate,
+  folded,
+  squeezed,
+  leaving,
+  menu,
+  onOpen,
+}: {
+  readonly crewmate: LineCrewmate;
+  /** Folded into *N more*: out of the line, kept only to be measured. */
+  readonly folded: boolean;
+  /**
+   * The line holds nothing else of the crew, not even *N more*: the pill's
+   * name gives way. Otherwise it keeps its width, so what is measured is what
+   * it needs, and the other faces fold first.
+   */
+  readonly squeezed: boolean;
+  /** Its chat was just left: its name folds back into its face. */
+  readonly leaving: boolean;
+  /** The pill's menu: its popup, or `null` while its crew is not read. */
+  readonly menu: ReactNode;
+  readonly onOpen: (threadId: ThreadId) => void;
+}) {
+  const open = crewmate.open;
+  return (
+    <span
+      className={cn(
+        "relative flex h-7 items-center rounded-lg",
+        open ? "ps-1 pe-2" : "px-1",
+        open && squeezed ? "min-w-15.5" : "shrink-0",
+        folded && "invisible absolute start-0 top-0",
+      )}
+      data-conversation-seat={crewmate.handle}
+    >
+      {open ? (
+        <PillPress crewmate={crewmate} menu={menu} />
+      ) : (
+        <FacePress crewmate={crewmate} folded={folded} onOpen={onOpen} />
+      )}
+      <span aria-hidden="true" className="pointer-events-none relative flex">
+        <CrewmateFace crewmate={crewmate} />
+      </span>
+      {open || leaving ? <SeatName leaving={!open} name={crewmate.name} /> : null}
+    </span>
   );
 }
 
@@ -430,8 +505,8 @@ function MoreCrew({
 
 /**
  * The crew's room on the line, measured before paint and again whenever the
- * line or a face changes size — a panel opening, a name settling. A folded
- * face stays in the line, out of the flow and unseen, so its width is always
+ * line or a seat changes size — a panel opening, a name settling. A folded
+ * seat stays in the line, out of the flow and unseen, so its width is always
  * known.
  */
 function useCrewRoom(): {
@@ -446,8 +521,8 @@ function useCrewRoom(): {
       line.querySelector(selector)?.getBoundingClientRect().width ?? 0;
     const measure = () => {
       const widths = new Map<string, number>();
-      for (const face of line.querySelectorAll<HTMLElement>("[data-conversation-crewmate]")) {
-        widths.set(face.dataset.conversationCrewmate ?? "", face.getBoundingClientRect().width);
+      for (const seat of line.querySelectorAll<HTMLElement>("[data-conversation-seat]")) {
+        widths.set(seat.dataset.conversationSeat ?? "", seat.getBoundingClientRect().width);
       }
       const gap = Number.parseFloat(getComputedStyle(line).columnGap) || 0;
       const next: CrewRoom = {
@@ -466,7 +541,7 @@ function useCrewRoom(): {
     const observer = new ResizeObserver(measure);
     observer.observe(line);
     for (const child of line.querySelectorAll(
-      "[data-conversation-mate], [data-conversation-crewmate]",
+      "[data-conversation-mate], [data-conversation-seat]",
     )) {
       observer.observe(child);
     }
@@ -501,8 +576,10 @@ export interface ConversationStripViewProps {
  * The top of a conversation, one line: the Mate, then — with a crew — a
  * divider and the crew's faces, the crewmate on screen a pill on the band;
  * where the line runs out, faces other than the one on screen fold into
- * *N more*. Nothing on it moves between states: the band, a face's state
- * and a remembered crew turning live change no width.
+ * *N more*. A face's state and a remembered crew turning live change no
+ * width. Switching conversations is one move (`lineMotion`): the band
+ * travels, the seats between slide, the name left folds back into its face
+ * and the one opened opens out of its own (`ConversationStripMotion.tsx`).
  */
 export function ConversationStripView({
   mate,
@@ -517,15 +594,37 @@ export function ConversationStripView({
   const { ref, room } = useCrewRoom();
   const { visible, folded, more } = foldCrew(crew ?? [], crew === null ? null : room);
   const shown = new Set(visible);
+  // Which names are folding back into their faces: the one whose chat was
+  // just left, for as long as its fold runs.
+  const stage = lineStage(mate, crew);
+  const [moved, setMoved] = useState<{
+    readonly stage: LineStage;
+    readonly leaving: ReadonlyArray<string>;
+  }>({ stage, leaving: [] });
+  if (!sameLineStage(moved.stage, stage)) {
+    const motion = lineMotion(moved.stage, stage, { reducedMotion: false });
+    setMoved({ stage, leaving: lineLeaving(moved, stage, motion) });
+  }
+  const leaving = new Set(moved.leaving);
+  const onNameFolded = (handle: string) =>
+    setMoved((current) =>
+      current.leaving.includes(handle)
+        ? { ...current, leaving: current.leaving.filter((each) => each !== handle) }
+        : current,
+    );
   return (
     // The header's own line: the Mate's face on the header's face column, its
-    // band reaching into the gutter.
+    // band reaching into the gutter, and behind everything on it.
     <nav
       aria-label="Conversations"
-      className={cn("relative -ms-2 flex min-w-0 flex-1 items-center", crew !== null && "gap-3.5")}
+      className={cn(
+        "relative isolate -ms-2 flex min-w-0 flex-1 items-center",
+        crew !== null && "gap-3.5",
+      )}
       data-conversation-strip
       ref={ref}
     >
+      <LineMotion onFolded={onNameFolded} stage={stage} />
       <MatePill
         chats={chats}
         crew={crew !== null}
@@ -547,23 +646,17 @@ export function ConversationStripView({
             data-conversation-crew
             role="group"
           >
-            {crew.map((crewmate) =>
-              crewmate.open ? (
-                <OpenCrewmate
-                  crewmate={crewmate}
-                  key={crewmate.handle}
-                  menu={renderCrewmateMenu(crewmate)}
-                  squeezed={folded.length > 0 && !more}
-                />
-              ) : (
-                <CrewmateFacePress
-                  crewmate={crewmate}
-                  folded={!shown.has(crewmate)}
-                  key={crewmate.handle}
-                  onOpen={onOpen}
-                />
-              ),
-            )}
+            {crew.map((crewmate) => (
+              <CrewSeat
+                crewmate={crewmate}
+                folded={!shown.has(crewmate)}
+                key={crewmate.handle}
+                leaving={leaving.has(crewmate.handle)}
+                menu={crewmate.open ? renderCrewmateMenu(crewmate) : null}
+                onOpen={onOpen}
+                squeezed={folded.length > 0 && !more}
+              />
+            ))}
             <MoreCrew folded={folded} onOpen={onOpen} shown={more} />
           </div>
         </>
@@ -665,9 +758,11 @@ export function ConversationStrip({
   };
 
   return (
+    // Another Mate's line is a line of its own: it is drawn anew, never travelled into.
     <ConversationStripView
       chats={lineChats(chats, currentThreadId)}
       crew={crew}
+      key={environmentId}
       renderCrewmateMenu={(crewmate) =>
         !crewmate.known ? null : (
           <CrewmateMenu

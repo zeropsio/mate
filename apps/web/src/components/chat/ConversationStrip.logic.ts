@@ -383,6 +383,85 @@ export function foldCrew(
 }
 
 /**
+ * The Mate's own place on the band. No crewmate's handle (`[a-z0-9-]`) is
+ * ever this, so one key names either.
+ */
+export const MATE_SEAT = "@mate";
+
+/** The line as its motion reads it: where the band stands, and the crew in its order. */
+export interface LineStage {
+  /** The Mate (`MATE_SEAT`) or the crewmate whose chat is on screen; `null` for a Mate with no crew. */
+  readonly band: string | null;
+  /** The crew's handles, the lead first; `null` for a Mate with no crew. */
+  readonly crew: ReadonlyArray<string> | null;
+}
+
+export function lineStage(
+  mate: Pick<LineMate, "open">,
+  crew: ReadonlyArray<Pick<LineCrewmate, "handle" | "open">> | null,
+): LineStage {
+  if (crew === null) return { band: null, crew: null };
+  const open = crew.find((entry) => entry.open);
+  return {
+    band: mate.open || open === undefined ? MATE_SEAT : open.handle,
+    crew: crew.map((entry) => entry.handle),
+  };
+}
+
+function sameCrew(
+  left: ReadonlyArray<string> | null,
+  right: ReadonlyArray<string> | null,
+): boolean {
+  if (left === null || right === null) return left === right;
+  return left.length === right.length && left.every((handle, index) => handle === right[index]);
+}
+
+export function sameLineStage(left: LineStage, right: LineStage): boolean {
+  return left.band === right.band && sameCrew(left.crew, right.crew);
+}
+
+/**
+ * How the line goes from one drawing to the next (the owner, 2026-09-29:
+ * "why isn't the transition between these ten time more smooth, animated,
+ * beautiful?"). The band travels — the faces between sliding, the name left
+ * folding back into its face and the one opened opening out of its own —
+ * only when the conversation on screen changed between two drawings of the
+ * same crew: a switch the person made, on the line, in the menu or back
+ * through history, since nothing else changes it. A first paint, a reload,
+ * the crew arriving and a crewmate added or removed are placed where they
+ * stand. With reduced motion what would travel cross-fades instead.
+ */
+export function lineMotion(
+  previous: LineStage | null,
+  next: LineStage,
+  options: { readonly reducedMotion: boolean },
+): "travel" | "fade" | "place" {
+  if (previous === null || previous.band === null || next.band === null) return "place";
+  if (previous.band === next.band || !sameCrew(previous.crew, next.crew)) return "place";
+  return options.reducedMotion ? "fade" : "travel";
+}
+
+/**
+ * The crewmates whose names are folding back into their faces after a move:
+ * the one whose chat was left — the Mate's name never folds — and any still
+ * folding from a press before, less the one opened again. A line placed has
+ * none.
+ */
+export function lineLeaving(
+  previous: { readonly stage: LineStage; readonly leaving: ReadonlyArray<string> },
+  next: LineStage,
+  motion: "travel" | "fade" | "place",
+): ReadonlyArray<string> {
+  if (motion === "place") return [];
+  const left = previous.stage.band;
+  const folding =
+    left === null || left === MATE_SEAT || left === next.band
+      ? previous.leaving
+      : [...previous.leaving.filter((handle) => handle !== left), left];
+  return folding.filter((handle) => handle !== next.band);
+}
+
+/**
  * The quiet line over the composer while you type in one chat and the Mate is
  * at work in another: nothing is refused — two chats are two terminals on one
  * tree — but the person should know both are changing the same files. The
