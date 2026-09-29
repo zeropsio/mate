@@ -815,7 +815,6 @@
         "apps/web/src/components/zerops/ZeropsChangeLinkChip.tsx",
         "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
         "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
-        "apps/web/src/components/zerops/ZeropsReleaseDialog.tsx",
         "apps/web/src/components/zerops/ZeropsReleaseRows.tsx",
         "apps/web/src/components/zerops/ZeropsNextStepBanner.tsx",
         "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.logic.ts",
