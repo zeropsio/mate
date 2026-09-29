@@ -458,6 +458,29 @@ describe("RunChat", () => {
     expect(markup).not.toMatch(/<p class="[^"]*truncate[^"]*" data-chat-kind="person">/u);
   });
 
+  // Several at once (K10): how many on the line, a still line each under it.
+  it("says several steps at once by how many, a still line each under it", () => {
+    const runningCommand = (id: string, text: string) =>
+      stepOf(
+        command(id, text, { toolLifecycleStatus: "inProgress", updatedAt: undefined as never }),
+      );
+    const markup = draw(
+      record([], {
+        live: true,
+        status: status(),
+        now: {
+          kind: "step",
+          step: runningCommand("w3", "pnpm lint"),
+          others: [runningCommand("w1", "pnpm build"), runningCommand("w2", "pnpm test")],
+        },
+      }),
+    );
+    expect(markup).toContain('data-run-now="several"');
+    expect(markup).toContain(">Running 3 commands<");
+    expect(markup.match(/<li><span class="run-now-verb run-now-mono">/g)).toHaveLength(3);
+    expect(markup).not.toContain("data-run-shimmer");
+  });
+
   // Blue means something to click (S3): the run's clock counts in ink, and a
   // call running beside it counts in the calls' quiet ink.
   it("counts the run's time in ink, never in the busy blue", () => {
@@ -647,7 +670,9 @@ describe("RunChat", () => {
   // page as the browser streams it, in the frame its picture will stand in —
   // never a line of its own beside the face as well (Nova, 2026-09-28: the
   // checks stood in a drawer under the chat until the run was over).
-  it("draws a check being taken as its row, a live frame where its picture will stand", () => {
+  // A check being taken is the now line's step (K10); taken, it lands as its
+  // row with its picture, in the words the now line said it in.
+  it("says a check being taken on the now line, and draws it taken as its row", () => {
     const check = (id: string, phase: "running" | "done") => {
       const entry = operation(id, "turn-1", 1, {
         kind: "browser",
@@ -665,14 +690,10 @@ describe("RunChat", () => {
     };
     const running = check("b1", "running");
     const live = draw(
-      record(
-        [{ kind: "strip", key: "operation:op:b1", at: at(1), strip: checksStrip([running], true) }],
-        { live: true, now: { kind: "operation", operation: running }, status: status() },
-      ),
+      record([], { live: true, now: { kind: "operation", operation: running }, status: status() }),
     );
-    expect(bubbles(live).map(({ kind }) => kind)).toEqual(["checks"]);
-    expect(live).toContain("Checking /health");
-    expect(live).toContain("data-report-take-live");
+    expect(bubbles(live)).toEqual([]);
+    expect(live).toContain(">Checking /health in the browser<");
     const done = draw(
       record([
         {
@@ -683,8 +704,8 @@ describe("RunChat", () => {
         },
       ]),
     );
-    expect(done).toContain("Checked /health");
-    expect(done).toContain("passed");
+    expect(done).toContain(">Checked /health in the browser<");
+    expect(done).not.toContain("passed");
     expect(done).not.toContain("data-report-take-live");
     expect(done).toMatch(/<button[^>]*data-report-take="desktop"/);
   });
@@ -746,7 +767,7 @@ describe("RunChat", () => {
         { kind: "strip", key: "operation:op:b0", at: at(1), strip: checksStrip(checks, false) },
       ]),
     );
-    expect(markup).toContain(`>${words}<`);
+    expect(markup).toContain(`>${words} in the browser<`);
   });
 
   // A row saying a check failed showed only the pictures of the ones that
