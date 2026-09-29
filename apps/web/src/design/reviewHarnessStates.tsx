@@ -480,8 +480,9 @@ function Crew({
 }
 
 /**
- * A change whose reads land `after` ms after it opens — its files, commits, comments and its
- * description's pictures — so the first frame can be set against the settled one.
+ * A change whose reads land `after` ms after it opens — its files, commits and comments; its
+ * description's pictures refused at their preflight, as a browser's are today — so the first
+ * frame can be set against the settled one.
  */
 function Settling({
   frame,
@@ -503,7 +504,10 @@ function Settling({
     <Change
       conversation={read ? TALKING : comments({ kind: "reading" })}
       frame={frame}
-      over={{ description: harnessDescription({ after }), commentCount: TALK.length }}
+      over={{
+        description: harnessDescription({ after, unreadable: true }),
+        commentCount: TALK.length,
+      }}
       readout={read ? { commits: { kind: "read", value: commits(19) } } : ALL_READING}
     />
   );
