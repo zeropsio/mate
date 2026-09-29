@@ -482,11 +482,13 @@ export function crewServedWord(
   }
 }
 
-/** *Waiting on you*'s presses (PRD §4.3 item 4, §5.2). */
+/**
+ * *Waiting on you*'s presses (PRD §4.3 item 4, §5.2). A task lands from its review, whose door
+ * says *Review* (`REVIEW_LABEL`, pass 16): no row lands one itself.
+ */
 export const CREW_ATTENTION_VERBS = {
   answer: "Answer",
   commitEdit: "Commit my edit",
-  land: "Land",
   reviewPlan: "Review plan",
   allow: "Allow",
   notNow: "Not now",
@@ -494,7 +496,6 @@ export const CREW_ATTENTION_VERBS = {
   carryOn: "Continue",
   discard: "Discard",
   askLeadToReview: "Ask lead to review",
-  landMyself: "Land it myself",
   dropWait: "Drop the wait",
 } as const;
 
@@ -613,11 +614,10 @@ export function crewAppWord(
   }
 }
 
-/** The lane bar's presses beside *Land* (`CREW_ATTENTION_VERBS.land`) and the asks. */
+/** The lane bar's presses beside the door to its task's review (`REVIEW_LABEL`) and the asks. */
 export const CREW_LANE_VERBS = {
   showOnDev: "Show on dev",
   backToTree: "Back to my tree",
-  landNow: "Land now",
   addCrewPorts: "Add crew ports",
 } as const;
 
