@@ -202,6 +202,28 @@ describe("the memory in this browser", () => {
     expect(menuMemory()).toEqual(EMPTY_MENU_MEMORY);
   });
 
+  // A reload after an upgrade paints what the last version drew: a memory
+  // from before the production chip (with each stop's line, no chips) keeps
+  // its rows, changes and members, and simply has no chip yet.
+  it("reads a memory written before the production chip, keeping all it held", () => {
+    const key = `mate:account:user-ales:${MENU_MEMORY_STORAGE_KEY}`;
+    stored.set(
+      key,
+      JSON.stringify({
+        rows: { nova: rememberedRowOf(WORKING) },
+        changes: { g1: [rememberedChangeOf(PULL)] },
+        stops: { "prod-1": "v1.4.0" },
+        members: { "org-1": [{ id: "cu-jan", roleCode: "OWNER" }] },
+      }),
+    );
+    openAccountLifetime("user-ales");
+    const memory = menuMemory();
+    expect(Object.keys(memory.rows)).toEqual(["nova"]);
+    expect(memory.changes.g1).toHaveLength(1);
+    expect(memory.members["org-1"]).toEqual([{ id: "cu-jan", roleCode: "OWNER" }]);
+    expect(memory.chips).toEqual({});
+  });
+
   it("reads nothing another account remembered", () => {
     openAccountLifetime("user-ales");
     rememberMenu((memory) =>

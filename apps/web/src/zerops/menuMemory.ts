@@ -15,6 +15,7 @@
  */
 import type { FlowPullRequest, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { ThreadId } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import { accountLocalStorage, currentAccountId, onAccountLifetimeClose } from "./accountLifetime";
@@ -93,7 +94,11 @@ const MemberSchema = Schema.Struct({
 const MenuMemorySchema = Schema.Struct({
   rows: Schema.Record(Schema.String, RowSchema),
   changes: Schema.Record(Schema.String, Schema.Array(ChangeSchema)),
-  chips: Schema.Record(Schema.String, ChipSchema),
+  // Absent from a memory written before the production chip: none remembered
+  // yet, and the rest of that memory still reads.
+  chips: Schema.Record(Schema.String, ChipSchema).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed({})),
+  ),
   members: Schema.Record(Schema.String, Schema.Array(MemberSchema)),
 });
 
