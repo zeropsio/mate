@@ -1,8 +1,11 @@
 /**
  * What this Mate's conversation offers next, from the project's flow rather
  * than from what the agent said (the owner, 2026-09-23 — "extremely important
- * findings the whole UI should be built around"): the merge of this Mate's
- * own change, where Gitea says it merges.
+ * findings the whole UI should be built around"): this Mate's own change,
+ * waiting for the person's review, where Gitea says it merges.
+ *
+ * It opens the review and nothing else (R1): the merge is the review's
+ * button, so this reads the flow and never writes to it.
  *
  * Nothing that is the project's: a release carries every Mate's merges and
  * production is the project's to add, so both stay on the left, with the
@@ -12,43 +15,41 @@
  * disagree about a change.
  */
 import {
-  flowVerbKey,
   mateNextStep,
   readZeropsGroupTags,
   type MateNextStep,
 } from "@t3tools/client-runtime/zerops";
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { useCallback } from "react";
+import type { MateTintId } from "@t3tools/shared/brand";
 
+import { zeropsMateAt } from "./mateIdentities";
 import { useZeropsProjectFlowOptional } from "./projectFlowContext";
 import { useRegistrationRecord } from "./registrationRecords";
+import type { ReviewTarget } from "./review";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
+import { useZeropsMateDirectory } from "./useZeropsMates";
 
-export interface ZeropsMateNextStep {
-  readonly step: MateNextStep;
-  /** True while this step's own verb is in flight, so it takes no second click. */
-  readonly running: boolean;
-  /** What the last verb's refusal said, in Gitea's or the platform's words; `null` until one does. */
-  readonly trouble: string | null;
-  /** Merges `step.pull` as the person; a no-op where `step.kind` is not `"merge"`. */
-  readonly merge: () => void;
-}
+export type ZeropsMateNextStep =
+  | { readonly kind: "none" }
+  | {
+      readonly kind: "review";
+      readonly step: Extract<MateNextStep, { kind: "review" }>;
+      /** Whose change it is: the Mate's face, in its tint. */
+      readonly tint: MateTintId;
+      /** What Review opens. */
+      readonly target: Extract<ReviewTarget, { kind: "change" }>;
+    };
 
-const NOTHING: ZeropsMateNextStep = {
-  step: { kind: "none" },
-  running: false,
-  trouble: null,
-  merge: () => undefined,
-};
+const NOTHING: ZeropsMateNextStep = { kind: "none" };
 
 export function useZeropsMateNextStep(threadRef: ScopedThreadRef | null): ZeropsMateNextStep {
   const flow = useZeropsProjectFlowOptional();
   const inventory = useZeropsInventory();
   const projectId = useRegistrationRecord(threadRef?.environmentId)?.projectRef?.projectId;
+  const mates = useZeropsMateDirectory();
 
   const project = inventory.projects.find((entry) => entry.id === projectId);
   const groupId = readZeropsGroupTags(project?.tagList ?? []).groupId;
-  const slug = groupId === undefined ? undefined : flow?.slugs.get(groupId);
   const projectFlow = groupId === undefined ? undefined : flow?.flows.get(groupId);
 
   const step = mateNextStep({
@@ -57,25 +58,17 @@ export function useZeropsMateNextStep(threadRef: ScopedThreadRef | null): Zerops
     mateName: projectId === undefined ? undefined : flow?.mateNames.get(projectId),
   });
 
-  const merge = useCallback(() => {
-    if (flow === null || flow === undefined || slug === undefined || step.kind !== "merge") return;
-    void flow.mergePullRequest(slug, step.pull);
-  }, [flow, slug, step]);
-
-  if (flow === null || flow === undefined || slug === undefined || step.kind === "none")
-    return NOTHING;
-
+  if (threadRef === null || groupId === undefined || step.kind === "none") return NOTHING;
+  const mate = zeropsMateAt(mates, threadRef.environmentId);
   return {
+    kind: "review",
     step,
-    running: flow.pending.has(
-      flowVerbKey({
-        kind: "merge",
-        slug,
-        repository: step.pull.repository,
-        number: step.pull.number,
-      }),
-    ),
-    trouble: flow.trouble,
-    merge,
+    tint: mate.kind === "mate" ? mate.mate.tint : "slate",
+    target: {
+      kind: "change",
+      groupId,
+      repository: step.pull.repository,
+      number: step.pull.number,
+    },
   };
 }

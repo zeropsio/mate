@@ -24,6 +24,7 @@ import {
   checksStrip,
   deriveConversationStructure,
   deriveOutcome,
+  turnsAfter,
   isActivityWork,
   isImageOnlyPlaceholder,
   isQuestionToolCall,
@@ -1893,6 +1894,7 @@ export function deriveMessagesTimelineRows(input: {
           landed: landedByTurnKey.get(turn.key) ?? [],
           diff,
           activity: turnActivity(turn),
+          later: turnsAfter(structure, turn.key),
         });
 
     if (lead === null) {
