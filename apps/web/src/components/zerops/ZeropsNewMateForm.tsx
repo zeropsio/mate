@@ -6,7 +6,7 @@
  * Mate gets its own copy of the project with the project's recipe deployed (the tier read from
  * the group repo's `main`), runs its agent, and is called what the project calls its Mates
  * (`proposedEnvironmentName`). A project with no recipe on main still gets its Mate, with nothing
- * in it yet, and one quiet line says so.
+ * in it yet, and the description says so in plain words.
  *
  * Until its person picks, the face follows the name as it is typed: the tint the account would
  * give that name (`newMateTint`, which never takes a tint another Mate wears) and that tint's
