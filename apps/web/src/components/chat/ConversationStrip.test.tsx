@@ -43,6 +43,7 @@ import {
   ConversationStrip,
   ConversationStripView,
   useAlsoWorkingBanner,
+  useConversationStripShown,
   useLoneChatNewChat,
 } from "./ConversationStrip";
 
@@ -155,6 +156,34 @@ describe("useLoneChatNewChat", () => {
       shell("logs", { title: "Logs", createdAt: "2026-09-05T11:00:00.000Z" }),
     ];
     expect(newChat("main")).toBeNull();
+  });
+});
+
+describe("useConversationStripShown", () => {
+  function shown(currentThreadId: string): boolean {
+    const found: Array<boolean> = [];
+    function Probe() {
+      found.push(
+        useConversationStripShown({
+          environmentId: FEN,
+          currentThreadId: ThreadId.make(currentThreadId),
+        }),
+      );
+      return null;
+    }
+    renderToStaticMarkup(<Probe />);
+    return found[0] ?? false;
+  }
+
+  it.each([
+    { name: "leaves the header to the Mate while it has one chat", chats: 1, strip: false },
+    { name: "gives the header's line to the strip with a second chat", chats: 2, strip: true },
+  ])("$name", ({ chats, strip }) => {
+    state.shells = [
+      shell("main", { latestUserMessageAt: "2026-09-05T12:00:00.000Z" }),
+      shell("logs", { title: "Logs", createdAt: "2026-09-05T11:00:00.000Z" }),
+    ].slice(0, chats);
+    expect(shown("main")).toBe(strip);
   });
 });
 

@@ -253,9 +253,10 @@ function sameRoom(left: StripRoom | null, right: StripRoom): boolean {
 }
 
 /**
- * The strip itself: each entry a face and a name, the one on screen on the
- * menu's selected band; the Mate's chats first with New chat after them, then
- * the crew a step apart; the tail folded into *N more* when the line runs out.
+ * The strip itself, as the header's line: each entry a face and a name, the
+ * one on screen on the menu's selected band; the Mate's chats first with New
+ * chat after them, then the crew a step apart; the tail folded into *N more*
+ * when the line runs out.
  */
 export function ConversationStripView({
   groups,
@@ -271,6 +272,8 @@ export function ConversationStripView({
   const floor = folded.length > 0 && shownKeys.size === 1;
   const drawn = groups.filter((group) => group.entries.length > 0 || group.id === "chats");
   return (
+    // The header's own line: its faces in the header's face column, the band
+    // reaching into the gutter around the one on screen.
     <nav
       aria-label="Conversations"
       className="relative -ms-2 flex min-w-0 flex-1 items-center gap-0.5"
@@ -469,9 +472,22 @@ export function useLoneChatNewChat({
 }
 
 /**
- * Every conversation on a Mate's page, one line under its header: nothing
- * where no Mate lives, and nothing for a Mate with one chat and no crew — the
- * line appears with a second chat or a crew.
+ * Whether the strip holds the header's line: where a Mate lives with a second
+ * chat, or with a crew. Otherwise the header names the Mate itself.
+ */
+export function useConversationStripShown({
+  environmentId,
+  currentThreadId,
+  extraGroups = NO_GROUPS,
+}: Omit<ConversationStripProps, "projectId">): boolean {
+  const mateChatEntries = useMateChatEntries(environmentId, currentThreadId);
+  return mateChatEntries !== null && stripShown(mateChatEntries.entries, extraGroups);
+}
+
+/**
+ * Every conversation on a Mate's page, as the header's line: nothing where no
+ * Mate lives, and nothing for a Mate with one chat and no crew — the line
+ * appears with a second chat or a crew.
  */
 export function ConversationStrip({
   environmentId,
@@ -544,23 +560,16 @@ export function ConversationStrip({
   };
 
   return (
-    // On the header's edges: its faces in the header's face column, the band
-    // reaching into the gutter around the one on screen.
-    <div
-      className="flex h-9 shrink-0 items-center ps-(--workspace-gutter-start) pe-(--workspace-gutter-end)"
-      data-conversation-strip-line
-    >
-      <ConversationStripView
-        canMakeMain={pinningSupported}
-        groups={[{ id: "chats", label: "Chats", entries }, ...extraGroups]}
-        onClose={(entry) => void close(entry)}
-        onMakeMain={(entry) => void makeMain(entry)}
-        onNewChat={() =>
-          void handleNewThread(scopeProjectRef(environmentId, projectId), { chat: true })
-        }
-        onOpen={open}
-      />
-    </div>
+    <ConversationStripView
+      canMakeMain={pinningSupported}
+      groups={[{ id: "chats", label: "Chats", entries }, ...extraGroups]}
+      onClose={(entry) => void close(entry)}
+      onMakeMain={(entry) => void makeMain(entry)}
+      onNewChat={() =>
+        void handleNewThread(scopeProjectRef(environmentId, projectId), { chat: true })
+      }
+      onOpen={open}
+    />
   );
 }
 

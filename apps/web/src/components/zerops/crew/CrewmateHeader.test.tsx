@@ -69,6 +69,34 @@ describe("CrewmateHeader", () => {
     expect(render()).not.toContain("data-crew-lead-chip");
   });
 
+  it("leaves its face, name and the lead's chip to the strip's entry, its handle first in ink", () => {
+    const html = renderToStaticMarkup(
+      <CrewmateHeader
+        environmentId={FEN}
+        identity={false}
+        onEditJob={() => {}}
+        origin={BACKEND}
+        threadId={ThreadId.make("thread-crew-backend-2")}
+      />,
+    );
+    expect(html).not.toContain('data-zerops-primitive="mate-face"');
+    expect(html).not.toContain(">Backend<");
+    expect(html).toMatch(/class="shrink-0 text-foreground">@backend</);
+    expect(html).toContain("Owns the API under src/api and its tests.");
+    expect(html).toContain('aria-label="More for @backend"');
+    const lead = renderToStaticMarkup(
+      <CrewmateHeader
+        environmentId={FEN}
+        identity={false}
+        onEditJob={() => {}}
+        origin={{ crew: "shop", crewmate: "lead", stint: 1 }}
+        threadId={ThreadId.make("thread-crew-lead-1")}
+      />,
+    );
+    expect(lead).not.toContain("data-crew-lead-chip");
+    expect(lead).toMatch(/class="shrink-0 text-foreground">@lead</);
+  });
+
   it("names the crewmate by the thread's own origin while the crew is not read yet", () => {
     state.view = null;
     const html = render();
