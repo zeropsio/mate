@@ -1882,16 +1882,15 @@ function QuietMatesRow({
   return (
     <button
       aria-expanded={open}
-      className="flex h-8 w-full min-w-0 cursor-pointer items-center gap-3.5 rounded-md px-2.5 text-left text-xs text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      className="menu-line grid h-7 w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-center gap-x-3 ps-1.75 pe-1 text-left text-xs text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring"
       data-zerops-surface="sidebar-quiet-mates"
       onClick={onToggle}
       type="button"
     >
-      <span aria-hidden="true" className="w-5 shrink-0" />
-      <span className="flex min-w-0 items-center gap-1.5">
+      <span className="flex justify-center">
         <FoldGlyph open={open} />
-        <span className="truncate">{`${String(count)} quiet ${count === 1 ? "Mate" : "Mates"}`}</span>
       </span>
+      <span className="truncate">{`${String(count)} quiet ${count === 1 ? "Mate" : "Mates"}`}</span>
     </button>
   );
 }
@@ -2082,11 +2081,12 @@ function MateRow<T extends RosterCandidate>({
       <button
         aria-current={active ? "true" : undefined}
         className={cn(
-          // The wider gap is the face's: it overhangs the 20px spine column by
-          // 4px a side, and the owner's badge by as much again. It is also the
-          // menu's one text column — every stop and change row takes the same
-          // gap after the same 20px cell (the owner, 2026-09-25).
-          "flex w-full min-w-0 cursor-pointer items-center gap-3.5 rounded-md px-2.5 text-left outline-none select-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+          // Two columns: the face's 28 px, then the words. The face stands at
+          // the top, on the name's line, whatever number of lines follow it —
+          // centred on the row it sat beside the question in a three-line row
+          // and beside the name in a one-line one. Faces stand at 16 px from
+          // the menu's edge and every word at 56 (the list starts at 9).
+          "menu-row grid w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-left outline-none select-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
           active
             ? "bg-sidebar-row-active text-sidebar-foreground"
             : "bg-transparent text-sidebar-foreground group-hover/mate:bg-sidebar-row-hover group-has-[[data-popup-open]]/mate:bg-sidebar-row-hover",
@@ -2145,12 +2145,12 @@ function MateRow<T extends RosterCandidate>({
         ref={rowButton}
         type="button"
       >
-        <span className="relative flex w-5 shrink-0 items-center justify-center self-stretch">
+        <span className="relative flex size-7">
           {/* The Mate wears the card's face rather than a row's, and the
               person it belongs to rides on its corner (a teammate,
-              2026-09-24). The column stays 20px and the face overhangs it. A
-              ring, when it works, stands 4px clear all round. */}
-          <span className={cn("relative flex", progress !== undefined && "my-1")}>
+              2026-09-24). A ring, when it works, stands 4px clear all round,
+              over the row's own padding, so it never moves a line. */}
+          <span className="relative flex">
             {/* Until its socket answers the face stands in idle or asleep, the
                 row's words as this browser remembered them: a Mate found
                 waiting then is not arriving at it. */}
@@ -2194,7 +2194,7 @@ function MateRow<T extends RosterCandidate>({
             )}
           </span>
         </span>
-        <span className="flex min-w-0 flex-1 flex-col py-2">
+        <span className="flex min-w-0 flex-col">
           <span className="flex min-w-0 items-center gap-2">
             <span className={cn("flex min-w-0 flex-1 items-center gap-1", renaming && "invisible")}>
               <span
@@ -2264,7 +2264,7 @@ function MateRow<T extends RosterCandidate>({
       </button>
       {actions === undefined ? null : (
         <span
-          className="absolute end-2.5 top-2.25 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100"
+          className="absolute end-2 top-2.75 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100"
           data-zerops-surface="sidebar-mate-actions"
         >
           {actions.stop === undefined ? null : (
@@ -2504,13 +2504,13 @@ function ComingMateRow({
   return (
     <div
       aria-busy="true"
-      className="flex w-full min-w-0 items-center gap-3.5 rounded-md px-2.5 text-sidebar-foreground select-none"
+      className="grid w-full min-w-0 grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-sidebar-foreground select-none"
       data-zerops-surface="sidebar-mate-coming"
     >
-      <span className="relative flex w-5 shrink-0 items-center justify-center self-stretch">
+      <span className="relative flex size-7">
         <MateFace size="md" state="sleep" tint="slate" />
       </span>
-      <span className="flex min-w-0 flex-1 flex-col py-2">
+      <span className="flex min-w-0 flex-col">
         <span className="min-w-0 truncate text-sm leading-5.5 font-medium">{name}</span>
         <span className="mt-0.5 truncate text-xs leading-4.5 text-sidebar-muted-foreground">
           {comingMateLine(coming)}

@@ -2942,6 +2942,21 @@ code {
 
 /* ==== Pass 16 · the menu's rows ==== */
 
+@layer components {
+  /* A Mate's row: its corners, and the ones a row's own hover paints. The
+     grid, the padding and the type are the row's utilities; only what no
+     scale holds lives here. */
+  .menu-row {
+    border-radius: 12px;
+  }
+
+  /* A one-line row under the Mates — a change, the crew, a fold: 28 px tall
+     and a smaller corner than the Mate's row above it. */
+  .menu-line {
+    border-radius: 10px;
+  }
+}
+
 /* ==== end of the menu's rows ==== */
 
 /* ==== Pass 16 · the menu's projects and production ==== */

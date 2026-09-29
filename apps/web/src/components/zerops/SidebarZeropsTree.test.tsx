@@ -218,8 +218,8 @@ describe("SidebarZeropsTree", () => {
 
     expect(html.match(/data-zerops-surface="sidebar-mate"/gu)).toHaveLength(1);
     expect(html).toContain('data-zerops-primitive="mate-face"');
-    // The Mate is the heaviest node on the spine, so its face is the card's
-    // size, not the 20px a name in a row of text gets.
+    // The Mate is the heaviest thing in its project, so its face is the
+    // card's size, not the 20px a name in a row of text gets.
     expect(html).toContain('data-mate-face-size="md"');
     // The state is the face's: a Mate whose socket is down sleeps, and no
     // word says "Ready" or "Idle" beside it.
@@ -231,7 +231,8 @@ describe("SidebarZeropsTree", () => {
     const rowAt = html.indexOf('data-zerops-surface="sidebar-mate"');
     const row = html.slice(html.lastIndexOf("<button", rowAt), rowAt);
     expect(row).toContain("w-full");
-    expect(row).toContain("rounded-md");
+    // Its corners are the menu's row's own (`.menu-row`, 12px).
+    expect(row).toContain("menu-row");
     // Lit from its row, so it stays lit while the pointer is on its menu.
     expect(row).toContain("group-hover/mate:bg-sidebar-row-hover");
     expect(row).not.toContain("border");
@@ -758,39 +759,24 @@ describe("the project's flow under it", () => {
   });
 
   // The menu has one text column (the owner, 2026-09-25: "everything jumps
-  // around differently"): a Mate's name, a change's title and a stop's pill
-  // start on it. A change's cell is wider, so its gap is narrower: at the
-  // Mates' gap its title stood 4 px right of the column (57 against 53 px,
-  // measured 2026-09-28).
-  it("starts a change's title on the menu's one text column, as a Mate's name and a stop's pill", () => {
+  // around differently"), 56 px from its edge, and one column of marks at 16:
+  // the list starts 9 px in, and a row's own inset, its mark's column and the
+  // gap after it make up the rest.
+  it("starts a Mate's name on the menu's one text column, its face on the column of marks", () => {
     const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
     const PX: Record<string, number> = {
-      "w-5": 20,
-      "w-7": 28,
-      "gap-1.5": 6,
-      "gap-2.5": 10,
-      "gap-3.5": 14,
+      "ps-1.75": 7,
+      "grid-cols-[28px_minmax(0,1fr)]": 28,
+      "gap-x-3": 12,
     };
-    const inset = (tag: string | undefined, cell: string | undefined) => {
-      const gap = /\bgap-[\d.]+\b/u.exec(tag ?? "")?.[0] ?? "";
-      const width = /\bw-[57]\b/u.exec(cell ?? "")?.[0] ?? "";
-      return (PX[width] ?? Number.NaN) + (PX[gap] ?? Number.NaN);
-    };
-    const mate =
-      /<button class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate"[^>]*><span[^>]*class="([^"]*)"/u.exec(
-        html,
-      );
-    const change =
-      /<li class="([^"]*)"[^>]*data-zerops-surface="sidebar-pull-request"[^>]*><span[^>]*class="([^"]*)"/u.exec(
-        html,
-      );
-    const stop =
-      /<li class="([^"]*)"[^>]*data-zerops-surface="sidebar-environment"[^>]*><span[^>]*class="([^"]*)"/u.exec(
-        html,
-      );
-    expect(inset(mate?.[1], mate?.[2])).toBe(34);
-    expect(inset(stop?.[1], stop?.[2])).toBe(34);
-    expect(inset(change?.[1], change?.[2])).toBe(34);
+    const LIST = 9;
+    const classes = (tag: string | undefined) => (tag ?? "").split(" ");
+    const px = (tag: string | undefined, pattern: RegExp) =>
+      PX[classes(tag).find((name) => pattern.test(name)) ?? ""] ?? Number.NaN;
+    const mate = /<button class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate"/u.exec(html)?.[1];
+    const face = LIST + px(mate, /^ps-/u);
+    expect(face).toBe(16);
+    expect(face + px(mate, /^grid-cols-/u) + px(mate, /^gap-x-/u)).toBe(56);
   });
 
   it("hands a change nobody here can fix back to the Mate that wrote it", () => {
@@ -1168,7 +1154,6 @@ describe("the project's flow under it", () => {
       // what puts the text on one column (the owner, 2026-09-25: "everything
       // jumps around differently").
       const rows = [
-        "sidebar-mate",
         "sidebar-environment",
         "sidebar-environment-creating",
         "sidebar-stop-change",
@@ -1177,7 +1162,7 @@ describe("the project's flow under it", () => {
           (node) => typeof node.type === "string" && node.props["data-zerops-surface"] === name,
         ),
       );
-      expect(rows.length).toBeGreaterThanOrEqual(5);
+      expect(rows.length).toBeGreaterThanOrEqual(4);
       for (const row of rows) expect(String(row.props.className).split(" ")).toContain("gap-3.5");
       // A change's text is the first thing after the rail; where it stands on
       // the stage trails it.
