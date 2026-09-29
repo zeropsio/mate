@@ -1,0 +1,31 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vite-plus/test";
+
+import { SidebarJumpButton } from "./SidebarJumpButton";
+
+describe("SidebarJumpButton", () => {
+  const button = (shortcut: string | undefined) =>
+    renderToStaticMarkup(<SidebarJumpButton onJump={() => {}} shortcut={shortcut} />);
+
+  // One control with its key inside it, in the logo row: nothing beside it
+  // reads as the key's owner (M12).
+  it.each([
+    { shortcut: "⌘K", keys: "Meta+K /" },
+    { shortcut: "Ctrl+K", keys: "Control+K /" },
+    { shortcut: undefined, keys: "/" },
+  ])("carries its key $shortcut inside it and names it as $keys", ({ shortcut, keys }) => {
+    const html = button(shortcut);
+    expect(html).toContain('data-zerops-surface="sidebar-jump"');
+    expect(html).toContain(`aria-keyshortcuts="${keys}"`);
+    expect(html).toContain('aria-label="Jump to a Mate, project, change or stop"');
+    expect(html).toContain("lucide-search");
+    if (shortcut === undefined) expect(html).not.toContain("zerops-jump-key");
+    else expect(html).toContain(`>${shortcut}</span>`);
+  });
+
+  it("is the small chip the plan draws: 28 px tall, its key in 12 px mono", () => {
+    const html = button("⌘K");
+    expect(html).toMatch(/<button[^>]*class="[^"]*\bzerops-jump-button\b/u);
+    expect(html).toMatch(/<span class="[^"]*\bzerops-jump-key\b[^"]*">⌘K<\/span>/u);
+  });
+});

@@ -565,6 +565,17 @@ describe("buildDeployFields — a git push says what it did, a deploy only once 
     expect(buildDeployFields(GIT_PUSH_CASES[call], CONTEXT).closing).toBe(expected);
   });
 
+  // The change a run's push lands through, by its repository in the group's
+  // org and its number: what the run's result follows on the forge.
+  it.each([
+    { call: "pushedForPullRequest", expected: { repository: "app", number: 8 } },
+    { call: "pushed", expected: undefined },
+    { call: "running", expected: undefined },
+    { call: "refused", expected: undefined },
+  ] as const)("names the pull request it pushed to, $call", ({ call, expected }) => {
+    expect(buildDeployFields(GIT_PUSH_CASES[call], CONTEXT).pullRequest).toEqual(expected);
+  });
+
   it.each([
     { name: "while it runs", call: gitPush() },
     { name: "once it pushed", call: GIT_PUSH_CASES.pushed },

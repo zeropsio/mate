@@ -186,14 +186,6 @@ export function WorkLine({
 }
 
 /**
- * The Mate's bubble fill, wherever it speaks from a bubble — the panel and an
- * opened log, never the page, where its words are prose: a share of the ink
- * over whatever it sits on, so both palettes show it (muted and secondary all
- * but vanish on one card or the other).
- */
-export const MATE_BUBBLE_FILL = "bg-foreground/8";
-
-/**
  * A message the Mate has not read yet: a small clock beside it, gone once the
  * Mate reads it. A read message carries nothing — reading is the normal case.
  */

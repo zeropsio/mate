@@ -3,15 +3,16 @@ import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
-import { BrowserTakes } from "./BrowserStrip";
+import { ReviewContext } from "../../zerops/review";
 import type { OutcomeModel } from "./conversation.logic";
+import type { ResultFacts } from "./runResult.logic";
 import { TurnReport } from "./TurnReport";
 
-const at = (second: number) => new Date(Date.UTC(2026, 8, 27, 10, 0, second)).toISOString();
+const at = (second: number) => new Date(Date.UTC(2026, 8, 29, 10, 0, second)).toISOString();
 
-/** A browser check that took its screenshot on a desktop, unless told otherwise. */
+/** A browser check that passed and took its picture, unless told otherwise. */
 const take = (key: string, overrides: Partial<ZeropsOperation> = {}): ZeropsOperation => ({
   key,
   kind: "browser",
@@ -20,9 +21,9 @@ const take = (key: string, overrides: Partial<ZeropsOperation> = {}): ZeropsOper
   anchorActivityId: key,
   settledAt: at(3),
   turnId: "turn-1",
-  subject: "https://appdev.example.dev/",
+  subject: "https://appdev-1f3c-3000.prg1.example.app/status",
   kicker: "Browser · appdev",
-  voice: "Checking /",
+  voice: "Checking /status",
   voiceSource: "mate",
   statusWord: "Checked",
   steps: [],
@@ -30,11 +31,10 @@ const take = (key: string, overrides: Partial<ZeropsOperation> = {}): ZeropsOper
   callIds: [key],
   hasResult: true,
   screenshot: { src: "data:image/png;base64,iVBORw0KGgo=", width: 1440, height: 900 },
-  viewport: { width: 1440, height: 900 },
   ...overrides,
 });
 
-/** A turn that did a bit of everything the report tells. */
+/** A run that left one thing of each kind the result shows, and ran commands. */
 const OUTCOME: OutcomeModel = {
   key: "outcome:turn-1",
   turnKey: "turn-1",
@@ -42,194 +42,197 @@ const OUTCOME: OutcomeModel = {
     {
       hostname: "appdev",
       tone: "ok",
-      word: "Deployed",
-      version: "a3f9c2d",
+      word: "Dev server running",
+      version: null,
       url: null,
-      recovered: "came back after a failed build",
+      at: at(2),
+      failure: null,
     },
-  ],
-  landed: [{ key: "pr:2", line: "#2", title: "Add the weather page" }],
-  files: { count: 3, additions: 42, deletions: 7, turnId: TurnId.make("turn-1") },
-  checks: {
-    count: 3,
-    views: 2,
-    failures: 1,
-    takes: [
-      take("op:admin", {
-        subject: "https://appdev.example.dev/admin",
-        phase: "failed",
-        statusWord: "Failed",
-      }),
-      take("op:home"),
-      take("op:phone", {
-        deviceName: "iPhone 14",
-        screenshot: { src: "data:image/png;base64,iVBORw0KGgo=", width: 390, height: 844 },
-      }),
-    ],
-  },
-  created: ["db"],
-  removed: ["cache"],
-  notDone: ["Enable the subdomain"],
-  activity: [
     {
-      kind: "command",
-      count: 2,
-      words: "Ran 2 commands",
-      entries: [
-        {
-          id: "c1",
-          createdAt: at(1),
-          label: "Command run",
-          tone: "tool",
-          itemType: "command_execution",
-          command: "npm run build",
-          callInput: { description: "Run the production build" },
-          toolLifecycleStatus: "completed",
-        },
-        {
-          id: "c2",
-          createdAt: at(2),
-          label: "Command run",
-          tone: "tool",
-          itemType: "command_execution",
-          command: "npm test",
-          toolLifecycleStatus: "completed",
-        },
-      ],
+      hostname: "appstage",
+      tone: "failed",
+      word: "Build failing",
+      version: null,
+      url: null,
+      at: at(2),
+      failure: { reason: "3 type errors in session.ts", at: at(2), logLines: [] },
     },
-    { kind: "helpers", count: 11, words: "Started 11 helpers", entries: [] },
   ],
+  landed: [],
+  files: { count: 3, additions: 45, deletions: 3, turnId: TurnId.make("turn-1") },
+  checks: { count: 1, views: 1, failures: 0, takes: [take("op:status")] },
+  created: [],
+  notDone: [],
+  planLeft: [],
+  change: { repository: "app", number: 2 },
+  crewTask: null,
+  activity: [{ kind: "command", count: 2 }],
+  later: { services: [], changes: [], tasks: [], pages: [], answered: false },
 };
 
-const markup = renderToStaticMarkup(
-  <TurnReport onOpenImage={() => undefined} onOpenTurnDiff={() => undefined} outcome={OUTCOME} />,
-);
+/** The forge knows the run's change, still open. */
+const FACTS: ResultFacts = {
+  changes: {
+    groupId: "group-snap",
+    open: [{ repository: "app", number: 2, title: "Add a /status page" }],
+    merged: [],
+    known: true,
+  },
+};
 
-/** The pictures the checks took, as the checks pill opens them. */
-const takesMarkup = renderToStaticMarkup(
-  <BrowserTakes onOpenImage={() => undefined} takes={OUTCOME.checks!.takes} />,
-);
-
-/** The class list of every opening tag that carries `marker`, in document order. */
-function classesOf(marker: string, within: string = markup): ReadonlyArray<ReadonlyArray<string>> {
-  return [...within.matchAll(/<[a-z][^>]*>/g)]
-    .map(([tag]) => tag)
-    .filter((tag) => tag.includes(marker))
-    .map((tag) => (/class="([^"]*)"/.exec(tag)?.[1] ?? "").split(" "));
+function render(props: Partial<Parameters<typeof TurnReport>[0]> = {}): ReactTestRenderer {
+  let renderer!: ReactTestRenderer;
+  act(() => {
+    renderer = create(
+      <TurnReport
+        facts={FACTS}
+        onOpenImage={() => undefined}
+        onOpenTurnDiff={() => undefined}
+        outcome={OUTCOME}
+        {...props}
+      />,
+    );
+  });
+  return renderer;
 }
 
-/** Where a box's content starts from its own edge, in spacing steps: its start margin and padding. */
-function startOffset(classes: ReadonlyArray<string>): number {
-  let offset = 0;
-  for (const name of classes) {
-    const match = /^(-?)(m|mx|ms|p|px|ps)-(\d+(?:\.\d+)?)$/.exec(name);
-    if (match) offset += (match[1] === "-" ? -1 : 1) * Number(match[3]);
-  }
-  return offset;
-}
+const markupOf = (props: Partial<Parameters<typeof TurnReport>[0]> = {}) =>
+  renderToStaticMarkup(
+    <TurnReport
+      facts={FACTS}
+      onOpenImage={() => undefined}
+      onOpenTurnDiff={() => undefined}
+      outcome={OUTCOME}
+      {...props}
+    />,
+  );
+
+const rowsOf = (renderer: ReactTestRenderer) =>
+  renderer.root.findAll(
+    (node) => node.type === "div" && node.props["data-result-row"] !== undefined,
+  );
 
 describe("TurnReport", () => {
-  it("says every pill's words at the status bars' size", () => {
-    const pills = classesOf("data-pill");
-    expect(pills.length).toBeGreaterThan(5);
-    for (const pill of pills) {
-      expect(pill).toContain("text-line");
-      expect(pill).not.toContain("text-xs");
-    }
+  // Rows in the card's grid, most important first (K5): what is still
+  // broken, then what waits for the person, then what runs.
+  it("stands its rows broken, then waiting for you, then running", () => {
+    expect(rowsOf(render()).map((row) => row.props["data-result-row"])).toEqual([
+      "broken",
+      "waiting",
+      "running",
+    ]);
+    const markup = markupOf();
+    expect(markup.indexOf("appstage")).toBeLessThan(markup.indexOf("#2 Add a /status page"));
+    expect(markup.indexOf("#2 Add a /status page")).toBeLessThan(
+      markup.indexOf("Dev server running"),
+    );
   });
 
-  // What its calls came to is a pill like the rest of the result, and it
-  // opens what it counts (the owner, 2026-09-27: "why isn't [it] in the
-  // result style?"). Its words say it: no mark in front of them.
-  it.each(["Ran 2 commands", "Started 11 helpers"])("opens %s from its pill, in place", (words) => {
-    const pill = new RegExp(
-      `<button[^>]*aria-label="${words}. Show them"[^>]*>(.*?)</button>`,
-    ).exec(markup);
-    expect(pill?.[0]).toContain("data-pill");
-    expect(pill?.[0]).toContain('aria-expanded="false"');
-    expect(pill?.[1]).not.toContain("rounded-full");
-    expect(pill?.[1]).toContain(words);
+  // What its calls came to is the work's, and the worked line's (K6): the
+  // result never counts them again.
+  it("counts no calls: the pills are gone", () => {
+    const markup = markupOf();
+    expect(markup).not.toContain("2 commands");
+    expect(markup).not.toContain("data-pill");
+    expect(markup).not.toContain("rounded-full");
   });
 
-  // What a pill counts opens under the pills as the chat's own bubbles: the
-  // same command, said the same way, as where it ran (the owner, 2026-09-27:
-  // "so much better expandable inline").
-  it("opens what an activity pill counts under the pills, one pill at a time", () => {
+  it("draws nothing at all when the run left nothing open or running", () => {
+    expect(markupOf({ outcome: { ...OUTCOME, live: [], change: null, checks: null } })).toBe("");
+  });
+
+  // Red is only what is still broken (S3): its mark and its name.
+  it.each([
+    { title: "appstage", mark: "alert", tone: "failed", broken: true },
+    { title: "#2 Add a /status page", mark: "change", tone: "muted", broken: false },
+    { title: "appdev", mark: "dot", tone: "ok", broken: false },
+  ])("marks $title in its tone", ({ title, mark, tone, broken }) => {
+    const row = rowsOf(render()).find(
+      (candidate) => candidate.findAll((node) => node.children.includes(title)).length > 0,
+    )!;
+    const glyph = row.find((node) => node.props["data-result-mark"] !== undefined);
+    expect([glyph.props["data-result-mark"], glyph.props["data-tone"]]).toEqual([mark, tone]);
+    const name = row.find((node) => node.type === "span" && node.children.includes(title));
+    expect(name.props["data-broken"] === true).toBe(broken);
+  });
+
+  // One door (R1): Review opens the review of the change, from the word.
+  it("reviews the change through the one door", () => {
+    const openReview = vi.fn();
     let renderer!: ReactTestRenderer;
     act(() => {
       renderer = create(
-        <TurnReport
-          onOpenImage={() => undefined}
-          onOpenTurnDiff={() => undefined}
-          outcome={OUTCOME}
-        />,
+        <ReviewContext value={openReview}>
+          <TurnReport
+            facts={FACTS}
+            onOpenImage={() => undefined}
+            onOpenTurnDiff={() => undefined}
+            outcome={OUTCOME}
+          />
+        </ReviewContext>,
       );
     });
-    const pill = (words: string) =>
-      renderer.root.find(
-        (node) => node.type === "button" && String(node.props["aria-label"]).startsWith(words),
-      );
-    const details = () =>
-      renderer.root.findAll(
-        (node) => node.type === "div" && node.props["data-report-detail"] !== undefined,
-      );
-    expect(details()).toHaveLength(0);
-    act(() => pill("Ran 2 commands").props.onClick());
-    expect(pill("Ran 2 commands").props["aria-expanded"]).toBe(true);
-    const commands = details()[0]!.findAll(
-      (node) => node.type === "div" && node.props["data-chat-kind"] === "step:command",
+    const review = renderer.root.find(
+      (node) => node.type === "button" && node.children.includes("Review"),
     );
-    expect(commands).toHaveLength(2);
-    act(() => pill("3 checks of 2 pages").props.onClick());
-    expect(pill("Ran 2 commands").props["aria-expanded"]).toBe(false);
-    expect(details()).toHaveLength(1);
-    expect(
-      details()[0]!.findAll((node) => node.props["data-report-take"] !== undefined),
-    ).toHaveLength(3);
+    const from = { tagName: "BUTTON" };
+    act(() => review.props.onClick({ currentTarget: from }));
+    expect(openReview).toHaveBeenCalledWith(
+      { kind: "change", groupId: "group-snap", repository: "app", number: 2 },
+      { from },
+    );
   });
 
-  // The pictures are the chat's, where the checks ran: the result shows them
-  // only when its checks pill is opened, never twice at rest.
-  it("keeps the takes behind the checks pill", () => {
-    expect(markup).not.toContain("data-report-takes");
-    expect(markup).toMatch(/aria-label="3 checks of 2 pages, 1 failed\. Show the pictures"/);
+  it("opens the run's own diff from the files it changed", () => {
+    const onOpenTurnDiff = vi.fn();
+    const files = render({ onOpenTurnDiff }).root.find(
+      (node) => node.type === "button" && node.children.includes("3 files"),
+    );
+    act(() => files.props.onClick());
+    expect(onOpenTurnDiff).toHaveBeenCalledWith(TurnId.make("turn-1"));
   });
 
-  // A text action in the conversation is said in its link ink, as the
-  // answer's markdown links and the panel's "Open the helpers panel" are.
-  it("says Review in the conversation's link ink", () => {
-    const review = /<span class="([^"]*)">Review<\/span>/.exec(markup)?.[1]?.split(" ") ?? [];
-    expect(review).toContain("text-info-foreground");
+  it("opens a check's picture from its row", () => {
+    const onOpenImage = vi.fn();
+    const picture = render({ onOpenImage }).root.find(
+      (node) => node.type === "button" && node.props["data-result-picture"] !== undefined,
+    );
+    act(() => picture.props.onClick());
+    expect(onOpenImage).toHaveBeenCalledWith({
+      images: [{ src: "data:image/png;base64,iVBORw0KGgo=", name: "/status" }],
+      index: 0,
+    });
   });
 
-  // Flat cards: a shadow is a popover's; a take reads as an object by its border.
-  it("casts no shadow, and every take keeps its border", () => {
-    expect(markup).not.toMatch(/class="[^"]*\bshadow/);
-    expect(takesMarkup).not.toMatch(/class="[^"]*\bshadow/);
-    const takes = classesOf("data-report-take=", takesMarkup);
-    expect(takes).toHaveLength(3);
-    for (const thumbnail of takes) expect(thumbnail).toContain("border");
+  // A service that stopped since comes back in red, saying since when.
+  it("says since when a service is broken", () => {
+    const markup = markupOf({
+      outcome: { ...OUTCOME, live: [OUTCOME.live[0]!], change: null, checks: null },
+      facts: {
+        services: new Map([["appdev", { status: "STOPPED", since: at(50), versionAt: null }]]),
+      },
+    });
+    expect(markup).toContain("Stopped");
+    expect(markup).toMatch(/>Since [^<]+</);
   });
 
-  // One text edge: the takes stand where the pills do, and what room they
-  // keep around themselves for a ring hangs outside that edge.
+  // S6: the fix goes to one of the person's own Mates; outside a Zerops
+  // session there is none to ask, and the row offers nothing rather than a
+  // button that does nothing.
+  it("offers no fix where no Mate can be asked", () => {
+    const markup = markupOf({ facts: { ...FACTS, mate: { projectId: "p-nova", groupId: "g" } } });
+    expect(markup).toContain("Build failing");
+    expect(markup).not.toContain("to fix it");
+  });
+
+  // T5: the result arriving is the moment worth seeing — once, row by row,
+  // 40 ms apart, and only when the run finished while the person watched.
   it.each([
-    { row: "pills", marker: "data-report-pills", within: markup },
-    { row: "takes", marker: "data-report-takes", within: takesMarkup },
-  ])("starts the $row on the report's text edge", ({ marker, within }) => {
-    const [row = []] = classesOf(marker, within);
-    expect(row.length).toBeGreaterThan(0);
-    expect(startOffset(row)).toBe(0);
-  });
-
-  it("keeps room around its takes for a failed take's ring and the focus ring", () => {
-    const [row = []] = classesOf("data-report-takes", takesMarkup);
-    const room = row.find((name) => name.startsWith("p-"));
-    expect(Number(room?.slice(2))).toBeGreaterThanOrEqual(0.5);
-    expect(row.some((name) => /^p[xytbse]-/.test(name))).toBe(false);
-    const failed = classesOf("data-report-take=", takesMarkup).find((thumbnail) =>
-      thumbnail.includes("ring-status-failed"),
-    );
-    expect(failed).toEqual(expect.arrayContaining(["ring-1", "border-status-failed"]));
+    { settling: true, rising: [true, true, true], order: [0, 1, 2] },
+    { settling: false, rising: [false, false, false], order: [undefined, undefined, undefined] },
+  ])("rises in row by row only when watched: settling $settling", ({ settling, rising, order }) => {
+    const rows = rowsOf(render({ settling }));
+    expect(rows.map((row) => row.props["data-rising"] === true)).toEqual(rising);
+    expect(rows.map((row) => row.props.style?.["--row-index"])).toEqual(order);
   });
 });

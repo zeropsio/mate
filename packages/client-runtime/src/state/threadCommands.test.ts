@@ -332,7 +332,13 @@ describe("remote thread lifecycle commands", () => {
         const h = yield* makeHarness();
         const stale = {
           ...SNAPSHOT,
-          threads: [{ ...SNAPSHOT.threads[0]!, hasPendingUserInput: true }],
+          threads: [
+            {
+              ...SNAPSHOT.threads[0]!,
+              hasPendingUserInput: true,
+              pendingQuestion: "Which colour?",
+            },
+          ],
         };
         h.registry.set(h.snapshotAtom(ENVIRONMENT_ID), stale);
         const result = h.commands[action].run(h.registry, {
@@ -349,6 +355,8 @@ describe("remote thread lifecycle commands", () => {
             : { snoozedUntil: "2099-01-01T00:00:00.000Z" },
         );
         expect(h.registry.get(h.visibleAtom)?.threads[0]?.hasPendingUserInput).toBe(false);
+        // What it waited on goes with the wait.
+        expect(h.registry.get(h.visibleAtom)?.threads[0]?.pendingQuestion).toBeNull();
         expect(h.registry.get(h.snapshotAtom(ENVIRONMENT_ID))).toBe(stale);
       }),
     );

@@ -20,7 +20,7 @@
  * that. What finding and writing do in the app is `SidebarJumpBox`'s; the
  * design harness drives the same three with its own.
  */
-import { ArrowDownIcon, ArrowUpIcon, FolderIcon, SearchIcon } from "lucide-react";
+import { ArrowDownIcon, ArrowUpIcon, FolderIcon, PlusIcon, SearchIcon } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -31,7 +31,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { useSidebarPeek } from "~/zerops/sidebarPeek";
+import { useSidebarReveal } from "~/zerops/sidebarReveal";
 
 import { CommandPaletteContent } from "../CommandPaletteContent";
 import {
@@ -47,6 +47,7 @@ import {
   highlightParts,
   jumpGroups,
   jumpKey,
+  NEW_PROJECT_LABEL,
   readJumpQuery,
   type JumpChange,
   type JumpGroup,
@@ -159,6 +160,8 @@ export interface JumpPages {
   readonly openProject: (groupId: string) => void;
   readonly openStop: (stop: JumpStop) => void;
   readonly openChange: (change: JumpChange) => void;
+  /** Starts a new project, where projects are made. */
+  readonly newProject: () => void;
 }
 
 /**
@@ -182,7 +185,7 @@ export function chooseJumpItem(
     return;
   }
   close();
-  const { reveal } = useSidebarPeek.getState();
+  const { reveal } = useSidebarReveal.getState();
   switch (item.kind) {
     case "mate":
     case "write":
@@ -207,6 +210,9 @@ export function chooseJumpItem(
           mateProjectId: item.change.mateProjectId,
         });
       } else pages.openChange(item.change);
+      return;
+    case "new-project":
+      pages.newProject();
       return;
   }
 }
@@ -571,6 +577,11 @@ function JumpRow({ item, match }: { readonly item: JumpItem; readonly match: str
       lead = <MateFace size="sm" state={item.mate.face} tint={item.mate.tint} />;
       title = <Marked match={match} text={item.snippet} />;
       sub = `${item.mate.name} · in the conversation`;
+      break;
+    case "new-project":
+      lead = <PlusIcon aria-hidden="true" className="size-4" />;
+      title = <Marked match={match} text={NEW_PROJECT_LABEL} />;
+      sub = "";
       break;
   }
   return (

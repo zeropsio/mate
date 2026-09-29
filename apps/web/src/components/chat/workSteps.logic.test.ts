@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { WorkLogEntry } from "../../session-logic";
-import { commandShown, commandWhole, foldSteps, stepOf, trackCommands } from "./workSteps.logic";
+import {
+  commandShown,
+  commandWhole,
+  foldSteps,
+  stepOf,
+  trackCommands,
+  unwrapShell,
+} from "./workSteps.logic";
 
 function entry(partial: Partial<WorkLogEntry> & { id: string }): WorkLogEntry {
   return {
@@ -40,6 +47,32 @@ function task(id: string, title: string, extra: Partial<WorkLogEntry> = {}): Wor
     ...extra,
   } as Partial<WorkLogEntry> & { id: string });
 }
+
+// Codex runs every command through a login shell and says nothing of it
+// (the owner saw "Ran a command" over `/usr/bin/zsh -lc "…"` on every one):
+// the command a person reads is the one inside, as the shell got it.
+describe("unwrapShell", () => {
+  it.each([
+    ['/usr/bin/zsh -lc "cd /var/www && ls -la"', "cd /var/www && ls -la"],
+    ["/bin/bash -lc 'npm run build'", "npm run build"],
+    ["bash -c 'pnpm test'", "pnpm test"],
+    ["sh -c npm test", "npm test"],
+    ["dash -c 'ls'", "ls"],
+    ['bash -l -c "git status"', "git status"],
+    ['/usr/bin/zsh -lc "echo \\"hi\\" > note.txt"', 'echo "hi" > note.txt'],
+    ["bash -lc 'echo '\\''hi'\\'''", "echo 'hi'"],
+    [
+      "/usr/bin/zsh -lc \"cat > a.ts <<'EOF'\nexport {};\nEOF\"",
+      "cat > a.ts <<'EOF'\nexport {};\nEOF",
+    ],
+    ["pnpm build", "pnpm build"],
+    ["bash scripts/deploy.sh", "bash scripts/deploy.sh"],
+    ["zsh -lc", "zsh -lc"],
+    ['ssh appdev "bash -lc ls"', 'ssh appdev "bash -lc ls"'],
+  ])("%j reads %j", (input, expected) => {
+    expect(unwrapShell(input)).toBe(expected);
+  });
+});
 
 describe("commandShown", () => {
   it.each([
@@ -128,6 +161,16 @@ describe("stepOf", () => {
       entry: command("1", "cd /var/www/app && git status"),
       words: null,
       code: "git status",
+      kind: "command",
+      phrase: null,
+    },
+    {
+      name: "a command Codex ran through its shell",
+      entry: command("1", 'cd /var/www/app && echo \\"ready\\"', {
+        rawCommand: '/usr/bin/zsh -lc "cd /var/www/app && echo \\"ready\\""',
+      }),
+      words: null,
+      code: 'echo "ready"',
       kind: "command",
       phrase: null,
     },
@@ -244,6 +287,20 @@ describe("stepOf", () => {
       code: "python3 - <<'EOF'",
       script: "python3 - <<'EOF'\nimport sys\nprint(1)\nEOF",
       codeLines: 4,
+    });
+  });
+
+  // The script is the command inside the shell, never the shell's call.
+  it("keeps a shell-wrapped command's script without its shell", () => {
+    const step = stepOf(
+      command("1", "cd /var/www/app && python3 - <<'EOF'\nprint(1)\nEOF", {
+        rawCommand: "/usr/bin/zsh -lc \"cd /var/www/app && python3 - <<'EOF'\nprint(1)\nEOF\"",
+      }),
+    );
+    expect(step).toMatchObject({
+      code: "python3 - <<'EOF'",
+      script: "python3 - <<'EOF'\nprint(1)\nEOF",
+      codeLines: 3,
     });
   });
 

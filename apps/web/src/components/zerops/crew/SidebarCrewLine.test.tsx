@@ -1,0 +1,122 @@
+import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
+import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
+import { EnvironmentId } from "@t3tools/contracts";
+import { act } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { create } from "react-test-renderer";
+import { describe, expect, it, vi } from "vite-plus/test";
+
+import { ReviewContext } from "../../../zerops/review";
+import { SidebarCrewLine } from "./SidebarCrewLine";
+
+const read = vi.hoisted(() => ({ current: null as unknown }));
+vi.mock("../../../zerops/crew/useCrew", () => ({ useCrew: () => read.current }));
+vi.mock("@tanstack/react-router", () => ({ useNavigate: () => () => undefined }));
+
+const ENVIRONMENT = EnvironmentId.make("env-crew");
+
+/** The fixture's crew with nothing waiting on you, and task 13 ready for your Land. */
+function applied(overrides: { readonly ready?: boolean; readonly waiting?: boolean } = {}) {
+  const fixture = crewSnapshotFixture();
+  const snapshot = {
+    ...fixture,
+    attention: overrides.waiting === true ? fixture.attention.slice(0, 1) : [],
+    board: {
+      tasks: fixture.board.tasks.map((task) =>
+        overrides.ready === true && task.id === "task-13"
+          ? { ...task, state: "ready" as const }
+          : task,
+      ),
+    },
+  };
+  const view = deriveCrewView(snapshot, [], () => {
+    throw new Error("no shells here");
+  });
+  return { status: "applied", snapshot, view, current: true };
+}
+
+describe("SidebarCrewLine", () => {
+  it("draws every crewmate's face whole, the lead first, each opening its chat", () => {
+    read.current = applied();
+    const markup = renderToStaticMarkup(<SidebarCrewLine environmentId={ENVIRONMENT} />);
+    expect(markup.match(/aria-label="Open [^"]+"/gu)).toEqual([
+      'aria-label="Open Lead, the lead"',
+      'aria-label="Open Backend"',
+      'aria-label="Open Frontend"',
+      'aria-label="Open Erik"',
+    ]);
+    // Whole faces at 20 px, never a "+1" of slivers.
+    expect(markup.match(/data-mate-face-size="sm"/gu)).toHaveLength(4);
+    expect(markup).not.toContain("+1");
+    // Nothing waits on you, so the line says nothing and offers nothing.
+    expect(markup).toContain('data-zerops-surface="sidebar-crew-fact"></span>');
+    expect(markup).not.toContain("sidebar-crew-review");
+  });
+
+  it("says who needs you, in the words' second ink, with no Review", () => {
+    read.current = applied({ waiting: true, ready: true });
+    const markup = renderToStaticMarkup(<SidebarCrewLine environmentId={ENVIRONMENT} />);
+    expect(markup).toContain(">Erik needs you</span>");
+    expect(markup).toContain('class="menu-ink-2 min-w-0 truncate"');
+    expect(markup).not.toContain("sidebar-crew-review");
+  });
+
+  it("offers Review where a task waits for your Land, opening that task's review", () => {
+    read.current = applied({ ready: true });
+    const openReview = vi.fn();
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    // Mounted for pressing with no DOM: an event target stands in for the
+    // window, and nothing is an element (as the tree's own tests mount it).
+    const noDom = Object.fromEntries(
+      ["Node", "Element", "HTMLElement", "ShadowRoot"].map((name) => [name, function none() {}]),
+    );
+    vi.stubGlobal("window", Object.assign(new EventTarget(), noDom));
+    for (const [name, type] of Object.entries(noDom)) vi.stubGlobal(name, type);
+    let tree: ReturnType<typeof create> | undefined;
+    act(() => {
+      tree = create(
+        <ReviewContext.Provider value={openReview}>
+          <SidebarCrewLine environmentId={ENVIRONMENT} />
+        </ReviewContext.Provider>,
+      );
+    });
+    if (tree === undefined) throw new Error("not drawn");
+    const review = tree.root.find(
+      (node) =>
+        node.type === "button" && node.props["data-zerops-surface"] === "sidebar-crew-review",
+    );
+    const fact = tree.root.find(
+      (node) => node.props["data-zerops-surface"] === "sidebar-crew-fact",
+    );
+    expect(fact.children).toEqual(["1 task ready to land"]);
+    const pressed = { tagName: "BUTTON" };
+    act(() => {
+      review.props.onClick({ currentTarget: pressed });
+    });
+    expect(openReview).toHaveBeenCalledWith(
+      { kind: "crew-task", environmentId: ENVIRONMENT, taskId: "task-13" },
+      { from: pressed },
+    );
+    act(() => {
+      tree?.unmount();
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it("draws a crew handed in instead of reading the feed", () => {
+    read.current = { status: null, snapshot: null, view: null, current: true };
+    const { view, snapshot } = applied({ ready: true });
+    const markup = renderToStaticMarkup(
+      <SidebarCrewLine
+        environmentId={ENVIRONMENT}
+        read={{ status: "applied", view, attention: snapshot.attention }}
+      />,
+    );
+    expect(markup).toContain(">1 task ready to land</span>");
+  });
+
+  it("draws nothing without an applied crew", () => {
+    read.current = { status: "none", snapshot: null, view: null, current: true };
+    expect(renderToStaticMarkup(<SidebarCrewLine environmentId={ENVIRONMENT} />)).toBe("");
+  });
+});

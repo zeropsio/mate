@@ -27,7 +27,7 @@ import {
   stretchIncidents,
   stretchNotes,
   stretchOperations,
-  activityPills,
+  activityCounts,
 } from "./conversation.logic";
 import {
   assistant,
@@ -784,41 +784,71 @@ describe("messageReceipt", () => {
   });
 });
 
-describe("activityPills", () => {
-  const words = (pills: ReturnType<typeof activityPills>) => pills.map((pill) => pill.words);
+describe("activityCounts", () => {
+  const entry = (overrides: Parameters<typeof tool>[3], noCommand = false) => {
+    const { command: _command, ...rest } = (
+      tool("x", "t1", 0, overrides) as Extract<TimelineEntry, { kind: "work" }>
+    ).entry;
+    return noCommand ? rest : { ...rest, command: "pnpm test" };
+  };
 
-  it("says what the calls did, a pill per kind, in one fixed order", () => {
-    const entry = (overrides: Parameters<typeof tool>[3], noCommand = false) => {
-      const { command: _command, ...rest } = (
-        tool("x", "t1", 0, overrides) as Extract<TimelineEntry, { kind: "work" }>
-      ).entry;
-      return noCommand ? rest : { ...rest, command: "pnpm test" };
-    };
-    const pills = activityPills([
-      entry({ requestKind: "file-read" }, true),
-      entry({}),
-      entry({ changedFiles: ["a.ts", "b.ts"] }, true),
-      entry({ changedFiles: ["a.ts"] }, true),
-      entry({ itemType: "mcp_tool_call" }, true),
-      entry({ requestKind: "file-read" }, true),
-    ]);
-    expect(words(pills)).toEqual([
-      "Edited 2 files",
-      "Ran 1 command",
-      "Read 2 files",
-      "Used 1 tool",
-    ]);
-    // Each pill opens the calls it counts.
-    expect(pills.map((pill) => [pill.kind, pill.count, pill.entries.length])).toEqual([
-      ["edit", 2, 2],
-      ["command", 1, 1],
-      ["read", 2, 2],
-      ["other", 1, 1],
-    ]);
+  // What the calls came to, counted by kind in one fixed order: the effort
+  // the worked line says ("2 commands · 1 file read"), never a result row.
+  it.each([
+    {
+      name: "files edited count once each, then commands, reads and other tools",
+      calls: [
+        entry({ requestKind: "file-read" }, true),
+        entry({}),
+        entry({ changedFiles: ["a.ts", "b.ts"] }, true),
+        entry({ changedFiles: ["a.ts"] }, true),
+        entry({ itemType: "mcp_tool_call" }, true),
+        entry({ requestKind: "file-read" }, true),
+      ],
+      counts: [
+        { kind: "edit", count: 2 },
+        { kind: "command", count: 1 },
+        { kind: "read", count: 2 },
+        { kind: "tool", count: 1 },
+      ],
+    },
+    {
+      name: "the code and the web searched",
+      calls: [
+        entry(
+          { label: "Tool call", itemType: "dynamic_tool_call", detail: 'Grep: {"pattern":"x"}' },
+          true,
+        ),
+        entry({ itemType: "web_search", toolTitle: "Web search" }, true),
+        entry({ itemType: "web_search", toolTitle: "Web search" }, true),
+      ],
+      counts: [
+        { kind: "code-search", count: 1 },
+        { kind: "search", count: 2 },
+      ],
+    },
+    {
+      name: "a Zerops tool by what it did, any other tool as a tool",
+      calls: [
+        entry({ label: "zerops_workflow", toolTitle: "Workflow", itemType: "mcp_tool_call" }, true),
+        entry({ label: "zerops_workflow", toolTitle: "Workflow", itemType: "mcp_tool_call" }, true),
+        entry(
+          { label: "zerops_knowledge", toolTitle: "Knowledge", itemType: "mcp_tool_call" },
+          true,
+        ),
+        entry({ label: "figma_get", toolTitle: "Figma", itemType: "mcp_tool_call" }, true),
+      ],
+      counts: [
+        { kind: "workflow", count: 2 },
+        { kind: "guides", count: 1 },
+        { kind: "tool", count: 1 },
+      ],
+    },
+    { name: "nothing", calls: [], counts: [] },
+  ])("$name", ({ calls, counts }) => {
+    expect(activityCounts(calls)).toEqual(counts);
   });
 
-  // Starting a helper is work the result counts, a batch by its helpers
-  // (the owner, 2026-09-27: "started 11 helpers" belongs in the result).
   it("counts the helpers a run started, a batch by its helpers", () => {
     const spawn = (ids: string[]) =>
       (
@@ -827,64 +857,11 @@ describe("activityPills", () => {
           agentSpawn: { workflowId: null, agentTaskIds: ids },
         }) as Extract<TimelineEntry, { kind: "work" }>
       ).entry;
-    expect(words(activityPills([], [spawn(["a", "b", "c"]), spawn([])]))).toEqual([
-      "Started 4 helpers",
+    expect(activityCounts([], [spawn(["a", "b", "c"]), spawn([])])).toEqual([
+      { kind: "helpers", count: 4 },
     ]);
-    expect(words(activityPills([], [spawn(["a"])]))).toEqual(["Started 1 helper"]);
-    expect(activityPills([], [])).toEqual([]);
-  });
-
-  // A tool the runtime names only in its detail is said by its name: "used 1
-  // tool" over a Workflow call hid what the Mate did.
-  it.each([
-    { details: ["Workflow: {}"], pills: ["Used Workflow"] },
-    { details: ["Workflow: {}", "Workflow: {}"], pills: ["Used Workflow twice"] },
-    { details: ["Workflow: {}", "Workflow: {}", "Workflow: {}"], pills: ["Used Workflow 3 times"] },
-    { details: ["Workflow: {}", "SendMessage: {}"], pills: ["Used Workflow and SendMessage"] },
-    { details: ["Workflow: {}", "SendMessage: {}", "Skill: {}"], pills: ["Used 3 tools"] },
-    { details: ["Workflow: {}", "not a name"], pills: ["Used 2 tools"] },
-  ])("$pills", ({ details, pills }) => {
-    const call = (detail: string) =>
-      (
-        tool("x", "t1", 0, {
-          label: "Tool call",
-          itemType: "dynamic_tool_call",
-          detail,
-        }) as Extract<TimelineEntry, { kind: "work" }>
-      ).entry;
-    const entries = details.map((detail) => {
-      const { command: _command, ...rest } = call(detail);
-      return rest;
-    });
-    expect(words(activityPills(entries))).toEqual(pills);
-  });
-});
-
-describe("activityPills, the Zerops tools", () => {
-  // A Zerops tool with no card of its own is said by what it did, a pill of
-  // its own; any other connected tool by its own title.
-  const mcp = (label: string, toolTitle: string) => {
-    const { command: _command, ...rest } = (
-      tool("x", "t1", 0, { label, toolTitle, itemType: "mcp_tool_call" }) as Extract<
-        TimelineEntry,
-        { kind: "work" }
-      >
-    ).entry;
-    return rest;
-  };
-  it.each([
-    { entries: [mcp("zerops_workflow", "Workflow")], pills: ["Checked the workflow"] },
-    {
-      entries: [mcp("zerops_workflow", "Workflow"), mcp("zerops_workflow", "Workflow")],
-      pills: ["Checked the workflow"],
-    },
-    { entries: [mcp("zerops_knowledge", "Knowledge")], pills: ["Read the Zerops guides"] },
-    {
-      entries: [mcp("zerops_workflow", "Workflow"), mcp("figma_get", "Figma")],
-      pills: ["Checked the workflow", "Used Figma"],
-    },
-  ])("$pills", ({ entries, pills }) => {
-    expect(activityPills(entries).map((pill) => pill.words)).toEqual(pills);
+    expect(activityCounts([], [spawn(["a"])])).toEqual([{ kind: "helpers", count: 1 }]);
+    expect(activityCounts([], [])).toEqual([]);
   });
 });
 
@@ -1137,7 +1114,10 @@ describe("deriveOutcome", () => {
       completedAt: at(9),
     }) as TurnDiffSummary;
 
-  it("lists each service once with its final state and keeps a recovered failure as history", () => {
+  // A failure the run came back from is the work's, never its result (the
+  // owner, 2026-09-29: "it doesn't make sense to keep log of things that were
+  // fixed later"), and what it removed is gone, not something it left.
+  it("lists each service once in the state the run left it, nothing it came back from", () => {
     const entries = [
       user("m0", 0),
       operation("d1", "t1", 1, {
@@ -1178,10 +1158,19 @@ describe("deriveOutcome", () => {
           word: "Healthy",
           version: null,
           url: "https://medusastage.example.dev",
-          recovered: "First check failed: HTTP internal 403. It came back after that.",
+          at: at(4, 30),
+          failure: null,
         },
       ],
-      landed: [{ key: "landed:l1", line: "titandev #17", title: "Draw distance" }],
+      landed: [
+        {
+          key: "landed:l1",
+          repository: "titandev",
+          number: 17,
+          line: "titandev #17",
+          title: "Draw distance",
+        },
+      ],
       files: { count: 3, additions: 30, deletions: 6, turnId: turn("t1") },
       checks: {
         count: 1,
@@ -1190,9 +1179,105 @@ describe("deriveOutcome", () => {
         takes: [expect.objectContaining({ kind: "browser" })],
       },
       created: [],
-      removed: ["oldtier"],
       notDone: [],
+      planLeft: [],
+      change: null,
+      crewTask: null,
+      later: { services: [], changes: [], tasks: [], pages: [], answered: false },
     });
+  });
+
+  // What is still broken says why, when, and what its log said last: the
+  // row's words and the fix request's (S6).
+  it.each([
+    {
+      name: "a build that failed",
+      op: {
+        kind: "deploy" as const,
+        phase: "failed" as const,
+        statusWord: "Failed",
+        steps: [
+          {
+            id: "INIT_BUILD_CONTAINER",
+            label: "Build container",
+            state: "done" as const,
+            stateLabel: "Done",
+          },
+          {
+            id: "RUN_BUILD_COMMANDS",
+            label: "Build",
+            state: "failed" as const,
+            stateLabel: "Failed",
+          },
+        ],
+        explanation: {
+          reason: "3 type errors in session.ts.",
+          logTail: ["src/session.ts(4,7): error TS2322", "Found 3 errors."],
+        },
+      },
+      word: "Build failing",
+      failure: {
+        reason: "3 type errors in session.ts",
+        at: at(1, 30),
+        logLines: ["src/session.ts(4,7): error TS2322", "Found 3 errors."],
+      },
+    },
+    {
+      name: "a deploy that failed after its build",
+      op: {
+        kind: "deploy" as const,
+        phase: "failed" as const,
+        statusWord: "Failed",
+        steps: [{ id: "DEPLOY", label: "Deploy", state: "failed" as const, stateLabel: "Failed" }],
+        closing: "The deploy failed.",
+      },
+      word: "Deploy failed",
+      failure: { reason: "The deploy failed", at: at(1, 30), logLines: [] },
+    },
+    {
+      name: "a health check that failed",
+      op: {
+        kind: "verify" as const,
+        phase: "failed" as const,
+        statusWord: "Checks failed",
+        explanation: { reason: "HTTP 502" },
+      },
+      word: "Not healthy",
+      failure: { reason: "HTTP 502", at: at(1, 30), logLines: [] },
+    },
+  ])("keeps what is still broken, with its failure: $name", ({ op, word, failure }) => {
+    const outcome = deriveOutcome({
+      turn: structure(
+        [user("m0", 0), operation("x1", "t1", 1, op), assistant("a1", "t1", 2)],
+        settled,
+      ).turns[0]!,
+      landed: [],
+      diff: null,
+    });
+    expect(outcome?.live).toEqual([
+      expect.objectContaining({ hostname: "appdev", tone: "failed", word, failure }),
+    ]);
+  });
+
+  // A dev server the run stopped on purpose is no longer running because of
+  // it; one it started, and nothing stopped, is.
+  it.each([
+    { name: "started", actions: ["start"], words: ["Dev server running"] },
+    { name: "started, then stopped", actions: ["start", "stop"], words: [] },
+  ])("follows a dev server to where the run left it: $name", ({ actions, words }) => {
+    const ops = actions.map((action, index) =>
+      operation(`s${index}`, "t1", index + 1, {
+        kind: "devServer",
+        statusWord: action === "stop" ? "Not running" : "Running",
+        steps: [{ id: action, label: action, state: "done", stateLabel: "Done" }],
+      }),
+    );
+    const outcome = deriveOutcome({
+      turn: structure([user("m0", 0), ...ops, assistant("a1", "t1", 5)], settled).turns[0]!,
+      landed: [],
+      diff: null,
+    });
+    expect(outcome?.live.map((service) => service.word) ?? []).toEqual(words);
   });
 
   // A git push is no deploy: the build that follows it, if any, says what
@@ -1259,6 +1344,177 @@ describe("deriveOutcome", () => {
     expect(outcome?.notDone.length ?? 0).toBe(notDone);
   });
 
+  // What the runs after this one took over: a service deployed, started,
+  // stopped, created or removed again; a change pushed to again; a crew task
+  // worked again; a page checked again — and whether the person wrote since.
+  // A health check takes nothing over, and neither does a helper waking the
+  // Mate.
+  const pushedTo = (id: string, turnId: string, minute: number, number: number) =>
+    operation(id, turnId, minute, {
+      kind: "deploy",
+      strategy: "git-push",
+      statusWord: "Pushed",
+      pullRequest: { repository: "app", number },
+      steps: [{ id: "push", label: "Push", state: "done", stateLabel: "Done" }],
+    });
+  const devServer = (id: string, turnId: string, minute: number, action: string) =>
+    operation(id, turnId, minute, {
+      kind: "devServer",
+      statusWord: action === "stop" ? "Not running" : "Running",
+      steps: [{ id: action, label: action, state: "done", stateLabel: "Done" }],
+    });
+  const crewCard = (id: string, minute: number, title: string) =>
+    user(id, minute, `${CREW_CARD_OPENER}\n${title}\nDone when: it works`);
+  it.each([
+    {
+      name: "a later run redeploys a service and checks a page again",
+      after: [
+        user("m1", 10),
+        operation("d2", "t2", 11, { kind: "deploy" }),
+        operation("b2", "t2", 12, { kind: "browser", subject: "https://a.dev/status" }),
+        assistant("a2", "t2", 13),
+      ],
+      later: {
+        services: ["appdev"],
+        changes: [],
+        tasks: [],
+        pages: ["a.dev/status"],
+        answered: true,
+      },
+    },
+    {
+      name: "a later run starts, stops, creates and removes services",
+      after: [
+        user("m1", 10),
+        devServer("s2", "t2", 11, "start"),
+        devServer("s3", "t2", 12, "stop"),
+        operation("i2", "t2", 13, { kind: "import", subject: "db, cache" }),
+        operation("x2", "t2", 14, { kind: "delete", subject: "oldtier" }),
+        assistant("a2", "t2", 15),
+      ],
+      later: {
+        services: ["appdev", "db", "cache", "oldtier"],
+        changes: [],
+        tasks: [],
+        pages: [],
+        answered: true,
+      },
+    },
+    {
+      name: "a later run only checks a service's health: nothing taken over",
+      after: [user("m1", 10), devServer("s2", "t2", 11, "health check"), assistant("a2", "t2", 12)],
+      later: { services: [], changes: [], tasks: [], pages: [], answered: true },
+    },
+    {
+      name: "a later run pushes to the same change",
+      after: [user("m1", 10), pushedTo("p2", "t2", 11, 2), assistant("a2", "t2", 12)],
+      later: { services: [], changes: ["app#2"], tasks: [], pages: [], answered: true },
+    },
+    {
+      name: "a later run works the same crew task",
+      after: [
+        crewCard("m1", 10, "#12 Camera rig · rework"),
+        tool("w2", "t2", 11),
+        assistant("a2", "t2", 12),
+      ],
+      later: { services: [], changes: [], tasks: [12], pages: [], answered: true },
+    },
+    {
+      name: "a later run a command opened: the person did not answer",
+      after: [user("m1", 10, "/compact"), tool("w2", "t2", 11), assistant("a2", "t2", 12)],
+      later: { services: [], changes: [], tasks: [], pages: [], answered: false },
+    },
+    {
+      name: "no run after it",
+      after: [],
+      later: { services: [], changes: [], tasks: [], pages: [], answered: false },
+    },
+  ])("knows what the runs after it took over: $name", ({ after, later }) => {
+    const entries = [
+      user("m0", 0),
+      operation("d1", "t1", 1, { kind: "deploy" }),
+      assistant("a1", "t1", 2),
+      ...after,
+    ];
+    const turns = structure(entries, {
+      latest: { id: after.length > 0 ? "t2" : "t1", state: "completed", completed: true },
+    }).turns;
+    const outcome = deriveOutcome({
+      turn: turns[0]!,
+      landed: [],
+      diff: null,
+      later: turns.slice(1),
+    });
+    expect(outcome?.later).toEqual(later);
+  });
+
+  // The change a run leaves is the pull request its push landed through;
+  // the crew task it worked is the one its card named.
+  it("names the change its push went to, and the crew task its card named", () => {
+    const entries = [
+      user("m0", 0, `${CREW_CARD_OPENER}\n#12 Camera rig · from you\nDone when: it follows`),
+      pushedTo("p1", "t1", 1, 1),
+      pushedTo("p2", "t1", 2, 2),
+      assistant("a1", "t1", 3),
+    ];
+    const outcome = deriveOutcome({
+      turn: structure(entries, settled).turns[0]!,
+      landed: [],
+      diff: null,
+    });
+    expect(outcome?.change).toEqual({ repository: "app", number: 2 });
+    expect(outcome?.crewTask).toEqual({ number: 12, title: "Camera rig" });
+  });
+
+  // A step of its plan it did not finish is something it could not do.
+  it("keeps the steps of its plan it did not finish", () => {
+    const plan: TimelineEntry = {
+      id: "p1",
+      kind: "turn-plan",
+      createdAt: at(1),
+      turnPlan: {
+        id: "turn-plan:t1",
+        createdAt: at(1),
+        turnId: turn("t1"),
+        plan: {
+          createdAt: at(1),
+          turnId: turn("t1"),
+          steps: [
+            { step: "Add the route", status: "completed" },
+            { step: "Style the page", status: "inProgress" },
+            { step: "Write the tests", status: "pending" },
+          ],
+        },
+      },
+    };
+    const outcome = deriveOutcome({
+      turn: structure([user("m0", 0), plan, tool("w1", "t1", 2), assistant("a1", "t1", 3)], settled)
+        .turns[0]!,
+      landed: [],
+      diff: null,
+    });
+    expect(outcome?.planLeft).toEqual(["Style the page", "Write the tests"]);
+  });
+
+  // Each service says when the run last deployed or started it: a version
+  // the platform made after that is someone else's since.
+  it("says when the run last touched each service", () => {
+    const outcome = deriveOutcome({
+      turn: structure(
+        [
+          user("m0", 0),
+          operation("d1", "t1", 1, { kind: "deploy" }),
+          operation("d2", "t1", 4, { kind: "deploy" }),
+          assistant("a1", "t1", 5),
+        ],
+        settled,
+      ).turns[0]!,
+      landed: [],
+      diff: null,
+    });
+    expect(outcome?.live.map((service) => service.at)).toEqual([at(4, 30)]);
+  });
+
   it("has nothing to say for a turn that produced nothing, or one a limit refused", () => {
     const quiet = structure(
       [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2)],
@@ -1275,21 +1531,15 @@ describe("deriveOutcome", () => {
     expect(deriveOutcome({ turn: refused.turns[0]!, landed: [], diff: diff(2) })).toBeNull();
   });
 
-  // What its calls came to is the result's too: a run that only ran commands
-  // has a result. The files it changed say what it edited, so an edit pill
-  // beside them would say it twice.
-  const edited = { kind: "edit" as const, count: 1, words: "Edited 1 file", entries: [] };
-  const ran = { kind: "command" as const, count: 2, words: "Ran 2 commands", entries: [] };
+  // What its calls came to is the run's effort: a run that only ran
+  // commands still has an outcome, for its worked line to count them.
+  const edited = { kind: "edit" as const, count: 1 };
+  const ran = { kind: "command" as const, count: 2 };
   it.each([
-    { name: "only commands ran", changed: null, pills: ["Ran 2 commands"], files: null },
-    {
-      name: "edits, no diff yet",
-      changed: null,
-      pills: ["Edited 1 file", "Ran 2 commands"],
-      files: null,
-    },
-    { name: "edits, the files changed known", changed: 2, pills: ["Ran 2 commands"], files: 2 },
-  ])("counts what a run's calls came to: $name", ({ changed, pills, files }) => {
+    { name: "only commands ran", changed: null, activity: [ran], files: null },
+    { name: "edits, no diff yet", changed: null, activity: [edited, ran], files: null },
+    { name: "edits, the files changed known", changed: 2, activity: [edited, ran], files: 2 },
+  ])("keeps what a run's calls came to: $name", ({ changed, activity, files }) => {
     const outcome = deriveOutcome({
       turn: structure(
         [user("m0", 0), tool("w1", "t1", 1), tool("w2", "t1", 2), assistant("a1", "t1", 3)],
@@ -1297,9 +1547,9 @@ describe("deriveOutcome", () => {
       ).turns[0]!,
       landed: [],
       diff: changed === null ? null : diff(changed),
-      activity: pills.length > 1 || changed !== null ? [edited, ran] : [ran],
+      activity,
     });
-    expect(outcome?.activity.map((pill) => pill.words)).toEqual(pills);
+    expect(outcome?.activity).toEqual(activity);
     expect(outcome?.files?.count ?? null).toBe(files);
   });
 
@@ -1350,7 +1600,7 @@ describe("deriveOutcome", () => {
     });
     expect(outcome?.live).toEqual([
       expect.objectContaining({ hostname: "apistage", tone: "ok", word: "Deployed" }),
-      expect.objectContaining({ hostname: "webstage", tone: "failed", word: "Failed" }),
+      expect.objectContaining({ hostname: "webstage", tone: "failed", word: "Deploy failed" }),
     ]);
   });
 
@@ -1372,7 +1622,15 @@ describe("deriveOutcome", () => {
       landed: [],
       diff: null,
     });
-    expect(outcome?.notDone).toEqual(["Importing gitea: Gitea isn't connected yet"]);
+    expect(outcome?.notDone).toEqual([
+      {
+        key: "op:i1",
+        subject: "gitea",
+        word: "Import failed",
+        reason: "Gitea isn't connected yet",
+        at: at(1, 30),
+      },
+    ]);
   });
 
   // A call that failed on the way is a stumble the log keeps, never an
@@ -1405,7 +1663,9 @@ describe("deriveOutcome", () => {
       landed: [],
       diff: null,
     });
-    expect(outcome?.notDone).toEqual(["Creating gitea: Gitea isn't connected yet"]);
+    expect(outcome?.notDone).toEqual([
+      expect.objectContaining({ subject: "gitea", reason: "Gitea isn't connected yet" }),
+    ]);
   });
 });
 
@@ -1598,12 +1858,15 @@ describe("tool calls in words", () => {
       detail: `${name}: ${args}`,
     });
     expect(
-      activityPills([
+      activityCounts([
         call("Read", '{"file_path":"/a/package.json"}'),
         call("Read", '{"file_path":"/a/README.md"}'),
         call("Grep", '{"pattern":"x"}'),
-      ]).map((pill) => pill.words),
-    ).toEqual(["Read 2 files", "Searched the code once"]);
+      ]),
+    ).toEqual([
+      { kind: "read", count: 2 },
+      { kind: "code-search", count: 1 },
+    ]);
   });
 
   it.each([

@@ -1,7 +1,7 @@
 /**
  * The Crew section's reading of the crew view (PRD §4.3): each crewmate row's
- * state and lead line, what each *Waiting on you* row lets you press, what a
- * dev service serves, and the sidebar's crew faces.
+ * state and lead line, what each *Waiting on you* row lets you press, and what
+ * a dev service serves.
  *
  * Every word comes from `crew/phrases.ts` (crew and task words) or the one
  * status resolver's phrase producer (a thread's word, R5); this file only
@@ -37,11 +37,8 @@ import type {
   Crewmate,
   ThreadId,
 } from "@t3tools/contracts";
-import type { MateMarkState, MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
-import {
-  mateMarkStateForThreadStatus,
-  type ThreadStatusToneId,
-} from "@t3tools/shared/threadStatus";
+import type { ServiceStatusToneId } from "@t3tools/shared/brand";
+import type { ThreadStatusToneId } from "@t3tools/shared/threadStatus";
 
 const THREAD_DOT_TONE: Record<ThreadStatusToneId, ServiceStatusToneId> = {
   attention: "attention",
@@ -381,30 +378,4 @@ export function crewServedLine(
 ): { readonly text: string; readonly release: boolean } | null {
   const text = crewServedWord(host, crewmates);
   return text === null ? null : { text, release: host.served.by === "crewmate" };
-}
-
-export interface CrewFace {
-  readonly handle: string;
-  readonly displayName: string;
-  readonly tint: MateTintId;
-  /** Its thread's face; idle before its first turn. */
-  readonly state: MateMarkState;
-  readonly threadId: ThreadId | null;
-}
-
-/** The sidebar Mate row's crew faces (PRD §4.2): at most `max`, the lead first, and how many more. */
-export function crewFaceStack(
-  crewmates: ReadonlyArray<CrewmateView>,
-  max = 3,
-): { readonly faces: ReadonlyArray<CrewFace>; readonly more: number } {
-  return {
-    faces: crewmates.slice(0, max).map((row) => ({
-      handle: row.crewmate.handle,
-      displayName: row.crewmate.displayName,
-      tint: row.crewmate.tint,
-      state: row.status === null ? "idle" : mateMarkStateForThreadStatus(row.status.kind),
-      threadId: row.crewmate.currentThreadId,
-    })),
-    more: Math.max(0, crewmates.length - max),
-  };
 }

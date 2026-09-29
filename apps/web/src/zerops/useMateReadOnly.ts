@@ -2,9 +2,9 @@
  * Whether the viewer only reads a Mate's conversation (D6): its agent is a
  * personal login another project member signed in. The conversation shows no
  * composer, no answers and no approvals then (`resolveZeropsConversationReadOnly`),
- * and every surface that acts for the viewer outside it — the peek beside the
- * menu, the jump box — reads the same rule the same way, so none offers what
- * the conversation would not.
+ * and every surface that acts for the viewer outside it — the jump box —
+ * reads the same rule the same way, so none offers what the conversation
+ * would not.
  *
  * What is not read yet is not read-only: the conversation keeps its composer
  * while its agent's sign-in is unread, and so does every surface here.

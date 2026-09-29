@@ -6,8 +6,8 @@
  * faces stack in the header's right slot. The slot is always there, so the
  * header never moves when the stack comes or goes. Pressing it — or ⌥↓ —
  * goes to the next one below whichever is in view: its project opens if it
- * was collapsed, its row takes the focus and its peek opens, where the
- * question is answered.
+ * was collapsed, and its row takes the focus and flashes once, the question
+ * on its last line.
  *
  * No count and no word: four faces at most, then how many more.
  */

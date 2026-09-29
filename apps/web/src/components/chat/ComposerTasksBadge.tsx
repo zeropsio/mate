@@ -242,7 +242,7 @@ export const ComposerTasksDrawer = memo(function ComposerTasksDrawer({
               {step.step}
             </span>
             <span
-              className="ml-auto w-12 shrink-0 text-right text-[10px] text-muted-foreground/45 tabular-nums"
+              className="ml-auto w-12 shrink-0 text-right text-xs text-muted-foreground/45 tabular-nums"
               data-composer-task-duration="true"
             >
               {step.durationMs !== undefined

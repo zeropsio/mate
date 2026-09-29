@@ -34,6 +34,7 @@ import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts"
 import { ThreadUsagePauseReactor } from "../Services/ThreadUsagePauseReactor.ts";
 import * as ThreadBackgroundLiveness from "../ThreadBackgroundLiveness.ts";
 import * as ThreadPlanProgress from "../ThreadPlanProgress.ts";
+import * as ThreadLiveStep from "../ThreadLiveStep.ts";
 import { USAGE_RESUME_GRACE_MS } from "../usagePause.ts";
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
 import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
@@ -51,6 +52,7 @@ const makeHarness = Effect.gen(function* () {
     Layer.provide(OrchestrationProjectionSnapshotQueryLive),
     Layer.provide(ThreadBackgroundLiveness.layer),
     Layer.provide(ThreadPlanProgress.layer),
+    Layer.provide(ThreadLiveStep.layer),
     Layer.provide(OrchestrationProjectionPipelineLive),
     Layer.provide(OrchestrationEventStoreLive),
     Layer.provide(OrchestrationCommandReceiptRepositoryLive),
@@ -60,6 +62,7 @@ const makeHarness = Effect.gen(function* () {
   const snapshotLayer = OrchestrationProjectionSnapshotQueryLive.pipe(
     Layer.provide(ThreadBackgroundLiveness.layer),
     Layer.provide(ThreadPlanProgress.layer),
+    Layer.provide(ThreadLiveStep.layer),
     Layer.provide(RepositoryIdentityResolver.layer),
     Layer.provide(SqlitePersistenceMemory),
   );

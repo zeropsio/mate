@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import type { WorkLogEntry } from "../../session-logic";
 import type { ChatMessage } from "../../types";
 import type { MessagesTimelineRow, RecordItem, RunStatus } from "./MessagesTimeline.logic";
-import { foldsLikeAMessage, RunChat } from "./RunChat";
+import { foldsLikeAMessage, RunChat, thoughtRunText } from "./RunChat";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -173,6 +173,24 @@ describe("foldsLikeAMessage", () => {
   });
 });
 
+describe("thoughtRunText", () => {
+  it.each([
+    { text: "The route and the check disagree.", run: "The route and the check disagree." },
+    {
+      text: "**Planning the check**\n\nThe build takes two minutes.",
+      run: "Planning the check. The build takes two minutes.",
+    },
+    { text: "**Why?**\n\nBecause.", run: "Why? Because." },
+    {
+      text: "Reuse `withDatabase()` from the **users** tests:\n\n- start it\n- migrate",
+      run: "Reuse withDatabase() from the users tests: start it migrate",
+    },
+    { text: "Keep snake_case_names as they are.", run: "Keep snake_case_names as they are." },
+  ])("reads $text as one run of words", ({ text, run }) => {
+    expect(thoughtRunText(text)).toBe(run);
+  });
+});
+
 describe("RunChat", () => {
   // Each kind in its own voice (the owner, 2026-09-27: "different font style
   // / bubble color / special components depending on what kind of call it
@@ -217,7 +235,10 @@ describe("RunChat", () => {
   // it, what it did the card's white in a hairline — and the mark each wears
   // in the Mate's column, beside it rather than in it, so every bubble's words
   // start on one edge.
-  it("draws every bubble in one shape, told apart by its surface and its mark", () => {
+  // Five weights, strongest first (K14): what anyone said at the prose size in
+  // its bubble; what the Mate did as compact 13 px rows in a light outline;
+  // what it thought quietest, 13 px on the faintest fill.
+  it("draws its words at the prose size, its calls and thoughts quieter", () => {
     const markup = draw(
       record([
         {
@@ -233,23 +254,31 @@ describe("RunChat", () => {
     const classes = (tag: string | undefined) => /class="([^"]*)"/u.exec(tag ?? "")?.[1] ?? "";
     const [said, thought_] = bubbles(markup);
     const card = /<div class="([^"]*)" data-chat-calls="true">/u.exec(markup)?.[1] ?? "";
-    for (const shape of [classes(said?.tag), classes(thought_?.tag)]) {
-      expect(shape.split(" ")).toEqual(
-        expect.arrayContaining(["w-full", "rounded-2xl", "text-prose", "px-3.5", "py-2.5"]),
-      );
-    }
+    expect(classes(said?.tag).split(" ")).toEqual(
+      expect.arrayContaining(["w-full", "rounded-2xl", "text-prose", "px-3.5", "py-2.5"]),
+    );
+    expect(classes(thought_?.tag).split(" ")).toEqual(
+      expect.arrayContaining(["w-full", "rounded-2xl", "text-line", "px-3", "py-2"]),
+    );
     expect(card.split(" ")).toEqual(expect.arrayContaining(["w-full", "rounded-2xl"]));
-    expect(classes(said?.tag)).toContain("bg-foreground/8");
-    expect(classes(thought_?.tag)).toContain("bg-foreground/4");
-    expect(card).toContain("bg-card ring-1 ring-foreground/12");
+    // Its words wear its tint, lightly; the face beside them says who spoke.
+    expect(classes(said?.tag)).toContain("run-speech");
+    expect(markup).toContain("--run-speaker-tint:var(--zerops-mate-tint-sky)");
+    expect(markup).toMatch(
+      /<span class="flex h-\[1lh\] items-center"><svg[^>]*class="[^"]*size-5[^"]*"[^>]*data-mate-face-tint="sky"/u,
+    );
+    expect(classes(thought_?.tag)).toContain("bg-foreground/3");
+    // Outlined on the tray, never filled: the composer keeps the only white.
+    expect(card).toContain("ring-1 ring-foreground/9");
+    expect(card).not.toContain("bg-card");
     // Each mark stands in the Mate's column, out of its bubble.
-    const column = (icon: string) =>
+    const column = (line: string, icon: string) =>
       new RegExp(
-        `<span aria-hidden="true" class="w-7 shrink-0 flex justify-center pt-2\\.5 text-prose"><span class="flex h-\\[1lh\\] items-center"><svg[^>]*lucide-${icon}`,
+        `<span aria-hidden="true" class="w-7 shrink-0 flex justify-center ${line}"><span class="flex h-\\[1lh\\] items-center"><svg[^>]*lucide-${icon}`,
         "u",
       );
-    expect(markup).toMatch(column("brain"));
-    expect(markup).toMatch(column("square-terminal"));
+    expect(markup).toMatch(column("pt-2 text-line", "asterisk"));
+    expect(markup).toMatch(column("pt-1\\.75 text-line", "square-terminal"));
     expect(markup).not.toMatch(/data-chat-bubble="speech"[^>]*>\s*<span aria-hidden/u);
   });
 
@@ -342,20 +371,66 @@ describe("RunChat", () => {
     expect(draw(record([thought("r1", "One.")]))).not.toContain("data-mate-face-state");
   });
 
-  // A long thought scrolls inside itself while it is thought, its newest
-  // words in sight, and folds to its top once it ends — at the same height
-  // (the owner, 2026-09-28: "the long thinking blocks needs to start inner
-  // scrolling with fade at the same cutoff").
-  it("keeps the thought it is thinking to six lines that scroll, and offers no fold under it", () => {
+  // A command's title says what it does (K4): with no description from the
+  // agent — Codex never gives one — it is the command itself, in mono, out of
+  // the shell the runtime ran it in; a script's other lines a click away.
+  it("titles a command that said nothing of itself with the command, out of its shell", () => {
+    const one = draw(
+      record([
+        step(
+          command("w1", "cd /var/www/app && npm run build", {
+            rawCommand: '/usr/bin/zsh -lc "cd /var/www/app && npm run build"',
+          }),
+        ),
+      ]),
+    );
+    expect(one).not.toContain("Ran a command");
+    expect(one).not.toContain("zsh");
+    expect(one).toMatch(/<span class="font-mono text-foreground">npm run build<\/span>/u);
+    expect(one.match(/npm run build/g)).toHaveLength(1);
+    const script = draw(record([step(command("w2", SCRIPT))]));
+    expect(script).toMatch(
+      /<span class="font-mono text-foreground">cat &gt; status.ts &lt;&lt;&#x27;EOF&#x27;<\/span>/u,
+    );
+    expect(script).toContain(">Show all 16 lines<");
+    expect(script).not.toContain("line 13");
+  });
+
+  // Blue means something to click (S3): the run's clock counts in ink, and a
+  // call running beside it counts in the calls' quiet ink.
+  it("counts the run's time in ink, never in the busy blue", () => {
     const markup = draw(
       record([], {
         live: true,
-        now: { kind: "thinking", key: "thought:r9", messages: [message("r9", "reasoning", LONG)] },
+        status: status(),
+        now: {
+          kind: "step",
+          step: stepOf(
+            command("w9", "npm run lint", {
+              toolLifecycleStatus: "inProgress",
+              updatedAt: undefined as never,
+            }),
+          ),
+        },
       }),
     );
-    expect(markup).toMatch(/class="[^"]*max-h-34[^"]*overflow-y-auto/);
-    expect(markup).not.toContain("data-chat-folded");
-    expect(markup).not.toContain("Show more");
+    expect(markup).toMatch(/class="[^"]*me-8\.5 text-foreground[^"]*" data-work-line-clock/u);
+    expect(markup).not.toContain("text-status-busy-text");
+  });
+
+  // A thought is the quietest thing in the card: two lines of it, and where
+  // it runs on, the thought itself is the way to the rest (D4) — never a
+  // scroll inside the card.
+  it("clamps a thought to two lines, the whole of it a click away", () => {
+    const long = draw(record([thought("r1", LONG)]));
+    expect(long).toMatch(/<span class="line-clamp-2 italic" data-chat-folded="true">/u);
+    expect(long).toMatch(/<button aria-expanded="false" aria-label="[^"]*Show the whole thought"/u);
+    expect(long).not.toMatch(
+      /data-chat-bubble="thought"[^>]*>(?:(?!data-chat-row).)*overflow-y-auto/su,
+    );
+    const short = draw(record([thought("r1", "The route and the check disagree.")]));
+    expect(short).toContain('<span class="line-clamp-2 italic">The route and the check disagree.');
+    expect(short).not.toContain("Show the whole thought");
   });
 
   it("folds what the chat opens onto past the limits, and leaves the rest whole", () => {
@@ -367,7 +442,7 @@ describe("RunChat", () => {
       ]),
     );
     expect(markup.match(/data-chat-folded="true"/g)).toHaveLength(2);
-    expect(markup.match(/>Show more</g)).toHaveLength(1);
+    expect(markup.match(/Show the whole thought"/g)).toHaveLength(1);
     expect(markup.match(/>Show full message</g)).toHaveLength(1);
   });
 
@@ -413,6 +488,7 @@ describe("RunChat", () => {
           kind: "step",
           step: stepOf(
             command("w9", SCRIPT, {
+              callInput: { description: "Write the status route" },
               toolLifecycleStatus: "inProgress",
               sourceActivityKind: "tool.started",
             }),
@@ -548,17 +624,16 @@ describe("RunChat", () => {
   it("keeps an empty chat's room to the card's own, so the face stands in its middle", () => {
     const list = (markup: string) => /<ol[^>]*class="([^"]*)"/u.exec(markup)?.[1]?.split(" ") ?? [];
     const empty = list(draw(record([], { live: true, status: status() })));
-    expect(empty).toContain("pt-3");
+    expect(empty).toContain("pt-1");
     expect(empty).not.toContain("pb-4");
     const said = list(draw(record([thought("r1", "The route and the check disagree.")])));
-    expect(said).toEqual(expect.arrayContaining(["pt-2", "pb-4"]));
+    expect(said).toEqual(expect.arrayContaining(["pt-px", "pb-4"]));
   });
 
   // The Mate's column lines its bubbles up over the face at the chat's foot,
-  // and holds the marks that tell them apart — on a phone's card too, 8 px off
-  // the bubbles there and 10 where the card has room, so no bubble loses its
-  // edge.
-  it("keeps the Mate's column beside every bubble, the gap narrower on a phone's card", () => {
+  // and holds the marks that tell them apart: one grid for the whole card, a
+  // 28 px column 8 px off the bubbles (K1).
+  it("keeps the Mate's column beside every bubble, 8 px off it", () => {
     const markup = draw(
       record([
         { kind: "note", key: "note:a1", at: at(10), message: message("a1", "assistant", "Hi.") },
@@ -566,14 +641,15 @@ describe("RunChat", () => {
     );
     // One container holds the chat and its status line, so both keep one gap.
     expect(markup).toMatch(
-      /<div class="@container\/chat min-w-0"><div class="[^"]*" data-run-chat="true">/u,
+      /<div class="@container\/chat min-w-0" style="[^"]*"><div class="[^"]*" data-run-chat="true">/u,
     );
     const row =
       /<li class="([^"]*)" data-chat-row="true"><span aria-hidden="true" class="([^"]*)"/u.exec(
         markup,
       );
-    expect(row?.[1]?.split(" ")).toEqual(expect.arrayContaining(["gap-2", "@md/chat:gap-2.5"]));
-    expect(row?.[2]).toBe("w-7 shrink-0");
+    expect(row?.[1]?.split(" ")).toContain("gap-2");
+    expect(row?.[1]).not.toContain("gap-2.5");
+    expect(row?.[2]?.split(" ").slice(0, 2)).toEqual(["w-7", "shrink-0"]);
   });
 
   // Two pages of one host are said by name, as one is; more by their count,

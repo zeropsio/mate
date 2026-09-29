@@ -1266,8 +1266,10 @@ describe("MessagesTimeline — the conversation", () => {
     const record = markup.slice(markup.indexOf('data-timeline-row-kind="record"'));
     expect(record.indexOf("pnpm build")).toBeLessThan(record.indexOf("Building the shop now."));
     expect(record.match(/>pnpm build</g)).toHaveLength(2);
-    // What its calls came to is the result's, as a pill that opens them.
-    expect(markup).toContain('aria-label="Ran 2 commands. Show them"');
+    // What its calls came to is the work's and the worked line's, never a
+    // result row (K6): a run that only ran commands leaves no result.
+    expect(markup).not.toContain("Ran 2 commands");
+    expect(markup).not.toContain("data-turn-report");
     expect(markup).toContain("The shop builds.");
     expect(markup).not.toContain("data-message-receipt");
     // Nothing about the run opens a dialog: what it holds opens in place.

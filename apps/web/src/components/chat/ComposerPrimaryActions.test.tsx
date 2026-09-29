@@ -122,6 +122,15 @@ describe("ComposerPrimaryActions", () => {
     expect(markup).toContain("bg-message-action text-message-action-foreground");
   });
 
+  // Blue means something to click (S3): a send that cannot be pressed wears
+  // the toolbar's grey, not a faded blue.
+  it("greys the send button out rather than fading its blue", () => {
+    const markup = renderSendButton("Sending feedback");
+
+    expect(markup).toContain("disabled:bg-foreground/9 disabled:text-muted-foreground");
+    expect(markup).not.toContain("disabled:opacity-64");
+  });
+
   it("renders a queue action alongside stop while running with a sendable draft", () => {
     const markup = renderRunningActions(true);
 
