@@ -205,12 +205,31 @@ export function environmentForBranch(
     ?.name;
 }
 
+/**
+ * Each check's newest status, the broker's own left out.
+ *
+ * Gitea keeps every status a commit was ever given, newest first (as `releaseDeploys` reads them),
+ * so a check that went pending → success, or failure → rerun → success, is listed twice; only its
+ * newest says how it went. Read whole, a rerun that passed still read "failing" — and a change
+ * whose checks once failed could never merge (pass 16's review blocks on failing checks).
+ *
+ * The broker's own deploy statuses are not checks on the change: they are what happened after it
+ * landed, and counting them would make a stage's failed deploy read as a failing pull request.
+ */
+function newestChecks(
+  statuses: ReadonlyArray<GiteaCommitStatus>,
+): ReadonlyArray<GiteaCommitStatus> {
+  const seen = new Set<string>();
+  return statuses.filter((status) => {
+    if (status.context.startsWith("mate/") || seen.has(status.context)) return false;
+    seen.add(status.context);
+    return true;
+  });
+}
+
 /** How the checks on one commit went, worst-first — a green among reds is not green. */
 export function checkTone(statuses: ReadonlyArray<GiteaCommitStatus>): GitCheckTone {
-  // The broker's own deploy statuses are not checks on the change: they are
-  // what happened after it landed, and counting them would make a stage's
-  // failed deploy read as a failing pull request.
-  const checks = statuses.filter((status) => !status.context.startsWith("mate/"));
+  const checks = newestChecks(statuses);
   if (checks.length === 0) return "none";
   if (checks.some((status) => status.state === "failure" || status.state === "error")) {
     return "failing";
@@ -272,19 +291,17 @@ const CHECK_STATE: Record<string, { readonly tone: ServiceStatusToneId; readonly
  * the change.
  */
 export function gitChecks(statuses: ReadonlyArray<GiteaCommitStatus>): ReadonlyArray<GitCheckRow> {
-  return statuses
-    .filter((status) => !status.context.startsWith("mate/"))
-    .map((status) => {
-      const description = status.description?.trim();
-      const url = status.target_url?.trim();
-      return {
-        name: status.context,
-        tone: CHECK_STATE[status.state]?.tone ?? "off",
-        word: CHECK_STATE[status.state]?.word ?? "Unknown",
-        ...(description === undefined || description.length === 0 ? {} : { description }),
-        ...(url === undefined || url.length === 0 ? {} : { url }),
-      };
-    });
+  return newestChecks(statuses).map((status) => {
+    const description = status.description?.trim();
+    const url = status.target_url?.trim();
+    return {
+      name: status.context,
+      tone: CHECK_STATE[status.state]?.tone ?? "off",
+      word: CHECK_STATE[status.state]?.word ?? "Unknown",
+      ...(description === undefined || description.length === 0 ? {} : { description }),
+      ...(url === undefined || url.length === 0 ? {} : { url }),
+    };
+  });
 }
 
 /** The one word beside the checks' dot (R5). */
