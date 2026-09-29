@@ -246,6 +246,21 @@ describe("liveStepWords", () => {
       words: { words: "Build the app", code: "pnpm build" },
     },
     {
+      // Codex starts a command with the whole command and says nothing more
+      // until it ends: it is the step from its start.
+      name: "a Codex command from its start",
+      step: calls(
+        call({
+          id: "call-codex",
+          activityKind: "tool.started",
+          itemType: "command_execution",
+          title: "Ran command",
+          command: "/usr/bin/zsh -lc 'pnpm build'",
+        }),
+      ),
+      words: { words: "pnpm build" },
+    },
+    {
       // Several at once, as the card's now line says them (K10).
       name: "commands at once: how many",
       step: calls(

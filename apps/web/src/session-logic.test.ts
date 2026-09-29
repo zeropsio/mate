@@ -3018,6 +3018,53 @@ describe("deriveWorkLogEntries - non-Zerops tool.started rows are still skipped"
     expect(entries).toHaveLength(0);
   });
 
+  // Codex starts a command with the whole command in hand and says nothing
+  // more until it ends: a build it ran for minutes was no step at all until
+  // it returned. Drawn from its start, its end merges into the same row, as
+  // live as after a reload.
+  it("draws a command from its start when the start carries it whole", () => {
+    const started = makeActivity({
+      id: "cmd-started",
+      kind: "tool.started",
+      createdAt: "2026-02-23T00:00:01.000Z",
+      turnId: "turn-1",
+      summary: "Ran command",
+      payload: {
+        toolCallId: "call-build",
+        itemType: "command_execution",
+        status: "inProgress",
+        data: { command: ["/usr/bin/zsh", "-lc", "pnpm build"] },
+      },
+    });
+    expect(deriveWorkLogEntries([started])).toEqual([
+      expect.objectContaining({
+        id: "cmd-started",
+        command: "pnpm build",
+        toolLifecycleStatus: "inProgress",
+      }),
+    ]);
+    const completed = makeActivity({
+      id: "cmd-completed",
+      kind: "tool.completed",
+      createdAt: "2026-02-23T00:00:40.000Z",
+      turnId: "turn-1",
+      summary: "Ran command",
+      payload: {
+        toolCallId: "call-build",
+        itemType: "command_execution",
+        status: "completed",
+        data: { command: ["/usr/bin/zsh", "-lc", "pnpm build"] },
+      },
+    });
+    expect(deriveWorkLogEntries([started, completed])).toEqual([
+      expect.objectContaining({
+        id: "cmd-started",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        toolLifecycleStatus: "completed",
+      }),
+    ]);
+  });
+
   it("still skips an ordinary command tool.started activity", () => {
     const entries = deriveWorkLogEntries([
       makeActivity({
