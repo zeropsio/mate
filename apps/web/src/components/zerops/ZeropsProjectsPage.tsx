@@ -1097,7 +1097,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // them is a platform write the platform would refuse from the wrong role.
   const verbsOf = (candidate: ZeropsCandidate): MateVerbs =>
     viewer === null
-      ? { open: true, rename: true, tag: true, move: true, assign: false }
+      ? { open: true, rename: true, tag: true, move: true, delete: false, assign: false }
       : resolveMateVerbs({ project: candidate.project, viewer });
   // The member list is read when a row would use a name — a Mate this person
   // may see and not open — and when they may hand a Mate over and so need

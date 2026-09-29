@@ -1,0 +1,187 @@
+/**
+ * Deleting a Mate asks for its name, typed: the button stays shut until the name is there,
+ * says so while the platform answers, and keeps the dialog open with the platform's reason when
+ * it refuses.
+ */
+import { act, type ReactElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+
+import { Dialog } from "../ui/dialog";
+import { ZeropsDeleteMateDialog, ZeropsDeleteMateForm } from "./ZeropsDeleteMateDialog";
+import { deleteMateWords } from "./ZeropsDeleteMateDialog.logic";
+
+type FormProps = Parameters<typeof ZeropsDeleteMateForm>[0];
+
+const WORDS = deleteMateWords({
+  name: "Quinn",
+  environment: "Acme Docs - Quinn",
+  services: 3,
+  owner: undefined,
+});
+
+function form(props: Partial<FormProps> = {}): ReactElement {
+  // The title and the description are Base UI's, and both need the dialog's context.
+  return (
+    <Dialog open onOpenChange={() => {}}>
+      <ZeropsDeleteMateForm
+        error={null}
+        name="Quinn"
+        onCancel={() => {}}
+        onConfirm={() => {}}
+        pending={false}
+        words={WORDS}
+        {...props}
+      />
+    </Dialog>
+  );
+}
+
+const mounted: ReactTestRenderer[] = [];
+afterEach(() => {
+  for (const tree of mounted.splice(0)) {
+    act(() => {
+      tree.unmount();
+    });
+  }
+});
+
+function mount(element: ReactElement): ReactTestRenderer {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  let tree: ReactTestRenderer | undefined;
+  act(() => {
+    tree = create(element);
+  });
+  mounted.push(tree!);
+  return tree!;
+}
+
+const host = (tree: ReactTestRenderer, match: (node: ReactTestInstance) => boolean) =>
+  tree.root.find((node) => typeof node.type === "string" && match(node));
+
+const button = (tree: ReactTestRenderer, type: "submit" | "button") =>
+  host(tree, (node) => node.type === "button" && node.props.type === type);
+
+function type(tree: ReactTestRenderer, value: string) {
+  const input = host(tree, (node) => node.type === "input");
+  act(() => {
+    input.props.onChange({ target: { value }, currentTarget: { value } });
+  });
+}
+
+/** Enter in the field: the form's own submit. */
+function enter(tree: ReactTestRenderer) {
+  act(() => {
+    host(tree, (node) => node.type === "form").props.onSubmit({ preventDefault: () => {} });
+  });
+}
+
+describe("ZeropsDeleteMateForm", () => {
+  it("asks about the Mate by name, says what goes, and asks for the name typed", () => {
+    const html = renderToStaticMarkup(form());
+    expect(html).toContain(">Delete Quinn?<");
+    expect(html).toContain(
+      "The environment Acme Docs - Quinn goes from Zerops with its 3 services and everything in them, and Quinn&#x27;s conversations go with it. Anything Quinn hasn&#x27;t pushed is lost. This can&#x27;t be undone.",
+    );
+    expect(html).toContain(">Type Quinn to confirm<");
+    expect(html).toContain(">Cancel<");
+    expect(html).toContain(">Delete Quinn<");
+    expect(html).toContain('data-zerops-surface="delete-mate-form"');
+  });
+
+  it.each([
+    { typed: "", enabled: false },
+    { typed: "quinn", enabled: false },
+    { typed: "Quin", enabled: false },
+    { typed: "Quinn", enabled: true },
+    { typed: " Quinn ", enabled: true },
+  ])("opens its button only on the name: '$typed' → $enabled", ({ typed, enabled }) => {
+    const tree = mount(form());
+    type(tree, typed);
+    expect(button(tree, "submit").props.disabled).toBe(!enabled);
+    expect(button(tree, "button").props.disabled).toBe(false);
+  });
+
+  it("deletes on Enter only once the name is typed", () => {
+    const onConfirm = vi.fn();
+    const tree = mount(form({ onConfirm }));
+    type(tree, "Quin");
+    enter(tree);
+    expect(onConfirm).not.toHaveBeenCalled();
+    type(tree, "Quinn");
+    enter(tree);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("says Deleting… and takes no press from either button while the platform answers", () => {
+    const onConfirm = vi.fn();
+    const tree = mount(form({ onConfirm, pending: true }));
+    type(tree, "Quinn");
+    const submit = button(tree, "submit");
+    expect(submit.props.disabled).toBe(true);
+    expect(submit.props["aria-busy"]).toBe(true);
+    expect(button(tree, "button").props.disabled).toBe(true);
+    // Both words hold the one room, so the button keeps its width; only one is seen.
+    const shown = submit.findAll(
+      (node) =>
+        typeof node.type === "string" &&
+        node.type === "span" &&
+        node.children.length === 1 &&
+        typeof node.children[0] === "string" &&
+        !String(node.props.className).includes("invisible"),
+    );
+    expect(shown.map((node) => node.children[0])).toEqual(["Deleting…"]);
+    enter(tree);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("says the platform's reason under the field, and lets the name be pressed again", () => {
+    const onConfirm = vi.fn();
+    const tree = mount(
+      form({ onConfirm, error: "You don't have the permission to delete this project." }),
+    );
+    const alert = host(tree, (node) => node.props.role === "alert");
+    expect(alert.children.join("")).toBe("You don't have the permission to delete this project.");
+    expect(String(alert.props.className)).toContain("text-status-failed-text");
+    type(tree, "Quinn");
+    expect(button(tree, "submit").props.disabled).toBe(false);
+    enter(tree);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the reason's line when there is none, so a refusal moves nothing", () => {
+    const html = renderToStaticMarkup(form());
+    expect(html).toMatch(/<p[^>]*class="[^"]*min-h-4[^"]*"[^>]*role="alert"[^>]*><\/p>/u);
+  });
+});
+
+describe("ZeropsDeleteMateDialog", () => {
+  it("stays open while the platform answers, and closes on the way out otherwise", () => {
+    const onOpenChange = vi.fn();
+    const at = (pending: boolean) =>
+      mount(
+        <ZeropsDeleteMateDialog
+          error={null}
+          name="Quinn"
+          onCancel={() => {}}
+          onConfirm={() => {}}
+          onOpenChange={onOpenChange}
+          open={false}
+          pending={pending}
+          words={WORDS}
+        />,
+      );
+    // The kit's root, as Escape, the backdrop and the corner's X all ask it to close.
+    const request = (tree: ReactTestRenderer) => {
+      const root = tree.root.findByType(Dialog);
+      act(() => {
+        root.props.onOpenChange(false, {});
+      });
+    };
+    request(at(true));
+    expect(onOpenChange).not.toHaveBeenCalled();
+    request(at(false));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+});

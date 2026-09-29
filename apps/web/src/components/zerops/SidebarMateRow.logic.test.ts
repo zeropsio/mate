@@ -6,6 +6,7 @@ import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import {
   changeMarkTone,
   mateCrewItem,
+  mateDeletingView,
   mateOwnerView,
   mateRowView,
   ownerMark,
@@ -448,5 +449,60 @@ describe("mateRowView — a row's state lives in its right slot and its third li
     expect(before.reply).toBeDefined();
     expect(working.reply).toBeDefined();
     expect(face({ kind: "working", face: "working" })).toBe("working");
+  });
+});
+
+describe("mateDeletingView — a Mate on its way off Zerops", () => {
+  const activity = (overrides: Partial<ZeropsAgentActivity> = {}): ZeropsAgentActivity => ({
+    threadId: ThreadId.make("thread-1"),
+    kind: "idle",
+    status: null,
+    face: "idle",
+    subject: "Speed up the photo gallery",
+    at: "2026-09-29T08:00:00.000Z",
+    snippet: "Thumbnails load lazily now.",
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread-1",
+    task: "Speed up the photo gallery",
+    ...overrides,
+  });
+  const deleting = (input: ZeropsAgentActivity | undefined, face = input?.face ?? "sleep") =>
+    mateDeletingView(mateRowView(input, face));
+
+  // Its line under the name says so, in place of the row's last line: the
+  // row keeps its height, and nothing on it says it waits on anybody.
+  it.each([
+    { case: "idle, seen", input: activity(), ask: "Speed up the photo gallery" },
+    {
+      case: "needing its person",
+      input: activity({ kind: "idle", face: "needs", question: "Which gallery?" }),
+      ask: "Speed up the photo gallery",
+    },
+    {
+      case: "at work",
+      input: activity({ kind: "working", face: "working" }),
+      ask: "Speed up the photo gallery",
+    },
+    {
+      case: "finished and not seen",
+      input: activity({ unread: true }),
+      ask: "Speed up the photo gallery",
+    },
+    {
+      case: "asked, with no words back: the ask gives way",
+      input: activity({ snippet: undefined }),
+      ask: undefined,
+    },
+    { case: "never spoken to", input: undefined, ask: undefined },
+  ])("$case", ({ input, ask }) => {
+    expect(deleting(input)).toMatchObject({
+      face: "sleep",
+      slot: { kind: "none" },
+      dot: undefined,
+      strongName: false,
+      ask,
+      reply: undefined,
+    });
   });
 });

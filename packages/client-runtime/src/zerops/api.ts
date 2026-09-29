@@ -1795,7 +1795,8 @@ export class ZeropsApiClient {
    * `DELETE /project/{id}` — takes a project off the account. The platform
    * answers with the deleting process and the project is gone shortly after
    * (measured 2026-09-16). What the product deletes through this is a project
-   * whose creation the platform itself failed: the half that was built.
+   * whose creation the platform itself failed — the half that was built — and
+   * a Mate its person deletes, its environment whole.
    */
   async deleteProject(
     projectId: string,

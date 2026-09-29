@@ -1,11 +1,11 @@
 /**
  * What can be done to a Mate, from wherever a Mate is listed.
  *
- * Seven verbs — *Start*, *Restart*, *Rename Mate*, *Register in …*, *Hand this
- * Mate over*, *Change project or role*, *Leave the project* — and the server's
- * version under them. Every one lived inside the projects screen's own row
- * menu, wired to that page's state, so a project's own page listed its Mates
- * and could do nothing to any of them.
+ * Eight verbs — *Start*, *Restart*, *Rename Mate*, *Register in …*, *Hand this
+ * Mate over*, *Change project or role*, *Leave the project*, *Delete {name}…*
+ * — and the server's version under them. Every one but the last lived inside
+ * the projects screen's own row menu, wired to that page's state, so a
+ * project's own page listed its Mates and could do nothing to any of them.
  *
  * None of them needs that page. They need the active organization, the
  * runtime's commands, the account's registry and the org's member list — all
@@ -17,10 +17,20 @@
  * *Remove*. Those are about connecting a container and provisioning a project
  * — the projects screen's own job, and its own state. A Mate's page opens a
  * Mate by being its conversation.
+ *
+ * *Delete {name}…* takes a working Mate off Zerops, its environment whole
+ * (*Remove* takes only a project whose creation the platform failed). Its
+ * dialog stays open while the platform answers and says why it refused; once
+ * it accepts, the listing is read again, nothing this browser remembers of
+ * the Mate is left to paint on a reload, its row reads *Deleting…* until the
+ * listing lets it go (`deletingMates.ts`), and a viewer who was in its
+ * conversation is taken to the next Mate of its project, or to the projects.
  */
 import {
+  botDisplayName,
   buildZeropsGroupTree,
   generateZeropsGroupId,
+  hasMate,
   rankZeropsCandidateForListing,
   readZeropsGroupTags,
   registerMateVerb,
@@ -28,11 +38,21 @@ import {
   type ZeropsGroupTags,
 } from "@t3tools/client-runtime/zerops";
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
-import { heldCandidates, takenBotNames } from "@t3tools/client-runtime/zerops/projections";
+import {
+  candidatesComplete,
+  heldCandidates,
+  takenBotNames,
+} from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { resolveMateVerbs, resolveMateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import {
+  resolveMateOwner,
+  resolveMateVerbs,
+  resolveMateVisibility,
+} from "@t3tools/client-runtime/zerops/mateAccess";
+import { useRouter } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { useComposerDraftStore } from "../composerDraftStore";
 import {
   deriveZeropsRestartAction,
   deriveZeropsRowAction,
@@ -40,17 +60,37 @@ import {
 } from "../components/zerops/ZeropsProjectRow.logic";
 import type { ZeropsMenuEntry } from "../components/zerops/ZeropsProjectMenu";
 import { ZeropsAssignMateDialog } from "../components/zerops/ZeropsAssignMateDialog";
+import { ZeropsDeleteMateDialog } from "../components/zerops/ZeropsDeleteMateDialog";
+import {
+  deleteMateOffered,
+  deleteMateVerb,
+  deleteMateWords,
+  landingAfterDelete,
+} from "../components/zerops/ZeropsDeleteMateDialog.logic";
 import { ZeropsMoveToGroupDialog } from "../components/zerops/ZeropsMoveToGroupDialog";
 import { ZeropsRenameDialog } from "../components/zerops/ZeropsRenameDialog";
 import { validateBotName } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
 import type { MoveMembership } from "../components/zerops/ZeropsMoveToGroupDialog.logic";
+import { useEnvironmentLinks } from "../routes/-environmentTargets";
+import { resolveThreadRouteTarget } from "../threadRoutes";
+import { invalidateZerops } from "./accountInvalidations";
 import { projectTagsWrite, registerMateInGroup } from "./brokerGrant";
+import {
+  deletingMates,
+  markMateDeleting,
+  mateDeleting,
+  settleDeletingMates,
+  useDeletingMates,
+} from "./deletingMates";
 import { useAccountGitea } from "./giteaProject";
 import { useProjectDialog } from "./inventoryContext";
 import { captureAccountLifetime } from "./accountLifetime";
+import { rememberMenu, withoutMate } from "./menuMemory";
+import { useOpenMate } from "./useOpenMate";
 import { useProjectOrderOptions } from "./projectOrderPreference";
 import { useZeropsCandidates, type ZeropsCandidatePresentation } from "./useZeropsCandidates";
-import { useZeropsOrganizationMembers } from "./useZeropsMateOwners";
+import { useZeropsOrganizationMembers, zeropsMateOwner } from "./useZeropsMateOwners";
+import { forgetBirth } from "./zeropsBirths";
 import { intendContainer } from "./zeropsContainers";
 import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -59,7 +99,24 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 type MateDialog =
   | { readonly kind: "rename"; readonly candidate: ZeropsCandidatePresentation }
   | { readonly kind: "assign"; readonly candidate: ZeropsCandidatePresentation }
-  | { readonly kind: "move"; readonly candidate: ZeropsCandidatePresentation };
+  | { readonly kind: "move"; readonly candidate: ZeropsCandidatePresentation }
+  | { readonly kind: "delete"; readonly candidate: ZeropsCandidatePresentation };
+
+/** Where the Delete dialog's press stands: the platform answering it, or why it refused. */
+interface DeletePress {
+  readonly pending: boolean;
+  readonly error: string | null;
+}
+
+const DELETE_UNPRESSED: DeletePress = { pending: false, error: null };
+
+/** The Mate's name, as its row says it. */
+function mateName(candidate: ZeropsCandidatePresentation): string {
+  return botDisplayName({
+    bot: readZeropsGroupTags(candidate.project.tagList).bot,
+    projectName: candidate.project.name,
+  });
+}
 
 export interface MateActions {
   /**
@@ -115,10 +172,21 @@ interface RegistryState {
 }
 
 export function useMateActions({ registry, serverVersions }: MateActionsInput): MateActions {
-  const { activeOrganization, client } = useZeropsSession();
-  const { projectRef, runtime } = useZeropsData();
+  const { activeOrganization, client, user } = useZeropsSession();
+  const { organizationRef, projectRef, runtime } = useZeropsData();
   const { listing, refresh } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
+  const router = useRouter();
+  const openMate = useOpenMate();
+  const { linkTarget } = useEnvironmentLinks();
+  // The Mates this tab deleted, until a complete listing no longer holds them.
+  const deleting = useDeletingMates();
+  const listingComplete = candidatesComplete(listing);
+  useEffect(() => {
+    if (!listingComplete) return;
+    settleDeletingMates(new Set(candidates.map((candidate) => candidate.project.id)));
+  }, [candidates, listingComplete]);
+  const [deletePress, setDeletePress] = useState<DeletePress>(DELETE_UNPRESSED);
   // A dialog holds its Mate's project as it opened: it closes once the grant withholds it.
   const [dialog, setDialog] = useProjectDialog((open: MateDialog) => open.candidate.project.id);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -150,7 +218,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           },
     [activeOrganization],
   );
-  // The member list is read only where somebody could be handed a Mate.
+  // The member list is read only where somebody could be handed a Mate, and
+  // where a Mate about to be deleted may be a colleague's, to say whose.
   const anyAssignable = useMemo(
     () =>
       viewer !== null &&
@@ -161,7 +230,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   );
   const members = useZeropsOrganizationMembers({
     clientId: activeOrganization?.id,
-    enabled: anyAssignable,
+    enabled: anyAssignable || dialog?.kind === "delete",
   });
 
   /** One write, with its busy key and its refusal, wherever it came from. */
@@ -373,6 +442,99 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     [activeOrganization, client, giteaProjectId, projectRef, registry, runtime, write],
   );
 
+  /** Whose Mate it is, where that is a colleague: "Ada's Mate", as its row says it. */
+  const colleagueOf = useCallback(
+    (candidate: ZeropsCandidatePresentation): string | undefined => {
+      const owner = zeropsMateOwner(
+        resolveMateOwner({ project: candidate.project, members }),
+        user?.id,
+      );
+      return owner === undefined || owner.isViewer ? undefined : owner.name;
+    },
+    [members, user?.id],
+  );
+
+  /**
+   * Once the Mate is gone, where the viewer stands: read after the platform's
+   * yes, as the route stands then. In its conversation, the next Mate of its
+   * project this viewer opens; none, the projects.
+   */
+  const leaveDeleted = useCallback(
+    (deleted: ZeropsCandidatePresentation) => {
+      const leaf = router.state.matches[router.state.matches.length - 1];
+      const params: Readonly<Record<string, string | undefined>> | undefined = leaf?.params;
+      const route = params === undefined ? null : resolveThreadRouteTarget(params);
+      const onScreen =
+        route?.kind === "server"
+          ? route.threadRef.environmentId
+          : route?.kind === "draft"
+            ? useComposerDraftStore.getState().getDraftSession(route.draftId)?.environmentId
+            : undefined;
+      const environmentId = deleted.environmentId ?? linkTarget(deleted);
+      const { groupId } = readZeropsGroupTags(deleted.project.tagList);
+      const siblings = (
+        groupTree.groups.find((entry) => entry.group.groupId === groupId)?.environments ?? []
+      )
+        .map(({ item }) => item)
+        .filter(hasMate);
+      const landing = landingAfterDelete({
+        deleted: deleted.project.id,
+        viewing:
+          onScreen !== undefined && onScreen === environmentId ? deleted.project.id : undefined,
+        siblings: siblings.map((mate) => ({
+          projectId: mate.project.id,
+          opens:
+            (viewer === null ||
+              resolveMateVisibility({ project: mate.project, viewer }) === "open") &&
+            !mateDeleting(mate.project, deletingMates()),
+        })),
+      });
+      if (landing.kind === "projects") {
+        void router.navigate({ to: "/zerops" });
+        return;
+      }
+      if (landing.kind === "mate") {
+        const next = siblings.find((mate) => mate.project.id === landing.projectId);
+        if (next !== undefined) openMate(next);
+      }
+    },
+    [groupTree.groups, linkTarget, openMate, router, viewer],
+  );
+
+  /**
+   * Deletes the Mate's project. The dialog stays open until the platform
+   * answers: a refusal is said there, and nothing else changes. Once it
+   * accepts, the row says *Deleting…* until the listing lets it go, the
+   * listing is read again, and nothing this browser remembers of the Mate —
+   * its row, its crew, a birth — is left for a reload to paint.
+   */
+  const deleteMate = useCallback(
+    (candidate: ZeropsCandidatePresentation) => {
+      if (activeOrganization === null) return;
+      const isCurrent = captureAccountLifetime();
+      const organization = organizationRef(activeOrganization.id);
+      const projectId = candidate.project.id;
+      setDeletePress({ pending: true, error: null });
+      runZeropsCommand(runtime.commands.deleteProject({ organization, projectId })).then(
+        () => {
+          if (!isCurrent()) return;
+          markMateDeleting(projectId);
+          rememberMenu((memory) => withoutMate(memory, projectId));
+          forgetBirth(projectId);
+          invalidateZerops({ topic: "inventory", organization });
+          setDeletePress(DELETE_UNPRESSED);
+          setDialog(null);
+          leaveDeleted(candidate);
+        },
+        (cause: unknown) => {
+          if (!isCurrent()) return;
+          setDeletePress({ pending: false, error: zeropsErrorMessage(cause) });
+        },
+      );
+    },
+    [activeOrganization, leaveDeleted, organizationRef, runtime.commands, setDialog],
+  );
+
   const actionsFor = useCallback(
     (
       candidate: ZeropsCandidatePresentation,
@@ -381,8 +543,13 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     ): ReadonlyArray<ZeropsMenuEntry> => {
       const verbs =
         viewer === null
-          ? { open: true, rename: true, tag: true, move: true, assign: false }
+          ? { open: true, rename: true, tag: true, move: true, delete: false, assign: false }
           : resolveMateVerbs({ project: candidate.project, viewer });
+      const deletable = deleteMateOffered({
+        candidate,
+        mayDelete: verbs.delete,
+        deleting: mateDeleting(candidate.project, deleting),
+      });
       const input = rowInputFor(candidate);
       const rowAction = deriveZeropsRowAction(input);
       const restartAction = deriveZeropsRestartAction(input);
@@ -457,6 +624,22 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               },
             ]
           : []),
+        // What takes the Mate away for good: last of the verbs, a line apart, in red.
+        ...(deletable
+          ? [
+              { id: "delete-apart", separator: true } as const,
+              {
+                id: "delete",
+                label: deleteMateVerb(mateName(candidate)),
+                variant: "destructive" as const,
+                disabled: busy,
+                onSelect: () => {
+                  setDeletePress(DELETE_UNPRESSED);
+                  setDialog({ kind: "delete", candidate });
+                },
+              },
+            ]
+          : []),
         // The server's version, off the card and into the menu: a fact worth
         // finding, never a line under the Mate's name.
         ...(serverVersion === undefined
@@ -474,6 +657,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     },
     [
       busyKey,
+      deleting,
       move,
       register,
       registerVerbFor,
@@ -572,6 +756,28 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           }}
           open
           projectName={dialog.candidate.project.name}
+        />
+      ) : null}
+      {dialog?.kind === "delete" ? (
+        <ZeropsDeleteMateDialog
+          error={deletePress.error}
+          key={`delete:${dialog.candidate.key}`}
+          name={mateName(dialog.candidate)}
+          onCancel={close}
+          onConfirm={() => {
+            deleteMate(dialog.candidate);
+          }}
+          onOpenChange={(open) => {
+            if (!open) close();
+          }}
+          open
+          pending={deletePress.pending}
+          words={deleteMateWords({
+            name: mateName(dialog.candidate),
+            environment: dialog.candidate.project.name,
+            services: dialog.candidate.services?.hostnames.length,
+            owner: colleagueOf(dialog.candidate),
+          })}
         />
       ) : null}
     </>

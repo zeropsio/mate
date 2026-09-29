@@ -839,6 +839,9 @@
         "apps/web/src/components/zerops/ZeropsStopMenu.tsx",
         "apps/web/src/components/zerops/ZeropsAssignMateDialog.tsx",
         "apps/web/src/components/zerops/ZeropsRenameDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsDeleteMateDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsDeleteMateDialog.logic.ts",
+        "apps/web/src/zerops/deletingMates.ts",
         "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
         "apps/web/src/zerops/agentActivity.ts",
         "apps/web/src/zerops/turnstile.tsx",
@@ -951,6 +954,10 @@
         {
           "action": "Restart container",
           "reverse": "none: A confirmed container restart cannot be undone. Leaving the target or signing out stops the subsequent compatibility checks."
+        },
+        {
+          "action": "Delete a Mate",
+          "reverse": "none: A deleted Mate's environment, its services and its conversations are gone from Zerops; the dialog asks for its name typed before it deletes anything."
         }
       ],
       "docs": {
@@ -971,6 +978,9 @@
         "apps/web/src/components/zerops/SidebarProductionChip.test.tsx",
         "apps/web/src/components/zerops/SidebarProductionChip.logic.test.ts",
         "apps/web/src/components/zerops/SidebarMateMenu.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDeleteMateDialog.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDeleteMateDialog.logic.test.ts",
+        "apps/web/src/zerops/deletingMates.test.ts",
         "apps/web/src/components/zerops/mateDecision.logic.test.ts",
         "apps/web/src/zerops/sidebarReveal.test.ts",
         "apps/web/src/components/zerops/SidebarWaitingStack.test.tsx",
