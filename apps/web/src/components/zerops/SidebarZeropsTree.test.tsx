@@ -1617,11 +1617,10 @@ describe("a project collapsed to its heading", () => {
       expect(html).not.toContain(`data-zerops-surface="${gone}"`);
   });
 
-  // A heading belongs to the rows under it, never halfway between two
-  // projects (the owner, 2026-09-28: "the gap between project name and under
-  // project is the same"): a full breath above a project, and a run of
-  // collapsed ones closed up into a list of their names.
-  it("keeps a full breath between projects, and closes a run of collapsed ones into a list", () => {
+  // A heading never moves when it is pressed (M9): the room between two
+  // projects is at the end of an open one — its rows unfold below the heading
+  // with the room after them — and folded projects stack as a list of names.
+  it("keeps the room at the end of an open project, never above a heading", () => {
     const notes = named("notes-dev", "Notes - dev", [
       "mate",
       "mate:g:notes",
@@ -1632,14 +1631,21 @@ describe("a project collapsed to its heading", () => {
     const html = render([CRM_DEV, LINKS_MATE, notes]);
     const sections = [...html.matchAll(/<section class="([^"]*)" data-zerops-group="([^"]*)"/g)];
     expect(sections.map(([, , group]) => group)).toEqual(["aaa", "links", "notes"]);
-    const room = (group: string) =>
-      sections
-        .find(([, , id]) => id === group)?.[1]
-        ?.split(" ")
-        .filter((name) => name.startsWith("mt-")) ?? [];
-    expect(room("aaa")).toEqual([]);
-    expect(room("links")).toEqual(["mt-9"]);
-    expect(room("notes")).toEqual(["mt-1"]);
+    for (const [, classes] of sections)
+      expect(classes!.split(" ").filter((name) => /^m[ty]-/u.test(name))).toEqual([]);
+    // Only the open project draws its rows, and they end with its room.
+    const rows = [
+      ...html.matchAll(/data-zerops-surface="sidebar-project-rows"><div class="([^"]*)"/g),
+    ].map(([, classes]) => classes!.split(" "));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual(expect.arrayContaining(["pt-0.5", "pb-11"]));
+  });
+
+  it("keeps less room under the list's last project", () => {
+    const rows = /data-zerops-surface="sidebar-project-rows"><div class="([^"]*)"/u.exec(
+      render([CRM_DEV]),
+    )?.[1];
+    expect(rows?.split(" ")).toEqual(expect.arrayContaining(["pt-0.5", "pb-4"]));
   });
 
   it("wears one chevron that turns, the heading saying whether it is folded", () => {

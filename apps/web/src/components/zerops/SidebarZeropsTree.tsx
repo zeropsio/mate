@@ -153,6 +153,7 @@ import {
   stopNameSaysOnlyRole,
 } from "./SidebarZeropsTree.logic";
 import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
+import { SidebarProjectFold, type ProjectFoldMotion } from "./SidebarProjectFold";
 import { MatePeekHost } from "./SidebarMatePeek";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarPeek, type SidebarRevealTarget } from "~/zerops/sidebarPeek";
@@ -586,6 +587,17 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   const [nowMs] = useState(Date.now);
   // The projects whose quiet Mates somebody unfolded; not remembered.
   const [openQuiet, setOpenQuiet] = useState<ReadonlySet<string>>(() => new Set());
+  // The projects a heading's press set unfolding or folding, until they settle:
+  // a folding project keeps its rows drawn until they have folded away.
+  const [folds, setFolds] = useState<ReadonlyMap<string, ProjectFoldMotion>>(() => new Map());
+  const settleFold = (groupId: string) => {
+    setFolds((current) => {
+      if (!current.has(groupId)) return current;
+      const next = new Map(current);
+      next.delete(groupId);
+      return next;
+    });
+  };
   // Option held: each Mate row's time slot shows its number, and ⌥1–9 opens it.
   const [altHeld, setAltHeld] = useState(false);
   // One Mate's peek at a time (`sidebarPeek.ts`): half a second's hover, or
@@ -997,6 +1009,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     groupName: string | undefined,
     // `undefined` for the ungrouped section, which has no production to add.
     group: ZeropsGroup | undefined,
+    // The list's last project, which keeps less room below its rows.
+    last: boolean,
   ) => {
     const everyMate = entries.filter(({ item }) => hasMate(item));
     // Whose Mates the viewer asked to see (Mine / Everyone).
@@ -1109,7 +1123,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // no small badges: a second, smaller design of the same rows is what the
     // owner turned down (2026-09-25). The dot on the heading still says
     // whether it waits on somebody.
-    if (group !== undefined && collapsed.has(id)) return header;
+    const fold = folds.get(id);
+    // A fragment either way, so the heading keeps its node — and the focus of
+    // the press that folded it — whether its rows are drawn or not.
+    if (group !== undefined && collapsed.has(id) && fold !== "closing") return <>{header}</>;
     const quietOpen = openQuiet.has(id);
     const slots: ReadonlyArray<MateSlot<T>> = [
       ...loud.map(({ item }) => ({ kind: "mate" as const, item })),
@@ -1300,12 +1317,21 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     return (
       <>
         {header}
-        {blocks.map((block, index) => (
-          <Fragment key={block.key}>
-            {index === 0 ? null : <RailGap />}
-            {block.node}
-          </Fragment>
-        ))}
+        <SidebarProjectFold
+          last={last}
+          motion={fold}
+          onSettled={() => {
+            settleFold(id);
+          }}
+          open={!collapsed.has(id)}
+        >
+          {blocks.map((block, index) => (
+            <Fragment key={block.key}>
+              {index === 0 ? null : <RailGap />}
+              {block.node}
+            </Fragment>
+          ))}
+        </SidebarProjectFold>
       </>
     );
   };
@@ -1355,11 +1381,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     <section
       className={cn(
         "flex flex-col transition-opacity",
-        sectionRoom({
-          first: index === 0,
-          collapsed: collapsed.has(group.groupId),
-          afterCollapsed: index > 0 && collapsed.has(groups[index - 1]!.group.groupId),
-        }),
         reorder.dragging === group.groupId && "opacity-40",
       )}
       data-zerops-group={group.groupId}
@@ -1385,7 +1406,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             }
             onToggle={() => {
               const { groupId } = group;
-              setCollapsed((current) => withCollapsed(current, groupId, !current.has(groupId)));
+              const folding = !collapsed.has(groupId);
+              setCollapsed((current) => withCollapsed(current, groupId, folding));
+              setFolds((current) => new Map(current).set(groupId, folding ? "closing" : "opening"));
             }}
             reorder={{
               custom: projectOrder.order === "custom",
@@ -1409,14 +1432,12 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         getFlow?.(group.groupId),
         groupNameIsPlaceholder(group) ? undefined : group.name,
         group,
+        index === groups.length - 1 && !ungroupedMates,
       )}
     </section>
   ));
   const ungroupedSection = ungroupedMates ? (
-    <section
-      className={cn("flex flex-col", groups.length > 0 && SECTION_ROOM)}
-      data-zerops-ungrouped="true"
-    >
+    <section className="flex flex-col" data-zerops-ungrouped="true">
       {section(
         "ungrouped",
         ungrouped,
@@ -1428,6 +1449,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         // Nothing groups these, so nothing above a row repeats its name.
         undefined,
         undefined,
+        true,
       )}
     </section>
   ) : null;
@@ -1483,23 +1505,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       )}
     </nav>
   );
-}
-
-/**
- * The room above a project. A full breath separates it from the one before,
- * much more than its heading keeps from its own rows, so the heading belongs
- * to what is under it rather than floating halfway between two projects. A
- * run of collapsed projects closes up into a list of their names.
- */
-const SECTION_ROOM = "mt-9";
-
-function sectionRoom(at: {
-  readonly first: boolean;
-  readonly collapsed: boolean;
-  readonly afterCollapsed: boolean;
-}): string | undefined {
-  if (at.first) return undefined;
-  return at.collapsed && at.afterCollapsed ? "mt-1" : SECTION_ROOM;
 }
 
 /** The listing's notice (`candidatesNotice`) with its one affordance, at the menu's left edge. */
