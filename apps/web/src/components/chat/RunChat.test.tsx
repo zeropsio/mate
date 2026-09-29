@@ -1114,8 +1114,16 @@ describe("RunChat, as the person uses it", () => {
         (node) => node.type === "div" && node.props["data-chat-folded"] !== undefined,
       ).props["data-chat-folded"];
     expect(folded()).toBe("true");
+    // The button pressed, as the page has it: no scroll to keep it in.
+    const pressed = {
+      closest: () => null,
+      isConnected: true,
+      parentElement: null,
+      ownerDocument: { scrollingElement: null },
+      getBoundingClientRect: () => ({ top: 0, bottom: 0 }),
+    };
     const press = (words: string) =>
-      act(() => button(renderer, words).props.onClick({ currentTarget: { closest: () => null } }));
+      act(() => button(renderer, words).props.onClick({ currentTarget: pressed }));
     press("Show all 16 lines");
     expect(folded()).toBe("false");
     press("Show less");

@@ -68,6 +68,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { flushSync } from "react-dom";
+
 import { cn } from "~/lib/utils";
 import { useAssetUrlState } from "../../assets/assetUrls";
 import {
@@ -128,6 +130,7 @@ import {
   type NowLine as NowLineModel,
   type RunFold,
 } from "./runCard.logic";
+import { keepInPlace, scrollerOf } from "./keepInPlace";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -277,7 +280,7 @@ const HOLD_NOTHING = () => {};
  * stops following its end, so the line they clicked stays where it is and
  * only what is under it moves. Drawn outside a conversation, it holds nothing.
  */
-function useHoldReading(): () => void {
+export function useHoldReading(): () => void {
   const ctx = use(TimelineRowCtx) as TimelineRowSharedState | null;
   return ctx?.onHoldReading ?? HOLD_NOTHING;
 }
@@ -444,13 +447,27 @@ function MoreToggle({
         META,
         "mt-1 block cursor-pointer rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
       )}
-      data-scroll-anchor-ignore
-      onClick={onToggle}
+      // It stands at the foot of what it opened: closing folds what stands
+      // above it, and it stays under the pointer (K12).
+      onClick={(event) => (open ? collapseInPlace(event.currentTarget, onToggle) : onToggle())}
       type="button"
     >
       {children}
     </button>
   );
+}
+
+/**
+ * Closes what `pressed` opened, keeping `pressed` where it stands on screen
+ * — or, where it is gone once closed, the foot of the bubble it stood in.
+ */
+function collapseInPlace(pressed: HTMLElement, close: () => void) {
+  keepInPlace({
+    anchor: pressed,
+    fallback: pressed.closest<HTMLElement>("[data-chat-bubble], [data-chat-row]"),
+    scroller: scrollerOf(pressed),
+    change: () => flushSync(close),
+  });
 }
 
 /** The way to the rest of a folded bubble, in the person's own words for it. */
@@ -516,7 +533,6 @@ function DisclosureButton({
         className,
       )}
       data-chat-disclose
-      data-scroll-anchor-ignore
       onClick={onToggle}
       type="button"
     >
@@ -884,7 +900,6 @@ function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMess
           aria-label={`${run.slice(0, 80)}… Show the whole thought`}
           className="block w-full min-w-0 cursor-pointer rounded-sm text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
           data-chat-disclose
-          data-scroll-anchor-ignore
           onClick={() => {
             hold();
             setOpen(true);
@@ -1582,6 +1597,7 @@ const AGENT_STATUS_WORD: Record<RuntimeSubagent["status"], string> = {
  * under it once opened.
  */
 function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
+  const hold = useHoldReading();
   const [open, setOpen] = useState(false);
   const active = isActiveSubagentStatus(agent.status);
   const said = (
@@ -1615,7 +1631,10 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
         <button
           aria-expanded={open}
           className="grid min-w-0 cursor-pointer gap-0.5 rounded-lg px-1.5 py-1 text-start transition-colors hover:bg-foreground/4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-          onClick={() => setOpen((value) => !value)}
+          onClick={() => {
+            hold();
+            setOpen((value) => !value);
+          }}
           type="button"
         >
           {line}
@@ -2515,13 +2534,7 @@ function easeFeedHeight(feed: HTMLElement, from: number): void {
 /** "Show work" on a folded run's line, "Hide work" once it is open: its chevron turns over. */
 function WorkToggle({ open, onToggle }: { readonly open: boolean; readonly onToggle: () => void }) {
   return (
-    <button
-      aria-expanded={open}
-      className="run-now-fold"
-      data-scroll-anchor-ignore
-      onClick={onToggle}
-      type="button"
-    >
+    <button aria-expanded={open} className="run-now-fold" onClick={onToggle} type="button">
       {open ? "Hide work" : "Show work"}
       <ChevronDownIcon aria-hidden="true" className="run-now-fold-icon" />
     </button>
@@ -2600,7 +2613,6 @@ function EarlierLine({ count, onShow }: { readonly count: number; readonly onSho
       <button
         className="shrink-0 cursor-pointer rounded-md px-1.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
         data-chat-earlier
-        data-scroll-anchor-ignore
         onClick={() => {
           hold();
           onShow();
@@ -2634,6 +2646,7 @@ export function BackgroundLine({
   readonly failed: boolean;
   readonly entries: ReadonlyArray<WorkLogEntry>;
 }) {
+  const hold = useHoldReading();
   const [open, setOpen] = useState(false);
   const lastByTask = new Map<string, WorkLogEntry>();
   for (const entry of entries) lastByTask.set(entry.taskId ?? entry.id, entry);
@@ -2676,7 +2689,10 @@ export function BackgroundLine({
           aria-expanded={open}
           aria-label={`${words}, ${where}. ${open ? "Hide" : "Show"} what it reported`}
           className="group/disclose -mx-1.5 flex min-h-7 w-[calc(100%+0.75rem)] cursor-pointer items-center rounded-md px-1.5 text-start transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset"
-          onClick={() => setOpen((value) => !value)}
+          onClick={() => {
+            hold();
+            setOpen((value) => !value);
+          }}
           type="button"
         >
           {line}

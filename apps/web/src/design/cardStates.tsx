@@ -141,6 +141,18 @@ const CHECK: ZeropsOperation = {
   hasResult: true,
 };
 
+/** What the build printed: past twelve lines, its output folds. */
+const BUILD_LOG = [
+  "> app@0.2.0 build /var/www/app",
+  "> tsc -p . && vite build",
+  "",
+  "vite v7.1.3 building for production...",
+  ...Array.from({ length: 22 }, (_, index) => `✓ src/routes/module-${index + 1}.ts transformed`),
+  "dist/index.html    0.46 kB",
+  "dist/assets/index.js  48.20 kB │ gzip: 15.12 kB",
+  "✓ built in 3.41s",
+].join("\n");
+
 /** Everything the /status run said and did, in order. */
 const RUN: ReadonlyArray<RecordItem> = [
   {
@@ -194,7 +206,10 @@ const RUN: ReadonlyArray<RecordItem> = [
       45,
     ),
   },
-  step(command("w3", "cd /var/www/app && pnpm build", "Build the app", 11, 34), 11),
+  step(
+    command("w3", "cd /var/www/app && pnpm build", "Build the app", 11, 34, { detail: BUILD_LOG }),
+    11,
+  ),
   {
     kind: "strip",
     key: "operation:op:status-check",

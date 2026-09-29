@@ -39,7 +39,7 @@ import { formatWorkDuration, isGitPushOnly, type IncidentModel } from "./convers
 import { StatusBar, type BarTone } from "./ConversationPills";
 import type { DockBackgroundTask, DockModel } from "./conversationDock.logic";
 import { ElapsedSince, type ConversationSpeaker } from "./ConversationRows";
-import { OperationDetail, PlanSteps } from "./RunChat";
+import { OperationDetail, PlanSteps, useHoldReading } from "./RunChat";
 
 // ---------------------------------------------------------------------------
 // Arriving live
@@ -168,7 +168,6 @@ function Instrument({
       aria-expanded={open}
       aria-label={label}
       className="run-bar group/bar"
-      data-scroll-anchor-ignore
       onClick={onToggle}
       type="button"
     >
@@ -407,6 +406,7 @@ function Instruments({
   readonly onOpenAgents: () => void;
   readonly onToggle?: (() => void) | null;
 }) {
+  const hold = useHoldReading();
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const operations = dock?.operations ?? [];
   const helpers = dock?.helpers ?? null;
@@ -423,6 +423,9 @@ function Instruments({
   }
   const runningTask = background?.tasks.findLast((task) => task.state === "running");
   const toggle = (key: string) => {
+    // What the person opened is theirs to read: the conversation stops
+    // following its end, so the bar they pressed stays where it is (K12).
+    hold();
     onToggle?.();
     setOpen((current) => {
       const next = new Set(current);
