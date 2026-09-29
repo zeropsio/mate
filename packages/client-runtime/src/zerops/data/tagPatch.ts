@@ -17,10 +17,12 @@ import { planGroupMembership, planGroupRegistration } from "../groupCreation.ts"
 import { parseZeropsRegistry } from "../groupRegistry.ts";
 import {
   withZeropsBotTag,
+  withZeropsChangedFace,
   withZeropsGroupTags,
   withZeropsMateTag,
   withoutZeropsStandUpTag,
   type ZeropsEnvironmentRole,
+  type ZeropsMateFace,
 } from "../groups.ts";
 import { withMateSignerTag } from "../mateAccess.ts";
 
@@ -36,6 +38,8 @@ export type ProjectTagPatch =
     }
   /** Names the project's agent; a non-blank name also declares the Mate. */
   | { readonly kind: "agent-name"; readonly name: string }
+  /** Changes the Mate's face (`mate:face:`), recolouring no other Mate (`withZeropsChangedFace`). */
+  | { readonly kind: "mate-face"; readonly face: ZeropsMateFace }
   /** Records who signed an agent in (D6). */
   | { readonly kind: "agent-signer"; readonly agentId: string; readonly userId: string }
   /** The Mate was asked to stand the project's development up: the ask (`mate:standup:`) goes. */
@@ -84,6 +88,8 @@ export function applyProjectTagPatch(
       const named = withZeropsBotTag(tags, patch.name);
       return changed(patch.name.trim().length === 0 ? named : withZeropsMateTag(named));
     }
+    case "mate-face":
+      return changed(withZeropsChangedFace(tags, patch.face));
     case "agent-signer":
       return changed(withMateSignerTag(tags, patch.agentId, patch.userId));
     case "stand-up-done":
