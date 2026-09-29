@@ -41,6 +41,7 @@ import {
 } from "@t3tools/shared/threadStatus";
 
 import { threadStatusPill, type ThreadStatusPill } from "../components/Sidebar.logic";
+import { liveStepWords, type LiveStepWords } from "./liveStep";
 
 export interface ZeropsAgentActivity {
   readonly threadId: ThreadId;
@@ -83,7 +84,7 @@ export interface ZeropsAgentActivity {
    * what the menu's third line says while it works. The server relays it;
    * absent where it relays none, and the row holds its dots.
    */
-  readonly liveStep?: { readonly words: string; readonly code?: string | undefined };
+  readonly liveStep?: LiveStepWords;
   /**
    * The question the Mate waits on the person to answer, in its words: what a
    * needs-you row's third line says. The server relays it; absent while
@@ -242,8 +243,22 @@ export function threadAgentActivity(
     pausedUntil: pause?.resetsAt,
     threadKey: scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
     task: agentActivitySubject(thread, "idle"),
+    ...agentActivityLiveStep(thread, resolved.kind),
     ...agentActivityErrorLine(thread, resolved.kind),
   };
+}
+
+/**
+ * The step it is on, in its run card's words (`liveStep.ts`), while it
+ * works and its server relays one. A server from before it relays none: the
+ * row holds its dots.
+ */
+export function agentActivityLiveStep(
+  thread: Pick<EnvironmentThreadShell, "liveStep">,
+  kind: ThreadStatusKind,
+): { readonly liveStep?: LiveStepWords } {
+  if (kind !== "working" || thread.liveStep === undefined) return {};
+  return { liveStep: liveStepWords(thread.liveStep) };
 }
 
 /** The error's first line, while the Mate stands stopped on it. */

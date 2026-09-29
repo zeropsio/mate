@@ -1,0 +1,140 @@
+/**
+ * A Mate's live step in its run card's words — what a working row's third
+ * line says. The server relays the moment's raw facts on the thread's shell
+ * (`OrchestrationThreadShell.liveStep`), since the menu never loads a
+ * thread's activities; this puts them through the card's own derivation, so
+ * the menu and the card can never say different things: each relayed call
+ * becomes the activity the card read it from, and goes through
+ * `deriveZeropsThreadModel` and `deriveWorkLogEntries` as the card's
+ * timeline does, then `stepOf` — the step, in its words and its command.
+ *
+ * The newest call the card would draw is the step, as the card's own now
+ * takes the newest call still running; a call it draws nothing for yet (a
+ * call whose input is still streaming in, a Zerops call it keeps out of the
+ * chat) is none, and with none left the Mate is still thinking.
+ */
+import {
+  EventId,
+  TurnId,
+  type OrchestrationThreadActivity,
+  type ThreadLiveCall,
+  type ThreadLiveStep,
+} from "@t3tools/contracts";
+import {
+  deriveZeropsThreadModel,
+  type ZeropsOperation,
+} from "@t3tools/client-runtime/zerops/model";
+import { maskSecrets } from "@t3tools/shared/messagePreview";
+
+import {
+  browserCheckCaption,
+  isActivityWork,
+  isQuestionToolCall,
+  operationLineWords,
+  toolCallWords,
+} from "../components/chat/conversation.logic";
+import { stepOf } from "../components/chat/workSteps.logic";
+import {
+  deriveWorkLogEntries,
+  zeropsCallToWorkLogEntry,
+  type WorkLogEntry,
+} from "../session-logic";
+
+/** A live step as a row says it: its words, and the command it runs after them. */
+export interface LiveStepWords {
+  readonly words: string;
+  readonly code?: string | undefined;
+}
+
+// The now line's words for what is no call.
+const THINKING: LiveStepWords = { words: "Thinking" };
+const WRITING: LiveStepWords = { words: "Writing" };
+/** The question tool's own words: it waits on the person. */
+const WAITING: LiveStepWords = { words: toolCallWords("AskUserQuestion") };
+
+/** The turn a relayed call runs under: the running one, for the card's model. */
+const LIVE_TURN = TurnId.make("live-step");
+
+/** A relayed call as the activity its card read it from. */
+function callActivity(call: ThreadLiveCall): OrchestrationThreadActivity {
+  return {
+    id: EventId.make(`live-step:${call.id}`),
+    createdAt: call.startedAt,
+    tone: "tool",
+    kind: call.activityKind,
+    summary: call.title,
+    turnId: LIVE_TURN,
+    payload: {
+      itemType: call.itemType,
+      toolCallId: call.id,
+      status: "inProgress",
+      ...(call.detail === undefined ? {} : { detail: call.detail }),
+      data: {
+        toolCallId: call.id,
+        ...(call.toolName === undefined ? {} : { toolName: call.toolName }),
+        ...(call.command === undefined ? {} : { command: call.command }),
+        ...(call.input === undefined ? {} : { input: call.input }),
+        ...(call.imagePath === undefined ? {} : { imagePath: call.imagePath }),
+        ...(call.files === undefined ? {} : { files: call.files.map((path) => ({ path })) }),
+      },
+    },
+  };
+}
+
+/** A call on its way, as the card's step says it: none for what the card's now skips. */
+function entryWords(entry: WorkLogEntry): LiveStepWords | null {
+  if (entry.toolLifecycleStatus !== "inProgress" || !isActivityWork(entry)) return null;
+  if (isQuestionToolCall(entry)) return WAITING;
+  const step = stepOf(entry);
+  // A command that says nothing of itself is its own title.
+  if (step.words === null) return step.code === null ? null : { words: step.code };
+  return step.code === null ? { words: step.words } : { words: step.words, code: step.code };
+}
+
+/** A platform operation running, as its row in the chat says it while it runs. */
+function operationWords(operation: ZeropsOperation): string {
+  return operation.kind === "browser"
+    ? `Checking ${browserCheckCaption(operation)}`
+    : operationLineWords(operation);
+}
+
+/** One running call in the card's words; null for a call the card draws nothing for yet. */
+function callWords(call: ThreadLiveCall): LiveStepWords | null {
+  const activity = callActivity(call);
+  const zerops = deriveZeropsThreadModel({
+    activities: [activity],
+    runningTurnId: LIVE_TURN,
+    nowMs: Date.parse(call.startedAt),
+  });
+  if (zerops.zeropsActivityIds.has(activity.id)) {
+    const entry = zerops.entries[0];
+    if (entry === undefined) return null;
+    if (entry.kind === "generic-call") return entryWords(zeropsCallToWorkLogEntry(entry.call));
+    return entry.operation.phase === "running" ? { words: operationWords(entry.operation) } : null;
+  }
+  const [entry] = deriveWorkLogEntries([activity]);
+  return entry === undefined ? null : entryWords(entry);
+}
+
+function masked(words: LiveStepWords): LiveStepWords {
+  return words.code === undefined
+    ? { words: maskSecrets(words.words) }
+    : { words: maskSecrets(words.words), code: maskSecrets(words.code) };
+}
+
+/** What the Mate is on this moment, in its card's words. */
+export function liveStepWords(step: ThreadLiveStep): LiveStepWords {
+  switch (step.kind) {
+    case "thinking":
+      return THINKING;
+    case "writing":
+      return WRITING;
+    case "calls": {
+      for (let index = step.calls.length - 1; index >= 0; index -= 1) {
+        const words = callWords(step.calls[index]!);
+        if (words !== null) return masked(words);
+      }
+      return THINKING;
+    }
+  }
+}
