@@ -138,14 +138,28 @@ describe("MateFace", () => {
     let renderer: ReturnType<typeof create> | undefined;
     // A menu row after a reload: idle until its socket answers that the Mate waits.
     act(() => {
-      renderer = create(<MateFace known={false} state="idle" tint="sky" />);
+      renderer = create(<MateFace greets known={false} state="idle" tint="sky" />);
     });
-    act(() => renderer!.update(<MateFace known state="needs" tint="sky" />));
+    act(() => renderer!.update(<MateFace greets known state="needs" tint="sky" />));
     expect(arrivedOf(renderer!)).toBeUndefined();
     // Read, a question raised while it is on screen is greeted.
-    act(() => renderer!.update(<MateFace known state="working" tint="sky" />));
-    act(() => renderer!.update(<MateFace known state="needs" tint="sky" />));
+    act(() => renderer!.update(<MateFace greets known state="working" tint="sky" />));
+    act(() => renderer!.update(<MateFace greets known state="needs" tint="sky" />));
     expect(arrivedOf(renderer!)).toBe("needs");
+    act(() => renderer!.unmount());
+  });
+
+  // A face reused from one Mate to the next (a header, a peek), or drawn
+  // asleep until its Mate connects, would greet arrivals that never happened:
+  // greeting is the menu row's and the status line's alone.
+  it("greets nothing unless asked to", () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    let renderer: ReturnType<typeof create> | undefined;
+    act(() => {
+      renderer = create(<MateFace state="working" tint="rose" />);
+    });
+    act(() => renderer!.update(<MateFace state="needs" tint="rose" />));
+    expect(renderer!.root.findByType("svg").props["data-mate-face-arrived"]).toBeUndefined();
     act(() => renderer!.unmount());
   });
 

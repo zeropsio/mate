@@ -2013,8 +2013,12 @@ function MateRow<T extends RosterCandidate>({
   const live = drawnActivity(candidate, activity);
   const subject = live?.subject;
   const snippet = subject === undefined ? undefined : live?.snippet;
-  // A new task rises into the row's second line as the person sets it.
-  const subjectChanged = useChangedSinceShown(subject);
+  // A new task rises into the row's second line as the person sets it; the
+  // task this browser remembered gives way to the one read without a rise.
+  const subjectChanged = useChangedSinceShown(
+    subject,
+    live !== undefined && live.remembered !== true,
+  );
   const face = mateFaceFor(candidate.group === "connected", activity);
   // The plan as a ring around the face while it works: one segment a step.
   const progress = face === "working" ? live?.progress : undefined;
@@ -2177,10 +2181,16 @@ function MateRow<T extends RosterCandidate>({
               it. A ring, when it works, stands 4px clear all round, and the
               spine stops at the ring instead of running under it. */}
           <span className={cn("relative flex", progress !== undefined && "my-1")}>
-            {/* Until its socket answers the face stands in idle or asleep: a
-                Mate found waiting then is not arriving at it. */}
+            {/* Until its socket answers the face stands in idle or asleep, the
+                row's words as this browser remembered them: a Mate found
+                waiting then is not arriving at it. */}
             <MateFace
-              known={candidate.group === "connected" && activity !== undefined}
+              greets
+              known={
+                candidate.group === "connected" &&
+                activity !== undefined &&
+                activity.remembered !== true
+              }
               size="md"
               state={face}
               tint={tint}
@@ -2276,7 +2286,11 @@ function MateRow<T extends RosterCandidate>({
             (live?.awaitingWords === true ||
               live?.kind === "working" ||
               live?.kind === "connecting")) ? (
-            <MateSnippet snippet={snippet ?? null} threadKey={live?.threadKey} />
+            <MateSnippet
+              known={live !== undefined && live.remembered !== true}
+              snippet={snippet ?? null}
+              threadKey={live?.threadKey}
+            />
           ) : null}
         </span>
       </button>
@@ -2440,37 +2454,49 @@ function MateWorkingTime({ since }: { readonly since: string }) {
 function MateSnippet({
   snippet,
   threadKey,
+  known,
 }: {
   /** Null while its words are still to come. */
   readonly snippet: string | null;
   readonly threadKey: string | undefined;
+  /** The words are the Mate's as read, not what this browser remembered them saying. */
+  readonly known: boolean;
 }) {
   const draft = useComposerDraftStore((state) =>
     threadKey === undefined ? undefined : state.draftsByThreadKey[threadKey]?.prompt,
   );
   const unsent = draft?.trim() ?? "";
   // The Mate's newest words rise into their line when they arrive, as its
-  // status line's do in the chat; what the menu opened onto is simply there.
-  // Only its words: a draft is the person's own typing, and it changes with
-  // every key — risen in, the line blurred and jumped while they typed.
-  const wordsChanged = useChangedSinceShown(snippet);
+  // status line's do in the chat; what the menu opened onto is simply there,
+  // and remembered words give way to the read ones without a rise. Only its
+  // words: a draft is the person's own typing and changes with every key.
+  const wordsChanged = useChangedSinceShown(snippet, known);
   if (snippet === null && unsent.length === 0) return <MateReplyPending />;
+  const drafting = unsent.length > 0;
   return (
-    <span
-      className={cn(
-        "truncate text-xs leading-4.5 text-sidebar-muted-foreground/70",
-        unsent.length === 0 && wordsChanged && "animate-words-in motion-reduce:animate-none",
-      )}
-      data-zerops-surface="sidebar-mate-snippet"
-      key={unsent.length === 0 ? `words:${snippet ?? ""}` : "draft"}
-    >
-      {unsent.length === 0 ? (
-        snippet
-      ) : (
-        <>
+    // The words keep their node while a draft stands over them in the same
+    // cell, so clearing the draft does not replay their rise.
+    <span className="grid min-w-0 text-xs leading-4.5">
+      <span
+        aria-hidden={drafting ? true : undefined}
+        className={cn(
+          "col-start-1 row-start-1 truncate text-sidebar-muted-foreground/70",
+          drafting && "invisible",
+          wordsChanged && "animate-words-in motion-reduce:animate-none",
+        )}
+        data-zerops-surface={drafting ? undefined : "sidebar-mate-snippet"}
+        key={`words:${snippet ?? ""}`}
+      >
+        {snippet}
+      </span>
+      {drafting ? (
+        <span
+          className="col-start-1 row-start-1 truncate text-sidebar-muted-foreground/70"
+          data-zerops-surface="sidebar-mate-snippet"
+        >
           <span className="font-medium text-sidebar-foreground">Draft:</span> {unsent}
-        </>
-      )}
+        </span>
+      ) : null}
     </span>
   );
 }

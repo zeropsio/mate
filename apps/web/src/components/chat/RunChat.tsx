@@ -2283,7 +2283,14 @@ function StatusLine({
       className={cn("flex min-w-0 items-center pb-1", MARK_GAP)}
       data-run-status={doing === null ? status.face : doing.waiting ? "waiting" : "working"}
     >
-      <MateFace gaze={doing?.gaze} size="md" state={face} tint={ctx.speaker.tint} />
+      <MateFace
+        gaze={doing?.gaze}
+        greets
+        known={ctx.arrivedAfter !== null && !ctx.syncing}
+        size="md"
+        state={face}
+        tint={ctx.speaker.tint}
+      />
       <div
         className={cn(
           "flex min-h-7 min-w-0 flex-1 items-center gap-2.5 text-line",

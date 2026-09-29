@@ -56,6 +56,14 @@ type MateFaceProps = Omit<React.ComponentProps<"svg">, "children" | "viewBox"> &
   readonly size?: MateFaceSize;
   readonly gaze?: MateFaceGaze | undefined;
   /**
+   * Whether it greets an arrival it watches (`mateFaceArrival`): a face that
+   * stands for one Mate the whole time it is on screen and knows when its
+   * state is read — a menu row, a run's status line. Off by default: a face
+   * reused from one Mate to the next (a header, a peek) or first drawn asleep
+   * until its Mate connects would greet arrivals that never happened.
+   */
+  readonly greets?: boolean;
+  /**
    * Whether the state is the Mate's as read, or a pose standing in until it
    * is: a change from a stand-in is no arrival to greet. Known by default.
    */
@@ -124,12 +132,13 @@ function MateFace({
   state,
   tint,
   gaze,
+  greets = false,
   known = true,
   style,
   ...props
 }: MateFaceProps) {
   const parts = mateFaceParts(state);
-  const arrived = useArrived(state, known);
+  const arrived = useArrived(state, greets && known);
   const shapeId = MATE_SHAPE_OF_TINT[tint];
   const shape = MATE_SHAPES[shapeId];
   const strokeWidth = STROKE_PX[size];
