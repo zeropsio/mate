@@ -30,6 +30,7 @@ import {
   turn,
   user,
 } from "./conversationFixtures";
+import { runEffortWords } from "./runResult.logic";
 
 type Scene = {
   entries: TimelineEntry[];
@@ -228,7 +229,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(recordOf(list)).toMatchObject({ live: false, now: null });
     // What its calls came to is the result's, in pills (the owner, 2026-09-27).
     expect(list[3]).toMatchObject({
-      outcome: { activity: [{ kind: "command", count: 2, words: "Ran 2 commands" }] },
+      outcome: { activity: [{ kind: "command", count: 2 }] },
     });
     expect(list[4]).toMatchObject({ showAssistantMeta: true, receipt: null });
   });
@@ -638,9 +639,7 @@ describe("deriveMessagesTimelineRows", () => {
     );
     expect(logged).toEqual(["w1"]);
     const outcome = list.find((row) => row.kind === "outcome");
-    expect(
-      outcome?.kind === "outcome" ? outcome.outcome.activity.map((pill) => pill.words) : null,
-    ).toEqual(["Ran 1 command"]);
+    expect(outcome?.kind === "outcome" ? runEffortWords(outcome.outcome) : null).toBe("1 command");
   });
 
   // A run that thought and asked the person something worked, it did not
@@ -1271,21 +1270,21 @@ describe("deriveMessagesTimelineRows", () => {
       name: "only a helper started",
       spawned: ["task-h1"],
       commands: 0,
-      pills: ["Started 1 helper"],
+      effort: "1 helper",
     },
     {
       name: "two helpers at once",
       spawned: ["task-h1", "task-h2"],
       commands: 0,
-      pills: ["Started 2 helpers"],
+      effort: "2 helpers",
     },
     {
       name: "after other work",
       spawned: ["task-h1"],
       commands: 2,
-      pills: ["Ran 2 commands", "Started 1 helper"],
+      effort: "2 commands · 1 helper",
     },
-  ])("records and counts what a run started: $name", ({ spawned, commands, pills }) => {
+  ])("records and counts what a run started: $name", ({ spawned, commands, effort }) => {
     const list = rows({
       entries: [
         user("m0", 0),
@@ -1300,9 +1299,7 @@ describe("deriveMessagesTimelineRows", () => {
     });
     expect(lines(list)?.at(-1)).toBe(`helpers ${spawned.length}`);
     const outcome = list.find((row) => row.kind === "outcome");
-    expect(
-      outcome?.kind === "outcome" ? outcome.outcome.activity.map((pill) => pill.words) : null,
-    ).toEqual(pills);
+    expect(outcome?.kind === "outcome" ? runEffortWords(outcome.outcome) : null).toBe(effort);
     expect(statusOf(list)).toMatchObject({ worked: true });
   });
 

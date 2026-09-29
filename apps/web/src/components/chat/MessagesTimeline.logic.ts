@@ -20,7 +20,7 @@ import {
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
 import {
-  activityPills,
+  activityCounts,
   checksStrip,
   deriveConversationStructure,
   deriveOutcome,
@@ -1395,7 +1395,7 @@ function stretchRecord(input: {
   return { items, rows };
 }
 
-/** What a settled run's calls came to, and the helpers it started: its result's pills. */
+/** What a settled run's calls came to, and the helpers it started: its effort. */
 function turnActivity(turn: ConversationTurn): OutcomeActivity[] {
   const entries = turn.stretches.flatMap((stretch) => stretch.entries);
   const calls = omitSupersededLifecycleMarkers(
@@ -1412,7 +1412,7 @@ function turnActivity(turn: ConversationTurn): OutcomeActivity[] {
   const launches = entries.flatMap((entry) =>
     entry.kind === "work" && entry.entry.agentSpawn !== undefined ? [entry.entry] : [],
   );
-  return activityPills(calls, launches);
+  return activityCounts(calls, launches);
 }
 
 /**

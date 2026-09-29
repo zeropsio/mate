@@ -27,7 +27,7 @@ import {
   stretchIncidents,
   stretchNotes,
   stretchOperations,
-  activityPills,
+  activityCounts,
 } from "./conversation.logic";
 import {
   assistant,
@@ -784,41 +784,71 @@ describe("messageReceipt", () => {
   });
 });
 
-describe("activityPills", () => {
-  const words = (pills: ReturnType<typeof activityPills>) => pills.map((pill) => pill.words);
+describe("activityCounts", () => {
+  const entry = (overrides: Parameters<typeof tool>[3], noCommand = false) => {
+    const { command: _command, ...rest } = (
+      tool("x", "t1", 0, overrides) as Extract<TimelineEntry, { kind: "work" }>
+    ).entry;
+    return noCommand ? rest : { ...rest, command: "pnpm test" };
+  };
 
-  it("says what the calls did, a pill per kind, in one fixed order", () => {
-    const entry = (overrides: Parameters<typeof tool>[3], noCommand = false) => {
-      const { command: _command, ...rest } = (
-        tool("x", "t1", 0, overrides) as Extract<TimelineEntry, { kind: "work" }>
-      ).entry;
-      return noCommand ? rest : { ...rest, command: "pnpm test" };
-    };
-    const pills = activityPills([
-      entry({ requestKind: "file-read" }, true),
-      entry({}),
-      entry({ changedFiles: ["a.ts", "b.ts"] }, true),
-      entry({ changedFiles: ["a.ts"] }, true),
-      entry({ itemType: "mcp_tool_call" }, true),
-      entry({ requestKind: "file-read" }, true),
-    ]);
-    expect(words(pills)).toEqual([
-      "Edited 2 files",
-      "Ran 1 command",
-      "Read 2 files",
-      "Used 1 tool",
-    ]);
-    // Each pill opens the calls it counts.
-    expect(pills.map((pill) => [pill.kind, pill.count, pill.entries.length])).toEqual([
-      ["edit", 2, 2],
-      ["command", 1, 1],
-      ["read", 2, 2],
-      ["other", 1, 1],
-    ]);
+  // What the calls came to, counted by kind in one fixed order: the effort
+  // the worked line says ("2 commands · 1 file read"), never a result row.
+  it.each([
+    {
+      name: "files edited count once each, then commands, reads and other tools",
+      calls: [
+        entry({ requestKind: "file-read" }, true),
+        entry({}),
+        entry({ changedFiles: ["a.ts", "b.ts"] }, true),
+        entry({ changedFiles: ["a.ts"] }, true),
+        entry({ itemType: "mcp_tool_call" }, true),
+        entry({ requestKind: "file-read" }, true),
+      ],
+      counts: [
+        { kind: "edit", count: 2 },
+        { kind: "command", count: 1 },
+        { kind: "read", count: 2 },
+        { kind: "tool", count: 1 },
+      ],
+    },
+    {
+      name: "the code and the web searched",
+      calls: [
+        entry(
+          { label: "Tool call", itemType: "dynamic_tool_call", detail: 'Grep: {"pattern":"x"}' },
+          true,
+        ),
+        entry({ itemType: "web_search", toolTitle: "Web search" }, true),
+        entry({ itemType: "web_search", toolTitle: "Web search" }, true),
+      ],
+      counts: [
+        { kind: "code-search", count: 1 },
+        { kind: "search", count: 2 },
+      ],
+    },
+    {
+      name: "a Zerops tool by what it did, any other tool as a tool",
+      calls: [
+        entry({ label: "zerops_workflow", toolTitle: "Workflow", itemType: "mcp_tool_call" }, true),
+        entry({ label: "zerops_workflow", toolTitle: "Workflow", itemType: "mcp_tool_call" }, true),
+        entry(
+          { label: "zerops_knowledge", toolTitle: "Knowledge", itemType: "mcp_tool_call" },
+          true,
+        ),
+        entry({ label: "figma_get", toolTitle: "Figma", itemType: "mcp_tool_call" }, true),
+      ],
+      counts: [
+        { kind: "workflow", count: 2 },
+        { kind: "guides", count: 1 },
+        { kind: "tool", count: 1 },
+      ],
+    },
+    { name: "nothing", calls: [], counts: [] },
+  ])("$name", ({ calls, counts }) => {
+    expect(activityCounts(calls)).toEqual(counts);
   });
 
-  // Starting a helper is work the result counts, a batch by its helpers
-  // (the owner, 2026-09-27: "started 11 helpers" belongs in the result).
   it("counts the helpers a run started, a batch by its helpers", () => {
     const spawn = (ids: string[]) =>
       (
@@ -827,64 +857,11 @@ describe("activityPills", () => {
           agentSpawn: { workflowId: null, agentTaskIds: ids },
         }) as Extract<TimelineEntry, { kind: "work" }>
       ).entry;
-    expect(words(activityPills([], [spawn(["a", "b", "c"]), spawn([])]))).toEqual([
-      "Started 4 helpers",
+    expect(activityCounts([], [spawn(["a", "b", "c"]), spawn([])])).toEqual([
+      { kind: "helpers", count: 4 },
     ]);
-    expect(words(activityPills([], [spawn(["a"])]))).toEqual(["Started 1 helper"]);
-    expect(activityPills([], [])).toEqual([]);
-  });
-
-  // A tool the runtime names only in its detail is said by its name: "used 1
-  // tool" over a Workflow call hid what the Mate did.
-  it.each([
-    { details: ["Workflow: {}"], pills: ["Used Workflow"] },
-    { details: ["Workflow: {}", "Workflow: {}"], pills: ["Used Workflow twice"] },
-    { details: ["Workflow: {}", "Workflow: {}", "Workflow: {}"], pills: ["Used Workflow 3 times"] },
-    { details: ["Workflow: {}", "SendMessage: {}"], pills: ["Used Workflow and SendMessage"] },
-    { details: ["Workflow: {}", "SendMessage: {}", "Skill: {}"], pills: ["Used 3 tools"] },
-    { details: ["Workflow: {}", "not a name"], pills: ["Used 2 tools"] },
-  ])("$pills", ({ details, pills }) => {
-    const call = (detail: string) =>
-      (
-        tool("x", "t1", 0, {
-          label: "Tool call",
-          itemType: "dynamic_tool_call",
-          detail,
-        }) as Extract<TimelineEntry, { kind: "work" }>
-      ).entry;
-    const entries = details.map((detail) => {
-      const { command: _command, ...rest } = call(detail);
-      return rest;
-    });
-    expect(words(activityPills(entries))).toEqual(pills);
-  });
-});
-
-describe("activityPills, the Zerops tools", () => {
-  // A Zerops tool with no card of its own is said by what it did, a pill of
-  // its own; any other connected tool by its own title.
-  const mcp = (label: string, toolTitle: string) => {
-    const { command: _command, ...rest } = (
-      tool("x", "t1", 0, { label, toolTitle, itemType: "mcp_tool_call" }) as Extract<
-        TimelineEntry,
-        { kind: "work" }
-      >
-    ).entry;
-    return rest;
-  };
-  it.each([
-    { entries: [mcp("zerops_workflow", "Workflow")], pills: ["Checked the workflow"] },
-    {
-      entries: [mcp("zerops_workflow", "Workflow"), mcp("zerops_workflow", "Workflow")],
-      pills: ["Checked the workflow"],
-    },
-    { entries: [mcp("zerops_knowledge", "Knowledge")], pills: ["Read the Zerops guides"] },
-    {
-      entries: [mcp("zerops_workflow", "Workflow"), mcp("figma_get", "Figma")],
-      pills: ["Checked the workflow", "Used Figma"],
-    },
-  ])("$pills", ({ entries, pills }) => {
-    expect(activityPills(entries).map((pill) => pill.words)).toEqual(pills);
+    expect(activityCounts([], [spawn(["a"])])).toEqual([{ kind: "helpers", count: 1 }]);
+    expect(activityCounts([], [])).toEqual([]);
   });
 });
 
@@ -1184,7 +1161,15 @@ describe("deriveOutcome", () => {
           failure: null,
         },
       ],
-      landed: [{ key: "landed:l1", line: "titandev #17", title: "Draw distance" }],
+      landed: [
+        {
+          key: "landed:l1",
+          repository: "titandev",
+          number: 17,
+          line: "titandev #17",
+          title: "Draw distance",
+        },
+      ],
       files: { count: 3, additions: 30, deletions: 6, turnId: turn("t1") },
       checks: {
         count: 1,
@@ -1370,21 +1355,15 @@ describe("deriveOutcome", () => {
     expect(deriveOutcome({ turn: refused.turns[0]!, landed: [], diff: diff(2) })).toBeNull();
   });
 
-  // What its calls came to is the result's too: a run that only ran commands
-  // has a result. The files it changed say what it edited, so an edit pill
-  // beside them would say it twice.
-  const edited = { kind: "edit" as const, count: 1, words: "Edited 1 file", entries: [] };
-  const ran = { kind: "command" as const, count: 2, words: "Ran 2 commands", entries: [] };
+  // What its calls came to is the run's effort: a run that only ran
+  // commands still has an outcome, for its worked line to count them.
+  const edited = { kind: "edit" as const, count: 1 };
+  const ran = { kind: "command" as const, count: 2 };
   it.each([
-    { name: "only commands ran", changed: null, pills: ["Ran 2 commands"], files: null },
-    {
-      name: "edits, no diff yet",
-      changed: null,
-      pills: ["Edited 1 file", "Ran 2 commands"],
-      files: null,
-    },
-    { name: "edits, the files changed known", changed: 2, pills: ["Ran 2 commands"], files: 2 },
-  ])("counts what a run's calls came to: $name", ({ changed, pills, files }) => {
+    { name: "only commands ran", changed: null, activity: [ran], files: null },
+    { name: "edits, no diff yet", changed: null, activity: [edited, ran], files: null },
+    { name: "edits, the files changed known", changed: 2, activity: [edited, ran], files: 2 },
+  ])("keeps what a run's calls came to: $name", ({ changed, activity, files }) => {
     const outcome = deriveOutcome({
       turn: structure(
         [user("m0", 0), tool("w1", "t1", 1), tool("w2", "t1", 2), assistant("a1", "t1", 3)],
@@ -1392,9 +1371,9 @@ describe("deriveOutcome", () => {
       ).turns[0]!,
       landed: [],
       diff: changed === null ? null : diff(changed),
-      activity: pills.length > 1 || changed !== null ? [edited, ran] : [ran],
+      activity,
     });
-    expect(outcome?.activity.map((pill) => pill.words)).toEqual(pills);
+    expect(outcome?.activity).toEqual(activity);
     expect(outcome?.files?.count ?? null).toBe(files);
   });
 
@@ -1703,12 +1682,15 @@ describe("tool calls in words", () => {
       detail: `${name}: ${args}`,
     });
     expect(
-      activityPills([
+      activityCounts([
         call("Read", '{"file_path":"/a/package.json"}'),
         call("Read", '{"file_path":"/a/README.md"}'),
         call("Grep", '{"pattern":"x"}'),
-      ]).map((pill) => pill.words),
-    ).toEqual(["Read 2 files", "Searched the code once"]);
+      ]),
+    ).toEqual([
+      { kind: "read", count: 2 },
+      { kind: "code-search", count: 1 },
+    ]);
   });
 
   it.each([

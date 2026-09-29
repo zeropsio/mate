@@ -3,7 +3,7 @@ import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { OutcomeModel, OutcomeService } from "./conversation.logic";
-import { resultRows, type ResultRow } from "./runResult.logic";
+import { resultRows, runEffortWords, type ResultRow } from "./runResult.logic";
 
 const at = (minute: number, second = 0) =>
   new Date(Date.UTC(2026, 8, 29, 20, minute, second)).toISOString();
@@ -120,8 +120,8 @@ describe("resultRows", () => {
         ]),
         files: { count: 59, additions: 2400, deletions: 529, turnId: TurnId.make("t1") },
         activity: [
-          { kind: "command", count: 102, words: "Ran 102 commands", entries: [] },
-          { kind: "read", count: 5, words: "Read 5 files", entries: [] },
+          { kind: "command", count: 102 },
+          { kind: "read", count: 5 },
         ],
       }),
       rows: [
@@ -144,7 +144,15 @@ describe("resultRows", () => {
           service("storedev", { word: "Dev server running" }),
           service("storestage", { word: "Healthy", version: "d47f96a" }),
         ],
-        landed: [{ key: "landed:54", line: "storedev #54", title: "Performance tuning" }],
+        landed: [
+          {
+            key: "landed:54",
+            repository: "storedev",
+            number: 54,
+            line: "storedev #54",
+            title: "Performance tuning",
+          },
+        ],
       }),
       rows: [
         ["running", "ok", "storedev", "Dev server running"],
@@ -243,7 +251,7 @@ describe("resultRows", () => {
     {
       name: "a run that only ran commands leaves no rows",
       outcome: outcome({
-        activity: [{ kind: "command", count: 2, words: "Ran 2 commands", entries: [] }],
+        activity: [{ kind: "command", count: 2 }],
       }),
       rows: [],
     },
@@ -283,5 +291,128 @@ describe("resultRows", () => {
       outcome({ files: { count: 3, additions: 45, deletions: 3, turnId: TurnId.make("t1") } }),
     );
     expect(row?.action).toEqual({ kind: "diff", turnId: TurnId.make("t1") });
+  });
+});
+
+describe("runEffortWords", () => {
+  const landed = (number: number) => ({
+    key: `landed:${number}`,
+    repository: "appdev",
+    number,
+    line: `appdev #${number}`,
+    title: "Add a /status page",
+  });
+  const files = { count: 3, additions: 45, deletions: 3, turnId: TurnId.make("t1") };
+
+  // One quiet line after the run's time, counting only what the result
+  // doesn't show as rows (K6): edits are the change's, checks and deploys
+  // are rows, a change merged since is said once, first.
+  it.each([
+    {
+      name: "Nova's run: its edits are the change's",
+      outcome: outcome({
+        files,
+        activity: [
+          { kind: "edit", count: 3 },
+          { kind: "command", count: 2 },
+          { kind: "read", count: 1 },
+        ],
+      }),
+      words: "2 commands · 1 file read",
+    },
+    {
+      name: "after the person merged its change",
+      outcome: outcome({
+        files,
+        landed: [landed(2)],
+        activity: [
+          { kind: "command", count: 2 },
+          { kind: "read", count: 1 },
+        ],
+      }),
+      words: "merged as #2 · 2 commands · 1 file read",
+    },
+    {
+      name: "Fen's 1 h 31 m run",
+      outcome: outcome({
+        files: { ...files, count: 59 },
+        activity: [
+          { kind: "edit", count: 59 },
+          { kind: "command", count: 102 },
+          { kind: "read", count: 5 },
+          { kind: "search", count: 5 },
+          { kind: "workflow", count: 3 },
+        ],
+      }),
+      words: "102 commands · 5 files read · 5 web searches · the workflow checked",
+    },
+    {
+      name: "Juno's 2 h 8 m run: its change landed, so its edits are that change's",
+      outcome: outcome({
+        landed: [landed(54)],
+        activity: [
+          { kind: "edit", count: 2 },
+          { kind: "command", count: 66 },
+          { kind: "read", count: 5 },
+        ],
+      }),
+      words: "merged as #54 · 66 commands · 5 files read",
+    },
+    {
+      name: "edits no change holds are counted",
+      outcome: outcome({
+        activity: [
+          { kind: "edit", count: 2 },
+          { kind: "command", count: 1 },
+        ],
+      }),
+      words: "2 files edited · 1 command",
+    },
+    {
+      name: "one of each",
+      outcome: outcome({
+        activity: [
+          { kind: "edit", count: 1 },
+          { kind: "command", count: 1 },
+          { kind: "read", count: 1 },
+          { kind: "code-search", count: 1 },
+          { kind: "search", count: 1 },
+          { kind: "guides", count: 1 },
+          { kind: "tool", count: 1 },
+          { kind: "helpers", count: 1 },
+        ],
+      }),
+      words:
+        "1 file edited · 1 command · 1 file read · 1 code search · 1 web search · the Zerops guides read · 1 tool used · 1 helper",
+    },
+    {
+      name: "several of each",
+      outcome: outcome({
+        activity: [
+          { kind: "code-search", count: 4 },
+          { kind: "tool", count: 2 },
+          { kind: "helpers", count: 11 },
+        ],
+      }),
+      words: "4 code searches · 2 tools used · 11 helpers",
+    },
+    {
+      name: "two changes merged",
+      outcome: outcome({ landed: [landed(2), landed(3)] }),
+      words: "merged as #2 and #3",
+    },
+    {
+      name: "three changes merged",
+      outcome: outcome({ landed: [landed(2), landed(3), landed(5)] }),
+      words: "merged as #2, #3 and #5",
+    },
+    { name: "nothing left to count", outcome: outcome({ files }), words: null },
+  ])("$name", ({ outcome: model, words }) => {
+    expect(runEffortWords(model)).toBe(words);
+  });
+
+  it("says nothing for a run with no outcome", () => {
+    expect(runEffortWords(null)).toBeNull();
+    expect(runEffortWords(undefined)).toBeNull();
   });
 });
