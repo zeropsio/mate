@@ -497,13 +497,15 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
         fix: verdict.fix,
       },
       consequence: enabled ? squash : (waits[verdict.state] ?? squash),
-      primary: { label: "Merge", enabled, safe: enabled },
+      // A second try is the person's deliberate press, never ⌘↵'s.
+      primary: { label: "Merge", enabled, safe: false },
     };
   }
   return {
     verdict,
     consequence: enabled ? squash : (waits[verdict.state] ?? squash),
-    primary: { label: "Merge", enabled, safe: enabled },
+    // Behind main is amber: still pressable, never pressed for the person.
+    primary: { label: "Merge", enabled, safe: enabled && verdict.state !== "behind-clean" },
   };
 }
 
@@ -625,11 +627,9 @@ export function releaseReview(input: ReleaseReviewInput): ReviewModel {
     case "offered":
       break;
   }
-  const primary = {
-    label: `Release ${tag}`,
-    enabled: input.gate.allowed,
-    safe: input.gate.allowed,
-  };
+  // A release reaches people outside the account: it takes a deliberate press — never the
+  // review's first focus, never ⌘↵.
+  const primary = { label: `Release ${tag}`, enabled: input.gate.allowed, safe: false };
   if (!input.gate.allowed) {
     const reason = input.gate.reason;
     const nothing = reason === RELEASE_NOTHING_MERGED || reason === RELEASE_NOTHING_NEW_ON_MAIN;
@@ -691,11 +691,8 @@ export function rollbackReview(input: RollbackReviewInput): ReviewModel {
     input.live === undefined
       ? "Production keeps running what it runs."
       : `Production keeps running ${input.live}.`;
-  const primary = {
-    label: `Roll back to ${tag}`,
-    enabled: input.mayRelease,
-    safe: input.mayRelease,
-  };
+  // Production moves: a deliberate press, never the review's first focus, never ⌘↵.
+  const primary = { label: `Roll back to ${tag}`, enabled: input.mayRelease, safe: false };
   switch (outcome.kind) {
     case "running":
       return {

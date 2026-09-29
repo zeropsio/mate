@@ -46,12 +46,21 @@ export function reviewOrigin(
   };
 }
 
-/** ⌘↵ (Ctrl+↵ off a Mac) presses the primary — only while it is safe to. */
+/**
+ * ⌘↵ (Ctrl+↵ off a Mac) presses the primary — only while it is safe to, and once: a key held
+ * down repeats, and Merge would walk on into the release review it hands over to.
+ */
 export function pressesPrimary(
-  event: { readonly key: string; readonly metaKey: boolean; readonly ctrlKey: boolean },
+  event: {
+    readonly key: string;
+    readonly metaKey: boolean;
+    readonly ctrlKey: boolean;
+    readonly repeat: boolean;
+  },
   primary: Pick<ReviewPrimary, "safe" | "enabled"> | undefined,
 ): boolean {
   return (
+    !event.repeat &&
     event.key === "Enter" &&
     (event.metaKey || event.ctrlKey) &&
     primary !== undefined &&

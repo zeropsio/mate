@@ -265,10 +265,11 @@ describe("changeReview: the button says what will happen (R5)", () => {
       { enabled: false, safe: false },
     ],
     [
+      // Amber: still pressable, never pressed for the person — no focus, no ⌘↵.
       "behind main but clean",
       { pull: pull({ baseSha: "newer" }), behindBy: 2 },
       "Squash-merges 1 commit into main, on top of 2 changes it wasn't checked with. Production isn't touched until you release.",
-      { enabled: true, safe: true },
+      { enabled: true, safe: false },
     ],
   ])("%s", (_name, over, consequence, primary) => {
     const review = changeReview(change(over));
@@ -422,7 +423,8 @@ describe("releaseReview", () => {
     expect(review.consequence).toBe(
       "Tags main as v0.1.57. Production redeploys app and api from it, about 3 minutes.",
     );
-    expect(review.primary).toEqual({ label: "Release v0.1.57", enabled: true, safe: true });
+    // It reaches people outside the account: a deliberate press, never focus or ⌘↵.
+    expect(review.primary).toEqual({ label: "Release v0.1.57", enabled: true, safe: false });
   });
 
   it.each<[string, Partial<ReleaseReviewInput>, string, boolean | undefined]>([
@@ -538,7 +540,7 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
     expect(rollbackReview(rollback()).primary).toEqual({
       label: "Roll back to v0.1.55",
       enabled: true,
-      safe: true,
+      safe: false,
     });
   });
 });

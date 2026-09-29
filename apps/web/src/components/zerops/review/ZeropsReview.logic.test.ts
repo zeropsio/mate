@@ -42,11 +42,13 @@ describe("reviewOrigin: it opens from the thing you clicked (R7)", () => {
 
 describe("pressesPrimary: ⌘↵ presses it when it is safe (R5)", () => {
   it.each([
-    [{ key: "Enter", metaKey: true, ctrlKey: false }, true, true],
-    [{ key: "Enter", metaKey: false, ctrlKey: true }, true, true],
-    [{ key: "Enter", metaKey: false, ctrlKey: false }, true, false],
-    [{ key: "Enter", metaKey: true, ctrlKey: false }, false, false],
-    [{ key: "k", metaKey: true, ctrlKey: false }, true, false],
+    [{ key: "Enter", metaKey: true, ctrlKey: false, repeat: false }, true, true],
+    [{ key: "Enter", metaKey: false, ctrlKey: true, repeat: false }, true, true],
+    [{ key: "Enter", metaKey: false, ctrlKey: false, repeat: false }, true, false],
+    [{ key: "Enter", metaKey: true, ctrlKey: false, repeat: false }, false, false],
+    [{ key: "k", metaKey: true, ctrlKey: false, repeat: false }, true, false],
+    // Held down, the key repeats: Merge must not walk on into the release it hands over to.
+    [{ key: "Enter", metaKey: true, ctrlKey: false, repeat: true }, true, false],
   ])("%o with safe=%s presses: %s", (event, safe, pressed) => {
     expect(pressesPrimary(event, { safe, enabled: safe })).toBe(pressed);
   });

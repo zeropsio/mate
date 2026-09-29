@@ -74,7 +74,7 @@ export function ZeropsReviewDialog({
     const safe = primary.dataset.safe === "true";
     if (
       !pressesPrimary(
-        { key: event.key, metaKey: event.metaKey, ctrlKey: event.ctrlKey },
+        { key: event.key, metaKey: event.metaKey, ctrlKey: event.ctrlKey, repeat: event.repeat },
         { safe, enabled: !primary.disabled },
       )
     ) {
