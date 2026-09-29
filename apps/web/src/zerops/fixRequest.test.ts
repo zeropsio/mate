@@ -45,7 +45,7 @@ describe("fixRequestPrompt", () => {
         {
           what: "Production's release v0.1.57 failed in the build step.",
           at,
-          error: "Build pipeline failed; no recognised log pattern matched.",
+          error: "The build step exited with code 1.",
           logLines: [
             "> pnpm install --frozen-lockfile",
             "ERR_PNPM_OUTDATED_LOCKFILE  Cannot install",
@@ -58,7 +58,7 @@ describe("fixRequestPrompt", () => {
     ).toBe(
       [
         `Production's release v0.1.57 failed in the build step at ${clock(at)}, 12 minutes ago.`,
-        "The error: Build pipeline failed; no recognised log pattern matched.",
+        "The error: The build step exited with code 1.",
         "Build log · v0.1.57:\n```\n> pnpm install --frozen-lockfile\nERR_PNPM_OUTDATED_LOCKFILE  Cannot install\n```",
         "Find out why, fix it, and release again.",
       ].join("\n\n"),
