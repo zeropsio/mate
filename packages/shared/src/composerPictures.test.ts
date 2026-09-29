@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   PICTURE_MAX_BYTES,
   PICTURE_MAX_EDGE,
+  messagePictures,
   pictureBlockText,
   pictureLabel,
   pictureNoteText,
@@ -159,5 +160,56 @@ describe("pictureWords", () => {
     ],
   ])("%s", (_label, text, pictureCount, expected) => {
     expect(pictureWords(text, pictureCount)).toBe(expected);
+  });
+});
+
+describe("messagePictures", () => {
+  const image = (id: string) => ({ id, type: "image", mimeType: "image/png" });
+  const file = (id: string, mimeType = "image/png") => ({ id, type: "file", mimeType });
+  const text = "[Picture 1]\nwords\n[Picture 2]";
+
+  it.each([
+    ["no labels, no pictures", "Look at these", [image("a"), image("b")], []],
+    [
+      "each image is the picture its label names",
+      text,
+      [image("a"), image("b")],
+      [
+        { n: 1, image: "a", original: null },
+        { n: 2, image: "b", original: null },
+      ],
+    ],
+    [
+      "a picture's original is the image file right after it",
+      text,
+      [image("a"), file("a-original"), image("b")],
+      [
+        { n: 1, image: "a", original: "a-original" },
+        { n: 2, image: "b", original: null },
+      ],
+    ],
+    [
+      "a file that is not an image is nobody's original",
+      text,
+      [image("a"), file("notes", "text/plain"), image("b")],
+      [
+        { n: 1, image: "a", original: null },
+        { n: 2, image: "b", original: null },
+      ],
+    ],
+    [
+      "an image past the last label is not a picture",
+      "[Picture 1]",
+      [image("a"), image("b")],
+      [{ n: 1, image: "a", original: null }],
+    ],
+  ])("%s", (_label, message, attachments, expected) => {
+    expect(
+      messagePictures(message, attachments).map((picture) => ({
+        n: picture.n,
+        image: picture.image.id,
+        original: picture.original?.id ?? null,
+      })),
+    ).toEqual(expected);
   });
 });

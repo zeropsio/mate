@@ -3616,6 +3616,71 @@ code {
   }
 }
 
+/* The person's message: each picture where it was put, its notes under it. */
+.message-picture {
+  --picture-edge: color-mix(in srgb, var(--color-foreground) 14%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+}
+
+.message-picture-open {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  cursor: zoom-in;
+}
+
+.message-picture-img {
+  display: block;
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px var(--picture-edge);
+}
+
+.message-picture-open:focus-visible .message-picture-img {
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+
+.message-picture-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.message-picture-notes li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font: 400 14px/20px var(--font-sans);
+}
+
+.message-picture-notes .picture-note-badge {
+  margin-top: 1px;
+}
+
+.message-picture-original {
+  color: var(--color-muted-foreground);
+  font: 400 13px/18px var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+.message-pictures {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 /* ==== end of composer pictures ==== */
 
 /* ==== Pass 16 · review ==== */

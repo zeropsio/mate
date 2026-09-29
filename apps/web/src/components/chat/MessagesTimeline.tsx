@@ -81,6 +81,11 @@ import {
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
+import {
+  MessagePictureBody,
+  placeMessagePictures,
+  useMessagePictureDimensions,
+} from "./MessagePictures";
 import { useAssetUrls } from "../../assets/assetUrls";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import {
@@ -1965,6 +1970,18 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     row.imageOnly ? "" : row.message.text,
   );
   const terminalContexts = displayedUserMessage.contexts;
+  // Pictures sit where the person put them; images no label places stay above the words.
+  const placedPictures = useMemo(
+    () =>
+      placeMessagePictures(displayedUserMessage.visibleText, messageWithPreviews.attachments ?? []),
+    [displayedUserMessage.visibleText, messageWithPreviews.attachments],
+  );
+  const pictureDimensions = useMessagePictureDimensions(ctx.activeThreadEnvironmentId, resources);
+  const imagesAbove = placedPictures?.unplaced ?? userImages;
+  const expandImage = (image: ChatImageAttachment) => {
+    const preview = buildExpandedImagePreview(userImages, image.id);
+    if (preview) ctx.onImageExpand(preview);
+  };
   const revertTurnCount = row.revertTurnCount;
 
   return (
@@ -1979,9 +1996,9 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
         data-message-aside={row.aside ? "true" : undefined}
       >
         <MessageAuthorHeading>You</MessageAuthorHeading>
-        {userImages.length > 0 && (
+        {imagesAbove.length > 0 && (
           <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
-            {userImages.map((image: ChatImageAttachment) => (
+            {imagesAbove.map((image: ChatImageAttachment) => (
               <div
                 key={image.id}
                 className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
@@ -1991,11 +2008,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                     type="button"
                     className="h-full w-full cursor-zoom-in"
                     aria-label={`Preview ${image.name}`}
-                    onClick={() => {
-                      const preview = buildExpandedImagePreview(userImages, image.id);
-                      if (!preview) return;
-                      ctx.onImageExpand(preview);
-                    }}
+                    onClick={() => expandImage(image)}
                   >
                     <img
                       src={image.previewUrl}
@@ -2012,12 +2025,32 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             ))}
           </div>
         )}
-        <CollapsibleUserMessageBody
-          text={displayedUserMessage.visibleText}
-          terminalContexts={terminalContexts}
-          skills={ctx.skills}
-          markdownCwd={ctx.markdownCwd}
-        />
+        {placedPictures ? (
+          <MessagePictureBody
+            segments={placedPictures.segments}
+            dimensions={pictureDimensions}
+            onOpen={expandImage}
+            renderText={(text) => (
+              <CollapsibleUserMessageBody
+                text={text}
+                terminalContexts={
+                  text === placedPictures.segments.findLast((part) => part.kind === "text")?.text
+                    ? terminalContexts
+                    : []
+                }
+                skills={ctx.skills}
+                markdownCwd={ctx.markdownCwd}
+              />
+            )}
+          />
+        ) : (
+          <CollapsibleUserMessageBody
+            text={displayedUserMessage.visibleText}
+            terminalContexts={terminalContexts}
+            skills={ctx.skills}
+            markdownCwd={ctx.markdownCwd}
+          />
+        )}
       </div>
       {row.receipt ? (
         <span className="flex shrink-0 pb-1.5">

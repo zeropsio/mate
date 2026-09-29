@@ -119,3 +119,34 @@ export function pictureWords(text: string, pictureCount: number): string {
     )
     .join("\n");
 }
+
+export interface MessagePicture<A> {
+  readonly n: number;
+  readonly image: A;
+  /** The untouched file the person kept beside the picture, for the Mate to use. */
+  readonly original: A | null;
+}
+
+/**
+ * A message's pictures: its n-th image is picture n while its text holds the
+ * label, and an image-typed file right after a picture's image is that
+ * picture's kept original (the composer sends it there).
+ */
+export function messagePictures<A extends { readonly type: string; readonly mimeType: string }>(
+  text: string,
+  attachments: ReadonlyArray<A>,
+): MessagePicture<A>[] {
+  const imageCount = attachments.filter((attachment) => attachment.type === "image").length;
+  const labelled = splitPictureText(text, imageCount).filter(
+    (segment) => segment.kind === "picture",
+  ).length;
+  const pictures: MessagePicture<A>[] = [];
+  attachments.forEach((attachment, index) => {
+    if (attachment.type !== "image" || pictures.length >= labelled) return;
+    const next = attachments[index + 1];
+    const original =
+      next && next.type === "file" && next.mimeType.startsWith("image/") ? next : null;
+    pictures.push({ n: pictures.length + 1, image: attachment, original });
+  });
+  return pictures;
+}
