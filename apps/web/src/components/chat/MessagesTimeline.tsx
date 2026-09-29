@@ -1380,7 +1380,7 @@ function rowInset(row: TimelineRow): string {
   }
   // A line with no card keeps the card's geometry in a frame nobody sees, so
   // opening it draws the card around the line without moving it.
-  if (row.kind === "work-line") return "border-x border-t border-transparent px-4 pt-2";
+  if (row.kind === "work-line") return "run-tray-ghost";
   return "px-4.25";
 }
 

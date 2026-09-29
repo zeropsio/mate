@@ -419,7 +419,7 @@ function ChatScroll({
           <ol
             ref={contentRef}
             aria-label={label}
-            className={cn("mt-auto flex min-w-0 flex-col gap-4", empty ? "pt-3" : "pt-2 pb-4")}
+            className={cn("mt-auto flex min-w-0 flex-col gap-4", empty ? "pt-1" : "pt-px pb-4")}
           >
             {children}
           </ol>

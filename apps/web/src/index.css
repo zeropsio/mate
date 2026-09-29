@@ -2973,23 +2973,33 @@ code {
   border-width: 0 1px;
 }
 
+/* Corners run parallel (S4): the tray's 30 px is its bubbles' 18 px plus the
+   12 px between them — 11 px of padding inside the 1 px ring. */
 .run-tray-top {
   border-top-width: 1px;
-  border-top-left-radius: 1.5rem;
-  border-top-right-radius: 1.5rem;
-  padding-top: 0.5rem;
-  padding-inline: 1rem;
+  border-top-left-radius: 30px;
+  border-top-right-radius: 30px;
+  padding-top: 11px;
+  padding-inline: 11px;
 }
 
 .run-tray-middle {
-  padding-inline: 1rem;
+  padding-inline: 11px;
 }
 
 .run-tray-bottom {
-  height: 1rem;
+  height: 12px;
   border-bottom-width: 1px;
-  border-bottom-left-radius: 1.5rem;
-  border-bottom-right-radius: 1.5rem;
+  border-bottom-left-radius: 30px;
+  border-bottom-right-radius: 30px;
+}
+
+/* A run's line with nothing under it keeps the tray's geometry in a frame
+   nobody sees, so the tray drawn around it later never moves its words. */
+.run-tray-ghost {
+  border: 1px solid transparent;
+  border-bottom: 0;
+  padding: 11px 11px 0;
 }
 
 /* ==== end of the run's card ==== */

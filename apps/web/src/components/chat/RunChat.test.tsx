@@ -550,10 +550,10 @@ describe("RunChat", () => {
   it("keeps an empty chat's room to the card's own, so the face stands in its middle", () => {
     const list = (markup: string) => /<ol[^>]*class="([^"]*)"/u.exec(markup)?.[1]?.split(" ") ?? [];
     const empty = list(draw(record([], { live: true, status: status() })));
-    expect(empty).toContain("pt-3");
+    expect(empty).toContain("pt-1");
     expect(empty).not.toContain("pb-4");
     const said = list(draw(record([thought("r1", "The route and the check disagree.")])));
-    expect(said).toEqual(expect.arrayContaining(["pt-2", "pb-4"]));
+    expect(said).toEqual(expect.arrayContaining(["pt-px", "pb-4"]));
   });
 
   // The Mate's column lines its bubbles up over the face at the chat's foot,
