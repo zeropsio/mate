@@ -5,7 +5,8 @@
  * taken (the mobile app, older web builds): camera photos of up to 10 MiB.
  *
  * It opens PNG and JPEG only. The work is synchronous and CPU-bound, and runs
- * on whichever thread calls it: a 12-megapixel photo takes most of a second.
+ * on whichever thread calls it: a 12-megapixel photo takes most of a second,
+ * so the server fits on a worker thread (`attachmentFitThread.ts`).
  */
 // @effect-diagnostics nodeBuiltinImport:off -- a synchronous inflate with an output cap
 import * as NodeZlib from "node:zlib";

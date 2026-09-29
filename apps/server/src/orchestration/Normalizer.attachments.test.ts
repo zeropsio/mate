@@ -12,9 +12,12 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import { PICTURE_MAX_BYTES } from "@t3tools/shared/composerPictures";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as JpegJs from "jpeg-js";
 import { PNG } from "pngjs";
@@ -541,6 +544,43 @@ describe("normalizeDispatchCommand picture fitting", () => {
         width: 2000,
         height: 1500,
       });
+    }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.live("fits a picture while the server's own thread goes on", () =>
+    Effect.gen(function* () {
+      const photo = JpegJs.encode(
+        { width: 2400, height: 1800, data: gradient(2400, 1800) },
+        90,
+      ).data;
+      const pauses: number[] = [];
+      let last = yield* Clock.currentTimeMillis;
+      const tick = Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis;
+        pauses.push(now - last);
+        last = now;
+      });
+      const ticker = yield* Effect.forkChild(tick.pipe(Effect.repeat(Schedule.spaced("5 millis"))));
+      const normalized = yield* normalizeDispatchCommand(
+        turnStartCommand({
+          attachments: [
+            {
+              name: "IMG_0412.jpg",
+              mimeType: "image/jpeg",
+              dataUrl: `data:image/jpeg;base64,${photo.toString("base64")}`,
+              sizeBytes: photo.byteLength,
+            },
+          ],
+        }),
+      ).pipe(Effect.ensuring(Fiber.interrupt(ticker)));
+      yield* tick;
+
+      if (normalized.type !== "thread.turn.start") {
+        throw new Error("Expected a thread.turn.start command.");
+      }
+      expect(normalized.message.attachments[0]).toMatchObject({ width: 2000, height: 1500 });
+      // Fitting this photo takes a few hundred milliseconds of work.
+      expect(Math.max(...pauses)).toBeLessThan(100);
     }).pipe(Effect.provide(testLayer)),
   );
 

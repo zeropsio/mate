@@ -12,7 +12,8 @@ import {
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
 } from "@t3tools/contracts";
 
-import { fitImageForProviders, withFittedPicture, withPictureSize } from "../attachmentFit.ts";
+import { withFittedPicture, withPictureSize } from "../attachmentFit.ts";
+import { fitPictureOffThread } from "../attachmentFitThread.ts";
 import {
   createAttachmentId,
   planAttachmentClaim,
@@ -84,7 +85,15 @@ const fitPicture = Effect.fn("Normalizer.fitPicture")(function* (
   name: string,
   picture: { readonly bytes: Uint8Array; readonly mimeType: string },
 ) {
-  const fit = fitImageForProviders(picture);
+  const fit = yield* fitPictureOffThread(picture).pipe(
+    Effect.mapError(
+      (cause) =>
+        new OrchestrationDispatchCommandError({
+          message: `Picture '${name}' could not be shrunk to send. Send a smaller copy.`,
+          cause,
+        }),
+    ),
+  );
   if (fit._tag === "too-large") {
     return yield* new OrchestrationDispatchCommandError({
       message: `Picture '${name}' is too large to send even after shrinking it. Send a smaller copy.`,
