@@ -576,6 +576,22 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   const projectOrder = useProjectOrder();
   const treeRef = useRef<HTMLElement>(null);
   const reorder = useProjectReorder(treeRef);
+  // A Mate opened from elsewhere — Add landing on the new Mate, a link, a
+  // page — stands in view in the menu: its row scrolled to the nearest edge
+  // once it is drawn (a new Mate's row comes a moment after its view, so every
+  // draw looks until it is there). Not the one open at mount: a reload leaves
+  // the menu where it was.
+  const shownActiveRef = useRef(activeProjectId);
+  useEffect(() => {
+    if (activeProjectId == null || shownActiveRef.current === activeProjectId) return;
+    const row = treeRef.current?.querySelector<HTMLElement>(
+      `[data-zerops-mate-row="${CSS.escape(activeProjectId)}"]`,
+    );
+    if (row == null) return;
+    shownActiveRef.current = activeProjectId;
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    row.scrollIntoView({ block: "nearest", behavior: still ? "auto" : "smooth" });
+  });
   // What "a week untouched" is measured from: the moment the menu was drawn.
   const [nowMs] = useState(Date.now);
   // The projects whose quiet Mates somebody unfolded; not remembered.
