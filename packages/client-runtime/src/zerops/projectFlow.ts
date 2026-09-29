@@ -111,6 +111,13 @@ export interface FlowPullRequest {
   readonly mergeBase?: string | undefined;
   /** The base branch's head as read: past {@link mergeBase}, `main` moved on since. */
   readonly baseSha?: string | undefined;
+  /**
+   * Its description as its author wrote it, Markdown with its pictures; `undefined` where none was
+   * written. What a review reads first.
+   */
+  readonly description?: string | undefined;
+  /** How many comments were said on it, as Gitea counts them: the room its conversation takes. */
+  readonly commentCount?: number | undefined;
 }
 
 /** The default branch until Gitea says otherwise. */
@@ -162,6 +169,8 @@ export function flowPullRequest(input: {
     changedFiles: pull.changed_files,
     mergeBase: pull.merge_base,
     baseSha: pull.base?.sha,
+    description: pull.body === undefined || pull.body.trim().length === 0 ? undefined : pull.body,
+    commentCount: pull.comments,
   };
 }
 

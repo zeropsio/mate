@@ -186,6 +186,47 @@ const LONG = {
   },
 } as const;
 
+/** A change whose diff holds lines far wider than the review: an import list and an inlined SVG. */
+const WIDE_IMPORT = `import { pool, migrate, ensureInbox, boardCols, itemCols, bus, changed, listenForChanges, ${Array.from(
+  { length: 24 },
+  (_, index) => `columnReader${String(index)}`,
+).join(", ")} } from "./db";`;
+const WIDE_SVG = `const logo = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="${Array.from(
+  { length: 40 },
+  (_, index) => `M${String(index)} ${String(index * 2)}L${String(index + 3)} ${String(index)}`,
+).join(" ")}"/></svg>';`;
+const WIDE_FILES: ReadonlyArray<GiteaChangedFile> = [
+  {
+    filename: "server/index.ts",
+    previousFilename: undefined,
+    status: "modified",
+    additions: 2,
+    deletions: 1,
+  },
+];
+const WIDE = {
+  files: { kind: "read", value: WIDE_FILES },
+  diff: {
+    kind: "read",
+    value: {
+      files: parseChangeDiff(
+        [
+          "diff --git a/server/index.ts b/server/index.ts",
+          "--- a/server/index.ts",
+          "+++ b/server/index.ts",
+          `@@ -1,3 +1,4 @@ ${WIDE_IMPORT.slice(0, 60)}`,
+          '-import { pool } from "./db";',
+          `+${WIDE_IMPORT}`,
+          `+${WIDE_SVG}`,
+          " ",
+          " const app = new Hono();",
+        ].join("\n"),
+      ),
+      cut: false,
+    },
+  },
+} as const;
+
 const FILES_UNREAD = {
   reading: { files: { kind: "reading" } },
   failed: { files: { kind: "failed", reason: "Gitea did not answer in time." } },
@@ -355,6 +396,17 @@ export const REVIEW_STATES: ReadonlyArray<{
         open={["pnpm-lock.yaml", "src/server/index.ts", "src/web/app.tsx"]}
         over={{ additions: 2_615, deletions: 6 }}
         readout={LONG}
+      />
+    ),
+  },
+  {
+    id: "wide",
+    label: "A diff with lines wider than the review",
+    node: (
+      <Change
+        open={["server/index.ts"]}
+        over={{ additions: 2, deletions: 1, changedFiles: 1 }}
+        readout={WIDE}
       />
     ),
   },

@@ -543,6 +543,51 @@ describe("GiteaClient pull request shas (DESIGN A7)", () => {
   });
 });
 
+describe("GiteaClient a change's pictures, read as the person", () => {
+  it("reads a picture on its own Gitea with the person's token, as bytes a page can show", async () => {
+    const calls: Array<{ readonly url: string; readonly authorization: string | undefined }> = [];
+    const client = createGiteaClient({
+      origin: ORIGIN,
+      token: "t-1",
+      fetch: (input, init) => {
+        calls.push({
+          url: String(input),
+          authorization: (init?.headers as Record<string, string> | undefined)?.authorization,
+        });
+        return Promise.resolve(
+          new Response(new Uint8Array([137, 80, 78, 71]), {
+            headers: { "content-type": "image/png" },
+          }),
+        );
+      },
+    });
+    const picture = await client.picture(`${ORIGIN}/attachments/5f1c2a`);
+    expect(calls).toEqual([{ url: `${ORIGIN}/attachments/5f1c2a`, authorization: "Bearer t-1" }]);
+    expect(picture.type).toBe("image/png");
+    expect(new Uint8Array(await picture.arrayBuffer())).toEqual(new Uint8Array([137, 80, 78, 71]));
+  });
+
+  it.each([
+    ["another origin", "https://pictures.example/cat.png"],
+    ["the same host on another port", `${ORIGIN}:8443/attachments/5f1c2a`],
+    ["a plain http copy of it", ORIGIN.replace("https:", "http:") + "/attachments/5f1c2a"],
+    ["an inline address", "data:image/png;base64,iVBORw0KGgo="],
+    ["something that is not an address", "not a url"],
+  ])("never sends the token to %s", async (_case, url) => {
+    const fetch = vi.fn();
+    const client = createGiteaClient({ origin: ORIGIN, token: "t-1", fetch });
+    await expect(client.picture(url)).rejects.toBeInstanceOf(GiteaApiError);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("says Gitea's refusal of a picture with its status", async () => {
+    const { client } = fake([{ status: 404, text: "Not Found" }]);
+    await expect(client.picture(`${ORIGIN}/attachments/gone`)).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+});
+
 describe("GiteaClient a change you can read (pass 16 R8)", () => {
   it("lists the files a pull request changes, with each one's +/−, page by page", async () => {
     const full = Array.from({ length: 50 }, (_, index) => ({
