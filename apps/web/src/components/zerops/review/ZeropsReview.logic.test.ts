@@ -306,32 +306,60 @@ describe("changeRequestPrefill", () => {
 
 describe("changeConflict: which files main moved under a change that no longer merges", () => {
   const files = [{ filename: "src/server/index.ts" }, { filename: "src/routes/status.ts" }];
-  const mainSince = [
-    { subject: "Tidy (#4)", at: "2026-09-29T08:00:00Z", files: ["README.md"] },
-    { subject: "Health routes (#5)", at: "2026-09-29T09:40:00Z", files: ["src/server/index.ts"] },
-  ];
+  const HEAD = "c".repeat(40);
+  const routes = {
+    sha: "a".repeat(40),
+    subject: "Routes (#3)",
+    at: "2026-09-29T07:00:00Z",
+    files: ["src/server/index.ts"],
+  };
+  const tidy = {
+    sha: "b".repeat(40),
+    subject: "Tidy (#4)",
+    at: "2026-09-29T08:00:00Z",
+    files: ["README.md"],
+  };
+  // main's head, the newest of them.
+  const health = {
+    sha: HEAD,
+    subject: "Health routes (#5)",
+    at: "2026-09-29T09:40:00Z",
+    files: ["src/server/index.ts"],
+  };
+  const oldestFirst = [routes, tidy, health];
+  const newest = {
+    files: ["src/server/index.ts"],
+    by: { subject: "Health routes (#5)", at: "2026-09-29T09:40:00Z" },
+  };
   it.each([
     [
-      "names the overlap and the newest commit that made it",
-      { mergeability: "conflicting", files, mainSince },
-      {
-        files: ["src/server/index.ts"],
-        by: { subject: "Health routes (#5)", at: "2026-09-29T09:40:00Z" },
-      },
+      "names the overlap and the newest commit that made it, main's commits oldest first",
+      { mergeability: "conflicting", files, mainSince: oldestFirst, head: HEAD },
+      newest,
+    ],
+    [
+      "names the same newest commit with main's commits newest first",
+      { mergeability: "conflicting", files, mainSince: [health, tidy, routes], head: HEAD },
+      newest,
+    ],
+    [
+      "names no commit where main's head is not among them to tell which is newest",
+      { mergeability: "conflicting", files, mainSince: oldestFirst, head: "d".repeat(40) },
+      { files: ["src/server/index.ts"], by: undefined },
     ],
     [
       "says nothing for a change that merges",
-      { mergeability: "mergeable", files, mainSince },
+      { mergeability: "mergeable", files, mainSince: oldestFirst, head: HEAD },
       undefined,
     ],
     [
       "waits for main's side",
-      { mergeability: "conflicting", files, mainSince: undefined },
+      { mergeability: "conflicting", files, mainSince: undefined, head: HEAD },
       undefined,
     ],
     [
       "finds no overlap where main's commits named no files",
-      { mergeability: "conflicting", files, mainSince: [{ subject: "x" }] },
+      { mergeability: "conflicting", files, mainSince: [{ sha: HEAD, subject: "x" }], head: HEAD },
       { files: [], by: undefined },
     ],
   ])("%s", (_name, input, expected) => {

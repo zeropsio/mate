@@ -336,17 +336,24 @@ export function changeRequestPrefill(pull: {
 /**
  * Which of a change's files `main` moved under it, and the newest commit that did — for a change
  * that no longer merges; `undefined` for one that does, or while either read is out.
+ *
+ * Which end of `main`'s commits is the newest is told by where `main`'s head sits among them
+ * (`head`), as the stage marks tell it (`stageMarks.ts`), never by the order a read happens to
+ * list them in; with the head not among them, no commit is named.
  */
 export function changeConflict(input: {
   readonly mergeability: string;
   readonly files: ReadonlyArray<{ readonly filename: string }> | undefined;
   readonly mainSince:
     | ReadonlyArray<{
+        readonly sha: string;
         readonly subject: string;
         readonly at?: string | undefined;
         readonly files?: ReadonlyArray<string> | undefined;
       }>
     | undefined;
+  /** `main`'s head, as the change was read against it. */
+  readonly head: string | undefined;
 }):
   | {
       readonly files: ReadonlyArray<string>;
@@ -354,13 +361,15 @@ export function changeConflict(input: {
     }
   | undefined {
   if (input.mergeability !== "conflicting" || input.files === undefined) return undefined;
-  if (input.mainSince === undefined) return undefined;
-  const touched = new Set(input.mainSince.flatMap((commit) => commit.files ?? []));
+  const commits = input.mainSince;
+  if (commits === undefined) return undefined;
+  const touched = new Set(commits.flatMap((commit) => commit.files ?? []));
   const overlap = input.files.map((file) => file.filename).filter((path) => touched.has(path));
-  // A comparison lists the oldest first: the newest to touch one of them is the last that did.
-  const by = input.mainSince.findLast((commit) =>
-    (commit.files ?? []).some((path) => overlap.includes(path)),
-  );
+  const moved = (commit: (typeof commits)[number]) =>
+    (commit.files ?? []).some((path) => overlap.includes(path));
+  const head = input.head?.toLowerCase();
+  const at = commits.findIndex((commit) => commit.sha.toLowerCase() === head);
+  const by = at === -1 ? undefined : at === 0 ? commits.find(moved) : commits.findLast(moved);
   return { files: overlap, by: by === undefined ? undefined : { subject: by.subject, at: by.at } };
 }
 

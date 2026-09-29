@@ -332,7 +332,12 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           ? "failed"
           : "reading",
     commits: readout.commits.kind === "read" ? readout.commits.value : undefined,
-    conflict: changeConflict({ mergeability: pull.mergeability, files, mainSince }),
+    conflict: changeConflict({
+      mergeability: pull.mergeability,
+      files,
+      mainSince,
+      head: pull.baseSha,
+    }),
     behindBy: mainSince?.length,
     downstream: props.downstream,
     waiting: {

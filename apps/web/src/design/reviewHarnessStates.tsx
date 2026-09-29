@@ -383,7 +383,7 @@ export const REVIEW_STATES: ReadonlyArray<{
           { sha: "c1", subject: "Tidy the README (#4)", files: ["README.md"] },
           { sha: "c2", subject: "Health routes (#5)", files: ["src/server/health.ts"] },
         ]}
-        over={{ baseSha: "main-now" }}
+        over={{ baseSha: "c2" }}
       />
     ),
   },
@@ -400,7 +400,7 @@ export const REVIEW_STATES: ReadonlyArray<{
             files: ["src/server/index.ts"],
           },
         ]}
-        over={{ mergeability: "conflicting", baseSha: "main-now" }}
+        over={{ mergeability: "conflicting", baseSha: "c2" }}
       />
     ),
   },
