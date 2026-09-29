@@ -2955,6 +2955,17 @@ code {
   .menu-line {
     border-radius: 10px;
   }
+
+  /* The words' second ink: what the person asked, and the crew's one fact.
+     The name is the ink itself and the answer muted, so the three lines of a
+     row stay apart with no gap between them. */
+  .menu-ink-2 {
+    color: color-mix(in oklab, var(--contrast-sidebar-foreground) 76%, transparent);
+  }
+
+  .dark .menu-ink-2 {
+    color: color-mix(in oklab, var(--contrast-sidebar-foreground) 78%, transparent);
+  }
 }
 
 /* ==== end of the menu's rows ==== */

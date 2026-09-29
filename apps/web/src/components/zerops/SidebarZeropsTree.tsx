@@ -2194,12 +2194,16 @@ function MateRow<T extends RosterCandidate>({
             )}
           </span>
         </span>
+        {/* One even leading, three lines of one thing: the name 14/20, what
+            was asked 13/18, the answer 13/18, and no gap between them — the
+            name used to float over a paragraph on a 22 px line and 2 px of
+            air. The ask is the words' second ink, the answer muted. */}
         <span className="flex min-w-0 flex-col">
-          <span className="flex min-w-0 items-center gap-2">
+          <span className="flex h-5 min-w-0 items-center gap-2">
             <span className={cn("flex min-w-0 flex-1 items-center gap-1", renaming && "invisible")}>
               <span
                 className={cn(
-                  "min-w-0 truncate text-sm leading-5.5",
+                  "min-w-0 truncate text-sm leading-5",
                   unread ? "font-bold" : "font-medium",
                 )}
                 data-zerops-surface="sidebar-mate-name"
@@ -2239,8 +2243,7 @@ function MateRow<T extends RosterCandidate>({
           {subject === undefined ? null : (
             <span
               className={cn(
-                "mt-0.5 truncate text-xs leading-4.5",
-                unread ? "font-medium text-sidebar-foreground" : "text-sidebar-muted-foreground",
+                "menu-ink-2 truncate text-line leading-4.5",
                 subjectChanged && "animate-words-in motion-reduce:animate-none",
               )}
               data-zerops-surface="sidebar-mate-subject"
@@ -2264,7 +2267,7 @@ function MateRow<T extends RosterCandidate>({
       </button>
       {actions === undefined ? null : (
         <span
-          className="absolute end-2 top-2.75 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100"
+          className="absolute end-2 top-2.5 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100"
           data-zerops-surface="sidebar-mate-actions"
         >
           {actions.stop === undefined ? null : (
@@ -2444,11 +2447,11 @@ function MateSnippet({
   return (
     // The words keep their node while a draft stands over them in the same
     // cell, so clearing the draft does not replay their rise.
-    <span className="grid min-w-0 text-xs leading-4.5">
+    <span className="grid min-w-0 text-line leading-4.5">
       <span
         aria-hidden={drafting ? true : undefined}
         className={cn(
-          "col-start-1 row-start-1 truncate text-sidebar-muted-foreground/70",
+          "col-start-1 row-start-1 truncate text-muted-foreground",
           drafting && "invisible",
           wordsChanged && "animate-words-in motion-reduce:animate-none",
         )}
@@ -2459,7 +2462,7 @@ function MateSnippet({
       </span>
       {drafting ? (
         <span
-          className="col-start-1 row-start-1 truncate text-sidebar-muted-foreground/70"
+          className="col-start-1 row-start-1 truncate text-muted-foreground"
           data-zerops-surface="sidebar-mate-snippet"
         >
           <span className="font-medium text-sidebar-foreground">Draft:</span> {unsent}
@@ -2511,8 +2514,8 @@ function ComingMateRow({
         <MateFace size="md" state="sleep" tint="slate" />
       </span>
       <span className="flex min-w-0 flex-col">
-        <span className="min-w-0 truncate text-sm leading-5.5 font-medium">{name}</span>
-        <span className="mt-0.5 truncate text-xs leading-4.5 text-sidebar-muted-foreground">
+        <span className="min-w-0 truncate text-sm leading-5 font-medium">{name}</span>
+        <span className="truncate text-line leading-4.5 text-muted-foreground">
           {comingMateLine(coming)}
         </span>
       </span>

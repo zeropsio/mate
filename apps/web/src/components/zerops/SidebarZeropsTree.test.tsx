@@ -312,12 +312,16 @@ describe("SidebarZeropsTree", () => {
     expect(snippetAt).toBeGreaterThan(subjectAt);
     expect(html).toContain("give it optimistic updates");
     expect(html).toContain("Deploying and verifying now.");
-    // Three tones, and only the name is at full strength: what the Mate was
-    // asked and what it said back are both previews and both recede.
+    // Three inks on one leading, and only the name at full strength: what the
+    // Mate was asked in the words' second ink, what it said back muted, both
+    // 13/18 with no gap between the lines.
     const subject = html.slice(html.lastIndexOf("<span", subjectAt), subjectAt);
     const snippet = html.slice(html.lastIndexOf("<span", snippetAt), snippetAt);
-    expect(subject).toContain('text-sidebar-muted-foreground"');
-    expect(snippet).toContain("text-sidebar-muted-foreground/70");
+    expect(subject).toContain("menu-ink-2");
+    expect(subject).toContain("text-line leading-4.5");
+    expect(subject).not.toContain("mt-");
+    expect(snippet).toContain("text-muted-foreground");
+    expect(html).toContain('class="grid min-w-0 text-line leading-4.5"');
   });
 
   const READING: CandidatesNotice = {
@@ -2170,19 +2174,18 @@ describe("a Mate's row says more without words", () => {
     expect(time).not.toContain(">2h<");
   });
 
-  it("sets an unread Mate's name and task in bold, and a read one in the usual weight", () => {
+  it("sets an unread Mate's name in bold, and keeps what was asked in its one ink either way", () => {
     const name = (html: string) =>
       /<span class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate-name"/u.exec(html)?.[1] ?? "";
     const subject = (html: string) =>
       /<span class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate-subject"/u.exec(html)?.[1] ?? "";
     const unread = row(live({ unread: true }));
     expect(name(unread)).toContain("font-bold");
-    expect(subject(unread)).toContain("text-sidebar-foreground");
-    expect(subject(unread)).toContain("font-medium");
+    expect(subject(unread)).toContain("menu-ink-2");
     const read = row(live());
     expect(name(read)).toContain("font-medium");
     expect(name(read)).not.toContain("font-bold");
-    expect(subject(read)).toContain("text-sidebar-muted-foreground");
+    expect(subject(read)).toBe(subject(unread));
   });
 
   describe("an unsent draft", () => {
