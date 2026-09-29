@@ -109,7 +109,7 @@ const COMMITS: ZeropsCommitsState = {
 };
 
 function comments(state: ZeropsChangeComments["state"]): ZeropsChangeComments {
-  return { state, say: async () => null, saying: false };
+  return { state, say: async () => null, saying: false, retry: () => {} };
 }
 
 const TALKING = comments({

@@ -121,7 +121,10 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
 const READ = {
   files: { kind: "read", value: FILES },
   diff: { kind: "read", value: { files: parseChangeDiff(DIFF), cut: false } },
-  commits: { kind: "read", value: 1 },
+  commits: {
+    kind: "read",
+    value: [{ sha: "b21d904cb21d904cb21d904cb21d904cb21d904c", subject: "Add a /status page" }],
+  },
   mainSince: { kind: "none" },
 } as const;
 

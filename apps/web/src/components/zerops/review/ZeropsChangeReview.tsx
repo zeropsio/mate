@@ -293,7 +293,7 @@ export interface ChangeReviewViewProps {
   readonly readout: {
     readonly files: ReadoutPart<ReadonlyArray<GiteaChangedFile>>;
     readonly diff: ReadoutPart<ChangeDiffRead>;
-    readonly commits: ReadoutPart<number>;
+    readonly commits: ReadoutPart<ReadonlyArray<GiteaCommit>>;
     readonly mainSince: ReadoutPart<ReadonlyArray<GiteaCommit>>;
   };
   readonly run: { readonly words: string | undefined; readonly reading: boolean };
@@ -331,7 +331,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         : readout.files.kind === "failed"
           ? "failed"
           : "reading",
-    commits: readout.commits.kind === "read" ? readout.commits.value : undefined,
+    commits: readout.commits.kind === "read" ? readout.commits.value.length : undefined,
     conflict: changeConflict({
       mergeability: pull.mergeability,
       files,

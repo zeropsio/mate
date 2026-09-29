@@ -40,7 +40,7 @@ function remarks(): ReadonlyArray<ChangeRemark> {
 }
 
 function comments(state: ZeropsChangeCommentsState): ZeropsChangeComments {
-  return { state, say: async () => null, saying: false };
+  return { state, say: async () => null, saying: false, retry: () => {} };
 }
 
 function render(props: Partial<Parameters<typeof ZeropsChangeConversation>[0]> = {}): string {
