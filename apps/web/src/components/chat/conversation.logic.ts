@@ -1473,6 +1473,8 @@ export interface OutcomeService {
   readonly word: string;
   readonly version: string | null;
   readonly url: string | null;
+  /** When the run last deployed, started or checked it: a version made after is someone else's. */
+  readonly at: string;
   /** Still broken as the run left it: why, when, and what its log said last. */
   readonly failure: OutcomeFailure | null;
 }
@@ -1495,6 +1497,23 @@ export interface OutcomeNotDone {
   readonly word: string;
   readonly reason: string | null;
   readonly at: string;
+}
+
+/**
+ * What the runs after a run took over since it ended — its rows are theirs
+ * now — and whether the person wrote again, which answers what waited on
+ * them.
+ */
+export interface OutcomeLater {
+  /** Services a later run deployed, started, stopped, created or removed. */
+  readonly services: ReadonlyArray<string>;
+  /** Changes a later run pushed to: "repository#number". */
+  readonly changes: ReadonlyArray<string>;
+  /** Crew tasks a later run worked, by number. */
+  readonly tasks: ReadonlyArray<number>;
+  /** Pages a later run checked, by host and path. */
+  readonly pages: ReadonlyArray<string>;
+  readonly answered: boolean;
 }
 
 export interface OutcomeModel {
@@ -1525,8 +1544,15 @@ export interface OutcomeModel {
   } | null;
   readonly created: ReadonlyArray<string>;
   readonly notDone: ReadonlyArray<OutcomeNotDone>;
+  /** Steps of its plan it did not finish. */
+  readonly planLeft: ReadonlyArray<string>;
+  /** The pull request its push landed through: the change it left for the person. */
+  readonly change: { readonly repository: string; readonly number: number } | null;
+  /** The crew task it worked, as its card named it. */
+  readonly crewTask: { readonly number: number; readonly title: string } | null;
   /** What its calls came to, by kind: the effort its worked line counts (`runEffortWords`). */
   readonly activity: ReadonlyArray<OutcomeActivity>;
+  readonly later: OutcomeLater;
 }
 
 function shortVersion(operation: ZeropsOperation): string | null {
@@ -1585,6 +1611,126 @@ export function isGitPushOnly(operation: ZeropsOperation): boolean {
   );
 }
 
+const NOTHING_LATER: OutcomeLater = {
+  services: [],
+  changes: [],
+  tasks: [],
+  pages: [],
+  answered: false,
+};
+
+/** The names an import created or a removal took away: "db, cache" is two. */
+function servicesNamed(subject: string): string[] {
+  return subject.split(/,\s*/u).filter((name) => name.length > 0 && name !== "the services");
+}
+
+/** The services a settled operation takes over: deployed, started, stopped, created or removed. */
+function takenServices(operation: ZeropsOperation): string[] {
+  if (operation.phase === "running") return [];
+  switch (operation.kind) {
+    case "deploy":
+      return isGitPushOnly(operation) ? [] : [operationTargetKey(operation)];
+    case "devServer":
+      return ["start", "restart", "stop"].includes(devServerAction(operation))
+        ? [operationTargetKey(operation)]
+        : [];
+    case "import":
+    case "delete":
+      return operation.phase === "done" ? servicesNamed(operation.subject) : [];
+    default:
+      return [];
+  }
+}
+
+/** The crew task a turn worked: the one its card names — "#12 Camera rig · from you". */
+function crewTaskOf(turn: ConversationTurn): { number: number; title: string } | null {
+  const card = turn.span.opener === null ? null : readCrewCard(turn.span.opener.message.text);
+  const match = card === null ? null : /^#(\d+)\s+(.+?)(?:\s+·\s+[^·]*)?$/u.exec(card.title);
+  return match === null ? null : { number: Number(match[1]), title: match[2]!.trim() };
+}
+
+/** What one run took over, read off its settled work: the same run is asked by every run before it. */
+interface TurnClaims {
+  readonly services: ReadonlyArray<string>;
+  readonly changes: ReadonlyArray<string>;
+  readonly pages: ReadonlyArray<string>;
+  readonly task: number | null;
+  /** The person wrote it: not a command, not the server resuming after a limit. */
+  readonly answers: boolean;
+}
+
+const claimsByTurn = new WeakMap<ConversationTurn, TurnClaims>();
+
+function turnClaims(turn: ConversationTurn): TurnClaims {
+  const known = claimsByTurn.get(turn);
+  if (known !== undefined) return known;
+  const services: string[] = [];
+  const changes: string[] = [];
+  const pages: string[] = [];
+  for (const operation of turn.stretches.flatMap(stretchOperations).flatMap(splitBatchDeploy)) {
+    if (operation.phase === "running") continue;
+    services.push(...takenServices(operation));
+    if (operation.pullRequest !== undefined) {
+      changes.push(`${operation.pullRequest.repository}#${operation.pullRequest.number}`);
+    }
+    if (operation.kind === "browser") pages.push(browserCheckPage(operation));
+  }
+  const opener = turn.span.opener;
+  const claims: TurnClaims = {
+    services,
+    changes,
+    pages,
+    task: crewTaskOf(turn)?.number ?? null,
+    answers: opener !== null && !isResumePrompt(opener.message.text) && !isCommandMessage(opener),
+  };
+  claimsByTurn.set(turn, claims);
+  return claims;
+}
+
+/** What the runs after one took over, and whether the person wrote since. */
+function laterClaims(turns: ReadonlyArray<ConversationTurn>): OutcomeLater {
+  if (turns.length === 0) return NOTHING_LATER;
+  const services = new Set<string>();
+  const changes = new Set<string>();
+  const tasks = new Set<number>();
+  const pages = new Set<string>();
+  let answered = false;
+  for (const turn of turns) {
+    const claims = turnClaims(turn);
+    for (const host of claims.services) services.add(host);
+    for (const change of claims.changes) changes.add(change);
+    for (const page of claims.pages) pages.add(page);
+    if (claims.task !== null) tasks.add(claims.task);
+    answered ||= claims.answers;
+  }
+  return {
+    services: [...services],
+    changes: [...changes],
+    tasks: [...tasks],
+    pages: [...pages],
+    answered,
+  };
+}
+
+/** The steps its plan still had open when the run ended: its last plan's. */
+function planLeftOf(turn: ConversationTurn): string[] {
+  const plan = turn.stretches
+    .flatMap((stretch) => stretch.entries)
+    .findLast((entry) => entry.kind === "turn-plan");
+  return plan?.kind === "turn-plan"
+    ? plan.turnPlan.plan.steps.flatMap((step) => (step.status === "completed" ? [] : [step.step]))
+    : [];
+}
+
+/** The turns after the one keyed `turnKey`: what its outcome follows. */
+export function turnsAfter(
+  structure: Pick<ConversationStructure, "turns">,
+  turnKey: string,
+): ReadonlyArray<ConversationTurn> {
+  const index = structure.turns.findIndex((turn) => turn.key === turnKey);
+  return index < 0 ? [] : structure.turns.slice(index + 1);
+}
+
 /**
  * What a settled turn left, each fact once: the services it left running or
  * broken — as the run left them, never a failure it came back from (the
@@ -1599,6 +1745,8 @@ export function deriveOutcome(input: {
   readonly diff: TurnDiffSummary | null;
   /** What its calls came to (`activityCounts`). */
   readonly activity?: ReadonlyArray<OutcomeActivity>;
+  /** The conversation's turns after it (`turnsAfter`): what they took over since. */
+  readonly later?: ReadonlyArray<ConversationTurn>;
 }): OutcomeModel | null {
   const { turn } = input;
   if (turn.live || turn.limitOnly) return null;
@@ -1624,6 +1772,7 @@ export function deriveOutcome(input: {
         word: brokenWord(operation),
         version: known?.version ?? null,
         url: known?.url ?? null,
+        at: operation.settledAt ?? operation.anchorAt,
         failure: failureOf(operation),
       });
       continue;
@@ -1650,6 +1799,7 @@ export function deriveOutcome(input: {
         word: running ? "Dev server running" : "Dev server not running",
         version: known?.version ?? null,
         url,
+        at: operation.settledAt ?? operation.anchorAt,
         failure: null,
       });
       continue;
@@ -1660,6 +1810,7 @@ export function deriveOutcome(input: {
       word: operation.kind === "verify" ? "Healthy" : "Deployed",
       version: operation.kind === "deploy" ? shortVersion(operation) : (known?.version ?? null),
       url,
+      at: operation.settledAt ?? operation.anchorAt,
       failure: null,
     });
   }
@@ -1726,7 +1877,12 @@ export function deriveOutcome(input: {
         : null,
     created,
     notDone,
+    planLeft: planLeftOf(turn),
+    change:
+      settled.findLast((operation) => operation.pullRequest !== undefined)?.pullRequest ?? null,
+    crewTask: crewTaskOf(turn),
     activity: input.activity ?? [],
+    later: laterClaims(input.later ?? []),
   };
   const empty =
     outcome.activity.length === 0 &&
@@ -1735,7 +1891,10 @@ export function deriveOutcome(input: {
     outcome.files === null &&
     outcome.checks === null &&
     outcome.created.length === 0 &&
-    outcome.notDone.length === 0;
+    outcome.notDone.length === 0 &&
+    outcome.planLeft.length === 0 &&
+    outcome.change === null &&
+    outcome.crewTask === null;
   return empty ? null : outcome;
 }
 

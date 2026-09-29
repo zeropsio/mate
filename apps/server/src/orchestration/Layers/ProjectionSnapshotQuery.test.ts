@@ -25,6 +25,7 @@ import { ORCHESTRATION_PROJECTOR_NAMES } from "./ProjectionPipeline.ts";
 import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQuery.ts";
 import * as ThreadBackgroundLiveness from "../ThreadBackgroundLiveness.ts";
 import * as ThreadPlanProgress from "../ThreadPlanProgress.ts";
+import * as ThreadLiveStep from "../ThreadLiveStep.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import { encodeThreadDetailPageCursor } from "../threadDetailCursor.ts";
 import { projectThreadDetailSnapshot } from "../ActivityPayloadProjection.ts";
@@ -40,11 +41,13 @@ const encodeChatAttachments = Schema.encodeEffect(
 );
 const encodeUsagePause = Schema.encodeEffect(Schema.fromJsonString(ThreadUsagePauseState));
 const encodeCrewOrigin = Schema.encodeEffect(Schema.fromJsonString(ThreadCrewOrigin));
+const encodeActivityPayload = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
 const projectionSnapshotLayer = it.layer(
   OrchestrationProjectionSnapshotQueryLive.pipe(
     Layer.provide(ThreadBackgroundLiveness.layer),
     Layer.provide(ThreadPlanProgress.layer),
+    Layer.provideMerge(ThreadLiveStep.layer),
     Layer.provideMerge(RepositoryIdentityResolver.layer),
     Layer.provideMerge(SqlitePersistenceMemory),
     Layer.provideMerge(NodeServices.layer),
@@ -1032,6 +1035,164 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           assert.strictEqual(thread !== undefined && "crew" in thread, row.expected !== undefined);
         }
       }
+    }),
+  );
+
+  it.effect("reads the question a waiting thread asks onto every shell; nothing on the rest", () =>
+    Effect.gen(function* () {
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      const sql = yield* SqlClient.SqlClient;
+
+      yield* sql`DELETE FROM projection_projects`;
+      yield* sql`DELETE FROM projection_threads`;
+      yield* sql`DELETE FROM projection_thread_activities`;
+      yield* sql`DELETE FROM projection_state`;
+      yield* sql`
+        INSERT INTO projection_projects (
+          project_id, title, workspace_root, default_model_selection_json, scripts_json,
+          created_at, updated_at, deleted_at
+        ) VALUES (
+          'project-questions', 'Questions', '/var/www',
+          '{"provider":"claudeAgent","model":"opus"}', '[]',
+          '2026-09-29T00:00:00.000Z', '2026-09-29T00:00:00.000Z', NULL
+        )
+      `;
+      const asked = (requestId: string, question: string) => ({
+        requestId,
+        questions: [{ id: "q0", header: "Merge", question, options: [] }],
+      });
+      const rows = [
+        {
+          id: "thread-waiting",
+          pending: 1,
+          archivedAt: null,
+          activities: [
+            {
+              kind: "user-input.requested",
+              payload: asked("req-1", "Ship the status page now, or after the review?"),
+            },
+          ],
+          expected: "Ship the status page now, or after the review?",
+        },
+        {
+          id: "thread-answered",
+          pending: 0,
+          archivedAt: null,
+          activities: [
+            { kind: "user-input.requested", payload: asked("req-2", "Which colour?") },
+            {
+              kind: "user-input.resolved",
+              payload: { requestId: "req-2", answers: {} },
+            },
+          ],
+          expected: undefined,
+        },
+        { id: "thread-idle", pending: 0, archivedAt: null, activities: [], expected: undefined },
+        {
+          id: "thread-waiting-archived",
+          pending: 1,
+          archivedAt: "2026-09-29T09:00:00.000Z",
+          activities: [
+            { kind: "user-input.requested", payload: asked("req-3", "Keep the old route?") },
+          ],
+          expected: "Keep the old route?",
+        },
+      ];
+      for (const row of rows) {
+        yield* sql`
+          INSERT INTO projection_threads (
+            thread_id, project_id, title, model_selection_json, runtime_mode, interaction_mode,
+            latest_user_message_at, pending_approval_count, pending_user_input_count,
+            has_actionable_proposed_plan, created_at, updated_at, archived_at, deleted_at
+          ) VALUES (
+            ${row.id}, 'project-questions', ${row.id},
+            '{"provider":"claudeAgent","model":"opus"}', 'full-access', 'default',
+            NULL, 0, ${row.pending}, 0, '2026-09-29T08:00:00.000Z', '2026-09-29T08:00:00.000Z',
+            ${row.archivedAt}, NULL
+          )
+        `;
+        for (const [index, activity] of row.activities.entries()) {
+          yield* sql`
+            INSERT INTO projection_thread_activities (
+              activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence,
+              created_at
+            ) VALUES (
+              ${`${row.id}-activity-${index}`}, ${row.id}, NULL, 'info', ${activity.kind},
+              'User input', ${yield* encodeActivityPayload(activity.payload)}, ${index + 1},
+              ${`2026-09-29T08:00:0${index + 1}.000Z`}
+            )
+          `;
+        }
+      }
+
+      const shells = (yield* snapshotQuery.getShellSnapshot()).threads;
+      const archivedShells = (yield* snapshotQuery.getArchivedShellSnapshot()).threads;
+      for (const row of rows) {
+        const id = ThreadId.make(row.id);
+        const live = row.archivedAt === null;
+        const readers = {
+          shellSnapshot: (live ? shells : archivedShells).find((thread) => thread.id === id),
+          ...(live
+            ? { shellById: Option.getOrUndefined(yield* snapshotQuery.getThreadShellById(id)) }
+            : {}),
+        };
+        for (const [reader, thread] of Object.entries(readers)) {
+          assert.isDefined(thread, `${reader} ${row.id}`);
+          assert.strictEqual(thread?.pendingQuestion, row.expected, `${reader} ${row.id}`);
+          assert.strictEqual(thread?.hasPendingUserInput, row.expected !== undefined);
+        }
+      }
+    }),
+  );
+
+  it.effect("reads a running turn's live step onto every shell while it runs", () =>
+    Effect.gen(function* () {
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      const liveSteps = yield* ThreadLiveStep.ThreadLiveStepService;
+      const sql = yield* SqlClient.SqlClient;
+
+      yield* sql`DELETE FROM projection_projects`;
+      yield* sql`DELETE FROM projection_threads`;
+      yield* sql`DELETE FROM projection_state`;
+      yield* sql`
+        INSERT INTO projection_projects (
+          project_id, title, workspace_root, default_model_selection_json, scripts_json,
+          created_at, updated_at, deleted_at
+        ) VALUES (
+          'project-live', 'Live', '/var/www',
+          '{"provider":"claudeAgent","model":"opus"}', '[]',
+          '2026-09-29T00:00:00.000Z', '2026-09-29T00:00:00.000Z', NULL
+        )
+      `;
+      for (const id of ["thread-working", "thread-resting"]) {
+        yield* sql`
+          INSERT INTO projection_threads (
+            thread_id, project_id, title, model_selection_json, runtime_mode, interaction_mode,
+            latest_user_message_at, pending_approval_count, pending_user_input_count,
+            has_actionable_proposed_plan, created_at, updated_at, archived_at, deleted_at
+          ) VALUES (
+            ${id}, 'project-live', ${id},
+            '{"provider":"claudeAgent","model":"opus"}', 'full-access', 'default',
+            NULL, 0, 0, 0, '2026-09-29T08:00:00.000Z', '2026-09-29T08:00:00.000Z', NULL, NULL
+          )
+        `;
+      }
+      liveSteps.observe("thread-working", { type: "turn-started", at: "2026-09-29T08:00:00.000Z" });
+      liveSteps.observe("thread-working", { type: "writing", at: "2026-09-29T08:00:04.000Z" });
+      const writing = { kind: "writing", since: "2026-09-29T08:00:04.000Z" };
+
+      const shells = (yield* snapshotQuery.getShellSnapshot()).threads;
+      const shellOf = (id: string) => shells.find((thread) => thread.id === id);
+      assert.deepEqual(shellOf("thread-working")?.liveStep, writing);
+      assert.deepEqual(
+        Option.getOrUndefined(
+          yield* snapshotQuery.getThreadShellById(ThreadId.make("thread-working")),
+        )?.liveStep,
+        writing,
+      );
+      // A thread with nothing running reads as before: no key at all.
+      assert.isFalse("liveStep" in (shellOf("thread-resting") ?? {}));
+      liveSteps.clearThread("thread-working");
     }),
   );
 
@@ -2336,6 +2497,7 @@ it.effect(
     const layer = OrchestrationProjectionSnapshotQueryLive.pipe(
       Layer.provide(ThreadBackgroundLiveness.layer),
       Layer.provide(ThreadPlanProgress.layer),
+      Layer.provide(ThreadLiveStep.layer),
       Layer.provideMerge(
         Layer.succeed(RepositoryIdentityResolver.RepositoryIdentityResolver, {
           resolve: (cwd: string) =>

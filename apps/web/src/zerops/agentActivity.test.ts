@@ -1,5 +1,12 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId, TurnId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+  TurnId,
+  type ThreadLiveStep,
+} from "@t3tools/contracts";
 import { SECRET_MASK } from "@t3tools/shared/messagePreview";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -557,5 +564,125 @@ describe("agentActivityErrorLine", () => {
     { name: "no error kept, no line", lastError: null, kind: "failed", line: undefined },
   ])("$name", ({ lastError, kind, line }) => {
     expect(agentActivityErrorLine({ session: session(lastError) }, kind).errorLine).toBe(line);
+  });
+});
+
+const since = "2026-09-05T10:01:05.000Z";
+const building: ThreadLiveStep = {
+  kind: "calls",
+  since,
+  calls: [
+    {
+      id: "call-build",
+      activityKind: "tool.updated",
+      itemType: "command_execution",
+      title: "Command run",
+      detail: "Bash: pnpm build",
+      toolName: "Bash",
+      command: "pnpm build",
+      input: { description: "Build the app" },
+      startedAt: since,
+    },
+  ],
+};
+const asking: ThreadLiveStep = {
+  kind: "calls",
+  since,
+  calls: [
+    {
+      id: "call-ask",
+      activityKind: "tool.updated",
+      itemType: "dynamic_tool_call",
+      title: "Tool call",
+      detail: 'AskUserQuestion: {"questions":[{"question":"Ship it now?"}]}',
+      toolName: "AskUserQuestion",
+      startedAt: since,
+    },
+  ],
+};
+
+describe("the row's live step", () => {
+  it.each<{
+    readonly name: string;
+    readonly thread: EnvironmentThreadShell;
+    readonly liveStep: { readonly words: string; readonly code?: string } | undefined;
+  }>([
+    {
+      name: "a working Mate says the step its card's now line says",
+      thread: shell({ ...RUNNING, liveStep: building }),
+      liveStep: { words: "Build the app", code: "pnpm build" },
+    },
+    {
+      name: "between steps it thinks",
+      thread: shell({ ...RUNNING, liveStep: { kind: "thinking", since } }),
+      liveStep: { words: "Thinking" },
+    },
+    {
+      name: "its words streaming, it writes",
+      thread: shell({ ...RUNNING, liveStep: { kind: "writing", since } }),
+      liveStep: { words: "Writing" },
+    },
+    {
+      name: "asking, before the question reaches the shell: waiting for the answer",
+      thread: shell({ ...RUNNING, liveStep: asking }),
+      liveStep: { words: "Waiting for your answer" },
+    },
+    {
+      name: "a server that relays no step: none, and the row holds its dots",
+      thread: RUNNING,
+      liveStep: undefined,
+    },
+    {
+      name: "a Mate at rest has no step, whatever a shell still carries",
+      thread: shell({ liveStep: building }),
+      liveStep: undefined,
+    },
+    {
+      name: "a Mate waiting on the person has no step: what it waits on is its line",
+      thread: shell({ ...RUNNING, hasPendingUserInput: true, liveStep: asking }),
+      liveStep: undefined,
+    },
+  ])("$name", ({ thread, liveStep }) => {
+    expect(threadAgentActivity(thread, undefined).liveStep).toEqual(liveStep);
+  });
+});
+
+describe("the question a needs-you row says", () => {
+  it.each<{
+    readonly name: string;
+    readonly thread: EnvironmentThreadShell;
+    readonly question: string | undefined;
+  }>([
+    {
+      name: "a Mate waiting on its question says the question",
+      thread: shell({
+        ...RUNNING,
+        hasPendingUserInput: true,
+        pendingQuestion: "Ship the status page now, or after the review?",
+        liveStep: asking,
+      }),
+      question: "Ship the status page now, or after the review?",
+    },
+    {
+      name: "a server that relays no question: none, and the row keeps its last words",
+      thread: shell({ hasPendingUserInput: true }),
+      question: undefined,
+    },
+    {
+      name: "an approval waits first: that is no question",
+      thread: shell({
+        hasPendingApprovals: true,
+        hasPendingUserInput: true,
+        pendingQuestion: "Which colour?",
+      }),
+      question: undefined,
+    },
+    {
+      name: "answered: no question",
+      thread: shell({ pendingQuestion: null }),
+      question: undefined,
+    },
+  ])("$name", ({ thread, question }) => {
+    expect(threadAgentActivity(thread, undefined).question).toBe(question);
   });
 });

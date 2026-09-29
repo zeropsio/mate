@@ -42,6 +42,7 @@ import {
   type TimelineRowSharedState,
 } from "~/components/chat/timelineContext";
 import { TurnReport } from "~/components/chat/TurnReport";
+import { ResultStates } from "./resultFixtures";
 import { foldSteps, stepOf } from "~/components/chat/workSteps.logic";
 import type { WorkLogEntry } from "~/session-logic";
 import type { ChatMessage } from "~/types";
@@ -281,6 +282,7 @@ const REPORT: OutcomeModel = {
       word: "Healthy",
       version: "11ea406",
       url: "https://example.dev",
+      at: ago(20),
       failure: null,
     },
     {
@@ -289,6 +291,7 @@ const REPORT: OutcomeModel = {
       word: "Deployed",
       version: null,
       url: null,
+      at: ago(20),
       failure: null,
     },
     {
@@ -297,6 +300,7 @@ const REPORT: OutcomeModel = {
       word: "Failed",
       version: null,
       url: null,
+      at: ago(20),
       failure: null,
     },
   ],
@@ -305,7 +309,11 @@ const REPORT: OutcomeModel = {
   checks: { count: 5, views: 2, failures: 0, takes: [] },
   created: [],
   notDone: [],
+  planLeft: [],
+  change: null,
+  crewTask: null,
   activity: [],
+  later: { services: [], changes: [], tasks: [], pages: [], answered: false },
 };
 
 const TURN = TurnId.make("turn-1");
@@ -842,6 +850,7 @@ function Harness() {
             threadRef={null}
           />
         </State>
+        <ResultStates />
       </div>
     </div>
   );

@@ -232,54 +232,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/chat/ComposerPendingApprovalPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[10px] in \"ml-auto shrink-0 text-[10px] font-medium text-muted-foreground tabular-nums\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerPendingApprovalPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"max-w-32 shrink truncate text-[11px] font-medium text-foreground\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerPendingApprovalPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"whitespace-pre font-mono text-[11px]\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[10px] in \"text-[10px] font-medium text-muted-foreground tabular-nums\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"text-[11px]\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"text-secondary-label text-[11px]\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/chat/ComposerPrimaryActions.tsx",
     "kind": "Literal",
     "fingerprint": "<> active:inset-shadow-[0_1px_--theme(--color-black/8%)] in \"flex h-9 w-9 items-center justify-center rounded-full bg-message-action text-message-action-foreground shadow-xs transition-[scale,background-color,box-shadow,opacity] duration-150 ease-out enabled:cursor-pointer enabled:inset-shadow-[0_1px_--theme(--color-white/16%)] enabled:shadow-message-action/24 hover:scale-105 hover:bg-message-action-hover active:scale-95 active:inset-shadow-[0_1px_--theme(--color-black/8%)] active:shadow-none disabled:pointer-events-none disabled:bg-foreground/9 disabled:text-muted-foreground disabled:shadow-none disabled:hover:scale-100 sm:h-8 sm:w-8\"",
@@ -298,14 +250,6 @@
   {
     "path": "apps/web/src/components/chat/ComposerStashBadge.tsx",
     "kind": "Literal",
-    "fingerprint": "<> text-[10px] in \"text-[10px] font-medium leading-none tabular-nums\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerStashBadge.tsx",
-    "kind": "Literal",
     "fingerprint": "<Button> [--control-icon-color:currentColor] in \"[--control-icon-color:currentColor] text-foreground\"",
     "owner": "web-intake",
     "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
@@ -314,31 +258,7 @@
   {
     "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
     "kind": "Literal",
-    "fingerprint": "<> text-[10px] in \"shrink-0 text-[10px] text-secondary-label\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[10px] in \"shrink-0 text-[10px] text-warning-foreground\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerStashMenu.tsx",
-    "kind": "Literal",
     "fingerprint": "<Button> [--control-icon-color:currentColor] in \"pointer-events-none shrink-0 [--control-icon-color:currentColor] opacity-0 shadow-none! transition-opacity pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 group-hover/stash:pointer-events-auto group-hover/stash:opacity-100 group-focus-within/stash:pointer-events-auto group-focus-within/stash:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerTasksBadge.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[10px] in \"ml-auto w-12 shrink-0 text-right text-[10px] text-muted-foreground/45 tabular-nums\"",
     "owner": "web-intake",
     "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
     "expires": "F6"
