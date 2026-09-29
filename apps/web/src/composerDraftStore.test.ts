@@ -317,6 +317,32 @@ describe("composerDraftStore pictures in the text", () => {
     expect(revokeSpy.mock.calls.map(([url]) => url)).toEqual(revoked);
   });
 
+  it("a picture back in the text (an undo, a paste) returns to the draft in its place", () => {
+    const back = makeImage({ id: "back", previewUrl: "blob:back" });
+    useComposerDraftStore.getState().syncImages(threadRef, ["one", "back", "two"], [back]);
+    expect(ids()).toEqual(["one", "back", "two"]);
+    expect(revokeSpy).not.toHaveBeenCalled();
+  });
+
+  it("a picture back in the text that the draft still has stays the draft's", () => {
+    const stale = makeImage({ id: "one", previewUrl: "blob:one-stale" });
+    useComposerDraftStore.getState().syncImages(threadRef, ["two", "one"], [stale]);
+    const images = draftFor(threadRef.threadId, TEST_ENVIRONMENT_ID)?.images ?? [];
+    expect(images.map((image) => [image.id, image.previewUrl])).toEqual([
+      ["two", "blob:two"],
+      ["one", "blob:one"],
+    ]);
+  });
+
+  it("a picture back in the text of a draft that had gone brings the draft back", () => {
+    const other = scopeThreadRef(TEST_ENVIRONMENT_ID, ThreadId.make("thread-emptied"));
+    const back = makeImage({ id: "back", previewUrl: "blob:back" });
+    useComposerDraftStore.getState().syncImages(other, ["back"], [back]);
+    expect(draftFor(other.threadId, TEST_ENVIRONMENT_ID)?.images.map((image) => image.id)).toEqual([
+      "back",
+    ]);
+  });
+
   it("a picture made again keeps its place and lets its old copy go", () => {
     const again = makeImage({ id: "one", previewUrl: "blob:one-again", sizeBytes: 9 });
     useComposerDraftStore.getState().updateImage(threadRef, again);

@@ -287,3 +287,73 @@ describe("whichever Mate is on screen", () => {
     expect(bitmap!.close).toHaveBeenCalled();
   });
 });
+
+describe("a picture taken out of the text", () => {
+  async function addedPicture() {
+    await show(A);
+    await act(() => api.add([pngFile("shot-1200x800.png")]));
+    await settle();
+    return draftOf(A)!.images[0]!;
+  }
+
+  /** What the editor reports after an edit: the pictures it holds, and its text. */
+  async function textHolds(pictureIds: ReadonlyArray<string>, prompt: string) {
+    let healed: string | null = null;
+    await act(() => {
+      healed = api.sync(pictureIds, prompt);
+    });
+    return healed;
+  }
+
+  it("comes back with an undo, as it was", async () => {
+    const picture = await addedPicture();
+
+    await textHolds([], "");
+    expect(draftOf(A)?.images ?? []).toEqual([]);
+    expect(uploads.released).toEqual([picture.id]);
+
+    expect(await textHolds([picture.id], P)).toBeNull();
+    const [back] = draftOf(A)!.images;
+    expect(back).toEqual({ ...picture, previewUrl: back!.previewUrl });
+    expect(back!.previewUrl).not.toBe(picture.previewUrl);
+  });
+
+  it("comes back with an undo after its corner took it out", async () => {
+    const picture = await addedPicture();
+
+    await act(() => api.remove(picture.id));
+    expect(draftOf(A)?.images ?? []).toEqual([]);
+
+    expect(await textHolds([picture.id], P)).toBeNull();
+    expect(draftOf(A)!.images.map((image) => image.id)).toEqual([picture.id]);
+  });
+
+  it("taken out while its copy was being made, is made again when it comes back", async () => {
+    await show(A);
+    const first = deferred<unknown>();
+    copies.fit.mockReturnValueOnce(first.promise);
+    await act(() => api.add([pngFile("shot-1200x800.png")]));
+    const picture = draftOf(A)!.images[0]!;
+
+    await textHolds([], "");
+    first.resolve({ kind: "as-pasted" });
+    await settle();
+    await textHolds([picture.id], P);
+    await settle();
+
+    expect(copies.fit).toHaveBeenCalledTimes(2);
+    expect(imageOf(A, picture.id)!.picture!.preparing).toBe(false);
+  });
+
+  it("a picture too large to send does not come back", async () => {
+    copies.fit.mockResolvedValue({ kind: "too-large" });
+    await show(A);
+    await act(() => api.add([pngFile("huge-9000x9000.png")]));
+    await settle();
+    expect(draftOf(A)?.images ?? []).toEqual([]);
+
+    const [id] = [...new Set(uploads.released)];
+    expect(await textHolds([id!], `Look${P}`)).toBe("Look");
+    expect(draftOf(A)?.images ?? []).toEqual([]);
+  });
+});

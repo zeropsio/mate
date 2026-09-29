@@ -561,7 +561,16 @@ interface ComposerDraftStoreState {
   /** An image made again (a picture's new copy), in its place. */
   updateImage: (threadRef: ComposerThreadTarget, image: ComposerImageAttachment) => void;
   /** The images the text still holds, in the text's order; the rest go. */
-  syncImages: (threadRef: ComposerThreadTarget, imageIds: ReadonlyArray<string>) => void;
+  /**
+   * The draft's images become the text's, in its order: an image the text no
+   * longer holds goes, and one of `returning` the text holds again (an undo,
+   * a paste after a cut) comes back.
+   */
+  syncImages: (
+    threadRef: ComposerThreadTarget,
+    imageIds: ReadonlyArray<string>,
+    returning?: ReadonlyArray<ComposerImageAttachment>,
+  ) => void;
   removeImage: (threadRef: ComposerThreadTarget, imageId: string) => void;
   insertTerminalContext: (
     threadRef: ComposerThreadTarget,
@@ -3112,18 +3121,27 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             };
           });
         },
-        syncImages: (threadRef, imageIds) => {
+        syncImages: (threadRef, imageIds, returning = []) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
-          const existing = threadKey ? get().draftsByThreadKey[threadKey] : undefined;
+          const existing =
+            (threadKey ? get().draftsByThreadKey[threadKey] : undefined) ??
+            (threadKey && returning.length > 0 ? createEmptyThreadDraft() : undefined);
           if (!existing) {
             return;
           }
-          const byId = new Map(existing.images.map((image) => [image.id, image]));
+          const byId = new Map([
+            ...returning.map((image): [string, ComposerImageAttachment] => [image.id, image]),
+            ...existing.images.map((image): [string, ComposerImageAttachment] => [image.id, image]),
+          ]);
           const images = imageIds.flatMap((id) => {
             const image = byId.get(id);
             return image ? [image] : [];
           });
           const kept = new Set(images.map((image) => image.id));
+          // A returning image the draft did not take lets its preview go.
+          for (const image of returning) {
+            if (!images.includes(image)) revokeObjectPreviewUrl(image.previewUrl);
+          }
           if (
             images.length === existing.images.length &&
             images.every((image, index) => image === existing.images[index])
@@ -3134,7 +3152,9 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             if (!kept.has(image.id)) revokeObjectPreviewUrl(image.previewUrl);
           }
           set((state) => {
-            const current = state.draftsByThreadKey[threadKey];
+            const current =
+              state.draftsByThreadKey[threadKey] ??
+              (returning.length > 0 ? createEmptyThreadDraft() : undefined);
             if (!current) {
               return state;
             }

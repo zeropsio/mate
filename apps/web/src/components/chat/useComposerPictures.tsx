@@ -64,6 +64,9 @@ import { ComposerPictureView } from "./ComposerPictureView";
 /** How long an edit waits for the next before the copy is made again. */
 const REMAKE_DELAY_MS = 450;
 
+/** How many pictures taken out of the text are kept, the latest first, for an undo or a paste. */
+const HELD_PICTURES = 12;
+
 export interface ComposerPicturesInput {
   readonly draftTarget: ScopedThreadRef | DraftId;
   readonly environmentId: EnvironmentId;
@@ -87,9 +90,10 @@ export interface ComposerPictures {
   readonly remove: (id: string) => void;
   readonly retry: (id: string) => void;
   /**
-   * The editor's pictures, in its order: the draft follows. A place whose
-   * picture is already gone (undone back into the text) leaves it; the
-   * prompt without it is returned, or null when nothing had to go.
+   * The editor's pictures, in its order: the draft follows. A picture taken
+   * out of the text is kept a while, and comes back with its place (an undo);
+   * a place whose picture is gone for good leaves the text: the prompt
+   * without it is returned, or null when nothing had to go.
    */
   readonly sync: (pictureIds: ReadonlyArray<string>, prompt: string) => string | null;
   /** Why the message cannot go yet, or null. */
@@ -150,6 +154,9 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
   const owners = useRef(new Map<string, DraftTarget>());
   // Pictures still being read, in no draft yet.
   const arriving = useRef(new Set<string>());
+  // Pictures taken out of the text, the latest last: an undo or a paste
+  // brings them back as they were.
+  const held = useRef(new Map<string, ComposerImageAttachment>());
   const [thumbnails, setThumbnails] = useState<ReadonlyMap<string, string>>(() => new Map());
   // The open picture, and its pasted file decoded (null after a reload dropped it).
   const [opened, setOpened] = useState<{
@@ -175,8 +182,10 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
     const bitmap = bitmaps.current.get(id);
     const thumbnail = bitmap ? thumbnailOf(bitmap, picture) : null;
     setThumbnails((current) => {
-      // Thumbnails of pictures no longer in the draft go as a new one comes.
-      const next = new Map([...current].filter(([key]) => bitmaps.current.has(key)));
+      // Thumbnails of pictures gone for good go as a new one comes.
+      const next = new Map(
+        [...current].filter(([key]) => bitmaps.current.has(key) || held.current.has(key)),
+      );
       if (thumbnail) next.set(id, thumbnail);
       else next.delete(id);
       return next;
@@ -215,14 +224,33 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
     return decoded;
   }, []);
 
+  /** A picture leaves the text: its upload goes, and it is kept a while in case it comes back. */
+  const hold = useCallback(
+    (image: ComposerImageAttachment) => {
+      supersede(image.id);
+      releaseAttachmentUpload(image.id);
+      held.current.delete(image.id);
+      held.current.set(image.id, image);
+      for (const id of held.current.keys()) {
+        if (held.current.size <= HELD_PICTURES) break;
+        held.current.delete(id);
+      }
+    },
+    [supersede],
+  );
+
   const removePicture = useCallback(
-    (id: string) => {
+    (id: string, options?: { readonly forGood?: boolean }) => {
       const target = targetOf(id);
       const images = imagesOf(target);
       const index = images.findIndex((image) => image.id === id);
       if (index < 0) return;
-      supersede(id);
-      releaseAttachmentUpload(id);
+      if (options?.forGood) {
+        supersede(id);
+        releaseAttachmentUpload(id);
+      } else {
+        hold(images[index]!);
+      }
       const shown = isOnScreen(target);
       const { promptRef, onPromptWritten } = latest.current;
       const removal = removeInlinePicturePlaceholder(
@@ -241,7 +269,7 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
         collapseExpandedComposerCursor(removal.prompt, removal.cursor),
       );
     },
-    [isOnScreen, setPrompt, supersede, syncImages, targetOf],
+    [hold, isOnScreen, setPrompt, supersede, syncImages, targetOf],
   );
 
   /** The picture goes as it is: nothing is making its copy any more. */
@@ -297,7 +325,7 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
         return;
       }
       if (copy.kind === "too-large") {
-        removePicture(id);
+        removePicture(id, { forGood: true });
         latest.current.onError(`'${source.name}' is too large to send, even fitted.`);
         return;
       }
@@ -570,24 +598,42 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
 
   const sync = useCallback(
     (pictureIds: ReadonlyArray<string>, prompt: string): string | null => {
-      const { draftTarget } = latest.current;
-      const images = useComposerDraftStore.getState().getComposerDraft(draftTarget)?.images ?? [];
-      const known = new Set(images.map((image) => image.id));
-      const kept = pictureIds.filter((id) => known.has(id));
+      const target = latest.current.draftTarget;
+      const images = imagesOf(target);
+      const inDraft = new Set(images.map((image) => image.id));
+      // A picture taken out comes back as it was, with a preview of its own.
+      const returning = pictureIds.flatMap((id) => {
+        const image = inDraft.has(id) ? undefined : held.current.get(id);
+        return image ? [{ ...image, previewUrl: URL.createObjectURL(image.file) }] : [];
+      });
+      const known = new Set([...inDraft, ...returning.map((image) => image.id)]);
+      // A picture has one place: a second place for it is a place without one.
+      const placed = new Set<string>();
+      const keeps = pictureIds.map((id) => {
+        if (!known.has(id) || placed.has(id)) return false;
+        placed.add(id);
+        return true;
+      });
+      const kept = pictureIds.filter((_id, index) => keeps[index]);
       for (const image of images) {
-        if (!kept.includes(image.id)) releaseAttachmentUpload(image.id);
+        if (!placed.has(image.id)) hold(image);
       }
-      syncImages(draftTarget, kept);
-      if (kept.length === pictureIds.length) return null;
+      for (const image of returning) {
+        held.current.delete(image.id);
+        owners.current.set(image.id, target);
+      }
+      syncImages(target, kept, returning);
+      for (const image of returning) {
+        if (image.picture?.preparing) void makeCopy(image.id);
+      }
+      if (keeps.every(Boolean)) return null;
       let healed = prompt;
       for (let index = pictureIds.length - 1; index >= 0; index -= 1) {
-        if (!known.has(pictureIds[index]!)) {
-          healed = removeInlinePicturePlaceholder(healed, index).prompt;
-        }
+        if (!keeps[index]) healed = removeInlinePicturePlaceholder(healed, index).prompt;
       }
       return healed;
     },
-    [syncImages],
+    [hold, makeCopy, syncImages],
   );
 
   const retry = useCallback(
