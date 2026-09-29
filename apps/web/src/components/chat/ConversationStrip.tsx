@@ -150,12 +150,13 @@ function MateChatsMenu({
 }
 
 /**
- * The Mate, leading the line: its face at 24 and its name at 16/600 in ink.
- * With a crew it stands on the menu's selected band while its own chat is
- * open, its chat's subject on hover, a double-click renaming that chat; with
- * another chat on screen it is the same without the band, and a press opens
- * its own chat. A Mate with no crew is drawn the same, never on the band, and
- * its header stays as it was — the task follows its name.
+ * The Mate, leading the line: its face at 24 and its name at 16/600 in ink,
+ * and nothing else — what its chat is about is its hover, never words on the
+ * line (the owner: descriptions live in tooltips). While its own chat is open
+ * a double-click renames that chat, and — with a crew — it stands on the
+ * menu's selected band; with a crewmate's chat on screen it is the same
+ * without the band, and a press opens its own chat. A Mate with no crew is
+ * drawn the same, never on the band.
  */
 function MatePill({
   mate,
@@ -182,7 +183,7 @@ function MatePill({
       {mate.name}
     </span>
   );
-  const press = crew ? (
+  const press = (
     <button
       aria-current={mate.open ? "page" : undefined}
       aria-label={mate.open ? mate.name : (mate.tooltip ?? mate.name)}
@@ -205,14 +206,6 @@ function MatePill({
       {face}
       {name}
     </button>
-  ) : (
-    <span
-      className={cn("flex h-8 min-w-0 items-center gap-2.5 ps-2", chats === null ? "pe-3" : "pe-1")}
-      data-zerops-surface="header-mate"
-    >
-      {face}
-      {name}
-    </span>
   );
   return (
     <div
@@ -221,10 +214,12 @@ function MatePill({
       data-on={band ? "" : undefined}
       data-opens={opens ? "" : undefined}
     >
-      {crew && mate.tooltip !== null ? (
+      {mate.tooltip !== null ? (
         <Tooltip>
           <TooltipTrigger render={press} />
-          <TooltipPopup side="bottom">{mate.tooltip}</TooltipPopup>
+          <TooltipPopup align="start" side="bottom">
+            {mate.tooltip}
+          </TooltipPopup>
         </Tooltip>
       ) : (
         press
@@ -318,7 +313,7 @@ function CrewmateFacePress({
       >
         <CrewmateFace crewmate={crewmate} />
       </TooltipTrigger>
-      <TooltipPopup side="bottom">
+      <TooltipPopup align="start" side="bottom">
         <CrewmateTooltip crewmate={crewmate} />
       </TooltipPopup>
     </Tooltip>
@@ -438,9 +433,7 @@ export interface ConversationStripViewProps {
   readonly chats: LineChats | null;
   /** The crew, the lead first; `null` for a Mate with no crew. */
   readonly crew: ReadonlyArray<LineCrewmate> | null;
-  /** For a Mate with no crew: what follows its name, as it always has — the task. */
-  readonly lone: ReactNode;
-  /** The rename field, over the line while the Mate's chat is renamed (a Mate with a crew). */
+  /** The rename field, over the line from the Mate's name while its chat is renamed. */
   readonly renameField: ReactNode;
   /** The open crewmate's menu: its popup, or `null` while its crew is not read. */
   readonly renderCrewmateMenu: (crewmate: LineCrewmate) => ReactNode;
@@ -460,7 +453,6 @@ export function ConversationStripView({
   mate,
   chats,
   crew,
-  lone,
   renameField,
   renderCrewmateMenu,
   onOpen,
@@ -487,9 +479,7 @@ export function ConversationStripView({
         onOpen={onOpen}
         onRename={onRename}
       />
-      {crew === null ? (
-        lone
-      ) : (
+      {crew === null ? null : (
         <>
           <span
             aria-hidden="true"
@@ -521,9 +511,9 @@ export function ConversationStripView({
             )}
             <MoreCrew folded={folded} onOpen={onOpen} shown={more} />
           </div>
-          {renameField}
         </>
       )}
+      {renameField}
     </nav>
   );
 }
@@ -536,7 +526,6 @@ export interface ConversationStripProps {
   readonly crewChat: { readonly handle: string; readonly title: string } | null;
   /** What the chat on screen is about, when it is the Mate's own: its hover. */
   readonly subject: string | null;
-  readonly lone: ReactNode;
   readonly renameField: ReactNode;
   /** Renames the Mate's chat on screen; `null` where it cannot be renamed. */
   readonly onRename: (() => void) | null;
@@ -557,7 +546,6 @@ export function ConversationStrip({
   currentThreadId,
   crewChat,
   subject,
-  lone,
   renameField,
   onRename,
   onEditJob,
@@ -636,7 +624,6 @@ export function ConversationStrip({
           />
         )
       }
-      lone={lone}
       mate={lineMate({
         mate,
         chats,

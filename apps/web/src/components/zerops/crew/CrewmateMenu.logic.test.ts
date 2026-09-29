@@ -4,15 +4,33 @@ import { crewmateMenuModel, type CrewmateMenuItemId } from "./CrewmateMenu.logic
 
 const WRITER = {
   kind: "writer",
+  displayName: "World Server",
   jobFirstLine: "Owns the world server under server/ and its tests. Writes them first.",
 } as const;
 
 describe("crewmateMenuModel", () => {
-  it("heads the menu with the job's first sentence, in plain words", () => {
-    expect(
-      crewmateMenuModel({ crewmate: WRITER, mateName: "Fen", tries: null, busy: false }).heading,
-    ).toBe("Owns the world server under server/ and its tests.");
-  });
+  it.each([
+    {
+      job: "Owns the world server under server/ and its tests. Writes them first.",
+      heading: "Owns the world server under server/ and its tests.",
+    },
+    {
+      job: "You own World Server: the server under server/ and its tests. Write them first.",
+      heading: "The server under server/ and its tests.",
+    },
+  ])(
+    "heads the menu with the job's first sentence, as the person reads it: $job",
+    ({ job, heading }) => {
+      expect(
+        crewmateMenuModel({
+          crewmate: { ...WRITER, jobFirstLine: job },
+          mateName: "Fen",
+          tries: null,
+          busy: false,
+        }).heading,
+      ).toBe(heading);
+    },
+  );
 
   it.each<{
     readonly name: string;
@@ -99,7 +117,7 @@ describe("crewmateMenuModel", () => {
     {
       name: "a reader, with no copy of the code: its job and a clean start",
       input: {
-        crewmate: { kind: "reader", jobFirstLine: "Reviews each change." },
+        crewmate: { kind: "reader", displayName: "Docs", jobFirstLine: "Reviews each change." },
         tries: null,
         busy: false,
       },
@@ -111,7 +129,11 @@ describe("crewmateMenuModel", () => {
     {
       name: "the lead: the crew's brief and a clean start",
       input: {
-        crewmate: { kind: "lead", jobFirstLine: "Turns the brief into tasks." },
+        crewmate: {
+          kind: "lead",
+          displayName: "Lead",
+          jobFirstLine: "Turns the brief into tasks.",
+        },
         tries: null,
         busy: false,
       },

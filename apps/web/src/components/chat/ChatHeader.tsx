@@ -446,10 +446,10 @@ export const ChatHeader = memo(function ChatHeader({
     actionsCollapsed && (showProjectScripts || showOpenInPicker || showGitActions);
   const menuShown = startsFresh || projectActionsInMenu;
   if (!menuShown && actionsOpen) setActionsOpen(false);
-  // The chat's title as it is renamed: in place of the task where the task
-  // follows the Mate's name, or — under a Mate with a crew, whose line holds
-  // no task — over the line from the Mate's name, on the header's ground, so
-  // nothing on the line moves while it is edited.
+  // The chat's title as it is renamed: under a Mate — whose line says what the
+  // chat is about only on hover — over the line from the Mate's name, on the
+  // header's ground, so nothing on the line moves while it is edited; in
+  // upstream's header, in place of the title.
   const renameInput = (over: boolean) =>
     renamingTitle === null ? null : (
       <input
@@ -558,25 +558,14 @@ export const ChatHeader = memo(function ChatHeader({
       onContextMenu={handleHeaderContextMenu}
     >
       {mate !== undefined ? (
-        // The line of the Mate's conversations: the Mate, then its crew. A
-        // Mate with no crew keeps what it is on after its name, in the muted
-        // voice: weight and ink tell them apart, no slash between them.
+        // The line of the Mate's conversations: the Mate, then its crew. What
+        // the chat is about is the Mate's hover, never words on the line.
         <ConversationStrip
           crewChat={
             crewOrigin === null ? null : { handle: crewOrigin.crewmate, title: activeThreadTitle }
           }
           currentThreadId={isServerThread ? activeThreadId : null}
           environmentId={activeThreadEnvironmentId}
-          lone={
-            crewOrigin !== null || !spoken ? null : (
-              <div
-                className="flex min-w-0 flex-1 items-center text-sm text-muted-foreground transition-colors has-[button:hover]:text-foreground"
-                data-conversation-subject-title
-              >
-                {titleContent}
-              </div>
-            )
-          }
           onEditBrief={onEditBrief}
           onEditJob={onEditCrewmateJob}
           onRename={isServerThread && crewOrigin === null ? startRename : null}

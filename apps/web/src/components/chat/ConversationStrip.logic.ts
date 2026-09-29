@@ -251,7 +251,7 @@ export function lineCrew(input: {
         known: true,
         threadId: crewmate.currentThreadId,
         role: crewmateRoleWords(mateName, lead),
-        job: lead ? null : crewJobSentence(crewmate.jobFirstLine) || null,
+        job: lead ? null : crewJobSentence(crewmate.jobFirstLine, crewmate.displayName) || null,
         status: status === null ? null : statusLabel(status.kind),
       };
     });
