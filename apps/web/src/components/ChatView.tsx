@@ -187,6 +187,7 @@ import { CrewTimelineContext, type CrewTimeline } from "./zerops/crew/CrewTaskCa
 import { crewCardOrigin } from "./zerops/crew/CrewTaskCard.logic";
 import { crewRunsOn } from "./zerops/crew/CrewEditors.logic";
 import { crewChatNotices } from "./zerops/crew/crewChatNotices";
+import { crewChatEntries } from "./zerops/crew/crewChatSeams";
 import { crewComposerMentions, crewMessageCommand } from "./zerops/crew/crewComposerSend";
 import {
   crewMessagePlaceholder,
@@ -5281,6 +5282,16 @@ export default function ChatView(props: ChatViewProps) {
     typing: composerHasUnsentContent && activeThreadShell?.crew == null,
   });
   const activeCrewOrigin = activeThreadShell?.crew ?? null;
+  // An empty crewmate chat opens on its own empty state: a save's seam from
+  // before its first message is not drawn (`crewChatSeams.ts`).
+  const inCrewChat = activeCrewOrigin !== null;
+  const conversationEntries = useMemo(
+    () =>
+      inCrewChat
+        ? crewChatEntries(displayedTimeline.entries, loadEarlierTurns === null)
+        : displayedTimeline.entries,
+    [displayedTimeline.entries, inCrewChat, loadEarlierTurns],
+  );
   // A crewmate's *Change its job*, and its composer's *Runs on*: the crew's
   // own Crewmate editor; the lead's *Change the brief*: its Brief editor.
   const [editingCrewmate, setEditingCrewmate] = useState<string | null>(null);
@@ -8110,7 +8121,7 @@ export default function ChatView(props: ChatViewProps) {
                     isCompacting={isCompacting}
                     activeTurnStartedAt={activeWorkStartedAt}
                     listRef={legendListRef}
-                    timelineEntries={displayedTimeline.entries}
+                    timelineEntries={conversationEntries}
                     latestTurn={activeLatestTurn}
                     runningTurnId={activeRunningTurnId}
                     turnDiffSummaries={activeThread.checkpoints}
