@@ -840,6 +840,8 @@
         "apps/web/src/components/zerops/ZeropsStopMenu.tsx",
         "apps/web/src/components/zerops/ZeropsAssignMateDialog.tsx",
         "apps/web/src/components/zerops/ZeropsRenameDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsChangeFaceDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsChangeFaceDialog.logic.ts",
         "apps/web/src/components/zerops/ZeropsDeleteMateDialog.tsx",
         "apps/web/src/components/zerops/ZeropsDeleteMateDialog.logic.ts",
         "apps/web/src/zerops/deletingMates.ts",
@@ -959,6 +961,10 @@
         {
           "action": "Delete a Mate",
           "reverse": "none: A deleted Mate's environment, its services and its conversations are gone from Zerops; the dialog asks for its name typed before it deletes anything."
+        },
+        {
+          "action": "Change face",
+          "reverse": "Change face"
         }
       ],
       "docs": {
@@ -981,6 +987,8 @@
         "apps/web/src/components/zerops/SidebarMateMenu.test.tsx",
         "apps/web/src/components/zerops/ZeropsDeleteMateDialog.test.tsx",
         "apps/web/src/components/zerops/ZeropsDeleteMateDialog.logic.test.ts",
+        "apps/web/src/components/zerops/ZeropsChangeFaceDialog.test.tsx",
+        "apps/web/src/components/zerops/ZeropsChangeFaceDialog.logic.test.ts",
         "apps/web/src/zerops/deletingMates.test.ts",
         "apps/web/src/components/zerops/mateDecision.logic.test.ts",
         "apps/web/src/zerops/sidebarReveal.test.ts",
