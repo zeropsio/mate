@@ -286,13 +286,10 @@ describe("RunChat", () => {
     expect(markup).not.toMatch(/data-chat-bubble="speech"[^>]*>\s*<span aria-hidden/u);
   });
 
-  // Ten reads in a row are one stretch of work (the owner, 2026-09-28: "there
-  // is no spacing between items"): a run of calls shares one card, a hairline
-  // between them; a thought or its words between two calls start a new one.
-  // Two scrollbars in one view is where the last passes' scroll bugs lived
-  // (K8): the card has no scroll of its own — the conversation is the one
-  // scroll, and nothing in the card scrolls inside it.
-  it("has no scroll of its own, and nothing in it scrolls", () => {
+  // Open, the card is one scroll holding everything the run said and did
+  // (the owner, 2026-09-29: "open with scroll and all events"): the scroll is
+  // the card's own, a region the keyboard reaches, and every line stands in it.
+  it("holds the whole run in one scroll of its own", () => {
     const markup = draw(
       record([
         step(
@@ -304,9 +301,12 @@ describe("RunChat", () => {
         thought("r1", LONG),
       ]),
     );
-    expect(markup).not.toMatch(/overflow-(?:y-)?auto/u);
-    expect(markup).not.toContain("max-h-110");
-    expect(markup).not.toContain("data-chat-fade");
+    expect(markup).toMatch(
+      /<div aria-label="Nova&#x27;s work" class="run-scroll" data-run-scroll="" role="region" tabindex="0">/u,
+    );
+    const scroll = markup.slice(markup.indexOf("data-run-scroll"));
+    expect(scroll).toContain("Build");
+    expect(scroll).toContain("Line 1 of what it thought.");
   });
 
   it("gathers each run of calls into one card, and breaks it where anything else stands", () => {
@@ -713,16 +713,17 @@ describe("RunChat", () => {
 
   // A two-hour run drew nine hundred bubbles as its conversation opened and
   // froze the page for 0.7 s (Juno, 2026-09-27): it opens at its newest.
-  it("opens a long chat at its newest bubbles, the ones before them a click away", () => {
+  it("opens a long chat at its newest bubbles, the ones before them drawn as the scroll nears them", () => {
     const many = Array.from({ length: 60 }, (_, index) =>
       step(command(`w${index}`, `echo ${index}`)),
     );
     const markup = draw(record(many));
     expect(bubbles(markup)).toHaveLength(40);
-    expect(markup).toContain(">Show 20 earlier<");
     expect(markup).toContain(">echo 59<");
     expect(markup).not.toContain(">echo 19<");
-    expect(draw(record(many.slice(0, 40)))).not.toContain("earlier<");
+    // No button stands for them: the scroll draws them (`reachesEarlier`).
+    expect(markup).not.toContain("earlier<");
+    expect(bubbles(draw(record(many.slice(0, 40))))).toHaveLength(40);
   });
 
   // A check is its row from its start: while it runs, what it checks and the
@@ -773,12 +774,13 @@ describe("RunChat", () => {
   // first thing seen after every message: the face as far from the card's
   // top as from its foot, where the empty list's room stood it 31 px down
   // and 22 px up (Nova, 2026-09-28).
-  it("draws no list before anything is in the chat, so its status line stands alone", () => {
-    expect(draw(record([], { live: true, status: status() }))).not.toContain("<ol");
+  it("draws no scroll before anything is in the chat, so its status line stands alone", () => {
+    const alone = draw(record([], { live: true, status: status() }));
+    expect(alone).not.toContain("data-run-scroll");
+    expect(alone).not.toContain("<ol");
     const said = draw(record([thought("r1", "The route and the check disagree.")]));
-    expect(said).toContain(
-      '<ol aria-label="Nova&#x27;s work" class="flex min-w-0 flex-col gap-3 focus:outline-none" tabindex="-1">',
-    );
+    expect(said).toContain('data-run-scroll=""');
+    expect(said).toContain('<ol class="flex min-w-0 flex-col gap-3">');
   });
 
   // The Mate's column lines its bubbles up over the face at the chat's foot,
@@ -790,9 +792,9 @@ describe("RunChat", () => {
         { kind: "note", key: "note:a1", at: at(10), message: message("a1", "assistant", "Hi.") },
       ]),
     );
-    // One container holds the chat and its status line, so both keep one gap.
+    // One container holds the chat's scroll and its status line, so both keep one gap.
     expect(markup).toMatch(
-      /<div class="@container\/chat min-w-0" data-run-chat="true" style="[^"]*"><ol /u,
+      /<div class="@container\/chat min-w-0" data-run-chat="true" style="[^"]*"><div [^>]*data-run-scroll=""[^>]*><ol /u,
     );
     const row =
       /<li class="([^"]*)" data-chat-row="true"><span aria-hidden="true" class="([^"]*)"/u.exec(
@@ -989,10 +991,11 @@ describe("RunChat, as the person uses it", () => {
     expect(JSON.stringify(renderer.toJSON())).toContain("line 30");
   });
 
-  // A run the person comes back to opens folded and keeps everything it said
-  // to them (K7, D3): its worked line on top, its words, their words and what
-  // it couldn't do under it; its thoughts and calls behind "Show work", which
-  // opens them under the line they clicked (K12).
+  // A run the person comes back to opens closed (D3): its summary line alone
+  // — who worked, how long, what it came to — and "Show work" opens the whole
+  // run in its scroll under the line they clicked (K12; the owner,
+  // 2026-09-29: "when close just the summary -> expand open the scroll with
+  // everything").
   describe("a run the person comes back to", () => {
     const CONVERSATION = SHARED.routeThreadKey;
     afterEach(() => forgetRunFolds(CONVERSATION));
@@ -1029,24 +1032,28 @@ describe("RunChat, as the person uses it", () => {
       );
     const text = (renderer: ReactTestRenderer) => JSON.stringify(renderer.toJSON());
 
-    it("opens folded, its words kept and its work behind Show work", () => {
+    it("opens closed to its summary line, everything else behind Show work", () => {
       const markup = draw(settledRun());
       expect(markup).toContain('data-run-fold="folded"');
-      // The worked line first: the line the person clicks stands above what opens.
-      expect(markup.indexOf("Nova worked 1m 20s")).toBeLessThan(
-        markup.indexOf("Should /status be public?"),
-      );
-      expect(markup).toContain("Yes, no secrets");
-      expect(markup).toContain("The deploy was refused");
-      expect(markup).not.toContain("Run the tests");
-      expect(markup).not.toContain("The route and the check disagree.");
+      expect(markup).toContain("Nova worked 1m 20s");
       expect(markup).toMatch(/<button aria-expanded="false" class="run-now-fold"[^>]*>Show work/u);
+      for (const hidden of [
+        "Should /status be public?",
+        "Yes, no secrets",
+        "The deploy was refused",
+        "Run the tests",
+        "The route and the check disagree.",
+      ]) {
+        expect(markup).not.toContain(hidden);
+      }
+      expect(markup).not.toContain("data-run-scroll");
     });
 
     it("keeps a run the person watched open, its line at the foot, until they leave", () => {
       setRunFold(CONVERSATION, "turn-1", "watched");
       const markup = draw(settledRun());
       expect(markup).not.toContain("data-run-fold");
+      expect(markup).toContain("data-run-scroll");
       expect(markup).toContain("Run the tests");
       expect(markup.indexOf("Run the tests")).toBeLessThan(markup.indexOf("Nova worked 1m 20s"));
       expect(markup).not.toContain("Show work");
@@ -1073,18 +1080,31 @@ describe("RunChat, as the person uses it", () => {
       expect(text(renderer)).not.toContain("Show work");
     });
 
-    it("opens the work under its line with Show work, and folds it with Hide work", () => {
+    it("opens the whole run under its line with Show work, and closes it with Hide work", () => {
       const renderer = mount(workOnly());
-      expect(text(renderer)).not.toContain("Run the tests");
+      const scrolls = () =>
+        renderer.root.findAll(
+          (node) => node.type === "div" && node.props["data-run-scroll"] !== undefined,
+        );
+      expect(scrolls()).toHaveLength(0);
       act(() => button(renderer, "Show work").props.onClick());
-      expect(text(renderer)).toContain("Run the tests");
+      expect(scrolls()).toHaveLength(1);
+      for (const shown of [
+        "Run the tests",
+        "The route and the check disagree.",
+        "Yes, no secrets",
+        "The deploy was refused",
+      ]) {
+        expect(text(renderer)).toContain(shown);
+      }
       expect(button(renderer, "Hide work").props["aria-expanded"]).toBe(true);
       act(() => button(renderer, "Hide work").props.onClick());
+      expect(scrolls()).toHaveLength(0);
       expect(text(renderer)).not.toContain("Run the tests");
       expect(button(renderer, "Show work").props["aria-expanded"]).toBe(false);
     });
 
-    it("offers no Show work where nothing folds", () => {
+    it("keeps even a lone word of its behind Show work", () => {
       const markup = draw(
         record(
           [
@@ -1098,8 +1118,18 @@ describe("RunChat, as the person uses it", () => {
           { status: status({ live: false, face: "idle", endedAt: at(5), worked: false }) },
         ),
       );
+      expect(markup).toContain("Show work");
+      expect(markup).not.toContain("Nothing to do.");
+    });
+
+    it("offers no Show work where the run left nothing to show", () => {
+      const markup = draw(
+        record([], {
+          status: status({ live: false, face: "idle", endedAt: at(5), worked: false }),
+        }),
+      );
+      expect(markup).toContain("Nova thought");
       expect(markup).not.toContain("Show work");
-      expect(markup).toContain("Nothing to do.");
     });
   });
 
@@ -1200,7 +1230,12 @@ describe("RunChat, as the person uses it", () => {
                     ownerDocument: { scrollingElement: null },
                     getBoundingClientRect: () => ({ top: 0, bottom: 0 }),
                   }
-                : { scrollHeight: 100, clientHeight: 40 },
+                : {
+                    scrollHeight: 100,
+                    clientHeight: 40,
+                    scrollTop: 0,
+                    toggleAttribute: () => undefined,
+                  },
           },
         );
       });
@@ -1223,28 +1258,10 @@ describe("RunChat, as the person uses it", () => {
     }
   });
 
-  it("hands the focus to the lines the last Show N earlier drew", () => {
-    const many = Array.from({ length: 50 }, (_, index) =>
-      step(command(`w${index}`, `echo ${index}`)),
-    );
-    let listFocused = 0;
-    let renderer!: ReactTestRenderer;
-    act(() => {
-      renderer = create(
-        <Rows>
-          <RunChat row={record(many)} />
-        </Rows>,
-        {
-          createNodeMock: (element) =>
-            element.type === "ol" ? { focus: () => (listFocused += 1) } : {},
-        },
-      );
-    });
-    act(() => button(renderer, "Show 10 earlier").props.onClick());
-    expect(listFocused).toBe(1);
-  });
-
-  it("draws the earlier bubbles when the person asks for them", () => {
+  // A long run opens on its newest lines (a two-hour run froze the page as
+  // nine hundred bubbles drew at once); scrolling up draws the earlier ones
+  // before the person reaches the top.
+  it("draws the earlier lines as the person scrolls up to them", () => {
     const many = Array.from({ length: 50 }, (_, index) =>
       step(command(`w${index}`, `echo ${index}`)),
     );
@@ -1253,11 +1270,21 @@ describe("RunChat, as the person uses it", () => {
       renderer.root.findAll(
         (node) => node.type === "div" && node.props["data-chat-kind"] === "step:command",
       );
+    const scroll = () =>
+      renderer.root.find(
+        (node) => node.type === "div" && node.props["data-run-scroll"] !== undefined,
+      );
     expect(rows()).toHaveLength(40);
     act(() =>
-      renderer.root
-        .find((node) => node.type === "button" && node.props["data-chat-earlier"] !== undefined)
-        .props.onClick({ currentTarget: { closest: () => null } }),
+      scroll().props.onScroll({
+        currentTarget: { scrollTop: 900, scrollHeight: 1800, clientHeight: 440 },
+      }),
+    );
+    expect(rows()).toHaveLength(40);
+    act(() =>
+      scroll().props.onScroll({
+        currentTarget: { scrollTop: 120, scrollHeight: 1800, clientHeight: 440 },
+      }),
     );
     expect(rows()).toHaveLength(50);
   });

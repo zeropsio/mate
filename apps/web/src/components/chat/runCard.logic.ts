@@ -1,9 +1,11 @@
 /**
  * The run's card, as pure rules: what its foot says while the run goes on and
- * once it is over, how much of a long chat it draws, and how the rest is
- * reached. Everything is always reachable one way or another (the owner's
- * D4): the card has no scroll of its own, so what it does not draw folds
- * behind a control that draws it.
+ * once it is over, and how its one scroll holds a long chat. Closed, the card
+ * is its summary line; open — while the run goes on, or once the person asks
+ * for the work — it is one scroll holding everything the run said and did
+ * (the owner, 2026-09-29: "when open with scroll and all events and when
+ * close just the summary"). Everything stays reachable (D4): the scroll
+ * draws a long run's earlier lines as the person scrolls up to them.
  */
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { MateMarkState } from "@t3tools/shared/brand";
@@ -18,18 +20,21 @@ import type { RecordItem, RunStatus, TurnHeaderActivity } from "./MessagesTimeli
 import type { StepKind, WorkStep } from "./workSteps.logic";
 
 // ---------------------------------------------------------------------------
-// A long chat
+// A long chat, in its one scroll
 // ---------------------------------------------------------------------------
 
 /**
- * How many of a long run's lines its chat draws when it opens: the newest.
+ * How many of a long run's lines its scroll draws when it opens: the newest.
  * A two-hour run drew nine hundred bubbles at once and froze the page for
  * 0.7 s as it opened (Juno, 2026-09-27).
  */
 export const CHAT_OPENS_WITH = 40;
 
-/** How many earlier lines one "Show N earlier" draws: a huge run is reached a chunk at a time. */
+/** How many earlier lines the scroll draws at a time as the person scrolls up to them. */
 export const EARLIER_CHUNK = 200;
+
+/** How near its top the scroll draws the earlier lines: before the person reaches them. */
+export const EARLIER_REACH_PX = 480;
 
 /** Where a chat of `lines` lines opens: its newest `CHAT_OPENS_WITH`, the rest before them. */
 export function chatOpensAt(lines: number): number {
@@ -37,12 +42,36 @@ export function chatOpensAt(lines: number): number {
 }
 
 /**
- * What one "Show N earlier" draws when the chat starts at line `from`: the
- * chunk just before it — `shows` lines — and where the chat starts after.
+ * What the scroll draws next when the chat starts at line `from`: the chunk
+ * just before it — `shows` lines — and where the chat starts after.
  */
 export function earlierShown(from: number): { readonly shows: number; readonly next: number } {
   const next = Math.max(0, from - EARLIER_CHUNK);
   return { shows: from - next, next };
+}
+
+/** Where the run's scroll stands. */
+export interface RunScrollPosition {
+  readonly scrollTop: number;
+  readonly scrollHeight: number;
+  readonly clientHeight: number;
+}
+
+/**
+ * Whether the scroll stands at its foot, a pixel's slack for a fractional
+ * zoom: there, it follows what arrives; scrolled up, it stays where the
+ * person put it.
+ */
+export function standsAtFoot(scroll: RunScrollPosition): boolean {
+  return scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= 1;
+}
+
+/** Whether the scroll nears its top with earlier lines still undrawn: then it draws them. */
+export function reachesEarlier(
+  scroll: Pick<RunScrollPosition, "scrollTop">,
+  from: number,
+): boolean {
+  return from > 0 && scroll.scrollTop < EARLIER_REACH_PX;
 }
 
 // ---------------------------------------------------------------------------
@@ -276,30 +305,10 @@ export function formatClock(ms: number): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Whether a line of the chat folds when the person comes back to a run (K7,
- * D3): only thoughts and calls do — its work. Everything it said to them
- * stays as it was: its words, the questions it asked, what they said into
- * the run, anything it couldn't do, a change that landed, a command they ran.
- */
-export function foldsOnReturn(item: RecordItem): boolean {
-  switch (item.kind) {
-    case "note":
-    case "question":
-    case "person":
-    case "error":
-    case "crew-seam":
-      return false;
-    case "event":
-      return item.event.type === "compaction" || item.event.type === "resumed";
-    default:
-      return true;
-  }
-}
-
-/**
- * How a settled run's card stands (K7, K12): open as it was while the person
- * watched it — until they leave the conversation — folded when they come
- * back, and open again, its line on top, once they ask for the work.
+ * How a settled run's card stands (K12): open as it was while the person
+ * watched it — until they leave the conversation — closed to its summary
+ * line when they come back, and open again, the scroll under the line, once
+ * they ask for the work.
  */
 export type RunFold = "watched" | "folded" | "shown";
 

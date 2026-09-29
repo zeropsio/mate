@@ -9,17 +9,19 @@ import {
   CHAT_OPENS_WITH,
   chatOpensAt,
   EARLIER_CHUNK,
+  EARLIER_REACH_PX,
   earlierShown,
-  foldsOnReturn,
   forgetRunFolds,
   formatClock,
   nowLineFace,
   nowLineOf,
   nowLineWords,
+  reachesEarlier,
   recoveredFailures,
   runFoldOf,
   setRunFold,
   severalWords,
+  standsAtFoot,
   subscribeRunFolds,
   thoughtRunText,
   thoughtTicker,
@@ -45,15 +47,14 @@ describe("earlierShown", () => {
     { from: 88, shows: 88, next: 0 },
     { from: EARLIER_CHUNK, shows: EARLIER_CHUNK, next: 0 },
     { from: EARLIER_CHUNK + 60, shows: EARLIER_CHUNK, next: 60 },
-  ])("from line $from, a click shows $shows and leaves $next", ({ from, shows, next }) => {
+  ])("from line $from, a reach shows $shows and leaves $next", ({ from, shows, next }) => {
     expect(earlierShown(from)).toEqual({ shows, next });
   });
 
-  // D4: nothing is ever out of reach — however long the run, clicking
-  // "Show N earlier" until it is gone draws every line, and each click says
-  // exactly how many it draws.
+  // Nothing is ever out of reach (D4): however long the run, scrolling up
+  // until nothing is left above draws every line, a chunk at a time.
   it.each([1, 41, 199, 200, 201, 860, 5000])(
-    "reaches every line of a %i-line chat, a click at a time",
+    "reaches every line of a %i-line chat, a chunk at a time",
     (lines) => {
       let from = chatOpensAt(lines);
       let drawn = lines - from;
@@ -395,78 +396,40 @@ describe("severalWords", () => {
   });
 });
 
-// A run you come back to opens folded, and keeps everything it said to you
-// (K7, D3): the Mate's words, what the person said into the run and anything
-// it couldn't do stay as they were; only thoughts and calls fold.
-describe("foldsOnReturn", () => {
-  const base = { key: "k", at: at(1) };
-  const entry = call("e1", {});
-  const operationItem = { ...base, kind: "operation", operation: deploy } as const;
-  const message = {
-    id: MessageId.make("a1"),
-    role: "assistant",
-    text: "Found it.",
-    turnId: TurnId.make("t1"),
-    streaming: false,
-    createdAt: at(1),
-  } as ChatMessage;
+// The run's scroll follows its newest line while it stands at its foot, and
+// stays where the person scrolled to once they leave it (the owner,
+// 2026-09-29: "open with scroll and all events").
+describe("standsAtFoot", () => {
+  it.each([
+    { name: "at its foot", scrollTop: 560, foot: true },
+    { name: "a pixel short of it", scrollTop: 559, foot: true },
+    { name: "scrolled up a line", scrollTop: 520, foot: false },
+    { name: "at its top", scrollTop: 0, foot: false },
+  ])("$name: $foot", ({ scrollTop, foot }) => {
+    expect(standsAtFoot({ scrollTop, scrollHeight: 1000, clientHeight: 440 })).toBe(foot);
+  });
+
+  it("stands at its foot while nothing overflows", () => {
+    expect(standsAtFoot({ scrollTop: 0, scrollHeight: 300, clientHeight: 300 })).toBe(true);
+  });
+});
+
+// A long run draws its newest lines first; the earlier ones are drawn as the
+// person scrolls up to them, before they reach the top.
+describe("reachesEarlier", () => {
   it.each([
     {
-      name: "a thought",
-      item: { ...base, kind: "thought", messages: [], durationMs: null },
-      folds: true,
+      name: "near the top, lines left above",
+      scrollTop: EARLIER_REACH_PX - 1,
+      from: 60,
+      reaches: true,
     },
-    { name: "a step", item: { ...base, kind: "step", step: command("w1", "ls") }, folds: true },
-    { name: "a call", item: { ...base, kind: "call", entry }, folds: true },
-    { name: "an operation", item: operationItem, folds: true },
-    { name: "helpers", item: { ...base, kind: "helpers", entry }, folds: true },
-    { name: "a task", item: { ...base, kind: "task", entry }, folds: true },
-    { name: "its to-do list", item: { ...base, kind: "plan", plan: {} }, folds: true },
-    { name: "checks", item: { ...base, kind: "strip", strip: {} }, folds: true },
-    { name: "an incident", item: { ...base, kind: "incident", incident: {} }, folds: true },
-    {
-      name: "a condensed context",
-      item: { ...base, kind: "event", event: { type: "compaction", label: "Context compacted" } },
-      folds: true,
-    },
-    { name: "a resume", item: { ...base, kind: "event", event: { type: "resumed" } }, folds: true },
-    { name: "its words", item: { ...base, kind: "note", message }, folds: false },
-    {
-      name: "a question it asked",
-      item: { ...base, kind: "question", questions: ["Public?"] },
-      folds: false,
-    },
-    {
-      name: "the person's words",
-      item: { ...base, kind: "person", words: "Yes", imageOnly: false },
-      folds: false,
-    },
-    { name: "what stopped it", item: { ...base, kind: "error", entry }, folds: false },
-    {
-      name: "a crew seam",
-      item: { ...base, kind: "crew-seam", seam: {}, words: "Stint two" },
-      folds: false,
-    },
-    {
-      name: "a change that landed",
-      item: { ...base, kind: "event", event: { type: "landed", event: {} } },
-      folds: false,
-    },
-    {
-      name: "a command the person ran",
-      item: {
-        ...base,
-        kind: "event",
-        event: { type: "command", command: { name: "compact", args: "" }, done: true },
-      },
-      folds: false,
-    },
-  ] as ReadonlyArray<{ name: string; item: RecordItem; folds: boolean }>)(
-    "$name folds: $folds",
-    ({ item, folds }) => {
-      expect(foldsOnReturn(item)).toBe(folds);
-    },
-  );
+    { name: "at the top", scrollTop: 0, from: 60, reaches: true },
+    { name: "far from the top", scrollTop: EARLIER_REACH_PX, from: 60, reaches: false },
+    { name: "at the top with nothing left above", scrollTop: 0, from: 0, reaches: false },
+  ])("$name: $reaches", ({ scrollTop, from, reaches }) => {
+    expect(reachesEarlier({ scrollTop }, from)).toBe(reaches);
+  });
 });
 
 describe("the runs a person watched", () => {

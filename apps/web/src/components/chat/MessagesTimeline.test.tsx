@@ -1296,14 +1296,12 @@ describe("MessagesTimeline — the conversation", () => {
     // follows. No heading stands over the card.
     expect(markup).toContain(">Assistant worked 1m<");
     expect(markup).not.toContain('data-timeline-row-kind="work-line"');
-    // Come back to, the run opens folded (K7): its worked line on top, what it
-    // said to the person under it, its calls behind "Show work".
+    // Come back to, the run is closed to its summary line (D3): everything it
+    // said and did behind "Show work".
     const record = markup.slice(markup.indexOf('data-timeline-row-kind="record"'));
     expect(record).toContain('data-run-fold="folded"');
-    expect(record.indexOf(">Assistant worked 1m<")).toBeLessThan(
-      record.indexOf("Building the shop now."),
-    );
     expect(record).toMatch(/<button aria-expanded="false" class="run-now-fold"[^>]*>Show work/u);
+    expect(record).not.toContain("Building the shop now.");
     expect(record).not.toContain(">pnpm build<");
     // What its calls came to is the work's and the worked line's, never a
     // result row (K6): a run that only ran commands leaves no result.
@@ -1474,6 +1472,8 @@ describe("MessagesTimeline — the conversation", () => {
   // with its face beside it, and the person's answer under it in their own
   // bubble (K14) — kept when the run folds on return (K7).
   it("keeps the question the Mate asked in its card, the answer in the person's bubble under it", () => {
+    // Open, as the person watched it: come back to, it is behind "Show work".
+    setRunFold("environment-local:thread-1", "msg:message-1", "watched");
     const input = (id: string, second: number, extra: Record<string, unknown>) => ({
       ...tool(id, second),
       entry: {
@@ -1521,6 +1521,7 @@ describe("MessagesTimeline — the conversation", () => {
     expect(markup).not.toContain("data-person-answer");
     // The question's short header was never the person's words.
     expect(markup).not.toContain("Accent colour");
+    forgetRunFolds("environment-local:thread-1");
   });
 
   it("says what finished in the background, in words", () => {

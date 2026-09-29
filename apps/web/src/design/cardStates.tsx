@@ -3,7 +3,7 @@
  * — Nova building a /status page: the now line in each of its states (a step,
  * a long step, several at once, thinking, waiting on the person, writing),
  * the run finished while the person watched, the same run come back to —
- * folded, and opened — and a failure that still stands beside one a retry
+ * closed, and opened — and a failure that still stands beside one a retry
  * undid. Each card is drawn as the conversation draws it: its record on the
  * tray's top, its result in the band under the now line, its bottom edge.
  *
@@ -392,7 +392,8 @@ const THINKING: TurnHeaderActivity = {
 };
 
 // The run finished while the person watched stays open until they leave;
-// come back to, it is folded, and opened once they ask for the work.
+// come back to, it is closed to its summary line, and opened once they ask
+// for the work.
 setRunFold(CONVERSATION, "status-watched", "watched");
 setRunFold(CONVERSATION, "status-shown", "shown");
 
@@ -510,7 +511,7 @@ export function CardStates() {
       </CardState>
       <CardState
         label="You come back later"
-        note="Folded: the worked line on top, what it said to you kept, its work behind Show work."
+        note="Closed: the summary line alone, with Show work; the result stands under it."
       >
         <Turn
           answer={ANSWER}
@@ -520,7 +521,7 @@ export function CardStates() {
       </CardState>
       <CardState
         label="Show work, opened"
-        note="The work opens under the line clicked; Hide work folds it again."
+        note="The whole run opens in its scroll under the line clicked; Hide work closes it again."
       >
         <Turn
           result
