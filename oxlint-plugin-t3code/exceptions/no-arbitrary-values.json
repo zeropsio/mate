@@ -688,38 +688,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-[11px] font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-[11px] font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[13px] in \"text-[13px] font-medium tracking-normal text-sidebar-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"text-[var(--zerops-status-failed-text)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
     "kind": "Literal",
     "fingerprint": "<> bg-[var(--zerops-auth-terminal-header)] in \"flex h-9 items-center gap-2 border-b border-[var(--zerops-auth-terminal-border)] bg-[var(--zerops-auth-terminal-header)] px-3 text-xs text-[var(--zerops-auth-terminal-muted)]\"",

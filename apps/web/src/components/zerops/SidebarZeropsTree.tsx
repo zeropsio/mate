@@ -691,7 +691,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       >
         <span className="text-xs text-sidebar-muted-foreground">No environment has Mate yet</span>
         <button
-          className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-[11px] font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+          className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
           onClick={onBrowseProjects}
           type="button"
         >
@@ -1402,16 +1402,14 @@ function ListingNotice({
       <span
         className={cn(
           "text-xs",
-          message.tone === "alert"
-            ? "text-[var(--zerops-status-failed-text)]"
-            : "text-sidebar-muted-foreground",
+          message.tone === "alert" ? "text-status-failed-text" : "text-sidebar-muted-foreground",
         )}
       >
         {message.text}
       </span>
       {affordance === null || onAct === undefined ? null : (
         <button
-          className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-[11px] font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+          className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
           onClick={() => onAct(affordance)}
           type="button"
         >
@@ -1835,7 +1833,7 @@ export interface ProjectHeaderReorder {
 /** A project's name: 16 · 600, the only 16 px words in the menu (S1). */
 const HEADING_CLASS =
   "zerops-project-name min-w-0 truncate text-base leading-6 font-semibold text-sidebar-foreground";
-const HEADING_MUTED = "text-[13px] font-medium tracking-normal text-sidebar-muted-foreground";
+const HEADING_MUTED = "text-line font-medium text-sidebar-muted-foreground";
 const HEADING_UNNAMED = "font-normal text-sidebar-muted-foreground italic";
 
 const ROW_ACTION_CLASS =
