@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import type { WorkLogEntry } from "../../session-logic";
 import type { ChatMessage } from "../../types";
 import type { MessagesTimelineRow, RecordItem, RunStatus } from "./MessagesTimeline.logic";
-import { foldsLikeAMessage, RunChat, thoughtRunText } from "./RunChat";
+import { foldsLikeAMessage, RunChat } from "./RunChat";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -171,24 +171,6 @@ describe("foldsLikeAMessage", () => {
     { name: "nothing", text: "   ", folds: false },
   ])("$name: $folds — the person's own rule", ({ text, folds }) => {
     expect(foldsLikeAMessage(text)).toBe(folds);
-  });
-});
-
-describe("thoughtRunText", () => {
-  it.each([
-    { text: "The route and the check disagree.", run: "The route and the check disagree." },
-    {
-      text: "**Planning the check**\n\nThe build takes two minutes.",
-      run: "Planning the check. The build takes two minutes.",
-    },
-    { text: "**Why?**\n\nBecause.", run: "Why? Because." },
-    {
-      text: "Reuse `withDatabase()` from the **users** tests:\n\n- start it\n- migrate",
-      run: "Reuse withDatabase() from the users tests: start it migrate",
-    },
-    { text: "Keep snake_case_names as they are.", run: "Keep snake_case_names as they are." },
-  ])("reads $text as one run of words", ({ text, run }) => {
-    expect(thoughtRunText(text)).toBe(run);
   });
 });
 

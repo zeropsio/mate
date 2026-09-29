@@ -105,7 +105,7 @@ import {
   type RunStatus,
   type TurnHeaderActivity,
 } from "./MessagesTimeline.logic";
-import { chatOpensAt, earlierShown } from "./runCard.logic";
+import { chatOpensAt, earlierShown, thoughtRunText } from "./runCard.logic";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -760,28 +760,6 @@ function NoteBubble({ message }: { readonly message: ChatMessage }) {
 
 /** A thought's hand: small, faint and italic — its code and file names too. */
 const THOUGHT_TEXT = "chat-markdown-aside text-muted-foreground";
-
-/**
- * A thought's words as one quiet run of text, for the two lines a thought
- * shows: its markdown's marks dropped, its paragraphs run together.
- */
-export function thoughtRunText(text: string): string {
-  return text
-    .split(/\n\s*\n/u)
-    .map((paragraph) => {
-      // A title standing alone reads as a sentence of its own, not the start of the next.
-      const title = /^\s*\*\*([^*\n]+)\*\*\s*$/u.exec(paragraph)?.[1]?.trim();
-      return title === undefined ? paragraph : /[.!?:…]$/u.test(title) ? title : `${title}.`;
-    })
-    .join("\n\n")
-    .replace(/```[\s\S]*?```/gu, " ")
-    .replace(/\*\*([^*\n]+)\*\*/gu, "$1")
-    .replace(/__([^_\n]+)__/gu, "$1")
-    .replace(/`([^`\n]+)`/gu, "$1")
-    .replace(/^\s{0,3}(?:#{1,6}|>|[-*+]|\d+[.)])\s+/gmu, "")
-    .replace(/\s+/gu, " ")
-    .trim();
-}
 
 /** About two of a thought's lines on a desktop card: what a first frame guesses runs past them. */
 const THOUGHT_GUESS_CHARS = 180;

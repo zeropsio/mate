@@ -388,8 +388,15 @@ export type TurnHeaderActivity =
   | { readonly kind: "writing" }
   /** It asked the person something and waits for the answer. */
   | { readonly kind: "waiting" }
-  /** A call it is making, as the step it is. */
-  | { readonly kind: "step"; readonly step: WorkStep }
+  /**
+   * A call it is making, as the step it is — the newest, and any others it
+   * runs at the same time, oldest first.
+   */
+  | {
+      readonly kind: "step";
+      readonly step: WorkStep;
+      readonly others?: ReadonlyArray<WorkStep>;
+    }
   | { readonly kind: "operation"; readonly operation: ZeropsOperation };
 
 export type ConversationEvent =
