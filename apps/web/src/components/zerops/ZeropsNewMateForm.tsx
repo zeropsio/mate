@@ -223,7 +223,7 @@ export function ZeropsNewMateForm({
           <div className="flex w-full min-w-0 flex-1 flex-col gap-3.5">
             <Input
               aria-describedby={`${id}-line`}
-              aria-invalid={error === undefined ? undefined : true}
+              aria-invalid={refused === undefined ? undefined : true}
               aria-label="Name"
               autoComplete="off"
               onChange={(event) => {
@@ -239,6 +239,9 @@ export function ZeropsNewMateForm({
                 setSelected(true);
                 event.currentTarget.select();
               }}
+              // While the platform takes the Mate's project, what made it stays as it was: the
+              // name reads, and nothing typed or picked changes the Mate on its way.
+              readOnly={adding}
               placeholder="Name"
               size="lg"
               spellCheck={false}
@@ -248,7 +251,7 @@ export function ZeropsNewMateForm({
               <PickerRow
                 label="Color"
                 onPick={(tint) => {
-                  setPicked((current) => ({ ...current, tint }));
+                  if (!adding) setPicked((current) => ({ ...current, tint }));
                 }}
                 optionStyle={tintStyle}
                 options={MATE_TINT_IDS}
@@ -265,7 +268,7 @@ export function ZeropsNewMateForm({
               <PickerRow
                 label="Shape"
                 onPick={(shape) => {
-                  setPicked((current) => ({ ...current, shape }));
+                  if (!adding) setPicked((current) => ({ ...current, shape }));
                 }}
                 optionStyle={() => tintStyle(face.tint)}
                 options={MATE_SHAPE_IDS}
