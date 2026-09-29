@@ -88,7 +88,7 @@ export interface JumpStop {
   readonly title: string;
   /** What it runs. */
   readonly line: string;
-  /** The production chip's dot, or the one its chip's menu wears for it. */
+  /** The dot its chip's menu wears for it: production's, or the stage's own. */
   readonly dot: ChipDot;
   /** Where it stands, in words: the dot's accessible name. */
   readonly word: string;
