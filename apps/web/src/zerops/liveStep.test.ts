@@ -200,7 +200,7 @@ describe("liveStepWords", () => {
           input: { url: "https://appdev-3000.example.app/status" },
         }),
       ),
-      words: { words: "Checking /status" },
+      words: { words: "Checking /status in the browser" },
     },
     {
       name: "a deploy names the service, from its start",
@@ -244,6 +244,23 @@ describe("liveStepWords", () => {
         }),
       ),
       words: { words: "Build the app", code: "pnpm build" },
+    },
+    {
+      // Several at once, as the card's now line says them (K10).
+      name: "commands at once: how many",
+      step: calls(
+        build,
+        call({
+          id: "call-test",
+          activityKind: "tool.updated",
+          itemType: "command_execution",
+          title: "Command run",
+          detail: "Bash: pnpm test",
+          toolName: "Bash",
+          command: "pnpm test",
+        }),
+      ),
+      words: { words: "Running 2 commands" },
     },
     {
       name: "a credential in the command is masked",
