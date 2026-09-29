@@ -15,19 +15,13 @@ import {
   crewResumeBudgetHint,
   crewResumeTimeHint,
   CREW_IDLE_WORD,
-  CREW_LANE_VERBS,
-  CREW_LEAD_ROLE_LINE,
   CREW_LEAD_WORD,
-  crewAheadWord,
-  crewAppWord,
   crewFaceWord,
   crewLineNeedsWord,
   crewLineReadyWord,
-  crewConflictWord,
   crewDevHostDatabaseWord,
   crewDiffStatWord,
   crewEarlierStintNotice,
-  crewJobVersionWord,
   crewLandedAsWord,
   crewMessagePlaceholder,
   crewPendingNotice,
@@ -40,7 +34,6 @@ import {
   crewTryWorkLine,
   mateOwnChatWord,
   crewRunsOnWord,
-  crewStintWord,
   crewTaskSourceWord,
   crewApplyWord,
   crewAskToFixWord,
@@ -655,20 +648,8 @@ describe("the drafts a crew surface hands the Mate", () => {
 });
 
 describe("the chat's words (PRD §4.5, §5.6, §5.7)", () => {
-  it("says how far a copy is ahead of your tree, and its change", () => {
-    expect([0, 1, 3].map(crewAheadWord)).toEqual([
-      null,
-      "1 change ahead of your tree",
-      "3 changes ahead of your tree",
-    ]);
+  it("says a copy's change against your tree", () => {
     expect(crewDiffStatWord({ insertions: 214, deletions: 12 })).toBe("+214 \u221212");
-  });
-
-  it("names the files a merge-in stopped on", () => {
-    expect(crewConflictWord([])).toBe("Conflicts with what landed");
-    expect(crewConflictWord(["src/api/items.ts", "src/api/users.ts"])).toBe(
-      "Conflicts with what landed: src/api/items.ts and 1 more",
-    );
   });
 
   it("names a landing by its task and its commit's short sha", () => {
@@ -680,23 +661,6 @@ describe("the chat's words (PRD §4.5, §5.6, §5.7)", () => {
     ).toBe("Task #11 landed as a1b2c3d");
   });
 
-  it.each([
-    [{ kind: "running", port: 3001 }, "App on :3001"],
-    [{ kind: "stopped" }, "App stopped"],
-    [{ kind: "no-crew-ports", host: "appdev" }, "No crew ports on appdev"],
-    [{ kind: "no-free-port" }, "No free crew port"],
-  ] as const)("says a crewmate's app %o", (app, word) => {
-    expect(crewAppWord(app)).toBe(word);
-  });
-
-  it("names the lane bar's presses", () => {
-    expect(CREW_LANE_VERBS).toEqual({
-      showOnDev: "Show on dev",
-      backToTree: "Back to my tree",
-      addCrewPorts: "Add crew ports",
-    });
-  });
-
   it("says where a task came from", () => {
     expect((["you", "lead", "message", "issue"] as const).map(crewTaskSourceWord)).toEqual([
       "from you",
@@ -706,10 +670,7 @@ describe("the chat's words (PRD §4.5, §5.6, §5.7)", () => {
     ]);
   });
 
-  it("heads a crewmate's chat with its job's version and its conversations", () => {
-    expect(crewJobVersionWord(4)).toBe("Job v4");
-    expect(crewStintWord(2, true)).toBe("Conversation 2 · current");
-    expect(crewStintWord(1, false)).toBe("Conversation 1");
+  it("invites a message to the crewmate in its chat's composer", () => {
     expect(crewMessagePlaceholder("Backend")).toBe("Message Backend…");
   });
 
@@ -744,9 +705,8 @@ describe("crewDevHostDatabaseWord", () => {
 });
 
 describe("the lead's words", () => {
-  it("names the lead and what it does in place of a copy of the code", () => {
+  it("names the lead", () => {
     expect(CREW_LEAD_WORD).toBe("Lead");
-    expect(CREW_LEAD_ROLE_LINE).toBe("Plans and reviews · no copy of the code");
   });
 });
 

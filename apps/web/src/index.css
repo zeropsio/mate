@@ -4359,6 +4359,36 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   color: var(--contrast-foreground);
 }
 
+/* The conversation's line (the owner, 2026-09-29): the Mate leads it, on the
+   menu's selected band while its own chat is open — 32 px tall, 11 px
+   corners — and with a crew, the crewmate whose chat is on screen stands on
+   the same band as a 28 px pill. The band coming and going changes no width:
+   the Mate's pill keeps its padding with or without it. */
+.conversation-mate,
+.conversation-mate-press {
+  border-radius: 11px;
+}
+
+.conversation-mate[data-on] {
+  background-color: var(--sidebar-row-active);
+}
+
+@media (hover: hover) {
+  .conversation-mate[data-opens]:hover,
+  .conversation-crewface:hover {
+    background-color: var(--sidebar-row-hover);
+  }
+}
+
+/* The crewmate's pill is its menu's trigger, which the header fills like any
+   other; it stands on the band instead, pressed or not. */
+.conversation-crewmate,
+html[data-theme-id] [data-chat-header] .conversation-crewmate,
+html[data-theme-id] [data-chat-header] .conversation-crewmate:hover,
+html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
+  background-color: var(--sidebar-row-active);
+}
+
 /* ==== end of the conversation ==== */
 
 /* ==== Pass 16 · the composer ==== */

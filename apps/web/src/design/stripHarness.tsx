@@ -1,19 +1,22 @@
 /**
- * The top of a Mate's conversation — the header, whose line the strip of its
- * chats and crew takes, and what the chat on screen is about under it — in
- * every state the strip has, at the width the owner's chat column really gets
- * (1786 wide, the menu at 435), and folded at 640 and 390.
+ * The top of a Mate's conversation — one line, the header's — in every state
+ * it has, at the width the owner's chat column really gets (1786 wide, the
+ * menu at 435), and narrowed to 570 and 390.
  *
- * The strip is the real `ConversationStripView` over entries the real
- * `chatEntries` and `crewEntries` make of fixture threads and a fixture crew;
- * the header around it and the line under it are drawn with `ChatHeader`'s
- * and `ChatView`'s own classes, since the real header reads the app's stores.
+ * The line is the real `ConversationStripView` over the models the real
+ * `lineMate`, `lineChats` and `lineCrew` make of fixture threads and a fixture
+ * crew, and a crewmate's menu the real `CrewmateMenuPopup` over the real
+ * `crewmateMenuModel` and `crewTryOf`; the header around it is drawn with
+ * `ChatHeader`'s own classes, since the real header reads the app's stores.
  *
  * Served by the dev server at `/design-strip.html` (`?theme=dark`,
- * `?width=<px>` for every frame's width). Fixtures only: nothing here ships,
- * and no route imports this module.
+ * `?width=<px>` for every full-width frame, `?open=<frame>` to open that
+ * frame's menu — the writer's by default, `none` for none). The `reload`
+ * frame paints the crew this browser remembers and turns to the feed's a
+ * moment later, as a reload does. Fixtures only: nothing here ships, and no
+ * route imports this module.
  */
-import { StrictMode, type ReactNode } from "react";
+import { StrictMode, useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
@@ -24,27 +27,28 @@ import {
   ProviderInstanceId,
   ThreadId,
   TurnId,
+  type CrewHost,
   type CrewSnapshot,
   type Crewmate,
 } from "@t3tools/contracts";
-import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
-import { mateMarkStateForThreadStatus, resolveThreadStatus } from "@t3tools/shared/threadStatus";
-import { ChevronDownIcon, EllipsisIcon, PlusIcon } from "lucide-react";
+import type { MateTintId } from "@t3tools/shared/brand";
+import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
+import { ChevronDownIcon, EllipsisIcon } from "lucide-react";
 
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import {
-  chatEntries,
-  crewEntries,
+  lineChats,
+  lineCrew,
+  lineMate,
   mateChats,
-  stripShown,
-  type ConversationStripGroup,
+  type LineCrewmate,
 } from "~/components/chat/ConversationStrip.logic";
 import { Button } from "~/components/ui/button";
-import { WorkspaceBreadcrumb, WorkspaceBreadcrumbItem } from "~/components/WorkspaceBreadcrumb";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { ZeropsMark } from "~/components/ZeropsMark";
-import { CrewLeadBar } from "~/components/zerops/crew/CrewLeadBar";
-import { Chip, MateFace } from "~/components/zerops/primitives";
+import { CrewmateMenuPopup } from "~/components/zerops/crew/CrewmateMenu";
+import { crewmateMenuModel } from "~/components/zerops/crew/CrewmateMenu.logic";
+import { crewTryOf, crewTryPress, crewTryStops } from "~/zerops/crew/crewTry";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
@@ -52,6 +56,8 @@ const params = new URLSearchParams(location.search);
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 /** The owner's chat column: 1786 wide, the menu at 435. */
 const WIDTH = Number(params.get("width") ?? 1351);
+/** Whose menu is open: a frame's id, or `none`. */
+const OPEN = params.get("open") ?? "writer";
 
 const ENVIRONMENT = EnvironmentId.make("environment-strip");
 const PROJECT = ProjectId.make("project-strip");
@@ -118,9 +124,11 @@ interface CrewSeat {
   readonly handle: string;
   readonly displayName: string;
   readonly tint: MateTintId;
-  readonly lead?: boolean;
+  readonly kind: Crewmate["kind"];
   readonly job: string;
   readonly activity: Activity;
+  /** Its own app: running or stopped on a crew port, or none — shown on dev instead. */
+  readonly app: "running" | "stopped" | "none" | null;
 }
 
 const CREW: ReadonlyArray<CrewSeat> = [
@@ -128,30 +136,37 @@ const CREW: ReadonlyArray<CrewSeat> = [
     handle: "lead",
     displayName: "Lead",
     tint: "violet",
-    lead: true,
-    job: "Plans the work, splits it into tasks and reviews each landing.",
+    kind: "lead",
+    job: "Turns the brief into tasks and reviews each landing.",
     activity: "idle",
+    app: null,
   },
   {
     handle: "world-server",
     displayName: "World Server",
     tint: "sky",
+    kind: "writer",
     job: "Owns the world server under server/ and its tests.",
     activity: "working",
+    app: "running",
   },
   {
     handle: "game-rules",
     displayName: "Game Rules",
-    tint: "amber",
-    job: "Owns the rules engine: turns, scoring and their tests.",
+    tint: "rose",
+    kind: "writer",
+    job: "Owns the rules engine: turns, scoring and their tests. Writes the tests first.",
     activity: "needs",
+    app: "stopped",
   },
   {
-    handle: "web-clients",
-    displayName: "Web Clients",
+    handle: "web-client",
+    displayName: "Web Client",
     tint: "olive",
+    kind: "writer",
     job: "Owns the browser client and its end-to-end tests.",
     activity: "done",
+    app: "none",
   },
 ];
 
@@ -159,47 +174,93 @@ const EXTRA_CREW: ReadonlyArray<CrewSeat> = [
   {
     handle: "docs",
     displayName: "Docs",
-    tint: "rose",
-    job: "Keeps the README and the API reference current.",
+    tint: "coral",
+    kind: "reader",
+    job: "Reviews the README and the API reference against each change.",
     activity: "idle",
+    app: null,
   },
   {
     handle: "load-tests",
     displayName: "Load Tests",
     tint: "slate",
+    kind: "writer",
     job: "Writes and runs the load tests against the stage.",
     activity: "working",
+    app: "stopped",
   },
 ];
 
 const crewThread = (seat: CrewSeat) => `thread-crew-${seat.handle}-1`;
 
+/** The dev service the writers' copies live on: its own port, then its crew ports. */
+const HOST: CrewHost = {
+  host: "appdev",
+  integration: null,
+  crewPorts: [3001, 3002, 3003, 3004, 3005].map((port) => ({ port, routed: true })),
+  served: { by: "tree" },
+  claim: { state: "none", handle: null, grantWaiting: false },
+};
+const SERVICES = [
+  {
+    hostname: "appdev",
+    routes: [3000, 3001, 3002, 3003, 3004, 3005].map((port) => ({
+      port,
+      url: `https://appdev-${port}.example.test`,
+    })),
+  },
+];
+
 function crewSnapshot(seats: ReadonlyArray<CrewSeat>): CrewSnapshot {
   const base = crewSnapshotFixture();
-  const template = base.crewmates[1]!;
+  const writer = base.crewmates[1]!;
   const lead = base.crewmates[0]!;
-  const crewmates = seats.map((seat): Crewmate => ({
-    ...(seat.lead ? lead : template),
-    handle: seat.handle,
-    displayName: seat.displayName,
-    tint: seat.tint,
-    jobFirstLine: seat.job,
-    currentThreadId: ThreadId.make(crewThread(seat)),
-    stints: [
-      {
-        stint: 1,
-        threadId: ThreadId.make(crewThread(seat)),
-        state: "active",
-        reason: null,
-        lastCompactSummary: null,
-        startedAt: at(0),
-        retiredAt: null,
-      },
-    ],
-    openTaskId: null,
-    queuedTaskIds: [],
-  }));
-  return { ...base, crewmates, board: { ...base.board, tasks: [] } };
+  const crewmates = seats.map((seat, index): Crewmate => {
+    const template = seat.kind === "writer" ? writer : lead;
+    return {
+      ...template,
+      handle: seat.handle,
+      displayName: seat.displayName,
+      tint: seat.tint,
+      kind: seat.kind,
+      readOnly: seat.kind !== "writer",
+      jobFirstLine: seat.job,
+      currentThreadId: ThreadId.make(crewThread(seat)),
+      stints: [
+        {
+          stint: 1,
+          threadId: ThreadId.make(crewThread(seat)),
+          state: "active",
+          reason: null,
+          lastCompactSummary: null,
+          startedAt: at(0),
+          retiredAt: null,
+        },
+      ],
+      openTaskId: null,
+      queuedTaskIds: [],
+      host: seat.kind === "writer" ? "appdev" : null,
+      lane:
+        seat.kind === "writer"
+          ? { ...writer.lane!, branch: `crew/${seat.handle}`, ahead: 2 }
+          : null,
+      app:
+        seat.app === null
+          ? null
+          : {
+              state: seat.app,
+              port: seat.app === "none" ? null : 3001 + index,
+              url: null,
+            },
+    };
+  });
+  return {
+    ...base,
+    crewmates,
+    hosts: [HOST],
+    board: { ...base.board, tasks: [] },
+    attention: [],
+  };
 }
 
 interface HeadState {
@@ -211,165 +272,96 @@ interface HeadState {
   readonly crew: ReadonlyArray<CrewSeat>;
   /** The chat on screen: a chat's index, or a crewmate's handle. */
   readonly on: number | string;
+  /** The crew this browser remembers, turning to the feed's a moment later. */
+  readonly reload?: true;
 }
 
 const STATES: ReadonlyArray<HeadState> = [
   {
-    id: "lone",
-    title: "A Mate with one chat: no strip, New chat in the header",
-    chats: [{ title: FEN_TASK, activity: "idle" }],
-    crew: [],
-    on: 0,
-  },
-  {
     id: "crew",
     title:
-      "Fen and its crew, on Fen's chat — World Server works, Game Rules needs you, Web Clients finished unseen",
+      "Fen's own chat, with its crew — World Server works, Game Rules needs you, Web Client finished unseen",
     chats: [{ title: FEN_TASK, activity: "idle" }],
     crew: CREW,
     on: 0,
   },
   {
-    id: "crewmate",
-    title: "A crewmate's chat open (World Server, working)",
+    id: "writer",
+    title: "A writer's chat — Game Rules, its app stopped — its menu open",
+    chats: [{ title: FEN_TASK, activity: "idle" }],
+    crew: CREW,
+    on: "game-rules",
+  },
+  {
+    id: "writer-running",
+    title: "A writer whose app runs — World Server (?open=writer-running)",
     chats: [{ title: FEN_TASK, activity: "idle" }],
     crew: CREW,
     on: "world-server",
   },
   {
+    id: "writer-dev",
+    title: "A writer whose app cannot run on its own — Web Client (?open=writer-dev)",
+    chats: [{ title: FEN_TASK, activity: "idle" }],
+    crew: CREW,
+    on: "web-client",
+  },
+  {
     id: "lead",
-    title: "The lead's chat open",
+    title: "The lead's chat (?open=lead)",
     chats: [{ title: FEN_TASK, activity: "idle" }],
     crew: CREW,
     on: "lead",
   },
   {
     id: "chats",
-    title: "A Mate with three chats, on the second — the main one works, the third finished unseen",
+    title: "A Mate with two chats, from before chats were retired, on the second (?open=chats)",
     chats: [
       { title: FEN_TASK, activity: "working" },
       { title: "Fix the flaky login test", activity: "idle" },
-      { title: "Rename the orders column", activity: "done" },
     ],
     crew: [],
     on: 1,
   },
   {
-    id: "all",
-    title: "Two chats and a crew of six, on a crewmate's chat",
-    chats: [
-      { title: FEN_TASK, activity: "idle" },
-      { title: "Fix the flaky login test", activity: "working" },
-    ],
-    crew: [...CREW, ...EXTRA_CREW],
+    id: "lone",
+    title: "A Mate with no crew",
+    chats: [{ title: FEN_TASK, activity: "idle" }],
+    crew: [],
+    on: 0,
+  },
+  {
+    id: "reload",
+    title: "A reload: the crew this browser remembers, at rest, then the feed's",
+    chats: [{ title: FEN_TASK, activity: "idle" }],
+    crew: CREW,
     on: "game-rules",
+    reload: true,
   },
   {
     id: "narrow",
-    title: "The same at 640 px (the right panel open)",
-    width: 640,
-    chats: [
-      { title: FEN_TASK, activity: "idle" },
-      { title: "Fix the flaky login test", activity: "working" },
-    ],
+    title: "A crew of six on a crewmate's chat at 570 px: the rest fold into N more",
+    width: 570,
+    chats: [{ title: FEN_TASK, activity: "idle" }],
     crew: [...CREW, ...EXTRA_CREW],
-    on: "game-rules",
+    on: "load-tests",
   },
   {
     id: "phone",
     title: "The same at 390 px (a phone)",
     width: 390,
-    chats: [
-      { title: FEN_TASK, activity: "idle" },
-      { title: "Fix the flaky login test", activity: "working" },
-    ],
+    chats: [{ title: FEN_TASK, activity: "idle" }],
     crew: [...CREW, ...EXTRA_CREW],
-    on: "game-rules",
+    on: "load-tests",
   },
 ];
 
-interface HeadModel {
-  readonly groups: ReadonlyArray<ConversationStripGroup>;
-  readonly shown: boolean;
-  /** Line 1: who the chat on screen is with, and what about. */
-  readonly heading:
-    | { readonly kind: "mate"; readonly face: MateMarkState; readonly headline: string }
-    | {
-        readonly kind: "crewmate";
-        readonly seat: CrewSeat;
-        readonly face: MateMarkState;
-      };
-}
-
-function headModel(state: HeadState): HeadModel {
-  const chatShells = state.chats.map((chat, index) =>
-    shell(index === 0 ? "thread-fen-main" : `thread-fen-${index}`, chat.activity, {
-      title: chat.title,
-      createdAt: at(index),
-      pinnedAt: state.chats.length > 1 && index === 0 ? at(0) : null,
-    }),
-  );
-  const crewShells = state.crew.map((seat) =>
-    shell(crewThread(seat), seat.activity, {
-      title: seat.displayName,
-      crew: { crew: "main", crewmate: seat.handle, stint: 1 },
-    }),
-  );
-  const lastVisitedAtById = visits([...chatShells, ...crewShells]);
-  const current =
-    typeof state.on === "number"
-      ? chatShells[state.on]!.id
-      : ThreadId.make(crewThread(state.crew.find((seat) => seat.handle === state.on)!));
-  const chats = chatEntries({
-    chats: mateChats(chatShells),
-    currentThreadId: current,
-    startingChat: false,
-    mate: FEN,
-    lastVisitedAtById,
-  });
-  const view =
-    state.crew.length === 0
-      ? null
-      : deriveCrewView(crewSnapshot(state.crew), crewShells, (thread) => ({
-          status: resolveThreadStatus(thread),
-          word: null,
-          working: resolveThreadStatus(thread).kind === "working",
-        }));
-  const crew = crewEntries({ view, currentThreadId: current, connected: true, lastVisitedAtById });
-  const face = (thread: EnvironmentThreadShell) =>
-    mateMarkStateForThreadStatus(
-      resolveThreadStatus({
-        ...thread,
-        lastVisitedAt: lastVisitedAtById[`${ENVIRONMENT}:${thread.id}`] ?? null,
-      }).kind,
-    );
-  const seat =
-    typeof state.on === "string" ? state.crew.find((each) => each.handle === state.on) : undefined;
-  return {
-    groups: [{ id: "chats", label: "Chats", entries: chats }, crew],
-    shown: stripShown(chats, [crew]),
-    heading:
-      seat === undefined
-        ? {
-            kind: "mate",
-            face: face(chatShells[state.on as number]!),
-            headline: chatShells[state.on as number]!.title,
-          }
-        : { kind: "crewmate", seat, face: face(crewShells[state.crew.indexOf(seat)]!) },
-  };
-}
-
 /** The header's actions on the right, as `ChatHeader` draws them for a Mate. */
-function HeaderActions({ lone }: { readonly lone: boolean }) {
+function HeaderActions() {
   return (
     <>
       <span className="flex size-4 shrink-0 items-center justify-center" />
       <div className="flex shrink-0 items-center justify-end gap-1 pr-18.25 sm:pr-14.25">
-        {lone ? (
-          <Button aria-label="New chat" data-chat-header-ghost size="icon-sm" variant="ghost-muted">
-            <PlusIcon />
-          </Button>
-        ) : null}
         <Button
           aria-label="More header actions"
           data-chat-header-ghost
@@ -387,102 +379,120 @@ function HeaderActions({ lone }: { readonly lone: boolean }) {
   );
 }
 
-/** A Mate with one chat and no crew: `ChatHeader`'s own crumb, the Mate and its task. */
-function LoneHeader({
-  headline,
-  face,
-}: {
-  readonly headline: string;
-  readonly face: MateMarkState;
-}) {
-  return (
-    <WorkspacePageHeader className="relative bg-background" data-chat-header>
-      <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-        <WorkspaceBreadcrumb ariaLabel="Thread breadcrumb" className="flex-1">
-          <WorkspaceBreadcrumbItem>
-            <span className="inline-flex min-w-0 items-center gap-2.5 text-foreground">
-              <MateFace size="sm" state={face} tint={FEN.tint} />
-              <span className="max-w-48 truncate font-medium">{FEN.name}</span>
-            </span>
-          </WorkspaceBreadcrumbItem>
-          <WorkspaceBreadcrumbItem
-            current
-            className="flex-1 font-normal text-muted-foreground transition-colors has-[button:hover]:text-foreground"
-          >
-            <TitleButton headline={headline} />
-          </WorkspaceBreadcrumbItem>
-        </WorkspaceBreadcrumb>
-        <HeaderActions lone />
-      </div>
-    </WorkspacePageHeader>
-  );
-}
-
-/** The task as `ChatHeader`'s title button draws it: the thread's menu on a click. */
+/** The task after a crewless Mate's name, as `ChatHeader`'s title button draws it. */
 function TitleButton({ headline }: { readonly headline: string }) {
   return (
-    <button
-      className="group/thread-title inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left"
-      type="button"
+    <div
+      className="flex min-w-0 flex-1 items-center text-sm text-muted-foreground transition-colors has-[button:hover]:text-foreground"
+      data-conversation-subject-title
     >
-      <h2 className="min-w-0 truncate">{headline}</h2>
-      <ChevronDownIcon
-        aria-hidden
-        className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/thread-title:opacity-100"
-      />
-    </button>
-  );
-}
-
-/**
- * The header with the strip as its line — the real `ConversationStripView` —
- * and the subject under it, in `ChatView`'s slot: the task, or a crewmate's
- * `CrewmateHeader` without its face and name.
- */
-function StripHeader({ model }: { readonly model: HeadModel }) {
-  const { heading } = model;
-  return (
-    <>
-      <WorkspacePageHeader className="relative bg-background" data-chat-header>
-        <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-          <ConversationStripView
-            canMakeMain
-            groups={model.groups}
-            onClose={() => {}}
-            onMakeMain={() => {}}
-            onNewChat={() => {}}
-            onOpen={() => {}}
-          />
-          <HeaderActions lone={false} />
-        </div>
-      </WorkspacePageHeader>
-      <div className="relative -mt-3 flex h-6 shrink-0 items-center ps-(--workspace-gutter-start) pe-(--workspace-gutter-end)">
-        <div
-          className="ms-7.5 flex min-w-0 flex-1 items-center text-line"
-          data-conversation-subject
-        >
-          {heading.kind === "crewmate" ? (
-            <span className="inline-flex min-w-0 items-center gap-2">
-              <span className="shrink-0 text-foreground">@{heading.seat.handle}</span>
-              <span className="min-w-0 truncate text-muted-foreground">{heading.seat.job}</span>
-              <Chip className="shrink-0" label="Job v1" tone="off" />
-              <Button aria-label="More" className="shrink-0" size="icon-xs" variant="ghost-muted">
-                <EllipsisIcon aria-hidden="true" className="size-3.5" />
-              </Button>
-            </span>
-          ) : (
-            <div className="flex min-w-0 flex-1 items-center text-muted-foreground transition-colors has-[button:hover]:text-foreground">
-              <TitleButton headline={heading.headline} />
-            </div>
-          )}
-        </div>
-      </div>
-    </>
+      <button
+        className="group/thread-title inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left"
+        type="button"
+      >
+        <h2 className="min-w-0 truncate">{headline}</h2>
+        <ChevronDownIcon
+          aria-hidden
+          className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/thread-title:opacity-100"
+        />
+      </button>
+    </div>
   );
 }
 
 function Frame({ state }: { readonly state: HeadState }) {
-  const model = headModel(state);
+  // A reload: what this browser remembers first, the feed's a moment later.
+  const [live, setLive] = useState(state.reload !== true);
+  useEffect(() => {
+    if (live) return;
+    const timer = setTimeout(() => setLive(true), 1500);
+    return () => clearTimeout(timer);
+  }, [live]);
+  // The menu asked for opens as a press opens it, once the frame stands.
+  useEffect(() => {
+    if (OPEN !== state.id) return;
+    const timer = setTimeout(() => {
+      const frame = document.querySelector(`[data-head-frame="${state.id}"]`);
+      frame
+        ?.querySelector<HTMLElement>(
+          state.chats.length > 1 && state.crew.length === 0
+            ? "[data-conversation-chats]"
+            : '[data-conversation-crewmate][data-current="true"]',
+        )
+        ?.click();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [state]);
+
+  const chatShells = state.chats.map((chat, index) =>
+    shell(index === 0 ? "thread-fen-main" : `thread-fen-${index}`, chat.activity, {
+      title: chat.title,
+      createdAt: at(index),
+      pinnedAt: state.chats.length > 1 && index === 0 ? at(0) : null,
+    }),
+  );
+  const crewShells = state.crew.map((seat) =>
+    shell(crewThread(seat), seat.activity, {
+      title: seat.displayName,
+      crew: { crew: "main", crewmate: seat.handle, stint: 1 },
+    }),
+  );
+  const lastVisitedAtById = visits([...chatShells, ...crewShells]);
+  const seat =
+    typeof state.on === "string" ? state.crew.find((each) => each.handle === state.on) : undefined;
+  const current =
+    seat === undefined ? chatShells[state.on as number]!.id : ThreadId.make(crewThread(seat));
+  const snapshot = state.crew.length === 0 ? null : crewSnapshot(state.crew);
+  const view =
+    snapshot === null || !live
+      ? null
+      : deriveCrewView(snapshot, crewShells, (thread) => ({
+          status: resolveThreadStatus(thread),
+          word: null,
+          working: resolveThreadStatus(thread).kind === "working",
+        }));
+  const chats = mateChats(chatShells);
+  const crew = lineCrew({
+    view,
+    remembered:
+      state.reload === true
+        ? {
+            faces: state.crew.map((each) => ({
+              handle: each.handle,
+              displayName: each.displayName,
+              tint: each.tint,
+              lead: each.kind === "lead",
+            })),
+          }
+        : undefined,
+    crewChat: seat === undefined ? null : { handle: seat.handle, title: seat.displayName },
+    mateName: FEN.name,
+    connected: true,
+    lastVisitedAtById,
+  });
+  const menu = (crewmate: LineCrewmate): ReactNode => {
+    const row = view?.crewmates.find((each) => each.crewmate.handle === crewmate.handle);
+    if (row === undefined || snapshot === null) return null;
+    const tries = crewTryOf(snapshot.hosts, row.crewmate, SERVICES);
+    return (
+      <CrewmateMenuPopup
+        model={crewmateMenuModel({
+          crewmate: row.crewmate,
+          mateName: FEN.name,
+          tries:
+            tries === null
+              ? null
+              : {
+                  where: tries.where,
+                  enabled: crewTryPress(tries, row.working) !== null,
+                  stops: crewTryStops(tries),
+                },
+          busy: false,
+        })}
+        onSelect={() => {}}
+      />
+    );
+  };
   return (
     <section className="flex flex-col gap-2" data-head-state={state.id}>
       <p className="text-xs text-muted-foreground">{state.title}</p>
@@ -491,19 +501,40 @@ function Frame({ state }: { readonly state: HeadState }) {
         data-head-frame={state.id}
         style={{ width: state.width ?? WIDTH }}
       >
-        {model.shown || model.heading.kind === "crewmate" ? (
-          <StripHeader model={model} />
-        ) : (
-          <LoneHeader face={model.heading.face} headline={model.heading.headline} />
-        )}
-        {model.heading.kind === "crewmate" && model.heading.seat.lead ? <CrewLeadBar /> : null}
+        <WorkspacePageHeader className="relative bg-background" data-chat-header>
+          <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+            <ConversationStripView
+              chats={lineChats(chats, current)}
+              crew={crew}
+              renderCrewmateMenu={menu}
+              lone={
+                seat === undefined ? (
+                  <TitleButton headline={chatShells[state.on as number]!.title} />
+                ) : null
+              }
+              mate={lineMate({
+                mate: FEN,
+                chats,
+                currentThreadId: current,
+                crewChatOpen: seat !== undefined,
+                subject: seat === undefined ? chatShells[state.on as number]!.title : null,
+                lastVisitedAtById,
+              })}
+              onCloseChat={() => {}}
+              onOpen={() => {}}
+              onRename={() => {}}
+              renameField={null}
+            />
+            <HeaderActions />
+          </div>
+        </WorkspacePageHeader>
         <Conversation />
       </div>
     </section>
   );
 }
 
-/** Where the conversation starts under the head, so the head's gap to it shows. */
+/** Where the conversation starts under the line, so the line's gap to it shows. */
 function Conversation(): ReactNode {
   return (
     <div className="flex justify-center px-5 pt-4 pb-8 sm:px-6">
