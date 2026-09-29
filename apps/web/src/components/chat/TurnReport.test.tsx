@@ -166,7 +166,7 @@ const checkPicture = (
   key: string,
   caption: string,
   device: string | null = null,
-): OutcomePicture => ({
+): Extract<OutcomePicture, { kind: "check" }> => ({
   kind: "check",
   key,
   src: `data:image/png;base64,${key}`,
@@ -373,6 +373,57 @@ describe("TurnReport's pictures", () => {
       src: served("map-landscape.png"),
       name: "map-landscape.png",
     });
+  });
+
+  // Each tile takes its picture's shape at the strip's one height, from its
+  // first frame (the owner, 2026-09-29: "why these has different ration
+  // than the result?"): a check's from the check, a file's from the size the
+  // workspace read off its header with its address; one still being read,
+  // or gone, a desktop's room.
+  it("stands each tile in its picture's own shape before the picture loads", () => {
+    const shot = (name: string, width: number, height: number): AssetUrlState => ({
+      _tag: "Success",
+      url: served(name),
+      imageDimensions: { width, height },
+    });
+    workspace.files = new Map([
+      ["/var/www/app/.shots/map-landscape.png", shot("map-landscape.png", 844, 390)],
+      ["/var/www/app/.shots/full-page.png", shot("full-page.png", 1440, 5200)],
+      ["/var/www/app/.shots/world-mobile.png", { _tag: "Failure" }],
+    ]);
+    const tiles = tilesOf(
+      renderPictures([
+        { ...checkPicture("op:b1", "/"), device: "iPhone 16", ratio: 1179 / 2556 },
+        checkPicture("op:b2", "/status"),
+        filePicture("map-landscape.png"),
+        filePicture("full-page.png"),
+        filePicture("draft-mobile.png"),
+        filePicture("world-mobile.png"),
+      ]),
+    );
+    expect(tiles.map((tile) => Number(tile.props.style.aspectRatio.toFixed(3)))).toEqual([
+      0.461, 1.6, 2.164, 0.45, 1.6, 1.6,
+    ]);
+    expect(tiles.map((tile) => tile.props["data-result-picture"])).toEqual([
+      "ready",
+      "ready",
+      "ready",
+      "ready",
+      "loading",
+      "gone",
+    ]);
+  });
+
+  it("takes a file's shape as it loads when its address came without its size", () => {
+    workspace.files = new Map([
+      ["/var/www/app/.shots/home-mobile.svg", { _tag: "Success", url: served("home-mobile.svg") }],
+    ]);
+    const renderer = renderPictures([filePicture("home-mobile.svg")]);
+    const [tile] = tilesOf(renderer);
+    expect(tile!.props.style.aspectRatio).toBe(1.6);
+    const picture = tile!.find((node) => node.type === "img");
+    act(() => picture.props.onLoad({ currentTarget: { naturalWidth: 1179, naturalHeight: 2556 } }));
+    expect(tilesOf(renderer)[0]!.props.style.aspectRatio).toBeCloseTo(1179 / 2556, 6);
   });
 
   it("is the whole result when the run left no row", () => {

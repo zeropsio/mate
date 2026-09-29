@@ -24,6 +24,7 @@ import {
   useState,
   type AnimationEvent,
   type CSSProperties,
+  type SyntheticEvent,
 } from "react";
 
 import { useAssetUrlState, useAssetUrls, type AssetUrlState } from "../../assets/assetUrls";
@@ -39,6 +40,7 @@ import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
   resultPictures,
   resultRows,
+  tileRatio,
   type ResultFacts,
   type ResultPicture,
   type ResultRow,
@@ -213,10 +215,14 @@ type FileSource =
   | { readonly kind: "given"; readonly files: ResultFiles };
 
 /**
- * One picture of the strip, in its tile: the page's top, whatever its shape,
- * so a phone's screenshot shows its top. While its file is read, a quiet tile
- * of the same size; a file that is gone keeps its tile, muted, saying so.
- * The last tile of a run with more says how many more over its picture.
+ * One picture of the strip, in its tile: the picture whole, in its own shape
+ * at the strip's one height — a phone's screenshot narrow, a desktop's wide —
+ * and, past what a tile can hold, its top (`tileRatio`). The shape is known
+ * before the bytes: a check's from the check, a file's from the size the
+ * workspace read off its header with its address, else as it loads. While
+ * its file is read, a quiet tile in a desktop's room; a file that is gone
+ * keeps its tile, muted, saying so. The last tile of a run with more says how
+ * many more over its picture.
  */
 function PictureTile({
   picture,
@@ -235,6 +241,19 @@ function PictureTile({
   const own = status === "gone" ? `${picture.label}, gone` : picture.label;
   const said = more > 0 ? `${own}, and ${more} more` : own;
   const failed = (picture.kind === "check" && picture.failed) || undefined;
+  const size = state._tag === "Success" ? state.imageDimensions : undefined;
+  const known =
+    picture.kind === "check" ? picture.ratio : size === undefined ? null : size.width / size.height;
+  // A file whose address came without its size takes its shape as it loads.
+  const [learned, setLearned] = useState<number | null>(null);
+  const shape: CSSProperties = { aspectRatio: tileRatio(known ?? learned) };
+  const learn =
+    known === null
+      ? (event: SyntheticEvent<HTMLImageElement>) => {
+          const { naturalWidth, naturalHeight } = event.currentTarget;
+          if (naturalWidth > 0 && naturalHeight > 0) setLearned(naturalWidth / naturalHeight);
+        }
+      : undefined;
   return (
     <Tooltip>
       <TooltipTrigger
@@ -246,6 +265,7 @@ function PictureTile({
               data-failed={failed}
               data-result-picture={status}
               role="img"
+              style={shape}
             />
           ) : (
             <button
@@ -254,12 +274,13 @@ function PictureTile({
               data-failed={failed}
               data-result-picture={status}
               onClick={onOpen}
+              style={shape}
               type="button"
             />
           )
         }
       >
-        {state._tag === "Success" ? <img alt="" src={state.url} /> : null}
+        {state._tag === "Success" ? <img alt="" onLoad={learn} src={state.url} /> : null}
         {/* The count stands for the rest over a last tile whose own file is gone. */}
         {status === "gone" && more === 0 ? <span className="run-result-gone">Gone</span> : null}
         {more > 0 ? <span className="run-result-more">+{more}</span> : null}
