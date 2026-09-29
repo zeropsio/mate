@@ -5534,8 +5534,9 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   filter: none;
   transform: none;
 }
+/* A button waiting to take its keys keeps them, in its muted ink: nothing moves once it can. */
 .rv-btn1:disabled kbd {
-  display: none;
+  background: color-mix(in oklab, var(--foreground) 8%, transparent);
 }
 /* ==== end of review ==== */
 

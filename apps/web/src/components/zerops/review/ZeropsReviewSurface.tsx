@@ -83,6 +83,8 @@ export interface ReviewButton {
 export interface ReviewPrimaryButton extends ReviewButton {
   readonly enabled: boolean;
   readonly safe: boolean;
+  /** Its keys shown before it takes them (`ReviewPrimary.shortcut`). */
+  readonly shortcut?: true | undefined;
   /** Pressed and running: the label says so, and it takes no second press. */
   readonly busy?: boolean;
   readonly icon?: "tag" | "rollback" | undefined;
@@ -192,7 +194,7 @@ export function ZeropsReviewSurface({
             {primary.icon === "tag" ? <TagIcon aria-hidden="true" /> : null}
             {primary.icon === "rollback" ? <RotateCcwIcon aria-hidden="true" /> : null}
             {primary.busy === true ? `${primary.label}…` : primary.label}
-            {primary.safe && primary.busy !== true ? (
+            {(primary.safe || primary.shortcut === true) && primary.busy !== true ? (
               <kbd aria-hidden="true">{PRESS_KEYS}</kbd>
             ) : null}
           </button>

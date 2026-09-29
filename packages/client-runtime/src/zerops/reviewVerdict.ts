@@ -119,6 +119,11 @@ export interface ReviewPrimary {
   readonly enabled: boolean;
   /** ⌘↵ presses it, and the review opens with the focus on it. */
   readonly safe: boolean;
+  /**
+   * Its keys shown before it takes them: a Merge waiting for its change to be read keeps the
+   * width it will have, so nothing in the foot moves once it can be pressed.
+   */
+  readonly shortcut?: true;
 }
 
 export interface ReviewModel {
@@ -186,8 +191,8 @@ export interface ChangeReviewInput {
   readonly mateName: string | undefined;
   /**
    * How far its files were read for the head it is at. Merge takes only a head whose change was
-   * shown: nothing merges while they are read, and one that could not be read is merged only by
-   * a deliberate press.
+   * shown: it waits while they are read, and one that could not be read is merged only by a
+   * deliberate press.
    */
   readonly readout: "reading" | "read" | "failed";
   /** How many commits it squashes, where they were read. */
@@ -500,10 +505,9 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
     "checks-running": "Merging waits for the checks to finish.",
     checking: "Merging waits until Gitea knows it merges cleanly.",
   };
-  // What holds it back: the change's own trouble first, then its files still being read.
-  const held = verdictOf.enabled
-    ? "Merging waits until the change is read."
-    : (waits[verdict.state] ?? squash);
+  // What holds it back is the change's own trouble; files still being read hold it only briefly,
+  // and the sentence stays what Merge will do.
+  const held = verdictOf.enabled ? squash : (waits[verdict.state] ?? squash);
 
   if (press.kind === "running") {
     return {
@@ -535,15 +539,17 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
       primary: { label: "Merge", enabled, safe: false },
     };
   }
+  // Behind main is amber, and a change whose files could not be read was never shown: both
+  // still pressable, never pressed for the person.
+  const safeOnceRead = verdictOf.enabled && verdict.state !== "behind-clean";
   return {
     verdict,
     consequence: enabled ? squash : held,
-    // Behind main is amber, and a change whose files could not be read was never shown: both
-    // still pressable, never pressed for the person.
     primary: {
       label: "Merge",
       enabled,
-      safe: enabled && verdict.state !== "behind-clean" && input.readout === "read",
+      safe: safeOnceRead && input.readout === "read",
+      ...(safeOnceRead && input.readout === "reading" ? { shortcut: true } : {}),
     },
   };
 }

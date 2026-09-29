@@ -188,6 +188,13 @@ describe("the review's one button (R5)", () => {
       "false",
     ],
     ["running: off while it runs", { enabled: true, safe: true, busy: true }, true, false, "false"],
+    [
+      "waiting for what it acts on to be read: off, its keys kept in place",
+      { enabled: false, safe: false, shortcut: true },
+      true,
+      true,
+      "false",
+    ],
   ] as const)("%s", (_case, state, disabled, keys, safe) => {
     const html = surface({ primary: { label: "Merge", onPress: () => {}, ...state } });
     const button = /<button[^>]*data-review-primary[^>]*>[\s\S]*?<\/button>/u.exec(html)?.[0] ?? "";

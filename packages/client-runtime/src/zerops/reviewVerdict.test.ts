@@ -803,12 +803,19 @@ describe("changeReview: a change closed without merging", () => {
 });
 
 describe("changeReview: Merge takes only a head whose change was shown", () => {
-  it.each<[string, ChangeReviewInput["readout"], { enabled: boolean; safe: boolean }, string]>([
+  it.each<
     [
-      "its files for this head still being read",
+      string,
+      ChangeReviewInput["readout"],
+      { enabled: boolean; safe: boolean; shortcut?: boolean },
+      string,
+    ]
+  >([
+    [
+      "its files for this head still being read: off, its keys kept, its place in the foot kept",
       "reading",
-      { enabled: false, safe: false },
-      "Merging waits until the change is read.",
+      { enabled: false, safe: false, shortcut: true },
+      "Squash-merges 1 commit into main. Production isn't touched until you release.",
     ],
     [
       "its files for this head could not be read",
@@ -824,8 +831,20 @@ describe("changeReview: Merge takes only a head whose change was shown", () => {
     ],
   ])("%s", (_case, readout, primary, consequence) => {
     const review = changeReview(change({ readout }));
-    expect(review.primary).toMatchObject({ label: "Merge", ...primary });
+    expect(review.primary).toEqual({ label: "Merge", ...primary });
     expect(review.consequence).toBe(consequence);
+  });
+
+  it("keeps no keys for a change behind main while it is read: it never takes them", () => {
+    expect(
+      changeReview(
+        change({
+          pull: pull({ mergeBase: "old", baseSha: "new" }),
+          behindBy: 2,
+          readout: "reading",
+        }),
+      ).primary,
+    ).toEqual({ label: "Merge", enabled: false, safe: false });
   });
 
   it("keeps a blocked change's reason while its files are read", () => {
