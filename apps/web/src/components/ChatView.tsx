@@ -8210,13 +8210,15 @@ export default function ChatView(props: ChatViewProps) {
                 className="pointer-events-none absolute left-1/2 z-30 flex -translate-x-1/2 justify-center py-2"
                 style={{ bottom: composerOverlayHeight + 4 }}
               >
+                {/* Hidden, it is inert: out of the tab order and the tree the
+                    reader hears, and a button still focused as it goes (a click
+                    or a key focused it) lets the focus go with it. */}
                 <button
-                  aria-hidden={showScrollToBottom ? undefined : true}
                   aria-label="Scroll to end"
                   className="pointer-events-auto flex size-8 cursor-pointer items-center justify-center rounded-full border border-border/70 bg-popover text-foreground shadow-lg/8 transition-[opacity,translate,scale,background-color] duration-200 ease-out hover:bg-accent active:scale-95 not-data-shown:pointer-events-none not-data-shown:translate-y-1.5 not-data-shown:scale-96 not-data-shown:opacity-0"
                   data-shown={showScrollToBottom ? "" : undefined}
+                  inert={!showScrollToBottom}
                   onClick={() => scrollToEnd(true)}
-                  tabIndex={showScrollToBottom ? undefined : -1}
                   type="button"
                 >
                   <ArrowDownIcon aria-hidden="true" className="size-4" />
