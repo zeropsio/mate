@@ -1407,7 +1407,12 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
   const [entering] = useState(() => messageEnters(row, arrivedAfter));
   useEffect(() => {
     if (!entering) return;
-    if (enteredMessages.size > 500) enteredMessages.clear();
+    // The oldest goes first: clearing them all would let every message of
+    // the open conversation newer than its opening rise in again.
+    if (enteredMessages.size >= 500) {
+      const oldest = enteredMessages.values().next();
+      if (!oldest.done) enteredMessages.delete(oldest.value);
+    }
     enteredMessages.add(row.id);
   }, [entering, row.id]);
   const person = row.kind === "message" && row.message.role === "user";
