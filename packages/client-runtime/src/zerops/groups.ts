@@ -59,6 +59,12 @@ const ROLE_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:role:`;
 const LABEL_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:name:`;
 /** The agent living in this environment, named so a person can address it. */
 const BOT_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:bot:`;
+/**
+ * A Mate whose project's development is still to be stood up, and the Zerops user who asked for
+ * it by adding the Mate: their first sign-in sends "Stand up development of the project."
+ * (`mateStandUp.ts` in the web app), and the send clears the tag.
+ */
+const STAND_UP_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:standup:`;
 
 /**
  * The marker: this project has a Mate. The bare namespace word, so the Zerops
@@ -138,6 +144,8 @@ export interface ZeropsGroupTags {
   readonly label: string | undefined;
   /** The agent's own name (`mate:bot:`), the thing a person addresses. */
   readonly bot: string | undefined;
+  /** Who asked for the project's development to be stood up (`mate:standup:`), while it waits. */
+  readonly standUp?: { readonly by: string } | undefined;
 }
 
 /**
@@ -151,10 +159,16 @@ export function readZeropsGroupTags(tagList: ReadonlyArray<string> | undefined):
   let role: ZeropsEnvironmentRole | undefined;
   let label: string | undefined;
   let bot: string | undefined;
+  let standUp: { readonly by: string } | undefined;
 
   for (const tag of tagList ?? []) {
     if (tag === MATE_MARKER_TAG) {
       mate = true;
+      continue;
+    }
+    if (tag.startsWith(STAND_UP_TAG_PREFIX)) {
+      const by = tag.slice(STAND_UP_TAG_PREFIX.length).trim();
+      if (standUp === undefined && by.length > 0) standUp = { by };
       continue;
     }
     if (groupId === undefined && tag.startsWith(GROUP_TAG_PREFIX)) {
@@ -178,7 +192,7 @@ export function readZeropsGroupTags(tagList: ReadonlyArray<string> | undefined):
     }
   }
 
-  return { mate, groupId, role, label, bot };
+  return { mate, groupId, role, label, bot, standUp };
 }
 
 /**
@@ -261,6 +275,27 @@ export function withZeropsMateTag(
 ): ReadonlyArray<string> {
   const existing = tagList ?? [];
   return existing.includes(MATE_MARKER_TAG) ? existing : [...existing, MATE_MARKER_TAG];
+}
+
+/**
+ * Asks for the project's development to be stood up, on behalf of `userId` — the person adding
+ * the Mate, whose first sign-in sends the ask. Written at birth; one ask per project, so one naming
+ * somebody else is replaced. A blank user asks for nothing.
+ */
+export function withZeropsStandUpTag(
+  tagList: ReadonlyArray<string> | undefined,
+  userId: string,
+): ReadonlyArray<string> {
+  const kept = withoutZeropsStandUpTag(tagList);
+  const by = userId.trim();
+  return by.length === 0 ? kept : [...kept, `${STAND_UP_TAG_PREFIX}${by}`];
+}
+
+/** The ask answered: every stand-up tag goes, every other tag stays. Idempotent. */
+export function withoutZeropsStandUpTag(
+  tagList: ReadonlyArray<string> | undefined,
+): ReadonlyArray<string> {
+  return (tagList ?? []).filter((tag) => !tag.startsWith(STAND_UP_TAG_PREFIX));
 }
 
 export const ZEROPS_GROUP_ID_LENGTH = 12;

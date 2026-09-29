@@ -252,6 +252,59 @@ describe("the agent's name", () => {
   });
 });
 
+describe("the stand-up ask", () => {
+  const birthTags = (plan: ReturnType<typeof planEnvironmentCreation>) => {
+    const step = plan.ok ? plan.steps[0] : undefined;
+    return step?.kind === "create-project" || step?.kind === "import-project" ? step.tagList : [];
+  };
+  const DEV_TIER = { ...TIER, tier: "stage" as const };
+
+  it.each([
+    {
+      name: "a Mate added to a project, by the person who added it",
+      input: { role: "dev" as const, standUpBy: "u-ada" },
+      expected: "mate:standup:u-ada",
+    },
+    {
+      name: "a Mate whose recipe arrives as a whole project",
+      input: {
+        role: "dev" as const,
+        standUpBy: "u-ada",
+        recipe: { ...DEV_TIER, yaml: `project:\n  name: x\n${DEV_TIER.yaml}` },
+      },
+      expected: "mate:standup:u-ada",
+    },
+    {
+      name: "nobody named: nobody's first sign-in sends it",
+      input: { role: "dev" as const },
+      expected: undefined,
+    },
+    {
+      name: "a dev environment with no agent: nobody there to stand it up",
+      input: { role: "dev" as const, standUpBy: "u-ada", withAgent: false },
+      expected: undefined,
+    },
+    {
+      name: "a stage with an agent: a deploy target, never stood up for development",
+      input: { role: "stage" as const, standUpBy: "u-ada", withAgent: true },
+      expected: undefined,
+    },
+    {
+      name: "a production",
+      input: { role: "prod" as const, standUpBy: "u-ada" },
+      expected: undefined,
+    },
+  ])("$name", ({ input, expected }) => {
+    const plan = planEnvironmentCreation({ ...BASE, recipe: DEV_TIER, ...input });
+    const tags = birthTags(plan);
+    expect(tags.find((tag) => tag.startsWith("mate:standup:"))).toBe(expected);
+    const step = plan.ok ? plan.steps[0] : undefined;
+    if (expected !== undefined && step?.kind === "import-project") {
+      expect(step.yaml).toContain(expected);
+    }
+  });
+});
+
 describe("the recipe choice", () => {
   it("imports the tier it is handed, and keeps its source map", () => {
     const plan = planEnvironmentCreation(BASE);

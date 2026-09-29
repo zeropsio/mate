@@ -46,6 +46,14 @@ describe("zeropsMateIdentities", () => {
     expect(mates.get(FEN)?.tint).not.toBe(mates.get(JUNO)?.tint);
   });
 
+  it.each([
+    { name: "names who asked for it", tags: [...FEN_TAGS, "mate:standup:u-ada"], by: "u-ada" },
+    { name: "is absent once it was sent", tags: FEN_TAGS, by: undefined },
+  ])("carries the project's stand-up ask: $name", ({ tags, by }) => {
+    const mate = zeropsMateIdentities([candidate("acme-docs-dev", tags, FEN)]).get(FEN);
+    expect(mate?.standUp).toEqual(by === undefined ? undefined : { by });
+  });
+
   it("keeps each environment's service identity when a project has two containers", () => {
     const second = {
       ...FEN_DEV,

@@ -32,6 +32,7 @@ import {
   withZeropsBotTag,
   withZeropsGroupTags,
   withZeropsMateTag,
+  withZeropsStandUpTag,
   type ZeropsEnvironmentRole,
 } from "./groups.ts";
 import {
@@ -100,6 +101,12 @@ export interface EnvironmentCreationInput {
    * name — legible, but not somebody you can address.
    */
   readonly botName?: string;
+  /**
+   * The Zerops user adding this Mate. A dev environment with an agent is born asking for its
+   * development to be stood up on their behalf (`mate:standup:`): the services arrive empty
+   * (`startWithoutCode`), and their first sign-in sends the Mate the ask that finishes the setup.
+   */
+  readonly standUpBy?: string;
   /**
    * The coding agents the new container offers, normally the ones this
    * group's existing environments are signed in with (`agentSelection.ts`).
@@ -325,5 +332,9 @@ function taggedAtBirth(input: EnvironmentCreationInput, withAgent: boolean): Rea
   });
   if (!withAgent) return membership;
   const declared = withZeropsMateTag(membership);
-  return input.botName === undefined ? declared : withZeropsBotTag(declared, input.botName);
+  const named = input.botName === undefined ? declared : withZeropsBotTag(declared, input.botName);
+  // Only a dev Mate stands development up; a stage or a production with an agent is a target.
+  return input.role === "dev" && input.standUpBy !== undefined
+    ? withZeropsStandUpTag(named, input.standUpBy)
+    : named;
 }

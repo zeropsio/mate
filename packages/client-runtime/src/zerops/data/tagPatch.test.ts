@@ -39,6 +39,20 @@ describe("applyProjectTagPatch", () => {
       removes: ["mate:signer:codex:u0"],
     },
     {
+      name: "a stand-up answered clears its ask and keeps the signer who answered it",
+      tags: ["mate:g:g1", "mate", "mate:standup:u1", "mate:signer:codex:u1", "person:own"],
+      patch: { kind: "stand-up-done" },
+      adds: ["mate:g:g1", "mate", "mate:signer:codex:u1"],
+      removes: ["mate:standup:u1"],
+    },
+    {
+      name: "a membership write keeps a stand-up still waiting",
+      tags: ["mate:g:old", "mate:standup:u1", "person:own"],
+      patch: { kind: "group-membership", next: { groupId: "g1", role: "dev" } },
+      adds: ["mate:standup:u1"],
+      removes: ["mate:g:old"],
+    },
+    {
       name: "a group is registered beside the others, its slug derived from the list read",
       tags: REGISTRY,
       patch: { kind: "registry-group", groupId: "g2", name: "Acme" },

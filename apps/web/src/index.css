@@ -6402,3 +6402,56 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 }
 
 /* ==== end of motion across switches ==== */
+
+/* ==== Pass 18 · the stand-up ==== */
+
+/* A new Mate's empty conversation while its stand-up is its person's to start
+   (`ZeropsMateEmptyState`). Its phases share one box, the tallest's, each
+   from its top — 24 px under the face, as the question — so a new phase fades
+   its words in where the last ones began and nothing around them moves:
+   180 ms, a phase left behind leaving upward and the next arriving from below,
+   4 px; under reduced motion, a fade alone. A failure carries its Try again
+   12 px under its words. What hangs below the box — the sign-in rows, the
+   sign-in still being read — fades in layers of its own, where it stands. A
+   first paint shows its phase at once: only a change of state moves. */
+[data-standup-headline] {
+  display: grid;
+}
+
+[data-standup-phrase] {
+  grid-area: 1 / 1;
+  align-self: start;
+  transition:
+    opacity 180ms var(--ease-out-strong),
+    translate 180ms var(--ease-out-strong);
+}
+
+[data-standup-phrase="past"] {
+  opacity: 0;
+  translate: 0 -4px;
+}
+
+[data-standup-phrase="next"] {
+  opacity: 0;
+  translate: 0 4px;
+}
+
+[data-standup-layer] {
+  grid-area: 1 / 1;
+  transition: opacity 180ms var(--ease-out-strong);
+}
+
+[data-standup-layer="hidden"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-standup-phrase],
+  [data-standup-phrase="past"],
+  [data-standup-phrase="next"] {
+    translate: none;
+  }
+}
+
+/* ==== end of the stand-up ==== */

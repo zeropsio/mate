@@ -1537,6 +1537,76 @@ describe("OrchestrationEngine", () => {
     await system.dispose();
   });
 
+  it("takes one turn start when two clients send the same command at the same moment", async () => {
+    // A Mate's stand-up is sent by every client its person has open, each
+    // with the ids derived from the conversation (`mateStandUp.ts` in the web
+    // app): they race, and the conversation must hold the ask once.
+    const createdAt = now();
+    const system = await createOrchestrationSystem();
+    const { engine } = system;
+
+    await system.run(
+      engine.dispatch({
+        type: "project.create",
+        commandId: CommandId.make("cmd-race-project-create"),
+        projectId: asProjectId("project-race"),
+        title: "Race Project",
+        workspaceRoot: "/tmp/project-race",
+        defaultModelSelection: {
+          instanceId: ProviderInstanceId.make("codex"),
+          model: "gpt-5-codex",
+        },
+        createdAt,
+      }),
+    );
+    await system.run(
+      engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("cmd-race-thread-create"),
+        threadId: ThreadId.make("thread-race"),
+        projectId: asProjectId("project-race"),
+        title: "New thread",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("codex"),
+          model: "gpt-5-codex",
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "full-access",
+        branch: null,
+        worktreePath: null,
+        createdAt,
+      }),
+    );
+
+    const fromClient = (clientCreatedAt: string) =>
+      ({
+        type: "thread.turn.start",
+        commandId: CommandId.make("mate-standup-thread-race-1"),
+        threadId: ThreadId.make("thread-race"),
+        message: {
+          messageId: asMessageId("mate-standup-thread-race-1"),
+          role: "user",
+          text: "Stand up development of the project.",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "full-access",
+        createdAt: clientCreatedAt,
+      }) as const;
+
+    const [first, second] = await Promise.all([
+      system.run(engine.dispatch(fromClient(createdAt))),
+      system.run(engine.dispatch(fromClient("2026-01-01T00:00:00.250Z"))),
+    ]);
+    expect(second.sequence).toBe(first.sequence);
+
+    const readModel = await system.readModel();
+    const thread = readModel.threads.find((candidate) => candidate.id === "thread-race");
+    expect(thread?.messages.filter((message) => message.role === "user")).toHaveLength(1);
+
+    await system.dispose();
+  });
+
   it("rejects reusing an accepted command id for a different aggregate", async () => {
     const createdAt = now();
     const system = await createOrchestrationSystem();

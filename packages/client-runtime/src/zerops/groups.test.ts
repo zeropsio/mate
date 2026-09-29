@@ -10,6 +10,8 @@ import {
   withZeropsBotTag,
   withZeropsGroupTags,
   withZeropsMateTag,
+  withZeropsStandUpTag,
+  withoutZeropsStandUpTag,
   formatLabelTag,
   ZEROPS_GROUP_ID_LENGTH,
   ZEROPS_GROUP_LABEL_MAX_LENGTH,
@@ -143,6 +145,99 @@ describe("withZeropsMateTag", () => {
     const declared = withZeropsMateTag(["mate:g:old", "mate:role:dev"]);
     expect(withZeropsGroupTags(declared, { groupId: "new", role: "dev" })).toContain("mate");
     expect(withZeropsGroupTags(declared, {})).toEqual(["mate"]);
+  });
+});
+
+describe("the stand-up marker (mate:standup:)", () => {
+  it.each([
+    {
+      name: "names who asked for it",
+      tagList: ["mate:g:abc", "mate", "mate:standup:u-ada"],
+      standUp: { by: "u-ada" },
+    },
+    {
+      name: "is absent on a Mate nobody asked it of",
+      tagList: ["mate:g:abc", "mate"],
+      standUp: undefined,
+    },
+    {
+      name: "names nobody when blank",
+      tagList: ["mate:standup:", "mate:standup:  "],
+      standUp: undefined,
+    },
+    {
+      name: "takes the first when a list carries two",
+      tagList: ["mate:standup:u-ada", "mate:standup:u-fen"],
+      standUp: { by: "u-ada" },
+    },
+    {
+      name: "is not a foreign tag that merely looks alike",
+      tagList: ["standup:u-ada"],
+      standUp: undefined,
+    },
+  ])("$name", ({ tagList, standUp }) => {
+    expect(readZeropsGroupTags(tagList).standUp).toEqual(standUp);
+  });
+
+  it.each([
+    {
+      name: "is written after every other tag",
+      tagList: ["mate:g:abc", "mate"],
+      userId: "u-ada",
+      expected: ["mate:g:abc", "mate", "mate:standup:u-ada"],
+    },
+    {
+      name: "replaces one naming somebody else",
+      tagList: ["mate:standup:u-fen", "keep"],
+      userId: "u-ada",
+      expected: ["keep", "mate:standup:u-ada"],
+    },
+    { name: "is not written for nobody", tagList: ["keep"], userId: "  ", expected: ["keep"] },
+  ])("$name", ({ tagList, userId, expected }) => {
+    expect(withZeropsStandUpTag(tagList, userId)).toEqual(expected);
+  });
+
+  it("clears every stand-up and nothing else, and clearing again changes nothing", () => {
+    const cleared = withoutZeropsStandUpTag([
+      "person:own",
+      "mate:g:abc",
+      "mate:standup:u-ada",
+      "mate:bot:Ada",
+      "mate:signer:codex:u-ada",
+      "mate:standup:u-fen",
+      "mate",
+    ]);
+    expect(cleared).toEqual([
+      "person:own",
+      "mate:g:abc",
+      "mate:bot:Ada",
+      "mate:signer:codex:u-ada",
+      "mate",
+    ]);
+    expect(withoutZeropsStandUpTag(cleared)).toEqual(cleared);
+  });
+
+  it.each([
+    {
+      name: "a move to another group",
+      write: (tags: ReadonlyArray<string>) =>
+        withZeropsGroupTags(tags, { groupId: "new", role: "dev", label: "Acme Docs" }),
+    },
+    {
+      name: "leaving the group",
+      write: (tags: ReadonlyArray<string>) => withZeropsGroupTags(tags, {}),
+    },
+    {
+      name: "naming the agent",
+      write: (tags: ReadonlyArray<string>) => withZeropsBotTag(tags, "Fen"),
+    },
+    {
+      name: "declaring the Mate again",
+      write: (tags: ReadonlyArray<string>) => withZeropsMateTag(tags),
+    },
+  ])("stands through $name", ({ write }) => {
+    const asked = withZeropsStandUpTag(["mate:g:old", "mate:role:dev", "mate"], "u-ada");
+    expect(readZeropsGroupTags(write(asked)).standUp).toEqual({ by: "u-ada" });
   });
 });
 

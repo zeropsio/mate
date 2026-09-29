@@ -1,10 +1,12 @@
 import { accountDraftStorage } from "./zerops/draftStorage";
 import { onAccountLifetimeClose, onAccountLifetimeOpen } from "./zerops/accountLifetime";
 import {
+  type CommandId,
   DEFAULT_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
   defaultInstanceIdForDriver,
   type EnvironmentId,
+  type MessageId,
   ModelSelection,
   ProjectId,
   ProviderInstanceId,
@@ -405,7 +407,19 @@ interface ProjectDraftSession extends DraftSessionState {
  * Raw `ThreadId` is intentionally excluded so callers cannot drop environment
  * identity for real threads.
  */
-type ComposerThreadTarget = ScopedThreadRef | DraftId;
+export type ComposerThreadTarget = ScopedThreadRef | DraftId;
+
+/** The ids a send carries so that clients making the same send make the same command. */
+export interface ComposerSendIds {
+  readonly commandId: CommandId;
+  readonly messageId: MessageId;
+}
+
+/** What a surface asked the composer to send: its words, and its ids when it carries some. */
+export interface ComposerSendRequest {
+  readonly prompt: string;
+  readonly ids?: ComposerSendIds | undefined;
+}
 
 /**
  * Persisted store for composer content plus draft-session metadata.
@@ -421,7 +435,7 @@ interface ComposerDraftStoreState {
    * persisted: a send the app did not get to before a reload is a send the
    * person did not watch happen, and it must not fire on the next boot.
    */
-  sendRequestsByThreadKey: Record<string, string>;
+  sendRequestsByThreadKey: Record<string, ComposerSendRequest>;
   draftThreadsByThreadKey: Record<string, DraftThreadState>;
   logicalProjectDraftThreadKeyByLogicalProjectKey: Record<string, string>;
   backgroundSubmissionThreadKeys: Record<string, true>;
@@ -509,10 +523,14 @@ interface ComposerDraftStoreState {
    * the composer's job because only it knows the model selection, the runtime
    * mode and the attachments a turn needs; a dialog reproducing that would be a
    * second, worse sender.
+   *
+   * `ids` are for a send several clients may make at once (a Mate's stand-up,
+   * asked by every client its person has open): the same ids make the same
+   * command, and the server takes a command once.
    */
-  requestSend: (threadRef: ComposerThreadTarget, prompt: string) => void;
+  requestSend: (threadRef: ComposerThreadTarget, prompt: string, ids?: ComposerSendIds) => void;
   /** Taken once by the composer, so a re-render never sends twice. */
-  takeSendRequest: (threadRef: ComposerThreadTarget) => string | null;
+  takeSendRequest: (threadRef: ComposerThreadTarget) => ComposerSendRequest | null;
   setTerminalContexts: (threadRef: ComposerThreadTarget, contexts: TerminalContextDraft[]) => void;
   setModelSelection: (
     threadRef: ComposerThreadTarget,
@@ -2735,12 +2753,13 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             return { draftsByThreadKey: nextDraftsByThreadKey };
           });
         },
-        requestSend: (threadRef, prompt) => {
+        requestSend: (threadRef, prompt, ids) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
           if (threadKey.length === 0) return;
           get().setPrompt(threadRef, prompt);
+          const request: ComposerSendRequest = ids === undefined ? { prompt } : { prompt, ids };
           set((state) => ({
-            sendRequestsByThreadKey: { ...state.sendRequestsByThreadKey, [threadKey]: prompt },
+            sendRequestsByThreadKey: { ...state.sendRequestsByThreadKey, [threadKey]: request },
           }));
         },
 

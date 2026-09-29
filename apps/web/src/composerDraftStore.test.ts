@@ -6,8 +6,10 @@ import {
 } from "@t3tools/client-runtime/environment";
 import * as Schema from "effect/Schema";
 import {
+  CommandId,
   defaultInstanceIdForDriver,
   EnvironmentId,
+  MessageId,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -694,16 +696,16 @@ describe("composerDraftStore requestSend", () => {
     expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe(
       "rebase this onto main, then push",
     );
-    expect(useComposerDraftStore.getState().takeSendRequest(threadRef)).toBe(
-      "rebase this onto main, then push",
-    );
+    expect(useComposerDraftStore.getState().takeSendRequest(threadRef)).toEqual({
+      prompt: "rebase this onto main, then push",
+    });
   });
 
   it("hands the send over once, so a re-render never sends twice", () => {
     const store = useComposerDraftStore.getState();
     store.requestSend(threadRef, "rebase this onto main, then push");
 
-    expect(store.takeSendRequest(threadRef)).toBe("rebase this onto main, then push");
+    expect(store.takeSendRequest(threadRef)?.prompt).toBe("rebase this onto main, then push");
     // `ChatView` takes on every change of the live thread; the second take is
     // the same effect running again, and it must find nothing.
     expect(store.takeSendRequest(threadRef)).toBeNull();
@@ -716,7 +718,7 @@ describe("composerDraftStore requestSend", () => {
     // Opening another conversation must not fire the request waiting on this
     // one — the words quoted in the confirm named one Mate.
     expect(store.takeSendRequest(otherThreadRef)).toBeNull();
-    expect(store.takeSendRequest(threadRef)).toBe("rebase this onto main, then push");
+    expect(store.takeSendRequest(threadRef)?.prompt).toBe("rebase this onto main, then push");
   });
 
   it("asks again with the newer words when a second request lands first", () => {
@@ -725,10 +727,26 @@ describe("composerDraftStore requestSend", () => {
 
     store.requestSend(threadRef, "never mind the rebase, just fix the failing check");
 
-    expect(store.takeSendRequest(threadRef)).toBe(
+    expect(store.takeSendRequest(threadRef)?.prompt).toBe(
       "never mind the rebase, just fix the failing check",
     );
     expect(store.takeSendRequest(threadRef)).toBeNull();
+  });
+
+  it("carries the ids of a send several clients may make at once", () => {
+    // The stand-up is asked by every client its person has open; the same ids
+    // make the same command, which the server takes once.
+    const ids = {
+      commandId: CommandId.make("mate-standup-thread-request-send-1"),
+      messageId: MessageId.make("mate-standup-thread-request-send-1"),
+    };
+    const store = useComposerDraftStore.getState();
+    store.requestSend(threadRef, "Stand up development of the project.", ids);
+
+    expect(store.takeSendRequest(threadRef)).toEqual({
+      prompt: "Stand up development of the project.",
+      ids,
+    });
   });
 });
 
