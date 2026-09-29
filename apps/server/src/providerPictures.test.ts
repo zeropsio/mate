@@ -35,6 +35,11 @@ describe("placeClaudePictures", () => {
       [image("one"), text("/review\n[Picture 1]\nthis")],
     ],
     [
+      "words after the last picture that start with a slash stay last, unread as a command",
+      [image("one"), text("Off:\n[Picture 1]\n/etc/hosts is wrong")],
+      [image("one"), text("Off:\n[Picture 1]\n/etc/hosts is wrong")],
+    ],
+    [
       "a message ending on a picture keeps its text last",
       [image("one"), text("See:\n[Picture 1]")],
       [image("one"), text("See:\n[Picture 1]")],

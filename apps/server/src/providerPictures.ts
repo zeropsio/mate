@@ -25,8 +25,9 @@ const isText = (block: ContentBlock | undefined): block is ContentBlock & { text
  * between them as text blocks. It takes the images-first content the adapter
  * builds, `[image…, text]`, and leaves any other shape as it is: a skill's
  * leading words, a slash command, a message that places no picture, or one
- * whose last text would not be last. The Claude CLI runs a command only from
- * the last text block, so that block must stay last.
+ * whose last text would start with a slash or would not be last. The Claude
+ * CLI runs a command only from the last text block, so that block must stay
+ * last, and must not read as a command unless it was one.
  */
 export function placeClaudePictures(content: ReadonlyArray<ContentBlock>): ContentBlock[] {
   const last = content.at(-1);
@@ -35,7 +36,7 @@ export function placeClaudePictures(content: ReadonlyArray<ContentBlock>): Conte
   if (last.text.trimStart().startsWith("/")) return [...content];
   const parts = interleavePictures(last.text, images.length);
   const end = parts?.at(-1);
-  if (!parts || end?.kind !== "text") return [...content];
+  if (!parts || end?.kind !== "text" || end.text.trimStart().startsWith("/")) return [...content];
   return parts.map((part) =>
     part.kind === "text" ? { type: "text", text: part.text } : images[part.index]!,
   );

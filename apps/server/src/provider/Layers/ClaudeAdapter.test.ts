@@ -1052,6 +1052,15 @@ describe("ClaudeAdapterLive", () => {
       input: "See:\n[Picture 1]\n[Picture 2]",
       content: ["first", "second", { type: "text", text: "See:\n[Picture 1]\n[Picture 2]" }],
     },
+    {
+      name: "words after the last picture that start with a slash stay last, not a command",
+      input: "[Picture 1]\n[Picture 2]\n/etc/hosts is wrong",
+      content: [
+        "first",
+        "second",
+        { type: "text", text: "[Picture 1]\n[Picture 2]\n/etc/hosts is wrong" },
+      ],
+    },
   ])("interleaves pictures: $name", ({ input, content }) => {
     const baseDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "claude-pictures-"));
     const harness = makeHarness({ cwd: "/tmp/project-claude-pictures", baseDir });
