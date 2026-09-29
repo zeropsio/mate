@@ -148,13 +148,14 @@ const outcomeOf = (activity: OutcomeModel["activity"]): OutcomeModel => ({
   landed: [],
   files: null,
   checks: null,
+  pictures: [],
   created: [],
   notDone: [],
   planLeft: [],
   change: null,
   crewTask: null,
   activity,
-  later: { services: [], changes: [], tasks: [], pages: [], answered: false },
+  later: { services: [], changes: [], tasks: [], pages: [], files: [], answered: false },
 });
 
 /** A run's status: live and working by default. */

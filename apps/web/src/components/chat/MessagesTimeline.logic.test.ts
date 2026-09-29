@@ -2271,6 +2271,34 @@ describe("a run's card", () => {
       alone: [],
     },
     {
+      // A screenshot of its own app it looked at is its result: the strip.
+      case: "settled, a picture it looked at under its line: a card",
+      scene: {
+        entries: [
+          user("m0", 0),
+          {
+            id: "v1",
+            kind: "work",
+            createdAt: at(1),
+            entry: {
+              id: "v1",
+              createdAt: at(1),
+              turnId: turn("t1"),
+              label: "Image view",
+              tone: "tool",
+              itemType: "image_view",
+              viewedImagePath: "/var/www/app/.shots/home-mobile.png",
+              toolLifecycleStatus: "completed",
+              sourceActivityKind: "tool.completed",
+            },
+          },
+          assistant("a1", "t1", 2, "Done."),
+        ],
+        settled: "t1",
+      } satisfies Scene,
+      alone: [],
+    },
+    {
       case: "live: a card",
       scene: {
         entries: [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, "Looking.")],

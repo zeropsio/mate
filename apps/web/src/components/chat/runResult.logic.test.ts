@@ -67,6 +67,7 @@ const NOTHING_LATER: OutcomeLater = {
   changes: [],
   tasks: [],
   pages: [],
+  files: [],
   answered: false,
 };
 
@@ -78,6 +79,7 @@ function outcome(overrides: Partial<OutcomeModel> = {}): OutcomeModel {
     landed: [],
     files: null,
     checks: null,
+    pictures: [],
     created: [],
     notDone: [],
     planLeft: [],

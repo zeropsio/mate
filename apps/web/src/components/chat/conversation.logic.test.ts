@@ -1,7 +1,7 @@
 import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { TimelineEntry } from "../../session-logic";
+import type { TimelineEntry, WorkLogEntry } from "../../session-logic";
 import type { TurnDiffSummary } from "../../types";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
@@ -65,6 +65,34 @@ function structure(
     activeTurnStartedAt: options.live ? at(0) : null,
     ...(options.nowMs === undefined ? {} : { nowMs: options.nowMs }),
   });
+}
+
+/** The Mate looking at a picture — a screenshot it took of its own app — as its runtime reports it. */
+function look(
+  id: string,
+  turnId: string,
+  minute: number,
+  path: string,
+  overrides: Partial<WorkLogEntry> = {},
+): TimelineEntry {
+  return {
+    id,
+    kind: "work",
+    createdAt: at(minute),
+    entry: {
+      id,
+      createdAt: at(minute),
+      turnId: turn(turnId),
+      label: "Image view",
+      tone: "tool",
+      itemType: "image_view",
+      viewedImagePath: path,
+      toolCallId: `call-${id}`,
+      toolLifecycleStatus: "completed",
+      sourceActivityKind: "tool.completed",
+      ...overrides,
+    },
+  };
 }
 
 describe("formatWorkDuration", () => {
@@ -1178,12 +1206,13 @@ describe("deriveOutcome", () => {
         failures: 0,
         takes: [expect.objectContaining({ kind: "browser" })],
       },
+      pictures: [],
       created: [],
       notDone: [],
       planLeft: [],
       change: null,
       crewTask: null,
-      later: { services: [], changes: [], tasks: [], pages: [], answered: false },
+      later: { services: [], changes: [], tasks: [], pages: [], files: [], answered: false },
     });
   });
 
@@ -1429,9 +1458,9 @@ describe("deriveOutcome", () => {
 
   // What the runs after this one took over: a service deployed, started,
   // stopped, created or removed again; a change pushed to again; a crew task
-  // worked again; a page checked again — and whether the person wrote since.
-  // A health check takes nothing over, and neither does a helper waking the
-  // Mate.
+  // worked again; a page checked again; a picture looked at again — and
+  // whether the person wrote since. A health check takes nothing over, and
+  // neither does a helper waking the Mate.
   const pushedTo = (id: string, turnId: string, minute: number, number: number) =>
     operation(id, turnId, minute, {
       kind: "deploy",
@@ -1462,6 +1491,24 @@ describe("deriveOutcome", () => {
         changes: [],
         tasks: [],
         pages: ["a.dev/status"],
+        files: [],
+        answered: true,
+      },
+    },
+    {
+      name: "a later run looks at the same picture again: the file shows what it saw now",
+      after: [
+        user("m1", 10),
+        look("v2", "t2", 11, "/var/www/shots/home.png"),
+        look("v3", "t2", 12, "/var/www/shots/menu.png", { toolLifecycleStatus: "failed" }),
+        assistant("a2", "t2", 13),
+      ],
+      later: {
+        services: [],
+        changes: [],
+        tasks: [],
+        pages: [],
+        files: ["/var/www/shots/home.png"],
         answered: true,
       },
     },
@@ -1480,18 +1527,19 @@ describe("deriveOutcome", () => {
         changes: [],
         tasks: [],
         pages: [],
+        files: [],
         answered: true,
       },
     },
     {
       name: "a later run only checks a service's health: nothing taken over",
       after: [user("m1", 10), devServer("s2", "t2", 11, "health check"), assistant("a2", "t2", 12)],
-      later: { services: [], changes: [], tasks: [], pages: [], answered: true },
+      later: { services: [], changes: [], tasks: [], pages: [], files: [], answered: true },
     },
     {
       name: "a later run pushes to the same change",
       after: [user("m1", 10), pushedTo("p2", "t2", 11, 2), assistant("a2", "t2", 12)],
-      later: { services: [], changes: ["app#2"], tasks: [], pages: [], answered: true },
+      later: { services: [], changes: ["app#2"], tasks: [], pages: [], files: [], answered: true },
     },
     {
       name: "a later run works the same crew task",
@@ -1500,17 +1548,17 @@ describe("deriveOutcome", () => {
         tool("w2", "t2", 11),
         assistant("a2", "t2", 12),
       ],
-      later: { services: [], changes: [], tasks: [12], pages: [], answered: true },
+      later: { services: [], changes: [], tasks: [12], pages: [], files: [], answered: true },
     },
     {
       name: "a later run a command opened: the person did not answer",
       after: [user("m1", 10, "/compact"), tool("w2", "t2", 11), assistant("a2", "t2", 12)],
-      later: { services: [], changes: [], tasks: [], pages: [], answered: false },
+      later: { services: [], changes: [], tasks: [], pages: [], files: [], answered: false },
     },
     {
       name: "no run after it",
       after: [],
-      later: { services: [], changes: [], tasks: [], pages: [], answered: false },
+      later: { services: [], changes: [], tasks: [], pages: [], files: [], answered: false },
     },
   ])("knows what the runs after it took over: $name", ({ after, later }) => {
     const entries = [
@@ -1577,6 +1625,107 @@ describe("deriveOutcome", () => {
       diff: null,
     });
     expect(outcome?.planLeft).toEqual(["Style the page", "Write the tests"]);
+  });
+
+  // The run's pictures, in the order they were taken (the owner, 2026-09-29,
+  // of a result that had none: "if anything it should show the
+  // screenshots"): each page's last screenshot its checks took, and each
+  // picture the Mate looked at — most often a screenshot it took of its own
+  // app — once, where it was taken last.
+  const check = (
+    id: string,
+    minute: number,
+    subject: string,
+    picture: string | null,
+    overrides: Partial<ZeropsOperation> = {},
+  ) =>
+    operation(id, "t1", minute, {
+      kind: "browser",
+      subject,
+      ...(picture === null ? {} : { screenshot: { src: `data:image/png;base64,${picture}` } }),
+      ...overrides,
+    });
+  const readPictures = (pictures: NonNullable<ReturnType<typeof deriveOutcome>>["pictures"]) =>
+    pictures.map((picture) =>
+      picture.kind === "check"
+        ? [
+            "check",
+            picture.caption,
+            picture.device === null ? null : `on ${picture.device}`,
+            picture.src.split(",")[1],
+            picture.failed ? "failed" : null,
+          ]
+            .filter((part) => part !== null)
+            .join(" ")
+        : `file ${picture.name} ${picture.path}`,
+    );
+  it.each([
+    {
+      name: "each page's last picture: a page checked again stands in its latest",
+      pictures: [
+        check("b1", 1, "https://a.dev/", "A"),
+        check("b2", 2, "https://a.dev/", "B", { deviceName: "iPhone 16" }),
+        check("b3", 3, "https://a.dev/status", null),
+      ],
+      read: ["check / on iPhone 16 B"],
+    },
+    {
+      name: "each file it looked at, once, where it looked last",
+      pictures: [
+        look("v1", "t1", 1, "/var/www/shots/home.png"),
+        look("v2", "t1", 2, "/var/www/shots/world.png"),
+        look("v3", "t1", 3, "/var/www/shots/home.png"),
+      ],
+      read: ["file world.png /var/www/shots/world.png", "file home.png /var/www/shots/home.png"],
+    },
+    {
+      name: "checks and looks together, in the order they were taken",
+      pictures: [
+        check("b1", 1, "https://a.dev/", "A"),
+        look("v1", "t1", 2, "/var/www/shots/home.png"),
+        check("b2", 3, "https://a.dev/status", "C"),
+      ],
+      read: ["check / A", "file home.png /var/www/shots/home.png", "check /status C"],
+    },
+    {
+      name: "a check's picture stands where it came back, not where it began",
+      pictures: [
+        check("b1", 1, "https://a.dev/", "A", { settledAt: at(3) }),
+        look("v1", "t1", 2, "/var/www/shots/home.png"),
+      ],
+      read: ["file home.png /var/www/shots/home.png", "check / A"],
+    },
+    {
+      name: "the same picture twice is one, where it was taken last",
+      pictures: [check("b1", 1, "https://a.dev/", "A"), check("b2", 2, "https://a.dev/cart", "A")],
+      read: ["check /cart A"],
+    },
+    {
+      name: "a check that stayed failed keeps its picture, and says so",
+      pictures: [check("b1", 1, "https://a.dev/admin", "D", { phase: "failed" })],
+      read: ["check /admin D failed"],
+    },
+    {
+      name: "a check with no address is the page's",
+      pictures: [check("b1", 1, "the page", "E")],
+      read: ["check the page E"],
+    },
+    {
+      name: "a look that failed is none, nor a command that only took the picture",
+      pictures: [
+        tool("w1", "t1", 1, { command: "agent-browser screenshot /var/www/shots/home.png" }),
+        look("v1", "t1", 2, "/var/www/shots/gone.png", { toolLifecycleStatus: "failed" }),
+        check("b1", 3, "https://a.dev/", null),
+      ],
+      read: [],
+    },
+  ])("keeps the run's pictures: $name", ({ pictures, read }) => {
+    const outcome = deriveOutcome({
+      turn: structure([user("m0", 0), ...pictures, assistant("a1", "t1", 9)], settled).turns[0]!,
+      landed: [],
+      diff: null,
+    });
+    expect(readPictures(outcome?.pictures ?? [])).toEqual(read);
   });
 
   // Each service says when the run last deployed or started it: a version

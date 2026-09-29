@@ -267,6 +267,7 @@ const NOTHING_LATER: OutcomeLater = {
   changes: [],
   tasks: [],
   pages: [],
+  files: [],
   answered: false,
 };
 
@@ -288,6 +289,7 @@ const OUTCOME: OutcomeModel = {
   landed: [],
   files: { count: 3, additions: 42, deletions: 3, turnId: TURN },
   checks: { count: 1, views: 1, failures: 0, takes: [CHECK] },
+  pictures: [],
   created: [],
   notDone: [],
   planLeft: [],

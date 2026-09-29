@@ -1067,6 +1067,29 @@ export function isQuestionToolCall(
   );
 }
 
+/**
+ * The picture a call looked at, by its path: the image its runtime says it
+ * viewed, else the file it named, else a detail that is only a path.
+ */
+export function lookedAt(entry: WorkLogEntry): string | null {
+  return (
+    entry.viewedImagePath ??
+    entry.callInput?.filePath ??
+    (entry.detail !== undefined && /^\/\S+$/.test(entry.detail.trim()) ? entry.detail.trim() : null)
+  );
+}
+
+/**
+ * The picture a call saw, when it is the Mate looking at one — most often a
+ * screenshot it took of its own app — and it saw it: a look that failed saw
+ * nothing.
+ */
+function pictureSeen(entry: WorkLogEntry): string | null {
+  const looks = entry.itemType === "image_view" || entry.viewedImagePath !== undefined;
+  if (!looks || !isActivityWork(entry) || entry.toolLifecycleStatus === "failed") return null;
+  return lookedAt(entry);
+}
+
 /** A work entry that is a tool call on the way — the log's steps. A task is none: it runs one. */
 export function isActivityWork(entry: WorkLogEntry): boolean {
   return (
@@ -1513,8 +1536,38 @@ export interface OutcomeLater {
   readonly tasks: ReadonlyArray<number>;
   /** Pages a later run checked, by host and path. */
   readonly pages: ReadonlyArray<string>;
+  /** Pictures a later run looked at, by path: the file shows what that run saw now. */
+  readonly files: ReadonlyArray<string>;
   readonly answered: boolean;
 }
+
+/**
+ * A picture a run took or looked at: a page as its browser check took it, or
+ * a file the Mate looked at — most often a screenshot it took of its own app.
+ */
+export type OutcomePicture =
+  | {
+      readonly kind: "check";
+      /** The take's key. */
+      readonly key: string;
+      readonly src: string;
+      /** The page, as the person names it: "/status". */
+      readonly caption: string;
+      /** The page by host and path: what a later run checking it again takes over. */
+      readonly page: string;
+      /** The device the check emulated, where it named one. */
+      readonly device: string | null;
+      /** Its check stayed failed. */
+      readonly failed: boolean;
+    }
+  | {
+      readonly kind: "file";
+      readonly key: string;
+      /** Where the Mate's workspace keeps it. */
+      readonly path: string;
+      /** The file's name: "home-mobile.png". */
+      readonly name: string;
+    };
 
 export interface OutcomeModel {
   readonly key: string;
@@ -1539,9 +1592,15 @@ export interface OutcomeModel {
     readonly count: number;
     readonly views: number;
     readonly failures: number;
-    /** Every check, in order: the result finds each page's pictures and verdict in them. */
+    /** Every check, in order: the result finds each page's verdict in them. */
     readonly takes: ReadonlyArray<ZeropsOperation>;
   } | null;
+  /**
+   * Its pictures, in the order they were taken: each page's last screenshot
+   * its checks took, and each picture the Mate looked at — each once, where
+   * it was taken last.
+   */
+  readonly pictures: ReadonlyArray<OutcomePicture>;
   readonly created: ReadonlyArray<string>;
   readonly notDone: ReadonlyArray<OutcomeNotDone>;
   /** Steps of its plan it did not finish. */
@@ -1642,6 +1701,7 @@ const NOTHING_LATER: OutcomeLater = {
   changes: [],
   tasks: [],
   pages: [],
+  files: [],
   answered: false,
 };
 
@@ -1680,6 +1740,7 @@ interface TurnClaims {
   readonly services: ReadonlyArray<string>;
   readonly changes: ReadonlyArray<string>;
   readonly pages: ReadonlyArray<string>;
+  readonly files: ReadonlyArray<string>;
   readonly task: number | null;
   /** The person wrote it: not a command, not the server resuming after a limit. */
   readonly answers: boolean;
@@ -1701,11 +1762,19 @@ function turnClaims(turn: ConversationTurn): TurnClaims {
     }
     if (operation.kind === "browser") pages.push(browserCheckPage(operation));
   }
+  const files = turn.stretches
+    .flatMap((stretch) => stretch.entries)
+    .flatMap((entry) => {
+      if (entry.kind !== "work" && entry.kind !== "generic-call") return [];
+      const path = pictureSeen(entry.entry);
+      return path === null ? [] : [path];
+    });
   const opener = turn.span.opener;
   const claims: TurnClaims = {
     services,
     changes,
     pages,
+    files,
     task: crewTaskOf(turn)?.number ?? null,
     answers: opener !== null && !isResumePrompt(opener.message.text) && !isCommandMessage(opener),
   };
@@ -1720,12 +1789,14 @@ function laterClaims(turns: ReadonlyArray<ConversationTurn>): OutcomeLater {
   const changes = new Set<string>();
   const tasks = new Set<number>();
   const pages = new Set<string>();
+  const files = new Set<string>();
   let answered = false;
   for (const turn of turns) {
     const claims = turnClaims(turn);
     for (const host of claims.services) services.add(host);
     for (const change of claims.changes) changes.add(change);
     for (const page of claims.pages) pages.add(page);
+    for (const file of claims.files) files.add(file);
     if (claims.task !== null) tasks.add(claims.task);
     answered ||= claims.answers;
   }
@@ -1734,6 +1805,7 @@ function laterClaims(turns: ReadonlyArray<ConversationTurn>): OutcomeLater {
     changes: [...changes],
     tasks: [...tasks],
     pages: [...pages],
+    files: [...files],
     answered,
   };
 }
@@ -1746,6 +1818,67 @@ function planLeftOf(turn: ConversationTurn): string[] {
   return plan?.kind === "turn-plan"
     ? plan.turnPlan.plan.steps.flatMap((step) => (step.status === "completed" ? [] : [step.step]))
     : [];
+}
+
+/** A file's name, whatever separates its path. */
+function fileName(path: string): string {
+  return path.split(/[\\/]/u).findLast((part) => part.length > 0) ?? path;
+}
+
+/**
+ * The pictures a turn took and looked at, in the order they were taken — a
+ * check's when it came back, a look's when the Mate saw it: each page's last
+ * take with a picture, and each file the Mate looked at. A picture taken
+ * again — the same file, the same pixels — stands once, where it was taken
+ * last.
+ */
+function turnPictures(
+  turn: ConversationTurn,
+  checks: ReadonlyArray<ZeropsOperation>,
+): OutcomePicture[] {
+  const taken: Array<{
+    readonly same: string;
+    readonly at: number;
+    readonly picture: OutcomePicture;
+  }> = [];
+  const lastByPage = new Map<string, ZeropsOperation>();
+  for (const check of checks) {
+    if (check.screenshot !== undefined) lastByPage.set(browserCheckPage(check), check);
+  }
+  for (const check of lastByPage.values()) {
+    const src = check.screenshot!.src;
+    taken.push({
+      same: `src:${src}`,
+      at: parseMs(check.settledAt ?? check.anchorAt) ?? 0,
+      picture: {
+        kind: "check",
+        key: check.key,
+        src,
+        caption: browserCheckCaption(check),
+        page: browserCheckPage(check),
+        device: check.deviceName ?? null,
+        failed: browserTakeState(check, checks) === "failed",
+      },
+    });
+  }
+  for (const entry of turn.stretches.flatMap((stretch) => stretch.entries)) {
+    if (entry.kind !== "work" && entry.kind !== "generic-call") continue;
+    const path = pictureSeen(entry.entry);
+    if (path === null) continue;
+    taken.push({
+      same: `path:${path}`,
+      at: parseMs(entry.entry.updatedAt ?? entry.entry.createdAt) ?? 0,
+      picture: { kind: "file", key: `file:${path}`, path, name: fileName(path) },
+    });
+  }
+  const last = new Map<string, (typeof taken)[number]>();
+  for (const item of taken) {
+    const known = last.get(item.same);
+    if (known === undefined || item.at >= known.at) last.set(item.same, item);
+  }
+  return [...last.values()]
+    .toSorted((left, right) => left.at - right.at)
+    .map((item) => item.picture);
 }
 
 /** The turns after the one keyed `turnKey`: what its outcome follows. */
@@ -1762,8 +1895,9 @@ export function turnsAfter(
  * broken — as the run left them, never a failure it came back from (the
  * owner, 2026-09-29: "it doesn't make sense to keep log of things that were
  * fixed later") — the changes that landed and the files it changed, the
- * checks, what it created, what it could not do, and what its calls came to.
- * Built only from what the turn already carries — null when it did nothing.
+ * checks and the pictures it took and looked at, what it created, what it
+ * could not do, and what its calls came to. Built only from what the turn
+ * already carries — null when it did nothing.
  */
 export function deriveOutcome(input: {
   readonly turn: ConversationTurn;
@@ -1902,6 +2036,7 @@ export function deriveOutcome(input: {
             takes: checks,
           }
         : null,
+    pictures: turnPictures(turn, checks),
     created,
     notDone,
     planLeft: planLeftOf(turn),
@@ -1925,6 +2060,7 @@ export function outcomeDraws(outcome: OutcomeModel): boolean {
     outcome.landed.length > 0 ||
     outcome.files !== null ||
     outcome.checks !== null ||
+    outcome.pictures.length > 0 ||
     outcome.created.length > 0 ||
     outcome.notDone.length > 0 ||
     outcome.planLeft.length > 0 ||

@@ -61,13 +61,14 @@ const OUTCOME: OutcomeModel = {
   landed: [],
   files: { count: 3, additions: 45, deletions: 3, turnId: TurnId.make("turn-1") },
   checks: { count: 1, views: 1, failures: 0, takes: [take("op:status")] },
+  pictures: [],
   created: [],
   notDone: [],
   planLeft: [],
   change: { repository: "app", number: 2 },
   crewTask: null,
   activity: [{ kind: "command", count: 2 }],
-  later: { services: [], changes: [], tasks: [], pages: [], answered: false },
+  later: { services: [], changes: [], tasks: [], pages: [], files: [], answered: false },
 };
 
 /** The forge knows the run's change, still open. */
