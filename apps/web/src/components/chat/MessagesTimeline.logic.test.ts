@@ -1768,19 +1768,99 @@ describe("deriveMessagesTimelineRows", () => {
     expect(lines(list)).toEqual(["~ thinking about it"]);
   });
 
-  it("draws a seam where a day begins and where the conversation went quiet", () => {
-    const list = rows({
-      entries: [
-        user("m0", 0),
-        assistant("a1", "t1", 1, "Hi."),
-        user("m1", 45),
-        assistant("a2", "t2", 46, "Again."),
+  describe("draws a time line only where an hour or a day passed", () => {
+    /** The reader's own clock: a day begins at their midnight. */
+    const local = (day: number, hour: number, minute: number) =>
+      new Date(2026, 8, day, hour, minute).toISOString();
+    const saidAt = (entry: TimelineEntry, iso: string): TimelineEntry =>
+      entry.kind === "message"
+        ? {
+            ...entry,
+            createdAt: iso,
+            message: { ...entry.message, createdAt: iso, updatedAt: iso },
+          }
+        : entry;
+    /** Each turn as when the person asked and when the Mate answered. */
+    const seams = (turns: ReadonlyArray<readonly [asked: string, answered: string]>) => {
+      const last = turns.length - 1;
+      return deriveMessagesTimelineRows({
+        timelineEntries: turns.flatMap(([asked, answered], index) => [
+          saidAt(user(`m${index}`, 0), asked),
+          saidAt(assistant(`a${index}`, `t${index}`, 0, "Done."), answered),
+        ]),
+        latestTurn: {
+          turnId: turn(`t${last}`),
+          state: "completed",
+          startedAt: turns[last]![0],
+          completedAt: turns[last]![1],
+        },
+        isWorking: false,
+        activeTurnStartedAt: null,
+        turnDiffSummaries: [],
+        supportsConversationRollback: false,
+      }).flatMap((row) => (row.kind === "seam" ? [row.seam] : []));
+    };
+    it.each([
+      [
+        "minutes apart: one conversation, dated once at its top",
+        [
+          [local(24, 10, 0), local(24, 10, 1)],
+          [local(24, 10, 4), local(24, 10, 5)],
+        ],
+        ["day"],
       ],
-      settled: "t2",
+      [
+        "most of an hour apart: still one conversation",
+        [
+          [local(24, 10, 0), local(24, 10, 1)],
+          [local(24, 10, 59), local(24, 11, 0)],
+        ],
+        ["day"],
+      ],
+      [
+        "an hour apart: the time",
+        [
+          [local(24, 10, 0), local(24, 10, 1)],
+          [local(24, 11, 1), local(24, 11, 2)],
+        ],
+        ["day", "gap"],
+      ],
+      [
+        "minutes apart across midnight: no line splits them",
+        [
+          [local(24, 23, 55), local(24, 23, 57)],
+          [local(25, 0, 0), local(25, 0, 1)],
+        ],
+        ["day"],
+      ],
+      [
+        "a day apart: the day",
+        [
+          [local(24, 10, 0), local(24, 10, 1)],
+          [local(25, 10, 0), local(25, 10, 1)],
+        ],
+        ["day", "day"],
+      ],
+      [
+        "a night apart: the new day",
+        [
+          [local(24, 22, 0), local(24, 22, 1)],
+          [local(25, 8, 0), local(25, 8, 1)],
+        ],
+        ["day", "day"],
+      ],
+      [
+        "past midnight without a line, then an hour's quiet: the new day",
+        [
+          [local(24, 23, 55), local(24, 23, 57)],
+          [local(25, 0, 0), local(25, 0, 1)],
+          [local(25, 2, 0), local(25, 2, 1)],
+        ],
+        ["day", "day"],
+      ],
+    ] as const)("%s", (_, turns, expected) => {
+      expect(seams(turns)).toEqual(expected);
     });
-    expect(
-      list.filter((row) => row.kind === "seam").map((row) => (row as { seam: string }).seam),
-    ).toEqual(["day", "gap"]);
   });
 
   it("marks where the person left off, once, before the first stretch after it", () => {
