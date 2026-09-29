@@ -114,7 +114,6 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     changedFiles: 3,
     mergeBase: "base-sha",
     baseSha: "base-sha",
-    createdAt: minutesAgo(30),
     ...over,
   };
 }

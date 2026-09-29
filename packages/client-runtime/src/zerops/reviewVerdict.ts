@@ -577,9 +577,6 @@ export interface ReleaseReviewInput {
   /** The release production runs now. */
   readonly live: string | undefined;
   readonly outcome: ReleaseOutcome;
-  /** `about 3 minutes`, where the last release's deploy says how long one takes. */
-  readonly eta?: string | undefined;
-  readonly baseBranch?: string | undefined;
   readonly now: number;
 }
 
@@ -605,7 +602,6 @@ function stageWhy(input: ReleaseReviewInput): string {
 
 export function releaseReview(input: ReleaseReviewInput): ReviewModel {
   const { tag, outcome } = input;
-  const base = input.baseBranch ?? "main";
   const keeps =
     input.live === undefined
       ? "Production keeps running what it runs."
@@ -699,9 +695,7 @@ export function releaseReview(input: ReleaseReviewInput): ReviewModel {
       why: stageWhy(input),
       fix: undefined,
     },
-    consequence: `Tags ${base} as ${tag}. Production redeploys ${listed(input.services)} from it${
-      input.eta === undefined ? "" : `, ${input.eta}`
-    }.`,
+    consequence: `Tags main as ${tag}. Production redeploys ${listed(input.services)} from it.`,
     primary,
   };
 }
@@ -725,7 +719,6 @@ export interface RollbackReviewInput {
    * deploy decide, never the tag existing.
    */
   readonly outcome: ReleaseOutcome;
-  readonly eta?: string | undefined;
   readonly now: number;
 }
 
@@ -825,7 +818,7 @@ export function rollbackReview(input: RollbackReviewInput): ReviewModel {
     },
     consequence: `Tags main as ${nextTag} with ${tag}'s commits. Production redeploys ${listed(
       input.services,
-    )} from them${input.eta === undefined ? "" : `, ${input.eta}`}.`,
+    )} from them.`,
     primary,
   };
 }

@@ -111,8 +111,6 @@ export interface FlowPullRequest {
   readonly mergeBase?: string | undefined;
   /** The base branch's head as read: past {@link mergeBase}, `main` moved on since. */
   readonly baseSha?: string | undefined;
-  /** When it was opened. */
-  readonly createdAt?: string | undefined;
 }
 
 /** The default branch until Gitea says otherwise. */
@@ -164,7 +162,6 @@ export function flowPullRequest(input: {
     changedFiles: pull.changed_files,
     mergeBase: pull.merge_base,
     baseSha: pull.base?.sha,
-    createdAt: pull.created_at,
   };
 }
 

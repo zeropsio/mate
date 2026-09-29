@@ -420,9 +420,9 @@ describe("releaseReview", () => {
   });
 
   it("says what the tag does and what redeploys (R5)", () => {
-    const review = releaseReview(release({ eta: "about 3 minutes" }));
+    const review = releaseReview(release());
     expect(review.consequence).toBe(
-      "Tags main as v0.1.57. Production redeploys app and api from it, about 3 minutes.",
+      "Tags main as v0.1.57. Production redeploys app and api from it.",
     );
     // It reaches people outside the account: a deliberate press, never focus or ⌘↵.
     expect(review.primary).toEqual({ label: "Release v0.1.57", enabled: true, safe: false });

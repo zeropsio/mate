@@ -107,7 +107,6 @@ describe("one pull request in the flow", () => {
         deletions: 3,
         changed_files: 3,
         merge_base: "mb-sha",
-        created_at: "2026-09-17T17:00:00Z",
       }),
       checks: [
         { context: "build", state: "success", description: "pnpm build · 34s" },
@@ -122,7 +121,6 @@ describe("one pull request in the flow", () => {
       changedFiles: 3,
       mergeBase: "mb-sha",
       baseSha: "main-sha",
-      createdAt: "2026-09-17T17:00:00Z",
     });
   });
 
@@ -359,7 +357,6 @@ describe("types", () => {
         "checkRows",
         "checkWord",
         "checks",
-        "createdAt",
         "deletions",
         "headBranch",
         "headSha",

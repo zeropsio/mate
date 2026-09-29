@@ -275,10 +275,6 @@ export interface GiteaPullRequest {
   readonly base?: { readonly ref?: string | undefined; readonly sha?: string | undefined };
   readonly user?: { readonly login?: string | undefined } | undefined;
   readonly updated_at?: string | undefined;
-  /** When it was opened. */
-  readonly created_at?: string | undefined;
-  /** What it was opened to do, as its author wrote it; empty for a Mate's. */
-  readonly body?: string | undefined;
   /** How many lines it adds and removes, and how many files it touches — Gitea's own count. */
   readonly additions?: number | undefined;
   readonly deletions?: number | undefined;

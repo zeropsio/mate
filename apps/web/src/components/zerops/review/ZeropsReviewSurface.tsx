@@ -32,7 +32,7 @@ import {
   UsersIcon,
   XIcon,
 } from "lucide-react";
-import { useState, type ReactNode, type Ref } from "react";
+import { useState, type ReactNode } from "react";
 
 import { Spinner } from "~/components/ui/spinner";
 import { isMacPlatform } from "~/lib/utils";
@@ -106,7 +106,6 @@ export interface ZeropsReviewSurfaceProps {
   /** "Cancel" before anything was pressed, "Close" after. */
   readonly dismiss?: string | undefined;
   readonly primary?: ReviewPrimaryButton | undefined;
-  readonly primaryRef?: Ref<HTMLButtonElement> | undefined;
   readonly onClose: () => void;
 }
 
@@ -123,7 +122,6 @@ export function ZeropsReviewSurface({
   secondary,
   dismiss,
   primary,
-  primaryRef,
   onClose,
 }: ZeropsReviewSurfaceProps) {
   return (
@@ -189,7 +187,6 @@ export function ZeropsReviewSurface({
             data-zerops-primary-action={primary.label}
             disabled={!primary.enabled || primary.busy === true}
             onClick={primary.onPress}
-            ref={primaryRef}
             type="button"
           >
             {primary.icon === "tag" ? <TagIcon aria-hidden="true" /> : null}
