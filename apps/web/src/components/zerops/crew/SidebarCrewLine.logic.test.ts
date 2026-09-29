@@ -75,12 +75,12 @@ describe("crewLine — the crew as one line under its Mate", () => {
     {
       case: "one task waits for your Land",
       input: { snapshot: { board: { tasks: readyTasks(["task-13"]) } } },
-      fact: { kind: "land", words: "1 task ready to land", taskId: "task-13" },
+      fact: { kind: "land", words: "Frontend's work is ready", taskId: "task-13" },
     },
     {
       case: "two tasks wait for your Land, the first on the board opens",
       input: { snapshot: { board: { tasks: readyTasks(["task-15", "task-13"]) } } },
-      fact: { kind: "land", words: "2 tasks ready to land", taskId: "task-13" },
+      fact: { kind: "land", words: "2 pieces of work are ready", taskId: "task-13" },
     },
     {
       case: "a task is ready and somebody needs you: who needs you first",
@@ -117,7 +117,7 @@ describe("crewLine — the crew as one line under its Mate", () => {
     };
     expect(crewLine(view, [ready]).fact).toEqual({
       kind: "land",
-      words: "1 task ready to land",
+      words: "Frontend's work is ready",
       taskId: "task-13",
     });
   });

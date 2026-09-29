@@ -1,22 +1,19 @@
-import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
-import type { Crewmate, CrewLaneSummary, ServerProvider } from "@t3tools/contracts";
+import type { ServerProvider } from "@t3tools/contracts";
 import { parseBrief, type CrewDefinition, type CrewMemberSpec } from "@t3tools/shared/crewHome";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  CREW_SAVE_CHOICES,
-  crewApplyProgress,
   crewRewriteBlockers,
   crewDevHosts,
   crewServiceHint,
   crewWriterWithoutHost,
   crewEffortOptions,
+  crewLoginLabel,
   crewLoginNote,
   crewLoginOptions,
   crewModelOptions,
   crewRunsOn,
   freeTints,
-  jobChangedMostly,
 } from "./CrewEditors.logic";
 
 const member = (
@@ -42,18 +39,6 @@ const definition: CrewDefinition = {
     member({ handle: "erik", tint: "amber" }),
   ],
 };
-
-describe("jobChangedMostly", () => {
-  it.each([
-    { name: "unchanged", before: "a\nb\nc\nd", after: "a\nb\nc\nd", mostly: false },
-    { name: "one line of four", before: "a\nb\nc\nd", after: "a\nb\nc\nX", mostly: false },
-    { name: "half", before: "a\nb\nc\nd", after: "a\nb\nX\nY", mostly: false },
-    { name: "three of four", before: "a\nb\nc\nd", after: "a\nX\nY\nZ", mostly: true },
-    { name: "a new job", before: "", after: "Writes the plan.", mostly: false },
-  ])("$name", ({ before, after, mostly }) => {
-    expect(jobChangedMostly(before, after)).toBe(mostly);
-  });
-});
 
 describe("freeTints", () => {
   it("offers the tints nobody else wears, never the Mate's own, keeping the crewmate's", () => {
@@ -218,16 +203,6 @@ describe("Runs on", () => {
   });
 });
 
-describe("CREW_SAVE_CHOICES", () => {
-  it("reads the next-turn save as a fresh conversation (probe 22 failed)", () => {
-    expect(CREW_SAVE_CHOICES.map((choice) => [choice.apply, choice.label])).toEqual([
-      ["nextTurn", "Save — the next turn starts a fresh conversation"],
-      ["now", "Save and apply now"],
-      ["fresh", "Save and start fresh"],
-    ]);
-  });
-});
-
 describe("crewDevHosts", () => {
   it("offers the dev services the engine names, and every host the crew already names", () => {
     expect(
@@ -300,35 +275,6 @@ describe("crewWriterWithoutHost", () => {
   });
 });
 
-describe("crewApplyProgress", () => {
-  const { crewmates } = crewSnapshotFixture();
-  const withLane = (handle: string, lane: Partial<CrewLaneSummary>): Crewmate => {
-    const mate = crewmates.find((candidate) => candidate.handle === handle)!;
-    return { ...mate, lane: { ...mate.lane!, ...lane } };
-  };
-
-  it("reads each crewmate's copy as a step of Apply", () => {
-    expect(
-      crewApplyProgress([
-        crewmates[0]!,
-        withLane("backend", { state: "creating" }),
-        withLane("frontend", { state: "setting-up", detail: "npm ci" }),
-        withLane("erik", { state: "failed", detail: "No free disk on appdev" }),
-      ]),
-    ).toEqual([
-      { id: "lead", label: "Lead", state: "done", stateLabel: "Ready" },
-      {
-        id: "backend",
-        label: "Backend",
-        state: "running",
-        stateLabel: "Creating Backend's copy of the code",
-      },
-      { id: "frontend", label: "Frontend", state: "running", stateLabel: "Running npm ci" },
-      { id: "erik", label: "Erik", state: "failed", stateLabel: "No free disk on appdev" },
-    ]);
-  });
-});
-
 describe("crewRewriteBlockers", () => {
   it("keeps an editor from rewriting crew.yaml over what it could not read", () => {
     const issue = (code: "field-unknown" | "field-type" | "host-missing") => ({
@@ -341,5 +287,20 @@ describe("crewRewriteBlockers", () => {
         (blocker) => blocker.code,
       ),
     ).toEqual(["field-unknown", "field-type"]);
+  });
+});
+
+describe("crewLoginLabel", () => {
+  it.each([
+    [
+      "the catalog's name",
+      [{ id: "claudeAgent-work", label: "Work", agent: "claude-code" }],
+      "claudeAgent-work",
+      "Work",
+    ],
+    ["a default's own, before the catalog is read", [], "claudeAgent", "Claude Code"],
+    ["the id, for a login nobody names", [], "someone-else", "someone-else"],
+  ] as const)("%s", (_, logins, id, label) => {
+    expect(crewLoginLabel(logins, id)).toBe(label);
   });
 });

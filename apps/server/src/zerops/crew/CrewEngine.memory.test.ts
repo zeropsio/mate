@@ -136,7 +136,7 @@ describe("CrewEngine memory", () => {
             1,
             [
               ["retired", null],
-              ["open", "New conversation — continues from memory"],
+              ["open", "A fresh conversation, carried on from memory"],
             ],
           ],
         );
@@ -161,7 +161,7 @@ describe("CrewEngine memory", () => {
         );
         assert.strictEqual(
           rotated.crewmates[0]!.stints[1]!.reason,
-          "New conversation — the last one could not be resumed",
+          "A fresh conversation: the last one couldn't be resumed",
         );
       }),
     ),

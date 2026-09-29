@@ -1172,17 +1172,49 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           status: "running",
           turn: "turn-1",
           archivedAt: null,
+          crew: null,
           carries: true,
         },
-        { id: "thread-errored", status: "error", turn: "turn-1", archivedAt: null, carries: false },
-        { id: "thread-between", status: "running", turn: null, archivedAt: null, carries: false },
-        { id: "thread-no-session", status: null, turn: null, archivedAt: null, carries: false },
+        {
+          id: "thread-errored",
+          status: "error",
+          turn: "turn-1",
+          archivedAt: null,
+          crew: null,
+          carries: false,
+        },
+        {
+          id: "thread-between",
+          status: "running",
+          turn: null,
+          archivedAt: null,
+          crew: null,
+          carries: false,
+        },
+        {
+          id: "thread-no-session",
+          status: null,
+          turn: null,
+          archivedAt: null,
+          crew: null,
+          carries: false,
+        },
         {
           id: "thread-archived",
           status: "running",
           turn: "turn-1",
           archivedAt: "2026-09-29T09:00:00.000Z",
+          crew: null,
           carries: false,
+        },
+        // A crewmate's conversation: the Crew tab's row says its step as the menu's does.
+        {
+          id: "thread-crewmate",
+          status: "running",
+          turn: "turn-1",
+          archivedAt: null,
+          crew: '{"crew":"main","crewmate":"backend","stint":1}',
+          carries: true,
         },
       ];
       for (const row of rows) {
@@ -1190,12 +1222,13 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           INSERT INTO projection_threads (
             thread_id, project_id, title, model_selection_json, runtime_mode, interaction_mode,
             latest_user_message_at, pending_approval_count, pending_user_input_count,
-            has_actionable_proposed_plan, created_at, updated_at, archived_at, deleted_at
+            has_actionable_proposed_plan, created_at, updated_at, archived_at, deleted_at,
+            crew_json
           ) VALUES (
             ${row.id}, 'project-live', ${row.id},
             '{"provider":"claudeAgent","model":"opus"}', 'full-access', 'default',
             NULL, 0, 0, 0, '2026-09-29T08:00:00.000Z', '2026-09-29T08:00:00.000Z',
-            ${row.archivedAt}, NULL
+            ${row.archivedAt}, NULL, ${row.crew}
           )
         `;
         if (row.status !== null) {

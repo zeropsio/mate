@@ -1,16 +1,20 @@
 /**
- * The run dialog's choices (PRD §4.8, Δ16): a budget and a time limit that
- * each take an amount or *No limit*, the usage-window stop, who lands, whether
- * the crew may show work on dev, and whether the lead starts tasks unasked.
+ * The run dialog's choices (PRD §4.8, Δ16) — *Let the crew work on its own*:
+ * how much it may spend and for how long (each an amount or *No limit*), the
+ * stop before the Claude plan's limit, what happens to a finished piece of
+ * work, whether the lead may start its own tasks and whether crewmates may
+ * show their work at the Mate's dev address.
  *
- * The first run preselects no budget, so spending without a limit is never an
+ * The first run picks no budget, so spending without a limit is never an
  * accident; every later run starts from the last one's options.
  *
- * A run its budget or time limit paused resumes through the same dialog with
- * new limits (`crewResumeCommand`): a budget above what is spent and a time
- * limit past the time already run, or *No limit*. Any other pause resumes with
- * one press.
+ * *Keep going* goes on after a stop. When a limit stopped the run, the
+ * dialog sets that limit apart and asks for more money or more time rather
+ * than a new figure: what is typed is added to what the run has spent or
+ * run, so it never asks the run to go on under a limit it has reached
+ * (`resumeRefusal` on the server); the usage stop is raised or turned off.
  */
+import { crewLandingWords } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewCommand, CrewLandingMode, CrewRun } from "@t3tools/contracts";
 
 /** A limit is an amount or *No limit*; the amount keeps its text while *No limit* is picked. */
@@ -35,21 +39,21 @@ export interface CrewRunDraft {
 const DEFAULT_HOURS = 8;
 const DEFAULT_USAGE_PERCENT = 80;
 
-const LANDING_LABELS: Readonly<Record<CrewLandingMode, string>> = {
-  person: "I land everything",
-  lead: "The lead lands after its review",
-  check: "Land when the check passes",
-};
-
 /** Who may land in this crew: the lead only with a lead, the check only without one. */
 function crewLandingModes(hasLead: boolean): ReadonlyArray<CrewLandingMode> {
   return hasLead ? ["person", "lead"] : ["person", "check"];
 }
 
+/** "When a piece of work is done": each choice, and the line under it. */
 export function crewLandingOptions(
   hasLead: boolean,
-): ReadonlyArray<{ readonly mode: CrewLandingMode; readonly label: string }> {
-  return crewLandingModes(hasLead).map((mode) => ({ mode, label: LANDING_LABELS[mode] }));
+  mateName: string,
+): ReadonlyArray<{
+  readonly mode: CrewLandingMode;
+  readonly label: string;
+  readonly line: string;
+}> {
+  return crewLandingModes(hasLead).map((mode) => ({ mode, ...crewLandingWords(mode, mateName) }));
 }
 
 export function crewRunDraft(lastRun: CrewRun | null, hasLead: boolean): CrewRunDraft {
@@ -106,29 +110,75 @@ export function crewStartCommand(draft: CrewRunDraft, hasLead: boolean): CrewCom
   };
 }
 
-/** A paused run whose budget or time limit stopped it: resuming it needs a new limit. */
-export function crewResumeNeedsDialog(run: CrewRun | null): boolean {
-  return (
-    run !== null && run.state === "paused" && (run.reason === "budget" || run.reason === "time")
-  );
+/** The limit that stopped a paused run, which *Keep going* asks more of; `null` for any other stop. */
+export type CrewResumeLimit = "budget" | "time" | "usage";
+
+export function crewResumeLimit(run: CrewRun | null): CrewResumeLimit | null {
+  if (run?.state !== "paused") return null;
+  return run.reason === "budget" || run.reason === "time" || run.reason === "usage"
+    ? run.reason
+    : null;
 }
 
-/**
- * The dialog's *Resume*: the run's limits as the dialog holds them. `null`
- * while a limit would stop the run again at once — a budget at or under what
- * is spent, a time limit within the time already run — or reads as nothing.
- */
-export function crewResumeCommand(draft: CrewRunDraft, run: CrewRun): CrewCommand | null {
-  const budgetUsd = draft.budget === null ? null : limitOf(draft.budget, draft.budgetText);
-  const timeLimitHours = limitOf(draft.time, draft.timeText);
-  if (budgetUsd === null || timeLimitHours === null) return null;
-  if (budgetUsd !== "unlimited" && budgetUsd <= run.spentUsd) return null;
-  if (timeLimitHours !== "unlimited" && timeLimitHours * 3_600_000 <= run.elapsedMs) return null;
+export interface CrewResumeDraft {
+  /** More money or more time: an amount, or *No limit*. */
+  readonly more: CrewLimitKind;
+  /** Dollars or hours more, as typed. */
+  readonly moreText: string;
+  /** The usage stop, for a run it stopped: raised, or turned off. */
+  readonly usageStop: boolean;
+  readonly usagePercent: number;
+}
+
+/** Keep going offers as much again as the limit it reached, and a usage stop ten points up. */
+export function crewResumeDraft(run: CrewRun): CrewResumeDraft {
+  const { budgetUsd, timeLimitHours, stopAtUsagePercent } = run.options;
+  const again =
+    crewResumeLimit(run) === "time"
+      ? timeLimitHours === "unlimited"
+        ? DEFAULT_HOURS
+        : timeLimitHours
+      : budgetUsd === "unlimited"
+        ? run.spentUsd
+        : budgetUsd;
   return {
-    _tag: "resume",
-    runId: run.id,
-    budgetUsd,
-    timeLimitHours,
-    stopAtUsagePercent: draft.usageStop ? draft.usagePercent : null,
+    more: "amount",
+    moreText: String(again),
+    usageStop: true,
+    usagePercent: Math.min(100, (stopAtUsagePercent ?? DEFAULT_USAGE_PERCENT) + 10),
+  };
+}
+
+const HOUR_MS = 3_600_000;
+
+/** Up to the next cent, or the next hundredth of an hour: never short of what was asked. */
+const upTo = (value: number): number => Math.ceil(value * 100 - 1e-9) / 100;
+
+/**
+ * *Keep going*: the run goes on with more of the limit that stopped it — the
+ * money it spent or the time it ran, plus what was typed — or with its usage
+ * stop raised past where the plan stands, or turned off; after any other
+ * stop, as it was. `null` while the draft reads as nothing it could go on
+ * with.
+ */
+export function crewResumeCommand(draft: CrewResumeDraft, run: CrewRun): CrewCommand | null {
+  const resume = { _tag: "resume", runId: run.id } as const;
+  const limit = crewResumeLimit(run);
+  if (limit === null) return resume;
+  if (limit === "usage") {
+    if (!draft.usageStop) return { ...resume, stopAtUsagePercent: null };
+    const now = run.usagePercent ?? 0;
+    return draft.usagePercent > now && draft.usagePercent <= 100
+      ? { ...resume, stopAtUsagePercent: draft.usagePercent }
+      : null;
+  }
+  const more = limitOf(draft.more, draft.moreText);
+  if (more === null) return null;
+  if (limit === "budget") {
+    return { ...resume, budgetUsd: more === "unlimited" ? more : upTo(run.spentUsd + more) };
+  }
+  return {
+    ...resume,
+    timeLimitHours: more === "unlimited" ? more : upTo(run.elapsedMs / HOUR_MS + more),
   };
 }

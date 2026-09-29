@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { ProviderInstanceId, type CrewRunOptions, type ThreadId } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -448,6 +449,32 @@ describe("CrewEngine runs", () => {
         yield* ended(world, thread, 0.1);
         yield* snapshotWhere((current) => current.board.tasks[0]?.state === "landed");
         assert.strictEqual(read(world.root, "ok.txt"), "ok\n");
+      }),
+    ),
+  );
+
+  it.live("a run's time is the time its crew works: sitting idle never reaches the limit", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        const startedAt = yield* Clock.currentTimeMillis;
+        const runId = yield* started(world, { landing: "person" });
+        // Nothing to do yet: the crew sits idle.
+        yield* Effect.sleep("400 millis");
+        const thread = yield* firstTurn(world, () =>
+          write(world.root, ".crew/backend/ok.txt", "ok\n"),
+        );
+        yield* Effect.sleep("400 millis");
+        yield* reportDone(thread);
+        yield* ended(world, thread, 0.1);
+        yield* snapshotWhere((current) => current.board.tasks[0]?.state === "ready");
+        // Its work waits for your review: idle again.
+        yield* Effect.sleep("400 millis");
+        yield* command({ _tag: "pause", runId });
+        const paused = (yield* snapshotWhere((current) => current.run?.state === "paused")).run!;
+        const wallMs = (yield* Clock.currentTimeMillis) - startedAt;
+        // The turn's 400 ms count; the two idle stretches around it do not.
+        assert.isAtLeast(paused.elapsedMs, 350);
+        assert.isAtMost(paused.elapsedMs, wallMs - 750);
       }),
     ),
   );

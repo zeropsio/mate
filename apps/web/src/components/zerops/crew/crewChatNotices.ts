@@ -1,9 +1,9 @@
 /**
  * What a crewmate's chat says above its composer (PRD §4.5, §5.6): on an
  * earlier conversation, where the crewmate talks now — and that nothing is
- * sent from here, since a send would land there; on the current one,
- * that its next turn brings in a newer brief or job. Probe 22 failed, so a
- * resumed session keeps the prompt it began with: the next turn starts a
+ * sent from here, since a send would go there; on the current one, that its
+ * job or the crew's goal changed, with no version. Probe 22 failed, so a
+ * resumed session keeps the prompt it began with: its next message starts a
  * fresh conversation (BUILD §1).
  *
  * Pure: no clock, no I/O.
@@ -33,7 +33,7 @@ export function crewChatNotices(
   if (threadId !== crewmate.currentThreadId) {
     return {
       retired: {
-        ...crewEarlierStintNotice(crewmate.handle),
+        ...crewEarlierStintNotice(crewmate.displayName),
         currentThreadId: crewmate.currentThreadId,
       },
       pending: null,

@@ -1,28 +1,34 @@
 /**
- * *Start a run* (PRD §4.8): the limits and options a run of the crew works
- * under. It opens from the Crew section's *Start run* and from a plan's
- * *Start* while no run is on; `onStarted` lets the plan accept its rows once
- * the run is on. Its choices start from the last run; the first run has no
- * budget picked (`CrewRunDialog.logic.ts`).
+ * *Let the crew work on its own* (PRD §4.8): the limits a run works under —
+ * how much it may spend and for how long, each an amount or *No limit*, and a
+ * stop before the Claude plan's limit — what happens to a finished piece of
+ * work, and what the lead and the crewmates may do without asking. It opens
+ * from the tab's *Let it work on its own…* and from a plan's Start when no run
+ * is on; then (`CrewRunDialogAsk.after`) runs once the run is on — a plan's
+ * accept. Its choices start from the last run; the first run has no budget
+ * picked (`CrewRunDialog.logic.ts`).
  *
- * *Resume the run*: the same dialog for a run its budget or time limit paused
- * — the limit that stopped it set apart, the limits editable, the other
- * options as the run has them.
+ * *Keep going*: the same dialog after a stop. The limit that stopped the run
+ * is set apart and asks for more money or more time, never a new figure.
  */
 import {
   CREW_RESUME_TITLE,
+  CREW_RUN_LINE,
+  CREW_RUN_TITLE,
+  CREW_RUN_WORDS,
+  crewDevGrantWord,
+  crewKeepGoingLine,
   crewResumeBudgetHint,
   crewResumeTimeHint,
-  crewStateWord,
+  crewResumeUsageHint,
+  crewUsageStopWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { CrewCommand, CrewRun, EnvironmentId } from "@t3tools/contracts";
+import type { CrewCommand, CrewRun, CrewSnapshot, EnvironmentId } from "@t3tools/contracts";
 import { useState, type ReactNode } from "react";
 
-import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import {
   Dialog,
-  DialogClose,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -30,60 +36,87 @@ import {
   DialogPopup,
   DialogTitle,
 } from "~/components/ui/dialog";
-import { Input } from "~/components/ui/input";
-import { Label } from "~/components/ui/label";
 import { Radio, RadioGroup } from "~/components/ui/radio-group";
-import { useCrew } from "~/zerops/crew/useCrew";
 import { useCrewCommand } from "~/zerops/crew/useCrewCommand";
 
-import { Pill } from "../primitives";
+import { CrewPress } from "./CrewParts";
 import {
   crewLandingOptions,
   crewResumeCommand,
-  crewResumeNeedsDialog,
+  crewResumeDraft,
+  crewResumeLimit,
   crewRunDraft,
   crewStartCommand,
   type CrewLimitKind,
+  type CrewResumeDraft,
   type CrewRunDraft,
 } from "./CrewRunDialog.logic";
 
+/** What opens the dialog: a run to start or to keep going, and what follows once it is on. */
+export interface CrewRunDialogAsk {
+  readonly mode: "start" | "resume";
+  readonly after: CrewCommand | null;
+}
+
 export function CrewRunDialog({
   environmentId,
-  open,
-  onOpenChange,
-  onStarted,
-  resume = false,
+  snapshot,
+  hasLead,
+  current,
+  mateName,
+  ask,
+  onClose,
+  onDone,
 }: {
   readonly environmentId: EnvironmentId;
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-  /** Runs once the run has started, e.g. a plan's `planAccept`. */
-  readonly onStarted?: () => void;
-  /** Resume the run its budget or time limit paused, rather than start one. */
-  readonly resume?: boolean;
+  /** The crew as the screen that opens the dialog shows it; `null` keeps it closed. */
+  readonly snapshot: CrewSnapshot | null;
+  readonly hasLead: boolean;
+  /** The snapshot is current: a press acts on what is shown. */
+  readonly current: boolean;
+  readonly mateName: string;
+  /** `null` keeps it closed. */
+  readonly ask: CrewRunDialogAsk | null;
+  readonly onClose: () => void;
+  /** The run is on: what the ask said follows. */
+  readonly onDone: (after: CrewCommand | null) => void;
 }) {
-  const { snapshot, view, current } = useCrew(environmentId);
-  const crewCommand = useCrewCommand(environmentId);
-  const hasLead = view?.lead != null;
+  const commands = useCrewCommand(environmentId);
   const run = snapshot?.run ?? null;
-  const resuming = resume && crewResumeNeedsDialog(run) ? run : null;
+  const resuming = ask?.mode === "resume" && run?.state === "paused" ? run : null;
+  const submit = (command: CrewCommand) => {
+    void commands.send(command).then((result) => {
+      if (result === null) return;
+      const after = ask?.after ?? null;
+      onClose();
+      onDone(after);
+    });
+  };
   return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogPopup className="max-w-lg">
-        {snapshot === null ? null : (
-          <CrewRunDialogBody
-            initial={crewRunDraft(snapshot.run, hasLead)}
+    <Dialog
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      open={ask !== null && snapshot !== null}
+    >
+      <DialogPopup className="max-w-120" showCloseButton={false}>
+        {snapshot === null || ask === null ? null : resuming === null ? (
+          <CrewStartBody
+            canAct={current && !commands.pending}
+            error={commands.error}
             hasLead={hasLead}
-            canAct={current && !crewCommand.pending}
-            error={crewCommand.error}
-            resume={resuming}
-            onStart={(command) => {
-              void crewCommand.send(command).then((result) => {
-                if (result === null) return;
-                onOpenChange(false);
-                onStarted?.();
-              });
-            }}
+            initial={crewRunDraft(run, hasLead)}
+            mateName={mateName}
+            onCancel={onClose}
+            onStart={submit}
+          />
+        ) : (
+          <CrewResumeBody
+            canAct={current && !commands.pending}
+            error={commands.error}
+            onCancel={onClose}
+            onResume={submit}
+            run={resuming}
           />
         )}
       </DialogPopup>
@@ -91,30 +124,12 @@ export function CrewRunDialog({
   );
 }
 
-function Section({ legend, children }: { readonly legend: string; readonly children: ReactNode }) {
-  return (
-    <fieldset className="flex flex-col gap-2">
-      <legend className="mb-2 font-medium text-sm">{legend}</legend>
-      {children}
-    </fieldset>
-  );
-}
+/** An amount's box as wide as what is typed, so its unit follows it: "8 hours", "90 %". */
+const fitted = (text: string) => ({ width: `calc(${Math.max(1, text.length)}ch + 1px)` });
 
-function Choice({ value, children }: { readonly value: string; readonly children: ReactNode }) {
-  return (
-    <label className="flex cursor-pointer items-center gap-2 text-sm">
-      <Radio value={value} />
-      {children}
-    </label>
-  );
-}
-
-/** An amount or *No limit*: typing an amount picks it. */
-function LimitChoice(props: {
-  /** The group's name. */
+/** An amount, typed, beside its unit — and *No limit* after it. */
+function LimitField(props: {
   readonly label: string;
-  /** The amount field's name, with its unit. */
-  readonly amountLabel: string;
   readonly kind: CrewLimitKind | null;
   readonly text: string;
   readonly prefix?: string;
@@ -122,209 +137,261 @@ function LimitChoice(props: {
   readonly onChange: (kind: CrewLimitKind, text: string) => void;
 }) {
   return (
-    <RadioGroup
-      aria-label={props.label}
-      onValueChange={(value) => props.onChange(value as CrewLimitKind, props.text)}
-      value={props.kind}
-    >
-      <Choice value="amount">
-        {props.prefix === undefined ? null : <span>{props.prefix}</span>}
-        <Input
-          aria-label={props.amountLabel}
-          className="w-24"
+    <div className="flex h-9 items-center gap-2">
+      <span className="grow text-sm">{props.label}</span>
+      <label className="crew-limit" data-off={props.kind === "unlimited" ? "" : undefined}>
+        {props.prefix === undefined ? null : (
+          <span className="text-muted-foreground">{props.prefix}</span>
+        )}
+        <input
+          aria-label={props.label}
           inputMode="decimal"
           onChange={(event) => props.onChange("amount", event.target.value)}
-          size="sm"
+          onFocus={() => props.onChange("amount", props.text)}
+          style={fitted(props.text)}
           value={props.text}
         />
-        {props.suffix === undefined ? null : <span>{props.suffix}</span>}
-      </Choice>
-      <Choice value="unlimited">No limit</Choice>
-    </RadioGroup>
-  );
-}
-
-/** The limit that paused the run, set apart so the person sees what to raise. */
-function Reached({
-  limit,
-  hint,
-  children,
-}: {
-  readonly limit: "budget" | "time";
-  readonly hint: string;
-  readonly children: ReactNode;
-}) {
-  return (
-    <div
-      className="flex flex-col gap-2 rounded-md border border-status-attention p-3"
-      data-crew-run-limit-reached={limit}
-    >
-      {children}
-      <p className="text-status-attention-text text-xs">{hint}</p>
+        {props.suffix === undefined ? null : (
+          <span className="text-muted-foreground">{props.suffix}</span>
+        )}
+      </label>
+      <button
+        aria-pressed={props.kind === "unlimited"}
+        className="crew-nolimit"
+        onClick={() => props.onChange("unlimited", props.text)}
+        type="button"
+      >
+        {CREW_RUN_WORDS.noLimit}
+      </button>
     </div>
   );
 }
 
-export function CrewRunDialogBody(props: {
+function Hairline() {
+  return <div className="my-4 h-px bg-border" />;
+}
+
+function Choice({ children }: { readonly children: ReactNode }) {
+  return <label className="flex cursor-pointer items-start gap-2.5">{children}</label>;
+}
+
+function Foot({
+  error,
+  children,
+}: {
+  readonly error: string | null;
+  readonly children: ReactNode;
+}) {
+  return (
+    <>
+      {error === null ? null : (
+        <p className="px-6 text-line text-status-failed-text" role="alert">
+          {error}
+        </p>
+      )}
+      <DialogFooter variant="bare">{children}</DialogFooter>
+    </>
+  );
+}
+
+export function CrewStartBody(props: {
   readonly initial: CrewRunDraft;
   readonly hasLead: boolean;
+  readonly mateName: string;
   readonly canAct: boolean;
   readonly error: string | null;
   readonly onStart: (command: CrewCommand) => void;
-  /** The paused run to resume with new limits; `null` starts a run. */
-  readonly resume: CrewRun | null;
+  readonly onCancel: () => void;
 }) {
   const [draft, setDraft] = useState(props.initial);
-  const { resume } = props;
-  const command =
-    resume === null ? crewStartCommand(draft, props.hasLead) : crewResumeCommand(draft, resume);
-  const budget = (
-    <Section legend="Budget">
-      <LimitChoice
-        amountLabel="Budget in dollars"
-        kind={draft.budget}
-        label="Budget"
-        onChange={(kind, budgetText) => setDraft({ ...draft, budget: kind, budgetText })}
-        prefix="$"
-        text={draft.budgetText}
-      />
-    </Section>
-  );
-  const time = (
-    <Section legend="Time limit">
-      <LimitChoice
-        amountLabel="Time limit in hours"
-        kind={draft.time}
-        label="Time limit"
-        onChange={(kind, timeText) => setDraft({ ...draft, time: kind, timeText })}
-        suffix="h"
-        text={draft.timeText}
-      />
-    </Section>
-  );
-  const landingLabel = crewLandingOptions(props.hasLead).find(
-    (option) => option.mode === draft.landing,
-  )?.label;
-
+  const command = crewStartCommand(draft, props.hasLead);
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{resume === null ? "Start a run" : CREW_RESUME_TITLE}</DialogTitle>
-        {resume === null ? null : (
-          <DialogDescription>{crewStateWord({ run: resume, workingCount: 0 })}</DialogDescription>
-        )}
+        <DialogTitle>{CREW_RUN_TITLE}</DialogTitle>
+        <DialogDescription>{CREW_RUN_LINE}</DialogDescription>
       </DialogHeader>
       <DialogPanel>
-        <div className="flex flex-col gap-5" data-crew-run-dialog>
-          {resume?.reason === "budget" ? (
-            <Reached hint={crewResumeBudgetHint(resume.spentUsd)} limit="budget">
-              {budget}
-            </Reached>
-          ) : (
-            budget
-          )}
-          {resume?.reason === "time" ? (
-            <Reached hint={crewResumeTimeHint(resume.elapsedMs)} limit="time">
-              {time}
-            </Reached>
-          ) : (
-            time
-          )}
-          <Section legend="Usage">
-            <Label>
+        <div className="flex flex-col" data-crew-run-dialog="start">
+          <div className="flex flex-col gap-2">
+            <LimitField
+              kind={draft.budget}
+              label={CREW_RUN_WORDS.spent}
+              onChange={(budget, budgetText) => setDraft({ ...draft, budget, budgetText })}
+              prefix="$"
+              text={draft.budgetText}
+            />
+            <LimitField
+              kind={draft.time}
+              label={CREW_RUN_WORDS.after}
+              onChange={(time, timeText) => setDraft({ ...draft, time, timeText })}
+              suffix={CREW_RUN_WORDS.hours}
+              text={draft.timeText}
+            />
+            <Choice>
               <Checkbox
                 checked={draft.usageStop}
+                className="mt-0.5"
                 onCheckedChange={(checked) => setDraft({ ...draft, usageStop: checked })}
               />
-              {`Stop at ${draft.usagePercent} % of the usage window`}
-            </Label>
-          </Section>
-          {resume !== null ? (
-            <>
-              <Section legend="Landing">
-                <p className="text-sm">{landingLabel}</p>
-              </Section>
-              <Section legend="Dev">
-                <p className="text-sm">
-                  {draft.devGrant
-                    ? "The crew may show work on dev"
-                    : "Ask me before showing a crewmate's work on dev"}
-                </p>
-              </Section>
-              {props.hasLead ? (
-                <Section legend="The lead">
-                  <p className="text-sm">
-                    {draft.leadMayStart
-                      ? "The lead may start tasks without asking"
-                      : "The lead asks before starting tasks"}
-                  </p>
-                </Section>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <Section legend="Landing">
-                <RadioGroup
-                  aria-label="Landing"
-                  onValueChange={(value) =>
-                    setDraft({ ...draft, landing: value as CrewRunDraft["landing"] })
-                  }
-                  value={draft.landing}
-                >
-                  {crewLandingOptions(props.hasLead).map((option) => (
-                    <Choice key={option.mode} value={option.mode}>
-                      {option.label}
-                    </Choice>
-                  ))}
-                </RadioGroup>
-              </Section>
-              <Section legend="Dev">
-                <RadioGroup
-                  aria-label="Dev"
-                  onValueChange={(value) => setDraft({ ...draft, devGrant: value === "grant" })}
-                  value={draft.devGrant ? "grant" : "ask"}
-                >
-                  <Choice value="ask">Ask me before showing a crewmate&apos;s work on dev</Choice>
-                  <Choice value="grant">The crew may show work on dev</Choice>
-                </RadioGroup>
-              </Section>
-              {props.hasLead ? (
-                <Section legend="The lead">
-                  <Label>
-                    <Checkbox
-                      checked={draft.leadMayStart}
-                      onCheckedChange={(checked) => setDraft({ ...draft, leadMayStart: checked })}
-                    />
-                    The lead may start tasks without asking
-                  </Label>
-                </Section>
-              ) : null}
-            </>
-          )}
-          {props.error === null ? null : (
-            <p className="text-destructive-foreground text-xs" role="alert">
-              {props.error}
-            </p>
-          )}
+              <span className="text-sm">{crewUsageStopWord(draft.usagePercent)}</span>
+            </Choice>
+          </div>
+          <Hairline />
+          <span className="font-medium text-sm">{CREW_RUN_WORDS.whenDone}</span>
+          <div className="mt-2.5">
+            <RadioGroup
+              aria-label={CREW_RUN_WORDS.whenDone}
+              onValueChange={(value) =>
+                setDraft({ ...draft, landing: value as CrewRunDraft["landing"] })
+              }
+              value={draft.landing}
+            >
+              {crewLandingOptions(props.hasLead, props.mateName).map((option) => (
+                <Choice key={option.mode}>
+                  <Radio className="mt-0.5" value={option.mode} />
+                  <span className="flex flex-col">
+                    <span className="text-sm">{option.label}</span>
+                    <span className="text-line leading-4.5 text-muted-foreground">
+                      {option.line}
+                    </span>
+                  </span>
+                </Choice>
+              ))}
+            </RadioGroup>
+          </div>
+          <Hairline />
+          <div className="flex flex-col gap-2.5">
+            {props.hasLead ? (
+              <Choice>
+                <Checkbox
+                  checked={draft.leadMayStart}
+                  className="mt-0.5"
+                  onCheckedChange={(checked) => setDraft({ ...draft, leadMayStart: checked })}
+                />
+                <span className="text-sm">{CREW_RUN_WORDS.leadMayStart}</span>
+              </Choice>
+            ) : null}
+            <Choice>
+              <Checkbox
+                checked={draft.devGrant}
+                className="mt-0.5"
+                onCheckedChange={(checked) => setDraft({ ...draft, devGrant: checked })}
+              />
+              <span className="text-sm">{crewDevGrantWord(props.mateName)}</span>
+            </Choice>
+          </div>
         </div>
       </DialogPanel>
-      <DialogFooter>
-        <DialogClose
-          render={
-            <Button size="sm" variant="ghost">
-              Cancel
-            </Button>
-          }
+      <Foot error={props.error}>
+        <CrewPress
+          label={CREW_RUN_WORDS.cancel}
+          onPress={props.onCancel}
+          size="view"
+          tone="muted"
         />
-        <Pill
+        <CrewPress
           disabled={!props.canAct || command === null}
-          label={resume === null ? "Start" : "Resume"}
-          onClick={() => {
+          label={CREW_RUN_WORDS.start}
+          onPress={() => {
             if (command !== null) props.onStart(command);
           }}
-          size="sm"
+          size="view"
         />
-      </DialogFooter>
+      </Foot>
+    </>
+  );
+}
+
+export function CrewResumeBody(props: {
+  readonly run: CrewRun;
+  readonly canAct: boolean;
+  readonly error: string | null;
+  readonly onResume: (command: CrewCommand) => void;
+  readonly onCancel: () => void;
+}) {
+  const { run } = props;
+  const [draft, setDraft] = useState<CrewResumeDraft>(() => crewResumeDraft(run));
+  const limit = crewResumeLimit(run);
+  const command = crewResumeCommand(draft, run);
+  const { budgetUsd, timeLimitHours } = run.options;
+  const line =
+    limit === "budget" && budgetUsd !== "unlimited"
+      ? crewResumeBudgetHint(run.spentUsd, budgetUsd)
+      : limit === "time" && timeLimitHours !== "unlimited"
+        ? crewResumeTimeHint(timeLimitHours)
+        : limit === "usage"
+          ? crewResumeUsageHint(run.options.stopAtUsagePercent ?? Math.round(run.usagePercent ?? 0))
+          : crewKeepGoingLine(run.options);
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>{CREW_RESUME_TITLE}</DialogTitle>
+        <DialogDescription>{line}</DialogDescription>
+      </DialogHeader>
+      <DialogPanel>
+        <div className="flex flex-col gap-2" data-crew-run-dialog="resume">
+          {limit === "budget" ? (
+            <LimitField
+              kind={draft.more}
+              label={CREW_RUN_WORDS.moreMoney}
+              onChange={(more, moreText) => setDraft({ ...draft, more, moreText })}
+              prefix="$"
+              suffix={CREW_RUN_WORDS.more}
+              text={draft.moreText}
+            />
+          ) : null}
+          {limit === "time" ? (
+            <LimitField
+              kind={draft.more}
+              label={CREW_RUN_WORDS.moreTime}
+              onChange={(more, moreText) => setDraft({ ...draft, more, moreText })}
+              suffix={CREW_RUN_WORDS.hoursMore}
+              text={draft.moreText}
+            />
+          ) : null}
+          {limit === "usage" ? (
+            <Choice>
+              <Checkbox
+                checked={draft.usageStop}
+                className="mt-0.5"
+                onCheckedChange={(checked) => setDraft({ ...draft, usageStop: checked })}
+              />
+              <span className="flex flex-wrap items-center gap-1.5 text-sm">
+                {CREW_RUN_WORDS.usageFurther}
+                <label className="crew-limit" data-narrow="">
+                  <input
+                    aria-label={CREW_RUN_WORDS.usageFurther}
+                    inputMode="numeric"
+                    onChange={(event) =>
+                      setDraft({ ...draft, usagePercent: Number(event.target.value) || 0 })
+                    }
+                    style={fitted(String(draft.usagePercent))}
+                    value={String(draft.usagePercent)}
+                  />
+                </label>
+                {CREW_RUN_WORDS.usageOf}
+              </span>
+            </Choice>
+          ) : null}
+        </div>
+      </DialogPanel>
+      <Foot error={props.error}>
+        <CrewPress
+          label={CREW_RUN_WORDS.cancel}
+          onPress={props.onCancel}
+          size="view"
+          tone="muted"
+        />
+        <CrewPress
+          disabled={!props.canAct || command === null}
+          label={CREW_RUN_WORDS.keepGoing}
+          onPress={() => {
+            if (command !== null) props.onResume(command);
+          }}
+          size="view"
+        />
+      </Foot>
     </>
   );
 }

@@ -108,27 +108,21 @@ describe("deriveCrewView", () => {
     expect(byHandle.get("frontend")).toMatchObject({ shell: null, status: null, statusWord: null });
   });
 
-  it("counts a crewmate as working by its thread's face, and words the crew's state from it", () => {
+  it("counts a crewmate as working by its thread's face", () => {
     const snapshot = crewSnapshotFixture({ run: null });
     const table = [
-      { name: "two running", shells, working: 2, word: "2 working" },
+      { name: "two running", shells, working: 2 },
       {
         name: "nobody running",
         shells: shells.map((shell) => idle(shell.id, { archivedAt: shell.archivedAt })),
         working: 0,
-        word: "Idle",
       },
     ] as const;
 
     for (const row of table) {
       const view = deriveCrewView(snapshot, row.shells);
-      expect([row.name, view.workingCount, view.stateWord]).toEqual([
-        row.name,
-        row.working,
-        row.word,
-      ]);
+      expect([row.name, view.workingCount]).toEqual([row.name, row.working]);
     }
-    expect(deriveCrewView(crewSnapshotFixture(), shells).stateWord).toBe("Running · 1 h 12 m");
   });
 
   it("marks a crewmate pending while its running prompt is older than the current one", () => {
@@ -179,46 +173,21 @@ describe("deriveCrewView", () => {
     expect(byHandle.get("lead")?.openTask).toBeNull();
   });
 
-  it("puts every board row but a discarded one in its column, with its word and its owner", () => {
+  it("keeps every task but a dropped one, each with its owner", () => {
     const view = deriveCrewView(crewSnapshotFixture(), shells);
 
     expect(
-      view.tasks.map((row) => [row.task.number, row.column, row.word, row.owner?.crewmate.handle]),
+      view.tasks.map((row) => [row.task.number, row.task.state, row.owner?.crewmate.handle]),
     ).toEqual([
-      [10, "landed", "Delivered", "frontend"],
-      [11, "landed", "Landed · not delivered", "backend"],
-      [12, "working", "Working", "backend"],
-      [13, "waiting-on-you", "Waits on your tree: src/ui/hud.ts", "frontend"],
-      [14, "waiting-on-you", "Asks a question", "erik"],
-      [15, "queued", "Queued · after #12", "frontend"],
-      [16, "waiting-on-you", "Proposed", "backend"],
-      [17, "waiting-on-you", "Stopped: The check timed out twice", "erik"],
+      [10, "landed", "frontend"],
+      [11, "landed", "backend"],
+      [12, "working", "backend"],
+      [13, "waiting-on-you", "frontend"],
+      [14, "blocked", "erik"],
+      [15, "queued", "frontend"],
+      [16, "proposed", "backend"],
+      [17, "parked", "erik"],
     ]);
-  });
-
-  it("words a queued task with the owner's open task it waits behind", () => {
-    const fixture = crewSnapshotFixture();
-    const view = deriveCrewView(
-      crewSnapshotFixture({
-        board: {
-          tasks: fixture.board.tasks.map((task) =>
-            task.id === "task-15" ? { ...task, dependsOn: [] } : task,
-          ),
-        },
-      }),
-      shells,
-    );
-
-    expect(view.tasks.find((row) => row.task.number === 15)?.word).toBe("Queued · waits for #13");
-  });
-
-  it("has no word for a working task whose owner's thread is idle", () => {
-    const view = deriveCrewView(
-      crewSnapshotFixture(),
-      shells.map((shell) => idle(shell.id, { archivedAt: shell.archivedAt })),
-    );
-
-    expect(view.tasks.find((row) => row.task.number === 12)?.word).toBeNull();
   });
 
   it("marks every crew shell with archivedAt as retired and maps each stint's thread to its crewmate", () => {

@@ -14,9 +14,11 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { elementsOf, TestNode } from "~/zerops/__fixtures__/testDom";
 
-import crewBoardSource from "../crew/CrewBoardPanel.tsx?raw";
+import crewInCodeSource from "../crew/CrewInFensCode.tsx?raw";
 import crewLeadPlanSource from "../crew/CrewLeadPlan.tsx?raw";
-import crewSectionSource from "../crew/CrewSection.tsx?raw";
+import crewRowsSource from "../crew/CrewRows.tsx?raw";
+import crewTabSource from "../crew/CrewSectionHost.tsx?raw";
+import sidebarCrewLineSource from "../crew/SidebarCrewLine.tsx?raw";
 import gitSurfaceSource from "../ZeropsGitSurface.tsx?raw";
 import gitTabSource from "../ZeropsGitTab.tsx?raw";
 import groupDetailSource from "../ZeropsGroupDetail.tsx?raw";
@@ -56,9 +58,15 @@ describe("every door opens the review and never acts itself (R1)", () => {
     ["the Git tab", gitTabSource, ["onReviewPullRequest"]],
     ["the Git tab's surface", gitSurfaceSource, ["openReview(", 'kind: "change"']],
     ["the release rows", releaseRowsSource, ["onRollBack(release.tag, event.currentTarget)"]],
-    ["the crew board", crewBoardSource, ["openReview(", 'kind: "crew-task"']],
-    ["the lead's plan", crewLeadPlanSource, ["openReview(", 'kind: "crew-task"']],
-    ["the crew section's rows", crewSectionSource, ["openReview(", 'kind: "crew-task"']],
+    [
+      "the Crew tab, for its rows and its work in the Mate's code",
+      crewTabSource,
+      ["openReview(", 'kind: "crew-task"'],
+    ],
+    ["the crew's rows, through the tab", crewRowsSource, ["props.onReview("]],
+    ["the work in the Mate's code, through the tab", crewInCodeSource, ["onReview(task.id"]],
+    ["the left menu's crew line", sidebarCrewLineSource, ["openReview(", 'kind: "crew-task"']],
+    ["the lead's plan, which opens no review", crewLeadPlanSource, []],
   ] as const)("%s", (_door, source, opens) => {
     for (const words of opens) expect(source).toContain(words);
     for (const act of ACTS) expect(source).not.toContain(act);

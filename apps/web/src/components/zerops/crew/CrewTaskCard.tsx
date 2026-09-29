@@ -11,13 +11,13 @@
  */
 import {
   CREW_PREVIOUS_STINT_LINK,
-  crewLandedAsWord,
+  crewClosedWord,
+  crewWentInWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewSeam, CrewTask, Crewmate, ThreadId } from "@t3tools/contracts";
 import { createContext, use, useMemo } from "react";
 
 import type { CrewCard } from "../../chat/conversation.logic";
-import { MicroLabel } from "../primitives";
 import { crewTaskCardModel } from "./CrewTaskCard.logic";
 import { CrewSeamLine } from "./CrewSeamLine";
 
@@ -29,6 +29,8 @@ export interface CrewTimeline {
   readonly tasks: ReadonlyArray<CrewTask>;
   /** Whose conversation this is: its handle, and the crewmate once the crew is read. */
   readonly crewmate: { readonly handle: string; readonly profile: Crewmate | null };
+  /** The Mate whose crew it is, named where work goes into its code. */
+  readonly mateName: string;
   readonly onOpenThread: (threadId: ThreadId) => void;
 }
 
@@ -58,13 +60,7 @@ export function CrewTaskCard({ id, card }: { readonly id: string; readonly card:
         className="flex flex-col gap-1 rounded-2xl border border-border/70 bg-card px-4 py-2.5"
         data-crew-task-card
       >
-        <div className="flex min-w-0 items-baseline gap-2">
-          <MicroLabel className="shrink-0">Task</MicroLabel>
-          <p className="min-w-0 truncate text-prose font-medium text-foreground">{model.heading}</p>
-          {model.source === null ? null : (
-            <span className="shrink-0 text-xs text-muted-foreground">{model.source}</span>
-          )}
-        </div>
+        <p className="min-w-0 truncate text-prose font-medium text-foreground">{model.heading}</p>
         {model.text.length === 0 ? null : (
           <p className="whitespace-pre-wrap text-line text-muted-foreground">{model.text}</p>
         )}
@@ -79,9 +75,9 @@ export function CrewTaskCard({ id, card }: { readonly id: string; readonly card:
 }
 
 /**
- * A seam the crew engine drew across the chat (`crew.seam`): a landing by its
- * short sha, a save in the engine's words, and a new conversation linked to
- * the one before it.
+ * A seam the crew engine drew across the chat (`crew.seam`): work that went
+ * into the Mate's code, or closed with nothing to add, by its title; a save
+ * in the engine's words; and a new conversation linked to the one before it.
  */
 export function CrewSeamActivity({
   seam,
@@ -92,6 +88,8 @@ export function CrewSeamActivity({
 }) {
   const crew = use(CrewTimelineContext);
   const previous = seam.seam === "stint" ? seam.previousThreadId : null;
+  const mateName = crew?.mateName ?? "the Mate";
+  const titleOf = (taskId: string) => crew?.tasks.find((task) => task.id === taskId)?.title ?? null;
   return (
     <CrewSeamLine
       link={
@@ -101,8 +99,10 @@ export function CrewSeamActivity({
       }
       text={
         seam.seam === "landed"
-          ? crewLandedAsWord({ number: seam.number, landedCommit: seam.commit })
-          : words
+          ? crewWentInWord(titleOf(seam.taskId), mateName)
+          : seam.seam === "closed"
+            ? crewClosedWord(titleOf(seam.taskId), mateName)
+            : words
       }
     />
   );

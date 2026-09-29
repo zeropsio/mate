@@ -50,7 +50,7 @@ import {
 import { CREW_ID } from "./CrewHome.ts";
 import { taskTransition, type TaskCounters, type TaskEvent } from "./crewMachines.ts";
 import { implicitTaskTitle, routeCrewMessage } from "./crewRouting.ts";
-import { pauseRun } from "./crewRuns.ts";
+import { followCrewWork, pauseRun } from "./crewRuns.ts";
 import { isOpenTask } from "./crewSnapshot.ts";
 import { currentOrFirstStint, rotate } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
@@ -332,8 +332,14 @@ export const sendTurn = (
     });
     yield* admitCrewTurn(core, command, principal);
     core.memory.working.add(stint.threadId);
+    yield* followCrewWork(core);
     yield* dispatchCrewTurn(core, command).pipe(
-      Effect.tapError(() => Effect.sync(() => core.memory.working.delete(stint.threadId))),
+      Effect.tapError(() =>
+        Effect.suspend(() => {
+          core.memory.working.delete(stint.threadId);
+          return followCrewWork(core);
+        }),
+      ),
     );
   });
 

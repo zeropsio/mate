@@ -6,30 +6,36 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { selectActiveRightPanel, useRightPanelStore } from "~/rightPanelStore";
 
-import { openCrewTab, useCrewSetupAskStore, useCrewSetupSheet } from "./crewTab";
+import {
+  openCrewTab,
+  openCrewView,
+  useCrewView,
+  useCrewViewAskStore,
+  type CrewTabView,
+} from "./crewTab";
 
 const FEN = scopeThreadRef(EnvironmentId.make("env-fen"), ThreadId.make("thread-fen"));
 const JUNO = scopeThreadRef(EnvironmentId.make("env-juno"), ThreadId.make("thread-juno"));
 
-/** Whether the left menu's ask for this Mate's setup sheet still waits for its tab. */
-const asked = (ref: typeof FEN) => useCrewSetupAskStore.getState().asked.has(ref.environmentId);
+/** Whether an ask for this Mate's tab view still waits for its tab. */
+const asked = (ref: typeof FEN) => useCrewViewAskStore.getState().asked.has(ref.environmentId);
 
 beforeEach(() => {
   useRightPanelStore.setState({ byThreadKey: {} });
-  useCrewSetupAskStore.setState({ asked: new Set() });
+  useCrewViewAskStore.setState({ asked: new Map() });
 });
 
 describe("openCrewTab — a Mate's menu opening its conversation on the Crew tab", () => {
   it.each([
     { case: "Crew opens the tab alone", setUp: false, ask: false },
-    { case: "Set up a crew opens the tab and asks it for its setup sheet", setUp: true, ask: true },
+    { case: "Set up a crew opens the tab and asks it for its setup", setUp: true, ask: true },
   ])("$case", ({ setUp, ask }) => {
     openCrewTab(FEN, { setUp });
     expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, FEN)).toBe("crew");
     expect(asked(FEN)).toBe(ask);
   });
 
-  it("asks for one Mate's sheet only: another Mate's tab opens without it", () => {
+  it("asks for one Mate's setup only: another Mate's tab opens without it", () => {
     openCrewTab(FEN, { setUp: true });
     openCrewTab(JUNO, { setUp: false });
     expect(asked(FEN)).toBe(true);
@@ -43,15 +49,26 @@ describe("openCrewTab — a Mate's menu opening its conversation on the Crew tab
   });
 });
 
-describe("useCrewSetupSheet — one Mate's setup sheet, as its Crew tab holds it", () => {
+describe("openCrewView — a crewmate's menu opening its job, or the crew's goal", () => {
+  it.each<[string, CrewTabView]>([
+    ["Change its job", { kind: "job", handle: "backend" }],
+    ["Change the goal", { kind: "goal" }],
+  ])("%s opens the tab on that view", (_, view) => {
+    openCrewView(FEN, view);
+    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, FEN)).toBe("crew");
+    expect(useCrewViewAskStore.getState().asked.get(FEN.environmentId)).toEqual(view);
+  });
+});
+
+describe("useCrewView — one Mate's Crew tab view, as its tab holds it", () => {
   const mounted: ReactTestRenderer[] = [];
-  /** The sheet's setter, as each draw of the tab hands it out. */
-  const setters: Array<(open: boolean) => void> = [];
-  const setSheet = (open: boolean) => setters.at(-1)?.(open);
+  /** The view's setter, as each draw of the tab hands it out. */
+  const setters: Array<(view: CrewTabView | null) => void> = [];
+  const setSheet = (open: boolean) => setters.at(-1)?.(open ? { kind: "setup" } : null);
   function Tab({ environmentId }: { readonly environmentId: EnvironmentId }) {
-    const [open, setOpen] = useCrewSetupSheet(environmentId);
-    setters.push(setOpen);
-    return h("span", null, String(open));
+    const [view, setView] = useCrewView(environmentId);
+    setters.push(setView);
+    return h("span", null, String(view?.kind === "setup"));
   }
   const mount = (environmentId: EnvironmentId) => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);

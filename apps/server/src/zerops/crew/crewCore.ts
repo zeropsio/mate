@@ -154,7 +154,10 @@ export interface EngineMemory {
   readonly grantsWaiting: Map<string, TurnPrincipal>;
   /** The dev services this Mate mounts: whether each reaches a database, `null` until read. */
   readonly devHosts: Map<string, boolean | null>;
-  /** When the running run's time last started counting (clock ms); `null` while none runs. */
+  /**
+   * Since when the running run's clock counts (clock ms): it counts while a
+   * crew turn runs (`crewRuns.followCrewWork`); `null` while it stands.
+   */
   runningSince: number | null;
   /** The run tick is forked (`crewRuns.ensureRunTick`). */
   runTick: boolean;

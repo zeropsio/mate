@@ -372,8 +372,8 @@
           "reverse": "Release"
         },
         {
-          "action": "Land",
-          "reverse": "none: a landed task is undone by a new task."
+          "action": "Add to <Mate>'s code",
+          "reverse": "none: work added to the Mate's code is undone by new work."
         }
       ],
       "docs": {
@@ -1226,14 +1226,19 @@
     },
     {
       "id": "zerops-crew-section",
-      "title": "Crew section",
+      "title": "Crew tab",
       "components": [
         "apps/web/src/components/zerops/crew/CrewPanel.tsx",
         "apps/web/src/components/zerops/crew/CrewSectionHost.tsx",
         "apps/web/src/components/zerops/crew/CrewSection.tsx",
-        "apps/web/src/components/zerops/crew/CrewSection.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewHead.tsx",
+        "apps/web/src/components/zerops/crew/CrewHead.logic.ts",
         "apps/web/src/components/zerops/crew/CrewTellComposer.tsx",
         "apps/web/src/components/zerops/crew/CrewTellComposer.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewRows.tsx",
+        "apps/web/src/components/zerops/crew/CrewRows.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewInFensCode.tsx",
+        "apps/web/src/components/zerops/crew/CrewParts.tsx",
         "apps/web/src/zerops/crew/useCrew.ts",
         "apps/web/src/zerops/crew/useCrewCommand.ts",
         "apps/web/src/zerops/crew/crewCommands.ts",
@@ -1243,7 +1248,7 @@
       "entryPoints": [
         {
           "kind": "right-panel-tab",
-          "value": "Crew (shortcut C), at its top, while the crew feed says none or applied"
+          "value": "Crew (shortcut C): the crew's column, or the Mate's empty state while it has no crew"
         },
         {
           "kind": "sidebar-item",
@@ -1268,72 +1273,88 @@
       ],
       "reverseStates": [
         {
-          "action": "Tell the crew",
-          "reverse": "none: each task it opens leaves the board by Discard."
+          "action": "Send",
+          "reverse": "none: each piece of work it starts leaves the tab by Drop it."
         },
         {
           "action": "Answer",
           "reverse": "none: an answer is a message in the crewmate's chat."
         },
         {
-          "action": "Allow",
-          "reverse": "Back to my tree"
+          "action": "Review",
+          "reverse": "none: it opens the review; nothing goes into the Mate's code until Add to <Mate>'s code there."
+        },
+        {
+          "action": "Let it",
+          "reverse": "Back to <Mate>'s"
         },
         {
           "action": "Not now",
-          "reverse": "none: the crewmate asks again when it needs dev."
+          "reverse": "none: the crewmate asks again when it needs the Mate's dev address."
         },
         {
-          "action": "Back to my tree",
-          "reverse": "none: dev serves your tree again until a crewmate asks and you allow it."
+          "action": "Back to <Mate>'s",
+          "reverse": "none: the dev address shows the Mate's code again until a crewmate asks and you let it."
         },
         {
-          "action": "Land",
-          "reverse": "none: a landing is undone by a revert in your tree, which is a new change."
-        },
-        {
-          "action": "Commit my edit",
+          "action": "Ask <Mate> to commit them",
           "reverse": "none: it drafts a message to the Mate in your chat; nothing runs until you send it."
         },
         {
-          "action": "Ask <crewmate> to resolve",
-          "reverse": "none: the crewmate works one turn on its own copy; nothing lands without Land."
+          "action": "Ask it to sort it out",
+          "reverse": "none: the crewmate works one turn on its own copy; nothing goes into the Mate's code without Add to <Mate>'s code."
         },
         {
-          "action": "Ask <crewmate> to fix",
-          "reverse": "none: the crewmate works one turn on its own copy; nothing lands without Land."
+          "action": "Ask it to fix them",
+          "reverse": "none: the crewmate works one turn on its own copy; nothing goes into the Mate's code without Add to <Mate>'s code."
         },
         {
-          "action": "Start fresh",
-          "reverse": "none: the previous conversation stays readable and is never resumed."
+          "action": "Ask it to rework",
+          "reverse": "none: the crewmate works one turn on its own copy; nothing goes into the Mate's code without Add to <Mate>'s code."
         },
         {
-          "action": "Remove from crew",
-          "reverse": "none: a crewmate added again is a new one with a new copy of the code."
-        },
-        {
-          "action": "Deliver",
-          "reverse": "none: it drafts a message to the Mate, whose pipeline delivers; nothing runs until you send it."
+          "action": "Continue",
+          "reverse": "none: the crewmate carries its task on from its copy; Drop it takes it off."
         },
         {
           "action": "Try again",
-          "reverse": "none: the queued task starts again as the person who created it; a refusal leaves it queued."
+          "reverse": "none: the task starts again as the person who created it; a refusal leaves it where it was."
         },
         {
-          "action": "Start run",
-          "reverse": "Stop"
+          "action": "Drop it",
+          "reverse": "none: dropped work leaves the tab; the same work is new work."
         },
         {
-          "action": "Pause",
-          "reverse": "Resume"
+          "action": "Clear its conversation",
+          "reverse": "none: the previous conversation stays readable and is never resumed."
         },
         {
-          "action": "Resume",
-          "reverse": "Pause"
+          "action": "Remove from the crew",
+          "reverse": "none: a crewmate added again is a new one with a new copy of the code."
+        },
+        {
+          "action": "Ask <Mate> to ship them",
+          "reverse": "none: it drafts a message to the Mate, whose pipeline ships; nothing runs until you send it."
         },
         {
           "action": "Stop",
-          "reverse": "none: a stopped run ends; another run is started with Start run."
+          "reverse": "Keep going…"
+        },
+        {
+          "action": "Keep going…",
+          "reverse": "Stop"
+        },
+        {
+          "action": "Start",
+          "reverse": "Stop"
+        },
+        {
+          "action": "Drop the plan",
+          "reverse": "none: a dropped plan leaves the tab; the lead proposes again when asked."
+        },
+        {
+          "action": "Leave this one out",
+          "reverse": "none: the task leaves the plan; the lead proposes it again when asked."
         }
       ],
       "docs": {
@@ -1342,10 +1363,13 @@
       "tests": [
         "apps/web/src/components/zerops/crew/CrewPanel.test.tsx",
         "apps/web/src/components/zerops/crew/CrewSection.test.tsx",
-        "apps/web/src/components/zerops/crew/CrewSection.logic.test.ts",
+        "apps/web/src/components/zerops/crew/CrewHead.logic.test.ts",
+        "apps/web/src/components/zerops/crew/CrewRows.logic.test.ts",
         "apps/web/src/components/zerops/crew/CrewTellComposer.logic.test.ts",
         "apps/web/src/zerops/crew/useCrewCommand.test.ts",
         "apps/web/src/zerops/feeds.test.ts",
+        "apps/web/src/rightPanelKinds.test.ts",
+        "apps/web/src/rightPanelStore.test.ts",
         "packages/client-runtime/src/zerops/projections/crew.test.ts",
         "packages/client-runtime/src/zerops/crew/phrases.test.ts"
       ],
@@ -1353,42 +1377,37 @@
     },
     {
       "id": "zerops-crew-editors",
-      "title": "Crew editors",
+      "title": "Crew views",
       "components": [
-        "apps/web/src/components/zerops/crew/CrewSheetParts.tsx",
-        "apps/web/src/components/zerops/crew/CrewSetupSheet.tsx",
-        "apps/web/src/components/zerops/crew/CrewBriefSheet.tsx",
-        "apps/web/src/components/zerops/crew/CrewBriefEditor.tsx",
-        "apps/web/src/components/zerops/crew/CrewmateEditor.tsx",
-        "apps/web/src/components/zerops/crew/CrewmateSheet.tsx",
+        "apps/web/src/components/zerops/crew/CrewView.tsx",
+        "apps/web/src/components/zerops/crew/CrewSetup.tsx",
+        "apps/web/src/components/zerops/crew/CrewGoal.tsx",
+        "apps/web/src/components/zerops/crew/CrewGoal.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewmateJob.tsx",
         "apps/web/src/components/zerops/crew/CrewEditors.logic.ts",
-        "apps/web/src/components/zerops/crew/CrewPortsDialog.tsx",
         "apps/web/src/components/zerops/crew/CrewRunDialog.tsx",
         "apps/web/src/components/zerops/crew/CrewRunDialog.logic.ts",
         "apps/web/src/zerops/crew/useCrewHome.ts",
         "apps/web/src/zerops/crew/crewHome.ts",
-        "apps/web/src/zerops/crew/crewTab.ts"
+        "apps/web/src/zerops/crew/crewTab.ts",
+        "packages/shared/src/crewTemplates.ts"
       ],
       "entryPoints": [
         {
-          "kind": "overlay",
-          "value": "Crew section: Set up a crew, the brief's Edit, a crewmate's Edit job, + Add crewmate, + Add lead"
+          "kind": "inline",
+          "value": "Crew tab: Set up a crew; the left menu's Set up a crew on the viewer's own Mate with crew mode on and no crew"
+        },
+        {
+          "kind": "inline",
+          "value": "Crew tab: the crew's ··· Change the goal and Add a crewmate, a row's ··· Change its job"
+        },
+        {
+          "kind": "inline",
+          "value": "Crewmate chat: its menu's Change its job, the lead's Change the goal"
         },
         {
           "kind": "overlay",
-          "value": "A Mate's own menu in the left menu: Set up a crew, on the viewer's own Mate with crew mode on and no crew"
-        },
-        {
-          "kind": "overlay",
-          "value": "Crewmate chat: its menu's Change its job, the lead's Change the brief, the composer's Runs on"
-        },
-        {
-          "kind": "overlay",
-          "value": "Crew section: Add crew ports"
-        },
-        {
-          "kind": "overlay",
-          "value": "Crew section: Start run; a plan's Start on the board or in the lead's chat while no run is on"
+          "value": "Crew tab: Let it work on its own…, Keep going…, and a plan's Start or Change while the crew doesn't work on its own"
         }
       ],
       "clients": {
@@ -1410,36 +1429,32 @@
       ],
       "reverseStates": [
         {
-          "action": "Ask <Mate>",
-          "reverse": "none: it drafts a message to the Mate, who writes the crew files; nothing runs until you send it."
+          "action": "Let <Mate> suggest a crew",
+          "reverse": "none: it drafts a message to the Mate, who writes the crew; nothing runs until you send it."
+        },
+        {
+          "action": "Start with a lead and two builders",
+          "reverse": "none: it drafts the crew here; nothing starts until Start the crew."
+        },
+        {
+          "action": "Start the crew",
+          "reverse": "none: it makes each builder's copy of the code; a crewmate leaves by Remove from the crew."
         },
         {
           "action": "Save",
           "reverse": "none: a save is a new version; the earlier text comes back only by saving it again."
         },
         {
-          "action": "Save and apply now",
-          "reverse": "none: a save is a new version; the earlier text comes back only by saving it again."
-        },
-        {
-          "action": "Save and start fresh",
-          "reverse": "none: a save is a new version; the earlier text comes back only by saving it again."
-        },
-        {
-          "action": "Apply",
-          "reverse": "none: Apply creates each writer's copy of the code; a crewmate leaves by Remove from crew."
-        },
-        {
-          "action": "Ask <Mate> to add them",
-          "reverse": "none: the Mate declares the crew ports in zerops.yaml and redeploys the service; taking them out is another change asked of the Mate."
+          "action": "Ask <Mate>",
+          "reverse": "none: the Mate declares the crew ports and redeploys the service; taking them out is another change asked of the Mate."
         },
         {
           "action": "Start",
-          "reverse": "none: a run is stopped from the Crew section's Stop."
+          "reverse": "none: the crew stops working on its own by the Crew tab's Stop."
         },
         {
-          "action": "Resume",
-          "reverse": "none: a resumed run is paused again from the Crew section's Pause; its new limits stay."
+          "action": "Keep going",
+          "reverse": "none: the crew stops again by the Crew tab's Stop; its new limits stay."
         }
       ],
       "docs": {
@@ -1447,88 +1462,12 @@
       },
       "tests": [
         "apps/web/src/components/zerops/crew/CrewEditors.logic.test.ts",
+        "apps/web/src/components/zerops/crew/CrewGoal.logic.test.ts",
         "apps/web/src/components/zerops/crew/CrewRunDialog.test.tsx",
         "apps/web/src/components/zerops/crew/CrewRunDialog.logic.test.ts",
         "apps/web/src/zerops/crew/crewHome.test.ts",
-        "apps/web/src/zerops/crew/crewTab.test.ts"
-      ],
-      "captures": []
-    },
-    {
-      "id": "zerops-crew-board",
-      "title": "Crew board",
-      "components": [
-        "apps/web/src/components/zerops/crew/CrewBoardPanel.tsx",
-        "apps/web/src/components/zerops/crew/CrewBoardPanel.logic.ts"
-      ],
-      "entryPoints": [
-        {
-          "kind": "right-panel-tab",
-          "value": "Crew (shortcut C), under the crew's section, while a crew is applied"
-        },
-        {
-          "kind": "inline",
-          "value": "Crew section: Waiting on you's Review plan brings the board's plan into view"
-        }
-      ],
-      "clients": {
-        "web": "yes",
-        "desktop": "yes",
-        "mobile": {
-          "status": "n/a",
-          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
-        }
-      },
-      "providers": "n/a",
-      "connectionModes": ["zerops-door"],
-      "contracts": [
-        "subscribeZeropsCrew",
-        "zerops.crew.command",
-        "@t3tools/client-runtime/zerops/projections/crew",
-        "@t3tools/client-runtime/zerops/crew/phrases"
-      ],
-      "reverseStates": [
-        {
-          "action": "Create task",
-          "reverse": "Discard"
-        },
-        {
-          "action": "Discard",
-          "reverse": "none: a discarded task leaves the board; the same work is a new task."
-        },
-        {
-          "action": "Save",
-          "reverse": "none: an edit replaces the task's text; the earlier text comes back only by editing again."
-        },
-        {
-          "action": "Land",
-          "reverse": "none: a landing is undone by a revert in your tree, which is a new change."
-        },
-        {
-          "action": "Land now",
-          "reverse": "none: a landing is undone by a revert in your tree, which is a new change."
-        },
-        {
-          "action": "Ask <crewmate> to resolve",
-          "reverse": "none: the crewmate works one turn on its own copy; nothing lands without Land."
-        },
-        {
-          "action": "Ask <crewmate> to fix",
-          "reverse": "none: the crewmate works one turn on its own copy; nothing lands without Land."
-        },
-        {
-          "action": "Start",
-          "reverse": "Discard"
-        }
-      ],
-      "docs": {
-        "none": "No docs/user page documents crew mode yet."
-      },
-      "tests": [
-        "apps/web/src/components/zerops/crew/CrewBoardPanel.test.tsx",
-        "apps/web/src/components/zerops/crew/CrewBoardPanel.logic.test.ts",
-        "apps/web/src/rightPanelKinds.test.ts",
-        "apps/web/src/rightPanelStore.test.ts"
+        "apps/web/src/zerops/crew/crewTab.test.ts",
+        "packages/shared/src/crewTemplates.test.ts"
       ],
       "captures": []
     },
@@ -1551,6 +1490,7 @@
         "apps/web/src/components/zerops/crew/SidebarCrewLine.logic.ts",
         "apps/web/src/components/zerops/crew/CrewmateEmptyState.tsx",
         "apps/web/src/components/zerops/crew/CrewLeadPlan.tsx",
+        "apps/web/src/components/zerops/crew/CrewLeadPlan.logic.ts",
         "apps/web/src/components/zerops/crew/CrewRunsOnControl.tsx"
       ],
       "entryPoints": [
@@ -1560,7 +1500,7 @@
         },
         {
           "kind": "inline",
-          "value": "Crew section: a crewmate's row"
+          "value": "Crew tab: a crewmate's row"
         },
         {
           "kind": "inline",
@@ -1572,7 +1512,7 @@
         },
         {
           "kind": "inline",
-          "value": "A finished run's result row: Try it beside Review, while its crew task is ready to land"
+          "value": "A finished run's result row: Try it beside Review, while its crew task's work is ready to go into the Mate's code"
         },
         {
           "kind": "inline",
@@ -1618,19 +1558,19 @@
         },
         {
           "action": "Change its job",
-          "reverse": "none: it opens the crewmate's editor; nothing changes until Save."
+          "reverse": "none: it opens its job in the Crew tab; nothing changes until Save."
         },
         {
-          "action": "Change the brief",
-          "reverse": "none: it opens the Brief editor; nothing changes until Save."
+          "action": "Change the goal",
+          "reverse": "none: it opens the crew's goal in the Crew tab; nothing changes until Save."
         },
         {
-          "action": "Land",
-          "reverse": "none: a landing is undone by a revert in your tree, which is a new change."
+          "action": "Add to <Mate>'s code",
+          "reverse": "none: work added to the Mate's code is undone by new work."
         },
         {
-          "action": "Land now",
-          "reverse": "none: a landing is undone by a revert in your tree, which is a new change."
+          "action": "Add what it has",
+          "reverse": "none: work added to the Mate's code is undone by new work."
         },
         {
           "action": "Clear its conversation",
@@ -1638,11 +1578,11 @@
         },
         {
           "action": "Start",
-          "reverse": "Discard"
+          "reverse": "Drop the plan"
         },
         {
-          "action": "Discard",
-          "reverse": "none: a discarded plan leaves the board; the lead proposes again when asked."
+          "action": "Drop the plan",
+          "reverse": "none: a dropped plan leaves the tab; the lead proposes again when asked."
         }
       ],
       "docs": {
@@ -1660,6 +1600,7 @@
         "apps/web/src/components/zerops/crew/SidebarCrewLine.logic.test.ts",
         "apps/web/src/components/zerops/crew/CrewmateEmptyState.test.tsx",
         "apps/web/src/components/zerops/crew/CrewLeadPlan.test.tsx",
+        "apps/web/src/components/zerops/crew/CrewLeadPlan.logic.test.ts",
         "apps/web/src/components/zerops/crew/CrewRunsOnControl.test.tsx"
       ],
       "captures": []

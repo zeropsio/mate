@@ -4,7 +4,8 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   crewLandingOptions,
   crewResumeCommand,
-  crewResumeNeedsDialog,
+  crewResumeDraft,
+  crewResumeLimit,
   crewRunDraft,
   crewStartCommand,
 } from "./CrewRunDialog.logic";
@@ -100,19 +101,35 @@ describe("crewLandingOptions", () => {
     {
       hasLead: true,
       options: [
-        { mode: "person", label: "I land everything" },
-        { mode: "lead", label: "The lead lands after its review" },
+        {
+          mode: "person",
+          label: "Wait for my review",
+          line: "It waits in the Crew tab: Review it, try it, add it to Fen's code.",
+        },
+        {
+          mode: "lead",
+          label: "Add it to Fen's code once the lead approves it",
+          line: "The lead checks each piece and sends back what isn't right.",
+        },
       ],
     },
     {
       hasLead: false,
       options: [
-        { mode: "person", label: "I land everything" },
-        { mode: "check", label: "Land when the check passes" },
+        {
+          mode: "person",
+          label: "Wait for my review",
+          line: "It waits in the Crew tab: Review it, try it, add it to Fen's code.",
+        },
+        {
+          mode: "check",
+          label: "Add it to Fen's code once its checks pass",
+          line: "Nothing goes in while its checks fail.",
+        },
       ],
     },
   ] as const)("with a lead: $hasLead", ({ hasLead, options }) => {
-    expect(crewLandingOptions(hasLead)).toEqual(options);
+    expect(crewLandingOptions(hasLead, "Fen")).toEqual(options);
   });
 });
 
@@ -193,51 +210,99 @@ describe("crewStartCommand", () => {
   });
 });
 
-describe("crewResumeNeedsDialog", () => {
+describe("crewResumeLimit", () => {
   it.each([
-    { name: "a budget stop asks for a new budget", reason: "budget", dialog: true },
-    { name: "a time stop asks for a new time limit", reason: "time", dialog: true },
-    { name: "your own pause resumes with one press", reason: "person", dialog: false },
-    { name: "a usage stop resumes with one press", reason: "usage", dialog: false },
-    { name: "a refused dispatch resumes with one press", reason: "refused", dialog: false },
-  ] as const)("$name", ({ reason, dialog }) => {
-    expect(crewResumeNeedsDialog({ ...lastRun, state: "paused", reason })).toBe(dialog);
+    { name: "its budget", reason: "budget", limit: "budget" },
+    { name: "its time", reason: "time", limit: "time" },
+    { name: "the usage stop", reason: "usage", limit: "usage" },
+    { name: "an older client's Pause", reason: "person", limit: null },
+    { name: "a refused turn", reason: "refused", limit: null },
+  ] as const)("a run stopped by $name", ({ reason, limit }) => {
+    expect(crewResumeLimit({ ...lastRun, state: "paused", reason })).toBe(limit);
   });
 
-  it("is never for a run that is not paused", () => {
-    expect(crewResumeNeedsDialog({ ...lastRun, reason: "budget" })).toBe(false);
-    expect(crewResumeNeedsDialog(null)).toBe(false);
+  it("is nothing for a run that is not stopped", () => {
+    expect(crewResumeLimit({ ...lastRun, reason: "budget" })).toBeNull();
+    expect(crewResumeLimit(null)).toBeNull();
   });
 });
 
-describe("crewResumeCommand", () => {
-  // $6.40 spent of $20, 1 h 12 m of 8 h, stop at 80 %.
-  const paused = { ...lastRun, state: "paused" as const, reason: "budget" as const };
-  const draft = crewRunDraft(paused, true);
+describe("Keep going: more of what stopped it", () => {
+  // $6.40 spent of $20, 1 h 12 m of 8 h, stop at 80 %, the plan at 54 %.
+  const stopped = (reason: "budget" | "time" | "usage" | "person") => ({
+    ...lastRun,
+    state: "paused" as const,
+    reason,
+  });
 
-  it("resumes with the limits as they stand, changed or not", () => {
-    expect(crewResumeCommand({ ...draft, budgetText: "40" }, paused)).toEqual({
-      _tag: "resume",
-      runId: "run-3",
-      budgetUsd: 40,
-      timeLimitHours: 8,
-      stopAtUsagePercent: 80,
+  it("offers as much again as the limit it reached, and the usage stop ten points up", () => {
+    expect(crewResumeDraft(stopped("budget"))).toEqual({
+      more: "amount",
+      moreText: "20",
+      usageStop: true,
+      usagePercent: 90,
     });
-    expect(crewResumeCommand({ ...draft, budget: "unlimited", usageStop: false }, paused)).toEqual({
-      _tag: "resume",
-      runId: "run-3",
-      budgetUsd: "unlimited",
-      timeLimitHours: 8,
-      stopAtUsagePercent: null,
-    });
+    expect(crewResumeDraft(stopped("time")).moreText).toBe("8");
   });
 
   it.each([
-    { name: "a budget at what is spent", fields: { budgetText: "6.4" } },
-    { name: "a budget under what is spent", fields: { budgetText: "5" } },
-    { name: "a time limit within the time already run", fields: { timeText: "1" } },
-    { name: "no amount", fields: { budgetText: "" } },
-  ])("holds $name", ({ fields }) => {
-    expect(crewResumeCommand({ ...draft, ...fields }, paused)).toBeNull();
+    [
+      "more money on top of what it spent",
+      stopped("budget"),
+      { more: "amount", moreText: "5" },
+      { _tag: "resume", runId: "run-3", budgetUsd: 11.4 },
+    ],
+    [
+      "no spending limit",
+      stopped("budget"),
+      { more: "unlimited", moreText: "5" },
+      { _tag: "resume", runId: "run-3", budgetUsd: "unlimited" },
+    ],
+    [
+      "more time on top of the time it ran",
+      stopped("time"),
+      { more: "amount", moreText: "2" },
+      { _tag: "resume", runId: "run-3", timeLimitHours: 3.2 },
+    ],
+    [
+      "no time limit",
+      stopped("time"),
+      { more: "unlimited", moreText: "" },
+      { _tag: "resume", runId: "run-3", timeLimitHours: "unlimited" },
+    ],
+    [
+      "the usage stop raised",
+      stopped("usage"),
+      { usageStop: true, usagePercent: 95 },
+      { _tag: "resume", runId: "run-3", stopAtUsagePercent: 95 },
+    ],
+    [
+      "the usage stop off",
+      stopped("usage"),
+      { usageStop: false },
+      { _tag: "resume", runId: "run-3", stopAtUsagePercent: null },
+    ],
+    [
+      "an older client's Pause goes on as it was",
+      stopped("person"),
+      {},
+      { _tag: "resume", runId: "run-3" },
+    ],
+  ] as const)("%s", (_, run, fields, command) => {
+    expect(crewResumeCommand({ ...crewResumeDraft(run), ...fields }, run)).toEqual(command);
+  });
+
+  it.each([
+    ["no amount", stopped("budget"), { moreText: "" }],
+    ["nothing more", stopped("time"), { moreText: "0" }],
+    ["a usage stop where the plan already stands", stopped("usage"), { usagePercent: 54 }],
+  ] as const)("holds %s", (_, run, fields) => {
+    expect(crewResumeCommand({ ...crewResumeDraft(run), ...fields }, run)).toBeNull();
+  });
+
+  it("never asks the run to go on under a limit it reached", () => {
+    const run = { ...stopped("time"), elapsedMs: 8 * 3_600_000 + 1 };
+    const command = crewResumeCommand({ ...crewResumeDraft(run), moreText: "0.01" }, run);
+    expect(command).toMatchObject({ timeLimitHours: 8.02 });
   });
 });

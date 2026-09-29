@@ -179,9 +179,7 @@ import { useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
-import { CrewBriefEditor } from "./zerops/crew/CrewBriefEditor";
 import { CrewLeadPlan } from "./zerops/crew/CrewLeadPlan";
-import { CrewmateEditor } from "./zerops/crew/CrewmateEditor";
 import { CrewTimelineContext, type CrewTimeline } from "./zerops/crew/CrewTaskCard";
 import { crewCardOrigin } from "./zerops/crew/CrewTaskCard.logic";
 import { crewRunsOn } from "./zerops/crew/CrewEditors.logic";
@@ -193,6 +191,7 @@ import {
   crewRunsOnWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { crewCommands } from "../zerops/crew/crewCommands";
+import { openCrewView } from "../zerops/crew/crewTab";
 import { crewFailureSentence } from "../zerops/crew/useCrewCommand";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
 import { resolveConnectedComposerPlaceholder } from "../composerPlaceholder";
@@ -5306,10 +5305,14 @@ export default function ChatView(props: ChatViewProps) {
         : displayedTimeline.entries,
     [displayedTimeline.entries, inCrewChat, loadEarlierTurns],
   );
-  // A crewmate's *Change its job*, and its composer's *Runs on*: the crew's
-  // own Crewmate editor; the lead's *Change the brief*: its Brief editor.
-  const [editingCrewmate, setEditingCrewmate] = useState<string | null>(null);
-  const [editingBrief, setEditingBrief] = useState(false);
+  // A crewmate's *Change its job*, and its composer's *Runs on*: its job in
+  // the Crew tab; the lead's *Change the goal*: the crew's goal there.
+  const editCrewmateJob = (handle: string) => {
+    if (activeThreadRef !== null) openCrewView(activeThreadRef, { kind: "job", handle });
+  };
+  const editCrewGoal = () => {
+    if (activeThreadRef !== null) openCrewView(activeThreadRef, { kind: "goal" });
+  };
   const activeCrewmate =
     activeCrewOrigin === null
       ? null
@@ -5407,6 +5410,10 @@ export default function ChatView(props: ChatViewProps) {
         handle: activeCrewOrigin.crewmate,
         profile: activeCrewmate?.crewmate ?? null,
       },
+      mateName: (() => {
+        const mateAt = zeropsMateAt(zeropsMates, environmentId);
+        return mateAt.kind === "mate" ? mateAt.mate.name : "the Mate";
+      })(),
       onOpenThread: (target) =>
         void navigate({
           to: "/$environmentId/$threadId",
@@ -5422,6 +5429,7 @@ export default function ChatView(props: ChatViewProps) {
     loadEarlierTurns,
     navigate,
     threadId,
+    zeropsMates,
   ]);
 
   const feedbackBannerItems = useMemo(
@@ -8017,8 +8025,8 @@ export default function ChatView(props: ChatViewProps) {
             gitCwd={gitCwd}
             onNewThreadInProject={handleNewThreadInActiveProject}
             onStartFresh={startFreshConversation}
-            onEditCrewmateJob={setEditingCrewmate}
-            onEditBrief={() => setEditingBrief(true)}
+            onEditCrewmateJob={editCrewmateJob}
+            onEditBrief={editCrewGoal}
             {...(activeDraftLogicalProjectKey
               ? { onOpenProjectSettings: handleOpenDraftProjectSettings }
               : {})}
@@ -8038,16 +8046,6 @@ export default function ChatView(props: ChatViewProps) {
           zeropsPanelOpen={activeRightPanelKind === "zerops"}
         />
         {zeropsSignInDialog.dialog}
-        <CrewmateEditor
-          environmentId={environmentId}
-          onClose={() => setEditingCrewmate(null)}
-          target={editingCrewmate === null ? null : { handle: editingCrewmate, lead: false }}
-        />
-        <CrewBriefEditor
-          environmentId={environmentId}
-          onClose={() => setEditingBrief(false)}
-          open={editingBrief}
-        />
 
         <ThreadErrorBanner
           error={visibleThreadError}
@@ -8314,8 +8312,7 @@ export default function ChatView(props: ChatViewProps) {
                                 : {
                                     crewRunsOn: {
                                       label: crewRunsOnLabel,
-                                      onEdit: () =>
-                                        setEditingCrewmate(activeCrewmate.crewmate.handle),
+                                      onEdit: () => editCrewmateJob(activeCrewmate.crewmate.handle),
                                     },
                                   })}
                               {...(crewComposerPlaceholder !== null

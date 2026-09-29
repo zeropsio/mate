@@ -1,6 +1,13 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { resumeRefusal, runLimitReached, type RunLimitFacts } from "./crewRuns.ts";
+import {
+  resumeRefusal,
+  runClockAt,
+  runClockFollows,
+  runLimitReached,
+  type RunClock,
+  type RunLimitFacts,
+} from "./crewRuns.ts";
 
 const HOUR = 3_600_000;
 
@@ -31,6 +38,59 @@ describe("runLimitReached", () => {
     ["the budget first when several are reached", { spentUsd: 11, usagePercent: 95 }, "budget"],
   ])("%s", (_, overrides, expected) => {
     expect(runLimitReached(facts(overrides))).toBe(expected);
+  });
+});
+
+describe("the run's clock", () => {
+  const STANDING: RunClock = { keptMs: 0, since: null };
+
+  /** Plays `moves` — whether the clock counts from each moment on — and reads it at `readAt`. */
+  const played = (moves: ReadonlyArray<readonly [number, boolean]>, readAt: number) =>
+    runClockAt(
+      moves.reduce((clock, [at, counts]) => runClockFollows(clock, counts, at), STANDING),
+      readAt,
+    );
+
+  it.each<[string, ReadonlyArray<readonly [number, boolean]>, number, number]>([
+    ["a run nobody works in stands at nothing", [[0, false]], 8 * HOUR, 0],
+    ["a turn counts from its start", [[0, true]], 90_000, 90_000],
+    [
+      "the crew sitting idle between turns is not the run's time",
+      [
+        [0, true],
+        [60_000, false],
+        [7 * HOUR, true],
+        [7 * HOUR + 30_000, false],
+      ],
+      8 * HOUR,
+      90_000,
+    ],
+    [
+      "a second turn while one runs changes nothing",
+      [
+        [0, true],
+        [10_000, true],
+        [20_000, false],
+      ],
+      30_000,
+      20_000,
+    ],
+    [
+      "the owner's run: eight hours of nothing to do count nothing",
+      [
+        [0, false],
+        [8 * HOUR, false],
+      ],
+      8 * HOUR,
+      0,
+    ],
+  ])("%s", (_, moves, readAt, expected) => {
+    expect(played(moves, readAt)).toBe(expected);
+  });
+
+  it("keeps what it counted before, as a restart finds it", () => {
+    const kept: RunClock = { keptMs: 3 * HOUR, since: null };
+    expect(runClockAt(runClockFollows(kept, true, 1_000), 61_000)).toBe(3 * HOUR + 60_000);
   });
 });
 

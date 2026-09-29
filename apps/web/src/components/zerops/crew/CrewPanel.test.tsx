@@ -1,19 +1,16 @@
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
-import {
-  deriveCrewView,
-  type CrewShellInput,
-  type CrewThreadRead,
-} from "@t3tools/client-runtime/zerops/projections/crew";
-import { EnvironmentId, ThreadId, type CrewSnapshot } from "@t3tools/contracts";
+import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
+import { EnvironmentId, type CrewSnapshot } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import type { CrewTabView } from "~/zerops/crew/crewTab";
 import type { CrewRead } from "~/zerops/crew/useCrew";
 
-import { bringPlanIntoView, CrewPanelBody } from "./CrewPanel";
+import { CrewPanelBody } from "./CrewPanel";
 
-// The editors and dialogs the tab mounts closed read the live feed; the tab
-// itself is handed its crew.
+// The dialogs the tab mounts closed read the live feed; the tab itself is
+// handed its crew.
 vi.mock("~/zerops/crew/useCrew", async (original) => ({
   ...(await original<typeof import("~/zerops/crew/useCrew")>()),
   useCrew: (): CrewRead => ({ status: null, snapshot: null, view: null, current: false }),
@@ -35,44 +32,17 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => async () => undefined,
   useRouter: () => ({ navigate: async () => undefined }),
 }));
-// Which Mates' setup sheets the left menu asked for (`crewTab.ts`).
-const setupAsks = vi.hoisted(() => ({
-  open: new Set<string>(),
-  setOpen: vi.fn(),
-}));
+// The view the tab holds (`crewTab.ts`, which its own tests cover): the left
+// menu's or the conversation line's ask, taken up.
+const tab = vi.hoisted(() => ({ view: null as CrewTabView | null }));
 vi.mock("~/zerops/crew/crewTab", () => ({
-  useCrewSetupSheet: (environmentId: string) =>
-    [
-      setupAsks.open.has(environmentId),
-      (open: boolean) => setupAsks.setOpen(environmentId, open),
-    ] as const,
-}));
-// The setup sheet as the tab mounts it: whether it is open, and its way to close.
-const setupSheet = vi.hoisted(() => ({
-  last: undefined as
-    | { readonly open: boolean; readonly onOpenChange: (open: boolean) => void }
-    | undefined,
-}));
-vi.mock("./CrewSetupSheet", () => ({
-  CrewSetupSheet: (props: {
-    readonly open: boolean;
-    readonly onOpenChange: (open: boolean) => void;
-  }) => {
-    setupSheet.last = props;
-    return <div data-crew-setup-open={String(props.open)} />;
-  },
+  useCrewView: () => [tab.view, () => undefined] as const,
 }));
 
 const ENVIRONMENT = EnvironmentId.make("env-crew");
 
-const IDLE: CrewThreadRead = {
-  status: { kind: "idle", toneId: "neutral" },
-  word: null,
-  working: false,
-};
-
 const APPLIED = crewSnapshotFixture();
-/** A Mate with crew mode on and no crew yet: nothing applied, nothing on the board. */
+/** A Mate with crew mode on and no crew yet: nothing applied, nothing to do. */
 const NONE: CrewSnapshot = {
   ...APPLIED,
   status: "none",
@@ -86,16 +56,9 @@ const NONE: CrewSnapshot = {
 };
 
 function readOf(snapshot: CrewSnapshot): CrewRead {
-  const shells: ReadonlyArray<CrewShellInput> = snapshot.crewmates.flatMap((crewmate) =>
-    crewmate.currentThreadId === null
-      ? []
-      : [{ id: crewmate.currentThreadId, archivedAt: null, crew: null }],
-  );
-  const view = deriveCrewView(snapshot, shells, (shell) =>
-    shell.id === ThreadId.make("thread-crew-backend-2")
-      ? { status: { kind: "working", toneId: "active" }, word: "Working", working: true }
-      : IDLE,
-  );
+  const view = deriveCrewView(snapshot, [], () => {
+    throw new Error("no shells here");
+  });
   return {
     status: snapshot.status,
     snapshot,
@@ -125,6 +88,10 @@ const textOf = (html: string) =>
 
 const count = (haystack: string, needle: string) => haystack.split(needle).length - 1;
 
+afterEach(() => {
+  tab.view = null;
+});
+
 describe("CrewPanelBody — the Crew tab, the crew's one home", () => {
   it("draws nothing while the crew feed has not answered", () => {
     expect(render({ status: null, snapshot: null, view: null, current: false })).toBe("");
@@ -135,120 +102,55 @@ describe("CrewPanelBody — the Crew tab, the crew's one home", () => {
     expect(text).toBe("Crew mode is off in this Mate.");
   });
 
-  it("offers a Mate without a crew its setup, and no board", () => {
+  it("offers a Mate without a crew what a crew is and one press, and no column", () => {
     const html = render(readOf(NONE));
-    const text = textOf(html);
     expect(html).toContain('data-crew-section="none"');
-    expect(text).toContain(
-      "Named crewmates, each with its own job and its own copy of the code. You review and land their work into your tree.",
-    );
+    expect(textOf(html)).toContain("Give Fen a crew");
     expect(html).toMatch(/<button[^>]*>Set up a crew<\/button>/u);
-    expect(html).not.toContain("data-crew-board");
-    // Setup is here now: nothing sends the person to another tab for it.
-    expect(text).not.toContain("Zerops tab");
+    expect(html).not.toContain("data-crew-rows");
+    // Setup is here: nothing sends the person to another tab for it.
+    expect(textOf(html)).not.toContain("Zerops tab");
   });
 
-  it("lays a crew out in one column: its section first, then its board", () => {
+  it("lays a crew out in one column: its head, the composer, its rows, then Fen's code", () => {
     const html = render(readOf(APPLIED));
-    const section = html.indexOf('data-crew-section="applied"');
-    const board = html.indexOf("data-crew-board");
-    expect(section).toBeGreaterThanOrEqual(0);
-    expect(board).toBeGreaterThan(section);
-    // One column: the section and the board are the column's two blocks.
-    expect(count(html, "data-crew-panel-block")).toBe(2);
+    const order = [
+      "data-crew-head",
+      "data-crew-composer",
+      "data-crew-rows",
+      "data-crew-in-code",
+    ].map((marker) => html.indexOf(marker));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect([...order].sort((left, right) => left - right)).toEqual(order);
+    // No board, no second heading of the crew's name.
+    expect(html).not.toContain("data-crew-board");
+    expect(count(textOf(html), "Camera and HUD rework")).toBe(1);
   });
 
-  it("names the crew once, in the section's header; the board heads its tasks", () => {
-    const text = textOf(render(readOf(APPLIED)));
-    expect(count(text, "Camera and HUD rework")).toBe(1);
-    expect(count(text, "Running · 1 h 12 m")).toBe(1);
-    expect(text).toContain("Board + New task Waiting on you 4");
-  });
-
-  it("drops the section's link to the board, which stands right under it", () => {
-    const text = textOf(render(readOf(APPLIED)));
-    expect(text).not.toMatch(/Board · \d+ tasks?/u);
-  });
-
-  it("keeps Review plan, which brings the board's plan into view", () => {
-    expect(render(readOf(APPLIED))).toContain(">Review plan<");
+  it("paints its first screen in place: nothing slides on a first paint", () => {
+    const html = render(readOf(APPLIED));
+    expect(html).toContain('data-crew-screen="column"');
+    expect(html).not.toContain("data-enter");
   });
 });
 
-describe("CrewPanelBody — Set up a crew asked for from the left menu", () => {
-  beforeEach(() => {
-    setupAsks.open = new Set();
-    setupAsks.setOpen.mockClear();
+describe("CrewPanelBody — a view in place of the column", () => {
+  it("draws the setup in place of the empty state", () => {
+    tab.view = { kind: "setup" };
+    const html = render(readOf(NONE));
+    expect(html).toContain('data-crew-screen="setup"');
+    expect(textOf(html)).toContain("Set up Fen's crew");
+    expect(html).not.toContain('data-crew-section="none"');
   });
-
-  it("opens the setup sheet as the tab draws the Mate's crew", () => {
-    expect(render(readOf(NONE))).toContain('data-crew-setup-open="false"');
-    setupAsks.open = new Set([ENVIRONMENT]);
-    expect(render(readOf(NONE))).toContain('data-crew-setup-open="true"');
-  });
-
-  it("opens no other Mate's sheet", () => {
-    setupAsks.open = new Set([EnvironmentId.make("env-other")]);
-    expect(render(readOf(NONE))).toContain('data-crew-setup-open="false"');
-  });
-
-  it("closes the sheet through the tab's own state", () => {
-    setupAsks.open = new Set([ENVIRONMENT]);
-    render(readOf(NONE));
-    setupSheet.last?.onOpenChange(false);
-    expect(setupAsks.setOpen).toHaveBeenCalledExactlyOnceWith(ENVIRONMENT, false);
-  });
-});
-
-describe("bringPlanIntoView — Review plan, pressed in the section", () => {
-  const element = () => ({ scrollIntoView: vi.fn(), focus: vi.fn() });
-  /** A board whose plan tops its Waiting on you column; `plan: false` draws none. */
-  const boardOf = (options: { readonly plan: boolean }) => {
-    const plan = element();
-    const column = element();
-    const board = {
-      ...element(),
-      querySelector: vi.fn((selector: string) => {
-        if (selector === "[data-crew-plan]") return options.plan ? plan : null;
-        if (selector === '[data-crew-board-column="waiting-on-you"]') return column;
-        return null;
-      }),
-    };
-    return { board, plan, column };
-  };
 
   it.each([
-    { case: "glides", reducedMotion: false, behavior: "smooth" },
-    { case: "jumps where motion is reduced", reducedMotion: true, behavior: "auto" },
-  ] as const)(
-    "brings the plan's column to the top, sideways too, and $case",
-    ({ reducedMotion, behavior }) => {
-      const { board, plan, column } = boardOf({ plan: true });
-      bringPlanIntoView(board, { reducedMotion });
-      expect(column.scrollIntoView).toHaveBeenCalledExactlyOnceWith({
-        behavior,
-        block: "start",
-        inline: "nearest",
-      });
-      expect(plan.scrollIntoView).not.toHaveBeenCalled();
-      expect(board.scrollIntoView).not.toHaveBeenCalled();
-    },
-  );
-
-  it("moves focus to the plan, where the keyboard goes on to Start", () => {
-    const { board, plan } = boardOf({ plan: true });
-    bringPlanIntoView(board, { reducedMotion: false });
-    expect(plan.focus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true });
-  });
-
-  it("brings the board itself into view while its plan is not drawn", () => {
-    const { board, column } = boardOf({ plan: false });
-    bringPlanIntoView(board, { reducedMotion: false });
-    expect(board.scrollIntoView).toHaveBeenCalledExactlyOnceWith({
-      behavior: "smooth",
-      block: "start",
-      inline: "nearest",
-    });
-    expect(column.scrollIntoView).not.toHaveBeenCalled();
+    [{ kind: "goal" } as const, "goal", "The crew's goal"],
+    [{ kind: "job", handle: "backend" } as const, "job:backend", "Crew"],
+  ])("draws %o in place of the column, with its way back", (view, screen, words) => {
+    tab.view = view;
+    const html = render(readOf(APPLIED));
+    expect(html).toContain(`data-crew-screen="${screen}"`);
+    expect(textOf(html)).toContain(words);
+    expect(html).not.toContain("data-crew-rows");
   });
 });

@@ -457,20 +457,20 @@ describe("CrewEngine", () => {
             stints: [1, 2],
             reason: [
               ["retired", null],
-              ["open", "Job updated to v2 — applies from here"],
+              ["open", "Its job changed"],
             ],
             running: { brief: 1, job: 2 },
             carried: [
               "[Crew task card]",
               "#1 Start · continues",
-              "Job updated to v2 — applies from here",
+              "Its job changed",
               "",
               "Go on",
             ].join("\n"),
             seams: [
               [
                 first!.threadId,
-                "Job updated to v2 — applies at the next turn",
+                "Its job changed — from its next message",
                 { seam: "saved", apply: "nextTurn" },
               ],
             ],
@@ -901,10 +901,10 @@ describe("CrewEngine", () => {
             },
             {
               seams: [
-                [thread, "Brief updated to v2 — applies now", { seam: "saved", apply: "now" }],
+                [thread, "The crew's goal changed — from now on", { seam: "saved", apply: "now" }],
                 [
                   fresh.threadId,
-                  "Started fresh by you",
+                  "You cleared its conversation",
                   { seam: "stint", previousThreadId: creates[1]!.threadId },
                 ],
               ],
@@ -912,7 +912,7 @@ describe("CrewEngine", () => {
               interrupts: [thread],
               continueIn: true,
               continueAs: { kind: "crew", startedBy: "user-karel" },
-              reasons: [null, "Brief updated to v2 — applies from here", "Started fresh by you"],
+              reasons: [null, "The crew's goal changed", "You cleared its conversation"],
               brief: 2,
             },
           );

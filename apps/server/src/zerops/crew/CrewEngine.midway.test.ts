@@ -105,7 +105,7 @@ describe("CrewEngine tasks stopped mid-way", () => {
         yield* snapshotWhere((current) => current.run?.state === "paused");
         yield* world.publish(spiEvent("turn.completed", thread, { state: "interrupted" }));
         const ended = yield* endedAttempts;
-        assert.deepStrictEqual(ended, [[1, "run-paused", "you paused the run", true]]);
+        assert.deepStrictEqual(ended, [[1, "run-paused", "when you stopped it", true]]);
       }),
     ),
   );

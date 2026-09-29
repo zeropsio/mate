@@ -120,3 +120,32 @@ export function withMember(
 export function withBrief(definition: CrewDefinition, title: string, text: string): CrewDefinition {
   return { ...definition, brief: parseBrief(title, text) };
 }
+
+/** A handle's longest (`CREW_HANDLE_PATTERN`). */
+const HANDLE_MAX = 20;
+
+const slugOf = (name: string, max: number): string =>
+  name
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .slice(0, max)
+    .replace(/-+$/u, "");
+
+/**
+ * A new crewmate's handle — its branch, its folder, the engine's name for it
+ * — made from the name the person gave it, never shown and never asked for:
+ * its name as a slug, then `-2`, `-3` past the ones `taken`. It stays as it
+ * is once the crewmate stands, whatever its name becomes.
+ */
+export function crewHandleFor(name: string, taken: ReadonlySet<string>): string {
+  const base = slugOf(name, HANDLE_MAX) || "crewmate";
+  if (!taken.has(base)) return base;
+  for (let count = 2; ; count += 1) {
+    const suffix = `-${count}`;
+    const handle = `${slugOf(base, HANDLE_MAX - suffix.length) || "crewmate"}${suffix}`;
+    if (!taken.has(handle)) return handle;
+  }
+}

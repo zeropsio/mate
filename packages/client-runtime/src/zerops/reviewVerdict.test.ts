@@ -590,6 +590,7 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
 function task(over: Partial<CrewTaskReviewInput> = {}): CrewTaskReviewInput {
   return {
     ownerName: "Juno",
+    mateName: "Fen",
     state: "ready",
     check: { state: "passed", output: "" },
     diffStat: { insertions: 45, deletions: 3 },
@@ -600,7 +601,7 @@ function task(over: Partial<CrewTaskReviewInput> = {}): CrewTaskReviewInput {
   };
 }
 
-describe("crewTaskReview: the same surface, with Land as its button", () => {
+describe("crewTaskReview: the same surface, with Add to Fen's code as its button", () => {
   it.each<
     [
       string,
@@ -610,27 +611,31 @@ describe("crewTaskReview: the same surface, with Land as its button", () => {
     ]
   >([
     [
-      "crew task ready to land",
+      "crew task ready to go in",
       {},
       {
         state: "land-ready",
         tone: "ok",
-        title: "Ready to land",
-        why: "Check passed · nothing waits on your edits",
+        title: "Done, not in Fen's code yet",
+        why: "Its checks pass · nothing waits on Fen's edits",
       },
-      { label: "Land", enabled: true, safe: true },
+      { label: "Add to Fen's code", enabled: true, safe: true },
     ],
     [
       "still being worked on",
       { state: "working", check: null },
       { state: "land-now", tone: "quiet", title: "Juno is still on it" },
-      { label: "Land now", enabled: true, safe: false },
+      { label: "Add what it has", enabled: true, safe: false },
     ],
     [
       "its copy conflicts",
       { conflicts: ["src/rig.ts"] },
-      { state: "land-conflict", tone: "attention", title: "Conflicts with what landed in rig.ts" },
-      { label: "Land", enabled: false, safe: false },
+      {
+        state: "land-conflict",
+        tone: "attention",
+        title: "Clashes with what's now in Fen's code, in rig.ts",
+      },
+      { label: "Add to Fen's code", enabled: false, safe: false },
     ],
     [
       "its check failed",
@@ -638,15 +643,15 @@ describe("crewTaskReview: the same surface, with Land as its button", () => {
       {
         state: "land-check-failed",
         tone: "failed",
-        title: "Check failing",
+        title: "Its checks fail",
         why: "error TS2322: nope",
       },
-      { label: "Land", enabled: false, safe: false },
+      { label: "Add to Fen's code", enabled: false, safe: false },
     ],
     [
-      "landed",
+      "in the Mate's code",
       { state: "landed", landedCommit: "a1b2c3d4e5" },
-      { state: "landed", tone: "done", title: "Landed as a1b2c3d" },
+      { state: "landed", tone: "done", title: "In Fen's code" },
       undefined,
     ],
   ])("%s", (_name, over, verdict, primary) => {
@@ -656,13 +661,27 @@ describe("crewTaskReview: the same surface, with Land as its button", () => {
     else expect(review.primary).toMatchObject(primary);
   });
 
-  it("says what landing does", () => {
+  it("says what adding it does, in the person's words", () => {
     expect(crewTaskReview(task()).consequence).toBe(
-      "Lands Juno's work in your tree as one commit. Nothing is pushed until you deliver.",
+      "Adds Juno's work to Fen's code as one commit. Nothing is shipped until Fen ships it.",
     );
     expect(crewTaskReview(task({ state: "working" })).consequence).toBe(
-      "Commits what Juno has so far and lands it in your tree. Nothing is pushed until you deliver.",
+      "Commits what Juno has so far and adds it to Fen's code. Nothing is shipped until Fen ships it.",
     );
+  });
+
+  it("never says the engine's words", () => {
+    const states = ["ready", "working", "rework", "review", "landed", "parked", "discarded"];
+    for (const state of states) {
+      const review = crewTaskReview(task({ state, waitingOn: [] }));
+      const said = [
+        review.verdict.title,
+        review.verdict.why,
+        review.consequence,
+        review.primary?.label,
+      ];
+      expect(said.join(" "), state).not.toMatch(/\bland(?:ed|ing|s)?\b|\btree\b|\bdeliver/iu);
+    }
   });
 });
 
@@ -680,35 +699,39 @@ describe("reviewAge", () => {
   });
 });
 
-describe("crewTaskReview: only a landed task has landed (Land's answer is not its landing)", () => {
+describe("crewTaskReview: only work that went in is in (the press's answer is not its going in)", () => {
   it.each<[string, Partial<CrewTaskReviewInput>, Record<string, unknown>]>([
     [
-      "Land accepted, the snapshot not moved yet: on its way",
+      "Add accepted, the snapshot not moved yet: on its way",
       { state: "ready", press: { kind: "done" }, pressedAt: "ready" },
-      { state: "landing", tone: "busy", title: "Landing" },
+      { state: "landing", tone: "busy", title: "Going into Fen's code" },
     ],
     [
-      "Land accepted on a dirty tree: the task waits on the person's edits",
+      "Add accepted on the Mate's uncommitted edits: it waits for them",
       {
         state: "waiting-on-you",
         waitingOn: ["src/hud.ts"],
         press: { kind: "done" },
         pressedAt: "ready",
       },
-      { state: "land-waiting", tone: "attention", title: "Waits on your edits to hud.ts" },
+      {
+        state: "land-waiting",
+        tone: "attention",
+        title: "Waits for Fen's edits to hud.ts to be committed",
+      },
     ],
     [
-      "Land accepted and the task parked (frozen, lane gone, disk full)",
+      "Add accepted and the task stopped (frozen, lane gone, disk full)",
       {
         state: "parked",
         reason: "appdev is redeploying",
         press: { kind: "done" },
         pressedAt: "ready",
       },
-      { state: "land-parked", tone: "attention", title: "Parked", why: "appdev is redeploying" },
+      { state: "land-parked", tone: "attention", title: "Stopped", why: "appdev is redeploying" },
     ],
     [
-      "Land now whose merge-in or check failed: back to rework",
+      "Add what it has whose merge-in or check failed: back to rework",
       {
         state: "rework",
         reason: "Its check failed: tsc exited 2",
@@ -723,9 +746,9 @@ describe("crewTaskReview: only a landed task has landed (Land's answer is not it
       },
     ],
     [
-      "landed at last",
+      "in at last",
       { state: "landed", landedCommit: "a1b2c3d4e5", press: { kind: "done" }, pressedAt: "ready" },
-      { state: "landed", tone: "done", title: "Landed as a1b2c3d" },
+      { state: "landed", tone: "done", title: "In Fen's code" },
     ],
     [
       "refused, in the engine's own words",
@@ -739,18 +762,18 @@ describe("crewTaskReview: only a landed task has landed (Land's answer is not it
       {
         state: "land-refused",
         tone: "attention",
-        title: "Not landed",
+        title: "Not added",
         why: "A chat of this Mate is working; land between its turns.",
       },
     ],
     [
-      "reported and waiting for its review: landing accepts it",
+      "reported and waiting for its review: adding it accepts it",
       { state: "review" },
       {
         state: "land-review",
         tone: "ok",
         title: "Reported done",
-        why: "Landing accepts it · check passed",
+        why: "Adding it accepts it · its checks pass",
       },
     ],
   ])("%s", (_case, over, verdict) => {
@@ -758,23 +781,27 @@ describe("crewTaskReview: only a landed task has landed (Land's answer is not it
   });
 
   it.each<[string, Partial<CrewTaskReviewInput>, Record<string, unknown> | undefined]>([
-    ["a ready task lands", { state: "ready" }, { label: "Land", enabled: true, safe: true }],
     [
-      "a reported one lands, accepting it",
+      "a finished one goes in",
+      { state: "ready" },
+      { label: "Add to Fen's code", enabled: true, safe: true },
+    ],
+    [
+      "a reported one goes in, accepting it",
       { state: "review" },
-      { label: "Land", enabled: true, safe: true },
+      { label: "Add to Fen's code", enabled: true, safe: true },
     ],
     [
-      "one waiting on the person's edits lands once they are committed",
+      "one waiting on the Mate's edits goes in once they are committed",
       { state: "waiting-on-you", waitingOn: ["src/hud.ts"] },
-      { label: "Land", enabled: true, safe: false },
+      { label: "Add to Fen's code", enabled: true, safe: false },
     ],
     [
-      "a working one lands now",
+      "a working one goes in as it is",
       { state: "working" },
-      { label: "Land now", enabled: true, safe: false },
+      { label: "Add what it has", enabled: true, safe: false },
     ],
-    ["a parked one offers nothing", { state: "parked", reason: "disk full" }, undefined],
+    ["a stopped one offers nothing", { state: "parked", reason: "disk full" }, undefined],
   ])("its button: %s", (_case, over, primary) => {
     const review = crewTaskReview(task(over));
     if (primary === undefined) expect(review.primary).toBeUndefined();

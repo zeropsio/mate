@@ -1,11 +1,14 @@
 /**
- * An empty crewmate conversation (PRD §4.5): a crewmate fresh from Apply, or
- * one just started fresh, opens with the crewmate — its face in its tint, its
- * name, `@handle` and job — and the invite its composer carries, never the
- * Mate's own question. The conversation's seams (why it began, and the one
- * before it) stand on top.
+ * An empty crewmate conversation (PRD §4.5): a crewmate fresh from its start,
+ * or one whose conversation was just cleared, opens with the crewmate — its
+ * face in its tint, its name and its job in the person's words — and the
+ * invite its composer carries, never the Mate's own question. The
+ * conversation's seams (why it began, and the one before it) stand on top.
  */
-import { crewMessagePlaceholder } from "@t3tools/client-runtime/zerops/crew/phrases";
+import {
+  crewJobSentence,
+  crewMessagePlaceholder,
+} from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewSeam, Crewmate } from "@t3tools/contracts";
 
 import { MateFace } from "../primitives";
@@ -23,7 +26,7 @@ export function CrewmateEmptyState({
   }>;
 }) {
   const { handle, profile } = crewmate;
-  const name = profile?.displayName ?? `@${handle}`;
+  const name = profile?.displayName ?? handle;
   return (
     <div className="flex h-full flex-col px-5 sm:px-6" data-zerops-surface="crewmate-empty-state">
       {seams.length === 0 ? null : (
@@ -38,7 +41,7 @@ export function CrewmateEmptyState({
         <h1 className="text-2xl font-normal tracking-tight text-foreground sm:text-3xl">{name}</h1>
         {profile === null ? null : (
           <p className="max-w-md text-sm text-muted-foreground">
-            @{handle} · {profile.jobFirstLine}
+            {crewJobSentence(profile.jobFirstLine, profile.displayName)}
           </p>
         )}
         <p className="text-placeholder text-sm">{crewMessagePlaceholder(name)}</p>

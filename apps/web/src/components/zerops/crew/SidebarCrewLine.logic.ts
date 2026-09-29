@@ -1,7 +1,7 @@
 /**
  * A crew as one line under its Mate in the left menu (pass 16, M14): every
  * crewmate's face, the lead first, and the crew's one most urgent fact — who
- * needs you, or how many tasks wait for your *Land*, or nothing.
+ * needs you, or whose finished work waits for your review, or nothing.
  *
  * Every word comes from `crew/phrases.ts` (R5); a face's state is its
  * thread's, through the one mapping (`mateMarkStateForThreadStatus`).
@@ -26,11 +26,11 @@ export interface CrewLineFace {
 export type CrewLineFact =
   /** Crewmates wait on the person: a question, an approval, a plan, a stop to decide. */
   | { readonly kind: "needs"; readonly words: string }
-  /** Tasks wait for the person's *Land*; *Review* opens the first on the board. */
+  /** Finished work waits for the person's review; *Review* opens the first. */
   | { readonly kind: "land"; readonly words: string; readonly taskId: string };
 
 export function crewLine(
-  view: Pick<CrewView, "crewmates" | "tasks">,
+  view: Pick<CrewView, "crewmates" | "tasks" | "personLands">,
   attention: ReadonlyArray<Pick<CrewAttention, "kind" | "handle">>,
 ): { readonly faces: ReadonlyArray<CrewLineFace>; readonly fact: CrewLineFact | null } {
   const faces = view.crewmates.map((row): CrewLineFace => ({
@@ -56,18 +56,21 @@ export function crewLine(
       fact: { kind: "needs", words: crewLineNeedsWord(needs.map((face) => face.displayName)) },
     };
   }
-  // A task waits for your *Land* where the board puts a ready one among
-  // what waits on you (`crewBoardColumn`): no run on, or a run whose landing
-  // is yours.
-  const ready = view.tasks.filter(
-    (row) => row.column === "waiting-on-you" && row.task.state === "ready",
-  );
+  // Finished work waits for your review while the crew does not put it in
+  // itself (`crewPersonLands`): no run on, or a run that waits for you.
+  const ready = view.personLands ? view.tasks.filter((row) => row.task.state === "ready") : [];
   const first = ready[0];
   return {
     faces,
     fact:
       first === undefined
         ? null
-        : { kind: "land", words: crewLineReadyWord(ready.length), taskId: first.task.id },
+        : {
+            kind: "land",
+            words: crewLineReadyWord(
+              ready.map((row) => row.owner?.crewmate.displayName ?? row.task.owner),
+            ),
+            taskId: first.task.id,
+          },
   };
 }

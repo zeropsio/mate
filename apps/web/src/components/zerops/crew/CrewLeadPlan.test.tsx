@@ -1,10 +1,16 @@
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
-import type { CrewSnapshot, EnvironmentId } from "@t3tools/contracts";
-import type { ReactElement, ReactNode } from "react";
+import type { CrewCommand, CrewSnapshot, EnvironmentId } from "@t3tools/contracts";
+import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { buttonsLabelled, elementsOf, press, TestNode } from "../../../zerops/__fixtures__/testDom";
+import {
+  buttonsLabelled,
+  elementsOf,
+  press,
+  readableText,
+  TestNode,
+} from "../../../zerops/__fixtures__/testDom";
 
 const state = vi.hoisted(() => ({
   snapshot: null as CrewSnapshot | null,
@@ -28,46 +34,36 @@ vi.mock("~/zerops/crew/useCrewCommand", () => ({
     send: (command: unknown) => state.send(command),
     pending: false,
     error: null,
+    errorAt: () => null,
     clearError: () => undefined,
   }),
 }));
-vi.mock("@tanstack/react-router", () => ({
-  useRouter: () => ({ navigate: async () => undefined }),
+vi.mock("~/zerops/useZeropsMates", () => ({
+  useZeropsMate: () => ({ kind: "mate", mate: { name: "Fen" } }),
 }));
-// The test DOM draws no SVG and no portal: faces and icons are left out,
-// sheets and the run dialog drawn in place.
+// The test DOM draws no SVG and no portal: faces, icons and tooltips are left
+// out, the run dialog drawn in place as the press that ends it.
 vi.mock("../primitives", async (original) => ({
   ...(await original<typeof import("../primitives")>()),
   MateFace: () => null,
 }));
 vi.mock("lucide-react", async (original) => ({
   ...(await original<typeof import("lucide-react")>()),
-  X: () => null,
-}));
-vi.mock("~/components/ui/sheet", () => ({
-  Sheet: ({ open, children }: { readonly open: boolean; readonly children: ReactNode }) =>
-    open ? children : null,
-  SheetPopup: ({ children }: { readonly children: ReactNode }) => children,
-}));
-vi.mock("./CrewBoardPanel", async (original) => ({
-  ...(await original<typeof import("./CrewBoardPanel")>()),
-  CrewTaskSheetBody: ({ task }: { readonly task: { readonly id: string } }) => (
-    <div data-task-sheet={task.id} />
-  ),
+  XIcon: () => null,
 }));
 vi.mock("./CrewRunDialog", () => ({
   CrewRunDialog: ({
-    open,
-    onStarted,
+    ask,
+    onDone,
   }: {
-    readonly open: boolean;
-    readonly onStarted?: () => void;
+    readonly ask: { readonly after: CrewCommand | null } | null;
+    readonly onDone: (after: CrewCommand | null) => void;
   }) =>
-    open ? (
-      <button onClick={() => onStarted?.()} type="button">
-        Run started
+    ask === null ? null : (
+      <button onClick={() => onDone(ask.after)} type="button">
+        Working on its own
       </button>
-    ) : null,
+    ),
 }));
 
 import { CrewLeadPlan } from "./CrewLeadPlan";
@@ -110,11 +106,31 @@ async function mounted(
   }
 }
 
+/**
+ * Presses a button a tooltip wraps: its trigger reads the event, so the press
+ * carries one, as React's would.
+ */
+function pressWithEvent(button: TestNode): void {
+  const propsKey = Object.keys(button).find((key) => key.startsWith("__reactProps$"));
+  const props = propsKey === undefined ? undefined : (button as never)[propsKey];
+  const onClick = (props as { readonly onClick?: (event: unknown) => void } | undefined)?.onClick;
+  if (onClick === undefined) throw new Error(`"${button.textContent}" has no click handler.`);
+  onClick({
+    nativeEvent: {},
+    currentTarget: button,
+    target: button,
+    preventDefault: () => undefined,
+    stopPropagation: () => undefined,
+    isDefaultPrevented: () => false,
+    isPropagationStopped: () => false,
+  });
+}
+
 const PLAN = <CrewLeadPlan environmentId={"env-fen" as EnvironmentId} />;
 const ACCEPT = { _tag: "planAccept", taskIds: ["task-16"] };
-const DISCARD = { _tag: "planDiscard", taskIds: ["task-16"] };
+const DROP = { _tag: "planDiscard", taskIds: ["task-16"] };
 
-describe("CrewLeadPlan", () => {
+describe("CrewLeadPlan — the lead's plan in its chat", () => {
   const sent: Array<unknown> = [];
   beforeEach(() => {
     sent.length = 0;
@@ -128,13 +144,16 @@ describe("CrewLeadPlan", () => {
     vi.unstubAllGlobals();
   });
 
-  it("draws the lead's proposed tasks as one plan: a row per task, Start, Edit, Discard", async () => {
+  it("draws a line per task, says what Start lets the crew do, then Start and Drop the plan", async () => {
     await mounted(PLAN, (container) => {
-      expect(container.textContent).toContain("Plan · 1 task");
-      expect(container.textContent).toContain("Rate-limit the public API");
-      for (const label of ["Start", "Edit", "Discard"]) {
-        expect(buttonsLabelled(container, label)).toHaveLength(1);
-      }
+      const text = readableText(container);
+      expect(text).toContain("Backend");
+      expect(text).toContain("Rate-limit the public API");
+      expect(text).toContain("Start lets the crew work on its own: up to $20, for up to 8 hours.");
+      expect(buttonsLabelled(container, "Start")).toHaveLength(1);
+      expect(buttonsLabelled(container, "Drop the plan")).toHaveLength(1);
+      // Never a number, a handle, or the old board's presses.
+      expect(text).not.toMatch(/#\d+|@[a-z]|Review plan|Discard|Edit/u);
     });
   });
 
@@ -149,47 +168,45 @@ describe("CrewLeadPlan", () => {
     });
   });
 
-  it("Start accepts the plan at once while a run is on", async () => {
+  it("Start adds the plan to the crew's work at once while it works on its own", async () => {
     await mounted(PLAN, (container) => press(buttonsLabelled(container, "Start")[0]!));
     expect(sent).toEqual([ACCEPT]);
   });
 
-  it("Start with no run on starts a run first, then accepts the plan", async () => {
+  it("Start with the crew stopped by you goes on first, then adds the plan", async () => {
+    const fixture = crewSnapshotFixture();
+    state.snapshot = { ...fixture, run: { ...fixture.run!, state: "paused", reason: "person" } };
+    await mounted(PLAN, (container) => press(buttonsLabelled(container, "Start")[0]!));
+    expect(sent).toEqual([{ _tag: "resume", runId: "run-3" }, ACCEPT]);
+  });
+
+  it("Start before the crew ever worked on its own asks its limits first, then adds the plan", async () => {
     state.snapshot = crewSnapshotFixture({ run: null });
     await mounted(
       PLAN,
       (container) => press(buttonsLabelled(container, "Start")[0]!),
       (container) => {
         expect(sent).toEqual([]);
-        press(buttonsLabelled(container, "Run started")[0]!);
+        press(buttonsLabelled(container, "Working on its own")[0]!);
       },
     );
     expect(sent).toEqual([ACCEPT]);
   });
 
-  it("Discard discards the plan's rows", async () => {
-    await mounted(PLAN, (container) => press(buttonsLabelled(container, "Discard")[0]!));
-    expect(sent).toEqual([DISCARD]);
-  });
-
-  it("Edit opens a row's task to edit, and takes a row out of the plan", async () => {
-    await mounted(
-      PLAN,
-      (container) => press(buttonsLabelled(container, "Edit")[0]!),
-      (container) => press(buttonsLabelled(container, "Rate-limit the public API")[0]!),
-      (container) => {
-        expect(
-          elementsOf(container, "div").some(
-            (node) => node.getAttribute("data-task-sheet") === "task-16",
-          ),
-        ).toBe(true);
-        press(
-          elementsOf(container, "button").find(
-            (node) => node.getAttribute("aria-label") === "Remove #16 from the plan",
-          )!,
-        );
-      },
+  it("Drop the plan drops every line, and a line's × leaves that one out", async () => {
+    await mounted(PLAN, (container) =>
+      pressWithEvent(buttonsLabelled(container, "Drop the plan")[0]!),
     );
-    expect(sent).toEqual([DISCARD]);
+    expect(sent).toEqual([DROP]);
+    sent.length = 0;
+    await mounted(PLAN, (container) =>
+      pressWithEvent(
+        elementsOf(container, "button").find(
+          (node) =>
+            node.getAttribute("aria-label") === "Leave this one out: Rate-limit the public API",
+        )!,
+      ),
+    );
+    expect(sent).toEqual([DROP]);
   });
 });
