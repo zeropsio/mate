@@ -199,7 +199,10 @@ ledger row or a test.
 - **D17 — the brief.** The form asks nothing but the name; the owner removed the question and the
   agent-selection step on 2026-09-16. Nothing is written into a new Mate's composer: the generated
   hand-off and the generic onboarding line went on 2026-09-24 (the owner: an empty conversation
-  carries no prefilled text).
+  carries no prefilled text). Since pass 18 a Mate added to a project gets one ask on its person's
+  behalf: once the person who added it has signed an agent in, their client sends "Stand up
+  development of the project." as them — sent, never left in the composer, which is held back until
+  it has gone (§5; the owner's call in §7, 33). A Mate made by _New project_ still gets none.
 - **D18 — Gitea at sign-up.** Gitea is made with the org's first _New project_, in the same run as
   the first Mate, and by the same verb on an org that has projects and no Gitea. Nothing happens at
   sign-up; no pool exists.
