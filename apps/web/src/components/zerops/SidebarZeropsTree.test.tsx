@@ -1477,7 +1477,7 @@ describe("a project collapsed to its heading", () => {
     expect(heading(false)).not.toContain("data-collapsed");
   });
 
-  it("is 32 px tall, its title on the mark edge, its verbs 28 px and always in their slot", () => {
+  it("is 32 px tall, its title on the mark edge, its end on the rows' end edge, its verbs 28 px and always in their slot", () => {
     const html = renderToStaticMarkup(
       <ProjectHeader
         group={buildZeropsGroupTree([CRM_DEV], { order: "name" }).groups[0]!.group}
@@ -1486,7 +1486,7 @@ describe("a project collapsed to its heading", () => {
       />,
     );
     const heading = /<div class="([^"]*)"[^>]*data-zerops-surface="sidebar-project"/u.exec(html);
-    expect(heading?.[1]?.split(" ")).toEqual(expect.arrayContaining(["h-8", "ps-1.75", "pe-1"]));
+    expect(heading?.[1]?.split(" ")).toEqual(expect.arrayContaining(["h-8", "ps-1.75", "pe-2"]));
     const title = /<span class="([^"]*)">Beviro CRM</u.exec(html)?.[1]?.split(" ") ?? [];
     expect(title).toEqual(
       expect.arrayContaining(["text-base", "leading-6", "font-semibold", "zerops-project-name"]),

@@ -56,11 +56,11 @@ describe("SidebarWaitingStack — the Mates waiting on you, in the header", () =
 // first. The room the row leaves them, as measured in the harness: the
 // menu's width less its 1 px edge, the mark's inset (90 px beside macOS's
 // traffic lights, 16 on the web), the mark (28, as wide as a Mate's face),
-// the gap before ⌘K (8), ⌘K (49.5) and the row's end padding (12) — never
-// more than the slot's 96.
+// the gap before ⌘K (8), ⌘K (49.5) and the row's end padding (16, the
+// menu's end edge) — never more than the slot's 96.
 describe("waitingFacesThatFit — the faces give way before the mark and ⌘K", () => {
   const room = (width: number, inset: number) =>
-    Math.min(96, width - 1 - inset - 28 - 8 - 49.5 - 12);
+    Math.min(96, width - 1 - inset - 28 - 8 - 49.5 - 16);
   it.each([
     { name: "the web at 304: four", room: room(304, 16), count: 4, fit: { shown: 4, more: 0 } },
     {
