@@ -12,6 +12,7 @@ import {
   resultPictures,
   resultRows,
   runEffortWords,
+  tileRatio,
   type ResultChange,
   type ResultFacts,
   type ResultRow,
@@ -791,6 +792,7 @@ describe("resultPictures", () => {
     page: `appdev-1f3c-3000.prg1.example.app${caption}`,
     device: null,
     failed: false,
+    ratio: 1.6,
     ...overrides,
   });
   const filePicture = (path: string): OutcomePicture => ({
@@ -845,6 +847,26 @@ describe("resultPictures", () => {
     { name: "a run that took no picture has none", outcome: NOVA, labels: [] },
   ])("$name", ({ outcome: model, labels }) => {
     expect(resultPictures(model).map((picture) => picture.label)).toEqual(labels);
+  });
+});
+
+describe("tileRatio", () => {
+  // Each tile takes its picture's own shape at the strip's one height (the
+  // owner, 2026-09-29: "why these has different ration than the result?"):
+  // a phone's screenshot stands whole and narrow, a desktop's whole and
+  // wide. Past what a tile can hold, a full-page capture or a panorama shows
+  // its top; a file not read yet takes a desktop's room.
+  it.each([
+    { name: "a desktop's picture: its own shape", ratio: 1440 / 900, tile: 1.6 },
+    { name: "a phone's screenshot: its own shape", ratio: 1179 / 2556, tile: 1179 / 2556 },
+    { name: "a phone on its side: its own shape", ratio: 844 / 390, tile: 844 / 390 },
+    { name: "a full-page capture: clamped, its top shown", ratio: 1440 / 5200, tile: 0.45 },
+    { name: "a panorama: clamped", ratio: 3600 / 900, tile: 2.4 },
+    { name: "a shape not known yet: a desktop's room", ratio: null, tile: 1.6 },
+    { name: "no shape at all: a desktop's room", ratio: 0, tile: 1.6 },
+    { name: "a shape that is no number: a desktop's room", ratio: Number.NaN, tile: 1.6 },
+  ])("$name", ({ ratio, tile }) => {
+    expect(tileRatio(ratio)).toBeCloseTo(tile, 6);
   });
 });
 

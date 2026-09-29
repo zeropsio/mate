@@ -4225,12 +4225,10 @@ button.run-bar:focus-visible {
    28 px column left to the marks, and on its one right edge. They are the
    run's, not its last row's: 20 px under the rows, where the rows stand 14
    apart; alone, 14 px under the hairline, where a first row's words stand.
-   Six uniform 16:10 tiles at most, 8 px apart, each the top of its
-   picture. Their corners run parallel with the tray's (S4): 30 px = 12 +
-   the 18 px between a tile and the tray's edge — 6 px here, the tray's 12
-   under it. */
+   Six tiles at most, 8 px apart, wrapping into rows as the column needs.
+   Their corners run parallel with the tray's (S4): 30 px = 12 + the 18 px
+   between a tile and the tray's edge — 6 px here, the tray's 12 under it. */
 .run-result-pictures {
-  container: result-pictures / inline-size;
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
   column-gap: 8px;
@@ -4241,24 +4239,22 @@ button.run-bar:focus-visible {
 }
 .run-result-strip {
   grid-column: 2;
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 128px));
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
-/* A narrow column — the preview open beside a laptop's conversation —
-   stands the strip in two rows of three rather than six tiles too small to
-   read, from its width alone: nothing moves once it is drawn. */
-@container result-pictures (max-width: 665px) {
-  .run-result-strip {
-    grid-template-columns: repeat(3, minmax(0, 128px));
-  }
-}
-/* While its file is read, the tile is quiet and already its size: nothing
-   moves when the picture comes, or when it never does. */
+/* One height for every tile, each as wide as its picture's own shape makes
+   it (the owner, 2026-09-29: "why these has different ration than the
+   result?"): a phone's screenshot whole and narrow, a desktop's whole and
+   wide — the shape set on the tile from its first frame (`tileRatio`). While
+   its file is read, the tile is quiet and already its height: nothing under
+   the strip moves when the picture comes, or when it never does. */
 .run-result-tile {
   position: relative;
   display: block;
-  aspect-ratio: 16 / 10;
+  flex: none;
+  height: 96px;
+  max-width: 100%;
   overflow: hidden;
   border-radius: 12px;
   background: color-mix(in oklab, var(--color-foreground) 5%, transparent);

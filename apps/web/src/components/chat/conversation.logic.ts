@@ -1288,6 +1288,57 @@ export function browserCheckCaption(operation: ZeropsOperation): string {
   return path === "" ? "/" : path;
 }
 
+export type BrowserDevice = "desktop" | "tablet" | "phone";
+
+/**
+ * The device a check looked through: the device it emulated by name, else the
+ * viewport it set (CSS pixels), else the picture it took — a phone's picture
+ * is tall and, even at three device pixels per CSS pixel, under 1300 wide.
+ */
+export function browserCheckDevice(check: ZeropsOperation): BrowserDevice {
+  const name = check.deviceName;
+  if (name !== undefined) {
+    if (/desktop/i.test(name)) return "desktop";
+    return /ipad|tablet|\btab\b|kindle|nexus (7|9|10)/i.test(name) ? "tablet" : "phone";
+  }
+  const viewport = check.viewport;
+  if (viewport !== undefined) {
+    if (viewport.width <= 480) return "phone";
+    return viewport.width <= 1024 && viewport.height > viewport.width ? "tablet" : "desktop";
+  }
+  const shot = check.screenshot;
+  if (shot?.width !== undefined && shot.height !== undefined) {
+    const tall = shot.height / shot.width;
+    if (shot.width <= 480 || (tall >= 1.6 && shot.width < 1300)) return "phone";
+    if (tall >= 1.15 && shot.width < 2100) return "tablet";
+  }
+  return "desktop";
+}
+
+/** The shape of a take's frame, width over height, by device: a thumbnail crops its picture to it. */
+export const TAKE_ASPECT: Record<BrowserDevice, number> = {
+  desktop: 1.6,
+  tablet: 0.75,
+  phone: 0.45,
+};
+
+/**
+ * A check's picture's shape, width over height, before a byte of it: its own
+ * size where zcp sent it, else the viewport the check set, else its device's
+ * frame.
+ */
+export function browserCheckShape(check: ZeropsOperation): number {
+  const shot = check.screenshot;
+  if (shot?.width !== undefined && shot.height !== undefined && shot.width > 0 && shot.height > 0) {
+    return shot.width / shot.height;
+  }
+  const viewport = check.viewport;
+  if (viewport !== undefined && viewport.width > 0 && viewport.height > 0) {
+    return viewport.width / viewport.height;
+  }
+  return TAKE_ASPECT[browserCheckDevice(check)];
+}
+
 /** Which page a check looked at, for counting pages: its host and its path. */
 export function browserCheckPage(operation: ZeropsOperation): string {
   const url = browserCheckUrl(operation);
@@ -1559,6 +1610,8 @@ export type OutcomePicture =
       readonly device: string | null;
       /** Its check stayed failed. */
       readonly failed: boolean;
+      /** Its shape, width over height, known before it loads (`browserCheckShape`). */
+      readonly ratio: number;
     }
   | {
       readonly kind: "file";
@@ -1858,6 +1911,7 @@ function turnPictures(
         page: browserCheckPage(check),
         device: check.deviceName ?? null,
         failed: browserTakeState(check, checks) === "failed",
+        ratio: browserCheckShape(check),
       },
     });
   }
