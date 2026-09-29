@@ -10,7 +10,7 @@ import {
   type ReviewPress,
 } from "@t3tools/client-runtime/zerops";
 import type { CrewTask } from "@t3tools/contracts";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import {
   ChangeReviewView,
@@ -544,10 +544,26 @@ export function ReviewStage({
   );
 }
 
-/** The real dialog, opened from a button, to try its motion, its focus and its keys. */
+/** How long the dialog's change takes to read its files, as a quick Gitea answers. */
+const TRY_READ_MS = 600;
+
+/**
+ * The real dialog, opened from a button, to try its motion, its focus and its keys — its files
+ * arriving a moment after it opens, as they do from Gitea, so Merge turns pressable then.
+ */
 export function ReviewDialogTry() {
   const [from, setFrom] = useState<HTMLElement | null>(null);
   const [open, setOpen] = useState(false);
+  const [read, setRead] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const timer = setTimeout(() => {
+      setRead(true);
+    }, TRY_READ_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [open]);
   return (
     <div className="flex gap-3 px-2">
       <button
@@ -555,6 +571,7 @@ export function ReviewDialogTry() {
         data-review-harness-open="ready"
         onClick={(event) => {
           setFrom(event.currentTarget);
+          setRead(false);
           setOpen(true);
         }}
         type="button"
@@ -583,7 +600,7 @@ export function ReviewDialogTry() {
           onReviewRelease={noop}
           press={IDLE}
           pull={pull()}
-          readout={READ}
+          readout={read ? READ : { ...READ, ...FILES_UNREAD.reading }}
           route={ROUTE}
           run={RUN}
           titleId="review-try-title"
