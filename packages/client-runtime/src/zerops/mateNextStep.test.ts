@@ -26,69 +26,111 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
 }
 
 describe("mateNextStep", () => {
-  it("offers the Mate's own mergeable pull request (sm-fixture)", () => {
-    expect(
-      mateNextStep({ pullRequests: [pull()], mateProjectId: "p-wren", mateName: "Wren" }),
-    ).toEqual({
-      kind: "merge",
-      pull: pull(),
-      title: "Wren is waiting on you to merge #1.",
-      verb: "Merge",
-      running: "Merging…",
-    });
-  });
-
-  it("offers the newest where the Mate has two, so the banner is stable", () => {
-    const step = mateNextStep({
-      pullRequests: [pull({ number: 4 }), pull({ number: 7 }), pull({ number: 5 })],
-      mateProjectId: "p-wren",
-      mateName: "Wren",
-    });
-    expect(step.kind === "merge" ? step.pull.number : undefined).toBe(7);
-  });
-
-  it("names the Mate as this Mate where its name is not known", () => {
-    const step = mateNextStep({
+  // The composer's top (C3): what waits on the person, in the Mate's words,
+  // and the one door to it — Review. Nothing merges from here.
+  it.each<{
+    readonly case: string;
+    readonly pullRequests: ReadonlyArray<FlowPullRequest> | undefined;
+    readonly mate: string | undefined;
+    readonly mateName: string | undefined;
+    readonly step:
+      | { readonly title: string; readonly detail: string; readonly number: number }
+      | "none";
+  }>([
+    {
+      case: "its own change, waiting for the person's review",
       pullRequests: [pull()],
-      mateProjectId: "p-wren",
+      mate: "p-wren",
+      mateName: "Wren",
+      step: {
+        title: "Wren is waiting for your review of #1",
+        detail: "Greet with a fuller line",
+        number: 1,
+      },
+    },
+    {
+      case: "the newest where it has two, so the strip is stable",
+      pullRequests: [pull({ number: 4 }), pull({ number: 7, title: "Seven" }), pull({ number: 5 })],
+      mate: "p-wren",
+      mateName: "Wren",
+      step: { title: "Wren is waiting for your review of #7", detail: "Seven", number: 7 },
+    },
+    {
+      case: "a Mate whose name is not known yet",
+      pullRequests: [pull()],
+      mate: "p-wren",
       mateName: undefined,
-    });
-    expect(step.kind === "merge" ? step.title : undefined).toBe(
-      "This Mate is waiting on you to merge #1.",
-    );
-  });
-
-  // A release carries every Mate's merges and production is the project's:
-  // both stay on the left, with the project, so the conversation reads only
-  // the open changes and offers nothing else.
-  it.each([
-    { case: "a Mate with no open change (testzcp)", pullRequests: [], mate: "p-rune" },
-    { case: "another Mate's change", pullRequests: [pull()], mate: "p-juno" },
+      step: {
+        title: "This Mate is waiting for your review of #1",
+        detail: "Greet with a fuller line",
+        number: 1,
+      },
+    },
+    // A release carries every Mate's merges and production is the project's:
+    // both stay on the left, with the project, so the conversation reads only
+    // this Mate's open changes.
+    {
+      case: "nothing waiting (testzcp)",
+      pullRequests: [],
+      mate: "p-rune",
+      mateName: "Rune",
+      step: "none",
+    },
+    {
+      case: "another Mate's change",
+      pullRequests: [pull()],
+      mate: "p-juno",
+      mateName: "Juno",
+      step: "none",
+    },
     {
       case: "its own change that does not merge",
       pullRequests: [pull({ mergeability: "conflicting", checks: "failing" })],
       mate: "p-wren",
+      mateName: "Wren",
+      step: "none",
     },
     {
       case: "its own change Gitea is still checking",
       pullRequests: [pull({ mergeability: "checking" })],
       mate: "p-wren",
+      mateName: "Wren",
+      step: "none",
     },
     {
       case: "its own landed change Gitea still calls mergeable",
       pullRequests: [pull({ merged: true })],
       mate: "p-wren",
+      mateName: "Wren",
+      step: "none",
     },
     {
       case: "a recipe change of its own",
       pullRequests: [pull({ repository: "group", kind: "recipe" })],
       mate: "p-wren",
+      mateName: "Wren",
+      step: "none",
     },
-    { case: "a project not read yet", pullRequests: undefined, mate: "p-wren" },
-    { case: "a conversation that is no Mate's", pullRequests: [pull()], mate: undefined },
-  ])("offers nothing for $case", ({ pullRequests, mate }) => {
-    expect(mateNextStep({ pullRequests, mateProjectId: mate, mateName: "Wren" })).toEqual({
-      kind: "none",
-    });
+    {
+      case: "a project not read yet",
+      pullRequests: undefined,
+      mate: "p-wren",
+      mateName: "Wren",
+      step: "none",
+    },
+    {
+      case: "a conversation that is no Mate's",
+      pullRequests: [pull()],
+      mate: undefined,
+      mateName: "Wren",
+      step: "none",
+    },
+  ])("$case", ({ pullRequests, mate, mateName, step }) => {
+    const next = mateNextStep({ pullRequests, mateProjectId: mate, mateName });
+    expect(
+      next.kind === "review"
+        ? { title: next.title, detail: next.detail, number: next.pull.number }
+        : next.kind,
+    ).toEqual(step);
   });
 });

@@ -174,7 +174,7 @@ import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
 import { CrewBoardPanel } from "./zerops/crew/CrewBoardPanel";
 import { useCrew } from "../zerops/crew/useCrew";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
-import { useZeropsNextStepBanner } from "./zerops/ZeropsNextStepBanner";
+import { useZeropsNextStepStrip } from "./zerops/ZeropsNextStepBanner";
 import { zeropsMateAt } from "../zerops/mateIdentities";
 import { useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
@@ -5266,11 +5266,12 @@ export default function ChatView(props: ChatViewProps) {
   }, [openAgentAuthDialog, zeropsAgentOwnership, zeropsOwnedAgent, zeropsReadOnly]);
 
   /**
-   * The one next step this Mate's conversation offers, from the project's
-   * flow rather than from what the agent said (`ZeropsNextStepBanner.tsx`);
-   * it gives way while a question or an approval waits on the person.
+   * The composer's top: this Mate's change waiting for the person's review,
+   * from the project's flow rather than from what the agent said
+   * (`ZeropsNextStepBanner.tsx`); it gives way while a question or an
+   * approval waits on the person.
    */
-  const mateNextStepBannerItem = useZeropsNextStepBanner(activeThreadRef, {
+  const composerTop = useZeropsNextStepStrip(activeThreadRef, {
     question: activePendingUserInput !== null,
     approval: activePendingApproval !== null,
   });
@@ -5483,7 +5484,6 @@ export default function ChatView(props: ChatViewProps) {
       ...(agentOwnershipBannerItem === null ? [] : [agentOwnershipBannerItem]),
       ...systemComposerBannerItems.filter(isUrgentSystemItem),
     ];
-    const mateNextStepItems = mateNextStepBannerItem === null ? [] : [mateNextStepBannerItem];
     const alsoWorkingItems = alsoWorkingBannerItem === null ? [] : [alsoWorkingBannerItem];
     const calmSystemItems = systemComposerBannerItems.filter((item) => !isUrgentSystemItem(item));
     const resumeCompactionItems =
@@ -5497,7 +5497,6 @@ export default function ChatView(props: ChatViewProps) {
       return [
         ...urgentSystemItems,
         ...usageLimitsItems,
-        ...mateNextStepItems,
         ...crewBannerItems,
         ...alsoWorkingItems,
         ...feedbackBannerItems,
@@ -5511,7 +5510,6 @@ export default function ChatView(props: ChatViewProps) {
     return [
       ...urgentSystemItems,
       ...usageLimitsItems,
-      ...mateNextStepItems,
       ...crewBannerItems,
       ...alsoWorkingItems,
       ...feedbackBannerItems,
@@ -5569,7 +5567,6 @@ export default function ChatView(props: ChatViewProps) {
     handleRestoreThreadBranch,
     isRestoringThreadBranch,
     localCheckoutBranchMismatch,
-    mateNextStepBannerItem,
     parkedThreadBannerItem,
     projectCloneBannerItem,
     resumeCompactionBannerItem,
@@ -8344,6 +8341,7 @@ export default function ChatView(props: ChatViewProps) {
                                 crewComposerPlaceholder ?? connectedComposerPlaceholder
                               }
                               mentionCrewmates={crewMentions}
+                              top={composerTop}
                               {...(crewRunsOnLabel === null || activeCrewmate === null
                                 ? {}
                                 : {
