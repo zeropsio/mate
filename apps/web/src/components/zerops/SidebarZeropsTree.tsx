@@ -1112,7 +1112,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     ];
     // Each block — a Mate with its changes, one being created, the quiet
     // fold, the changes nobody's Mate owns, the stops — stands apart from the
-    // next by air alone; the heading stands on the first.
+    // next by air alone: 10 px, which with a row's own 10 px above and below
+    // its words puts 30 px between one Mate's words and the next's, whatever
+    // hangs under the first (M16). The heading stands on the first.
     const blocks: Array<{ readonly key: string; readonly node: ReactNode }> = [
       ...slots.map((slot) => {
         if (slot.kind === "coming") {
@@ -1279,7 +1281,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       <>
         {header}
         {blocks.map((block, index) => (
-          <div className={cn("flex flex-col", index > 0 && "mt-2")} key={block.key}>
+          <div className={cn("flex flex-col", index > 0 && "mt-2.5")} key={block.key}>
             {block.node}
           </div>
         ))}
@@ -2549,7 +2551,9 @@ function PullRequestList({
 }) {
   const folded = pullRequestsFolded(pulls.length);
   return (
-    <div className="flex flex-col" data-zerops-surface="sidebar-pull-requests">
+    // 2 px under its Mate's row: the changes are that Mate's, so they hang
+    // on it rather than standing apart as the next Mate does.
+    <div className="mt-0.5 flex flex-col" data-zerops-surface="sidebar-pull-requests">
       {folded ? (
         <button
           aria-expanded={open}
