@@ -96,7 +96,7 @@ import {
 } from "./conversation.logic";
 import { useRunEffortWords } from "./runResultFacts";
 import { StatusBar, type BarTone } from "./ConversationPills";
-import { ElapsedSince } from "./ConversationRows";
+import { DOCKED_KINDS } from "./conversationDock.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
   normalizeCompactToolLabel,
@@ -204,17 +204,24 @@ export function PlanSteps({
 /** Kinds whose time says something: a read or an edit is over before it can be read. */
 const TIMED: ReadonlySet<StepKind> = new Set(["command", "web", "tool"]);
 
-/** How long a step took, or how long it has run so far. */
-export function stepTime(step: WorkStep): ReactNode {
-  if (step.state === "running") return <ElapsedSince since={step.startedAt} />;
+/**
+ * What a line of the chat still running says in its time's place: that it
+ * runs, never a second clock — what runs ticks once, in its bar or on the
+ * now line (K3).
+ */
+const STILL_RUNNING = "Running";
+
+/** How long a step took; one still running says so. */
+function stepTime(step: WorkStep): ReactNode {
+  if (step.state === "running") return STILL_RUNNING;
   if (!TIMED.has(step.kind) || step.endedAt === null) return null;
   const ms = Date.parse(step.endedAt) - Date.parse(step.startedAt);
   return Number.isFinite(ms) && ms >= 1000 ? formatWorkDuration(ms) : null;
 }
 
-/** How long a platform operation took, or how long it has run so far. */
-export function operationTime(operation: ZeropsOperation): ReactNode {
-  if (operation.phase === "running") return <ElapsedSince since={operation.anchorAt} />;
+/** How long a platform operation took; one still running says so. */
+function operationTime(operation: ZeropsOperation): ReactNode {
+  if (operation.phase === "running") return STILL_RUNNING;
   if (operation.settledAt === undefined) return null;
   const ms = Date.parse(operation.settledAt) - Date.parse(operation.anchorAt);
   return Number.isFinite(ms) && ms >= 1000 ? formatWorkDuration(ms) : null;
@@ -1466,13 +1473,13 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
   const startedMs = Date.parse(strip.checks[0]!.anchorAt);
   const endedMs = Date.parse(latest.settledAt ?? latest.anchorAt);
   const tookMs = endedMs - startedMs;
-  // One clock for the row, from its first check: a second check running
-  // never starts it again from nothing.
-  const time = running ? (
-    <ElapsedSince since={strip.checks[0]!.anchorAt} />
-  ) : Number.isFinite(tookMs) && tookMs >= 1000 ? (
-    formatWorkDuration(tookMs)
-  ) : null;
+  // How long the row took, from its first check; one still being taken says
+  // so — its time ticks on the now line alone.
+  const time = running
+    ? STILL_RUNNING
+    : Number.isFinite(tookMs) && tookMs >= 1000
+      ? formatWorkDuration(tookMs)
+      : null;
   const failed = strip.failures > 0;
   const takes = strip.checks.some(
     (check) =>
@@ -2232,7 +2239,10 @@ function NowWords({ line }: { readonly line: NowLineModel }) {
           <span className="run-now-verb" data-run-shimmer="">
             {operationNowWords(line.operation)}
           </span>
-          <LongStepTime since={line.operation.anchorAt} />
+          {/* A pipeline counts its time in its bar under the line (K3). */}
+          {DOCKED_KINDS.has(line.operation.kind) ? null : (
+            <LongStepTime since={line.operation.anchorAt} />
+          )}
         </>
       );
     case "several":

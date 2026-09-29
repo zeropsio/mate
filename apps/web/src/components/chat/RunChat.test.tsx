@@ -3,7 +3,9 @@ import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRunt
 import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+
+import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 
 import type { WorkLogEntry } from "../../session-logic";
 import type { ChatMessage } from "../../types";
@@ -17,7 +19,7 @@ import {
   type TimelineRowSharedState,
 } from "./timelineContext";
 import { checksStrip, formatWorkDuration, type OutcomeModel } from "./conversation.logic";
-import { at as atMinute, operation } from "./conversationFixtures";
+import { operation } from "./conversationFixtures";
 import { stepOf } from "./workSteps.logic";
 
 const at = (second: number) => new Date(Date.UTC(2026, 8, 27, 10, 0, second)).toISOString();
@@ -483,6 +485,45 @@ describe("RunChat", () => {
 
   // Blue means something to click (S3): the run's clock counts in ink, and a
   // call running beside it counts in the calls' quiet ink.
+  // One ticking time for each thing that runs (K3): a command left running in
+  // the background ticks in its bar, never again in the chat; a deploy ticks
+  // in its bar, never again as the now line's long-step words.
+  it("ticks each running thing once: in its bar, or on the now line", () => {
+    const background: RecordItem = {
+      kind: "step",
+      key: "step:w1",
+      at: at(9),
+      step: stepOf(
+        command("w1", "pnpm dev", {
+          callInput: { description: "Serve the app on port 3000" },
+          toolLifecycleStatus: "inProgress",
+          updatedAt: undefined as never,
+        }),
+      ),
+    };
+    const serving = draw(record([background], { live: true, status: status() }));
+    const row = serving.slice(serving.indexOf('data-chat-kind="step:command"'));
+    expect(row).toMatch(/text-muted-foreground">Running</u);
+    expect(row).not.toMatch(/tabular-nums">\d/u);
+    const since = new Date(Date.now() - 45_000).toISOString();
+    const running = (kind: "deploy" | "browser") => {
+      const entry = operation("o1", "turn-1", 1, {
+        kind,
+        phase: "running",
+        anchorAt: since,
+        subject: kind === "deploy" ? "appdev" : "https://shop.dev/status",
+        voice: kind === "deploy" ? "Deploying appdev." : "Checking /status",
+      });
+      if (entry.kind !== "operation") throw new Error("an operation");
+      const { settledAt: _settled, ...taking } = entry.operation;
+      return draw(
+        record([], { live: true, now: { kind: "operation", operation: taking }, status: status() }),
+      );
+    };
+    expect(running("deploy")).not.toMatch(/run-now-long">· 0:4\d/u);
+    expect(running("browser")).toMatch(/run-now-long">· 0:4\d/u);
+  });
+
   it("counts the run's time in ink, never in the busy blue", () => {
     const markup = draw(
       record([], {
@@ -801,45 +842,35 @@ describe("RunChat", () => {
     expect(markup).toContain("couldn&#x27;t open http://shop.dev:9/: net::ERR_UNSAFE_PORT");
   });
 
-  // One clock for a row of checks, from its first: a second check running
-  // started it again from nothing, then the settled row said the whole time.
-  it("runs one clock for a row of checks, from its first check", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(atMinute(5)));
-    try {
-      const first = operation("b1", "turn-1", 1, {
-        kind: "browser",
-        subject: "https://shop.dev/",
-        screenshot: { src: "/shots/b1.png", width: 1280, height: 800 },
-      });
-      const second = operation("b2", "turn-1", 3, {
-        kind: "browser",
-        subject: "https://shop.dev/",
-        phase: "running",
-        deviceName: "iPhone 16",
-      });
-      if (first.kind !== "operation" || second.kind !== "operation") throw new Error("operations");
-      const { settledAt: _settled, ...taking } = second.operation;
-      const markup = draw(
-        record(
-          [
-            {
-              kind: "strip",
-              key: "operation:op:b1",
-              at: at(1),
-              strip: checksStrip([first.operation, taking], true),
-            },
-          ],
-          { live: true, status: status() },
-        ),
+  // A row of checks says how long it took from its first check to its last;
+  // one still being taken ticks nowhere in the chat — its time is the now
+  // line's (K3).
+  it("says a row of checks' time from its first check, and ticks none while one is taken", () => {
+    const first = operation("b1", "turn-1", 1, {
+      kind: "browser",
+      subject: "https://shop.dev/",
+      screenshot: { src: "/shots/b1.png", width: 1280, height: 800 },
+    });
+    const second = operation("b2", "turn-1", 3, {
+      kind: "browser",
+      subject: "https://shop.dev/",
+      deviceName: "iPhone 16",
+    });
+    if (first.kind !== "operation" || second.kind !== "operation") throw new Error("operations");
+    const strip = (checks: ReadonlyArray<ZeropsOperation>) =>
+      draw(
+        record([
+          { kind: "strip", key: "operation:op:b1", at: at(1), strip: checksStrip(checks, false) },
+        ]),
       );
-      const since = (minute: number) =>
-        formatWorkDuration(Date.parse(atMinute(5)) - Date.parse(atMinute(minute)));
-      expect(markup).toContain(`>${since(1)}<`);
-      expect(markup).not.toContain(`>${since(3)}<`);
-    } finally {
-      vi.useRealTimers();
-    }
+    const took = formatWorkDuration(
+      Date.parse(second.operation.settledAt!) - Date.parse(first.operation.anchorAt),
+    );
+    expect(strip([first.operation, second.operation])).toContain(`>${took}<`);
+    const { settledAt: _settled, ...taking } = { ...second.operation, phase: "running" as const };
+    const markup = strip([first.operation, taking]);
+    expect(markup).toContain(">Running<");
+    expect(markup).not.toContain(`>${took}<`);
   });
 
   it("opens nothing on a step that printed nothing", () => {
