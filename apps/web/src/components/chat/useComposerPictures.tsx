@@ -28,6 +28,7 @@ import { collapseExpandedComposerCursor } from "~/composer-logic";
 import {
   type ComposerImageAttachment,
   type DraftId,
+  composerTargetKey,
   useComposerDraftStore,
 } from "~/composerDraftStore";
 import {
@@ -97,6 +98,11 @@ export interface ComposerPictures {
   readonly view: ReactNode;
 }
 
+type DraftTarget = ScopedThreadRef | DraftId;
+
+const draftOf = (target: DraftTarget) => useComposerDraftStore.getState().getComposerDraft(target);
+const imagesOf = (target: DraftTarget) => draftOf(target)?.images ?? [];
+
 function copyName(name: string, type: string): string {
   const extension = type === "image/png" ? ".png" : type === "image/jpeg" ? ".jpg" : null;
   if (!extension) return name;
@@ -139,6 +145,11 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
   const decoding = useRef(new Map<string, Promise<ImageBitmap>>());
   const tokens = useRef(new Map<string, number>());
   const timers = useRef(new Map<string, number>());
+  // The draft each picture belongs to: its copy lands there and it leaves
+  // from there, whichever Mate is on screen by then.
+  const owners = useRef(new Map<string, DraftTarget>());
+  // Pictures still being read, in no draft yet.
+  const arriving = useRef(new Set<string>());
   const [thumbnails, setThumbnails] = useState<ReadonlyMap<string, string>>(() => new Map());
   // The open picture, and its pasted file decoded (null after a reload dropped it).
   const [opened, setOpened] = useState<{
@@ -146,12 +157,17 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
     readonly bitmap: ImageBitmap | null;
   } | null>(null);
 
+  const targetOf = useCallback(
+    (id: string): DraftTarget => owners.current.get(id) ?? latest.current.draftTarget,
+    [],
+  );
   const imageOf = useCallback(
-    (id: string) =>
-      useComposerDraftStore
-        .getState()
-        .getComposerDraft(latest.current.draftTarget)
-        ?.images.find((image) => image.id === id),
+    (id: string) => imagesOf(targetOf(id)).find((image) => image.id === id),
+    [targetOf],
+  );
+  const isOnScreen = useCallback(
+    (target: DraftTarget) =>
+      composerTargetKey(target) === composerTargetKey(latest.current.draftTarget),
     [],
   );
 
@@ -201,25 +217,31 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
 
   const removePicture = useCallback(
     (id: string) => {
-      const { draftTarget, promptRef, onPromptWritten } = latest.current;
-      const images = useComposerDraftStore.getState().getComposerDraft(draftTarget)?.images ?? [];
+      const target = targetOf(id);
+      const images = imagesOf(target);
       const index = images.findIndex((image) => image.id === id);
       if (index < 0) return;
       supersede(id);
       releaseAttachmentUpload(id);
-      const removal = removeInlinePicturePlaceholder(promptRef.current, index);
-      promptRef.current = removal.prompt;
+      const shown = isOnScreen(target);
+      const { promptRef, onPromptWritten } = latest.current;
+      const removal = removeInlinePicturePlaceholder(
+        shown ? promptRef.current : (draftOf(target)?.prompt ?? ""),
+        index,
+      );
       syncImages(
-        draftTarget,
+        target,
         images.filter((image) => image.id !== id).map((image) => image.id),
       );
-      setPrompt(draftTarget, removal.prompt);
+      setPrompt(target, removal.prompt);
+      if (!shown) return;
+      promptRef.current = removal.prompt;
       onPromptWritten(
         removal.prompt,
         collapseExpandedComposerCursor(removal.prompt, removal.cursor),
       );
     },
-    [setPrompt, supersede, syncImages],
+    [isOnScreen, setPrompt, supersede, syncImages, targetOf],
   );
 
   /** The picture goes as it is: nothing is making its copy any more. */
@@ -227,12 +249,9 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
     (id: string) => {
       const image = imageOf(id);
       if (!image?.picture?.preparing) return;
-      updateImage(latest.current.draftTarget, {
-        ...image,
-        picture: { ...image.picture, preparing: false },
-      });
+      updateImage(targetOf(id), { ...image, picture: { ...image.picture, preparing: false } });
     },
-    [imageOf, updateImage],
+    [imageOf, targetOf, updateImage],
   );
 
   /** Makes the picture's copy from its current edits; the latest edit wins. */
@@ -291,7 +310,7 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
           ? { width: picture.sourceWidth, height: picture.sourceHeight }
           : { width: copy.width, height: copy.height };
       if (now.file !== file) releasePictureCopyUpload(id);
-      updateImage(latest.current.draftTarget, {
+      updateImage(targetOf(id), {
         ...now,
         name: file.name || now.name,
         mimeType: file.type,
@@ -306,7 +325,7 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
         },
       });
     },
-    [decode, imageOf, removePicture, settleCopy, supersede, updateImage],
+    [decode, imageOf, removePicture, settleCopy, supersede, targetOf, updateImage],
   );
 
   const scheduleCopy = useCallback(
@@ -330,11 +349,12 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
         latest.current.onError(refusal);
         return;
       }
+      // The pictures go to the draft they were added to, even when another
+      // Mate is on screen by the time they are read.
+      const target = latest.current.draftTarget;
       for (const file of files) {
-        const { draftTarget, editorRef, promptRef, onPromptWritten, onError } = latest.current;
-        const count =
-          useComposerDraftStore.getState().getComposerDraft(draftTarget)?.images.length ?? 0;
-        if (count >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
+        const { onError } = latest.current;
+        if (imagesOf(target).length >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
           onError(
             `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} pictures per message.`,
           );
@@ -358,10 +378,14 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
         }
         const id = randomUUID();
         const source = prepared.file;
+        owners.current.set(id, target);
+        arriving.current.add(id);
         let bitmap: ImageBitmap;
         try {
           bitmap = await decode(id, source);
         } catch {
+          arriving.current.delete(id);
+          owners.current.delete(id);
           onError(`'${file.name}' could not be read as a picture.`);
           continue;
         }
@@ -380,14 +404,18 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
           preparing: true,
         };
         drawThumbnail(id, picture);
-        const snapshot = editorRef.current?.readSnapshot();
-        const prompt = snapshot?.value ?? promptRef.current;
+        // On screen it lands at the caret; in a draft off screen, at its end.
+        const shown = isOnScreen(target);
+        const { editorRef, promptRef, onPromptWritten } = latest.current;
+        const snapshot = shown ? editorRef.current?.readSnapshot() : undefined;
+        const prompt =
+          snapshot?.value ?? (shown ? promptRef.current : (draftOf(target)?.prompt ?? ""));
         const insertion = insertInlinePicturePlaceholder(
           prompt,
           snapshot?.expandedCursor ?? prompt.length,
         );
         insertImage(
-          draftTarget,
+          target,
           insertion.prompt,
           {
             type: "image",
@@ -401,15 +429,18 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
           },
           insertion.pictureIndex,
         );
-        promptRef.current = insertion.prompt;
-        onPromptWritten(
-          insertion.prompt,
-          collapseExpandedComposerCursor(insertion.prompt, insertion.cursor),
-        );
+        arriving.current.delete(id);
+        if (shown) {
+          promptRef.current = insertion.prompt;
+          onPromptWritten(
+            insertion.prompt,
+            collapseExpandedComposerCursor(insertion.prompt, insertion.cursor),
+          );
+        }
         void makeCopy(id);
       }
     },
-    [decode, drawThumbnail, insertImage, makeCopy],
+    [decode, drawThumbnail, insertImage, isOnScreen, makeCopy],
   );
 
   const edit = useCallback(
@@ -417,7 +448,7 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
       const image = imageOf(id);
       if (!image?.picture) return;
       const remake = pictureNeedsNewCopy(image.picture, next);
-      updateImage(latest.current.draftTarget, {
+      updateImage(targetOf(id), {
         ...image,
         picture: { ...next, preparing: remake || image.picture.preparing },
       });
@@ -425,7 +456,7 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
       drawThumbnail(id, next);
       scheduleCopy(id, REMAKE_DELAY_MS);
     },
-    [drawThumbnail, imageOf, scheduleCopy, updateImage],
+    [drawThumbnail, imageOf, scheduleCopy, targetOf, updateImage],
   );
 
   const open = useCallback(
@@ -468,9 +499,15 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
     [makeCopy],
   );
 
+  // A picture on screen belongs to the draft on screen.
+  useEffect(() => {
+    for (const image of input.images) owners.current.set(image.id, input.draftTarget);
+  }, [input.draftTarget, input.images]);
+
   // An image that reached the draft without being a picture (an older draft, a
   // stash, a queued message) becomes one: its file is what was pasted.
   useEffect(() => {
+    const target = input.draftTarget;
     for (const image of input.images) {
       if (image.picture || bitmaps.current.has(image.id) || decoding.current.has(image.id)) {
         continue;
@@ -478,7 +515,7 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
       const id = image.id;
       void decode(id, image.file).then(
         (bitmap) => {
-          const now = imageOf(id);
+          const now = imagesOf(target).find((entry) => entry.id === id);
           if (!now || now.picture) return;
           const crop = fullPictureCrop(bitmap.width, bitmap.height);
           const fitted = pictureFitSize(crop);
@@ -494,7 +531,7 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
             asPasted: false,
             preparing: true,
           };
-          updateImage(latest.current.draftTarget, { ...now, picture });
+          updateImage(target, { ...now, picture });
           void makeCopy(id);
         },
         () => {
@@ -502,19 +539,25 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
         },
       );
     }
-  }, [decode, imageOf, input.images, makeCopy, updateImage]);
+  }, [decode, input.draftTarget, input.images, makeCopy, updateImage]);
 
-  // What a picture no longer in the draft held goes with it.
+  // What a picture held goes when it leaves its own draft, whichever draft is
+  // on screen: another Mate's coming into view is no picture leaving.
   useEffect(() => {
-    const ids = new Set(input.images.map((image) => image.id));
-    for (const [id, bitmap] of bitmaps.current) {
-      if (ids.has(id)) continue;
-      bitmap.close();
-      bitmaps.current.delete(id);
-      supersede(id);
-      tokens.current.delete(id);
-    }
-  }, [input.images, supersede]);
+    const forgetGone = () => {
+      for (const [id, bitmap] of bitmaps.current) {
+        if (arriving.current.has(id)) continue;
+        if (imagesOf(targetOf(id)).some((image) => image.id === id)) continue;
+        bitmap.close();
+        bitmaps.current.delete(id);
+        supersede(id);
+        tokens.current.delete(id);
+        owners.current.delete(id);
+      }
+    };
+    forgetGone();
+    return useComposerDraftStore.subscribe(forgetGone);
+  }, [supersede, targetOf]);
 
   useEffect(
     () => () => {

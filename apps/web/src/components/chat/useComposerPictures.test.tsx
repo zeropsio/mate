@@ -39,6 +39,7 @@ vi.mock("../../lib/imageCompression", async (importOriginal) => ({
 
 const ENVIRONMENT = EnvironmentId.make("environment-local");
 const A = DraftId.make("draft-a");
+const B = DraftId.make("draft-b");
 
 /** A bitmap as `createImageBitmap` would make one: its size is in the file's name. */
 class FakeBitmap {
@@ -51,6 +52,17 @@ class FakeBitmap {
     this.height = Number(height);
   }
 }
+
+function deferred<A>() {
+  let resolve!: (value: A) => void;
+  const promise = new Promise<A>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
+}
+
+/** The bitmaps made, and a gate a decode waits at while a test holds it shut. */
+const decoding = { made: [] as FakeBitmap[], gate: null as Promise<unknown> | null };
 
 const pngFile = (name: string) =>
   new File([new Uint8Array(64).fill(7)], name, { type: "image/png" });
@@ -143,8 +155,15 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal(
     "createImageBitmap",
-    vi.fn(async (file: File) => new FakeBitmap(file.name)),
+    vi.fn(async (file: File) => {
+      await decoding.gate;
+      const bitmap = new FakeBitmap(file.name);
+      decoding.made.push(bitmap);
+      return bitmap;
+    }),
   );
+  decoding.made.length = 0;
+  decoding.gate = null;
   useComposerDraftStore.setState({ draftsByThreadKey: {}, draftThreadsByThreadKey: {} });
   copies.fit.mockReset();
   copies.fit.mockResolvedValue({ kind: "as-pasted" });
@@ -192,5 +211,79 @@ describe("a picture's copy", () => {
     expect(image!.picture!.preparing).toBe(false);
     expect(api.blockReason).toBeNull();
     expect(errors).toEqual(["'shot-1200x800.png' could not be prepared, so it goes as it was."]);
+  });
+});
+
+describe("whichever Mate is on screen", () => {
+  const words = (target: DraftId, prompt: string) =>
+    useComposerDraftStore.getState().setPrompt(target, prompt);
+
+  it("a picture still being read when another Mate comes on screen lands in its own draft", async () => {
+    words(A, "Mate A's words");
+    words(B, "Mate B's words");
+    await show(A);
+    const opened = deferred<void>();
+    decoding.gate = opened.promise;
+
+    const adding = api.add([pngFile("shot-1200x800.png")]);
+    await show(B);
+    opened.resolve();
+    await act(() => adding);
+    await settle();
+
+    expect(draftOf(A)).toMatchObject({ prompt: `Mate A's words${P}` });
+    expect(draftOf(A)!.images.map((image) => image.name)).toEqual(["shot-1200x800.png"]);
+    expect(draftOf(B)).toMatchObject({ prompt: "Mate B's words", images: [] });
+  });
+
+  it("a picture's copy made while another Mate is on screen settles in its own draft", async () => {
+    await show(A);
+    const made = deferred<unknown>();
+    copies.fit.mockReturnValue(made.promise);
+    await act(() => api.add([pngFile("shot-1200x800.png")]));
+    const [picture] = draftOf(A)!.images;
+    expect(picture!.picture!.preparing).toBe(true);
+
+    await show(B);
+    const blob = new Blob([new Uint8Array(32)], { type: "image/jpeg" });
+    made.resolve({ kind: "fitted", blob, width: 1000, height: 667, type: "image/jpeg" });
+    await settle();
+
+    expect(imageOf(A, picture!.id)).toMatchObject({
+      mimeType: "image/jpeg",
+      sizeBytes: 32,
+      picture: { preparing: false, width: 1000, height: 667 },
+    });
+    expect(draftOf(B)?.images ?? []).toEqual([]);
+  });
+
+  it("a picture too large even fitted, found while another Mate is on screen, leaves its own draft", async () => {
+    words(B, "Mate B's words");
+    await show(A);
+    const made = deferred<unknown>();
+    copies.fit.mockReturnValue(made.promise);
+    await act(() => api.add([pngFile("huge-9000x9000.png")]));
+
+    await show(B);
+    made.resolve({ kind: "too-large" });
+    await settle();
+
+    expect(draftOf(A)?.images ?? []).toEqual([]);
+    expect(draftOf(A)?.prompt ?? "").toBe("");
+    expect(draftOf(B)).toMatchObject({ prompt: "Mate B's words" });
+    expect(errors).toEqual(["'huge-9000x9000.png' is too large to send, even fitted."]);
+  });
+
+  it("a picture keeps what it holds while another Mate is on screen, and lets it go when it leaves", async () => {
+    await show(A);
+    await act(() => api.add([pngFile("shot-1200x800.png")]));
+    const [bitmap] = decoding.made;
+
+    await show(B);
+    expect(bitmap!.close).not.toHaveBeenCalled();
+
+    await show(A);
+    await act(() => api.remove(draftOf(A)!.images[0]!.id));
+    expect(bitmap!.close).toHaveBeenCalled();
   });
 });

@@ -2958,7 +2958,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const addComposerImages = async (files: File[]) => {
     if (!activeThreadId || files.length === 0) return;
     // Captured before the awaits below: the user may switch threads while a
-    // picture is decoded, and a send in the meantime must wait for it.
+    // picture is read. It still lands in this thread's draft (the pictures
+    // hook keeps each picture's own draft), and a send there must wait for it.
     const threadId = activeThreadId;
     const pendingCount = pendingImageCompressionsRef.current.get(threadId) ?? 0;
     pendingImageCompressionsRef.current.set(threadId, pendingCount + files.length);
