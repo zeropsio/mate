@@ -853,6 +853,31 @@ describe("the project's flow under it", () => {
   });
 });
 
+// Signed in, so Gitea is coming — but none of its reads has answered.
+const SIGNED_IN = {
+  deployments: new Map([
+    [
+      "crm-prod",
+      {
+        state: "known",
+        value: {
+          kind: "running",
+          activatedAt: null,
+          version: {
+            name: "v2.4.0",
+            commit: "3f9c1b2",
+            sha: undefined,
+            taggedBy: undefined,
+            label: "v2.4.0",
+          },
+        },
+      },
+    ],
+  ]),
+  flows: new Map(),
+  signedIn: true,
+} as unknown as ZeropsProjectFlowValue;
+
 describe("production is one chip on the project's heading (M2, M1)", () => {
   const released = (label: string): EnvironmentRow => ({
     ...productionRow,
@@ -973,6 +998,27 @@ describe("production is one chip on the project's heading (M2, M1)", () => {
     expect(render([CRM_DEV, CRM_PROD], { getFlow: () => flow() })).not.toContain(
       "sidebar-production-chip",
     );
+  });
+
+  it("draws what the platform alone says while Gitea keeps not answering, and never keeps it", () => {
+    const drawn: SidebarDrawn[] = [];
+    const tree = mount(
+      <ZeropsProjectFlowContext.Provider value={SIGNED_IN}>
+        <SidebarZeropsTree
+          candidates={[CRM_DEV, up(CRM_PROD)]}
+          complete
+          onBrowseProjects={() => {}}
+          onDrawn={(next: SidebarDrawn) => drawn.push(next)}
+          onSelect={() => {}}
+        />
+      </ZeropsProjectFlowContext.Provider>,
+    );
+    const chips = tree.root.findAll(
+      (node) =>
+        node.type === "button" && node.props["data-zerops-surface"] === "sidebar-production-chip",
+    );
+    expect(chips.map((chip) => chip.props["aria-label"])).toEqual(["Production v2.4.0, healthy"]);
+    expect(drawn.at(-1)?.chips).toEqual({});
   });
 
   it("lets the jump box find production and each stage, with the chip's dot", () => {

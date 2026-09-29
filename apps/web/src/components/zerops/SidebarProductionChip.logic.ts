@@ -17,7 +17,8 @@
  * Every fact comes from what the menu already reads — `groupFlow`'s stops, the
  * platform's services, Gitea's releases — and a chip is drawn only once what
  * decides it is read: until then it is unknown, and the menu draws the chip it
- * remembers, or nothing (`menuMemory.ts`). A reload never paints a chip it
+ * remembers (`menuMemory.ts`) — else, where only Gitea's answer is missing,
+ * what the platform alone says; else nothing. A reload never paints a chip it
  * then takes back.
  *
  * Pure: no React, no clock, no store.
@@ -197,7 +198,12 @@ export interface ProductionChip {
 
 export type ChipView =
   | { readonly kind: "none" }
-  | { readonly kind: "unknown" }
+  /**
+   * Not all of it read. `partial` is what the platform alone says while
+   * Gitea has not answered — drawn where nothing is remembered, and never
+   * remembered itself.
+   */
+  | { readonly kind: "unknown"; readonly partial?: ProductionChip }
   | { readonly kind: "chip"; readonly chip: ProductionChip };
 
 /** What Gitea said of the group: answered (with the failed release it read), not yet, or never. */
@@ -208,6 +214,15 @@ export type GiteaAnswer =
 
 const NONE: ChipView = { kind: "none" };
 const UNKNOWN: ChipView = { kind: "unknown" };
+
+/**
+ * Gitea has not answered — or keeps failing while the person is signed in:
+ * the chip the platform's facts alone make, as where Gitea is not coming.
+ */
+function untilGitea(input: Parameters<typeof productionChip>[0]): ChipView {
+  const alone = productionChip({ ...input, gitea: { kind: "absent" } });
+  return alone.kind === "chip" ? { kind: "unknown", partial: alone.chip } : UNKNOWN;
+}
 
 const chipView = (chip: ProductionChip): ChipView => ({ kind: "chip", chip });
 
@@ -233,11 +248,12 @@ function chipOf(
 /**
  * The chip, worst first: production being set up; down or stopped, from the
  * platform alone and at once — with a release on its way, or changes waiting,
- * beside it, since those are true as well; unknown while what runs, how its
- * services stand or — where it is coming — Gitea's answer is unread; a release
- * on its way; a release that failed (amber: the old one still serves); nothing
- * released yet; changes waiting (still green: nothing is wrong); healthy. With
- * no production, the first stage in the same words; with neither, no chip.
+ * beside it, since those are true as well; unknown while what runs or how its
+ * services stand is unread, and while Gitea's answer is, where it is coming —
+ * with what the platform alone says as its `partial`; a release on its way; a
+ * release that failed (amber: the old one still serves); nothing released
+ * yet; changes waiting (still green: nothing is wrong); healthy. With no
+ * production, the first stage in the same words; with neither, no chip.
  */
 export function productionChip(input: {
   readonly production: GroupFlowProduction;
@@ -268,13 +284,8 @@ export function productionChip(input: {
       waiting,
     });
   }
-  if (
-    production.kind === "checking" ||
-    serving.kind === "unknown" ||
-    input.gitea.kind === "waiting"
-  ) {
-    return UNKNOWN;
-  }
+  if (production.kind === "checking" || serving.kind === "unknown") return UNKNOWN;
+  if (input.gitea.kind === "waiting") return untilGitea(input);
   if (production.kind === "releasing") {
     return chipOf("prod", "releasing", { version: served, next: production.tag });
   }
@@ -324,9 +335,8 @@ function stageChip(input: Parameters<typeof productionChip>[0]): ChipView {
   const serving = input.serving.stage;
   if (serving.kind === "down") return chipOf("stage", "down", { version });
   if (serving.kind === "stopped") return chipOf("stage", "stopped", { version });
-  if (stage.state === "checking" || serving.kind === "unknown" || input.gitea.kind === "waiting") {
-    return UNKNOWN;
-  }
+  if (stage.state === "checking" || serving.kind === "unknown") return UNKNOWN;
+  if (input.gitea.kind === "waiting") return untilGitea(input);
   switch (stage.state) {
     case "deploying":
       return chipOf("stage", "releasing", { version });
@@ -339,13 +349,16 @@ function stageChip(input: Parameters<typeof productionChip>[0]): ChipView {
   }
 }
 
-/** The chip a menu draws: the one read, or — while unknown — the one it remembers. */
+/**
+ * The chip a menu draws: the one read, or — while unknown — the one it
+ * remembers, else what the platform alone says.
+ */
 export function drawnChip(
   view: ChipView,
   remembered: ProductionChip | undefined,
 ): ProductionChip | undefined {
   if (view.kind === "chip") return view.chip;
-  return view.kind === "unknown" ? remembered : undefined;
+  return view.kind === "unknown" ? (remembered ?? view.partial) : undefined;
 }
 
 /**

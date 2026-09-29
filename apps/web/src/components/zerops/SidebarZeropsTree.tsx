@@ -843,13 +843,12 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // The one derivation the projects page draws from too (`groupFlow.ts`),
     // fed through the page's own input (`groupFlowInputOf`) and gate
     // (`productionAddable`): read once here, so the pull requests this tree
-    // hangs under a Mate, the recipe changes it leaves out, each stop's line
-    // and the heading's own next-step dot can never disagree with what the
-    // page says about the same project.
+    // hangs under a Mate, the recipe changes it leaves out and the production
+    // chip can never disagree with what the page says about the same project.
     //
-    // Read whether or not Gitea is: what a stop runs is the platform's
-    // answer, and its row says it either way. Only the heading's dot waits
-    // for the flow — a next step read from nothing would be a guess.
+    // Read whether or not Gitea is: what a stop runs, and whether it serves,
+    // is the platform's answer, and the chip says that much either way
+    // (`productionChip`).
     const projectFlow: GroupFlow = groupFlow(
       groupFlowInputOf({
         groupId: id,

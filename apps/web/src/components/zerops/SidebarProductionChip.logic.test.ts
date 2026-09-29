@@ -169,7 +169,6 @@ describe("productionChip — the one chip on a project's heading (M2)", () => {
       name: "the platform has not said how its services stand",
       given: { serving: { production: { kind: "unknown" }, stage: SERVING } as const },
     },
-    { name: "Gitea has not answered yet", given: { gitea: { kind: "waiting" } as const } },
     {
       name: "a stage whose last deploy is unread",
       given: {
@@ -180,6 +179,49 @@ describe("productionChip — the one chip on a project's heading (M2)", () => {
   ])("is unknown while $name", ({ given }) => {
     expect(productionChip(input(given))).toEqual({ kind: "unknown" });
   });
+
+  // Gitea may keep not answering — its reads failing while the person is
+  // signed in. The platform alone still says there is a production and what
+  // it runs: drawn where nothing is remembered, never remembered itself.
+  it.each([
+    {
+      name: "a production",
+      given: input({ gitea: { kind: "waiting" }, waiting: 0 }),
+      partial: { label: "prod", state: "ok", version: "v0.1.44" },
+    },
+    {
+      name: "a production nothing was deployed to",
+      given: input({
+        gitea: { kind: "waiting" },
+        production: {
+          kind: "empty",
+          stop: stop({ state: "empty", version: undefined }),
+          line: "Nothing deployed yet",
+        },
+      }),
+      partial: { label: "prod", state: "empty" },
+    },
+    {
+      name: "a stage alone",
+      given: input({
+        gitea: { kind: "waiting" },
+        production: { kind: "absent", line: "Not set up", addable: false },
+        stages: [stage()],
+      }),
+      partial: { label: "stage", state: "ok", version: "main" },
+    },
+  ] as const)(
+    "says what the platform alone says of $name until Gitea answers",
+    ({ given, partial }) => {
+      const view = productionChip(given);
+      expect(view).toEqual({ kind: "unknown", partial });
+      expect(drawnChip(view, undefined)).toEqual(partial);
+      expect(
+        drawnChip(view, { label: "prod", state: "waiting", version: "v0.1.44", waiting: 2 }),
+      ).toEqual({ label: "prod", state: "waiting", version: "v0.1.44", waiting: 2 });
+      expect(rememberedChipAfter(view)).toBeUndefined();
+    },
+  );
 
   it("settles on the platform's facts alone where Gitea is not coming", () => {
     expect(chip(productionChip(input({ gitea: { kind: "absent" } })))).toEqual({
