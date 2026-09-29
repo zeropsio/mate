@@ -255,6 +255,12 @@ function stepKind(entry: WorkLogEntry): StepKind {
   ) {
     return "read";
   }
+  // A search or a read of the web is known by its name before the files a
+  // call names: the folder a search looks in is no file it changed.
+  if (named === "Grep" || named === "Glob") return "search";
+  if (named === "WebFetch" || named === "WebSearch" || entry.itemType === "web_search") {
+    return /\bgrep\b/i.test(entry.toolTitle ?? entry.label) ? "search" : "web";
+  }
   if (
     named === "Edit" ||
     named === "MultiEdit" ||
@@ -265,10 +271,6 @@ function stepKind(entry: WorkLogEntry): StepKind {
     (entry.changedFiles?.length ?? 0) > 0
   ) {
     return "edit";
-  }
-  if (named === "Grep" || named === "Glob") return "search";
-  if (named === "WebFetch" || named === "WebSearch" || entry.itemType === "web_search") {
-    return /\bgrep\b/i.test(entry.toolTitle ?? entry.label) ? "search" : "web";
   }
   return "tool";
 }
