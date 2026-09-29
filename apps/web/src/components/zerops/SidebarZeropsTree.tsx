@@ -933,13 +933,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           fixProblem={fixProblemOf({ chip, failure, down })}
           groupId={id}
           mates={mateEntries.map(({ item }) => ({
-            mateProjectId: item.project.id,
-            name: botDisplayName({
-              bot: readZeropsGroupTags(item.project.tagList).bot,
-              projectName: item.project.name,
-            }),
+            candidate: item,
             tint: tints.get(item.project.id) ?? "slate",
-            mine: getOwner?.(item)?.isViewer === true,
+            mine: getOwner?.(item)?.isViewer,
             threadKey: getActivity?.(item)?.threadKey,
           }))}
           menu={chipMenu({

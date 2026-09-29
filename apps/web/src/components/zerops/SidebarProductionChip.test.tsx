@@ -7,7 +7,10 @@ import { useUiStateStore } from "~/uiStateStore";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { ReviewContext, type ReviewTarget } from "~/zerops/review";
 
-import { ProductionMenu, SidebarProductionChip, type FixMateOption } from "./SidebarProductionChip";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { EnvironmentId } from "@t3tools/contracts";
+
+import { ProductionMenu, SidebarProductionChip, type ChipMate } from "./SidebarProductionChip";
 import { chipMenu, type ChipMenuModel, type ProductionChip } from "./SidebarProductionChip.logic";
 
 const PROBLEM: FixProblem = {
@@ -17,27 +20,32 @@ const PROBLEM: FixProblem = {
   ask: "v0.1.56 is still serving. Find out why, fix it, and release again.",
 };
 
-const JUNO: FixMateOption = {
-  mateProjectId: "shop-juno",
-  name: "Juno",
-  tint: "sky",
-  mine: true,
-  threadKey: "env-juno:thread-juno",
-};
-const CLEO: FixMateOption = {
-  mateProjectId: "shop-cleo",
-  name: "Cleo",
-  tint: "sand",
-  mine: false,
-  threadKey: "env-cleo:thread-cleo",
-};
-const NOVA: FixMateOption = {
-  mateProjectId: "shop-nova",
-  name: "Nova",
-  tint: "slate",
-  mine: true,
-  threadKey: "env-nova:thread-nova",
-};
+/** A Mate of the project `shop`, whose it is as given. */
+function mate(
+  id: string,
+  bot: string,
+  tint: ChipMate["tint"],
+  mine: boolean | undefined,
+): ChipMate {
+  const candidate: ZeropsCandidate = {
+    key: `${id}:zcp`,
+    project: {
+      id,
+      name: `${bot} - dev`,
+      status: "ACTIVE",
+      tagList: ["mate", "mate:g:shop", "mate:role:dev", `mate:bot:${bot}`],
+    },
+    group: "connected",
+    environmentId: EnvironmentId.make(`env-${id}`),
+    service: { id: "zcp", name: "zcp", status: "ACTIVE" },
+  };
+  return { candidate, tint, mine, threadKey: `env-${id}:thread-${id}` };
+}
+
+const JUNO = mate("shop-juno", "Juno", "sky", true);
+const CLEO = mate("shop-cleo", "Cleo", "sand", false);
+const NOVA = mate("shop-nova", "Nova", "slate", true);
+const KAI = mate("shop-kai", "Kai", "violet", undefined);
 
 const menuOf = (chip: ProductionChip, over: Partial<Parameters<typeof chipMenu>[0]> = {}) =>
   chipMenu({ chip, failure: undefined, down: [], stages: [], waiting: 0, nowMs: 0, ...over });
@@ -148,6 +156,12 @@ describe("the production chip's menu", () => {
   it.each([
     { name: "in trouble, with an own Mate", model: FAILED, mates: [CLEO, JUNO], ask: "Juno" },
     { name: "in trouble, with none of theirs", model: FAILED, mates: [CLEO], ask: undefined },
+    {
+      name: "in trouble, to a Mate nobody can say is someone else's",
+      model: FAILED,
+      mates: [CLEO, KAI],
+      ask: "Kai",
+    },
     { name: "healthy", model: HEALTHY, mates: [JUNO], ask: undefined },
   ])("offers the fix $name", ({ model, mates, ask }) => {
     const html = renderToStaticMarkup(menu(model, { mates }));
@@ -158,8 +172,8 @@ describe("the production chip's menu", () => {
   it("offers the fix to the Mate used last first, and another from a small list", () => {
     useUiStateStore.setState({
       threadLastVisitedAtById: {
-        "env-juno:thread-juno": "2026-09-29T08:00:00Z",
-        "env-nova:thread-nova": "2026-09-29T10:00:00Z",
+        "env-shop-juno:thread-shop-juno": "2026-09-29T08:00:00Z",
+        "env-shop-nova:thread-shop-nova": "2026-09-29T10:00:00Z",
       },
     });
     const tree = mount(menu(FAILED, { mates: [JUNO, NOVA] }));

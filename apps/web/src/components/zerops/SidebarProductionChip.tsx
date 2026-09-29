@@ -14,6 +14,7 @@
  */
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { ArrowUpRightIcon, ChevronDownIcon } from "lucide-react";
@@ -21,7 +22,8 @@ import { useRef, useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
-import { fixMateChoice, fixRequestPrompt, type FixProblem } from "~/zerops/fixRequest";
+import { fixMatesOf } from "~/zerops/fixMates";
+import { fixRequestPrompt, type FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
 
 import { gatedPortal } from "../ui/portal-gate";
@@ -37,13 +39,12 @@ import {
 
 const ChipPortal = gatedPortal(PopoverPrimitive.Portal);
 
-/** One of the project's Mates, as the fix is offered to it (S6). */
-export interface FixMateOption {
-  readonly mateProjectId: string;
-  readonly name: string;
+/** One of the project's Mates, as the fix may be offered to it (S6, `fixMatesOf`). */
+export interface ChipMate {
+  readonly candidate: ZeropsCandidate;
   readonly tint: MateTintId;
-  /** The person's own Mate: only these are offered. */
-  readonly mine: boolean;
+  /** Whether it is the person's own; `undefined` where nobody can say yet. */
+  readonly mine: boolean | undefined;
   /** Its conversation's key, whose last visit puts the one used last first. */
   readonly threadKey: string | undefined;
 }
@@ -71,7 +72,7 @@ export function SidebarProductionChip({
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   /** What "Ask <your Mate> to fix it" writes, while something is broken. */
   readonly fixProblem: FixProblem | undefined;
-  readonly mates: ReadonlyArray<FixMateOption>;
+  readonly mates: ReadonlyArray<ChipMate>;
   /** Writes the problem into the Mate's composer, not sent; absent, no fix is offered. */
   readonly onAskToFix: ((mateProjectId: string, problem: FixProblem) => void) | undefined;
   /** The stop's own page — its history — where one opens. */
@@ -171,7 +172,7 @@ export function ProductionMenu({
   readonly stopProjectId: string | undefined;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly fixProblem: FixProblem | undefined;
-  readonly mates: ReadonlyArray<FixMateOption>;
+  readonly mates: ReadonlyArray<ChipMate>;
   readonly onAskToFix: ((mateProjectId: string, problem: FixProblem) => void) | undefined;
   readonly onOpenStop: (() => void) | undefined;
   /** The review opened: the menu gives way to it. */
@@ -218,7 +219,13 @@ export function ProductionMenu({
         </p>
       )}
       {!menu.trouble || fixProblem === undefined || onAskToFix === undefined ? null : (
-        <AskToFix mates={mates} onAsk={onAskToFix} problem={fixProblem} />
+        <AskToFix
+          groupId={groupId}
+          mates={mates}
+          onAsk={onAskToFix}
+          problem={fixProblem}
+          projectId={stopProjectId}
+        />
       )}
       {routes.map((route) => (
         <a
@@ -301,27 +308,39 @@ function Separator() {
 }
 
 /**
- * "Ask <your Mate> to fix it" (S6): the person's own Mates only, the one used
- * last first, a chevron for another. The first press shows what will be
- * written into the Mate's composer — nothing is sent from here — and the
- * second opens its conversation with it there.
+ * "Ask <your Mate> to fix it" (S6): the person's own Mates only — one nobody
+ * can say is someone else's counts as theirs, as the menu's *Mine* keeps it —
+ * the one used last first, a chevron for another (`fixMatesOf`). The first
+ * press shows what will be written into the Mate's composer — nothing is sent
+ * from here — and the second opens its conversation with it there.
  */
 function AskToFix({
   problem,
   mates,
+  groupId,
+  projectId,
   onAsk,
 }: {
   readonly problem: FixProblem;
-  readonly mates: ReadonlyArray<FixMateOption>;
+  readonly mates: ReadonlyArray<ChipMate>;
+  readonly groupId: string;
+  /** The project the problem is in: the chip's own stop's. */
+  readonly projectId: string | undefined;
   readonly onAsk: (mateProjectId: string, problem: FixProblem) => void;
 }) {
   const visited = useUiStateStore((state) => state.threadLastVisitedAtById);
-  const choice = fixMateChoice(
-    mates.map((mate) => ({
-      ...mate,
-      lastVisitedAt: mate.threadKey === undefined ? undefined : visited[mate.threadKey],
-    })),
-  );
+  const tints = new Map(mates.map((mate) => [mate.candidate.project.id, mate.tint]));
+  const choice = fixMatesOf({
+    projectId: projectId ?? groupId,
+    groupId,
+    candidates: mates.map((mate) => mate.candidate),
+    isMine: (candidate) =>
+      mates.find((mate) => mate.candidate.project.id === candidate.project.id)?.mine,
+    visitedAt: (environmentId) => {
+      const mate = mates.find((entry) => entry.candidate.environmentId === environmentId);
+      return mate?.threadKey === undefined ? undefined : visited[mate.threadKey];
+    },
+  }).map((option) => ({ ...option, tint: tints.get(option.mateProjectId) ?? "slate" }));
   const [pickedId, setPickedId] = useState<string | undefined>(undefined);
   const [drafting, setDrafting] = useState(false);
   const [choosing, setChoosing] = useState(false);
