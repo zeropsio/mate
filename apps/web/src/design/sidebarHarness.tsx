@@ -51,7 +51,7 @@ import {
   type JumpHit,
   type SidebarJumpIndex,
 } from "~/components/zerops/JumpBox.logic";
-import { SidebarJumpRow } from "~/components/zerops/SidebarJumpRow";
+import { SidebarJumpButton } from "~/components/zerops/SidebarJumpButton";
 import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 import { SidebarZeropsAccount } from "~/components/zerops/SidebarZeropsAccount";
 import { SidebarWaitingStack } from "~/components/zerops/SidebarWaitingStack";
@@ -804,14 +804,14 @@ function SidebarFrame({
       style={{ width }}
     >
       <header className="flex h-13 shrink-0 items-center gap-2 ps-4">
-        <MateLockup className="h-6 w-auto" decorative />
-        <div className="ms-auto flex w-24 shrink-0 items-center justify-end pe-3">
-          <SidebarWaitingStack mates={waiting.mates} onNext={waiting.next} />
+        <MateLockup className="h-5.5 w-auto" decorative />
+        <div className="ms-auto flex shrink-0 items-center gap-2 pe-3">
+          <div className="flex w-24 shrink-0 items-center justify-end">
+            <SidebarWaitingStack mates={waiting.mates} onNext={waiting.next} />
+          </div>
+          <SidebarJumpButton onJump={onJump} shortcut={JUMP_KEY} />
         </div>
       </header>
-      <div className="shrink-0 px-2 pb-2">
-        <SidebarJumpRow onJump={onJump} onNewProject={() => {}} shortcut={JUMP_KEY} />
-      </div>
       <div className="min-h-0 flex-1 overflow-y-auto ps-2.25 pe-2 pb-1">
         <SidebarZeropsTree
           candidates={CANDIDATES}

@@ -2981,6 +2981,25 @@ code {
   }
 }
 
+/* The jump box's way in, in the logo row (M12): a quiet chip with its key
+   inside it, a step darker and inked under the pointer. */
+.zerops-jump-button {
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 5.5%, transparent);
+  color: var(--sidebar-muted-foreground);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.zerops-jump-button:hover {
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 9%, transparent);
+  color: var(--sidebar-foreground);
+}
+
+.zerops-jump-key {
+  line-height: 1;
+}
+
 /* ==== end of the menu's projects and production ==== */
 
 /* ==== Pass 16 · the run's card ==== */

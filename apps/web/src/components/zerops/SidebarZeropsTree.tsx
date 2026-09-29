@@ -1464,7 +1464,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   return (
     <nav
       aria-label="Mates"
-      className={cn("relative flex flex-col", className)}
+      // The list starts 6 px under the logo row, as the plan's menu does.
+      className={cn("relative flex flex-col pt-1.5", className)}
       data-zerops-surface="sidebar-environments"
       ref={treeRef}
     >
