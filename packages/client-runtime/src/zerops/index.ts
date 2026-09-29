@@ -421,6 +421,26 @@ export {
 } from "./changeConversation.ts";
 export { changeVerdict, type ChangeVerdict, type ChangeVerdictKind } from "./changeVerdict.ts";
 export {
+  changeReview,
+  crewTaskReview,
+  releaseReview,
+  reviewAge,
+  rollbackReview,
+  type ChangeReviewInput,
+  type CrewTaskReviewInput,
+  type ReleaseOutcome,
+  type ReleaseReviewInput,
+  type ReviewFix,
+  type ReviewFixProblem,
+  type ReviewModel,
+  type ReviewPress,
+  type ReviewPrimary,
+  type ReviewState,
+  type ReviewTone,
+  type ReviewVerdict,
+  type RollbackReviewInput,
+} from "./reviewVerdict.ts";
+export {
   changeFileParts,
   parseChangeDiff,
   type ChangeDiffFile,
