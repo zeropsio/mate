@@ -151,7 +151,7 @@ function up<T extends ZeropsCandidate>(
       hostnames: ["app"],
       deployedAt: undefined,
       deployable: [],
-      statuses: [{ hostname: "app", status }],
+      statuses: [{ hostname: "app", status, runtime: true }],
     },
   };
 }

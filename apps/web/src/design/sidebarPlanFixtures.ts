@@ -90,6 +90,7 @@ function stop(
         {
           hostname: "app",
           status: options.status ?? "ACTIVE",
+          runtime: true,
         },
       ],
     },

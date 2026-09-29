@@ -134,7 +134,7 @@ function candidate(
           hostnames: ["app"],
           deployedAt: hoursAgo(3),
           deployable: [],
-          statuses: [{ hostname: "app", status: "ACTIVE" }],
+          statuses: [{ hostname: "app", status: "ACTIVE", runtime: true }],
         },
       };
   return container

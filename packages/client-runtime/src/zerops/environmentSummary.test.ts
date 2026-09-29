@@ -5,15 +5,22 @@ import { summarizeEnvironmentServices } from "./environmentSummary.ts";
 
 function service(
   name: string,
-  overrides: Partial<ZeropsService> & { readonly type?: string } = {},
+  overrides: Partial<ZeropsService> & {
+    readonly type?: string;
+    /** The platform's category: `USER` for a runtime, `STANDARD` for a database. */
+    readonly category?: string;
+  } = {},
 ): ZeropsService {
-  const { type, ...rest } = overrides;
+  const { type, category, ...rest } = overrides;
   return {
     id: `${name}-id`,
     name,
     status: "ACTIVE",
     isSystem: false,
-    serviceStackTypeInfo: { serviceStackTypeVersionName: type ?? "nodejs@22" },
+    serviceStackTypeInfo: {
+      serviceStackTypeVersionName: type ?? "nodejs@22",
+      serviceStackTypeCategory: category ?? "USER",
+    },
     ...rest,
   };
 }
@@ -25,7 +32,7 @@ const BUILD = service("buildappv1788621372", {
   type: "alpine/build_runtime",
 });
 const ZCP = service("zcp", { type: "zcp@1" });
-const DB = service("db", { type: "postgresql:single@16" });
+const DB = service("db", { type: "postgresql:single@16", category: "STANDARD" });
 const APP = service("app", {
   type: "alpine/go@1.22",
   activeAppVersion: { created: "2026-09-05T15:14:56Z", lastUpdate: "2026-09-05T15:17:24Z" },
@@ -58,8 +65,29 @@ describe("summarizeEnvironmentServices", () => {
         CORE,
       ]).statuses,
     ).toEqual([
-      { hostname: "app", status: "CONTAINER_FAILED" },
-      { hostname: "db", status: "ACTIVE" },
+      { hostname: "app", status: "CONTAINER_FAILED", runtime: true },
+      { hostname: "db", status: "ACTIVE", runtime: false },
+    ]);
+  });
+
+  // A database whose upgrade failed takes no page down; a runtime that failed
+  // does — the chip on a heading reads only these (`stopServing`).
+  it.each([
+    { name: "a runtime", given: service("api"), runtime: true },
+    { name: "a database", given: DB, runtime: false },
+    {
+      name: "an object storage",
+      given: service("files", { type: "object-storage", category: "OBJECT_STORAGE" }),
+      runtime: false,
+    },
+    {
+      name: "a shared storage",
+      given: service("disk", { type: "shared-storage", category: "SHARED_STORAGE" }),
+      runtime: false,
+    },
+  ])("says whether $name runs the developer's code", ({ given, runtime }) => {
+    expect(summarizeEnvironmentServices([given]).statuses).toEqual([
+      { hostname: given.name, status: "ACTIVE", runtime },
     ]);
   });
 

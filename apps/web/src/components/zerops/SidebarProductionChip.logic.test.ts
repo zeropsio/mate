@@ -202,6 +202,78 @@ describe("productionChip — the one chip on a project's heading (M2)", () => {
     ).toBe("down");
   });
 
+  // Down or stopped is the loudest thing the chip can say, and it says it at
+  // once — but a release on its way, or changes waiting, are true as well.
+  it.each([
+    {
+      name: "down, a release on its way",
+      given: input({
+        production: { kind: "releasing", stop: stop(), line: "v0.1.44", tag: "v0.1.45" },
+        serving: { production: { kind: "down", services: ["app"] }, stage: SERVING },
+      }),
+      chip: { label: "prod", state: "down", version: "v0.1.44", next: "v0.1.45" },
+      extra: "· releasing v0.1.45",
+      words: "Production is down, releasing v0.1.45",
+    },
+    {
+      name: "down, a deploy running on it",
+      given: input({
+        production: {
+          kind: "deploying",
+          stop: stop({ state: "deploying", version: version("v0.1.45") }),
+          line: "Deploying…",
+        },
+        building: { from: "v0.1.44", to: "v0.1.45" },
+        serving: { production: { kind: "down", services: ["app"] }, stage: SERVING },
+      }),
+      chip: { label: "prod", state: "down", version: "v0.1.44", next: "v0.1.45" },
+      extra: "· releasing v0.1.45",
+      words: "Production is down, releasing v0.1.45",
+    },
+    {
+      name: "down, changes waiting",
+      given: input({
+        waiting: 2,
+        serving: { production: { kind: "down", services: ["app"] }, stage: SERVING },
+      }),
+      chip: { label: "prod", state: "down", version: "v0.1.44", waiting: 2 },
+      extra: "· 2 waiting",
+      words: "Production is down, 2 changes waiting",
+    },
+    {
+      name: "down, the last release failed too",
+      given: input({
+        gitea: { kind: "answered", failure: FAILED_RELEASE },
+        serving: { production: { kind: "down", services: ["app"] }, stage: SERVING },
+      }),
+      chip: { label: "prod", state: "down", version: "v0.1.44" },
+      extra: undefined,
+      words: "Production is down",
+    },
+    {
+      name: "stopped, a release on its way",
+      given: input({
+        production: { kind: "releasing", stop: stop(), line: "v0.1.44", tag: "v0.1.45" },
+        serving: { production: { kind: "stopped" }, stage: SERVING },
+      }),
+      chip: { label: "prod", state: "stopped", version: "v0.1.44", next: "v0.1.45" },
+      extra: "· releasing v0.1.45",
+      words: "Production is stopped, releasing v0.1.45",
+    },
+    {
+      name: "stopped, changes waiting",
+      given: input({ waiting: 1, serving: { production: { kind: "stopped" }, stage: SERVING } }),
+      chip: { label: "prod", state: "stopped", version: "v0.1.44", waiting: 1 },
+      extra: "· 1 waiting",
+      words: "Production is stopped, 1 change waiting",
+    },
+  ])("says $name", ({ given, chip: expected, extra, words }) => {
+    const drawn = chip(productionChip(given));
+    expect(drawn).toEqual(expected);
+    expect(chipFace(drawn!).extra).toBe(extra);
+    expect(chipFace(drawn!).words).toBe(words);
+  });
+
   it.each([
     {
       name: "a production being set up",
@@ -368,61 +440,104 @@ describe("drawnChip and rememberedChipAfter — a reload paints what it last dre
   });
 });
 
-describe("stopServing — how a stop's services stand on the platform", () => {
+describe("stopServing — whether what serves the stop's routes stands", () => {
+  const runtime = (hostname: string, status: string) => ({ hostname, status, runtime: true });
+  const managed = (hostname: string, status: string) => ({ hostname, status, runtime: false });
+  const routes = (...services: ReadonlyArray<string>) => services.map((service) => ({ service }));
   it.each([
     {
       name: "every service up",
       projectStatus: "ACTIVE",
-      services: [
-        { hostname: "app", status: "ACTIVE" },
-        { hostname: "db", status: "RUNNING" },
-      ],
+      services: [runtime("app", "ACTIVE"), managed("db", "RUNNING")],
+      routes: routes("app"),
       serving: { kind: "serving" },
     },
     {
-      name: "a service the platform marks failed",
+      name: "the service behind its routes failed",
       projectStatus: "ACTIVE",
-      services: [
-        { hostname: "app", status: "CONTAINER_FAILED" },
-        { hostname: "db", status: "ACTIVE" },
-      ],
+      services: [runtime("app", "CONTAINER_FAILED"), managed("db", "ACTIVE")],
+      routes: routes("app"),
       serving: { kind: "down", services: ["app"] },
     },
     {
-      name: "a service somebody stopped",
+      name: "one of the services behind its routes failed",
       projectStatus: "ACTIVE",
-      services: [
-        { hostname: "app", status: "SERVICE_STOPPED" },
-        { hostname: "db", status: "ACTIVE" },
-      ],
+      services: [runtime("admin", "CONTAINER_FAILED"), runtime("app", "ACTIVE")],
+      routes: routes("admin", "app"),
+      serving: { kind: "down", services: ["admin"] },
+    },
+    {
+      name: "a database whose upgrade failed — no route goes through it",
+      projectStatus: "ACTIVE",
+      services: [runtime("app", "ACTIVE"), managed("db", "UPGRADE_FAILED")],
+      routes: routes("app"),
+      serving: { kind: "serving" },
+    },
+    {
+      name: "a worker that failed, no route going through it",
+      projectStatus: "ACTIVE",
+      services: [runtime("app", "ACTIVE"), runtime("worker", "CONTAINER_FAILED")],
+      routes: routes("app"),
+      serving: { kind: "serving" },
+    },
+    {
+      name: "a runtime that failed where no route is public",
+      projectStatus: "ACTIVE",
+      services: [runtime("app", "CONTAINER_FAILED"), managed("db", "ACTIVE")],
+      routes: routes(),
+      serving: { kind: "down", services: ["app"] },
+    },
+    {
+      name: "every service behind its routes stopped",
+      projectStatus: "ACTIVE",
+      services: [runtime("app", "SERVICE_STOPPED"), managed("db", "ACTIVE")],
+      routes: routes("app"),
       serving: { kind: "stopped" },
+    },
+    {
+      name: "one of the services behind its routes stopped, the other serving",
+      projectStatus: "ACTIVE",
+      services: [runtime("admin", "STOPPED"), runtime("app", "ACTIVE")],
+      routes: routes("admin", "app"),
+      serving: { kind: "serving" },
+    },
+    {
+      name: "a stopped database beside a serving app",
+      projectStatus: "ACTIVE",
+      services: [runtime("app", "ACTIVE"), managed("db", "STOPPED")],
+      routes: routes("app"),
+      serving: { kind: "serving" },
     },
     {
       name: "the whole project stopped",
       projectStatus: "STOPPED",
       services: undefined,
+      routes: routes(),
       serving: { kind: "stopped" },
     },
     {
       name: "services not read yet",
       projectStatus: "ACTIVE",
       services: undefined,
+      routes: routes(),
       serving: { kind: "unknown" },
     },
     {
-      name: "no service to say anything",
+      name: "no runtime yet — nothing says it does not serve",
       projectStatus: "ACTIVE",
-      services: [],
-      serving: { kind: "unknown" },
+      services: [managed("db", "ACTIVE")],
+      routes: routes(),
+      serving: { kind: "serving" },
     },
     {
       name: "a project in another state",
       projectStatus: "DELETING",
-      services: [{ hostname: "app", status: "ACTIVE" }],
+      services: [runtime("app", "ACTIVE")],
+      routes: routes("app"),
       serving: { kind: "unknown" },
     },
-  ])("$name", ({ projectStatus, services, serving }) => {
-    expect(stopServing({ projectStatus, services })).toEqual(serving);
+  ])("$name", ({ projectStatus, services, routes: routed, serving }) => {
+    expect(stopServing({ projectStatus, services, routes: routed })).toEqual(serving);
   });
 });
 
@@ -676,6 +791,46 @@ describe("chipMenu — what the chip's menu says, per state", () => {
     ).toBe("Down: app and api failed on the platform. v2.3.0 was the last release.");
   });
 
+  it.each([
+    {
+      name: "down, and the last release failed",
+      chip: { label: "prod", state: "down", version: "v2.3.0" },
+      failure: FAILED_RELEASE,
+      note: "Down: app failed on the platform. v2.3.0 was the last release. Release v0.1.57 failed 12 min ago: The build step exited with code 2 while installing packages.",
+      trouble: true,
+    },
+    {
+      name: "down, a release on its way",
+      chip: { label: "prod", state: "down", version: "v2.3.0", next: "v2.3.1" },
+      failure: undefined,
+      note: "Down: app failed on the platform. v2.3.0 was the last release. Releasing v2.3.1.",
+      trouble: true,
+    },
+    {
+      name: "stopped, and the last release failed",
+      chip: { label: "prod", state: "stopped", version: "v0.1.56" },
+      failure: FAILED_RELEASE,
+      note: "Release v0.1.57 failed 12 min ago: The build step exited with code 2 while installing packages.",
+      trouble: true,
+    },
+    {
+      name: "stopped, a release on its way",
+      chip: { label: "prod", state: "stopped", version: "v0.1.56", next: "v0.1.57" },
+      failure: undefined,
+      note: "Releasing v0.1.57.",
+      trouble: false,
+    },
+  ] as const)("says every true thing while $name", ({ chip: shown, failure, note, trouble }) => {
+    const model = menu({
+      chip: shown,
+      failure,
+      down: shown.state === "down" ? ["app"] : [],
+      nowMs: Date.parse("2026-09-29T10:53:00Z"),
+    });
+    expect(model.note).toBe(note);
+    expect(model.trouble).toBe(trouble);
+  });
+
   it("says nothing more where nothing is wrong", () => {
     expect(menu({}).note).toBeUndefined();
   });
@@ -730,6 +885,36 @@ describe("fixProblemOf — what 'Ask <your Mate> to fix it' writes (S6)", () => 
       at: undefined,
       error: undefined,
       ask: "v2.3.0 was the last release. Find out why and bring it back.",
+    });
+  });
+
+  it("hands over production down and the release that failed, both at once", () => {
+    expect(
+      fixProblemOf({
+        chip: { label: "prod", state: "down", version: "v2.3.0" },
+        failure: FAILED_RELEASE,
+        down: ["app"],
+      }),
+    ).toEqual({
+      what: "Production is down: app failed on the platform, and its release v0.1.57 failed deploying app",
+      at: "2026-09-29T10:41:00Z",
+      error: "The build step exited with code 2 while installing packages.",
+      ask: "v2.3.0 was the last release. Find out why, bring it back, and release again.",
+    });
+  });
+
+  it("hands over a release that failed while production is stopped", () => {
+    expect(
+      fixProblemOf({
+        chip: { label: "prod", state: "stopped", version: "v0.1.56" },
+        failure: FAILED_RELEASE,
+        down: [],
+      }),
+    ).toEqual({
+      what: "Production's release v0.1.57 failed deploying app",
+      at: "2026-09-29T10:41:00Z",
+      error: "The build step exited with code 2 while installing packages.",
+      ask: "Production is stopped. Find out why, fix it, and release again.",
     });
   });
 

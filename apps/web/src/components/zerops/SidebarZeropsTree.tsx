@@ -886,7 +886,11 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     const servingOf = (item: T | undefined): StopServing =>
       item === undefined
         ? { kind: "unknown" }
-        : stopServing({ projectStatus: item.project.status, services: item.services?.statuses });
+        : stopServing({
+            projectStatus: item.project.status,
+            services: item.services?.statuses,
+            routes: item.routes ?? [],
+          });
     const gitea: GiteaAnswer =
       flow !== undefined && flow.changesKnown !== false
         ? { kind: "answered", failure: flow.releaseFailure }
