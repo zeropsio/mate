@@ -2970,22 +2970,6 @@
   {
     "path": "apps/web/src/index.css",
     "kind": "css-declaration",
-    "fingerprint": "@utility topbar-scroll-fade{-webkit-mask-image:linear-gradient( to bottom, transparent 0%, rgb(0 0 0 / 10%) 10%, rgb(0 0 0 / 30%) 24%, rgb(0 0 0 / 58%) 42%, rgb(0 0 0 / 82%) 62%, rgb(0 0 0 / 96%) 82%, black 100% ), linear-gradient(black, black), linear-gradient(black, black)}",
-    "owner": "karel",
-    "reason": "mask geometry / alpha ramp, not a colour",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/index.css",
-    "kind": "css-declaration",
-    "fingerprint": "@utility topbar-scroll-fade{mask-image:linear-gradient( to bottom, transparent 0%, rgb(0 0 0 / 10%) 10%, rgb(0 0 0 / 30%) 24%, rgb(0 0 0 / 58%) 42%, rgb(0 0 0 / 82%) 62%, rgb(0 0 0 / 96%) 82%, black 100% ), linear-gradient(black, black), linear-gradient(black, black)}",
-    "owner": "karel",
-    "reason": "mask geometry / alpha ramp, not a colour",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/index.css",
-    "kind": "css-declaration",
     "fingerprint": "#theme-inspector-hover [data-theme-inspector-hover-label]{box-shadow:0 4px 16px rgb(0 0 0 / 24%)}",
     "owner": "karel",
     "reason": "theme inspector overlay / shadow",

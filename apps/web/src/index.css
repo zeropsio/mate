@@ -510,20 +510,22 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 }
 
+/* What scrolls under a top bar is gone before it reaches it: the band's first
+   third is clear, so no half-read line sits under the title, and the rest
+   eases in to full. The scrollbar's lane stays whole. */
 @utility topbar-scroll-fade {
   --topbar-scroll-fade-height: 2.5rem;
   -webkit-mask-image:
     linear-gradient(
       to bottom,
       transparent 0%,
-      rgb(0 0 0 / 10%) 10%,
-      rgb(0 0 0 / 30%) 24%,
-      rgb(0 0 0 / 58%) 42%,
-      rgb(0 0 0 / 82%) 62%,
-      rgb(0 0 0 / 96%) 82%,
-      black 100%
+      transparent 30%,
+      color-mix(in oklab, currentColor 12%, transparent) 45%,
+      color-mix(in oklab, currentColor 45%, transparent) 65%,
+      color-mix(in oklab, currentColor 85%, transparent) 85%,
+      currentColor 100%
     ),
-    linear-gradient(black, black), linear-gradient(black, black);
+    linear-gradient(currentColor, currentColor), linear-gradient(currentColor, currentColor);
   -webkit-mask-position: top, bottom, right;
   -webkit-mask-repeat: no-repeat;
   -webkit-mask-size:
@@ -534,14 +536,13 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     linear-gradient(
       to bottom,
       transparent 0%,
-      rgb(0 0 0 / 10%) 10%,
-      rgb(0 0 0 / 30%) 24%,
-      rgb(0 0 0 / 58%) 42%,
-      rgb(0 0 0 / 82%) 62%,
-      rgb(0 0 0 / 96%) 82%,
-      black 100%
+      transparent 30%,
+      color-mix(in oklab, currentColor 12%, transparent) 45%,
+      color-mix(in oklab, currentColor 45%, transparent) 65%,
+      color-mix(in oklab, currentColor 85%, transparent) 85%,
+      currentColor 100%
     ),
-    linear-gradient(black, black), linear-gradient(black, black);
+    linear-gradient(currentColor, currentColor), linear-gradient(currentColor, currentColor);
   mask-position: top, bottom, right;
   mask-repeat: no-repeat;
   mask-size:
