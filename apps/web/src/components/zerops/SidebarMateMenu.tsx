@@ -7,11 +7,11 @@
  * at the pointer. What it offers, in order: the ways in (*Open*, then *Crew*
  * or *Set up a crew* on the viewer's own Mate with crew mode on, *Open app*,
  * *Copy link*), what this viewer keeps about it (*Mute notifications*,
- * *Mark as unread*, *Rename*), the verbs the projects screen offers too
- * (`useMateActions`: *Restart* or *Start*, *Register in …*, *Hand over…*,
- * *Move to project…*), while it works *Stop the run*, and last, a line
- * apart and in red, *Delete {name}…* where this viewer may delete it. No
- * snooze and no pin: the owner left both out.
+ * *Mark as unread*, *Rename*, *Change face…*), the verbs the projects screen
+ * offers too (`useMateActions`: *Restart* or *Start*, *Register in …*,
+ * *Hand over…*, *Move to project…*), while it works *Stop the run*, and last,
+ * a line apart and in red, *Delete {name}…* where this viewer may delete it.
+ * No snooze and no pin: the owner left both out.
  *
  * Renaming happens where the name stands: the name becomes a field in its own
  * place and size, and a reason it will not do floats under it rather than
@@ -21,6 +21,7 @@ import { MoreHorizontalIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "../ui/menu";
+import { CHANGE_FACE_VERB } from "./ZeropsChangeFaceDialog.logic";
 import type { ZeropsMenuEntry } from "./ZeropsProjectMenu";
 
 /** One Mate's name, edited where it stands (`useMateActions.renameInPlace`). */
@@ -41,6 +42,8 @@ export interface MateRowActions {
   readonly copyLink?: (() => void) | undefined;
   /** Absent where this viewer may not rename it. */
   readonly rename?: MateRenameAction | undefined;
+  /** Opens its Change face dialog (`useMateActions`); absent where Rename is. */
+  readonly changeFace?: (() => void) | undefined;
   /** Stops the run it is on; absent while it rests. */
   readonly stop?: (() => void) | undefined;
   /**
@@ -148,6 +151,11 @@ export function MateMenuItems({
       {actions.rename === undefined ? null : (
         <MenuItem data-zerops-mate-menu="rename" onClick={onRename}>
           Rename
+        </MenuItem>
+      )}
+      {actions.changeFace === undefined ? null : (
+        <MenuItem data-zerops-mate-menu="face" onClick={actions.changeFace}>
+          {CHANGE_FACE_VERB}
         </MenuItem>
       )}
       {verbs.length === 0 ? null : (

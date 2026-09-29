@@ -3,12 +3,13 @@
  *
  * The verbs the projects screen offers too — *Restart* or *Start*, *Register
  * in …*, *Hand over…*, *Move to project…*, *Delete {name}…* — are
- * `useMateActions`', one definition with its dialogs; *Rename* is its write too, done where the name
- * stands instead of in a dialog. The rest is this viewer's own: a mute this
- * browser keeps (`mutedMates.ts`), read or unread (the visit marks the thread
- * rows use), a link to the conversation, and stopping the run it is on —
- * which the server leaves open to every member, a colleague having to be able
- * to stop an agent they may not start.
+ * `useMateActions`', one definition with its dialogs; *Rename* is its write
+ * too, done where the name stands instead of in a dialog, and *Change face…*
+ * its dialog, placed beside *Rename*. The rest is this viewer's own: a mute
+ * this browser keeps (`mutedMates.ts`), read or unread (the visit marks the
+ * thread rows use), a link to the conversation, and stopping the run it is on
+ * — which the server leaves open to every member, a colleague having to be
+ * able to stop an agent they may not start.
  *
  * The group registry is read only once somebody opens a Mate's menu: it is
  * what *Register in …* needs, and the menu is on every screen.
@@ -155,6 +156,7 @@ export function useSidebarMateMenus(input: {
                 copyToClipboard(new URL(href, window.location.origin).toString(), { name });
               },
         rename: mateActions.renameInPlace(candidate),
+        changeFace: mateActions.changeFace(candidate),
         stop:
           environmentId === undefined || activity === undefined || activity.face !== "working"
             ? undefined
