@@ -37,6 +37,7 @@ import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
 import { MessagesTimeline } from "~/components/chat/MessagesTimeline";
 import { TimelineSwitch } from "~/components/chat/TimelineSwitch";
+import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { readTimelinePosition } from "~/components/chat/timelineScrollAnchoring";
 import type { TimelineEntry } from "~/session-logic";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
@@ -524,12 +525,14 @@ function Harness() {
         ))}
       </aside>
       <main className="flex min-w-0 flex-1 flex-col">
-        <header
-          className="flex shrink-0 items-center border-border border-b px-5 font-medium text-sm"
-          style={{ height: 52 }}
+        {/* The app's own top bar (`WorkspacePageHeader`), so the conversation
+            under it stands where ChatView's does. */}
+        <WorkspacePageHeader
+          className="relative bg-background font-medium text-sm"
+          data-chat-header
         >
           {LINE ? <LineHeader current={current} onOpen={setCurrent} /> : thread.name}
-        </header>
+        </WorkspacePageHeader>
         <Pane threadKey={current} />
       </main>
     </div>

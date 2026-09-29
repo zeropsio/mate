@@ -8,9 +8,8 @@ import {
   type ReactNode,
 } from "react";
 import { PanelLeftIcon } from "lucide-react";
-import { Link, useLocation, useNavigate, useParams } from "@tanstack/react-router";
+import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 
-import { APP_BASE_NAME } from "../branding";
 import { isElectron } from "../env";
 import { getLocalStorageItem, removeLocalStorageItem } from "../hooks/useLocalStorage";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
@@ -23,7 +22,7 @@ import { isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import ThreadSidebar from "./Sidebar";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
-import { SidebarChromeHeader } from "./sidebar/SidebarChrome";
+import { SidebarChromeHeader, SidebarCornerMark } from "./sidebar/SidebarChrome";
 import { MainAppLocationTracker } from "./sidebar/mainAppLocation";
 import { useProjects } from "../state/entities";
 import {
@@ -33,7 +32,6 @@ import {
   THREAD_SIDEBAR_MIN_WIDTH,
   THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
 } from "./threadSidebarWidth";
-import { MateMark } from "./MateMark";
 import { Sidebar, SidebarProvider, SidebarRail, useSidebar } from "./ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { SidebarRevealBridge } from "./zerops/SidebarRevealBridge";
@@ -95,23 +93,7 @@ function SidebarControl() {
 
   return (
     <>
-      {/* The mark is centred in a box the size of a titlebar control, which
-          insets it by half the difference — the same pixel the open panel's
-          lockup starts from, so closing the panel does not move it. */}
-      <div
-        className="pointer-events-none fixed left-[var(--workspace-controls-left)] top-[var(--workspace-controls-top)] z-50 flex h-[var(--workspace-topbar-height)] items-center"
-        data-sidebar-control=""
-      >
-        <Link
-          aria-label={APP_BASE_NAME}
-          className="pointer-events-auto grid size-[var(--workspace-titlebar-control-size)] place-items-center rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2 [-webkit-app-region:no-drag]"
-          to="/"
-        >
-          {/* Live, as the open panel's lockup is: the same mark in the same
-              corner, so closing the panel does not still it. */}
-          <MateMark playful className="h-6 w-auto" />
-        </Link>
-      </div>
+      <SidebarCornerMark />
       <div
         className="fixed bottom-[var(--sidebar-content-inset)] left-[var(--sidebar-content-inset)] z-50"
         data-sidebar-open-control=""

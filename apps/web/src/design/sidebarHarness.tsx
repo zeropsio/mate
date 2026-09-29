@@ -6,6 +6,10 @@
  * with made-up data and no session, so there is no door to get through and
  * nothing live to disturb; both themes stand side by side because a sidebar
  * that reads well in one and badly in the other is a sidebar nobody checked.
+ * Beside the menu stands the open Mate's conversation as far as its top bar,
+ * so the logo row and the header read as the one line they share
+ * (`?menu=closed` folds the menu into its corner mark, `?crew=1` puts a crew
+ * on the Mate's line).
  *
  * ## The states are the point
  *
@@ -34,7 +38,10 @@ import { createRoot } from "react-dom/client";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
+  assignCandidateMateTints,
+  botDisplayName,
   deployedVersion,
+  mateShapeOf,
   readZeropsGroupTags,
   type EnvironmentRow,
   type FlowPullRequest,
@@ -49,9 +56,16 @@ import {
 import { EnvironmentId, ThreadId, type CrewSnapshot } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
+import { EllipsisIcon } from "lucide-react";
 
 import { onOpenCommandPalette } from "~/commandPaletteBus";
-import { SidebarChromeHeader } from "~/components/sidebar/SidebarChrome";
+import { ConversationStripView } from "~/components/chat/ConversationStrip";
+import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
+import { PanelLayoutControls } from "~/components/chat/PanelLayoutControls";
+import { SidebarChromeHeader, SidebarCornerMark } from "~/components/sidebar/SidebarChrome";
+import { Button } from "~/components/ui/button";
+import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
+import { ZeropsMark } from "~/components/ZeropsMark";
 import { CommandDialog, CommandDialogPopup } from "~/components/ui/command";
 import {
   chooseJumpItem,
@@ -820,12 +834,20 @@ const ORGANIZATION = { id: "org-acme", name: "Acme", membershipId: "m-acme" };
  */
 const CONTROLS = new URLSearchParams(location.search).get("inset");
 
-function SidebarFrame({ width, onJump }: { readonly width: number; readonly onJump: () => void }) {
+function SidebarFrame({
+  width,
+  onJump,
+  open,
+  setOpen,
+}: {
+  readonly width: number;
+  readonly onJump: () => void;
+  /** The Mate whose conversation is open: a row pressed opens it, as in the app. */
+  readonly open: string;
+  readonly setOpen: (projectId: string) => void;
+}) {
   // Mine / Everyone, from the account menu, as the app reads it.
   const [scope] = useMateScope();
-  // The Mate whose conversation is open: a row pressed opens it, as in the
-  // app, and the selected band slides to it.
-  const [open, setOpen] = useState(FIXTURES.active);
   const shown = useCallback(
     (item: ZeropsCandidate) =>
       shownInScope(scope, FIXTURES.owners.get(item.project.id), item.project.id === open),
@@ -1053,10 +1075,120 @@ function HarnessJumpBox({
   );
 }
 
+/**
+ * `?menu=closed`: the menu folded away and its mark in the window's corner,
+ * as the app draws them (`SidebarCornerMark`), the header taking the room.
+ */
+const MENU_CLOSED = new URLSearchParams(location.search).get("menu") === "closed";
+/** `?crew=1`: the open Mate's line carries a crew of three, as a Mate with a crew's does. */
+const LINE_CREW = new URLSearchParams(location.search).get("crew") === "1";
+
+const TINTS = assignCandidateMateTints(FIXTURES.candidates);
+
+const HARNESS_CREW: ReadonlyArray<LineCrewmate> = (
+  [
+    ["lead", "Lead", "violet"],
+    ["world", "World Server", "sky"],
+    ["rules", "Game Rules", "rose"],
+  ] as const
+).map(([handle, name, tint]) => ({
+  handle,
+  name,
+  tint,
+  face: handle === "rules" ? "working" : "idle",
+  lead: handle === "lead",
+  open: false,
+  known: true,
+  threadId: ThreadId.make(`thread-crew-${handle}`),
+  role: handle === "lead" ? ", its lead" : ", one of its crew",
+  job: null,
+  status: null,
+}));
+
+/**
+ * The open Mate's conversation, as far as its top bar: the app's own header
+ * row (`WorkspacePageHeader`) holding the conversation's line
+ * (`ConversationStripView`: the Mate's face, name and subject, or its crew),
+ * its actions and the panel toggles, in `ChatHeader`'s and `ChatView`'s
+ * classes — beside the menu's logo row, so the two top rows read as one line.
+ */
+function ConversationPane({ open }: { readonly open: string }) {
+  const candidate = FIXTURES.candidates.find((item) => item.project.id === open);
+  const activity = FIXTURES.activity.get(open);
+  const tint = TINTS.get(open) ?? "slate";
+  const name = botDisplayName({
+    bot: readZeropsGroupTags(candidate?.project.tagList).bot,
+    projectName: candidate?.project.name ?? open,
+  });
+  return (
+    <main className="flex min-w-0 flex-1 flex-col">
+      <WorkspacePageHeader className="relative bg-background" data-chat-header>
+        <div
+          className="absolute top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1"
+          data-workspace-titlebar-controls
+        >
+          <PanelLayoutControls
+            liveAgentCount={0}
+            onToggleRightPanel={() => {}}
+            onToggleTerminal={() => {}}
+            rightPanelAvailable
+            rightPanelOpen={false}
+            rightPanelShortcutLabel={null}
+            terminalAvailable
+            terminalOpen={false}
+            terminalShortcutLabel={null}
+          />
+        </div>
+        <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+          <ConversationStripView
+            chats={null}
+            crew={LINE_CREW ? HARNESS_CREW : null}
+            mate={{
+              name,
+              tint,
+              shape: mateShapeOf(candidate?.project.tagList, tint),
+              face: activity?.face ?? "idle",
+              open: true,
+              threadId: activity?.threadId ?? null,
+              tooltip: activity?.subject ?? null,
+            }}
+            onCloseChat={() => {}}
+            onOpen={() => {}}
+            onRename={null}
+            renameField={null}
+            renderCrewmateMenu={() => null}
+          />
+          <span className="flex size-4 shrink-0 items-center justify-center" />
+          <div className="flex shrink-0 items-center justify-end gap-1 pr-18.25 sm:pr-14.25">
+            <Button
+              aria-label="More header actions"
+              data-chat-header-ghost
+              size="icon-sm"
+              variant="ghost-muted"
+            >
+              <EllipsisIcon className="size-4" />
+            </Button>
+            <Button data-chat-header-ghost size="sm" variant="ghost-muted">
+              <ZeropsMark className="size-3.5 shrink-0" />
+              <span className="hidden text-line @3xl/header-actions:inline">Open in Zerops</span>
+            </Button>
+          </div>
+        </div>
+      </WorkspacePageHeader>
+      <div className="flex justify-center p-10">
+        <p className="max-w-md text-sm text-muted-foreground">The conversation opens here.</p>
+      </div>
+    </main>
+  );
+}
+
 function Harness() {
   const params = new URLSearchParams(location.search);
   const width = Number(params.get("w") ?? 256);
   const phone = window.matchMedia("(max-width: 767px)").matches;
+  // The Mate whose conversation is open: a row pressed opens it, as in the
+  // app, and the selected band slides to it.
+  const [open, setOpen] = useState(FIXTURES.active);
   const [jumping, setJumping] = useState(false);
   const index = useSidebarJump((store) => store.index);
   // ⌘K, "/" and the menu's own row open the box, as in the app.
@@ -1101,17 +1233,19 @@ function Harness() {
           </CommandDialogPopup>
         )}
       </CommandDialog>
-      <SidebarFrame
-        onJump={() => {
-          setJumping(true);
-        }}
-        width={phone ? window.innerWidth : width}
-      />
-      {phone ? null : (
-        <main className="flex min-w-0 flex-1 items-start justify-center p-10">
-          <p className="max-w-md text-sm text-muted-foreground">The conversation opens here.</p>
-        </main>
+      {MENU_CLOSED && !phone ? (
+        <SidebarCornerMark />
+      ) : (
+        <SidebarFrame
+          onJump={() => {
+            setJumping(true);
+          }}
+          open={open}
+          setOpen={setOpen}
+          width={phone ? window.innerWidth : width}
+        />
       )}
+      {phone ? null : <ConversationPane open={open} />}
     </div>
   );
 }
@@ -1171,7 +1305,7 @@ useSidebarJump.getState().setShowable(true);
 const router = createRouter({
   routeTree: createRootRoute({
     component: () => (
-      <SidebarProvider className="block">
+      <SidebarProvider className="block" defaultOpen={!MENU_CLOSED}>
         <Harness />
       </SidebarProvider>
     ),
