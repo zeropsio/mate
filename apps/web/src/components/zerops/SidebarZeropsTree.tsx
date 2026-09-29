@@ -1491,9 +1491,12 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   return (
     <nav
       aria-label="Mates"
-      // The list starts 6 px under the logo row, as the plan's menu does. Its
-      // own stacking context, so the selected band stands behind every row.
-      className={cn("relative isolate flex flex-col pt-1.5", className)}
+      // The list stands 16 px under the logo row: the row and the projects
+      // are two groups, and the first project's name reads as the start of
+      // another, 43 px under the mark's foot (the owner, 2026-09-29: "first
+      // project is too close to logo"). Its own stacking context, so the
+      // selected band stands behind every row.
+      className={cn("relative isolate flex flex-col pt-4", className)}
       data-zerops-surface="sidebar-environments"
       ref={treeRef}
     >

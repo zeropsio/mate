@@ -1622,6 +1622,15 @@ describe("a project collapsed to its heading", () => {
     }
   });
 
+  // The logo row and the projects are two groups (the owner, 2026-09-29:
+  // "first project is too close to logo"): the list stands 16 px under the
+  // row, so the first project's name starts 43 px under the mark's foot,
+  // where one folded heading's stands 29 px under the one before it.
+  it("stands the list 16 px under the logo row", () => {
+    const nav = /<nav[^>]*class="([^"]*)"/u.exec(render([CRM_DEV]))?.[1]?.split(" ") ?? [];
+    expect(nav).toContain("pt-4");
+  });
+
   // The band stands as far from the window as from the divider, and the
   // chips sit in it with one gap above, below and after them, so its corners
   // run parallel to theirs (S4; the owner, 2026-09-29: "the tag no properly
