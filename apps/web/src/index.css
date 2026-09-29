@@ -3547,9 +3547,17 @@ code {
   background-color: var(--zerops-status-failed);
 }
 
+/* A dot that arrives while watched scales in, once (T6); what a paint opened
+   onto is simply there (`HeadingFaceMark`). */
 @media (prefers-reduced-motion: no-preference) {
-  .zerops-heading-dot {
+  .zerops-heading-dot[data-arrived] {
     animation: zerops-heading-dot-in 220ms var(--ease-out-strong) both;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zerops-heading-dot[data-arrived] {
+    animation: zerops-heading-dot-fade 220ms ease-out both;
   }
 }
 
@@ -3557,6 +3565,12 @@ code {
   from {
     opacity: 0;
     scale: 0;
+  }
+}
+
+@keyframes zerops-heading-dot-fade {
+  from {
+    opacity: 0;
   }
 }
 

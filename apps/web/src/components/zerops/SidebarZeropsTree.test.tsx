@@ -1197,11 +1197,112 @@ describe("a project collapsed to its heading", () => {
     ).not.toContain("sidebar-project-faces");
   });
 
+  // A folded heading's face is its row's (`mateRowView`): a Mate stopped on
+  // an error stands still with a red dot, as it does in the list — and what
+  // the heading opened onto is simply there: no dot scales in on a paint.
+  it("wears each Mate's row face — still where it stopped on an error — and scales no dot in on a paint", () => {
+    stored.collapsed = new Set(["aaa"]);
+    const failed: ZeropsAgentActivity = {
+      threadId: "thread-crm" as ZeropsAgentActivity["threadId"],
+      kind: "failed",
+      status: null,
+      face: "needs",
+      subject: "Something",
+      at: new Date().toISOString(),
+      snippet: undefined,
+      errorLine: "Build failed: 2 type errors",
+      unread: false,
+      pausedUntil: undefined,
+      threadKey: "env-crm-dev:thread-crm",
+      task: undefined,
+    };
+    const html = render([CRM_DEV_CONNECTED], { getActivity: () => failed });
+    const shown = /data-zerops-surface="sidebar-project-faces">(.*?)<span class="sr-only">/u.exec(
+      html,
+    )?.[1];
+    expect(shown).toContain('data-mate-face-state="idle"');
+    expect(shown).toContain('data-dot="failed"');
+    expect(shown).not.toContain("data-arrived");
+  });
+
+  it("greets nothing its folded heading only stood in for until the Mate's state was read", () => {
+    stored.collapsed = new Set(["aaa"]);
+    const { remembered: _stoodIn, ...read } = activityFromMemory({
+      subject: "Something",
+      at: "2026-09-27T10:00:00.000Z",
+      unread: true,
+      threadId: "thread-1",
+      threadKey: "env-crm-dev:thread-1",
+    });
+    const tree = (item: ZeropsCandidate, activity: ZeropsAgentActivity) => (
+      <SidebarZeropsTree
+        candidates={[item]}
+        complete
+        getActivity={() => activity}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />
+    );
+    const mounted = mount(
+      tree(
+        CRM_DEV,
+        activityFromMemory({
+          subject: "Something",
+          at: "2026-09-27T10:00:00.000Z",
+          unread: true,
+          threadId: "thread-1",
+          threadKey: "env-crm-dev:thread-1",
+        }),
+      ),
+    );
+    act(() => {
+      mounted.update(tree(CRM_DEV_CONNECTED, { ...read, kind: "input", face: "needs" }));
+    });
+    const faces = mounted.root.find(
+      (node) =>
+        typeof node.type === "string" &&
+        node.props["data-zerops-surface"] === "sidebar-project-faces",
+    );
+    const face = faces.find(
+      (node) =>
+        typeof node.type === "string" && node.props["data-zerops-primitive"] === "mate-face",
+    );
+    expect(face.props["data-mate-face-state"]).toBe("needs");
+    expect(face.props["data-mate-face-arrived"]).toBeUndefined();
+    const dot = faces.find(
+      (node) => typeof node.type === "string" && node.props.className === "zerops-heading-dot",
+    );
+    expect(dot.props["data-dot"]).toBe("attention");
+    expect(dot.props["data-arrived"]).toBeUndefined();
+  });
+
   it("keeps less room under the list's last project", () => {
     const rows = /data-zerops-surface="sidebar-project-rows"><div class="([^"]*)"/u.exec(
       render([CRM_DEV]),
     )?.[1];
     expect(rows?.split(" ")).toEqual(expect.arrayContaining(["pt-0.5", "pb-4"]));
+  });
+
+  // The faces arrive once the rows have folded away, under a pointer still on
+  // the heading: + and ⋯ stand after the room that takes them up, never after
+  // the faces, so nothing a person is about to press moves.
+  it("keeps + and ⋯ at the heading's end, past the room the faces take", () => {
+    const html = renderToStaticMarkup(
+      <ProjectHeader
+        collapsed
+        faces={<span data-zerops-surface="sidebar-project-faces" />}
+        name="Links"
+        onBrowseProjects={() => {}}
+        onToggle={() => {}}
+        production={<span data-zerops-surface="sidebar-production-chip" />}
+      />,
+    );
+    const at = (needle: string) => html.indexOf(needle);
+    const room = at('<span aria-hidden="true" class="min-w-0 flex-1"></span>');
+    expect(room).toBeGreaterThan(at("sidebar-project-faces"));
+    expect(at("sidebar-project-add-mate")).toBeGreaterThan(room);
+    expect(at("sidebar-project-more")).toBeGreaterThan(at("sidebar-project-add-mate"));
+    expect(at("sidebar-production-chip")).toBeGreaterThan(at("sidebar-project-more"));
   });
 
   it("wears one chevron that turns, the heading saying whether it is folded", () => {

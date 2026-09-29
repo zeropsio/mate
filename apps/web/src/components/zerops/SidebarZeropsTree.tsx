@@ -1015,13 +1015,15 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 ]),
           ];
     // Folded, the heading shows who is busy in it (M15): its Mates that need
-    // you, work, or finished unseen — once its rows have folded away.
+    // you, work, stopped on an error or finished unseen, each as its row draws
+    // it (`mateRowView`) — once its rows have folded away.
     const folded = collapsed.has(id) && folds.get(id) !== "closing";
     const busy = folded
       ? headingFaces(
           mateEntries.map(({ item }) => {
             const activity = getActivity?.(item);
             const live = drawnActivity(item, activity);
+            const view = mateRowView(live, mateFaceFor(item.group === "connected", activity));
             return {
               projectId: item.project.id,
               name: botDisplayName({
@@ -1029,9 +1031,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 projectName: item.project.name,
               }),
               tint: tints.get(item.project.id) ?? "slate",
-              face: mateFaceFor(item.group === "connected", activity),
-              failed: live?.kind === "failed",
-              unread: live?.unread === true,
+              state: view.state,
+              face: view.face,
+              dot: view.dot,
+              known: live !== undefined && live.remembered !== true,
             };
           }),
         )
@@ -1560,6 +1563,11 @@ export function ProjectHeader({
           {faces}
         </button>
       )}
+      {/* The room between the title and the heading's end takes what the
+          title leaves — the faces too, which arrive once the rows have folded
+          away, under a pointer still on the heading: + and ⋯ stand past it,
+          so they never move. */}
+      <span aria-hidden="true" className="min-w-0 flex-1" />
       {/* Hidden until hover keeps a list of five projects calm, but a finger
           never hovers — so a coarse pointer gets them at rest. A slot that is
           always there: nothing moves when they show. */}
@@ -1640,7 +1648,6 @@ export function ProjectHeader({
           </Menu>
         </span>
       )}
-      <span aria-hidden="true" className="min-w-0 flex-1" />
       {production}
     </div>
   );
@@ -1658,9 +1665,10 @@ const HEADING_FACE_WORDS: Record<HeadingFaceDot | "working", string> = {
 
 /**
  * The faces of a folded project's busy Mates (M15), after its title: 18 px,
- * each in its own pose — turning while it works, hopping when it needs you —
- * with a 7 px dot at its corner for what is not work, cut out of the menu's
- * ground: amber needs you, blue finished unseen, red stopped on an error.
+ * each its row's face in its row's pose — turning while it works, hopping when
+ * it needs you, still where it stopped on an error — with a 7 px dot at its
+ * corner for what is not work, cut out of the menu's ground: amber needs you,
+ * blue finished unseen, red stopped on an error.
  */
 function HeadingFaces({ faces }: { readonly faces: ReadonlyArray<HeadingFace> }) {
   return (
@@ -1669,18 +1677,44 @@ function HeadingFaces({ faces }: { readonly faces: ReadonlyArray<HeadingFace> })
       data-zerops-surface="sidebar-project-faces"
     >
       {faces.map((face) => (
-        <span className="relative flex" key={face.projectId}>
-          <MateFace className="size-4.5" greets size="sm" state={face.face} tint={face.tint} />
-          {face.dot === undefined ? null : (
-            <span aria-hidden="true" className="zerops-heading-dot" data-dot={face.dot} />
-          )}
-        </span>
+        <HeadingFaceMark face={face} key={face.projectId} />
       ))}
       <span className="sr-only">
         {faces
           .map((face) => `${face.name} ${HEADING_FACE_WORDS[face.dot ?? "working"]}`)
           .join(", ")}
       </span>
+    </span>
+  );
+}
+
+/**
+ * One face on a folded heading. Like its row's, it greets only an arrival it
+ * watches, and its dot scales in only when it arrives while watched (T6) —
+ * what a reload or a fold opened onto, or what this browser remembered, is
+ * simply there.
+ */
+function HeadingFaceMark({ face }: { readonly face: HeadingFace }) {
+  const arrived = useChangedSinceShown(face.dot, face.known);
+  return (
+    <span className="relative flex">
+      <MateFace
+        className="size-4.5"
+        greets
+        known={face.known}
+        size="sm"
+        state={face.face}
+        tint={face.tint}
+      />
+      {face.dot === undefined ? null : (
+        <span
+          aria-hidden="true"
+          className="zerops-heading-dot"
+          data-arrived={arrived ? "" : undefined}
+          data-dot={face.dot}
+          key={face.dot}
+        />
+      )}
     </span>
   );
 }

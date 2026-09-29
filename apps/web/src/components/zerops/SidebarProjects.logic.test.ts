@@ -17,45 +17,37 @@ describe("projectRoom", () => {
 });
 
 describe("headingFaces — who a folded project's heading shows (M15)", () => {
-  const mate = (
-    projectId: string,
-    face: "idle" | "working" | "needs" | "done" | "sleep",
-    over: { readonly failed?: boolean; readonly unread?: boolean } = {},
-  ) => ({
+  // Each as its row draws it (`mateRowView`): the state, the face, the dot.
+  const ROW = {
+    idle: { face: "idle", dot: undefined },
+    paused: { face: "sleep", dot: undefined },
+    working: { face: "working", dot: undefined },
+    needs: { face: "needs", dot: "attention" },
+    unread: { face: "done", dot: "unread" },
+    failed: { face: "idle", dot: "failed" },
+  } as const;
+  const mate = (projectId: string, state: keyof typeof ROW) => ({
     projectId,
     name: projectId,
     tint: "slate" as const,
-    face,
-    failed: over.failed ?? false,
-    unread: over.unread ?? false,
+    state,
+    ...ROW[state],
+    known: true,
   });
 
   it.each([
-    { name: "nobody busy: no faces", mates: [mate("a", "idle"), mate("b", "sleep")], shown: [] },
+    { name: "nobody busy: no faces", mates: [mate("a", "idle"), mate("b", "paused")], shown: [] },
     { name: "working: the face alone", mates: [mate("a", "working")], shown: [["a", undefined]] },
     { name: "needs you: amber", mates: [mate("a", "needs")], shown: [["a", "attention"]] },
-    {
-      name: "stopped on an error: red",
-      mates: [mate("a", "needs", { failed: true })],
-      shown: [["a", "failed"]],
-    },
-    {
-      name: "finished, not seen: blue",
-      mates: [mate("a", "done", { unread: true })],
-      shown: [["a", "unread"]],
-    },
-    {
-      name: "finished and seen: nothing",
-      mates: [mate("a", "done")],
-      shown: [],
-    },
+    { name: "stopped on an error: red", mates: [mate("a", "failed")], shown: [["a", "failed"]] },
+    { name: "finished, not seen: blue", mates: [mate("a", "unread")], shown: [["a", "unread"]] },
     {
       name: "the most urgent first, the list's order kept within each, three at most",
       mates: [
         mate("w1", "working"),
-        mate("u1", "done", { unread: true }),
+        mate("u1", "unread"),
         mate("n1", "needs"),
-        mate("f1", "needs", { failed: true }),
+        mate("f1", "failed"),
         mate("n2", "needs"),
       ],
       shown: [
@@ -66,6 +58,12 @@ describe("headingFaces — who a folded project's heading shows (M15)", () => {
     },
   ])("$name", ({ mates, shown }) => {
     expect(headingFaces(mates).map((face) => [face.projectId, face.dot])).toEqual(shown);
+  });
+
+  it("wears the row's face: still where it stopped on an error", () => {
+    expect(headingFaces([mate("a", "failed")])).toEqual([
+      { projectId: "a", name: "a", tint: "slate", face: "idle", dot: "failed", known: true },
+    ]);
   });
 });
 
