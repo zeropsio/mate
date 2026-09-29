@@ -5094,6 +5094,7 @@ describe("ProviderRuntimeIngestion", () => {
     const buildInput = { command: "pnpm build", description: "Build the app" };
     const building = {
       id: "call-build",
+      activityKind: "tool.updated",
       itemType: "command_execution",
       title: "Command run",
       detail: "Bash: pnpm build",
@@ -5140,6 +5141,7 @@ describe("ProviderRuntimeIngestion", () => {
           calls: [
             {
               id: "call-build",
+              activityKind: "tool.started",
               itemType: "command_execution",
               title: "Command run",
               detail: "Bash: {}",

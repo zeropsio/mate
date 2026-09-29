@@ -14,6 +14,7 @@ const at = (second: number) => `2026-09-29T08:00:${String(second).padStart(2, "0
 
 const call = (id: string, second: number, extra: Partial<ThreadLiveCall> = {}): ThreadLiveCall => ({
   id,
+  activityKind: "tool.updated",
   itemType: "command_execution",
   title: "Command run",
   startedAt: at(second),
@@ -218,6 +219,7 @@ describe("liveCallOf", () => {
       }),
       call: {
         id: "call-1",
+        activityKind: "tool.updated",
         itemType: "command_execution",
         title: "Command run",
         detail: "Bash: {}",
@@ -239,6 +241,7 @@ describe("liveCallOf", () => {
       }),
       call: {
         id: "call-1",
+        activityKind: "tool.updated",
         itemType: "command_execution",
         title: "Command run",
         detail: "Bash: pnpm build",
@@ -267,6 +270,7 @@ describe("liveCallOf", () => {
       }),
       call: {
         id: "call-1",
+        activityKind: "tool.updated",
         itemType: "command_execution",
         title: "Ran command",
         command: "/bin/zsh -lc 'pnpm build'",
@@ -288,6 +292,7 @@ describe("liveCallOf", () => {
       }),
       call: {
         id: "call-1",
+        activityKind: "tool.updated",
         itemType: "dynamic_tool_call",
         title: "Tool call",
         detail: 'Read: {"file_path":"/var/www/src/index.ts"}',
@@ -314,6 +319,7 @@ describe("liveCallOf", () => {
       }),
       call: {
         id: "call-1",
+        activityKind: "tool.updated",
         itemType: "mcp_tool_call",
         title: "MCP tool call",
         detail: "mcp__zerops__zerops_browser: {…}",
@@ -341,6 +347,7 @@ describe("liveCallOf", () => {
       }),
       call: {
         id: "call-1",
+        activityKind: "tool.updated",
         itemType: "mcp_tool_call",
         title: "zerops · zerops_deploy",
         toolName: "zerops_deploy",
@@ -365,6 +372,7 @@ describe("liveCallOf", () => {
       }),
       call: {
         id: "call-1",
+        activityKind: "tool.updated",
         itemType: "file_change",
         title: "File change",
         files: ["src/a.ts", "src/b.ts"],
@@ -381,6 +389,7 @@ describe("liveCallOf", () => {
       }),
       call: {
         id: "call-1",
+        activityKind: "tool.updated",
         itemType: "image_view",
         title: "Image view",
         toolName: "Read",
@@ -435,10 +444,11 @@ describe("liveStepObservationOf", () => {
       data: { toolName: "Bash", input: { command: "pnpm build" } },
     },
   });
-  const running = (title: string): LiveStepObservation => ({
+  const running = (title: string, activityKind = "tool.updated"): LiveStepObservation => ({
     type: "call-running",
     call: {
       id: "call-1",
+      activityKind,
       itemType: "command_execution",
       title,
       detail: "Bash: pnpm build",
@@ -457,7 +467,7 @@ describe("liveStepObservationOf", () => {
     {
       name: "a call starting runs, titled as the runtime titles it",
       activity: activity("tool.started", "inProgress", "Command run started"),
-      observation: running("Command run"),
+      observation: running("Command run", "tool.started"),
     },
     {
       name: "a call's update in progress runs",

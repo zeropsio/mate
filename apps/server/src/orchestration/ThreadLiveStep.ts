@@ -110,6 +110,7 @@ function sameStrings(
 function sameCall(left: ThreadLiveCall, right: ThreadLiveCall): boolean {
   return (
     left.id === right.id &&
+    left.activityKind === right.activityKind &&
     left.itemType === right.itemType &&
     left.title === right.title &&
     left.detail === right.detail &&
@@ -227,6 +228,7 @@ export function liveCallOf(activity: OrchestrationThreadActivity): ThreadLiveCal
       : activity.summary;
   return {
     id,
+    activityKind: activity.kind,
     itemType,
     title: asText(title) ?? "Tool",
     ...(detail === undefined ? {} : { detail }),

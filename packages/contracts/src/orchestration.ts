@@ -734,6 +734,12 @@ export type OrchestrationProjectShell = typeof OrchestrationProjectShell.Type;
 export const ThreadLiveCall = Schema.Struct({
   /** The call's id, as its activities carry it (`toolCallId`). */
   id: TrimmedNonEmptyString,
+  /**
+   * The kind of the last activity that told of it: `tool.started` until its
+   * first update, `tool.updated` after — a card draws a call only once it is
+   * updated, and a reader of these facts applies the card's rule.
+   */
+  activityKind: TrimmedNonEmptyString,
   /** The runtime's kind of call: `command_execution`, `file_change`, `mcp_tool_call`, … */
   itemType: TrimmedNonEmptyString,
   /** The call's title, as its activity is summarised ("Command run", "Tool call"). */

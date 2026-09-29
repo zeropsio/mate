@@ -1414,6 +1414,7 @@ it("isProviderSendTurnSupportedImageMimeType accepts raster formats and rejects 
 
 const buildCall = {
   id: "call-build",
+  activityKind: "tool.updated",
   itemType: "command_execution",
   title: "Command run",
   detail: "Bash: pnpm build",
