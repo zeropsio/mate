@@ -344,6 +344,18 @@ export function withCrews(
   return same(next, memory.crews) ? memory : { ...memory, crews: next };
 }
 
+/**
+ * The memory with nothing of a Mate its person deleted — its row and its crew — at once, not
+ * when the listing lets it go: until then a reload would paint a Mate that is on its way off
+ * Zerops as it last stood.
+ */
+export function withoutMate(memory: MenuMemory, projectId: string): MenuMemory {
+  if (!(projectId in memory.rows) && !(projectId in memory.crews)) return memory;
+  const { [projectId]: _row, ...rows } = memory.rows;
+  const { [projectId]: _crew, ...crews } = memory.crews;
+  return { ...memory, rows, crews };
+}
+
 /** An organization's members as last read, what they carry beyond a member's record dropped. */
 export function withMembers(
   memory: MenuMemory,

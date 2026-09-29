@@ -18,6 +18,8 @@ export interface ZeropsMenuAction {
   readonly onSelect: () => void;
   /** Shown but not clickable — e.g. a check already running. */
   readonly disabled?: boolean;
+  /** A verb that takes something away for good: drawn in red, last, a line apart. */
+  readonly variant?: "destructive";
 }
 
 /** A line between two groups of actions — the quick ones above, the quiet ones below. */
@@ -78,7 +80,12 @@ export function ZeropsProjectMenu({
           "separator" in entry ? (
             <MenuSeparator key={entry.id} />
           ) : (
-            <MenuItem key={entry.id} disabled={entry.disabled === true} onClick={entry.onSelect}>
+            <MenuItem
+              key={entry.id}
+              disabled={entry.disabled === true}
+              onClick={entry.onSelect}
+              variant={entry.variant ?? "default"}
+            >
               {entry.label}
             </MenuItem>
           ),

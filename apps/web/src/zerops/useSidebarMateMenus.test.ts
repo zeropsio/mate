@@ -27,6 +27,16 @@ describe("sidebarMateVerbs — the shared verbs a Mate's own menu carries", () =
     ]);
   });
 
+  it("keeps Delete, in its own words and its red", () => {
+    const verbs = sidebarMateVerbs([
+      entry("restart", "Restart"),
+      { id: "version", separator: true },
+      { id: "delete", label: "Delete Quinn…", variant: "destructive", onSelect: () => {} },
+    ]);
+    expect(verbs.map((verb) => verb.id)).toEqual(["restart", "delete"]);
+    expect(verbs[1]).toMatchObject({ label: "Delete Quinn…", variant: "destructive" });
+  });
+
   it("keeps Start in place of Restart where the Mate is stopped", () => {
     expect(sidebarMateVerbs([entry("start", "Start")]).map((verb) => verb.id)).toEqual(["start"]);
   });

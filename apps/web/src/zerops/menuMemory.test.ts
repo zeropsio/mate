@@ -18,6 +18,7 @@ import {
   withChips,
   withCrews,
   withMembers,
+  withoutMate,
   withRows,
 } from "./menuMemory";
 
@@ -168,6 +169,20 @@ describe("what the memory keeps", () => {
     const first = withRows(EMPTY_MENU_MEMORY, { nova: row, kai: row }, new Set(["nova", "kai"]));
     const next = withRows(first, {}, new Set(["nova"]));
     expect(Object.keys(next.rows)).toEqual(["nova"]);
+  });
+
+  it("forgets everything of a deleted Mate at once, its row and its crew, and nothing else", () => {
+    const crew = rememberedCrewOf([
+      { handle: "ada", displayName: "Ada", tint: "violet", lead: true },
+    ]);
+    const first = withCrews(
+      withRows(EMPTY_MENU_MEMORY, { nova: row, kai: row }, new Set(["nova", "kai"])),
+      { nova: crew, kai: crew },
+    );
+    const next = withoutMate(first, "nova");
+    expect(Object.keys(next.rows)).toEqual(["kai"]);
+    expect(Object.keys(next.crews)).toEqual(["kai"]);
+    expect(withoutMate(next, "nova")).toBe(next);
   });
 
   it("is the same memory when nothing changed, so nothing is written", () => {

@@ -9,8 +9,9 @@
  * *Copy link*), what this viewer keeps about it (*Mute notifications*,
  * *Mark as unread*, *Rename*), the verbs the projects screen offers too
  * (`useMateActions`: *Restart* or *Start*, *Register in …*, *Hand over…*,
- * *Move to project…*), and last, while it works, *Stop the run*. No snooze
- * and no pin: the owner left both out.
+ * *Move to project…*), while it works *Stop the run*, and last, a line
+ * apart and in red, *Delete {name}…* where this viewer may delete it. No
+ * snooze and no pin: the owner left both out.
  *
  * Renaming happens where the name stands: the name becomes a field in its own
  * place and size, and a reason it will not do floats under it rather than
@@ -42,7 +43,10 @@ export interface MateRowActions {
   readonly rename?: MateRenameAction | undefined;
   /** Stops the run it is on; absent while it rests. */
   readonly stop?: (() => void) | undefined;
-  /** The verbs the projects screen offers too: start or restart, register, hand over, move. */
+  /**
+   * The verbs the projects screen offers too: start or restart, register, hand over, move — and
+   * delete, which the menu keeps for its end.
+   */
   readonly entries: ReadonlyArray<ZeropsMenuEntry>;
   /** The menu opened — what a caller reads lazily for its verbs waits for this. */
   readonly onMenuOpen?: (() => void) | undefined;
@@ -87,10 +91,13 @@ export function MateMenuItems({
   shortcuts,
 }: MateMenuItemsProps) {
   const hint = (key: string): ReactNode => (shortcuts ? <MenuShortcut>{key}</MenuShortcut> : null);
-  const verbs = actions.entries.filter(
+  const entries = actions.entries.filter(
     (entry): entry is Extract<ZeropsMenuEntry, { readonly label: string }> =>
       !("separator" in entry),
   );
+  // What takes the Mate away for good stands last, a line apart — after the stop too.
+  const verbs = entries.filter((entry) => entry.variant !== "destructive");
+  const final = entries.filter((entry) => entry.variant === "destructive");
   return (
     <>
       <MenuItem data-zerops-mate-menu="open" onClick={onOpenMate}>
@@ -165,6 +172,22 @@ export function MateMenuItems({
             Stop the run
             {hint("X")}
           </MenuItem>
+        </>
+      )}
+      {final.length === 0 ? null : (
+        <>
+          <MenuSeparator />
+          {final.map((entry) => (
+            <MenuItem
+              data-zerops-mate-menu={entry.id}
+              disabled={entry.disabled === true}
+              key={entry.id}
+              onClick={entry.onSelect}
+              variant="destructive"
+            >
+              {entry.label}
+            </MenuItem>
+          ))}
         </>
       )}
     </>

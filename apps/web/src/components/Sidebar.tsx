@@ -235,6 +235,7 @@ import { newProjectOffered } from "./zerops/SidebarProjects.logic";
 import { releaseFailureOf } from "./zerops/SidebarProductionChip.logic";
 import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
+import { mateDeleting, useDeletingMates } from "../zerops/deletingMates";
 import { useSidebarWaiting } from "../zerops/useSidebarWaiting";
 import { shownInScope, useMateScope } from "../zerops/mateScope";
 import { SidebarJumpButton } from "./zerops/SidebarJumpButton";
@@ -2297,16 +2298,19 @@ export default function Sidebar() {
     [zeropsAgentActivity],
   );
   // Remember each connected Mate's row as its conversation says it, and
-  // forget whatever the listing no longer holds.
+  // forget whatever the listing no longer holds — and a Mate on its way off
+  // Zerops, which a reload must not paint as it stood.
+  const zeropsDeleting = useDeletingMates();
   useEffect(() => {
     if (!zeropsHeld.complete) return;
     const rows: Record<string, RememberedRow> = {};
     const listed = new Set<string>();
     const groups = new Set<string>();
     for (const candidate of zeropsCandidates) {
-      listed.add(candidate.project.id);
       const { groupId } = readZeropsGroupTags(candidate.project.tagList);
       if (groupId !== undefined) groups.add(groupId);
+      if (mateDeleting(candidate.project, zeropsDeleting)) continue;
+      listed.add(candidate.project.id);
       if (candidate.group !== "connected" || candidate.environmentId === undefined) continue;
       const live = zeropsAgentActivity.get(candidate.environmentId);
       if (live !== undefined) rows[candidate.project.id] = rememberedRowOf(live);
@@ -2318,7 +2322,7 @@ export default function Sidebar() {
         listed,
       ),
     );
-  }, [zeropsAgentActivity, zeropsCandidates, zeropsHeld.complete]);
+  }, [zeropsAgentActivity, zeropsCandidates, zeropsDeleting, zeropsHeld.complete]);
   // The change rows and the chips the tree drew of what it read, for
   // the next reload to paint while Gitea and the platform answer again.
   const zeropsRemembered = useMemo<SidebarRemembered>(

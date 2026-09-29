@@ -101,6 +101,37 @@ describe("MateMenuItems — a Mate's own menu", () => {
     );
   });
 
+  it("puts Delete last, in red, a line apart from everything else — the stop included", () => {
+    const remove = {
+      id: "delete",
+      label: "Delete Nova…",
+      variant: "destructive" as const,
+      onSelect: () => {},
+    };
+    const html = items({ actions: { ...ACTIONS, entries: [...ACTIONS.entries, remove] } });
+    expect(order(html)).toEqual([
+      "open",
+      "open-app",
+      "copy-link",
+      "mute",
+      "unread",
+      "rename",
+      "restart",
+      "assign",
+      "move",
+      "delete",
+    ]);
+    expect(html).toMatch(
+      /role="separator"[^>]*><\/div><div[^>]*data-variant="destructive"[^>]*data-zerops-mate-menu="delete"|role="separator"[^>]*><\/div><div[^>]*data-zerops-mate-menu="delete"[^>]*data-variant="destructive"/u,
+    );
+    expect(html).toContain(">Delete Nova…<");
+    const working = items({
+      actions: { ...ACTIONS, stop: () => {}, entries: [...ACTIONS.entries, remove] },
+    });
+    expect(order(working).slice(-2)).toEqual(["stop", "delete"]);
+    expect(working.match(/role="separator"/gu)).toHaveLength(4);
+  });
+
   it("offers Stop the run only while it works, and Rename only where it may be renamed", () => {
     expect(order(items())).not.toContain("stop");
     expect(order(items({ actions: { ...ACTIONS, rename: undefined } }))).not.toContain("rename");
