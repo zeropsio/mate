@@ -150,3 +150,35 @@ export function messagePictures<A extends { readonly type: string; readonly mime
   });
   return pictures;
 }
+
+export type PictureContentPart =
+  | { readonly kind: "text"; readonly text: string }
+  | { readonly kind: "image"; readonly index: number };
+
+/**
+ * The message as the Mate reads it: each image right after its label, and the
+ * words between them as text, exactly as written. An image the text holds no
+ * label for goes first, as images always did. Null when the text places no
+ * image, so a caller keeps its own order.
+ */
+export function interleavePictures(text: string, imageCount: number): PictureContentPart[] | null {
+  const parts: PictureContentPart[] = [];
+  let cursor = 0;
+  let next = 1;
+  for (const match of text.matchAll(/^\[Picture (\d+)\]$/gmu)) {
+    if (Number(match[1]) !== next || next > imageCount) continue;
+    const end = (match.index ?? 0) + match[0].length;
+    parts.push({ kind: "text", text: text.slice(cursor, end) });
+    parts.push({ kind: "image", index: next - 1 });
+    cursor = text[end] === "\n" ? end + 1 : end;
+    next += 1;
+  }
+  if (next === 1) return null;
+  const rest = text.slice(cursor);
+  if (rest.trim().length > 0) parts.push({ kind: "text", text: rest });
+  const unplaced: PictureContentPart[] = [];
+  for (let index = next - 1; index < imageCount; index += 1) {
+    unplaced.push({ kind: "image", index });
+  }
+  return [...unplaced, ...parts];
+}

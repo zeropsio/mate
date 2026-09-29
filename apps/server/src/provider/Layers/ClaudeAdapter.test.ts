@@ -1022,6 +1022,99 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  // Pictures the composer placed in the text go right after their labels; a
+  // command, or a message with nothing after its last picture, keeps the
+  // images-first layout so its final text block stays last.
+  it.effect.each([
+    {
+      name: "each picture right after its label, the words between as text",
+      input:
+        "The header feels off:\n[Picture 1]\nNotes on picture 1:\n1. Bigger logo\nAnd the phone:\n[Picture 2]\nFix both",
+      content: [
+        { type: "text", text: "The header feels off:\n[Picture 1]" },
+        "first",
+        { type: "text", text: "Notes on picture 1:\n1. Bigger logo\nAnd the phone:\n[Picture 2]" },
+        "second",
+        { type: "text", text: "Fix both" },
+      ],
+    },
+    {
+      name: "a slash command keeps its text last",
+      input: "/review\n[Picture 1]\n[Picture 2]\nthis",
+      content: [
+        "first",
+        "second",
+        { type: "text", text: "/review\n[Picture 1]\n[Picture 2]\nthis" },
+      ],
+    },
+    {
+      name: "a message ending on a picture keeps its text last",
+      input: "See:\n[Picture 1]\n[Picture 2]",
+      content: ["first", "second", { type: "text", text: "See:\n[Picture 1]\n[Picture 2]" }],
+    },
+  ])("interleaves pictures: $name", ({ input, content }) => {
+    const baseDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "claude-pictures-"));
+    const harness = makeHarness({ cwd: "/tmp/project-claude-pictures", baseDir });
+    return Effect.gen(function* () {
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => NodeFS.rmSync(baseDir, { recursive: true, force: true })),
+      );
+      const adapter = yield* ClaudeAdapter;
+      const { attachmentsDir } = yield* ServerConfig;
+      const pictures = [
+        { key: "first", id: "thread-claude-picture-42345678-1234-1234-1234-123456789abc", byte: 1 },
+        {
+          key: "second",
+          id: "thread-claude-picture-52345678-1234-1234-1234-123456789abc",
+          byte: 2,
+        },
+      ].map(({ key, id, byte }) => {
+        const attachment = {
+          type: "image" as const,
+          id,
+          name: `${key}.png`,
+          mimeType: "image/png",
+          sizeBytes: 1,
+        };
+        const attachmentPath = NodePath.join(attachmentsDir, attachmentRelativePath(attachment)!);
+        NodeFS.mkdirSync(NodePath.dirname(attachmentPath), { recursive: true });
+        NodeFS.writeFileSync(attachmentPath, Uint8Array.from([byte]));
+        return { key, attachment, data: Buffer.from([byte]).toString("base64") };
+      });
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input,
+        attachments: pictures.map((picture) => picture.attachment),
+      });
+      const promptMessage = yield* Effect.promise(() =>
+        readFirstPromptMessage(harness.getLastCreateQueryInput()),
+      );
+      assert.deepEqual(
+        promptMessage?.message.content,
+        content.map((part) => {
+          if (typeof part !== "string") return { type: "text" as const, text: part.text };
+          const picture = pictures.find((entry) => entry.key === part)!;
+          return {
+            type: "image" as const,
+            source: {
+              type: "base64" as const,
+              media_type: "image/png" as const,
+              data: picture.data,
+            },
+          };
+        }),
+      );
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   // The Claude CLI reads a streamed user message as a slash-command invocation
   // only when the final content block is text. Leading with the text block sent
   // every image-carrying turn down the plain-prompt path, so `/skill args`

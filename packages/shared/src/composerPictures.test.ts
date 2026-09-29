@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   PICTURE_MAX_BYTES,
   PICTURE_MAX_EDGE,
+  interleavePictures,
   messagePictures,
   pictureBlockText,
   pictureLabel,
@@ -211,5 +212,60 @@ describe("messagePictures", () => {
         original: picture.original?.id ?? null,
       })),
     ).toEqual(expected);
+  });
+});
+
+describe("interleavePictures", () => {
+  const sample = [
+    "The header on the home page feels off:",
+    "[Picture 1]",
+    "Notes on picture 1:",
+    "1. The logo is too small next to the menu.",
+    "Can you fix both?",
+    "",
+    '[Attached image "home-page.png" is saved at: /attachments/t-1.png]',
+  ].join("\n");
+
+  it.each([
+    ["words alone have nothing to interleave", "Fix the header", 0, null],
+    ["images with no labels keep the old order", "Look at these", 2, null],
+    [
+      "each image goes right after its label, the words around it as text",
+      sample,
+      1,
+      [
+        { kind: "text", text: "The header on the home page feels off:\n[Picture 1]" },
+        { kind: "image", index: 0 },
+        {
+          kind: "text",
+          text: 'Notes on picture 1:\n1. The logo is too small next to the menu.\nCan you fix both?\n\n[Attached image "home-page.png" is saved at: /attachments/t-1.png]',
+        },
+      ],
+    ],
+    [
+      "two pictures in a row, the message opening on one",
+      "[Picture 1]\n[Picture 2]\nBoth broken",
+      2,
+      [
+        { kind: "text", text: "[Picture 1]" },
+        { kind: "image", index: 0 },
+        { kind: "text", text: "[Picture 2]" },
+        { kind: "image", index: 1 },
+        { kind: "text", text: "Both broken" },
+      ],
+    ],
+    [
+      "an image past the last label goes first, as images always did",
+      "See:\n[Picture 1]\nok",
+      2,
+      [
+        { kind: "image", index: 1 },
+        { kind: "text", text: "See:\n[Picture 1]" },
+        { kind: "image", index: 0 },
+        { kind: "text", text: "ok" },
+      ],
+    ],
+  ] as const)("%s", (_label, text, imageCount, expected) => {
+    expect(interleavePictures(text, imageCount)).toEqual(expected);
   });
 });

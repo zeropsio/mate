@@ -26,6 +26,7 @@ import {
   type ModelUsage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { parseCliArgs } from "@t3tools/shared/cliArgs";
+import { interleavePictures } from "@t3tools/shared/composerPictures";
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/filePreview";
 import { type ClaudeScopedLimitNames, claudeRateLimitEventToUpdate } from "./claudeUsageLimits.ts";
 import {
@@ -1631,15 +1632,13 @@ const buildUserMessageEffect = Effect.fn("buildUserMessageEffect")(function* (
 ) {
   const text = buildPromptText(input, dependencies.boundInstanceId, dependencies.modelCatalog);
   const sdkContent: Array<Record<string, unknown>> = [];
+  const imageBlocks: Array<Record<string, unknown>> = [];
 
   // Claude Code expands a skill only from the LAST text block, and only when
   // `/name` is its first character. A `$skill` chip anywhere in the prompt is
   // therefore split into [leading text, "/name trailing text"] so the CLI
   // runs it natively and the prose around it survives. See ClaudeSkillDispatch.
   const dispatch = planClaudeSkillDispatch(text, dependencies.skillNames);
-  if (dispatch?.leadingText !== undefined) {
-    sdkContent.push({ type: "text", text: dispatch.leadingText });
-  }
 
   for (const attachment of input.attachments ?? []) {
     // Claude ingests images only. Generic files reach the agent through the
@@ -1680,13 +1679,35 @@ const buildUserMessageEffect = Effect.fn("buildUserMessageEffect")(function* (
       ),
     );
 
-    sdkContent.push(
+    imageBlocks.push(
       buildClaudeImageContentBlock({
         mimeType: attachment.mimeType,
         bytes,
       }),
     );
   }
+
+  // Pictures the composer placed in the text go right after their labels, so
+  // the words and pictures are read in the order they were written. Only a
+  // message that is no command and still ends on text: a slash command or a
+  // skill must stay the last text block.
+  const placed =
+    dispatch === undefined && !text.startsWith("/")
+      ? interleavePictures(text, imageBlocks.length)
+      : null;
+  if (placed !== null && placed.at(-1)?.kind === "text") {
+    for (const part of placed) {
+      sdkContent.push(
+        part.kind === "text" ? { type: "text", text: part.text } : imageBlocks[part.index]!,
+      );
+    }
+    return buildUserMessage({ sdkContent });
+  }
+
+  if (dispatch?.leadingText !== undefined) {
+    sdkContent.push({ type: "text", text: dispatch.leadingText });
+  }
+  sdkContent.push(...imageBlocks);
 
   // The final text block goes last on purpose. The Claude CLI only reads a
   // streamed user message as a slash-command invocation when the last content
