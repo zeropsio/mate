@@ -115,12 +115,15 @@ export function drawPictureMarks(
 /**
  * The crop drawn to fill the canvas with the marks burnt in: `fit` scales the
  * whole crop (the copy), `cover` fills the canvas and trims the overflow (the
- * picture in the text).
+ * picture in the text). The crop and the marks are in the pasted file's
+ * pixels; `imageScale` is the image's pixels per one of them, for a picture
+ * kept smaller in the tab.
  */
 export function drawPictureComposite(
   context: Context2D,
   input: {
     readonly image: CanvasImageSource;
+    readonly imageScale?: number;
     readonly crop: PictureRect;
     readonly marks: ReadonlyArray<PictureMark>;
     readonly width: number;
@@ -142,12 +145,13 @@ export function drawPictureComposite(
   }
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
+  const imageScale = input.imageScale ?? 1;
   context.drawImage(
     input.image,
-    region.x,
-    region.y,
-    region.w,
-    region.h,
+    region.x * imageScale,
+    region.y * imageScale,
+    region.w * imageScale,
+    region.h * imageScale,
     0,
     0,
     input.width,

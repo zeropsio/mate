@@ -41,15 +41,24 @@ const ENVIRONMENT = EnvironmentId.make("environment-local");
 const A = DraftId.make("draft-a");
 const B = DraftId.make("draft-b");
 
-/** A bitmap as `createImageBitmap` would make one: its size is in the file's name. */
+const sizeInName = (name: string) => {
+  const [, width, height] = /(\d+)x(\d+)/u.exec(name) ?? ["", "100", "100"];
+  return { width: Number(width), height: Number(height) };
+};
+
+/**
+ * A bitmap as `createImageBitmap` would make one: the file's size is in its
+ * name; a crop or a resize asked for gives its own.
+ */
 class FakeBitmap {
   readonly width: number;
   readonly height: number;
   readonly close = vi.fn();
-  constructor(name: string) {
-    const [, width, height] = /(\d+)x(\d+)/u.exec(name) ?? ["", "100", "100"];
-    this.width = Number(width);
-    this.height = Number(height);
+  constructor(file: File, args: ReadonlyArray<unknown>) {
+    const options = args.at(-1) as ImageBitmapOptions | undefined;
+    const cropped = args.length >= 4 ? { width: args[2], height: args[3] } : sizeInName(file.name);
+    this.width = Number(options?.resizeWidth ?? cropped.width);
+    this.height = Number(options?.resizeHeight ?? cropped.height);
   }
 }
 
@@ -64,8 +73,15 @@ function deferred<A>() {
 /** The bitmaps made, and a gate a decode waits at while a test holds it shut. */
 const decoding = { made: [] as FakeBitmap[], gate: null as Promise<unknown> | null };
 
-const pngFile = (name: string) =>
-  new File([new Uint8Array(64).fill(7)], name, { type: "image/png" });
+/** A PNG whose header names the size in its name. */
+function pngFile(name: string): File {
+  const bytes = new Uint8Array(64).fill(7);
+  const { width, height } = sizeInName(name);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+  new DataView(bytes.buffer).setUint32(16, width);
+  new DataView(bytes.buffer).setUint32(20, height);
+  return new File([bytes], name, { type: "image/png" });
+}
 
 const pin = (id: string, x: number, y: number, note: string): PictureMark => ({
   kind: "pin",
@@ -155,9 +171,9 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal(
     "createImageBitmap",
-    vi.fn(async (file: File) => {
+    vi.fn(async (file: File, ...args: unknown[]) => {
       await decoding.gate;
-      const bitmap = new FakeBitmap(file.name);
+      const bitmap = new FakeBitmap(file, args);
       decoding.made.push(bitmap);
       return bitmap;
     }),
@@ -262,7 +278,7 @@ describe("whichever Mate is on screen", () => {
     await show(A);
     const made = deferred<unknown>();
     copies.fit.mockReturnValue(made.promise);
-    await act(() => api.add([pngFile("huge-9000x9000.png")]));
+    await act(() => api.add([pngFile("huge-6000x6000.png")]));
 
     await show(B);
     made.resolve({ kind: "too-large" });
@@ -271,7 +287,7 @@ describe("whichever Mate is on screen", () => {
     expect(draftOf(A)?.images ?? []).toEqual([]);
     expect(draftOf(A)?.prompt ?? "").toBe("");
     expect(draftOf(B)).toMatchObject({ prompt: "Mate B's words" });
-    expect(errors).toEqual(["'huge-9000x9000.png' is too large to send, even fitted."]);
+    expect(errors).toEqual(["'huge-6000x6000.png' is too large to send, even fitted."]);
   });
 
   it("a picture keeps what it holds while another Mate is on screen, and lets it go when it leaves", async () => {
@@ -348,7 +364,7 @@ describe("a picture taken out of the text", () => {
   it("a picture too large to send does not come back", async () => {
     copies.fit.mockResolvedValue({ kind: "too-large" });
     await show(A);
-    await act(() => api.add([pngFile("huge-9000x9000.png")]));
+    await act(() => api.add([pngFile("huge-6000x6000.png")]));
     await settle();
     expect(draftOf(A)?.images ?? []).toEqual([]);
 
@@ -406,5 +422,81 @@ describe("pictures pasted with words copied from the text", () => {
   it("a picture this composer never had cannot come", async () => {
     await show(A);
     expect(api.paste(["from-another-window"])).toEqual([null]);
+  });
+});
+
+describe("a picture bigger than the tab keeps", () => {
+  it("is kept smaller, and its copy is made from its crop at full sharpness", async () => {
+    await show(A);
+    const file = pngFile("photo-8000x6000.png");
+
+    await act(() => api.add([file]));
+    await settle();
+
+    const decode = vi.mocked(createImageBitmap);
+    expect(decode.mock.calls[0]).toEqual([
+      file,
+      { resizeWidth: 4096, resizeHeight: 3072, resizeQuality: "high" },
+    ]);
+    expect(draftOf(A)!.images[0]!.picture).toMatchObject({ sourceWidth: 8000, sourceHeight: 6000 });
+    expect(decode.mock.calls[1]).toEqual([
+      file,
+      0,
+      0,
+      8000,
+      6000,
+      { resizeWidth: 2000, resizeHeight: 1500, resizeQuality: "high" },
+    ]);
+    const [kept, crop] = decoding.made;
+    expect(crop!.close).toHaveBeenCalled();
+    expect(kept!.close).not.toHaveBeenCalled();
+  });
+
+  it("is refused before it is decoded when its header names too many pixels", async () => {
+    await show(A);
+    await act(() => api.add([pngFile("scan-12000x9000.png")]));
+    await settle();
+
+    expect(createImageBitmap).not.toHaveBeenCalled();
+    expect(draftOf(A)?.images ?? []).toEqual([]);
+    expect(errors).toEqual(["'scan-12000x9000.png' is too large to open."]);
+  });
+});
+
+describe("an image that reached the draft without being a picture", () => {
+  const plainImage = (file: File): ComposerImageAttachment => ({
+    type: "image",
+    id: "plain",
+    name: file.name,
+    mimeType: file.type,
+    sizeBytes: file.size,
+    previewUrl: "blob:plain",
+    file,
+  });
+
+  it("becomes a picture, kept at the size the tab keeps", async () => {
+    const file = pngFile("older-8000x6000.png");
+    useComposerDraftStore.getState().insertImage(A, P, plainImage(file), 0);
+
+    await show(A);
+    await settle();
+
+    expect(vi.mocked(createImageBitmap).mock.calls[0]).toEqual([
+      file,
+      { resizeWidth: 4096, resizeHeight: 3072, resizeQuality: "high" },
+    ]);
+    expect(imageOf(A, "plain")!.picture).toMatchObject({ sourceWidth: 8000, sourceHeight: 6000 });
+  });
+
+  it("goes as it came when it is too big to open", async () => {
+    useComposerDraftStore
+      .getState()
+      .insertImage(A, P, plainImage(pngFile("older-12000x9000.png")), 0);
+
+    await show(A);
+    await settle();
+
+    expect(createImageBitmap).not.toHaveBeenCalled();
+    expect(imageOf(A, "plain")!.picture).toBeUndefined();
   });
 });

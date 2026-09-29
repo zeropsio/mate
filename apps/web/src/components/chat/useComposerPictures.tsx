@@ -50,11 +50,14 @@ import {
 import {
   fitPictureCopy,
   isHeicImageFile,
+  pictureBitmapOptions,
   pictureCanvasEncoder,
+  pictureCropBitmap,
   pictureFitSize,
   pictureSourceFile,
 } from "~/lib/imageCompression";
 import { drawPictureComposite } from "~/lib/pictureDrawing";
+import type { ImageDimensions } from "@t3tools/shared/imageDimensions";
 import { randomUUID } from "~/lib/utils";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import type { ComposerPromptEditorHandle } from "../ComposerPromptEditor";
@@ -128,6 +131,7 @@ function thumbnailOf(bitmap: ImageBitmap, picture: ComposerPicture): string | nu
   if (!context) return null;
   drawPictureComposite(context, {
     image: bitmap,
+    imageScale: bitmap.width / picture.sourceWidth,
     crop: picture.crop,
     marks: picture.marks,
     width: canvas.width,
@@ -159,6 +163,9 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
   const owners = useRef(new Map<string, DraftTarget>());
   // Pictures still being read, in no draft yet.
   const arriving = useRef(new Set<string>());
+  // Images of a draft being opened to become pictures, and those too big to.
+  const opening = useRef(new Set<string>());
+  const unopenable = useRef(new Set<string>());
   // Pictures taken out of the text, the latest last: an undo or a paste
   // brings them back as they were.
   const held = useRef(new Map<string, ComposerImageAttachment>());
@@ -212,25 +219,33 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
   }, []);
 
   /** A picture's pasted file, decoded once for its thumbnail, its copy and its view. */
-  const decode = useCallback((id: string, file: File): Promise<ImageBitmap> => {
-    const known = bitmaps.current.get(id);
-    if (known) return Promise.resolve(known);
-    const pending = decoding.current.get(id);
-    if (pending) return pending;
-    const decoded = createImageBitmap(file).then(
-      (bitmap) => {
-        decoding.current.delete(id);
-        bitmaps.current.set(id, bitmap);
-        return bitmap;
-      },
-      (error: unknown) => {
-        decoding.current.delete(id);
-        throw error;
-      },
-    );
-    decoding.current.set(id, decoded);
-    return decoded;
-  }, []);
+  /**
+   * A picture's pasted file, decoded once for its thumbnail and its view: at
+   * most the kept size a side, when its size is known.
+   */
+  const decode = useCallback(
+    (id: string, file: File, size?: ImageDimensions | null): Promise<ImageBitmap> => {
+      const known = bitmaps.current.get(id);
+      if (known) return Promise.resolve(known);
+      const pending = decoding.current.get(id);
+      if (pending) return pending;
+      const options = size ? pictureBitmapOptions(size) : undefined;
+      const decoded = (options ? createImageBitmap(file, options) : createImageBitmap(file)).then(
+        (bitmap) => {
+          decoding.current.delete(id);
+          bitmaps.current.set(id, bitmap);
+          return bitmap;
+        },
+        (error: unknown) => {
+          decoding.current.delete(id);
+          throw error;
+        },
+      );
+      decoding.current.set(id, decoded);
+      return decoded;
+    },
+    [],
+  );
 
   /** A picture leaves the text: its upload goes, and it is kept a while in case it comes back. */
   const hold = useCallback(
@@ -305,18 +320,35 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
       }
       let copy: Awaited<ReturnType<typeof fitPictureCopy<Blob>>>;
       try {
-        const bitmap = bitmaps.current.get(id) ?? (await decode(id, source));
-        copy = await fitPictureCopy({
-          source: {
-            type: source.type,
-            bytes: source.size,
-            width: picture.sourceWidth,
-            height: picture.sourceHeight,
-          },
-          crop: picture.crop,
-          markCount: picture.marks.length,
-          encode: pictureCanvasEncoder({ image: bitmap, crop: picture.crop, marks: picture.marks }),
-        });
+        const size = { width: picture.sourceWidth, height: picture.sourceHeight };
+        const kept = bitmaps.current.get(id) ?? (await decode(id, source, size));
+        // A picture kept smaller in the tab is copied from its crop, decoded
+        // afresh at the copy's size and let go once the copy is made.
+        const crop =
+          kept.width < picture.sourceWidth ? await pictureCropBitmap(source, picture.crop) : null;
+        try {
+          copy = await fitPictureCopy({
+            source: { type: source.type, bytes: source.size, ...size },
+            crop: picture.crop,
+            markCount: picture.marks.length,
+            encode: pictureCanvasEncoder(
+              crop
+                ? {
+                    image: crop,
+                    imageScale: crop.width / picture.crop.w,
+                    crop: { x: 0, y: 0, w: picture.crop.w, h: picture.crop.h },
+                    marks: picture.marks.map((mark) => ({
+                      ...mark,
+                      x: mark.x - picture.crop.x,
+                      y: mark.y - picture.crop.y,
+                    })),
+                  }
+                : { image: kept, crop: picture.crop, marks: picture.marks },
+            ),
+          });
+        } finally {
+          crop?.close();
+        }
       } catch {
         if (tokens.current.get(id) !== token) return;
         settleCopy(id);
@@ -418,19 +450,21 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
         arriving.current.add(id);
         let bitmap: ImageBitmap;
         try {
-          bitmap = await decode(id, source);
+          bitmap = await decode(id, source, prepared.size);
         } catch {
           arriving.current.delete(id);
           owners.current.delete(id);
           onError(`'${file.name}' could not be read as a picture.`);
           continue;
         }
-        const crop = fullPictureCrop(bitmap.width, bitmap.height);
+        // Its own size, whatever size it is kept at.
+        const size = prepared.size ?? { width: bitmap.width, height: bitmap.height };
+        const crop = fullPictureCrop(size.width, size.height);
         const fitted = pictureFitSize(crop);
         const picture: ComposerPicture = {
           source,
-          sourceWidth: bitmap.width,
-          sourceHeight: bitmap.height,
+          sourceWidth: size.width,
+          sourceHeight: size.height,
           crop,
           marks: [],
           keepOriginal: false,
@@ -504,7 +538,9 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
       }
       // Restored with its pasted file (a queued message, a failed send), it is
       // decoded first; a picture pasted here already is.
-      void decode(id, source).then(
+      const picture = imageOf(id)?.picture;
+      const size = picture ? { width: picture.sourceWidth, height: picture.sourceHeight } : null;
+      void decode(id, source, size).then(
         (bitmap) => setOpened({ id, bitmap }),
         () => setOpened({ id, bitmap: null }),
       );
@@ -541,24 +577,37 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
   }, [input.draftTarget, input.images]);
 
   // An image that reached the draft without being a picture (an older draft, a
-  // stash, a queued message) becomes one: its file is what was pasted.
+  // stash, a queued message) becomes one: its file is what was pasted. One
+  // too big to open goes as it came.
   useEffect(() => {
     const target = input.draftTarget;
     for (const image of input.images) {
-      if (image.picture || bitmaps.current.has(image.id) || decoding.current.has(image.id)) {
+      if (
+        image.picture ||
+        opening.current.has(image.id) ||
+        unopenable.current.has(image.id) ||
+        bitmaps.current.has(image.id)
+      ) {
         continue;
       }
       const id = image.id;
-      void decode(id, image.file).then(
-        (bitmap) => {
+      opening.current.add(id);
+      void pictureSourceFile(image.file)
+        .then(async (prepared) => {
+          if (!prepared.ok) {
+            unopenable.current.add(id);
+            return;
+          }
+          const bitmap = await decode(id, prepared.file, prepared.size);
           const now = imagesOf(target).find((entry) => entry.id === id);
           if (!now || now.picture) return;
-          const crop = fullPictureCrop(bitmap.width, bitmap.height);
+          const size = prepared.size ?? { width: bitmap.width, height: bitmap.height };
+          const crop = fullPictureCrop(size.width, size.height);
           const fitted = pictureFitSize(crop);
           const picture: ComposerPicture = {
-            source: now.file,
-            sourceWidth: bitmap.width,
-            sourceHeight: bitmap.height,
+            source: prepared.file,
+            sourceWidth: size.width,
+            sourceHeight: size.height,
             crop,
             marks: [],
             keepOriginal: false,
@@ -569,11 +618,11 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
           };
           updateImage(target, { ...now, picture });
           void makeCopy(id);
-        },
-        () => {
+        })
+        .catch(() => {
           // Not something this browser can draw: it goes as it came.
-        },
-      );
+        })
+        .finally(() => opening.current.delete(id));
     }
   }, [decode, input.draftTarget, input.images, makeCopy, updateImage]);
 

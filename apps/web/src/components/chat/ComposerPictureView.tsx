@@ -126,6 +126,7 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
   const sourceSize = bitmap
     ? { w: picture.sourceWidth, h: picture.sourceHeight }
     : { w: picture.width, h: picture.height };
+  const sourceWidth = picture.sourceWidth;
   // In crop mode the whole picture shows; otherwise the crop does. After a
   // reload the copy is already the crop.
   const view: PictureRect =
@@ -203,8 +204,20 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
     if (!context) return;
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = "high";
-    context.drawImage(source, view.x, view.y, view.w, view.h, 0, 0, canvas.width, canvas.height);
-  }, [bitmap, copyImage, frameHeight, frameWidth, view.h, view.w, view.x, view.y]);
+    // A big picture is kept smaller in the tab: its pixels per pasted pixel.
+    const scale = bitmap ? bitmap.width / sourceWidth : 1;
+    context.drawImage(
+      source,
+      view.x * scale,
+      view.y * scale,
+      view.w * scale,
+      view.h * scale,
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
+  }, [bitmap, copyImage, frameHeight, frameWidth, sourceWidth, view.h, view.w, view.x, view.y]);
 
   // The marks and, while cropping, the dimmed outside of the crop.
   useLayoutEffect(() => {

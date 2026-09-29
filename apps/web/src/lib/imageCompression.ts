@@ -12,6 +12,11 @@
  * photos are decoded to JPEG first because providers cannot consume them.
  */
 import { PICTURE_MAX_BYTES, PICTURE_MAX_EDGE } from "@t3tools/shared/composerPictures";
+import {
+  IMAGE_DIMENSIONS_HEADER_BYTES,
+  readImageDimensions,
+  type ImageDimensions,
+} from "@t3tools/shared/imageDimensions";
 
 import type { PictureMark, PictureRect } from "./composerPictures";
 import { drawPictureComposite } from "./pictureDrawing";
@@ -26,8 +31,15 @@ export const MAX_STASH_IMAGE_DATA_URL_CHARS = 1_300_000;
  * ImageBitmap can OOM the tab — beyond this we refuse rather than risk it.
  */
 export const MAX_COMPRESSIBLE_SOURCE_BYTES = 50 * 1024 * 1024;
-const MAX_HEIC_DECODE_PIXELS = 64_000_000;
+/** The most pixels a picture is decoded with: 256 MB of pixels at 64 megapixels. */
+const MAX_DECODE_PIXELS = 64_000_000;
 const MAX_HEIC_METADATA_BYTES = 1024 * 1024;
+/**
+ * The longest side a picture is kept at in the tab, for its thumbnail and
+ * its view. A bigger one is decoded at this size, and its copy is made from
+ * its crop, decoded afresh at the size the copy is drawn at.
+ */
+export const PICTURE_KEPT_MAX_EDGE = 4096;
 /**
  * Quality ladder tried in order until the encoded image fits the budget.
  * The floor stays high enough to avoid visible blocking on UI screenshots;
@@ -134,7 +146,7 @@ async function validateHeicImageDimensions(
     const width = view.getUint32(image.payloadOffset + 4);
     const height = view.getUint32(image.payloadOffset + 8);
     if (width === 0 || height === 0) return "unreadable";
-    if (width > MAX_HEIC_DECODE_PIXELS / height) return "too-large";
+    if (width > MAX_DECODE_PIXELS / height) return "too-large";
     foundImageDimensions = true;
     offset = image.endOffset;
   }
@@ -622,6 +634,8 @@ async function canvasBlob(
  */
 export function pictureCanvasEncoder(input: {
   readonly image: CanvasImageSource;
+  /** The image's pixels per pixel of the crop's space (`drawPictureComposite`). */
+  readonly imageScale?: number;
   readonly crop: PictureRect;
   readonly marks: ReadonlyArray<PictureMark>;
 }): (target: PictureEncodeStep & { width: number; height: number }) => Promise<Blob | null> {
@@ -638,6 +652,7 @@ export function pictureCanvasEncoder(input: {
       }
       drawPictureComposite(surface.context, {
         image: input.image,
+        ...(input.imageScale !== undefined ? { imageScale: input.imageScale } : {}),
         crop: input.crop,
         marks: input.marks,
         width: target.width,
@@ -655,23 +670,71 @@ export function pictureCanvasEncoder(input: {
  * The file a pasted picture is made from: a HEIC/HEIF photo decoded to JPEG
  * (browsers cannot draw HEIC), anything else as it came.
  */
-export async function pictureSourceFile(file: File): Promise<CompressImageFileResult> {
-  if (!isHeicImageFile(file)) return { ok: true, file, recompressed: false };
+export async function pictureSourceFile(file: File): Promise<PictureSourceFileResult> {
+  // Refused before it is decoded: past the bytes, or past the pixels its
+  // header names, a picture can take the tab down with it.
   if (file.size > MAX_COMPRESSIBLE_SOURCE_BYTES) return { ok: false, reason: "too-large" };
-  try {
-    const dimensionError = await validateHeicImageDimensions(file);
-    if (dimensionError) return { ok: false, reason: dimensionError };
-    const { heicTo } = await import("heic-to/csp");
-    const converted = await heicTo({ blob: file, type: "image/jpeg", quality: QUALITY_STEPS[0] });
-    return {
-      ok: true,
-      file: new File([converted], fileNameForMimeType(file.name || "image", "image/jpeg"), {
+  let source = file;
+  if (isHeicImageFile(file)) {
+    try {
+      const dimensionError = await validateHeicImageDimensions(file);
+      if (dimensionError) return { ok: false, reason: dimensionError };
+      const { heicTo } = await import("heic-to/csp");
+      const converted = await heicTo({ blob: file, type: "image/jpeg", quality: QUALITY_STEPS[0] });
+      source = new File([converted], fileNameForMimeType(file.name || "image", "image/jpeg"), {
         type: "image/jpeg",
         lastModified: file.lastModified,
-      }),
-      recompressed: true,
-    };
-  } catch {
-    return { ok: false, reason: "unreadable" };
+      });
+    } catch {
+      return { ok: false, reason: "unreadable" };
+    }
   }
+  const header = await source.slice(0, IMAGE_DIMENSIONS_HEADER_BYTES).arrayBuffer();
+  const size = readImageDimensions(new Uint8Array(header));
+  if (size !== null && size.width > MAX_DECODE_PIXELS / size.height) {
+    return { ok: false, reason: "too-large" };
+  }
+  return { ok: true, file: source, recompressed: source !== file, size };
+}
+
+export type PictureSourceFileResult =
+  | {
+      readonly ok: true;
+      readonly file: File;
+      readonly recompressed: boolean;
+      /** Its size as its header names it (turned as a photo is shown), when it can be read. */
+      readonly size: ImageDimensions | null;
+    }
+  | { readonly ok: false; readonly reason: ImageCompressionFailureReason };
+
+/**
+ * How a picture is decoded to be kept in the tab: whole within the kept
+ * size, else at it.
+ */
+export function pictureBitmapOptions(size: ImageDimensions): ImageBitmapOptions | undefined {
+  const longer = Math.max(size.width, size.height);
+  if (longer <= PICTURE_KEPT_MAX_EDGE) return undefined;
+  const scale = PICTURE_KEPT_MAX_EDGE / longer;
+  return {
+    resizeWidth: Math.max(1, Math.round(size.width * scale)),
+    resizeHeight: Math.max(1, Math.round(size.height * scale)),
+    resizeQuality: "high",
+  };
+}
+
+/**
+ * A picture's crop decoded at the size its copy is drawn at, from the pasted
+ * file: the copy of a picture kept smaller in the tab keeps its full
+ * sharpness. The caller closes it.
+ */
+export function pictureCropBitmap(file: File, crop: PictureRect): Promise<ImageBitmap> {
+  const fitted = pictureFitSize(crop);
+  return createImageBitmap(
+    file,
+    Math.round(crop.x),
+    Math.round(crop.y),
+    Math.max(1, Math.round(crop.w)),
+    Math.max(1, Math.round(crop.h)),
+    { resizeWidth: fitted.width, resizeHeight: fitted.height, resizeQuality: "high" },
+  );
 }

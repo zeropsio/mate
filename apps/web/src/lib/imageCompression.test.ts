@@ -11,6 +11,9 @@ import {
   isHeicImageFile,
   MAX_COMPRESSIBLE_SOURCE_BYTES,
   MAX_STASH_IMAGE_DATA_URL_CHARS,
+  PICTURE_KEPT_MAX_EDGE,
+  pictureBitmapOptions,
+  pictureSourceFile,
   prepareImageForAttachment,
 } from "./imageCompression";
 
@@ -652,5 +655,62 @@ describe("the picture ladder's parts", () => {
         step.type === "image/png" ? step.type : step.quality,
       ),
     ).toEqual(expected);
+  });
+});
+
+/** A PNG's first bytes, naming its size: enough for its header to be read. */
+function pngNaming(width: number, height: number, name = "shot.png"): File {
+  const bytes = new Uint8Array(33);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+  new DataView(bytes.buffer).setUint32(16, width);
+  new DataView(bytes.buffer).setUint32(20, height);
+  bytes.set([8, 6, 0, 0, 0], 24);
+  return new File([bytes], name, { type: "image/png" });
+}
+
+describe("pictureSourceFile", () => {
+  it("passes a picture it can open as it came, with the size its header names", async () => {
+    const file = pngNaming(3000, 2000);
+    expect(await pictureSourceFile(file)).toEqual({
+      ok: true,
+      file,
+      recompressed: false,
+      size: { width: 3000, height: 2000 },
+    });
+  });
+
+  it("refuses a picture whose header names more pixels than it opens, before decoding it", async () => {
+    const decode = vi.fn();
+    vi.stubGlobal("createImageBitmap", decode);
+    expect(await pictureSourceFile(pngNaming(10_000, 7_000, "huge.png"))).toEqual({
+      ok: false,
+      reason: "too-large",
+    });
+    expect(decode).not.toHaveBeenCalled();
+  });
+
+  it("refuses a file past the bytes it opens", async () => {
+    const file = new File([new Uint8Array(MAX_COMPRESSIBLE_SOURCE_BYTES + 1)], "big.png", {
+      type: "image/png",
+    });
+    expect(await pictureSourceFile(file)).toEqual({ ok: false, reason: "too-large" });
+  });
+});
+
+describe("pictureBitmapOptions", () => {
+  it.each([
+    ["a picture within the kept size is kept whole", { width: 3000, height: 2000 }, undefined],
+    [
+      "a wider one is kept at the kept size",
+      { width: 8000, height: 6000 },
+      { resizeWidth: PICTURE_KEPT_MAX_EDGE, resizeHeight: 3072, resizeQuality: "high" },
+    ],
+    [
+      "a taller one too",
+      { width: 3000, height: 9000 },
+      { resizeWidth: 1365, resizeHeight: PICTURE_KEPT_MAX_EDGE, resizeQuality: "high" },
+    ],
+  ])("%s", (_label, size, expected) => {
+    expect(pictureBitmapOptions(size)).toEqual(expected);
   });
 });
