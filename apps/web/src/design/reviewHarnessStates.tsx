@@ -84,7 +84,7 @@ const FILES: ReadonlyArray<GiteaChangedFile> = [
 ];
 
 const WORDS =
-  "Adds a /status route on the server that renders the hostname, the Node version and the server time, updating every second. It's public and shows nothing secret, as you asked.";
+  "Adds a /status route that lists the app's uptime and its last deploy, refreshed on each visit. It stays behind the sign-in, like the rest of the admin pages.";
 
 function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
   return {

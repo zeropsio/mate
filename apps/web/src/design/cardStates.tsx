@@ -40,8 +40,7 @@ const NOW = Date.now();
 const ago = (seconds: number) => new Date(NOW - seconds * 1000).toISOString();
 const TURN = TurnId.make("status-run");
 
-const ASK =
-  "Add a /status page to the app showing hostname, Node version and current server time, styled nicely.";
+const ASK = "Add a /status page that lists the app's uptime and its last deploy.";
 
 function said(id: string, role: "assistant" | "reasoning", text: string, at: number): ChatMessage {
   return {
@@ -163,7 +162,7 @@ const RUN: ReadonlyArray<RecordItem> = [
       said(
         "r1",
         "reasoning",
-        "The app is a Hono server with a React client, so the page belongs on the server as its own route that renders plain HTML and refreshes the time every second.",
+        "The admin pages all render on the server, so the status page joins them as one more route behind the same sign-in.",
         78,
       ),
     ],
@@ -372,7 +371,7 @@ function CardState({
 }
 
 const ANSWER =
-  "The /status page is live on appdev: it shows the hostname, the Node version and the server time, and the time updates every second. It's reachable without signing in and shows nothing secret.";
+  "The /status page is live on appdev: it lists the uptime and the last deploy, and it sits behind the sign-in like the other admin pages.";
 
 const settled = status({ live: false, face: "produced", endedAt: ago(0), waitedMs: 18_000 });
 
@@ -384,7 +383,7 @@ const THINKING: TurnHeaderActivity = {
       ...said(
         "r9",
         "reasoning",
-        "The app is a Hono server with a React client. So the page belongs on the server as its own route that renders plain HTML, refreshing the time every second",
+        "The admin pages all render on the server. So the status page joins them as one more route behind the same sign-in",
         2,
       ),
       streaming: true,

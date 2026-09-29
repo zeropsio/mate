@@ -90,9 +90,9 @@ describe("previewRoute: Try it opens where the change runs", () => {
 describe("runWords: what it does, in the Mate's words (R3)", () => {
   const link = "https://gitea.example/snap/appdev/pulls/2";
   it("keeps the run's own sentences and leaves the link to the change out", () => {
-    const text = `Added a **/status** route that renders the hostname, the Node version and the server time, updating every second. It's public and shows nothing secret, as you asked.\n\nPull request carrying this to main, ready for a person to merge: ${link}`;
+    const text = `Added a **/status** route that lists the app's uptime and its last deploy, refreshed on each visit. It stays behind the sign-in, like the rest of the admin pages.\n\nPull request carrying this to main, ready for a person to merge: ${link}`;
     expect(runWords(text, "/snap/appdev/pulls/2")).toBe(
-      "Added a /status route that renders the hostname, the Node version and the server time, updating every second. It's public and shows nothing secret, as you asked.",
+      "Added a /status route that lists the app's uptime and its last deploy, refreshed on each visit. It stays behind the sign-in, like the rest of the admin pages.",
     );
   });
 
