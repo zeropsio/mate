@@ -2176,10 +2176,13 @@ describe("a Mate's row says more without words", () => {
     expect(row(activity)).not.toContain("sidebar-mate-ring");
   });
 
-  it("counts up how long it has been working, in the busy blue, where its age was", () => {
+  // A running clock is not something to click, so it is not blue (S3): it
+  // counts up in ink where the age was.
+  it("counts up how long it has been working, in ink, where its age was", () => {
     const time = slot(row(working()));
     expect(time).toContain("3:12");
-    expect(time).toContain("text-status-busy-text");
+    expect(time).toContain("text-sidebar-foreground");
+    expect(time).not.toContain("text-status-busy-text");
     expect(slot(row(live()))).toContain(">2h<");
   });
 
@@ -2189,7 +2192,7 @@ describe("a Mate's row says more without words", () => {
   it("counts up work left running in the background, as it counts a run", () => {
     const time = slot(row(working({ kind: "monitoring", progress: undefined })));
     expect(time).toContain("3:12");
-    expect(time).toContain("text-status-busy-text");
+    expect(time).toContain("text-sidebar-foreground");
   });
 
   it.each([
@@ -2249,7 +2252,10 @@ describe("a Mate's row says more without words", () => {
   });
 
   it.each([
-    { case: "a working Mate with words back already", activity: working() },
+    {
+      case: "a working Mate whose step is relayed",
+      activity: working({ liveStep: { words: "Build the app", code: "pnpm build" } }),
+    },
     { case: "a resting Mate with no last words", activity: live({ snippet: undefined }) },
     {
       case: "a working Mate nobody has asked anything",
@@ -2269,18 +2275,76 @@ describe("a Mate's row says more without words", () => {
     expect(time).not.toContain(">2h<");
   });
 
-  it("sets an unread Mate's name in bold, and keeps what was asked in its one ink either way", () => {
+  it("sets an unread Mate's name at 600, and keeps what was asked in its one ink either way", () => {
     const name = (html: string) =>
       /<span class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate-name"/u.exec(html)?.[1] ?? "";
     const subject = (html: string) =>
       /<span class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate-subject"/u.exec(html)?.[1] ?? "";
     const unread = row(live({ unread: true }));
-    expect(name(unread)).toContain("font-bold");
+    expect(name(unread)).toContain("font-semibold");
     expect(subject(unread)).toContain("menu-ink-2");
     const read = row(live());
     expect(name(read)).toContain("font-medium");
-    expect(name(read)).not.toContain("font-bold");
+    expect(name(read)).not.toContain("font-semibold");
     expect(subject(read)).toBe(subject(unread));
+  });
+
+  // The plan's table (M7), as the row draws it: a dot, the face and the
+  // third line say the state, and no word does.
+  it.each([
+    {
+      case: "idle, seen",
+      activity: live(),
+      face: "idle",
+      dot: undefined,
+      third: 'data-zerops-reply-tone="muted"',
+    },
+    {
+      case: "working, its step relayed",
+      activity: working({ liveStep: { words: "Build the app", code: "pnpm build" } }),
+      face: "working",
+      dot: undefined,
+      third: 'data-zerops-surface="sidebar-mate-live-step"',
+    },
+    {
+      case: "needs you",
+      activity: live({ kind: "input", face: "needs", question: "Pricing in CZK or EUR?" }),
+      face: "needs",
+      dot: "attention",
+      third: 'data-zerops-reply-tone="ink"',
+    },
+    {
+      case: "finished, not seen",
+      activity: live({ kind: "done", face: "done", unread: true }),
+      face: "done",
+      dot: "unread",
+      third: 'data-zerops-reply-tone="ink-2"',
+    },
+    {
+      case: "stopped on an error",
+      activity: live({ kind: "failed", face: "needs", errorLine: "Build failed" }),
+      face: "idle",
+      dot: "failed",
+      third: 'data-zerops-reply-tone="failed"',
+    },
+  ])("draws $case", ({ activity, face, dot, third }) => {
+    const html = row(activity);
+    expect(html).toContain(`data-mate-face-state="${face}"`);
+    if (dot === undefined) expect(html).not.toContain("sidebar-mate-dot");
+    else
+      expect(html).toMatch(
+        new RegExp(`data-tone="${dot}" data-zerops-surface="sidebar-mate-dot"`, "u"),
+      );
+    expect(html).toContain(third);
+    for (const word of ["Idle", "Working", "Needs you", "Done", "Failed", "Unread"]) {
+      expect(html).not.toContain(`>${word}<`);
+    }
+  });
+
+  it("writes the live step's command in mono under the sweep", () => {
+    const html = row(working({ liveStep: { words: "Build the app", code: "pnpm build" } }));
+    expect(html).toContain('data-run-shimmer=""');
+    expect(html).toContain('Build the app · <span class="font-mono">pnpm build</span>');
   });
 
   describe("an unsent draft", () => {

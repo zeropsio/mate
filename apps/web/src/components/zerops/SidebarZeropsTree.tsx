@@ -154,7 +154,13 @@ import {
 } from "./SidebarZeropsTree.logic";
 import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
 import { SidebarProjectFold, type ProjectFoldMotion } from "./SidebarProjectFold";
-import { changeMarkTone, ownerMark } from "./SidebarMateRow.logic";
+import {
+  changeMarkTone,
+  mateRowView,
+  ownerMark,
+  type MateRowReply,
+  type MateRowSlot,
+} from "./SidebarMateRow.logic";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarReveal, type SidebarRevealTarget } from "~/zerops/sidebarReveal";
 import {
@@ -1781,17 +1787,15 @@ function MateRow<T extends RosterCandidate>({
   // open socket, and only once somebody has spoken to it; until the socket
   // opens, what this browser remembers the row saying.
   const live = drawnActivity(candidate, activity);
-  const subject = live?.subject;
-  const snippet = subject === undefined ? undefined : live?.snippet;
-  // A new task rises into the row's second line as the person sets it; the
-  // task this browser remembered gives way to the one read without a rise.
-  const subjectChanged = useChangedSinceShown(
-    subject,
-    live !== undefined && live.remembered !== true,
-  );
-  const face = mateFaceFor(candidate.group === "connected", activity);
+  // What the row says in its state (`mateRowView`, M7): the face, the right
+  // of the name, what was asked and the third line.
+  const view = mateRowView(live, mateFaceFor(candidate.group === "connected", activity));
+  const known = live !== undefined && live.remembered !== true;
+  // A new ask rises into the row's second line as the person sets it; the
+  // ask this browser remembered gives way to the one read without a rise.
+  const askChanged = useChangedSinceShown(view.ask, known);
   // The plan as a ring around the face while it works: one segment a step.
-  const progress = face === "working" ? live?.progress : undefined;
+  const progress = view.face === "working" ? live?.progress : undefined;
   const unread = live?.unread === true;
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuAt, setMenuAt] = useState<MenuPoint | undefined>(undefined);
@@ -1923,7 +1927,7 @@ function MateRow<T extends RosterCandidate>({
                 activity.remembered !== true
               }
               size="md"
-              state={face}
+              state={view.face}
               tint={tint}
             />
             {progress === undefined ? null : (
@@ -1946,7 +1950,7 @@ function MateRow<T extends RosterCandidate>({
               <span
                 className={cn(
                   "min-w-0 truncate text-sm leading-5",
-                  unread ? "font-bold" : "font-medium",
+                  view.strongName ? "font-semibold" : "font-medium",
                 )}
                 data-zerops-surface="sidebar-mate-name"
               >
@@ -1970,10 +1974,14 @@ function MateRow<T extends RosterCandidate>({
                   "transition-opacity group-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0",
               )}
             >
-              <span className={cn("flex", numbers && number !== undefined && "opacity-0")}>
-                {live === undefined ? null : (
-                  <MateTime activity={live} timestampFormat={timestampFormat} />
+              <span
+                className={cn(
+                  "flex items-center gap-1.75",
+                  numbers && number !== undefined && "opacity-0",
                 )}
+              >
+                <MateDot known={known} tone={view.dot} />
+                <MateSlot at={live?.at} slot={view.slot} timestampFormat={timestampFormat} />
               </span>
               {numbers && number !== undefined ? (
                 <KeyChip className="absolute end-0 top-0" data-zerops-surface="sidebar-mate-number">
@@ -1982,29 +1990,21 @@ function MateRow<T extends RosterCandidate>({
               ) : null}
             </span>
           </span>
-          {subject === undefined ? null : (
+          {view.ask === undefined ? null : (
             <span
               className={cn(
                 "menu-ink-2 truncate text-line leading-4.5",
-                subjectChanged && "animate-words-in motion-reduce:animate-none",
+                askChanged && "animate-words-in motion-reduce:animate-none",
               )}
               data-zerops-surface="sidebar-mate-subject"
-              key={subject}
+              key={view.ask}
             >
-              {subject}
+              {view.ask}
             </span>
           )}
-          {snippet !== undefined ||
-          (subject !== undefined &&
-            (live?.awaitingWords === true ||
-              live?.kind === "working" ||
-              live?.kind === "connecting")) ? (
-            <MateSnippet
-              known={live !== undefined && live.remembered !== true}
-              snippet={snippet ?? null}
-              threadKey={live?.threadKey}
-            />
-          ) : null}
+          {view.reply === undefined ? null : (
+            <MateReply known={known} reply={view.reply} threadKey={live?.threadKey} />
+          )}
         </span>
       </button>
       {actions === undefined ? null : (
@@ -2127,53 +2127,55 @@ function MateOwnerMark({ owner }: { readonly owner: ZeropsMateOwner | undefined 
 /**
  * The row's right edge: when the Mate last did something, as a messenger
  * dates its rows — or, while it works, its work left running in the
- * background included, how long it has been at it, counting up in the busy
- * blue; or, paused at a usage limit, when it picks up again.
- * Nothing at all for a Mate nobody has spoken to yet.
+ * background included, the run's clock counting up in ink (S3: blue is for
+ * what clicks, and a running clock is not that); or, paused at a usage
+ * limit, when it picks up again. Nothing at all for a Mate nobody has
+ * spoken to yet.
  */
-function MateTime({
-  activity,
+function MateSlot({
+  slot,
+  at,
   timestampFormat,
 }: {
-  readonly activity: ZeropsAgentActivity;
+  readonly slot: MateRowSlot;
+  /** When it last did something, for the age. */
+  readonly at: string | undefined;
   readonly timestampFormat: TimestampFormat;
 }) {
-  if (activity.pausedUntil !== undefined) {
-    const upcoming = formatUpcomingTimestamp(activity.pausedUntil, timestampFormat);
-    return (
-      <Tooltip>
-        <TooltipTrigger
-          render={<span className={TIME_CLASS} data-zerops-surface="sidebar-mate-time" />}
-        >
-          <span
-            className="inline-flex items-center gap-1"
-            data-zerops-surface="sidebar-mate-paused"
+  switch (slot.kind) {
+    case "none":
+      return null;
+    case "clock":
+      return <MateWorkingTime since={slot.since} />;
+    case "paused": {
+      const upcoming = formatUpcomingTimestamp(slot.until, timestampFormat);
+      return (
+        <Tooltip>
+          <TooltipTrigger
+            render={<span className={TIME_CLASS} data-zerops-surface="sidebar-mate-time" />}
           >
-            <PauseIcon aria-hidden="true" className="size-2.5" />
-            {formatShortTimestamp(activity.pausedUntil, timestampFormat)}
-          </span>
-          <span className="sr-only">{`Paused at a usage limit, picks up ${upcoming}`}</span>
-        </TooltipTrigger>
-        <TooltipPopup side="right">{`Paused at a usage limit. Picks up ${upcoming}.`}</TooltipPopup>
-      </Tooltip>
-    );
+            <span
+              className="inline-flex items-center gap-1"
+              data-zerops-surface="sidebar-mate-paused"
+            >
+              <PauseIcon aria-hidden="true" className="size-2.5" />
+              {formatShortTimestamp(slot.until, timestampFormat)}
+            </span>
+            <span className="sr-only">{`Paused at a usage limit, picks up ${upcoming}`}</span>
+          </TooltipTrigger>
+          <TooltipPopup side="right">{`Paused at a usage limit. Picks up ${upcoming}.`}</TooltipPopup>
+        </Tooltip>
+      );
+    }
+    case "age": {
+      const when = at === undefined ? "" : compactSidebarTimeLabel(formatRelativeTimeLabel(at));
+      return when.length === 0 ? null : (
+        <span className={TIME_CLASS} data-zerops-surface="sidebar-mate-time">
+          {when}
+        </span>
+      );
+    }
   }
-  // Work left running in the background wears the working face and offers
-  // Stop: it counts up as a run does, from the run that left it running.
-  if (
-    activity.kind === "working" ||
-    activity.kind === "connecting" ||
-    activity.kind === "monitoring"
-  ) {
-    return <MateWorkingTime since={activity.at} />;
-  }
-  if (activity.subject === undefined) return null;
-  const when = compactSidebarTimeLabel(formatRelativeTimeLabel(activity.at));
-  return when.length === 0 ? null : (
-    <span className={TIME_CLASS} data-zerops-surface="sidebar-mate-time">
-      {when}
-    </span>
-  );
 }
 
 const TIME_CLASS = "shrink-0 text-line leading-5 text-muted-foreground tabular-nums";
@@ -2191,7 +2193,7 @@ function MateWorkingTime({ since }: { readonly since: string }) {
   }, []);
   return (
     <span
-      className="shrink-0 text-line leading-5 font-medium text-status-busy-text tabular-nums"
+      className="shrink-0 text-line leading-5 text-sidebar-foreground tabular-nums"
       data-zerops-surface="sidebar-mate-time"
     >
       {formatWorkingTime(nowMs - Date.parse(since))}
@@ -2200,18 +2202,57 @@ function MateWorkingTime({ since }: { readonly since: string }) {
 }
 
 /**
- * The Mate's last words — or, while its words are still to come, the dots
- * that wait for them — or, while a message to it waits unsent in its
- * composer, that draft, led by *Draft:*. Only where the row already keeps
- * this line: a draft never grows a row, the composer holds it anyway.
+ * The dot before the age: amber where the Mate needs you, blue where it
+ * finished something you have not seen, red where it stopped on an error
+ * (S3) — never a word. A dot that arrives while you watch scales in, once
+ * (T6); what the menu opened onto, or what this browser remembered, is
+ * simply there.
  */
-function MateSnippet({
-  snippet,
+function MateDot({
+  tone,
+  known,
+}: {
+  readonly tone: "attention" | "unread" | "failed" | undefined;
+  /** The Mate's state is read, not what this browser remembered. */
+  readonly known: boolean;
+}) {
+  const arrived = useChangedSinceShown(tone, known);
+  if (tone === undefined) return null;
+  return (
+    <span
+      aria-hidden="true"
+      className="menu-dot"
+      data-arrived={arrived ? "" : undefined}
+      data-tone={tone}
+      data-zerops-surface="sidebar-mate-dot"
+      key={tone}
+    />
+  );
+}
+
+/** The third line's inks: the answer muted, unread in the second ink, a question in ink, an error red. */
+const REPLY_TONE_CLASS: Record<"muted" | "ink-2" | "ink" | "failed", string> = {
+  muted: "text-muted-foreground",
+  "ink-2": "menu-ink-2",
+  ink: "text-sidebar-foreground",
+  failed: "text-status-failed-text",
+};
+
+/**
+ * The row's third line (`mateRowView`): the Mate's last words in its state's
+ * ink — the question it waits on, the error it stopped on — or, while it
+ * works, the step it is on, its command in mono under a sweep of light (D5);
+ * or the dots holding the line while words are still to come. While a
+ * message to it waits unsent in its composer, that draft stands in for its
+ * words or its dots, led by *Draft:*: never over a question, an error or a
+ * live step, and never growing a row — the composer holds it anyway.
+ */
+function MateReply({
+  reply,
   threadKey,
   known,
 }: {
-  /** Null while its words are still to come. */
-  readonly snippet: string | null;
+  readonly reply: NonNullable<MateRowReply>;
   readonly threadKey: string | undefined;
   /** The words are the Mate's as read, not what this browser remembered them saying. */
   readonly known: boolean;
@@ -2224,25 +2265,54 @@ function MateSnippet({
   // status line's do in the chat; what the menu opened onto is simply there,
   // and remembered words give way to the read ones without a rise. Only its
   // words: a draft is the person's own typing and changes with every key.
-  const wordsChanged = useChangedSinceShown(snippet, known);
-  if (snippet === null && unsent.length === 0) return <MateReplyPending />;
-  const drafting = unsent.length > 0;
+  const words = reply.kind === "words" ? reply.text : reply.kind === "live" ? reply.words : null;
+  const wordsChanged = useChangedSinceShown(words, known);
+  const drafting =
+    unsent.length > 0 &&
+    (reply.kind === "pending" ||
+      (reply.kind === "words" && (reply.tone === "muted" || reply.tone === "ink-2")));
+  if (reply.kind === "pending" && !drafting) return <MateReplyPending />;
+  if (reply.kind === "live") {
+    return (
+      <span
+        className={cn(
+          "truncate text-line leading-4.5 text-muted-foreground",
+          wordsChanged && "animate-words-in motion-reduce:animate-none",
+        )}
+        data-run-shimmer=""
+        data-zerops-surface="sidebar-mate-live-step"
+        key={`live:${reply.words}`}
+      >
+        {reply.words}
+        {reply.code === undefined ? null : (
+          <>
+            {" · "}
+            <span className="font-mono">{reply.code}</span>
+          </>
+        )}
+      </span>
+    );
+  }
   return (
     // The words keep their node while a draft stands over them in the same
     // cell, so clearing the draft does not replay their rise.
     <span className="grid min-w-0 text-line leading-4.5">
-      <span
-        aria-hidden={drafting ? true : undefined}
-        className={cn(
-          "col-start-1 row-start-1 truncate text-muted-foreground",
-          drafting && "invisible",
-          wordsChanged && "animate-words-in motion-reduce:animate-none",
-        )}
-        data-zerops-surface={drafting ? undefined : "sidebar-mate-snippet"}
-        key={`words:${snippet ?? ""}`}
-      >
-        {snippet}
-      </span>
+      {reply.kind === "words" ? (
+        <span
+          aria-hidden={drafting ? true : undefined}
+          className={cn(
+            "col-start-1 row-start-1 truncate",
+            REPLY_TONE_CLASS[reply.tone],
+            drafting && "invisible",
+            wordsChanged && "animate-words-in motion-reduce:animate-none",
+          )}
+          data-zerops-reply-tone={reply.tone}
+          data-zerops-surface={drafting ? undefined : "sidebar-mate-snippet"}
+          key={`words:${reply.text}`}
+        >
+          {reply.text}
+        </span>
+      ) : null}
       {drafting ? (
         <span
           className="col-start-1 row-start-1 truncate text-muted-foreground"

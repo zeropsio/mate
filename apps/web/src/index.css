@@ -2997,6 +2997,54 @@ code {
   .menu-band[data-on] {
     opacity: 1;
   }
+
+  /* The dot before a row's age: one meaning per colour (S3) — amber needs
+     you, blue finished and unseen (the blue of what clicks), red broken. */
+  .menu-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 9999px;
+  }
+
+  .menu-dot[data-tone="attention"] {
+    background: var(--zerops-status-attention);
+  }
+
+  .menu-dot[data-tone="unread"] {
+    background: var(--info-foreground);
+  }
+
+  .menu-dot[data-tone="failed"] {
+    background: var(--zerops-status-failed-text);
+  }
+}
+
+/* A dot that arrives while the person watches scales in, once (T6); with
+   reduced motion it only fades in (T8). */
+@media (prefers-reduced-motion: no-preference) {
+  .menu-dot[data-arrived] {
+    animation: menu-dot-in 220ms var(--ease-out-strong) both;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-dot[data-arrived] {
+    animation: menu-dot-fade 220ms ease-out both;
+  }
+}
+
+@keyframes menu-dot-in {
+  from {
+    scale: 0;
+    opacity: 0;
+  }
+}
+
+@keyframes menu-dot-fade {
+  from {
+    opacity: 0;
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {

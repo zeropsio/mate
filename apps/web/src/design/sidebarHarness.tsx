@@ -238,6 +238,8 @@ const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
 
   // A production somebody deployed by hand, and a stage that does not exist.
   candidate("notes-iris", "Notes - iris", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Iris"]),
+  candidate("notes-kai", "Notes - kai", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Kai"]),
+  candidate("notes-lena", "Notes - lena", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Lena"]),
   candidate("notes-prod", "Notes - production", [...NOTES, "mate:role:prod"], {
     container: false,
     routes: routes(["app", "notes.example.com"], ["app", "www.notes.example.com"]),
@@ -265,16 +267,20 @@ const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
 const ACTIVITY = new Map<string, ZeropsAgentActivity>([
   [
     "links-enzo",
-    activity({
-      id: "links-enzo",
-      task: "Add a search box above the list that filters the saved links",
-      subject: "Run the build",
-      snippet: "The search box filters as you type. Running the build now.",
-      hours: 0.053,
-      face: "working",
-      kind: "working",
-      progress: { completed: 2, total: 5 },
-    }),
+    {
+      // Working: the step it is on, as the server relays it (D5).
+      ...activity({
+        id: "links-enzo",
+        task: "Add a search box above the list that filters the saved links",
+        subject: "Run the build",
+        snippet: "The search box filters as you type. Running the build now.",
+        hours: 0.053,
+        face: "working",
+        kind: "working",
+        progress: { completed: 2, total: 5 },
+      }),
+      liveStep: { words: "Build the app", code: "pnpm build" },
+    },
   ],
   [
     "links-theo",
@@ -321,25 +327,56 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
   ],
   [
     "todo-vera",
-    activity({
-      id: "todo-vera",
-      subject: "Move finished items out of the way",
-      snippet: "Should finished items sink to the bottom, or hide behind a toggle?",
-      hours: 0.2,
-      face: "needs",
-      kind: "input",
-    }),
+    {
+      // Needs you: the question itself, as the server relays it (D6).
+      ...activity({
+        id: "todo-vera",
+        subject: "Move finished items out of the way",
+        snippet: "I looked at how the list sorts today.",
+        hours: 0.2,
+        face: "needs",
+        kind: "input",
+      }),
+      question: "Should finished items sink to the bottom, or hide behind a toggle?",
+    },
   ],
   [
     "todo-fen",
+    {
+      // Stopped on an error: its first line.
+      ...activity({
+        id: "todo-fen",
+        subject: "Rename the app in the page title and the main heading",
+        snippet: "Renamed it in the title; deploying to stage now.",
+        hours: 0.3,
+        face: "needs",
+        kind: "failed",
+      }),
+      errorLine: "The deploy to stage failed: the build timed out after 120 s.",
+    },
+  ],
+  [
+    "notes-kai",
+    // Asked, and no answer yet: the row is simply shorter.
     activity({
-      id: "todo-fen",
-      subject: "Rename the app in the page title and the main heading",
-      snippet: "The deploy to stage failed: the build timed out after 120 s.",
-      hours: 0.3,
-      face: "needs",
-      kind: "failed",
+      id: "notes-kai",
+      subject: "Add a dark mode to the note editor",
+      hours: 3,
+      face: "idle",
     }),
+  ],
+  [
+    "notes-lena",
+    {
+      // Sent a moment ago, its run not started: the dots hold the line.
+      ...activity({
+        id: "notes-lena",
+        subject: "Why is the export to PDF so slow?",
+        hours: 0.01,
+        face: "idle",
+      }),
+      awaitingWords: true,
+    },
   ],
   [
     "tokens-ada",
@@ -647,6 +684,8 @@ const OWNERS = new Map<string, ZeropsMateOwner>([
   ["links-theo", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
   ["shop-mira", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: false }],
   ["notes-iris", { name: "Eva Dvořák", initials: "ED", avatarUrl: null, isViewer: false }],
+  ["notes-kai", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
+  ["notes-lena", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: true }],
   ["todo-vera", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: false }],
 ]);
 
