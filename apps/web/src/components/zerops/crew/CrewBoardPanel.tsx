@@ -199,9 +199,10 @@ export interface CrewBoardProps {
 export function CrewBoard(props: CrewBoardProps) {
   const { model } = props;
   return (
-    <div className="@container/board flex flex-col gap-4" data-crew-board>
+    <div className="@container/board flex flex-col gap-2" data-crew-board>
       {/* The crew's name and state are the section's, right above: the board
-          heads its tasks. */}
+          heads its tasks, as near its first column as its columns stand to
+          each other. */}
       <header className="flex min-w-0 items-center gap-3">
         <MicroLabel>Board</MicroLabel>
         <Pill
