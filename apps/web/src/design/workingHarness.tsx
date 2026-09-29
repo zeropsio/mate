@@ -677,10 +677,13 @@ const WORKING: TimelineRowActivityState = {
   stoppingBackgroundWork: false,
 };
 
-/** A run's card: its heading, its chat, what runs alongside, its result. */
+/** A run's card as the conversation draws it: its slices on the tray, its bottom edge a slice of its own. */
 function Card({ children }: { readonly children: ReactNode }) {
   return (
-    <div className="rounded-3xl border border-border/70 bg-card px-4 pt-2 pb-3">{children}</div>
+    <div>
+      <div className="run-tray run-tray-top">{children}</div>
+      <div className="run-tray run-tray-bottom" />
+    </div>
   );
 }
 

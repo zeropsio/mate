@@ -2674,8 +2674,8 @@ code {
   inset-inline: -1px;
   bottom: -1.5px;
   height: 3px;
-  border-inline: 1px solid color-mix(in oklab, var(--contrast-border) 70%, transparent);
-  background: var(--card);
+  border-inline: 1px solid var(--run-tray-ring);
+  background: var(--run-tray);
   pointer-events: none;
 }
 
@@ -2949,6 +2949,65 @@ code {
 /* ==== end of the menu's projects and production ==== */
 
 /* ==== Pass 16 · the run's card ==== */
+
+/* The run's card is a quiet tray, not a white slab: one small step above the
+   canvas with a hairline edge, so the machinery sits under the words instead
+   of being the brightest thing on screen — the composer keeps the only white
+   (the plan's K11 and S5). */
+:root {
+  --run-tray: oklch(0.968 0.004 255.5);
+  @variant dark {
+    --run-tray: oklch(0.19 0.007 180);
+  }
+}
+
+@theme inline {
+  --color-run-tray: var(--run-tray);
+}
+
+.run-tray {
+  --run-tray-ring: color-mix(in oklab, var(--foreground) 7%, transparent);
+  background: var(--run-tray);
+  border-color: var(--run-tray-ring);
+  border-style: solid;
+  border-width: 0 1px;
+}
+
+/* Corners run parallel (S4): the tray's 30 px is its bubbles' 18 px plus the
+   12 px between them — 11 px of padding inside the 1 px ring. */
+.run-tray-top {
+  border-top-width: 1px;
+  border-top-left-radius: 30px;
+  border-top-right-radius: 30px;
+  padding-top: 11px;
+  padding-inline: 11px;
+}
+
+.run-tray-middle {
+  padding-inline: 11px;
+}
+
+.run-tray-bottom {
+  height: 12px;
+  border-bottom-width: 1px;
+  border-bottom-left-radius: 30px;
+  border-bottom-right-radius: 30px;
+}
+
+/* The Mate's words in its card wear its tint lightly (K13): with the
+   person's bubble neutral, who is speaking shows at a glance, in the one
+   colour that means "who" (S3). A crewmate speaks in its own. */
+.run-speech {
+  background: color-mix(in oklab, var(--run-speaker-tint) 17%, transparent);
+}
+
+/* A run's line with nothing under it keeps the tray's geometry in a frame
+   nobody sees, so the tray drawn around it later never moves its words. */
+.run-tray-ghost {
+  border: 1px solid transparent;
+  border-bottom: 0;
+  padding: 11px 11px 0;
+}
 
 /* ==== end of the run's card ==== */
 

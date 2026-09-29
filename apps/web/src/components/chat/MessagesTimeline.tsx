@@ -1389,7 +1389,7 @@ function rowInset(row: TimelineRow): string {
   }
   // A line with no card keeps the card's geometry in a frame nobody sees, so
   // opening it draws the card around the line without moving it.
-  if (row.kind === "work-line") return "border-x border-t border-transparent px-4 pt-2";
+  if (row.kind === "work-line") return "run-tray-ghost";
   return "px-4.25";
 }
 
@@ -1400,9 +1400,9 @@ function rowInset(row: TimelineRow): string {
  * edge. One frame, one surface, one inner edge — the composer's.
  */
 const CARD_SLICE: Record<CardSlice, string> = {
-  top: "rounded-t-3xl border-x border-t border-border/70 bg-card px-4 pt-2",
-  middle: "border-x border-border/70 bg-card px-4",
-  bottom: "h-4 rounded-b-3xl border-x border-b border-border/70 bg-card",
+  top: "run-tray run-tray-top",
+  middle: "run-tray run-tray-middle",
+  bottom: "run-tray run-tray-bottom",
 };
 // Where two slices meet, each row's clip snapped away from the joint and the
 // page showed through as a hairline (2026-09-29): a slice with another under
