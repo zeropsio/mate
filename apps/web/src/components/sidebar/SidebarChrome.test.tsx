@@ -99,6 +99,24 @@ describe("SidebarChromeHeader", () => {
     expect(markup).not.toContain("T3");
   });
 
+  it("ends the logo row in the jump box's way in, after the waiting faces' slot", () => {
+    const markup = renderToStaticMarkup(
+      <SidebarChromeHeader
+        isElectron={false}
+        jump={<button data-zerops-surface="sidebar-jump" type="button" />}
+        waiting={<span data-zerops-surface="sidebar-waiting" />}
+      />,
+    );
+    expect(markup.indexOf("sidebar-waiting-slot")).toBeGreaterThan(-1);
+    expect(markup.indexOf('data-zerops-surface="sidebar-jump"')).toBeGreaterThan(
+      markup.indexOf("sidebar-waiting-slot"),
+    );
+    // Without either, the row is the lockup alone.
+    expect(renderToStaticMarkup(<SidebarChromeHeader isElectron={false} />)).not.toContain(
+      "sidebar-jump",
+    );
+  });
+
   it("renders no stage artwork with a built-in theme selected", () => {
     const markup = renderToStaticMarkup(
       <div data-theme-id="t3-chat">

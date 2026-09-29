@@ -2946,6 +2946,60 @@ code {
 
 /* ==== Pass 16 · the menu's projects and production ==== */
 
+/* A project's name: 16 · 600 on a 24 px line, drawn a little tighter. */
+.zerops-project-name {
+  letter-spacing: -0.2px;
+}
+
+/* The heading's chevron: shown on hover and focus and always while folded,
+   a quarter turn down while open — one glyph that turns as the rows unfold. */
+.zerops-project-chevron {
+  opacity: 0;
+  transition:
+    opacity 150ms ease,
+    rotate 220ms var(--ease-out-strong);
+}
+
+[data-zerops-surface="sidebar-project"]:is(:hover, :focus-within, [data-collapsed])
+  .zerops-project-chevron {
+  opacity: 1;
+}
+
+[data-zerops-surface="sidebar-project"]:not([data-collapsed]) .zerops-project-chevron {
+  rotate: 90deg;
+}
+
+@media (pointer: coarse) {
+  .zerops-project-chevron {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zerops-project-chevron {
+    transition: opacity 150ms ease;
+  }
+}
+
+/* The jump box's way in, in the logo row (M12): a quiet chip with its key
+   inside it, a step darker and inked under the pointer. */
+.zerops-jump-button {
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 5.5%, transparent);
+  color: var(--sidebar-muted-foreground);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.zerops-jump-button:hover {
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 9%, transparent);
+  color: var(--sidebar-foreground);
+}
+
+.zerops-jump-key {
+  line-height: 1;
+}
+
 /* ==== end of the menu's projects and production ==== */
 
 /* ==== Pass 16 · the run's card ==== */

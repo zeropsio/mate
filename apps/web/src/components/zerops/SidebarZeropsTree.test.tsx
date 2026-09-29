@@ -1560,6 +1560,51 @@ describe("the project's flow under it", () => {
   });
 });
 
+describe("New project at the list's end (D11)", () => {
+  const row = (html: string) =>
+    /<button[^>]*data-zerops-surface="sidebar-new-project"[^>]*>(.*?)<\/button>/u.exec(html);
+
+  it("ends the list with New project: the + in the face column, the words on the text edge", () => {
+    const html = render([CRM_DEV, LINKS_MATE], { onNewProject: () => {} });
+    const found = row(html);
+    expect(found).not.toBeNull();
+    // After every project, the list's last row.
+    expect(html.indexOf("sidebar-new-project")).toBeGreaterThan(html.lastIndexOf("<section"));
+    const classes = /class="([^"]*)"/u.exec(found![0])![1]!.split(" ");
+    expect(classes).toEqual(expect.arrayContaining(["h-7", "ps-1.75", "gap-3", "rounded-lg"]));
+    expect(found![1]).toContain("lucide-plus");
+    expect(found![1]).toMatch(/<span class="[^"]*\bw-7\b/u);
+    expect(found![1]).toContain(">New project</span>");
+  });
+
+  it("offers New project alone to an account with no project yet", () => {
+    const html = render([], { onNewProject: () => {} });
+    expect(row(html)).not.toBeNull();
+    expect(html).not.toContain("sidebar-environments-empty");
+  });
+
+  it("starts a new project when pressed", () => {
+    let started = 0;
+    const mounted = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV]}
+        complete
+        onBrowseProjects={() => {}}
+        onNewProject={() => {
+          started += 1;
+        }}
+        onSelect={() => {}}
+      />,
+    );
+    press(mounted, "sidebar-new-project");
+    expect(started).toBe(1);
+  });
+
+  it("draws no New project where nobody said how to make one", () => {
+    expect(row(render([CRM_DEV]))).toBeNull();
+  });
+});
+
 describe("a project collapsed to its heading", () => {
   const tree = (props: Record<string, unknown> = {}) => (
     <SidebarZeropsTree
@@ -1617,11 +1662,10 @@ describe("a project collapsed to its heading", () => {
       expect(html).not.toContain(`data-zerops-surface="${gone}"`);
   });
 
-  // A heading belongs to the rows under it, never halfway between two
-  // projects (the owner, 2026-09-28: "the gap between project name and under
-  // project is the same"): a full breath above a project, and a run of
-  // collapsed ones closed up into a list of their names.
-  it("keeps a full breath between projects, and closes a run of collapsed ones into a list", () => {
+  // A heading never moves when it is pressed (M9): the room between two
+  // projects is at the end of an open one — its rows unfold below the heading
+  // with the room after them — and folded projects stack as a list of names.
+  it("keeps the room at the end of an open project, never above a heading", () => {
     const notes = named("notes-dev", "Notes - dev", [
       "mate",
       "mate:g:notes",
@@ -1632,33 +1676,68 @@ describe("a project collapsed to its heading", () => {
     const html = render([CRM_DEV, LINKS_MATE, notes]);
     const sections = [...html.matchAll(/<section class="([^"]*)" data-zerops-group="([^"]*)"/g)];
     expect(sections.map(([, , group]) => group)).toEqual(["aaa", "links", "notes"]);
-    const room = (group: string) =>
-      sections
-        .find(([, , id]) => id === group)?.[1]
-        ?.split(" ")
-        .filter((name) => name.startsWith("mt-")) ?? [];
-    expect(room("aaa")).toEqual([]);
-    expect(room("links")).toEqual(["mt-9"]);
-    expect(room("notes")).toEqual(["mt-1"]);
+    for (const [, classes] of sections)
+      expect(classes!.split(" ").filter((name) => /^m[ty]-/u.test(name))).toEqual([]);
+    // Only the open project draws its rows, and they end with its room.
+    const rows = [
+      ...html.matchAll(/data-zerops-surface="sidebar-project-rows"><div class="([^"]*)"/g),
+    ].map(([, classes]) => classes!.split(" "));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual(expect.arrayContaining(["pt-0.5", "pb-11"]));
   });
 
-  it("points its chevron right while collapsed and always shows it; down, on hover, while open", () => {
+  it("keeps less room under the list's last project", () => {
+    const rows = /data-zerops-surface="sidebar-project-rows"><div class="([^"]*)"/u.exec(
+      render([CRM_DEV]),
+    )?.[1];
+    expect(rows?.split(" ")).toEqual(expect.arrayContaining(["pt-0.5", "pb-4"]));
+  });
+
+  it("wears one chevron that turns, the heading saying whether it is folded", () => {
+    const heading = (collapsed: boolean) =>
+      renderToStaticMarkup(
+        <ProjectHeader
+          collapsed={collapsed}
+          name="Links"
+          onBrowseProjects={() => {}}
+          onToggle={() => {}}
+        />,
+      );
     const chevron = (collapsed: boolean) =>
       /<svg[^>]*data-zerops-surface="sidebar-project-chevron"[^>]*>/u.exec(
-        renderToStaticMarkup(
-          <ProjectHeader
-            collapsed={collapsed}
-            name="Links"
-            onBrowseProjects={() => {}}
-            onToggle={() => {}}
-          />,
-        ),
+        heading(collapsed),
       )?.[0] ?? "";
-    expect(chevron(true)).toContain("lucide-chevron-right");
-    expect(chevron(true)).not.toContain("opacity-0");
-    expect(chevron(false)).toContain("lucide-chevron-down");
-    expect(chevron(false)).toContain("opacity-0");
-    expect(chevron(false)).toContain("group-hover/project:opacity-100");
+    // One glyph in both states: it turns a quarter down while open (the
+    // stylesheet's `.zerops-project-chevron`), so opening is one movement.
+    for (const collapsed of [true, false]) {
+      expect(chevron(collapsed)).toContain("lucide-chevron-right");
+      expect(chevron(collapsed)).toContain("zerops-project-chevron");
+    }
+    expect(heading(true)).toContain('data-collapsed="true"');
+    expect(heading(false)).not.toContain("data-collapsed");
+  });
+
+  it("is 32 px tall, its title on the mark edge, its verbs 28 px and always in their slot", () => {
+    const html = renderToStaticMarkup(
+      <ProjectHeader
+        group={buildZeropsGroupTree([CRM_DEV], { order: "name" }).groups[0]!.group}
+        onBrowseProjects={() => {}}
+        onToggle={() => {}}
+      />,
+    );
+    const heading = /<div class="([^"]*)"[^>]*data-zerops-surface="sidebar-project"/u.exec(html);
+    expect(heading?.[1]?.split(" ")).toEqual(expect.arrayContaining(["h-8", "ps-1.75", "pe-1"]));
+    const title = /<span class="([^"]*)">Beviro CRM</u.exec(html)?.[1]?.split(" ") ?? [];
+    expect(title).toEqual(
+      expect.arrayContaining(["text-base", "leading-6", "font-semibold", "zerops-project-name"]),
+    );
+    for (const verb of ["sidebar-project-add-mate", "sidebar-project-more"]) {
+      const button = new RegExp(`<button[^>]*data-zerops-surface="${verb}"[^>]*>`, "u").exec(
+        html,
+      )?.[0];
+      expect(button).toContain("size-7");
+      expect(button).toContain("rounded-md");
+    }
   });
 
   it("starts the title at the rail's own left edge and hangs the chevron after it", () => {

@@ -99,7 +99,6 @@ import {
   ArrowUpIcon,
   BellOffIcon,
   CheckIcon,
-  ChevronDownIcon,
   ChevronRightIcon,
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
@@ -154,6 +153,7 @@ import {
   stopNameSaysOnlyRole,
 } from "./SidebarZeropsTree.logic";
 import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
+import { SidebarProjectFold, type ProjectFoldMotion } from "./SidebarProjectFold";
 import { MatePeekHost } from "./SidebarMatePeek";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarPeek, type SidebarRevealTarget } from "~/zerops/sidebarPeek";
@@ -377,6 +377,12 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   /** Records which project an add was asked for, before navigating to answer it. */
   readonly onAddMate?: ((groupId: string) => void) | undefined;
   readonly onBrowseProjects: () => void;
+  /**
+   * Starts a new project: the list's last row (D11), where projects are, so
+   * nothing in the logo row reads as the jump box's key's owner. Absent, the
+   * list ends on its last project.
+   */
+  readonly onNewProject?: (() => void) | undefined;
   readonly activeProjectId?: string | null;
   /**
    * What this agent is doing right now.
@@ -536,6 +542,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   onSelect,
   onAddMate,
   onBrowseProjects,
+  onNewProject,
   onOpenGroup,
   activeProjectId,
   getActivity,
@@ -587,6 +594,17 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   const [nowMs] = useState(Date.now);
   // The projects whose quiet Mates somebody unfolded; not remembered.
   const [openQuiet, setOpenQuiet] = useState<ReadonlySet<string>>(() => new Set());
+  // The projects a heading's press set unfolding or folding, until they settle:
+  // a folding project keeps its rows drawn until they have folded away.
+  const [folds, setFolds] = useState<ReadonlyMap<string, ProjectFoldMotion>>(() => new Map());
+  const settleFold = (groupId: string) => {
+    setFolds((current) => {
+      if (!current.has(groupId)) return current;
+      const next = new Map(current);
+      next.delete(groupId);
+      return next;
+    });
+  };
   // Option held: each Mate row's time slot shows its number, and ⌥1–9 opens it.
   const [altHeld, setAltHeld] = useState(false);
   // One Mate's peek at a time (`sidebarPeek.ts`): half a second's hover, or
@@ -751,12 +769,14 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     return <ListingNotice className={className} notice={notice} onAct={onNoticeAct} />;
   }
 
-  // No project at all: nothing to list and nothing to say — the header's
-  // "+ New project" is the one affordance, and the projects screen already
-  // makes the invitation. A second "New project" here would be the same verb
-  // three times on one screen.
+  // No project at all: nothing to list, and nothing to say but the one thing
+  // to do — the list's own last row, alone.
   if (nothing === "no-projects") {
-    return null;
+    return onNewProject === undefined ? null : (
+      <nav aria-label="Mates" className={cn("relative flex flex-col pt-1.5", className)}>
+        <NewProjectRow onNewProject={onNewProject} />
+      </nav>
+    );
   }
 
   // Projects, but none with a Mate: one quiet line on the menu's own left
@@ -998,6 +1018,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     groupName: string | undefined,
     // `undefined` for the ungrouped section, which has no production to add.
     group: ZeropsGroup | undefined,
+    // The list's last project, which keeps less room below its rows.
+    last: boolean,
   ) => {
     const everyMate = entries.filter(({ item }) => hasMate(item));
     // Whose Mates the viewer asked to see (Mine / Everyone).
@@ -1110,7 +1132,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // no small badges: a second, smaller design of the same rows is what the
     // owner turned down (2026-09-25). The dot on the heading still says
     // whether it waits on somebody.
-    if (group !== undefined && collapsed.has(id)) return header;
+    const fold = folds.get(id);
+    // A fragment either way, so the heading keeps its node — and the focus of
+    // the press that folded it — whether its rows are drawn or not.
+    if (group !== undefined && collapsed.has(id) && fold !== "closing") return <>{header}</>;
     const quietOpen = openQuiet.has(id);
     const slots: ReadonlyArray<MateSlot<T>> = [
       ...loud.map(({ item }) => ({ kind: "mate" as const, item })),
@@ -1301,12 +1326,21 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     return (
       <>
         {header}
-        {blocks.map((block, index) => (
-          <Fragment key={block.key}>
-            {index === 0 ? null : <RailGap />}
-            {block.node}
-          </Fragment>
-        ))}
+        <SidebarProjectFold
+          last={last}
+          motion={fold}
+          onSettled={() => {
+            settleFold(id);
+          }}
+          open={!collapsed.has(id)}
+        >
+          {blocks.map((block, index) => (
+            <Fragment key={block.key}>
+              {index === 0 ? null : <RailGap />}
+              {block.node}
+            </Fragment>
+          ))}
+        </SidebarProjectFold>
       </>
     );
   };
@@ -1356,11 +1390,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     <section
       className={cn(
         "flex flex-col transition-opacity",
-        sectionRoom({
-          first: index === 0,
-          collapsed: collapsed.has(group.groupId),
-          afterCollapsed: index > 0 && collapsed.has(groups[index - 1]!.group.groupId),
-        }),
         reorder.dragging === group.groupId && "opacity-40",
       )}
       data-zerops-group={group.groupId}
@@ -1386,7 +1415,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             }
             onToggle={() => {
               const { groupId } = group;
-              setCollapsed((current) => withCollapsed(current, groupId, !current.has(groupId)));
+              const folding = !collapsed.has(groupId);
+              setCollapsed((current) => withCollapsed(current, groupId, folding));
+              setFolds((current) => new Map(current).set(groupId, folding ? "closing" : "opening"));
             }}
             reorder={{
               custom: projectOrder.order === "custom",
@@ -1410,14 +1441,12 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         getFlow?.(group.groupId),
         groupNameIsPlaceholder(group) ? undefined : group.name,
         group,
+        index === groups.length - 1 && !ungroupedMates,
       )}
     </section>
   ));
   const ungroupedSection = ungroupedMates ? (
-    <section
-      className={cn("flex flex-col", groups.length > 0 && SECTION_ROOM)}
-      data-zerops-ungrouped="true"
-    >
+    <section className="flex flex-col" data-zerops-ungrouped="true">
       {section(
         "ungrouped",
         ungrouped,
@@ -1429,6 +1458,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         // Nothing groups these, so nothing above a row repeats its name.
         undefined,
         undefined,
+        true,
       )}
     </section>
   ) : null;
@@ -1443,7 +1473,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   return (
     <nav
       aria-label="Mates"
-      className={cn("relative flex flex-col", className)}
+      // The list starts 6 px under the logo row, as the plan's menu does.
+      className={cn("relative flex flex-col pt-1.5", className)}
       data-zerops-surface="sidebar-environments"
       ref={treeRef}
     >
@@ -1455,6 +1486,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       {notice === null ? null : (
         <ListingNotice className="mt-6" notice={notice} onAct={onNoticeAct} />
       )}
+      {onNewProject === undefined ? null : <NewProjectRow onNewProject={onNewProject} />}
       {reorder.overlay}
       {renderPeek === undefined ? null : (
         <MatePeekHost
@@ -1487,20 +1519,24 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
 }
 
 /**
- * The room above a project. A full breath separates it from the one before,
- * much more than its heading keeps from its own rows, so the heading belongs
- * to what is under it rather than floating halfway between two projects. A
- * run of collapsed projects closes up into a list of their names.
+ * *New project*, the list's last row (D11): a + in the faces' 28 px column and
+ * the words on the menu's text edge, 13 px and muted until pointed at — a row
+ * like the others, 4 px under the last project.
  */
-const SECTION_ROOM = "mt-9";
-
-function sectionRoom(at: {
-  readonly first: boolean;
-  readonly collapsed: boolean;
-  readonly afterCollapsed: boolean;
-}): string | undefined {
-  if (at.first) return undefined;
-  return at.collapsed && at.afterCollapsed ? "mt-1" : SECTION_ROOM;
+function NewProjectRow({ onNewProject }: { readonly onNewProject: () => void }) {
+  return (
+    <button
+      className="mt-1 flex h-7 w-full min-w-0 cursor-pointer items-center gap-3 rounded-lg ps-1.75 pe-2 text-left text-line text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      data-zerops-surface="sidebar-new-project"
+      onClick={onNewProject}
+      type="button"
+    >
+      <span className="flex w-7 shrink-0 justify-center">
+        <PlusIcon aria-hidden="true" className="size-3.5" />
+      </span>
+      <span className="min-w-0 truncate">New project</span>
+    </button>
+  );
 }
 
 /** The listing's notice (`candidatesNotice`) with its one affordance, at the menu's left edge. */
@@ -1609,8 +1645,11 @@ export function ProjectHeader({
   const placeholder = group !== undefined && groupNameIsPlaceholder(group);
   const title = group?.name ?? name ?? "";
   return (
+    // The title on the menu's mark edge (x = 16: 7 px inside the list's own
+    // 9), the heading 32 px tall, and its end 12 px short of the menu's edge.
     <div
-      className="group/project relative flex h-7 min-w-0 items-center gap-1 px-2.5"
+      className="group/project relative flex h-8 min-w-0 items-center gap-1 ps-1.75 pe-1"
+      data-collapsed={collapsed ? "true" : undefined}
       data-zerops-surface="sidebar-project"
     >
       {reorder?.custom === true && group !== undefined ? (
@@ -1641,9 +1680,12 @@ export function ProjectHeader({
           {title}
         </span>
       ) : (
+        // The whole heading opens and folds the project — its hit area is the
+        // heading's (`after:inset-0`) — and only its verbs and its production
+        // stand above that, each its own control.
         <button
           aria-expanded={!collapsed}
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+          className="flex min-w-0 cursor-pointer items-center gap-1 rounded-sm text-left after:absolute after:inset-0 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
           data-zerops-surface="sidebar-project-toggle"
           onClick={onToggle}
           type="button"
@@ -1658,20 +1700,20 @@ export function ProjectHeader({
               started (the owner, 2026-09-25: "everything jumps around
               differently"). The title hugs its text, so the chevron follows
               it. */}
-          <DisclosureGlyph collapsed={collapsed} />
+          <DisclosureGlyph />
         </button>
       )}
       {/* Hidden until hover keeps a list of five projects calm, but a finger
-          never hovers — so a coarse pointer gets them at rest, as the stop
-          rows below already do. */}
+          never hovers — so a coarse pointer gets them at rest. A slot that is
+          always there: nothing moves when they show. */}
       {muted ? null : (
-        <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-focus-within/project:opacity-100 group-hover/project:opacity-100 pointer-coarse:opacity-100">
+        <span className="relative z-1 flex shrink-0 items-center opacity-0 transition-opacity group-focus-within/project:opacity-100 group-hover/project:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100">
           <Tooltip>
             <TooltipTrigger
               render={
                 <button
                   aria-label={`Add a Mate to ${title}`}
-                  className={ROW_ACTION_CLASS}
+                  className={HEADING_ACTION_CLASS}
                   data-zerops-surface="sidebar-project-add-mate"
                   onClick={() => {
                     // The dialog belongs to the projects screen, so the ask
@@ -1683,17 +1725,22 @@ export function ProjectHeader({
                 />
               }
             >
-              <PlusIcon aria-hidden="true" className="size-3.5" />
+              <PlusIcon aria-hidden="true" className="size-3.75" />
             </TooltipTrigger>
             <TooltipPopup side="right">Add a Mate</TooltipPopup>
           </Tooltip>
           <Menu>
             <MenuTrigger
-              aria-label={`More for ${title}`}
-              className={ROW_ACTION_CLASS}
-              data-zerops-surface="sidebar-project-more"
+              render={
+                <button
+                  aria-label={`More for ${title}`}
+                  className={HEADING_ACTION_CLASS}
+                  data-zerops-surface="sidebar-project-more"
+                  type="button"
+                />
+              }
             >
-              <MoreHorizontalIcon aria-hidden="true" className="size-3.5" />
+              <MoreHorizontalIcon aria-hidden="true" className="size-3.75" />
             </MenuTrigger>
             <MenuPopup align="start" className="w-56" side="right">
               {/* The project's own page. It went to the projects screen once,
@@ -1738,6 +1785,7 @@ export function ProjectHeader({
           </Menu>
         </span>
       )}
+      <span aria-hidden="true" className="min-w-0 flex-1" />
       {/* Always on, unlike the verbs before it: this says something is waiting
           on the person, which is not a fact that should hide until they hover.
           Last, so at rest it sits on the end edge, over the Mates' times. */}
@@ -1746,7 +1794,7 @@ export function ProjectHeader({
           <TooltipTrigger
             render={
               <StatusDot
-                className="shrink-0"
+                className="relative z-1 shrink-0"
                 data-zerops-surface="sidebar-project-next-step"
                 dotOnly
                 label={nextStep.text}
@@ -1959,14 +2007,18 @@ export interface ProjectHeaderReorder {
   readonly onGripPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 }
 
-/** The hover affordances on a heading and on a stop: the same control. */
+/** A project's name: 16 · 600, the only 16 px words in the menu (S1). */
 const HEADING_CLASS =
-  "min-w-0 truncate text-base leading-6 font-semibold tracking-tight text-sidebar-foreground";
+  "zerops-project-name min-w-0 truncate text-base leading-6 font-semibold text-sidebar-foreground";
 const HEADING_MUTED = "text-[13px] font-medium tracking-normal text-sidebar-muted-foreground";
 const HEADING_UNNAMED = "font-normal text-sidebar-muted-foreground italic";
 
 const ROW_ACTION_CLASS =
   "inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground";
+
+/** A heading's verbs, + and ⋯: 28 px, a row's hover behind them, muted until pointed at. */
+const HEADING_ACTION_CLASS =
+  "inline-flex size-7 cursor-pointer items-center justify-center rounded-md text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-hover data-popup-open:text-sidebar-foreground";
 
 function MateRow<T extends RosterCandidate>({
   candidate,
@@ -3682,21 +3734,17 @@ function CreatingStopRow({
 }
 
 /**
- * A project heading's disclosure chevron: right while collapsed, down while
- * open — a tree's own gesture, since a project heading does have a level
- * below it. Shown on hover and focus, and always while collapsed, when it is
- * the only thing saying there is more.
+ * A project heading's disclosure chevron: pointing right while collapsed,
+ * turned a quarter down while open — a tree's own gesture, since a project
+ * heading does have a level below it. Shown on hover and focus, and always
+ * while collapsed, when it is the only thing saying there is more. One glyph
+ * that turns (`.zerops-project-chevron`), so opening reads as one movement.
  */
-function DisclosureGlyph({ collapsed }: { readonly collapsed: boolean }) {
-  const Glyph = collapsed ? ChevronRightIcon : ChevronDownIcon;
+function DisclosureGlyph() {
   return (
-    <Glyph
+    <ChevronRightIcon
       aria-hidden="true"
-      className={cn(
-        "size-3 shrink-0 text-sidebar-muted-foreground transition-opacity",
-        !collapsed &&
-          "opacity-0 group-focus-within/project:opacity-100 group-hover/project:opacity-100 pointer-coarse:opacity-100",
-      )}
+      className="zerops-project-chevron size-3.5 shrink-0 text-sidebar-muted-foreground"
       data-zerops-surface="sidebar-project-chevron"
     />
   );
