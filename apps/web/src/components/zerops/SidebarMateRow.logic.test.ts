@@ -244,6 +244,29 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       },
     },
     {
+      // A turn that hits the limit ends failed, the session in error, while
+      // the pause stands: it sleeps until the limit resets, and the resume
+      // picks the work up without anybody (`mateMarkStateForThread`) — no
+      // red dot, no error line.
+      case: "paused at a usage limit its last turn failed on",
+      input: activity({
+        kind: "failed",
+        face: "sleep",
+        pausedUntil: "2026-09-29T14:20:00.000Z",
+        errorLine: "Claude usage limit reached. Your limit resets at 14:20.",
+      }),
+      state: "paused",
+      rowFace: "sleep",
+      slot: { kind: "paused", until: "2026-09-29T14:20:00.000Z" },
+      dot: undefined,
+      strong: false,
+      reply: {
+        kind: "words",
+        text: "Merged the image pipeline; the cart renders in 80 ms.",
+        tone: "muted",
+      },
+    },
+    {
       case: "sent, its run not started yet",
       input: activity({ snippet: undefined, awaitingWords: true }),
       state: "idle",
