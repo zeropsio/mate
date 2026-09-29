@@ -6867,7 +6867,7 @@ export default function ChatView(props: ChatViewProps) {
           releaseAttachmentUploads(composerImagesSnapshot);
         }
         acknowledgeActiveThreadWoke();
-        // New session in the main chat archived it with its pin: the chat
+        // Archive and start fresh in the main chat archived it with its pin: the chat
         // that took its place is main from its first send.
         if (isLocalDraftThread && zeropsMateAt(zeropsMates, environmentId).kind === "mate") {
           const mainChat = replacementChatToPin(
@@ -7058,7 +7058,7 @@ export default function ChatView(props: ChatViewProps) {
   const startFreshConversation = async () => {
     if (!activeThreadRef) return;
     const result = await archiveThread(activeThreadRef, {
-      toast: { title: "Started a new session", description: "The last one is under Archived." },
+      toast: { title: "Started fresh", description: "The last conversation is under Archived." },
     });
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       const error = squashAtomCommandFailure(result);
@@ -7066,9 +7066,7 @@ export default function ChatView(props: ChatViewProps) {
       toastManager.add(
         stackedThreadToast({
           type: "warning",
-          title: blocked
-            ? "Stop the agent before starting a new session"
-            : "Couldn't start a new session",
+          title: blocked ? "Stop the agent before starting fresh" : "Couldn't start fresh",
           description: blocked ? undefined : String(error),
         }),
       );
@@ -8307,7 +8305,7 @@ export default function ChatView(props: ChatViewProps) {
                           "chat-composer-glass-shell-with-context",
                       )}
                     >
-                      <div className="chat-composer-glass-host relative z-10 w-full rounded-[22px]">
+                      <div className="chat-composer-glass-host relative z-10 w-full">
                         <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
                           {zeropsReadOnly !== null ? (
                             <ZeropsReadOnlyConversationFooter

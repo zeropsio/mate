@@ -1354,13 +1354,22 @@ function TimelineMinimapNavigationButton({
 type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"][number];
 type TimelineRow = MessagesTimelineRow;
 
-/** The room a row keeps above itself (see `rowGap`). */
+/**
+ * The room a row keeps above itself (see `rowGap`), so the ink stands where
+ * the rhythm says: a part 24 px under the person's bubble or the card's
+ * edge, a turn 64 px under them. The answer's prose adds its own: 3 px of
+ * leading above its first line (21 + 3), and under its last line 3 px of
+ * leading and its 28 px copy line (33 + 31).
+ */
 const GAP_CLASS: Record<RowGap, string> = {
   none: "",
   tight: "pt-1",
   line: "pt-3",
   block: "pt-5",
-  turn: "pt-10",
+  part: "pt-6",
+  "part-words": "pt-5.25",
+  turn: "pt-16",
+  "turn-after-words": "pt-8.25",
 };
 
 /**
@@ -1795,7 +1804,7 @@ function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcom
   }, [turnKey]);
   return (
     // The result stands off the chat as the bars do, on the card's own hairline.
-    <div ref={markerRef} className="-mx-4 border-border/60 border-t px-4 pt-2">
+    <div ref={markerRef} className="-mx-4 border-border/60 border-t px-4 pt-2 empty:hidden">
       <TurnReport
         onOpenImage={ctx.onImageExpand}
         onOpenTurnDiff={(turnId) => ctx.onOpenTurnDiff(turnId)}

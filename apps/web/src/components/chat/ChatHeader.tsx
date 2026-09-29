@@ -11,7 +11,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { ChangeRequestSettleSource } from "@t3tools/client-runtime/state/thread-settled";
-import { ChevronDownIcon, EllipsisIcon, PlusIcon, SquarePenIcon } from "lucide-react";
+import { ArchiveIcon, ChevronDownIcon, EllipsisIcon, PlusIcon } from "lucide-react";
 import {
   memo,
   useCallback,
@@ -59,7 +59,7 @@ import {
 } from "../WorkspaceBreadcrumb";
 import { cn } from "~/lib/utils";
 import { useIsMobile } from "~/hooks/useMediaQuery";
-import { Menu, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
+import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
@@ -151,69 +151,63 @@ export function shouldShowOpenInPicker(input: {
 /**
  * The way into Zerops from a Mate's conversation: its project on the
  * dashboard, in a new tab. It stands where the editor picker stands in a
- * conversation on a machine of one's own — the same outline button, the
- * Zerops loop, and the label only where the header has room for it.
+ * conversation on a machine of one's own — the header's one button style,
+ * the Zerops loop, and the label only where the header has room for it.
  */
 function ZeropsProjectLink({ projectUrl }: { readonly projectUrl: string }) {
   return (
     <Button
-      className="ps-[8.5px]"
+      data-chat-header-ghost
       render={
         <a aria-label="Open in Zerops" href={projectUrl} rel="noreferrer" target="_blank">
           <ZeropsMark className="size-3.5 shrink-0" />
-          <span className="hidden @3xl/header-actions:ml-0.5 @3xl/header-actions:inline">
-            Open in Zerops
-          </span>
+          <span className="hidden text-line @3xl/header-actions:inline">Open in Zerops</span>
         </a>
       }
-      size="xs"
-      variant="outline"
+      size="sm"
+      variant="ghost-muted"
     />
   );
 }
 
 /**
- * Starting over in a Mate's chat: the one on screen is archived and a fresh,
- * empty thread takes its place. A glyph only; its name is the tooltip.
- */
-function StartFreshButton({ onStartFresh }: { readonly onStartFresh: () => void }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            aria-label="New session"
-            data-zerops-start-fresh
-            onClick={onStartFresh}
-            size="icon-xs"
-            variant="outline"
-          />
-        }
-      >
-        <SquarePenIcon />
-      </TooltipTrigger>
-      <TooltipPopup side="top">New session</TooltipPopup>
-    </Tooltip>
-  );
-}
-
-/**
  * Another chat beside the Mate's one, for a Mate with a single chat — once
- * there are two, the conversation strip carries it. A glyph only, like its
- * neighbour; its name is the tooltip.
+ * there are two, the conversation strip carries it. A glyph only; its name
+ * is the tooltip.
  */
 function NewChatButton({ onNewChat }: { readonly onNewChat: () => void }) {
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <Button aria-label="New chat" onClick={onNewChat} size="icon-xs" variant="outline" />
+          <Button
+            aria-label="New chat"
+            data-chat-header-ghost
+            onClick={onNewChat}
+            size="icon-sm"
+            variant="ghost-muted"
+          />
         }
       >
         <PlusIcon />
       </TooltipTrigger>
       <TooltipPopup side="top">New chat</TooltipPopup>
     </Tooltip>
+  );
+}
+
+/**
+ * Starting over in a Mate's chat, spelled out in the header's menu: the chat
+ * on screen is archived and a fresh, empty one takes its place — the one
+ * action in the header a second click does not undo, so it is never a bare
+ * glyph beside New chat.
+ */
+function StartFreshMenuItem({ onStartFresh }: { readonly onStartFresh: () => void }) {
+  return (
+    <MenuItem data-zerops-start-fresh onClick={onStartFresh}>
+      <ArchiveIcon />
+      Archive and start fresh
+    </MenuItem>
   );
 }
 
@@ -279,7 +273,6 @@ export const ChatHeader = memo(function ChatHeader({
     },
     [actionsContainer, actionsCollapsed],
   );
-  if (!actionsCollapsed && actionsOpen) setActionsOpen(false);
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const fileScripts = useT3ProjectFileScripts(
     activeThreadEnvironmentId,
@@ -480,6 +473,13 @@ export const ChatHeader = memo(function ChatHeader({
   const showProjectScripts = whoLivesHere.kind === "nobody" && activeProjectScripts !== undefined;
   const showGitActions =
     Boolean(activeProjectName) && stackedActionsSupported && crewOrigin === null;
+  // The header's one menu: upstream's project actions on a narrow header,
+  // and a Mate's own start-over wherever the Mate lives.
+  const startsFresh = mate !== undefined && crewOrigin === null;
+  const projectActionsInMenu =
+    actionsCollapsed && (showProjectScripts || showOpenInPicker || showGitActions);
+  const menuShown = startsFresh || projectActionsInMenu;
+  if (!menuShown && actionsOpen) setActionsOpen(false);
   // Upstream's project actions fold into one menu on a narrow header; the
   // Mate's own controls stay where they are.
   const headerActions = (
@@ -542,18 +542,17 @@ export const ChatHeader = memo(function ChatHeader({
             />
           </WorkspaceBreadcrumbItem>
         ) : mate !== undefined ? (
-          <>
-            <WorkspaceBreadcrumbItem>
-              <span
-                className="inline-flex min-w-0 items-center gap-2 text-foreground"
-                data-zerops-surface="header-mate"
-              >
-                <MateFace size="sm" state={mateFace} tint={mate.tint} />
-                <span className="max-w-48 truncate font-medium">{mate.name}</span>
-              </span>
-            </WorkspaceBreadcrumbItem>
-            {spoken ? <WorkspaceBreadcrumbSeparator /> : null}
-          </>
+          // The Mate, then what it is on in the muted voice: weight and ink
+          // tell them apart, no slash between them.
+          <WorkspaceBreadcrumbItem>
+            <span
+              className="inline-flex min-w-0 items-center gap-2.5 text-foreground"
+              data-zerops-surface="header-mate"
+            >
+              <MateFace size="sm" state={mateFace} tint={mate.tint} />
+              <span className="max-w-48 truncate font-medium">{mate.name}</span>
+            </span>
+          </WorkspaceBreadcrumbItem>
         ) : whoLivesHere.kind === "nobody" && activeProjectName ? (
           <>
             <WorkspaceBreadcrumbItem>
@@ -657,31 +656,31 @@ export const ChatHeader = memo(function ChatHeader({
         ref={headerActionsRef}
         data-chat-header-actions
         className={cn(
-          "flex shrink-0 items-center justify-end gap-2 @3xl/header-actions:gap-3",
+          "flex shrink-0 items-center justify-end",
+          // A Mate's header is a row of borderless buttons, 4 px apart like
+          // the panel toggles beside it.
+          mate === undefined ? "gap-2 @3xl/header-actions:gap-3" : "gap-1",
           // Reserve two panel toggles plus their 4px gaps and 1px edge inset.
           // The page header adds 8px more right padding at sm.
           rightPanelOpen ? "pr-0" : "pr-18.25 sm:pr-14.25",
         )}
       >
-        {mate === undefined ? null : (
-          <>
-            {/* The Mate's version and its update live with its body in the
-                right panel's Zerops view, not over the conversation. */}
-            {onNewChat === undefined || crewOrigin !== null ? null : (
-              <NewChatButton onNewChat={onNewChat} />
-            )}
-            {crewOrigin !== null ? null : <StartFreshButton onStartFresh={onStartFresh} />}
-            <ZeropsProjectLink projectUrl={mate.projectUrl} />
-          </>
+        {/* The Mate's version and its update live with its body in the right
+            panel's Zerops view, not over the conversation. */}
+        {mate === undefined || onNewChat === undefined || crewOrigin !== null ? null : (
+          <NewChatButton onNewChat={onNewChat} />
         )}
-        <Menu open={actionsCollapsed && actionsOpen} onOpenChange={setActionsOpen}>
+        <Menu open={menuShown && actionsOpen} onOpenChange={setActionsOpen}>
           <MenuTrigger
-            className={
-              actionsCollapsed && (showProjectScripts || showOpenInPicker || showGitActions)
-                ? undefined
-                : "hidden"
+            className={menuShown ? undefined : "hidden"}
+            render={
+              <Button
+                aria-label="More header actions"
+                data-chat-header-ghost
+                size="icon-sm"
+                variant="ghost-muted"
+              />
             }
-            render={<Button size="icon-sm" variant="ghost" aria-label="More header actions" />}
           >
             <EllipsisIcon className="size-4" />
           </MenuTrigger>
@@ -691,12 +690,19 @@ export const ChatHeader = memo(function ChatHeader({
             keepMounted
             aria-label="Header actions"
             align="end"
-            finalFocus={actionsCollapsed ? undefined : false}
+            finalFocus={menuShown ? undefined : false}
           >
             <div ref={mountMenuActions} className="contents" />
             {createPortal(headerActions, actionsContainer)}
+            {startsFresh ? (
+              <>
+                {projectActionsInMenu ? <MenuSeparator /> : null}
+                <StartFreshMenuItem onStartFresh={onStartFresh} />
+              </>
+            ) : null}
           </MenuPopup>
         </Menu>
+        {mate === undefined ? null : <ZeropsProjectLink projectUrl={mate.projectUrl} />}
       </div>
     </div>
   );

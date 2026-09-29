@@ -30,6 +30,7 @@ import {
   turn,
   user,
 } from "./conversationFixtures";
+import { runEffortWords } from "./runResult.logic";
 
 type Scene = {
   entries: TimelineEntry[];
@@ -228,7 +229,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(recordOf(list)).toMatchObject({ live: false, now: null });
     // What its calls came to is the result's, in pills (the owner, 2026-09-27).
     expect(list[3]).toMatchObject({
-      outcome: { activity: [{ kind: "command", count: 2, words: "Ran 2 commands" }] },
+      outcome: { activity: [{ kind: "command", count: 2 }] },
     });
     expect(list[4]).toMatchObject({ showAssistantMeta: true, receipt: null });
   });
@@ -638,9 +639,7 @@ describe("deriveMessagesTimelineRows", () => {
     );
     expect(logged).toEqual(["w1"]);
     const outcome = list.find((row) => row.kind === "outcome");
-    expect(
-      outcome?.kind === "outcome" ? outcome.outcome.activity.map((pill) => pill.words) : null,
-    ).toEqual(["Ran 1 command"]);
+    expect(outcome?.kind === "outcome" ? runEffortWords(outcome.outcome) : null).toBe("1 command");
   });
 
   // A run that thought and asked the person something worked, it did not
@@ -1271,21 +1270,21 @@ describe("deriveMessagesTimelineRows", () => {
       name: "only a helper started",
       spawned: ["task-h1"],
       commands: 0,
-      pills: ["Started 1 helper"],
+      effort: "1 helper",
     },
     {
       name: "two helpers at once",
       spawned: ["task-h1", "task-h2"],
       commands: 0,
-      pills: ["Started 2 helpers"],
+      effort: "2 helpers",
     },
     {
       name: "after other work",
       spawned: ["task-h1"],
       commands: 2,
-      pills: ["Ran 2 commands", "Started 1 helper"],
+      effort: "2 commands · 1 helper",
     },
-  ])("records and counts what a run started: $name", ({ spawned, commands, pills }) => {
+  ])("records and counts what a run started: $name", ({ spawned, commands, effort }) => {
     const list = rows({
       entries: [
         user("m0", 0),
@@ -1300,9 +1299,7 @@ describe("deriveMessagesTimelineRows", () => {
     });
     expect(lines(list)?.at(-1)).toBe(`helpers ${spawned.length}`);
     const outcome = list.find((row) => row.kind === "outcome");
-    expect(
-      outcome?.kind === "outcome" ? outcome.outcome.activity.map((pill) => pill.words) : null,
-    ).toEqual(pills);
+    expect(outcome?.kind === "outcome" ? runEffortWords(outcome.outcome) : null).toBe(effort);
     expect(statusOf(list)).toMatchObject({ worked: true });
   });
 
@@ -1732,8 +1729,8 @@ describe("deriveMessagesTimelineRows", () => {
         settled: "t1",
       });
       const seamAt = list.findIndex((row) => row.kind === "crew-seam");
-      expect(list[seamAt]?.gap).toBe("turn");
-      expect(list[seamAt + 1]?.gap).toBe("block");
+      expect(list[seamAt]?.gap).toBe("turn-after-words");
+      expect(list[seamAt + 1]?.gap).toBe("part");
     });
 
     it("draws a seam that lands while a turn runs as its line there, in the run's chat", () => {
@@ -1768,19 +1765,99 @@ describe("deriveMessagesTimelineRows", () => {
     expect(lines(list)).toEqual(["~ thinking about it"]);
   });
 
-  it("draws a seam where a day begins and where the conversation went quiet", () => {
-    const list = rows({
-      entries: [
-        user("m0", 0),
-        assistant("a1", "t1", 1, "Hi."),
-        user("m1", 45),
-        assistant("a2", "t2", 46, "Again."),
+  describe("draws a time line only where an hour or a day passed", () => {
+    /** The reader's own clock: a day begins at their midnight. */
+    const local = (day: number, hour: number, minute: number) =>
+      new Date(2026, 8, day, hour, minute).toISOString();
+    const saidAt = (entry: TimelineEntry, iso: string): TimelineEntry =>
+      entry.kind === "message"
+        ? {
+            ...entry,
+            createdAt: iso,
+            message: { ...entry.message, createdAt: iso, updatedAt: iso },
+          }
+        : entry;
+    /** Each turn as when the person asked and when the Mate answered. */
+    const seams = (turns: ReadonlyArray<readonly [asked: string, answered: string]>) => {
+      const last = turns.length - 1;
+      return deriveMessagesTimelineRows({
+        timelineEntries: turns.flatMap(([asked, answered], index) => [
+          saidAt(user(`m${index}`, 0), asked),
+          saidAt(assistant(`a${index}`, `t${index}`, 0, "Done."), answered),
+        ]),
+        latestTurn: {
+          turnId: turn(`t${last}`),
+          state: "completed",
+          startedAt: turns[last]![0],
+          completedAt: turns[last]![1],
+        },
+        isWorking: false,
+        activeTurnStartedAt: null,
+        turnDiffSummaries: [],
+        supportsConversationRollback: false,
+      }).flatMap((row) => (row.kind === "seam" ? [row.seam] : []));
+    };
+    it.each([
+      [
+        "minutes apart: one conversation, dated once at its top",
+        [
+          [local(24, 10, 0), local(24, 10, 1)],
+          [local(24, 10, 4), local(24, 10, 5)],
+        ],
+        ["day"],
       ],
-      settled: "t2",
+      [
+        "most of an hour apart: still one conversation",
+        [
+          [local(24, 10, 0), local(24, 10, 1)],
+          [local(24, 10, 59), local(24, 11, 0)],
+        ],
+        ["day"],
+      ],
+      [
+        "an hour apart: the time",
+        [
+          [local(24, 10, 0), local(24, 10, 1)],
+          [local(24, 11, 1), local(24, 11, 2)],
+        ],
+        ["day", "gap"],
+      ],
+      [
+        "minutes apart across midnight: no line splits them",
+        [
+          [local(24, 23, 55), local(24, 23, 57)],
+          [local(25, 0, 0), local(25, 0, 1)],
+        ],
+        ["day"],
+      ],
+      [
+        "a day apart: the day",
+        [
+          [local(24, 10, 0), local(24, 10, 1)],
+          [local(25, 10, 0), local(25, 10, 1)],
+        ],
+        ["day", "day"],
+      ],
+      [
+        "a night apart: the new day",
+        [
+          [local(24, 22, 0), local(24, 22, 1)],
+          [local(25, 8, 0), local(25, 8, 1)],
+        ],
+        ["day", "day"],
+      ],
+      [
+        "past midnight without a line, then an hour's quiet: the new day",
+        [
+          [local(24, 23, 55), local(24, 23, 57)],
+          [local(25, 0, 0), local(25, 0, 1)],
+          [local(25, 2, 0), local(25, 2, 1)],
+        ],
+        ["day", "day"],
+      ],
+    ] as const)("%s", (_, turns, expected) => {
+      expect(seams(turns)).toEqual(expected);
     });
-    expect(
-      list.filter((row) => row.kind === "seam").map((row) => (row as { seam: string }).seam),
-    ).toEqual(["day", "gap"]);
   });
 
   it("marks where the person left off, once, before the first stretch after it", () => {
@@ -2355,19 +2432,91 @@ describe("earlierTurnsAnchor", () => {
   });
 });
 
-describe("rowGap between speakers", () => {
-  const person = { kind: "message", message: { role: "user" } } as unknown as MessagesTimelineRow;
-  const mate = {
-    kind: "message",
-    message: { role: "assistant" },
-  } as unknown as MessagesTimelineRow;
-  const answer = { kind: "answer" } as unknown as MessagesTimelineRow;
+describe("rowGap: a turn is one group, 24 px inside and 64 px between turns", () => {
+  const as = (row: object) => row as unknown as MessagesTimelineRow;
+  const person = as({ kind: "message", message: { role: "user" } });
+  const mate = as({ kind: "message", message: { role: "assistant" } });
+  const answer = as({ kind: "answer" });
+  const queued = as({ kind: "queued-message" });
+  const record = as({ kind: "record" });
+  const workLine = as({ kind: "work-line" });
+  const working = as({ kind: "working" });
+  const outcome = as({ kind: "outcome" });
+  const seam = as({ kind: "seam" });
+  const crewSeam = as({ kind: "crew-seam" });
+  const woke = as({ kind: "background", id: "woke:msg:m1" });
+  const loose = as({ kind: "background", id: "background:b1" });
+  const command = as({ kind: "event", event: { type: "command" } });
+  const landed = as({ kind: "event", event: { type: "landed" } });
+  const crewCard = as({ kind: "crew-card" });
+  const afterWork = as({ kind: "after-work" });
   it.each([
+    // A turn's parts: the person's words, the card of the work, the answer.
+    ["the card under the person's words", person, record, "part"],
+    ["a run's line under the person's words", person, workLine, "part"],
+    ["the card under an answered question", answer, record, "part"],
+    ["the card under what woke the Mate", woke, record, "part"],
+    ["the card under the person's command", command, record, "part"],
+    ["a crewmate's card under its task", crewCard, record, "part"],
+    ["the answer under a settled card", outcome, mate, "part-words"],
+    ["the answer under a card still at work", working, mate, "part-words"],
+    ["the answer under a card of chat alone", record, mate, "part-words"],
+    ["the answer straight under the person's words", person, mate, "part-words"],
+    ["a message waiting for the card at work", working, queued, "part"],
+    ["the person's answer in a run nobody typed", woke, answer, "part"],
+    // A new turn.
+    ["the person's words after the Mate's answer", mate, person, "turn-after-words"],
+    ["the person's words after a card with no answer", outcome, person, "turn"],
+    ["the person's words after a run's lone line", workLine, person, "turn"],
+    ["the person's command after the Mate's answer", mate, command, "turn-after-words"],
+    ["a run nobody typed after the answer", mate, record, "turn-after-words"],
+    ["a run nobody typed after a card", outcome, record, "turn"],
+    ["what woke the Mate after the answer", mate, woke, "turn-after-words"],
+    ["a question after the Mate's words", mate, answer, "turn-after-words"],
+    ["a crewmate's next task after its answer", mate, crewCard, "turn-after-words"],
+    // A seam opens the turn under it.
+    ["a seam after the answer", mate, seam, "turn-after-words"],
+    ["a seam after a card", outcome, seam, "turn"],
+    ["a crew's seam after the answer", mate, crewSeam, "turn-after-words"],
+    ["the person's words under a seam", seam, person, "part"],
+    ["the answer under a seam", seam, mate, "part-words"],
+    // Close, by kind.
+    ["the first row", undefined, person, "none"],
     ["two messages of the person's", person, person, "tight"],
     ["the Mate's question under the person's words", person, answer, "block"],
-    ["the person's words after the Mate's", mate, person, "block"],
-    ["a question after the Mate's words", mate, answer, "block"],
+    ["what runs alongside under the record", record, working, "tight"],
+    ["the result under the record", record, outcome, "tight"],
+    ["the result under what ran alongside", working, outcome, "line"],
+    ["the work outliving the turn under the answer", mate, afterWork, "block"],
+    ["background work no run owns under a card", record, loose, "line"],
+    ["a change landing under the answer", mate, landed, "block"],
+    ["two answers of the Mate's", mate, mate, "block"],
   ] as const)("%s", (_, previous, row, gap) => {
     expect(rowGap(previous, row)).toBe(gap);
+  });
+
+  it("spaces two turns as groups: the parts close, the turns apart", () => {
+    const list = framed({
+      entries: [
+        user("m0", 0),
+        tool("w1", "t1", 1),
+        assistant("a1", "t1", 2, "Done."),
+        user("m1", 3),
+        tool("w2", "t2", 4),
+        assistant("a2", "t2", 5, "Done again."),
+      ],
+      settled: "t2",
+    });
+    const gaps = list
+      .filter((row) => row.kind !== "seam" && row.kind !== "card-end" && row.kind !== "outcome")
+      .map((row) => `${row.kind}:${row.gap}`);
+    expect(gaps).toEqual([
+      "message:part",
+      "record:part",
+      "message:part-words",
+      "message:turn-after-words",
+      "record:part",
+      "message:part-words",
+    ]);
   });
 });

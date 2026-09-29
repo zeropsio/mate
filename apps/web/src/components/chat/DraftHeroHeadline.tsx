@@ -28,6 +28,8 @@ import {
 } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateMark } from "../MateMark";
+import { MateFace } from "../zerops/primitives";
+import { mateFaceFor } from "~/zerops/agentActivity";
 
 interface DraftHeroHeadlineProps {
   readonly activeProjectRef: ScopedProjectRef | null;
@@ -48,8 +50,8 @@ export function DraftHeroHeadline({
   // One environment is one Zerops project: the picker names the project, not
   // the workspace folder, which is "www" in every container.
   const zeropsEnvironmentNames = useZeropsEnvironmentNames();
-  // Where a Mate lives, the draft is the Mate's: its mark in its colour, and
-  // the question is what it should do on its project.
+  // Where a Mate lives, the draft is the Mate's: its own face, and the
+  // question is what it should do on its project.
   const mates = useZeropsMateDirectory();
   const whoLivesHere =
     activeProjectRef === null ? null : zeropsMateAt(mates, activeProjectRef.environmentId);
@@ -204,7 +206,17 @@ export function DraftHeroHeadline({
 
   return (
     <div className="flex flex-col items-center gap-5">
-      <MateMark playful className="h-16 w-auto sm:h-[72px]" tint={mate?.tint} />
+      {mate === undefined ? (
+        <MateMark playful className="h-16 w-auto sm:h-[72px]" />
+      ) : (
+        // The mark's height, so the headline stays put when the Mate is known.
+        <MateFace
+          className="size-16 sm:size-18"
+          size="lg"
+          state={mateFaceFor(mate.connected, undefined)}
+          tint={mate.tint}
+        />
+      )}
       <h1
         aria-label={headingLabel}
         className="mx-auto w-full max-w-5xl text-center font-normal text-2xl text-foreground tracking-tight sm:text-3xl"
