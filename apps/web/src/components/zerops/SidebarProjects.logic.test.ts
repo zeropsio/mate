@@ -1,8 +1,11 @@
+import type { ZeropsPlacedBirth } from "@t3tools/client-runtime/zerops";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   headingFaces,
   landingAfterDraw,
+  newProjectOffered,
   projectRoom,
   slackAfterScroll,
   slackForFold,
@@ -174,5 +177,62 @@ describe("slackAfterScroll — the room shrinks as a scroll up stops needing it"
     },
   ])("$name", ({ scroll, slack }) => {
     expect(slackAfterScroll(scroll)).toBe(slack);
+  });
+});
+
+// *New project* stands at the menu's foot, the same place whatever the list's
+// length (the owner, 2026-09-29: "not sure if this shouldn't be stuck to the
+// bottom somehow") — from the first paint, so it is there before the listing
+// is read, and taken away only where the list's own empty state is the one
+// thing to do.
+describe("newProjectOffered — New project at the menu's foot (D11)", () => {
+  const project = (id: string, tagList: ReadonlyArray<string>): ZeropsCandidate => ({
+    key: `${id}:zcp`,
+    project: { id, name: id, status: "ACTIVE", tagList },
+    group: "ready",
+  });
+  const MATE = project("crm-dev", ["mate", "mate:g:crm", "mate:role:dev"]);
+  const STAGE = project("crm-stage", ["mate:g:crm", "mate:role:stage"]);
+  const BIRTH = { placement: { kind: "mate" } } as unknown as ZeropsPlacedBirth;
+
+  it.each([
+    { name: "Mates listed", candidates: [MATE, STAGE], births: [], complete: true, offered: true },
+    {
+      name: "Mates listed, the rest still read",
+      candidates: [MATE],
+      births: [],
+      complete: false,
+      offered: true,
+    },
+    {
+      name: "no project at all: the one way in",
+      candidates: [],
+      births: [],
+      complete: true,
+      offered: true,
+    },
+    {
+      name: "the listing still read: there from the first paint",
+      candidates: [],
+      births: [],
+      complete: false,
+      offered: true,
+    },
+    {
+      name: "projects, none with a Mate: the list's own Set up Mate is the one thing to do",
+      candidates: [STAGE],
+      births: [],
+      complete: true,
+      offered: false,
+    },
+    {
+      name: "projects, none with a Mate yet, but one being made",
+      candidates: [STAGE],
+      births: [BIRTH],
+      complete: true,
+      offered: true,
+    },
+  ])("$name: $offered", ({ candidates, births, complete, offered }) => {
+    expect(newProjectOffered({ candidates, births, complete })).toBe(offered);
   });
 });
