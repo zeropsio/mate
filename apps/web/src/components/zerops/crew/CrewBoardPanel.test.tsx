@@ -388,4 +388,19 @@ describe("CrewBoardHost", () => {
     // The tab scrolls as one: the board has no scroll box of its own.
     expect(html).not.toContain('data-slot="scroll-area-viewport"');
   });
+
+  it("scrolls its columns sideways on its own where they stand wider than the tab", () => {
+    const snapshot = crewSnapshotFixture();
+    const html = renderToStaticMarkup(
+      <CrewBoardHost
+        current
+        environmentId={"env-1" as EnvironmentId}
+        snapshot={snapshot}
+        view={viewOf(snapshot) as NonNullable<CrewRead["view"]>}
+      />,
+    );
+    const row = /<div class="([^"]*@3xl\/board:flex-row[^"]*)"/u.exec(html)?.[1] ?? "";
+    // Side by side the columns scroll within the board: the section above stays put.
+    expect(row.split(" ")).toContain("@3xl/board:overflow-x-auto");
+  });
 });

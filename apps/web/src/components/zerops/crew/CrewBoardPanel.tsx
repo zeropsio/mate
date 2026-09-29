@@ -214,7 +214,9 @@ export function CrewBoard(props: CrewBoardProps) {
         />
       </header>
       {props.error === null ? null : <ErrorLine text={props.error} />}
-      <div className="flex flex-col gap-5 @3xl/board:flex-row @3xl/board:items-start @3xl/board:gap-3">
+      {/* Side by side, a board wider than the tab scrolls sideways on its own:
+          the section above it stays put. */}
+      <div className="flex flex-col gap-5 @3xl/board:flex-row @3xl/board:items-start @3xl/board:gap-3 @3xl/board:overflow-x-auto">
         {model.columns.map((column) => (
           <section
             className="flex min-w-0 flex-col gap-2 @3xl/board:w-60 @3xl/board:shrink-0"
