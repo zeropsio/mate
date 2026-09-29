@@ -2181,9 +2181,10 @@ describe("what the jump box finds in the menu", () => {
   });
   const OWN = pull(4, { mateProjectId: "links-dev", title: "Add a search box" });
   const ADAS = pull(6, { mateProjectId: undefined, author: "ada", title: "Bump the linter" });
+  // Its stops' services read, so the heading draws its chip.
   const tree = (props: Record<string, unknown> = {}) => (
     <SidebarZeropsTree
-      candidates={[LINKS_MATE, LINKS_STAGE, LINKS_PROD]}
+      candidates={[LINKS_MATE, up(LINKS_STAGE), up(LINKS_PROD)]}
       complete
       getFlow={() => linksFlow([OWN, ADAS])}
       onBrowseProjects={() => {}}
@@ -2241,13 +2242,37 @@ describe("what the jump box finds in the menu", () => {
     const theirs = pull(9, { mateProjectId: "links-theo", title: "Theirs" });
     mount(
       tree({
-        candidates: [LINKS_MATE, THEO, LINKS_STAGE, LINKS_PROD],
+        candidates: [LINKS_MATE, THEO, up(LINKS_STAGE), up(LINKS_PROD)],
         getFlow: () => linksFlow([OWN, theirs]),
         shown: (item: ZeropsCandidate) => item.project.id !== "links-theo",
       }),
     );
     expect(index()?.mates.map((mate) => mate.projectId)).toEqual(["links-dev"]);
     expect(index()?.changes.map((change) => change.key)).toEqual(["appdev#4"]);
+  });
+
+  // A stop is found as its chip — and where the heading draws none, a find
+  // would land on nothing, and the focus would jump there once one appears.
+  it("finds no stop where the heading draws no chip", () => {
+    mount(tree({ candidates: [LINKS_MATE, LINKS_STAGE, LINKS_PROD] }));
+    expect(index()?.stops).toEqual([]);
+  });
+
+  it("leaves a folded project folded when a jump lands on its chip, and answers the ask", () => {
+    stored.collapsed = new Set(["links"]);
+    const mounted = mount(tree());
+    const mateRows = () =>
+      mounted.root.findAll(
+        (node) =>
+          typeof node.type === "string" && node.props["data-zerops-surface"] === "sidebar-mate",
+      );
+    act_(() => {
+      useSidebarReveal
+        .getState()
+        .reveal({ kind: "stop", groupId: "links", projectId: "links-prod" });
+    });
+    expect(mateRows()).toHaveLength(0);
+    expect(useSidebarReveal.getState().revealing).toBeNull();
   });
 
   it("opens a collapsed project a jump shows, and answers the ask once", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { headingFaces, projectRoom } from "./SidebarProjects.logic";
+import { headingFaces, landingAfterDraw, projectRoom } from "./SidebarProjects.logic";
 
 describe("projectRoom", () => {
   // The room belongs to the end of an open project, never above a heading:
@@ -66,5 +66,25 @@ describe("headingFaces — who a folded project's heading shows (M15)", () => {
     },
   ])("$name", ({ mates, shown }) => {
     expect(headingFaces(mates).map((face) => [face.projectId, face.dot])).toEqual(shown);
+  });
+});
+
+describe("landingAfterDraw — a reveal lands on the draw after its ask, or never", () => {
+  it.each([
+    { name: "nothing asked", pending: null, land: undefined, next: null },
+    {
+      name: "the draw the ask came in waits for the one it set off",
+      pending: { target: "stop:links-prod", drawn: false },
+      land: undefined,
+      next: { target: "stop:links-prod", drawn: true },
+    },
+    {
+      name: "the draw after it lands the ask, and the ask is done either way",
+      pending: { target: "stop:links-prod", drawn: true },
+      land: "stop:links-prod",
+      next: null,
+    },
+  ])("$name", ({ pending, land, next }) => {
+    expect(landingAfterDraw(pending)).toEqual({ land, next });
   });
 });

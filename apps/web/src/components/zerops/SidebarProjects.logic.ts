@@ -1,5 +1,6 @@
 /**
- * How the left menu lays its projects out, one after another.
+ * How the left menu lays its projects out, one after another, and lands a
+ * reveal on the row it asked for.
  *
  * A heading never moves when it is clicked (M9). The room between two
  * projects used to sit above a heading and depend on that project's own
@@ -86,4 +87,27 @@ export function headingFaces(
     )
     .slice(0, HEADING_FACES)
     .map(({ face }) => face);
+}
+
+/** A reveal waiting for its row: asked for, and whether a draw has passed since. */
+export interface PendingLanding<T> {
+  readonly target: T;
+  readonly drawn: boolean;
+}
+
+/**
+ * What a draw does with a reveal waiting for its row. The draw the ask came
+ * in only marks it; the one the ask set off — the project opened, the quiet
+ * Mates or the changes unfolded — lands it where its row stands, and the ask
+ * is done either way. A row that draw does not hold (a Mate the viewer hides,
+ * a chip the heading does not draw) is never landed on later: once one
+ * appears, the person has long moved on, and the focus would jump there.
+ */
+export function landingAfterDraw<T>(pending: PendingLanding<T> | null): {
+  readonly land: T | undefined;
+  readonly next: PendingLanding<T> | null;
+} {
+  if (pending === null) return { land: undefined, next: null };
+  if (!pending.drawn) return { land: undefined, next: { target: pending.target, drawn: true } };
+  return { land: pending.target, next: null };
 }

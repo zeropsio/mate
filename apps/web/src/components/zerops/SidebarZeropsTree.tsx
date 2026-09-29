@@ -126,7 +126,13 @@ import { groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
 import { formatWorkingTime, isQuietMate, sidebarMateKey } from "./SidebarZeropsTree.logic";
 import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
 import { SidebarProjectFold, type ProjectFoldMotion } from "./SidebarProjectFold";
-import { headingFaces, type HeadingFace, type HeadingFaceDot } from "./SidebarProjects.logic";
+import {
+  headingFaces,
+  landingAfterDraw,
+  type HeadingFace,
+  type HeadingFaceDot,
+  type PendingLanding,
+} from "./SidebarProjects.logic";
 import { SidebarProductionChip } from "./SidebarProductionChip";
 import {
   buildingOf,
@@ -535,10 +541,11 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // A surface's ask to show something (`sidebarReveal.ts`): the header's
   // waiting faces a Mate, the jump box a Mate, a project, a stop or a change.
   // Its project opens — and the quiet Mates or the list of changes it is
-  // folded into — then, once its row is drawn, the row takes the focus and
-  // flashes once where it stands.
+  // folded into — then, on the draw that sets off, the row takes the focus
+  // and flashes once where it stands (`landingAfterDraw`). A stop is its
+  // chip, on the heading folded or not: its project stays as it is.
   const revealing = useSidebarReveal((state) => state.revealing);
-  const focusAfterDraw = useRef<SidebarRevealTarget | null>(null);
+  const focusAfterDraw = useRef<PendingLanding<SidebarRevealTarget> | null>(null);
   // The Mates in the order drawn — collapsed projects included — for the
   // header's "next one that waits", and everything the jump box finds here;
   // written after each render, not during it.
@@ -563,7 +570,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         : target.kind === "change"
           ? target.mateProjectId
           : undefined;
-    if (groupId !== undefined) {
+    if (groupId !== undefined && target.kind !== "stop") {
       setCollapsed((current) => withCollapsed(current, groupId, false));
       // A Mate may be folded among its project's quiet ones.
       if (mateId !== undefined) setOpenQuiet((current) => withCollapsed(current, groupId, true));
@@ -572,15 +579,15 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         setOpenLists((current) => (current.has(listKey) ? current : new Set(current).add(listKey)));
       }
     }
-    focusAfterDraw.current = target;
+    focusAfterDraw.current = { target, drawn: false };
     setRevealDraw((draws) => draws + 1);
   }, [candidates, revealing]);
   useEffect(() => {
-    const target = focusAfterDraw.current;
-    if (target === null) return;
-    const landing = revealLanding(treeRef.current, target);
+    const { land, next } = landingAfterDraw(focusAfterDraw.current);
+    focusAfterDraw.current = next;
+    if (land === undefined) return;
+    const landing = revealLanding(treeRef.current, land);
     if (landing === null) return;
-    focusAfterDraw.current = null;
     focusOnceFree(landing.focus, () => {
       landing.flash.scrollIntoView({ block: "nearest" });
       flashOnce(landing.flash);
@@ -966,43 +973,47 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           stopProjectId={chipItem?.project.id}
         />
       );
-    // The jump box finds each of them, and shows the chip where one is found.
+    // The jump box finds each of them, and shows the chip where one is found
+    // — only where the heading draws one: a find lands on the chip.
     const title = (name: string) => (groupName === undefined ? name : `${groupName} ${name}`);
     const chipFaceOf = chip === undefined ? undefined : chipFace(chip);
-    const jumpStopsHere: ReadonlyArray<JumpStop> = [
-      ...projectFlow.stages.map((stop) => ({
-        projectId: stop.projectId,
-        groupId: id,
-        title: title(stopName(stop)),
-        line: stop.version?.label ?? "",
-        dot:
-          chip?.label === "stage" && chipItem?.project.id === stop.projectId && chipFaceOf
-            ? chipFaceOf.dot
-            : STOP_DOT[stop.state],
-        word:
-          chip?.label === "stage" && chipItem?.project.id === stop.projectId && chipFaceOf
-            ? chipFaceOf.words
-            : `Stage ${stop.version?.label ?? ""}`.trim(),
-      })),
-      ...(productionStop === undefined
+    const jumpStopsHere: ReadonlyArray<JumpStop> =
+      chip === undefined
         ? []
         : [
-            {
-              projectId: productionStop.projectId,
+            ...projectFlow.stages.map((stop) => ({
+              projectId: stop.projectId,
               groupId: id,
-              title: title(stopName(productionStop)),
-              line: productionStop.version?.label ?? "",
+              title: title(stopName(stop)),
+              line: stop.version?.label ?? "",
               dot:
-                chip?.label === "prod" && chipFaceOf !== undefined
+                chip?.label === "stage" && chipItem?.project.id === stop.projectId && chipFaceOf
                   ? chipFaceOf.dot
-                  : STOP_DOT[productionStop.state],
+                  : STOP_DOT[stop.state],
               word:
-                chip?.label === "prod" && chipFaceOf !== undefined
+                chip?.label === "stage" && chipItem?.project.id === stop.projectId && chipFaceOf
                   ? chipFaceOf.words
-                  : `Production ${productionStop.version?.label ?? ""}`.trim(),
-            },
-          ]),
-    ];
+                  : `Stage ${stop.version?.label ?? ""}`.trim(),
+            })),
+            ...(productionStop === undefined
+              ? []
+              : [
+                  {
+                    projectId: productionStop.projectId,
+                    groupId: id,
+                    title: title(stopName(productionStop)),
+                    line: productionStop.version?.label ?? "",
+                    dot:
+                      chip?.label === "prod" && chipFaceOf !== undefined
+                        ? chipFaceOf.dot
+                        : STOP_DOT[productionStop.state],
+                    word:
+                      chip?.label === "prod" && chipFaceOf !== undefined
+                        ? chipFaceOf.words
+                        : `Production ${productionStop.version?.label ?? ""}`.trim(),
+                  },
+                ]),
+          ];
     // Folded, the heading shows who is busy in it (M15): its Mates that need
     // you, work, or finished unseen — once its rows have folded away.
     const folded = collapsed.has(id) && folds.get(id) !== "closing";
