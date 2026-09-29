@@ -133,9 +133,9 @@ export function reviewDescription(input: {
  * Where one of a description's pictures is read from. A picture on the app's own Gitea — a
  * change's attachment, a file of its repository — is read as the person and shown from its bytes:
  * a private repository answers nobody without a token, and a page's own `<img>` carries none. An
- * attachment written by its repository's older address is read by its own, the one Gitea serves
- * to other origins. A picture anywhere else stays a plain link, never read with the person's
- * token; one inline or scripted is nothing.
+ * attachment written by its repository's older address is read by its own, `/attachments/{uuid}`
+ * (the older one does not even answer a preflight: 405). A picture anywhere else stays a plain
+ * link, never read with the person's token; one inline or scripted is nothing.
  */
 export type DescriptionPicture =
   | { readonly kind: "gitea"; readonly url: string }
@@ -200,24 +200,6 @@ export function absoluteDescription(text: string, giteaOrigin: string | undefine
       return inCode ? line : line.replace(HOSTLESS_ADDRESS, `$1${gitea}/`);
     })
     .join("\n");
-}
-
-/** A screenshot's usual shape: what a picture that gives no size of its own holds. */
-const PICTURE_FRAME = "16 / 10";
-
-/**
- * The room a picture holds before its bytes come, so nothing under it moves when they do: the
- * shape its size attributes give, and a screenshot's where it gives none.
- */
-export function pictureFrame(
-  width: string | number | undefined,
-  height: string | number | undefined,
-): string {
-  const w = typeof width === "number" ? width : Number(width);
-  const h = typeof height === "number" ? height : Number(height);
-  return Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0
-    ? `${String(w)} / ${String(h)}`
-    : PICTURE_FRAME;
 }
 
 /** How many of a change's commits stand before "Show all N". */

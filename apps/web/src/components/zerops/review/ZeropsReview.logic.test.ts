@@ -16,7 +16,6 @@ import {
   diffFold,
   giteaFileUrl,
   keyStaysInReview,
-  pictureFrame,
   pressesPrimary,
   releaseChangeRows,
   remarkFold,
@@ -181,18 +180,6 @@ describe("absoluteDescription: what Gitea wrote without its host points at its G
 
   it("leaves the text alone with no Gitea known", () => {
     expect(absoluteDescription("![a](/attachments/1)", undefined)).toBe("![a](/attachments/1)");
-  });
-});
-
-describe("pictureFrame: a picture holds its room before its bytes come", () => {
-  it.each([
-    ["the shape its size attributes give", 1280, 800, "1280 / 800"],
-    ["the same, written as text", "640", "480", "640 / 480"],
-    ["a screenshot's shape where it gives none", undefined, undefined, "16 / 10"],
-    ["a screenshot's shape where it gives one side", 640, undefined, "16 / 10"],
-    ["a screenshot's shape where a side is no number", "auto", "50%", "16 / 10"],
-  ] as const)("%s", (_case, width, height, ratio) => {
-    expect(pictureFrame(width, height)).toBe(ratio);
   });
 });
 

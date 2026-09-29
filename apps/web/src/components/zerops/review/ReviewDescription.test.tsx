@@ -7,7 +7,7 @@ import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { TestNode } from "~/zerops/__fixtures__/testDom";
+import { elementsOf, TestNode } from "~/zerops/__fixtures__/testDom";
 import type { GiteaPictureSource } from "~/zerops/useGiteaPicture";
 
 import { ReviewDescription } from "./ReviewDescription";
@@ -48,6 +48,7 @@ function html(props: Partial<Parameters<typeof ReviewDescription>[0]> = {}): str
     <ReviewDescription
       description={undefined}
       giteaOrigin={GITEA}
+      giteaPage={undefined}
       onOpenRun={undefined}
       pictures={source()}
       run={NO_RUN}
@@ -89,11 +90,19 @@ describe("what a change does, first", () => {
   });
 });
 
+const PAGE = "https://git.example.test/snap/appdev/pulls/2";
+
 describe("its pictures", () => {
-  it("hold a screenshot's room while they are read", () => {
-    const markup = html({ description: `![The page](${GITEA}/attachments/5f1c2a)` });
-    expect(markup).toContain('data-state="reading"');
-    expect(markup).toContain("aspect-ratio:16 / 10");
+  it("stand as one line while they are read: their words and their page on Gitea", () => {
+    const markup = html({
+      description: `![The page](${GITEA}/attachments/5f1c2a)`,
+      giteaPage: PAGE,
+    });
+    expect(markup).toContain('class="rv-pic-line"');
+    expect(markup).toContain("The page");
+    expect(markup).toContain(`href="${PAGE}"`);
+    expect(markup).toContain("Open on Gitea");
+    expect(markup).not.toContain("<img");
   });
 
   it("are a plain link where they are not on the app's own Gitea", () => {
@@ -103,10 +112,12 @@ describe("its pictures", () => {
     expect(markup).not.toContain("rv-pic");
   });
 
-  it("say so quietly, with their words, where there is nothing to read", () => {
-    const markup = html({ description: "![The page](data:image/png;base64,iVBORw0KGgo=)" });
-    expect(markup).toContain('data-state="failed"');
-    expect(markup).toContain("The page");
+  it("say Picture where they give no words, with nothing to read", () => {
+    const markup = html({
+      description: "![](data:image/png;base64,iVBORw0KGgo=)",
+      giteaPage: PAGE,
+    });
+    expect(markup).toContain('<span class="rv-pic-alt">Picture</span>');
   });
 });
 
@@ -115,8 +126,19 @@ describe("reading its pictures", () => {
     vi.unstubAllGlobals();
   });
 
-  it("reads the Gitea's as the person, and never one anywhere else", async () => {
-    const document = new TestNode("#document", null, 9);
+  /** The test DOM, able to hold an icon's SVG. */
+  class SvgNode extends TestNode {
+    override createElement(name: string) {
+      return new SvgNode(name, this);
+    }
+    createElementNS(_namespace: string, name: string) {
+      return new SvgNode(name, this);
+    }
+  }
+
+  /** The test DOM, and a root the description is drawn into. */
+  async function mount() {
+    const document = new SvgNode("#document", null, 9);
     vi.stubGlobal("document", document);
     vi.stubGlobal("window", {
       document,
@@ -129,8 +151,14 @@ describe("reading its pictures", () => {
     vi.stubGlobal("HTMLIFrameElement", TestNode);
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const { createRoot } = await import("react-dom/client");
+    const container = document.createElement("div");
+    const root = createRoot(container as unknown as Element);
+    return { container, root };
+  }
+
+  it("reads the Gitea's as the person, and never one anywhere else", async () => {
+    const { root } = await mount();
     const pictures = source();
-    const root = createRoot(document.createElement("div") as unknown as Element);
     try {
       await act(async () => {
         root.render(
@@ -141,6 +169,7 @@ describe("reading its pictures", () => {
               `![Older](${GITEA}/snap/appdev/attachments/9e8d7c)`,
             ].join("\n\n")}
             giteaOrigin={GITEA}
+            giteaPage={PAGE}
             onOpenRun={undefined}
             pictures={pictures}
             run={NO_RUN}
@@ -151,6 +180,38 @@ describe("reading its pictures", () => {
         [`${GITEA}/attachments/5f1c2a`],
         [`${GITEA}/attachments/9e8d7c`],
       ]);
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+    }
+  });
+
+  it("settles a picture whose preflight Gitea refuses on its line, never on a spinner", async () => {
+    const { container, root } = await mount();
+    // A browser's fetch of a preflighted read Gitea answers 303 rejects as a network error.
+    const refused: GiteaPictureSource = {
+      ready: true,
+      read: () => Promise.reject(new TypeError("Failed to fetch")),
+    };
+    try {
+      await act(async () => {
+        root.render(
+          <ReviewDescription
+            description={`![The page on a phone](${GITEA}/attachments/preflight-303)`}
+            giteaOrigin={GITEA}
+            giteaPage={PAGE}
+            onOpenRun={undefined}
+            pictures={refused}
+            run={NO_RUN}
+          />,
+        );
+      });
+      const text = container.textContent;
+      expect(text).toContain("The page on a phone");
+      expect(text).toContain("Open on Gitea");
+      expect(elementsOf(container, "img")).toEqual([]);
+      expect(elementsOf(container, "a").map((link) => link.attributes.get("href"))).toEqual([PAGE]);
     } finally {
       await act(async () => {
         root.unmount();

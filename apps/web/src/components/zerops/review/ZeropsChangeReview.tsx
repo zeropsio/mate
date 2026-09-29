@@ -507,6 +507,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       <ReviewDescription
         description={pull.description}
         giteaOrigin={props.giteaOrigin}
+        giteaPage={pull.url}
         onOpenRun={props.onOpenRun}
         pictures={props.pictures}
         run={props.run}

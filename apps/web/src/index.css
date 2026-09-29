@@ -5334,9 +5334,9 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   width: 62%;
 }
 
-/* The description: the change's own words, drawn as the Mate's other words are. Its pictures
-   fill the column and hold their room from the first frame — their own shape where they give
-   one, a screenshot's otherwise — so nothing under them moves when their bytes arrive. */
+/* The description: the change's own words, drawn as the Mate's other words are. A picture read
+   stands at most the column's width, its own shape; one not drawn here — being read, or unreadable
+   — is one quiet line, the same either way, so nothing moves when a read fails. */
 /* Its headings keep to the review's scale: 16 for a heading, 14 under it. */
 .rv-desc .chat-markdown :is(h1, h2) {
   margin: 20px 0 6px;
@@ -5354,11 +5354,11 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 .rv-pic {
   position: relative;
   display: block;
-  width: 100%;
+  width: fit-content;
+  max-width: 100%;
   margin: 12px 0;
   overflow: hidden;
   border-radius: 12px;
-  background: color-mix(in oklab, var(--foreground) 4%, transparent);
 }
 /* The hairline sits over the picture, so a screenshot's white edge still meets the page. */
 .rv-pic::after {
@@ -5371,8 +5371,6 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 }
 .rv-pic-open {
   display: block;
-  width: 100%;
-  height: 100%;
   cursor: zoom-in;
 }
 .rv-pic-open:focus-visible {
@@ -5381,9 +5379,10 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 }
 .rv-pic img {
   display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: scale-down;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 560px;
 }
 @media (prefers-reduced-motion: no-preference) {
   .rv-pic[data-fresh] img {
@@ -5395,22 +5394,38 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
     opacity: 0;
   }
 }
-.rv-pic-missing {
+.rv-pic-line {
   display: flex;
-  height: 100%;
+  min-height: 40px;
   align-items: center;
-  justify-content: center;
   gap: 8px;
-  padding: 16px;
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--foreground) 4%, transparent);
   font-size: 13px;
   line-height: 18px;
-  text-align: center;
   color: var(--muted-foreground);
 }
-.rv-pic-missing svg {
+.rv-pic-line > svg {
   width: 16px;
   height: 16px;
   flex: none;
+}
+.rv-pic-alt {
+  min-width: 0;
+  flex: 1;
+}
+.rv-pic-line .rv-link {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  font-weight: 500;
+}
+.rv-pic-line .rv-link svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* A picture opened large, over the review: the picture, its words, a way through the others. */

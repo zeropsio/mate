@@ -55,7 +55,8 @@ const DRAWN = new Map<string, string>([
 
 /**
  * `${HARNESS_GITEA}/attachments/<drawing>?after=<ms>`: the drawing, handed over after `ms`; an
- * address naming no drawing is Gitea's refusal.
+ * address naming no drawing fails as a browser's read of Gitea's own attachment does today — its
+ * preflight answered 303, a network error with no status.
  */
 export const HARNESS_PICTURES: GiteaPictureSource = {
   ready: true,
@@ -66,7 +67,7 @@ export const HARNESS_PICTURES: GiteaPictureSource = {
     return new Promise((resolve, reject) => {
       setTimeout(() => {
         if (drawing === undefined) {
-          reject(new Error("Gitea refused to hand over the picture."));
+          reject(new TypeError("Failed to fetch"));
           return;
         }
         resolve(new Blob([drawing], { type: "image/svg+xml" }));
@@ -75,13 +76,17 @@ export const HARNESS_PICTURES: GiteaPictureSource = {
   },
 };
 
-/** A description in full, its two screenshots read after `after` ms; `missing` names one gone. */
+/**
+ * A description in full, its two screenshots read after `after` ms: `missing` makes the second
+ * unreadable, `unreadable` both — as every picture is from a browser today.
+ */
 export function harnessDescription(options: {
   readonly after: number;
   readonly missing?: boolean;
+  readonly unreadable?: boolean;
 }): string {
   const at = (drawing: string) =>
-    `${HARNESS_GITEA}/attachments/${drawing}?after=${String(options.after)}`;
+    `${HARNESS_GITEA}/attachments/${options.unreadable === true ? `${drawing}-refused` : drawing}?after=${String(options.after)}`;
   return [
     "Adds a **/status** page an admin opens to see whether the app is healthy without reading its logs.",
     "",

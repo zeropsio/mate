@@ -573,6 +573,11 @@ export const REVIEW_STATES: ReadonlyArray<{
     node: <Change over={{ description: harnessDescription({ after: 0, missing: true }) }} />,
   },
   {
+    id: "description-today",
+    label: "Its description as a browser reads it today: every picture refused at its preflight",
+    node: <Change over={{ description: harnessDescription({ after: 120, unreadable: true }) }} />,
+  },
+  {
     id: "no-words",
     label: "No description, and the run said nothing of it",
     node: <Change run={{ words: undefined, reading: false }} />,
