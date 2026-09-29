@@ -290,7 +290,15 @@ export const REVIEW_STATES: ReadonlyArray<{
     id: "unchecked",
     label: "Ready, nothing checked",
     node: (
-      <Change over={{ checks: "none", checkRows: [], mateProjectId: undefined, author: "ada" }} />
+      <Change
+        over={{
+          checks: "none",
+          checkRows: [],
+          mateProjectId: undefined,
+          author: "ada",
+          headBranch: "ada/status-page",
+        }}
+      />
     ),
   },
   {

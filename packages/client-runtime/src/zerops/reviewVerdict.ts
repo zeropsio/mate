@@ -795,10 +795,6 @@ function lastLine(output: string): string | undefined {
 
 export function crewTaskReview(input: CrewTaskReviewInput): ReviewModel {
   const { ownerName: owner } = input;
-  const size =
-    input.diffStat === null
-      ? undefined
-      : `+${String(input.diffStat.insertions)} −${String(input.diffStat.deletions)}`;
   const press = input.press ?? { kind: "idle" };
   const lands = `Lands ${owner}'s work in your tree as one commit. Nothing is pushed until you deliver.`;
   const landsNow = `Commits what ${owner} has so far and lands it in your tree. Nothing is pushed until you deliver.`;
@@ -894,10 +890,12 @@ export function crewTaskReview(input: CrewTaskReviewInput): ReviewModel {
     });
   }
 
-  const checked = input.check?.state === "passed" ? "Check passed" : "No check ran";
-  const why = [working ? "It hasn't said it's done" : checked, size]
-    .filter((part) => part !== undefined)
-    .join(" · ");
+  // Its size is the line under the title's: said once.
+  const why = working
+    ? "It hasn't said it's done"
+    : input.check?.state === "passed"
+      ? "Check passed · nothing waits on your edits"
+      : "No check ran · nothing waits on your edits";
   if (press.kind === "refused") {
     return {
       verdict: {

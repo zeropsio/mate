@@ -568,7 +568,12 @@ describe("crewTaskReview: the same surface, with Land as its button", () => {
     [
       "crew task ready to land",
       {},
-      { state: "land-ready", tone: "ok", title: "Ready to land", why: "Check passed · +45 −3" },
+      {
+        state: "land-ready",
+        tone: "ok",
+        title: "Ready to land",
+        why: "Check passed · nothing waits on your edits",
+      },
       { label: "Land", enabled: true, safe: true },
     ],
     [
