@@ -4685,6 +4685,45 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  // A client renews a session that reached the end of its life through its door, and must never
+  // read it as a refusal; every other refused credential keeps today's answer.
+  it.effect("names an expired session in its 401, and only an expired one", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
+      const auth = yield* testAuth;
+      const ended = yield* auth.issueSession({
+        subject: "zerops-user:test",
+        scopes: AuthStandardClientScopes,
+        ttl: Duration.zero,
+      });
+      const revoked = yield* issueFixtureSession(AuthStandardClientScopes);
+      yield* auth.revokeSession(revoked.sessionId);
+      const ticket = (token: string) =>
+        HttpClient.post("/api/auth/websocket-ticket", {
+          headers: { authorization: `Bearer ${token}` },
+        }).pipe(
+          Effect.flatMap((response) =>
+            response.json.pipe(
+              Effect.map((body) => ({
+                status: response.status,
+                body: body as { readonly reason?: string; readonly expired?: boolean },
+              })),
+            ),
+          ),
+        );
+
+      const expiredAnswer = yield* ticket(ended.token);
+      const revokedAnswer = yield* ticket(revoked.token);
+
+      assert.equal(expiredAnswer.status, 401);
+      assert.equal(expiredAnswer.body.reason, "invalid_credential");
+      assert.equal(expiredAnswer.body.expired, true);
+      assert.equal(revokedAnswer.status, 401);
+      assert.equal(revokedAnswer.body.reason, "invalid_credential");
+      assert.isFalse("expired" in revokedAnswer.body);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("revokes an individual client session", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest({

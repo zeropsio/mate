@@ -1,5 +1,8 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { expect, it } from "@effect/vitest";
+import { describe, expect, it } from "@effect/vitest";
+import { AuthSessionId } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
@@ -245,4 +248,91 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
       expect(yield* serverAuth.revokeBySubject("zerops-user-a")).toBe(0);
     }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
   );
+});
+
+it.layer(NodeServices.layer)("a refused session credential", (it) => {
+  // A client tells a session that merely reached the end of its life (its door mints the next)
+  // from every other refusal by this flag; the HTTP boundary sends it as the 401's `expired`.
+  it.effect.each([
+    {
+      case: "a session past its deadline",
+      present: (auth: EnvironmentAuth.EnvironmentAuth["Service"]) =>
+        auth
+          .issueSession({ subject: "zerops-user:a-zerops-user-id", ttl: Duration.zero })
+          .pipe(Effect.map((issued) => issued.token)),
+      expired: true,
+    },
+    {
+      case: "a revoked session",
+      present: (auth: EnvironmentAuth.EnvironmentAuth["Service"]) =>
+        Effect.gen(function* () {
+          const issued = yield* auth.issueSession({ subject: "zerops-user:a-zerops-user-id" });
+          yield* auth.revokeSession(issued.sessionId);
+          return issued.token;
+        }),
+      expired: false,
+    },
+    {
+      case: "a token this server never signed",
+      present: () => Effect.succeed(["eyJ2IjoxfQ", "not-a-signature"].join(".")),
+      expired: false,
+    },
+  ])("says whether $case expired: $expired", ({ present, expired }) =>
+    Effect.gen(function* () {
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+      const token = yield* present(serverAuth);
+      const error = yield* Effect.flip(
+        serverAuth.authenticateHttpRequest(makeBearerRequest(token)),
+      );
+
+      expect(error._tag).toBe("ServerAuthInvalidCredentialError");
+      expect(
+        EnvironmentAuth.isServerAuthCredentialError(error) &&
+          EnvironmentAuth.serverAuthCredentialExpired(error),
+      ).toBe(expired);
+    }).pipe(Effect.provide(makeEnvironmentAuthLayer({ zerops: zeropsTestEnvironment }))),
+  );
+});
+
+describe("rejectedCredentialAnnotations", () => {
+  // The log line names the session a refused credential belonged to, and when it ended, so the
+  // client that keeps presenting it can be found (its row names the client); never the token.
+  const sessionId = AuthSessionId.make("0b3c1d2e-0000-4000-8000-000000000001");
+  const endedAt = DateTime.makeUnsafe("2026-09-28T06:49:18.000Z");
+  it.each([
+    {
+      case: "an expired session",
+      cause: new SessionStore.SessionTokenExpiredError({
+        sessionId,
+        expiresAt: endedAt,
+        observedAt: DateTime.makeUnsafe("2026-09-29T07:07:50.000Z"),
+      }),
+      annotations: {
+        reason: "Session token expired.",
+        sessionId,
+        expiredAt: "2026-09-28T06:49:18.000Z",
+      },
+    },
+    {
+      case: "a revoked session",
+      cause: new SessionStore.SessionTokenRevokedError({ sessionId, revokedAt: endedAt }),
+      annotations: {
+        reason: "Session token revoked.",
+        sessionId,
+        revokedAt: "2026-09-28T06:49:18.000Z",
+      },
+    },
+    {
+      case: "a session this server does not know",
+      cause: new SessionStore.UnknownSessionTokenError({ sessionId }),
+      annotations: { reason: "Unknown session token.", sessionId },
+    },
+    {
+      case: "a token with a forged signature",
+      cause: new SessionStore.InvalidSessionTokenSignatureError({}),
+      annotations: { reason: "Invalid session token signature." },
+    },
+  ])("names $case", ({ cause, annotations }) => {
+    expect(EnvironmentAuth.rejectedCredentialAnnotations(cause)).toEqual(annotations);
+  });
 });

@@ -1,11 +1,16 @@
-import { ConnectionTransientError } from "@t3tools/client-runtime/connection";
+import {
+  BearerConnectionCredential,
+  BearerConnectionProfile,
+  ConnectionTransientError,
+} from "@t3tools/client-runtime/connection";
 import { ConnectionCatalogDocument } from "@t3tools/client-runtime/platform";
+import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { afterEach, vi } from "vite-plus/test";
 
-import { makeCatalogBackend, makeCatalogStore } from "./storage";
+import { accountCloseLogouts, makeCatalogBackend, makeCatalogStore } from "./storage";
 
 const emptyCatalog = {
   schemaVersion: 1,
@@ -68,4 +73,43 @@ describe("makeCatalogBackend", () => {
       expect(getConnectionCatalog).not.toHaveBeenCalled();
     }),
   );
+});
+
+describe("accountCloseLogouts", () => {
+  const NOW = 1_000_000_000;
+  const DAY_MS = 86_400_000;
+  const mate = (name: string) =>
+    new BearerConnectionProfile({
+      connectionId: `bearer:${name}`,
+      environmentId: EnvironmentId.make(name),
+      label: name,
+      httpBaseUrl: `https://${name}.example.test/mate/`,
+      wsBaseUrl: `wss://${name}.example.test/mate/`,
+    });
+  const stored = (
+    name: string,
+    lifetime: { issuedAtEpochMs?: number; expiresAtEpochMs?: number },
+  ) => ({
+    connectionId: `bearer:${name}`,
+    credential: new BearerConnectionCredential({ token: `token-of-${name}`, ...lifetime }),
+  });
+
+  // Signing out ends every session this tab still holds; one already past its day has ended on
+  // its Mate, and sending it would only earn a refusal in that Mate's log.
+  it("logs out every live session and never presents one past its deadline", () => {
+    const document = {
+      ...emptyCatalog,
+      profiles: [mate("live"), mate("ended"), mate("undated"), mate("uncredentialed")],
+      credentials: [
+        stored("live", { issuedAtEpochMs: NOW - 60_000, expiresAtEpochMs: NOW + DAY_MS }),
+        stored("ended", { issuedAtEpochMs: NOW - 2 * DAY_MS, expiresAtEpochMs: NOW - DAY_MS }),
+        stored("undated", {}),
+      ],
+    };
+
+    expect(accountCloseLogouts(document, NOW)).toEqual([
+      { url: "https://live.example.test/mate/api/auth/logout", token: "token-of-live" },
+      { url: "https://undated.example.test/mate/api/auth/logout", token: "token-of-undated" },
+    ]);
+  });
 });

@@ -17,6 +17,7 @@ import * as Connectivity from "./connectivity.ts";
 import * as ConnectionDriver from "./driver.ts";
 import {
   DPOP_ACCESS_TOKEN_REFRESH_SKEW_MS,
+  BearerConnectionTarget,
   ConnectionBlockedError,
   ConnectionTransientError,
   PrimaryConnectionTarget,
@@ -51,6 +52,16 @@ const TARGET_ENTRY: ConnectionCatalogEntry = {
 
 const RELAY_ENTRY: ConnectionCatalogEntry = {
   target: RELAY_TARGET,
+  profile: Option.none(),
+};
+
+/** A Mate reached with a stored bearer — the door's, which only a rotation replaces. */
+const BEARER_ENTRY: ConnectionCatalogEntry = {
+  target: new BearerConnectionTarget({
+    environmentId: TARGET.environmentId,
+    label: TARGET.label,
+    connectionId: "bearer:environment-1",
+  }),
   profile: Option.none(),
 };
 
@@ -1372,6 +1383,90 @@ describe("EnvironmentSupervisor", () => {
       expect(Option.isNone(yield* SubscriptionRef.get(supervisor.prepared))).toBe(true);
     }),
   );
+
+  describe("a stored bearer its server refused", () => {
+    type Harness = Effect.Success<ReturnType<typeof makeHarness>>;
+    const signals: ReadonlyArray<{
+      readonly signal: string;
+      readonly send: (harness: Harness) => Effect.Effect<void>;
+    }> = [
+      { signal: "focus back after a while", send: (h) => h.wake("application-active") },
+      { signal: "a mobile foreground", send: (h) => h.wake("application-active-probe") },
+      { signal: "a long background resume", send: (h) => h.wake("application-active-reconnect") },
+      { signal: "a platform account change", send: (h) => h.wake("credentials-changed") },
+      {
+        signal: "the network dropping and coming back",
+        send: (h) =>
+          h.setNetworkStatus("offline").pipe(Effect.andThen(h.setNetworkStatus("online"))),
+      },
+    ];
+
+    // The link a hidden tab keeps after its sessions' day ends: every wake and every network flap
+    // used to send the dead bearer to the Mate again, on every Mate at once.
+    it.effect.each(signals)("is not presented again on $signal", ({ send }) =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({
+          prepare: (attempt) =>
+            attempt === 1 ? Effect.fail(blocked()) : Effect.succeed(PREPARED_CONNECTION),
+        });
+        const supervisor = yield* EnvironmentSupervisor.make(BEARER_ENTRY, {
+          initiallyDesired: true,
+        }).pipe(Effect.provide(harness.dependencies));
+        yield* awaitState(supervisor.state, (state) => state.phase === "blocked");
+
+        yield* send(harness);
+        yield* TestClock.adjust("1 hour");
+
+        expect(yield* Ref.get(harness.prepareCount)).toBe(1);
+        expect((yield* SubscriptionRef.get(supervisor.state)).phase).toBe("blocked");
+
+        // The door's new bearer arrives with the rotation's own retry.
+        yield* supervisor.retryNow;
+        yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+        expect(yield* Ref.get(harness.prepareCount)).toBe(2);
+      }).pipe(Effect.provide(TestClock.layer())),
+    );
+
+    it.effect("still leaves the link when it is disconnected", () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({ prepare: () => Effect.fail(blocked()) });
+        const supervisor = yield* EnvironmentSupervisor.make(BEARER_ENTRY, {
+          initiallyDesired: true,
+        }).pipe(Effect.provide(harness.dependencies));
+        yield* awaitState(supervisor.state, (state) => state.phase === "blocked");
+
+        yield* supervisor.disconnect;
+        yield* awaitState(supervisor.state, (state) => state.phase === "available");
+        expect(yield* Ref.get(harness.prepareCount)).toBe(1);
+      }),
+    );
+
+    // Only a refused credential holds: a bearer link blocked for another reason, and a link with
+    // no stored bearer, still try again when the person comes back.
+    it.effect.each([
+      {
+        case: "a bearer link blocked on its configuration",
+        entry: BEARER_ENTRY,
+        failure: new ConnectionBlockedError({ reason: "configuration", detail: "Moved." }),
+      },
+      { case: "a primary link refused its cookie", entry: TARGET_ENTRY, failure: blocked() },
+    ])("a wake still retries $case", ({ entry, failure }) =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({
+          prepare: (attempt) =>
+            attempt === 1 ? Effect.fail(failure) : Effect.succeed(PREPARED_CONNECTION),
+        });
+        const supervisor = yield* EnvironmentSupervisor.make(entry, {
+          initiallyDesired: true,
+        }).pipe(Effect.provide(harness.dependencies));
+        yield* awaitState(supervisor.state, (state) => state.phase === "blocked");
+
+        yield* harness.wake("application-active");
+        yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+        expect(yield* Ref.get(harness.prepareCount)).toBe(2);
+      }),
+    );
+  });
 
   it.effect("does not lose an explicit disconnect among concurrent wakeup signals", () =>
     Effect.gen(function* () {

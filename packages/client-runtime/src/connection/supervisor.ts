@@ -19,6 +19,7 @@ import * as ConnectionDriver from "./driver.ts";
 import {
   DPOP_ACCESS_TOKEN_REFRESH_SKEW_MS,
   type ConnectionAttemptError,
+  type ConnectionBlockedError,
   type ConnectionTarget,
   ConnectionTransientError,
   type NetworkStatus,
@@ -896,6 +897,32 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     }
   });
 
+  /**
+   * A stored bearer its server refused stays refused — expired, revoked or unknown, the answer
+   * is final for that token — and only its owner can replace it: the door's rotation, which
+   * retries the link, or a disconnect. A wake or the network coming back changes nothing, so it
+   * never sends the dead bearer again (a tab left open past its sessions' day did so on every
+   * wake, to every Mate at once).
+   */
+  const holdsUntilReplaced = (error: ConnectionBlockedError) =>
+    target._tag === "BearerConnectionTarget" && error.reason === "authentication";
+
+  const waitForReplacement = Effect.gen(function* () {
+    for (;;) {
+      const next = yield* Queue.take(signals);
+      switch (next._tag) {
+        case "ConnectRequested":
+        case "DisconnectRequested":
+        case "RetryRequested":
+          return false;
+        case "NetworkChanged":
+        case "Wakeup":
+        case "StreamDefect":
+          break;
+      }
+    }
+  });
+
   const run = Effect.fnUntraced(function* () {
     let failureCount = 0;
     let generation = 0;
@@ -974,7 +1001,9 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
             retryAt: null,
           });
         }
-        const applicationActivated = yield* waitForSignal;
+        const applicationActivated = yield* holdsUntilReplaced(error)
+          ? waitForReplacement
+          : waitForSignal;
         if (applicationActivated) {
           resetRetryLadder();
         }

@@ -1,9 +1,11 @@
 import type { AuthClientPresentationMetadata } from "@t3tools/contracts";
 import { socketUrlFromWsBaseUrl } from "@t3tools/shared/basePath";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 
 import { appendClientConnectionParams } from "../authorization/remote.ts";
@@ -15,8 +17,14 @@ import {
   type ConnectionCatalogEntry,
   SshConnectionProfile,
 } from "./catalog.ts";
+import { credentialExpired } from "./credentialRenewal.ts";
 import * as ConnectionCredentialStore from "./credentialStore.ts";
-import { credentialMissingError, environmentMismatchError, profileMissingError } from "./errors.ts";
+import {
+  credentialMissingError,
+  environmentMismatchError,
+  profileMissingError,
+  sessionExpiredError,
+} from "./errors.ts";
 import type {
   BearerConnectionTarget,
   ConnectionTarget,
@@ -87,6 +95,13 @@ const makePrimaryBroker = Effect.fn("clientRuntime.connection.broker.makePrimary
 const makeBearerBroker = Effect.fn("clientRuntime.connection.broker.makeBearer")(function* () {
   const credentials = yield* ConnectionCredentialStore.ConnectionCredentialStore;
   const remote = yield* RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization;
+  // The bearer each connection's server last refused, and its refusal. A refusal is final for
+  // that bearer — expired, revoked or unknown alike — so from then on it is answered here: a
+  // wake, a network change or a retry never sends it again. Keyed by connection, so the door's
+  // next bearer is presented as soon as it is stored.
+  const refused = yield* Ref.make<
+    ReadonlyMap<string, { readonly token: string; readonly error: ConnectionBlockedError }>
+  >(new Map());
 
   return Effect.fn("clientRuntime.connection.broker.bearer")(function* (
     entry: ConnectionCatalogEntry & { readonly target: BearerConnectionTarget },
@@ -118,13 +133,30 @@ const makeBearerBroker = Effect.fn("clientRuntime.connection.broker.makeBearer")
     if (!isBearerCredential(credential)) {
       return yield* credentialMissingError(target.connectionId);
     }
-    const authorized = yield* remote.authorizeBearer({
-      expectedEnvironmentId: target.environmentId,
-      httpBaseUrl: profile.httpBaseUrl,
-      wsBaseUrl: profile.wsBaseUrl,
-      bearerToken: credential.token,
-      connectionMethod: "direct",
-    });
+    const refusal = (yield* Ref.get(refused)).get(target.connectionId);
+    if (refusal?.token === credential.token) {
+      return yield* refusal.error;
+    }
+    if (credentialExpired(credential, yield* Clock.currentTimeMillis)) {
+      return yield* sessionExpiredError();
+    }
+    const authorized = yield* remote
+      .authorizeBearer({
+        expectedEnvironmentId: target.environmentId,
+        httpBaseUrl: profile.httpBaseUrl,
+        wsBaseUrl: profile.wsBaseUrl,
+        bearerToken: credential.token,
+        connectionMethod: "direct",
+      })
+      .pipe(
+        Effect.tapError((error) =>
+          error._tag === "ConnectionBlockedError" && error.reason === "authentication"
+            ? Ref.update(refused, (current) =>
+                new Map(current).set(target.connectionId, { token: credential.token, error }),
+              )
+            : Effect.void,
+        ),
+      );
     return {
       environmentId: authorized.environmentId,
       label: authorized.label,

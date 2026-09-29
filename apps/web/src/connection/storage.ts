@@ -14,6 +14,7 @@ import {
 import { TokenStore } from "@t3tools/client-runtime/authorization";
 import {
   ConnectionTransientError,
+  CredentialRenewal,
   CredentialStore,
   ProfileStore,
 } from "@t3tools/client-runtime/connection";
@@ -127,6 +128,29 @@ export const makeCatalogStore = Effect.fn("web.connectionStorage.makeCatalogStor
   return { read, update } satisfies CatalogStore;
 });
 
+/**
+ * The logouts an account's close sends: one per stored bearer whose session may still be live. A
+ * session past its deadline has already ended on its Mate; presenting it would only be refused.
+ */
+export function accountCloseLogouts(
+  document: ConnectionCatalogDocumentType,
+  nowEpochMs: number,
+): ReadonlyArray<{ readonly url: string; readonly token: string }> {
+  return document.profiles.flatMap((profile) => {
+    if (profile._tag !== "BearerConnectionProfile") return [];
+    const credential = document.credentials.find(
+      (entry) => entry.connectionId === profile.connectionId,
+    )?.credential;
+    if (!credential || CredentialRenewal.credentialExpired(credential, nowEpochMs)) return [];
+    return [
+      {
+        url: `${profile.httpBaseUrl.replace(/\/+$/, "")}/api/auth/logout`,
+        token: credential.token,
+      },
+    ];
+  });
+}
+
 export const connectionStorageLayer = Layer.effectContext(
   Effect.gen(function* () {
     if (currentAccountId() === null) {
@@ -151,16 +175,10 @@ export const connectionStorageLayer = Layer.effectContext(
     const unregisterLogout = onAccountLifetimeClose(() => {
       // Start requests before disposing the Effect runtime. Each request uses
       // a captured credential; none can touch a subsequent login's catalog.
-      const document = currentCatalog;
-      for (const profile of document.profiles) {
-        if (profile._tag !== "BearerConnectionProfile") continue;
-        const credential = document.credentials.find(
-          (entry) => entry.connectionId === profile.connectionId,
-        )?.credential;
-        if (!credential) continue;
-        void fetch(`${profile.httpBaseUrl.replace(/\/+$/, "")}/api/auth/logout`, {
+      for (const logout of accountCloseLogouts(currentCatalog, Date.now())) {
+        void fetch(logout.url, {
           method: "POST",
-          headers: { Authorization: `Bearer ${credential.token}` },
+          headers: { Authorization: `Bearer ${logout.token}` },
           keepalive: true,
         }).catch(() => undefined);
       }

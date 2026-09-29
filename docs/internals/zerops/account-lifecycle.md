@@ -143,6 +143,15 @@ closes its sockets, and the client opens a new one with a fresh throwaway (on ev
 backoff, from 0.9b). The client's credential renewer (`credentialRenewal.ts`) is reserved for a door
 that re-presents a credential; the throwaway door does not, so nothing renews a Zerops session.
 
+A dead session is never presented again. The client does not send a bearer within 30 s of its own
+deadline (issue time plus `expires_in`, on the client's clock), nor one its Mate already refused:
+the link blocks on authentication at once, and a wake, a network change or a retry leaves it there
+until the door's new bearer rotates in. A session that merely reached its end reads as reconnecting,
+never as a refusal. The refusal's `401` carries `expired: true` for such a session — optional both
+ways, so an older client ignores it and an older server never sends it — and the server's
+`Rejected authenticated session credential.` line names the session and when it ended, never the
+token.
+
 The released surface is hosted web. Desktop uses the same account boundary. Mobile is not released;
 its retained entry directs users to hosted Mate, so dormant native connection source cannot become
 a pairing escape hatch. A native release requires its own complete account lifecycle implementation.
