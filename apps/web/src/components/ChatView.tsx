@@ -338,6 +338,7 @@ import {
   useZeropsAgentSignerRecord,
   useZeropsEnvironmentProject,
 } from "~/zerops/useZeropsAgentSigner";
+import { useMateStandUp } from "~/zerops/useMateStandUp";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
@@ -3875,6 +3876,18 @@ export default function ChatView(props: ChatViewProps) {
     instanceId: activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
     providers: providerStatuses,
     availabilityByInstanceId: zeropsAgentAvailabilityByInstanceId,
+  });
+  // Beside the signer record: a new Mate's first sign-in sends its stand-up, as this person,
+  // through this composer, into a conversation read live and still empty.
+  useMateStandUp({
+    environmentId: activeThreadEnvironmentId,
+    threadRef: isServerThread && threadSyncPhase === null ? activeThreadRef : null,
+    messageCount: activeThread?.messages.length ?? 0,
+    canSend:
+      !activeEnvironmentUnavailable &&
+      selectedProviderEntry !== undefined &&
+      zeropsSendBlockReason === undefined,
+    sendBusy: isSendBusy,
   });
   const activeProjectDisplayName = zeropsChrome.projectName ?? activeProject?.title;
   const chromeLogicalProjectEnvironments = useMemo(

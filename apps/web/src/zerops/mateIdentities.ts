@@ -45,6 +45,11 @@ export interface ZeropsMateIdentity {
    * it is awake.
    */
   readonly connected: boolean;
+  /**
+   * Who asked for the project's development to be stood up (`mate:standup:`), while the ask
+   * waits for their first sign-in: their empty conversation says so and sends it (`mateStandUp.ts`).
+   */
+  readonly standUp?: { readonly by: string } | undefined;
 }
 
 const NO_ORIGINS: ReadonlyMap<string, EnvironmentId> = new Map();
@@ -66,6 +71,7 @@ export function zeropsMateIdentities(
       project: tags.label,
       projectUrl: zeropsProjectUrl(candidate.project.id),
       connected: candidate.group === "connected",
+      ...(tags.standUp === undefined ? {} : { standUp: tags.standUp }),
     });
   }
   return mates;
