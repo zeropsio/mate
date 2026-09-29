@@ -8305,7 +8305,7 @@ export default function ChatView(props: ChatViewProps) {
                           "chat-composer-glass-shell-with-context",
                       )}
                     >
-                      <div className="chat-composer-glass-host relative z-10 w-full rounded-[22px]">
+                      <div className="chat-composer-glass-host relative z-10 w-full">
                         <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
                           {zeropsReadOnly !== null ? (
                             <ZeropsReadOnlyConversationFooter

@@ -832,18 +832,16 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --chat-composer-attached-tint: color-mix(in srgb, var(--warning) 8%, transparent);
   }
 
+  /* The composer is the one white surface on screen, because that is where
+     the person acts (S5): the card, opaque, with a ring of ink and a soft
+     shadow — no glass, so nothing scrolling under it shows through, and the
+     run's card, a quiet tray now, never outshines it. */
   .chat-composer-glass-shell {
     --chat-composer-attachment-overlap: calc(1rem + 1px);
     --chat-composer-glass-surface: var(--card);
-    --chat-composer-outline: rgb(0 0 0 / 8%);
+    --chat-composer-outline: color-mix(in oklab, var(--foreground) 12%, transparent);
 
     isolation: isolate;
-
-    @variant dark {
-      --chat-composer-glass-surface: color-mix(in srgb, var(--background) 96%, var(--color-white));
-      --chat-composer-outline: color-mix(in srgb, var(--color-white) 5%, transparent);
-      --chat-composer-highlight: rgb(255 255 255 / 3%);
-    }
   }
 
   .chat-composer-glass-shell::before {
@@ -851,14 +849,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     position: absolute;
     z-index: 0;
     inset: 0;
-    border-radius: 22px;
-    background: color-mix(
-      in srgb,
-      var(--chat-composer-glass-surface) var(--glass-opacity),
-      transparent
-    );
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+    border-radius: 20px;
+    background: var(--chat-composer-glass-surface);
     content: "";
   }
 
@@ -868,21 +860,21 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
   /* The joined shape exists for a strip: a shell told to expect one whose
      toolbar then has nothing to say (a Mate's conversation) keeps the plain
-     22px glass, not two glass shoulders hanging below its corners. */
+     20px surface, not two shoulders hanging below its corners. */
   .chat-composer-glass-shell-with-context:has(.chat-composer-context-strip)::before {
     border-radius: 0;
     /*
-     * One continuous glass layer: a 22px composer joined to a 16px strip. The
+     * One continuous layer: a 20px composer joined to a 16px strip. The
      * strip is inset 1.375rem per side, so the step-in positions and their
      * curve controls stay in rem to keep tracking it at non-default interface
-     * font sizes; the composer's 22px top radius and the strip's 16px bottom
+     * font sizes; the composer's 20px top radius and the strip's 16px bottom
      * radius are px by design.
      */
     clip-path: shape(
-      from 0 22px,
-      curve to 22px 0 with 0 9.85px / 9.85px 0,
-      line to calc(100% - 22px) 0,
-      curve to 100% 22px with calc(100% - 9.85px) 0 / 100% 9.85px,
+      from 0 20px,
+      curve to 20px 0 with 0 8.95px / 8.95px 0,
+      line to calc(100% - 20px) 0,
+      curve to 100% 20px with calc(100% - 8.95px) 0 / 100% 8.95px,
       line to 100% calc(100% - var(--chat-composer-context-extension) - 1.375rem),
       curve to calc(100% - 1.375rem) calc(100% - var(--chat-composer-context-extension)) with 100%
         calc(100% - var(--chat-composer-context-extension) - 0.6156rem) / calc(100% - 0.6156rem)
@@ -910,15 +902,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 
   .chat-composer-glass-host {
-    box-shadow: 0 12px 28px -18px rgb(0 0 0 / 40%);
-
-    @variant dark {
-      box-shadow: none;
-
-      &::after {
-        box-shadow: inset 0 1px var(--chat-composer-highlight);
-      }
-    }
+    border-radius: 20px;
+    box-shadow: var(--chat-composer-shadow);
   }
 
   .chat-composer-glass-host::after {
@@ -961,14 +946,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     )
     .chat-composer-glass-host
     [data-chat-composer-main-surface="true"] {
-    background: color-mix(
-      in srgb,
-      var(--chat-composer-glass-surface) var(--glass-opacity),
-      transparent
-    );
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-    box-shadow: 0 12px 28px -18px rgb(0 0 0 / 40%);
+    background: var(--chat-composer-glass-surface);
+    box-shadow: var(--chat-composer-shadow);
 
     &::after {
       pointer-events: none;
@@ -978,18 +957,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
       border: 1px solid var(--chat-composer-outline);
       border-radius: inherit;
       content: "";
-    }
-
-    @variant dark {
-      box-shadow: none;
-
-      &::after {
-        box-shadow: inset 0 1px var(--chat-composer-highlight);
-      }
-    }
-
-    @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-      background: var(--chat-composer-glass-surface);
     }
   }
 
@@ -1230,12 +1197,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     .settings-slider::-moz-range-progress,
     .settings-slider::-moz-range-thumb {
       all: revert;
-    }
-  }
-
-  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-    .chat-composer-glass-shell::before {
-      background: var(--chat-composer-glass-surface);
     }
   }
 }
@@ -1613,21 +1574,10 @@ html[data-theme-id]:not([data-theme-id=""]) {
   --terminal-selection-background: var(--app-theme-terminal-selection-background);
 }
 
-/* T3 Chat's composer is a translucent lift over --chat-background. Route its
-   measured flattened color through the raised-surface role instead of deriving
-   another tint from the canvas, which made the dark composer too red. */
-html[data-theme-id] .chat-composer-glass-shell {
-  --chat-composer-glass-surface: var(--app-theme-surface-raised);
-  --chat-composer-outline: var(--app-theme-toolbar-border);
-
-  @variant dark {
-    --chat-composer-outline: color-mix(in srgb, var(--app-theme-input) 30%, var(--background));
-    --chat-composer-highlight: color-mix(in srgb, var(--app-theme-input) 12%, transparent);
-  }
-}
-
-html[data-theme-id]
-  :is(.chat-composer-banner-stack-cap, .chat-composer-drawer-surface, .chat-composer-top-drawer) {
+/* The banners floating over the composer are a translucent lift over the
+   canvas, in the raised-surface role; the composer and its own top drawer
+   wear the card (`.chat-composer-glass-shell`). */
+html[data-theme-id] :is(.chat-composer-banner-stack-cap, .chat-composer-drawer-surface) {
   --chat-composer-attached-surface: var(--app-theme-surface-raised);
 }
 
@@ -3262,6 +3212,55 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 /* ==== end of the conversation ==== */
 
 /* ==== Pass 16 · the composer ==== */
+
+/* S5: the composer's lift. A soft, low shadow in light; in dark a longer,
+   deeper one, since a light ring alone would not lift a surface off a dark
+   canvas. */
+:root {
+  --chat-composer-shadow: 0 1px 2px rgb(15 18 24 / 5%), 0 14px 34px -16px rgb(15 18 24 / 28%);
+
+  @variant dark {
+    --chat-composer-shadow: 0 16px 36px -18px rgb(0 0 0 / 85%);
+  }
+}
+
+/* One radius for the composer's surface wherever it paints — itself, or its
+   read-only stand-in — and the one a pixel inside it for what it holds. */
+[data-chat-composer-main-surface="true"] {
+  border-radius: 20px;
+}
+
+[data-chat-composer-surface="true"] {
+  border-radius: 19px;
+}
+
+/* C4: the one control's menu — the models, and beside them the model's
+   effort, its other choices and the access. Both columns share one height,
+   tall enough for a Claude model's six efforts, two context windows and the
+   four accesses without a scroll; a narrow screen stacks them. */
+.composer-model-menu {
+  display: flex;
+  height: min(28rem, var(--available-height, 100vh));
+}
+
+.composer-model-menu > [data-model-picker-content] {
+  height: 100%;
+  max-height: none;
+}
+
+@media (max-width: 39.999rem) {
+  .composer-model-menu {
+    flex-direction: column;
+    height: auto;
+    max-height: var(--available-height, 100vh);
+    overflow-y: auto;
+  }
+
+  .composer-model-menu > [data-model-picker-content] {
+    flex: none;
+    height: 21.625rem;
+  }
+}
 
 /* ==== end of the composer ==== */
 
