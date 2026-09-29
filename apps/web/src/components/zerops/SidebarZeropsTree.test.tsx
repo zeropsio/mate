@@ -1501,6 +1501,25 @@ describe("arranging the projects by hand", () => {
     expect(grip).toContain("group-hover/project:opacity-100");
   });
 
+  // The heading's toggle covers the whole heading (`after:inset-0`): every
+  // control on it stands above that, the grip too, or its right half folds
+  // the project instead of dragging it.
+  it.each(["sidebar-project-grip", "sidebar-project-add-mate", "sidebar-project-more"])(
+    "stands %s above the heading's own press",
+    (surface) => {
+      setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "custom", ProjectOrderSchema);
+      const html = render([LINKS_MATE, SHOP_MATE]);
+      const control =
+        new RegExp(`<button[^>]*data-zerops-surface="${surface}"[^>]*>`, "u").exec(html)?.[0] ?? "";
+      const layer = /class="([^"]*)"/u.exec(control)?.[1]?.split(" ") ?? [];
+      // Its own layer, or the verbs' slot it stands in.
+      const slot = html.slice(0, html.indexOf(control)).lastIndexOf("relative z-1");
+      expect(layer.includes("z-1") || slot > html.lastIndexOf("<div", html.indexOf(control))).toBe(
+        true,
+      );
+    },
+  );
+
   it("moves a project with the grip's arrow keys, writing the order on screen with it moved", () => {
     setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "custom", ProjectOrderSchema);
     setLocalStorageItem(
