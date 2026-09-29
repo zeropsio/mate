@@ -55,19 +55,51 @@ type MateFaceProps = Omit<React.ComponentProps<"svg">, "children" | "viewBox"> &
   readonly state: MateMarkState;
   readonly size?: MateFaceSize;
   readonly gaze?: MateFaceGaze | undefined;
+  /**
+   * Whether the state is the Mate's as read, or a pose standing in until it
+   * is: a change from a stand-in is no arrival to greet. Known by default.
+   */
+  readonly known?: boolean;
 };
 
 /**
- * The pose a face last wore on this node, and whether it changed while it was
- * on screen: an arrival (a run done, a question raised) is marked once, so the
- * face can greet it, and never on a first paint — a reload shows the state as
- * it is, without the flourish of arriving at it.
+ * Whether a change of pose is an arrival the face greets: a run done after
+ * work or a question, a question raised. Marking a Mate unread (idle to done)
+ * is no run finishing, and waking to wait on a question already asked is no
+ * question raised.
  */
-function useArrived(state: MateMarkState): MateMarkState | undefined {
-  const [first] = useState(state);
-  const [changed, setChanged] = useState(false);
-  if (!changed && state !== first) setChanged(true);
-  return changed || state !== first ? state : undefined;
+export function mateFaceArrival(
+  previous: MateMarkState,
+  next: MateMarkState,
+): MateMarkState | undefined {
+  if (next === "done") return previous === "working" || previous === "needs" ? "done" : undefined;
+  if (next === "needs") return previous === "needs" ? undefined : "needs";
+  return undefined;
+}
+
+/**
+ * The arrival this face last saw while it was on screen, marked until the
+ * next change of pose — never on a first paint: a reload, a remount, a list
+ * opening onto a waiting Mate shows the state as it is, without the flourish
+ * of arriving at it. Nor from a pose that only stood in until the Mate's state
+ * was read (`known`): a menu row wears idle or asleep for the second before
+ * its socket answers, and a Mate that had waited all along is not arriving.
+ */
+function useArrived(state: MateMarkState, known: boolean): MateMarkState | undefined {
+  const [seen, setSeen] = useState<{
+    readonly state: MateMarkState;
+    readonly known: boolean;
+    readonly arrived: MateMarkState | undefined;
+  }>({ state, known, arrived: undefined });
+  if (seen.state === state && seen.known === known) return seen.arrived;
+  const arrived =
+    seen.state === state
+      ? seen.arrived
+      : seen.known && known
+        ? mateFaceArrival(seen.state, state)
+        : undefined;
+  setSeen({ state, known, arrived });
+  return arrived;
 }
 
 /**
@@ -86,9 +118,18 @@ function useArrived(state: MateMarkState): MateMarkState | undefined {
  * reduced motion only the morph remains. Decorative on its own — the name and the state are always
  * written beside it — so it carries no accessible name.
  */
-function MateFace({ className, size = "md", state, tint, gaze, style, ...props }: MateFaceProps) {
+function MateFace({
+  className,
+  size = "md",
+  state,
+  tint,
+  gaze,
+  known = true,
+  style,
+  ...props
+}: MateFaceProps) {
   const parts = mateFaceParts(state);
-  const arrived = useArrived(state);
+  const arrived = useArrived(state, known);
   const shapeId = MATE_SHAPE_OF_TINT[tint];
   const shape = MATE_SHAPES[shapeId];
   const strokeWidth = STROKE_PX[size];

@@ -2177,7 +2177,14 @@ function MateRow<T extends RosterCandidate>({
               it. A ring, when it works, stands 4px clear all round, and the
               spine stops at the ring instead of running under it. */}
           <span className={cn("relative flex", progress !== undefined && "my-1")}>
-            <MateFace size="md" state={face} tint={tint} />
+            {/* Until its socket answers the face stands in idle or asleep: a
+                Mate found waiting then is not arriving at it. */}
+            <MateFace
+              known={candidate.group === "connected" && activity !== undefined}
+              size="md"
+              state={face}
+              tint={tint}
+            />
             {progress === undefined ? null : (
               <span className="absolute -inset-1 flex" data-zerops-surface="sidebar-mate-ring">
                 <PlanRing completed={progress.completed} total={progress.total} />

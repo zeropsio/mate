@@ -2809,22 +2809,26 @@ code {
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  /* Each Mate's beat is an offset inside the loop's rest (the turn rests
+     for its first 1.32 s, the glance for its first 1.68 s), so a Mate that
+     starts work starts still, never mid-turn. */
   [data-mate-face-state="working"] [data-mate-face-body] {
     animation: mate-face-turn 2.4s infinite;
-    animation-delay: calc(var(--mate-face-phase, 0) * -0.3s);
+    animation-delay: calc(var(--mate-face-phase, 0) * -0.18s);
   }
 
   [data-mate-face-state="working"] [data-mate-face-glance] {
     animation: mate-face-glance 5.6s infinite;
-    animation-delay: calc(var(--mate-face-phase, 0) * -0.7s);
+    animation-delay: calc(var(--mate-face-phase, 0) * -0.2s);
   }
 
-  /* Three hops as it starts to need you, then it waits with its eyes wide:
-     a person can be away for hours, and a face hopping all that while in the
-     corner of the eye would wear on them. */
-  [data-mate-face-state="needs"] [data-mate-face-hop] {
+  /* Three hops as it starts to need you, the first at once, then it waits
+     with its eyes wide: a person can be away for hours, and a face hopping
+     all that while in the corner of the eye would wear on them. Only as it
+     starts to: a reload, a remount or a list opening onto a waiting Mate
+     shows it waiting, not arriving at it. */
+  [data-mate-face-arrived="needs"] [data-mate-face-hop] {
     animation: mate-face-hop 2.8s 3;
-    animation-delay: calc(var(--mate-face-phase, 0) * -0.35s);
   }
 
   [data-mate-face-arrived="done"] [data-mate-face-hop] {
@@ -2880,29 +2884,29 @@ code {
   }
 }
 
-/* Crouch, jump, land: squash and stretch, from its feet. */
+/* Crouch, jump, land — squash and stretch, from its feet — then rest. */
 @keyframes mate-face-hop {
-  0%,
-  70% {
+  0% {
     translate: 0 0;
     scale: 1 1;
     animation-timing-function: cubic-bezier(0.33, 0, 0.67, 1);
   }
-  76% {
+  6% {
     translate: 0 0;
     scale: 1.07 0.9;
     animation-timing-function: cubic-bezier(0.2, 0.8, 0.4, 1);
   }
-  84% {
+  14% {
     translate: 0 -13px;
     scale: 0.96 1.05;
     animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.6);
   }
-  91% {
+  21% {
     translate: 0 0;
     scale: 1.05 0.94;
     animation-timing-function: cubic-bezier(0.2, 0.8, 0.4, 1);
   }
+  30%,
   100% {
     translate: 0 0;
     scale: 1 1;

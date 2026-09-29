@@ -6,10 +6,12 @@ import {
   mateFaceParts,
   type MateMarkState,
 } from "@t3tools/shared/brand";
+import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { create } from "react-test-renderer";
 import { describe, expect, it } from "vite-plus/test";
 
-import { MateFace } from "./MateFace";
+import { MateFace, mateFaceArrival } from "./MateFace";
 
 /** The attributes of every element a face draws, keyed by the part it plays. */
 function parts(html: string) {
@@ -112,6 +114,39 @@ describe("MateFace", () => {
     expect(html).toContain('vector-effect="non-scaling-stroke"');
     expect(html).toContain('stroke-width="1.25"');
     expect(html).toContain("size-3.5");
+  });
+
+  // A face greets an arrival while it is on screen: a run done after work or
+  // a question, a question raised — never marking a Mate unread (idle to done),
+  // never a state it already held.
+  it.each<[MateMarkState, MateMarkState, MateMarkState | undefined]>([
+    ["working", "done", "done"],
+    ["needs", "done", "done"],
+    ["idle", "done", undefined],
+    ["working", "needs", "needs"],
+    ["idle", "needs", "needs"],
+    ["done", "idle", undefined],
+    ["idle", "working", undefined],
+  ])("greets %s → %s as %s", (previous, next, arrival) => {
+    expect(mateFaceArrival(previous, next)).toBe(arrival);
+  });
+
+  it("greets no arrival from a pose that only stood in until the state was read", () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const arrivedOf = (renderer: ReturnType<typeof create>) =>
+      renderer.root.findByType("svg").props["data-mate-face-arrived"];
+    let renderer: ReturnType<typeof create> | undefined;
+    // A menu row after a reload: idle until its socket answers that the Mate waits.
+    act(() => {
+      renderer = create(<MateFace known={false} state="idle" tint="sky" />);
+    });
+    act(() => renderer!.update(<MateFace known state="needs" tint="sky" />));
+    expect(arrivedOf(renderer!)).toBeUndefined();
+    // Read, a question raised while it is on screen is greeted.
+    act(() => renderer!.update(<MateFace known state="working" tint="sky" />));
+    act(() => renderer!.update(<MateFace known state="needs" tint="sky" />));
+    expect(arrivedOf(renderer!)).toBe("needs");
+    act(() => renderer!.unmount());
   });
 
   it("marks no arrival on a first paint: a reload shows the state, not the arriving at it", () => {
