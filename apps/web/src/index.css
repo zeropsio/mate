@@ -2612,8 +2612,13 @@ code {
    edge it had to cover; a strip beneath went under the pane's own ground.)
    The strip hangs off the slice's row, whose box is the tray's border box: hung
    off the bordered tray a pixel outside its padding box, it snapped to another
-   device pixel than the tray's own sides at a fractional pixel ratio, and the
-   side jogged at every joint (the owner's 1.58×, 2026-09-29). */
+   device pixel than the tray's own sides at a fractional pixel ratio. And a
+   side is drawn one of two ways: along its corners' curve where the box has a
+   radius, snapped to whole device pixels where it has none — at the owner's
+   1.58× the top slice's side took one device column and the middle slice's
+   two, and the side jogged at every joint (2026-09-29). So every slice and
+   strip takes a radius, the middle ones one nobody can see, and all their
+   sides are drawn the same way. */
 .timeline-legend-list
   .legend-list-content-container
   > div
@@ -2629,6 +2634,7 @@ code {
   content: "";
   position: absolute;
   inset-inline: 0;
+  border-radius: 0.05px;
   bottom: -1.5px;
   height: 3px;
   border-inline: 1px solid var(--run-tray-ring);
@@ -3787,6 +3793,8 @@ code {
 }
 
 .run-tray-middle {
+  /* Drawn as the rounded slices are (the joint's note above). */
+  border-radius: 0.05px;
   padding-inline: 15px;
 }
 
