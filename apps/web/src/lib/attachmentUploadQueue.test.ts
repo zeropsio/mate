@@ -38,8 +38,10 @@ vi.mock("../state/session", () => ({
 }));
 
 import {
+  attachmentUploadKeys,
   awaitAttachmentUploads,
   getUploadedAttachments,
+  pictureOriginalUploadKey,
   readAttachmentUpload,
   releaseAttachmentUpload,
   releaseAttachmentUploads,
@@ -117,6 +119,25 @@ function makeImage(id: string): ComposerImageAttachment {
     sizeBytes: file.size,
     previewUrl: `blob:${id}`,
     file,
+  };
+}
+
+function makePicture(id: string, keepOriginal: boolean): ComposerImageAttachment {
+  const source = new File([new Uint8Array(9)], "home-page.png", { type: "image/png" });
+  return {
+    ...makeImage(id),
+    picture: {
+      source,
+      sourceWidth: 3024,
+      sourceHeight: 1964,
+      crop: { x: 0, y: 0, w: 3024, h: 1964 },
+      marks: [],
+      keepOriginal,
+      width: 2000,
+      height: 1299,
+      asPasted: false,
+      preparing: false,
+    },
   };
 }
 
@@ -385,5 +406,63 @@ describe("attachmentUploadQueue", () => {
     await Promise.resolve();
     TestXmlHttpRequest.requests[4]!.complete();
     await awaitAttachmentUploads([images[3]!.id]);
+  });
+
+  describe("a picture's original", () => {
+    it.each([
+      ["a picture that keeps it uploads it too", true, ["pic", "pic~original"]],
+      ["a picture that does not, only its copy", false, ["pic"]],
+    ])("%s", (_label, keepOriginal, keys) => {
+      expect(attachmentUploadKeys(makePicture("pic", keepOriginal))).toEqual(keys);
+    });
+
+    it("goes as a file right after its picture, once both are up", async () => {
+      const picture = makePicture("pic", true);
+      startAttachmentUpload({ environmentId: firstEnvironment, image: picture });
+      await Promise.resolve();
+      expect(TestXmlHttpRequest.requests).toHaveLength(2);
+      expect(mocks.runAtomCommand).toHaveBeenCalledWith(
+        expect.anything(),
+        mocks.createUploadUrl,
+        {
+          environmentId: firstEnvironment,
+          input: { type: "file", name: "home-page.png", mimeType: "image/png", sizeBytes: 9 },
+        },
+        expect.anything(),
+      );
+      const settled = awaitAttachmentUploads([picture.id]);
+      TestXmlHttpRequest.requests[0]!.complete();
+      expect(
+        getUploadedAttachments({ environmentId: firstEnvironment, images: [picture] }),
+      ).toBeNull();
+      TestXmlHttpRequest.requests[1]!.complete();
+      await settled;
+      expect(
+        getUploadedAttachments({ environmentId: firstEnvironment, images: [picture] }),
+      ).toEqual([
+        {
+          type: "image",
+          id: "pending-environment-1-pic.png",
+          name: "pic.png",
+          mimeType: "image/png",
+          sizeBytes: 3,
+        },
+        {
+          type: "file",
+          id: "pending-environment-1-home-page.png",
+          name: "home-page.png",
+          mimeType: "image/png",
+          sizeBytes: 9,
+        },
+      ]);
+    });
+
+    it("lets the original go when the picture stops keeping it", async () => {
+      startAttachmentUpload({ environmentId: firstEnvironment, image: makePicture("pic", true) });
+      await Promise.resolve();
+      startAttachmentUpload({ environmentId: firstEnvironment, image: makePicture("pic", false) });
+      expect(readAttachmentUpload(pictureOriginalUploadKey("pic"))).toBeUndefined();
+      expect(readAttachmentUpload("pic")).toMatchObject({ status: "uploading" });
+    });
   });
 });
