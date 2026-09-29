@@ -1,20 +1,30 @@
 /**
- * The one next step this Mate's conversation offers, as a composer banner,
- * right where the person is reading its answer: the merge of this Mate's own
- * change (the owner, 2026-09-18), from the project's flow rather than from
- * what the agent said (2026-09-23). A release and a production are the
- * project's, never one Mate's, and stay on the left (2026-09-26).
+ * The composer's top (C3): this Mate's change, waiting for the person's
+ * review, as a section inside the composer that shares its edges and its
+ * corners — the Mate's face in its needs-you pose, what waits and what the
+ * change is, and Review, the one blue button on it (S3). Review opens the
+ * review (R1); nothing merges from here — the merge is the review's own
+ * button, where the change can be read first.
  *
- * Kept out of `ChatView.tsx`, which is upstream-shaped: the conversation
- * takes one banner item from here and stacks it with its own.
+ * It floated over the composer as a blue banner inset from its edges, with a
+ * Merge that merged on one click. The other banners (a reconnect, a version)
+ * still float over the timeline; only what waits on the person joins the
+ * composer, where they act on it.
+ *
+ * It gives way while a question or an approval waits on the person: the Mate
+ * cannot go on until that is answered, and the review would be a second ask
+ * stacked on the first. It comes back once the answer is in.
+ *
+ * Kept out of `ChatView.tsx`, which is upstream-shaped: the conversation takes
+ * the strip from here and hands it to the composer as its top.
  */
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { GitBranchIcon } from "lucide-react";
-import { useMemo } from "react";
+import type { MateTintId } from "@t3tools/shared/brand";
+import { useMemo, type ReactNode } from "react";
 
+import { useOpenReview, type ReviewTarget } from "../../zerops/review";
 import { useZeropsMateNextStep, type ZeropsMateNextStep } from "../../zerops/useZeropsMateNextStep";
-import type { ComposerBannerStackItem } from "../chat/ComposerBannerStack";
-import { Button } from "../ui/button";
+import { MateFace } from "./primitives";
 
 /** What waits on the person in the composer right now. */
 export interface ZeropsNextStepPending {
@@ -22,40 +32,94 @@ export interface ZeropsNextStepPending {
   readonly approval: boolean;
 }
 
+export interface ZeropsNextStepStripModel {
+  /** `Nova is waiting for your review of #2` */
+  readonly title: string;
+  /** The change's own title. */
+  readonly detail: string;
+  readonly tint: MateTintId;
+  readonly target: Extract<ReviewTarget, { kind: "change" }>;
+}
+
 /**
- * The banner for `nextStep`, or `null` where the flow asks nothing of this
- * conversation — or while a question or an approval waits on the person: the
- * Mate cannot go on until it is answered, and the merge would be a second ask
- * stacked on the first. It comes back once the answer is in.
+ * The strip for `nextStep`, or `null` where nothing waits on the person — or
+ * where a question or an approval waits on them first.
  */
-export function zeropsNextStepBannerItem(
+export function zeropsNextStepStrip(
   nextStep: ZeropsMateNextStep,
   pending: ZeropsNextStepPending,
-): ComposerBannerStackItem | null {
-  const { step, trouble } = nextStep;
-  if (step.kind !== "merge" || pending.question || pending.approval) return null;
+): ZeropsNextStepStripModel | null {
+  if (nextStep.kind !== "review" || pending.question || pending.approval) return null;
   return {
-    id: `mate-next-step:merge:${step.pull.repository}#${step.pull.number}`,
-    variant: trouble === null ? "info" : "error",
-    icon: <GitBranchIcon />,
-    title: step.title,
-    description: trouble ?? step.pull.title,
-    actions: (
-      <Button disabled={nextStep.running} size="xs" onClick={nextStep.merge}>
-        {nextStep.running ? step.running : step.verb}
-      </Button>
-    ),
+    title: nextStep.step.title,
+    detail: nextStep.step.detail,
+    tint: nextStep.tint,
+    target: nextStep.target,
   };
 }
 
-/** This conversation's next-step banner, its merge wired. */
-export function useZeropsNextStepBanner(
+export function ZeropsNextStepStrip({
+  strip,
+  onReview,
+}: {
+  readonly strip: ZeropsNextStepStripModel;
+  /** Opens the review, from the button that was pressed. */
+  readonly onReview: (target: ZeropsNextStepStripModel["target"], from: HTMLElement) => void;
+}) {
+  return (
+    <section
+      aria-label={strip.title}
+      className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 border-foreground/8 border-b pt-3 pe-3.5 pb-3 ps-4"
+      data-composer-top="review"
+    >
+      <MateFace size="md" state="needs" tint={strip.tint} />
+      <div className="min-w-0">
+        <p className="truncate font-medium text-foreground text-line leading-4.5">{strip.title}</p>
+        <p className="truncate text-muted-foreground text-line leading-4.5">{strip.detail}</p>
+      </div>
+      <button
+        className="composer-review-button"
+        onClick={(event) => {
+          onReview(strip.target, event.currentTarget);
+        }}
+        type="button"
+      >
+        Review
+      </button>
+    </section>
+  );
+}
+
+/** This conversation's composer top: the strip, or nothing. */
+export function useZeropsNextStepStrip(
   threadRef: ScopedThreadRef | null,
-  { question, approval }: ZeropsNextStepPending,
-): ComposerBannerStackItem | null {
-  const nextStep = useZeropsMateNextStep(threadRef);
+  pending: ZeropsNextStepPending,
+): ReactNode {
+  const openReview = useOpenReview();
+  const strip = zeropsNextStepStrip(useZeropsMateNextStep(threadRef), pending);
+  // The composer is memoised: the strip keeps its identity while what it
+  // says does, so a conversation's re-render never re-renders the composer.
+  const title = strip?.title;
+  const detail = strip?.detail;
+  const tint = strip?.tint;
+  const groupId = strip?.target.groupId;
+  const repository = strip?.target.repository;
+  const number = strip?.target.number;
   return useMemo(
-    () => zeropsNextStepBannerItem(nextStep, { question, approval }),
-    [approval, nextStep, question],
+    () =>
+      title === undefined ||
+      detail === undefined ||
+      tint === undefined ||
+      groupId === undefined ||
+      repository === undefined ||
+      number === undefined ? null : (
+        <ZeropsNextStepStrip
+          onReview={(target, from) => {
+            openReview(target, { from });
+          }}
+          strip={{ title, detail, tint, target: { kind: "change", groupId, repository, number } }}
+        />
+      ),
+    [detail, groupId, number, openReview, repository, tint, title],
   );
 }

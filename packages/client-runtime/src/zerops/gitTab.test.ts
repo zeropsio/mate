@@ -840,10 +840,10 @@ describe("one MergeState on every surface (DESIGN §4.7, A7, A11)", () => {
     readonly over?: Partial<GiteaPullRequest>;
   }
 
-  /** The conversation's banner over a project holding only this pull request: its merge, or nothing. */
+  /** The composer's top over a project holding only this pull request: its review, or nothing. */
   function bannerOf(flow: FlowPullRequest) {
     const step = mateNextStep({ pullRequests: [flow], mateProjectId: "p1", mateName: "Iris" });
-    return step.kind === "merge" ? step : undefined;
+    return step.kind === "review" ? step : undefined;
   }
 
   /**
