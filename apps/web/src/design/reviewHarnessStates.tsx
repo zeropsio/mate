@@ -90,7 +90,7 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
   return {
     repository: "appdev",
     number: 2,
-    title: "Add a /status page showing hostname, Node version and server time",
+    title: "Add a /status page with the uptime and the last deploy",
     kind: "code",
     mateProjectId: "p-nova",
     author: "mate-p-nova",
