@@ -646,3 +646,43 @@ describe("the row's live step", () => {
     expect(threadAgentActivity(thread, undefined).liveStep).toEqual(liveStep);
   });
 });
+
+describe("the question a needs-you row says", () => {
+  it.each<{
+    readonly name: string;
+    readonly thread: EnvironmentThreadShell;
+    readonly question: string | undefined;
+  }>([
+    {
+      name: "a Mate waiting on its question says the question",
+      thread: shell({
+        ...RUNNING,
+        hasPendingUserInput: true,
+        pendingQuestion: "Ship the status page now, or after the review?",
+        liveStep: asking,
+      }),
+      question: "Ship the status page now, or after the review?",
+    },
+    {
+      name: "a server that relays no question: none, and the row keeps its last words",
+      thread: shell({ hasPendingUserInput: true }),
+      question: undefined,
+    },
+    {
+      name: "an approval waits first: that is no question",
+      thread: shell({
+        hasPendingApprovals: true,
+        hasPendingUserInput: true,
+        pendingQuestion: "Which colour?",
+      }),
+      question: undefined,
+    },
+    {
+      name: "answered: no question",
+      thread: shell({ pendingQuestion: null }),
+      question: undefined,
+    },
+  ])("$name", ({ thread, question }) => {
+    expect(threadAgentActivity(thread, undefined).question).toBe(question);
+  });
+});

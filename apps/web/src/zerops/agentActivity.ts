@@ -244,6 +244,7 @@ export function threadAgentActivity(
     threadKey: scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
     task: agentActivitySubject(thread, "idle"),
     ...agentActivityLiveStep(thread, resolved.kind),
+    ...agentActivityQuestion(thread, resolved.kind),
     ...agentActivityErrorLine(thread, resolved.kind),
   };
 }
@@ -259,6 +260,20 @@ export function agentActivityLiveStep(
 ): { readonly liveStep?: LiveStepWords } {
   if (kind !== "working" || thread.liveStep === undefined) return {};
   return { liveStep: liveStepWords(thread.liveStep) };
+}
+
+/**
+ * The question it waits on the person to answer, while that is what it
+ * waits on — an approval waiting first is no question. Quoted by the server
+ * the way a preview is; a server from before it relays none.
+ */
+export function agentActivityQuestion(
+  thread: Pick<EnvironmentThreadShell, "pendingQuestion">,
+  kind: ThreadStatusKind,
+): { readonly question?: string } {
+  if (kind !== "input") return {};
+  const question = thread.pendingQuestion?.trim();
+  return question === undefined || question.length === 0 ? {} : { question };
 }
 
 /** The error's first line, while the Mate stands stopped on it. */
