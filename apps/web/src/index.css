@@ -3576,6 +3576,13 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
     scale: none;
     translate: none;
   }
+  /* Fades only: a file's chevron turns and the button gives without moving. */
+  .rv-chev {
+    transition: none;
+  }
+  .rv-btn1:active {
+    transform: none;
+  }
 }
 /* A review swapped for the next one in place (Merge → Review release) fades its body in. */
 .rv-swap {
