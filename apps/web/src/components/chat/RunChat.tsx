@@ -90,7 +90,9 @@ import {
   operationLineWords,
   type BrowserStripModel,
   type IncidentModel,
+  type OutcomeModel,
 } from "./conversation.logic";
+import { useRunEffortWords } from "./runResultFacts";
 import { StatusBar, type BarTone } from "./ConversationPills";
 import { ElapsedSince } from "./ConversationRows";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
@@ -2177,18 +2179,20 @@ function NowLine({
   status,
   now,
   answering,
-  effort,
+  outcome,
   end = null,
 }: {
   readonly status: RunStatus;
   readonly now: TurnHeaderActivity | null;
   readonly answering: boolean;
-  readonly effort: string | null;
+  /** What the run came to: its effort, on the worked line (`useRunEffortWords`). */
+  readonly outcome: OutcomeModel | null;
   /** What stands in the right column once the run is over. */
   readonly end?: ReactNode;
 }) {
   const ctx = use(TimelineRowCtx);
   const { isCompacting } = use(TimelineRowActivityCtx);
+  const effort = useRunEffortWords(outcome);
   const line = nowLineOf({
     status,
     now,
@@ -2252,7 +2256,7 @@ function NowLine({
  * approval, or paused before it did anything: the now line alone.
  */
 export function RunLine({ status }: { readonly status: RunStatus }) {
-  return <NowLine answering={false} effort={null} now={null} status={status} />;
+  return <NowLine answering={false} now={null} outcome={null} status={status} />;
 }
 
 /**
@@ -2298,7 +2302,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         <>
           <NowLine
             answering={false}
-            effort={row.effort}
+            outcome={row.outcome}
             end={
               row.items.some(foldsOnReturn) ? (
                 <WorkToggle
@@ -2324,7 +2328,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
           {row.status === null ? null : (
             <NowLine
               answering={row.answering}
-              effort={row.effort}
+              outcome={row.outcome}
               now={row.now}
               status={row.status}
             />

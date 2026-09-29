@@ -16,7 +16,7 @@ import {
   type TimelineRowActivityState,
   type TimelineRowSharedState,
 } from "./timelineContext";
-import { checksStrip, formatWorkDuration } from "./conversation.logic";
+import { checksStrip, formatWorkDuration, type OutcomeModel } from "./conversation.logic";
 import { at as atMinute, operation } from "./conversationFixtures";
 import { stepOf } from "./workSteps.logic";
 
@@ -118,7 +118,7 @@ function record(items: ReadonlyArray<RecordItem>, overrides: Partial<RecordRow> 
     now: null,
     answering: false,
     status: null,
-    effort: null,
+    outcome: null,
     ...overrides,
   };
 }
@@ -136,6 +136,23 @@ const step = (entry: WorkLogEntry): RecordItem => ({
   key: `step:${entry.id}`,
   at: at(9),
   step: stepOf(entry, undefined, false),
+});
+
+/** What a run came to, by its calls alone: what its worked line counts. */
+const outcomeOf = (activity: OutcomeModel["activity"]): OutcomeModel => ({
+  key: "outcome:turn-1",
+  turnKey: "turn-1",
+  live: [],
+  landed: [],
+  files: null,
+  checks: null,
+  created: [],
+  notDone: [],
+  planLeft: [],
+  change: null,
+  crewTask: null,
+  activity,
+  later: { services: [], changes: [], tasks: [], pages: [], answered: false },
 });
 
 /** A run's status: live and working by default. */
@@ -352,7 +369,10 @@ describe("RunChat", () => {
     const markup = draw(
       record([thought("r1", "One.")], {
         status: status({ live: false, face: "produced", endedAt: at(72) }),
-        effort: "2 commands · 1 file read",
+        outcome: outcomeOf([
+          { kind: "command", count: 2 },
+          { kind: "read", count: 1 },
+        ]),
       }),
     );
     expect(markup).toContain('<span class="run-now-worked">Nova worked 1m 12s</span>');
@@ -882,7 +902,7 @@ describe("RunChat, as the person uses it", () => {
         ],
         {
           status: status({ live: false, face: "produced", endedAt: at(80) }),
-          effort: "1 command",
+          outcome: outcomeOf([{ kind: "command", count: 1 }]),
           ...overrides,
         },
       );

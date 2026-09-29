@@ -49,7 +49,6 @@ import {
   type Stretch,
   type WorkLineFace,
 } from "./conversation.logic";
-import { runEffortWords } from "./runResult.logic";
 import {
   foldSteps,
   stepOf,
@@ -481,11 +480,11 @@ type MessagesTimelineRowBody =
        */
       status: RunStatus | null;
       /**
-       * What a finished run's effort came to, on its worked line after its
-       * time ("2 commands · 1 file read", `runEffortWords`); null while it
-       * runs, or when nothing is left to count.
+       * What the run came to, for its worked line's effort after its time
+       * ("2 commands · 1 file read", `useRunEffortWords`, which follows a
+       * change merged since); null while it runs.
        */
-      effort: string | null;
+      outcome: OutcomeModel | null;
     }
   | {
       /**
@@ -1983,7 +1982,7 @@ export function deriveMessagesTimelineRows(input: {
           now: working && answer === null ? liveActivity(last, turn.writing, tracked) : null,
           answering: answer !== null,
           status,
-          effort: outcome === null ? null : runEffortWords(outcome),
+          outcome,
         });
       }
       rows.push(...extras);
