@@ -6,8 +6,8 @@
  * status resolver (R5) — the snapshot carries what the engine recorded, never
  * what a thread is doing now. The caller hands that read in (`readThread`):
  * the resolver's module graph is not a pure one (rule 3), so this projection
- * only joins. Board rows take their owner's joined row, so a working task's
- * word is its owner's thread word. A stint is retired when the engine says so
+ * only joins. A task takes its owner's joined row, so a row reads what its
+ * crewmate is on through that crewmate's thread. A stint is retired when the engine says so
  * or its shell has `archivedAt` set — a crew shell the snapshot no longer
  * lists included; `stints` answers "whose conversation is this thread" for
  * the chat.
@@ -28,13 +28,7 @@ import type {
 import type { ThreadStatus } from "@t3tools/shared/threadStatus";
 
 import type { Known } from "../knowledge/known.ts";
-import {
-  crewBoardColumn,
-  crewPersonLands,
-  crewStateWord,
-  crewTaskWord,
-  type CrewBoardColumnId,
-} from "../crew/phrases.ts";
+import { crewPersonLands } from "../crew/phrases.ts";
 
 export interface CrewShellInput {
   readonly id: ThreadId;
@@ -81,9 +75,6 @@ export interface CrewTaskView<S extends CrewShellInput = CrewShellInput> {
   readonly task: CrewTask;
   /** `null` for an owner no longer on the crew. */
   readonly owner: CrewmateView<S> | null;
-  readonly column: CrewBoardColumnId;
-  /** `null` for a working task whose owner's thread has no word (idle). */
-  readonly word: string | null;
 }
 
 /** A crew thread: whose it is, which stint, and whether it is the one the crewmate talks in now. */
@@ -100,13 +91,11 @@ export interface CrewView<S extends CrewShellInput = CrewShellInput> {
   /** The lead first, then in the crew home's order. */
   readonly crewmates: ReadonlyArray<CrewmateView<S>>;
   readonly lead: CrewmateView<S> | null;
-  /** A `ready` task waits for your *Land* (`crewPersonLands`). */
+  /** Finished work waits for your review (`crewPersonLands`). */
   readonly personLands: boolean;
-  /** Every board row the board shows (not discarded), in the snapshot's order. */
+  /** Every task but a dropped one, in the snapshot's order. */
   readonly tasks: ReadonlyArray<CrewTaskView<S>>;
   readonly workingCount: number;
-  /** The header's crew state word (`crewStateWord`). */
-  readonly stateWord: string;
   readonly retiredThreadIds: ReadonlySet<ThreadId>;
   readonly stints: ReadonlyMap<ThreadId, CrewStintRef>;
 }
@@ -157,22 +146,9 @@ export function deriveCrewView<S extends CrewShellInput>(
   const lead = crewmates.find((row) => row.crewmate.kind === "lead") ?? null;
   const personLands = crewPersonLands(snapshot.run);
 
-  const tasks = snapshot.board.tasks.flatMap((task): ReadonlyArray<CrewTaskView<S>> => {
-    const column = crewBoardColumn(task.state, personLands);
-    if (column === null) return [];
-    const owner = byHandle.get(task.owner) ?? null;
-    const threadStatusWord = owner?.statusWord ?? null;
-    const word =
-      task.state === "working" && threadStatusWord === null
-        ? null
-        : crewTaskWord(task, {
-            tasks: snapshot.board.tasks,
-            hasLead: lead !== null,
-            threadStatusWord: threadStatusWord ?? "",
-            ownerOpenTaskId: owner?.crewmate.openTaskId ?? null,
-          });
-    return [{ task, owner, column, word }];
-  });
+  const tasks = snapshot.board.tasks.flatMap((task): ReadonlyArray<CrewTaskView<S>> =>
+    task.state === "discarded" ? [] : [{ task, owner: byHandle.get(task.owner) ?? null }],
+  );
 
   const stints = new Map<ThreadId, CrewStintRef>();
   for (const { crewmate } of crewmates) {
@@ -198,7 +174,6 @@ export function deriveCrewView<S extends CrewShellInput>(
     [...stints].flatMap(([threadId, ref]) => (ref.retired ? [threadId] : [])),
   );
 
-  const workingCount = crewmates.filter((row) => row.working).length;
   return {
     status: snapshot.status,
     crew: snapshot.crew,
@@ -206,8 +181,7 @@ export function deriveCrewView<S extends CrewShellInput>(
     lead,
     personLands,
     tasks,
-    workingCount,
-    stateWord: crewStateWord({ run: snapshot.run, workingCount }),
+    workingCount: crewmates.filter((row) => row.working).length,
     retiredThreadIds,
     stints,
   };

@@ -1,211 +1,96 @@
 import {
   CrewAttentionKind,
   CrewRefusalReason,
-  CrewTaskState,
+  type CrewAttention,
   type CrewLaneSummary,
+  type CrewRun,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { crewSnapshotFixture } from "./testing/fixtures.ts";
 import {
-  CREW_ATTENTION_VERBS,
-  CREW_BOARD_COLUMNS,
-  CREW_CREWMATES_WORD,
-  CREW_RESUME_TITLE,
-  crewResumeBudgetHint,
-  crewResumeTimeHint,
-  CREW_IDLE_WORD,
-  CREW_LEAD_WORD,
-  crewFaceWord,
-  crewLineNeedsWord,
-  crewLineReadyWord,
-  crewDevHostDatabaseWord,
-  crewDiffStatWord,
-  crewEarlierStintNotice,
-  crewLandedAsWord,
-  crewMessagePlaceholder,
-  crewPendingNotice,
   CREW_MENU,
   CREW_MENU_LINES,
+  CREW_MODE_PRESS,
+  CREW_RESUME_TITLE,
+  CREW_ROW_VERBS,
   CREW_TRY_IT_WORD,
-  crewJobSentence,
-  crewMenuFailureWord,
-  crewmateRoleWords,
-  crewTryWorkLine,
-  mateOwnChatWord,
-  crewRunsOnWord,
-  crewTaskSourceWord,
-  crewApplyWord,
-  crewAskToFixWord,
-  crewAskToReworkWord,
-  crewAskToResolveWord,
+  CREW_WORKING_WITH_YOU,
+  CREW_WORKS_WHEN_ASKED,
+  crewAfterWord,
+  crewBackToMateWord,
   crewBriefPlainText,
-  crewAttentionSentence,
+  crewBrokenCopyWord,
   crewCommitEditAsk,
   crewDeliverAsk,
   crewDescribeAsk,
-  crewLandedWord,
-  crewLaneWord,
-  crewNamingTheMate,
-  crewNoDevHostWord,
+  crewDevHostDatabaseWord,
+  crewDiffStatWord,
+  crewEarlierStintNotice,
+  crewFaceWord,
+  crewJobSentence,
+  crewLandingWords,
+  crewLineNeedsWord,
+  crewLineReadyWord,
   crewLoginRunsWord,
-  crewPendingWord,
-  crewPortsAsk,
-  crewPortsOffWord,
-  crewServedWord,
-  crewBoardColumn,
-  crewCheckWord,
+  crewMenuFailureWord,
+  crewmateRoleWords,
+  crewMessagePlaceholder,
+  crewMoreSummary,
+  crewNamingTheMate,
+  crewNeedSentence,
+  crewNoDevHostWord,
+  crewOnItsOwnWords,
+  crewPendingNotice,
   crewPersonLands,
-  crewQueuedReason,
+  crewPlanStartLine,
+  crewPortsAsk,
+  crewPossessive,
+  crewReadyWords,
   crewRefusalSentence,
-  crewRunMeters,
-  crewStateWord,
-  crewTaskWord,
+  crewKeepGoingLine,
+  crewResumeBudgetHint,
+  crewResumeTimeHint,
+  crewResumeUsageHint,
+  crewRowVerbLine,
+  crewRunsOnWord,
+  crewServedWord,
+  crewSetUpFooter,
+  crewStoppedWords,
+  crewSuggestedLine,
+  crewTryWorkLine,
+  crewWentInWord,
+  crewClosedWord,
+  crewNotShippedWords,
+  CREW_NOT_SHIPPED_SHORT,
+  mateOwnChatWord,
 } from "./phrases.ts";
 
 const crew = crewSnapshotFixture();
-const tasks = crew.board.tasks;
-const taskOf = (id: string) => tasks.find((task) => task.id === id)!;
-const working = taskOf("task-12");
 const run = crew.run!;
 
-describe("CREW_BOARD_COLUMNS", () => {
-  it("titles the board's columns in PRD §4.4's order", () => {
-    expect(CREW_BOARD_COLUMNS.map((column) => column.title)).toEqual([
-      "Waiting on you",
-      "Working",
-      "In review",
-      "Queued",
-      "Landed",
-    ]);
-  });
+/** A row of what the crew needs from you, as the snapshot lists it. */
+const need = (fields: Partial<CrewAttention> & Pick<CrewAttention, "kind">): CrewAttention => ({
+  id: `${fields.kind}:row`,
+  handle: "backend",
+  taskId: "task-12",
+  text: null,
+  paths: [],
+  host: null,
+  at: "2026-09-27T09:00:00.000Z",
+  ...fields,
 });
 
-describe("crewBoardColumn", () => {
+/** Words the tab never shows: versions, handles, task numbers, engine nouns. */
+const ENGINE_NOUNS = /\bv\d+\b|@[a-z]|#\d+|\b(?:land(?:ed|ing|s)?|tree|lane|stint|brief)\b/iu;
+
+describe("crewPossessive", () => {
   it.each([
-    ["proposed", "waiting-on-you"],
-    ["queued", "queued"],
-    ["working", "working"],
-    ["rework", "working"],
-    ["blocked", "waiting-on-you"],
-    ["merging", "working"],
-    ["checking", "working"],
-    ["review", "in-review"],
-    ["landing", "working"],
-    ["waiting-on-you", "waiting-on-you"],
-    ["landed", "landed"],
-    ["parked", "waiting-on-you"],
-    ["discarded", null],
-  ] as const)("puts %s in %s", (state, column) => {
-    expect(crewBoardColumn(state, true)).toBe(column);
-    expect(crewBoardColumn(state, false)).toBe(column);
-  });
-
-  it("puts a ready task on you when you land, in review when the run lands it", () => {
-    expect(crewBoardColumn("ready", true)).toBe("waiting-on-you");
-    expect(crewBoardColumn("ready", false)).toBe("in-review");
-  });
-
-  it("gives every state but discarded a column", () => {
-    const columns = new Set(CREW_BOARD_COLUMNS.map((column) => column.id));
-    const placed = CrewTaskState.literals.filter((state) => {
-      const column = crewBoardColumn(state, true);
-      return column !== null && columns.has(column);
-    });
-    expect(placed).toEqual(CrewTaskState.literals.filter((state) => state !== "discarded"));
-  });
-});
-
-describe("crewTaskWord", () => {
-  const context = {
-    tasks,
-    hasLead: true,
-    threadStatusWord: "Connecting",
-    ownerOpenTaskId: null,
-  };
-
-  it.each([
-    ["proposed", {}, "Proposed"],
-    ["queued", {}, "Queued"],
-    [
-      "rework",
-      { reason: "the check fails on /api/items" },
-      "Rework: the check fails on /api/items",
-    ],
-    ["rework", { reason: null }, "Rework"],
-    ["blocked", {}, "Asks a question"],
-    ["merging", {}, "Checking"],
-    ["checking", {}, "Checking"],
-    ["review", {}, "In review by lead"],
-    ["ready", {}, "Ready to land"],
-    ["landing", {}, "Landing"],
-    ["waiting-on-you", { waitingOn: ["src/ui/hud.ts"] }, "Waits on your tree: src/ui/hud.ts"],
-    [
-      "waiting-on-you",
-      { waitingOn: ["src/ui/hud.ts", "src/ui/ammo.ts", "README.md"] },
-      "Waits on your tree: src/ui/hud.ts +2",
-    ],
-    ["landed", { delivered: false, landedCommit: "9f3c2e1" }, "Landed · not delivered"],
-    ["landed", { delivered: true, landedCommit: "9f3c2e1" }, "Delivered"],
-    ["landed", { delivered: false, landedCommit: null }, "Closed · no changes"],
-    ["parked", { reason: "The check timed out twice" }, "Stopped: The check timed out twice"],
-    ["parked", { reason: null }, "Stopped"],
-    ["discarded", {}, "Discarded"],
-  ] as const)("words %s %j as %s", (state, fields, word) => {
-    expect(crewTaskWord({ ...working, dependsOn: [], state, ...fields }, context)).toBe(word);
-  });
-
-  it("names the first dependency a queued task still waits for", () => {
-    expect(crewTaskWord(taskOf("task-15"), context)).toBe("Queued · after #12");
-    const afterLanded = { ...taskOf("task-15"), dependsOn: ["task-11", "task-12"] };
-    expect(crewTaskWord(afterLanded, context)).toBe("Queued · after #12");
-    expect(crewTaskWord({ ...afterLanded, dependsOn: ["task-11"] }, context)).toBe("Queued");
-  });
-
-  it("names what a queued task waits for: a dependency first, else its owner's open task", () => {
-    const behindOwner = { ...context, ownerOpenTaskId: "task-13" };
-    const noDependency = { ...taskOf("task-15"), dependsOn: [] };
-    expect(crewTaskWord(noDependency, behindOwner)).toBe("Queued · waits for #13");
-    expect(crewQueuedReason(noDependency, behindOwner)).toBe("waits for #13");
-    expect(crewTaskWord(taskOf("task-15"), behindOwner)).toBe("Queued · after #12");
-    expect(crewQueuedReason(taskOf("task-15"), behindOwner)).toBe("after #12");
-    expect(crewQueuedReason(noDependency, context)).toBeNull();
-    expect(crewQueuedReason(noDependency, { ...context, ownerOpenTaskId: "task-404" })).toBeNull();
-  });
-
-  it("words a working task with its thread's own status word", () => {
-    expect(crewTaskWord(working, { ...context, threadStatusWord: "Pending Approval" })).toBe(
-      "Pending Approval",
-    );
-  });
-
-  it("says who reviews only when the crew has a lead", () => {
-    expect(crewTaskWord({ ...working, state: "review" }, { ...context, hasLead: false })).toBe(
-      "In review",
-    );
-  });
-});
-
-describe("crewStateWord", () => {
-  it.each([
-    [null, 0, "Idle"],
-    [null, 2, "2 working"],
-    [{ ...run, state: "finished" }, 1, "1 working"],
-    [run, 0, "Running · 1 h 12 m"],
-    [{ ...run, elapsedMs: 45 * 60_000 }, 0, "Running · 45 m"],
-    [{ ...run, elapsedMs: 8 * 3_600_000 }, 0, "Running · 8 h"],
-    [{ ...run, state: "paused", reason: "budget" }, 0, "Paused · budget reached"],
-    [{ ...run, state: "paused", reason: "time" }, 0, "Paused · time limit reached"],
-    [{ ...run, state: "paused", reason: "usage" }, 0, "Paused · usage at 80 %"],
-    [{ ...run, state: "paused", reason: "person" }, 0, "Paused"],
-    [
-      { ...run, state: "paused", reason: "refused", reasonDetail: "backend's login is not yours" },
-      0,
-      "Paused · backend's login is not yours",
-    ],
-    [{ ...run, state: "finishing" }, 3, "Finishing"],
-  ] as const)("reads %j with %i working as %s", (latestRun, workingCount, word) => {
-    expect(crewStateWord({ run: latestRun, workingCount })).toBe(word);
+    ["Fen", "Fen's"],
+    ["Game systems", "Game systems'"],
+    ["Lead", "Lead's"],
+  ])("%s → %s", (name, whose) => {
+    expect(crewPossessive(name)).toBe(whose);
   });
 });
 
@@ -226,192 +111,249 @@ describe("crewPersonLands", () => {
   });
 });
 
-describe("crewCheckWord", () => {
-  it.each([
-    ["running", "Checking"],
-    ["passed", "Check passed"],
-    ["failed", "Check failed"],
-  ] as const)("words a %s check as %s", (state, word) => {
-    expect(crewCheckWord({ state, output: "" })).toBe(word);
+describe("the mode line's words", () => {
+  const options = (budgetUsd: number | "unlimited", timeLimitHours: number | "unlimited") => ({
+    ...run.options,
+    budgetUsd,
+    timeLimitHours,
   });
-});
 
-describe("crewRunMeters", () => {
-  it("reads spend, time and usage against their limits", () => {
-    expect(crewRunMeters(run)).toEqual({
-      spend: "Spend $6.40 of $20",
-      time: "Time 1 h 12 m of 8 h",
-      usage: "Usage 54 %, stops at 80",
+  it("says how the crew works without a run", () => {
+    expect([CREW_WORKS_WHEN_ASKED, CREW_WORKING_WITH_YOU]).toEqual([
+      "Works when you give it something to do",
+      "Working with you · finished work waits for your review",
+    ]);
+  });
+
+  it.each<[string, Pick<CrewRun, "spentUsd" | "elapsedMs" | "options">, string]>([
+    ["within its limits", run, "Working on its own · $6.40 of $20 · 1 h 12 m of 8 h"],
+    [
+      "no spending limit",
+      { ...run, options: options("unlimited", 8) },
+      "Working on its own · $6.40 spent · 1 h 12 m of 8 h",
+    ],
+    [
+      "no time limit",
+      { ...run, elapsedMs: 45 * 60_000, options: options(20, "unlimited") },
+      "Working on its own · $6.40 of $20 · 45 m",
+    ],
+    [
+      "a budget in cents",
+      { ...run, spentUsd: 0, options: options(2.5, 1) },
+      "Working on its own · $0.00 of $2.50 · 1 h 12 m of 1 h",
+    ],
+  ])("working on its own: %s", (_, input, words) => {
+    expect(crewOnItsOwnWords(input)).toBe(words);
+  });
+
+  it.each<[string, Partial<CrewRun>, string]>([
+    [
+      "its budget",
+      { reason: "budget", spentUsd: 20 },
+      "Stopped working on its own: it spent its $20",
+    ],
+    [
+      "its time, spending nothing",
+      { reason: "time", spentUsd: 0 },
+      "Stopped working on its own: its 8 hours are up. It spent $0.00.",
+    ],
+    [
+      "an hour",
+      { reason: "time", spentUsd: 1.25, options: options(20, 1) },
+      "Stopped working on its own: its hour is up. It spent $1.25.",
+    ],
+    [
+      "the usage stop",
+      { reason: "usage" },
+      "Stopped working on its own: your Claude plan is at 80 %",
+    ],
+    [
+      "a refused turn",
+      { reason: "refused", reasonDetail: "Backend's login is signed out" },
+      "Stopped working on its own: Backend's login is signed out",
+    ],
+    ["the person (an older client's Pause)", { reason: "person" }, "Stopped working on its own"],
+  ])("stopped by %s", (_, fields, words) => {
+    expect(crewStoppedWords({ ...run, state: "paused", ...fields })).toBe(words);
+  });
+
+  it("offers one press at a time, each in plain words", () => {
+    expect(CREW_MODE_PRESS).toEqual({
+      letItWork: "Let it work on its own…",
+      stop: "Stop",
+      keepGoing: "Keep going…",
+      tryAgain: "Try again",
     });
   });
+});
 
-  it("says no limit where the run has none", () => {
-    const unlimited = {
-      ...run,
-      usagePercent: null,
-      options: { ...run.options, budgetUsd: "unlimited", timeLimitHours: "unlimited" },
-    } as const;
-    expect(crewRunMeters(unlimited)).toEqual({
-      spend: "Spend $6.40 · no limit",
-      time: "Time 1 h 12 m · no limit",
-      usage: null,
-    });
+describe("the run dialog's words", () => {
+  it.each([
+    [
+      "person",
+      "Wait for my review",
+      "It waits in the Crew tab: Review it, try it, add it to Fen's code.",
+    ],
+    [
+      "lead",
+      "Add it to Fen's code once the lead approves it",
+      "The lead checks each piece and sends back what isn't right.",
+    ],
+    [
+      "check",
+      "Add it to Fen's code once its checks pass",
+      "Nothing goes in while its checks fail.",
+    ],
+  ] as const)("when a piece of work is done: %s", (mode, label, line) => {
+    expect(crewLandingWords(mode, "Fen")).toEqual({ label, line });
   });
 
-  it("drops the stop mark when the usage option is off", () => {
-    const noStop = { ...run, options: { ...run.options, stopAtUsagePercent: null } };
-    expect(crewRunMeters(noStop).usage).toBe("Usage 54 %");
+  it("keeps going from where a limit stopped it", () => {
+    expect(CREW_RESUME_TITLE).toBe("Keep going");
+    expect(crewResumeBudgetHint(20, 20)).toBe("It spent $20.00 of $20. Give it more, or no limit.");
+    expect(crewResumeTimeHint(8)).toBe("Its 8 hours are up. Give it more time, or no limit.");
+    expect(crewResumeTimeHint(1)).toBe("Its hour is up. Give it more time, or no limit.");
+    expect(crewResumeUsageHint(81)).toBe(
+      "Your Claude plan is at 81 %. Let it go further, or turn the stop off.",
+    );
+  });
+
+  it.each([
+    [
+      { budgetUsd: 20, timeLimitHours: 8 },
+      "It carries on within its limits: up to $20, for up to 8 hours.",
+    ],
+    [
+      { budgetUsd: 20, timeLimitHours: 1 },
+      "It carries on within its limits: up to $20, for up to an hour.",
+    ],
+    [
+      { budgetUsd: "unlimited", timeLimitHours: 8 },
+      "It carries on within its limits: no spending limit, for up to 8 hours.",
+    ],
+    [
+      { budgetUsd: 12.5, timeLimitHours: "unlimited" },
+      "It carries on within its limits: up to $12.50, with no time limit.",
+    ],
+    [{ budgetUsd: "unlimited", timeLimitHours: "unlimited" }, "It carries on, with no limits."],
+  ] as const)("keeps going after you stopped it within %o", (options, line) => {
+    expect(crewKeepGoingLine(options)).toBe(line);
   });
 });
 
-describe("crewAttentionSentence", () => {
-  const rowOf = (kind: CrewAttentionKind) => crew.attention.find((row) => row.kind === kind)!;
-  const sentence = (row: (typeof crew.attention)[number]) => crewAttentionSentence(row, crew);
-
-  it.each([
-    ["question", "Erik asks: Pricing in CZK or EUR?"],
-    ["landing-wait", "Frontend's landing waits: src/ui/hud.ts is edited in your tree"],
-    ["plan", "Lead proposes 1 task"],
-    ["show-on-dev", "Backend asks to show its work on appdev"],
-    ["parked", "Erik stopped: The check timed out twice"],
-  ] as const)("words the fixture's %s row", (kind, words) => {
-    expect(sentence(rowOf(kind))).toBe(words);
-  });
-
+describe("the plan's words", () => {
   it.each([
     [
-      { kind: "ready-to-land", handle: "frontend", taskId: "task-13" },
-      "Frontend's #13 is ready to land",
+      { budgetUsd: 20, timeLimitHours: 8 },
+      "Start lets the crew work on its own: up to $20, for up to 8 hours.",
     ],
     [
-      { kind: "cant-start", handle: "backend", text: "the login is not yours" },
-      "Can't start Backend: the login is not yours",
+      { budgetUsd: "unlimited", timeLimitHours: 1 },
+      "Start lets the crew work on its own: no spending limit, for up to an hour.",
     ],
     [
-      {
-        kind: "cant-start",
-        handle: "backend",
-        text: "Backend's login was signed in by another member. Only their crews can use it.",
-      },
-      "Can't start Backend: Backend's login was signed in by another member. Only their crews can use it.",
+      { budgetUsd: 5.5, timeLimitHours: "unlimited" },
+      "Start lets the crew work on its own: up to $5.50, with no time limit.",
     ],
     [
-      { kind: "conflict", handle: "backend", paths: ["src/api/items.ts"] },
-      "Backend's copy conflicts with what landed: src/api/items.ts",
+      { budgetUsd: "unlimited", timeLimitHours: "unlimited" },
+      "Start lets the crew work on its own, with no limits.",
     ],
-    [{ kind: "check-failed", handle: "backend" }, "Backend's check failed"],
-    [
-      { kind: "stalled", handle: "frontend", taskId: "task-13" },
-      "Frontend's task #13 stopped mid-way",
-    ],
-    [
-      {
-        kind: "stalled",
-        handle: "frontend",
-        taskId: "task-13",
-        text: "the run reached its budget",
-      },
-      "Frontend's task #13 stopped mid-way: the run reached its budget",
-    ],
-    [{ kind: "stalled", handle: "backend" }, "Backend's task stopped mid-way"],
-    [
-      { kind: "review-wait", handle: "frontend", taskId: "task-13" },
-      "#13 waits for the lead's review",
-    ],
-    [{ kind: "review-wait", handle: "backend" }, "Backend's task waits for the lead's review"],
-    [
-      { kind: "landing-wait", handle: "frontend", paths: ["src/ui/hud.ts", "src/ui/ammo.ts"] },
-      "Frontend's landing waits: src/ui/hud.ts and 1 more are edited in your tree",
-    ],
-    [{ kind: "question", handle: "gone", text: "Still there?" }, "@gone asks: Still there?"],
-  ] as const)("words %j", (fields, words) => {
-    const row = {
-      ...rowOf("question"),
-      taskId: null,
-      text: null,
-      paths: [],
-      ...fields,
-    };
-    expect(sentence(row)).toBe(words);
+    [null, "Start asks how much it may spend and for how long."],
+  ] as const)("says what Start lets the crew do: %j", (options, words) => {
+    expect(crewPlanStartLine(options)).toBe(words);
   });
 
-  it("counts every proposed task in the lead's plan", () => {
-    const threeProposed = {
-      ...crew,
-      board: {
-        tasks: [
-          ...tasks,
-          { ...taskOf("task-16"), id: "task-18", number: 18 },
-          { ...taskOf("task-16"), id: "task-19", number: 19 },
-        ],
-      },
-    };
-    expect(crewAttentionSentence(rowOf("plan"), threeProposed)).toBe("Lead proposes 3 tasks");
-  });
-
-  it.each([
-    ["lead", "#12 was sent back by the lead: Name the file hud.ts."],
-    ["erik", "#12 was sent back by Erik: Name the file hud.ts."],
-    [null, "#12 was sent back by you: Name the file hud.ts."],
-  ] as const)("words a task the review of %s sent back", (by, words) => {
-    const sentBack = {
-      ...crew,
-      board: {
-        ...crew.board,
-        tasks: crew.board.tasks.map((entry) =>
-          entry.id === "task-12"
-            ? {
-                ...entry,
-                state: "rework" as const,
-                review: { verdict: "reject" as const, note: "Name the file hud.ts.", by },
-              }
-            : entry,
-        ),
-      },
-    };
-    const row = {
-      ...rowOf("question"),
-      kind: "sent-back" as const,
-      handle: "backend",
-      taskId: "task-12",
-      text: "Name the file hud.ts.",
-    };
-    expect(crewAttentionSentence(row, sentBack)).toBe(words);
-  });
-
-  it.each([
-    [["task-12", "task-9"], "#15 waits for #9, which was discarded"],
-    [["task-17"], "#15 waits for #17, which stopped"],
-    [["task-12"], "#15 waits for a task that will not land"],
-  ] as const)("words a queued task waiting on %j", (dependsOn, words) => {
-    const waiting = {
-      ...crew,
-      board: {
-        ...crew.board,
-        tasks: crew.board.tasks.map((entry) =>
-          entry.id === "task-15" ? { ...entry, dependsOn: [...dependsOn] } : entry,
-        ),
-      },
-    };
-    const row = {
-      ...rowOf("question"),
-      kind: "dependency-gone" as const,
-      handle: "frontend",
-      taskId: "task-15",
-      text: null,
-    };
-    expect(crewAttentionSentence(row, waiting)).toBe(words);
-  });
-
-  it("words every attention kind", () => {
-    for (const kind of CrewAttentionKind.literals) {
-      expect(sentence({ ...rowOf("question"), kind }), kind).toMatch(/\S/);
-    }
+  it("names what a planned task waits for", () => {
+    expect(crewAfterWord("Season clock on the server")).toBe("after Season clock on the server");
   });
 });
 
-describe("a Show-on-dev grant waiting on a turn", () => {
-  it("reads as allowed and waiting, naming whose turn", () => {
+describe("crewNeedSentence", () => {
+  const with_ = (kind: CrewAttention["kind"], fields: Partial<CrewAttention> = {}) =>
+    crewNeedSentence(need({ kind, ...fields }), crew, "Fen");
+
+  it.each<[string, CrewAttention["kind"], Partial<CrewAttention>, string]>([
+    [
+      "a question is the question itself",
+      "question",
+      { text: "Should worlds made before today get seasons too, or only new ones?" },
+      "Should worlds made before today get seasons too, or only new ones?",
+    ],
+    ["a question without words", "question", {}, "It asks you something."],
+    [
+      "work waiting on the Mate's edits",
+      "landing-wait",
+      { paths: ["src/ui/hud.ts"] },
+      "Can't go into Fen's code yet: Fen has uncommitted edits to hud.ts.",
+    ],
+    [
+      "on several edits",
+      "landing-wait",
+      { paths: ["src/ui/hud.ts", "a.ts", "b.ts"] },
+      "Can't go into Fen's code yet: Fen has uncommitted edits to hud.ts and 2 more.",
+    ],
+    ["finished work", "ready-to-land", {}, "Done, in its own copy · not in Fen's code yet"],
+    [
+      "asking to show its work",
+      "show-on-dev",
+      { host: "appdev" },
+      "Wants to show its work at Fen's dev address.",
+    ],
+    [
+      "stopped",
+      "parked",
+      { text: "the check timed out twice" },
+      "Stopped: the check timed out twice.",
+    ],
+    [
+      "couldn't start",
+      "cant-start",
+      { text: "its login is signed out" },
+      "Couldn't start: its login is signed out.",
+    ],
+    [
+      "a clash",
+      "conflict",
+      { paths: ["client/sky/sky.ts"] },
+      "Clashes with what's now in Fen's code, in client/sky/sky.ts.",
+    ],
+    [
+      "failing checks",
+      "check-failed",
+      { text: "error TS2322: nope" },
+      "Its checks fail: error TS2322: nope.",
+    ],
+    [
+      "stopped mid-way when the crew stopped",
+      "stalled",
+      { text: "when the $20 ran out" },
+      "Stopped mid-way when the $20 ran out.",
+    ],
+    [
+      "stopped mid-way for its own reason",
+      "stalled",
+      { text: "its turn was interrupted" },
+      "Stopped mid-way: its turn was interrupted.",
+    ],
+    [
+      "stopped mid-way, in an older server's words",
+      "stalled",
+      { text: "the run reached its budget" },
+      "Stopped mid-way: the run reached its budget.",
+    ],
+    ["waiting for a review", "review-wait", {}, "Waits for the lead's review."],
+    [
+      "sent back by the lead",
+      "sent-back",
+      { taskId: "task-sent", text: "rain falls upward on slopes" },
+      "The lead sent it back: rain falls upward on slopes.",
+    ],
+  ])("%s", (_, kind, fields, words) => {
+    expect(with_(kind, fields)).toBe(words);
+  });
+
+  it("says the grant waits for its current step to end", () => {
     const [host] = crew.hosts;
     const waiting = {
       ...crew,
@@ -419,105 +361,123 @@ describe("a Show-on-dev grant waiting on a turn", () => {
         { ...host!, claim: { state: "requested" as const, handle: "backend", grantWaiting: true } },
       ],
     };
-    const row = crew.attention.find((candidate) => candidate.kind === "show-on-dev")!;
-    expect(crewAttentionSentence(row, waiting)).toBe("Allowed · waits for Backend's turn to end");
-    expect(crewAttentionSentence(row, crew)).toBe("Backend asks to show its work on appdev");
+    expect(crewNeedSentence(need({ kind: "show-on-dev", host: "appdev" }), waiting, "Fen")).toBe(
+      "Shows its work at Fen's dev address once its current step ends.",
+    );
   });
-});
 
-describe("crewNamingTheMate", () => {
-  it("names the Mate where the engine says your Mate", () => {
+  it("names dropped work a task waits for by its title", () => {
+    const dropped = {
+      ...crew,
+      board: {
+        tasks: crew.board.tasks.map((task) =>
+          task.id === "task-15" ? { ...task, dependsOn: ["task-9"] } : task,
+        ),
+      },
+    };
     expect(
-      crewNamingTheMate("Start appdev's dev server first — ask your Mate to run it.", "Fen"),
-    ).toBe("Start appdev's dev server first — ask Fen to run it.");
-    expect(crewNamingTheMate("Nothing to name here.", "Fen")).toBe("Nothing to name here.");
-  });
-});
-
-describe("crewRefusalSentence", () => {
-  it("refuses a Tell the crew without a mention in PRD §5.3's words", () => {
-    expect(crewRefusalSentence("no-mention", null)).toBe(
-      "Name a crewmate with @, or add a lead to split the work.",
-    );
+      crewNeedSentence(need({ kind: "dependency-gone", taskId: "task-15" }), dropped, "Fen"),
+    ).toBe("Waits for Rename the score endpoint, which was dropped.");
   });
 
-  it.each([
-    [
-      "wrong-state",
-      "no dev server runs on appdev; start it first",
-      "No dev server runs on appdev; start it first.",
-    ],
-    ["invalid-definition", "backend has no check command.", "Backend has no check command."],
-    ["not-allowed", "  Backend's login is not yours!  ", "Backend's login is not yours!"],
-  ] as const)("says the engine's %s detail as a sentence of its own", (reason, detail, words) => {
-    expect(crewRefusalSentence(reason, detail)).toBe(words);
-  });
-
-  it("falls back to the reason's own sentence without a detail", () => {
-    expect(crewRefusalSentence("wrong-state", null)).toBe(
-      "That can't be done in its current state.",
-    );
-    expect(crewRefusalSentence("wrong-state", "  ")).toBe(
-      "That can't be done in its current state.",
-    );
-  });
-
-  it("words every refusal reason as one sentence", () => {
-    for (const reason of CrewRefusalReason.literals) {
-      expect(crewRefusalSentence(reason, null), reason).toMatch(/^[A-Z].*\.$/);
+  it("says every kind as a sentence, in the person's words", () => {
+    for (const kind of CrewAttentionKind.literals) {
+      const words = with_(kind, { text: "it went wrong", paths: ["a.ts"], host: "appdev" });
+      expect(words, kind).toMatch(/^[A-Z]/u);
+      expect(words, kind).not.toMatch(ENGINE_NOUNS);
     }
   });
 });
 
-describe("the section's words (PRD §4.3)", () => {
-  const lane = (fields: Partial<CrewLaneSummary>): CrewLaneSummary => ({
-    branch: "crew/backend",
-    ahead: 0,
-    insertions: 0,
-    deletions: 0,
-    dirty: false,
-    check: null,
-    state: "ready",
-    detail: null,
-    ...fields,
+describe("a row's words", () => {
+  it("names each press in plain words", () => {
+    expect(Object.values(CREW_ROW_VERBS)).toEqual([
+      "Answer",
+      "Review",
+      "Review what it has",
+      "Review it yourself",
+      "Try it",
+      "Let it",
+      "Not now",
+      "Try again",
+      "Continue",
+      "Drop it",
+      "Start it anyway",
+      "Ask the lead",
+      "Ask it to rework",
+      "Ask it to fix them",
+      "Ask it to sort it out",
+      "Send",
+    ]);
+    expect(crewBackToMateWord("Fen")).toBe("Back to Fen's");
   });
 
-  it.each<readonly [string, CrewLaneSummary, string | null]>([
-    ["nothing ahead", lane({}), null],
-    ["commits ahead", lane({ ahead: 3 }), "3 ahead"],
-    ["conflicts", lane({ ahead: 3, state: "conflicts" }), "Conflicts"],
-    ["being created", lane({ state: "creating" }), "Creating its copy of the code"],
-    ["setting up", lane({ state: "setting-up", detail: "npm ci" }), "Running npm ci"],
-    ["setting up, no command", lane({ state: "setting-up" }), "Setting up its copy"],
-    ["service redeploying", lane({ state: "frozen" }), "Its service is redeploying"],
-    ["gone", lane({ state: "missing" }), "Its copy is missing"],
-    ["failed", lane({ state: "failed", detail: "No free disk" }), "Its copy failed: No free disk"],
-  ])("a copy: %s", (_name, input, word) => {
-    expect(crewLaneWord(input)).toBe(word);
+  it("says what each press does, never in the engine's words", () => {
+    for (const verb of [...Object.keys(CREW_ROW_VERBS), "askToCommit", "backToMate"] as const) {
+      const line = crewRowVerbLine(verb as Parameters<typeof crewRowVerbLine>[0], "Fen");
+      expect(line, verb).toMatch(/^[A-Z].*\.$/u);
+      expect(line, verb).not.toMatch(ENGINE_NOUNS);
+    }
   });
 
-  it.each([
-    [{ job: 5, brief: null }, "v5 at next turn"],
-    [{ job: null, brief: 5 }, "Brief v5 at next turn"],
-    [{ job: 3, brief: 5 }, "v3 at next turn"],
-    [{ job: null, brief: null }, null],
-  ] as const)("pending %j reads %j", (pending, word) => {
-    expect(crewPendingWord(pending)).toBe(word);
+  it("says finished work waits in its own copy", () => {
+    expect(crewReadyWords("Fen")).toBe("Done, in its own copy · not in Fen's code yet");
   });
 
-  it("names the lead apart from the crewmates, and on the logins it runs on", () => {
-    expect([CREW_LEAD_WORD, CREW_CREWMATES_WORD]).toEqual(["Lead", "Crewmates"]);
-    expect(crewLoginRunsWord(["lead", "backend"], "lead")).toBe("Runs: lead (lead), backend");
-    expect(crewLoginRunsWord(["backend"], null)).toBe("Runs: backend");
-  });
-
-  it("words resuming a run its limit stopped", () => {
-    expect(CREW_RESUME_TITLE).toBe("Resume the run");
-    expect(crewResumeBudgetHint(6.4)).toBe(
-      "Raise it above the $6.40 already spent, or pick No limit.",
+  it("says a broken copy, and nothing for one that is fine", () => {
+    const lane = (fields: Partial<CrewLaneSummary>) => ({
+      state: "ready" as const,
+      detail: null,
+      ...fields,
+    });
+    expect(crewBrokenCopyWord(lane({ state: "missing" }), "Fen")).toBe(
+      "Its copy of Fen's code is missing",
     );
-    expect(crewResumeTimeHint(72 * 60_000)).toBe(
-      "Raise it past the 1 h 12 m already run, or pick No limit.",
+    expect(crewBrokenCopyWord(lane({ state: "failed", detail: "No free disk" }), "Fen")).toBe(
+      "Its copy of Fen's code failed: No free disk",
+    );
+    expect(crewBrokenCopyWord(lane({ state: "frozen" }), "Fen")).toBeNull();
+  });
+
+  it("says whose work the Mate's dev address shows, only while a crewmate's is", () => {
+    const host = crew.hosts[0]!;
+    expect(crewServedWord(host, crew.crewmates, "Fen")).toBeNull();
+    expect(
+      crewServedWord(
+        { ...host, served: { by: "crewmate", handle: "frontend" } },
+        crew.crewmates,
+        "Fen",
+      ),
+    ).toBe("Fen's dev address shows Frontend's work");
+  });
+});
+
+describe("the setup's and the job's words", () => {
+  it("says where the builders' copies go", () => {
+    expect(crewSetUpFooter("Fen", ["appdev"])).toBe(
+      "Each builder gets its own copy of Fen's code on appdev. Getting them ready takes a minute or two; each row shows how it's going.",
+    );
+  });
+
+  it("says the rows came from the Mate only when they did", () => {
+    expect(crewSuggestedLine("Fen", true)).toBe(
+      "Fen suggested these from the goal. Click anyone to change them.",
+    );
+    expect(crewSuggestedLine("Fen", false)).toBe("Click anyone to change them.");
+  });
+
+  it("sums up what More holds", () => {
+    expect(crewMoreSummary({ runsOn: "Claude Code", check: "npm test", run: "npm run dev" })).toBe(
+      "Its name and face · runs on Claude Code · checks its work with npm test · starts its app with npm run dev",
+    );
+    expect(crewMoreSummary({ runsOn: "Codex", check: null, run: null })).toBe(
+      "Its name and face · runs on Codex",
+    );
+  });
+
+  it("says why a builder has no service to pick yet", () => {
+    expect(crewNoDevHostWord("Fen")).toBe(
+      "No dev service is mounted yet — ask Fen to start development first.",
     );
   });
 
@@ -534,97 +494,77 @@ describe("the section's words (PRD §4.3)", () => {
     ],
     ["at most two lines", "One.\n\nTwo.\nThree.", "One.\nTwo."],
     ["nothing left", "## Done when", ""],
-  ])("reads the brief's excerpt as plain text: %s", (_name, excerpt, plain) => {
+  ])("reads the goal's first lines as plain text: %s", (_name, excerpt, plain) => {
     expect(crewBriefPlainText(excerpt)).toBe(plain);
   });
+});
 
-  it("says why a writer has no service to pick yet", () => {
-    expect(crewNoDevHostWord("Fen")).toBe(
-      "No dev service is mounted yet — ask Fen to start development first.",
-    );
-  });
-
-  it("words an idle crewmate as the idle crew", () => {
-    expect(CREW_IDLE_WORD).toBe(crewStateWord({ run: null, workingCount: 0 }));
-  });
-
-  it("words Apply's progress per crewmate (PRD §4.7)", () => {
-    const backend = crew.crewmates[1]!;
-    expect(crewApplyWord({ ...backend, lane: lane({ state: "creating" }) })).toBe(
-      "Creating Backend's copy of the code",
-    );
+describe("crewNamingTheMate", () => {
+  it("names the Mate where the engine says your Mate or your tree", () => {
     expect(
-      crewApplyWord({ ...backend, lane: lane({ state: "setting-up", detail: "npm ci" }) }),
-    ).toBe("Running npm ci");
-    expect(crewApplyWord({ ...backend, lane: lane({ state: "failed", detail: "No disk" }) })).toBe(
-      "No disk",
+      crewNamingTheMate("Start appdev's dev server first — ask your Mate to run it.", "Fen"),
+    ).toBe("Start appdev's dev server first — ask Fen to run it.");
+    expect(crewNamingTheMate("hud.ts is edited in your tree", "Fen")).toBe(
+      "hud.ts is edited in Fen's code",
     );
-    expect(crewApplyWord({ ...backend, lane: lane({}) })).toBe("Ready");
-    expect(crewApplyWord(crew.crewmates[0]!)).toBe("Ready");
+    expect(crewNamingTheMate("Nothing to name here.", "Fen")).toBe("Nothing to name here.");
+  });
+});
+
+describe("crewRefusalSentence", () => {
+  it.each([
+    ["no-mention", "Pick who it's for, or add a lead to split the work."],
+    ["handle-taken", "That name is taken."],
+    ["invalid-definition", "The crew's setup has a mistake."],
+    ["io", "The crew's setup could not be read or saved."],
+    ["unlanded-commits", "Some of its work isn't in your Mate's code yet."],
+  ] as const)("refuses %s in plain words", (reason, words) => {
+    expect(crewRefusalSentence(reason, null)).toBe(words);
   });
 
-  it("words the footer", () => {
-    const host = crew.hosts[0]!;
-    expect(crewLandedWord(3)).toBe("Landed, not delivered · 3");
-    expect(crewPortsOffWord("appdev")).toBe("appdev · Crew ports: off");
-    expect(crewServedWord(host, crew.crewmates)).toBe("appdev serves: your tree");
-    expect(
-      crewServedWord({ ...host, served: { by: "crewmate", handle: "frontend" } }, crew.crewmates),
-    ).toBe("appdev serves: Frontend's copy");
-    expect(crewServedWord({ ...host, served: { by: "unknown" } }, crew.crewmates)).toBeNull();
+  it.each([
+    [
+      "wrong-state",
+      "no dev server runs on appdev; start it first",
+      "No dev server runs on appdev; start it first.",
+    ],
+    [
+      "invalid-definition",
+      "backend has no check command.",
+      "The crew's setup has a mistake: Backend has no check command.",
+    ],
+    ["not-allowed", "  Backend's login is not yours!  ", "Backend's login is not yours!"],
+  ] as const)("says the engine's %s detail as a sentence of its own", (reason, detail, words) => {
+    expect(crewRefusalSentence(reason, detail)).toBe(words);
   });
 
-  it("words the Waiting on you presses", () => {
-    expect(Object.values(CREW_ATTENTION_VERBS)).toEqual([
-      "Answer",
-      "Commit my edit",
-      "Review plan",
-      "Allow",
-      "Not now",
-      "Try again",
-      "Continue",
-      "Discard",
-      "Ask lead to review",
-      "Drop the wait",
-    ]);
-    expect(crewAskToResolveWord("Backend")).toBe("Ask Backend to resolve");
-    expect(crewAskToFixWord("Backend")).toBe("Ask Backend to fix");
-    expect(crewAskToReworkWord("Backend")).toBe("Ask Backend to rework");
+  it("falls back to the reason's own sentence without a detail", () => {
+    expect(crewRefusalSentence("wrong-state", "  ")).toBe("That can't be done right now.");
+  });
+
+  it("words every refusal reason as one sentence", () => {
+    for (const reason of CrewRefusalReason.literals) {
+      expect(crewRefusalSentence(reason, null), reason).toMatch(/^[A-Z].*\.$/);
+    }
   });
 });
 
 describe("the drafts a crew surface hands the Mate", () => {
-  it("asks for a local commit of the paths a landing waits on", () => {
+  it("asks for a local commit of the edits the crew's work waits on", () => {
     expect(crewCommitEditAsk(["src/ui/hud.ts"])).toBe(
-      "Commit my edit to src/ui/hud.ts locally, without pushing: a crew landing waits on it.",
+      "Commit my edit to src/ui/hud.ts locally, without pushing: the crew's work waits to go into your code.",
     );
     expect(crewCommitEditAsk(["a.ts", "b.ts"])).toBe(
-      "Commit my edits to a.ts and b.ts locally, without pushing: a crew landing waits on them.",
+      "Commit my edits to a.ts and b.ts locally, without pushing: the crew's work waits to go into your code.",
     );
   });
 
-  it("leaves a task closed with nothing to land out of Deliver", () => {
-    const closed = {
-      ...crew,
-      board: {
-        ...crew.board,
-        tasks: [
-          ...crew.board.tasks,
-          { ...taskOf("task-11"), id: "task-18", number: 18, landedCommit: null },
-        ],
-      },
-    };
-    expect(crewDeliverAsk(closed, [])).toBe(
-      "Ship the crew's landed work on appdev: #11 Health endpoint for the load balancer.",
-    );
-  });
-
-  it("delivers the landed, undelivered tasks and names the tree's own dirty paths", () => {
+  it("ships the crew's work that went in, and the Mate's own dirty paths", () => {
     expect(crewDeliverAsk(crew, [])).toBe(
-      "Ship the crew's landed work on appdev: #11 Health endpoint for the load balancer.",
+      "Ship the work the crew added on appdev: Health endpoint for the load balancer.",
     );
     expect(crewDeliverAsk(crew, ["src/ui/hud.ts", "README.md"])).toBe(
-      "Ship the crew's landed work on appdev: #11 Health endpoint for the load balancer. My own edits in src/ui/hud.ts and README.md ship too.",
+      "Ship the work the crew added on appdev: Health endpoint for the load balancer. My own edits in src/ui/hud.ts and README.md ship too.",
     );
   });
 
@@ -637,34 +577,33 @@ describe("the drafts a crew surface hands the Mate", () => {
     );
   });
 
-  it("asks the Mate to set up a described crew (PRD §4.7)", () => {
-    expect(crewDescribeAsk("  a builder and a reviewer ")).toBe(
-      "Set up a crew for this project: a builder and a reviewer",
+  it("asks the Mate to suggest a crew from the goal", () => {
+    expect(crewDescribeAsk("  a persistent world  ")).toBe(
+      "Set up a crew for this project, from its goal: a persistent world",
     );
   });
 });
 
-describe("the chat's words (PRD §4.5, §5.6, §5.7)", () => {
-  it("says a copy's change against your tree", () => {
-    expect(crewDiffStatWord({ insertions: 214, deletions: 12 })).toBe("+214 \u221212");
+describe("the chat's words", () => {
+  it("says a copy's change", () => {
+    expect(crewDiffStatWord({ insertions: 214, deletions: 12 })).toBe("+214 −12");
   });
 
-  it("names a landing by its task and its commit's short sha", () => {
-    expect(crewLandedAsWord({ number: 11, landedCommit: "a1b2c3d" })).toBe(
-      "Task #11 landed as a1b2c3d",
+  it("says a piece of work went into the Mate's code", () => {
+    expect(crewWentInWord("Seasons", "Fen")).toBe("Seasons went into Fen's code");
+    expect(crewWentInWord(null, "Fen")).toBe("Its work went into Fen's code");
+  });
+
+  it("says what isn't shipped, and short at a phone's width", () => {
+    expect(crewNotShippedWords("Fen")).toBe("Fen hasn't shipped these yet");
+    expect(CREW_NOT_SHIPPED_SHORT).toBe("Not shipped yet");
+  });
+
+  it("marks work that closed with nothing to add, by its title", () => {
+    expect(crewClosedWord("Seasons", "Fen")).toBe(
+      "Seasons closed with nothing to add to Fen's code",
     );
-    expect(
-      crewLandedAsWord({ number: 11, landedCommit: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678" }),
-    ).toBe("Task #11 landed as a1b2c3d");
-  });
-
-  it("says where a task came from", () => {
-    expect((["you", "lead", "message", "issue"] as const).map(crewTaskSourceWord)).toEqual([
-      "from you",
-      "from lead",
-      "from a message",
-      "from an issue",
-    ]);
+    expect(crewClosedWord(null, "Fen")).toBe("Its work closed with nothing to add to Fen's code");
   });
 
   it("invites a message to the crewmate in its chat's composer", () => {
@@ -672,21 +611,24 @@ describe("the chat's words (PRD §4.5, §5.6, §5.7)", () => {
   });
 
   it.each([
-    [{ brief: null, job: 5 }, "Job updated to v5 — the next turn starts a fresh conversation"],
-    [{ brief: 5, job: null }, "Brief updated to v5 — the next turn starts a fresh conversation"],
+    [{ brief: null, job: 5 }, "Its job changed. Its next message starts a fresh conversation."],
+    [
+      { brief: 5, job: null },
+      "The crew's goal changed. Its next message starts a fresh conversation.",
+    ],
     [
       { brief: 5, job: 6 },
-      "Job updated to v6 and brief to v5 — the next turn starts a fresh conversation",
+      "Its job and the crew's goal changed. Its next message starts a fresh conversation.",
     ],
     [{ brief: null, job: null }, null],
-  ] as const)("says what a pending prompt does at the next turn: %o", (pending, word) => {
+  ] as const)("says what a changed job or goal does, with no version: %o", (pending, word) => {
     expect(crewPendingNotice(pending)).toBe(word);
   });
 
-  it("points an earlier conversation at the current one", () => {
-    expect(crewEarlierStintNotice("backend")).toEqual({
-      text: "An earlier conversation with @backend — it goes on in a newer one.",
-      sendBlock: "Write to @backend in its current conversation",
+  it("points an earlier conversation at the current one, by name", () => {
+    expect(crewEarlierStintNotice("Backend")).toEqual({
+      text: "An earlier conversation with Backend — it goes on in a newer one.",
+      sendBlock: "Write to Backend in its current conversation",
     });
   });
 });
@@ -698,12 +640,6 @@ describe("crewDevHostDatabaseWord", () => {
     [null, "Database unknown"],
   ] as const)("says a dev service's database %s as %s", (database, word) => {
     expect(crewDevHostDatabaseWord(database)).toBe(word);
-  });
-});
-
-describe("the lead's words", () => {
-  it("names the lead", () => {
-    expect(CREW_LEAD_WORD).toBe("Lead");
   });
 });
 
@@ -783,11 +719,7 @@ describe("the conversation's line and a crewmate's menu", () => {
       line: "**You own Game Rules:** turns and scoring.",
       says: "Turns and scoring.",
     },
-    {
-      name: "Game Rules",
-      line: "You own Game Rules:",
-      says: "You own Game Rules:",
-    },
+    { name: "Game Rules", line: "You own Game Rules:", says: "You own Game Rules:" },
     {
       name: "Game Rules",
       line: "You owned the rules engine once.",
@@ -805,13 +737,33 @@ describe("the conversation's line and a crewmate's menu", () => {
     },
   );
 
-  it("names the menu's presses and what each does", () => {
+  // The lead's job, and any other written to "you": the crewmate is who the line is about.
+  it.each([
+    {
+      line: "You lead the Letopis crew: plans the work and splits it between the three.",
+      says: "Leads the Letopis crew: plans the work and splits it between the three.",
+    },
+    {
+      line: "You build the web client and its tests. Keep it fast.",
+      says: "Builds the web client and its tests.",
+    },
+    { line: "You review every change for safety.", says: "Reviews every change for safety." },
+    { line: "You lead", says: "You lead" },
+    { line: "You leading nothing.", says: "You leading nothing." },
+  ])("says a second-person job in the third person: $line", ({ line, says }) => {
+    expect(crewJobSentence(line, "Lead")).toBe(says);
+  });
+
+  it("names the menus' presses and what each does", () => {
     expect(CREW_MENU).toEqual({
       tryWork: "Try its work",
       stopApp: "Stop its app",
       changeJob: "Change its job",
-      changeBrief: "Change the brief",
+      changeGoal: "Change the goal",
       clearConversation: "Clear its conversation",
+      removeFromCrew: "Remove from the crew",
+      addCrewmate: "Add a crewmate",
+      letItWork: "Let it work on its own…",
     });
     expect(crewTryWorkLine("Fen", "own")).toBe(
       "Opens its copy of the app. Nothing is in Fen's code yet.",
@@ -821,8 +773,10 @@ describe("the conversation's line and a crewmate's menu", () => {
     );
     expect(CREW_MENU_LINES).toEqual({
       changeJob: "What it's responsible for.",
-      changeBrief: "What the whole crew works toward.",
+      changeGoal: "What the whole crew works toward.",
       clearConversation: "It keeps its job and its work.",
+      addCrewmate: "Someone new, with a job of its own.",
+      letItWork: "It carries on without asking, within your limits.",
     });
     expect(CREW_TRY_IT_WORD).toBe("Try it");
   });
@@ -847,6 +801,12 @@ describe("crewRunsOnWord", () => {
   ] as const)("says what a crewmate runs on: %o", (runsOn, word) => {
     expect(crewRunsOnWord(runsOn)).toBe(word);
   });
+
+  it("names the crewmates on a login by name, the lead as the lead", () => {
+    expect(crewLoginRunsWord(["Lead", "Backend"], "Lead")).toBe("Runs: Lead, Backend");
+    expect(crewLoginRunsWord(["Ada", "Backend"], "Ada")).toBe("Runs: Ada (lead), Backend");
+    expect(crewLoginRunsWord(["Backend"], null)).toBe("Runs: Backend");
+  });
 });
 
 describe("the crew's one line under its Mate", () => {
@@ -860,12 +820,13 @@ describe("the crew's one line under its Mate", () => {
   });
 
   it.each([
-    { count: 1, says: "1 task ready to land" },
-    { count: 2, says: "2 tasks ready to land" },
-    { count: 12, says: "12 tasks ready to land" },
-  ])("counts the tasks waiting for your Land: $says", ({ count, says }) => {
-    expect(crewLineReadyWord(count)).toBe(says);
+    { names: ["Game systems"], says: "Game systems' work is ready" },
+    { names: ["Bo", "Cy"], says: "2 pieces of work are ready" },
+    { names: ["Bo", "Bo", "Cy"], says: "3 pieces of work are ready" },
+  ])("says whose work waits for your review: $says", ({ names, says }) => {
+    expect(crewLineReadyWord(names)).toBe(says);
   });
+
   it.each([
     { name: "Ada", lead: true, says: "Ada, the lead" },
     { name: "Bo", lead: false, says: "Bo" },

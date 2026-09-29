@@ -6629,3 +6629,782 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 }
 
 /* ==== end of motion ==== */
+
+/* ==== Pass 18 · the Crew tab ==== */
+
+/* The Crew tab (the "Mate Crew Tab" board, approved 2026-09-29) on the
+   menu's own geometry: marks at 16 px, words at 56, one right edge 16 px in.
+   A crewmate's row is the menu's Mate row; the composer is the tab's only
+   white surface; blue is what clicks, an amber dot what needs you, red what
+   is broken. Rhythm, text edge to text edge: row to row 22 px, a heading to
+   its first row 11, group to group 44. */
+/* The crew's blue — what a press says in words: the action blue, and on the
+   dark ground the theme's lighter focus blue, legible as words (the board's). */
+:root {
+  --crew-act: var(--message-action);
+}
+
+:root.dark {
+  --crew-act: var(--ring);
+}
+
+@layer components {
+  /* The words' second ink — what a crewmate is on — as the menu's rows have it. */
+  .crew-ink-2 {
+    color: color-mix(in oklab, var(--foreground) 76%, transparent);
+  }
+
+  .dark .crew-ink-2 {
+    color: color-mix(in oklab, var(--foreground) 78%, transparent);
+  }
+
+  /* A crewmate's row: a 28 px face column, words 12 px on, the menu's corners. */
+  .crew-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    column-gap: 12px;
+    align-items: start;
+    margin: 0 8px;
+    padding: 10px 8px;
+    border-radius: 12px;
+    transition: background-color 150ms ease;
+  }
+
+  .crew-row[data-needs] {
+    padding-bottom: 12px;
+  }
+
+  @media (hover: hover) {
+    .crew-row:hover,
+    .crew-row:has([data-popup-open]) {
+      background: var(--sidebar-row-hover);
+    }
+  }
+
+  /* The row opens its crewmate's conversation: one press under the whole
+     row, its name its words; the row's own presses stand over it. */
+  .crew-row-open {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+    text-align: start;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--foreground);
+    cursor: pointer;
+    outline: none;
+  }
+
+  .crew-row-open::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+  }
+
+  .crew-row-open:focus-visible::after {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  .crew-row-above {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* The right edge of a row's first line: its time, or — on hover, with a
+     keyboard's focus, or while open — its ···, in the same 20 px. */
+  .crew-row-time {
+    flex: none;
+    font-size: 13px;
+    line-height: 20px;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted-foreground);
+  }
+
+  .crew-row-time[data-working] {
+    color: var(--foreground);
+  }
+
+  /* A ···: the tab's, and a row's in place of its time. */
+  .crew-menu-btn {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    outline: none;
+    transition: background-color 150ms ease;
+  }
+
+  /* At a phone's width the crew's ··· is a finger's 32. */
+  @container (width < 28rem) {
+    [data-crew-head] .crew-menu-btn {
+      width: 32px;
+      height: 32px;
+    }
+  }
+
+  @media (hover: hover) {
+    .crew-menu-btn:hover {
+      background: var(--sidebar-row-hover);
+    }
+  }
+
+  .crew-menu-btn[data-popup-open] {
+    background: var(--sidebar-row-active);
+    color: var(--foreground);
+  }
+
+  .crew-menu-btn:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  .crew-row-menu {
+    display: none;
+    margin: -4px -6px -4px 0;
+  }
+
+  /* The ··· stands in the time's place on hover, and for the keyboard once
+     it reaches the row — never while an answer is typed in it. */
+  .crew-row:hover .crew-row-menu,
+  .crew-row:has(.crew-row-open:focus-visible) .crew-row-menu,
+  .crew-row-menu:focus-visible,
+  .crew-row-menu[data-popup-open] {
+    display: flex;
+  }
+
+  .crew-row:hover .crew-row-time,
+  .crew-row:has(.crew-row-open:focus-visible) .crew-row-time,
+  .crew-row:has(.crew-row-menu:focus-visible) .crew-row-time,
+  .crew-row:has(.crew-row-menu[data-popup-open]) .crew-row-time {
+    display: none;
+  }
+
+  /* What needs you: an amber dot before the time (S3). */
+  .crew-dot {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 9999px;
+    background: var(--zerops-status-attention);
+  }
+
+  /* A row's presses: the first filled in the action blue, the rest its words. */
+  .crew-press {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    height: 28px;
+    padding: 0 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 18px;
+    white-space: nowrap;
+    background: var(--message-action);
+    color: var(--message-action-foreground);
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 150ms ease,
+      transform 150ms var(--ease-out-strong);
+  }
+
+  .crew-press:hover {
+    background: var(--message-action-hover);
+  }
+
+  .crew-press:active {
+    transform: scale(0.97);
+  }
+
+  .crew-press[data-quiet] {
+    padding: 0 10px;
+    background: transparent;
+    color: var(--crew-act);
+  }
+
+  .crew-press[data-quiet]:hover {
+    background: color-mix(in oklab, var(--crew-act) 10%, transparent);
+  }
+
+  .dark .crew-press[data-quiet]:hover {
+    background: color-mix(in oklab, var(--crew-act) 14%, transparent);
+  }
+
+  .crew-press[data-muted] {
+    padding: 0 12px;
+    background: transparent;
+    color: var(--muted-foreground);
+  }
+
+  .crew-press[data-muted]:hover {
+    background: var(--sidebar-row-hover);
+  }
+
+  .crew-press[data-failed] {
+    padding: 0 4px;
+    background: transparent;
+    color: var(--destructive-foreground);
+  }
+
+  .crew-press:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  .crew-press:disabled {
+    background: color-mix(in oklab, var(--foreground) 5.5%, transparent);
+    color: var(--muted-foreground);
+    cursor: default;
+  }
+
+  .crew-press:is([data-quiet], [data-muted], [data-failed]):disabled {
+    background: transparent;
+    opacity: 0.6;
+  }
+
+  .crew-press[data-size="view"] {
+    height: 32px;
+    border-radius: 9px;
+  }
+
+  /* At a phone's width a row's presses are a finger's 32, as a view's are. */
+  @container (width < 28rem) {
+    [data-crew-rows] .crew-press {
+      height: 32px;
+      padding: 0 16px;
+      border-radius: 9px;
+    }
+
+    [data-crew-rows] .crew-press[data-quiet] {
+      padding: 0 12px;
+    }
+  }
+
+  /* A blue word in a line of text: Stop, Keep going…, Change, Ask Fen to ship them. */
+  .crew-textbtn {
+    flex: none;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: inherit;
+    color: var(--crew-act);
+    cursor: pointer;
+    outline: none;
+    border-radius: 4px;
+  }
+
+  .crew-textbtn:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .crew-textbtn:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  /* The composer, at the top: a 48 px pill, the tab's only white surface. */
+  .crew-composer {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    min-height: 48px;
+    padding: 8px 8px 8px 18px;
+    border-radius: 24px;
+    background: var(--card);
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent),
+      0 1px 2px color-mix(in oklab, var(--color-black) 5%, transparent),
+      0 10px 28px -16px color-mix(in oklab, var(--color-black) 26%, transparent);
+  }
+
+  .dark .crew-composer {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent),
+      0 12px 30px -18px color-mix(in oklab, var(--color-black) 85%, transparent);
+  }
+
+  .crew-composer:focus-within {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--ring) 55%, transparent),
+      0 1px 2px color-mix(in oklab, var(--color-black) 5%, transparent),
+      0 10px 28px -16px color-mix(in oklab, var(--color-black) 26%, transparent);
+  }
+
+  /* The pill grows with what is written, up to six lines, and gives it back
+     when it is sent. */
+  .crew-composer-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-height: 132px;
+    field-sizing: content;
+    overflow-y: auto;
+    padding: 6px 0;
+    border: 0;
+    background: transparent;
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--foreground);
+    resize: none;
+    outline: none;
+  }
+
+  .crew-composer-input::placeholder {
+    color: var(--muted-foreground);
+  }
+
+  /* Who a message to the crew goes to: the lead's face and name, a 24 px chip. */
+  .crew-chip {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    margin-block: 4px;
+    padding: 0 9px 0 4px;
+    border-radius: 12px;
+    background: color-mix(in oklab, var(--foreground) 5.5%, transparent);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+    white-space: nowrap;
+    color: var(--muted-foreground);
+  }
+
+  /* Without a lead: the faces a message goes to, each a press. */
+  .crew-pick {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 9999px;
+    cursor: pointer;
+    opacity: 0.45;
+    outline: none;
+    transition: opacity 150ms ease;
+  }
+
+  .crew-pick[aria-pressed="true"] {
+    opacity: 1;
+  }
+
+  .crew-pick:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  .crew-send {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 16px;
+    background: color-mix(in oklab, var(--foreground) 5.5%, transparent);
+    color: var(--muted-foreground);
+    outline: none;
+    transition:
+      background-color 150ms ease,
+      color 150ms ease;
+  }
+
+  .crew-send[data-ready] {
+    background: var(--message-action);
+    color: var(--message-action-foreground);
+    cursor: pointer;
+  }
+
+  .crew-send:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  /* An answer, right in the row that asked. */
+  .crew-answer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 6px 0 14px;
+    border-radius: 20px;
+    background: var(--card);
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent),
+      0 1px 2px color-mix(in oklab, var(--color-black) 5%, transparent),
+      0 10px 28px -16px color-mix(in oklab, var(--color-black) 26%, transparent);
+  }
+
+  .crew-answer input {
+    flex: 1 1 auto;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--foreground);
+    outline: none;
+  }
+
+  .crew-answer .crew-send {
+    width: 28px;
+    height: 28px;
+    border-radius: 14px;
+  }
+
+  /* The lead's plan: one line per task in a quiet tray. */
+  .crew-tray {
+    display: flex;
+    flex-direction: column;
+    padding: 4px 12px;
+    border-radius: 10px;
+    background: var(--secondary);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent);
+  }
+
+  .dark .crew-tray {
+    background: color-mix(in oklab, var(--background) 60%, var(--card));
+  }
+
+  .crew-tray-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: 16px 132px minmax(0, 1fr) 20px;
+    column-gap: 8px;
+    align-items: center;
+    min-height: 32px;
+  }
+
+  .crew-tray-row[data-after] {
+    align-items: start;
+    padding: 7px 0;
+  }
+
+  /* A hairline between lines, on top of each line's own 32 px. */
+  .crew-tray-row + .crew-tray-row {
+    min-height: 33px;
+    border-top: 1px solid color-mix(in oklab, var(--foreground) 8%, transparent);
+  }
+
+  .crew-tray-out {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    opacity: 0;
+    outline: none;
+    transition: opacity 150ms ease;
+  }
+
+  .crew-tray-row:hover .crew-tray-out,
+  .crew-tray-out:focus-visible {
+    opacity: 1;
+  }
+
+  .crew-tray-out:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  @media (hover: none) {
+    .crew-tray-out {
+      opacity: 1;
+    }
+  }
+
+  /* "In Fen's code": a 32 px line per piece of work, the face at 20. */
+  .crew-code-row {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    column-gap: 12px;
+    align-items: center;
+    height: 32px;
+    margin: 0 8px;
+    padding: 0 8px;
+    border-radius: 10px;
+    text-align: start;
+    cursor: pointer;
+    outline: none;
+    transition: background-color 150ms ease;
+  }
+
+  /* At a phone's width, a line a finger can take: 36. */
+  @container (width < 28rem) {
+    .crew-code-row {
+      height: 36px;
+    }
+  }
+
+  @media (hover: hover) {
+    .crew-code-row:hover {
+      background: var(--sidebar-row-hover);
+    }
+  }
+
+  .crew-code-row:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  /* A view over the column — setup, the goal, a job: its fields and its
+     choices, over a footer that stays in reach. */
+  .crew-field {
+    display: block;
+    width: 100%;
+    padding: 12px 14px;
+    border: 0;
+    border-radius: 14px;
+    background: var(--card);
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent),
+      0 1px 2px color-mix(in oklab, var(--color-black) 5%, transparent),
+      0 10px 28px -16px color-mix(in oklab, var(--color-black) 26%, transparent);
+    font-size: 14px;
+    line-height: 22px;
+    color: var(--foreground);
+    resize: none;
+    outline: none;
+  }
+
+  .crew-field[data-line] {
+    height: 42px;
+    padding: 0 14px;
+    border-radius: 12px;
+    line-height: 20px;
+  }
+
+  .crew-field:focus {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--ring) 55%, transparent),
+      0 1px 2px color-mix(in oklab, var(--color-black) 5%, transparent),
+      0 10px 28px -16px color-mix(in oklab, var(--color-black) 26%, transparent);
+  }
+
+  .crew-field::placeholder {
+    color: var(--muted-foreground);
+  }
+
+  /* A text box that grows with what is written, as the kit's own does; it
+     reserves no scrollbar (and, a block, no line's descent under it). */
+  textarea.crew-field {
+    field-sizing: content;
+    overflow: hidden;
+  }
+
+  textarea.crew-field[data-lines="4"] {
+    min-height: 112px;
+  }
+
+  textarea.crew-field[data-lines="6"] {
+    min-height: 156px;
+  }
+
+  .crew-view-foot {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px 16px 20px;
+    border-top: 1px solid color-mix(in oklab, var(--foreground) 8%, transparent);
+    background: var(--background);
+  }
+
+  /* A choice in a view — Start with a lead and two builders — a quiet card. */
+  .crew-option {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) 16px;
+    column-gap: 12px;
+    align-items: center;
+    padding: 12px 12px 12px 10px;
+    border-radius: 14px;
+    background: var(--secondary);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent);
+    text-align: start;
+    cursor: pointer;
+    outline: none;
+    transition: background-color 150ms ease;
+  }
+
+  .dark .crew-option {
+    background: color-mix(in oklab, var(--background) 60%, var(--card));
+  }
+
+  .crew-option[data-more] {
+    grid-template-columns: minmax(0, 1fr) 16px;
+    padding-left: 14px;
+  }
+
+  .crew-option:hover {
+    background: var(--sidebar-row-hover);
+  }
+
+  .crew-option:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  /* A limit in the run dialog: an amount beside its unit, and No limit after it. */
+  .crew-limit {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
+    width: 96px;
+    height: 34px;
+    padding: 0 12px;
+    border-radius: 9px;
+    box-shadow: inset 0 0 0 1px var(--input);
+    font-size: 14px;
+    line-height: 20px;
+    font-variant-numeric: tabular-nums;
+    cursor: text;
+    transition: opacity 150ms ease;
+  }
+
+  .crew-limit[data-narrow] {
+    width: 56px;
+    height: 28px;
+    padding: 0 8px;
+    border-radius: 8px;
+  }
+
+  .crew-limit:focus-within {
+    box-shadow: inset 0 0 0 1px var(--ring);
+  }
+
+  .crew-limit[data-off] {
+    opacity: 0.5;
+  }
+
+  .crew-limit input {
+    flex: none;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: var(--foreground);
+    outline: none;
+  }
+
+  .crew-nolimit {
+    flex: none;
+    height: 34px;
+    padding: 0 10px;
+    border-radius: 9px;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 18px;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 150ms ease,
+      color 150ms ease;
+  }
+
+  .crew-nolimit:hover {
+    background: var(--sidebar-row-hover);
+  }
+
+  .crew-nolimit[aria-pressed="true"] {
+    background: var(--sidebar-row-active);
+    color: var(--foreground);
+  }
+
+  .crew-nolimit:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  /* No crew yet: the Mate, and three seats waiting. */
+  .crew-seat {
+    width: 26px;
+    height: 26px;
+    border: 1.5px dashed var(--muted-foreground);
+    border-radius: 9999px;
+    opacity: 0.55;
+  }
+}
+
+/* Motion (T-rules): transform, opacity and clip-path only, a strong ease-out,
+   interruptible; under reduced motion, fades only. Nothing moves while idle,
+   and a reload or a first paint never animates — `data-arrived` and
+   `data-enter` are set only for a change the tab watched. */
+@media (prefers-reduced-motion: no-preference) {
+  /* A need arriving: its words and presses unfold from the top. */
+  .crew-reveal[data-arrived] {
+    animation: crew-reveal 220ms var(--ease-out-strong) both;
+  }
+
+  /* A view slides 24 px in from the right; back, the column from the left. */
+  .crew-view[data-enter="forward"] {
+    animation: crew-view-forward 220ms var(--ease-out-strong) both;
+  }
+
+  .crew-view[data-enter="back"] {
+    animation: crew-view-back 220ms var(--ease-out-strong) both;
+  }
+
+  /* The mode line's words change in place: its height never moves. */
+  .crew-mode[data-arrived] {
+    animation: crew-fade 180ms var(--ease-out-strong) both;
+  }
+
+  .crew-dot[data-arrived] {
+    animation: crew-dot-in 220ms var(--ease-out-strong) both;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crew-reveal[data-arrived],
+  .crew-view[data-enter],
+  .crew-mode[data-arrived],
+  .crew-dot[data-arrived] {
+    animation: crew-fade 180ms ease-out both;
+  }
+}
+
+@keyframes crew-reveal {
+  from {
+    clip-path: inset(0 0 100% 0);
+    opacity: 0;
+  }
+  to {
+    clip-path: inset(0);
+    opacity: 1;
+  }
+}
+
+@keyframes crew-view-forward {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+
+@keyframes crew-view-back {
+  from {
+    transform: translateX(-24px);
+    opacity: 0;
+  }
+}
+
+@keyframes crew-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes crew-dot-in {
+  from {
+    scale: 0;
+    opacity: 0;
+  }
+}
+
+/* ==== end of the Crew tab ==== */

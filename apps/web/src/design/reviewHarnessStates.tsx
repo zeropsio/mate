@@ -468,9 +468,9 @@ function Crew({
 }) {
   return (
     <CrewTaskReviewView
-      branch="crew/juno"
       conflicts={conflicts}
       face={{ name: "Juno", tint: "sky", face: "idle" }}
+      mateName="Fen"
       onAsk={noop}
       onClose={noop}
       onLand={noop}

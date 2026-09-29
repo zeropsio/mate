@@ -1,29 +1,27 @@
 /**
- * A crew task card as its crewmate's chat shows it (PRD §4.5): "#12 Camera
- * rig · from you · Done when: …". The card is the engine's message into the
- * thread — its first line the task's `#N` and title, its lines after that the
- * task's words, a `Done when:` line among them. The board, when it still holds
- * that task, supplies where it came from and its done-when; a card the board
- * does not know is drawn as it was written.
+ * A crew task card as its crewmate's chat shows it (PRD §4.5): the task, by
+ * its title, and when it is done. The card is the engine's message into the
+ * thread — its first line the task's `#N`, title and what the card is for,
+ * its lines after that the task's words, a `Done when:` line among them. The
+ * person reads the title alone: the number and the engine's label are its
+ * bookkeeping. The board, when it still holds that task, supplies its title
+ * and done-when.
  *
  * Pure: no clock, no I/O.
  */
-import {
-  CREW_NEW_STINT_WORD,
-  crewTaskSourceWord,
-} from "@t3tools/client-runtime/zerops/crew/phrases";
+import { CREW_NEW_STINT_WORD } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewStint, CrewTask, ThreadId } from "@t3tools/contracts";
 
 export interface CrewTaskCardModel {
   readonly heading: string;
-  /** "from you"; `null` when the board does not know the task. */
-  readonly source: string | null;
   /** The card's words, its `Done when:` line taken out. */
   readonly text: string;
   readonly doneWhen: string | null;
 }
 
 const TASK_NUMBER = /^#(\d+)\s/u;
+/** The engine's label after the title: " · from you", " · rework after review". */
+const CARD_LABEL = /\s·\s[^·]*$/u;
 const DONE_WHEN = /^done when:\s*/iu;
 
 export function crewTaskCardModel(
@@ -43,9 +41,10 @@ export function crewTaskCardModel(
       ? undefined
       : tasks.find((candidate) => candidate.number === Number(number));
   const doneWhen = task === undefined || task.doneWhen === "" ? written : task.doneWhen;
+  const writtenTitle =
+    number === undefined ? card.title : card.title.replace(TASK_NUMBER, "").replace(CARD_LABEL, "");
   return {
-    heading: task === undefined ? card.title : `#${task.number} ${task.title}`,
-    source: task === undefined ? null : crewTaskSourceWord(task.source),
+    heading: task === undefined ? writtenTitle.trim() : task.title,
     text,
     doneWhen: doneWhen === "" ? null : doneWhen,
   };

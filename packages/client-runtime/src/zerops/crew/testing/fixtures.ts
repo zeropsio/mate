@@ -78,7 +78,7 @@ const backend: Crewmate = {
       lastCompactSummary: "Paginated /api/users; the cursor is the row id.",
       retiredAt: at("09:10"),
     }),
-    stint("backend", 2, { reason: "Started fresh by you", startedAt: at("09:10") }),
+    stint("backend", 2, { reason: "You cleared its conversation", startedAt: at("09:10") }),
   ],
   context: { tokens: 64_200, window: 200_000 },
   compactions: 1,
@@ -297,7 +297,7 @@ const tasks: ReadonlyArray<CrewTask> = [
     source: "lead",
     createdAt: at("08:20"),
     attempts: 2,
-    reason: "The check timed out twice",
+    reason: "the check timed out twice",
   }),
 ];
 
@@ -392,7 +392,7 @@ const appliedCrew: CrewSnapshot = {
       kind: "parked",
       handle: "erik",
       taskId: "task-17",
-      text: "The check timed out twice",
+      text: "the check timed out twice",
       paths: [],
       host: null,
       at: at("08:58"),

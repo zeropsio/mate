@@ -840,6 +840,8 @@ export function rollbackReview(input: RollbackReviewInput): ReviewModel {
 export interface CrewTaskReviewInput {
   /** The crewmate whose work it is. */
   readonly ownerName: string;
+  /** The Mate whose code the work goes into: "Fen's code". */
+  readonly mateName: string;
   /** The task's state as the crew's snapshot has it now — the only word on what happened. */
   readonly state: string;
   readonly check: {
@@ -849,16 +851,16 @@ export interface CrewTaskReviewInput {
   readonly diffStat: { readonly insertions: number; readonly deletions: number } | null;
   /** The paths its copy conflicts on, when it does. */
   readonly conflicts: ReadonlyArray<string>;
-  /** Your tree's edited paths its landing waits on. */
+  /** The Mate's edited paths its going in waits on. */
   readonly waitingOn: ReadonlyArray<string>;
   readonly landedCommit: string | null;
   /** Why it went to `rework` or `parked`, in the engine's words. */
   readonly reason?: string | null | undefined;
   readonly press?: ReviewPress | undefined;
   /**
-   * The task's state when Land was pressed. The engine answering is not the task landing — it
-   * answers too for a landing that waits on the person's edits, or parks — so until the snapshot
-   * moves off this state the landing is on its way.
+   * The task's state when *Add to Fen's code* was pressed. The engine answering is not the work
+   * going in — it answers too for work that waits on the Mate's edits, or stops — so until the
+   * snapshot moves off this state it is on its way.
    */
   readonly pressedAt?: string | undefined;
 }
@@ -872,33 +874,42 @@ function lastLine(output: string): string | undefined {
   return lines.at(-1);
 }
 
-/** The states Land now takes: work its crewmate never reported, or work sent back. */
+/** The states *Add what it has* takes: work its crewmate never reported, or work sent back. */
 function landsNow(state: string): boolean {
   return state === "working" || state === "rework";
 }
 
+/** "Fen's", "Atlas'": whose code it goes into. */
+const whose = (name: string): string => (name.endsWith("s") ? `${name}'` : `${name}'s`);
+
+/**
+ * A crew task's review: what its button does to the Mate's code — adds the
+ * crewmate's work as one commit — in the person's words, never the engine's
+ * (no "land", no "your tree", no "deliver").
+ */
 export function crewTaskReview(input: CrewTaskReviewInput): ReviewModel {
-  const { ownerName: owner, state } = input;
+  const { ownerName: owner, mateName: mate, state } = input;
+  const code = `${whose(mate)} code`;
+  const shipped = `Nothing is shipped until ${mate} ships it.`;
   const press = input.press ?? { kind: "idle" };
-  const lands = `Lands ${owner}'s work in your tree as one commit. Nothing is pushed until you deliver.`;
-  const landsNowSentence = `Commits what ${owner} has so far and lands it in your tree. Nothing is pushed until you deliver.`;
+  const lands = `Adds ${whose(owner)} work to ${code} as one commit. ${shipped}`;
+  const landsNowSentence = `Commits what ${owner} has so far and adds it to ${code}. ${shipped}`;
   const now = landsNow(state);
-  const label = now ? "Land now" : "Land";
+  const label = now ? "Add what it has" : `Add to ${code}`;
   const consequence = now ? landsNowSentence : lands;
   const off = { label, enabled: false, safe: false };
 
-  // Only the snapshot says a task landed: Land's answer comes for one that waits or parks too.
+  // Only the snapshot says the work went in: the press's answer comes for work that waits or stops too.
   if (state === "landed") {
-    const short = input.landedCommit?.slice(0, 7);
     return {
       verdict: {
         state: "landed",
         tone: "done",
-        title: short === undefined ? "Landed" : `Landed as ${short}`,
-        why: "In your tree · delivering ships it",
+        title: `In ${code}`,
+        why: `${mate} ships it with its own work`,
         fix: undefined,
       },
-      consequence: "Nothing is pushed until you deliver.",
+      consequence: shipped,
       primary: undefined,
     };
   }
@@ -910,11 +921,11 @@ export function crewTaskReview(input: CrewTaskReviewInput): ReviewModel {
       verdict: {
         state: "landing",
         tone: "busy",
-        title: "Landing",
+        title: `Going into ${code}`,
         why:
           state === "merging"
-            ? `${owner}'s copy takes in what landed first`
-            : `${owner}'s work goes into your tree`,
+            ? `${whose(owner)} copy takes in what's now in ${code} first`
+            : `${whose(owner)} work goes into ${code}`,
         fix: undefined,
       },
       consequence,
@@ -926,7 +937,7 @@ export function crewTaskReview(input: CrewTaskReviewInput): ReviewModel {
       verdict: {
         state: "land-refused",
         tone: "attention",
-        title: "Not landed",
+        title: "Not added",
         why: press.reason,
         fix: undefined,
       },
@@ -939,11 +950,11 @@ export function crewTaskReview(input: CrewTaskReviewInput): ReviewModel {
       verdict: {
         state: "land-parked",
         tone: "attention",
-        title: "Parked",
-        why: input.reason ?? `${owner}'s task stopped where it was`,
+        title: "Stopped",
+        why: input.reason ?? `${whose(owner)} task stopped where it was`,
         fix: undefined,
       },
-      consequence: "Nothing lands while it is parked.",
+      consequence: "Nothing goes in while it is stopped.",
       primary: undefined,
     };
   }
@@ -952,18 +963,18 @@ export function crewTaskReview(input: CrewTaskReviewInput): ReviewModel {
       verdict: {
         state: "land-discarded",
         tone: "done",
-        title: "Discarded",
-        why: "Its work never went into your tree",
+        title: "Dropped",
+        why: `Its work never went into ${code}`,
         fix: undefined,
       },
-      consequence: "Nothing lands from a discarded task.",
+      consequence: "Nothing goes in from dropped work.",
       primary: undefined,
     };
   }
 
   const blocked = (verdict: ReviewVerdict): ReviewModel => ({
     verdict,
-    consequence: "Landing waits until it is fixed.",
+    consequence: "It can go in once this is fixed.",
     primary: off,
   });
   if (input.conflicts.length > 0) {
@@ -974,13 +985,13 @@ export function crewTaskReview(input: CrewTaskReviewInput): ReviewModel {
     return blocked({
       state: "land-conflict",
       tone: "attention",
-      title: `Conflicts with what landed in ${where}`,
-      why: `${owner}'s copy stopped merging in what landed`,
+      title: `Clashes with what's now in ${code}, in ${where}`,
+      why: `${whose(owner)} copy can't take in what's now in ${code}`,
       fix: {
-        verb: "resolve it",
+        verb: "sort it out",
         problem: {
-          what: `${owner}'s copy conflicts with what landed in ${listed(input.conflicts)}`,
-          ask: "Resolve the conflicts and report back.",
+          what: `${whose(owner)} copy clashes with what's now in ${code}, in ${listed(input.conflicts)}`,
+          ask: "Sort out the clash in your copy and report back.",
         },
       },
     });
@@ -990,12 +1001,12 @@ export function crewTaskReview(input: CrewTaskReviewInput): ReviewModel {
     return blocked({
       state: "land-check-failed",
       tone: "failed",
-      title: "Check failing",
+      title: "Its checks fail",
       why: line ?? "Its check command failed",
       fix: {
-        verb: "fix it",
+        verb: "fix them",
         problem: {
-          what: `${owner}'s check failed`,
+          what: `${whose(owner)} checks fail`,
           ...(line === undefined ? {} : { error: line }),
           ask: "Find out why, fix it, and report back.",
         },
@@ -1006,26 +1017,26 @@ export function crewTaskReview(input: CrewTaskReviewInput): ReviewModel {
     return blocked({
       state: "land-check-running",
       tone: "busy",
-      title: "Check running",
-      why: "Landing waits for it",
+      title: "Checking its work",
+      why: "It can go in once its checks pass",
       fix: undefined,
     });
   }
   if (state === "waiting-on-you" || input.waitingOn.length > 0) {
-    // Land takes it from here once the edits are committed: it merges again first.
+    // The button takes it from here once the edits are committed: it merges again first.
     return {
       verdict: {
         state: "land-waiting",
         tone: "attention",
         title:
           input.waitingOn.length === 0
-            ? "Waits on your edits"
-            : `Waits on your edits to ${listed(input.waitingOn.map(baseName))}`,
-        why: "Commit them locally, then land it",
+            ? `Waits for ${whose(mate)} edits to be committed`
+            : `Waits for ${whose(mate)} edits to ${listed(input.waitingOn.map(baseName))} to be committed`,
+        why: `Once ${mate} commits them, it can go in`,
         fix: undefined,
       },
       consequence: lands,
-      primary: { label: "Land", enabled: true, safe: false },
+      primary: { label: `Add to ${code}`, enabled: true, safe: false },
     };
   }
   if (now) {
@@ -1041,42 +1052,48 @@ export function crewTaskReview(input: CrewTaskReviewInput): ReviewModel {
       primary: { label, enabled: input.diffStat !== null, safe: false },
     };
   }
-  const checked = input.check?.state === "passed" ? "check passed" : "no check ran";
+  const checked = input.check?.state === "passed" ? "its checks pass" : "no checks ran";
   if (state === "review") {
     return {
       verdict: {
         state: "land-review",
         tone: input.check?.state === "passed" ? "ok" : "quiet",
         title: "Reported done",
-        why: `Landing accepts it · ${checked}`,
+        why: `Adding it accepts it · ${checked}`,
         fix: undefined,
       },
-      consequence: `Accepts ${owner}'s work and lands it in your tree as one commit. Nothing is pushed until you deliver.`,
-      primary: { label: "Land", enabled: true, safe: true },
+      consequence: `Accepts ${whose(owner)} work and adds it to ${code} as one commit. ${shipped}`,
+      primary: { label: `Add to ${code}`, enabled: true, safe: true },
     };
   }
   if (state === "ready") {
     // Its size is the line under the title's: said once.
     const why =
       input.check?.state === "passed"
-        ? "Check passed · nothing waits on your edits"
-        : "No check ran · nothing waits on your edits";
+        ? `Its checks pass · nothing waits on ${whose(mate)} edits`
+        : `No checks ran · nothing waits on ${whose(mate)} edits`;
     return {
-      verdict: { state: "land-ready", tone: "ok", title: "Ready to land", why, fix: undefined },
+      verdict: {
+        state: "land-ready",
+        tone: "ok",
+        title: `Done, not in ${code} yet`,
+        why,
+        fix: undefined,
+      },
       consequence: lands,
-      primary: { label: "Land", enabled: true, safe: true },
+      primary: { label: `Add to ${code}`, enabled: true, safe: true },
     };
   }
-  // Not started, waiting on another task, or asking something: nothing to land yet.
+  // Not started, waiting on another task, or asking something: nothing to add yet.
   return {
     verdict: {
       state: "land-not-yet",
       tone: "quiet",
-      title: "Nothing to land yet",
+      title: "Nothing to add yet",
       why: state === "blocked" ? `${owner} asked something first` : `${owner} hasn't started it`,
       fix: undefined,
     },
-    consequence: "Nothing lands until it is done.",
+    consequence: "Nothing goes in until it is done.",
     primary: undefined,
   };
 }

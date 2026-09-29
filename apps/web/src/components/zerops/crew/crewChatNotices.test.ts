@@ -41,22 +41,22 @@ describe("crewChatNotices", () => {
       pending: null,
     },
     {
-      name: "says a job change starts a fresh conversation at the next turn",
+      name: "says a changed job starts a fresh conversation, with no version",
       running: { brief: 4, job: 4 },
       current: { brief: 4, job: 5 },
-      pending: "Job updated to v5 — the next turn starts a fresh conversation",
+      pending: "Its job changed. Its next message starts a fresh conversation.",
     },
     {
-      name: "says a brief change starts a fresh conversation at the next turn",
+      name: "says a changed goal starts a fresh conversation",
       running: { brief: 4, job: 5 },
       current: { brief: 5, job: 5 },
-      pending: "Brief updated to v5 — the next turn starts a fresh conversation",
+      pending: "The crew's goal changed. Its next message starts a fresh conversation.",
     },
     {
       name: "names both when both changed",
       running: { brief: 4, job: 4 },
       current: { brief: 5, job: 5 },
-      pending: "Job updated to v5 and brief to v5 — the next turn starts a fresh conversation",
+      pending: "Its job and the crew's goal changed. Its next message starts a fresh conversation.",
     },
   ])("$name", ({ running, current, pending }) => {
     expect(crewChatNotices(backend(running, current), CURRENT)).toEqual({ retired: null, pending });
@@ -65,9 +65,9 @@ describe("crewChatNotices", () => {
   it("points an earlier conversation at the one the crewmate talks in now, and sends nothing from it", () => {
     expect(crewChatNotices(backend({ brief: 4, job: 4 }, { brief: 4, job: 5 }), EARLIER)).toEqual({
       retired: {
-        text: "An earlier conversation with @backend — it goes on in a newer one.",
+        text: "An earlier conversation with Backend — it goes on in a newer one.",
         currentThreadId: CURRENT,
-        sendBlock: "Write to @backend in its current conversation",
+        sendBlock: "Write to Backend in its current conversation",
       },
       pending: null,
     });

@@ -32,7 +32,7 @@ import { crewLine, type CrewLineFace, type CrewLineFact } from "./SidebarCrewLin
 /** What the line reads of a crew: `useCrew`'s answer, or a fixture's (a harness). */
 export interface SidebarCrewRead {
   readonly status: CrewStatus | null;
-  readonly view: Pick<CrewView, "crewmates" | "tasks"> | null;
+  readonly view: Pick<CrewView, "crewmates" | "tasks" | "personLands"> | null;
   readonly attention: ReadonlyArray<CrewAttention>;
 }
 

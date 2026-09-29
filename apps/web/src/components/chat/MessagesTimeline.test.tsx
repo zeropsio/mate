@@ -716,7 +716,8 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain('data-timeline-row-kind="crew-card"');
     expect(markup).toContain("data-crew-task-card");
-    expect(markup).toContain("#12 Camera rig · from you");
+    expect(markup).toContain(">Camera rig</p>");
+    expect(markup).not.toMatch(/#12|from you/u);
     expect(markup).toContain("Done when:</span> the camera follows");
     expect(markup).not.toContain(CREW_CARD_OPENER);
     expect(markup).not.toMatch(/rounded-2xl bg-message/);
@@ -746,7 +747,8 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain('data-timeline-row-kind="crew-seam"');
-    expect(markup).toContain("Task #12 landed as a1b2c3d<");
+    expect(markup).toContain("Its work went into the Mate&#x27;s code<");
+    expect(markup).not.toContain("a1b2c3d");
     expect(markup).not.toContain('data-timeline-row-kind="background"');
   });
 
@@ -759,6 +761,7 @@ describe("MessagesTimeline", () => {
           origin: null,
           tasks: [],
           crewmate: { handle: "backend", profile: null },
+          mateName: "Fen",
           onOpenThread: () => {},
         }}
       >
@@ -773,7 +776,7 @@ describe("MessagesTimeline", () => {
                 id: "seam-1",
                 createdAt: "2026-03-17T19:12:28.000Z",
                 turnId: null,
-                label: "Started fresh by you",
+                label: "You cleared its conversation",
                 tone: "info",
                 sourceActivityKind: "crew.seam",
                 crewSeam: { seam: "stint", previousThreadId: null },
@@ -785,8 +788,9 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain('data-zerops-surface="crewmate-empty-state"');
-    expect(markup).toContain("Started fresh by you");
-    expect(markup).toContain("Message @backend…");
+    expect(markup).toContain("You cleared its conversation");
+    expect(markup).toContain("Message backend…");
+    expect(markup).not.toContain("@backend");
     expect(markup).not.toContain('data-timeline-row-kind="crew-seam"');
   });
 
@@ -1259,6 +1263,7 @@ describe("MessagesTimeline — the conversation", () => {
           origin: null,
           tasks: [],
           crewmate: { handle: "backend", profile: backend },
+          mateName: "Fen",
           onOpenThread: () => {},
         }}
       >

@@ -826,15 +826,15 @@ describe("logins", () => {
       id: "claudeAgent",
       default: true,
       signedInBy: VIEWER,
-      crewmates: ["lead", "backend"],
-      lead: "lead",
+      crewmates: ["Ada", "Backend"],
+      lead: "Ada",
     }),
     row({
       id: "claudeAgent-work",
       label: "work",
       title: "Claude Code · work",
       signedInBy: VIEWER,
-      crewmates: ["frontend", "erik"],
+      crewmates: ["Frontend", "Erik"],
     }),
     row({
       id: "claudeAgent-api-key",
@@ -895,11 +895,11 @@ describe("logins", () => {
   it("says whose each login is, and which crewmates run on it", () => {
     const html = card();
     expect(rowOf(html, "claudeAgent-work")).toContain("Signed in by you");
-    expect(rowOf(html, "claudeAgent-work")).toContain("Runs: frontend, erik");
+    expect(rowOf(html, "claudeAgent-work")).toContain("Runs: Frontend, Erik");
     expect(rowOf(html, "claudeAgent-api-key")).toContain("Added by you");
     expect(rowOf(html, "codex-home")).toContain("Not signed in");
-    // The default login's crewmates ride its agent row, the lead named as the lead.
-    expect(html).toContain("Runs: lead (lead), backend");
+    // The default login's crewmates ride its agent row by name, the lead named as the lead.
+    expect(html).toContain("Runs: Ada (lead), Backend");
   });
 
   it("says a teammate's login serves only their crews (N9)", () => {

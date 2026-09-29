@@ -1,44 +1,43 @@
 /**
- * crewTemplates — the three starting crews of *Set up a crew* (PRD §4.7):
- * *Feature team* (lead, two builders, a reviewer; without the lead until
- * phase C), *Solo + reviewer* and *Start empty*. Each is a definition that
- * parses and validates as it is, so the editor opens on a crew that could be
- * applied; the person fills in setup, check and database choices there.
+ * crewTemplates — the starting crews of the Crew tab's setup: *Start with a
+ * lead and two builders* (the lead, two builders), and the empty crew *Add
+ * someone yourself* begins from. Each is a definition that parses and
+ * validates as it is, so the setup opens on a crew that could start; the
+ * person names each crewmate and writes what it is responsible for there.
+ *
+ * A job is written to its crewmate, and its first sentence is what the Crew
+ * tab's row says while the crewmate is on nothing: each opens with the line
+ * the person reads ("Plans the work…"), then speaks to the crewmate.
  *
  * @module crewTemplates
  */
 import type { CrewMemberKind } from "@t3tools/contracts";
 
-import { MATE_TINT_IDS, type MateTintId } from "./brand.ts";
+import type { MateTintId } from "./brand.ts";
 import { parseBrief, type CrewDefinition, type CrewMemberSpec } from "./crewHome.ts";
 
-export type CrewTemplateId = "feature-team" | "solo-reviewer" | "empty";
+export type CrewTemplateId = "lead-and-builders" | "empty";
 
 export interface CrewTemplateInput {
   readonly template: CrewTemplateId;
   readonly crew: string;
   /** The Mate's dev services; builders take them in turn. */
   readonly devHosts: ReadonlyArray<string>;
-  /** Phase C: *Feature team* includes its lead. */
-  readonly withLead: boolean;
   /** The Mate's own tint, which no crewmate takes. */
   readonly mateTint?: MateTintId;
 }
 
-const LEAD_JOB = `Turn the brief into tasks, one area of the code per crewmate, and propose them.
-Review each finished task against its Done when and the brief's binding decisions.
+const LEAD_JOB = `Plans the work and splits it between the crew.
+Turn the goal into tasks, one area of the code per crewmate, and propose them.
+Review each finished task against its Done when and the goal's rules.
 You read and plan; you never change files.
 `;
 
-const BUILDER_JOB = `Build what your task asks, in your copy of the code.
-Keep each change small and covered by tests; report when the check passes.
+const BUILDER_JOB = `Builds its part of the work, in its own copy of the code.
+Build what your task asks. Keep each change small and covered by tests; report when the check passes.
 `;
 
-const REVIEWER_JOB = `Review each change against its task and the brief: correctness, tests, the binding decisions.
-Say what must change and why; you never change files.
-`;
-
-/** The brief every template starts from: a placeholder the person replaces. */
+/** The goal every template starts from: a placeholder the person replaces. */
 export const CREW_BRIEF_TEMPLATE = `Describe what the crew builds and why.
 
 ## Binding decisions
@@ -48,6 +47,21 @@ export const CREW_BRIEF_TEMPLATE = `Describe what the crew builds and why.
 - The outcome that finishes the work.
 `;
 
+/**
+ * The tints a starting crew takes, in turn: the lead violet, the builders sky
+ * and coral — the setup's three faces — stepping past the Mate's own.
+ */
+const CREW_TINTS: ReadonlyArray<MateTintId> = [
+  "violet",
+  "sky",
+  "coral",
+  "olive",
+  "rose",
+  "sand",
+  "slate",
+  "amber",
+];
+
 interface Seat {
   readonly handle: string;
   readonly displayName: string;
@@ -55,43 +69,23 @@ interface Seat {
   readonly job: string;
 }
 
-const seatsOf = (template: CrewTemplateId, withLead: boolean): ReadonlyArray<Seat> => {
-  const reviewer: Seat = {
-    handle: "reviewer",
-    displayName: "Reviewer",
-    kind: "reader",
-    job: REVIEWER_JOB,
-  };
+const seatsOf = (template: CrewTemplateId): ReadonlyArray<Seat> => {
   switch (template) {
-    case "feature-team":
+    case "lead-and-builders":
       return [
-        ...(withLead
-          ? [{ handle: "lead", displayName: "Lead", kind: "lead", job: LEAD_JOB } as const]
-          : []),
+        { handle: "lead", displayName: "Lead", kind: "lead", job: LEAD_JOB },
         { handle: "builder-1", displayName: "Builder 1", kind: "writer", job: BUILDER_JOB },
         { handle: "builder-2", displayName: "Builder 2", kind: "writer", job: BUILDER_JOB },
-        reviewer,
-      ];
-    case "solo-reviewer":
-      return [
-        { handle: "builder", displayName: "Builder", kind: "writer", job: BUILDER_JOB },
-        reviewer,
       ];
     case "empty":
       return [];
   }
 };
 
-const TEMPLATE_NAMES: Record<CrewTemplateId, string> = {
-  "feature-team": "Feature team",
-  "solo-reviewer": "Solo + reviewer",
-  empty: "Crew",
-};
-
 export const crewFromTemplate = (input: CrewTemplateInput): CrewDefinition => {
-  const tints = MATE_TINT_IDS.filter((tint) => tint !== input.mateTint);
+  const tints = CREW_TINTS.filter((tint) => tint !== input.mateTint);
   let writers = 0;
-  const members = seatsOf(input.template, input.withLead).map((seat, index): CrewMemberSpec => {
+  const members = seatsOf(input.template).map((seat, index): CrewMemberSpec => {
     const host =
       seat.kind === "writer" && input.devHosts.length > 0
         ? input.devHosts[writers++ % input.devHosts.length]
@@ -112,7 +106,7 @@ export const crewFromTemplate = (input: CrewTemplateInput): CrewDefinition => {
   });
   return {
     crew: input.crew,
-    name: TEMPLATE_NAMES[input.template],
+    name: "Crew",
     brief: parseBrief("New brief", CREW_BRIEF_TEMPLATE),
     members,
   };

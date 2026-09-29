@@ -99,9 +99,9 @@ describe("SidebarCrewLine", () => {
     const fact = tree.root.find(
       (node) => node.props["data-zerops-surface"] === "sidebar-crew-fact",
     );
-    expect(text(fact)).toBe("1 task ready to land");
+    expect(text(fact)).toBe("Frontend's work is ready");
     // In a narrow menu the fact gives way to the faces; its Review still names it.
-    expect(review.props["aria-label"]).toBe("Review: 1 task ready to land");
+    expect(review.props["aria-label"]).toBe("Review: Frontend's work is ready");
     const pressed = { tagName: "BUTTON" };
     act(() => {
       review.props.onClick({ currentTarget: pressed });
@@ -126,7 +126,7 @@ describe("SidebarCrewLine", () => {
         read={{ status: "applied", view, attention: snapshot.attention }}
       />,
     );
-    expect(markup).toContain(">1 task ready to land</span>");
+    expect(markup).toContain(">Frontend&#x27;s work is ready</span>");
   });
 
   it("draws nothing without an applied crew", () => {

@@ -1,8 +1,8 @@
 /**
- * A crew task's review: the same surface, with Land as its button (R7).
+ * A crew task's review: the same surface, with *Add to Fen's code* as its button (R7).
  *
- * What the crewmate reported, what the task asked, how its check went, and what landing does —
- * one commit in the person's tree, nothing pushed until they deliver. A conflict or a failed
+ * What the crewmate reported, what the task asked, how its check went, and what adding it does —
+ * one commit in the Mate's code, nothing shipped until the Mate ships it. A clash or a failing
  * check is the crewmate's to fix, and the verdict hands it over with the crew's own ask.
  *
  * `CrewTaskReviewView` takes every read handed in, so the harness shows each state.
@@ -15,8 +15,9 @@ import { useState } from "react";
 import { useCrew } from "~/zerops/crew/useCrew";
 import { useCrewCommand } from "~/zerops/crew/useCrewCommand";
 import type { ReviewTarget } from "~/zerops/review";
+import { useZeropsMate } from "~/zerops/useZeropsMates";
 
-import { crewBoardFace } from "../crew/CrewBoardPanel.logic";
+import { crewmateFace } from "../crew/CrewLeadPlan.logic";
 import { MateFace, StatusDot } from "../primitives";
 import { crewLandCommand, reviewKindLine } from "./ZeropsReview.logic";
 import { ReviewSection, ReviewSize, ZeropsReviewSurface } from "./ZeropsReviewSurface";
@@ -37,11 +38,12 @@ export function ZeropsCrewTaskReview({
   readonly onClose: () => void;
 }) {
   const { snapshot, view } = useCrew(target.environmentId);
+  const mate = useZeropsMate(target.environmentId);
   const row = view?.tasks.find((candidate) => candidate.task.id === target.taskId);
   if (snapshot === null || view === null || row === undefined) {
     return (
       <ZeropsReviewSurface
-        consequence="Nothing lands from here until the crew is read."
+        consequence="Nothing goes in from here until the crew is read."
         kind={KIND}
         kindLabel={reviewKindLine(KIND)}
         onClose={onClose}
@@ -65,10 +67,10 @@ export function ZeropsCrewTaskReview({
     owner?.crewmate.openTaskId === task.id && owner.crewmate.lane?.state === "conflicts";
   return (
     <CrewTaskData
-      branch={owner?.crewmate.lane?.branch}
       conflicts={paths.length > 0 ? paths : laneConflicts ? ["the files it changed"] : []}
       environmentId={target.environmentId}
-      face={crewBoardFace(task.owner, owner)}
+      face={crewmateFace(task.owner, owner)}
+      mateName={mate.kind === "mate" ? mate.mate.name : "the Mate"}
       onClose={onClose}
       task={task}
       titleId={titleId}
@@ -113,7 +115,7 @@ function CrewTaskData({
       }}
       press={
         press.kind === "refused" && press.reason.length === 0
-          ? { kind: "refused", reason: "The crew did not land it." }
+          ? { kind: "refused", reason: "The crew didn't add it." }
           : press
       }
       pressedAt={pressedAt}
@@ -131,10 +133,10 @@ export interface CrewTaskReviewViewProps {
   };
   /** The paths its copy conflicts on. */
   readonly conflicts: ReadonlyArray<string>;
-  /** Its copy's branch, `crew/<handle>`. */
-  readonly branch: string | undefined;
+  /** The Mate whose code the work goes into. */
+  readonly mateName: string;
   readonly press: ReviewPress;
-  /** The task's state when Land was pressed. */
+  /** The task's state when *Add to Fen's code* was pressed. */
   readonly pressedAt?: string | undefined;
   readonly titleId?: string | undefined;
   readonly onLand: () => void;
@@ -147,6 +149,7 @@ export function CrewTaskReviewView(props: CrewTaskReviewViewProps) {
   const { task, face, press } = props;
   const model = crewTaskReview({
     ownerName: face.name,
+    mateName: props.mateName,
     state: task.state,
     check: task.check,
     diffStat: task.diffStat,
@@ -182,8 +185,6 @@ export function CrewTaskReviewView(props: CrewTaskReviewViewProps) {
       kindLabel={reviewKindLine(KIND)}
       meta={
         <>
-          <span>#{task.number}</span>
-          <span aria-hidden="true">·</span>
           <span className="inline-flex items-center gap-1.5">
             {face.tint === null ? null : (
               <MateFace className="size-4" size="dot" state={face.face} tint={face.tint} />
@@ -199,14 +200,6 @@ export function CrewTaskReviewView(props: CrewTaskReviewViewProps) {
               />
             </>
           )}
-          {props.branch === undefined ? null : (
-            <>
-              <span aria-hidden="true">·</span>
-              <span>
-                from <code>{props.branch}</code>
-              </span>
-            </>
-          )}
         </>
       }
       onClose={props.onClose}
@@ -216,7 +209,7 @@ export function CrewTaskReviewView(props: CrewTaskReviewViewProps) {
           : {
               ...model.primary,
               busy: press.kind === "running",
-              label: press.kind === "running" ? "Landing" : model.primary.label,
+              label: model.primary.label,
               onPress: props.onLand,
             }
       }

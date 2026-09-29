@@ -21,7 +21,7 @@ describe("crewFailureSentence", () => {
     {
       name: "a refusal without detail reads as its phrase alone",
       cause: new CrewCommandError({ reason: "no-mention", detail: null }),
-      sentence: "Name a crewmate with @, or add a lead to split the work.",
+      sentence: "Pick who it's for, or add a lead to split the work.",
     },
     {
       name: "an authorization refusal keeps its own words",
