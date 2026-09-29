@@ -235,6 +235,9 @@ export const SessionCredentialInvalidError = Schema.Union([
 ]);
 export type SessionCredentialInvalidError = typeof SessionCredentialInvalidError.Type;
 export const isSessionCredentialInvalidError = Schema.is(SessionCredentialInvalidError);
+/** The session behind the credential reached the end of its life: nothing else was wrong. */
+export const isSessionExpiredError = (error: SessionCredentialInvalidError): boolean =>
+  error._tag === "SessionTokenExpiredError" || error._tag === "WebSocketSessionExpiredError";
 
 const sessionCredentialInternalErrorContext = {
   cause: Schema.Defect(),

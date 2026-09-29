@@ -1,3 +1,4 @@
+import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -58,5 +59,41 @@ describe("environment HTTP errors", () => {
     errors.forEach((error, index) => {
       expect(error.message).toContain(details[index]);
     });
+  });
+});
+
+describe("a refused credential's 401", () => {
+  const body = { _tag: "EnvironmentAuthInvalidError", code: "auth_invalid", traceId } as const;
+  const decode = Schema.decodeUnknownSync(EnvironmentAuthInvalidError);
+
+  // The client tells a session that reached the end of its life (the door mints the next, nothing
+  // is wrong) from every other refusal by this one optional field.
+  it.each([
+    {
+      case: "an expired session",
+      sent: { reason: "invalid_credential", expired: true },
+      expired: true,
+    },
+    { case: "any other refusal", sent: { reason: "invalid_credential" }, expired: undefined },
+    { case: "no credential at all", sent: { reason: "missing_credential" }, expired: undefined },
+  ])("names $case", ({ sent, expired }) => {
+    expect(decode({ ...body, ...sent }).expired).toBe(expired);
+  });
+
+  // A client older than the field reads the same body: it ignores what it does not know.
+  it("reads the same for a client that predates the field", () => {
+    const olderClient = Schema.Struct({
+      _tag: Schema.Literal("EnvironmentAuthInvalidError"),
+      code: Schema.Literal("auth_invalid"),
+      reason: Schema.Literals(["missing_credential", "invalid_credential"]),
+      traceId: Schema.String,
+    });
+    expect(
+      Schema.decodeUnknownSync(olderClient)({
+        ...body,
+        reason: "invalid_credential",
+        expired: true,
+      }),
+    ).toEqual({ ...body, reason: "invalid_credential" });
   });
 });
