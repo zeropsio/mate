@@ -3125,6 +3125,8 @@ describe("ClaudeAdapterLive", () => {
         name: "shot.png",
         mimeType: "image/png",
         sizeBytes: bytes.byteLength,
+        width: 3210,
+        height: 2118,
       };
       const attachmentPath = NodePath.join(attachmentsDir, attachmentRelativePath(attachment)!);
       NodeFS.mkdirSync(NodePath.dirname(attachmentPath), { recursive: true });

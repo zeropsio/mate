@@ -26,7 +26,6 @@ import {
   type ModelUsage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { parseCliArgs } from "@t3tools/shared/cliArgs";
-import { interleavePictures, splitPictureText } from "@t3tools/shared/composerPictures";
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/filePreview";
 import { type ClaudeScopedLimitNames, claudeRateLimitEventToUpdate } from "./claudeUsageLimits.ts";
 import {
@@ -97,12 +96,12 @@ import {
 } from "../../spi/claudeThreadProfile.ts";
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import { claudeSignedOutMessage, makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
-import {
-  claudePictureErrorMessage,
-  sentPicture,
-  type SentPicture,
-} from "../Drivers/ClaudePictureError.ts";
 import { planClaudeSkillDispatch } from "../Drivers/ClaudeSkillDispatch.ts";
+import {
+  placeClaudePictures,
+  rememberTurnPictures,
+  turnPictureError,
+} from "../../providerPictures.ts";
 import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import {
@@ -290,8 +289,6 @@ interface ClaudeTurnState {
   latestAssistantRateLimited: boolean;
   emittedThinkingText: boolean;
   readonly thinkingSnapshotIds: Set<string>;
-  /** The pictures the turn sent, for a picture Claude cannot read to be named. */
-  pictures?: ReadonlyArray<SentPicture>;
 }
 
 interface AssistantTextBlockState {
@@ -585,7 +582,6 @@ function resultErrorsText(result: SDKResultMessage): string {
 function terminalResultError(
   reason: SDKResultMessage["terminal_reason"],
   failureHint?: string,
-  pictures: ReadonlyArray<SentPicture> = [],
 ): string | undefined {
   switch (reason) {
     case "api_error":
@@ -607,7 +603,7 @@ function terminalResultError(
     case "prompt_too_long":
       return "Claude stopped: the prompt exceeds the model's context window.";
     case "image_error":
-      return claudePictureErrorMessage(pictures);
+      return "Claude stopped: an image in the conversation could not be processed.";
     case "model_error":
       return "Claude stopped: the model returned an error.";
     default:
@@ -1640,14 +1636,15 @@ const buildUserMessageEffect = Effect.fn("buildUserMessageEffect")(function* (
 ) {
   const text = buildPromptText(input, dependencies.boundInstanceId, dependencies.modelCatalog);
   const sdkContent: Array<Record<string, unknown>> = [];
-  const imageBlocks: Array<Record<string, unknown>> = [];
-  const sent: Array<{ readonly name: string; readonly bytes: Uint8Array }> = [];
 
   // Claude Code expands a skill only from the LAST text block, and only when
   // `/name` is its first character. A `$skill` chip anywhere in the prompt is
   // therefore split into [leading text, "/name trailing text"] so the CLI
   // runs it natively and the prose around it survives. See ClaudeSkillDispatch.
   const dispatch = planClaudeSkillDispatch(text, dependencies.skillNames);
+  if (dispatch?.leadingText !== undefined) {
+    sdkContent.push({ type: "text", text: dispatch.leadingText });
+  }
 
   for (const attachment of input.attachments ?? []) {
     // Claude ingests images only. Generic files reach the agent through the
@@ -1688,44 +1685,13 @@ const buildUserMessageEffect = Effect.fn("buildUserMessageEffect")(function* (
       ),
     );
 
-    imageBlocks.push(
+    sdkContent.push(
       buildClaudeImageContentBlock({
         mimeType: attachment.mimeType,
         bytes,
       }),
     );
-    sent.push({ name: attachment.name, bytes });
   }
-
-  // The pictures as the person knows them: by label where the text placed them.
-  const placedCount = splitPictureText(text, imageBlocks.length).filter(
-    (segment) => segment.kind === "picture",
-  ).length;
-  const pictures: ReadonlyArray<SentPicture> = sent.map((picture, index) =>
-    sentPicture({ placed: index < placedCount, n: index + 1, ...picture }),
-  );
-
-  // Pictures the composer placed in the text go right after their labels, so
-  // the words and pictures are read in the order they were written. Only a
-  // message that is no command and still ends on text: a slash command or a
-  // skill must stay the last text block.
-  const placed =
-    dispatch === undefined && !text.startsWith("/")
-      ? interleavePictures(text, imageBlocks.length)
-      : null;
-  if (placed !== null && placed.at(-1)?.kind === "text") {
-    for (const part of placed) {
-      sdkContent.push(
-        part.kind === "text" ? { type: "text", text: part.text } : imageBlocks[part.index]!,
-      );
-    }
-    return { message: buildUserMessage({ sdkContent }), pictures };
-  }
-
-  if (dispatch?.leadingText !== undefined) {
-    sdkContent.push({ type: "text", text: dispatch.leadingText });
-  }
-  sdkContent.push(...imageBlocks);
 
   // The final text block goes last on purpose. The Claude CLI only reads a
   // streamed user message as a slash-command invocation when the last content
@@ -1738,7 +1704,7 @@ const buildUserMessageEffect = Effect.fn("buildUserMessageEffect")(function* (
     sdkContent.push({ type: "text", text });
   }
 
-  return { message: buildUserMessage({ sdkContent }), pictures };
+  return buildUserMessage({ sdkContent: placeClaudePictures(sdkContent) });
 });
 
 /**
@@ -1768,7 +1734,6 @@ function resultEndsAnotherTurn(result: SDKResultMessage, turnId: string): boolea
 function resultOutcome(
   result: SDKResultMessage,
   failureHint?: string,
-  pictures?: ReadonlyArray<SentPicture>,
 ): {
   status: ProviderRuntimeTurnStatus;
   errorMessage: string | undefined;
@@ -1778,7 +1743,7 @@ function resultOutcome(
   const successTaggedFailure = result.subtype === "success" && result.is_error === true;
   const structuredError = isOverloadedResult(result)
     ? "Claude API is overloaded (529). Try again shortly."
-    : (terminalResultError(result.terminal_reason, failureHint, pictures) ??
+    : (terminalResultError(result.terminal_reason, failureHint) ??
       (successTaggedFailure ? failureHint : undefined));
   // CLI diagnostic entries must not become the error banner. Success results
   // carry no typed error list, but a success-tagged failure may still list one.
@@ -1791,9 +1756,7 @@ function resultOutcome(
           (error): error is string =>
             typeof error === "string" && !error.startsWith("[ede_diagnostic]"),
         );
-  // A picture Claude could not read is named, never left to the API's own words.
-  const errorMessage =
-    result.terminal_reason === "image_error" ? structuredError : listedError || structuredError;
+  const errorMessage = listedError || structuredError;
   if (structuredError !== undefined) return { status: "failed", errorMessage };
   if (result.subtype === "success") return { status: "completed", errorMessage };
   if (isInterruptedResult(result)) return { status: "interrupted", errorMessage };
@@ -3613,7 +3576,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       (turn && (turn.rejectedRateLimitTypes.size > 0 || turn.latestAssistantRateLimited)
         ? "Claude usage limit reached. Send the message again once the limit resets."
         : undefined);
-    const { status, errorMessage } = resultOutcome(message, failureHint, turn?.pictures);
+    const outcome = resultOutcome(message, failureHint);
+    const status = outcome.status;
+    const errorMessage = turnPictureError(message, turn) ?? outcome.errorMessage;
 
     if (status === "failed") {
       yield* emitRuntimeError(context, errorMessage ?? "Claude turn failed.");
@@ -5404,7 +5369,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(Path.Path, path),
     );
-    const { message, pictures } = yield* buildUserMessageEffect(input, {
+    const message = yield* buildUserMessageEffect(input, {
       fileSystem,
       attachmentsDir: serverConfig.attachmentsDir,
       boundInstanceId,
@@ -5417,9 +5382,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     });
 
     if (steeringTurnState === null) context.turnStartMessageIds.push(turnId);
-    if (context.turnState !== undefined && pictures.length > 0) {
-      context.turnState.pictures = [...(context.turnState.pictures ?? []), ...pictures];
-    }
+    rememberTurnPictures(context.turnState, input);
     yield* updateResumeCursor(context);
     yield* Queue.offer(context.promptQueue, {
       type: "message",

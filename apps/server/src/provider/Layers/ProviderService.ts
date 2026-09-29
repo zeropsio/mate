@@ -30,7 +30,6 @@ import {
   type ProviderRuntimeEvent,
   type ProviderSession,
 } from "@t3tools/contracts";
-import { messagePictures } from "@t3tools/shared/composerPictures";
 import { causeErrorTag } from "@t3tools/shared/observability";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -46,6 +45,7 @@ import * as Stream from "effect/Stream";
 
 import { appendUserInputAttachmentPaths } from "../userInputAttachments.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
+import { attachmentPathLine } from "../../providerPictures.ts";
 import * as ServerConfig from "../../config.ts";
 import {
   increment,
@@ -859,28 +859,14 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     // path-only everywhere: eagerly embedding it would spend the same context
     // the client deliberately preserved by folding it. Unresolvable ids are
     // skipped here and surface as adapter errors when the file is read.
-    // A picture the composer placed in the text is named as the text names it.
-    const pictures = messagePictures(parsed.input ?? "", attachments);
     const attachmentPathLines = attachments.flatMap((attachment) => {
       const attachmentPath = resolveAttachmentPath({
         attachmentsDir: serverConfig.attachmentsDir,
         attachment,
       });
       if (attachmentPath === null) return [];
-      const isPastedText =
-        attachment.type === "file" &&
-        "source" in attachment &&
-        attachment.source?._tag === "pasted-text";
-      const picture = pictures.find((entry) => entry.image === attachment);
-      const original = pictures.find((entry) => entry.original === attachment);
       return [
-        picture
-          ? `[Picture ${picture.n} is saved at: ${attachmentPath}]`
-          : original
-            ? `[Picture ${original.n}'s original, "${attachment.name}", is saved at: ${attachmentPath}]`
-            : isPastedText
-              ? `[Pasted text "${attachment.name}" is saved at: ${attachmentPath}. Inspect it as needed.]`
-              : `[Attached ${attachment.type} "${attachment.name}" is saved at: ${attachmentPath}]`,
+        attachmentPathLine(attachment, attachmentPath, { text: parsed.input ?? "", attachments }),
       ];
     });
     const inputTextWithAttachmentPaths =
