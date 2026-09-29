@@ -58,6 +58,7 @@ export function readRunResultFacts(input: {
       readonly id: string;
       readonly number: number;
       readonly state: string;
+      readonly owner: string;
     }>;
   } | null;
 }): ResultFacts {
@@ -106,7 +107,10 @@ export function readRunResultFacts(input: {
           crew: {
             environmentId: input.crew.environmentId,
             tasks: new Map(
-              input.crew.tasks.map((task) => [task.number, { id: task.id, state: task.state }]),
+              input.crew.tasks.map((task) => [
+                task.number,
+                { id: task.id, state: task.state, owner: task.owner },
+              ]),
             ),
           },
         }),

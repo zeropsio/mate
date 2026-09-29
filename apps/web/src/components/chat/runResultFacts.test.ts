@@ -71,7 +71,10 @@ describe("readRunResultFacts", () => {
         ],
       ]),
       remembered: () => undefined,
-      crew: { environmentId: HOME, tasks: [{ id: "task-12", number: 12, state: "ready" }] },
+      crew: {
+        environmentId: HOME,
+        tasks: [{ id: "task-12", number: 12, state: "ready", owner: "rules" }],
+      },
     });
     expect(facts.changes).toEqual({
       groupId: GROUP,
@@ -85,7 +88,7 @@ describe("readRunResultFacts", () => {
       versionAt: "2026-09-29T20:00:00.000Z",
     });
     expect(facts.services?.get("appstage")).toMatchObject({ status: "STOPPED", versionAt: null });
-    expect(facts.crew?.tasks.get(12)).toEqual({ id: "task-12", state: "ready" });
+    expect(facts.crew?.tasks.get(12)).toEqual({ id: "task-12", state: "ready", owner: "rules" });
     // Whose run it is: the Mate a fix is found by, and the project it is in.
     expect(facts.mate).toEqual({ projectId: PROJECT, groupId: GROUP });
   });

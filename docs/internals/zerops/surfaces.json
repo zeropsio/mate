@@ -1495,6 +1495,7 @@
       "components": [
         "apps/web/src/components/zerops/crew/CrewmateMenu.tsx",
         "apps/web/src/components/zerops/crew/CrewmateMenu.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewTryIt.tsx",
         "apps/web/src/zerops/crew/crewTry.ts",
         "apps/web/src/zerops/crew/useCrewTry.ts",
         "apps/web/src/components/zerops/crew/CrewTaskCard.tsx",
@@ -1525,6 +1526,10 @@
         {
           "kind": "inline",
           "value": "ChatHeader and MessagesTimeline, in a crewmate's chat"
+        },
+        {
+          "kind": "inline",
+          "value": "A finished run's result row: Try it beside Review, while its crew task is ready to land"
         },
         {
           "kind": "inline",
@@ -1563,6 +1568,10 @@
         {
           "action": "Stop its app",
           "reverse": "Try its work"
+        },
+        {
+          "action": "Try it",
+          "reverse": "Stop its app"
         },
         {
           "action": "Change its job",

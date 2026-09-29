@@ -4196,6 +4196,12 @@ button.run-bar:focus-visible {
 .run-result-action:hover {
   background: color-mix(in oklab, var(--color-info-foreground) 10%, transparent);
 }
+/* *Try it* held while there is nothing it can open yet: another crewmate's work on dev. */
+.run-result-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+  background: none;
+}
 .run-result-open {
   display: flex;
   align-items: center;
