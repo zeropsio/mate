@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ChatAttachment } from "~/types";
-import { placeMessagePictures, terminalContextsBySegment } from "./messagePictures.logic";
+import {
+  placeMessagePictures,
+  reservedPictureBox,
+  terminalContextsBySegment,
+} from "./messagePictures.logic";
 
 const image = (id: string): ChatAttachment => ({
   type: "image",
@@ -85,5 +89,46 @@ describe("terminalContextsBySegment", () => {
   ])("%s", (_label, texts, contexts, expected) => {
     const bySegment = terminalContextsBySegment(texts, contexts);
     expect(texts.map((segment) => bySegment.get(segment.after) ?? [])).toEqual(expected);
+  });
+});
+
+describe("reservedPictureBox", () => {
+  const picture = (size: { width?: number; height?: number }) => ({
+    type: "image" as const,
+    id: "a",
+    name: "a.png",
+    mimeType: "image/png",
+    sizeBytes: 10,
+    ...size,
+  });
+
+  it.each([
+    [
+      "a wide picture is as wide as it is, never over 300 px tall",
+      picture({ width: 2000, height: 1299 }),
+      undefined,
+      { width: "min(100%, 462px)", aspectRatio: "2000 / 1299" },
+    ],
+    [
+      "a small picture keeps its own size",
+      picture({ width: 200, height: 100 }),
+      undefined,
+      { width: "min(100%, 200px)", aspectRatio: "200 / 100" },
+    ],
+    [
+      "the attachment's own size comes before the server's",
+      picture({ width: 1000, height: 1000 }),
+      { width: 10, height: 10 },
+      { width: "min(100%, 300px)", aspectRatio: "1000 / 1000" },
+    ],
+    [
+      "an older message takes the size its header names",
+      picture({}),
+      { width: 600, height: 300 },
+      { width: "min(100%, 600px)", aspectRatio: "600 / 300" },
+    ],
+    ["no size known, no room held", picture({}), undefined, null],
+  ])("%s", (_label, image, serverSize, expected) => {
+    expect(reservedPictureBox(image, serverSize)).toEqual(expected);
   });
 });

@@ -446,6 +446,8 @@ describe("attachmentUploadQueue", () => {
           name: "pic.png",
           mimeType: "image/png",
           sizeBytes: 3,
+          width: 2000,
+          height: 1299,
         },
         {
           type: "file",

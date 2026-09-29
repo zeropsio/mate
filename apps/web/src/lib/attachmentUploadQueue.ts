@@ -514,6 +514,7 @@ export function getUploadedAttachments(input: {
       name: image.name,
       mimeType: image.mimeType,
       sizeBytes: image.sizeBytes,
+      ...(image.picture ? { width: image.picture.width, height: image.picture.height } : {}),
     });
     // A picture's original goes right after it: that is how it is known.
     const original = keptOriginal(image);

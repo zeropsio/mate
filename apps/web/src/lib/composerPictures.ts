@@ -10,6 +10,9 @@
  */
 import { pictureBlockText } from "@t3tools/shared/composerPictures";
 
+import type { ComposerImageAttachment } from "../composerDraftStore";
+import type { ChatAttachment } from "../types";
+
 /**
  * Not the object replacement character terminal contexts use: the two are
  * matched to their own lists by order, so they cannot share one.
@@ -264,4 +267,39 @@ export function pictureThumbSize(crop: Pick<PictureRect, "w" | "h">): {
     width: Math.round(Math.max(48, Math.min(240, PICTURE_THUMB_HEIGHT * aspect))),
     height: PICTURE_THUMB_HEIGHT,
   };
+}
+
+/**
+ * The attachments a sent message shows before the server answers: each
+ * picture at its copy's size, so it holds its room from the first paint, and
+ * a kept original right after its picture, as it is sent.
+ */
+export function optimisticPictureAttachments(
+  images: ReadonlyArray<ComposerImageAttachment>,
+): ChatAttachment[] {
+  return images.flatMap((image): ChatAttachment[] => {
+    const original = image.picture?.keepOriginal ? image.picture.source : null;
+    return [
+      {
+        type: "image",
+        id: image.id,
+        name: image.name,
+        mimeType: image.mimeType,
+        sizeBytes: image.sizeBytes,
+        previewUrl: image.previewUrl,
+        ...(image.picture ? { width: image.picture.width, height: image.picture.height } : {}),
+      },
+      ...(original
+        ? [
+            {
+              type: "file" as const,
+              id: `${image.id}-original`,
+              name: original.name || image.name,
+              mimeType: original.type || "application/octet-stream",
+              sizeBytes: original.size,
+            },
+          ]
+        : []),
+    ];
+  });
 }

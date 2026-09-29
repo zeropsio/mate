@@ -94,3 +94,32 @@ export function terminalContextsBySegment(
   }
   return bySegment;
 }
+
+export interface PictureSize {
+  readonly width: number;
+  readonly height: number;
+}
+
+/** Pictures in a message stand at most 300 px tall. */
+const PICTURE_MAX_HEIGHT = 300;
+
+/**
+ * The room a picture holds before it loads: its own size, carried on the
+ * attachment from the composer or the server, else the size the server read
+ * from its header; as wide as it will be, never wider than the message.
+ */
+export function reservedPictureBox(
+  image: Pick<ChatImageAttachment, "width" | "height">,
+  serverSize: PictureSize | undefined,
+): { readonly width: string; readonly aspectRatio: string } | null {
+  const size =
+    image.width !== undefined && image.height !== undefined
+      ? { width: image.width, height: image.height }
+      : serverSize;
+  if (!size) return null;
+  const widest = Math.min(size.width, (PICTURE_MAX_HEIGHT * size.width) / size.height);
+  return {
+    width: `min(100%, ${Math.round(widest)}px)`,
+    aspectRatio: `${size.width} / ${size.height}`,
+  };
+}

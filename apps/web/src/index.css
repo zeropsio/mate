@@ -4838,6 +4838,11 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   box-shadow: 0 0 0 1px var(--picture-edge);
 }
 
+.message-picture-pending {
+  display: block;
+  background: var(--color-muted);
+}
+
 .message-picture-open:focus-visible .message-picture-img {
   box-shadow: 0 0 0 2px var(--color-ring);
 }

@@ -8,12 +8,14 @@ import {
   insertInlinePicturePlaceholder,
   isFullPictureCrop,
   materializePicturePrompt,
+  optimisticPictureAttachments,
   pictureMarkAt,
   picturesBlockReason,
   pictureThumbSize,
   reconcileInlinePicturePlaceholders,
   removeInlinePicturePlaceholder,
   stripInlinePicturePlaceholders,
+  type ComposerPicture,
   type PictureMark,
 } from "./composerPictures";
 
@@ -180,5 +182,62 @@ describe("picture geometry", () => {
     ["a part of it", { x: 10, y: 0, w: 290, h: 200 }, false],
   ])("%s is a full crop or not", (_label, crop, expected) => {
     expect(isFullPictureCrop({ crop, sourceWidth: 300, sourceHeight: 200 })).toBe(expected);
+  });
+});
+
+describe("optimisticPictureAttachments", () => {
+  const file = (name: string, size: number) =>
+    new File([new Uint8Array(size)], name, { type: "image/png" });
+  const image = (id: string, picture?: Partial<ComposerPicture>) => ({
+    type: "image" as const,
+    id,
+    name: `${id}.png`,
+    mimeType: "image/png",
+    sizeBytes: 3,
+    previewUrl: `blob:${id}`,
+    file: file(`${id}.png`, 3),
+    ...(picture
+      ? {
+          picture: {
+            source: file("home-page.png", 9),
+            sourceWidth: 3024,
+            sourceHeight: 1964,
+            crop: { x: 0, y: 0, w: 3024, h: 1964 },
+            marks: [],
+            keepOriginal: false,
+            width: 2000,
+            height: 1299,
+            asPasted: false,
+            preparing: false,
+            ...picture,
+          },
+        }
+      : {}),
+  });
+
+  it.each([
+    ["a picture shows at its copy's size", [image("a", {})], [["image", "a", 2000, 1299]]],
+    [
+      "a kept original rides right after its picture",
+      [image("a", { keepOriginal: true })],
+      [
+        ["image", "a", 2000, 1299],
+        ["file", "a-original", undefined, undefined],
+      ],
+    ],
+    [
+      "an image that is no picture has no size",
+      [image("b")],
+      [["image", "b", undefined, undefined]],
+    ],
+  ])("%s", (_label, images, expected) => {
+    expect(
+      optimisticPictureAttachments(images).map((attachment) => [
+        attachment.type,
+        attachment.id,
+        "width" in attachment ? attachment.width : undefined,
+        "height" in attachment ? attachment.height : undefined,
+      ]),
+    ).toEqual(expected);
   });
 });

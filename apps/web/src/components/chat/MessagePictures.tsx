@@ -16,24 +16,11 @@ import { Fragment, useMemo, type ReactNode } from "react";
 import { assetEnvironment } from "~/state/assets";
 import type { ChatImageAttachment } from "~/types";
 import { formatPictureBytes } from "./ComposerPictureView";
-import type { MessagePictureSegment } from "./messagePictures.logic";
-
-type Dimensions = { readonly width: number; readonly height: number };
-
-/** Pictures in a message stand at most 300 px tall. */
-const PICTURE_MAX_HEIGHT = 300;
-
-/** The box a picture of known size takes before it loads: as wide as it will be, never wider. */
-function reservedBox(dimensions: Dimensions) {
-  const widest = Math.min(
-    dimensions.width,
-    (PICTURE_MAX_HEIGHT * dimensions.width) / dimensions.height,
-  );
-  return {
-    width: `min(100%, ${Math.round(widest)}px)`,
-    aspectRatio: `${dimensions.width} / ${dimensions.height}`,
-  };
-}
+import {
+  reservedPictureBox,
+  type MessagePictureSegment,
+  type PictureSize,
+} from "./messagePictures.logic";
 
 /**
  * Each stored picture's size, read from its header by the server, so a picture
@@ -42,10 +29,10 @@ function reservedBox(dimensions: Dimensions) {
 export function useMessagePictureDimensions(
   environmentId: EnvironmentId,
   resources: ReadonlyArray<Extract<AssetResource, { readonly _tag: "attachment" }>>,
-): ReadonlyMap<string, Dimensions> {
+): ReadonlyMap<string, PictureSize> {
   const results = useAtomValue(assetEnvironment.createUrls({ environmentId, resources }));
   return useMemo(() => {
-    const dimensions = new Map<string, Dimensions>();
+    const dimensions = new Map<string, PictureSize>();
     results.forEach((result, index) => {
       const resource = resources[index];
       if (resource && AsyncResult.isSuccess(result) && result.value.imageDimensions) {
@@ -58,7 +45,7 @@ export function useMessagePictureDimensions(
 
 export function MessagePictureBody(props: {
   readonly segments: ReadonlyArray<MessagePictureSegment>;
-  readonly dimensions: ReadonlyMap<string, Dimensions>;
+  readonly dimensions: ReadonlyMap<string, PictureSize>;
   readonly onOpen: (image: ChatImageAttachment) => void;
   readonly renderText: (segment: Extract<MessagePictureSegment, { kind: "text" }>) => ReactNode;
 }) {
@@ -82,10 +69,11 @@ export function MessagePictureBody(props: {
 
 function MessagePicture(props: {
   readonly segment: Extract<MessagePictureSegment, { kind: "picture" }>;
-  readonly dimensions: Dimensions | undefined;
+  readonly dimensions: PictureSize | undefined;
   readonly onOpen: (image: ChatImageAttachment) => void;
 }) {
   const { segment, dimensions } = props;
+  const box = reservedPictureBox(segment.image, dimensions);
   return (
     <figure className="message-picture">
       {segment.image.previewUrl ? (
@@ -99,9 +87,17 @@ function MessagePicture(props: {
             className="message-picture-img"
             src={segment.image.previewUrl}
             alt={`Picture ${segment.n}`}
-            style={dimensions ? reservedBox(dimensions) : undefined}
+            style={box ?? undefined}
           />
         </button>
+      ) : box ? (
+        // Its room, held until its address arrives: nothing moves when it does.
+        <span
+          className="message-picture-img message-picture-pending"
+          role="img"
+          aria-label={`Picture ${segment.n}`}
+          style={box}
+        />
       ) : (
         <span className="message-picture-original">{segment.image.name}</span>
       )}
