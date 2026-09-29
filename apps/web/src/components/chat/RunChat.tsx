@@ -30,7 +30,6 @@
  * pipeline, a helper's report — opens inline under it; nothing opens a dialog.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import type { MateMarkState } from "@t3tools/shared/brand";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
   isActiveSubagentStatus,
@@ -78,7 +77,7 @@ import ChatMarkdown from "../ChatMarkdown";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import { CrewSeamActivity } from "../zerops/crew/CrewTaskCard";
 import { KindGlyph, ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
-import { MateFace, type MateFaceGaze } from "../zerops/primitives";
+import { MateFace } from "../zerops/primitives";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
@@ -90,10 +89,11 @@ import {
   operationLineWords,
   type BrowserStripModel,
   type IncidentModel,
-  type WorkLineFace,
 } from "./conversation.logic";
 import { StatusBar, type BarTone } from "./ConversationPills";
-import { ElapsedSince, RunClock, settledRunVerb } from "./ConversationRows";
+import { ElapsedSince } from "./ConversationRows";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
   normalizeCompactToolLabel,
@@ -105,7 +105,20 @@ import {
   type RunStatus,
   type TurnHeaderActivity,
 } from "./MessagesTimeline.logic";
-import { chatOpensAt, earlierShown, thoughtRunText } from "./runCard.logic";
+import {
+  chatOpensAt,
+  earlierShown,
+  formatClock,
+  LONG_STEP_MS,
+  nowLineFace,
+  nowLineOf,
+  nowLineWords,
+  operationNowWords,
+  severalWords,
+  stepNowWords,
+  thoughtRunText,
+  type NowLine as NowLineModel,
+} from "./runCard.logic";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -269,8 +282,12 @@ function useHoldReading(): () => void {
  */
 const BUBBLE_SHAPE = "rounded-2xl";
 const BUBBLE_PAD = "px-3.5 py-2.5";
-/** A call's row: compact beside the bubbles — 7 px down, 12 px in. */
-const CALL_PAD = "px-3 py-1.75";
+/**
+ * A call's row: compact beside the bubbles — 7 px down, 12 px in, and 14 px
+ * from the right so its chevron ends on the card's one right edge, with the
+ * now line's clock and the result's actions (S2).
+ */
+const CALL_PAD = "ps-3 pe-3.5 py-1.75";
 /** A thought: 8 px down, 12 px in. */
 const THOUGHT_PAD = "px-3 py-2";
 
@@ -1083,7 +1100,7 @@ function CallRow({
       className={cn(
         "relative min-w-0 first:rounded-t-2xl last:rounded-b-2xl",
         failed && "bg-status-failed-surface",
-        joined && "origin-top animate-bubble-in motion-reduce:animate-none",
+        joined && "run-rise",
       )}
       data-chat-bubble={failed ? "failed" : "tool"}
       data-chat-kind={kind}
@@ -1189,7 +1206,7 @@ export function StepBubble({ step }: { readonly step: WorkStep }) {
       ) : null}
     </Headline>
   );
-  const pad = showsCode || cut ? "px-3 pt-1.75 pb-0.5" : CALL_PAD;
+  const pad = showsCode || cut ? "ps-3 pe-3.5 pt-1.75 pb-0.5" : CALL_PAD;
   return (
     <CallRow
       failed={failed}
@@ -1287,13 +1304,7 @@ function settledBar(
  * runs, what the Mate waits on beside its face (the bar under the chat has
  * its clock). Its card — the pipeline, the build log — opens under it.
  */
-function OperationBubble({
-  operation,
-  newest = false,
-}: {
-  readonly operation: ZeropsOperation;
-  readonly newest?: boolean;
-}) {
+function OperationBubble({ operation }: { readonly operation: ZeropsOperation }) {
   const ctx = use(TimelineRowCtx);
   const disclosure = useDisclosure();
   const failed = operation.phase === "failed";
@@ -1322,7 +1333,7 @@ function OperationBubble({
         <Headline
           column
           opens
-          time={running && newest ? null : operationTime(operation)}
+          time={operationTime(operation)}
           timeTone={failed ? "failed" : "muted"}
         >
           <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5">
@@ -1933,41 +1944,6 @@ function itemLine(item: RecordItem): ChatLine | null {
 }
 
 /**
- * What the Mate has its hands on now, as the newest bubble: the thought it is
- * thinking or the call it is making, keyed as the record will key it so it
- * stays the same bubble once it ends. Nothing else is a bubble — that it
- * thinks, writes, waits on the person or condenses its context is the status
- * line's to say, under the chat.
- */
-function nowLine(now: TurnHeaderActivity | null): ChatLine | null {
-  if (now === null) return null;
-  switch (now.kind) {
-    case "thinking":
-      return now.key === null || now.messages.length === 0
-        ? null
-        : {
-            key: now.key,
-            bubble: <ThoughtBubble messages={now.messages} />,
-            mark: THOUGHT_MARK,
-            markLine: "thought",
-          };
-    case "step":
-      return { key: `step:${now.step.key}`, bubble: <StepBubble step={now.step} />, call: true };
-    case "operation":
-      // A check is its row of the chat from its start: it is there already.
-      if (now.operation.kind === "browser") return null;
-      return {
-        key: `operation:${now.operation.key}`,
-        bubble: <OperationBubble newest operation={now.operation} />,
-        call: true,
-      };
-    case "writing":
-    case "waiting":
-      return null;
-  }
-}
-
-/**
  * A line of the chat: the Mate's column — each bubble's mark beside its first
  * line, its face at the column's foot, on the status line — then the bubble;
  * the person's words on their own side; or a caption across both.
@@ -2003,133 +1979,276 @@ function ChatRow({
         <Mark line={markLine}>{mark}</Mark>
       )}
       {/* Only what arrives while the person watches rises in. */}
-      <div
-        className={cn(
-          "flex min-w-0 flex-1",
-          theirs && "justify-end",
-          arrived && "animate-bubble-in motion-reduce:animate-none",
-          arrived && (theirs ? "origin-bottom-right" : "origin-bottom-left"),
-        )}
-      >
+      <div className={cn("flex min-w-0 flex-1", theirs && "justify-end", arrived && "run-rise")}>
         {children}
       </div>
     </li>
   );
 }
 
-/** A run that is over, as its face wears it. */
-const SETTLED_FACE: Record<WorkLineFace, MateMarkState> = {
-  working: "working",
-  idle: "idle",
-  produced: "done",
-  failed: "idle",
-  paused: "sleep",
-  stopped: "idle",
-};
+// ---------------------------------------------------------------------------
+// The now line
+// ---------------------------------------------------------------------------
 
-/** What the Mate is doing this second, after its name on the status line. */
-interface Doing {
-  readonly verb: string;
-  /** It is putting words together: the dots after the verb. */
-  readonly composing: boolean;
-  /** It waits on the person: the clock stands still, the line in the attention hand. */
-  readonly waiting: boolean;
-  /** Where its face looks while it does it: up and aside thinking, down along its line writing. */
-  readonly gaze?: MateFaceGaze;
+/**
+ * The run's clock, m:ss, counting while the run goes on — the Mate's own
+ * time: it stands still while a question waits on the person. Its text node
+ * updates, the line never re-renders.
+ */
+function RunTicker({ status }: { readonly status: RunStatus }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const read = () => {
+    const start = Date.parse(status.startedAt);
+    const now = status.waitingSince === null ? Date.now() : Date.parse(status.waitingSince);
+    return formatClock(now - start - status.waitedMs);
+  };
+  useEffect(() => {
+    const update = () => {
+      if (ref.current) ref.current.textContent = read();
+    };
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  });
+  return (
+    <RunSpan status={status}>
+      <span ref={ref} className="run-now-clock" data-work-line-clock>
+        {read()}
+      </span>
+    </RunSpan>
+  );
 }
 
-function liveDoing(now: TurnHeaderActivity | null, compacting: boolean, answering: boolean): Doing {
-  if (compacting) return { verb: "is condensing the context", composing: true, waiting: false };
-  if (answering) return { verb: "is writing", composing: true, waiting: false, gaze: "down" };
-  if (now === null) return { verb: "is thinking", composing: true, waiting: false, gaze: "up" };
-  switch (now.kind) {
-    case "waiting":
-      return { verb: "is waiting for your answer", composing: false, waiting: true };
-    case "writing":
-      return { verb: "is writing", composing: true, waiting: false, gaze: "down" };
+/** What a run's time stands on, and when it began and ended, a hover away. */
+function RunSpan({
+  status,
+  children,
+}: {
+  readonly status: RunStatus;
+  readonly children: ReactNode;
+}) {
+  const { timestampFormat } = use(TimelineRowCtx);
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span className="min-w-0" />}>{children}</TooltipTrigger>
+      <TooltipPopup>
+        {formatChatTimestampTooltip(status.startedAt, timestampFormat)}
+        {status.endedAt ? ` – ${formatDayAwareTimestamp(status.endedAt, timestampFormat)}` : ""}
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
+/**
+ * How long the step on the now line has run, once that passes 30 s: words on
+ * the same line — "· 0:31" — never a second clock (K3). Nothing before.
+ */
+function LongStepTime({ since }: { readonly since: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const read = () => {
+    const took = Date.now() - Date.parse(since);
+    return took >= LONG_STEP_MS ? `· ${formatClock(took)}` : "";
+  };
+  useEffect(() => {
+    const update = () => {
+      if (ref.current) ref.current.textContent = read();
+    };
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  });
+  return (
+    <span ref={ref} className="run-now-long">
+      {read()}
+    </span>
+  );
+}
+
+/**
+ * A step as the now line says it, sweeping while it runs: its own words and a
+ * command's code after them, a command that said nothing of itself as its
+ * code, a call said plainly with the names it took in mono.
+ */
+function StepNowWords({ step }: { readonly step: WorkStep }) {
+  if (step.kind === "command" && step.words === null) {
+    return (
+      <span className="run-now-verb run-now-mono" data-run-shimmer="">
+        {step.code}
+      </span>
+    );
+  }
+  if (step.kind !== "command" && step.phrase !== null) {
+    return (
+      <span className="run-now-verb" data-run-shimmer="">
+        {step.phrase.verb}
+        {step.phrase.targets.map((target, index) => (
+          <Fragment key={`${target}#${index}`}>
+            {index === 0 ? " " : index === step.phrase!.targets.length - 1 ? " and " : ", "}
+            <span className="run-now-mono">{target}</span>
+          </Fragment>
+        ))}
+        {step.phrase.more > 0 ? ` and ${step.phrase.more} more` : null}
+      </span>
+    );
+  }
+  return (
+    <>
+      <span className="run-now-verb" data-run-shimmer="">
+        {stepNowWords(step)}
+      </span>
+      {step.kind === "command" && step.code !== null ? (
+        <span className="run-now-code">{step.code}</span>
+      ) : null}
+    </>
+  );
+}
+
+/** The now line's words, by what the run is doing. */
+function NowWords({ line, status }: { readonly line: NowLineModel; readonly status: RunStatus }) {
+  switch (line.kind) {
     case "thinking":
-      return {
-        verb: "is thinking",
-        composing: now.messages.length === 0,
-        waiting: false,
-        gaze: "up",
-      };
+      return (
+        <>
+          <span className="run-now-verb">Thinking</span>
+          {line.thought === null ? null : <span className="run-now-thought">{line.thought}</span>}
+        </>
+      );
     case "step":
+      return (
+        <>
+          <StepNowWords step={line.step} />
+          <LongStepTime since={line.step.startedAt} />
+        </>
+      );
     case "operation":
-      return { verb: "is working", composing: false, waiting: false };
+      return (
+        <>
+          <span className="run-now-verb" data-run-shimmer="">
+            {operationNowWords(line.operation)}
+          </span>
+          <LongStepTime since={line.operation.anchorAt} />
+        </>
+      );
+    case "several":
+      return <span className="run-now-verb">{severalWords(line.steps)}</span>;
+    case "waiting":
+      return <span className="run-now-verb">Waiting for your answer</span>;
+    case "writing":
+      return (
+        <>
+          <span className="run-now-verb">Writing</span>
+          <TypingDots className="run-now-dots" />
+        </>
+      );
+    case "condensing":
+      return (
+        <>
+          <span className="run-now-verb">Condensing the context</span>
+          <TypingDots className="run-now-dots" />
+        </>
+      );
+    case "worked":
+      return (
+        <>
+          <RunSpan status={status}>
+            <span className="run-now-worked">{line.words}</span>
+          </RunSpan>
+          {line.effort === null ? null : (
+            <span className="run-now-effort">{` · ${line.effort}`}</span>
+          )}
+        </>
+      );
   }
 }
 
 /**
- * The Mate's status, under its chat: its face, what it is doing and for how
- * long — while it works, the chat's "is typing" line; once the run is over,
- * who worked and for how long. It stands in one place and only its words
- * change, so the run ending moves nothing (the owner, 2026-09-28, of the
- * heading that stood over the card: "it doesn't need to be at the top").
+ * The card's foot, the now line (K10): the Mate's face, what it is doing this
+ * moment in words — the step itself while it runs, which lands in the chat
+ * above once it ends — and the run's one clock (K3), in ink (S3). The
+ * present stands in one place and only its words change, rising into it; the
+ * past piles up above it. Once the run is over it is the worked line: who,
+ * how long, and what the effort came to.
  */
-function StatusLine({
+function NowLine({
   status,
   now,
   answering,
+  effort,
+  end = null,
 }: {
   readonly status: RunStatus;
   readonly now: TurnHeaderActivity | null;
   readonly answering: boolean;
+  readonly effort: string | null;
+  /** What stands in the right column once the run is over. */
+  readonly end?: ReactNode;
 }) {
   const ctx = use(TimelineRowCtx);
   const { isCompacting } = use(TimelineRowActivityCtx);
-  const doing = status.live ? liveDoing(now, isCompacting, answering) : null;
-  const face: MateMarkState =
-    doing === null ? SETTLED_FACE[status.face] : doing.waiting ? "needs" : "working";
-  const words = `${ctx.speaker.name} ${doing?.verb ?? settledRunVerb(status)}`;
+  const line = nowLineOf({
+    status,
+    now,
+    answering,
+    compacting: isCompacting,
+    speaker: ctx.speaker.name,
+    effort,
+  });
+  const face = nowLineFace(line, status);
+  const words = nowLineWords(line);
   // The line's words change in place as the run goes: the new ones rise into
-  // it, so a change reads as the same line saying something new, not a flicker.
+  // it, so a change reads as the same line saying something new.
   const wordsChanged = useChangedSinceShown(words);
   return (
     <div
-      className={cn("flex min-w-0 items-center pb-1", MARK_GAP)}
-      data-run-status={doing === null ? status.face : doing.waiting ? "waiting" : "working"}
+      className="run-now"
+      data-run-now={line.kind}
+      data-run-status={
+        line.kind === "worked" ? status.face : line.kind === "waiting" ? "waiting" : "working"
+      }
     >
       <MateFace
-        gaze={doing?.gaze}
+        gaze={face.gaze}
         greets
         known={ctx.arrivedAfter !== null && !ctx.syncing}
         size="md"
-        state={face}
+        state={face.state}
         tint={ctx.speaker.tint}
       />
       <div
-        className={cn(
-          "flex min-h-7 min-w-0 flex-1 items-center gap-2.5 text-line",
-          doing?.waiting ? "text-status-attention-text" : "text-muted-foreground",
-        )}
+        className="run-now-words"
         data-work-line={status.face}
         role={status.live ? "status" : undefined}
       >
-        <span className="flex min-w-0 flex-1 items-center gap-2">
-          <span
-            className={cn(
-              "min-w-0 truncate",
-              wordsChanged && "animate-words-in motion-reduce:animate-none",
-            )}
-            key={words}
-          >
-            {words}
-          </span>
-          {doing?.composing ? <TypingDots className="shrink-0 scale-75" /> : null}
+        <span
+          key={words}
+          className={cn(
+            "run-now-head",
+            wordsChanged && "animate-words-in motion-reduce:animate-none",
+          )}
+        >
+          <NowWords line={line} status={status} />
         </span>
-        {/* The run's clock stands in the calls' time column — 14 px of the
-            bubble's padding and the chevron's 20 px slot in from the edge —
-            so every time in the card ends on one edge; it stood under the
-            chevrons, 34 px right of the times it sums. */}
-        <RunClock
-          className="me-8.5 text-foreground"
-          status={status}
-          timestampFormat={ctx.timestampFormat}
-        />
+        {line.kind === "several" ? (
+          <ul className="run-now-several">
+            {line.steps.map((step) => (
+              <li key={step.key}>
+                <StepNowWords step={step} />
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
+      {status.live ? <RunTicker status={status} /> : (end ?? <span />)}
     </div>
   );
+}
+
+/**
+ * The line of a run with no chat to end on — one that only asked for a plan's
+ * approval, or paused before it did anything: the now line alone.
+ */
+export function RunLine({ status }: { readonly status: RunStatus }) {
+  return <NowLine answering={false} effort={null} now={null} status={status} />;
 }
 
 /**
@@ -2153,10 +2272,6 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // did it marks nothing — their words stand on the page right above the
   // card, and the card opened on a second copy of them.
   while (lines[0]?.theirs === true) lines.shift();
-  if (row.live && !row.answering) {
-    const line = nowLine(row.now);
-    if (line !== null) lines.push(line);
-  }
   // Where the chat starts, fixed when it opens: what arrives after it only
   // ever joins at the end, so the window grows and never slides.
   const [from, setFrom] = useState(() => chatOpensAt(lines.length));
@@ -2204,7 +2319,12 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
           </ol>
         ) : null}
         {row.status === null ? null : (
-          <StatusLine answering={row.answering} now={row.now} status={row.status} />
+          <NowLine
+            answering={row.answering}
+            effort={row.effort}
+            now={row.now}
+            status={row.status}
+          />
         )}
       </div>
     </ChatShownContext>

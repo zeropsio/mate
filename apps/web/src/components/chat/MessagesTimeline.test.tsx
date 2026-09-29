@@ -1236,7 +1236,7 @@ describe("MessagesTimeline — the conversation", () => {
         />
       </CrewTimelineContext>,
     );
-    expect(markup).toContain("Backend worked<");
+    expect(markup).toMatch(/>Backend worked \d/u);
     expect(markup).not.toContain("Assistant worked");
   });
 
@@ -1257,9 +1257,7 @@ describe("MessagesTimeline — the conversation", () => {
     // The chat's last line says who worked and how long: to the answer, not
     // to when the server closed the turn — the same span once another turn
     // follows. No heading stands over the card.
-    expect(markup).toMatch(
-      /Assistant worked<\/span><\/span><span[^>]*data-work-line-clock[^>]*>1m</,
-    );
+    expect(markup).toContain(">Assistant worked 1m<");
     expect(markup).not.toContain('data-timeline-row-kind="work-line"');
     // The record stays on the page, everything the Mate did in order (the
     // owner, 2026-09-27: "after the work is done I'd leave it on the page").
@@ -1306,9 +1304,9 @@ describe("MessagesTimeline — the conversation", () => {
         timelineEntries={[buildUserTimelineEntry("Deploy it")]}
       />,
     );
-    // The card stands from the first frame, the Mate's status its last line.
+    // The card stands from the first frame, the now line its last line.
     expect(markup).toContain('data-timeline-row-id="record:msg:message-1"');
-    expect(markup).toContain("Assistant is thinking");
+    expect(markup).toContain(">Thinking<");
     expect(markup).toContain('data-work-line="working"');
     expect(markup).toContain('data-message-receipt="sent"');
   });
@@ -1362,8 +1360,8 @@ describe("MessagesTimeline — the conversation", () => {
       record.indexOf("Fixing the types."),
     );
     expect(record.indexOf("Fixing the types.")).toBeLessThan(record.indexOf("pnpm build"));
-    // Between steps the status line says it thinks: no word of what it did twice.
-    expect(record).toContain("Assistant is thinking");
+    // Between steps the now line says it thinks: no word of what it did twice.
+    expect(record).toContain(">Thinking<");
     // What runs alongside stands under the record.
     expect(markup).toContain("data-conversation-working");
   });
@@ -1374,13 +1372,13 @@ describe("MessagesTimeline — the conversation", () => {
       tool("w1", 5),
       { ...writing, message: { ...writing.message, streaming: true } },
     ]);
-    expect(markup).toContain("Assistant is writing");
+    expect(markup).toContain(">Writing<");
     expect(markup).not.toContain("Checking /status next.");
   });
 
   it("shows the Mate composing before it said anything", () => {
     const markup = liveTimeline([tool("w1", 5)]);
-    expect(markup).toContain("Assistant is thinking");
+    expect(markup).toContain(">Thinking<");
     expect(markup).not.toContain('data-chat-kind="note"');
   });
 
@@ -1396,19 +1394,21 @@ describe("MessagesTimeline — the conversation", () => {
     },
   });
 
-  // The step it is taking, in words and with what it is on — the page it
-  // reads, the command it runs (the owner, 2026-09-27: "why isn't the chat
-  // showing even the commands it runs?") — once, beside its face.
-  it("says the step the Mate is taking beside its face, once, with what it is on", () => {
+  // The step it is taking lives on the now line while it runs (K10), in
+  // words and with what it is on — the page it reads, the command it runs —
+  // once, beside its face; it lands in the chat above once it ends.
+  it("says the step the Mate is taking on the now line, once, with what it is on", () => {
     const markup = liveTimeline([
       assistant("a1", 5, "Reading the docs first."),
       call("c1", 8, 'WebFetch: {"url":"https://docs.example.dev/guides"}'),
     ]);
-    expect(markup).toContain('data-chat-kind="step:web"');
+    expect(markup).not.toContain('data-chat-kind="step:web"');
+    expect(markup).toContain('data-run-now="step"');
     expect(markup).toContain('data-mate-face-state="working"');
-    // Beside the face and nowhere else: the chat keeps the same bubble once it returns.
     expect(markup.match(/docs\.example\.dev\/guides/g)).toHaveLength(1);
-    expect(markup).toContain(">Reading<");
+    expect(markup).toMatch(
+      />Reading(?:<!-- -->)? <span class="run-now-mono">docs\.example\.dev\/guides</u,
+    );
     expect(markup).not.toContain("WebFetch");
   });
 
@@ -1418,7 +1418,7 @@ describe("MessagesTimeline — the conversation", () => {
     ]);
     expect(markup).toContain('data-run-status="waiting"');
     expect(markup).toContain('data-mate-face-state="needs"');
-    expect(markup).toContain("Assistant is waiting for your answer");
+    expect(markup).toContain(">Waiting for your answer<");
     expect(markup).not.toContain("AskUserQuestion");
   });
 

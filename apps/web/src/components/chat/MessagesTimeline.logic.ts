@@ -48,6 +48,7 @@ import {
   type Stretch,
   type WorkLineFace,
 } from "./conversation.logic";
+import { runEffortWords } from "./runResult.logic";
 import {
   foldSteps,
   stepOf,
@@ -478,6 +479,12 @@ type MessagesTimelineRowBody =
        * person's words broke off above it.
        */
       status: RunStatus | null;
+      /**
+       * What a finished run's effort came to, on its worked line after its
+       * time ("2 commands · 1 file read", `runEffortWords`); null while it
+       * runs, or when nothing is left to count.
+       */
+      effort: string | null;
     }
   | {
       /**
@@ -1005,9 +1012,21 @@ function liveActivity(
       entry.entry.toolLifecycleStatus === "inProgress" &&
       isActivityWork(entry.entry)
     ) {
-      return isQuestionToolCall(entry.entry)
-        ? { kind: "waiting" }
-        : { kind: "step", step: stepOf(entry.entry, tracked, true) };
+      if (isQuestionToolCall(entry.entry)) return { kind: "waiting" };
+      const step = stepOf(entry.entry, tracked, true);
+      // What it runs at the same time is the now line's too: none of it is
+      // in the record until it returns.
+      const others = stretch.entries
+        .slice(0, index)
+        .flatMap((earlier) =>
+          (earlier.kind === "work" || earlier.kind === "generic-call") &&
+          earlier.entry.toolLifecycleStatus === "inProgress" &&
+          isActivityWork(earlier.entry) &&
+          !isQuestionToolCall(earlier.entry)
+            ? [stepOf(earlier.entry, tracked, true)]
+            : [],
+        );
+      return others.length > 0 ? { kind: "step", step, others } : { kind: "step", step };
     }
     if (entry.kind === "message") {
       if (entry.message.role !== "reasoning" || passed) {
@@ -1118,15 +1137,13 @@ function stretchRecord(input: {
     placed.push({ order: order++, item });
   };
   /**
-   * A browser check is its row of the chat from the moment it starts, live
-   * as settled, and a check that follows it with nothing between shares the
-   * row: a page checked on a desktop and then on a phone is one row of takes.
-   * A check after other work starts a row of its own, so a row above the
-   * newest never grows (Nova, 2026-09-28: the checks stood in a drawer under
-   * the chat for the rest of the run, a stale picture while it deployed, and
-   * reached the chat only when the run was over).
+   * A browser check is a step: the now line's while it is taken, its row of
+   * the chat once it is (K10), and a check that follows it with nothing
+   * between shares the row: a page checked on a desktop and then on a phone
+   * is one row of takes. A check after other work starts a row of its own,
+   * so a row above the newest never grows.
    */
-  const joinCheck = (check: ZeropsOperation) => {
+  const joinCheck = (check: ZeropsOperation, at: string) => {
     const last = placed.at(-1);
     if (last !== undefined && last.item.kind === "strip") {
       placed[placed.length - 1] = {
@@ -1141,7 +1158,7 @@ function stretchRecord(input: {
     push({
       kind: "strip",
       key: `operation:${check.key}`,
-      at: check.anchorAt,
+      at,
       strip: checksStrip([check], stretch.live),
     });
   };
@@ -1284,7 +1301,15 @@ function stretchRecord(input: {
       case "operation": {
         const op = entry.operation;
         if (op.kind === "browser") {
-          joinCheck(op);
+          // Taken now, it is the now line's; it joins where it ended.
+          if (stretch.live && op.phase === "running") break;
+          joinCheck(
+            op,
+            joinedAt(
+              op.phase === "running" ? null : (op.settledAt ?? entry.createdAt),
+              op.anchorAt,
+            ),
+          );
           break;
         }
         const incident = incidentsByKey.get(`incident:${op.key}`);
@@ -1956,6 +1981,7 @@ export function deriveMessagesTimelineRows(input: {
           now: working && answer === null ? liveActivity(last, turn.writing, tracked) : null,
           answering: answer !== null,
           status,
+          effort: outcome === null ? null : runEffortWords(outcome),
         });
       }
       rows.push(...extras);

@@ -3098,6 +3098,127 @@ code {
   background: color-mix(in oklab, var(--run-speaker-tint) 17%, transparent);
 }
 
+/* The now line, the card's foot (K10): the face in the card's 28 px column,
+   what the Mate is doing in words, the run's one clock on the right edge
+   (K3) in ink (S3). A hairline sets it off the chat above it, unless it is
+   all the card holds. */
+.run-now {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 8px;
+  padding: 4px 14px 0 0;
+  border-top: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
+}
+.run-now:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.run-now-words {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+/* One line: the step, and after it what it runs and for how long. */
+.run-now-head {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.run-now-verb {
+  font-weight: 500;
+  color: var(--color-foreground);
+}
+.run-now-mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.run-now-code {
+  margin-left: 8px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--color-muted-foreground);
+}
+.run-now-thought {
+  margin-left: 6px;
+  font-style: italic;
+  color: var(--color-muted-foreground);
+}
+.run-now-long:not(:empty) {
+  margin-left: 8px;
+  font-size: 13px;
+  color: var(--color-muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.run-now-dots {
+  display: inline-flex;
+  margin-left: 6px;
+  vertical-align: middle;
+  scale: 0.7;
+}
+.run-now-worked {
+  color: color-mix(in oklab, var(--color-foreground) 76%, transparent);
+}
+.run-now-effort {
+  color: var(--color-muted-foreground);
+}
+.run-now-clock {
+  font-size: 13px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-foreground);
+}
+/* Several at once: how many on the line, and one line each under it. */
+.run-now[data-run-now="several"] {
+  align-items: start;
+}
+.run-now[data-run-now="several"] > svg {
+  margin-top: 6px;
+}
+.run-now[data-run-now="several"] > .run-now-words {
+  padding-block: 10px 8px;
+}
+.run-now[data-run-now="several"] > :last-child {
+  margin-top: 10px;
+}
+.run-now-several > li {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+}
+.run-now-several .run-now-verb {
+  font-weight: 400;
+  color: var(--color-muted-foreground);
+}
+
+/* T4: a step ending lands in the chat above the now line, rising 6 px into
+   its place over 320 ms, once; reduced motion fades only (T8). */
+@keyframes run-rise {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+@keyframes run-fade {
+  from {
+    opacity: 0;
+  }
+}
+.run-rise {
+  animation: run-rise 320ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .run-rise {
+    animation-name: run-fade;
+  }
+}
+
 /* A run's line with nothing under it keeps the tray's geometry in a frame
    nobody sees, so the tray drawn around it later never moves its words. */
 .run-tray-ghost {

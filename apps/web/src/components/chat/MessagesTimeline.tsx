@@ -140,7 +140,7 @@ import { SkillInlineText } from "./SkillInlineText";
 import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic";
 import { TurnReport } from "./TurnReport";
 import { ConversationAfterWork, ConversationWorking } from "./ConversationWorking";
-import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat } from "./RunChat";
+import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat, RunLine } from "./RunChat";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -155,7 +155,6 @@ import {
   MessageReceipt,
   PauseBlock,
   Seam,
-  WorkLine,
   type ConversationSpeaker,
   type ServerUsagePause,
 } from "./ConversationRows";
@@ -1506,8 +1505,7 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
 }
 
 function WorkLineTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "work-line" }> }) {
-  const ctx = use(TimelineRowCtx);
-  return <WorkLine row={row} speaker={ctx.speaker} timestampFormat={ctx.timestampFormat} />;
+  return <RunLine status={row} />;
 }
 
 /**

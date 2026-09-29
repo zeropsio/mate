@@ -606,6 +606,7 @@ function record(overrides: Partial<RecordRow>): RecordRow {
     now: null,
     answering: false,
     status: status({}),
+    effort: null,
     ...overrides,
   };
 }

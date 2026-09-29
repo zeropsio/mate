@@ -1133,9 +1133,35 @@ describe("deriveMessagesTimelineRows", () => {
     expect(lines(settled)).toEqual(drawn);
   });
 
+  // Several calls at once are all the now line's (K10): "Running 3 commands",
+  // one line each under it — none of them left out until it returns.
+  it("carries every call it runs at once to the now line, oldest first", () => {
+    const running = (id: string, minute: number, command: string) =>
+      tool(id, "t1", minute, {
+        command,
+        toolLifecycleStatus: "inProgress",
+        sourceActivityKind: "tool.started",
+      });
+    const live = rows({
+      entries: [
+        user("m0", 0),
+        running("w1", 1, "pnpm build"),
+        running("w2", 1, "pnpm test"),
+        running("w3", 2, "pnpm lint"),
+      ],
+      live: "t1",
+    });
+    const now = recordOf(live)?.now;
+    expect(now?.kind).toBe("step");
+    if (now?.kind !== "step") return;
+    expect(now.step.code).toBe("pnpm lint");
+    expect(now.others?.map((step) => step.code)).toEqual(["pnpm build", "pnpm test"]);
+    expect(recordOf(live)?.items).toEqual([]);
+  });
+
   // A page checked on a desktop and then a phone is one row of takes; a check
   // after other work starts a row of its own, so no row above the newest
-  // grows. The one being taken is in its row already, never a line of its own.
+  // grows. The one being taken is the now line's until it ends (K10).
   it("gathers checks one after another into one row, and starts another after other work", () => {
     const entries = [
       user("m0", 0),
@@ -1153,12 +1179,20 @@ describe("deriveMessagesTimelineRows", () => {
       }),
     ];
     const live = rows({ entries, live: "t1" });
-    expect(lines(live)).toEqual(["strip op:b1 op:b2", "· pnpm test", "strip op:b3"]);
-    expect(recordOf(live)?.items.map((item) => item.key)).toEqual([
-      "operation:op:b1",
-      "step:w1",
-      "operation:op:b3",
-    ]);
+    expect(lines(live)).toEqual(["strip op:b1 op:b2", "· pnpm test"]);
+    expect(recordOf(live)?.items.map((item) => item.key)).toEqual(["operation:op:b1", "step:w1"]);
+    const now = recordOf(live)?.now;
+    expect(now?.kind === "operation" ? now.operation.key : null).toBe("op:b3");
+    // Once taken, it lands at the record's end, after what came before it.
+    const taken = rows({
+      entries: entries.map((entry) =>
+        entry.kind === "operation" && entry.operation.key === "op:b3"
+          ? operation("b3", "t1", 4, { kind: "browser", subject: "https://shop.dev/cart" })
+          : entry,
+      ),
+      live: "t1",
+    });
+    expect(lines(taken)).toEqual(["strip op:b1 op:b2", "· pnpm test", "strip op:b3"]);
   });
 
   it("records a settled run: thinking, notes in full, each call a step", () => {

@@ -119,6 +119,7 @@ describe("timeline minimap previews", () => {
         waitingSince: null,
         worked: true,
       },
+      effort: null,
     });
     const withLines: MessagesTimelineRow[] = [
       { ...source[0]!, aside: false } as MessagesTimelineRow,

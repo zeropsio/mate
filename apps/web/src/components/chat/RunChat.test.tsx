@@ -117,6 +117,7 @@ function record(items: ReadonlyArray<RecordItem>, overrides: Partial<RecordRow> 
     now: null,
     answering: false,
     status: null,
+    effort: null,
     ...overrides,
   };
 }
@@ -305,24 +306,23 @@ describe("RunChat", () => {
     expect(markup).toMatch(/class="[^"]*divide-y[^"]*" data-chat-calls="true"/);
   });
 
-  // The Mate's status is the chat's last line, never a heading over the card
-  // (the owner, 2026-09-28: "it doesn't need to be at the top"): its face,
-  // what it is doing, its clock — the one face in the chat.
-  // The face does what the words say: it looks up and aside while it thinks,
-  // down along its line while it writes, and simply works otherwise.
+  // The now line is the card's foot, never a heading over it: its face, what
+  // the Mate is doing in words, its one clock — the one face in the chat. The
+  // face does what the words say: it looks up and aside while it thinks, down
+  // along its line while it writes, and simply works otherwise.
   it.each([
-    { name: "thinking", now: null, says: "Nova is thinking", face: "working", gaze: "up" },
+    { name: "thinking", now: null, says: ">Thinking<", face: "working", gaze: "up" },
     {
       name: "writing",
       now: { kind: "writing" },
-      says: "Nova is writing",
+      says: ">Writing<",
       face: "working",
       gaze: "down",
     },
     {
       name: "waiting on the person",
       now: { kind: "waiting" },
-      says: "Nova is waiting for your answer",
+      says: ">Waiting for your answer<",
       face: "needs",
       gaze: null,
     },
@@ -338,23 +338,25 @@ describe("RunChat", () => {
     // watched rise in.
     expect(markup).not.toContain("animate-words-in");
     expect(markup).toContain(says);
-    // It stands under the chat's scroll, not in it.
+    // It stands under the chat, never in it.
     expect(markup.indexOf(says)).toBeGreaterThan(markup.lastIndexOf("data-chat-row"));
     // No bubble stands in for what the status line says.
     expect(markup).not.toContain('data-chat-kind="typing');
     expect(markup).not.toContain('data-chat-kind="waiting"');
   });
 
-  it("says who worked and for how long once the run is over, where it said what it did", () => {
+  // Finished, the now line becomes the worked line: who, how long, and what
+  // the effort came to — the time in its words, no second clock.
+  it("says who worked, how long and what it came to once the run is over", () => {
     const markup = draw(
       record([thought("r1", "One.")], {
         status: status({ live: false, face: "produced", endedAt: at(72) }),
+        effort: "2 commands · 1 file read",
       }),
     );
-    expect(markup).toContain("Nova worked");
-    expect(markup).toMatch(/data-work-line-clock[^>]*>1m 12s</);
-    // It ends on the calls' time column, not under their chevrons.
-    expect(markup).toMatch(/class="[^"]*me-8\.5[^"]*" data-work-line-clock/);
+    expect(markup).toContain('<span class="run-now-worked">Nova worked 1m 12s</span>');
+    expect(markup).toContain('<span class="run-now-effort"> · 2 commands · 1 file read</span>');
+    expect(markup).not.toContain("data-work-line-clock");
     expect(markup).toContain('data-mate-face-state="done"');
     expect(draw(record([thought("r1", "One.")]))).not.toContain("data-mate-face-state");
   });
@@ -402,7 +404,11 @@ describe("RunChat", () => {
         },
       }),
     );
-    expect(markup).toMatch(/class="[^"]*me-8\.5 text-foreground[^"]*" data-work-line-clock/u);
+    // One clock (K3), m:ss, in ink: the step's own time is words on its line.
+    expect(markup.match(/data-work-line-clock/g)).toHaveLength(1);
+    expect(markup).toMatch(
+      /<span class="run-now-clock" data-work-line-clock="true">(?:\d+:)?\d+:\d\d</u,
+    );
     expect(markup).not.toContain("text-status-busy-text");
   });
 
@@ -472,6 +478,7 @@ describe("RunChat", () => {
     const running = draw(
       record([], {
         live: true,
+        status: status(),
         now: {
           kind: "step",
           step: stepOf(
@@ -486,7 +493,11 @@ describe("RunChat", () => {
         },
       }),
     );
-    expect(running).toContain('data-chat-folded="true"');
+    // Running, the command is the now line's: its words and code, not a row.
+    expect(running).not.toContain('data-chat-kind="step:command"');
+    expect(running).toContain(
+      '<span class="run-now-verb" data-run-shimmer="">Write the status route',
+    );
   });
 
   // The call running now is the card's "this, now": a light sweeps across
@@ -495,6 +506,7 @@ describe("RunChat", () => {
     const running = draw(
       record([step(command("w1", "ls"))], {
         live: true,
+        status: status(),
         now: {
           kind: "step",
           step: stepOf(
