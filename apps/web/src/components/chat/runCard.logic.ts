@@ -353,48 +353,35 @@ function stepSignatures(step: WorkStep): ReadonlyArray<string> {
   return [...said(step.script ?? step.code), ...said(step.words)];
 }
 
-/** Whether a line of the record failed, as its own record says. */
-function itemFailed(item: RecordItem): boolean {
-  switch (item.kind) {
-    case "step":
-      return item.step.state === "failed";
-    case "operation":
-      return item.operation.phase === "failed";
-    default:
-      return false;
-  }
-}
-
 /**
  * The failures a later step undid (K9): a command or a call that failed and
  * passed when the Mate ran it again — the same command, or the same words —
  * and a platform operation that failed and then went through on the same
  * service. Red always means still broken, so these turn quiet; the rest stay
- * red.
+ * red. One walk back from the run's end, whatever its length: a two-hour
+ * run's card redraws on every word of a thought.
  */
 export function recoveredFailures(items: ReadonlyArray<RecordItem>): ReadonlySet<string> {
-  const recovered = new Set<string>();
-  items.forEach((item, index) => {
-    if (!itemFailed(item)) return;
-    const later = items.slice(index + 1);
-    if (item.kind === "step") {
-      const signatures = new Set(stepSignatures(item.step));
-      const undone = later.some(
-        (next) =>
-          next.kind === "step" &&
-          next.step.state === "done" &&
-          stepSignatures(next.step).some((signature) => signatures.has(signature)),
-      );
-      if (undone) recovered.add(item.key);
-      return;
+  const undone = new Set<string>();
+  // Walking back from the end: what passed later, by what it did.
+  const passedLater = new Set<string>();
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index]!;
+    if (item.kind !== "step") continue;
+    const signatures = stepSignatures(item.step);
+    if (item.step.state === "failed") {
+      if (signatures.some((signature) => passedLater.has(signature))) undone.add(item.key);
+    } else if (item.step.state === "done") {
+      for (const signature of signatures) passedLater.add(signature);
     }
-    if (item.kind === "operation") {
-      const operations = [
-        item.operation,
-        ...later.flatMap((next) => (next.kind === "operation" ? [next.operation] : [])),
-      ];
-      if (!unrecoveredFailures(operations).includes(item.operation)) recovered.add(item.key);
-    }
-  });
-  return recovered;
+  }
+  // An operation as the platform's own reading has it: failed, then done on
+  // the same target.
+  const operations = items.flatMap((item) => (item.kind === "operation" ? [item] : []));
+  const standing = new Set(unrecoveredFailures(operations.map((item) => item.operation)));
+  for (const item of operations) {
+    if (item.operation.phase === "failed" && !standing.has(item.operation)) undone.add(item.key);
+  }
+  // In the run's order.
+  return new Set(items.flatMap((item) => (undone.has(item.key) ? [item.key] : [])));
 }

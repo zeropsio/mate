@@ -61,6 +61,7 @@ import {
   use,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -2414,9 +2415,11 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // behind "Show work", which opens it under the line (K12).
   const later = row.status !== null && !row.live && fold !== "watched";
   const folded = later && fold === "folded";
+  // What a later step undid, read once per record, not once per redraw.
+  const undone = useMemo(() => recoveredFailures(row.items), [row.items]);
   const lines = chatLines(
     folded ? row.items.filter((item) => !foldsOnReturn(item)) : row.items,
-    row.items,
+    undone,
   );
   const feedRef = useRef<HTMLDivElement>(null);
   const fromHeightRef = useRef<number | null>(null);
@@ -2486,13 +2489,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
 
 /**
  * A record's items as the chat's lines, from the first thing the Mate did;
- * `all` the whole record, which says what a later step undid.
+ * `undone` the failures a later step undid (`recoveredFailures`).
  */
-function chatLines(
-  items: ReadonlyArray<RecordItem>,
-  all: ReadonlyArray<RecordItem> = items,
-): ChatLine[] {
-  const undone = recoveredFailures(all);
+function chatLines(items: ReadonlyArray<RecordItem>, undone: ReadonlySet<string>): ChatLine[] {
   const lines = items.flatMap((item) => {
     const line = itemLine(item, undone);
     return line === null ? [] : [line];

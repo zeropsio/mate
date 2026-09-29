@@ -577,3 +577,31 @@ describe("recoveredFailures", () => {
     expect([...recoveredFailures(items)]).toEqual(recovered);
   });
 });
+
+describe("recoveredFailures on a long run", () => {
+  // A two-hour run holds thousands of lines, and its card redraws on every
+  // word of a thought: telling what was undone must not scan the run once
+  // per failure.
+  it("tells thousands of failures apart in one pass", () => {
+    const items: RecordItem[] = Array.from({ length: 6000 }, (_, index) => ({
+      kind: "step",
+      key: `step:w${index}`,
+      at: at(1),
+      step: stepOf(
+        call(`w${index}`, {
+          label: "Command run",
+          itemType: "command_execution",
+          command: `pnpm test --shard ${index % 3000}`,
+          toolLifecycleStatus: index < 3000 ? "failed" : "completed",
+        }),
+        undefined,
+        false,
+      ),
+    }));
+    const started = performance.now();
+    const undone = recoveredFailures(items);
+    const took = performance.now() - started;
+    expect(undone.size).toBe(3000);
+    expect(took).toBeLessThan(250);
+  });
+});
