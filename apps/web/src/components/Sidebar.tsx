@@ -216,8 +216,7 @@ import {
   useSidebar,
 } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
-import { useAddMateIntent } from "../zerops/addMateIntent";
-import { newMateView } from "../zerops/newMate";
+import { newMateView, useAddMate } from "../zerops/newMate";
 import { useMateComingOf, useMateRowActivity } from "../zerops/useMenuMateReadings";
 import { useAskMateToFix } from "../zerops/fixRequest";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
@@ -2266,9 +2265,9 @@ export default function Sidebar() {
     void router.navigate({ to: "/zerops/new" });
   }, [isMobile, router, setOpenMobile]);
 
-  // The left menu's add button asks for a Mate on a named project; the dialog
-  // that answers lives on the projects screen, so the ask goes with it.
-  const requestAddMate = useAddMateIntent((state) => state.request);
+  // The left menu's add button asks for a Mate on a named project: the New Mate
+  // dialog opens over whatever is on screen (`ZeropsNewMateHost`).
+  const addMate = useAddMate();
   // A Mate still coming up opens its own view, where it comes up.
   const openComingMate = useCallback(
     (projectId: string) => {
@@ -4140,7 +4139,7 @@ export default function Sidebar() {
                 if (affordance.kind === "go-to-projects") navigateToZeropsProjects();
                 else refreshZeropsCandidates();
               }}
-              onAddMate={requestAddMate}
+              onAddMate={addMate}
               getComing={zeropsComing}
               onOpenComing={openComingMate}
               onBrowseProjects={navigateToZeropsProjects}

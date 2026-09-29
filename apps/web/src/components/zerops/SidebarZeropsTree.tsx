@@ -345,6 +345,11 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly candidates: ReadonlyArray<T>;
   readonly onSelect: (candidate: T) => void;
   /**
+   * Asks for a Mate in a project: the New Mate dialog opens over whatever is on screen
+   * (`useAddMate`). Absent — a harness — the heading's + does nothing.
+   */
+  readonly onAddMate?: ((groupId: string) => void) | undefined;
+  /**
    * A Mate in its first minutes (`mateComing`): still coming up, or never came. Its row says so
    * in the projects page's words, asleep, with no menu, and a press opens its own view. Absent,
    * a listed Mate is up as far as the tree knows.
@@ -356,8 +361,6 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    */
   readonly onOpenComing?: ((projectId: string) => void) | undefined;
   /** Opens the projects screen — the way out of a menu whose projects have no Mate. */
-  /** Records which project an add was asked for, before navigating to answer it. */
-  readonly onAddMate?: ((groupId: string) => void) | undefined;
   readonly onBrowseProjects: () => void;
   /**
    * "Ask <your Mate> to fix it" (S6): writes the problem into the Mate's
@@ -1661,7 +1664,7 @@ export function ProjectHeader({
   readonly name?: string;
   readonly muted?: boolean;
   readonly missing?: ReadonlyArray<MissingEnvironmentRow>;
-  /** Records which project the add was asked for; absent in the harness. */
+  /** Asks for the New Mate dialog over the view on screen; absent in the harness. */
   readonly onAddMate?: ((groupId: string) => void) | undefined;
   readonly onBrowseProjects: () => void;
   /** Absent for the ungrouped heading, which is not a group and has no page. */
@@ -1687,11 +1690,10 @@ export function ProjectHeader({
 }) {
   const placeholder = group !== undefined && groupNameIsPlaceholder(group);
   const title = group?.name ?? name ?? "";
+  // The New Mate dialog opens over whatever is on screen: the person stays where they were (the
+  // owner, 2026-09-29, of a + that took them to the projects screen).
   const addMate = () => {
-    // The dialog belongs to the projects screen, so the ask travels with the
-    // navigation rather than being dropped.
     if (group !== undefined) onAddMate?.(group.groupId);
-    onBrowseProjects();
   };
   return (
     // The heading is its band: 32 px tall, 10 px from the window and 10 from

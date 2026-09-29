@@ -185,7 +185,8 @@ function SignedInRootRouteView() {
             <Outlet />
           </RouteGateView>
         </AppSidebarLayout>
-        {/* What a new Mate needs above every view: its hand-over to its conversation. */}
+        {/* The New Mate dialog over whatever is on screen — every "Add a Mate" asks here — and a
+            new Mate's hand-over to its conversation. */}
         <ZeropsNewMateHost />
       </CommandPalette>
     </ZeropsReviewProvider>

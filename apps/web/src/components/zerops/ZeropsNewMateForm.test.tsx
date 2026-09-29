@@ -315,4 +315,37 @@ describe("the New Mate dialog", () => {
     });
     expect(made.map((choice) => choice.botName)).toEqual(["Otto"]);
   });
+
+  // After Add the dialog stays until the platform has taken the Mate's project — a second, and the
+  // person lands on the new Mate — so it says it is adding, takes no second press and cannot be
+  // closed half way; a refusal before that is said beside the button, and Add tries again.
+  it("says it is adding the Mate while the platform takes its project, and takes no second press", () => {
+    const made: EnvironmentCreationChoice[] = [];
+    const tree = mount(form({ adding: true, onCreate: (choice) => made.push(choice) }));
+    expect(lineText(tree)).toBe("Adding Otto…");
+    const submit = host(tree, (node) => node.type === "button" && node.props.type === "submit");
+    expect(submit.props).toMatchObject({ disabled: true, "aria-busy": true });
+    const cancel = host(
+      tree,
+      (node) =>
+        node.type === "button" && node.props.type === "button" && node.props.children === "Cancel",
+    );
+    expect(cancel.props.disabled).toBe(true);
+    press(tree);
+    expect(made).toEqual([]);
+  });
+
+  it("says why the platform refused beside the button, in the failed ink, and Add tries again", () => {
+    const made: EnvironmentCreationChoice[] = [];
+    const tree = mount(
+      form({
+        addError: "Your organization has no room for a project.",
+        onCreate: (c) => made.push(c),
+      }),
+    );
+    expect(lineText(tree)).toBe("Your organization has no room for a project.");
+    expect(line(tree).props.className).toContain("text-status-failed-text");
+    press(tree);
+    expect(made.map((choice) => choice.botName)).toEqual(["Otto"]);
+  });
 });

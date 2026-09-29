@@ -1772,6 +1772,31 @@ describe("a project collapsed to its heading", () => {
     expect(at("sidebar-production-chip")).toBeGreaterThan(at("sidebar-project-more"));
   });
 
+  // The owner, 2026-09-29: the + "leaves the conversation". It asks for the New Mate dialog over
+  // whatever is on screen, and goes nowhere.
+  it.each(["sidebar-project-add-mate"])(
+    "asks for a Mate in place from its %s, going nowhere",
+    (verb) => {
+      const asked: Array<string> = [];
+      let browsed = 0;
+      const tree = mount(
+        <ProjectHeader
+          group={buildZeropsGroupTree([CRM_DEV], { order: "name" }).groups[0]!.group}
+          onAddMate={(groupId: string) => {
+            asked.push(groupId);
+          }}
+          onBrowseProjects={() => {
+            browsed += 1;
+          }}
+          onToggle={() => {}}
+        />,
+      );
+      press(tree, verb);
+      expect(asked).toEqual(["aaa"]);
+      expect(browsed).toBe(0);
+    },
+  );
+
   it("wears one chevron that turns, the heading saying whether it is folded", () => {
     const heading = (collapsed: boolean) =>
       renderToStaticMarkup(

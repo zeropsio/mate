@@ -13,11 +13,24 @@ const QUINN = {
 } as const;
 
 beforeEach(() => {
-  useNewMate.setState({ creations: {}, handOver: null });
+  useNewMate.setState({ asked: null, creations: {}, handOver: null });
 });
 
-describe("where a new Mate lives until it is up", () => {
-  it("is its own view, by the project the platform made for it", () => {
+// The owner, 2026-09-29: the + "leaves the conversation". It asks, and the dialog answers over
+// whatever is on screen; nothing navigates.
+describe("asking for a Mate", () => {
+  it("opens one ask for the project, and a second ask replaces it", () => {
+    useNewMate.getState().ask("g-acme");
+    expect(useNewMate.getState().asked?.groupId).toBe("g-acme");
+    useNewMate.getState().ask("g-beta");
+    expect(useNewMate.getState().asked?.groupId).toBe("g-beta");
+    useNewMate.getState().dismiss();
+    expect(useNewMate.getState().asked).toBeNull();
+  });
+});
+
+describe("where Add lands", () => {
+  it("is the new Mate's own view, by the project the platform made for it", () => {
     expect(newMateView("p-quinn")).toEqual({
       to: "/mate/$projectId",
       params: { projectId: "p-quinn" },
@@ -25,9 +38,25 @@ describe("where a new Mate lives until it is up", () => {
   });
 });
 
+// A creation the platform took is this tab's to speak for until it is through: a step failing
+// after that is said in its row and its view, never lost with the dialog.
 describe("the creations this tab made", () => {
+  it.each([
+    { case: "through", failed: undefined },
+    { case: "stopped on a step", failed: "The agent container could not be imported" },
+  ])("keeps one that ran $case", ({ failed }) => {
+    useNewMate.getState().created(QUINN);
+    useNewMate.getState().settled("p-quinn", failed);
+    expect(useNewMate.getState().creations["p-quinn"]).toEqual({ ...QUINN, failed });
+  });
+
+  it("says nothing of a project it did not make", () => {
+    useNewMate.getState().settled("p-else", "gone");
+    expect(useNewMate.getState().creations).toEqual({});
+  });
+
   it("forgets one whose project is gone", () => {
-    useNewMate.setState({ creations: { "p-quinn": QUINN } });
+    useNewMate.getState().created(QUINN);
     useNewMate.getState().forget("p-quinn");
     expect(useNewMate.getState().creations).toEqual({});
   });
