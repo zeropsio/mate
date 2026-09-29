@@ -8,9 +8,11 @@
  *
  * Served by the dev server at `/design-switch.html` (`?theme=dark`,
  * `?latency=<ms>` for the first open's wait, `?stream=<ms>` for how often the
- * live Mate's answer grows). `window.__switchHarness.switchTo("juno")`
- * switches from a script, so a per-frame sampler can watch a switch it
- * started itself.
+ * live Mate's answer grows, `?line=1` to head the pane with the conversation
+ * line — Fen and a crew of three, each chat one of the four — so a press on
+ * a face swaps the conversation as the line moves). `window.__switchHarness
+ * .switchTo("juno")` switches from a script, so a per-frame sampler can watch
+ * a switch it started itself.
  *
  * Fixtures only. Nothing here ships — `design-switch.html` is not
  * `index.html`, and no route imports this module.
@@ -26,10 +28,13 @@ import {
 } from "react";
 import { createRoot } from "react-dom/client";
 import type { LegendListRef } from "@legendapp/list/react";
-import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
+import { EnvironmentId, MessageId, ThreadId, TurnId } from "@t3tools/contracts";
+import type { MateTintId } from "@t3tools/shared/brand";
 import type { ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
 import * as Stream from "effect/Stream";
 
+import { ConversationStripView } from "~/components/chat/ConversationStrip";
+import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
 import { MessagesTimeline } from "~/components/chat/MessagesTimeline";
 import { TimelineSwitch } from "~/components/chat/TimelineSwitch";
 import { readTimelinePosition } from "~/components/chat/timelineScrollAnchoring";
@@ -41,6 +46,8 @@ import "../index.css";
 
 const params = new URLSearchParams(location.search);
 const LATENCY_MS = Number(params.get("latency") ?? 320);
+/** Head the pane with the conversation line: Fen's own chat, then its crew's. */
+const LINE = params.get("line") === "1";
 const ENVIRONMENT = EnvironmentId.make("environment-harness");
 const BASE = Date.parse("2026-09-29T07:00:00.000Z");
 const at = (minute: number, second = 0) =>
@@ -405,8 +412,64 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
   );
 }
 
+/** Fen's crew on the line: each crewmate's chat one of the harness's conversations. */
+const LINE_CREW: ReadonlyArray<{
+  readonly key: string;
+  readonly name: string;
+  readonly tint: MateTintId;
+  readonly lead: boolean;
+}> = [
+  { key: "nova", name: "Lead", tint: "violet", lead: true },
+  { key: "juno", name: "World Server", tint: "sky", lead: false },
+  { key: "mira", name: "Game Rules", tint: "rose", lead: false },
+];
+
+/** The line over the pane, as `ChatHeader` draws it for a Mate with a crew. */
+function LineHeader({
+  current,
+  onOpen,
+}: {
+  readonly current: string;
+  readonly onOpen: (key: string) => void;
+}) {
+  const crew = LINE_CREW.map((seat): LineCrewmate => ({
+    handle: seat.key,
+    name: seat.name,
+    tint: seat.tint,
+    face: seat.key === "mira" ? "working" : "idle",
+    lead: seat.lead,
+    open: seat.key === current,
+    known: true,
+    threadId: ThreadId.make(seat.key),
+    role: seat.lead ? ", Fen's lead" : ", one of Fen's crew",
+    job: null,
+    status: null,
+  }));
+  return (
+    <div className="flex min-w-0 flex-1 items-center">
+      <ConversationStripView
+        chats={null}
+        crew={crew}
+        mate={{
+          name: "Fen",
+          tint: "amber",
+          face: "idle",
+          open: current === "fen",
+          threadId: ThreadId.make("fen"),
+          tooltip: current === "fen" ? null : "Fen's own chat",
+        }}
+        onCloseChat={() => undefined}
+        onOpen={(threadId) => onOpen(threadId)}
+        onRename={null}
+        renameField={null}
+        renderCrewmateMenu={() => null}
+      />
+    </div>
+  );
+}
+
 function Harness() {
-  const [current, setCurrent] = useState(THREADS[0]!.key);
+  const [current, setCurrent] = useState(LINE ? "fen" : THREADS[0]!.key);
   useEffect(() => {
     (window as unknown as { __switchHarness: unknown }).__switchHarness = {
       switchTo: (key: string) => setCurrent(key),
@@ -441,7 +504,7 @@ function Harness() {
           className="flex shrink-0 items-center border-border border-b px-5 font-medium text-sm"
           style={{ height: 52 }}
         >
-          {thread.name}
+          {LINE ? <LineHeader current={current} onOpen={setCurrent} /> : thread.name}
         </header>
         <Pane threadKey={current} />
       </main>
