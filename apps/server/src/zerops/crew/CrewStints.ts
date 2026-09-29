@@ -15,8 +15,8 @@
  *   report, which the new stint's first session starts from (probe 22 failed,
  *   so every changed prompt reaches a crewmate this way, PRD §5.6).
  *
- * A stint's `reason` is the seam line its conversation opens with ("Job
- * updated to v5 — applies from here"), which the chat shows verbatim above
+ * A stint's `reason` is the seam line its conversation opens with ("Its job
+ * changed"), which the chat shows verbatim above
  * the stint's first card. A rotation no turn follows (a press between turns,
  * a fresh save at a turn's end) also writes it into the new conversation at
  * once, which is empty until its first card.

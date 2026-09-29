@@ -637,8 +637,16 @@ describe("taskTransition", () => {
 });
 
 describe("attemptEndingOf", () => {
-  const paused = (reason: "person" | "budget" | "time" | "usage" | "refused") =>
-    ({ state: "paused", reason }) as const;
+  const limits = { budgetUsd: 20, timeLimitHours: 8, stopAtUsagePercent: 80 } as const;
+  const noLimits = {
+    budgetUsd: "unlimited",
+    timeLimitHours: "unlimited",
+    stopAtUsagePercent: null,
+  } as const;
+  const paused = (
+    reason: "person" | "budget" | "time" | "usage" | "refused",
+    set: typeof limits | typeof noLimits = limits,
+  ) => ({ state: "paused", reason, limits: set }) as const;
   it.each([
     ["completed", undefined, undefined, undefined, "no-report", "its turn ended without a report"],
     [
@@ -647,24 +655,34 @@ describe("attemptEndingOf", () => {
       undefined,
       paused("budget"),
       "budget",
-      "its session reached the run's budget",
+      "when the $20 ran out",
     ],
-    ["interrupted", undefined, undefined, paused("person"), "run-paused", "you paused the run"],
+    [
+      "completed",
+      "budget_exhausted",
+      undefined,
+      undefined,
+      "budget",
+      "when the money it may spend ran out",
+    ],
+    ["interrupted", undefined, undefined, paused("person"), "run-paused", "when you stopped it"],
+    ["interrupted", undefined, undefined, paused("budget"), "run-paused", "when the $20 ran out"],
     [
       "interrupted",
       undefined,
       undefined,
-      paused("budget"),
+      { state: "paused", reason: "budget", limits: { ...limits, budgetUsd: 12.5 } },
       "run-paused",
-      "the run reached its budget",
+      "when the $12.50 ran out",
     ],
+    ["interrupted", undefined, undefined, paused("time"), "run-paused", "when the 8 hours ran out"],
     [
       "interrupted",
       undefined,
       undefined,
-      paused("time"),
+      { state: "paused", reason: "time", limits: { ...limits, timeLimitHours: 1 } },
       "run-paused",
-      "the run reached its time limit",
+      "when the 1 hour ran out",
     ],
     [
       "interrupted",
@@ -672,7 +690,15 @@ describe("attemptEndingOf", () => {
       undefined,
       paused("usage"),
       "run-paused",
-      "the usage window reached the run's stop",
+      "when it neared 80 % of your Claude plan's limit",
+    ],
+    [
+      "interrupted",
+      undefined,
+      undefined,
+      paused("usage", noLimits),
+      "run-paused",
+      "when it neared your Claude plan's limit",
     ],
     [
       "interrupted",
@@ -680,21 +706,21 @@ describe("attemptEndingOf", () => {
       undefined,
       paused("refused"),
       "run-paused",
-      "the run's turn was refused",
+      "when its next turn was refused",
     ],
     [
       "cancelled",
       undefined,
       undefined,
-      { state: "stopped", reason: null },
+      { state: "stopped", reason: null, limits },
       "run-stopped",
-      "the run stopped",
+      "when you stopped it",
     ],
     [
       "interrupted",
       undefined,
       undefined,
-      { state: "running", reason: null },
+      { state: "running", reason: null, limits },
       "interrupted",
       "its turn was interrupted",
     ],
@@ -702,7 +728,7 @@ describe("attemptEndingOf", () => {
     ["failed", undefined, "Overloaded", undefined, "failed", "Overloaded"],
     ["failed", undefined, undefined, undefined, "failed", "its turn failed"],
   ] as const)(
-    "a %s turn (%s, %s) in a %o run ends its attempt as %s",
+    "a %s turn (%s, %s) in a %o run ends its attempt as %s, in the person's words",
     (state, terminalReason, errorMessage, run, ending, detail) => {
       expect(attemptEndingOf({ state, terminalReason, errorMessage, run })).toEqual({
         ending,

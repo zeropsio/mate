@@ -67,8 +67,8 @@ describe("CrewEngine endings", () => {
             {
               stints: [
                 ["retired", null],
-                ["retired", "New conversation — the last one outgrew its context"],
-                ["open", "New conversation — the last one outgrew its context"],
+                ["retired", "A fresh conversation: the last one grew too long"],
+                ["open", "A fresh conversation: the last one grew too long"],
               ],
               reason: "its conversation outgrew its context too often",
             },
@@ -125,7 +125,7 @@ describe("CrewEngine endings", () => {
         );
         assert.deepStrictEqual(carried?.message.text.split("\n").slice(1, 3), [
           "#1 Change a.txt · continues",
-          "New conversation — the last one outgrew its context",
+          "A fresh conversation: the last one grew too long",
         ]);
       }),
     ),
@@ -159,8 +159,8 @@ describe("CrewEngine endings", () => {
           [
             [
               null,
-              "New conversation — the last one outgrew its context",
-              "New conversation — the last one could not be resumed",
+              "A fresh conversation: the last one grew too long",
+              "A fresh conversation: the last one couldn't be resumed",
             ],
             "its conversation outgrew its context too often",
           ],

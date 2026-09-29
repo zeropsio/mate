@@ -39,7 +39,14 @@ import { grantAfterTurn, moveClaim, releaseAfterTurn, settleClaim } from "./crew
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
 import { crewStateRef } from "./CrewStateRef.ts";
 import { attemptRef, type LaneSpec } from "./CrewWorkspace.ts";
-import { followCrewWork, RUN_PAUSED, recordRunSpend, recordUsage, turnCost } from "./crewRuns.ts";
+import {
+  followCrewWork,
+  RUN_PAUSED,
+  recordRunSpend,
+  recordUsage,
+  runOptionsOf,
+  turnCost,
+} from "./crewRuns.ts";
 import { rotate, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
 import { continueAfterSave, openTaskOf, parkTask, requeueTask, stepTask } from "./crewTasks.ts";
@@ -299,7 +306,11 @@ const endAttempt = (
       run:
         applied.run === undefined
           ? undefined
-          : { state: applied.run.state, reason: applied.run.reason as CrewRunReason | null },
+          : {
+              state: applied.run.state,
+              reason: applied.run.reason as CrewRunReason | null,
+              limits: runOptionsOf(applied.run),
+            },
     });
     yield* asRefusal(
       core.store.putAttempt({

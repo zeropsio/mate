@@ -326,7 +326,7 @@ describe("crew snapshot", () => {
     [
       "long enough ago",
       UNATTENDED_MS,
-      [["stalled:t-1", "stalled", "the run reached its budget", "2026-09-27T09:55:00.000Z"]],
+      [["stalled:t-1", "stalled", "when the $20 ran out", "2026-09-27T09:55:00.000Z"]],
     ],
   ] as const)(
     "a working task with no turn running, stopped %s, waits on you",
@@ -336,7 +336,7 @@ describe("crew snapshot", () => {
         base({
           nowMs: Date.parse(since) + idleMs,
           tasks: [task("t-1", 1, { state: "working", attempt: 1 }), task("t-2", 2)],
-          midway: new Map([["t-1", { since, why: "the run reached its budget" }]]),
+          midway: new Map([["t-1", { since, why: "when the $20 ran out" }]]),
         }),
       );
       expect(snapshot.attention.map((row) => [row.id, row.kind, row.text, row.at])).toEqual(rows);
