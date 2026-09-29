@@ -50,41 +50,40 @@ export function ZeropsReviewProvider({ children }: { readonly children: ReactNod
     setOpen(false);
   }, []);
 
+  const titleId = useId();
+  // The dialog stays mounted and only opens and closes: one that mounts already open is shown
+  // without its entrance.
   return (
     <ReviewContext.Provider value={openReview}>
       {children}
-      {shown === null ? null : (
-        <ReviewHost
-          close={close}
-          onClosed={() => {
-            setShown(null);
-          }}
-          onOpenChange={setOpen}
-          open={open}
-          replace={replace}
-          shown={shown}
-        />
-      )}
+      <ZeropsReviewDialog
+        from={shown?.from ?? null}
+        labelledBy={titleId}
+        onClosed={() => {
+          setShown(null);
+        }}
+        onOpenChange={setOpen}
+        open={open && shown !== null}
+      >
+        {shown === null ? null : (
+          <ReviewBody close={close} replace={replace} shown={shown} titleId={titleId} />
+        )}
+      </ZeropsReviewDialog>
     </ReviewContext.Provider>
   );
 }
 
-function ReviewHost({
+function ReviewBody({
   shown,
-  open,
-  onOpenChange,
-  onClosed,
+  titleId,
   close,
   replace,
 }: {
   readonly shown: ShownReview;
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-  readonly onClosed: () => void;
+  readonly titleId: string;
   readonly close: () => void;
   readonly replace: (target: ReviewTarget) => void;
 }) {
-  const titleId = useId();
   const { target } = shown;
   const body = (() => {
     switch (target.kind) {
@@ -105,20 +104,12 @@ function ReviewHost({
     }
   })();
   return (
-    <ZeropsReviewDialog
-      from={shown.from}
-      labelledBy={titleId}
-      onClosed={onClosed}
-      onOpenChange={onOpenChange}
-      open={open}
+    // Keyed by what it shows, so a review handed over starts from its own state.
+    <div
+      className={shown.swaps > 0 ? "rv-swap" : "contents"}
+      key={`${reviewTargetKey(target)}:${String(shown.swaps)}`}
     >
-      {/* Keyed by what it shows, so a review handed over starts from its own state. */}
-      <div
-        className={shown.swaps > 0 ? "rv-swap" : "contents"}
-        key={`${reviewTargetKey(target)}:${String(shown.swaps)}`}
-      >
-        {body}
-      </div>
-    </ZeropsReviewDialog>
+      {body}
+    </div>
   );
 }

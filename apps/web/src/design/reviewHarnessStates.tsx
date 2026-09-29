@@ -461,7 +461,6 @@ export function ReviewStage({
 export function ReviewDialogTry() {
   const [from, setFrom] = useState<HTMLElement | null>(null);
   const [open, setOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
   return (
     <div className="flex gap-3 px-2">
       <button
@@ -469,46 +468,41 @@ export function ReviewDialogTry() {
         data-review-harness-open="ready"
         onClick={(event) => {
           setFrom(event.currentTarget);
-          setMounted(true);
           setOpen(true);
         }}
         type="button"
       >
         Open the review as a dialog
       </button>
-      {mounted ? (
-        <ZeropsReviewDialog
-          from={from}
-          labelledBy="review-try-title"
-          onClosed={() => {
-            setMounted(false);
+      <ZeropsReviewDialog
+        from={from}
+        labelledBy="review-try-title"
+        onClosed={noop}
+        onOpenChange={setOpen}
+        open={open}
+      >
+        <ChangeReviewView
+          downstream={{ production: true, stage: true }}
+          live="v0.1.0"
+          mate={NOVA}
+          now={NOW}
+          onAskChanges={noop}
+          onClose={() => {
+            setOpen(false);
           }}
-          onOpenChange={setOpen}
-          open={open}
-        >
-          <ChangeReviewView
-            downstream={{ production: true, stage: true }}
-            live="v0.1.0"
-            mate={NOVA}
-            now={NOW}
-            onAskChanges={noop}
-            onClose={() => {
-              setOpen(false);
-            }}
-            onFix={noop}
-            onMerge={noop}
-            onOpenRun={noop}
-            onReviewRelease={noop}
-            press={{ kind: "idle" }}
-            pull={pull()}
-            readout={READ}
-            route={ROUTE}
-            run={{ words: WORDS, reading: false }}
-            titleId="review-try-title"
-            waitingForProduction={0}
-          />
-        </ZeropsReviewDialog>
-      ) : null}
+          onFix={noop}
+          onMerge={noop}
+          onOpenRun={noop}
+          onReviewRelease={noop}
+          press={IDLE}
+          pull={pull()}
+          readout={READ}
+          route={ROUTE}
+          run={RUN}
+          titleId="review-try-title"
+          waitingForProduction={0}
+        />
+      </ZeropsReviewDialog>
     </div>
   );
 }
