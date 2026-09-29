@@ -2820,9 +2820,19 @@ code {
     animation: mate-face-pop 620ms var(--ease-out-strong) 1;
   }
 
-  /* A Mate's row under the pointer: its face looks up at you. */
+  /* A Mate's row under the pointer: its face looks up at you. Pressed, the
+     face gives a little under the finger and springs back as it lets go. */
   [data-zerops-surface="sidebar-mate"]:hover [data-mate-face-look] {
     translate: 0 -5px;
+  }
+
+  [data-zerops-surface="sidebar-mate"] [data-mate-face-hop] {
+    transition: scale 220ms var(--ease-spring);
+  }
+
+  [data-zerops-surface="sidebar-mate"]:active [data-mate-face-hop] {
+    scale: 0.92;
+    transition-duration: 90ms;
   }
 }
 
