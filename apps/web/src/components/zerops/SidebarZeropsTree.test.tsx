@@ -1560,6 +1560,51 @@ describe("the project's flow under it", () => {
   });
 });
 
+describe("New project at the list's end (D11)", () => {
+  const row = (html: string) =>
+    /<button[^>]*data-zerops-surface="sidebar-new-project"[^>]*>(.*?)<\/button>/u.exec(html);
+
+  it("ends the list with New project: the + in the face column, the words on the text edge", () => {
+    const html = render([CRM_DEV, LINKS_MATE], { onNewProject: () => {} });
+    const found = row(html);
+    expect(found).not.toBeNull();
+    // After every project, the list's last row.
+    expect(html.indexOf("sidebar-new-project")).toBeGreaterThan(html.lastIndexOf("<section"));
+    const classes = /class="([^"]*)"/u.exec(found![0])![1]!.split(" ");
+    expect(classes).toEqual(expect.arrayContaining(["h-7", "ps-1.75", "gap-3", "rounded-lg"]));
+    expect(found![1]).toContain("lucide-plus");
+    expect(found![1]).toMatch(/<span class="[^"]*\bw-7\b/u);
+    expect(found![1]).toContain(">New project</span>");
+  });
+
+  it("offers New project alone to an account with no project yet", () => {
+    const html = render([], { onNewProject: () => {} });
+    expect(row(html)).not.toBeNull();
+    expect(html).not.toContain("sidebar-environments-empty");
+  });
+
+  it("starts a new project when pressed", () => {
+    let started = 0;
+    const mounted = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV]}
+        complete
+        onBrowseProjects={() => {}}
+        onNewProject={() => {
+          started += 1;
+        }}
+        onSelect={() => {}}
+      />,
+    );
+    press(mounted, "sidebar-new-project");
+    expect(started).toBe(1);
+  });
+
+  it("draws no New project where nobody said how to make one", () => {
+    expect(row(render([CRM_DEV]))).toBeNull();
+  });
+});
+
 describe("a project collapsed to its heading", () => {
   const tree = (props: Record<string, unknown> = {}) => (
     <SidebarZeropsTree

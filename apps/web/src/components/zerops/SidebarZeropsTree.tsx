@@ -377,6 +377,12 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   /** Records which project an add was asked for, before navigating to answer it. */
   readonly onAddMate?: ((groupId: string) => void) | undefined;
   readonly onBrowseProjects: () => void;
+  /**
+   * Starts a new project: the list's last row (D11), where projects are, so
+   * nothing in the logo row reads as the jump box's key's owner. Absent, the
+   * list ends on its last project.
+   */
+  readonly onNewProject?: (() => void) | undefined;
   readonly activeProjectId?: string | null;
   /**
    * What this agent is doing right now.
@@ -536,6 +542,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   onSelect,
   onAddMate,
   onBrowseProjects,
+  onNewProject,
   onOpenGroup,
   activeProjectId,
   getActivity,
@@ -762,12 +769,14 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     return <ListingNotice className={className} notice={notice} onAct={onNoticeAct} />;
   }
 
-  // No project at all: nothing to list and nothing to say — the header's
-  // "+ New project" is the one affordance, and the projects screen already
-  // makes the invitation. A second "New project" here would be the same verb
-  // three times on one screen.
+  // No project at all: nothing to list, and nothing to say but the one thing
+  // to do — the list's own last row, alone.
   if (nothing === "no-projects") {
-    return null;
+    return onNewProject === undefined ? null : (
+      <nav aria-label="Mates" className={cn("relative flex flex-col pt-1.5", className)}>
+        <NewProjectRow onNewProject={onNewProject} />
+      </nav>
+    );
   }
 
   // Projects, but none with a Mate: one quiet line on the menu's own left
@@ -1477,6 +1486,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       {notice === null ? null : (
         <ListingNotice className="mt-6" notice={notice} onAct={onNoticeAct} />
       )}
+      {onNewProject === undefined ? null : <NewProjectRow onNewProject={onNewProject} />}
       {reorder.overlay}
       {renderPeek === undefined ? null : (
         <MatePeekHost
@@ -1505,6 +1515,27 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         </MatePeekHost>
       )}
     </nav>
+  );
+}
+
+/**
+ * *New project*, the list's last row (D11): a + in the faces' 28 px column and
+ * the words on the menu's text edge, 13 px and muted until pointed at — a row
+ * like the others, 4 px under the last project.
+ */
+function NewProjectRow({ onNewProject }: { readonly onNewProject: () => void }) {
+  return (
+    <button
+      className="mt-1 flex h-7 w-full min-w-0 cursor-pointer items-center gap-3 rounded-lg ps-1.75 pe-2 text-left text-line text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      data-zerops-surface="sidebar-new-project"
+      onClick={onNewProject}
+      type="button"
+    >
+      <span className="flex w-7 shrink-0 justify-center">
+        <PlusIcon aria-hidden="true" className="size-3.5" />
+      </span>
+      <span className="min-w-0 truncate">New project</span>
+    </button>
   );
 }
 

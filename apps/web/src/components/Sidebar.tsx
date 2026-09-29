@@ -4160,6 +4160,7 @@ export default function Sidebar() {
               }}
               onAddMate={requestAddMate}
               onBrowseProjects={navigateToZeropsProjects}
+              onNewProject={navigateToNewZeropsProject}
               getFlow={zeropsSidebarFlowWithAsk}
               getOwner={zeropsMateOwner}
               getMateActions={zeropsMateMenus.getMateActions}

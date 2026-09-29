@@ -841,6 +841,9 @@ function SidebarFrame({
             ],
           })}
           onBrowseProjects={() => {}}
+          onNewProject={() => {
+            peekActions.push("new project");
+          }}
           onSelect={(item) => {
             peekActions.push(`open ${item.project.id}`);
           }}
@@ -959,6 +962,9 @@ function HarnessJumpBox({
     },
     openChange: (change: { readonly key: string }) => {
       jumpActions.push(`page ${change.key}`);
+    },
+    newProject: () => {
+      jumpActions.push("new project");
     },
   };
   return (

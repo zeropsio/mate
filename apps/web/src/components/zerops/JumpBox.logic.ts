@@ -190,6 +190,8 @@ export type JumpItem =
   | { readonly kind: "project"; readonly value: string; readonly project: JumpProject }
   | { readonly kind: "change"; readonly value: string; readonly change: JumpChange }
   | { readonly kind: "stop"; readonly value: string; readonly stop: JumpStop }
+  /** Starting a project: the projects' last item, as it is the menu's last row (D11). */
+  | { readonly kind: "new-project"; readonly value: "new-project" }
   | {
       readonly kind: "text";
       readonly value: string;
@@ -261,6 +263,10 @@ const projectItem = (project: JumpProject): JumpItem => ({
 
 const NOBODY: ReadonlySet<string> = new Set();
 
+/** What the new-project item is found by, and says. */
+export const NEW_PROJECT_LABEL = "New project";
+const NEW_PROJECT_ITEM: JumpItem = { kind: "new-project", value: "new-project" };
+
 /**
  * What the box lists for what was typed, group by group. `readOnly` holds the
  * Mates the viewer may not write to (D6): writing never offers them.
@@ -294,7 +300,7 @@ export function jumpGroups(
   if (text.length === 0) {
     return [
       ...group("mates", "Mates", "", index.mates.slice(0, JUMP_LIMITS.firstMates).map(mateItem)),
-      ...group("projects", "Projects", "", index.projects.map(projectItem)),
+      ...group("projects", "Projects", "", [...index.projects.map(projectItem), NEW_PROJECT_ITEM]),
     ];
   }
   const mates = startsFirst(
@@ -313,7 +319,10 @@ export function jumpGroups(
     .slice(0, JUMP_LIMITS.stops);
   return [
     ...group("mates", "Mates", text, mates.map(mateItem)),
-    ...group("projects", "Projects", text, projects.map(projectItem)),
+    ...group("projects", "Projects", text, [
+      ...projects.map(projectItem),
+      ...(contains(NEW_PROJECT_LABEL, text) ? [NEW_PROJECT_ITEM] : []),
+    ]),
     ...group(
       "changes",
       "Changes",

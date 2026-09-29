@@ -201,6 +201,9 @@ function useJumpPages(): JumpPages {
           },
         });
       },
+      newProject: () => {
+        void router.navigate({ to: "/zerops/new" });
+      },
     }),
     [listing, openMateOf, router],
   );
