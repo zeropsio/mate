@@ -1,7 +1,11 @@
+import { PICTURE_MAX_BYTES, PICTURE_MAX_EDGE } from "@t3tools/shared/composerPictures";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   createComposerImageThumbnail,
+  fitPictureCopy,
+  pictureEncodeSteps,
+  pictureFitSize,
   compressImageForStash,
   compressImageToByteLimit,
   isHeicImageFile,
@@ -504,5 +508,149 @@ describe("HEIC attachment preparation", () => {
     expect(result.ok && result.file).toBe(original);
     expect(result.ok && result.recompressed).toBe(false);
     expect(mocks.heicTo).not.toHaveBeenCalled();
+  });
+});
+
+describe("fitPictureCopy", () => {
+  const MB = 1024 * 1024;
+  /** An encoder whose output weighs so many bytes a pixel per type and quality. */
+  const encoder =
+    (bytesPerPixel: { png: number; jpeg: (quality: number) => number }) =>
+    async (target: { width: number; height: number; type: string; quality?: number }) => ({
+      size: Math.round(
+        target.width *
+          target.height *
+          (target.type === "image/png" ? bytesPerPixel.png : bytesPerPixel.jpeg(target.quality!)),
+      ),
+      target,
+    });
+  const screenshot = encoder({ png: 1.3, jpeg: (quality) => quality });
+  const noisy = encoder({ png: 2, jpeg: (quality) => quality });
+  const huge = encoder({ png: 40, jpeg: () => 20 });
+  const full = (width: number, height: number) => ({ x: 0, y: 0, w: width, h: height });
+
+  it.each([
+    [
+      "the 3210 × 2118 paste that failed goes as a 2000 px PNG",
+      { type: "image/png", bytes: 4.29 * MB, width: 3210, height: 2118 },
+      full(3210, 2118),
+      0,
+      screenshot,
+      { kind: "fitted", width: 2000, height: 1320, type: "image/png", quality: undefined },
+    ],
+    [
+      "a noisy screenshot too heavy as PNG goes as JPEG",
+      { type: "image/png", bytes: 6 * MB, width: 3210, height: 2118 },
+      full(3210, 2118),
+      0,
+      noisy,
+      { kind: "fitted", width: 2000, height: 1320, type: "image/jpeg", quality: 0.92 },
+    ],
+    [
+      "a cropped region up to 2000 px keeps every pixel",
+      { type: "image/png", bytes: 4.29 * MB, width: 3210, height: 2118 },
+      { x: 700, y: 400, w: 1800, h: 1200 },
+      0,
+      screenshot,
+      { kind: "fitted", width: 1800, height: 1200, type: "image/png", quality: undefined },
+    ],
+    [
+      "a photo stays JPEG, down the quality ladder",
+      { type: "image/jpeg", bytes: 4.5 * MB, width: 4000, height: 3000 },
+      full(4000, 3000),
+      0,
+      encoder({ png: 3, jpeg: (quality) => (quality > 0.8 ? 1.4 : 1.2) }),
+      { kind: "fitted", width: 2000, height: 1500, type: "image/jpeg", quality: 0.78 },
+    ],
+    [
+      "a picture with a mark is drawn again, even when small",
+      { type: "image/png", bytes: 0.9 * MB, width: 1200, height: 800 },
+      full(1200, 800),
+      1,
+      screenshot,
+      { kind: "fitted", width: 1200, height: 800, type: "image/png", quality: undefined },
+    ],
+    [
+      "when nothing fits at full size, a smaller size is tried",
+      { type: "image/png", bytes: 8 * MB, width: 2000, height: 2000 },
+      full(2000, 2000),
+      0,
+      encoder({ png: 3, jpeg: () => 1.5 }),
+      { kind: "fitted", width: 1500, height: 1500, type: "image/jpeg", quality: 0.92 },
+    ],
+  ] as const)("%s", async (_label, source, crop, markCount, encode, expected) => {
+    const copy = await fitPictureCopy({ source, crop, markCount, encode });
+    expect(copy.kind).toBe("fitted");
+    if (copy.kind !== "fitted") return;
+    expect({
+      kind: copy.kind,
+      width: copy.width,
+      height: copy.height,
+      type: copy.type,
+      quality: copy.blob.target.quality,
+    }).toEqual(expected);
+    expect(copy.blob.size).toBeLessThanOrEqual(PICTURE_MAX_BYTES);
+    expect(Math.max(copy.width, copy.height)).toBeLessThanOrEqual(PICTURE_MAX_EDGE);
+  });
+
+  it.each([
+    ["a small PNG as it is", { type: "image/png", bytes: 0.9 * MB, width: 1200, height: 800 }],
+    ["a WebP within the limits", { type: "image/webp", bytes: 1 * MB, width: 2000, height: 900 }],
+  ])("sends %s as pasted", async (_label, source) => {
+    const encode = vi.fn(screenshot);
+    const copy = await fitPictureCopy({
+      source,
+      crop: full(source.width, source.height),
+      markCount: 0,
+      encode,
+    });
+    expect(copy).toEqual({ kind: "as-pasted" });
+    expect(encode).not.toHaveBeenCalled();
+  });
+
+  it("says when nothing fits even at the smallest size", async () => {
+    const copy = await fitPictureCopy({
+      source: { type: "image/png", bytes: 30 * MB, width: 3000, height: 3000 },
+      crop: full(3000, 3000),
+      markCount: 0,
+      encode: huge,
+    });
+    expect(copy).toEqual({ kind: "too-large" });
+  });
+
+  it("walks past an encoding the browser cannot make", async () => {
+    const encode = vi.fn(async (target: { width: number; height: number; type: string }) =>
+      target.type === "image/png" ? null : { size: 1000 },
+    );
+    const copy = await fitPictureCopy({
+      source: { type: "image/png", bytes: 5 * MB, width: 2400, height: 1200 },
+      crop: full(2400, 1200),
+      markCount: 0,
+      encode,
+    });
+    expect(copy).toMatchObject({ kind: "fitted", type: "image/jpeg", width: 2000, height: 1000 });
+  });
+});
+
+describe("the picture ladder's parts", () => {
+  it.each([
+    ["a wide crop", { w: 3210, h: 2118 }, { width: 2000, height: 1320 }],
+    ["a tall crop", { w: 1179, h: 2556 }, { width: 923, height: 2000 }],
+    ["a small crop is never enlarged", { w: 640, h: 480 }, { width: 640, height: 480 }],
+    ["a sliver keeps a pixel", { w: 9000, h: 1 }, { width: 2000, height: 1 }],
+  ])("sizes %s", (_label, crop, expected) => {
+    expect(pictureFitSize(crop)).toEqual(expected);
+  });
+
+  it.each([
+    ["a PNG tries PNG first", "image/png", ["image/png", 0.92, 0.85, 0.78, 0.68]],
+    ["a JPEG goes straight to JPEG", "image/jpeg", [0.92, 0.85, 0.78, 0.68]],
+    ["a GIF tries PNG first", "image/gif", ["image/png", 0.92, 0.85, 0.78, 0.68]],
+  ])("%s", (_label, type, expected) => {
+    expect(
+      pictureEncodeSteps(type).map((step) =>
+        step.type === "image/png" ? step.type : step.quality,
+      ),
+    ).toEqual(expected);
   });
 });
