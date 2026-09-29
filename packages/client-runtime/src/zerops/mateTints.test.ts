@@ -108,12 +108,12 @@ describe("a Mate's own face", () => {
 
   it.each([
     {
-      case: "a picked tint is the Mate's, and a name that hashes to it walks on",
+      case: "a picked tint is the Mate's, and a Mate whose name gives it that tint keeps it",
       mates: [
         mate("p-ada", ["mate:bot:Ada"]),
         mate("p-otto", ["mate:bot:Otto", "mate:face:sky:gem"]),
       ],
-      tints: { "p-ada": "violet", "p-otto": "sky" },
+      tints: { "p-ada": "sky", "p-otto": "sky" },
     },
     {
       case: "two Mates may pick one tint",
@@ -177,6 +177,29 @@ describe("a Mate's own face", () => {
     expect(Object.fromEntries(assignCandidateMateTints([milo, cleo]))).toEqual({
       "p-milo": "sand",
       "p-cleo": tint,
+    });
+  });
+
+  /**
+   * A person may pick the tint a Mate already wears by its name. That Mate —
+   * and every Mate its tint would have pushed along — keeps its colour: the
+   * new one only joins it.
+   */
+  it("recolours nobody when a new Mate picks a tint another Mate wears", () => {
+    const account = [
+      mate("p-ada", ["mate:bot:Ada"]),
+      mate("p-fen", ["mate:bot:Fen"]),
+      mate("p-nova", ["mate:bot:Nova"]),
+      mate("p-otto", ["mate:bot:Otto"]),
+      mate("p-juno", ["mate:bot:Juno"]),
+      mate("crm-stage", []),
+    ];
+    const before = Object.fromEntries(assignCandidateMateTints(account));
+    const worn = before["crm-stage"]!;
+    const quinn = mate("p-quinn", ["mate:bot:Quinn", `mate:face:${worn}:gem`]);
+    expect(Object.fromEntries(assignCandidateMateTints([...account, quinn]))).toEqual({
+      ...before,
+      "p-quinn": worn,
     });
   });
 

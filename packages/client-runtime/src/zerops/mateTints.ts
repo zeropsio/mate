@@ -48,14 +48,9 @@ export function preferredMateTint(name: string): MateTintId {
 }
 
 /**
- * One tint per distinct name (case-insensitively), walking past `reserved` —
- * the tints Mates picked for themselves — as it walks past each other. Blank
- * names get nothing.
+ * One tint per distinct name (case-insensitively). Blank names get nothing.
  */
-export function assignMateTints(
-  names: ReadonlyArray<string>,
-  reserved: ReadonlyArray<MateTintId> = [],
-): ReadonlyMap<string, MateTintId> {
+export function assignMateTints(names: ReadonlyArray<string>): ReadonlyMap<string, MateTintId> {
   // The first spelling of a name wins; a later "fen" is the same Mate as "Fen".
   const seen = new Set<string>();
   const distinct = names
@@ -67,7 +62,7 @@ export function assignMateTints(
     })
     .sort((left, right) => normalize(left).localeCompare(normalize(right), "en"));
   const count = MATE_TINT_IDS.length;
-  const taken = new Set(reserved.map((tint) => MATE_TINT_IDS.indexOf(tint)));
+  const taken = new Set<number>();
   const tints = new Map<string, MateTintId>();
   for (const name of distinct) {
     let index = hashName(normalize(name)) % count;
@@ -85,7 +80,10 @@ export function assignMateTints(
  * Membership is `selectMateEnvironments` — the project has a Mate container —
  * and the name is what the menu calls the row (`botDisplayName`), so a Mate
  * named by its project falls back the same way everywhere. A Mate that picked
- * its tint wears it; the rest are derived around those.
+ * its tint wears it. The rest share the tints their names give them among
+ * themselves alone, exactly as before any Mate could pick: a pick — even of a
+ * tint another Mate wears — never recolours anybody else. Two Mates may then
+ * wear one tint, which their shapes tell apart.
  */
 export function assignCandidateMateTints(
   candidates: ReadonlyArray<ZeropsCandidate>,
@@ -105,7 +103,7 @@ export function assignCandidateMateTints(
       botDisplayName({ bot: tags.bot, projectName: mate.project.name }),
     );
   }
-  const byName = assignMateTints([...nameByProject.values()], [...byProject.values()]);
+  const byName = assignMateTints([...nameByProject.values()]);
   for (const [projectId, name] of nameByProject) {
     const tint = byName.get(name);
     if (tint !== undefined) byProject.set(projectId, tint);
