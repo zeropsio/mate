@@ -224,23 +224,38 @@ export interface ZeropsMateFace {
 export interface ZeropsMateFaceTag {
   readonly tint: MateTintId | undefined;
   readonly shape: MateShapeId | undefined;
+  /**
+   * The Mate wore its name's tint before this face was picked for it, and its
+   * name keeps its place among the names the tints are shared out over
+   * (`mate:face:<tint>:<shape>:named`, `assignCandidateMateTints`): so picking
+   * it a face recoloured nobody else. Absent on a face picked at its birth.
+   */
+  readonly named?: true;
 }
 
 const TINT_VALUES: ReadonlySet<string> = new Set(MATE_TINT_IDS);
 const SHAPE_VALUES: ReadonlySet<string> = new Set(MATE_SHAPE_IDS);
 
+/** The part after the shape saying the Mate's name keeps its place (`ZeropsMateFaceTag.named`). */
+const NAMED_FACE_PART = "named";
+
 function readFaceTag(value: string): ZeropsMateFaceTag | undefined {
-  // Parts past the shape are a newer client's; the two this one knows still read.
-  const [tint, shape] = value.split(":");
+  // Parts past these three are a newer client's; the ones this one knows still read.
+  const [tint, shape, named] = value.split(":");
   const face = {
     tint: tint !== undefined && TINT_VALUES.has(tint) ? (tint as MateTintId) : undefined,
     shape: shape !== undefined && SHAPE_VALUES.has(shape) ? (shape as MateShapeId) : undefined,
   };
-  return face.tint === undefined && face.shape === undefined ? undefined : face;
+  if (face.tint === undefined && face.shape === undefined) return undefined;
+  return named === NAMED_FACE_PART ? { ...face, named: true } : face;
 }
 
-export function formatFaceTag(face: ZeropsMateFace): string {
-  return `${FACE_TAG_PREFIX}${face.tint}:${face.shape}`;
+export function formatFaceTag(
+  face: ZeropsMateFace,
+  options: { readonly named?: boolean } = {},
+): string {
+  const tag = `${FACE_TAG_PREFIX}${face.tint}:${face.shape}`;
+  return options.named === true ? `${tag}:${NAMED_FACE_PART}` : tag;
 }
 
 /**
@@ -322,9 +337,27 @@ export function withZeropsBotTag(
 export function withZeropsFaceTag(
   tagList: ReadonlyArray<string> | undefined,
   face: ZeropsMateFace,
+  options: { readonly named?: boolean } = {},
 ): ReadonlyArray<string> {
   const kept = (tagList ?? []).filter((tag) => !tag.startsWith(FACE_TAG_PREFIX));
-  return [...kept, formatFaceTag(face)];
+  return [...kept, formatFaceTag(face, options)];
+}
+
+/**
+ * Changes the face of a Mate already born, touching nothing else. A Mate
+ * that wore its name's tint — no face this client reads a tint from, or one
+ * changed before — keeps its name's place among the names the tints are
+ * shared out over (`named`), so no other Mate changes colour; one whose face
+ * was picked at its birth never had a place there, and takes none now.
+ */
+export function withZeropsChangedFace(
+  tagList: ReadonlyArray<string> | undefined,
+  face: ZeropsMateFace,
+): ReadonlyArray<string> {
+  const worn = readZeropsGroupTags(tagList).face;
+  return withZeropsFaceTag(tagList, face, {
+    named: worn?.tint === undefined || worn.named === true,
+  });
 }
 
 /**
@@ -358,6 +391,30 @@ export function withoutZeropsStandUpTag(
   tagList: ReadonlyArray<string> | undefined,
 ): ReadonlyArray<string> {
   return (tagList ?? []).filter((tag) => !tag.startsWith(STAND_UP_TAG_PREFIX));
+}
+
+/**
+ * A Mate as it is born, after its membership: the marker, the agent's name, the face its person
+ * picked, and — for a dev Mate — who asked for the project's development to be stood up. The one
+ * birth whichever call creates the project: *New Mate* (`planEnvironmentCreation`) and the New
+ * project wizard's first Mate (`createProjectWithZeropsMate`). A stage or a production with an
+ * agent is a target, not a place development is stood up.
+ */
+export function withZeropsMateAtBirth(
+  tagList: ReadonlyArray<string> | undefined,
+  mate: {
+    readonly role?: ZeropsEnvironmentRole | undefined;
+    readonly botName?: string | undefined;
+    readonly face?: ZeropsMateFace | undefined;
+    readonly standUpBy?: string | undefined;
+  },
+): ReadonlyArray<string> {
+  const declared = withZeropsMateTag(tagList);
+  const named = mate.botName === undefined ? declared : withZeropsBotTag(declared, mate.botName);
+  const faced = mate.face === undefined ? named : withZeropsFaceTag(named, mate.face);
+  return mate.role === "dev" && mate.standUpBy !== undefined
+    ? withZeropsStandUpTag(faced, mate.standUpBy)
+    : faced;
 }
 
 export const ZEROPS_GROUP_ID_LENGTH = 12;
@@ -415,12 +472,14 @@ export interface ZeropsPlacedBirth {
 export interface ZeropsGroupPendingMember {
   readonly projectId: string;
   readonly kind: RoleProjectKind;
-  /** What the person called the environment. */
+  /** A Mate's name, as it will be listed; anything else's, what the person called it. */
   readonly name: string;
   /** When the platform accepted the creation, wall ms. */
   readonly startedAt: number;
   readonly step: BirthStep;
   readonly overdue: boolean;
+  /** The face its person picked for a Mate, worn asleep until the listing holds it. */
+  readonly face?: ZeropsMateFace | undefined;
 }
 
 export interface ZeropsGroup {
@@ -628,10 +687,11 @@ export function deriveZeropsGroups(
       pending: coming.map((birth): ZeropsGroupPendingMember => ({
         projectId: birth.projectId,
         kind: birth.placement.kind,
-        name: birth.placement.displayName,
+        name: birth.placement.botName ?? birth.placement.displayName,
         startedAt: birth.startedAt,
         step: birth.step,
         overdue: birth.overdue,
+        ...(birth.placement.face === undefined ? {} : { face: birth.placement.face }),
       })),
       production: production.length === 1 ? production[0] : undefined,
     } satisfies ZeropsGroup;

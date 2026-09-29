@@ -47,6 +47,9 @@ import { cn } from "~/lib/utils";
 
 import { useThreadShells } from "../../state/entities";
 import { mateFaceFor } from "../../zerops/agentActivity";
+import type { MateComing } from "../../zerops/mateComing";
+import { mateComingHeadlineClauses } from "../../zerops/mateComing";
+import { mateHandedOver } from "../../zerops/mateHandOver";
 import { mateQuestion, type ZeropsMateIdentity } from "../../zerops/mateIdentities";
 import {
   MATE_STAND_UP_RETRY_LABEL,
@@ -75,6 +78,54 @@ export function ZeropsMateEmptyState({
   readonly mate: ZeropsMateIdentity;
   readonly threadRef: ScopedThreadRef | null;
 }) {
+  const state = useMateEmptyState({ environmentId, mate, threadRef });
+  return (
+    <>
+      <MateEmptyStateView
+        // Handed over from its own view a moment ago: that view's last frame, its coming words'
+        // room kept in the box, so the conversation arriving moves nothing.
+        coming={mateHandedOver(environmentId) ? "past" : null}
+        mate={mate}
+        onRetry={state.onRetry}
+        phase={state.phase}
+        signIn={state.signIn}
+        signInRequired={state.signInRequired}
+        unknown={state.unknown}
+      />
+      {state.dialog}
+    </>
+  );
+}
+
+/** What an empty conversation with a Mate says, and the sign-in dialog it opens. */
+export interface MateEmptyState {
+  /** The stand-up's phase for this viewer, or `null` for the question. */
+  readonly phase: MateStandUpPhase | null;
+  /** The agents' sign-in, once it is known; null before. */
+  readonly signIn: ReactNode | null;
+  readonly signInRequired: boolean;
+  readonly unknown: KnownMessage | null;
+  /** Whether the agents' sign-in is read: the conversation's first paint says it whole. */
+  readonly signInKnown: boolean;
+  readonly onRetry: () => void;
+  readonly dialog: ReactNode;
+}
+
+/**
+ * The empty conversation's reading of its Mate: whose stand-up it is and where it stands, the
+ * agents' sign-in and the dialog that does it — for the conversation, and for the Mate's own view
+ * that hands over to it (`ZeropsMateComingPage`), so the two say one thing. With no environment
+ * yet, nothing is read.
+ */
+export function useMateEmptyState({
+  environmentId,
+  mate,
+  threadRef,
+}: {
+  readonly environmentId: EnvironmentId | null;
+  readonly mate: ZeropsMateIdentity;
+  readonly threadRef: ScopedThreadRef | null;
+}): MateEmptyState {
   const { snapshot: agentAuth, unknown: agentAuthUnknown } = zeropsAgentAuthView(
     useZeropsAgentAuth(environmentId),
   );
@@ -119,32 +170,29 @@ export function ZeropsMateEmptyState({
     attempt,
   });
 
-  return (
-    <>
-      <MateEmptyStateView
-        mate={mate}
-        phase={phase}
-        signIn={
-          agentAuth === null ? null : phase === "sign-in" ? (
-            <StandUpAuthorize onAuthorize={openAuthorizationDialog} snapshot={agentAuth} />
-          ) : (
-            <ZeropsAgentAuthRows
-              onCancel={cancelAgentLogin}
-              onRetryRecord={retryRecord}
-              onSignIn={openAuthorizationDialog}
-              recordFailed={recordFailed}
-              snapshot={agentAuth}
-              viewerSubject={viewerSubject}
-            />
-          )
-        }
-        signInRequired={signInRequired}
-        unknown={agentAuthUnknown}
-        onRetry={() => retryMateStandUp(environmentId)}
-      />
-      {authorizationDialog}
-    </>
-  );
+  return {
+    phase,
+    signIn:
+      agentAuth === null ? null : phase === "sign-in" ? (
+        <StandUpAuthorize onAuthorize={openAuthorizationDialog} snapshot={agentAuth} />
+      ) : (
+        <ZeropsAgentAuthRows
+          onCancel={cancelAgentLogin}
+          onRetryRecord={retryRecord}
+          onSignIn={openAuthorizationDialog}
+          recordFailed={recordFailed}
+          snapshot={agentAuth}
+          viewerSubject={viewerSubject}
+        />
+      ),
+    signInRequired,
+    unknown: agentAuthUnknown,
+    signInKnown: agentAuth !== null,
+    onRetry: () => {
+      if (environmentId !== null) retryMateStandUp(environmentId);
+    },
+    dialog: authorizationDialog,
+  };
 }
 
 /**
@@ -152,7 +200,7 @@ export function ZeropsMateEmptyState({
  * Mate offers, each opening that agent's authorization. The headline above already says what a
  * sign-in is for, so no row repeats it with a status.
  */
-function StandUpAuthorize({
+export function StandUpAuthorize({
   snapshot,
   onAuthorize,
 }: {
@@ -186,9 +234,36 @@ function StandUpAuthorize({
 const STAND_UP_PHASES: ReadonlyArray<MateStandUpPhase> = ["sign-in", "standing-up", "failed"];
 
 /**
+ * A Mate still coming up, or one that never came, as its own view draws it
+ * (`ZeropsMateComingPage`): the kind of headline, and what stands under its words — how far it
+ * has got, or what can be done about it.
+ */
+export interface MateEmptyComing {
+  readonly kind: MateComing["kind"];
+  readonly below: ReactNode;
+  /** It is up: the phase it moves into is read, and its words leave with what stood under them. */
+  readonly over?: boolean;
+}
+
+/** One sentence of the headline's box: the words, in the clauses it breaks between. */
+interface HeadlinePhrase {
+  readonly id: "coming" | "question" | MateStandUpPhase;
+  readonly clauses: ReadonlyArray<string>;
+}
+
+const HEADLINE_CLASS =
+  "text-center text-2xl font-normal tracking-tight text-foreground sm:text-3xl";
+
+/**
  * The empty conversation as it is drawn, from what it says: its Mate, the stand-up's phase (null
  * for the question), the agents' sign-in rows once their sign-in is known and whether one must be
  * signed in, and — while it is not known — what the agents' region says instead.
+ *
+ * Before the conversation exists, the same view is the Mate's own while it comes up (`coming`):
+ * its headline says so, first in the box every phase shares, the phase it will move into waiting
+ * after it, and its progress hangs where the sign-in will. When it is up the words hand over in
+ * place — its coming words leave upward, the phase arrives from below, 180 ms — and the
+ * conversation it hands over to paints that last frame (`"past"`), its coming words' room kept.
  */
 export function MateEmptyStateView({
   mate,
@@ -197,6 +272,7 @@ export function MateEmptyStateView({
   signInRequired,
   unknown,
   onRetry,
+  coming = null,
 }: {
   readonly mate: ZeropsMateIdentity;
   readonly phase: MateStandUpPhase | null;
@@ -206,8 +282,24 @@ export function MateEmptyStateView({
   readonly signInRequired: boolean;
   readonly unknown: KnownMessage | null;
   readonly onRetry: () => void;
+  /** Still coming up (or never came), or — `"past"` — handed over from that a moment ago. */
+  readonly coming?: MateEmptyComing | "past" | null;
 }) {
-  const shownPhase = STAND_UP_PHASES.indexOf(phase ?? "sign-in");
+  const comingNow = coming !== null && coming !== "past" && coming.over !== true ? coming : null;
+  const comingKind = coming !== null && coming !== "past" ? coming.kind : "coming";
+  const phrases: ReadonlyArray<HeadlinePhrase> = [
+    ...(coming === null
+      ? []
+      : [{ id: "coming" as const, clauses: mateComingHeadlineClauses(mate, comingKind) }]),
+    ...(phase === null
+      ? [{ id: "question" as const, clauses: [mateQuestion(mate)] }]
+      : STAND_UP_PHASES.map((each) => ({
+          id: each,
+          clauses: mateStandUpHeadlineClauses(mate, each),
+        }))),
+  ];
+  const shownId = comingNow !== null ? "coming" : (phase ?? "question");
+  const shownAt = phrases.findIndex((each) => each.id === shownId);
   return (
     <div
       className="flex h-full flex-col items-center px-5 sm:px-6"
@@ -226,10 +318,8 @@ export function MateEmptyStateView({
           state={mateFaceFor(mate.connected, undefined)}
           tint={mate.tint}
         />
-        {phase === null ? (
-          <h1 className="text-center text-2xl font-normal tracking-tight text-foreground sm:text-3xl">
-            {mateQuestion(mate)}
-          </h1>
+        {coming === null && phase === null ? (
+          <h1 className={HEADLINE_CLASS}>{mateQuestion(mate)}</h1>
         ) : (
           // Every phase in one box, the tallest's: a new one fades its words in
           // where the last ones began, and nothing around them moves. The
@@ -237,53 +327,99 @@ export function MateEmptyStateView({
           <div
             aria-live="polite"
             className="w-full max-w-2xl"
-            data-mate-standup={phase}
+            data-mate-standup={phase ?? undefined}
             data-standup-headline
           >
-            {STAND_UP_PHASES.map((each, index) => {
-              const Words = each === phase ? "h1" : "p";
+            {phrases.map((each, index) => {
+              const Words = each.id === shownId ? "h1" : "p";
               return (
                 <div
-                  aria-hidden={each === phase ? undefined : true}
+                  aria-hidden={each.id === shownId ? undefined : true}
                   className="flex flex-col items-center gap-3"
                   data-standup-phrase={
-                    index === shownPhase ? "shown" : index < shownPhase ? "past" : "next"
+                    index === shownAt ? "shown" : index < shownAt ? "past" : "next"
                   }
-                  inert={each !== phase}
-                  key={each}
+                  inert={each.id !== shownId}
+                  key={each.id}
                 >
-                  <Words className="text-balance text-center text-2xl font-normal tracking-tight text-foreground sm:text-3xl">
-                    {mateStandUpHeadlineClauses(mate, each).map((clause, at) => (
+                  <Words className={cn(HEADLINE_CLASS, each.id !== "question" && "text-balance")}>
+                    {each.clauses.map((clause, at) => (
                       <Fragment key={clause}>
                         {at === 0 ? null : " "}
                         <span className="inline-block">{clause}</span>
                       </Fragment>
                     ))}
                   </Words>
-                  {each === "failed" ? (
+                  {each.id === "failed" ? (
                     <Button data-mate-standup-retry onClick={onRetry} size="compact" variant="pill">
                       {MATE_STAND_UP_RETRY_LABEL}
                     </Button>
+                  ) : null}
+                  {/* Under its words, 12 px down as a failure's Try again: how far it has got —
+                      the room of the progress line whatever it holds, so the box is as tall in
+                      the conversation it hands over to as it was here. */}
+                  {each.id === "coming" ? (
+                    <div className="flex min-h-6 w-full justify-center" data-mate-coming-below>
+                      {coming !== null && coming !== "past" ? coming.below : null}
+                    </div>
                   ) : null}
                 </div>
               );
             })}
           </div>
         )}
-        {/* What hangs below the headline, never moving it. */}
+        {/* What hangs below the headline, never moving it; while the Mate comes up, nothing —
+            the sign-in fades in once it is up. */}
         <div className="absolute inset-x-0 top-full flex justify-center pt-6">
-          {phase === null ? (
-            <QuestionSignIn
+          {coming === null || coming === "past" ? (
+            <SignInBelow
               mate={mate}
-              signIn={signInRequired ? signIn : null}
-              unknown={signIn === null ? unknown : null}
+              phase={phase}
+              signIn={signIn}
+              signInRequired={signInRequired}
+              unknown={unknown}
             />
           ) : (
-            <StandUpSlot phase={phase} signIn={signIn} unknown={unknown} />
+            <div className="grid w-full justify-items-center" data-mate-empty-below>
+              <StandUpLayer shown={comingNow === null}>
+                <SignInBelow
+                  mate={mate}
+                  phase={phase}
+                  signIn={signIn}
+                  signInRequired={signInRequired}
+                  unknown={unknown}
+                />
+              </StandUpLayer>
+            </div>
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+/** Below the headline: the question's sign-in, or the stand-up's. */
+function SignInBelow({
+  mate,
+  phase,
+  signIn,
+  signInRequired,
+  unknown,
+}: {
+  readonly mate: ZeropsMateIdentity;
+  readonly phase: MateStandUpPhase | null;
+  readonly signIn: ReactNode | null;
+  readonly signInRequired: boolean;
+  readonly unknown: KnownMessage | null;
+}) {
+  return phase === null ? (
+    <QuestionSignIn
+      mate={mate}
+      signIn={signInRequired ? signIn : null}
+      unknown={signIn === null ? unknown : null}
+    />
+  ) : (
+    <StandUpSlot phase={phase} signIn={signIn} unknown={unknown} />
   );
 }
 
@@ -311,9 +447,10 @@ function QuestionSignIn({
 }
 
 /**
- * Below the stand-up's headline, each in a layer of its own: the sign-in rows (the headline
- * already says why) — held once the sign-in is known, so a sign-in landing fades them where they
- * stand — and the sign-in still being read.
+ * Below the stand-up's headline, each in a layer of its own: its Authorize buttons (the headline
+ * already says why), bare — the sign-in rows' card drew a white bar behind them — held once the
+ * sign-in is known, so a sign-in landing fades them where they stand; and the sign-in still being
+ * read.
  */
 function StandUpSlot({
   phase,
@@ -331,7 +468,7 @@ function StandUpSlot({
       {signIn === null ? null : (
         <StandUpLayer shown={rows}>
           <section className="w-full" data-zerops-surface="mate-sign-in">
-            <FlatCard className="overflow-hidden">{signIn}</FlatCard>
+            {signIn}
           </section>
         </StandUpLayer>
       )}

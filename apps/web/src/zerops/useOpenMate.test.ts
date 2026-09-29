@@ -33,6 +33,8 @@ const app = vi.hoisted(() => ({
     app.log.push("navigate");
   }),
   newThreadCalls: vi.fn(),
+  /** The births this browser holds. */
+  births: [] as Array<unknown>,
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -46,6 +48,9 @@ vi.mock("../state/entities", () => ({
   readThreadShells: () => app.threadsLater,
   useProjects: () => [{ id: ProjectId.make("project-fen"), environmentId: ENVIRONMENT }],
 }));
+vi.mock("./zeropsBirths", () => ({
+  useZeropsBirths: () => ({ births: app.births, waits: new Map(), outstanding: null }),
+}));
 vi.mock("../hooks/useHandleNewThread", () => ({
   useNewThreadHandler:
     () =>
@@ -57,7 +62,8 @@ vi.mock("../hooks/useHandleNewThread", () => ({
 
 const CANDIDATE = {
   key: "fen:zcp",
-  project: { id: "acme-docs-fen", name: "Acme Docs - Fen", status: "ACTIVE" },
+  project: { id: "project-fen", name: "Acme Docs - Fen", status: "ACTIVE", tagList: [] },
+  group: "connected",
 } as unknown as ZeropsCandidate;
 
 /** Opens Fen as the left menu's item does, and hands back what was told of the conversation. */
@@ -95,6 +101,7 @@ beforeEach(() => {
   app.log = [];
   app.navigate.mockClear();
   app.newThreadCalls.mockClear();
+  app.births = [];
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -147,5 +154,34 @@ describe("useOpenMate — what it tells the caller of the conversation it opened
     expect(await openFen(candidate)).toEqual([]);
     expect(app.navigate).not.toHaveBeenCalled();
     expect(app.newThreadCalls).not.toHaveBeenCalled();
+  });
+});
+
+// The owner, 2026-09-29: a new Mate's row "looks like its ready to be opened, but it's not" — and
+// pressed, did nothing. A Mate still in its first minutes opens its own view, where it comes up.
+describe("useOpenMate — a Mate still coming up", () => {
+  it.each([
+    {
+      case: "its birth held here",
+      candidate: { ...CANDIDATE, group: "ready" },
+      births: [{ projectId: "project-fen", step: "harden", overdue: false, container: true }],
+    },
+    {
+      case: "its project on the way up",
+      candidate: {
+        ...CANDIDATE,
+        group: "provisioning",
+        service: { id: "zcp", name: "zcp", status: "CREATING" },
+      },
+      births: [],
+    },
+  ])("opens its own view: $case", async ({ candidate, births }) => {
+    app.births = births;
+    app.threads = [shell("thread-main")];
+    expect(await openFen(candidate as unknown as ZeropsCandidate)).toEqual([]);
+    expect(app.navigate).toHaveBeenCalledExactlyOnceWith({
+      to: "/mate/$projectId",
+      params: { projectId: "project-fen" },
+    });
   });
 });

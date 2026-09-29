@@ -123,6 +123,12 @@ export class EnvironmentAuthInvalidError extends Schema.TaggedError<EnvironmentA
     code: Schema.Literal("auth_invalid"),
     reason: EnvironmentAuthInvalidReason,
     traceId: TrimmedNonEmptyString,
+    /**
+     * The presented session reached the end of its life. Nothing is wrong with the client: the
+     * door that minted it mints the next. Optional both ways — an older server never sends it, an
+     * older client ignores it — and a boolean, so no future value can fail an older decoder.
+     */
+    expired: Schema.optionalKey(Schema.Boolean),
   },
   { httpApiStatus: 401 },
 ) {

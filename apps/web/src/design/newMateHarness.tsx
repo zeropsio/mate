@@ -5,7 +5,10 @@
  * `?state=<id>`: `recipe` — the group repo read, a tier on main; `reading` —
  * the repo still being read; `none` — no recipe merged on main; `stage` — the
  * stage form, which keeps its own fields; `&name=<name>` proposes another
- * name; `&resolves=none` has a `reading` repo find no recipe). Open it at the owner's 1786 × 1000. The account holds three Mates —
+ * name; `&resolves=none` has a `reading` repo find no recipe; `adding` — Add pressed, the
+ * platform taking the Mate's project; `refused` — the platform refused it before). A press on Add
+ * goes busy for a second, as the platform takes the project, and then the dialog closes where
+ * the person lands on the new Mate. Open it at the owner's 1786 × 1000. The account holds three Mates —
  * Fen, Ada and Nova — so the proposed face walks past the tints they wear.
  * `window.__newMateHarness.read()` answers the recipe the moment it is asked
  * to, so a press made while it was being read can be watched going through.
@@ -67,6 +70,8 @@ const created: Array<unknown> = [];
 function Harness() {
   const role = STATE === "stage" ? "stage" : "dev";
   const [read, setRead] = useState(STATE !== "reading");
+  const [adding, setAdding] = useState(STATE === "adding");
+  const [landed, setLanded] = useState<string | null>(null);
   useEffect(() => {
     window.__newMateHarness = {
       read: () => {
@@ -76,9 +81,24 @@ function Harness() {
     };
   }, []);
   const loaded = read && RESOLVES === "recipe";
+  if (landed !== null) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
+        <p className="text-sm text-muted-foreground" data-harness-landed>
+          Landed on {landed}
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen bg-background text-foreground">
       <ZeropsEnvironmentCreationDialog
+        addError={
+          STATE === "refused" && !adding
+            ? "Your organization has reached its limit of projects."
+            : undefined
+        }
+        adding={adding}
         defaultBotName={NAME}
         defaultName={role === "dev" ? `Acme Docs - ${NAME}` : "Acme Docs - stage"}
         defaultTintFor={(name) => newMateTint(MATES, name)}
@@ -87,6 +107,11 @@ function Harness() {
         onCancel={() => {}}
         onCreate={(choice) => {
           created.push(choice);
+          // The platform takes the Mate's project in about a second; then the person lands on it.
+          setAdding(true);
+          setTimeout(() => {
+            setLanded(`/mate/acme-docs-${(choice.botName ?? "mate").toLowerCase()}`);
+          }, 1200);
         }}
         onOpenChange={() => {}}
         open

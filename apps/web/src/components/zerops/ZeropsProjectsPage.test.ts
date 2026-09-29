@@ -38,6 +38,7 @@ import { onZeropsInvalidation } from "~/zerops/accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
 import { exchangeZeropsContainerIdentity } from "@t3tools/client-runtime/zerops/identityExchange";
 import projectsPageSource from "./ZeropsProjectsPage.tsx?raw";
+import creationSource from "../../zerops/useEnvironmentCreation.ts?raw";
 import mateActionsSource from "../../zerops/useMateActions.tsx?raw";
 import groupDetailSource from "./ZeropsGroupDetail.tsx?raw";
 import giteaPageSource from "./ZeropsGiteaPage.tsx?raw";
@@ -101,12 +102,16 @@ describe("same-origin Zerops identity bootstrap", () => {
       "deleteProject",
     ]) {
       expect(projectsPageSource).not.toContain(`client.${method}(`);
+      expect(creationSource).not.toContain(`client.${method}(`);
     }
-    expect(projectsPageSource).toContain("runtime.commands.createProject(");
+    // The creation itself is the account's (`useEnvironmentCreation`), shared with the New Mate
+    // dialog over any view.
+    expect(creationSource).toContain("runtime.commands.createProject(");
     expect(projectsPageSource).toContain("runtime.commands.deleteProject(");
-    expect(projectsPageSource).toContain("runtime.commands.importServices(");
-    expect(projectsPageSource).toContain("readObservedServices:");
+    expect(creationSource).toContain("runtime.commands.importServices(");
+    expect(creationSource).toContain("readObservedServices:");
     expect(projectsPageSource).not.toContain("listProjectServices(");
+    expect(creationSource).not.toContain("listProjectServices(");
   });
 
   it("retries the failed ready-container identity exchange instead of restarting provisioning", () => {
@@ -740,6 +745,10 @@ describe("an environment's menu", () => {
     expect(mateActionsSource).toContain("...(verbs.move");
     expect(mateActionsSource).toContain("...(verbs.rename");
     expect(mateActionsSource).toContain("...(verbs.move && tags.groupId !== undefined");
+    // Change face writes the project's tags, as a rename does: the same gate, on a Mate.
+    expect(mateActionsSource).toContain(
+      "resolveMateVerbs({ project: candidate.project, viewer }).rename;\n      if (!changeFaceOffered({ candidate, mayRename })) return undefined;",
+    );
   });
 
   it("carries the update verbs wherever a Mate is listed, not only on the projects screen", () => {
@@ -888,18 +897,23 @@ describe("a creation under way on the projects page", () => {
     // pressable for a second creation of the same production.
     const start = projectsPageSource.indexOf("const createEnvironment = useCallback(");
     const body = projectsPageSource.slice(start);
-    const underWay = body.indexOf('setCreation({ name, tier: tier ?? "mate", progress: [] });');
-    expect(underWay).toBeGreaterThan(-1);
-    expect(underWay).toBeLessThan(body.indexOf("await readGroupAgents(entry.environments)"));
-    // A plan refused ends it, so the verbs come back.
-    expect(body.slice(underWay, body.indexOf("setToolError(plan.reason);"))).toContain(
-      "setCreation(null);",
+    const underWay = body.indexOf(
+      'setCreation({ name: choice.name, tier: tier ?? "mate", progress: [] });',
     );
+    expect(underWay).toBeGreaterThan(-1);
+    // The group's agents are read inside the creation, after the verbs are off.
+    expect(underWay).toBeLessThan(body.indexOf("await runCreation("));
+    expect(creationSource.indexOf("await readGroupAgents(request.environments)")).toBeGreaterThan(
+      -1,
+    );
+    // A plan refused ends it, so the verbs come back.
+    const refused = body.slice(body.indexOf('if (run.kind === "refused") {'));
+    expect(refused.slice(0, refused.indexOf("return;"))).toContain("setCreation(null);");
   });
 
   it("lists the organization again the moment a creation is accepted, as New project does", () => {
-    expect(projectsPageSource).toContain("creationAccepted(");
-    expect(projectsPageSource).toContain("organizationRef(organizationId),");
+    expect(creationSource).toContain("creationAccepted(");
+    expect(creationSource).toContain("organizationRef(organization.id),");
     expect(wizardSource).toContain("creationAccepted(");
     expect(wizardSource).not.toContain("beginBirth(");
   });

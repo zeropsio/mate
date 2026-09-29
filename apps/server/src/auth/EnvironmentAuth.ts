@@ -359,6 +359,8 @@ export class ServerAuthInvalidCredentialError extends Schema.TaggedError<ServerA
   {
     diagnostic: Schema.optional(Schema.String),
     cause: Schema.optional(Schema.Defect()),
+    /** The credential was a session that reached the end of its life, and nothing else. */
+    expired: Schema.optional(Schema.Boolean),
   },
 ) {
   override get message(): string {
@@ -376,6 +378,12 @@ export const serverAuthCredentialReason = (
   error: ServerAuthCredentialError,
 ): "missing_credential" | "invalid_credential" =>
   error._tag === "ServerAuthMissingCredentialError" ? "missing_credential" : "invalid_credential";
+/**
+ * Whether a refused credential was only a session past its deadline. A client renews that one
+ * through its door and must not read it as a refusal; the 401 says so with `expired`.
+ */
+export const serverAuthCredentialExpired = (error: ServerAuthCredentialError): boolean =>
+  error._tag === "ServerAuthInvalidCredentialError" && error.expired === true;
 
 export class ServerAuthInvalidScopeError extends Schema.TaggedError<ServerAuthInvalidScopeError>()(
   "ServerAuthInvalidScopeError",
@@ -525,10 +533,31 @@ const mapSessionVerificationErrors = <A, R>(
   effect.pipe(
     Effect.mapError((cause) =>
       SessionStore.isSessionCredentialInvalidError(cause)
-        ? new ServerAuthInvalidCredentialError({ cause })
+        ? new ServerAuthInvalidCredentialError({
+            cause,
+            ...(SessionStore.isSessionExpiredError(cause) ? { expired: true } : {}),
+          })
         : new ServerAuthSessionCredentialValidationError({ cause }),
     ),
   );
+
+/**
+ * What the log says of a refused session credential: the refusal, and the session it belonged
+ * to with the moment that session ended, when the credential named one. That is enough to find
+ * the client still presenting it — the session's row names its device — and never the token.
+ */
+export const rejectedCredentialAnnotations = (
+  cause: SessionStore.SessionCredentialInvalidError,
+): Readonly<Record<string, string>> => ({
+  reason: cause.message,
+  ...("sessionId" in cause ? { sessionId: cause.sessionId } : {}),
+  ...(cause._tag === "SessionTokenExpiredError"
+    ? { expiredAt: DateTime.formatIso(cause.expiresAt) }
+    : {}),
+  ...(cause._tag === "SessionTokenRevokedError"
+    ? { revokedAt: DateTime.formatIso(cause.revokedAt) }
+    : {}),
+});
 
 function parseBearerToken(request: HttpServerRequest.HttpServerRequest): string | null {
   const header = request.headers["authorization"];
@@ -567,9 +596,7 @@ export const make = Effect.gen(function* () {
       Effect.tapError((cause) =>
         SessionStore.isSessionCredentialInvalidError(cause)
           ? Effect.logWarning("Rejected authenticated session credential.").pipe(
-              Effect.annotateLogs({
-                reason: cause.message,
-              }),
+              Effect.annotateLogs(rejectedCredentialAnnotations(cause)),
             )
           : Effect.void,
       ),

@@ -19,6 +19,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { Dialog } from "../ui/dialog";
 import { ZeropsAssignMateForm } from "./ZeropsAssignMateDialog";
 import { ZeropsAskConfirm } from "./ZeropsAskDialog";
+import { ZeropsChangeFaceForm } from "./ZeropsChangeFaceDialog";
 import { ZeropsEnvironmentCreationForm } from "./ZeropsEnvironmentCreationDialog";
 import { ZeropsMoveToGroupForm } from "./ZeropsMoveToGroupDialog";
 import { ZeropsRenameForm } from "./ZeropsRenameDialog";
@@ -77,6 +78,20 @@ const cases: ReadonlyArray<{ readonly name: string; readonly render: () => strin
           sending={false}
           tint={undefined}
           what="The build is red."
+        />,
+      ),
+  },
+  {
+    name: "ZeropsChangeFaceDialog",
+    render: () =>
+      renderInDialog(
+        <ZeropsChangeFaceForm
+          error={null}
+          face={{ tint: "olive", shape: "clover" }}
+          name="Fen"
+          onCancel={noop}
+          onSave={noop}
+          pending={false}
         />,
       ),
   },

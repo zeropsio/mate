@@ -85,7 +85,10 @@ export function assignMateTints(names: ReadonlyArray<string>): ReadonlyMap<strin
  * its tint wears it. The rest share the tints their names give them among
  * themselves alone, exactly as before any Mate could pick: a pick — even of a
  * tint another Mate wears — never recolours anybody else. Two Mates may then
- * wear one tint, which their shapes tell apart.
+ * wear one tint, which their shapes tell apart. A Mate that wore its name's
+ * tint and then had its face changed keeps its name among them (`named`): it
+ * wears its pick, and the tint its name held stays held, so the change moves
+ * nobody else along.
  */
 export function assignCandidateMateTints(
   candidates: ReadonlyArray<ZeropsCandidate>,
@@ -96,10 +99,8 @@ export function assignCandidateMateTints(
   for (const mate of mates) {
     const tags = readZeropsGroupTags(mate.project.tagList);
     const picked = tags.face?.tint;
-    if (picked !== undefined) {
-      byProject.set(mate.project.id, picked);
-      continue;
-    }
+    if (picked !== undefined) byProject.set(mate.project.id, picked);
+    if (picked !== undefined && tags.face?.named !== true) continue;
     nameByProject.set(
       mate.project.id,
       botDisplayName({ bot: tags.bot, projectName: mate.project.name }),
@@ -108,7 +109,7 @@ export function assignCandidateMateTints(
   const byName = assignMateTints([...nameByProject.values()]);
   for (const [projectId, name] of nameByProject) {
     const tint = byName.get(name);
-    if (tint !== undefined) byProject.set(projectId, tint);
+    if (tint !== undefined && !byProject.has(projectId)) byProject.set(projectId, tint);
   }
   return byProject;
 }

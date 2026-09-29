@@ -101,6 +101,12 @@ export class ConnectionBlockedError extends Schema.TaggedError<ConnectionBlocked
     serverVersion: Schema.optionalKey(Schema.String),
     minimumServerVersion: Schema.optionalKey(Schema.String),
     traceId: Schema.optionalKey(Schema.String),
+    /**
+     * An `authentication` block whose session merely reached the end of its
+     * life — by its own deadline, or by the server's word. Nothing is wrong:
+     * the door that minted it mints the next, so it reads as reconnecting.
+     */
+    expired: Schema.optionalKey(Schema.Boolean),
   },
 ) {
   override get message(): string {

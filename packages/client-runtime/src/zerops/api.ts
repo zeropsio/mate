@@ -36,10 +36,10 @@ import type {
 } from "./groupReach.ts";
 import { brokerReachesEveryProject, withBrokerProjectGrant } from "./groupEnvironments.ts";
 import {
-  withZeropsBotTag,
   withZeropsGroupTags,
-  withZeropsMateTag,
+  withZeropsMateAtBirth,
   type ZeropsEnvironmentRole,
+  type ZeropsMateFace,
 } from "./groups.ts";
 import {
   formatToolTag,
@@ -441,7 +441,9 @@ export type ZeropsApiErrorKind =
 
 /**
  * The tags a project is created with when Mate makes it: its group, its role
- * in that group, the group's name, the `mate` marker and the agent's own name.
+ * in that group, the group's name, then the Mate as *New Mate* makes one
+ * (`withZeropsMateAtBirth`): the `mate` marker, the agent's own name, the face
+ * its person picked and who asked for its development to be stood up.
  *
  * A project made from the wizard **is** a group with one dev environment in
  * it — that is what a project is (`spec-mate.md` §10). Creating it ungrouped
@@ -455,6 +457,8 @@ function taggedProjectAtBirth(input: {
     readonly label?: string;
   };
   readonly botName?: string;
+  readonly face?: ZeropsMateFace;
+  readonly standUpBy?: string;
 }): ReadonlyArray<string> {
   const membership = input.group
     ? withZeropsGroupTags([], {
@@ -463,8 +467,7 @@ function taggedProjectAtBirth(input: {
         ...(input.group.label ? { label: input.group.label } : {}),
       })
     : [];
-  const declared = withZeropsMateTag(membership);
-  return input.botName === undefined ? declared : withZeropsBotTag(declared, input.botName);
+  return withZeropsMateAtBirth(membership, { ...input, role: input.group?.role });
 }
 
 export class ZeropsApiError extends Error {
@@ -1871,6 +1874,10 @@ export class ZeropsApiClient {
       };
       /** The agent's name, written at birth so its menu row is somebody. */
       readonly botName?: string;
+      /** The face its person picked, written beside its name (`mate:face:`). */
+      readonly face?: ZeropsMateFace;
+      /** Who asks, by adding it, for the project's development to be stood up (`mate:standup:`). */
+      readonly standUpBy?: string;
     },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,

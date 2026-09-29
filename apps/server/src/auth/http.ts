@@ -94,12 +94,35 @@ export function annotateEnvironmentRequest(endpoint: string) {
   });
 }
 
-export function failEnvironmentAuthInvalid(reason: EnvironmentAuthInvalidReason) {
+export function failEnvironmentAuthInvalid(
+  reason: EnvironmentAuthInvalidReason,
+  options?: { readonly expired?: boolean },
+) {
   return currentEnvironmentTraceId.pipe(
     Effect.flatMap((traceId) =>
-      Effect.fail(new EnvironmentAuthInvalidError({ code: "auth_invalid", reason, traceId })),
+      Effect.fail(
+        new EnvironmentAuthInvalidError({
+          code: "auth_invalid",
+          reason,
+          traceId,
+          ...(options?.expired === true ? { expired: true } : {}),
+        }),
+      ),
     ),
   );
+}
+
+/**
+ * The 401 for a credential the server refused: its reason, and `expired` when it was only a
+ * session at the end of its life — which its client renews through the door rather than reads
+ * as a refusal.
+ */
+export function failEnvironmentCredentialRejected(
+  error: EnvironmentAuth.ServerAuthCredentialError,
+) {
+  return failEnvironmentAuthInvalid(EnvironmentAuth.serverAuthCredentialReason(error), {
+    expired: EnvironmentAuth.serverAuthCredentialExpired(error),
+  });
 }
 
 export function failEnvironmentInvalidRequest(reason: EnvironmentRequestInvalidReason) {
@@ -179,7 +202,7 @@ export const environmentAuthenticatedAuthLayer = Layer.effect(
         const request = yield* HttpServerRequest.HttpServerRequest;
         const session = yield* serverAuth.authenticateHttpRequest(request).pipe(
           Effect.catchIf(EnvironmentAuth.isServerAuthCredentialError, (error) =>
-            failEnvironmentAuthInvalid(EnvironmentAuth.serverAuthCredentialReason(error)),
+            failEnvironmentCredentialRejected(error),
           ),
           Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
             failEnvironmentInternal("internal_error", error),
@@ -290,7 +313,7 @@ export const authHttpApiLayer = HttpApiBuilder.group(
           },
           traceRelayRequest,
           Effect.catchIf(EnvironmentAuth.isServerAuthCredentialError, (error) =>
-            failEnvironmentAuthInvalid(EnvironmentAuth.serverAuthCredentialReason(error)),
+            failEnvironmentCredentialRejected(error),
           ),
           Effect.catchIf(EnvironmentAuth.isServerAuthInvalidRequestError, (error) =>
             failEnvironmentInvalidRequest(EnvironmentAuth.serverAuthInvalidRequestReason(error)),

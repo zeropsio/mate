@@ -105,6 +105,13 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --glass-opacity: 80%;
   --glass-saturation: 1.14;
   --desktop-window-right-resize-inset: 0px;
+  /* The top bar: every page's header and the menu's logo row beside it, one
+     height, so the logo, the header's content and their bottom edges stand
+     on one line. Where the menu stands beside the page (md up) it is 65 px:
+     the menu's 33 px mark, centred in it, stands 16 px from the top as it
+     stands 16 px from the left (the owner, 2026-09-29). On a phone the menu
+     is a sheet over the page, and the bar keeps 52. A desktop window's bar
+     is its title bar's (`.electron`, `.wco`). */
   --workspace-topbar-height: 52px;
   --workspace-controls-top: 0px;
   --workspace-controls-left: calc(env(safe-area-inset-left) + 0.75rem);
@@ -122,6 +129,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --workspace-gutter: 1.25rem;
   }
 
+  @variant md {
+    --workspace-topbar-height: 4.0625rem;
+  }
+
   @variant dark {
     --appearance-contrast-target: white;
     --app-scrollbar-thumb: rgb(255 255 255 / 8%);
@@ -129,6 +140,14 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --glass-blur: 16px;
     --glass-saturation: 1.08;
   }
+}
+
+/* In a desktop window the top bar is the title bar, at every width: 52 px,
+   the height the desktop centres macOS's traffic lights on
+   (`MACOS_WORKSPACE_TOPBAR_HEIGHT` in apps/desktop's DesktopWindow.ts), or
+   the overlay's own where Windows draws one (`.wco`). */
+.electron {
+  --workspace-topbar-height: 52px;
 }
 
 .wco {
@@ -2903,51 +2922,51 @@ code {
   }
 }
 
-/* ==== Pass 18 · the New Mate dialog ==== */
+/* ==== Pass 18 · a Mate's face, picked (New Mate, New project, Change face) ==== */
 
-/* The face being made. A change crossfades in one cell: the face before fades
+/* The face being picked. A change crossfades in one cell: the face before fades
    out under the new one, which settles from 92 %, so a colour or a shape
    picked, or a name typed, turns the same somebody into someone else rather
    than swapping a picture. The first paint is still; reduced motion keeps
    only the fade. The face that leaves rests invisible, so one whose fade
    never ran is gone all the same. */
-.new-mate-face {
+.mate-face-preview {
   display: grid;
   flex-shrink: 0;
 }
 
-.new-mate-face > * {
+.mate-face-preview > * {
   grid-area: 1 / 1;
 }
 
-[data-new-mate-face="out"] {
+[data-mate-face-preview="out"] {
   opacity: 0;
-  animation: new-mate-face-out 160ms var(--ease-out-strong);
+  animation: mate-face-preview-out 160ms var(--ease-out-strong);
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  [data-new-mate-face="in"] {
-    animation: new-mate-face-in 220ms var(--ease-out-strong);
+  [data-mate-face-preview="in"] {
+    animation: mate-face-preview-in 220ms var(--ease-out-strong);
   }
 }
 
-@keyframes new-mate-face-out {
+@keyframes mate-face-preview-out {
   from {
     opacity: 1;
   }
 }
 
-@keyframes new-mate-face-in {
+@keyframes mate-face-preview-in {
   from {
     scale: 0.92;
   }
 }
 
 /* A colour or a shape to pick: a 36 px button holding its mark in the tint it
-   is given (`--new-mate-tint`). The one picked wears a ring of that tint, its
+   is given (`--mate-face-tint`). The one picked wears a ring of that tint, its
    mark's own outline a gap out, so picking never changes a size; the pointer
    over another shows the ring faintly. Pressed, it gives a little. */
-.new-mate-option {
+.mate-face-option {
   display: grid;
   place-items: center;
   width: 36px;
@@ -2957,40 +2976,40 @@ code {
   cursor: pointer;
 }
 
-.new-mate-mark {
-  fill: var(--new-mate-tint);
+.mate-face-mark {
+  fill: var(--mate-face-tint);
 }
 
-.new-mate-ring {
+.mate-face-ring {
   fill: none;
-  stroke: var(--new-mate-tint);
+  stroke: var(--mate-face-tint);
   stroke-width: 2px;
   vector-effect: non-scaling-stroke;
   opacity: 0;
   transition: opacity 150ms ease;
 }
 
-.new-mate-option[data-checked] .new-mate-ring {
+.mate-face-option[data-checked] .mate-face-ring {
   opacity: 1;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .new-mate-option:not([data-checked]):hover .new-mate-ring {
+  .mate-face-option:not([data-checked]):hover .mate-face-ring {
     opacity: 0.35;
   }
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .new-mate-option {
+  .mate-face-option {
     transition: scale 150ms var(--ease-out-strong);
   }
 
-  .new-mate-option:active {
+  .mate-face-option:active {
     scale: 0.92;
   }
 }
 
-/* ==== end of the New Mate dialog ==== */
+/* ==== end of a Mate's face, picked ==== */
 
 /* ==== Pass 16 · the menu's rows ==== */
 

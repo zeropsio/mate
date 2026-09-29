@@ -15,22 +15,8 @@
  */
 import type { EnvironmentRecipeChoice, ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
-import {
-  MATE_SHAPE_IDS,
-  MATE_SHAPES,
-  MATE_TINT_IDS,
-  type MateShapeId,
-  type MateTintId,
-} from "@t3tools/shared/brand";
-import {
-  useEffect,
-  useEffectEvent,
-  useId,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import { useEffect, useEffectEvent, useId, useState } from "react";
 
 import { Button } from "../ui/button";
 import {
@@ -51,7 +37,7 @@ import {
   newMateWords,
   type NewMateRecipe,
 } from "./ZeropsEnvironmentCreationDialog.logic";
-import { MateFace } from "./primitives";
+import { MateFacePicker } from "./MateFacePicker";
 
 /** What the form hands over: the environment's name, its agent's, the recipe and the face. */
 export interface NewMateChoice {
@@ -75,36 +61,15 @@ export interface ZeropsNewMateFormProps {
   readonly tierLoading: boolean;
   /** The tint the account gives a new Mate of this name (`newMateTint`). */
   readonly defaultTintFor: (name: string) => MateTintId;
+  /**
+   * Add went through and the platform is being asked for the Mate's project: a second, and the
+   * person lands on the new Mate. Nothing is pressed twice or closed half way meanwhile.
+   */
+  readonly adding?: boolean | undefined;
+  /** Why the platform refused the last Add, before it took any project; Add tries again. */
+  readonly addError?: string | undefined;
   readonly onCancel: () => void;
   readonly onCreate: (choice: NewMateChoice) => void;
-}
-
-/** The colours and the shapes by the words a screen reader says for them. */
-const TINT_WORDS: Record<MateTintId, string> = {
-  coral: "Coral",
-  amber: "Amber",
-  olive: "Olive",
-  sky: "Sky",
-  violet: "Violet",
-  rose: "Rose",
-  sand: "Sand",
-  slate: "Slate",
-};
-
-const SHAPE_WORDS: Record<MateShapeId, string> = {
-  squircle: "Squircle",
-  gem: "Gem",
-  hexagon: "Hexagon",
-  pentagon: "Pentagon",
-  clover: "Clover",
-  flower: "Flower",
-  seal: "Seal",
-  pick: "Guitar pick",
-};
-
-/** A tint as the stylesheet reads it: the palette's own token, so both themes hold. */
-function tintStyle(tint: MateTintId): CSSProperties {
-  return { "--new-mate-tint": `var(--zerops-mate-tint-${tint})` } as CSSProperties;
 }
 
 export function ZeropsNewMateForm({
@@ -115,6 +80,8 @@ export function ZeropsNewMateForm({
   tier,
   tierLoading,
   defaultTintFor,
+  adding = false,
+  addError,
   onCancel,
   onCreate,
 }: ZeropsNewMateFormProps) {
@@ -147,14 +114,16 @@ export function ZeropsNewMateForm({
     recipe,
     waitingOn: submit.kind === "wait" && waiting ? submit.on : null,
   });
-  const error = pressed && submit.kind === "refuse" ? submit.error : undefined;
-  const line = error ?? words.line;
+  const refused = pressed && submit.kind === "refuse" ? submit.error : undefined;
+  const error = refused ?? addError;
+  const bot = botName.replace(/\s+/g, " ").trim();
+  const line = adding ? `Adding ${bot}…` : (error ?? words.line);
 
   const create = (choice: EnvironmentRecipeChoice) => {
-    const bot = botName.replace(/\s+/g, " ").trim();
     onCreate({ name: proposeName(bot), botName: bot, recipe: choice, face });
   };
   const press = () => {
+    if (adding) return;
     setPressed(true);
     if (submit.kind === "create") create(submit.recipe);
     else setPressedFor(submit.kind === "wait" ? recipe : null);
@@ -206,80 +175,42 @@ export function ZeropsNewMateForm({
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
-        {/* The face beside what makes it; on a phone, over it. */}
-        <div className="flex items-center gap-6 max-sm:flex-col max-sm:gap-4">
-          <FacePreview face={face} />
-          <div className="flex w-full min-w-0 flex-1 flex-col gap-3.5">
-            <Input
-              aria-describedby={`${id}-line`}
-              aria-invalid={error === undefined ? undefined : true}
-              aria-label="Name"
-              autoComplete="off"
-              onChange={(event) => {
-                const typed = event.target.value;
-                setBotName(typed);
-                setPressedFor(null);
-                const name = typed.replace(/\s+/g, " ").trim();
-                if (name.length > 0) setHeldName(name);
-              }}
-              onFocus={(event) => {
-                // The proposed name is taken whole by the first key typed over it.
-                if (selected) return;
-                setSelected(true);
-                event.currentTarget.select();
-              }}
-              placeholder="Name"
-              size="lg"
-              spellCheck={false}
-              value={botName}
-            />
-            <div className="flex flex-col gap-0.5">
-              <PickerRow
-                label="Color"
-                onPick={(tint) => {
-                  setPicked((current) => ({ ...current, tint }));
-                }}
-                optionStyle={tintStyle}
-                options={MATE_TINT_IDS}
-                value={face.tint}
-                words={TINT_WORDS}
-              >
-                {() => (
-                  <>
-                    <circle className="new-mate-ring" cx="18" cy="18" r="15.5" />
-                    <circle className="new-mate-mark" cx="18" cy="18" r="12" />
-                  </>
-                )}
-              </PickerRow>
-              <PickerRow
-                label="Shape"
-                onPick={(shape) => {
-                  setPicked((current) => ({ ...current, shape }));
-                }}
-                optionStyle={() => tintStyle(face.tint)}
-                options={MATE_SHAPE_IDS}
-                value={face.shape}
-                words={SHAPE_WORDS}
-              >
-                {(shape) => (
-                  <>
-                    {/* Its own outline a gap out: the ring runs parallel to every shape. */}
-                    <path
-                      className="new-mate-ring"
-                      d={MATE_SHAPES[shape].d}
-                      transform="translate(1 1) scale(0.34)"
-                    />
-                    <path
-                      className="new-mate-mark"
-                      d={MATE_SHAPES[shape].d}
-                      transform="translate(5 5) scale(0.26)"
-                    />
-                  </>
-                )}
-              </PickerRow>
-            </div>
-          </div>
-        </div>
+        <MateFacePicker
+          face={face}
+          onPickShape={(shape) => {
+            if (!adding) setPicked((current) => ({ ...current, shape }));
+          }}
+          onPickTint={(tint) => {
+            if (!adding) setPicked((current) => ({ ...current, tint }));
+          }}
+        >
+          <Input
+            aria-describedby={`${id}-line`}
+            aria-invalid={refused === undefined ? undefined : true}
+            aria-label="Name"
+            autoComplete="off"
+            onChange={(event) => {
+              const typed = event.target.value;
+              setBotName(typed);
+              setPressedFor(null);
+              const name = typed.replace(/\s+/g, " ").trim();
+              if (name.length > 0) setHeldName(name);
+            }}
+            onFocus={(event) => {
+              // The proposed name is taken whole by the first key typed over it.
+              if (selected) return;
+              setSelected(true);
+              event.currentTarget.select();
+            }}
+            // While the platform takes the Mate's project, what made it stays as it was: the
+            // name reads, and nothing typed or picked changes the Mate on its way.
+            readOnly={adding}
+            placeholder="Name"
+            size="lg"
+            spellCheck={false}
+            value={botName}
+          />
+        </MateFacePicker>
       </DialogPanel>
       <DialogFooter>
         {/* The one quiet line, beside the button it is about: what Add waits on, why it
@@ -288,141 +219,23 @@ export function ZeropsNewMateForm({
           aria-live="polite"
           className={cn(
             "me-auto min-h-4 self-center text-line leading-4",
-            error === undefined ? "text-muted-foreground" : "text-status-failed-text",
+            adding || error === undefined ? "text-muted-foreground" : "text-status-failed-text",
           )}
           id={`${id}-line`}
         >
           {line}
         </p>
-        <Button onClick={onCancel} type="button" variant="ghost">
+        <Button disabled={adding} onClick={onCancel} type="button" variant="ghost">
           Cancel
         </Button>
-        <Button aria-busy={waiting || undefined} disabled={waiting} type="submit">
+        <Button
+          aria-busy={waiting || adding || undefined}
+          disabled={waiting || adding}
+          type="submit"
+        >
           {words.button}
         </Button>
       </DialogFooter>
     </form>
-  );
-}
-
-/**
- * One row of a face's pickers: a radio group of real buttons. One stop for Tab — the one picked —
- * and the arrow keys walk the row, picking as they go, as a radio group does. Kept by hand rather
- * than a kit's roving focus, whose stop stays where it started when the pick changes from outside
- * the row: the shape follows the colour until one is picked, and the colour follows the name.
- */
-function PickerRow<T extends string>({
-  label,
-  options,
-  value,
-  words,
-  optionStyle,
-  onPick,
-  children,
-}: {
-  readonly label: string;
-  readonly options: ReadonlyArray<T>;
-  readonly value: T;
-  readonly words: Readonly<Record<T, string>>;
-  /** The tint an option is drawn in. */
-  readonly optionStyle: (option: T) => CSSProperties;
-  readonly onPick: (option: T) => void;
-  /** An option's mark and its ring, in a 36 px box. */
-  readonly children: (option: T) => ReactNode;
-}) {
-  const buttons = useRef(new Map<T, HTMLButtonElement>());
-  const step = (from: T, by: number) => {
-    const next = options[(options.indexOf(from) + by + options.length) % options.length];
-    if (next === undefined) return;
-    onPick(next);
-    buttons.current.get(next)?.focus();
-  };
-  return (
-    <div aria-label={label} className="flex justify-between" role="radiogroup">
-      {options.map((option) => (
-        <button
-          aria-checked={option === value}
-          aria-label={words[option]}
-          className="new-mate-option focus-visible:ring-2 focus-visible:ring-ring"
-          data-checked={option === value ? "" : undefined}
-          key={option}
-          onClick={() => {
-            onPick(option);
-          }}
-          onKeyDown={(event) => {
-            const by = ARROW_STEPS[event.key];
-            if (by === undefined) return;
-            event.preventDefault();
-            step(option, by);
-          }}
-          ref={(node) => {
-            if (node === null) buttons.current.delete(option);
-            else buttons.current.set(option, node);
-          }}
-          role="radio"
-          style={optionStyle(option)}
-          tabIndex={option === value ? 0 : -1}
-          type="button"
-        >
-          <svg aria-hidden="true" className="size-9" viewBox="0 0 36 36">
-            {children(option)}
-          </svg>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-const ARROW_STEPS: Readonly<Record<string, number>> = {
-  ArrowRight: 1,
-  ArrowDown: 1,
-  ArrowLeft: -1,
-  ArrowUp: -1,
-};
-
-/**
- * The face being made, as its hero. A change crossfades: the face before fades out under the
- * new one, which settles from a touch smaller — so a colour or a shape picked, or a name typed,
- * reads as the same somebody turning into someone else rather than a picture swapped. The first
- * paint is still, and reduced motion keeps only the fade.
- */
-function FacePreview({ face }: { readonly face: ZeropsMateFace }) {
-  const [shown, setShown] = useState<{
-    readonly face: ZeropsMateFace;
-    readonly before: ZeropsMateFace | undefined;
-    readonly turn: number;
-  }>({ face, before: undefined, turn: 0 });
-  if (shown.face.tint !== face.tint || shown.face.shape !== face.shape) {
-    setShown({ face, before: shown.face, turn: shown.turn + 1 });
-  }
-  return (
-    <span className="new-mate-face" data-zerops-surface="new-mate-face">
-      {shown.before === undefined ? null : (
-        <MateFace
-          className="size-28"
-          data-new-mate-face="out"
-          key={`out-${shown.turn}`}
-          onAnimationEnd={(event) => {
-            if (event.target !== event.currentTarget) return;
-            setShown((current) =>
-              current.turn === shown.turn ? { ...current, before: undefined } : current,
-            );
-          }}
-          shape={shown.before.shape}
-          size="lg"
-          state="idle"
-          tint={shown.before.tint}
-        />
-      )}
-      <MateFace
-        className="size-28"
-        data-new-mate-face={shown.turn === 0 ? undefined : "in"}
-        key={`in-${shown.turn}`}
-        shape={shown.face.shape}
-        size="lg"
-        state="idle"
-        tint={shown.face.tint}
-      />
-    </span>
   );
 }

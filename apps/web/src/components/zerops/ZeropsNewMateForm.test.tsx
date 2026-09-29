@@ -78,7 +78,7 @@ function face(tree: ReactTestRenderer) {
     tree,
     (node) =>
       node.props["data-zerops-primitive"] === "mate-face" &&
-      node.props["data-new-mate-face"] !== "out",
+      node.props["data-mate-face-preview"] !== "out",
   );
   return { tint: svg.props["data-mate-face-tint"], shape: svg.props["data-mate-face-shape"] };
 }
@@ -313,6 +313,56 @@ describe("the New Mate dialog", () => {
     act(() => {
       tree.update(form({ onCreate, takenBotNames: { names: ["Fen"], complete: true } }));
     });
+    expect(made.map((choice) => choice.botName)).toEqual(["Otto"]);
+  });
+
+  // After Add the dialog stays until the platform has taken the Mate's project — a second, and the
+  // person lands on the new Mate — so it says it is adding, takes no second press and cannot be
+  // closed half way; a refusal before that is said beside the button, and Add tries again.
+  it("says it is adding the Mate while the platform takes its project, and takes no second press", () => {
+    const made: EnvironmentCreationChoice[] = [];
+    const tree = mount(form({ adding: true, onCreate: (choice) => made.push(choice) }));
+    expect(lineText(tree)).toBe("Adding Otto…");
+    const submit = host(tree, (node) => node.type === "button" && node.props.type === "submit");
+    expect(submit.props).toMatchObject({ disabled: true, "aria-busy": true });
+    const cancel = host(
+      tree,
+      (node) =>
+        node.type === "button" && node.props.type === "button" && node.props.children === "Cancel",
+    );
+    expect(cancel.props.disabled).toBe(true);
+    // What made the Mate stays as it was: nothing typed or picked changes the Mate on its way.
+    const input = host(
+      tree,
+      (node) => node.type === "input" && node.props["aria-label"] === "Name",
+    );
+    expect(input.props.readOnly).toBe(true);
+    const before = face(tree);
+    act(() => {
+      option(tree, "Violet").props.onClick();
+    });
+    expect(face(tree)).toEqual(before);
+    press(tree);
+    expect(made).toEqual([]);
+  });
+
+  it("says why the platform refused beside the button, in the failed ink, and Add tries again", () => {
+    const made: EnvironmentCreationChoice[] = [];
+    const tree = mount(
+      form({
+        addError: "Your organization has no room for a project.",
+        onCreate: (c) => made.push(c),
+      }),
+    );
+    expect(lineText(tree)).toBe("Your organization has no room for a project.");
+    expect(line(tree).props.className).toContain("text-status-failed-text");
+    // The platform said no, not the name: the field is not marked wrong.
+    const input = host(
+      tree,
+      (node) => node.type === "input" && node.props["aria-label"] === "Name",
+    );
+    expect(input.props["aria-invalid"]).toBeUndefined();
+    press(tree);
     expect(made.map((choice) => choice.botName)).toEqual(["Otto"]);
   });
 });

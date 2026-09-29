@@ -2,6 +2,7 @@ import type { ServerConfig } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 
 import type { ConnectionCatalogEntry } from "./catalog.ts";
+import { isSessionExpired } from "./errors.ts";
 import type { SupervisorConnectionState } from "./model.ts";
 
 export type EnvironmentConnectionPhase =
@@ -24,9 +25,14 @@ export interface EnvironmentPresentation {
   readonly serverConfig: ServerConfig | null;
 }
 
+/**
+ * A session that reached the end of its life is no failure: its door mints the next one, so the
+ * link reads as on its way back, with nothing refused and nothing to explain.
+ */
 export function presentConnectionState(
   state: SupervisorConnectionState,
 ): EnvironmentConnectionPresentation {
+  const failure = isSessionExpired(state.lastFailure) ? null : state.lastFailure;
   switch (state.phase) {
     case "available":
       return { phase: "available", error: null, traceId: null };
@@ -35,23 +41,25 @@ export function presentConnectionState(
     case "connecting":
       return {
         phase: state.attempt <= 1 && state.lastFailure === null ? "connecting" : "reconnecting",
-        error: state.lastFailure?.message ?? null,
-        traceId: state.lastFailure?.traceId ?? null,
+        error: failure?.message ?? null,
+        traceId: failure?.traceId ?? null,
       };
     case "connected":
       return { phase: "connected", error: null, traceId: null };
     case "backoff":
       return {
         phase: "reconnecting",
-        error: state.lastFailure?.message ?? null,
-        traceId: state.lastFailure?.traceId ?? null,
+        error: failure?.message ?? null,
+        traceId: failure?.traceId ?? null,
       };
     case "blocked":
-      return {
-        phase: "error",
-        error: state.lastFailure?.message ?? null,
-        traceId: state.lastFailure?.traceId ?? null,
-      };
+      return isSessionExpired(state.lastFailure)
+        ? { phase: "reconnecting", error: null, traceId: null }
+        : {
+            phase: "error",
+            error: state.lastFailure?.message ?? null,
+            traceId: state.lastFailure?.traceId ?? null,
+          };
   }
 }
 

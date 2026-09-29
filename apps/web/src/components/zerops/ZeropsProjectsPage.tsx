@@ -62,17 +62,14 @@ import {
   type TakenBotNames,
 } from "@t3tools/client-runtime/zerops/projections";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
-import { useAddMateIntent } from "~/zerops/addMateIntent";
+import { useAddMate } from "~/zerops/newMate";
+import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
 import { intendContainer, useZeropsContainers } from "~/zerops/zeropsContainers";
 import {
   beginBirth,
   birthEnabled,
-  birthWithoutContainer,
-  bornOnAccept,
-  creationAccepted,
   forgetBirth,
-  importedContainer,
   placedBirthsIn,
   retryBirth,
   useZeropsBirths,
@@ -82,10 +79,7 @@ import {
   useZeropsCandidates,
   type ZeropsCandidatePresentation,
 } from "~/zerops/useZeropsCandidates";
-import {
-  integrationTokensFromGrantMetadata,
-  useZeropsGroupReach,
-} from "~/zerops/useZeropsGroupReach";
+import { useZeropsGroupReach } from "~/zerops/useZeropsGroupReach";
 import { useZeropsThrowawaySweep } from "~/zerops/useZeropsThrowawaySweep";
 import { useZeropsOrganizationMembers } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
@@ -123,8 +117,6 @@ import {
   type RandomBytes,
   GROUP_BEING_SET_UP_LINE,
   hasMate,
-  planEnvironmentCreation,
-  canWriteRegistry,
   canCreateProjectsInOrganization,
   groupFlow,
   pullRequestLineWith,
@@ -132,7 +124,6 @@ import {
   type FlowPullRequest,
   readZeropsGroupTags,
   resolveGroupGitea,
-  runEnvironmentCreation,
   unionAgents,
   type EnvironmentCreationStepProgress,
   type EnvironmentRow,
@@ -945,14 +936,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     organizationStatus,
     selectOrganization,
     status,
-    user,
   } = useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const inventory = useZeropsInventory();
-  const inventoryRef = useRef(inventory);
-  useEffect(() => {
-    inventoryRef.current = inventory;
-  }, [inventory]);
   const { listing, isLoading, error, refresh: refreshCandidates } = useZeropsCandidates();
   // The rows read so far; `listing` says whether they are all there are, and
   // the page's notice says so while they are not (`projectsListingNotice`).
@@ -1980,8 +1966,15 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
    * first deploy lands and the page answers 502 with nothing saying why
    * (`verified.md`, 2026-09-07).
    */
+  // A Mate is asked for over whatever is on screen (`ZeropsNewMateHost`), from here as from the
+  // left menu, and the person lands on it; a stage or a production is this page's own form.
+  const addMate = useAddMate();
   const requestEnvironment = useCallback(
     (groupId: string, role: ZeropsEnvironmentRole) => {
+      if (role === "dev") {
+        addMate(groupId);
+        return;
+      }
       if (creationRunning) return;
       setCreationRequest({
         groupId,
@@ -1991,197 +1984,49 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         botName: generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),
       });
     },
-    [creationRunning, taken],
+    [addMate, creationRunning, taken],
   );
 
-  // An add asked for from the left menu, which has the project's name and the
-  // verb but not the dialog. Answered once, and only for a group still here.
-  const takeAddMateIntent = useAddMateIntent((state) => state.take);
-  useEffect(() => {
-    const groupId = takeAddMateIntent();
-    if (groupId === null) return;
-    if (!groupTree.groups.some((entry) => entry.group.groupId === groupId)) return;
-    requestEnvironment(groupId, "dev");
-  }, [groupTree.groups, requestEnvironment, takeAddMateIntent]);
-
+  // The creation itself is the account's (`useEnvironmentCreation`), shared with the New Mate
+  // dialog; this page shows its checklist and what it came to.
+  const runCreation = useEnvironmentCreation();
   const createEnvironment = useCallback(
     async (groupId: string, role: ZeropsEnvironmentRole, choice: EnvironmentCreationChoice) => {
       if (!activeOrganization || creationRunning) return;
-      const isCurrent = captureAccountLifetime();
       const entry = groupTree.groups.find((candidate) => candidate.group.groupId === groupId);
       if (entry === undefined) return;
-      const { group } = entry;
-      const { name } = choice;
       const tier = role === "prod" ? "production" : role === "stage" ? "stage" : null;
       // Under way from the click: every add verb is off (`creationRunning`)
       // before the group's agents are read, so none is pressed twice.
-      setCreation({ name, tier: tier ?? "mate", progress: [] });
-
-      const plan = planEnvironmentCreation({
-        clientId: activeOrganization.id,
-        groupId,
-        // A group named by its id has no name to mirror.
-        ...(group.nameSource === "id" ? {} : { groupName: group.name }),
+      setCreation({ name: choice.name, tier: tier ?? "mate", progress: [] });
+      const run = await runCreation({
+        group: entry.group,
+        environments: entry.environments,
         role,
-        name,
-        agents: await readGroupAgents(entry.environments),
-        recipe: choice.recipe,
-        withAgent: choice.withAgent,
-        ...(choice.botName === undefined ? {} : { botName: choice.botName }),
-        ...(user?.id ? { standUpBy: user.id } : {}),
-        ...(choice.face === undefined ? {} : { face: choice.face }),
-      });
-      if (!isCurrent()) return;
-      if (!plan.ok) {
-        setCreation(null);
-        setToolError(plan.reason);
-        return;
-      }
-
-      // The project is a birth from the moment the platform accepts it
-      // (`zeropsBirths.ts`, DESIGN §4.5), which the account's worker finishes
-      // whatever this page does next — a reload or a closed tab during the
-      // steps below included. It carries the group writes this person makes:
-      //
-      // - A Mate an owner or an admin makes is registered as soon as its
-      //   project exists, the way *New project* registers the first — a
-      //   creation that failed past that point included (Fen, 2026-09-17).
-      //   Without the entry the broker gives it no bot. A member cannot write
-      //   the registry; their Mate waits on the card's *Register in {group}*
-      //   (guide 4.2).
-      // - A stage or a production is a **group environment**: it goes in the
-      //   registry, the broker's token has to reach it, and its sources are
-      //   declared on the group repo before the broker deploys anything
-      //   (guide 5.2).
-      const registers = tier !== null || canWriteRegistry(activeOrganization);
-      const withAgent = plan.steps.some((step) => step.kind === "import-container");
-      const organizationId = activeOrganization.id;
-      // The listing is read again at once, so the group catches up with its birth.
-      const accepted = (projectId: string) => {
-        if (!isCurrent()) return;
-        creationAccepted(
-          {
-            projectId,
-            organizationId,
-            registration:
-              registers && giteaProjectId !== undefined
-                ? {
-                    giteaProjectId,
-                    giteaOrigin: tier === null ? null : (giteaOrigin ?? null),
-                    groupId,
-                    kind: tier ?? "mate",
-                    displayName: name,
-                  }
-                : null,
-            container: withAgent,
-            placement: { groupId, groupName: group.name, kind: tier ?? "mate", displayName: name },
-          },
-          organizationRef(organizationId),
-        );
-      };
-
-      setToolError(
-        tier !== null && giteaProjectId === undefined
-          ? "Your account's Gitea is still being set up."
-          : null,
-      );
-      setCreationNowMs(Date.now());
-      setCreation((current) =>
-        current === null
-          ? current
-          : { ...current, progress: plan.steps.map((step) => ({ step, state: "queued" })) },
-      );
-      const outcome = await runEnvironmentCreation({
-        clientId: activeOrganization.id,
-        steps: plan.steps,
-        isCurrent,
-        platform: bornOnAccept(
-          {
-            createProject: ({ clientId: _clientId, ...input }) =>
-              runZeropsCommand(
-                runtime.commands.createProject({
-                  organization: organizationRef(activeOrganization.id),
-                  ...input,
-                }),
-              ),
-            // A read, not a write: the platform's verdict on the project the
-            // command above made, waited on by the executor.
-            readProjectCreation: (input) =>
-              client.readProjectCreation(input, unmountRef.current?.signal),
-            importDevelopmentContainer: ({ projectId, ...input }) =>
-              runZeropsCommand(
-                runtime.commands.importDevelopmentContainer({
-                  project: projectRef(activeOrganization.id, projectId),
-                  ...input,
-                }),
-              ),
-            importServices: (projectId, yaml) =>
-              runZeropsCommand(
-                runtime.commands.importServices(projectRef(activeOrganization.id, projectId), yaml),
-              ),
-            listIntegrationTokenGrants: async ({ clientId: _clientId }) =>
-              integrationTokensFromGrantMetadata(
-                await runZeropsCommand(
-                  runtime.commands.listIntegrationTokenGrants(
-                    organizationRef(activeOrganization.id),
-                  ),
-                ),
-              ),
-            setIntegrationTokenProjects: ({ clientId: _clientId, ...input }) =>
-              runZeropsCommand(
-                runtime.commands.setIntegrationTokenProjects({
-                  organization: organizationRef(activeOrganization.id),
-                  ...input,
-                }),
-              ),
-            listTokenDelegations: ({ clientId: _clientId, ...input }) =>
-              runZeropsCommand(
-                runtime.commands.listTokenDelegations({
-                  organization: organizationRef(activeOrganization.id),
-                  ...input,
-                }),
-              ),
-            deleteTokenDelegation: ({ clientId: _clientId, ...input }) =>
-              runZeropsCommand(
-                runtime.commands.deleteTokenDelegation({
-                  organization: organizationRef(activeOrganization.id),
-                  ...input,
-                }),
-              ),
-            importProject: ({ clientId: _clientId, yaml }) =>
-              runZeropsCommand(
-                runtime.commands.importProject(organizationRef(activeOrganization.id), yaml),
-              ),
-            readObservedServices: async (projectId) => {
-              const outcome = inventoryRef.current.services.get(projectId);
-              return outcome?.status === "resolved"
-                ? outcome.services.map((service) => ({
-                    name: service.name,
-                    status: service.status,
-                  }))
-                : [];
-            },
-          },
-          accepted,
-        ),
-        describeError: zeropsErrorMessage,
-        sleep: (ms) =>
-          new Promise<void>((resolve) => {
-            setTimeout(resolve, ms);
-          }),
+        choice,
+        onPlanned: (steps) => {
+          setToolError(
+            tier !== null && giteaProjectId === undefined
+              ? "Your account's Gitea is still being set up."
+              : null,
+          );
+          setCreationNowMs(Date.now());
+          setCreation((current) =>
+            current === null
+              ? current
+              : { ...current, progress: steps.map((step) => ({ step, state: "queued" })) },
+          );
+        },
         onProgress: (progress) => {
-          if (!isCurrent()) return;
           setCreation((current) => (current === null ? current : { ...current, progress }));
         },
       });
-
-      if (!isCurrent()) return;
-
-      // A container import that never went through leaves the birth nothing to bring up.
-      if (outcome.projectId !== undefined && withAgent && !importedContainer(plan.steps, outcome)) {
-        birthWithoutContainer(outcome.projectId);
+      if (run.kind === "refused") {
+        setCreation(null);
+        if (run.reason !== null) setToolError(run.reason);
+        return;
       }
-
+      const { outcome } = run;
       if (!outcome.ok) {
         setCreation((current) =>
           current === null
@@ -2197,7 +2042,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         );
         return;
       }
-
       if (outcome.awaitingAgent) {
         // The imports were accepted; the rest is the birth's, which the Mate's
         // card shows and whose connect lands the person in the conversation.
@@ -2213,18 +2057,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     },
     [
       activeOrganization,
-      creationRequest?.groupId,
       creationRunning,
-      groupTree.groups,
-      readGroupAgents,
-      organizationRef,
-      projectRef,
-      setConnectError,
-      runtime.commands,
-      client,
-      giteaOrigin,
       giteaProjectId,
-      user?.id,
+      groupTree.groups,
+      runCreation,
+      setConnectError,
     ],
   );
 

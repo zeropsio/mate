@@ -67,20 +67,32 @@ export function zeropsMateIdentities(
   for (const candidate of candidates) {
     const environmentId = rowEnvironment(candidate, registeredOrigins);
     if (environmentId === undefined || mates.has(environmentId) || !hasMate(candidate)) continue;
-    const tags = readZeropsGroupTags(candidate.project.tagList);
-    const tint = tints.get(candidate.project.id) ?? "slate";
-    mates.set(environmentId, {
-      serviceId: candidate.service?.id,
-      name: botDisplayName({ bot: tags.bot, projectName: candidate.project.name }),
-      tint,
-      shape: mateShapeOf(candidate.project.tagList, tint),
-      project: tags.label,
-      projectUrl: zeropsProjectUrl(candidate.project.id),
-      connected: candidate.group === "connected",
-      ...(tags.standUp === undefined ? {} : { standUp: tags.standUp }),
-    });
+    mates.set(environmentId, zeropsMateIdentityOf(candidate, tints));
   }
   return mates;
+}
+
+/**
+ * One Mate as its candidate says it, in the tint the account deals it (`assignCandidateMateTints`
+ * over every candidate): what `zeropsMateIdentities` keys by environment, for a surface that has
+ * the Mate before its environment — its own view while it comes up.
+ */
+export function zeropsMateIdentityOf(
+  candidate: ZeropsCandidate,
+  tints: ReadonlyMap<string, MateTintId>,
+): ZeropsMateIdentity {
+  const tags = readZeropsGroupTags(candidate.project.tagList);
+  const tint = tints.get(candidate.project.id) ?? "slate";
+  return {
+    serviceId: candidate.service?.id,
+    name: botDisplayName({ bot: tags.bot, projectName: candidate.project.name }),
+    tint,
+    shape: mateShapeOf(candidate.project.tagList, tint),
+    project: tags.label,
+    projectUrl: zeropsProjectUrl(candidate.project.id),
+    connected: candidate.group === "connected",
+    ...(tags.standUp === undefined ? {} : { standUp: tags.standUp }),
+  };
 }
 
 /** Who lives in one environment: its Mate, nobody, or not known yet. */

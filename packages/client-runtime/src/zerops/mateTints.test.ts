@@ -2,6 +2,7 @@ import { MATE_SHAPE_OF_TINT, MATE_TINT_IDS } from "@t3tools/shared/brand";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsCandidate } from "./candidates.ts";
+import { withZeropsChangedFace } from "./groups.ts";
 import {
   assignCandidateMateTints,
   assignMateTints,
@@ -201,6 +202,55 @@ describe("a Mate's own face", () => {
       ...before,
       "p-quinn": worn,
     });
+  });
+
+  /**
+   * A face changed after its birth. Ada wore her name's sky, and Otto, whose
+   * name asks for sky too, walked on to violet: were Ada's name to leave the
+   * sharing when she picked, Otto would take sky back. Every Mate here, its
+   * face changed in turn, leaves every other Mate as it was.
+   */
+  it.each(["p-ada", "p-fen", "p-nova", "p-otto", "p-juno", "crm-stage"])(
+    "recolours nobody when %s's face is changed",
+    (changed) => {
+      const account = [
+        mate("p-ada", ["mate:bot:Ada"]),
+        mate("p-fen", ["mate:bot:Fen"]),
+        mate("p-nova", ["mate:bot:Nova"]),
+        mate("p-otto", ["mate:bot:Otto"]),
+        mate("p-juno", ["mate:bot:Juno"]),
+        mate("crm-stage", []),
+      ];
+      const before = Object.fromEntries(assignCandidateMateTints(account));
+      const after = account.map((entry) =>
+        entry.project.id === changed
+          ? mate(
+              changed,
+              withZeropsChangedFace(entry.project.tagList, { tint: "rose", shape: "clover" }),
+            )
+          : entry,
+      );
+      expect(Object.fromEntries(assignCandidateMateTints(after))).toEqual({
+        ...before,
+        [changed]: "rose",
+      });
+    },
+  );
+
+  it("recolours nobody when a Mate whose face was picked at its birth changes it", () => {
+    const account = [
+      mate("p-ada", ["mate:bot:Ada"]),
+      mate("p-otto", ["mate:bot:Otto"]),
+      mate("p-quinn", ["mate:bot:Quinn", "mate:face:olive:gem"]),
+    ];
+    const before = Object.fromEntries(assignCandidateMateTints(account));
+    const quinn = mate(
+      "p-quinn",
+      withZeropsChangedFace(account[2]!.project.tagList, { tint: "sky", shape: "seal" }),
+    );
+    expect(Object.fromEntries(assignCandidateMateTints([account[0]!, account[1]!, quinn]))).toEqual(
+      { ...before, "p-quinn": "sky" },
+    );
   });
 
   it.each([

@@ -7,6 +7,7 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { AsyncResult, Atom, AtomRegistry } from "effect/unstable/reactivity";
 
+import { isSessionExpired } from "../connection/errors.ts";
 import type { ConnectionAttemptError } from "../connection/model.ts";
 import { EnvironmentNotRegisteredError, EnvironmentRegistry } from "../connection/registry.ts";
 import {
@@ -557,6 +558,14 @@ export function createEnvironmentQueryAtomFamily<R, ER, Input, A, E>(
           case "available":
           case "offline":
           case "blocked":
+            // A session at the end of its life is renewed by its door: the link is on its way
+            // back, as in a backoff, so the last answer stays up rather than a refusal.
+            if (
+              connectionState.phase === "blocked" &&
+              isSessionExpired(connectionState.lastFailure)
+            ) {
+              return Effect.never;
+            }
             if (connectionState.lastFailure !== null) {
               return Effect.fail(connectionState.lastFailure);
             }

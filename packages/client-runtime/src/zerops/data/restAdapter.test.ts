@@ -969,6 +969,50 @@ describe("ZeropsDataAdapter receiver", () => {
   );
 
   it.effect(
+    "creates the New project wizard's first Mate with the face and the stand-up it asks",
+    () =>
+      Effect.gen(function* () {
+        const bodies: Array<string> = [];
+        const client = clientFor((_url, init) => {
+          if (typeof init?.body === "string") bodies.push(init.body);
+          return new Response(
+            JSON.stringify({
+              id: "project",
+              name: "Acme Docs - Ada",
+              status: "CREATING",
+              clientId: organization.organizationId,
+            }),
+            { status: 200 },
+          );
+        });
+        const adapter = makeZeropsDataAdapter({
+          client,
+          makeSocket: () => new FakeSocket(),
+          timers,
+        });
+
+        yield* adapter.execute(
+          {
+            kind: "create-project-with-mate",
+            organization,
+            name: "Acme Docs - Ada",
+            group: { groupId: "g-acme", role: "dev", label: "Acme Docs" },
+            botName: "Ada",
+            face: { tint: "coral", shape: "gem" },
+            standUpBy: "u-ada",
+            ...commandBase,
+          },
+          context(),
+        );
+
+        // The project's own POST: the one body the platform creates it with.
+        for (const tag of ["mate:bot:Ada", "mate:face:coral:gem", "mate:standup:u-ada"]) {
+          expect(bodies[0]).toContain(`"${tag}"`);
+        }
+      }),
+  );
+
+  it.effect(
     "reports an accepted malformed start-project response as non-retryable uncertainty",
     () =>
       Effect.gen(function* () {

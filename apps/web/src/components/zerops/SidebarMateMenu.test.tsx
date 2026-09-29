@@ -12,6 +12,7 @@ const ACTIONS: MateRowActions = {
   toggleUnread: () => {},
   copyLink: () => {},
   rename: { initialValue: "Nova", validate: () => undefined, commit: () => {} },
+  changeFace: () => {},
   entries: [
     { id: "restart", label: "Restart", onSelect: () => {} },
     { id: "quick", separator: true },
@@ -46,6 +47,7 @@ describe("MateMenuItems — a Mate's own menu", () => {
       "mute",
       "unread",
       "rename",
+      "face",
       "restart",
       "assign",
       "move",
@@ -64,6 +66,7 @@ describe("MateMenuItems — a Mate's own menu", () => {
       "mute",
       "unread",
       "rename",
+      "face",
       "restart",
       "assign",
       "move",
@@ -116,6 +119,7 @@ describe("MateMenuItems — a Mate's own menu", () => {
       "mute",
       "unread",
       "rename",
+      "face",
       "restart",
       "assign",
       "move",
@@ -135,6 +139,13 @@ describe("MateMenuItems — a Mate's own menu", () => {
   it("offers Stop the run only while it works, and Rename only where it may be renamed", () => {
     expect(order(items())).not.toContain("stop");
     expect(order(items({ actions: { ...ACTIONS, rename: undefined } }))).not.toContain("rename");
+  });
+
+  it("offers Change face… beside Rename, and only where its face may be changed", () => {
+    const html = items();
+    expect(html).toContain(">Change face…<");
+    expect(order(html).slice(4, 7)).toEqual(["unread", "rename", "face"]);
+    expect(order(items({ actions: { ...ACTIONS, changeFace: undefined } }))).not.toContain("face");
   });
 
   it("shows the keys the list answers beside their items", () => {

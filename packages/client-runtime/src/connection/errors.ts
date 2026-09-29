@@ -21,6 +21,24 @@ export function credentialMissingError(connectionId: string): ConnectionBlockedE
   });
 }
 
+/**
+ * A session at the end of its life — past its own deadline, or so its server said. Its door
+ * mints the next, so nothing about it is a fault.
+ */
+export function sessionExpiredError(traceId?: string): ConnectionBlockedError {
+  return new ConnectionBlockedError({
+    reason: "authentication",
+    detail: "The environment session expired.",
+    ...(traceId === undefined ? {} : { traceId }),
+    expired: true,
+  });
+}
+
+/** Whether a link's last failure is only its session reaching the end of its life. */
+export function isSessionExpired(failure: ConnectionAttemptError | null): boolean {
+  return failure?._tag === "ConnectionBlockedError" && failure.expired === true;
+}
+
 export function environmentMismatchError(input: {
   readonly expected: EnvironmentId;
   readonly actual: EnvironmentId;
@@ -36,11 +54,13 @@ export function mapRemoteEnvironmentError(
 ): ConnectionAttemptError {
   switch (error._tag) {
     case "EnvironmentAuthInvalidError":
-      return new ConnectionBlockedError({
-        reason: "authentication",
-        detail: "The environment credential is invalid.",
-        traceId: error.traceId,
-      });
+      return error.expired === true
+        ? sessionExpiredError(error.traceId)
+        : new ConnectionBlockedError({
+            reason: "authentication",
+            detail: "The environment credential is invalid.",
+            traceId: error.traceId,
+          });
     case "EnvironmentOperationForbiddenError":
       // The Mate is theirs to see and not to open. Kept apart from the generic
       // permission error on purpose: that one reads as something to fix, and
