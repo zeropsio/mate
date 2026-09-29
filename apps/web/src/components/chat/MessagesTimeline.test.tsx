@@ -1758,3 +1758,113 @@ describe("messageEnters", () => {
     expect(messageEnters(row, after)).toBe(enters);
   });
 });
+
+describe("MessagesTimeline — standing in place across a switch", () => {
+  // T1: the pane holds what it showed last over this conversation until the
+  // conversation says it stands where it stays — once its list has placed
+  // its rows, never while it is on its way. On its way, a slow one shows its
+  // Mate at work, which is something on screen too.
+  const frames: FrameRequestCallback[] = [];
+  const runFrames = () => {
+    for (const frame of frames.splice(0)) frame(0);
+  };
+  beforeEach(() => {
+    frames.length = 0;
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+      frames.push(callback),
+    );
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+  });
+
+  const listRef = {
+    current: {
+      getState: () => ({ data: [], isWithinMaintainScrollAtEndThreshold: true }),
+      getScrollableNode: () => ({ scrollTop: 0, scrollHeight: 2000, clientHeight: 800 }),
+    } as unknown as LegendListRef,
+  };
+  const layer = () => ({ painted: vi.fn(), waiting: vi.fn(), placing: vi.fn() });
+  type Shown = Pick<
+    Parameters<typeof MessagesTimeline>[0],
+    "timelineEntries" | "hideEmptyPlaceholder" | "loading"
+  >;
+  const timeline = async (switchLayer: ReturnType<typeof layer>, props: Shown) => {
+    const { TimelineSwitchContext } = await import("./TimelineSwitch");
+    return (
+      <TimelineSwitchContext value={switchLayer}>
+        <MessagesTimeline
+          {...buildProps()}
+          listRef={listRef}
+          routeThreadKey="environment-local:thread-in-place"
+          {...props}
+        />
+      </TimelineSwitchContext>
+    );
+  };
+  const mount = async (switchLayer: ReturnType<typeof layer>, props: Shown) => {
+    let renderer: ReactTestRenderer | undefined;
+    const element = await timeline(switchLayer, props);
+    await act(() => {
+      renderer = create(element);
+    });
+    runFrames();
+    return renderer!;
+  };
+
+  it("says so once its list has put the rows in place", async () => {
+    const { LegendList } = await import("@legendapp/list/react");
+    const switchLayer = layer();
+    const renderer = await mount(switchLayer, {
+      timelineEntries: [buildUserTimelineEntry("Where were we?")],
+    });
+    try {
+      expect(switchLayer.painted).not.toHaveBeenCalled();
+      await act(() => renderer.root.findByType(LegendList).props.onLoad({ elapsedTimeInMs: 4 }));
+      runFrames();
+      expect(switchLayer.painted).toHaveBeenCalledTimes(1);
+    } finally {
+      await act(() => renderer.unmount());
+    }
+  });
+
+  it.each([
+    { case: "never while it is still on its way", loading: true, says: 0 },
+    { case: "at once when there is nothing to place", loading: false, says: 1 },
+  ])("$case", async ({ loading, says }) => {
+    const switchLayer = layer();
+    const renderer = await mount(switchLayer, {
+      timelineEntries: [],
+      hideEmptyPlaceholder: true,
+      loading,
+    });
+    try {
+      expect(switchLayer.painted).toHaveBeenCalledTimes(says);
+    } finally {
+      await act(() => renderer.unmount());
+    }
+  });
+
+  it("shows its Mate at work once the wait passes 400 ms, and asks to be kept as the rows come", async () => {
+    vi.useFakeTimers();
+    const switchLayer = layer();
+    try {
+      const renderer = await mount(switchLayer, {
+        timelineEntries: [],
+        hideEmptyPlaceholder: true,
+        loading: true,
+      });
+      vi.advanceTimersByTime(399);
+      expect(switchLayer.waiting).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(switchLayer.waiting).toHaveBeenCalledTimes(1);
+      expect(switchLayer.placing).not.toHaveBeenCalled();
+      const rows = await timeline(switchLayer, {
+        timelineEntries: [buildUserTimelineEntry("Where were we?")],
+      });
+      await act(() => renderer.update(rows));
+      expect(switchLayer.placing).toHaveBeenCalledTimes(1);
+      await act(() => renderer.unmount());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
