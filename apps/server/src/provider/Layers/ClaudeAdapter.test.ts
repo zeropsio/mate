@@ -3086,6 +3086,83 @@ describe("ClaudeAdapterLive", () => {
     },
   );
 
+  // The API's words for a picture it cannot read ("image exceeds 5 MB
+  // maximum") never said which picture was the person's, nor what to do.
+  it.effect.each([
+    {
+      name: "a placed picture over the limits is named by its label",
+      input: "The header:\n[Picture 1]\nFix it",
+      errors: [
+        "API Error: 400 messages.3.content.1.image.source.base64: image exceeds 5 MB maximum",
+      ],
+      expected: /^Claude couldn't read Picture 1 \(3210 × 2118, 4\.3 MB\)/,
+    },
+    {
+      name: "an image no label places is named by its file",
+      input: "The header",
+      errors: [],
+      expected: /^Claude couldn't read "shot\.png" \(3210 × 2118, 4\.3 MB\)/,
+    },
+  ])("names the picture an image_error is about: $name", ({ input, errors, expected }) => {
+    const baseDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "claude-image-error-"));
+    const harness = makeHarness({ cwd: "/tmp/project-claude-image-error", baseDir });
+    return Effect.gen(function* () {
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => NodeFS.rmSync(baseDir, { recursive: true, force: true })),
+      );
+      const adapter = yield* ClaudeAdapter;
+      const { attachmentsDir } = yield* ServerConfig;
+      // A PNG header saying 3210 × 2118, weighing what the failed paste did.
+      const bytes = new Uint8Array(4_500_000);
+      bytes.set([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52,
+      ]);
+      new DataView(bytes.buffer).setUint32(16, 3210);
+      new DataView(bytes.buffer).setUint32(20, 2118);
+      const attachment = {
+        type: "image" as const,
+        id: "thread-claude-image-error-62345678-1234-1234-1234-123456789abc",
+        name: "shot.png",
+        mimeType: "image/png",
+        sizeBytes: bytes.byteLength,
+      };
+      const attachmentPath = NodePath.join(attachmentsDir, attachmentRelativePath(attachment)!);
+      NodeFS.mkdirSync(NodePath.dirname(attachmentPath), { recursive: true });
+      NodeFS.writeFileSync(attachmentPath, bytes);
+      const completionFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type === "turn.completed"),
+        Stream.runHead,
+        Effect.forkChild,
+      );
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId: session.threadId, input, attachments: [attachment] });
+      harness.query.emit({
+        type: "result",
+        subtype: errors.length > 0 ? "error_during_execution" : "success",
+        is_error: errors.length > 0,
+        result: "",
+        errors,
+        stop_reason: null,
+        terminal_reason: "image_error",
+        session_id: "sdk-session-image-error",
+        uuid: "result-image-error",
+      } as unknown as SDKMessage);
+      const completed = yield* Fiber.join(completionFiber);
+      assert.equal(completed._tag, "Some");
+      if (completed._tag === "Some" && completed.value.type === "turn.completed") {
+        assert.equal(completed.value.payload.state, "failed");
+        assert.match(completed.value.payload.errorMessage ?? "", expected);
+      }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("fails a turn for every dead-turn terminal_reason", () => {
     const reasons = [
       "blocking_limit",
