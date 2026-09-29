@@ -54,6 +54,12 @@ export interface TimelineRowSharedState {
    * place once. Null until the conversation has had a message.
    */
   arrivedAfter: number | null;
+  /**
+   * The conversation is still being read from the server: what it shows may
+   * be a remembered or cached copy, and what changes meanwhile arrived before
+   * the person looked, not while they watched.
+   */
+  syncing: boolean;
 }
 
 export interface TimelineRowActivityState {

@@ -281,6 +281,12 @@ interface MessagesTimelineProps {
    * middle of the pane, and a quick one shows nothing at all.
    */
   loading?: boolean;
+  /**
+   * The conversation is still being read from the server (a remembered or
+   * cached copy may be showing): what arrives meanwhile is history, and
+   * nothing rises in until the read is done.
+   */
+  syncing?: boolean;
   topFadeEnabled?: boolean;
   /** Non-null when older turns exist beyond the loaded window. */
   loadEarlier?: { readonly loading: boolean; readonly onLoadEarlier: () => void } | null;
@@ -336,6 +342,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   cancelPositionRestoreRef,
   hideEmptyPlaceholder = false,
   loading = false,
+  syncing = false,
   topFadeEnabled = false,
   loadEarlier = null,
   queuedMessages = EMPTY_QUEUED_MESSAGES,
@@ -825,7 +832,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     readonly key: string;
     readonly at: number;
   } | null>(null);
-  if (openedWith?.key !== routeThreadKey && newestMessageAt > Number.NEGATIVE_INFINITY) {
+  // Until the conversation is read, the baseline follows its newest message:
+  // a cached copy painting first, then the server's newer messages landing,
+  // is history arriving, not a message arriving while the person watched.
+  if (
+    newestMessageAt > Number.NEGATIVE_INFINITY &&
+    (openedWith?.key !== routeThreadKey || (syncing && newestMessageAt > openedWith.at))
+  ) {
     setOpenedWith({ key: routeThreadKey, at: newestMessageAt });
   }
   const arrivedAfter = openedWith?.key === routeThreadKey ? openedWith.at : null;
@@ -855,6 +868,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       steerQueuedMessageShortcutLabel,
       onRemoveQueuedMessage,
       arrivedAfter,
+      syncing,
     }),
     [
       timestampFormat,
@@ -879,6 +893,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       steerQueuedMessageShortcutLabel,
       onRemoveQueuedMessage,
       arrivedAfter,
+      syncing,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(
@@ -930,7 +945,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           {loading ? (
             <span
               aria-label={`Opening ${speaker.name}'s conversation`}
-              className="flex animate-held-appear motion-reduce:animate-none"
+              // Opacity alone, so it keeps its 400 ms hold under reduced
+              // motion too: without the hold a quick load flashed it.
+              className="flex animate-held-appear"
               role="status"
             >
               <MateFace size="lg" state="working" tint={speaker.tint} />
@@ -973,7 +990,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               }
               onScroll={handleScroll}
               className={cn(
-                "scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
+                "timeline-legend-list scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
                 topFadeEnabled && "topbar-scroll-fade",
               )}
               ListHeaderComponent={

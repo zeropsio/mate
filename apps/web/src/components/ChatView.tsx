@@ -8188,6 +8188,7 @@ export default function ChatView(props: ChatViewProps) {
                   cancelPositionRestoreRef={cancelPositionRestoreRef}
                   hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
                   loading={threadDetailLoading && !isDraftHeroState}
+                  syncing={threadSyncPhase !== null || threadDetailLoading}
                   queuedMessages={queuedMessages}
                   usagePause={activeThreadShell?.usagePause ?? null}
                   onUsageAutoResumeChange={onUsageAutoResumeChange}
