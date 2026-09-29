@@ -311,6 +311,11 @@ export const CrewTask = Schema.Struct({
   review: Schema.NullOr(CrewReview),
   /** The landing commit in your tree. */
   landedCommit: Schema.NullOr(TrimmedNonEmptyString),
+  /**
+   * When it went into your tree — the Crew tab dates its row in "In Fen's
+   * code" by it; `null` before, and from an older server, which says nothing.
+   */
+  landedAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   /** A landed task whose change has gone out with *Deliver*. */
   delivered: Schema.Boolean,
 });

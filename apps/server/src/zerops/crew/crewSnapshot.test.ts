@@ -442,4 +442,23 @@ describe("crew snapshot", () => {
     );
     expect(snapshot.landedNotDelivered).toBe(1);
   });
+
+  it("dates a task that went in by its landing, and no other", () => {
+    const snapshot = appliedSnapshot(
+      base({
+        tasks: [
+          task("t-1", 1, {
+            state: "landed",
+            landedCommit: "c".repeat(40),
+            updatedAt: "2026-09-27T09:30:00.000Z",
+          }),
+          task("t-2", 2, { state: "working", updatedAt: "2026-09-27T09:40:00.000Z" }),
+        ],
+      }),
+    );
+    expect(snapshot.board.tasks.map((row) => [row.id, row.landedAt])).toEqual([
+      ["t-1", "2026-09-27T09:30:00.000Z"],
+      ["t-2", null],
+    ]);
+  });
 });

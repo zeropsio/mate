@@ -453,6 +453,7 @@ function task(over: Partial<CrewTask> = {}): CrewTask {
     check: { state: "passed", output: "" },
     review: null,
     landedCommit: null,
+    landedAt: null,
     delivered: false,
     ...over,
   } as CrewTask;

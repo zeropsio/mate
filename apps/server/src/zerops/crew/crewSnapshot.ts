@@ -328,6 +328,8 @@ const toTask = (row: CrewAssignmentRow, input: AppliedSnapshotInput): CrewTask =
     check: readTaskCheck(row.check),
     review: readTaskReview(row.review),
     landedCommit: row.landedCommit,
+    // A landed task is done moving: its last write is its landing.
+    landedAt: row.state === "landed" ? row.updatedAt : null,
     delivered: row.state === "landed" && input.runtime.delivered.has(row.assignment),
   };
 };

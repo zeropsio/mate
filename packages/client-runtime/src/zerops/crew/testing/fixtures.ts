@@ -184,6 +184,7 @@ const task = (
   check: null,
   review: null,
   landedCommit: null,
+  landedAt: null,
   delivered: false,
   ...fields,
 });
@@ -209,6 +210,7 @@ const tasks: ReadonlyArray<CrewTask> = [
     check: { state: "passed", output: "Tests  29 passed (29)" },
     review: { verdict: "accept", note: "Reads well.", by: "lead" },
     landedCommit: "9f3c2e1",
+    landedAt: at("08:10"),
     delivered: true,
   }),
   task({
@@ -225,6 +227,7 @@ const tasks: ReadonlyArray<CrewTask> = [
     check: { state: "passed", output: "Tests  46 passed (46)" },
     review: { verdict: "accept", note: "", by: "lead" },
     landedCommit: "a1b2c3d",
+    landedAt: at("08:25"),
   }),
   task({
     id: "task-12",
