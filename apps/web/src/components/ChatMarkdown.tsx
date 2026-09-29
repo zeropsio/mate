@@ -532,7 +532,7 @@ function MarkdownTable({ children, ...props }: React.ComponentProps<"table">) {
   );
 
   return (
-    <div ref={containerRef} className="chat-markdown-table-container">
+    <div ref={containerRef} className="chat-markdown-table-container group/table relative">
       <ScrollArea
         radius="none"
         chainVerticalScroll
@@ -542,7 +542,11 @@ function MarkdownTable({ children, ...props }: React.ComponentProps<"table">) {
       >
         <table {...props}>{children}</table>
       </ScrollArea>
-      <div className="mt-0.5 flex items-center justify-end select-none">
+      {/* The copy stands on the table's top-right corner, over its header, and
+          shows while the table is under the pointer or holds the focus (always
+          on a touch screen). On a line of its own under every table it cost
+          the answer a row of air for one icon. */}
+      <div className="absolute end-0 top-1 flex items-center rounded-md bg-background/90 opacity-0 transition-opacity duration-150 select-none group-hover/table:opacity-100 focus-within:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100">
         <Menu>
           <Tooltip>
             <TooltipTrigger
