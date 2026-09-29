@@ -244,7 +244,10 @@ export function useProjectReorder(treeRef: RefObject<HTMLElement | null>): Proje
 
 /**
  * The grip on a heading in the *Custom* order: in the gutter, so the name
- * never moves for it, shown on hover and focus (and always to a finger).
+ * never moves for it, and inside the heading's band, which reaches its start
+ * (`.zerops-project-heading`). Shown whenever that band is — under the
+ * pointer, and while a menu of the heading's is open — and on focus (and
+ * always to a finger).
  */
 export function ProjectGrip({
   name,
@@ -260,7 +263,7 @@ export function ProjectGrip({
   return (
     <button
       aria-label={`Move ${name}: drag, or use the arrow keys`}
-      className="absolute -start-2 top-1 z-1 flex h-6 w-4 cursor-grab touch-none items-center justify-center rounded-sm text-sidebar-muted-foreground opacity-0 outline-none transition-opacity group-hover/project:opacity-100 hover:text-sidebar-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing pointer-coarse:opacity-100"
+      className="absolute -start-2 top-1 z-1 flex h-6 w-4 cursor-grab touch-none items-center justify-center rounded-sm text-sidebar-muted-foreground opacity-0 outline-none transition-opacity group-hover/project:opacity-100 group-has-[[data-popup-open]]/project:opacity-100 hover:text-sidebar-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing pointer-coarse:opacity-100"
       data-zerops-grip={groupId}
       data-zerops-surface="sidebar-project-grip"
       onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {

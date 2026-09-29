@@ -1602,7 +1602,8 @@ export function ProjectHeader({
     // 9), the heading 32 px tall, and its end on the menu's end edge, 16 px
     // short of the divider — where a Mate row's time ends.
     // A heading that folds lights under the pointer, a band fainter than a
-    // Mate row's (`.zerops-project-heading`).
+    // Mate row's (`.zerops-project-heading`), which takes in the grip before
+    // the name in the Custom order.
     <div
       className={cn(
         "group/project relative flex h-8 min-w-0 items-center gap-1 ps-1.75 pe-2",
