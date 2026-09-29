@@ -217,6 +217,7 @@ import {
 } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { useAddMateIntent } from "../zerops/addMateIntent";
+import { useAskMateToFix } from "../zerops/fixRequest";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
@@ -229,7 +230,7 @@ import {
   type SidebarProjectFlow,
   type SidebarRemembered,
 } from "./zerops/SidebarZeropsTree";
-import { sidebarStopReads } from "./zerops/SidebarZeropsTree.logic";
+import { releaseFailureOf } from "./zerops/SidebarProductionChip.logic";
 import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
 import { useSidebarWaiting } from "../zerops/useSidebarWaiting";
@@ -242,7 +243,6 @@ import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
 import { placedBirthsIn, useZeropsBirths } from "../zerops/zeropsBirths";
 import {
   canCreateProjectsInOrganization,
-  flowVerbKey,
   readZeropsGroupTags,
   type EnvironmentRow,
 } from "@t3tools/client-runtime/zerops";
@@ -255,7 +255,7 @@ import {
   rememberMenu,
   withChanges,
   withRows,
-  withStops,
+  withChips,
   type RememberedRow,
 } from "../zerops/menuMemory";
 import {
@@ -1829,9 +1829,6 @@ export default function Sidebar() {
     (groupId: string): SidebarProjectFlow | undefined => {
       const flow = zeropsProjectFlow?.flows.get(groupId);
       if (zeropsProjectFlow === null || flow === undefined) return undefined;
-      // How far each stop is from `main`, measured from what the flow already
-      // read: the rows say it, and production's opens to the changes.
-      const stopReads = sidebarStopReads({ flow, deployments: zeropsProjectFlow.deployments });
       return {
         pullRequests: flow.pullRequests,
         // Until Gitea answers, the tree draws the change rows it remembers.
@@ -1844,21 +1841,21 @@ export default function Sidebar() {
         merged: flow.merged,
         environments: new Map(flow.environments.map((entry) => [entry.projectId, entry])),
         releaseOffered: flow.release.gate.allowed,
-        // What a release would put in front of people: production's distance.
+        // What a release would put in front of people: the count the
+        // production chip wears.
         releaseContents: flow.release.contents,
-        distances: stopReads.distances,
-        stageMarks: stopReads.stageMarks,
+        // The release that did not go through, which turns the chip amber.
+        releaseFailure: releaseFailureOf({
+          releases: flow.releases,
+          environmentInputs: flow.environmentInputs,
+        }),
         // The stops the recipe offers and nobody has added: a next step the
         // timeline used not to mention at all.
         missing: flow.missing,
-        releasing: zeropsProjectFlow.pending.has(flowVerbKey({ kind: "release", groupId })),
-        // The version the verb would cut, so its confirm can name it.
+        // The version a release would tag.
         releaseTag: flow.release.suggestion,
-        // The release on its way, which production's line says.
+        // The release on its way, which the production chip says.
         releaseInFlight: flow.release.inFlight,
-        onRelease: () => {
-          void zeropsProjectFlow.release(groupId);
-        },
       };
     },
     [zeropsProjectFlow],
@@ -2311,21 +2308,21 @@ export default function Sidebar() {
       if (live !== undefined) rows[candidate.project.id] = rememberedRowOf(live);
     }
     rememberMenu((memory) =>
-      withStops(withChanges(withRows(memory, rows, listed), {}, groups), {}, listed),
+      withChips(withChanges(withRows(memory, rows, listed), {}, groups), {}, groups),
     );
   }, [zeropsAgentActivity, zeropsCandidates, zeropsHeld.complete]);
-  // The change rows and stop lines the tree drew of what it read, for the
-  // next reload to paint while Gitea and the platform answer again.
+  // The change rows and production chips the tree drew of what it read, for
+  // the next reload to paint while Gitea and the platform answer again.
   const zeropsRemembered = useMemo<SidebarRemembered>(
     () => ({
       changes: rememberedChanges,
-      stop: (projectId) => menuMemory().stops[projectId],
+      chip: (groupId) => menuMemory().chips[groupId],
     }),
     [],
   );
   const rememberZeropsDrawn = useCallback((drawn: SidebarDrawn) => {
     rememberMenu((memory) =>
-      withStops(
+      withChips(
         withChanges(
           memory,
           Object.fromEntries(
@@ -2335,10 +2332,12 @@ export default function Sidebar() {
             ]),
           ),
         ),
-        drawn.stops,
+        drawn.chips,
       ),
     );
   }, []);
+  // "Ask <your Mate> to fix it" from the production chip's menu (S6).
+  const askMateToFix = useAskMateToFix();
   // The Mates waiting on the viewer, for the header's faces and ⌥↓.
   const zeropsActivityOf = useCallback(
     (candidate: (typeof zeropsCandidates)[number]) =>
@@ -4126,6 +4125,10 @@ export default function Sidebar() {
               onAddMate={requestAddMate}
               onBrowseProjects={navigateToZeropsProjects}
               onNewProject={navigateToNewZeropsProject}
+              onAskToFix={(mateProjectId, problem) => {
+                if (isMobile) setOpenMobile(false);
+                askMateToFix(mateProjectId, problem);
+              }}
               getFlow={zeropsSidebarFlowWithPages}
               getOwner={zeropsMateOwner}
               getMateActions={zeropsMateMenus.getMateActions}

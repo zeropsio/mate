@@ -94,48 +94,48 @@ describe("crewLaneBarModel", () => {
     readonly land: CrewLaneBarModel["land"];
   }>([
     {
-      name: "Land lands a ready task",
+      name: "a ready task opens its review, which lands it",
       task: { state: "ready" },
-      land: { kind: "land", taskId: "task-12", label: "Land", enabled: true },
+      land: { taskId: "task-12", label: "Review", enabled: true },
     },
     {
-      name: "Land now lands work its crewmate never reported, between its turns",
+      name: "work its crewmate never reported opens its review between its turns, which lands it now",
       task: { state: "working" },
-      land: { kind: "landNow", taskId: "task-12", label: "Land now", enabled: true },
+      land: { taskId: "task-12", label: "Review", enabled: true },
     },
     {
-      name: "Land waits while its crewmate is mid-turn",
+      name: "the review waits while its crewmate is mid-turn",
       task: { state: "working" },
       working: true,
-      land: { kind: "land", taskId: "task-12", label: "Land", enabled: false },
+      land: { taskId: "task-12", label: "Review", enabled: false },
     },
     {
-      name: "Land waits while nothing is ahead of your tree or uncommitted in its copy",
+      name: "the review waits while nothing is ahead of your tree or uncommitted in its copy",
       task: { state: "working" },
       ahead: 0,
-      land: { kind: "land", taskId: "task-12", label: "Land", enabled: false },
+      land: { taskId: "task-12", label: "Review", enabled: false },
     },
     {
-      name: "Land now lands changes no commit holds yet",
+      name: "changes no commit holds yet open its review",
       task: { state: "working" },
       ahead: 0,
       dirty: true,
-      land: { kind: "landNow", taskId: "task-12", label: "Land now", enabled: true },
+      land: { taskId: "task-12", label: "Review", enabled: true },
     },
     {
-      name: "Land now lands a task sent back for rework",
+      name: "a task sent back for rework opens its review",
       task: { state: "rework" },
-      land: { kind: "landNow", taskId: "task-12", label: "Land now", enabled: true },
+      land: { taskId: "task-12", label: "Review", enabled: true },
     },
     {
-      name: "Land waits while the check runs",
+      name: "the review waits while the check runs",
       task: { state: "checking" },
-      land: { kind: "land", taskId: "task-12", label: "Land", enabled: false },
+      land: { taskId: "task-12", label: "Review", enabled: false },
     },
     {
-      name: "Land has nothing to land without a task",
+      name: "there is no review without a task",
       task: null,
-      land: { kind: "land", taskId: null, label: "Land", enabled: false },
+      land: { taskId: null, label: "Review", enabled: false },
     },
   ])("$name", ({ task, working, ahead, dirty, land }) => {
     expect(

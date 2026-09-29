@@ -3124,6 +3124,442 @@ code {
   line-height: 1;
 }
 
+/* The production chip on a project's heading (M2): a quiet 24 px pill with a
+   7 px dot, the stop's word, what it serves in mono and anything more in the
+   muted ink — amber while a release did not go through, red while it is down. */
+.zerops-envchip {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  max-width: 100%;
+  padding: 0 9px 0 8px;
+  border-radius: 12px;
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 5.5%, transparent);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 150ms ease;
+}
+
+.zerops-envchip:hover,
+.zerops-envchip[data-popup-open] {
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 9%, transparent);
+}
+
+.zerops-envchip:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.zerops-envchip-version {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: color-mix(in oklab, var(--sidebar-foreground) 76%, transparent);
+  font-family: var(--font-mono);
+}
+
+.zerops-envchip[data-tone="amber"] {
+  background-color: color-mix(in oklab, var(--zerops-status-attention) 16%, transparent);
+  color: var(--zerops-status-attention-text);
+}
+
+.zerops-envchip[data-tone="amber"]:is(:hover, [data-popup-open]) {
+  background-color: color-mix(in oklab, var(--zerops-status-attention) 24%, transparent);
+}
+
+.zerops-envchip[data-tone="amber"] .zerops-envchip-version {
+  color: var(--zerops-status-attention-text);
+}
+
+.zerops-envchip[data-tone="red"] {
+  background-color: color-mix(in oklab, var(--zerops-status-failed) 12%, transparent);
+  color: var(--zerops-status-failed-text);
+}
+
+.zerops-envchip[data-tone="red"]:is(:hover, [data-popup-open]) {
+  background-color: color-mix(in oklab, var(--zerops-status-failed) 18%, transparent);
+}
+
+.zerops-envchip[data-tone="red"] .zerops-envchip-label {
+  font-weight: 600;
+}
+
+/* A narrow menu keeps the heading's name: the chip's extra words go first,
+   then what it serves — its tone, dot and word stay, and its menu says the
+   rest. At 435 all of it shows, at 304 the words go, at 256 the version too. */
+[data-zerops-surface="sidebar-project"] {
+  container-type: inline-size;
+}
+
+@container (width < 340px) {
+  .zerops-envchip-extra {
+    display: none;
+  }
+}
+
+@container (width < 260px) {
+  .zerops-envchip-version {
+    display: none;
+  }
+}
+
+/* The heading's + gives its room to the name under 300 px; Add a Mate is the
+   first item of its ⋯ menu either way. */
+@container (width < 300px) {
+  [data-zerops-surface="sidebar-project-add-mate"] {
+    display: none;
+  }
+}
+
+/* A stop's dot: its state's colour, hollow for a stop on purpose, a small
+   stepped spinner while something is on its way. */
+.zerops-envdot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+}
+
+.zerops-envdot[data-dot="ok"] {
+  background-color: var(--zerops-status-ok);
+}
+
+.zerops-envdot[data-dot="attention"] {
+  background-color: var(--zerops-status-attention);
+}
+
+.zerops-envdot[data-dot="failed"] {
+  background-color: var(--zerops-status-failed);
+}
+
+.zerops-envdot[data-dot="off"] {
+  background-color: var(--zerops-status-off);
+}
+
+.zerops-envdot[data-dot="hollow"] {
+  box-shadow: inset 0 0 0 1.5px var(--muted-foreground);
+}
+
+.zerops-envdot[data-dot="spinner"] {
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid color-mix(in oklab, var(--muted-foreground) 35%, transparent);
+  border-top-color: var(--muted-foreground);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .zerops-envdot[data-dot="spinner"] {
+    animation: zerops-env-spin 1s steps(8) infinite;
+  }
+}
+
+@keyframes zerops-env-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+/* The chip's menu: a 330 px card under the chip, growing from its corner. */
+.zerops-envpop {
+  display: flex;
+  flex-direction: column;
+  width: min(330px, calc(100vw - 16px));
+  max-height: var(--available-height);
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background-color: var(--card);
+  color: var(--card-foreground);
+  box-shadow:
+    0 18px 40px -18px color-mix(in srgb, var(--color-black) 38%, transparent),
+    0 2px 6px -2px color-mix(in srgb, var(--color-black) 8%, transparent);
+  font-size: 13px;
+  line-height: 18px;
+  outline: none;
+  transform-origin: var(--transform-origin);
+  transition:
+    opacity 160ms var(--ease-out-strong),
+    scale 160ms var(--ease-out-strong),
+    translate 160ms var(--ease-out-strong);
+}
+
+.zerops-envpop:is([data-starting-style], [data-ending-style]) {
+  opacity: 0;
+  scale: 0.97;
+  translate: 0 -4px;
+}
+
+.dark .zerops-envpop {
+  box-shadow:
+    0 18px 44px -18px color-mix(in srgb, var(--color-black) 90%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--color-black) 35%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zerops-envpop {
+    transition: opacity 160ms ease;
+  }
+
+  .zerops-envpop:is([data-starting-style], [data-ending-style]) {
+    scale: 1;
+    translate: none;
+  }
+}
+
+.zerops-envpop-title {
+  padding: 6px 10px 4px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.zerops-envpop-stop {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: 9px;
+  text-align: start;
+}
+
+.zerops-envpop-stop > .zerops-envdot {
+  justify-self: center;
+}
+
+.zerops-envpop-version {
+  margin-inline-start: 6px;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.zerops-envpop-word {
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.zerops-envpop-word[data-tone="amber"] {
+  color: var(--zerops-status-attention-text);
+}
+
+.zerops-envpop-word[data-tone="red"] {
+  color: var(--zerops-status-failed-text);
+}
+
+.zerops-envpop-press {
+  cursor: pointer;
+  outline: none;
+  transition: background-color 150ms ease;
+}
+
+.zerops-envpop-press:is(:hover, :focus-visible) {
+  background-color: var(--accent);
+}
+
+.zerops-envpop-note {
+  padding: 0 10px 6px 36px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.zerops-envpop-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 36px;
+  border-radius: 8px;
+  color: var(--info-foreground);
+  outline: none;
+  transition: background-color 150ms ease;
+}
+
+.zerops-envpop-link:is(:hover, :focus-visible) {
+  background-color: color-mix(in oklab, var(--info-foreground) 10%, transparent);
+}
+
+.zerops-envpop-separator {
+  height: 1px;
+  margin: 6px 4px;
+  background-color: var(--border);
+}
+
+.zerops-envpop-act {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 6px 6px 10px;
+  border-radius: 9px;
+}
+
+.zerops-envpop-review {
+  padding: 3px 8px;
+  border-radius: 7px;
+  color: var(--info-foreground);
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 150ms ease;
+}
+
+.zerops-envpop-review:is(:hover, :focus-visible) {
+  background-color: color-mix(in oklab, var(--info-foreground) 10%, transparent);
+}
+
+/* "Ask <your Mate> to fix it" (S6): a soft blue button, the Mate's face in it,
+   and under it — once pressed — what goes into the Mate's composer. */
+.zerops-envpop-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 6px 8px 32px;
+}
+
+.zerops-envpop-askbutton,
+.zerops-envpop-askmore,
+.zerops-envpop-other {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px 0 6px;
+  border-radius: 9px;
+  background-color: color-mix(in oklab, var(--info-foreground) 10%, transparent);
+  color: var(--info-foreground);
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  transition:
+    background-color 150ms ease,
+    scale 120ms var(--ease-out-strong);
+}
+
+.zerops-envpop-askbutton {
+  align-self: flex-start;
+}
+
+.zerops-envpop-askmore {
+  justify-content: center;
+  width: 30px;
+  padding: 0;
+}
+
+.zerops-envpop-other {
+  background-color: transparent;
+  color: var(--card-foreground);
+  font-weight: 400;
+}
+
+.zerops-envpop-others {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.zerops-envpop-askbutton:is(:hover, :focus-visible),
+.zerops-envpop-askmore:is(:hover, :focus-visible),
+.zerops-envpop-other:is(:hover, :focus-visible) {
+  background-color: color-mix(in oklab, var(--info-foreground) 16%, transparent);
+}
+
+.zerops-envpop-askbutton:active {
+  scale: 0.98;
+}
+
+.zerops-envpop-draft {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background-color: var(--card);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--card-foreground) 12%, transparent);
+  color: var(--card-foreground);
+  line-height: 19px;
+  overflow-wrap: anywhere;
+}
+
+.zerops-envpop-draft-to {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.zerops-envpop-draft pre {
+  padding: 6px 8px;
+  border-radius: 7px;
+  background-color: color-mix(in oklab, var(--card-foreground) 7%, transparent);
+  color: color-mix(in oklab, var(--card-foreground) 76%, transparent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: pre-wrap;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .zerops-envpop-draft {
+    animation: zerops-envpop-rise 240ms var(--ease-out-strong) both;
+  }
+}
+
+@keyframes zerops-envpop-rise {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+
+/* A folded heading's busy face (M15): its dot on the face's corner, cut out of
+   the menu's ground by a 2 px ring. */
+.zerops-heading-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  box-shadow: 0 0 0 2px var(--sidebar);
+}
+
+.zerops-heading-dot[data-dot="attention"] {
+  background-color: var(--zerops-status-attention);
+}
+
+.zerops-heading-dot[data-dot="unread"] {
+  background-color: var(--info-foreground);
+}
+
+.zerops-heading-dot[data-dot="failed"] {
+  background-color: var(--zerops-status-failed);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .zerops-heading-dot {
+    animation: zerops-heading-dot-in 220ms var(--ease-out-strong) both;
+  }
+}
+
+@keyframes zerops-heading-dot-in {
+  from {
+    opacity: 0;
+    scale: 0;
+  }
+}
+
 /* ==== end of the menu's projects and production ==== */
 
 /* ==== Pass 16 · the run's card ==== */
@@ -3177,6 +3613,224 @@ code {
    colour that means "who" (S3). A crewmate speaks in its own. */
 .run-speech {
   background: color-mix(in oklab, var(--run-speaker-tint) 17%, transparent);
+}
+
+/* The now line, the card's foot (K10): the face in the card's 28 px column,
+   what the Mate is doing in words, the run's one clock on the right edge
+   (K3) in ink (S3). A hairline sets it off the chat above it, unless it is
+   all the card holds. */
+.run-now {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 8px;
+  padding: 4px 14px 0 0;
+  border-top: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
+}
+.run-now:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.run-now-words {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+/* One line: the step, and after it what it runs and for how long. */
+.run-now-head {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.run-now-verb {
+  font-weight: 500;
+  color: var(--color-foreground);
+}
+.run-now-mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.run-now-code {
+  margin-left: 8px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--color-muted-foreground);
+}
+.run-now-thought {
+  margin-left: 6px;
+  font-style: italic;
+  color: var(--color-muted-foreground);
+}
+.run-now-long:not(:empty) {
+  margin-left: 8px;
+  font-size: 13px;
+  color: var(--color-muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.run-now-dots {
+  display: inline-flex;
+  margin-left: 6px;
+  vertical-align: middle;
+  scale: 0.7;
+}
+.run-now-worked {
+  color: color-mix(in oklab, var(--color-foreground) 76%, transparent);
+}
+.run-now-effort {
+  color: var(--color-muted-foreground);
+}
+.run-now-clock {
+  font-size: 13px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-foreground);
+}
+/* Several at once: how many on the line, and one line each under it. */
+.run-now[data-run-now="several"] {
+  align-items: start;
+}
+.run-now[data-run-now="several"] > svg {
+  margin-top: 6px;
+}
+.run-now[data-run-now="several"] > .run-now-words {
+  padding-block: 10px 8px;
+}
+.run-now[data-run-now="several"] > :last-child {
+  margin-top: 10px;
+}
+.run-now-several > li {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+}
+.run-now-several .run-now-verb {
+  font-weight: 400;
+  color: var(--color-muted-foreground);
+}
+
+/* What runs alongside while the run goes on, and the result once it is over,
+   stand under the now line inside the tray (T5): a hairline 8 px under the
+   line, 6 px of room, then their rows in the card's grid; nothing at all
+   when they have no row. */
+.run-band {
+  position: relative;
+  padding-top: 15px;
+}
+.run-band::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  inset-inline: 0;
+  height: 1px;
+  background: color-mix(in oklab, var(--color-foreground) 8%, transparent);
+}
+.run-band:empty {
+  display: none;
+}
+
+/* A bar of what runs alongside, in the card's grid (K1): the 28 px column,
+   its name and state one column in, its figure on the card's right edge. */
+.run-bar {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-height: 32px;
+  padding-right: 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: start;
+}
+button.run-bar {
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+button.run-bar:hover {
+  background: color-mix(in oklab, var(--color-foreground) 4%, transparent);
+}
+button.run-bar:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
+  outline-offset: -2px;
+}
+
+/* A tray on its own, not sliced: the Mate at work once its turn is over. */
+.run-tray-whole {
+  border-width: 1px;
+  border-radius: 30px;
+  padding: 11px;
+}
+
+/* A run the person comes back to (K7): its worked line on top, what it said
+   under it 8 px down, and "Show work" on the line's right edge — its chevron
+   on the edge, turning over as the work opens (K12). */
+.run-later-feed:not(:empty) {
+  padding-top: 8px;
+}
+.run-now-fold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: -4px;
+  padding: 2px 4px 2px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease;
+}
+.run-now-fold:hover {
+  color: var(--color-foreground);
+  background: color-mix(in oklab, var(--color-foreground) 5%, transparent);
+}
+.run-now-fold:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
+  outline-offset: 1px;
+}
+.run-now-fold-icon {
+  width: 14px;
+  height: 14px;
+  transition: rotate 220ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.run-now-fold[aria-expanded="true"] .run-now-fold-icon {
+  rotate: 180deg;
+}
+@media (prefers-reduced-motion: reduce) {
+  .run-now-fold-icon {
+    transition: none;
+  }
+}
+
+/* T4: a step ending lands in the chat above the now line, rising 6 px into
+   its place over 320 ms, once; reduced motion fades only (T8). */
+@keyframes run-rise {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+@keyframes run-fade {
+  from {
+    opacity: 0;
+  }
+}
+.run-rise {
+  animation: run-rise 320ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .run-rise {
+    animation-name: run-fade;
+  }
 }
 
 /* A run's line with nothing under it keeps the tray's geometry in a frame
@@ -4224,6 +4878,665 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 
 /* ==== Pass 16 · review ==== */
 
+/* Review: the one door to merging, landing, releasing and rolling back (R1–R8, D12). A dialog
+   over the conversation, 720 wide: the kind, the title and its one line of provenance, then the
+   verdict — safe and why, or what blocks it and who fixes it — then what it does, what it
+   changes, how it was checked and where to try it, and a foot that says what the one button
+   does. Its type is 18 (the title, once), 14, 13 and 12; its colour means one thing each. */
+.rv-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: color-mix(in oklab, var(--color-black) 18%, transparent);
+  transition: opacity 200ms var(--ease-out-strong);
+}
+.dark .rv-backdrop {
+  background: color-mix(in oklab, var(--color-black) 40%, transparent);
+}
+.rv-backdrop[data-starting-style],
+.rv-backdrop[data-ending-style] {
+  opacity: 0;
+}
+.rv-backdrop[data-ending-style] {
+  transition-duration: 150ms;
+}
+
+/* It hangs from a fixed line rather than being centred: a review that grows as its files and
+   diffs arrive grows downward, and its title never moves. */
+.rv-viewport {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(16px, 7dvh, 72px) 16px 16px;
+}
+
+.rv {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 100%);
+  max-height: calc(100dvh - clamp(16px, 7dvh, 72px) - 16px);
+  overflow: hidden;
+  border-radius: 20px;
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent),
+    0 30px 80px -30px color-mix(in oklab, var(--color-black) 45%, transparent);
+  outline: none;
+  transform-origin: var(--rv-origin-x, 50%) var(--rv-origin-y, 50%);
+  transition:
+    opacity 200ms var(--ease-out-strong),
+    scale 200ms var(--ease-out-strong),
+    translate 200ms var(--ease-out-strong);
+}
+.rv[data-starting-style],
+.rv[data-ending-style] {
+  opacity: 0;
+  scale: 0.98;
+  translate: 0 6px;
+}
+.rv[data-ending-style] {
+  transition-duration: 150ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv,
+  .rv[data-starting-style],
+  .rv[data-ending-style] {
+    scale: none;
+    translate: none;
+  }
+  /* Fades only: a file's chevron turns and the button gives without moving. */
+  .rv-chev {
+    transition: none;
+  }
+  .rv-btn1:active {
+    transform: none;
+  }
+}
+/* A review swapped for the next one in place (Merge → Review release) fades its body in. */
+.rv-swap {
+  display: contents;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .rv-swap > * {
+    animation: rv-swap-in 180ms var(--ease-out-strong) both;
+  }
+}
+@keyframes rv-swap-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.rv-head {
+  display: grid;
+  flex: none;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 16px;
+  padding: 18px 16px 16px 24px;
+}
+.rv-kind {
+  grid-column: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--muted-foreground);
+}
+.rv-kind svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+.rv-x {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+.rv-x:hover {
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+  color: var(--foreground);
+}
+.rv-x:focus-visible,
+.rv-file:focus-visible,
+.rv-textbtn:focus-visible,
+.rv-link:focus-visible,
+.rv-btn1:focus-visible,
+.rv-btn2:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.rv-title {
+  grid-column: 1;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 26px;
+  letter-spacing: -0.1px;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+.rv-meta {
+  grid-column: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.rv-meta code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.rv-add {
+  color: var(--diff-addition-foreground);
+}
+.rv-del {
+  color: var(--diff-deletion-foreground);
+}
+
+/* The verdict: one box, first. Green passed, amber needs you, red broken, ink when it is over
+   or moving, grey where nothing was checked. */
+.rv-verdict {
+  display: grid;
+  flex: none;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: center;
+  margin: 0 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 20px;
+  background: color-mix(in oklab, var(--foreground) 5%, transparent);
+}
+.rv-verdict b {
+  display: block;
+  font-weight: 500;
+}
+.rv-why {
+  display: block;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.rv-vi {
+  display: flex;
+  color: var(--muted-foreground);
+}
+.rv-vi svg {
+  width: 18px;
+  height: 18px;
+}
+.rv-verdict[data-tone="ok"] {
+  background: color-mix(in oklab, var(--zerops-status-ok) 11%, transparent);
+}
+.rv-verdict[data-tone="ok"] .rv-vi,
+.rv-verdict[data-tone="done"] .rv-vi {
+  color: var(--zerops-status-ok);
+}
+.rv-verdict[data-tone="attention"] {
+  background: color-mix(in oklab, var(--zerops-status-attention) 15%, transparent);
+}
+.rv-verdict[data-tone="attention"] .rv-vi {
+  color: var(--zerops-status-attention);
+}
+.rv-verdict[data-tone="failed"] {
+  background: color-mix(in oklab, var(--zerops-status-failed) 10%, transparent);
+}
+.rv-verdict[data-tone="failed"] .rv-vi {
+  color: var(--zerops-status-failed);
+}
+
+/* Blue is only for what can be clicked. */
+.rv-textbtn {
+  padding: 3px 8px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+  color: var(--info-foreground);
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+.rv-textbtn:hover {
+  background: color-mix(in oklab, var(--info-foreground) 10%, transparent);
+}
+.rv-link {
+  color: var(--info-foreground);
+  text-decoration: none;
+  cursor: pointer;
+}
+.rv-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.rv-body {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 20px;
+  min-height: 0;
+  padding: 8px 24px 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.rv-body:empty {
+  display: none;
+}
+.rv-verdict + .rv-body {
+  margin-top: 12px;
+}
+.rv-sec-h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.rv-words {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  text-wrap: pretty;
+}
+.rv-skeleton {
+  display: grid;
+  gap: 10px;
+  padding: 5px 0;
+}
+.rv-skeleton span {
+  height: 12px;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+.rv-skeleton span:last-child {
+  width: 62%;
+}
+
+/* The files, each a 36 px row; a file's diff opens in place under it and scrolls sideways on
+   its own. */
+.rv-files {
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
+}
+.rv-file {
+  display: grid;
+  width: 100%;
+  height: 36px;
+  grid-template-columns: 16px minmax(0, 1fr) auto 16px;
+  column-gap: 10px;
+  align-items: center;
+  padding: 0 12px;
+  text-align: start;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+.rv-file:hover {
+  background: color-mix(in oklab, var(--foreground) 4%, transparent);
+}
+.rv-files > * + * {
+  border-top: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
+}
+.rv-file-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rv-file-dir {
+  color: var(--muted-foreground);
+}
+.rv-file-n {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.rv-st {
+  display: flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--muted-foreground);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
+}
+.rv-st[data-status="A"] {
+  color: var(--diff-addition-foreground);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--diff-addition-foreground) 40%, transparent);
+}
+.rv-st[data-status="D"] {
+  color: var(--diff-deletion-foreground);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--diff-deletion-foreground) 40%, transparent);
+}
+.rv-chev {
+  display: flex;
+  color: var(--muted-foreground);
+  transition: rotate 200ms var(--ease-out-strong);
+}
+.rv-chev svg {
+  width: 14px;
+  height: 14px;
+}
+.rv-file[aria-expanded="true"] .rv-chev {
+  rotate: 180deg;
+}
+.rv-file-skeleton {
+  display: flex;
+  height: 36px;
+  align-items: center;
+  padding: 0 12px 0 38px;
+}
+.rv-file-skeleton span {
+  width: 40%;
+  height: 10px;
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+
+.rv-diff {
+  overflow-x: auto;
+  padding: 6px 0;
+  background: color-mix(in oklab, var(--foreground) 2%, transparent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 19px;
+}
+.rv-diff-lines {
+  display: grid;
+  width: max-content;
+  min-width: 100%;
+}
+.rv-dl {
+  display: grid;
+  grid-template-columns: 44px 16px auto;
+  padding-right: 12px;
+  white-space: pre;
+}
+.rv-dl .ln {
+  padding-right: 8px;
+  text-align: right;
+  color: var(--muted-foreground);
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+.rv-dl[data-kind="hunk"] {
+  color: var(--muted-foreground);
+}
+.rv-dl[data-kind="add"] {
+  background: color-mix(in oklab, var(--diff-addition) 12%, transparent);
+}
+.rv-dl[data-kind="del"] {
+  background: color-mix(in oklab, var(--diff-deletion) 11%, transparent);
+}
+.rv-dl[data-kind="add"] .sg {
+  color: var(--diff-addition-foreground);
+}
+.rv-dl[data-kind="del"] .sg {
+  color: var(--diff-deletion-foreground);
+}
+.rv-diff-note {
+  padding: 4px 12px 4px 60px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--muted-foreground);
+}
+.rv-diff-more {
+  margin: 4px 0 2px 60px;
+}
+
+/* The checks by name, with what each said. */
+.rv-checks {
+  display: grid;
+  gap: 2px;
+}
+.rv-check {
+  display: grid;
+  min-height: 32px;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: center;
+  font-size: 14px;
+  line-height: 20px;
+}
+.rv-check .rv-ci {
+  display: flex;
+  color: var(--muted-foreground);
+}
+.rv-check .rv-ci svg {
+  width: 16px;
+  height: 16px;
+}
+.rv-check[data-tone="ok"] .rv-ci {
+  color: var(--zerops-status-ok);
+}
+.rv-check[data-tone="failed"] .rv-ci {
+  color: var(--zerops-status-failed);
+}
+.rv-check-d {
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+
+.rv-try {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--muted-foreground);
+}
+.rv-try svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+.rv-try .rv-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.rv-try .rv-link svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* A release: what goes out, one row per change with its Mate's face; where it goes; and the way
+   back if it goes wrong. */
+.rv-rel {
+  display: grid;
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
+}
+.rv-relrow {
+  display: grid;
+  min-height: 52px;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: center;
+  padding: 8px 12px;
+}
+.rv-relrow + .rv-relrow {
+  border-top: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
+}
+.rv-relrow-t {
+  display: block;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 20px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rv-relrow-sub {
+  display: block;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted-foreground);
+}
+.rv-on {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+}
+.rv-on svg {
+  width: 13px;
+  height: 13px;
+}
+.rv-on[data-mark="on-stage"] {
+  color: var(--zerops-status-ok);
+}
+.rv-on[data-mark="failed-on-stage"] {
+  color: var(--zerops-status-failed);
+}
+.rv-where {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 14px;
+  font-size: 14px;
+  line-height: 20px;
+}
+.rv-where b {
+  font-weight: 500;
+}
+.rv-where span {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+
+/* The foot: what the button does, beside the button. The primary is the only filled control. */
+.rv-foot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px 14px 24px;
+  border-top: 1px solid color-mix(in oklab, var(--foreground) 8%, transparent);
+  background: color-mix(in oklab, var(--foreground) 2%, transparent);
+}
+.rv-conseq {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+}
+.rv-btn2 {
+  display: inline-flex;
+  height: 34px;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--foreground);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+.rv-btn2:hover {
+  background: color-mix(in oklab, var(--foreground) 5%, transparent);
+}
+.rv-btn1 {
+  display: inline-flex;
+  height: 34px;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px 0 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--primary-foreground);
+  background: var(--primary);
+  cursor: pointer;
+  transition:
+    transform 120ms var(--ease-out-strong),
+    filter 150ms ease;
+}
+.rv-btn1:hover {
+  filter: brightness(1.06);
+}
+.rv-btn1:active {
+  transform: scale(0.97);
+}
+.rv-btn1 svg {
+  width: 14px;
+  height: 14px;
+}
+.rv-btn1 kbd {
+  padding: 2px 5px;
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 14px;
+  background: color-mix(in oklab, var(--primary-foreground) 18%, transparent);
+}
+.rv-btn1:disabled {
+  color: var(--muted-foreground);
+  background: color-mix(in oklab, var(--foreground) 10%, transparent);
+  cursor: not-allowed;
+  filter: none;
+  transform: none;
+}
+.rv-btn1:disabled kbd {
+  display: none;
+}
 /* ==== end of review ==== */
 
 /* ==== Pass 16 · motion across switches ==== */

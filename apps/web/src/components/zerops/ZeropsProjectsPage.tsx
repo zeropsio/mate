@@ -170,6 +170,7 @@ import { useZeropsGroupEnvironmentReconcile } from "~/zerops/useZeropsGroupEnvir
 import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganizations";
 import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
+import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { readZeropsResourceOnce } from "~/zerops/useZeropsDeployedVersion";
 import { deployRowTone, TAKING_LONGER_LINE } from "./ZeropsProjectRow.logic";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
@@ -1781,6 +1782,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // is waiting to land, what was released — is read once for the account
   // (`ZeropsProjectFlowProvider`, D26); the page draws its share of it.
   const projectFlow = useZeropsProjectFlow();
+  const openReview = useOpenReview();
   const groupDeploys = projectFlow.flows;
 
   /**
@@ -1867,9 +1869,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   };
 
   /**
-   * One pull request's row, wherever it is drawn. `withMerge` is false where
-   * the project's next step already offers *Merge* on it: one verb, once.
-   * `compact` stacks title, state and verb for a flow step's narrow column.
+   * One pull request's row, wherever it is drawn. Its verb is *Review*, the one
+   * door to merging (pass 16, R1): the review reads the change, says whether it
+   * is safe and carries *Merge* — nothing merges from a row. `withMerge` is
+   * false where the project's next step already offers that door on it: one
+   * verb, once. `compact` stacks title, state and verb for a flow step's narrow
+   * column.
    */
   const pullRequestRowOf = (
     group: ZeropsGroup,
@@ -1887,16 +1892,22 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       projectFlow.pending.has(
         flowVerbKey({ kind: "merge", slug, repository: pull.repository, number: pull.number }),
       );
-    const action =
-      withMerge && pull.mergeability === "mergeable" && slug !== undefined ? (
-        <ZeropsMateVerb
-          disabled={merging}
-          label={flowVerbLabel("merge", merging)}
-          onClick={() => {
-            void projectFlow.mergePullRequest(slug, pull);
-          }}
-        />
-      ) : undefined;
+    const action = withMerge ? (
+      <ZeropsMateVerb
+        label={merging ? flowVerbLabel("merge", true) : REVIEW_LABEL}
+        onClick={(event) => {
+          openReview(
+            {
+              kind: "change",
+              groupId: group.groupId,
+              repository: pull.repository,
+              number: pull.number,
+            },
+            { from: event.currentTarget },
+          );
+        }}
+      />
+    ) : undefined;
     const key = `pull-${group.groupId}-${pull.repository}-${pull.number}`;
     const line = pullRequestLineWith(pull, mateNames.get(pull.mateProjectId ?? ""));
     const open = () => {
@@ -2773,8 +2784,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         {contents}
         <ZeropsReleaseRows
           groupId={group.groupId}
-          onRollBack={(tag) => {
-            void projectFlow.rollBack(group.groupId, tag);
+          onRollBack={(tag, from) => {
+            openReview({ kind: "rollback", groupId: group.groupId, tag }, { from });
           }}
           pending={projectFlow.pending}
           releases={releases}
@@ -2786,9 +2797,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
 
   /**
    * The verb of a project's next step, where the step says one (`groupFlow`).
-   * Each acts on the thing it names: a Mate opens, a failed deploy's build
-   * and a blocked change open their pages, a merge merges as the person, a
-   * release asks first, and production is added here — not by the Mate.
+   * Each acts on the thing it names: a Mate opens, a failed deploy's build opens
+   * its page, a change — one to merge or one that cannot land — and a release
+   * open their review (pass 16, R1), and production is added here — not by the
+   * Mate.
    */
   const renderNextStep = (
     entry: ProjectsFlowGroup<ZeropsCandidatePresentation>,
@@ -2798,11 +2810,13 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     const step = flow.nextStep;
     const target = step.target;
     if (step.verb === undefined || target === undefined) return null;
-    const verb = (onClick: () => void, disabled = false, label = step.verb) => (
+    const verb = (onClick: (from: HTMLElement) => void, disabled = false, label = step.verb) => (
       <Button
         data-zerops-next-step-verb={step.kind}
         disabled={disabled}
-        onClick={onClick}
+        onClick={(event) => {
+          onClick(event.currentTarget);
+        }}
         size="compact"
         variant="outline"
       >
@@ -2811,15 +2825,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     );
     switch (target.kind) {
       case "release":
-        // In its cell the version is line 2 (`v0.1.0 ready`) and the verb
-        // beside it is the one word, so the line stays readable; the strip has
-        // no such line, so there the verb names the version itself.
-        return (
-          <ZeropsReleaseVerb
-            groupId={group.groupId}
-            label={placement === "strip" ? step.verb : flowVerbLabel("release", false)}
-          />
-        );
+        // The door to the release's review, which names the version and tags it.
+        return <ZeropsReleaseVerb groupId={group.groupId} label={step.verb} />;
       case "add-production": {
         // Whose production is — the person's to add, not the Mate's — is the
         // verb's to say where it is pressed; its cell stays one line. Beside
@@ -2866,35 +2873,24 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             params: { groupId: group.groupId, projectId: target.projectId },
           });
         });
-      case "change": {
-        const slug = groupDeploys.get(group.groupId)?.slug;
-        const pull = flow.pullRequests.find(
-          (entry_) =>
-            entry_.pull.repository === target.repository && entry_.pull.number === target.number,
-        )?.pull;
-        if (step.kind === "merge" && slug !== undefined && pull !== undefined) {
-          const merging = projectFlow.pending.has(
-            flowVerbKey({ kind: "merge", slug, repository: pull.repository, number: pull.number }),
-          );
-          return verb(
-            () => {
-              void projectFlow.mergePullRequest(slug, pull);
-            },
-            merging,
-            flowVerbLabel("merge", merging),
-          );
-        }
-        return verb(() => {
-          void navigate({
-            to: "/change/$groupId/$repository/$number",
-            params: {
-              groupId: group.groupId,
-              repository: target.repository,
-              number: String(target.number),
-            },
-          });
-        });
-      }
+      case "change":
+        // One to merge and one that cannot land open the same review: it says
+        // what blocks it and hands the fix to the Mate that wrote it.
+        return verb(
+          (from) => {
+            openReview(
+              {
+                kind: "change",
+                groupId: group.groupId,
+                repository: target.repository,
+                number: target.number,
+              },
+              { from },
+            );
+          },
+          false,
+          REVIEW_LABEL,
+        );
     }
   };
 
@@ -3065,12 +3061,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               ? production.candidate
               : undefined;
           if (candidate === undefined) return null;
-          return (
-            <ZeropsReleaseVerb
-              groupId={group.groupId}
-              label={`${flowVerbLabel("release", false)} ${candidate.tag}`}
-            />
-          );
+          return <ZeropsReleaseVerb groupId={group.groupId} label={REVIEW_RELEASE_LABEL} />;
         }}
         renderStopMenu={(candidate: ZeropsCandidatePresentation) =>
           renderEnvironmentMenu(candidate, readZeropsGroupTags(candidate.project.tagList), false)

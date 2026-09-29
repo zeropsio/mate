@@ -36,7 +36,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ForgeRepository } from "@t3tools/client-runtime/zerops/flow";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type MouseEvent } from "react";
 
 import { useComposerDraftStore } from "../../composerDraftStore";
 import { useCheckoutPushes } from "../../zerops/accountForge";
@@ -180,12 +180,15 @@ export interface ZeropsGitTabProps {
   readonly signedIn: boolean;
   /** Why the sign-in was refused, when it was (`ZeropsGitPanelModel`). */
   readonly signInTrouble?: string | undefined;
-  /** Opens a block's change on its own page, which is where its Merge lives. */
+  /** Opens a block's change on its own page. */
   readonly onOpenChange?: ((block: GitBlock) => void) | undefined;
   /** Opens the pull request in Gitea as the person; the forge is read again once it settles. */
   readonly onCreatePullRequest?: ((block: GitBlock) => Promise<void> | void) | undefined;
-  /** Merges it in Gitea as the person; the forge is read again once it settles. */
-  readonly onMergePullRequest?: ((block: GitBlock) => Promise<void> | void) | undefined;
+  /**
+   * Opens the change's review from the verb pressed — the one door to merging (pass 16, R1):
+   * nothing merges from the tab.
+   */
+  readonly onReviewPullRequest?: ((block: GitBlock, from: HTMLElement) => void) | undefined;
 }
 
 export function ZeropsGitTab(props: ZeropsGitTabProps) {
@@ -307,17 +310,19 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
       setRunning((current) => (current === key ? null : current));
       setGeneration((current) => current + 1);
     };
-    const run = () => {
-      setRunning(key);
+    const run = (event: MouseEvent<HTMLButtonElement>) => {
       switch (action.kind) {
         case "update-from-main":
+          setRunning(key);
           void pull.run().finally(settled);
           return;
         case "open-pull-request":
+          setRunning(key);
           void Promise.resolve(props.onCreatePullRequest?.(block)).finally(settled);
           return;
-        case "merge":
-          void Promise.resolve(props.onMergePullRequest?.(block)).finally(settled);
+        case "review":
+          // The review holds the merge and reads the forge again itself.
+          props.onReviewPullRequest?.(block, event.currentTarget);
           return;
         case "push":
           // Pushing is the agent's: the tab says what is unpushed and the

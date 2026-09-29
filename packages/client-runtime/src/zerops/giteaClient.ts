@@ -115,6 +115,35 @@ export interface GiteaCommit {
   readonly author?: string | undefined;
   /** When it landed, ISO-8601. Absent where Gitea sent no date. */
   readonly at?: string | undefined;
+  /**
+   * The paths it touched, where the read carries them (a comparison does): what tells a change
+   * that no longer merges which of its files `main` moved under it.
+   */
+  readonly files?: ReadonlyArray<string> | undefined;
+}
+
+/**
+ * One file a pull request changes, with the lines it adds and removes —
+ * `GET /repos/{o}/{r}/pulls/{index}/files`.
+ */
+export interface GiteaChangedFile {
+  /** Its path after the change; a deleted file's last path. */
+  readonly filename: string;
+  /** The path it had before a rename or a copy; absent otherwise. */
+  readonly previousFilename: string | undefined;
+  /** Gitea's word: `added`, `modified`, `deleted`, `renamed`, `copied`, `changed`. */
+  readonly status: string;
+  readonly additions: number;
+  readonly deletions: number;
+}
+
+/** Gitea's own shape for a changed file. */
+interface GiteaChangedFileWire {
+  readonly filename?: string | undefined;
+  readonly previous_filename?: string | undefined;
+  readonly status?: string | undefined;
+  readonly additions?: number | undefined;
+  readonly deletions?: number | undefined;
 }
 
 /** One file a commit touched. */
@@ -185,7 +214,13 @@ interface GiteaListCommitWire {
 /** Gitea's own shape for a commit inside a comparison. */
 interface GiteaCompareCommitWire {
   readonly sha: string;
-  readonly commit?: { readonly message?: string | undefined } | undefined;
+  readonly commit?:
+    | {
+        readonly message?: string | undefined;
+        readonly author?: { readonly date?: string | undefined } | undefined;
+      }
+    | undefined;
+  readonly files?: ReadonlyArray<{ readonly filename?: string | undefined }> | undefined;
 }
 
 export interface GiteaBranch {
@@ -240,6 +275,19 @@ export interface GiteaPullRequest {
   readonly base?: { readonly ref?: string | undefined; readonly sha?: string | undefined };
   readonly user?: { readonly login?: string | undefined } | undefined;
   readonly updated_at?: string | undefined;
+  /** When it was opened. */
+  readonly created_at?: string | undefined;
+  /** What it was opened to do, as its author wrote it; empty for a Mate's. */
+  readonly body?: string | undefined;
+  /** How many lines it adds and removes, and how many files it touches — Gitea's own count. */
+  readonly additions?: number | undefined;
+  readonly deletions?: number | undefined;
+  readonly changed_files?: number | undefined;
+  /**
+   * The commit its branch and the base last had in common, as Gitea last tested it: a base head
+   * past it is `main` having moved on since.
+   */
+  readonly merge_base?: string | undefined;
   /** When it landed. Absent on a change that is still open, or was closed unmerged. */
   readonly merged_at?: string | undefined;
   /** The commit it landed as. Absent unless it merged. */
@@ -424,6 +472,17 @@ export interface GiteaClient {
    * was shown; a head that moved since is refused with `409 head out of date`.
    */
   mergePullRequest(owner: string, repo: string, index: number, head: string): Promise<void>;
+  /**
+   * Every file a pull request changes, with its +/−, page by page — what a review lists before
+   * anyone merges it.
+   */
+  pullRequestFiles(
+    owner: string,
+    repo: string,
+    index: number,
+  ): Promise<ReadonlyArray<GiteaChangedFile>>;
+  /** The pull request's whole unified diff, as git writes it (`/pulls/{index}.diff`). */
+  pullRequestDiff(owner: string, repo: string, index: number): Promise<string>;
 
   /** What has been said on a change, oldest first — Gitea's own order. */
   listIssueComments(
@@ -783,6 +842,44 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         "merge the pull request",
       ),
 
+    pullRequestFiles: async (owner, repo, index) =>
+      (
+        await paged<GiteaChangedFileWire>(
+          {
+            method: "GET",
+            path: `/repos/${enc(owner)}/${enc(repo)}/pulls/${String(index)}/files`,
+          },
+          "list the pull request's files",
+        )
+      )
+        .filter((file) => (file.filename ?? "").length > 0)
+        .map((file) => ({
+          filename: file.filename ?? "",
+          previousFilename:
+            file.previous_filename === undefined || file.previous_filename.length === 0
+              ? undefined
+              : file.previous_filename,
+          status: file.status ?? "modified",
+          additions: file.additions ?? 0,
+          deletions: file.deletions ?? 0,
+        })),
+
+    pullRequestDiff: (owner, repo, index) =>
+      send(
+        {
+          method: "GET",
+          path: `/repos/${enc(owner)}/${enc(repo)}/pulls/${String(index)}.diff`,
+          accept: "text/plain",
+          // A change of fifty files is a long answer on a slow link; only a diff that stops
+          // arriving ends, as a job's log does.
+          deadline: "idle",
+        },
+        async (response, arrived) => {
+          if (!response.ok) await fail(response, "hand over the pull request's diff");
+          return textOf(response, arrived);
+        },
+      ),
+
     listIssueComments: async (owner, repo, index) => {
       const wire = await json<ReadonlyArray<GiteaIssueCommentWire>>(
         {
@@ -860,10 +957,18 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         },
         "compare the commits",
       );
-      return (answer?.commits ?? []).map((entry) => ({
-        sha: entry.sha,
-        subject: (entry.commit?.message ?? "").split("\n")[0]?.trim() ?? "",
-      }));
+      return (answer?.commits ?? []).map((entry) => {
+        const at = entry.commit?.author?.date;
+        const files = entry.files?.flatMap((file) =>
+          file.filename === undefined || file.filename.length === 0 ? [] : [file.filename],
+        );
+        return {
+          sha: entry.sha,
+          subject: (entry.commit?.message ?? "").split("\n")[0]?.trim() ?? "",
+          ...(at === undefined ? {} : { at }),
+          ...(files === undefined ? {} : { files }),
+        };
+      });
     },
 
     listCommits: async (owner, repo, listOptions) => {

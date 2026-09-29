@@ -18,6 +18,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useCallback } from "react";
 
 import { useZeropsProjectFlow } from "../../zerops/projectFlowContext";
+import { useOpenReview } from "../../zerops/review";
 import { useRegistrationRecord } from "../../zerops/registrationRecords";
 import { useZeropsInventory } from "../../zerops/ZeropsInventoryProvider";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
@@ -64,10 +65,10 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
     }) === "OWNER";
 
   /**
-   * The two verbs that run in Gitea as the person (D21), where Gitea's own
+   * The verb that runs in Gitea as the person (D21), where Gitea's own
    * permissions are the gate: a pull request from the Mate's branch onto the
-   * repository's default branch, and its merge. Both are the flow's, so the
-   * left menu's timeline moves the moment they settle.
+   * repository's default branch. The flow's, so the left menu's timeline moves
+   * the moment it settles. Its merge is the review's (pass 16, R1).
    */
   const onCreatePullRequest = useCallback(
     async (block: GitBlock) => {
@@ -82,22 +83,27 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
     [flow, owner],
   );
 
-  const onMergePullRequest = useCallback(
-    async (block: GitBlock) => {
-      if (owner === undefined || block.pullRequestNumber === undefined) return;
-      await flow.mergePullRequest(owner, {
-        repository: block.repository,
-        number: block.pullRequestNumber,
-        headSha: block.pullRequestHead,
-      });
+  const openReview = useOpenReview();
+  const onReviewPullRequest = useCallback(
+    (block: GitBlock, from: HTMLElement) => {
+      if (groupId === undefined || block.pullRequestNumber === undefined) return;
+      openReview(
+        {
+          kind: "change",
+          groupId,
+          repository: block.repository,
+          number: block.pullRequestNumber,
+        },
+        { from },
+      );
     },
-    [flow, owner],
+    [groupId, openReview],
   );
 
   /**
    * A change opens on its own page, not in Gitea.
    *
-   * That page carries the change's conversation, its commits and its *Merge*,
+   * That page carries the change's conversation, its commits and its *Review*,
    * all of it already drawn from the same reads this panel uses. Sending a
    * person out to a forge they have to sign into, for a change the app can
    * draw, is the long way round to a worse copy (the owner, 2026-09-19: "it
@@ -135,7 +141,7 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
         isOwner={isOwner}
         mateName={mateName}
         onCreatePullRequest={onCreatePullRequest}
-        onMergePullRequest={onMergePullRequest}
+        onReviewPullRequest={onReviewPullRequest}
         onOpenChange={onOpenChange}
         owner={owner}
         signedIn={flow.signedIn}

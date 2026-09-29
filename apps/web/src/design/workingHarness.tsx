@@ -35,6 +35,7 @@ import type {
 } from "~/components/chat/MessagesTimeline.logic";
 import { BrowserStrip } from "~/components/chat/BrowserStrip";
 import { RunChat } from "~/components/chat/RunChat";
+import { setRunFold } from "~/components/chat/runCard.logic";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -42,6 +43,7 @@ import {
   type TimelineRowSharedState,
 } from "~/components/chat/timelineContext";
 import { TurnReport } from "~/components/chat/TurnReport";
+import { CardStates } from "./cardStates";
 import { ResultStates } from "./resultFixtures";
 import { foldSteps, stepOf } from "~/components/chat/workSteps.logic";
 import type { WorkLogEntry } from "~/session-logic";
@@ -614,23 +616,10 @@ function record(overrides: Partial<RecordRow>): RecordRow {
     now: null,
     answering: false,
     status: status({}),
+    outcome: null,
     ...overrides,
   };
 }
-
-const THINKING: TurnHeaderActivity = {
-  kind: "thinking",
-  key: "thought:r9",
-  messages: [
-    said(
-      "r9",
-      "reasoning",
-      "The test fails with 503, so the database didn't answer inside the test. The test database isn't seeded in CI — the pool connects to nothing and the route says \"down\", which is right. The test should start the database the same way the other route tests do, with the shared fixture, rather than the route learning to lie about it.\n\nThe users tests already do this with `withDatabase()`: it starts a throwaway database, runs the migrations and hands the pool to the test. Reusing it keeps one way of starting a database in the suite.\n\nThe catch is time: every test file that calls it pays for a migration run, about two seconds. Four files use it today; a fifth is fine, but the fixture should cache the migrated template if this grows.\n\nI'll reuse `withDatabase()` from the users tests, run the suite again, and only then deploy.",
-      9,
-      true,
-    ),
-  ],
-};
 
 const RUNNING_STEP: TurnHeaderActivity = {
   kind: "step",
@@ -674,6 +663,7 @@ const SHARED: TimelineRowSharedState = {
   onRemoveQueuedMessage: () => undefined,
   arrivedAfter: null,
   syncing: false,
+  onHoldReading: () => undefined,
 };
 
 const WORKING: TimelineRowActivityState = {
@@ -685,15 +675,33 @@ const WORKING: TimelineRowActivityState = {
   stoppingBackgroundWork: false,
 };
 
-/** A run's card as the conversation draws it: its slices on the tray, its bottom edge a slice of its own. */
-function Card({ children }: { readonly children: ReactNode }) {
+/**
+ * A run's card as the conversation draws it: its slices on the tray — its
+ * record on top, its result in the band under the worked line — and its
+ * bottom edge a slice of its own.
+ */
+function Card({
+  result = null,
+  children,
+}: {
+  readonly result?: ReactNode;
+  readonly children: ReactNode;
+}) {
   return (
     <div>
       <div className="run-tray run-tray-top">{children}</div>
+      {result === null ? null : (
+        <div className="run-tray run-tray-middle">
+          <div className="run-band">{result}</div>
+        </div>
+      )}
       <div className="run-tray run-tray-bottom" />
     </div>
   );
 }
+
+// The long run finished while the person watched: open until they leave.
+setRunFold("harness", "long-run", "watched");
 
 function State({
   label,
@@ -744,21 +752,14 @@ const REPORT_WITH_ACTIVITY: OutcomeModel = {
 function Harness() {
   return (
     <div className="min-h-screen bg-background px-6 py-8">
-      <div className="mx-auto grid w-full max-w-3xl gap-10">
-        <State
-          label="Thinking"
-          note="The thought it is thinking, whole, beside its face; the bubbles before it folded where long."
-        >
-          <Card>
-            <RunChat row={record({ now: THINKING })} />
-          </Card>
-        </State>
+      <div className="mx-auto grid w-full max-w-3xl gap-16">
+        <CardStates />
         <State
           label="Doing, with work alongside"
-          note="The call it is making, its clock in the busy blue; the bars under the chat."
+          note="Every kind of line the chat holds; the call it makes on the now line; the bars under it."
         >
           <Card>
-            <RunChat row={record({ now: RUNNING_STEP })} />
+            <RunChat row={record({ turnKey: "busy-run", now: RUNNING_STEP })} />
             <ConversationWorking
               dock={BUSY_DOCK}
               environmentId={null}
@@ -768,36 +769,27 @@ function Harness() {
             />
           </Card>
         </State>
-        <State label="Waiting for you" note="A question stops the clock; its face waits.">
-          <Card>
-            <RunChat
-              row={record({ now: { kind: "waiting" }, status: status({ waitingSince: ago(30) }) })}
-            />
-          </Card>
-        </State>
-        <State label="Writing" note="Words on their way, not placed yet.">
-          <Card>
-            <RunChat row={record({ now: { kind: "writing" } })} />
-          </Card>
-        </State>
         <State
-          label="Finished"
-          note="The chat stays, in the same scroll; the result under it, its pills opening in place."
+          label="A long run, finished while you watched"
+          note="Open until you leave: the worked line at its foot, the result under it."
         >
-          <Card>
-            <RunChat
-              row={record({
-                live: false,
-                status: status({ live: false, face: "produced", endedAt: ago(2) }),
-              })}
-            />
-            <div className="-mx-4 border-border/60 border-t px-4 pt-2.5">
+          <Card
+            result={
               <TurnReport
                 onOpenImage={() => undefined}
                 onOpenTurnDiff={() => undefined}
                 outcome={REPORT_WITH_ACTIVITY}
               />
-            </div>
+            }
+          >
+            <RunChat
+              row={record({
+                turnKey: "long-run",
+                live: false,
+                status: status({ live: false, face: "produced", endedAt: ago(2) }),
+                outcome: REPORT_WITH_ACTIVITY,
+              })}
+            />
           </Card>
         </State>
         <State

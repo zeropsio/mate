@@ -106,7 +106,7 @@ export function SidebarZeropsAccount({
                   placeholder: the foot must paint nothing it takes back. */}
               {lines.organization === null ? null : (
                 <span
-                  className="min-w-0 truncate text-[11px] leading-4 text-sidebar-muted-foreground"
+                  className="min-w-0 truncate text-xs leading-4 text-sidebar-muted-foreground"
                   data-zerops-surface="sidebar-account-organization"
                 >
                   {lines.organization}

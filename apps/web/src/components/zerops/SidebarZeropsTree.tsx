@@ -47,37 +47,23 @@ import {
   checkDotTone,
   assignCandidateMateTints,
   botDisplayName,
-  flowVerbLabel,
   buildZeropsGroupTree,
   environmentNameUnderGroup,
-  environmentTierForRole,
   groupFlow,
   hasMate,
   mateEnvironmentsEmptyReason,
   pullRequestsByMate,
   pullRequestsFolded,
-  PRODUCTION_SETTING_UP,
-  releaseContentsSentence,
-  releaseContentsSummary,
   rankZeropsCandidateForListing,
   readZeropsGroupTags,
   selectMateEnvironments,
   sidebarChangeLabel,
-  STAGE_SETTING_UP,
-  stopRowLine,
   type EnvironmentRow,
   type FlowPullRequest,
-  type GroupEnvironmentTier,
   type GroupFlow,
   type GroupFlowComing,
   type GroupFlowStop,
-  type GroupNextStep,
-  type GroupRowTone,
   type MissingEnvironmentRow,
-  type StageMark,
-  type StopDistance,
-  type StopRowLine,
-  type StopWordKind,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
   type ZeropsGroup,
@@ -87,32 +73,26 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { stopView, type Deployment, type StopView } from "@t3tools/client-runtime/zerops/flow";
-import type { KnownAffordance, Shown } from "@t3tools/client-runtime/zerops/knowledge";
+import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import type { MateTintId } from "@t3tools/shared/brand";
 import {
-  ArrowUpIcon,
   BellOffIcon,
-  CheckIcon,
   ChevronRightIcon,
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
   GitPullRequestIcon,
-  MinusIcon,
   MoreHorizontalIcon,
   PauseIcon,
   PlusIcon,
   SquareIcon,
-  TriangleAlertIcon,
 } from "lucide-react";
 import {
   useEffect,
   useRef,
   useState,
-  type ComponentProps,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -131,6 +111,7 @@ import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/men
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
+import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
 import { readCollapsedProjects, writeCollapsedProjects } from "~/zerops/collapsedProjects";
 import {
@@ -142,18 +123,28 @@ import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { SidebarCrewLine, type SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { SidebarSelectedBand } from "./SidebarSelectedBand";
-import { KeyChip, MateFace, PlanRing, StatusDot } from "./primitives";
-import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
-import { environmentRoleTag, groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
-import { ZeropsMateVerb } from "./ZeropsMateCard";
-import {
-  formatWorkingTime,
-  isQuietMate,
-  sidebarMateKey,
-  stopNameSaysOnlyRole,
-} from "./SidebarZeropsTree.logic";
+import { KeyChip, MateFace } from "./primitives";
+import { groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
+import { formatWorkingTime, isQuietMate, sidebarMateKey } from "./SidebarZeropsTree.logic";
 import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
 import { SidebarProjectFold, type ProjectFoldMotion } from "./SidebarProjectFold";
+import { headingFaces, type HeadingFace, type HeadingFaceDot } from "./SidebarProjects.logic";
+import { SidebarProductionChip } from "./SidebarProductionChip";
+import {
+  buildingOf,
+  chipFace,
+  chipMenu,
+  drawnChip,
+  fixProblemOf,
+  productionChip,
+  rememberedChipAfter,
+  STOP_DOT,
+  stopServing,
+  type GiteaAnswer,
+  type ProductionChip,
+  type ReleaseFailure,
+  type StopServing,
+} from "./SidebarProductionChip.logic";
 import {
   changeMarkTone,
   mateRowView,
@@ -182,15 +173,10 @@ import {
   comingMateLine,
   groupFlowInputOf,
   groupMemberFactsOf,
-  nextStepAwaitsSomebody,
-  nextStepTone,
   productionAddable,
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
 import { groupAddsOffered } from "./ZeropsProjectRow.logic";
-import { ZeropsReleaseDialog } from "./ZeropsReleaseDialog";
-import { ZeropsRoutesMenu } from "./ZeropsPublicRoutes";
-import { ZeropsStopMenu } from "./ZeropsStopMenu";
 
 /** What the client holds per environment, when it holds anything. */
 type RosterCandidate = ZeropsCandidate & {
@@ -200,30 +186,6 @@ type RosterCandidate = ZeropsCandidate & {
 };
 
 type Entry<T> = { readonly item: T; readonly role: ZeropsEnvironmentRole | undefined };
-
-/** An {@link Entry} resolved to its `groupFlow` tier — `undefined` for neither. */
-type StopEntry<T> = Entry<T> & { readonly tier: GroupEnvironmentTier | undefined };
-
-/**
- * One of a project's stops as the menu draws it: a listed one, or one being
- * created — its birth, until the listing holds its project.
- */
-type StopRow<T> =
-  | ({ readonly kind: "listed" } & StopEntry<T>)
-  | {
-      readonly kind: "creating";
-      readonly member: ZeropsGroupPendingMember;
-      readonly tier: GroupEnvironmentTier;
-    };
-
-/**
- * A stage first, then production, then anything the tag scheme has no tier
- * for: the order the code travels (the owner, 2026-09-25), not the order the
- * tags happen to list.
- */
-function stopTierRank(tier: GroupEnvironmentTier | undefined): number {
-  return tier === "stage" ? 0 : tier === "production" ? 1 : 2;
-}
 
 /** The set with the group collapsed or not; the same set where nothing changed. */
 function withCollapsed(
@@ -310,21 +272,18 @@ export interface SidebarProjectFlow {
    */
   readonly merged?: ReadonlyArray<FlowPullRequest> | undefined;
   /**
-   * What a release would carry, per production service: the count *Release*
-   * wears and its confirm's list.
+   * What a release would carry, per production service: how many changes wait
+   * for production, the count the production chip wears.
    */
   readonly releaseContents?:
     | ReadonlyArray<{ readonly commits: ReadonlyArray<{ sha: string; subject: string }> }>
     | undefined;
   /**
-   * How far each stop is behind `main`, by Zerops project id
-   * (`sidebarStopReads`). A stop missing here says no distance: nothing
-   * placed it, and the row never guesses. Absent where the caller has not
-   * wired it.
+   * The newest release that did not go through, newer than the one production
+   * runs (`releaseFailureOf`): the production chip turns amber, and its menu
+   * says what failed, when and in whose words.
    */
-  readonly distances?: ReadonlyMap<string, StopDistance> | undefined;
-  /** Where each change production does not run stands on the stage, by lower-case sha. */
-  readonly stageMarks?: ReadonlyMap<string, StageMark> | undefined;
+  readonly releaseFailure?: ReleaseFailure | undefined;
   /**
    * Opens the stop's own page, in place of the thread.
    *
@@ -350,12 +309,9 @@ export interface SidebarProjectFlow {
    * owner, twice, 2026-09-17: "it never asked me to setup production").
    */
   readonly missing?: ReadonlyArray<MissingEnvironmentRow> | undefined;
-  /** Whether the project's *Release* is running. */
-  readonly releasing: boolean;
-  readonly onRelease: () => void;
-  /** The version *Release* would tag, named in its confirm. */
+  /** The version a release would tag. */
   readonly releaseTag?: string | undefined;
-  /** The release tag on its way to production (`releaseInFlight`), which its line says. */
+  /** The release tag on its way to production (`releaseInFlight`), which the chip says. */
   readonly releaseInFlight?: string | undefined;
 }
 
@@ -372,6 +328,12 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    * list ends on its last project.
    */
   readonly onNewProject?: (() => void) | undefined;
+  /**
+   * "Ask <your Mate> to fix it" (S6): writes the problem into the Mate's
+   * composer, not sent (`useAskMateToFix`). Absent, the chip's menu offers no
+   * fix.
+   */
+  readonly onAskToFix?: ((mateProjectId: string, problem: FixProblem) => void) | undefined;
   readonly activeProjectId?: string | null;
   /**
    * What this agent is doing right now.
@@ -464,16 +426,20 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
 /** What the menu remembers drawing (`menuMemory.ts`). */
 export interface SidebarRemembered {
   readonly changes: (groupId: string) => ReadonlyArray<FlowPullRequest> | undefined;
-  readonly stop: (projectId: string) => string | undefined;
+  /** A project's production chip as last drawn, for while what decides it is unread. */
+  readonly chip: (groupId: string) => ProductionChip | undefined;
 }
 
-/** What the menu drew of what it has read: the change rows Gitea answered, what settled stops run. */
+/**
+ * What the menu drew of what it has read: the change rows Gitea answered, and
+ * each project's production chip — `null` where it no longer has one.
+ */
 export interface SidebarDrawn {
   readonly changes: Readonly<Record<string, ReadonlyArray<FlowPullRequest>>>;
-  readonly stops: Readonly<Record<string, string>>;
+  readonly chips: Readonly<Record<string, ProductionChip | null>>;
 }
 
-const NOTHING_DRAWN: SidebarDrawn = { changes: {}, stops: {} };
+const NOTHING_DRAWN: SidebarDrawn = { changes: {}, chips: {} };
 
 /**
  * What a row may say of a Mate: its conversation's, read through an open
@@ -504,6 +470,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   onAddMate,
   onBrowseProjects,
   onNewProject,
+  onAskToFix,
   onOpenGroup,
   activeProjectId,
   getActivity,
@@ -619,6 +586,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     focusOnceFree(landing.focus, () => {
       landing.flash.scrollIntoView({ block: "nearest" });
       flashOnce(landing.flash);
+      landing.press?.click();
     });
   });
   // The list's keys that belong to no one row: Option shows the numbers and
@@ -679,10 +647,13 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       window.removeEventListener("blur", onBlur);
     };
   }, [activeProjectId]);
-  // What each stop runs, read once per render and handed to `groupFlow` and
-  // to every stop's own row, so the two can never read two different answers
-  // for the same project.
-  const deployments = useZeropsProjectFlowOptional()?.deployments;
+  // What each stop runs, read once per render and handed to `groupFlow`, so
+  // the chip and the page never read two different answers for one project;
+  // and whether Gitea is coming at all — where it is not, a chip settles on
+  // the platform's facts alone.
+  const projectFlows = useZeropsProjectFlowOptional();
+  const deployments = projectFlows?.deployments;
+  const giteaComing = projectFlows !== null && projectFlows.signedIn;
 
   // Until the rows below are drawn, the jump box finds nothing here, and the
   // memory learns nothing new.
@@ -720,7 +691,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       >
         <span className="text-xs text-sidebar-muted-foreground">No environment has Mate yet</span>
         <button
-          className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-[11px] font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+          className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
           onClick={onBrowseProjects}
           type="button"
         >
@@ -780,7 +751,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   const jumpStops: JumpStop[] = [];
   // What the memory keeps of this draw (`onDrawn`), gathered alike.
   const drawnChanges: Record<string, ReadonlyArray<FlowPullRequest>> = {};
-  const drawnStops: Record<string, string> = {};
+  const drawnChips: Record<string, ProductionChip | null> = {};
   const indexSection = (input: {
     readonly id: string;
     readonly group: ZeropsGroup | undefined;
@@ -791,10 +762,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     readonly grouped: ReturnType<typeof pullRequestsByMate>;
     /** Whether change rows are drawn: Gitea's, or the ones remembered until it answers. */
     readonly changesDrawn: boolean;
-    readonly stopRows: ReadonlyArray<StopRow<T>>;
-    readonly projectFlow: GroupFlow;
+    /** Its production and stages, each as the chip and its menu say it. */
+    readonly stops: ReadonlyArray<JumpStop>;
   }) => {
-    const { id, group, groupName, flow, mateEntries, grouped, projectFlow } = input;
+    const { id, group, groupName, mateEntries, grouped } = input;
     if (group !== undefined) {
       jumpProjects.push({ groupId: id, name: group.name, mates: mateEntries.length });
     }
@@ -839,29 +810,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       }
       for (const pull of grouped.others) jumpChanges.push(change(pull, undefined));
     }
-    for (const row of input.stopRows) {
-      if (row.kind !== "listed") continue;
-      const projectId = row.item.project.id;
-      const read = stopRowRead({
-        projectId,
-        tier: row.tier,
-        flow,
-        projectFlow,
-        deployments,
-        nowMs,
-        remembered: remembered?.stop(projectId),
-      });
-      if (read.settled && read.line.runs !== undefined) drawnStops[projectId] = read.line.runs;
-      const name = environmentNameUnderGroup(groupName, row.item.project.name);
-      jumpStops.push({
-        projectId,
-        groupId: id,
-        title: groupName === undefined ? name : `${groupName} ${name}`,
-        line: read.line.runs ?? read.view.line,
-        tone: read.badge.tone,
-        word: read.badge.word,
-      });
-    }
+    jumpStops.push(...input.stops);
   };
 
   /**
@@ -872,7 +821,12 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   const section = (
     id: string,
     entries: ReadonlyArray<Entry<T>>,
-    renderHeader: (nextStep: GroupNextStep | undefined) => ReactNode,
+    renderHeader: (heading: {
+      /** The production chip, where the project has a production or a stage. */
+      readonly production: ReactNode;
+      /** Its busy Mates' faces, while it is folded. */
+      readonly faces: ReactNode;
+    }) => ReactNode,
     flow: SidebarProjectFlow | undefined,
     groupName: string | undefined,
     // `undefined` for the ungrouped section, which has no production to add.
@@ -920,7 +874,158 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         pending: group?.pending ?? [],
       }),
     );
-    const header = renderHeader(flow === undefined ? undefined : projectFlow.nextStep);
+    // Production and its stages are the chip on the heading (M2), never rows:
+    // a row would make production a peer of the Mates, whom you talk to, and
+    // a row disappears when the project folds.
+    const stopItem = (projectId: string | undefined) =>
+      projectId === undefined
+        ? undefined
+        : others.find(({ item }) => item.project.id === projectId)?.item;
+    const productionStop =
+      "stop" in projectFlow.production ? projectFlow.production.stop : undefined;
+    const productionItem = stopItem(productionStop?.projectId);
+    const stageItem = stopItem(projectFlow.stages[0]?.projectId);
+    const servingOf = (item: T | undefined): StopServing =>
+      item === undefined
+        ? { kind: "unknown" }
+        : stopServing({ projectStatus: item.project.status, services: item.services?.statuses });
+    const gitea: GiteaAnswer =
+      flow !== undefined && flow.changesKnown !== false
+        ? { kind: "answered", failure: flow.releaseFailure }
+        : giteaComing
+          ? { kind: "waiting" }
+          : { kind: "absent" };
+    const chipRead = productionChip({
+      production: projectFlow.production,
+      stages: projectFlow.stages,
+      stageBeingCreated: projectFlow.creatingStages.length > 0,
+      building:
+        productionStop === undefined
+          ? undefined
+          : buildingOf(deployments?.get(productionStop.projectId)),
+      waiting: projectFlow.main.notLive,
+      serving: { production: servingOf(productionItem), stage: servingOf(stageItem) },
+      gitea,
+    });
+    const chip = group === undefined ? undefined : drawnChip(chipRead, remembered?.chip(id));
+    const chipLearned = rememberedChipAfter(chipRead);
+    if (group !== undefined && chipLearned !== undefined) drawnChips[id] = chipLearned;
+    const chipItem = chip?.label === "stage" ? stageItem : productionItem;
+    const chipServing = servingOf(chipItem);
+    const down = chipServing.kind === "down" ? chipServing.services : [];
+    const failure = gitea.kind === "answered" ? gitea.failure : undefined;
+    const stopDeployedAt = (projectId: string) => {
+      const deployment = deployments?.get(projectId);
+      const activated =
+        deployment?.state === "known" && deployment.value.kind === "running"
+          ? deployment.value.activatedAt
+          : null;
+      return activated ?? stopItem(projectId)?.services?.deployedAt;
+    };
+    const stopName = (stop: GroupFlowStop) =>
+      environmentNameUnderGroup(groupName, stopItem(stop.projectId)?.project.name ?? stop.name);
+    const chipDeclared =
+      chipItem === undefined ? undefined : flow?.environments.get(chipItem.project.id);
+    const production =
+      chip === undefined || group === undefined ? null : (
+        <SidebarProductionChip
+          chip={chip}
+          fixProblem={fixProblemOf({ chip, failure, down })}
+          groupId={id}
+          mates={mateEntries.map(({ item }) => ({
+            candidate: item,
+            tint: tints.get(item.project.id) ?? "slate",
+            mine: getOwner?.(item)?.isViewer,
+            threadKey: getActivity?.(item)?.threadKey,
+          }))}
+          menu={chipMenu({
+            chip,
+            failure,
+            down,
+            stages: projectFlow.stages.map((stop) => ({
+              name: stopName(stop),
+              stop,
+              deployedAt: stopDeployedAt(stop.projectId),
+            })),
+            waiting: projectFlow.main.notLive,
+            nowMs,
+          })}
+          onAskToFix={onAskToFix}
+          onOpenStop={
+            chipDeclared === undefined || flow?.onOpenStop === undefined
+              ? undefined
+              : () => {
+                  flow.onOpenStop?.(chipDeclared);
+                }
+          }
+          projectName={groupName ?? group.name}
+          routes={chipItem?.routes ?? []}
+          stopProjectId={chipItem?.project.id}
+        />
+      );
+    // The jump box finds each of them, and shows the chip where one is found.
+    const title = (name: string) => (groupName === undefined ? name : `${groupName} ${name}`);
+    const chipFaceOf = chip === undefined ? undefined : chipFace(chip);
+    const jumpStopsHere: ReadonlyArray<JumpStop> = [
+      ...projectFlow.stages.map((stop) => ({
+        projectId: stop.projectId,
+        groupId: id,
+        title: title(stopName(stop)),
+        line: stop.version?.label ?? "",
+        dot:
+          chip?.label === "stage" && chipItem?.project.id === stop.projectId && chipFaceOf
+            ? chipFaceOf.dot
+            : STOP_DOT[stop.state],
+        word:
+          chip?.label === "stage" && chipItem?.project.id === stop.projectId && chipFaceOf
+            ? chipFaceOf.words
+            : `Stage ${stop.version?.label ?? ""}`.trim(),
+      })),
+      ...(productionStop === undefined
+        ? []
+        : [
+            {
+              projectId: productionStop.projectId,
+              groupId: id,
+              title: title(stopName(productionStop)),
+              line: productionStop.version?.label ?? "",
+              dot:
+                chip?.label === "prod" && chipFaceOf !== undefined
+                  ? chipFaceOf.dot
+                  : STOP_DOT[productionStop.state],
+              word:
+                chip?.label === "prod" && chipFaceOf !== undefined
+                  ? chipFaceOf.words
+                  : `Production ${productionStop.version?.label ?? ""}`.trim(),
+            },
+          ]),
+    ];
+    // Folded, the heading shows who is busy in it (M15): its Mates that need
+    // you, work, or finished unseen — once its rows have folded away.
+    const folded = collapsed.has(id) && folds.get(id) !== "closing";
+    const busy = folded
+      ? headingFaces(
+          mateEntries.map(({ item }) => {
+            const activity = getActivity?.(item);
+            const live = drawnActivity(item, activity);
+            return {
+              projectId: item.project.id,
+              name: botDisplayName({
+                bot: readZeropsGroupTags(item.project.tagList).bot,
+                projectName: item.project.name,
+              }),
+              tint: tints.get(item.project.id) ?? "slate",
+              face: mateFaceFor(item.group === "connected", activity),
+              failed: live?.kind === "failed",
+              unread: live?.unread === true,
+            };
+          }),
+        )
+      : [];
+    const header = renderHeader({
+      production,
+      faces: busy.length === 0 ? null : <HeadingFaces faces={busy} />,
+    });
     // Code only — a recipe change is the group's document, left to the
     // projects page, and is never one more thing a Mate's row here answers
     // for.
@@ -945,19 +1050,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       flowPulls,
       everyMate.map(({ item }) => item.project.id),
     );
-    // Every stage, then production — the order the code travels (the owner,
-    // 2026-09-25), not the order the tags happen to list. A stop being
-    // created follows the listed ones of its tier.
-    const stopRows: ReadonlyArray<StopRow<T>> = [
-      ...others.map((entry): StopRow<T> => ({
-        kind: "listed",
-        ...entry,
-        tier: environmentTierForRole(entry.role),
-      })),
-      ...(group?.pending ?? []).flatMap((member): ReadonlyArray<StopRow<T>> =>
-        member.kind === "mate" ? [] : [{ kind: "creating", member, tier: member.kind }],
-      ),
-    ].sort((a, b) => stopTierRank(a.tier) - stopTierRank(b.tier));
     // Its Mates in the order drawn: the ones at work or lately at it, those
     // being created, then — folded behind their count at the end — the ones
     // untouched for a week (`isQuietMate`), open only when asked.
@@ -978,8 +1070,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       mateEntries: [...loud, ...quiet],
       grouped,
       changesDrawn: changeRows !== undefined,
-      stopRows,
-      projectFlow,
+      stops: jumpStopsHere,
     });
     // Collapsed, a project is its heading and nothing else — no summary and
     // no small badges: a second, smaller design of the same rows is what the
@@ -1093,24 +1184,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
               ),
             },
           ]),
-      ...(stopRows.length === 0
-        ? []
-        : [
-            {
-              key: "stops",
-              node: (
-                <EnvironmentRows
-                  deployments={deployments}
-                  flow={flow}
-                  groupName={groupName}
-                  onOpenProject={onBrowseProjects}
-                  projectFlow={projectFlow}
-                  rememberedStop={remembered?.stop}
-                  stops={stopRows}
-                />
-              ),
-            },
-          ]),
     ];
     return (
       <>
@@ -1186,12 +1259,13 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       {section(
         group.groupId,
         environments,
-        (nextStep) => (
+        ({ production, faces }) => (
           <ProjectHeader
             collapsed={collapsed.has(group.groupId)}
+            faces={faces}
             group={group}
             missing={getFlow?.(group.groupId)?.missing ?? []}
-            nextStep={nextStep}
+            production={production}
             onAddMate={onAddMate}
             onBrowseProjects={onBrowseProjects}
             onOpen={
@@ -1256,7 +1330,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     changes: jumpChanges,
     stops: jumpStops,
   };
-  drawnForMemory.current = { changes: drawnChanges, stops: drawnStops };
+  drawnForMemory.current = { changes: drawnChanges, chips: drawnChips };
 
   return (
     <nav
@@ -1328,16 +1402,14 @@ function ListingNotice({
       <span
         className={cn(
           "text-xs",
-          message.tone === "alert"
-            ? "text-[var(--zerops-status-failed-text)]"
-            : "text-sidebar-muted-foreground",
+          message.tone === "alert" ? "text-status-failed-text" : "text-sidebar-muted-foreground",
         )}
       >
         {message.text}
       </span>
       {affordance === null || onAct === undefined ? null : (
         <button
-          className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-[11px] font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+          className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
           onClick={() => onAct(affordance)}
           type="button"
         >
@@ -1371,25 +1443,19 @@ export function ProjectHeader({
   name,
   muted = false,
   missing = NO_MISSING_TIERS,
-  nextStep,
   onAddMate,
   onBrowseProjects,
   onOpen,
   collapsed = false,
   onToggle,
   reorder,
+  production,
+  faces,
 }: {
   readonly group?: ZeropsGroup;
   readonly name?: string;
   readonly muted?: boolean;
   readonly missing?: ReadonlyArray<MissingEnvironmentRow>;
-  /**
-   * The one thing the flow says is next for this project — `groupFlow`'s own
-   * derivation, so a dot here never claims a step the page would not offer.
-   * Absent while the flow is unread, and drawn only where it waits on somebody
-   * (`nextStepAwaitsSomebody`) — never for a first task, whose Mate is the way in.
-   */
-  readonly nextStep?: GroupNextStep | undefined;
   /** Records which project the add was asked for; absent in the harness. */
   readonly onAddMate?: ((groupId: string) => void) | undefined;
   readonly onBrowseProjects: () => void;
@@ -1405,9 +1471,22 @@ export function ProjectHeader({
    * ungrouped heading, which always stands last.
    */
   readonly reorder?: ProjectHeaderReorder | undefined;
+  /**
+   * The project's production chip (`SidebarProductionChip`), on the heading's
+   * end edge whether the project is open or folded.
+   */
+  readonly production?: ReactNode;
+  /** Its busy Mates' faces (`HeadingFaces`), after the title while it is folded. */
+  readonly faces?: ReactNode;
 }) {
   const placeholder = group !== undefined && groupNameIsPlaceholder(group);
   const title = group?.name ?? name ?? "";
+  const addMate = () => {
+    // The dialog belongs to the projects screen, so the ask travels with the
+    // navigation rather than being dropped.
+    if (group !== undefined) onAddMate?.(group.groupId);
+    onBrowseProjects();
+  };
   return (
     // The title on the menu's mark edge (x = 16: 7 px inside the list's own
     // 9), the heading 32 px tall, and its end 12 px short of the menu's edge.
@@ -1465,6 +1544,7 @@ export function ProjectHeader({
               differently"). The title hugs its text, so the chevron follows
               it. */}
           <DisclosureGlyph />
+          {faces}
         </button>
       )}
       {/* Hidden until hover keeps a list of five projects calm, but a finger
@@ -1479,12 +1559,7 @@ export function ProjectHeader({
                   aria-label={`Add a Mate to ${title}`}
                   className={HEADING_ACTION_CLASS}
                   data-zerops-surface="sidebar-project-add-mate"
-                  onClick={() => {
-                    // The dialog belongs to the projects screen, so the ask
-                    // travels with the navigation rather than being dropped.
-                    if (group !== undefined) onAddMate?.(group.groupId);
-                    onBrowseProjects();
-                  }}
+                  onClick={addMate}
                   type="button"
                 />
               }
@@ -1512,6 +1587,9 @@ export function ProjectHeader({
                   not open it (the owner, 2026-09-19); now that the heading's
                   name collapses the project, this is the way in. */}
               <MenuItem onClick={onOpen ?? onBrowseProjects}>Open project</MenuItem>
+              {/* The + beside this menu, which a narrow menu drops to keep the
+                  project's name: here either way. */}
+              <MenuItem onClick={addMate}>Add a Mate</MenuItem>
               {reorder === undefined ? null : (
                 <>
                   <MenuSeparator />
@@ -1550,30 +1628,49 @@ export function ProjectHeader({
         </span>
       )}
       <span aria-hidden="true" className="min-w-0 flex-1" />
-      {/* Always on, unlike the verbs before it: this says something is waiting
-          on the person, which is not a fact that should hide until they hover.
-          Last, so at rest it sits on the end edge, over the Mates' times. */}
-      {nextStep === undefined || !nextStepAwaitsSomebody(nextStep.kind) ? null : (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <StatusDot
-                className="relative z-1 shrink-0"
-                data-zerops-surface="sidebar-project-next-step"
-                dotOnly
-                label={nextStep.text}
-                tone={nextStepTone(nextStep.kind)}
-              />
-            }
-          />
-          <TooltipPopup side="right">{nextStep.text}</TooltipPopup>
-        </Tooltip>
-      )}
+      {production}
     </div>
   );
 }
 
 const NO_MISSING_TIERS: ReadonlyArray<MissingEnvironmentRow> = [];
+
+/** A folded heading's face, in words: who, and why it is shown. */
+const HEADING_FACE_WORDS: Record<HeadingFaceDot | "working", string> = {
+  attention: "needs you",
+  failed: "stopped on an error",
+  unread: "finished",
+  working: "is working",
+};
+
+/**
+ * The faces of a folded project's busy Mates (M15), after its title: 18 px,
+ * each in its own pose — turning while it works, hopping when it needs you —
+ * with a 7 px dot at its corner for what is not work, cut out of the menu's
+ * ground: amber needs you, blue finished unseen, red stopped on an error.
+ */
+function HeadingFaces({ faces }: { readonly faces: ReadonlyArray<HeadingFace> }) {
+  return (
+    <span
+      className="ms-1 flex shrink-0 items-center gap-0.75"
+      data-zerops-surface="sidebar-project-faces"
+    >
+      {faces.map((face) => (
+        <span className="relative flex" key={face.projectId}>
+          <MateFace className="size-4.5" greets size="sm" state={face.face} tint={face.tint} />
+          {face.dot === undefined ? null : (
+            <span aria-hidden="true" className="zerops-heading-dot" data-dot={face.dot} />
+          )}
+        </span>
+      ))}
+      <span className="sr-only">
+        {faces
+          .map((face) => `${face.name} ${HEADING_FACE_WORDS[face.dot ?? "working"]}`)
+          .join(", ")}
+      </span>
+    </span>
+  );
+}
 
 /** One place in a project's run of Mates: a Mate, one being created, or the quiet ones' fold. */
 type MateSlot<T> =
@@ -1600,6 +1697,8 @@ function typedIntoField(target: EventTarget | null): boolean {
 interface RevealLanding {
   readonly focus: HTMLElement;
   readonly flash: HTMLElement;
+  /** Pressed once it has the focus: a stop's chip opens its menu. */
+  readonly press?: HTMLElement;
 }
 
 function revealLanding(
@@ -1627,14 +1726,13 @@ function revealLanding(
         : { focus: toggle ?? heading, flash: heading };
     }
     case "stop": {
-      const row = find(
-        `[data-zerops-surface="sidebar-environment"][data-zerops-project="${target.projectId}"]`,
+      // A stop is no row of its own: its project's production chip carries
+      // it, and its menu says the rest — so the chip is focused, flashed and
+      // opened.
+      const chip = find(
+        `[data-zerops-group="${target.groupId}"] [data-zerops-surface="sidebar-production-chip"]`,
       );
-      if (row === null) return null;
-      const open =
-        row.querySelector<HTMLElement>('[data-zerops-surface="sidebar-stop-open"]') ??
-        row.querySelector<HTMLElement>('button[data-zerops-surface="sidebar-environment-version"]');
-      return { focus: open ?? row, flash: row };
+      return chip === null ? null : { focus: chip, flash: chip, press: chip };
     }
     case "change": {
       const row = find(
@@ -1739,7 +1837,7 @@ export interface ProjectHeaderReorder {
 /** A project's name: 16 · 600, the only 16 px words in the menu (S1). */
 const HEADING_CLASS =
   "zerops-project-name min-w-0 truncate text-base leading-6 font-semibold text-sidebar-foreground";
-const HEADING_MUTED = "text-[13px] font-medium tracking-normal text-sidebar-muted-foreground";
+const HEADING_MUTED = "text-line font-medium text-sidebar-muted-foreground";
 const HEADING_UNNAMED = "font-normal text-sidebar-muted-foreground italic";
 
 const ROW_ACTION_CLASS =
@@ -1794,8 +1892,6 @@ function MateRow<T extends RosterCandidate>({
   // A new ask rises into the row's second line as the person sets it; the
   // ask this browser remembered gives way to the one read without a rise.
   const askChanged = useChangedSinceShown(view.ask, known);
-  // The plan as a ring around the face while it works: one segment a step.
-  const progress = view.face === "working" ? live?.progress : undefined;
   const unread = live?.unread === true;
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuAt, setMenuAt] = useState<MenuPoint | undefined>(undefined);
@@ -1913,8 +2009,8 @@ function MateRow<T extends RosterCandidate>({
         <span className="relative flex size-7">
           {/* The Mate wears the card's face rather than a row's, whole: the
               person it belongs to stands before its name instead of on its
-              corner. A ring, when it works, stands 4px clear all round, over
-              the row's own padding, so it never moves a line. */}
+              corner, and nothing rings it — the step it is on is its row's
+              third line. */}
           <span className="relative flex">
             {/* Until its socket answers the face stands in idle or asleep, the
                 row's words as this browser remembered them: a Mate found
@@ -1930,11 +2026,6 @@ function MateRow<T extends RosterCandidate>({
               state={view.face}
               tint={tint}
             />
-            {progress === undefined ? null : (
-              <span className="absolute -inset-1 flex" data-zerops-surface="sidebar-mate-ring">
-                <PlanRing completed={progress.completed} total={progress.total} />
-              </span>
-            )}
           </span>
         </span>
         {/* One even leading, three lines of one thing: the name 14/20, what
@@ -2509,678 +2600,9 @@ function PullRequestRow({
   );
 }
 
-/**
- * *Release*, and only the word.
- *
- * The verb keeps its name: renaming it would cost the people who know exactly
- * what it means and buy the others only a different word to learn. How many
- * changes it would carry is the `+N` chip right before it, which opens to
- * them — the one place the menu lists them (the owner, 2026-09-25); a count
- * on the verb too was the same number twice on one line. The tag and what it
- * carries are its accessible name, and its confirm spells them out.
- */
-function ReleaseVerb({
-  contents,
-  releasing,
-  releaseTag,
-  onRelease,
-}: {
-  readonly contents: SidebarProjectFlow["releaseContents"];
-  readonly releasing: boolean;
-  readonly releaseTag: string | undefined;
-  readonly onRelease: () => void;
-}) {
-  const [confirming, setConfirming] = useState(false);
-  const summary = releaseContentsSummary(contents ?? []);
-  const sentence = releaseContentsSentence(summary);
-  const verb = (
-    <ZeropsMateVerb
-      description={
-        [releaseTag, sentence].filter((part) => part !== undefined).join(", ") || undefined
-      }
-      disabled={releasing}
-      label={flowVerbLabel("release", releasing)}
-      // Blue, not amber: work merged and waiting is in flight, not stuck.
-      // Beside `Needs a rebase` it wore the identical amber chip — "release
-      // doesn't have the same urgency as rebase" (the owner, 2026-09-19) —
-      // which flattened the one ladder this menu has, where amber means
-      // somebody is blocked and green means a thing is already fine.
-      tone={summary.total === 0 ? undefined : "busy"}
-      onClick={() => {
-        setConfirming(true);
-      }}
-    />
-  );
-  // A release is the one verb here that reaches somebody outside the account,
-  // so it asks first — with the changes spelled out, not in a hover.
-  const confirm = (
-    <ZeropsReleaseDialog
-      contents={contents}
-      onConfirm={() => {
-        setConfirming(false);
-        onRelease();
-      }}
-      onOpenChange={setConfirming}
-      open={confirming}
-      releasing={releasing}
-      tag={releaseTag}
-    />
-  );
-  return (
-    <>
-      {verb}
-      {confirm}
-    </>
-  );
-}
-
-/**
- * A stop's last deploy, as the row's first thing rather than its last.
- *
- * A Mate wears a face; a stop wore a 8px dot buried in a second line of muted
- * text, which is precisely what made the stages and the productions read as
- * "second rate citizens" (the owner, 2026-09-19) beside the people. This is
- * the same 20px box a face occupies, in the same column, so the eye reads a
- * project as one list of places work is — some of them people, some of them
- * machines — instead of a list of Mates with a footer.
- *
- * Square, because a face is round: a person and a place should not be the same
- * shape. Tinted rather than filled ("depth by tint"), and never without its
- * word, which the tooltip and the accessible name both carry.
- */
-function StopBadge({ tone, word }: { readonly tone: GroupRowTone; readonly word: string }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={<StopMark data-zerops-surface="sidebar-stop-badge" tone={tone} word={word} />}
-      />
-      <TooltipPopup side="right">{word}</TooltipPopup>
-    </Tooltip>
-  );
-}
-
-/**
- * A stop's badge on its own, where something else says its word: the jump
- * box lists a stop with it, the same square as its row in the menu.
- */
-export function StopMark({
-  tone,
-  word,
-  className,
-  ...props
-}: ComponentProps<"span"> & { readonly tone: GroupRowTone; readonly word: string }) {
-  const Icon = STOP_ICON[tone];
-  return (
-    <span
-      {...props}
-      aria-label={word}
-      className={cn(
-        "inline-flex size-5 shrink-0 items-center justify-center rounded-md",
-        STOP_BADGE_CLASS[tone],
-        className,
-      )}
-      data-zerops-status-tone={tone}
-      role="img"
-    >
-      <Icon aria-hidden="true" className="size-3" strokeWidth={2.5} />
-    </span>
-  );
-}
-
-const STOP_ICON: Record<GroupRowTone, typeof CheckIcon> = {
-  good: CheckIcon,
-  // Not a spinner: a continuously repainting menu is rule R6, and "something
-  // is on its way up" is what the arrow says anyway.
-  pending: ArrowUpIcon,
-  bad: TriangleAlertIcon,
-  neutral: MinusIcon,
-};
-
-const STOP_BADGE_CLASS: Record<GroupRowTone, string> = {
-  good: "bg-[var(--zerops-status-ok)]/15 text-[var(--zerops-status-ok)]",
-  pending: "bg-[var(--zerops-status-busy)]/15 text-[var(--zerops-status-busy)]",
-  bad: "bg-[var(--zerops-status-failed)]/15 text-[var(--zerops-status-failed)]",
-  neutral: "bg-sidebar-row-hover text-sidebar-muted-foreground",
-};
-
-/** A stop whose project the flow has no listing for: not read, never "nothing". */
-const UNREAD_DEPLOYMENT: Shown<Deployment> = { state: "unread", waitingFor: null };
-
-/**
- * The project's stops, drawn as the peers of the Mates above them: every
- * stage, then production — the order the code travels (the owner,
- * 2026-09-25). One stop, one row, and every stop the same row: a stage used
- * to be one muted line after production, `↳ stage · follows main`, which said
- * where it was and never what it ran or whether it had the newest change.
- *
- * One line, and no switch for another (the owner, 2026-09-25): the badge on
- * the rail; the role as a pill, the name after it only where the name says
- * more; then where the newest change is — what the stop runs, the version's
- * **name** where Zerops has one, else its commit, the same on a stage as on
- * production, with one word in front where something differs (`stopRowLine`)
- * — then how far it is behind `main` as a `+N` chip; then *Release*; then two
- * slots that are always there, the globe and the stop's menu, which shows on
- * hover without moving anything. Never a change's title: a stage is not tied
- * to a Mate, it deploys whatever is pushed to the branch its trigger watches,
- * and "Mate: zitdev" on it read as that Mate's. What runs truncates first;
- * the pill, the chip, the verb and the two slots never give way.
- *
- * The chip is the detail, opened: `+3` lists the three changes under the
- * stop, and under production each says whether the stage has run it yet.
- * Nothing about a stop is folded away any more — the project itself
- * collapses instead.
- */
-function EnvironmentRows<T extends RosterCandidate>({
-  stops,
-  flow,
-  projectFlow,
-  groupName,
-  deployments,
-  rememberedStop,
-  onOpenProject,
-}: {
-  /** Every stage, then production (`section`), listed or being set up. */
-  readonly stops: ReadonlyArray<StopRow<T>>;
-  /** `groupFlow`'s own reading of each stop, so a row never says what the page would not. */
-  readonly projectFlow: GroupFlow;
-  readonly flow: SidebarProjectFlow | undefined;
-  /** The heading above, so a row never repeats the word already on it. */
-  readonly groupName: string | undefined;
-  /** What each stop runs, read once by the tree and shared with `groupFlow`. */
-  readonly deployments: ReadonlyMap<string, Shown<Deployment>> | undefined;
-  /** What this browser last saw each stop run, until its line settles. */
-  readonly rememberedStop: ((projectId: string) => string | undefined) | undefined;
-  readonly onOpenProject: () => void;
-}) {
-  // Only a countdown reads the clock, and a stop's line carries none; the
-  // time the rows were first drawn is enough.
-  const [nowMs] = useState(Date.now);
-  return (
-    // The stops belong to the project, not to the Mate they happen to follow.
-    <ul className="flex flex-col" data-zerops-surface="sidebar-environment-rows">
-      {stops.map((row) => {
-        if (row.kind === "creating") {
-          return <CreatingStopRow key={row.member.projectId} member={row.member} tier={row.tier} />;
-        }
-        const { item, role, tier } = row;
-        const projectId = item.project.id;
-        const { declared, view, line, badge } = stopRowRead({
-          projectId,
-          tier,
-          flow,
-          projectFlow,
-          deployments,
-          nowMs,
-          remembered: rememberedStop?.(projectId),
-        });
-        return (
-          <StopRowItem
-            badge={badge}
-            key={projectId}
-            line={line}
-            marks={tier === "production" ? flow?.stageMarks : undefined}
-            name={environmentNameUnderGroup(groupName, item.project.name)}
-            projectName={item.project.name}
-            onOpenProject={onOpenProject}
-            onOpenStop={
-              declared === undefined || flow?.onOpenStop === undefined
-                ? undefined
-                : () => {
-                    flow.onOpenStop?.(declared);
-                  }
-            }
-            projectId={projectId}
-            release={
-              flow !== undefined && flow.releaseOffered && tier === "production" ? flow : undefined
-            }
-            routes={item.routes ?? []}
-            tag={environmentRoleTag(role)}
-            view={view}
-          />
-        );
-      })}
-    </ul>
-  );
-}
-
-/**
- * What one listed stop's row reads — what it runs, its line and its badge —
- * read once, for its row and for the jump box alike, so the two never say
- * two things about one stop.
- */
-function stopRowRead(input: {
-  readonly projectId: string;
-  readonly tier: GroupEnvironmentTier | undefined;
-  readonly flow: SidebarProjectFlow | undefined;
-  readonly projectFlow: GroupFlow;
-  readonly deployments: ReadonlyMap<string, Shown<Deployment>> | undefined;
-  readonly nowMs: number;
-  /** What this browser last saw the stop run (`menuMemory.ts`), for while its line is unsettled. */
-  readonly remembered: string | undefined;
-}): {
-  readonly declared: EnvironmentRow | undefined;
-  readonly view: StopView;
-  readonly line: StopRowLine;
-  readonly badge: { readonly tone: GroupRowTone; readonly word: string };
-  /** The platform said what runs here, and Gitea — which may name it by its release — answered. */
-  readonly settled: boolean;
-} {
-  const { projectId, tier, flow } = input;
-  const declared = flow?.environments.get(projectId);
-  // What each stop runs is the platform's answer, joined with the row the
-  // deploy half read (`stopView`): a stop not yet read holds its line and
-  // never reads as one with nothing deployed.
-  const view = stopView({
-    deployment: input.deployments?.get(projectId) ?? UNREAD_DEPLOYMENT,
-    row: declared,
-    nowMs: input.nowMs,
-  });
-  const flowStop = flowStopOf(input.projectFlow, projectId);
-  const read: StopRowLine =
-    tier === undefined || flowStop === undefined
-      ? { word: undefined, runs: view.line, distance: undefined }
-      : stopRowLine({
-          tier,
-          stop: flowStop,
-          releasing: tier === "production" ? flow?.releaseInFlight : undefined,
-          distance: flow?.distances?.get(projectId),
-        });
-  const deployment = input.deployments?.get(projectId);
-  const settled =
-    deployment !== undefined &&
-    deployment.state !== "unread" &&
-    deployment.state !== "reading" &&
-    flow !== undefined &&
-    flow.changesKnown !== false;
-  // Until then the line says what this browser last saw it run, rather than
-  // "Checking…" or the platform's name a release is about to replace.
-  const line: StopRowLine =
-    settled || input.remembered === undefined
-      ? read
-      : {
-          word: read.word?.kind === "checking" ? undefined : read.word,
-          runs: input.remembered,
-          distance: read.distance,
-        };
-  // A release on its way is the badge's news too, before the platform has
-  // seen a deploy start.
-  const badge =
-    line.word?.kind === "releasing"
-      ? { tone: "pending" as const, word: line.word.text }
-      : { tone: view.tone, word: view.word };
-  return { declared, view, line, badge, settled };
-}
-
 /** A change's row, as the menu keys it and the jump box finds it: `repository#number`. */
 function changeRowKey(pull: Pick<FlowPullRequest, "repository" | "number">): string {
   return `${pull.repository}#${String(pull.number)}`;
-}
-
-/** `groupFlow`'s own stop for a project: one of its stages, or its production. */
-function flowStopOf(flow: GroupFlow, projectId: string): GroupFlowStop | undefined {
-  const stage = flow.stages.find((entry) => entry.projectId === projectId);
-  if (stage !== undefined) return stage;
-  const { production } = flow;
-  return "stop" in production && production.stop.projectId === projectId
-    ? production.stop
-    : undefined;
-}
-
-/** How the state word reads: a failure in the failure's own ink, the rest in the row's. */
-const WORD_CLASS: Record<StopWordKind, string> = {
-  failed: "text-[var(--zerops-status-failed-text)]",
-  deploying: "text-sidebar-foreground",
-  releasing: "text-sidebar-foreground",
-  empty: "text-sidebar-muted-foreground",
-  checking: "text-sidebar-muted-foreground",
-};
-
-/**
- * A stop's role as its pill, and its own name after it only where the name
- * says something the pill does not — `qa`, `stage 2`, `eu-west` — never
- * `production` beside `prod` (the owner, 2026-09-25).
- */
-function StopTitle({ name, tag }: { readonly name: string; readonly tag: string | null }) {
-  return (
-    <>
-      {tag === null ? null : <ZeropsRoleTag className="px-1" label={tag} />}
-      {stopNameSaysOnlyRole(tag, name) ? null : (
-        <span className="min-w-0 truncate text-sm leading-5 font-medium text-sidebar-foreground">
-          {name}
-        </span>
-      )}
-    </>
-  );
-}
-
-/** The distance in words, for the chip that only says `+3`. */
-function distanceWords(count: number): string {
-  return `${String(count)} ${count === 1 ? "change" : "changes"} on main not here yet`;
-}
-
-/**
- * One listed stop: its row, and — opened from its distance — the changes it
- * does not run yet, one row each under it.
- *
- * Closed until somebody opens it, and not remembered: it answers a question
- * asked now. It closes itself once there is nothing behind, or nothing says
- * how far, since a list of zero changes is a control with nothing in it.
- */
-function StopRowItem({
-  projectId,
-  projectName,
-  name,
-  tag,
-  badge,
-  line,
-  view,
-  marks,
-  routes,
-  release,
-  onOpenStop,
-  onOpenProject,
-}: {
-  readonly projectId: string;
-  /** The Zerops project's own name, which the public routes are named after. */
-  readonly projectName: string;
-  readonly name: string;
-  readonly tag: ReturnType<typeof environmentRoleTag>;
-  readonly badge: { readonly tone: GroupRowTone; readonly word: string };
-  readonly line: StopRowLine;
-  /** What the stop runs as `stopView` read it, for the menu's detail and a placeholder's delay. */
-  readonly view: StopView;
-  /** Where each change stands on the stage; production's list only. */
-  readonly marks: ReadonlyMap<string, StageMark> | undefined;
-  readonly routes: ReadonlyArray<ZeropsPublicRoute>;
-  /** The project's flow where *Release* is offered on this stop. */
-  readonly release: SidebarProjectFlow | undefined;
-  readonly onOpenStop: (() => void) | undefined;
-  readonly onOpenProject: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const { distance, word, runs } = line;
-  if (open && distance === undefined) setOpen(false);
-  const listed = open && distance !== undefined;
-  const checking = word?.kind === "checking";
-  return (
-    <>
-      <li
-        className="group/stop flex h-8 min-w-0 items-center gap-3.5 rounded-md px-2.5 transition-colors hover:bg-sidebar-row-hover"
-        data-zerops-project={projectId}
-        data-zerops-surface="sidebar-environment"
-      >
-        {/* Centred on the row, because the Mate face directly above it is:
-            two neighbouring rows may not have two rules for their first
-            column. The gap after it is the Mate row's, so what follows starts
-            on the Mates' text column — at `gap-2.5` it sat 4px left of theirs
-            (the owner, 2026-09-25: "everything jumps around differently"). */}
-        <span className="relative flex w-5 shrink-0 items-center justify-center self-stretch">
-          <StopBadge tone={badge.tone} word={badge.word} />
-        </span>
-        {/* Gaps of 4px: at the menu's 208px a production waiting on
-            *Release* needs every one of them for its pill, its verb and the
-            two end slots. */}
-        <span className="flex min-w-0 flex-1 items-center gap-1 text-[11px] leading-4 text-sidebar-muted-foreground">
-          {/* The pill and the name are the way into the stop, as the name
-              alone was. */}
-          {onOpenStop === undefined ? (
-            <span className="flex min-w-0 shrink-0 items-center gap-1.5">
-              <StopTitle name={name} tag={tag} />
-            </span>
-          ) : (
-            <button
-              className="flex max-w-[60%] min-w-0 shrink-0 cursor-pointer items-center gap-1.5 rounded-sm text-left underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
-              data-zerops-surface="sidebar-stop-open"
-              onClick={onOpenStop}
-              type="button"
-            >
-              <StopTitle name={name} tag={tag} />
-            </button>
-          )}
-          {word === undefined ? null : (
-            <span
-              className={cn(
-                // The last thing on the line to give way, and only once what
-                // runs has: at 208px "Checking what runs here…" beside a pill
-                // and the two end slots does not fit whole, and a row may not
-                // run past its own edge.
-                "min-w-0 truncate",
-                WORD_CLASS[word.kind],
-                // A placeholder waits a beat before it says anything, so a
-                // quick answer never flickers "Checking…".
-                checking && view.afterMs > 0 && "animate-zerops-appear",
-              )}
-              data-zerops-surface="sidebar-stop-word"
-              data-zerops-word-kind={word.kind}
-              style={
-                checking && view.afterMs > 0 ? { animationDelay: `${view.afterMs}ms` } : undefined
-              }
-            >
-              {/* Checking says the platform's own words, which name a read
-                  that failed where there was one. */}
-              {checking ? view.line : word.text}
-            </span>
-          )}
-          {/* What is actually running here — the question the row never
-              answered (the owner, 2026-09-19: "nothing shows what version
-              they run"). It gives way first when room runs out, and only it:
-              the rest of the line is what a person acts on. */}
-          {runs === undefined ? null : onOpenStop === undefined ? (
-            <span
-              className="min-w-0 shrink-[1000] truncate"
-              data-zerops-surface="sidebar-environment-version"
-            >
-              {runs}
-            </span>
-          ) : (
-            <button
-              className="min-w-0 shrink-[1000] cursor-pointer truncate rounded-sm text-left underline-offset-2 hover:text-sidebar-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
-              data-zerops-surface="sidebar-environment-version"
-              onClick={onOpenStop}
-              type="button"
-            >
-              {runs}
-            </button>
-          )}
-          {distance === undefined ? null : (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    aria-expanded={listed}
-                    aria-label={distanceWords(distance.count)}
-                    className="inline-flex h-4 shrink-0 cursor-pointer items-center rounded-full bg-sidebar-row-active px-1.5 text-[10px] leading-none font-medium text-sidebar-foreground tabular-nums outline-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-sidebar-foreground aria-expanded:text-sidebar"
-                    data-zerops-surface="sidebar-stop-distance"
-                    onClick={() => {
-                      setOpen(!listed);
-                    }}
-                    type="button"
-                  />
-                }
-              >
-                {`+${String(distance.count)}`}
-              </TooltipTrigger>
-              <TooltipPopup side="right">{distanceWords(distance.count)}</TooltipPopup>
-            </Tooltip>
-          )}
-          {/* The verb and the two end slots hold the row's end together, so
-              the globes stand in one column whether or not a verb is there.
-              2px between the verb and the globe: with 4px a production waiting
-              on *Release* ran 1px past the row at 208px (measured
-              2026-09-25). */}
-          <span className="ms-auto flex shrink-0 items-center gap-0.5">
-            {/* What is merged and not live is worn by *Release*, which is the
-                thing that deals with it. */}
-            {release === undefined ? null : (
-              <ReleaseVerb
-                contents={release.releaseContents}
-                onRelease={release.onRelease}
-                releaseTag={release.releaseTag}
-                releasing={release.releasing}
-              />
-            )}
-            {/* The row ends in two slots that are always there: the stop's
-                menu, then the globe. Reserved, so nothing moves when the menu
-                shows — "the globe jumping because of the dots is exactly the
-                problematic detail" (the owner, 2026-09-25) — and the globe
-                last, on the row's right edge, in the column every Mate's time,
-                every change's Merge and every project's dot end in: in front of
-                the menu's slot it stood 20 px short of them, a ragged edge down
-                the menu (2026-09-28). */}
-            <span className="flex shrink-0 items-center">
-              {/* Invisible at rest, never gone: shown on hover and while anything
-                  in the row has focus, its own button included, so a keyboard
-                  reaches it. A finger never hovers, so a coarse pointer keeps it. */}
-              <span
-                className="flex w-5 shrink-0 justify-center opacity-0 transition-opacity group-focus-within/stop:opacity-100 group-hover/stop:opacity-100 pointer-coarse:opacity-100"
-                data-zerops-surface="sidebar-stop-menu-slot"
-              >
-                <ZeropsStopMenu
-                  name={name}
-                  onOpenProject={onOpenProject}
-                  onOpenStop={onOpenStop}
-                  routes={routes}
-                  stop={view}
-                  triggerClassName={ROW_ACTION_CLASS}
-                />
-              </span>
-              <span
-                className="flex w-5 shrink-0 justify-center"
-                data-zerops-surface="sidebar-stop-globe-slot"
-              >
-                <ZeropsRoutesMenu label={`Public access of ${projectName}`} routes={routes} />
-              </span>
-            </span>
-          </span>
-        </span>
-      </li>
-      {listed ? (
-        <li data-zerops-surface="sidebar-stop-changes">
-          <ul className="flex flex-col">
-            {distance.changes.map((change) => (
-              <StopChangeRow
-                key={change.sha}
-                mark={marks?.get(change.sha.toLowerCase())}
-                title={change.title}
-              />
-            ))}
-          </ul>
-        </li>
-      ) : null}
-    </>
-  );
-}
-
-/**
- * One change a stop does not run yet, by its title. Under production it says
- * where the change stands on the stage — run there, on its way there, or
- * failed there — so a person reads whether it has been seen running anywhere
- * before it goes live. Nothing is said where nothing is known.
- */
-function StopChangeRow({
-  title,
-  mark,
-}: {
-  readonly title: string;
-  readonly mark: StageMark | undefined;
-}) {
-  const shown = mark === undefined || mark === "none" ? undefined : STAGE_MARK[mark];
-  return (
-    <li
-      className="flex h-7 min-w-0 items-center gap-3.5 px-2.5 text-[11px] leading-4"
-      data-zerops-stage-mark={mark ?? "none"}
-      data-zerops-surface="sidebar-stop-change"
-    >
-      <span aria-hidden="true" className="w-5 shrink-0" />
-      {/* The title on the Mates' text column, the mark trailing it: a mark
-          slot in front pushed every title 24px past the names above (the
-          owner, 2026-09-25: "everything jumps around differently"). */}
-      <span className="min-w-0 flex-1 truncate text-sidebar-foreground">{title}</span>
-      <span className="flex w-3.5 shrink-0 items-center justify-center">
-        {shown === undefined ? null : (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <span
-                  aria-label={shown.word}
-                  className={cn("inline-flex", shown.className)}
-                  data-zerops-surface="sidebar-stop-change-mark"
-                  role="img"
-                />
-              }
-            >
-              <shown.Icon aria-hidden="true" className="size-3" strokeWidth={2.5} />
-            </TooltipTrigger>
-            <TooltipPopup side="right">{shown.word}</TooltipPopup>
-          </Tooltip>
-        )}
-      </span>
-    </li>
-  );
-}
-
-/** A change's mark under production, in the badge's own glyphs and tones. */
-const STAGE_MARK: Record<
-  Exclude<StageMark, "none">,
-  { readonly word: string; readonly Icon: typeof CheckIcon; readonly className: string }
-> = {
-  "on-stage": {
-    word: "On stage",
-    Icon: STOP_ICON.good,
-    className: "text-[var(--zerops-status-ok)]",
-  },
-  "deploying-on-stage": {
-    word: "Deploying on stage",
-    Icon: STOP_ICON.pending,
-    className: "text-[var(--zerops-status-busy)]",
-  },
-  "failed-on-stage": {
-    word: "Failed on stage",
-    Icon: STOP_ICON.bad,
-    className: "text-[var(--zerops-status-failed)]",
-  },
-};
-
-/** What a stop being created says while it is: the page's own words. */
-function creatingStopLine(tier: GroupEnvironmentTier): string {
-  return tier === "production" ? PRODUCTION_SETTING_UP : STAGE_SETTING_UP;
-}
-
-/**
- * A stop being created, until the listing holds its project: its row's shape
- * — the badge on its way up, its name, "Setting up production…" or "Setting
- * up a stage…" — with no menu and no verb, there being nothing of it to reach
- * yet.
- */
-function CreatingStopRow({
-  member,
-  tier,
-}: {
-  readonly member: ZeropsGroupPendingMember;
-  readonly tier: GroupEnvironmentTier;
-}) {
-  const line = creatingStopLine(tier);
-  return (
-    <li
-      aria-busy="true"
-      className="flex h-8 min-w-0 items-center gap-3.5 rounded-md px-2.5"
-      data-zerops-project={member.projectId}
-      data-zerops-surface="sidebar-environment-creating"
-    >
-      <span className="relative flex w-5 shrink-0 items-center justify-center self-stretch">
-        <StopBadge tone="pending" word={line} />
-      </span>
-      <span className="flex min-w-0 flex-1 items-center gap-1.5">
-        <StopTitle
-          name={member.name}
-          tag={environmentRoleTag(tier === "production" ? "prod" : "stage")}
-        />
-        <span className="min-w-0 truncate text-[11px] leading-4 text-sidebar-muted-foreground">
-          {line}
-        </span>
-      </span>
-    </li>
-  );
 }
 
 /**

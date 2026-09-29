@@ -14,6 +14,7 @@ import { useMemo, useState } from "react";
 import { cn } from "~/lib/utils";
 import { useCrew } from "~/zerops/crew/useCrew";
 import { useCrewCommand } from "~/zerops/crew/useCrewCommand";
+import { useOpenReview } from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
 import { useEnvironmentProjectRef, useZeropsTopology } from "~/zerops/useZeropsFeeds";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
@@ -45,6 +46,7 @@ export function CrewLaneBar({
 }) {
   const { snapshot, view, current } = useCrew(threadRef.environmentId);
   const command = useCrewCommand(threadRef.environmentId);
+  const openReview = useOpenReview();
   const askMate = useAskMate();
   const projectId = useEnvironmentProjectRef(threadRef.environmentId)?.projectId;
   const services = useZeropsTopology(threadRef.environmentId)?.services;
@@ -192,9 +194,16 @@ export function CrewLaneBar({
           )}
           <Button
             disabled={!model.land.enabled || busy || model.land.taskId === null}
-            onClick={() => {
+            onClick={(event) => {
               if (model.land.taskId === null) return;
-              void command.send({ _tag: model.land.kind, taskId: model.land.taskId });
+              openReview(
+                {
+                  kind: "crew-task",
+                  environmentId: threadRef.environmentId,
+                  taskId: model.land.taskId,
+                },
+                { from: event.currentTarget },
+              );
             }}
             size="xs"
             variant="pill"

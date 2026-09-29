@@ -30,10 +30,12 @@ import {
 } from "@t3tools/client-runtime/zerops";
 
 import { ZeropsChangePane } from "~/components/zerops/ZeropsGroupDetail";
+import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { ZeropsChangeComments } from "~/zerops/useZeropsChangeComments";
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 
 import { SidebarProvider } from "~/components/ui/sidebar";
+import { REVIEW_STATES, ReviewDialogTry, ReviewStage } from "./reviewHarnessStates";
 import "../index.css";
 
 /** Where these panes sit, as the harness pretends: the chat, then the project. */
@@ -146,9 +148,36 @@ function State({
   );
 }
 
+/** `?review=<id>` shows one review state alone; `?review=all` every one; `?review=none` the pages only. */
+const REVIEW = new URLSearchParams(location.search).get("review") ?? "all";
+
+function Reviews() {
+  const shown =
+    REVIEW === "all" ? REVIEW_STATES : REVIEW_STATES.filter((entry) => entry.id === REVIEW);
+  return (
+    <div className="flex flex-col gap-8">
+      <ReviewDialogTry />
+      {shown.map((entry) => (
+        <ReviewStage key={entry.id} label={entry.label}>
+          {entry.node}
+        </ReviewStage>
+      ))}
+    </div>
+  );
+}
+
 function Harness() {
   return (
     <div className="flex flex-col gap-10 bg-background p-6">
+      {REVIEW === "none" ? null : <Reviews />}
+      {REVIEW !== "all" && REVIEW !== "none" ? null : <ChangePages />}
+    </div>
+  );
+}
+
+function ChangePages() {
+  return (
+    <div className="flex flex-col gap-10">
       <State
         label="Merges cleanly, three people talking"
         note="The verb is live; the conversation carries a person, a Mate and a reviewer."
@@ -158,11 +187,10 @@ function Harness() {
           comments={TALKING}
           commits={COMMITS}
           mateName="Theo"
-          merging={false}
           onAsk={() => {}}
           crumbs={CRUMBS}
           names={NAMES}
-          onMerge={() => {}}
+          onReview={() => {}}
           pull={pull()}
           readDetail={undefined}
           remarks={remarks(TALKING.state.kind === "read" ? TALKING.state.comments : [])}
@@ -179,11 +207,10 @@ function Harness() {
           comments={SILENT}
           commits={COMMITS}
           mateName="Theo"
-          merging={false}
           onAsk={() => {}}
           crumbs={CRUMBS}
           names={NAMES}
-          onMerge={() => {}}
+          onReview={() => {}}
           pull={pull({
             checks: "failing",
             checkWord: "checks failed",
@@ -204,11 +231,10 @@ function Harness() {
           comments={SILENT}
           commits={COMMITS}
           mateName="Theo"
-          merging={false}
           onAsk={() => {}}
           crumbs={CRUMBS}
           names={NAMES}
-          onMerge={() => {}}
+          onReview={() => {}}
           pull={pull({ checks: "failing", checkWord: "checks failed" })}
           readDetail={undefined}
           remarks={[]}
@@ -225,11 +251,10 @@ function Harness() {
           comments={SILENT}
           commits={COMMITS}
           mateName="Theo"
-          merging={false}
           onAsk={() => {}}
           crumbs={CRUMBS}
           names={NAMES}
-          onMerge={() => {}}
+          onReview={() => {}}
           pull={pull({
             checks: "pending",
             checkWord: "checks running",
@@ -250,11 +275,10 @@ function Harness() {
           comments={SILENT}
           commits={COMMITS}
           mateName={undefined}
-          merging={false}
           onAsk={() => {}}
           crumbs={CRUMBS}
           names={NAMES}
-          onMerge={() => {}}
+          onReview={() => {}}
           pull={pull({
             author: "ales",
             mateProjectId: undefined,
@@ -276,11 +300,10 @@ function Harness() {
           comments={SILENT}
           commits={COMMITS}
           mateName="Theo"
-          merging={false}
           onAsk={() => {}}
           crumbs={CRUMBS}
           names={NAMES}
-          onMerge={() => {}}
+          onReview={() => {}}
           pull={pull({ mergeability: "conflicting" })}
           readDetail={undefined}
           remarks={[]}
@@ -297,11 +320,10 @@ function Harness() {
           comments={SILENT}
           commits={{ kind: "reading" }}
           mateName={undefined}
-          merging
           onAsk={() => {}}
           crumbs={CRUMBS}
           names={NAMES}
-          onMerge={() => {}}
+          onReview={() => {}}
           pull={pull({ author: "ales", mateProjectId: undefined })}
           readDetail={undefined}
           remarks={[]}
@@ -318,11 +340,10 @@ function Harness() {
           comments={comments({ kind: "no-gitea" })}
           commits={{ kind: "no-gitea" }}
           mateName="Theo"
-          merging={false}
           onAsk={() => {}}
           crumbs={CRUMBS}
           names={NAMES}
-          onMerge={() => {}}
+          onReview={() => {}}
           pull={pull()}
           readDetail={undefined}
           remarks={[]}
@@ -333,10 +354,11 @@ function Harness() {
   );
 }
 
-document.documentElement.classList.toggle(
-  "dark",
-  new URLSearchParams(location.search).get("theme") === "dark",
-);
+// The app sets the theme on the document element (`themePalette.ts`), so the harness does the
+// same, in the Zerops palette a fresh install wears.
+const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
+document.documentElement.classList.toggle("dark", appearance === "dark");
+applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

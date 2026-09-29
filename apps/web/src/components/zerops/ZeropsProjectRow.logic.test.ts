@@ -612,17 +612,22 @@ describe("environmentSummaryLine", () => {
   it.each([
     [
       "names the services and dates the deploy",
-      { hostnames: ["app", "db"], deployedAt: "2026-09-05T15:17:24Z", deployable: [] },
+      {
+        hostnames: ["app", "db"],
+        deployedAt: "2026-09-05T15:17:24Z",
+        deployable: [],
+        statuses: [],
+      },
       "app, db · deployed 2h ago",
     ],
     [
       "names services nothing has been deployed to",
-      { hostnames: ["db"], deployedAt: undefined, deployable: [] },
+      { hostnames: ["db"], deployedAt: undefined, deployable: [], statuses: [] },
       "db",
     ],
     [
       "says when a project holds only the platform's services",
-      { hostnames: [], deployedAt: undefined, deployable: [] },
+      { hostnames: [], deployedAt: undefined, deployable: [], statuses: [] },
       "No services yet",
     ],
   ] as const)("%s", (_, services, expected) => {

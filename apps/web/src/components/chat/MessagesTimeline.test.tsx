@@ -9,6 +9,7 @@ import type { LegendListRef } from "@legendapp/list/react";
 import type { ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
 import { InventoryContext, type Inventory } from "../../zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "../../zerops/zeropsDataContext";
+import { forgetRunFolds, setRunFold } from "./runCard.logic";
 
 vi.mock("@legendapp/list/react", async () => {
   const legendListTestId = "legend-list";
@@ -1236,7 +1237,7 @@ describe("MessagesTimeline — the conversation", () => {
         />
       </CrewTimelineContext>,
     );
-    expect(markup).toContain("Backend worked<");
+    expect(markup).toMatch(/>Backend worked \d/u);
     expect(markup).not.toContain("Assistant worked");
   });
 
@@ -1257,15 +1258,17 @@ describe("MessagesTimeline — the conversation", () => {
     // The chat's last line says who worked and how long: to the answer, not
     // to when the server closed the turn — the same span once another turn
     // follows. No heading stands over the card.
-    expect(markup).toMatch(
-      /Assistant worked<\/span><\/span><span[^>]*data-work-line-clock[^>]*>1m</,
-    );
+    expect(markup).toContain(">Assistant worked 1m<");
     expect(markup).not.toContain('data-timeline-row-kind="work-line"');
-    // The record stays on the page, everything the Mate did in order (the
-    // owner, 2026-09-27: "after the work is done I'd leave it on the page").
+    // Come back to, the run opens folded (K7): its worked line on top, what it
+    // said to the person under it, its calls behind "Show work".
     const record = markup.slice(markup.indexOf('data-timeline-row-kind="record"'));
-    expect(record.indexOf("pnpm build")).toBeLessThan(record.indexOf("Building the shop now."));
-    expect(record.match(/>pnpm build</g)).toHaveLength(2);
+    expect(record).toContain('data-run-fold="folded"');
+    expect(record.indexOf(">Assistant worked 1m<")).toBeLessThan(
+      record.indexOf("Building the shop now."),
+    );
+    expect(record).toMatch(/<button aria-expanded="false" class="run-now-fold"[^>]*>Show work/u);
+    expect(record).not.toContain(">pnpm build<");
     // What its calls came to is the work's and the worked line's, never a
     // result row (K6): a run that only ran commands leaves no result.
     expect(markup).not.toContain("Ran 2 commands");
@@ -1279,6 +1282,8 @@ describe("MessagesTimeline — the conversation", () => {
   // A step is a bubble of the run's chat; what it printed opens in place,
   // under it — never a dialog (the owner, 2026-09-27: "I hate the dialog").
   it("opens what a step printed in place, under its bubble", () => {
+    // A run the person watched stays open while they are in the conversation.
+    setRunFold("environment-local:thread-1", "msg:message-1", "watched");
     const built = tool("w1", 5);
     const markup = renderToStaticMarkup(
       <MessagesTimeline
@@ -1295,6 +1300,7 @@ describe("MessagesTimeline — the conversation", () => {
       /<div[^>]*data-chat-bubble="tool"[^>]*data-chat-kind="step:command"[^>]*>(?:<span class="absolute[^"]*">[\s\S]*?<\/svg><\/span><\/span><\/span>)<button aria-expanded="false" aria-label="pnpm build\. Show what it returned"/,
     );
     expect(markup).not.toContain("dist/index.js");
+    forgetRunFolds("environment-local:thread-1");
   });
 
   it("says the Mate is working from the moment a message is sent", () => {
@@ -1306,9 +1312,9 @@ describe("MessagesTimeline — the conversation", () => {
         timelineEntries={[buildUserTimelineEntry("Deploy it")]}
       />,
     );
-    // The card stands from the first frame, the Mate's status its last line.
+    // The card stands from the first frame, the now line its last line.
     expect(markup).toContain('data-timeline-row-id="record:msg:message-1"');
-    expect(markup).toContain("Assistant is thinking");
+    expect(markup).toContain(">Thinking<");
     expect(markup).toContain('data-work-line="working"');
     expect(markup).toContain('data-message-receipt="sent"');
   });
@@ -1362,8 +1368,8 @@ describe("MessagesTimeline — the conversation", () => {
       record.indexOf("Fixing the types."),
     );
     expect(record.indexOf("Fixing the types.")).toBeLessThan(record.indexOf("pnpm build"));
-    // Between steps the status line says it thinks: no word of what it did twice.
-    expect(record).toContain("Assistant is thinking");
+    // Between steps the now line says it thinks: no word of what it did twice.
+    expect(record).toContain(">Thinking<");
     // What runs alongside stands under the record.
     expect(markup).toContain("data-conversation-working");
   });
@@ -1374,13 +1380,13 @@ describe("MessagesTimeline — the conversation", () => {
       tool("w1", 5),
       { ...writing, message: { ...writing.message, streaming: true } },
     ]);
-    expect(markup).toContain("Assistant is writing");
+    expect(markup).toContain(">Writing<");
     expect(markup).not.toContain("Checking /status next.");
   });
 
   it("shows the Mate composing before it said anything", () => {
     const markup = liveTimeline([tool("w1", 5)]);
-    expect(markup).toContain("Assistant is thinking");
+    expect(markup).toContain(">Thinking<");
     expect(markup).not.toContain('data-chat-kind="note"');
   });
 
@@ -1396,19 +1402,21 @@ describe("MessagesTimeline — the conversation", () => {
     },
   });
 
-  // The step it is taking, in words and with what it is on — the page it
-  // reads, the command it runs (the owner, 2026-09-27: "why isn't the chat
-  // showing even the commands it runs?") — once, beside its face.
-  it("says the step the Mate is taking beside its face, once, with what it is on", () => {
+  // The step it is taking lives on the now line while it runs (K10), in
+  // words and with what it is on — the page it reads, the command it runs —
+  // once, beside its face; it lands in the chat above once it ends.
+  it("says the step the Mate is taking on the now line, once, with what it is on", () => {
     const markup = liveTimeline([
       assistant("a1", 5, "Reading the docs first."),
       call("c1", 8, 'WebFetch: {"url":"https://docs.example.dev/guides"}'),
     ]);
-    expect(markup).toContain('data-chat-kind="step:web"');
+    expect(markup).not.toContain('data-chat-kind="step:web"');
+    expect(markup).toContain('data-run-now="step"');
     expect(markup).toContain('data-mate-face-state="working"');
-    // Beside the face and nowhere else: the chat keeps the same bubble once it returns.
     expect(markup.match(/docs\.example\.dev\/guides/g)).toHaveLength(1);
-    expect(markup).toContain(">Reading<");
+    expect(markup).toMatch(
+      />Reading(?:<!-- -->)? <span class="run-now-mono">docs\.example\.dev\/guides</u,
+    );
     expect(markup).not.toContain("WebFetch");
   });
 
@@ -1418,11 +1426,14 @@ describe("MessagesTimeline — the conversation", () => {
     ]);
     expect(markup).toContain('data-run-status="waiting"');
     expect(markup).toContain('data-mate-face-state="needs"');
-    expect(markup).toContain("Assistant is waiting for your answer");
+    expect(markup).toContain(">Waiting for your answer<");
     expect(markup).not.toContain("AskUserQuestion");
   });
 
-  it("keeps the question the Mate asked in its words beside its face, the answer in the person's", () => {
+  // The question stands in the run's card as the Mate asked it, in its tint
+  // with its face beside it, and the person's answer under it in their own
+  // bubble (K14) — kept when the run folds on return (K7).
+  it("keeps the question the Mate asked in its card, the answer in the person's bubble under it", () => {
     const input = (id: string, second: number, extra: Record<string, unknown>) => ({
       ...tool(id, second),
       entry: {
@@ -1460,11 +1471,14 @@ describe("MessagesTimeline — the conversation", () => {
         }
       />,
     );
-    const answer = markup.slice(markup.indexOf("data-person-answer"));
-    // The question in the Mate's prose, as its answers stand: no bubble on the page.
-    expect(answer).toContain("data-mate-question");
-    expect(markup).not.toContain("data-mate-speech");
-    expect(answer.indexOf("Which accent do you prefer?")).toBeLessThan(answer.indexOf("Teal"));
+    const card = markup.slice(markup.indexOf('data-timeline-row-kind="record"'));
+    expect(card).toMatch(
+      /data-chat-bubble="speech" data-chat-kind="question"><p[^>]*>Which accent do you prefer\?</u,
+    );
+    expect(card).toMatch(/<p class="[^"]*bg-message[^"]*" data-chat-kind="person">Teal</u);
+    expect(card.indexOf("Which accent do you prefer?")).toBeLessThan(card.indexOf(">Teal<"));
+    // No row of its own on the page: the question and answer are the card's.
+    expect(markup).not.toContain("data-person-answer");
     // The question's short header was never the person's words.
     expect(markup).not.toContain("Accent colour");
   });

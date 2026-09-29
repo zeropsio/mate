@@ -146,7 +146,8 @@ import { SkillInlineText } from "./SkillInlineText";
 import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic";
 import { TurnReport } from "./TurnReport";
 import { ConversationAfterWork, ConversationWorking } from "./ConversationWorking";
-import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat } from "./RunChat";
+import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat, RunLine } from "./RunChat";
+import { forgetRunFolds } from "./runCard.logic";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -161,7 +162,6 @@ import {
   MessageReceipt,
   PauseBlock,
   Seam,
-  WorkLine,
   type ConversationSpeaker,
   type ServerUsagePause,
 } from "./ConversationRows";
@@ -896,6 +896,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     setOpenedWith({ key: routeThreadKey, at: newestMessageAt });
   }
   const arrivedAfter = openedWith?.key === routeThreadKey ? openedWith.at : null;
+  // A run the person watched stays open while they are here; once they leave
+  // the conversation every run in it folds, so coming back it is folded from
+  // the first frame and nothing moves (K7). It folds as the timeline goes,
+  // never while it is still on screen: the switch has taken its picture by
+  // then.
+  const foldsOfRef = useRef(routeThreadKey);
+  useLayoutEffect(() => {
+    foldsOfRef.current = routeThreadKey;
+  }, [routeThreadKey]);
+  useEffect(() => () => forgetRunFolds(foldsOfRef.current), []);
 
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
@@ -923,6 +933,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onRemoveQueuedMessage,
       arrivedAfter,
       syncing,
+      onHoldReading: onManualNavigation,
     }),
     [
       timestampFormat,
@@ -948,6 +959,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onRemoveQueuedMessage,
       arrivedAfter,
       syncing,
+      onManualNavigation,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(
@@ -1605,14 +1617,12 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "crew-seam" ? <CrewSeamActivity seam={row.seam} words={row.words} /> : null}
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "queued-message" ? <QueuedMessageTimelineRow row={row} /> : null}
-      {row.kind === "answer" ? <AnswerTimelineRow row={row} /> : null}
     </>
   );
 }
 
 function WorkLineTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "work-line" }> }) {
-  const ctx = use(TimelineRowCtx);
-  return <WorkLine row={row} speaker={ctx.speaker} timestampFormat={ctx.timestampFormat} />;
+  return <RunLine status={row} />;
 }
 
 /**
@@ -1908,8 +1918,10 @@ function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcom
     if (panelLeftRecently(turnKey)) return easeHeight(band, 0, band.getBoundingClientRect().height);
   }, [turnKey]);
   return (
-    // The result stands off the chat as the bars do, on the card's own hairline.
-    <div ref={markerRef} className="-mx-4 border-border/60 border-t px-4 pt-2 empty:hidden">
+    // The result stands under the worked line, inside the tray (T5): a
+    // hairline, then its rows in the card's grid; nothing at all when the run
+    // left none.
+    <div ref={markerRef} className="run-band">
       <TurnReport
         onOpenImage={ctx.onImageExpand}
         onOpenTurnDiff={(turnId) => ctx.onOpenTurnDiff(turnId)}
@@ -1923,31 +1935,6 @@ function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcom
 function SeamTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "seam" }> }) {
   const ctx = use(TimelineRowCtx);
   return <Seam row={row} timestampFormat={ctx.timestampFormat} />;
-}
-
-/**
- * A question the Mate asked and the person's answer, each in its speaker's
- * place: the question in the Mate's bubble beside its face, the answer in
- * the person's own bubble on their side.
- */
-function AnswerTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "answer" }> }) {
-  return (
-    <div className="grid gap-3" data-person-answer>
-      {row.pairs.map((pair) => (
-        <Fragment key={pair.key}>
-          <div data-mate-question>
-            <MateProseWords at={row.createdAt} streaming={false} text={pair.question} />
-          </div>
-          <div className="flex justify-end">
-            <div className="max-w-4/5 rounded-2xl bg-message px-3.5 py-2.5 text-message-foreground">
-              <MessageAuthorHeading>You</MessageAuthorHeading>
-              <p className="whitespace-pre-wrap text-prose">{pair.answer}</p>
-            </div>
-          </div>
-        </Fragment>
-      ))}
-    </div>
-  );
 }
 
 /**

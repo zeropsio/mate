@@ -315,6 +315,74 @@
       "captures": []
     },
     {
+      "id": "zerops-review",
+      "title": "Zerops review",
+      "components": [
+        "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
+        "apps/web/src/components/zerops/review/ZeropsCrewTaskReview.tsx",
+        "apps/web/src/components/zerops/review/ZeropsReleaseReview.tsx",
+        "apps/web/src/components/zerops/review/ZeropsReview.logic.ts",
+        "apps/web/src/components/zerops/review/ZeropsReviewDialog.tsx",
+        "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx",
+        "apps/web/src/zerops/ZeropsReviewProvider.tsx",
+        "apps/web/src/zerops/review.ts",
+        "apps/web/src/zerops/useZeropsChangeReadout.ts",
+        "apps/web/src/zerops/useZeropsChangeRun.ts",
+        "apps/web/src/zerops/useZeropsReviewMates.ts",
+        "packages/client-runtime/src/zerops/changeDiff.ts",
+        "packages/client-runtime/src/zerops/reviewVerdict.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "overlay",
+          "value": "Review — every door to a change, the next release, a roll back or a crew task"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops/reviewVerdict",
+        "@t3tools/client-runtime/zerops/changeDiff",
+        "@t3tools/client-runtime/zerops/giteaClient",
+        "@t3tools/client-runtime/zerops/projectFlow"
+      ],
+      "reverseStates": [
+        {
+          "action": "Merge",
+          "reverse": "none: a merge is undone by a revert, which is a new change."
+        },
+        {
+          "action": "Release",
+          "reverse": "Roll back"
+        },
+        {
+          "action": "Roll back",
+          "reverse": "Release"
+        },
+        {
+          "action": "Land",
+          "reverse": "none: a landed task is undone by a new task."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the review yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/review/ZeropsReview.logic.test.ts",
+        "packages/client-runtime/src/zerops/changeDiff.test.ts",
+        "packages/client-runtime/src/zerops/reviewVerdict.test.ts"
+      ],
+      "captures": []
+    },
+    {
       "id": "zerops-service-map",
       "title": "Zerops service map",
       "components": [
@@ -627,8 +695,7 @@
         "apps/web/src/components/zerops/primitives/KeyChip.tsx",
         "apps/web/src/components/zerops/primitives/Avatar.tsx",
         "apps/web/src/components/zerops/primitives/LivenessLine.tsx",
-        "apps/web/src/components/zerops/primitives/MateFace.tsx",
-        "apps/web/src/components/zerops/primitives/PlanRing.tsx"
+        "apps/web/src/components/zerops/primitives/MateFace.tsx"
       ],
       "clients": {
         "web": "yes",
@@ -653,7 +720,6 @@
         "apps/web/src/components/zerops/primitives/KeyChip.test.tsx",
         "apps/web/src/components/zerops/primitives/LivenessLine.test.tsx",
         "apps/web/src/components/zerops/primitives/MateFace.test.tsx",
-        "apps/web/src/components/zerops/primitives/PlanRing.test.tsx",
         "apps/web/src/components/zerops/showcaseScenes.render.test.tsx"
       ],
       "captures": []
@@ -717,6 +783,8 @@
         "apps/web/src/components/zerops/SidebarSelectedBand.logic.ts",
         "apps/web/src/components/zerops/SidebarProjectReorder.tsx",
         "apps/web/src/components/zerops/SidebarProjectFold.tsx",
+        "apps/web/src/components/zerops/SidebarProductionChip.tsx",
+        "apps/web/src/components/zerops/SidebarProductionChip.logic.ts",
         "apps/web/src/components/zerops/SidebarProjects.logic.ts",
         "apps/web/src/components/zerops/SidebarMateMenu.tsx",
         "apps/web/src/components/zerops/mateDecision.logic.ts",
@@ -747,8 +815,6 @@
         "apps/web/src/components/zerops/ZeropsChangeLinkChip.tsx",
         "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
         "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
-        "apps/web/src/components/zerops/ZeropsMergeDialog.tsx",
-        "apps/web/src/components/zerops/ZeropsReleaseDialog.tsx",
         "apps/web/src/components/zerops/ZeropsReleaseRows.tsx",
         "apps/web/src/components/zerops/ZeropsNextStepBanner.tsx",
         "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.logic.ts",
@@ -892,6 +958,8 @@
         "apps/web/src/components/zerops/SidebarProjectReorder.test.ts",
         "apps/web/src/components/zerops/SidebarProjects.logic.test.ts",
         "apps/web/src/components/zerops/SidebarJumpButton.test.tsx",
+        "apps/web/src/components/zerops/SidebarProductionChip.test.tsx",
+        "apps/web/src/components/zerops/SidebarProductionChip.logic.test.ts",
         "apps/web/src/components/zerops/SidebarMateMenu.test.tsx",
         "apps/web/src/components/zerops/mateDecision.logic.test.ts",
         "apps/web/src/zerops/sidebarReveal.test.ts",

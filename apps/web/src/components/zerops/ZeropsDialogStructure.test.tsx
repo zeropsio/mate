@@ -10,10 +10,8 @@
  * `PullRequestThreadDialog.tsx`) is `DialogPopup` > `DialogHeader`,
  * `DialogPanel`, `DialogFooter` as siblings, so this asserts exactly that
  * for the content each dialog puts inside its `DialogPopup`. It renders that
- * content wrapped in a bare `Dialog` (not `DialogPopup`), the same way
- * `ZeropsMergeDialog.test.tsx` / `ZeropsReleaseDialog.test.tsx` already do —
- * `DialogPopup` portals into `document`, which the `node` test environment
- * does not have.
+ * content wrapped in a bare `Dialog` (not `DialogPopup`): `DialogPopup`
+ * portals into `document`, which the `node` test environment does not have.
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
@@ -22,10 +20,8 @@ import { Dialog } from "../ui/dialog";
 import { ZeropsAssignMateForm } from "./ZeropsAssignMateDialog";
 import { ZeropsAskConfirm } from "./ZeropsAskDialog";
 import { ZeropsEnvironmentCreationForm } from "./ZeropsEnvironmentCreationDialog";
-import { ZeropsMergeConfirm } from "./ZeropsMergeDialog";
 import { ZeropsMoveToGroupForm } from "./ZeropsMoveToGroupDialog";
 import { ZeropsRenameForm } from "./ZeropsRenameDialog";
-import { ZeropsReleaseConfirm } from "./ZeropsReleaseDialog";
 
 const noop = () => {};
 
@@ -48,26 +44,6 @@ function extractSlot(html: string, slot: string): string | undefined {
   }
   throw new Error(`unbalanced <${tagName}> for data-slot="${slot}"`);
 }
-
-const pull = {
-  repository: "appdev",
-  number: 5,
-  title: "Cache the link previews",
-  kind: "code" as const,
-  mateProjectId: "p-theo",
-  author: "mate-p-theo",
-  url: undefined,
-  checks: "passing" as const,
-  checkWord: "checks passed",
-  mergeable: true,
-  mergeability: "mergeable" as const,
-  merged: false,
-  mergedAt: undefined,
-  headSha: "b21d904c",
-  baseBranch: "main",
-  line: "appdev #5",
-  updatedAt: undefined,
-};
 
 function renderInDialog(children: React.ReactNode): string {
   return renderToStaticMarkup(
@@ -124,13 +100,6 @@ const cases: ReadonlyArray<{ readonly name: string; readonly render: () => strin
       ),
   },
   {
-    name: "ZeropsMergeDialog",
-    render: () =>
-      renderInDialog(
-        <ZeropsMergeConfirm mateName="Theo" merging={false} onConfirm={noop} pull={pull} />,
-      ),
-  },
-  {
     name: "ZeropsMoveToGroupDialog",
     render: () =>
       renderInDialog(
@@ -157,18 +126,6 @@ const cases: ReadonlyArray<{ readonly name: string; readonly render: () => strin
           submitLabel="Rename"
           title="Rename Fen"
           validate={() => undefined}
-        />,
-      ),
-  },
-  {
-    name: "ZeropsReleaseDialog",
-    render: () =>
-      renderInDialog(
-        <ZeropsReleaseConfirm
-          contents={[{ commits: [{ sha: "a", subject: "Add a search box above the list" }] }]}
-          onConfirm={noop}
-          releasing={false}
-          tag="v0.1.3"
         />,
       ),
   },

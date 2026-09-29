@@ -23,6 +23,12 @@ export interface ZeropsEnvironmentServices {
    * (`groupDeploys.ts`). Same order as {@link ZeropsEnvironmentServices.hostnames}.
    */
   readonly deployable: ReadonlyArray<{ readonly serviceId: string; readonly hostname: string }>;
+  /**
+   * How each stands, as the platform says it (`ACTIVE`, `STOPPED`,
+   * `CONTAINER_FAILED`…): whether the environment is serving, stopped on
+   * purpose or down. Same order as {@link ZeropsEnvironmentServices.hostnames}.
+   */
+  readonly statuses: ReadonlyArray<{ readonly hostname: string; readonly status: string }>;
 }
 
 function byName(left: string, right: string): number {
@@ -50,5 +56,6 @@ export function summarizeEnvironmentServices(
     hostnames: ordered.map((service) => service.name),
     deployedAt,
     deployable: ordered.map((service) => ({ serviceId: service.id, hostname: service.name })),
+    statuses: ordered.map((service) => ({ hostname: service.name, status: service.status })),
   };
 }

@@ -20,6 +20,7 @@ import type {
   CrewTaskView,
   CrewView,
 } from "@t3tools/client-runtime/zerops/projections/crew";
+import { REVIEW_LABEL } from "@t3tools/client-runtime/zerops";
 import { statusPulses } from "@t3tools/client-runtime/zerops/statusPresentation";
 import type {
   CrewCheck,
@@ -244,11 +245,21 @@ const CHECK_DOT_TONE: Readonly<Record<CrewCheck["state"], ServiceStatusToneId>> 
 };
 
 /** A press on a task's sheet, with the command it sends. */
-export interface CrewTaskAction {
-  readonly label: string;
-  readonly tone: "primary" | "secondary" | "outline";
-  readonly command: CrewCommand;
-}
+/**
+ * One press on a task's sheet: a crew command, or the door to the task's review, which is where
+ * it lands (pass 16, R1) — nothing lands from the sheet.
+ */
+export type CrewTaskAction =
+  | {
+      readonly label: string;
+      readonly tone: "primary" | "secondary" | "outline";
+      readonly command: CrewCommand;
+    }
+  | {
+      readonly label: string;
+      readonly tone: "primary" | "secondary" | "outline";
+      readonly review: { readonly taskId: string };
+    };
 
 /** A task's sheet (PRD §4.4): what it asks, how far it got, and the presses that move it. */
 export interface CrewTaskSheet {
@@ -294,9 +305,9 @@ function reviewLine(review: CrewReview, view: CrewView): string {
 }
 
 /**
- * The presses a task's state allows (PRD §5.2): *Land* once it is ready, *Land
- * now* on a change its crewmate never reported, a turn as you to resolve a
- * conflict or fix a failed check, and *Discard* until it has landed.
+ * The presses a task's state allows (PRD §5.2): its review once it is ready — or, as *Land now*
+ * did, on a change its crewmate never reported — whose button lands it; a turn as you to
+ * resolve a conflict or fix a failed check, and *Discard* until it has landed.
  */
 function taskActions(row: CrewTaskView): ReadonlyArray<CrewTaskAction> {
   const { task, owner } = row;
@@ -309,9 +320,9 @@ function taskActions(row: CrewTaskView): ReadonlyArray<CrewTaskAction> {
     owner.crewmate.lane?.state === "conflicts";
   const actions: Array<CrewTaskAction> = [];
   if (task.state === "ready") {
-    actions.push({ label: "Land", tone: "primary", command: { _tag: "land", taskId } });
+    actions.push({ label: REVIEW_LABEL, tone: "primary", review: { taskId } });
   } else if (task.state === "working" && task.diffStat !== null && !conflicted) {
-    actions.push({ label: "Land now", tone: "secondary", command: { _tag: "landNow", taskId } });
+    actions.push({ label: REVIEW_LABEL, tone: "secondary", review: { taskId } });
   }
   if (conflicted) {
     actions.push({

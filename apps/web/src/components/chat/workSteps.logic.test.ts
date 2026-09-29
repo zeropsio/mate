@@ -229,6 +229,26 @@ describe("stepOf", () => {
       },
     },
     {
+      // The folder it searches is no file it changed: "Editing src" said an
+      // edit where the Mate only looked (the menu's live step, 2026-09-29).
+      name: "a code search in a folder",
+      entry: entry({
+        id: "1",
+        detail: 'Grep: {"pattern":"readinessCheck","path":"src"}',
+        callInput: { pattern: "readinessCheck", path: "src" },
+        changedFiles: ["src"],
+      }),
+      words: "Searched the code for readinessCheck",
+      code: null,
+      kind: "search",
+      phrase: {
+        verb: "Searched the code for",
+        targets: ["readinessCheck"],
+        more: 0,
+        code: true,
+      },
+    },
+    {
       name: "a page read on the web",
       entry: entry({
         id: "1",
