@@ -252,6 +252,60 @@ describe("the agent's name", () => {
   });
 });
 
+/**
+ * The face its person picked is the Mate's from its first moment: written with
+ * its name, onto the project the platform creates, whichever call creates it.
+ */
+describe("the Mate's face", () => {
+  const WHOLE = "project:\n  name: published-name\nservices:\n  - hostname: app\n";
+  const birthTags = (plan: ReturnType<typeof planEnvironmentCreation>) => {
+    if (!plan.ok) throw new Error(plan.reason);
+    const [step] = plan.steps;
+    return step?.kind === "create-project" || step?.kind === "import-project" ? step.tagList : [];
+  };
+
+  it.each([
+    { case: "an empty Mate", recipe: { kind: "none" as const }, step: "create-project" },
+    { case: "a Mate from a services recipe", recipe: TIER, step: "create-project" },
+    {
+      case: "a Mate from a whole-project recipe",
+      recipe: { ...TIER, yaml: WHOLE },
+      step: "import-project",
+    },
+  ])("is written at birth for $case", ({ recipe, step }) => {
+    const plan = planEnvironmentCreation({
+      ...BASE,
+      role: "dev",
+      name: "Go Hello World - Ada",
+      recipe,
+      botName: "Ada",
+      face: { tint: "coral", shape: "gem" },
+    });
+    expect(plan.ok && plan.steps[0]?.kind).toBe(step);
+    const tags = birthTags(plan);
+    expect(tags).toContain("mate:face:coral:gem");
+    expect(tags).toContain("mate:bot:Ada");
+    expect(tags).toContain("mate");
+    if (plan.ok && plan.steps[0]?.kind === "import-project") {
+      expect(plan.steps[0].yaml).toContain("- mate:face:coral:gem");
+    }
+  });
+
+  it.each([
+    {
+      case: "a Mate whose person picked nothing: its face is derived, as today",
+      input: { role: "dev" as const },
+    },
+    {
+      case: "an environment with no agent: there is no Mate to wear it",
+      input: { role: "prod" as const, face: { tint: "sky" as const, shape: "pick" as const } },
+    },
+  ])("is not written for $case", ({ input }) => {
+    const tags = birthTags(planEnvironmentCreation({ ...BASE, ...input }));
+    expect(tags.some((tag) => tag.startsWith("mate:face:"))).toBe(false);
+  });
+});
+
 describe("the recipe choice", () => {
   it("imports the tier it is handed, and keeps its source map", () => {
     const plan = planEnvironmentCreation(BASE);

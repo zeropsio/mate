@@ -44,6 +44,12 @@
  * @module groups
  */
 
+import {
+  MATE_SHAPE_IDS,
+  MATE_TINT_IDS,
+  type MateShapeId,
+  type MateTintId,
+} from "@t3tools/shared/brand";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
 import type { ZeropsProject } from "./api.ts";
@@ -59,6 +65,8 @@ const ROLE_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:role:`;
 const LABEL_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:name:`;
 /** The agent living in this environment, named so a person can address it. */
 const BOT_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:bot:`;
+/** The face its person picked for it: `mate:face:<tint>:<shape>`. */
+const FACE_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:face:`;
 
 /**
  * The marker: this project has a Mate. The bare namespace word, so the Zerops
@@ -138,6 +146,8 @@ export interface ZeropsGroupTags {
   readonly label: string | undefined;
   /** The agent's own name (`mate:bot:`), the thing a person addresses. */
   readonly bot: string | undefined;
+  /** The face its person picked (`mate:face:`); absent where the tag says nothing this client knows. */
+  readonly face: ZeropsMateFaceTag | undefined;
 }
 
 /**
@@ -151,6 +161,7 @@ export function readZeropsGroupTags(tagList: ReadonlyArray<string> | undefined):
   let role: ZeropsEnvironmentRole | undefined;
   let label: string | undefined;
   let bot: string | undefined;
+  let face: ZeropsMateFaceTag | undefined;
 
   for (const tag of tagList ?? []) {
     if (tag === MATE_MARKER_TAG) {
@@ -172,13 +183,50 @@ export function readZeropsGroupTags(tagList: ReadonlyArray<string> | undefined):
       if (value.length > 0) bot = value;
       continue;
     }
+    if (face === undefined && tag.startsWith(FACE_TAG_PREFIX)) {
+      face = readFaceTag(tag.slice(FACE_TAG_PREFIX.length));
+      continue;
+    }
     if (label === undefined && tag.startsWith(LABEL_TAG_PREFIX)) {
       const value = tag.slice(LABEL_TAG_PREFIX.length).trim();
       if (value.length > 0) label = value;
     }
   }
 
-  return { mate, groupId, role, label, bot };
+  return { mate, groupId, role, label, bot, face };
+}
+
+/** A Mate's face: the colour and the shape its person picked for it. */
+export interface ZeropsMateFace {
+  readonly tint: MateTintId;
+  readonly shape: MateShapeId;
+}
+
+/**
+ * A face as its tag reads. A part this client does not know — a tint or a
+ * shape a newer client added, a tag edited by hand — is absent, and the face
+ * derived from the Mate's name stands in for it (`mateTints.ts`).
+ */
+export interface ZeropsMateFaceTag {
+  readonly tint: MateTintId | undefined;
+  readonly shape: MateShapeId | undefined;
+}
+
+const TINT_VALUES: ReadonlySet<string> = new Set(MATE_TINT_IDS);
+const SHAPE_VALUES: ReadonlySet<string> = new Set(MATE_SHAPE_IDS);
+
+function readFaceTag(value: string): ZeropsMateFaceTag | undefined {
+  // Parts past the shape are a newer client's; the two this one knows still read.
+  const [tint, shape] = value.split(":");
+  const face = {
+    tint: tint !== undefined && TINT_VALUES.has(tint) ? (tint as MateTintId) : undefined,
+    shape: shape !== undefined && SHAPE_VALUES.has(shape) ? (shape as MateShapeId) : undefined,
+  };
+  return face.tint === undefined && face.shape === undefined ? undefined : face;
+}
+
+export function formatFaceTag(face: ZeropsMateFace): string {
+  return `${FACE_TAG_PREFIX}${face.tint}:${face.shape}`;
 }
 
 /**
@@ -249,6 +297,20 @@ export function withZeropsBotTag(
   const kept = (tagList ?? []).filter((tag) => !tag.startsWith(BOT_TAG_PREFIX));
   const botTag = formatBotTag(name);
   return botTag === undefined ? kept : [...kept, botTag];
+}
+
+/**
+ * Gives the Mate living in this project its face, touching nothing else. Like
+ * its name, the face belongs to the project and not to its group, so no
+ * membership write drops it (`withZeropsGroupTags` keeps every `mate:` tag it
+ * was not asked about).
+ */
+export function withZeropsFaceTag(
+  tagList: ReadonlyArray<string> | undefined,
+  face: ZeropsMateFace,
+): ReadonlyArray<string> {
+  const kept = (tagList ?? []).filter((tag) => !tag.startsWith(FACE_TAG_PREFIX));
+  return [...kept, formatFaceTag(face)];
 }
 
 /**
