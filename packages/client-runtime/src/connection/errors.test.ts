@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  EnvironmentAuthInvalidError,
   EnvironmentOperationForbiddenError,
   EnvironmentScopeRequiredError,
 } from "@t3tools/contracts";
@@ -14,6 +15,37 @@ const forbidden = (reason: EnvironmentOperationForbiddenError["reason"]) =>
   });
 
 describe("mapRemoteEnvironmentError", () => {
+  // A session at the end of its life is renewed by its door, so it reads apart from every other
+  // refusal; an older server never says `expired` and keeps today's reading.
+  it.each([
+    {
+      case: "an expired session",
+      refusal: { reason: "invalid_credential", expired: true },
+      blocked: { detail: "The environment session expired.", expired: true },
+    },
+    {
+      case: "any other refused credential",
+      refusal: { reason: "invalid_credential" },
+      blocked: { detail: "The environment credential is invalid.", expired: undefined },
+    },
+    {
+      case: "a missing credential",
+      refusal: { reason: "missing_credential" },
+      blocked: { detail: "The environment credential is invalid.", expired: undefined },
+    },
+  ] as const)("reads $case as an authentication block", ({ refusal, blocked }) => {
+    const mapped = mapRemoteEnvironmentError(
+      new EnvironmentAuthInvalidError({ code: "auth_invalid", traceId: "trace-1", ...refusal }),
+    );
+    expect(mapped).toMatchObject({
+      _tag: "ConnectionBlockedError",
+      reason: "authentication",
+      traceId: "trace-1",
+      detail: blocked.detail,
+    });
+    expect(mapped._tag === "ConnectionBlockedError" ? mapped.expired : null).toBe(blocked.expired);
+  });
+
   // A Mate the person may see and not open is not a fault to recover from, so
   // it never reads as the generic permission error — there is nothing to
   // retry and nothing to fix (D5).

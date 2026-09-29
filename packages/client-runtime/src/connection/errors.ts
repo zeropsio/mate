@@ -54,11 +54,13 @@ export function mapRemoteEnvironmentError(
 ): ConnectionAttemptError {
   switch (error._tag) {
     case "EnvironmentAuthInvalidError":
-      return new ConnectionBlockedError({
-        reason: "authentication",
-        detail: "The environment credential is invalid.",
-        traceId: error.traceId,
-      });
+      return error.expired === true
+        ? sessionExpiredError(error.traceId)
+        : new ConnectionBlockedError({
+            reason: "authentication",
+            detail: "The environment credential is invalid.",
+            traceId: error.traceId,
+          });
     case "EnvironmentOperationForbiddenError":
       // The Mate is theirs to see and not to open. Kept apart from the generic
       // permission error on purpose: that one reads as something to fix, and
