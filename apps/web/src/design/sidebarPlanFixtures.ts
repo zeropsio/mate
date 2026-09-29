@@ -223,7 +223,7 @@ export const PLAN_ACTIVITY = new Map<string, ZeropsAgentActivity>([
       kind: "working",
       face: "working",
       subject: "Add a health page with the build number and the uptime",
-      liveStep: { words: "Build the app", code: "pnpm build" },
+      liveStep: { words: "Stamp the build number into the page", code: "npm run stamp" },
     }),
   ],
   [
@@ -233,8 +233,8 @@ export const PLAN_ACTIVITY = new Map<string, ZeropsAgentActivity>([
       kind: "failed",
       face: "needs",
       subject: "Deploy the ferrow stage from main",
-      snippet: "Build failed: 3 type errors in src/sync/queue.ts",
-      errorLine: "Build failed: 3 type errors in src/sync/queue.ts",
+      snippet: "The type check stopped at 3 errors in the sync queue",
+      errorLine: "The type check stopped at 3 errors in the sync queue",
     }),
   ],
   [
@@ -260,7 +260,7 @@ export const PLAN_ACTIVITY = new Map<string, ZeropsAgentActivity>([
       kind: "working",
       face: "working",
       subject: "Make the level editor save while you draw",
-      liveStep: { words: "Checking the editor in the browser" },
+      liveStep: { words: "Drawing a test level to watch it save" },
     }),
   ],
 ]);

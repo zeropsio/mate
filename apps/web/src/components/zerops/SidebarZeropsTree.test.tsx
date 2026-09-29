@@ -1210,7 +1210,7 @@ describe("a project collapsed to its heading", () => {
       subject: "Something",
       at: new Date().toISOString(),
       snippet: undefined,
-      errorLine: "Build failed: 2 type errors",
+      errorLine: "The type check stopped at 2 errors",
       unread: false,
       pausedUntil: undefined,
       threadKey: "env-crm-dev:thread-crm",
