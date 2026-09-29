@@ -84,6 +84,7 @@ export function readRunResultFacts(input: {
             known: false,
           };
   return {
+    mate: { projectId, groupId },
     ...(changes === undefined ? {} : { changes }),
     ...(read?.status === "resolved"
       ? {

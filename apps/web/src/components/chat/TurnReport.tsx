@@ -14,12 +14,22 @@
  * finished while the person watched (T5); read later, they are simply there.
  */
 import type { TurnId } from "@t3tools/contracts";
-import { ArrowUpRightIcon, GitPullRequestIcon, TriangleAlertIcon, UsersIcon } from "lucide-react";
+import {
+  ArrowUpRightIcon,
+  ChevronDownIcon,
+  GitPullRequestIcon,
+  TriangleAlertIcon,
+  UsersIcon,
+} from "lucide-react";
 import { useContext, useMemo, useState, type CSSProperties } from "react";
 
 import { formatDayAwareTimestamp } from "../../timestampFormat";
+import { useFixMates } from "../../zerops/fixMates";
+import { useAskMateToFix, type FixProblem } from "../../zerops/fixRequest";
 import { useOpenReview } from "../../zerops/review";
+import { useZeropsSessionOptional } from "../../zerops/sessionContext";
 import { ServiceBrowserLink } from "../ServiceBrowserLink";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { browserCheckCaption, type OutcomeModel } from "./conversation.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { resultRows, type ResultFacts, type ResultRow } from "./runResult.logic";
@@ -94,17 +104,83 @@ function RowSub({
   );
 }
 
+type MateOfRun = ResultFacts["mate"];
+
+/**
+ * "Ask Nova to fix it" (S6): the person's own Mate, the one they used last in
+ * the project, with the problem written into its composer — not sent; a menu
+ * picks another of theirs. Outside a Zerops session there is no Mate to ask.
+ */
+function FixAction({ problem, mate }: { readonly problem: FixProblem; readonly mate: MateOfRun }) {
+  const session = useZeropsSessionOptional();
+  if (session === null || mate === undefined) return null;
+  return <FixActionOffer mate={mate} problem={problem} />;
+}
+
+function FixActionOffer({
+  problem,
+  mate,
+}: {
+  readonly problem: FixProblem;
+  readonly mate: NonNullable<MateOfRun>;
+}) {
+  const mates = useFixMates(mate);
+  const askToFix = useAskMateToFix();
+  const [first, ...others] = mates;
+  if (first === undefined) return null;
+  return (
+    <span className="run-result-fix">
+      <button
+        className="run-result-action"
+        data-scroll-anchor-ignore
+        onClick={() => askToFix(first.mateProjectId, problem)}
+        type="button"
+      >
+        Ask {first.name} to fix it
+      </button>
+      {others.length === 0 ? null : (
+        <Menu>
+          <MenuTrigger
+            render={
+              <button
+                aria-label="Ask another Mate to fix it"
+                className="run-result-open"
+                type="button"
+              />
+            }
+          >
+            <ChevronDownIcon aria-hidden="true" className="size-3.5" />
+          </MenuTrigger>
+          <MenuPopup align="end">
+            {others.map((other) => (
+              <MenuItem
+                key={other.mateProjectId}
+                onClick={() => askToFix(other.mateProjectId, problem)}
+              >
+                Ask {other.name}
+              </MenuItem>
+            ))}
+          </MenuPopup>
+        </Menu>
+      )}
+    </span>
+  );
+}
+
 function RowEnd({
   row,
+  mate,
   onOpenImage,
 }: {
   readonly row: ResultRow;
+  readonly mate: MateOfRun;
   readonly onOpenImage: (preview: ExpandedImagePreview) => void;
 }) {
   const openReview = useOpenReview();
   const { action, pictures, url } = row;
   const review = action?.kind === "review" ? action.target : null;
-  if (pictures.length === 0 && review === null && url === null) return <span />;
+  const fix = action?.kind === "fix" ? action.problem : null;
+  if (pictures.length === 0 && action === null && url === null) return <span />;
   const images = pictures.flatMap((take) =>
     take.screenshot ? [{ src: take.screenshot.src, name: browserCheckCaption(take) }] : [],
   );
@@ -125,6 +201,7 @@ function RowEnd({
           </button>
         ) : null,
       )}
+      {fix === null ? null : <FixAction mate={mate} problem={fix} />}
       {review === null ? null : (
         <button
           aria-label={`Review ${row.title}`}
@@ -198,7 +275,7 @@ export function TurnReport({
             </div>
             <RowSub onOpenTurnDiff={onOpenTurnDiff} row={row} />
           </div>
-          <RowEnd onOpenImage={onOpenImage} row={row} />
+          <RowEnd mate={now.mate} onOpenImage={onOpenImage} row={row} />
         </div>
       ))}
     </section>

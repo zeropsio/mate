@@ -216,6 +216,15 @@ describe("TurnReport", () => {
     expect(markup).toMatch(/>Since [^<]+</);
   });
 
+  // S6: the fix goes to one of the person's own Mates; outside a Zerops
+  // session there is none to ask, and the row offers nothing rather than a
+  // button that does nothing.
+  it("offers no fix where no Mate can be asked", () => {
+    const markup = markupOf({ facts: { ...FACTS, mate: { projectId: "p-nova", groupId: "g" } } });
+    expect(markup).toContain("Build failing");
+    expect(markup).not.toContain("to fix it");
+  });
+
   // T5: the result arriving is the moment worth seeing — once, row by row,
   // 40 ms apart, and only when the run finished while the person watched.
   it.each([

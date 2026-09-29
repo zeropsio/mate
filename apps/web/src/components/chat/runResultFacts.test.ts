@@ -86,6 +86,8 @@ describe("readRunResultFacts", () => {
     });
     expect(facts.services?.get("appstage")).toMatchObject({ status: "STOPPED", versionAt: null });
     expect(facts.crew?.tasks.get(12)).toEqual({ id: "task-12", state: "ready" });
+    // Whose run it is: the Mate a fix is found by, and the project it is in.
+    expect(facts.mate).toEqual({ projectId: PROJECT, groupId: GROUP });
   });
 
   // Until the forge answers, the menu's memory of the project's open changes

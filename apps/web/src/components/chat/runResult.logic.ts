@@ -67,6 +67,8 @@ export interface ResultTask {
 
 /** What is true now outside the run; each undefined while unread. */
 export interface ResultFacts {
+  /** Whose run it is: its Mate's project, and the project (group) that is in. */
+  readonly mate?: { readonly projectId: string; readonly groupId: string | undefined } | undefined;
   /** The project's changes on its forge. */
   readonly changes?:
     | {
