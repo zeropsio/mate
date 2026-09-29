@@ -16,8 +16,15 @@ import { interleavePictures, type PictureContentPart } from "@t3tools/shared/com
 import { StrictMode, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
+import { EnvironmentId } from "@t3tools/contracts";
+
 import { collapseExpandedComposerCursor } from "~/composer-logic";
-import type { ComposerImageAttachment } from "~/composerDraftStore";
+import {
+  DraftId,
+  type ComposerImageAttachment,
+  useComposerDraftStore,
+  useComposerThreadDraft,
+} from "~/composerDraftStore";
 import {
   ComposerPromptEditor,
   type ComposerPromptEditorHandle,
@@ -30,6 +37,7 @@ import {
   pictureTypeName,
 } from "~/components/chat/ComposerPictureView";
 import { MessagePictureBody } from "~/components/chat/MessagePictures";
+import { useComposerPictures } from "~/components/chat/useComposerPictures";
 import { placeMessagePictures } from "~/components/chat/messagePictures.logic";
 import {
   INLINE_PICTURE_PLACEHOLDER as P,
@@ -289,6 +297,82 @@ function State(props: {
   );
 }
 
+const LIVE_DRAFT = DraftId.make("harness-pictures");
+const LIVE_ENVIRONMENT = EnvironmentId.make("harness-environment");
+
+/**
+ * The composer's own picture handling on the real draft store: paste a
+ * picture (or `window.pastePicture()` it) and it lands at the caret, is fitted,
+ * opens on click; the line under it is what goes when the message is sent.
+ */
+function LiveComposer() {
+  const draft = useComposerThreadDraft(LIVE_DRAFT);
+  const setPrompt = useComposerDraftStore((store) => store.setPrompt);
+  const editorRef = useRef<ComposerPromptEditorHandle>(null);
+  const promptRef = useRef(draft.prompt);
+  const [cursor, setCursor] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const pictures = useComposerPictures({
+    draftTarget: LIVE_DRAFT,
+    environmentId: LIVE_ENVIRONMENT,
+    images: draft.images,
+    supportsAttachmentUploads: false,
+    uploadsByImageId: {},
+    editorRef,
+    promptRef,
+    onPromptWritten: (_prompt, nextCursor) => setCursor(nextCursor),
+    refusal: () => null,
+    onError: setError,
+  });
+  useEffect(() => {
+    (window as unknown as { pastePicture: () => Promise<void> }).pastePicture = async () => {
+      const file = await screenshot(3024, 1964, 0, "home-page.png");
+      await pictures.add([file]);
+    };
+  }, [pictures]);
+  return (
+    <div className="grid gap-3">
+      <div className="rounded-3xl border border-border bg-card px-4 pt-4 pb-3 shadow-lg/5">
+        <ComposerPromptEditor
+          editorRef={editorRef}
+          value={draft.prompt}
+          cursor={cursor}
+          terminalContexts={[]}
+          skills={[]}
+          pictures={pictures.chips}
+          onOpenPicture={pictures.open}
+          onRemovePicture={pictures.remove}
+          onRetryPicture={pictures.retry}
+          disabled={false}
+          placeholder="Paste a picture here…"
+          onRemoveTerminalContext={() => undefined}
+          onChange={(value, nextCursor, _expanded, _adjacent, _contexts, pictureIds) => {
+            const next = pictures.sync(pictureIds, value) ?? value;
+            promptRef.current = next;
+            setPrompt(LIVE_DRAFT, next);
+            setCursor(nextCursor);
+          }}
+          onPaste={(event) => {
+            const files = Array.from(event.clipboardData.files).filter((file) =>
+              file.type.startsWith("image/"),
+            );
+            if (files.length === 0) return;
+            event.preventDefault();
+            void pictures.add(files);
+          }}
+        />
+      </div>
+      <pre className="whitespace-pre-wrap font-mono text-muted-foreground text-xs" data-live-wire>
+        {materializePicturePrompt(draft.prompt, draft.images)}
+      </pre>
+      <p className="text-muted-foreground text-xs" data-live-status>
+        {error ?? pictures.blockReason ?? "Ready to send"}
+      </p>
+      {pictures.view}
+    </div>
+  );
+}
+
 function Wire(props: { readonly parts: ReadonlyArray<PictureContentPart>; readonly made: Made }) {
   return (
     <ol className="grid gap-0 rounded-2xl border border-border bg-card text-card-foreground">
@@ -430,6 +514,12 @@ function Harness() {
               <p className="text-muted-foreground text-sm">Drawing the screenshot…</p>
             )}
           </div>
+        </State>
+        <State
+          label="Paste here"
+          note="The composer's own picture handling on the draft store: paste a picture where you are writing."
+        >
+          <LiveComposer />
         </State>
         <State
           label="The person's message"
