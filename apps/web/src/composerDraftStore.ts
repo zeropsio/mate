@@ -3494,10 +3494,15 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             const destination = state.draftsByThreadKey[toKey] ?? createEmptyThreadDraft();
             // Inline placeholders reference the source's terminal contexts,
             // which stay behind; re-anchor the moved prompt to whatever
-            // contexts the destination already holds.
-            const movedPrompt = ensureInlineTerminalContextPlaceholders(
-              stripInlineTerminalContextPlaceholders(source.prompt),
-              destination.terminalContexts.length,
+            // contexts the destination already holds. The moved pictures
+            // keep their places; the destination's own go first, as their
+            // images do.
+            const movedPrompt = ensureInlinePicturePlaceholders(
+              ensureInlineTerminalContextPlaceholders(
+                stripInlineTerminalContextPlaceholders(source.prompt),
+                destination.terminalContexts.length,
+              ),
+              destination.images.length + source.images.length,
             );
             const nextDestination: ComposerThreadDraftState = {
               ...destination,

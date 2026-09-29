@@ -426,7 +426,8 @@ describe("composerDraftStore moveComposerPromptAndImages", () => {
 
     expect(draftByKey(sourceDraftId)).toBeUndefined();
     const destination = draftByKey(destinationDraftId);
-    expect(destination?.prompt).toBe("fix the login redirect");
+    // The image had no place in the text: it gets one first, where images went.
+    expect(destination?.prompt).toBe(`${INLINE_PICTURE_PLACEHOLDER}fix the login redirect`);
     expect(destination?.images.map((image) => image.id)).toEqual(["img-move"]);
     expect(revokeSpy).not.toHaveBeenCalled();
   });
@@ -444,6 +445,24 @@ describe("composerDraftStore moveComposerPromptAndImages", () => {
     expect(source?.terminalContexts.map((context) => context.id)).toEqual(["ctx-stay"]);
     expect(source?.prompt).toBe(INLINE_TERMINAL_CONTEXT_PLACEHOLDER);
     expect(draftByKey(destinationDraftId)?.prompt).toBe(" explain this error");
+  });
+
+  it("the moved pictures keep their places, after the destination's own", () => {
+    const P = INLINE_PICTURE_PLACEHOLDER;
+    const store = useComposerDraftStore.getState();
+    store.insertImage(
+      destinationDraftId,
+      `${P}here`,
+      makeImage({ id: "dest", previewUrl: "blob:d" }),
+      0,
+    );
+    store.insertImage(sourceDraftId, `look${P}`, makeImage({ id: "src", previewUrl: "blob:s" }), 0);
+
+    store.moveComposerPromptAndImages(sourceDraftId, destinationDraftId);
+
+    const destination = draftByKey(destinationDraftId);
+    expect(destination?.images.map((image) => image.id)).toEqual(["dest", "src"]);
+    expect(destination?.prompt).toBe(`${P}look${P}`);
   });
 
   it("is a no-op when source and destination are the same target", () => {
