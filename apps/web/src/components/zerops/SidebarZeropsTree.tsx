@@ -2451,17 +2451,18 @@ function MateSnippet({
   const unsent = draft?.trim() ?? "";
   // The Mate's newest words rise into their line when they arrive, as its
   // status line's do in the chat; what the menu opened onto is simply there.
-  const said = unsent.length === 0 ? (snippet ?? "") : `Draft: ${unsent}`;
-  const saidChanged = useChangedSinceShown(said);
+  // Only its words: a draft is the person's own typing, and it changes with
+  // every key — risen in, the line blurred and jumped while they typed.
+  const wordsChanged = useChangedSinceShown(snippet);
   if (snippet === null && unsent.length === 0) return <MateReplyPending />;
   return (
     <span
       className={cn(
         "truncate text-xs leading-4.5 text-sidebar-muted-foreground/70",
-        saidChanged && "animate-words-in motion-reduce:animate-none",
+        unsent.length === 0 && wordsChanged && "animate-words-in motion-reduce:animate-none",
       )}
       data-zerops-surface="sidebar-mate-snippet"
-      key={said}
+      key={unsent.length === 0 ? `words:${snippet ?? ""}` : "draft"}
     >
       {unsent.length === 0 ? (
         snippet
