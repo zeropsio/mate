@@ -597,13 +597,26 @@ type MessagesTimelineRowBody =
 
 /**
  * How much room a row keeps above itself — the conversation's rhythm, read
- * from the row before it: a person's messages in a run sit close, a turn's
- * parts follow each other at a line's distance, and a new turn opens with
- * air. A row's gap depends only on its predecessor, so it never changes
+ * from the row before it. A turn is one group: the person's words, the card
+ * of the Mate's work and its answer stand 24 px apart, ink to ink (`part`),
+ * and 64 px of air open the next turn (`turn`), so the eye finds turns
+ * without reading. The Mate's answer is prose: its first line's leading is
+ * part of the room above it (`part-words`), and its leading and its copy line
+ * are part of the room under it (`turn-after-words`). Inside a card, and
+ * between a person's messages in a run, rows sit closer (`tight`, `line`,
+ * `block`). A row's gap depends only on its predecessor, so it never changes
  * once both are on screen (opening a log changes the row after it — a click
  * moves what is under it, nothing else does).
  */
-export type RowGap = "none" | "tight" | "line" | "block" | "turn";
+export type RowGap =
+  | "none"
+  | "tight"
+  | "line"
+  | "block"
+  | "part"
+  | "part-words"
+  | "turn"
+  | "turn-after-words";
 
 /**
  * The run whose Mate at work stood where this row now begins: a run with
@@ -765,6 +778,24 @@ function isMateProse(row: MessagesTimelineRow): boolean {
   return row.kind === "message" && row.message.role === "assistant";
 }
 
+/**
+ * What stands where the person's message would, opening a run nobody typed:
+ * a command, a resume, the task handed to a crewmate, what woke the Mate
+ * (`woke:` — background work no run owns is a line of its own, not an opener).
+ */
+function opensRun(row: MessagesTimelineRow): boolean {
+  return (
+    (row.kind === "background" && row.id.startsWith("woke:")) ||
+    row.kind === "crew-card" ||
+    (row.kind === "event" && (row.event.type === "command" || row.event.type === "resumed"))
+  );
+}
+
+/** The room that opens a new turn under `previous`: after an answer, its copy line is part of it. */
+function turnAfter(previous: MessagesTimelineRow): RowGap {
+  return isMateProse(previous) ? "turn-after-words" : "turn";
+}
+
 export function rowGap(
   previous: MessagesTimelineRow | undefined,
   row: MessagesTimelineRow,
@@ -773,8 +804,10 @@ export function rowGap(
   // What runs alongside hangs from the record; the record starts its card,
   // as a run's line with no chat does.
   if (row.kind === "working") return "tight";
-  if (row.kind === "seam" || row.kind === "crew-seam") return "turn";
-  if (previous.kind === "seam" || previous.kind === "crew-seam") return "block";
+  // A seam opens the turn under it: a turn's air above it, a part's under it.
+  if (row.kind === "seam" || row.kind === "crew-seam") return turnAfter(previous);
+  if (previous.kind === "seam" || previous.kind === "crew-seam")
+    return isMateProse(row) ? "part-words" : "part";
   if (isPersonRow(row)) {
     // A question's row opens with the Mate asking it, the person's answer
     // under it: after the person's own words that is a change of speaker,
@@ -782,20 +815,21 @@ export function rowGap(
     // 2026-09-29).
     if (row.kind === "answer" && isPersonRow(previous)) return "block";
     if (isPersonRow(previous)) return "tight";
-    if (isMateProse(previous)) return "block";
-    return closesTurn(previous) ||
-      previous.kind === "event" ||
-      previous.kind === "error" ||
-      previous.kind === "pause" ||
-      previous.kind === "background"
-      ? "turn"
-      : "block";
+    // A message waiting to be sent goes into the run on screen, and what the
+    // person said into a run nobody typed is that run's: parts of its turn.
+    if (opensRun(previous) || (row.kind === "queued-message" && !isMateProse(previous)))
+      return "part";
+    return turnAfter(previous);
   }
-  if (closesTurn(previous)) {
-    if (row.kind === "outcome") return "line";
-    if (isMateProse(previous)) return "block";
-    return row.kind === "work-line" || row.kind === "record" ? "turn" : "block";
+  // The answer is the turn's last part, under the card or the words it answers.
+  if (isMateProse(row)) return isMateProse(previous) ? "block" : "part-words";
+  if (row.kind === "record" || row.kind === "work-line") {
+    // The card under the words that started its run is a part of their turn;
+    // a run nobody wrote to start opens a turn of its own.
+    return isPersonRow(previous) || opensRun(previous) ? "part" : turnAfter(previous);
   }
+  if (opensRun(row)) return isPersonRow(previous) ? "part" : turnAfter(previous);
+  if (closesTurn(previous)) return row.kind === "outcome" ? "line" : "block";
   // The result hangs from its heading or its record: they read as one.
   if (row.kind === "outcome" && (previous.kind === "work-line" || previous.kind === "record"))
     return "tight";
