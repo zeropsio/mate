@@ -3,6 +3,7 @@ import { memo, useEffect, useRef, useState } from "react";
 
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { cn } from "~/lib/utils";
+import { stripInlinePicturePlaceholders } from "../../lib/composerPictures";
 import { type PromptStashEntry } from "../../promptStashStore";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
 import { Button } from "../ui/button";
@@ -15,7 +16,7 @@ function missingImageCount(entry: PromptStashEntry): number {
 }
 
 function stashEntrySnippet(entry: PromptStashEntry): string {
-  const trimmed = entry.prompt.trim().replace(/\s+/g, " ");
+  const trimmed = stripInlinePicturePlaceholders(entry.prompt).trim().replace(/\s+/g, " ");
   if (trimmed.length > 0) {
     return trimmed.length > SNIPPET_MAX_CHARS ? `${trimmed.slice(0, SNIPPET_MAX_CHARS)}…` : trimmed;
   }
@@ -153,12 +154,12 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
                     {stashEntrySnippet(entry)}
                   </span>
                   {entry.pendingImageCount ? (
-                    <span className="shrink-0 text-[10px] text-secondary-label">
+                    <span className="shrink-0 text-xs text-secondary-label">
                       saving {entry.pendingImageCount} image
                       {entry.pendingImageCount === 1 ? "" : "s"}…
                     </span>
                   ) : missingImageCount(entry) > 0 ? (
-                    <span className="shrink-0 text-[10px] text-warning-foreground">
+                    <span className="shrink-0 text-xs text-warning-foreground">
                       {missingImageCount(entry)} image
                       {missingImageCount(entry) === 1 ? "" : "s"} dropped
                     </span>

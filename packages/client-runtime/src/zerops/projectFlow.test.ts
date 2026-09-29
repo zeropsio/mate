@@ -96,6 +96,66 @@ describe("one pull request in the flow", () => {
     });
   });
 
+  it("carries what a review reads: the branch, each check by name, its size and its base", () => {
+    const row = flowPullRequest({
+      mergeability: "mergeable",
+      repository: "appdev",
+      pull: pull({
+        head: { ref: `mate/mate-${VERA}`, sha: "head-sha" },
+        base: { ref: "main", sha: "main-sha" },
+        additions: 42,
+        deletions: 3,
+        changed_files: 3,
+        merge_base: "mb-sha",
+      }),
+      checks: [
+        { context: "build", state: "success", description: "pnpm build · 34s" },
+        { context: "mate/deploy/stage/app", state: "failure" },
+      ],
+    });
+    expect(row).toMatchObject({
+      headBranch: `mate/mate-${VERA}`,
+      checkRows: [{ name: "build", tone: "ok", word: "Passed", description: "pnpm build · 34s" }],
+      additions: 42,
+      deletions: 3,
+      changedFiles: 3,
+      mergeBase: "mb-sha",
+      baseSha: "main-sha",
+    });
+  });
+
+  it("carries the commit it landed as, which a release names it by", () => {
+    const row = flowPullRequest({
+      mergeability: "mergeable",
+      repository: "appdev",
+      pull: pull({ state: "closed", merged: true, merge_commit_sha: "abc123" }),
+      checks: [],
+    });
+    expect(row.mergeCommitSha).toBe("abc123");
+  });
+
+  it.each(["open", "closed"] as const)("carries whether it is %s", (state) => {
+    const row = flowPullRequest({
+      mergeability: "mergeable",
+      repository: "appdev",
+      pull: pull({ state }),
+      checks: [],
+    });
+    expect(row.state).toBe(state);
+  });
+
+  it("leaves a review's reads unknown where Gitea did not send them, never zero", () => {
+    const row = flowPullRequest({
+      mergeability: "mergeable",
+      repository: "appdev",
+      pull: pull(),
+      checks: [],
+    });
+    expect(row.additions).toBeUndefined();
+    expect(row.changedFiles).toBeUndefined();
+    expect(row.checkRows).toEqual([]);
+  });
+
   it("belongs to the Mate whose bot opened it when a person renamed the branch", () => {
     const row = flowPullRequest({
       mergeability: "mergeable",
@@ -289,19 +349,28 @@ describe("types", () => {
     });
     expect(Object.keys(row).sort()).toEqual(
       [
+        "additions",
         "author",
         "baseBranch",
+        "baseSha",
+        "changedFiles",
+        "checkRows",
         "checkWord",
         "checks",
+        "deletions",
+        "headBranch",
         "headSha",
         "kind",
         "line",
         "mateProjectId",
+        "mergeBase",
+        "mergeCommitSha",
         "mergeability",
         "merged",
         "mergedAt",
         "number",
         "repository",
+        "state",
         "title",
         "updatedAt",
         "url",

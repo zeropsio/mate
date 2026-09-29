@@ -72,6 +72,7 @@ import { useRouteConversation, useRouteGateInputs } from "./-environmentTargets"
 import { RouteGateView } from "./-routeGate";
 import { installMateDiagnostics } from "~/zerops/diagnostics";
 import { useNowMs } from "~/zerops/useNowMs";
+import { ZeropsReviewProvider } from "~/zerops/ZeropsReviewProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 // At boot, before the first route renders: every emit point writes from then on.
@@ -171,18 +172,20 @@ function SignedInRootRouteView() {
   }
 
   const appShell = (
-    <CommandPalette>
-      <AppSidebarLayout>
-        <RouteGateView
-          gate={gate}
-          phrase={gatePhrase}
-          projectId={gateInputs.projectId}
-          conversation={conversation}
-        >
-          <Outlet />
-        </RouteGateView>
-      </AppSidebarLayout>
-    </CommandPalette>
+    <ZeropsReviewProvider>
+      <CommandPalette>
+        <AppSidebarLayout>
+          <RouteGateView
+            gate={gate}
+            phrase={gatePhrase}
+            projectId={gateInputs.projectId}
+            conversation={conversation}
+          >
+            <Outlet />
+          </RouteGateView>
+        </AppSidebarLayout>
+      </CommandPalette>
+    </ZeropsReviewProvider>
   );
 
   return (

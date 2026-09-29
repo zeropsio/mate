@@ -77,6 +77,27 @@ export const CHECKING_WHAT_RUNS = "Checking what runs here…";
 /** A stop's word for a deploy nobody has reported a build status for. */
 export const RUNNING_WORD = "Deployed";
 
+/**
+ * When the version a stop runs went live: `null` while it runs nothing, builds,
+ * or nothing is known yet. A surface reads it here, never off the Known itself.
+ */
+export function deployActivatedAt(deployment: Shown<Deployment> | undefined): string | null {
+  return deployment?.state === "known" && deployment.value.kind === "running"
+    ? deployment.value.activatedAt
+    : null;
+}
+
+/**
+ * A deploy on its way on a stop: the version it builds and what served before
+ * it. `undefined` while nothing builds, or nothing is known yet.
+ */
+export function deployBuilding(
+  deployment: Shown<Deployment> | undefined,
+): { readonly version: DeployedVersion; readonly previous: SettledDeployment | null } | undefined {
+  if (deployment?.state !== "known" || deployment.value.kind !== "deploying") return undefined;
+  return { version: deployment.value.version, previous: deployment.value.previous };
+}
+
 export const DEPLOYMENT_SURFACE: KnownSurface<Deployment> = {
   subject: "what runs here",
   entity: "service",

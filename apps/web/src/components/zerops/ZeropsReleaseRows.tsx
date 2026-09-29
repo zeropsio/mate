@@ -37,7 +37,11 @@ interface ReleaseRowsProps {
   readonly releases: ReadonlyArray<FlowReleaseRow>;
   /** The verbs under way (`flowVerbKey`): a release rolling back holds its verb. */
   readonly pending: ReadonlySet<string>;
-  readonly onRollBack: (tag: string) => void;
+  /**
+   * Opens the roll back's review from the verb pressed, naming the version it goes back to:
+   * nothing rolls back from a row (pass 16, R1).
+   */
+  readonly onRollBack: (tag: string, from: HTMLElement) => void;
 }
 
 const EMPTY_DEPLOYED: ReadonlyMap<string, string> = new Map();
@@ -46,7 +50,8 @@ const EMPTY_RELEASES: ReadonlyMap<string, string> = new Map();
 /**
  * A project's releases, newest first, each with its word and, on an earlier
  * approved one, the way back to it — the same rows on the projects page and on
- * a production's own page. The rows only: the list around them is the caller's.
+ * a production's own page — whose review asks before anything moves. The rows
+ * only: the list around them is the caller's.
  *
  * Given `carried`, a row also says what its release carried — the commit it
  * leads with, who wrote it and when — and opens onto those commits. Without
@@ -76,7 +81,7 @@ function releaseRowParts(
   release: FlowReleaseRow,
   groupId: string,
   pending: ReadonlySet<string>,
-  onRollBack: (tag: string) => void,
+  onRollBack: (tag: string, from: HTMLElement) => void,
 ) {
   const tone = releaseRowTone(release);
   const rollingBack = pending.has(flowVerbKey({ kind: "roll-back", groupId, tag: release.tag }));
@@ -85,8 +90,8 @@ function releaseRowParts(
       <ZeropsMateVerb
         disabled={rollingBack}
         label={flowVerbLabel("roll-back", rollingBack)}
-        onClick={() => {
-          onRollBack(release.tag);
+        onClick={(event) => {
+          onRollBack(release.tag, event.currentTarget);
         }}
       />
     ) : undefined,
@@ -136,7 +141,7 @@ function CarriedReleaseRow({
   readonly release: FlowReleaseRow;
   readonly groupId: string;
   readonly pending: ReadonlySet<string>;
-  readonly onRollBack: (tag: string) => void;
+  readonly onRollBack: (tag: string, from: HTMLElement) => void;
   readonly carried: ZeropsReleasesCarried;
   readonly now: number;
 }) {

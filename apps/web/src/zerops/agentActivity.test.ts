@@ -1,11 +1,19 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId, TurnId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+  TurnId,
+  type ThreadLiveStep,
+} from "@t3tools/contracts";
 import { SECRET_MASK } from "@t3tools/shared/messagePreview";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   agentActivityAt,
   agentActivityAwaitsWords,
+  agentActivityErrorLine,
   agentActivitySnippet,
   agentActivitySubject,
   deriveZeropsAgentActivity,
@@ -439,32 +447,6 @@ describe("what a Mate's row says without words", () => {
 
   it.each([
     {
-      case: "a working plan, counted",
-      shell: shell({
-        ...RUNNING,
-        planProgress: { step: "Run the build", completedSteps: 2, totalSteps: 5 },
-      }),
-      progress: { completed: 2, total: 5 },
-    },
-    {
-      case: "no plan while it works",
-      shell: RUNNING,
-      progress: undefined,
-    },
-    {
-      case: "a plan left over from a settled turn — never drawn",
-      shell: shell({
-        latestTurn: COMPLETED,
-        planProgress: { step: "Run the build", completedSteps: 2, totalSteps: 5 },
-      }),
-      progress: undefined,
-    },
-  ])("counts the plan's steps only while it works: $case", ({ shell: thread, progress }) => {
-    expect(deriveZeropsAgentActivity([thread], {}).get(FEN)?.progress).toEqual(progress);
-  });
-
-  it.each([
-    {
       case: "a completion after the last visit",
       visited: "2026-09-05T10:04:00.000Z",
       unread: true,
@@ -515,5 +497,166 @@ describe("the task as the person asked it", () => {
     const activity = deriveZeropsAgentActivity([working], {}).get(FEN);
     expect(activity?.subject).toBe("Run the build");
     expect(activity?.task).toBe("Add a /status page");
+  });
+});
+
+describe("agentActivityErrorLine", () => {
+  const session = (lastError: string | null): EnvironmentThreadShell["session"] => ({
+    threadId: ThreadId.make("thread-1"),
+    status: "error",
+    providerName: null,
+    runtimeMode: "full-access",
+    activeTurnId: null,
+    lastError,
+    updatedAt: "2026-09-29T08:00:00.000Z",
+  });
+
+  it.each<{
+    readonly name: string;
+    readonly lastError: string | null;
+    readonly kind: Parameters<typeof agentActivityErrorLine>[1];
+    readonly line: string | undefined;
+  }>([
+    {
+      name: "a stopped Mate says the error's first line",
+      lastError: "The type check found 2 errors\n  at src/gallery/grid.ts",
+      kind: "failed",
+      line: "The type check found 2 errors",
+    },
+    {
+      name: "blank leading lines are skipped",
+      lastError: "\n   \nProcess exited with code 137",
+      kind: "failed",
+      line: "Process exited with code 137",
+    },
+    {
+      name: "a Mate that is not stopped says none, whatever its session kept",
+      lastError: "The type check failed",
+      kind: "idle",
+      line: undefined,
+    },
+    { name: "no error kept, no line", lastError: null, kind: "failed", line: undefined },
+  ])("$name", ({ lastError, kind, line }) => {
+    expect(agentActivityErrorLine({ session: session(lastError) }, kind).errorLine).toBe(line);
+  });
+});
+
+const since = "2026-09-05T10:01:05.000Z";
+const building: ThreadLiveStep = {
+  kind: "calls",
+  since,
+  calls: [
+    {
+      id: "call-build",
+      activityKind: "tool.updated",
+      itemType: "command_execution",
+      title: "Command run",
+      detail: "Bash: npm run compile",
+      toolName: "Bash",
+      command: "npm run compile",
+      input: { description: "Compile the gallery" },
+      startedAt: since,
+    },
+  ],
+};
+const asking: ThreadLiveStep = {
+  kind: "calls",
+  since,
+  calls: [
+    {
+      id: "call-ask",
+      activityKind: "tool.updated",
+      itemType: "dynamic_tool_call",
+      title: "Tool call",
+      detail: 'AskUserQuestion: {"questions":[{"question":"Ship it now?"}]}',
+      toolName: "AskUserQuestion",
+      startedAt: since,
+    },
+  ],
+};
+
+describe("the row's live step", () => {
+  it.each<{
+    readonly name: string;
+    readonly thread: EnvironmentThreadShell;
+    readonly liveStep: { readonly words: string; readonly code?: string } | undefined;
+  }>([
+    {
+      name: "a working Mate says the step its card's now line says",
+      thread: shell({ ...RUNNING, liveStep: building }),
+      liveStep: { words: "Compile the gallery", code: "npm run compile" },
+    },
+    {
+      name: "between steps it thinks",
+      thread: shell({ ...RUNNING, liveStep: { kind: "thinking", since } }),
+      liveStep: { words: "Thinking" },
+    },
+    {
+      name: "its words streaming, it writes",
+      thread: shell({ ...RUNNING, liveStep: { kind: "writing", since } }),
+      liveStep: { words: "Writing" },
+    },
+    {
+      name: "asking, before the question reaches the shell: waiting for the answer",
+      thread: shell({ ...RUNNING, liveStep: asking }),
+      liveStep: { words: "Waiting for your answer" },
+    },
+    {
+      name: "a server that relays no step: none, and the row holds its dots",
+      thread: RUNNING,
+      liveStep: undefined,
+    },
+    {
+      name: "a Mate at rest has no step, whatever a shell still carries",
+      thread: shell({ liveStep: building }),
+      liveStep: undefined,
+    },
+    {
+      name: "a Mate waiting on the person has no step: what it waits on is its line",
+      thread: shell({ ...RUNNING, hasPendingUserInput: true, liveStep: asking }),
+      liveStep: undefined,
+    },
+  ])("$name", ({ thread, liveStep }) => {
+    expect(threadAgentActivity(thread, undefined).liveStep).toEqual(liveStep);
+  });
+});
+
+describe("the question a needs-you row says", () => {
+  it.each<{
+    readonly name: string;
+    readonly thread: EnvironmentThreadShell;
+    readonly question: string | undefined;
+  }>([
+    {
+      name: "a Mate waiting on its question says the question",
+      thread: shell({
+        ...RUNNING,
+        hasPendingUserInput: true,
+        pendingQuestion: "Ship the status page now, or after the review?",
+        liveStep: asking,
+      }),
+      question: "Ship the status page now, or after the review?",
+    },
+    {
+      name: "a server that relays no question: none, and the row keeps its last words",
+      thread: shell({ hasPendingUserInput: true }),
+      question: undefined,
+    },
+    {
+      name: "an approval waits first: that is no question",
+      thread: shell({
+        hasPendingApprovals: true,
+        hasPendingUserInput: true,
+        pendingQuestion: "Which colour?",
+      }),
+      question: undefined,
+    },
+    {
+      name: "answered: no question",
+      thread: shell({ pendingQuestion: null }),
+      question: undefined,
+    },
+  ])("$name", ({ thread, question }) => {
+    expect(threadAgentActivity(thread, undefined).question).toBe(question);
   });
 });

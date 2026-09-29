@@ -63,7 +63,9 @@ import {
   finalizePromotedDraftThreadByRef,
   markPromotedDraftThreadByRef,
   type ComposerImageAttachment,
+  hydrateImagesFromPersisted,
   partializeComposerDraftStoreState,
+  persistableImageAttachments,
   useComposerDraftStore,
   DraftId,
 } from "./composerDraftStore";
@@ -74,6 +76,7 @@ import {
   replaceMentionWithInlineContextPlaceholder,
   type TerminalContextDraft,
 } from "./lib/terminalContext";
+import { INLINE_PICTURE_PLACEHOLDER } from "./lib/composerPictures";
 import { createDeferredStorage } from "./lib/storage";
 import { closeAccountLifetime, openAccountLifetime } from "./zerops/accountLifetime";
 
@@ -190,7 +193,7 @@ describe("composerDraftStore addImages", () => {
     URL.revokeObjectURL = originalRevokeObjectUrl;
   });
 
-  it("deduplicates identical images in one batch by file signature", () => {
+  it("keeps two alike images of one batch: each is a picture with a place of its own", () => {
     const first = makeImage({
       id: "img-1",
       previewUrl: "blob:first",
@@ -211,11 +214,11 @@ describe("composerDraftStore addImages", () => {
     useComposerDraftStore.getState().addImages(threadRef, [first, duplicate]);
 
     const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
-    expect(draft?.images.map((image) => image.id)).toEqual(["img-1"]);
-    expect(revokeSpy).toHaveBeenCalledWith("blob:duplicate");
+    expect(draft?.images.map((image) => image.id)).toEqual(["img-1", "img-2"]);
+    expect(revokeSpy).not.toHaveBeenCalled();
   });
 
-  it("deduplicates against existing images across calls by file signature", () => {
+  it("keeps an image alike to one the draft already has", () => {
     const first = makeImage({
       id: "img-a",
       previewUrl: "blob:a",
@@ -237,8 +240,8 @@ describe("composerDraftStore addImages", () => {
     useComposerDraftStore.getState().addImage(threadRef, duplicateLater);
 
     const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
-    expect(draft?.images.map((image) => image.id)).toEqual(["img-a"]);
-    expect(revokeSpy).toHaveBeenCalledWith("blob:b");
+    expect(draft?.images.map((image) => image.id)).toEqual(["img-a", "img-b"]);
+    expect(revokeSpy).not.toHaveBeenCalled();
   });
 
   it("does not revoke blob URLs that are still used by an accepted duplicate image", () => {
@@ -256,6 +259,243 @@ describe("composerDraftStore addImages", () => {
     const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
     expect(draft?.images.map((image) => image.id)).toEqual(["img-shared"]);
     expect(revokeSpy).not.toHaveBeenCalledWith("blob:shared");
+  });
+});
+
+describe("composerDraftStore pictures in the text", () => {
+  const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, ThreadId.make("thread-pictures"));
+  let originalRevokeObjectUrl: typeof URL.revokeObjectURL;
+  let revokeSpy: ReturnType<typeof vi.fn<(url: string) => void>>;
+  const P = INLINE_PICTURE_PLACEHOLDER;
+  const ids = () => draftFor(threadRef.threadId, TEST_ENVIRONMENT_ID)?.images.map((i) => i.id);
+
+  beforeEach(() => {
+    resetComposerDraftStore();
+    originalRevokeObjectUrl = URL.revokeObjectURL;
+    revokeSpy = vi.fn();
+    URL.revokeObjectURL = revokeSpy;
+    const store = useComposerDraftStore.getState();
+    store.insertImage(threadRef, `a${P}`, makeImage({ id: "one", previewUrl: "blob:one" }), 0);
+    store.insertImage(threadRef, `a${P}b${P}`, makeImage({ id: "two", previewUrl: "blob:two" }), 1);
+  });
+
+  afterEach(() => {
+    URL.revokeObjectURL = originalRevokeObjectUrl;
+  });
+
+  it.each([
+    ["before the first", 0, ["new", "one", "two"]],
+    ["between the two", 1, ["one", "new", "two"]],
+    ["after the last", 2, ["one", "two", "new"]],
+    ["past the end, at the end", 9, ["one", "two", "new"]],
+  ])("a pasted picture takes its index among the pictures: %s", (_label, index, expected) => {
+    useComposerDraftStore
+      .getState()
+      .insertImage(
+        threadRef,
+        "the new prompt",
+        makeImage({ id: "new", previewUrl: "blob:new" }),
+        index,
+      );
+    expect(ids()).toEqual(expected);
+    expect(draftFor(threadRef.threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe("the new prompt");
+  });
+
+  it("a picture pasted twice stays twice: places, not files, are what count", () => {
+    useComposerDraftStore
+      .getState()
+      .insertImage(threadRef, "p", makeImage({ id: "three", previewUrl: "blob:three" }), 2);
+    expect(ids()).toEqual(["one", "two", "three"]);
+  });
+
+  it.each([
+    ["the text's order wins", ["two", "one"], ["two", "one"], []],
+    ["a picture no longer in the text goes", ["two"], ["two"], ["blob:one"]],
+    ["an id the draft never had is ignored", ["one", "ghost", "two"], ["one", "two"], []],
+  ])("syncs to the text: %s", (_label, next, expected, revoked) => {
+    useComposerDraftStore.getState().syncImages(threadRef, next);
+    expect(ids()).toEqual(expected);
+    expect(revokeSpy.mock.calls.map(([url]) => url)).toEqual(revoked);
+  });
+
+  it("a picture back in the text (an undo, a paste) returns to the draft in its place", () => {
+    const back = makeImage({ id: "back", previewUrl: "blob:back" });
+    useComposerDraftStore.getState().syncImages(threadRef, ["one", "back", "two"], [back]);
+    expect(ids()).toEqual(["one", "back", "two"]);
+    expect(revokeSpy).not.toHaveBeenCalled();
+  });
+
+  it("a picture back in the text that the draft still has stays the draft's", () => {
+    const stale = makeImage({ id: "one", previewUrl: "blob:one-stale" });
+    useComposerDraftStore.getState().syncImages(threadRef, ["two", "one"], [stale]);
+    const images = draftFor(threadRef.threadId, TEST_ENVIRONMENT_ID)?.images ?? [];
+    expect(images.map((image) => [image.id, image.previewUrl])).toEqual([
+      ["two", "blob:two"],
+      ["one", "blob:one"],
+    ]);
+  });
+
+  it("a picture back in the text of a draft that had gone brings the draft back", () => {
+    const other = scopeThreadRef(TEST_ENVIRONMENT_ID, ThreadId.make("thread-emptied"));
+    const back = makeImage({ id: "back", previewUrl: "blob:back" });
+    useComposerDraftStore.getState().syncImages(other, ["back"], [back]);
+    expect(draftFor(other.threadId, TEST_ENVIRONMENT_ID)?.images.map((image) => image.id)).toEqual([
+      "back",
+    ]);
+  });
+
+  it("a picture made again keeps its place and lets its old copy go", () => {
+    const again = makeImage({ id: "one", previewUrl: "blob:one-again", sizeBytes: 9 });
+    useComposerDraftStore.getState().updateImage(threadRef, again);
+    const images = draftFor(threadRef.threadId, TEST_ENVIRONMENT_ID)?.images ?? [];
+    expect(images.map((image) => [image.id, image.previewUrl])).toEqual([
+      ["one", "blob:one-again"],
+      ["two", "blob:two"],
+    ]);
+    expect(revokeSpy).toHaveBeenCalledExactlyOnceWith("blob:one");
+  });
+
+  it("a copy for a picture already gone is let go", () => {
+    useComposerDraftStore
+      .getState()
+      .updateImage(threadRef, makeImage({ id: "gone", previewUrl: "blob:gone" }));
+    expect(ids()).toEqual(["one", "two"]);
+    expect(revokeSpy).toHaveBeenCalledExactlyOnceWith("blob:gone");
+  });
+});
+
+describe("pictures across a reload", () => {
+  const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, ThreadId.make("thread-reload"));
+  const threadKey = threadKeyFor(threadRef.threadId, TEST_ENVIRONMENT_ID);
+  const P = INLINE_PICTURE_PLACEHOLDER;
+  const saved = (id: string) => ({
+    id,
+    name: `${id}.png`,
+    mimeType: "image/png",
+    sizeBytes: 3,
+    dataUrl: "data:image/png;base64,AQID",
+  });
+  const merge = (draft: Record<string, unknown>) =>
+    (
+      useComposerDraftStore.persist as unknown as {
+        getOptions: () => {
+          merge: (
+            persistedState: unknown,
+            currentState: ReturnType<typeof useComposerDraftStore.getState>,
+          ) => ReturnType<typeof useComposerDraftStore.getState>;
+        };
+      }
+    )
+      .getOptions()
+      .merge(
+        {
+          draftsByThreadKey: { [threadKey]: draft },
+          draftThreadsByThreadKey: {},
+          logicalProjectDraftThreadKeyByLogicalProjectKey: {},
+        },
+        useComposerDraftStore.getInitialState(),
+      ).draftsByThreadKey[threadKey];
+
+  beforeEach(() => {
+    resetComposerDraftStore();
+  });
+
+  it("saves the draft's pictures in the order they sit", () => {
+    const store = useComposerDraftStore.getState();
+    store.insertImage(threadRef, `a${P}`, makeImage({ id: "one", previewUrl: "blob:one" }), 0);
+    store.insertImage(threadRef, `${P}a${P}`, makeImage({ id: "two", previewUrl: "blob:two" }), 0);
+
+    const persisted = partializeComposerDraftStoreState(useComposerDraftStore.getState());
+
+    expect(persisted.draftsByThreadKey[threadKey]?.pictureIds).toEqual(["two", "one"]);
+  });
+
+  it("brings each picture back to its own place, whatever order they were saved in", () => {
+    const draft = merge({
+      prompt: `a${P}b${P}`,
+      attachments: [saved("two"), saved("one")],
+      pictureIds: ["one", "two"],
+    });
+    expect(draft?.prompt).toBe(`a${P}b${P}`);
+    expect(draft?.images.map((image) => image.id)).toEqual(["one", "two"]);
+  });
+
+  it("a picture that could not be kept leaves its place, and the others keep theirs", () => {
+    const draft = merge({
+      prompt: `a${P}b${P}c${P}`,
+      attachments: [saved("one"), saved("three")],
+      pictureIds: ["one", "two", "three"],
+    });
+    expect(draft?.prompt).toBe(`a${P}bc${P}`);
+    expect(draft?.images.map((image) => image.id)).toEqual(["one", "three"]);
+  });
+});
+
+describe("persistableImageAttachments", () => {
+  const image = (id: string) => makeImage({ id, previewUrl: `blob:${id}`, name: `${id}.png` });
+
+  it("keeps the images' order, whichever file is read first", async () => {
+    const reads = new Map<string, (dataUrl: string) => void>();
+    const saving = persistableImageAttachments(
+      [image("one"), image("two")],
+      [],
+      (file) =>
+        new Promise((resolve) => {
+          reads.set(file.name, resolve);
+        }),
+    );
+    reads.get("two.png")!("data:image/png;base64,Ag==");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    reads.get("one.png")!("data:image/png;base64,AQ==");
+
+    expect((await saving).map((attachment) => attachment.id)).toEqual(["one", "two"]);
+  });
+
+  it("an image whose file cannot be read keeps what was saved of it, or is left out", async () => {
+    const earlier = {
+      id: "one",
+      name: "one.png",
+      mimeType: "image/png",
+      sizeBytes: 4,
+      dataUrl: "data:image/png;base64,AQID",
+    };
+    const attachments = await persistableImageAttachments(
+      [image("one"), image("two")],
+      [earlier],
+      () => Promise.reject(new Error("unreadable")),
+    );
+    expect(attachments).toEqual([earlier]);
+  });
+});
+
+describe("hydrateImagesFromPersisted", () => {
+  const picture = {
+    sourceWidth: 3024,
+    sourceHeight: 1964,
+    crop: { x: 0, y: 0, w: 3024, h: 1964 },
+    marks: [{ kind: "pin" as const, id: "m1", x: 252, y: 74, note: "Bigger logo" }],
+    width: 2000,
+    height: 1299,
+    asPasted: false,
+  };
+  const persisted = {
+    id: "pic",
+    name: "home-page.png",
+    mimeType: "image/png",
+    sizeBytes: 3,
+    dataUrl: "data:image/png;base64,AQID",
+  };
+
+  it.each([
+    ["an image without a picture stays one", persisted, undefined],
+    [
+      "a picture keeps its edits and notes, without the pasted file",
+      { ...persisted, picture },
+      { ...picture, source: null, keepOriginal: false, preparing: false },
+    ],
+  ])("%s", (_label, attachment, expected) => {
+    const [image] = hydrateImagesFromPersisted([attachment]);
+    expect(image?.picture).toEqual(expected);
   });
 });
 
@@ -317,7 +557,8 @@ describe("composerDraftStore moveComposerPromptAndImages", () => {
 
     expect(draftByKey(sourceDraftId)).toBeUndefined();
     const destination = draftByKey(destinationDraftId);
-    expect(destination?.prompt).toBe("fix the login redirect");
+    // The image had no place in the text: it gets one first, where images went.
+    expect(destination?.prompt).toBe(`${INLINE_PICTURE_PLACEHOLDER}fix the login redirect`);
     expect(destination?.images.map((image) => image.id)).toEqual(["img-move"]);
     expect(revokeSpy).not.toHaveBeenCalled();
   });
@@ -335,6 +576,24 @@ describe("composerDraftStore moveComposerPromptAndImages", () => {
     expect(source?.terminalContexts.map((context) => context.id)).toEqual(["ctx-stay"]);
     expect(source?.prompt).toBe(INLINE_TERMINAL_CONTEXT_PLACEHOLDER);
     expect(draftByKey(destinationDraftId)?.prompt).toBe(" explain this error");
+  });
+
+  it("the moved pictures keep their places, after the destination's own", () => {
+    const P = INLINE_PICTURE_PLACEHOLDER;
+    const store = useComposerDraftStore.getState();
+    store.insertImage(
+      destinationDraftId,
+      `${P}here`,
+      makeImage({ id: "dest", previewUrl: "blob:d" }),
+      0,
+    );
+    store.insertImage(sourceDraftId, `look${P}`, makeImage({ id: "src", previewUrl: "blob:s" }), 0);
+
+    store.moveComposerPromptAndImages(sourceDraftId, destinationDraftId);
+
+    const destination = draftByKey(destinationDraftId);
+    expect(destination?.images.map((image) => image.id)).toEqual(["dest", "src"]);
+    expect(destination?.prompt).toBe(`${P}look${P}`);
   });
 
   it("is a no-op when source and destination are the same target", () => {

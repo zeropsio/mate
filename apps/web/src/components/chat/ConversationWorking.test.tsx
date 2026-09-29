@@ -129,16 +129,18 @@ describe("what runs alongside the Mate", () => {
 
   // "No unnecessary icons, make the use obvious from the component": the
   // bar's name says what it is, no mark in front of it.
-  // No mark at rest: a bar's name says what it is. One that opens shows a
-  // chevron on hover and while it is open, nothing more.
-  it("wears no icon at rest, and a chevron only where it opens", () => {
+  // No mark at rest: a bar's name says what it is. One that opens wears a
+  // call's chevron after its figure, there at rest too, so what opens is
+  // plain before the pointer finds it.
+  it("wears no icon at rest, and a chevron where it opens", () => {
     for (const { body, opens } of barsOf(render(DOCK, [INCIDENT]))) {
       if (!opens) {
         expect(body).not.toContain("<svg");
         continue;
       }
       const chevron = /<svg[^>]*class="([^"]*)"/.exec(body)?.[1]?.split(" ") ?? [];
-      expect(chevron).toEqual(expect.arrayContaining(["opacity-0", "group-hover/bar:opacity-100"]));
+      expect(chevron).toEqual(expect.arrayContaining(["text-muted-foreground/55"]));
+      expect(chevron).not.toContain("opacity-0");
     }
   });
 
@@ -200,10 +202,17 @@ describe("what runs alongside the Mate", () => {
 
   // One right edge for every time in the card: the heading's, each line's
   // and each bar's.
-  it("sets each bar's figure on the card's time column", () => {
+  // One grid for the card (K1): the bar's name one column in, its figure on
+  // the card's right edge.
+  it("sets each bar in the card's grid, its figure on the right edge", () => {
     const markup = render(DOCK);
-    const figures = [...markup.matchAll(/<span class="(w-14 shrink-0 text-end[^"]*)">/g)];
+    const bars = [...markup.matchAll(/class="run-bar[^"]*"/g)];
+    expect(bars).toHaveLength(3);
+    const figures = [
+      ...markup.matchAll(
+        /<span class="(flex items-center gap-1\.5 text-muted-foreground tabular-nums)">/g,
+      ),
+    ];
     expect(figures).toHaveLength(3);
-    for (const [, classes = ""] of figures) expect(classes).toContain("tabular-nums");
   });
 });

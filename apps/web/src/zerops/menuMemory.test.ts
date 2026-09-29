@@ -11,9 +11,12 @@ import {
   MENU_MEMORY_STORAGE_KEY,
   menuMemory,
   rememberedChangeOf,
+  rememberedCrewOf,
   rememberedRowOf,
   rememberMenu,
   withChanges,
+  withChips,
+  withCrews,
   withMembers,
   withRows,
 } from "./menuMemory";
@@ -26,7 +29,6 @@ const WORKING: ZeropsAgentActivity = {
   subject: "Add a /status page",
   at: "2026-09-27T10:00:00.000Z",
   snippet: "The page reads the build number.",
-  progress: { completed: 2, total: 5 },
   unread: true,
   pausedUntil: undefined,
   threadKey: "env-nova:thread-nova",
@@ -62,7 +64,6 @@ describe("a remembered row", () => {
       subject: "Add a /status page",
       at: "2026-09-27T10:00:00.000Z",
       snippet: "The page reads the build number.",
-      progress: undefined,
       unread: true,
       pausedUntil: undefined,
       threadKey: "env-nova:thread-nova",
@@ -71,23 +72,74 @@ describe("a remembered row", () => {
     });
   });
 
-  // A row keeping its last line for words still to come draws it from
-  // memory too, so a reload mid-run before the Mate's first words stands the
-  // row at the height it had rather than growing it when the socket answers.
-  it("keeps the line a row held for words still to come, and only that", () => {
-    const waiting = activityFromMemory(rememberedRowOf({ ...WORKING, snippet: undefined }));
-    expect(waiting).toMatchObject({ awaitingWords: true, snippet: undefined });
-    const sent = activityFromMemory(
-      rememberedRowOf({ ...WORKING, kind: "idle", snippet: undefined, awaitingWords: true }),
-    );
-    expect(sent.awaitingWords).toBe(true);
-    for (const row of [
-      WORKING,
-      { ...WORKING, kind: "idle" as const, snippet: undefined },
-      { ...WORKING, subject: undefined, snippet: undefined },
-    ]) {
-      expect(activityFromMemory(rememberedRowOf(row))).not.toHaveProperty("awaitingWords");
-    }
+  // A row whose third line stood without words to remember — words still
+  // to come, the step it was on, the question it asked, the error it stopped
+  // on before saying anything — holds that line from memory, so a reload
+  // stands the row at the height it had rather than growing it when the
+  // socket answers.
+  it.each([
+    {
+      case: "working, before its first words",
+      row: { ...WORKING, snippet: undefined },
+      holds: true,
+    },
+    {
+      case: "sent, its run not started",
+      row: {
+        ...WORKING,
+        kind: "idle" as const,
+        face: "idle" as const,
+        snippet: undefined,
+        awaitingWords: true as const,
+      },
+      holds: true,
+    },
+    {
+      case: "working on a step it relayed",
+      row: {
+        ...WORKING,
+        snippet: undefined,
+        liveStep: { words: "Compile the gallery", code: "npm run compile" },
+      },
+      holds: true,
+    },
+    {
+      case: "stopped on an error before its first words",
+      row: {
+        ...WORKING,
+        kind: "failed" as const,
+        face: "needs" as const,
+        snippet: undefined,
+        errorLine: "The build timed out after 120 s.",
+      },
+      holds: true,
+    },
+    {
+      case: "asking a question before its first words",
+      row: {
+        ...WORKING,
+        kind: "input" as const,
+        face: "needs" as const,
+        snippet: undefined,
+        question: "Pricing in CZK or EUR?",
+      },
+      holds: true,
+    },
+    { case: "with words to remember", row: WORKING, holds: false },
+    {
+      case: "at rest with no words",
+      row: { ...WORKING, kind: "idle" as const, face: "idle" as const, snippet: undefined },
+      holds: false,
+    },
+    {
+      case: "never asked anything",
+      row: { ...WORKING, subject: undefined, task: undefined, snippet: undefined },
+      holds: false,
+    },
+  ])("holds the third line of a row $case: $holds", ({ row, holds }) => {
+    const remembered = activityFromMemory(rememberedRowOf(row));
+    if (holds) expect(remembered).toMatchObject({ awaitingWords: true, snippet: undefined });
+    else expect(remembered).not.toHaveProperty("awaitingWords");
   });
 
   it("keeps no word the row did not say", () => {
@@ -145,6 +197,61 @@ describe("what the memory keeps", () => {
   });
 });
 
+describe("a remembered production chip", () => {
+  const OK = { label: "prod", state: "ok", version: "v0.1.0" } as const;
+  const WAITING = { label: "prod", state: "waiting", version: "v0.1.44", waiting: 1 } as const;
+
+  it("keeps each project's chip as last drawn, and forgets one that is no more", () => {
+    const first = withChips(EMPTY_MENU_MEMORY, { g1: OK, g2: WAITING }, new Set(["g1", "g2"]));
+    expect(first.chips).toEqual({ g1: OK, g2: WAITING });
+    // Read again: g2 has no production any more.
+    const next = withChips(first, { g2: null }, new Set(["g1", "g2"]));
+    expect(next.chips).toEqual({ g1: OK });
+    // A project no longer listed takes its chip with it.
+    expect(withChips(next, {}, new Set(["g2"])).chips).toEqual({});
+  });
+
+  it("is the same memory when no chip changed, so nothing is written", () => {
+    const first = withChips(EMPTY_MENU_MEMORY, { g1: OK }, new Set(["g1"]));
+    expect(withChips(first, { g1: { ...OK } }, new Set(["g1"]))).toBe(first);
+    expect(withChips(first, {})).toBe(first);
+  });
+});
+
+describe("a remembered crew", () => {
+  const FACES = [
+    {
+      handle: "ada",
+      displayName: "Ada",
+      tint: "violet",
+      lead: true,
+      state: "working",
+      threadId: ThreadId.make("thread-ada"),
+    },
+    { handle: "bo", displayName: "Bo", tint: "sky", lead: false, state: "needs", threadId: null },
+  ] as const;
+
+  it("keeps its faces, lead first, at rest: no state, no chat, no fact", () => {
+    expect(rememberedCrewOf(FACES)).toEqual({
+      faces: [
+        { handle: "ada", displayName: "Ada", tint: "violet", lead: true },
+        { handle: "bo", displayName: "Bo", tint: "sky", lead: false },
+      ],
+    });
+  });
+
+  it("keeps each Mate's crew as last read, forgets one that is gone, and a Mate no longer listed", () => {
+    const crew = rememberedCrewOf(FACES);
+    const first = withCrews(EMPTY_MENU_MEMORY, { nova: crew, kai: crew });
+    expect(Object.keys(first.crews)).toEqual(["nova", "kai"]);
+    // Read again: Kai's crew was taken off.
+    expect(Object.keys(withCrews(first, { kai: null }).crews)).toEqual(["nova"]);
+    // The listing no longer holds Nova.
+    expect(Object.keys(withCrews(first, {}, new Set(["kai"])).crews)).toEqual(["kai"]);
+    expect(withCrews(first, { nova: rememberedCrewOf(FACES) })).toBe(first);
+  });
+});
+
 describe("the memory in this browser", () => {
   const stored = new Map<string, string>();
 
@@ -180,6 +287,46 @@ describe("the memory in this browser", () => {
     expect(stored.has(key)).toBe(false);
     openAccountLifetime("user-ales");
     expect(menuMemory()).toEqual(EMPTY_MENU_MEMORY);
+  });
+
+  // A reload after an upgrade paints what the last version drew: a memory
+  // from before the production chip (with each stop's line, no chips) keeps
+  // its rows, changes and members, and simply has no chip yet.
+  it("reads a memory written before the production chip, keeping all it held", () => {
+    const key = `mate:account:user-ales:${MENU_MEMORY_STORAGE_KEY}`;
+    stored.set(
+      key,
+      JSON.stringify({
+        rows: { nova: rememberedRowOf(WORKING) },
+        changes: { g1: [rememberedChangeOf(PULL)] },
+        stops: { "prod-1": "v1.4.0" },
+        members: { "org-1": [{ id: "cu-jan", roleCode: "OWNER" }] },
+      }),
+    );
+    openAccountLifetime("user-ales");
+    const memory = menuMemory();
+    expect(Object.keys(memory.rows)).toEqual(["nova"]);
+    expect(memory.changes.g1).toHaveLength(1);
+    expect(memory.members["org-1"]).toEqual([{ id: "cu-jan", roleCode: "OWNER" }]);
+    expect(memory.chips).toEqual({});
+  });
+
+  // A memory written before crews were kept reads with none, rather than
+  // being forgotten whole for want of them.
+  it("reads a memory from before crews were kept, crews and all none", () => {
+    openAccountLifetime("user-ada");
+    const key = `mate:account:user-ada:${MENU_MEMORY_STORAGE_KEY}`;
+    const before: Record<string, unknown> = {
+      ...EMPTY_MENU_MEMORY,
+      rows: { nova: rememberedRowOf(WORKING) },
+    };
+    delete before.crews;
+    stored.set(key, JSON.stringify(before));
+    closeAccountLifetime();
+    stored.set(key, JSON.stringify(before));
+    openAccountLifetime("user-ada");
+    expect(menuMemory().crews).toEqual({});
+    expect(menuMemory().rows.nova?.subject).toBe("Add a /status page");
   });
 
   it("reads nothing another account remembered", () => {

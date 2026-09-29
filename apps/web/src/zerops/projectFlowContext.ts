@@ -55,7 +55,8 @@ export interface ZeropsProjectFlow {
   readonly environmentInputs: ReadonlyArray<GroupEnvironmentRowInput>;
   /**
    * `main`'s head per production service, as the deploy half read it — what
-   * every stop measures its distance against (`stopDistance.ts`).
+   * tells a release's review which of its commits is newest, and so which the
+   * stage runs (`stageMarks.ts`).
    */
   readonly mainHeads: ReadonlyMap<string, string>;
   /** The tiers the recipe offers and the project lacks — the rows that ask. */
@@ -76,6 +77,15 @@ export interface ZeropsProjectFlow {
   readonly releases: ReadonlyArray<FlowReleaseRow>;
   readonly release: ZeropsReleaseOffer;
 }
+
+/**
+ * How a verb went, for the surface it was pressed on: the review stays open and says what
+ * happened (pass 16, R6). A refusal carries the sentence `trouble` says too.
+ */
+export type FlowVerbOutcome =
+  /** Done; a release and a roll back name the tag they made, which their review follows. */
+  | { readonly ok: true; readonly tag?: string | undefined }
+  | { readonly ok: false; readonly reason: string };
 
 export interface ZeropsProjectFlowValue {
   readonly giteaOrigin: string | undefined;
@@ -124,7 +134,7 @@ export interface ZeropsProjectFlowValue {
   readonly mergePullRequest: (
     slug: string,
     pull: Pick<FlowPullRequest, "repository" | "number" | "headSha">,
-  ) => Promise<void>;
+  ) => Promise<FlowVerbOutcome>;
   /** Opens one in Gitea as the person, from a branch onto the repository's default. */
   readonly createPullRequest: (
     slug: string,
@@ -136,9 +146,9 @@ export interface ZeropsProjectFlowValue {
     },
   ) => Promise<void>;
   /** Tags what the stage runs as the next release (`release.ts`). */
-  readonly release: (groupId: string) => Promise<void>;
+  readonly release: (groupId: string) => Promise<FlowVerbOutcome>;
   /** A new tag listing an earlier release's commits (guide 5.6). */
-  readonly rollBack: (groupId: string, tag: string) => Promise<void>;
+  readonly rollBack: (groupId: string, tag: string) => Promise<FlowVerbOutcome>;
 }
 
 export const ZeropsProjectFlowContext = createContext<ZeropsProjectFlowValue | null>(null);

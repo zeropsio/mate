@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 import { create } from "zustand";
 
 import { PersistedComposerImageAttachment } from "./composerDraftStore";
+import { reconcileInlinePicturePlaceholders, restorePicturePlaces } from "./lib/composerPictures";
 import { createMemoryStorage, type StateStorage } from "./lib/storage";
 
 export const PROMPT_STASH_STORAGE_KEY = "t3code:prompt-stash:v2";
@@ -54,8 +55,47 @@ const StashEntrySchema = Schema.Struct({
    * `finalizeEntryImages` lands, and flags entries orphaned by a reload.
    */
   pendingImageCount: Schema.optionalKey(Schema.Number),
+  /**
+   * The pictures the prompt held, in the order they sat, saved or not: a
+   * restore takes the place of each one that does not come back out of the
+   * text. Optional: entries written before this field existed decode without
+   * it.
+   */
+  pictureIds: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 export type PromptStashEntry = typeof StashEntrySchema.Type;
+
+/**
+ * What a stashed prompt brings back into a composer that holds the pictures
+ * `heldIds` and has room for `room` more: the pictures, in the order they
+ * sat, and its text with the place of every picture that does not come back
+ * taken out, whether it was dropped when the prompt was stashed, is past the
+ * room (named in `unrestoredNames`), is held already, or cannot be read back.
+ */
+export function restoreStashedPictures<I extends { readonly id: string }>(
+  entry: PromptStashEntry,
+  input: {
+    readonly heldIds: ReadonlySet<string>;
+    readonly room: number;
+    readonly hydrate: (attachments: PersistedComposerImageAttachment[]) => I[];
+  },
+): { prompt: string; images: I[]; unrestoredNames: string[] } {
+  const ordered = restorePicturePlaces(
+    entry.prompt,
+    entry.pictureIds,
+    entry.attachments.filter((attachment) => !input.heldIds.has(attachment.id)),
+  ).attachments;
+  const room = Math.max(0, input.room);
+  const images = input.hydrate(ordered.slice(0, room));
+  return {
+    prompt:
+      entry.pictureIds === undefined
+        ? reconcileInlinePicturePlaceholders(entry.prompt, images.length)
+        : restorePicturePlaces(entry.prompt, entry.pictureIds, images).prompt,
+    images,
+    unrestoredNames: ordered.slice(room).map((attachment) => attachment.name),
+  };
+}
 
 const PersistedPromptStashState = Schema.Struct({
   entries: Schema.Array(StashEntrySchema),

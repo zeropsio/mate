@@ -27,8 +27,55 @@ export const useAttachmentUploadStore = create<AttachmentUploadStore>(() => ({
   uploadsByImageId: {},
 }));
 
+/**
+ * One file to upload. An image uploads its file under its own id; a picture
+ * that keeps its original also uploads the pasted file, as a plain file (so no
+ * provider looks at it), under `pictureOriginalUploadKey(id)`.
+ */
+interface UploadItem {
+  readonly key: string;
+  readonly kind: "image" | "file";
+  readonly name: string;
+  readonly mimeType: string;
+  readonly file: File;
+}
+
+/** Where a picture's original upload is kept, beside the picture's own. */
+export function pictureOriginalUploadKey(imageId: string): string {
+  return `${imageId}~original`;
+}
+
+function keptOriginal(image: ComposerImageAttachment): File | null {
+  return image.picture?.keepOriginal ? image.picture.source : null;
+}
+
+/** Every upload an image makes: its own, and its original's when it keeps one. */
+export function attachmentUploadKeys(image: ComposerImageAttachment): string[] {
+  return keptOriginal(image) ? [image.id, pictureOriginalUploadKey(image.id)] : [image.id];
+}
+
+function imageUploadItem(image: ComposerImageAttachment): UploadItem {
+  return {
+    key: image.id,
+    kind: "image",
+    name: image.name,
+    mimeType: image.mimeType,
+    file: image.file,
+  };
+}
+
+function originalUploadItem(image: ComposerImageAttachment, original: File): UploadItem {
+  return {
+    key: pictureOriginalUploadKey(image.id),
+    kind: "file",
+    name: original.name || image.name,
+    mimeType: original.type || "application/octet-stream",
+    file: original,
+  };
+}
+
 interface UploadJob {
-  readonly image: ComposerImageAttachment;
+  readonly item: UploadItem;
   readonly environmentId: EnvironmentId;
   readonly previous?: ReadyAttachmentUpload;
   readonly settled: Promise<void>;
@@ -106,11 +153,23 @@ function uploadBytes(input: {
 }
 
 async function runUpload(job: UploadJob): Promise<void> {
-  const mimeType = PROVIDER_SEND_TURN_SUPPORTED_IMAGE_MIME_TYPES.find(
-    (supportedMimeType) => supportedMimeType === job.image.mimeType.toLowerCase(),
+  const { item } = job;
+  const imageMimeType = PROVIDER_SEND_TURN_SUPPORTED_IMAGE_MIME_TYPES.find(
+    (supportedMimeType) => supportedMimeType === item.mimeType.toLowerCase(),
   );
-  if (!mimeType) {
-    setUploadState(job.image.id, {
+  const input =
+    item.kind === "file"
+      ? ({
+          type: "file",
+          name: item.name,
+          mimeType: item.mimeType,
+          sizeBytes: item.file.size,
+        } as const)
+      : imageMimeType
+        ? { name: item.name, mimeType: imageMimeType, sizeBytes: item.file.size }
+        : null;
+  if (input === null) {
+    setUploadState(item.key, {
       status: "failed",
       environmentId: job.environmentId,
       reason: "Unsupported image type",
@@ -124,11 +183,7 @@ async function runUpload(job: UploadJob): Promise<void> {
     attachmentEnvironment.createUploadUrl,
     {
       environmentId: job.environmentId,
-      input: {
-        name: job.image.name,
-        mimeType,
-        sizeBytes: job.image.file.size,
-      },
+      input,
     },
     { reportFailure: false },
   );
@@ -139,7 +194,7 @@ async function runUpload(job: UploadJob): Promise<void> {
     return;
   }
   if (minted._tag !== "Success") {
-    setUploadState(job.image.id, {
+    setUploadState(item.key, {
       status: "failed",
       environmentId: job.environmentId,
       reason: "Upload could not start",
@@ -152,7 +207,7 @@ async function runUpload(job: UploadJob): Promise<void> {
   const connection = readPreparedConnection(job.environmentId);
   const url = connection ? resolveAssetUrl(connection.httpBaseUrl, minted.value.relativeUrl) : null;
   if (!url) {
-    setUploadState(job.image.id, {
+    setUploadState(item.key, {
       status: "failed",
       environmentId: job.environmentId,
       reason: "Not connected",
@@ -165,14 +220,14 @@ async function runUpload(job: UploadJob): Promise<void> {
   let lastStep = -1;
   const upload = uploadBytes({
     url,
-    file: job.image.file,
+    file: item.file,
     onProgress: (progress) => {
       const step = Math.floor(progress * 20);
       if (step === lastStep || job.cancelled) {
         return;
       }
       lastStep = step;
-      setUploadState(job.image.id, {
+      setUploadState(item.key, {
         status: "uploading",
         environmentId: job.environmentId,
         progress,
@@ -187,7 +242,7 @@ async function runUpload(job: UploadJob): Promise<void> {
     if (job.cancelled) {
       return;
     }
-    setUploadState(job.image.id, {
+    setUploadState(item.key, {
       status: "ready",
       environmentId: job.environmentId,
       attachmentId: minted.value.attachmentId,
@@ -199,7 +254,7 @@ async function runUpload(job: UploadJob): Promise<void> {
     if (job.cancelled) {
       return;
     }
-    setUploadState(job.image.id, {
+    setUploadState(item.key, {
       status: "failed",
       environmentId: job.environmentId,
       reason: error instanceof Error ? error.message : "Upload failed",
@@ -228,7 +283,7 @@ function pumpUploads(): void {
     void runUpload(job)
       .catch(() => {
         if (!job.cancelled) {
-          setUploadState(job.image.id, {
+          setUploadState(job.item.key, {
             status: "failed",
             environmentId: job.environmentId,
             reason: "Upload failed",
@@ -238,11 +293,11 @@ function pumpUploads(): void {
       })
       .finally(() => {
         if (
-          jobsByImageId.get(job.image.id) === job &&
-          readAttachmentUpload(job.image.id)?.status !== "failed"
+          jobsByImageId.get(job.item.key) === job &&
+          readAttachmentUpload(job.item.key)?.status !== "failed"
         ) {
           job.stopWatchingConnection();
-          jobsByImageId.delete(job.image.id);
+          jobsByImageId.delete(job.item.key);
         }
         const remaining = (activeUploadsByEnvironment.get(job.environmentId) ?? 1) - 1;
         if (remaining > 0) {
@@ -256,16 +311,31 @@ function pumpUploads(): void {
   }
 }
 
+/**
+ * Starts an image's upload, and its picture's original's when it keeps one; a
+ * picture that no longer keeps its original lets that upload go.
+ */
 export function startAttachmentUpload(input: {
   readonly environmentId: EnvironmentId;
   readonly image: ComposerImageAttachment;
 }): void {
-  const existingJob = jobsByImageId.get(input.image.id);
+  startUpload(input.environmentId, imageUploadItem(input.image));
+  const original = keptOriginal(input.image);
+  if (original) {
+    startUpload(input.environmentId, originalUploadItem(input.image, original));
+  } else if (readAttachmentUpload(pictureOriginalUploadKey(input.image.id))) {
+    releaseUpload(pictureOriginalUploadKey(input.image.id));
+  }
+}
+
+function startUpload(environmentId: EnvironmentId, item: UploadItem): void {
+  const input = { environmentId, item };
+  const existingJob = jobsByImageId.get(item.key);
   if (existingJob?.environmentId === input.environmentId) {
     return;
   }
 
-  const existing = readAttachmentUpload(input.image.id);
+  const existing = readAttachmentUpload(item.key);
   if (existing?.status === "ready" && existing.environmentId === input.environmentId) {
     return;
   }
@@ -277,16 +347,16 @@ export function startAttachmentUpload(input: {
     "previous" in existing &&
     existing.previous?.environmentId === input.environmentId
   ) {
-    cancelAttachmentUpload(input.image.id);
+    cancelAttachmentUpload(item.key);
     if (existing.status === "failed" && existing.attachmentId) {
       deletePendingUpload(existing.environmentId, existing.attachmentId);
     }
-    setUploadState(input.image.id, existing.previous);
+    setUploadState(item.key, existing.previous);
     return;
   }
 
   if (existingJob) {
-    cancelAttachmentUpload(input.image.id);
+    cancelAttachmentUpload(item.key);
   }
   const previous = existing?.status === "ready" ? existing : existing?.previous;
   let resolveSettled: () => void = () => {};
@@ -294,7 +364,7 @@ export function startAttachmentUpload(input: {
     resolveSettled = resolve;
   });
   const job: UploadJob = {
-    image: input.image,
+    item,
     environmentId: input.environmentId,
     ...(previous ? { previous } : {}),
     settled,
@@ -305,7 +375,7 @@ export function startAttachmentUpload(input: {
     stopWatchingConnection: () => {},
   };
 
-  jobsByImageId.set(input.image.id, job);
+  jobsByImageId.set(item.key, job);
   const connectionAtom = environmentCatalog.stateAtom(job.environmentId);
   const isConnected = () =>
     Option.exists(
@@ -322,16 +392,16 @@ export function startAttachmentUpload(input: {
     // Wait for that attempt, then retry only if this job still owns the file.
     void job.settled.then(() => {
       if (
-        jobsByImageId.get(job.image.id) === job &&
-        readAttachmentUpload(job.image.id)?.status === "failed" &&
+        jobsByImageId.get(job.item.key) === job &&
+        readAttachmentUpload(job.item.key)?.status === "failed" &&
         isConnected()
       ) {
-        retryAttachmentUpload(input);
+        retryUpload(input.environmentId, item);
       }
     });
   });
   queue.push(job);
-  setUploadState(input.image.id, {
+  setUploadState(item.key, {
     status: "uploading",
     environmentId: input.environmentId,
     progress: 0,
@@ -359,7 +429,18 @@ function cancelAttachmentUpload(imageId: string): void {
   job.resolveSettled();
 }
 
+/** Lets an image's uploads go: its own and its original's. */
 export function releaseAttachmentUpload(imageId: string): void {
+  releaseUpload(imageId);
+  releaseUpload(pictureOriginalUploadKey(imageId));
+}
+
+/** Lets a picture's copy upload go, keeping its original's: the copy was made again. */
+export function releasePictureCopyUpload(imageId: string): void {
+  releaseUpload(imageId);
+}
+
+function releaseUpload(imageId: string): void {
   const upload = readAttachmentUpload(imageId);
   cancelAttachmentUpload(imageId);
   if (upload?.status === "ready") {
@@ -375,25 +456,42 @@ export function releaseAttachmentUpload(imageId: string): void {
   clearUploadState(imageId);
 }
 
+/** Tries an image's upload again, and its original's when that one failed. */
 export function retryAttachmentUpload(input: {
   readonly environmentId: EnvironmentId;
   readonly image: ComposerImageAttachment;
 }): void {
-  const previous = readAttachmentUpload(input.image.id);
-  cancelAttachmentUpload(input.image.id);
+  retryUpload(input.environmentId, imageUploadItem(input.image));
+  const original = keptOriginal(input.image);
+  if (
+    original &&
+    readAttachmentUpload(pictureOriginalUploadKey(input.image.id))?.status === "failed"
+  ) {
+    retryUpload(input.environmentId, originalUploadItem(input.image, original));
+  }
+}
+
+function retryUpload(environmentId: EnvironmentId, item: UploadItem): void {
+  const previous = readAttachmentUpload(item.key);
+  cancelAttachmentUpload(item.key);
   if (previous?.status === "failed" && previous.attachmentId) {
     deletePendingUpload(previous.environmentId, previous.attachmentId);
   }
   if (previous && "previous" in previous && previous.previous) {
-    setUploadState(input.image.id, previous.previous);
+    setUploadState(item.key, previous.previous);
   } else {
-    clearUploadState(input.image.id);
+    clearUploadState(item.key);
   }
-  startAttachmentUpload(input);
+  startUpload(environmentId, item);
 }
 
 export async function awaitAttachmentUploads(imageIds: ReadonlyArray<string>): Promise<void> {
-  await Promise.all(imageIds.map((imageId) => jobsByImageId.get(imageId)?.settled));
+  await Promise.all(
+    imageIds.flatMap((imageId) => [
+      jobsByImageId.get(imageId)?.settled,
+      jobsByImageId.get(pictureOriginalUploadKey(imageId))?.settled,
+    ]),
+  );
 }
 
 export function getUploadedAttachments(input: {
@@ -401,18 +499,37 @@ export function getUploadedAttachments(input: {
   readonly images: ReadonlyArray<ComposerImageAttachment>;
 }): ChatAttachment[] | null {
   const attachments: ChatAttachment[] = [];
+  const readyId = (key: string): string | null => {
+    const upload = readAttachmentUpload(key);
+    return upload?.status === "ready" && upload.environmentId === input.environmentId
+      ? upload.attachmentId
+      : null;
+  };
   for (const image of input.images) {
-    const upload = readAttachmentUpload(image.id);
-    if (upload?.status !== "ready" || upload.environmentId !== input.environmentId) {
-      return null;
-    }
+    const id = readyId(image.id);
+    if (id === null) return null;
     attachments.push({
       type: "image",
-      id: upload.attachmentId,
+      id,
       name: image.name,
       mimeType: image.mimeType,
       sizeBytes: image.sizeBytes,
+      ...(image.picture ? { width: image.picture.width, height: image.picture.height } : {}),
     });
+    // A picture's original goes right after it: that is how it is known.
+    const original = keptOriginal(image);
+    if (original) {
+      const item = originalUploadItem(image, original);
+      const originalId = readyId(item.key);
+      if (originalId === null) return null;
+      attachments.push({
+        type: "file",
+        id: originalId,
+        name: item.name,
+        mimeType: item.mimeType,
+        sizeBytes: item.file.size,
+      });
+    }
   }
   return attachments;
 }

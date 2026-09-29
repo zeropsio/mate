@@ -8,6 +8,7 @@ import {
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
+  PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   type ScopedThreadRef,
   type ServerProvider,
   ThreadId,
@@ -56,6 +57,8 @@ import {
   resolveZeropsProviderAvailability,
   resolveDraftPromotionNavigationTarget,
   resolveThreadMetadataUpdateForNextTurn,
+  readOncePerFile,
+  restoreQueuedToComposer,
   resolveSendEnvMode,
   threadShellHasStarted,
   resolveDraftHeroState,
@@ -2212,5 +2215,59 @@ describe("diffOpeningShowsWorkingTree", () => {
     expect(
       diffOpeningShowsWorkingTree({ diffOpen, activeThreadRef: thread, explicitThreadRef }),
     ).toBe(resets);
+  });
+});
+
+describe("readOncePerFile", () => {
+  const file = (name: string) => new File([new Uint8Array([1, 2, 3])], name, { type: "image/png" });
+
+  it("reads a file once however often its draft is saved, and each new file anew", async () => {
+    const read = vi.fn(async (source: File) => `data:${source.name}`);
+    const readOnce = readOncePerFile(read);
+    const copy = file("copy.png");
+
+    expect(await readOnce(copy)).toBe("data:copy.png");
+    expect(await readOnce(copy)).toBe("data:copy.png");
+    expect(await readOnce(file("copy.png"))).toBe("data:copy.png");
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it("tries a file that could not be read again", async () => {
+    const read = vi
+      .fn<(source: File) => Promise<string>>()
+      .mockRejectedValueOnce(new Error("busy"))
+      .mockResolvedValueOnce("data:shot.png");
+    const readOnce = readOncePerFile(read);
+    const shot = file("shot.png");
+
+    await expect(readOnce(shot)).rejects.toThrow("busy");
+    expect(await readOnce(shot)).toBe("data:shot.png");
+  });
+});
+
+describe("restoreQueuedToComposer", () => {
+  const P = "\uFFFB";
+  const messages = [
+    { prompt: `One${P}`, images: ["a"] },
+    { prompt: ` Two${P} `, images: ["b"] },
+  ];
+
+  it("joins the prompts after the composer's, and their pictures after its own", () => {
+    expect(restoreQueuedToComposer({ prompt: "Mine", imageCount: 0, messages })).toEqual({
+      prompt: `Mine\n\nOne${P}\n\nTwo${P}`,
+      images: ["a", "b"],
+      overflow: [],
+    });
+  });
+
+  it("sends pictures past the room back to the queue, and takes their places out", () => {
+    const held = P.repeat(PROVIDER_SEND_TURN_MAX_ATTACHMENTS - 1);
+    expect(
+      restoreQueuedToComposer({
+        prompt: held,
+        imageCount: PROVIDER_SEND_TURN_MAX_ATTACHMENTS - 1,
+        messages,
+      }),
+    ).toEqual({ prompt: `${held}\n\nOne${P}\n\nTwo`, images: ["a"], overflow: ["b"] });
   });
 });

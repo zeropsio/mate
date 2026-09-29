@@ -28,10 +28,6 @@ vi.mock("../../zerops/ZeropsSessionProvider", () => ({
   useZeropsSessionOptional: () => null,
 }));
 
-vi.mock("../MateMark", () => ({
-  MateMark: () => null,
-}));
-
 vi.mock("./ZeropsAgentAuthCard", () => ({
   ZeropsAgentAuthRows: ({ snapshot }: { readonly snapshot: ZeropsAgentAuthSnapshot }) => (
     <ul data-zerops-agent-auth-rows>

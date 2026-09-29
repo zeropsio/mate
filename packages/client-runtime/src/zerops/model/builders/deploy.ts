@@ -28,6 +28,7 @@ import type {
   ZeropsCall,
   ZeropsOperationLink,
   ZeropsOperationPhase,
+  ZeropsOperationPullRequest,
   ZeropsOperationStep,
   ZeropsOperationVersion,
 } from "../types.ts";
@@ -262,7 +263,7 @@ interface GitPushResult {
   readonly verifyTarget: string | undefined;
   readonly failureCause: string | undefined;
   readonly buildLogs: ReadonlyArray<string>;
-  readonly pullRequest: number | undefined;
+  readonly pullRequest: ZeropsOperationPullRequest | undefined;
 }
 
 /**
@@ -318,8 +319,22 @@ function decodeGitPushResult(
     verifyTarget: readString(document.verifyTarget),
     failureCause: readString(readRecord(document.failureClassification)?.likelyCause),
     buildLogs: readStringArray(document.buildLogs),
-    pullRequest: readNumber(readRecord(document.pullRequest)?.number),
+    pullRequest: decodePullRequest(readRecord(document.pullRequest)),
   };
+}
+
+/**
+ * The pull request a push lands through: `repo` is `org/name` on the group's
+ * Gitea, and the flow names a repository by its name in the org.
+ */
+function decodePullRequest(
+  record: Record<string, unknown> | undefined,
+): ZeropsOperationPullRequest | undefined {
+  const number = readNumber(record?.number);
+  const repository = readString(record?.repo)
+    ?.split("/")
+    .findLast((part) => part.length > 0);
+  return number === undefined || repository === undefined ? undefined : { repository, number };
 }
 
 const GIT_PUSH_PHASE: Readonly<Record<GitPushOutcome, ZeropsOperationPhase>> = {
@@ -403,7 +418,7 @@ function gitPushClosingFor(
         case "pushed":
           return gitPushClosing("pushed", {
             branch: pushed.branch,
-            pullRequest: pushed.pullRequest,
+            pullRequest: pushed.pullRequest?.number,
           });
         case "upToDate":
           return gitPushClosing("upToDate", {});
@@ -455,6 +470,7 @@ function buildGitPushFields(
     subject,
     kicker: `${GIT_PUSH_LABEL} · ${subject}`,
     strategy: "git-push",
+    ...(pushed?.pullRequest !== undefined ? { pullRequest: pushed.pullRequest } : {}),
     voice: gitPushVoice(subject),
     voiceSource: "mate",
     statusWord: gatedStatusWord(

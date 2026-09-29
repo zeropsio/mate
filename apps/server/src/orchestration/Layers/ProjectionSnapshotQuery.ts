@@ -55,6 +55,8 @@ import {
 } from "../../persistence/Errors.ts";
 import { ThreadBackgroundLivenessService } from "../ThreadBackgroundLiveness.ts";
 import { ThreadPlanProgressService } from "../ThreadPlanProgress.ts";
+import { ThreadLiveStepService } from "../ThreadLiveStep.ts";
+import { pendingUserInputQuestion } from "../pendingUserInput.ts";
 import { ProjectionProject } from "../../persistence/Services/ProjectionProjects.ts";
 import { ProjectionState } from "../../persistence/Services/ProjectionState.ts";
 import { ProjectionThreadActivity } from "../../persistence/Services/ProjectionThreadActivities.ts";
@@ -450,6 +452,20 @@ function toPersistenceSqlOrDecodeError(sqlOperation: string, decodeOperation: st
 const makeProjectionSnapshotQuery = Effect.gen(function* () {
   const threadBackgroundLiveness = yield* ThreadBackgroundLivenessService;
   const threadPlanProgress = yield* ThreadPlanProgressService;
+  const threadLiveStep = yield* ThreadLiveStepService;
+  // What a running turn is on this moment, on the shell only while the shell's
+  // own session says a turn runs: whatever ended it without a word to the
+  // relay (a session stopped from here, an error) cannot leave a step behind.
+  const liveStepField = (threadId: ThreadId, session: OrchestrationSession | null) => {
+    if (session?.status !== "running" || session.activeTurnId === null) return {};
+    const liveStep = threadLiveStep.getThreadLiveStep(threadId);
+    return liveStep === null ? {} : { liveStep };
+  };
+  // What a waiting thread asks, on the shell only while it waits.
+  const pendingQuestionField = (questions: ReadonlyMap<string, string>, threadId: ThreadId) => {
+    const pendingQuestion = questions.get(threadId);
+    return pendingQuestion === undefined ? {} : { pendingQuestion };
+  };
   const sql = yield* SqlClient.SqlClient;
   const repositoryIdentityResolver = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
   const repositoryIdentityResolutionConcurrency = 4;
@@ -1302,6 +1318,75 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
       LIMIT 1
     `,
   });
+
+  // The user-input lifecycle of every thread that waits on the person: what
+  // its shell's question is folded from, by the fold its count comes from.
+  const listWaitingUserInputRows = SqlSchema.findAll({
+    Request: Schema.Void,
+    Result: ProjectionThreadActivityDbRowSchema,
+    execute: () => sql`
+      SELECT
+        activity.activity_id AS "activityId",
+        activity.thread_id AS "threadId",
+        activity.turn_id AS "turnId",
+        activity.tone,
+        activity.kind,
+        activity.summary,
+        activity.payload_json AS "payload",
+        activity.sequence,
+        activity.created_at AS "createdAt"
+      FROM projection_thread_activities AS activity
+      INNER JOIN projection_threads AS thread ON thread.thread_id = activity.thread_id
+      WHERE thread.pending_user_input_count > 0
+        AND activity.kind IN (
+          'user-input.requested',
+          'user-input.resolved',
+          'provider.user-input.respond.failed'
+        )
+    `,
+  });
+
+  const listThreadUserInputRows = SqlSchema.findAll({
+    Request: ThreadIdLookupInput,
+    Result: ProjectionThreadActivityDbRowSchema,
+    execute: ({ threadId }) => sql`
+      SELECT
+        activity_id AS "activityId",
+        thread_id AS "threadId",
+        turn_id AS "turnId",
+        tone,
+        kind,
+        summary,
+        payload_json AS "payload",
+        sequence,
+        created_at AS "createdAt"
+      FROM projection_thread_activities
+      WHERE thread_id = ${threadId}
+        AND kind IN (
+          'user-input.requested',
+          'user-input.resolved',
+          'provider.user-input.respond.failed'
+        )
+    `,
+  });
+
+  /** Each waiting thread's question, by thread, folded from its lifecycle rows. */
+  const questionsByThread = (
+    rows: ReadonlyArray<Schema.Schema.Type<typeof ProjectionThreadActivityDbRowSchema>>,
+  ): ReadonlyMap<string, string> => {
+    const rowsByThread = new Map<string, Array<(typeof rows)[number]>>();
+    for (const row of rows) {
+      const threadRows = rowsByThread.get(row.threadId);
+      if (threadRows === undefined) rowsByThread.set(row.threadId, [row]);
+      else threadRows.push(row);
+    }
+    const questions = new Map<string, string>();
+    for (const [threadId, threadRows] of rowsByThread) {
+      const question = pendingUserInputQuestion(threadRows);
+      if (question !== null) questions.set(threadId, question);
+    }
+    return questions;
+  };
 
   const getUserInputActivity: ProjectionSnapshotQueryShape["getUserInputActivity"] = (input) =>
     getUserInputActivityRow(input).pipe(
@@ -2405,10 +2490,18 @@ pending_approval_requests AS (
               ),
             ),
           ),
+          listWaitingUserInputRows(undefined).pipe(
+            Effect.mapError(
+              toPersistenceSqlOrDecodeError(
+                "ProjectionSnapshotQuery.getShellSnapshot:listWaitingUserInput:query",
+                "ProjectionSnapshotQuery.getShellSnapshot:listWaitingUserInput:decodeRows",
+              ),
+            ),
+          ),
         ]),
       )
       .pipe(
-        Effect.flatMap(([projectRows, threadRows, sessionRows, latestTurnRows, stateRows]) =>
+        Effect.flatMap(([projectRows, threadRows, sessionRows, latestTurnRows, stateRows, asks]) =>
           Effect.gen(function* () {
             let updatedAt: string | null = null;
             for (const row of projectRows) {
@@ -2440,6 +2533,7 @@ pending_approval_requests AS (
             const sessionByThread = new Map(
               sessionRows.map((row) => [row.threadId, mapSessionRow(row)] as const),
             );
+            const pendingQuestions = questionsByThread(asks);
 
             const snapshot = {
               snapshotSequence: computeSnapshotSequence(stateRows),
@@ -2489,11 +2583,13 @@ pending_approval_requests AS (
                         : { latestUserMessagePreview: row.latestUserMessagePreview }),
                       hasPendingApprovals: row.pendingApprovalCount > 0,
                       hasPendingUserInput: row.pendingUserInputCount > 0,
+                      ...pendingQuestionField(pendingQuestions, row.threadId),
                       hasActionableProposedPlan: row.hasActionableProposedPlan > 0,
                       backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
                         row.threadId,
                       ),
                       planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
+                      ...liveStepField(row.threadId, sessionByThread.get(row.threadId) ?? null),
                       usagePause: mapUsagePause(row),
                       ...(row.crew === null ? {} : { crew: row.crew }),
                     } satisfies OrchestrationThreadShell)
@@ -2563,10 +2659,18 @@ pending_approval_requests AS (
               ),
             ),
           ),
+          listWaitingUserInputRows(undefined).pipe(
+            Effect.mapError(
+              toPersistenceSqlOrDecodeError(
+                "ProjectionSnapshotQuery.getArchivedShellSnapshot:listWaitingUserInput:query",
+                "ProjectionSnapshotQuery.getArchivedShellSnapshot:listWaitingUserInput:decodeRows",
+              ),
+            ),
+          ),
         ]),
       )
       .pipe(
-        Effect.flatMap(([projectRows, threadRows, sessionRows, latestTurnRows, stateRows]) =>
+        Effect.flatMap(([projectRows, threadRows, sessionRows, latestTurnRows, stateRows, asks]) =>
           Effect.gen(function* () {
             let updatedAt: string | null = null;
             for (const row of projectRows) {
@@ -2601,6 +2705,7 @@ pending_approval_requests AS (
             const sessionByThread = new Map(
               sessionRows.map((row) => [row.threadId, mapSessionRow(row)] as const),
             );
+            const pendingQuestions = questionsByThread(asks);
 
             const snapshot = {
               snapshotSequence: computeSnapshotSequence(stateRows),
@@ -2648,6 +2753,7 @@ pending_approval_requests AS (
                   : { latestUserMessagePreview: row.latestUserMessagePreview }),
                 hasPendingApprovals: row.pendingApprovalCount > 0,
                 hasPendingUserInput: row.pendingUserInputCount > 0,
+                ...pendingQuestionField(pendingQuestions, row.threadId),
                 hasActionableProposedPlan: row.hasActionableProposedPlan > 0,
                 backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
                   row.threadId,
@@ -2914,6 +3020,20 @@ pending_approval_requests AS (
       if (Option.isNone(threadRow)) {
         return Option.none<OrchestrationThreadShell>();
       }
+      const session = Option.isSome(sessionRow) ? mapSessionRow(sessionRow.value) : null;
+      const pendingQuestions =
+        threadRow.value.pendingUserInputCount > 0
+          ? questionsByThread(
+              yield* listThreadUserInputRows({ threadId }).pipe(
+                Effect.mapError(
+                  toPersistenceSqlOrDecodeError(
+                    "ProjectionSnapshotQuery.getThreadShellById:listUserInput:query",
+                    "ProjectionSnapshotQuery.getThreadShellById:listUserInput:decodeRows",
+                  ),
+                ),
+              ),
+            )
+          : new Map<string, string>();
 
       return Option.some({
         id: threadRow.value.threadId,
@@ -2942,7 +3062,7 @@ pending_approval_requests AS (
         autoSettleDisabledAt: threadRow.value.autoSettleDisabledAt ?? null,
         titleRegeneration: mapTitleRegeneration(threadRow.value),
         titleState: threadRow.value.titleState,
-        session: Option.isSome(sessionRow) ? mapSessionRow(sessionRow.value) : null,
+        session,
         latestUserMessageAt: threadRow.value.latestUserMessageAt,
         ...(threadRow.value.latestMessagePreview === null
           ? {}
@@ -2952,11 +3072,13 @@ pending_approval_requests AS (
           : { latestUserMessagePreview: threadRow.value.latestUserMessagePreview }),
         hasPendingApprovals: threadRow.value.pendingApprovalCount > 0,
         hasPendingUserInput: threadRow.value.pendingUserInputCount > 0,
+        ...pendingQuestionField(pendingQuestions, threadRow.value.threadId),
         hasActionableProposedPlan: threadRow.value.hasActionableProposedPlan > 0,
         backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
           threadRow.value.threadId,
         ),
         planProgress: threadPlanProgress.getThreadPlanProgress(threadRow.value.threadId),
+        ...liveStepField(threadRow.value.threadId, session),
         usagePause: mapUsagePause(threadRow.value),
         ...(threadRow.value.crew === null ? {} : { crew: threadRow.value.crew }),
       } satisfies OrchestrationThreadShell);

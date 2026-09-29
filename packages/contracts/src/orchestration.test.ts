@@ -340,6 +340,41 @@ it.effect("tolerates attachment types from newer builds when decoding messages",
   }),
 );
 
+// A picture's pixel size lets the conversation hold its room before its bytes
+// arrive; older messages carry none.
+it.effect.each([
+  { name: "a picture's pixel size", size: { width: 2000, height: 1299 }, keeps: true },
+  { name: "no size", size: {}, keeps: true },
+  { name: "a size of nothing", size: { width: 0, height: 1299 }, keeps: false },
+])("decodes an image attachment with $name", ({ size, keeps }) =>
+  Effect.gen(function* () {
+    const attachment = {
+      type: "image",
+      id: "thread-1-00000000-0000-4000-8000-000000000004-png",
+      name: "home-page.png",
+      mimeType: "image/png",
+      sizeBytes: 12,
+      ...size,
+    };
+    const decoded = yield* Effect.exit(
+      decodeOrchestrationMessage({
+        id: "message-1",
+        role: "user",
+        text: "[Picture 1]",
+        attachments: [attachment],
+        turnId: null,
+        streaming: false,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    assert.strictEqual(Exit.isSuccess(decoded), keeps);
+    if (Exit.isSuccess(decoded)) {
+      assert.deepStrictEqual(decoded.value.attachments?.[0], attachment);
+    }
+  }),
+);
+
 // The tolerant member must not catch malformed known attachments: a file over
 // the size cap or an image with a bad mime has to fail its own schema, not
 // slide through the open one with those constraints unchecked.
@@ -1411,3 +1446,74 @@ it("isProviderSendTurnSupportedImageMimeType accepts raster formats and rejects 
   assert.strictEqual(isProviderSendTurnSupportedImageMimeType("IMAGE/JPEG"), true);
   assert.strictEqual(isProviderSendTurnSupportedImageMimeType("image/svg+xml"), false);
 });
+
+const buildCall = {
+  id: "call-build",
+  activityKind: "tool.updated",
+  itemType: "command_execution",
+  title: "Command run",
+  detail: "Bash: pnpm build",
+  toolName: "Bash",
+  command: "pnpm build",
+  input: { description: "Build the app", command: "pnpm build" },
+  startedAt: "2026-09-29T08:00:05.000Z",
+};
+
+it.effect.each([
+  { name: "a shell from an older server", extra: {}, expected: undefined },
+  {
+    name: "a Mate between steps",
+    extra: { liveStep: { kind: "thinking", since: "2026-09-29T08:00:00.000Z" } },
+    expected: { kind: "thinking", since: "2026-09-29T08:00:00.000Z" },
+  },
+  {
+    name: "a Mate whose words stream",
+    extra: { liveStep: { kind: "writing", since: "2026-09-29T08:00:09.000Z" } },
+    expected: { kind: "writing", since: "2026-09-29T08:00:09.000Z" },
+  },
+  {
+    name: "a Mate running a command",
+    extra: {
+      liveStep: { kind: "calls", since: "2026-09-29T08:00:05.000Z", calls: [buildCall] },
+    },
+    expected: { kind: "calls", since: "2026-09-29T08:00:05.000Z", calls: [buildCall] },
+  },
+  {
+    name: "a call a later server tells more of: what this client does not know is dropped",
+    extra: {
+      liveStep: {
+        kind: "calls",
+        since: "2026-09-29T08:00:05.000Z",
+        calls: [{ ...buildCall, elapsedMs: 31_000 }],
+      },
+    },
+    expected: { kind: "calls", since: "2026-09-29T08:00:05.000Z", calls: [buildCall] },
+  },
+  {
+    name: "a step of a kind a later server added: absent, the shell intact",
+    extra: { liveStep: { kind: "compacting", since: "2026-09-29T08:00:00.000Z" } },
+    expected: undefined,
+  },
+  { name: "no step relayed", extra: { liveStep: null }, expected: undefined },
+])("decodes the live step of $name", ({ extra, expected }) =>
+  Effect.gen(function* () {
+    const shell = yield* decodeOrchestrationThreadShell({ ...usagePauseShell, ...extra });
+    assert.deepStrictEqual<unknown>(shell.liveStep, expected);
+    assert.strictEqual(shell.title, "Paused thread");
+  }),
+);
+
+it.effect.each([
+  { name: "a shell from an older server", extra: {}, expected: undefined },
+  { name: "a shell with nothing asked", extra: { pendingQuestion: null }, expected: null },
+  {
+    name: "a Mate waiting on its question",
+    extra: { pendingQuestion: " Ship the status page now, or after the review? " },
+    expected: "Ship the status page now, or after the review?",
+  },
+])("decodes the pending question of $name", ({ extra, expected }) =>
+  Effect.gen(function* () {
+    const shell = yield* decodeOrchestrationThreadShell({ ...usagePauseShell, ...extra });
+    assert.deepStrictEqual(shell.pendingQuestion, expected);
+  }),
+);

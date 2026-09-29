@@ -221,8 +221,9 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
     `,
   });
 
-  // Attachment kinds only, and only from well-formed JSON: a preview never
-  // decodes attachment metadata, and one bad row must not blank the shell.
+  // Attachment kinds and types only, and only from well-formed JSON: a preview
+  // never decodes attachment metadata, and one bad row must not blank the
+  // shell. The type tells a picture's kept original from a file.
   const listLatestPreviewSourceRows = SqlSchema.findAll({
     Request: LatestProjectionThreadMessagePreviewSourceInput,
     Result: ProjectionThreadMessagePreviewSourceDbRowSchema,
@@ -234,7 +235,10 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
           WHEN json_valid(attachments_json) AND json_type(attachments_json) = 'array'
           THEN (
             SELECT json_group_array(
-              json_object('type', COALESCE(json_extract(attachment.value, '$.type'), 'file'))
+              json_object(
+                'type', COALESCE(json_extract(attachment.value, '$.type'), 'file'),
+                'mimeType', COALESCE(json_extract(attachment.value, '$.mimeType'), '')
+              )
             )
             FROM json_each(attachments_json) AS attachment
           )

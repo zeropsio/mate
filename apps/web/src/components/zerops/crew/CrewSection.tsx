@@ -36,6 +36,8 @@ import type {
 import { EllipsisIcon, ExternalLinkIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { useOpenReview } from "~/zerops/review";
+
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
@@ -296,6 +298,7 @@ function CrewAttentionBlock(props: CrewSectionProps) {
 
 function CrewAttentionRow(props: CrewSectionProps & { readonly row: CrewAttention }) {
   const { row, snapshot, send } = props;
+  const openReview = useOpenReview();
   const [answering, setAnswering] = useState(false);
   const [answer, setAnswer] = useState("");
   const sentence = crewAttentionSentence(row, snapshot);
@@ -321,10 +324,20 @@ function CrewAttentionRow(props: CrewSectionProps & { readonly row: CrewAttentio
             <Pill
               key={action.label}
               label={action.label}
-              onClick={() => {
+              onClick={(event) => {
                 switch (action.kind) {
                   case "answer":
                     setAnswering(true);
+                    return;
+                  case "review":
+                    openReview(
+                      {
+                        kind: "crew-task",
+                        environmentId: props.environmentId,
+                        taskId: action.taskId,
+                      },
+                      { from: event.currentTarget },
+                    );
                     return;
                   case "ask":
                     props.onAsk(action.ask, sentence);

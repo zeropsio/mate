@@ -9,6 +9,7 @@ import type { LegendListRef } from "@legendapp/list/react";
 import type { ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
 import { InventoryContext, type Inventory } from "../../zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "../../zerops/zeropsDataContext";
+import { forgetRunFolds, setRunFold } from "./runCard.logic";
 
 vi.mock("@legendapp/list/react", async () => {
   const legendListTestId = "legend-list";
@@ -293,6 +294,42 @@ describe("MessagesTimeline", () => {
     expect(hero).toContain('data-timeline-loading="true"');
     expect(hero).not.toContain("data-mate-face-state");
   });
+
+  // A working Mate's conversation still on its way has no run to draw yet:
+  // a run made up from its status alone was placed and shown, then thrown
+  // 1,480 px when the conversation came (the switch harness, 2026-09-29).
+  it.each([
+    { case: "with no turn known", running: false },
+    { case: "with its running turn known from its status", running: true },
+  ])(
+    "shows a working Mate's pane, not a made-up run, while its conversation is on its way, $case",
+    ({ running }) => {
+      const turnId = TurnId.make("turn-on-its-way");
+      const loading = renderToStaticMarkup(
+        <MessagesTimeline
+          {...buildProps()}
+          isWorking
+          activeTurnStartedAt={MESSAGE_CREATED_AT}
+          {...(running
+            ? {
+                runningTurnId: turnId,
+                latestTurn: {
+                  turnId,
+                  state: "running" as const,
+                  startedAt: MESSAGE_CREATED_AT,
+                  completedAt: null,
+                },
+              }
+            : {})}
+          hideEmptyPlaceholder
+          loading
+          timelineEntries={[]}
+        />,
+      );
+      expect(loading).toContain('data-timeline-loading="true"');
+      expect(loading).not.toContain("data-timeline-row-kind");
+    },
+  );
 
   it("uses the larger leading inset only when the top fade is enabled", () => {
     const timelineEntries = [buildUserTimelineEntry("Hello")];
@@ -1236,7 +1273,7 @@ describe("MessagesTimeline — the conversation", () => {
         />
       </CrewTimelineContext>,
     );
-    expect(markup).toContain("Backend worked<");
+    expect(markup).toMatch(/>Backend worked \d/u);
     expect(markup).not.toContain("Assistant worked");
   });
 
@@ -1257,17 +1294,21 @@ describe("MessagesTimeline — the conversation", () => {
     // The chat's last line says who worked and how long: to the answer, not
     // to when the server closed the turn — the same span once another turn
     // follows. No heading stands over the card.
-    expect(markup).toMatch(
-      /Assistant worked<\/span><\/span><span[^>]*data-work-line-clock[^>]*>1m</,
-    );
+    expect(markup).toContain(">Assistant worked 1m<");
     expect(markup).not.toContain('data-timeline-row-kind="work-line"');
-    // The record stays on the page, everything the Mate did in order (the
-    // owner, 2026-09-27: "after the work is done I'd leave it on the page").
+    // Come back to, the run opens folded (K7): its worked line on top, what it
+    // said to the person under it, its calls behind "Show work".
     const record = markup.slice(markup.indexOf('data-timeline-row-kind="record"'));
-    expect(record.indexOf("pnpm build")).toBeLessThan(record.indexOf("Building the shop now."));
-    expect(record.match(/>pnpm build</g)).toHaveLength(2);
-    // What its calls came to is the result's, as a pill that opens them.
-    expect(markup).toContain('aria-label="Ran 2 commands. Show them"');
+    expect(record).toContain('data-run-fold="folded"');
+    expect(record.indexOf(">Assistant worked 1m<")).toBeLessThan(
+      record.indexOf("Building the shop now."),
+    );
+    expect(record).toMatch(/<button aria-expanded="false" class="run-now-fold"[^>]*>Show work/u);
+    expect(record).not.toContain(">pnpm build<");
+    // What its calls came to is the work's and the worked line's, never a
+    // result row (K6): a run that only ran commands leaves no result.
+    expect(markup).not.toContain("Ran 2 commands");
+    expect(markup).not.toContain("data-turn-report");
     expect(markup).toContain("The shop builds.");
     expect(markup).not.toContain("data-message-receipt");
     // Nothing about the run opens a dialog: what it holds opens in place.
@@ -1277,6 +1318,8 @@ describe("MessagesTimeline — the conversation", () => {
   // A step is a bubble of the run's chat; what it printed opens in place,
   // under it — never a dialog (the owner, 2026-09-27: "I hate the dialog").
   it("opens what a step printed in place, under its bubble", () => {
+    // A run the person watched stays open while they are in the conversation.
+    setRunFold("environment-local:thread-1", "msg:message-1", "watched");
     const built = tool("w1", 5);
     const markup = renderToStaticMarkup(
       <MessagesTimeline
@@ -1293,6 +1336,7 @@ describe("MessagesTimeline — the conversation", () => {
       /<div[^>]*data-chat-bubble="tool"[^>]*data-chat-kind="step:command"[^>]*>(?:<span class="absolute[^"]*">[\s\S]*?<\/svg><\/span><\/span><\/span>)<button aria-expanded="false" aria-label="pnpm build\. Show what it returned"/,
     );
     expect(markup).not.toContain("dist/index.js");
+    forgetRunFolds("environment-local:thread-1");
   });
 
   it("says the Mate is working from the moment a message is sent", () => {
@@ -1304,9 +1348,9 @@ describe("MessagesTimeline — the conversation", () => {
         timelineEntries={[buildUserTimelineEntry("Deploy it")]}
       />,
     );
-    // The card stands from the first frame, the Mate's status its last line.
+    // The card stands from the first frame, the now line its last line.
     expect(markup).toContain('data-timeline-row-id="record:msg:message-1"');
-    expect(markup).toContain("Assistant is thinking");
+    expect(markup).toContain(">Thinking<");
     expect(markup).toContain('data-work-line="working"');
     expect(markup).toContain('data-message-receipt="sent"');
   });
@@ -1360,8 +1404,8 @@ describe("MessagesTimeline — the conversation", () => {
       record.indexOf("Fixing the types."),
     );
     expect(record.indexOf("Fixing the types.")).toBeLessThan(record.indexOf("pnpm build"));
-    // Between steps the status line says it thinks: no word of what it did twice.
-    expect(record).toContain("Assistant is thinking");
+    // Between steps the now line says it thinks: no word of what it did twice.
+    expect(record).toContain(">Thinking<");
     // What runs alongside stands under the record.
     expect(markup).toContain("data-conversation-working");
   });
@@ -1372,13 +1416,13 @@ describe("MessagesTimeline — the conversation", () => {
       tool("w1", 5),
       { ...writing, message: { ...writing.message, streaming: true } },
     ]);
-    expect(markup).toContain("Assistant is writing");
+    expect(markup).toContain(">Writing<");
     expect(markup).not.toContain("Checking /status next.");
   });
 
   it("shows the Mate composing before it said anything", () => {
     const markup = liveTimeline([tool("w1", 5)]);
-    expect(markup).toContain("Assistant is thinking");
+    expect(markup).toContain(">Thinking<");
     expect(markup).not.toContain('data-chat-kind="note"');
   });
 
@@ -1394,19 +1438,25 @@ describe("MessagesTimeline — the conversation", () => {
     },
   });
 
-  // The step it is taking, in words and with what it is on — the page it
-  // reads, the command it runs (the owner, 2026-09-27: "why isn't the chat
-  // showing even the commands it runs?") — once, beside its face.
-  it("says the step the Mate is taking beside its face, once, with what it is on", () => {
+  // The step it is taking lives on the now line while it runs (K10), in
+  // words and with what it is on — the page it reads, the command it runs —
+  // once, beside its face; it lands in the chat above once it ends.
+  it("says the step the Mate is taking on the now line, once, with what it is on", () => {
     const markup = liveTimeline([
       assistant("a1", 5, "Reading the docs first."),
       call("c1", 8, 'WebFetch: {"url":"https://docs.example.dev/guides"}'),
     ]);
-    expect(markup).toContain('data-chat-kind="step:web"');
+    expect(markup).not.toContain('data-chat-kind="step:web"');
+    expect(markup).toContain('data-run-now="step"');
     expect(markup).toContain('data-mate-face-state="working"');
-    // Beside the face and nowhere else: the chat keeps the same bubble once it returns.
-    expect(markup.match(/docs\.example\.dev\/guides/g)).toHaveLength(1);
-    expect(markup).toContain(">Reading<");
+    // Once on the line, and once more for a screen reader, in its words alone.
+    expect(markup.match(/docs\.example\.dev\/guides/g)).toHaveLength(2);
+    expect(markup).toContain(
+      '<span class="sr-only" role="status">Reading docs.example.dev/guides</span>',
+    );
+    expect(markup).toMatch(
+      />Reading(?:<!-- -->)? <span class="run-now-mono">docs\.example\.dev\/guides</u,
+    );
     expect(markup).not.toContain("WebFetch");
   });
 
@@ -1416,11 +1466,14 @@ describe("MessagesTimeline — the conversation", () => {
     ]);
     expect(markup).toContain('data-run-status="waiting"');
     expect(markup).toContain('data-mate-face-state="needs"');
-    expect(markup).toContain("Assistant is waiting for your answer");
+    expect(markup).toContain(">Waiting for your answer<");
     expect(markup).not.toContain("AskUserQuestion");
   });
 
-  it("keeps the question the Mate asked in its words beside its face, the answer in the person's", () => {
+  // The question stands in the run's card as the Mate asked it, in its tint
+  // with its face beside it, and the person's answer under it in their own
+  // bubble (K14) — kept when the run folds on return (K7).
+  it("keeps the question the Mate asked in its card, the answer in the person's bubble under it", () => {
     const input = (id: string, second: number, extra: Record<string, unknown>) => ({
       ...tool(id, second),
       entry: {
@@ -1458,11 +1511,14 @@ describe("MessagesTimeline — the conversation", () => {
         }
       />,
     );
-    const answer = markup.slice(markup.indexOf("data-person-answer"));
-    // The question in the Mate's prose, as its answers stand: no bubble on the page.
-    expect(answer).toContain("data-mate-question");
-    expect(markup).not.toContain("data-mate-speech");
-    expect(answer.indexOf("Which accent do you prefer?")).toBeLessThan(answer.indexOf("Teal"));
+    const card = markup.slice(markup.indexOf('data-timeline-row-kind="record"'));
+    expect(card).toMatch(
+      /data-chat-bubble="speech" data-chat-kind="question"><p[^>]*>Which accent do you prefer\?</u,
+    );
+    expect(card).toMatch(/<p class="[^"]*bg-message[^"]*" data-chat-kind="person">Teal</u);
+    expect(card.indexOf("Which accent do you prefer?")).toBeLessThan(card.indexOf(">Teal<"));
+    // No row of its own on the page: the question and answer are the card's.
+    expect(markup).not.toContain("data-person-answer");
     // The question's short header was never the person's words.
     expect(markup).not.toContain("Accent colour");
   });
@@ -1740,5 +1796,255 @@ describe("messageEnters", () => {
     ],
   ] as const)("%s", (_, row, after, enters) => {
     expect(messageEnters(row, after)).toBe(enters);
+  });
+});
+
+describe("MessagesTimeline — standing in place across a switch", () => {
+  // T1: the pane holds what it showed last over this conversation until the
+  // conversation says it stands where it stays — once its list has placed
+  // its rows, never while it is on its way. On its way, a slow one shows its
+  // Mate at work, which is something on screen too.
+  const frames: FrameRequestCallback[] = [];
+  const runFrames = () => {
+    for (const frame of frames.splice(0)) frame(0);
+  };
+  beforeEach(() => {
+    frames.length = 0;
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+      frames.push(callback),
+    );
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+  });
+
+  const listRef = {
+    current: {
+      getState: () => ({ data: [], isWithinMaintainScrollAtEndThreshold: true }),
+      getScrollableNode: () => ({ scrollTop: 0, scrollHeight: 2000, clientHeight: 800 }),
+    } as unknown as LegendListRef,
+  };
+  const layer = () => ({ painted: vi.fn(), waiting: vi.fn(), placing: vi.fn() });
+  type Shown = Pick<
+    Parameters<typeof MessagesTimeline>[0],
+    "timelineEntries" | "hideEmptyPlaceholder" | "loading"
+  >;
+  const timeline = async (switchLayer: ReturnType<typeof layer>, props: Shown) => {
+    const { TimelineSwitchContext } = await import("./TimelineSwitch");
+    return (
+      <TimelineSwitchContext value={switchLayer}>
+        <MessagesTimeline
+          {...buildProps()}
+          listRef={listRef}
+          routeThreadKey="environment-local:thread-in-place"
+          {...props}
+        />
+      </TimelineSwitchContext>
+    );
+  };
+  const mount = async (switchLayer: ReturnType<typeof layer>, props: Shown) => {
+    let renderer: ReactTestRenderer | undefined;
+    const element = await timeline(switchLayer, props);
+    await act(() => {
+      renderer = create(element);
+    });
+    runFrames();
+    return renderer!;
+  };
+
+  const settleFrames = async (count: number) => {
+    for (let frame = 0; frame < count; frame += 1) await act(() => runFrames());
+  };
+
+  it("says so once its list has put the rows in place", async () => {
+    const { LegendList } = await import("@legendapp/list/react");
+    const switchLayer = layer();
+    const renderer = await mount(switchLayer, {
+      timelineEntries: [buildUserTimelineEntry("Where were we?")],
+    });
+    try {
+      await settleFrames(4);
+      expect(switchLayer.painted).not.toHaveBeenCalled();
+      await act(() => renderer.root.findByType(LegendList).props.onLoad({ elapsedTimeInMs: 4 }));
+      await settleFrames(6);
+      expect(switchLayer.painted).toHaveBeenCalledTimes(1);
+    } finally {
+      await act(() => renderer.unmount());
+    }
+  });
+
+  // A Mate streaming its answer changes the rows every frame: the list's end
+  // never stands still, and the conversation still shows, after a while.
+  it("says so after a while, even while its rows never stand still", async () => {
+    const { LegendList } = await import("@legendapp/list/react");
+    const { TIMELINE_PLACING_AT_MOST_MS } = await import("./timelineScrollAnchoring");
+    let now = 0;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    let height = 2000;
+    const streaming = {
+      scrollTop: 0,
+      clientHeight: 800,
+      get scrollHeight() {
+        height += 40;
+        return height;
+      },
+    };
+    const streamingList = {
+      current: {
+        getState: () => ({ data: [], isWithinMaintainScrollAtEndThreshold: true }),
+        getScrollableNode: () => streaming,
+        scrollToEnd: vi.fn(() => Promise.resolve()),
+      } as unknown as LegendListRef,
+    };
+    const switchLayer = layer();
+    const { TimelineSwitchContext } = await import("./TimelineSwitch");
+    let renderer: ReactTestRenderer | undefined;
+    try {
+      await act(() => {
+        renderer = create(
+          <TimelineSwitchContext value={switchLayer}>
+            <MessagesTimeline
+              {...buildProps()}
+              listRef={streamingList}
+              routeThreadKey="environment-local:thread-streaming-end"
+              timelineEntries={[buildUserTimelineEntry("Keep going.")]}
+            />
+          </TimelineSwitchContext>,
+        );
+      });
+      await act(() => renderer!.root.findByType(LegendList).props.onLoad({ elapsedTimeInMs: 4 }));
+      for (; now < TIMELINE_PLACING_AT_MOST_MS - 16; now += 16) await settleFrames(1);
+      expect(switchLayer.painted).not.toHaveBeenCalled();
+      now = TIMELINE_PLACING_AT_MOST_MS;
+      await settleFrames(3);
+      expect(switchLayer.painted).toHaveBeenCalledTimes(1);
+    } finally {
+      clock.mockRestore();
+      await act(() => renderer?.unmount());
+    }
+  });
+
+  // Coming back mid-read to a Mate still streaming: the place is put back by
+  // one loop that reads the rows as they come, not restarted by each of them.
+  it("puts a reading position back once, however often its rows change", async () => {
+    const { LegendList } = await import("@legendapp/list/react");
+    const { rememberTimelinePosition, readTimelinePosition } =
+      await import("./timelineScrollAnchoring");
+    const threadKey = "environment-local:thread-streaming-mid";
+    rememberTimelinePosition(threadKey, {
+      rowId: "entry-1",
+      offsetWithinRow: 30,
+      rowHeight: 200,
+      cardTopId: null,
+      previousRowId: null,
+      atEnd: false,
+    });
+    const document = { addEventListener: vi.fn(), removeEventListener: vi.fn() };
+    const reading = {
+      scrollTop: 0,
+      scrollHeight: 4000,
+      clientHeight: 800,
+      getBoundingClientRect: () => ({ top: 0 }),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      ownerDocument: document,
+    };
+    // The remembered row stands 900 px into the conversation.
+    const row = { getBoundingClientRect: () => ({ top: 900 - reading.scrollTop, height: 200 }) };
+    const readingList = {
+      current: {
+        getState: () => ({
+          data: [],
+          indexByKey: () => 0,
+          elementAtIndex: () => row,
+          isWithinMaintainScrollAtEndThreshold: false,
+        }),
+        getScrollableNode: () => reading,
+      } as unknown as LegendListRef,
+    };
+    const onManualNavigation = vi.fn();
+    const switchLayer = layer();
+    const { TimelineSwitchContext } = await import("./TimelineSwitch");
+    const streamed = (words: number) => (
+      <TimelineSwitchContext value={switchLayer}>
+        <MessagesTimeline
+          {...buildProps()}
+          listRef={readingList}
+          onManualNavigation={onManualNavigation}
+          routeThreadKey={threadKey}
+          timelineEntries={[
+            buildUserTimelineEntry("Where were we?"),
+            {
+              ...buildAssistantTimelineEntry("word ".repeat(words)),
+              id: "entry-2",
+              message: {
+                ...buildAssistantTimelineEntry("").message,
+                id: MessageId.make("message-2"),
+                text: "word ".repeat(words),
+                streaming: true,
+              },
+            },
+          ]}
+        />
+      </TimelineSwitchContext>
+    );
+    let renderer: ReactTestRenderer | undefined;
+    try {
+      await act(() => {
+        renderer = create(streamed(1));
+      });
+      await act(() => renderer!.root.findByType(LegendList).props.onLoad({ elapsedTimeInMs: 4 }));
+      for (let words = 2; words < 8; words += 1) {
+        await act(() => renderer!.update(streamed(words)));
+        await settleFrames(1);
+      }
+      await settleFrames(3);
+      expect(reading.scrollTop).toBe(930);
+      expect(switchLayer.painted).toHaveBeenCalledTimes(1);
+      expect(onManualNavigation).toHaveBeenCalledTimes(1);
+      expect(readTimelinePosition(threadKey)?.rowId).toBe("entry-1");
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
+  it.each([
+    { case: "never while it is still on its way", loading: true, says: 0 },
+    { case: "at once when there is nothing to place", loading: false, says: 1 },
+  ])("$case", async ({ loading, says }) => {
+    const switchLayer = layer();
+    const renderer = await mount(switchLayer, {
+      timelineEntries: [],
+      hideEmptyPlaceholder: true,
+      loading,
+    });
+    try {
+      expect(switchLayer.painted).toHaveBeenCalledTimes(says);
+    } finally {
+      await act(() => renderer.unmount());
+    }
+  });
+
+  it("shows its Mate at work once the wait passes 400 ms, and asks to be kept as the rows come", async () => {
+    vi.useFakeTimers();
+    const switchLayer = layer();
+    try {
+      const renderer = await mount(switchLayer, {
+        timelineEntries: [],
+        hideEmptyPlaceholder: true,
+        loading: true,
+      });
+      vi.advanceTimersByTime(399);
+      expect(switchLayer.waiting).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(switchLayer.waiting).toHaveBeenCalledTimes(1);
+      expect(switchLayer.placing).not.toHaveBeenCalled();
+      const rows = await timeline(switchLayer, {
+        timelineEntries: [buildUserTimelineEntry("Where were we?")],
+      });
+      await act(() => renderer.update(rows));
+      expect(switchLayer.placing).toHaveBeenCalledTimes(1);
+      await act(() => renderer.unmount());
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

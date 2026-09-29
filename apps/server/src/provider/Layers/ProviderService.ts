@@ -45,6 +45,7 @@ import * as Stream from "effect/Stream";
 
 import { appendUserInputAttachmentPaths } from "../userInputAttachments.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
+import { attachmentPathLine } from "../../providerPictures.ts";
 import * as ServerConfig from "../../config.ts";
 import {
   increment,
@@ -864,14 +865,8 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         attachment,
       });
       if (attachmentPath === null) return [];
-      const isPastedText =
-        attachment.type === "file" &&
-        "source" in attachment &&
-        attachment.source?._tag === "pasted-text";
       return [
-        isPastedText
-          ? `[Pasted text "${attachment.name}" is saved at: ${attachmentPath}. Inspect it as needed.]`
-          : `[Attached ${attachment.type} "${attachment.name}" is saved at: ${attachmentPath}]`,
+        attachmentPathLine(attachment, attachmentPath, { text: parsed.input ?? "", attachments }),
       ];
     });
     const inputTextWithAttachmentPaths =

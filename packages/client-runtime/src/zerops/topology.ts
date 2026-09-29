@@ -189,6 +189,14 @@ function zeropsTopologyServiceGroup(service: ZeropsService): ZeropsTopologyGroup
 }
 
 /**
+ * Whether a service runs the developer's code — the map's *Runtimes*: the
+ * services a public route reaches, and whose failure takes a page down.
+ */
+export function isRuntimeService(service: ZeropsService): boolean {
+  return zeropsTopologyServiceGroup(service) === "runtimes";
+}
+
+/**
  * Platform service statuses that are settled. Everything else is treated as
  * transient. This keeps a status added by the platform from appearing settled
  * until its semantics are added here.

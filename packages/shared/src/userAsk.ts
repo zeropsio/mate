@@ -10,6 +10,7 @@
  * attachments asks by its attachments, whatever placeholder text the client
  * put in front of them for the agent.
  */
+import { messagePictures, pictureWords } from "./composerPictures.ts";
 import { messagePreviewText } from "./messagePreview.ts";
 
 /**
@@ -68,7 +69,10 @@ export type UserAsk =
 
 export interface UserAskSource {
   readonly text: string;
-  readonly attachments?: ReadonlyArray<{ readonly type: string }> | undefined;
+  /** A picture's kept original is told apart from a file by its type (`@t3tools/shared/composerPictures`). */
+  readonly attachments?:
+    | ReadonlyArray<{ readonly type: string; readonly mimeType?: string | undefined }>
+    | undefined;
 }
 
 /**
@@ -82,16 +86,26 @@ export function userAskOf(message: UserAskSource): UserAsk | null {
   if (isSlashCommand(trimmed) || isUsageLimitResumePrompt(trimmed) || isCrewCard(trimmed)) {
     return null;
   }
-  const words = trimmed.startsWith(EFFORT_PREFIX)
-    ? trimmed.slice(EFFORT_PREFIX.length).trim()
-    : trimmed;
+  const attachments = message.attachments ?? [];
+  const images = attachments.filter((attachment) => attachment.type === "image").length;
+  // A picture's label is not something the person wrote; its notes are.
+  const words = pictureWords(
+    trimmed.startsWith(EFFORT_PREFIX) ? trimmed.slice(EFFORT_PREFIX.length).trim() : trimmed,
+    images,
+  );
   if (words.length > 0 && words !== IMAGE_ONLY_BOOTSTRAP_PROMPT) {
     return { kind: "text", text: words };
   }
-  const attachments = message.attachments ?? [];
   if (attachments.length === 0) return null;
-  const images = attachments.filter((attachment) => attachment.type === "image").length;
-  return { kind: "attachments", images, files: attachments.length - images };
+  // A picture's kept original goes with its picture: one picture, not a file.
+  const originals = messagePictures(
+    trimmed,
+    attachments.map((attachment) => ({
+      type: attachment.type,
+      mimeType: attachment.mimeType ?? "",
+    })),
+  ).filter((picture) => picture.original !== null).length;
+  return { kind: "attachments", images, files: attachments.length - images - originals };
 }
 
 /** "1 image", "3 images", "2 files", "1 image and 2 files". */

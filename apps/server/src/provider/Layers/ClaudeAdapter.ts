@@ -97,6 +97,11 @@ import {
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import { claudeSignedOutMessage, makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
 import { planClaudeSkillDispatch } from "../Drivers/ClaudeSkillDispatch.ts";
+import {
+  placeClaudePictures,
+  rememberTurnPictures,
+  turnPictureError,
+} from "../../providerPictures.ts";
 import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import {
@@ -1699,7 +1704,7 @@ const buildUserMessageEffect = Effect.fn("buildUserMessageEffect")(function* (
     sdkContent.push({ type: "text", text });
   }
 
-  return buildUserMessage({ sdkContent });
+  return buildUserMessage({ sdkContent: placeClaudePictures(sdkContent) });
 });
 
 /**
@@ -3571,7 +3576,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       (turn && (turn.rejectedRateLimitTypes.size > 0 || turn.latestAssistantRateLimited)
         ? "Claude usage limit reached. Send the message again once the limit resets."
         : undefined);
-    const { status, errorMessage } = resultOutcome(message, failureHint);
+    const outcome = resultOutcome(message, failureHint);
+    const status = outcome.status;
+    const errorMessage = turnPictureError(message, turn) ?? outcome.errorMessage;
 
     if (status === "failed") {
       yield* emitRuntimeError(context, errorMessage ?? "Claude turn failed.");
@@ -5375,6 +5382,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     });
 
     if (steeringTurnState === null) context.turnStartMessageIds.push(turnId);
+    rememberTurnPictures(context.turnState, input);
     yield* updateResumeCursor(context);
     yield* Queue.offer(context.promptQueue, {
       type: "message",

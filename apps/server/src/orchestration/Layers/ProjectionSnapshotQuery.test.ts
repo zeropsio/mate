@@ -25,6 +25,7 @@ import { ORCHESTRATION_PROJECTOR_NAMES } from "./ProjectionPipeline.ts";
 import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQuery.ts";
 import * as ThreadBackgroundLiveness from "../ThreadBackgroundLiveness.ts";
 import * as ThreadPlanProgress from "../ThreadPlanProgress.ts";
+import * as ThreadLiveStep from "../ThreadLiveStep.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import { encodeThreadDetailPageCursor } from "../threadDetailCursor.ts";
 import { projectThreadDetailSnapshot } from "../ActivityPayloadProjection.ts";
@@ -40,11 +41,13 @@ const encodeChatAttachments = Schema.encodeEffect(
 );
 const encodeUsagePause = Schema.encodeEffect(Schema.fromJsonString(ThreadUsagePauseState));
 const encodeCrewOrigin = Schema.encodeEffect(Schema.fromJsonString(ThreadCrewOrigin));
+const encodeActivityPayload = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
 const projectionSnapshotLayer = it.layer(
   OrchestrationProjectionSnapshotQueryLive.pipe(
     Layer.provide(ThreadBackgroundLiveness.layer),
     Layer.provide(ThreadPlanProgress.layer),
+    Layer.provideMerge(ThreadLiveStep.layer),
     Layer.provideMerge(RepositoryIdentityResolver.layer),
     Layer.provideMerge(SqlitePersistenceMemory),
     Layer.provideMerge(NodeServices.layer),
@@ -1031,6 +1034,208 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           // A person's thread reads exactly as before crews: no key at all.
           assert.strictEqual(thread !== undefined && "crew" in thread, row.expected !== undefined);
         }
+      }
+    }),
+  );
+
+  it.effect("reads the question a waiting thread asks onto every shell; nothing on the rest", () =>
+    Effect.gen(function* () {
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      const sql = yield* SqlClient.SqlClient;
+
+      yield* sql`DELETE FROM projection_projects`;
+      yield* sql`DELETE FROM projection_threads`;
+      yield* sql`DELETE FROM projection_thread_activities`;
+      yield* sql`DELETE FROM projection_state`;
+      yield* sql`
+        INSERT INTO projection_projects (
+          project_id, title, workspace_root, default_model_selection_json, scripts_json,
+          created_at, updated_at, deleted_at
+        ) VALUES (
+          'project-questions', 'Questions', '/var/www',
+          '{"provider":"claudeAgent","model":"opus"}', '[]',
+          '2026-09-29T00:00:00.000Z', '2026-09-29T00:00:00.000Z', NULL
+        )
+      `;
+      const asked = (requestId: string, question: string) => ({
+        requestId,
+        questions: [{ id: "q0", header: "Merge", question, options: [] }],
+      });
+      const rows = [
+        {
+          id: "thread-waiting",
+          pending: 1,
+          archivedAt: null,
+          activities: [
+            {
+              kind: "user-input.requested",
+              payload: asked("req-1", "Ship the status page now, or after the review?"),
+            },
+          ],
+          expected: "Ship the status page now, or after the review?",
+        },
+        {
+          id: "thread-answered",
+          pending: 0,
+          archivedAt: null,
+          activities: [
+            { kind: "user-input.requested", payload: asked("req-2", "Which colour?") },
+            {
+              kind: "user-input.resolved",
+              payload: { requestId: "req-2", answers: {} },
+            },
+          ],
+          expected: undefined,
+        },
+        { id: "thread-idle", pending: 0, archivedAt: null, activities: [], expected: undefined },
+        {
+          id: "thread-waiting-archived",
+          pending: 1,
+          archivedAt: "2026-09-29T09:00:00.000Z",
+          activities: [
+            { kind: "user-input.requested", payload: asked("req-3", "Keep the old route?") },
+          ],
+          expected: "Keep the old route?",
+        },
+      ];
+      for (const row of rows) {
+        yield* sql`
+          INSERT INTO projection_threads (
+            thread_id, project_id, title, model_selection_json, runtime_mode, interaction_mode,
+            latest_user_message_at, pending_approval_count, pending_user_input_count,
+            has_actionable_proposed_plan, created_at, updated_at, archived_at, deleted_at
+          ) VALUES (
+            ${row.id}, 'project-questions', ${row.id},
+            '{"provider":"claudeAgent","model":"opus"}', 'full-access', 'default',
+            NULL, 0, ${row.pending}, 0, '2026-09-29T08:00:00.000Z', '2026-09-29T08:00:00.000Z',
+            ${row.archivedAt}, NULL
+          )
+        `;
+        for (const [index, activity] of row.activities.entries()) {
+          yield* sql`
+            INSERT INTO projection_thread_activities (
+              activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence,
+              created_at
+            ) VALUES (
+              ${`${row.id}-activity-${index}`}, ${row.id}, NULL, 'info', ${activity.kind},
+              'User input', ${yield* encodeActivityPayload(activity.payload)}, ${index + 1},
+              ${`2026-09-29T08:00:0${index + 1}.000Z`}
+            )
+          `;
+        }
+      }
+
+      const shells = (yield* snapshotQuery.getShellSnapshot()).threads;
+      const archivedShells = (yield* snapshotQuery.getArchivedShellSnapshot()).threads;
+      for (const row of rows) {
+        const id = ThreadId.make(row.id);
+        const live = row.archivedAt === null;
+        const readers = {
+          shellSnapshot: (live ? shells : archivedShells).find((thread) => thread.id === id),
+          ...(live
+            ? { shellById: Option.getOrUndefined(yield* snapshotQuery.getThreadShellById(id)) }
+            : {}),
+        };
+        for (const [reader, thread] of Object.entries(readers)) {
+          assert.isDefined(thread, `${reader} ${row.id}`);
+          assert.strictEqual(thread?.pendingQuestion, row.expected, `${reader} ${row.id}`);
+          assert.strictEqual(thread?.hasPendingUserInput, row.expected !== undefined);
+        }
+      }
+    }),
+  );
+
+  it.effect("reads a live step onto a shell only while its session runs a turn", () =>
+    Effect.gen(function* () {
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      const liveSteps = yield* ThreadLiveStep.ThreadLiveStepService;
+      const sql = yield* SqlClient.SqlClient;
+
+      yield* sql`DELETE FROM projection_projects`;
+      yield* sql`DELETE FROM projection_threads`;
+      yield* sql`DELETE FROM projection_thread_sessions`;
+      yield* sql`DELETE FROM projection_state`;
+      yield* sql`
+        INSERT INTO projection_projects (
+          project_id, title, workspace_root, default_model_selection_json, scripts_json,
+          created_at, updated_at, deleted_at
+        ) VALUES (
+          'project-live', 'Live', '/var/www',
+          '{"provider":"claudeAgent","model":"opus"}', '[]',
+          '2026-09-29T00:00:00.000Z', '2026-09-29T00:00:00.000Z', NULL
+        )
+      `;
+      const writing = { kind: "writing", since: "2026-09-29T08:00:04.000Z" };
+      const rows = [
+        {
+          id: "thread-working",
+          status: "running",
+          turn: "turn-1",
+          archivedAt: null,
+          carries: true,
+        },
+        { id: "thread-errored", status: "error", turn: "turn-1", archivedAt: null, carries: false },
+        { id: "thread-between", status: "running", turn: null, archivedAt: null, carries: false },
+        { id: "thread-no-session", status: null, turn: null, archivedAt: null, carries: false },
+        {
+          id: "thread-archived",
+          status: "running",
+          turn: "turn-1",
+          archivedAt: "2026-09-29T09:00:00.000Z",
+          carries: false,
+        },
+      ];
+      for (const row of rows) {
+        yield* sql`
+          INSERT INTO projection_threads (
+            thread_id, project_id, title, model_selection_json, runtime_mode, interaction_mode,
+            latest_user_message_at, pending_approval_count, pending_user_input_count,
+            has_actionable_proposed_plan, created_at, updated_at, archived_at, deleted_at
+          ) VALUES (
+            ${row.id}, 'project-live', ${row.id},
+            '{"provider":"claudeAgent","model":"opus"}', 'full-access', 'default',
+            NULL, 0, 0, 0, '2026-09-29T08:00:00.000Z', '2026-09-29T08:00:00.000Z',
+            ${row.archivedAt}, NULL
+          )
+        `;
+        if (row.status !== null) {
+          yield* sql`
+            INSERT INTO projection_thread_sessions (
+              thread_id, status, provider_name, provider_session_id, provider_thread_id,
+              runtime_mode, active_turn_id, last_error, updated_at
+            ) VALUES (
+              ${row.id}, ${row.status}, 'claudeAgent', NULL, NULL,
+              'full-access', ${row.turn}, NULL, '2026-09-29T08:00:00.000Z'
+            )
+          `;
+        }
+        // The relay holds a step for every one of them: only a running turn's shell says it.
+        liveSteps.observe(row.id, { type: "turn-started", at: "2026-09-29T08:00:00.000Z" });
+        liveSteps.observe(row.id, { type: "writing", at: "2026-09-29T08:00:04.000Z" });
+      }
+
+      const shells = (yield* snapshotQuery.getShellSnapshot()).threads;
+      const archivedShells = (yield* snapshotQuery.getArchivedShellSnapshot()).threads;
+      for (const row of rows) {
+        const id = ThreadId.make(row.id);
+        const live = row.archivedAt === null;
+        const readers = {
+          shellSnapshot: (live ? shells : archivedShells).find((thread) => thread.id === id),
+          ...(live
+            ? { shellById: Option.getOrUndefined(yield* snapshotQuery.getThreadShellById(id)) }
+            : {}),
+        };
+        for (const [reader, thread] of Object.entries(readers)) {
+          assert.isDefined(thread, `${reader} ${row.id}`);
+          // A thread with nothing running reads as before: no key at all.
+          assert.deepEqual(
+            thread?.liveStep,
+            row.carries ? writing : undefined,
+            `${reader} ${row.id}`,
+          );
+          assert.strictEqual(thread !== undefined && "liveStep" in thread, row.carries);
+        }
+        liveSteps.clearThread(row.id);
       }
     }),
   );
@@ -2336,6 +2541,7 @@ it.effect(
     const layer = OrchestrationProjectionSnapshotQueryLive.pipe(
       Layer.provide(ThreadBackgroundLiveness.layer),
       Layer.provide(ThreadPlanProgress.layer),
+      Layer.provide(ThreadLiveStep.layer),
       Layer.provideMerge(
         Layer.succeed(RepositoryIdentityResolver.RepositoryIdentityResolver, {
           resolve: (cwd: string) =>

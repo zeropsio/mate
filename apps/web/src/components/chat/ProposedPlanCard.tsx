@@ -196,12 +196,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
         </div>
         {canCollapse ? (
           <div className="mt-4 flex justify-center">
-            <Button
-              size="sm"
-              variant="outline"
-              data-scroll-anchor-ignore
-              onClick={() => setExpanded((value) => !value)}
-            >
+            <Button size="sm" variant="outline" onClick={() => setExpanded((value) => !value)}>
               {expanded ? "Collapse plan" : "Expand plan"}
             </Button>
           </div>

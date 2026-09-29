@@ -28,7 +28,7 @@ import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../times
 import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatWorkDuration } from "./conversation.logic";
-import type { ConversationEvent, MessagesTimelineRow, RunStatus } from "./MessagesTimeline.logic";
+import type { ConversationEvent, MessagesTimelineRow } from "./MessagesTimeline.logic";
 
 /** Who the conversation is with: a Mate's colour, or the neutral one for a thread without a Mate. */
 export interface ConversationSpeaker {
@@ -96,102 +96,6 @@ export function ElapsedSince({
     </span>
   );
 }
-
-function spanText(startedAt: string, endedAt: string | null, waitedMs = 0): string {
-  const startMs = Date.parse(startedAt);
-  const endMs = endedAt === null ? Date.now() : Date.parse(endedAt);
-  return formatWorkDuration(
-    Number.isFinite(startMs) && Number.isFinite(endMs)
-      ? Math.max(0, endMs - startMs - waitedMs)
-      : 0,
-  );
-}
-
-/** What a run that is over did, after the Mate's name: "worked", "stopped", "thought". */
-export function settledRunVerb(status: RunStatus): string {
-  if (status.face === "stopped") return "stopped";
-  if (status.face === "paused") return "stopped at the usage limit";
-  return status.worked ? "worked" : "thought";
-}
-
-/**
- * A run's clock, in the card's time column: the Mate's own time — it stands
- * still while a question waits on the person — counting while the run goes
- * on. Its tooltip keeps the run's whole span.
- */
-export function RunClock({
-  status,
-  timestampFormat,
-  className,
-}: {
-  readonly status: RunStatus;
-  readonly timestampFormat: TimestampFormat;
-  readonly className?: string | undefined;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            className={cn("w-14 shrink-0 text-end tabular-nums", className)}
-            data-work-line-clock
-          />
-        }
-      >
-        {status.live ? (
-          <ElapsedSince
-            leftOutMs={status.waitedMs}
-            since={status.startedAt}
-            standingSince={status.waitingSince}
-          />
-        ) : (
-          spanText(status.startedAt, status.endedAt, status.waitedMs)
-        )}
-      </TooltipTrigger>
-      <TooltipPopup>
-        {formatChatTimestampTooltip(status.startedAt, timestampFormat)}
-        {status.endedAt ? ` – ${formatDayAwareTimestamp(status.endedAt, timestampFormat)}` : ""}
-      </TooltipPopup>
-    </Tooltip>
-  );
-}
-
-/**
- * The line of a run with no chat to end on — one that only asked for a plan's
- * approval, or paused before it did anything: who, what the run is, and its
- * clock. A run with a chat says the same on the chat's last line.
- */
-export function WorkLine({
-  row,
-  speaker,
-  timestampFormat,
-}: {
-  readonly row: RunStatus;
-  /** Who worked: a line that says only "Worked" says nobody did (the owner, 2026-09-26: "'worked' who where?"). */
-  readonly speaker: ConversationSpeaker;
-  readonly timestampFormat: TimestampFormat;
-}) {
-  return (
-    <div
-      className="flex min-h-7 min-w-0 items-center gap-2.5 text-line text-muted-foreground"
-      data-work-line={row.face}
-      role={row.live ? "status" : undefined}
-    >
-      <span className="min-w-0 flex-1 truncate">
-        {speaker.name} {row.live ? "is working" : settledRunVerb(row)}
-      </span>
-      <RunClock status={row} timestampFormat={timestampFormat} />
-    </div>
-  );
-}
-
-/**
- * The Mate's bubble fill, wherever it speaks from a bubble — the panel and an
- * opened log, never the page, where its words are prose: a share of the ink
- * over whatever it sits on, so both palettes show it (muted and secondary all
- * but vanish on one card or the other).
- */
-export const MATE_BUBBLE_FILL = "bg-foreground/8";
 
 /**
  * A message the Mate has not read yet: a small clock beside it, gone once the

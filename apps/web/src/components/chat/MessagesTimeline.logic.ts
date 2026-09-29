@@ -20,10 +20,11 @@ import {
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
 import {
-  activityPills,
+  activityCounts,
   checksStrip,
   deriveConversationStructure,
   deriveOutcome,
+  turnsAfter,
   isActivityWork,
   isImageOnlyPlaceholder,
   isQuestionToolCall,
@@ -386,10 +387,17 @@ export type TurnHeaderActivity =
     }
   /** It writes words that cannot be placed yet: a note or its answer. */
   | { readonly kind: "writing" }
-  /** It asked the person something and waits for the answer. */
-  | { readonly kind: "waiting" }
-  /** A call it is making, as the step it is. */
-  | { readonly kind: "step"; readonly step: WorkStep }
+  /** It asked the person something — a question, an approval — and waits. */
+  | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
+  /**
+   * A call it is making, as the step it is — the newest, and any others it
+   * runs at the same time, oldest first.
+   */
+  | {
+      readonly kind: "step";
+      readonly step: WorkStep;
+      readonly others?: ReadonlyArray<WorkStep>;
+    }
   | { readonly kind: "operation"; readonly operation: ZeropsOperation };
 
 export type ConversationEvent =
@@ -471,6 +479,12 @@ type MessagesTimelineRowBody =
        * person's words broke off above it.
        */
       status: RunStatus | null;
+      /**
+       * What the run came to, for its worked line's effort after its time
+       * ("2 commands · 1 file read", `useRunEffortWords`, which follows a
+       * change merged since); null while it runs.
+       */
+      outcome: OutcomeModel | null;
     }
   | {
       /**
@@ -498,21 +512,6 @@ type MessagesTimelineRowBody =
       id: string;
       createdAt: string;
       state: "working" | "monitoring";
-    }
-  | {
-      /**
-       * A question the Mate asked with its question tool and the person's
-       * answer: the question in the Mate's words, on its side, and the
-       * answer in theirs, on theirs.
-       */
-      kind: "answer";
-      id: string;
-      createdAt: string;
-      pairs: ReadonlyArray<{
-        readonly key: string;
-        readonly question: string;
-        readonly answer: string;
-      }>;
     }
   | {
       /** Work no run owns, drawn as it always was: a line of its own. */
@@ -597,13 +596,26 @@ type MessagesTimelineRowBody =
 
 /**
  * How much room a row keeps above itself — the conversation's rhythm, read
- * from the row before it: a person's messages in a run sit close, a turn's
- * parts follow each other at a line's distance, and a new turn opens with
- * air. A row's gap depends only on its predecessor, so it never changes
+ * from the row before it. A turn is one group: the person's words, the card
+ * of the Mate's work and its answer stand 24 px apart, ink to ink (`part`),
+ * and 64 px of air open the next turn (`turn`), so the eye finds turns
+ * without reading. The Mate's answer is prose: its first line's leading is
+ * part of the room above it (`part-words`), and its leading and its copy line
+ * are part of the room under it (`turn-after-words`). Inside a card, and
+ * between a person's messages in a run, rows sit closer (`tight`, `line`,
+ * `block`). A row's gap depends only on its predecessor, so it never changes
  * once both are on screen (opening a log changes the row after it — a click
  * moves what is under it, nothing else does).
  */
-export type RowGap = "none" | "tight" | "line" | "block" | "turn";
+export type RowGap =
+  | "none"
+  | "tight"
+  | "line"
+  | "block"
+  | "part"
+  | "part-words"
+  | "turn"
+  | "turn-after-words";
 
 /**
  * The run whose Mate at work stood where this row now begins: a run with
@@ -650,6 +662,17 @@ export type RecordItem =
       readonly messages: ReadonlyArray<ChatMessage>;
       readonly durationMs: number | null;
     }
+  /**
+   * A question it asked the person with its question tool, in its own words:
+   * its side of the card, in its tint — the person's answer, their item under
+   * it — asked and waiting, or answered.
+   */
+  | {
+      readonly kind: "question";
+      readonly key: string;
+      readonly at: string;
+      readonly questions: ReadonlyArray<string>;
+    }
   /** Its words to the person on the way, in full. */
   | {
       readonly kind: "note";
@@ -658,9 +681,10 @@ export type RecordItem =
       readonly message: ChatMessage;
     }
   /**
-   * Where the person spoke into the run — a message, their answer to its
-   * question: their words stand on the page above the card, and the chat
-   * marks here, in short, where they reached the Mate.
+   * Where the person spoke into the run: a message sent into it stands on
+   * the page above the card, and the chat marks here, in one line, where it
+   * reached the Mate; their answer to its question stands here whole, under
+   * the question, and nowhere else.
    */
   | {
       readonly kind: "person";
@@ -749,11 +773,7 @@ export type MessagesTimelineRow = MessagesTimelineRowBody & {
 };
 
 function isPersonRow(row: MessagesTimelineRow): boolean {
-  return (
-    (row.kind === "message" && row.message.role === "user") ||
-    row.kind === "queued-message" ||
-    row.kind === "answer"
-  );
+  return (row.kind === "message" && row.message.role === "user") || row.kind === "queued-message";
 }
 
 function closesTurn(row: MessagesTimelineRow): boolean {
@@ -765,6 +785,24 @@ function isMateProse(row: MessagesTimelineRow): boolean {
   return row.kind === "message" && row.message.role === "assistant";
 }
 
+/**
+ * What stands where the person's message would, opening a run nobody typed:
+ * a command, a resume, the task handed to a crewmate, what woke the Mate
+ * (`woke:` — background work no run owns is a line of its own, not an opener).
+ */
+function opensRun(row: MessagesTimelineRow): boolean {
+  return (
+    (row.kind === "background" && row.id.startsWith("woke:")) ||
+    row.kind === "crew-card" ||
+    (row.kind === "event" && (row.event.type === "command" || row.event.type === "resumed"))
+  );
+}
+
+/** The room that opens a new turn under `previous`: after an answer, its copy line is part of it. */
+function turnAfter(previous: MessagesTimelineRow): RowGap {
+  return isMateProse(previous) ? "turn-after-words" : "turn";
+}
+
 export function rowGap(
   previous: MessagesTimelineRow | undefined,
   row: MessagesTimelineRow,
@@ -773,29 +811,27 @@ export function rowGap(
   // What runs alongside hangs from the record; the record starts its card,
   // as a run's line with no chat does.
   if (row.kind === "working") return "tight";
-  if (row.kind === "seam" || row.kind === "crew-seam") return "turn";
-  if (previous.kind === "seam" || previous.kind === "crew-seam") return "block";
+  // A seam opens the turn under it: a turn's air above it, a part's under it.
+  if (row.kind === "seam" || row.kind === "crew-seam") return turnAfter(previous);
+  if (previous.kind === "seam" || previous.kind === "crew-seam")
+    return isMateProse(row) ? "part-words" : "part";
   if (isPersonRow(row)) {
-    // A question's row opens with the Mate asking it, the person's answer
-    // under it: after the person's own words that is a change of speaker,
-    // and it hung 3 px under their bubble as if they had asked it (Nova,
-    // 2026-09-29).
-    if (row.kind === "answer" && isPersonRow(previous)) return "block";
     if (isPersonRow(previous)) return "tight";
-    if (isMateProse(previous)) return "block";
-    return closesTurn(previous) ||
-      previous.kind === "event" ||
-      previous.kind === "error" ||
-      previous.kind === "pause" ||
-      previous.kind === "background"
-      ? "turn"
-      : "block";
+    // A message waiting to be sent goes into the run on screen, and what the
+    // person said into a run nobody typed is that run's: parts of its turn.
+    if (opensRun(previous) || (row.kind === "queued-message" && !isMateProse(previous)))
+      return "part";
+    return turnAfter(previous);
   }
-  if (closesTurn(previous)) {
-    if (row.kind === "outcome") return "line";
-    if (isMateProse(previous)) return "block";
-    return row.kind === "work-line" || row.kind === "record" ? "turn" : "block";
+  // The answer is the turn's last part, under the card or the words it answers.
+  if (isMateProse(row)) return isMateProse(previous) ? "block" : "part-words";
+  if (row.kind === "record" || row.kind === "work-line") {
+    // The card under the words that started its run is a part of their turn;
+    // a run nobody wrote to start opens a turn of its own.
+    return isPersonRow(previous) || opensRun(previous) ? "part" : turnAfter(previous);
   }
+  if (opensRun(row)) return isPersonRow(previous) ? "part" : turnAfter(previous);
+  if (closesTurn(previous)) return row.kind === "outcome" ? "line" : "block";
   // The result hangs from its heading or its record: they read as one.
   if (row.kind === "outcome" && (previous.kind === "work-line" || previous.kind === "record"))
     return "tight";
@@ -917,6 +953,20 @@ function pendingQuestion(stretch: Stretch): Extract<TimelineEntry, { kind: "work
 }
 
 /**
+ * Whether an approval the Mate asked for still waits on the person: one asked
+ * for and not given yet, the clock standing still meanwhile (`waitedOnPerson`).
+ */
+function approvalPending(stretch: Stretch): boolean {
+  let open = 0;
+  for (const entry of stretch.entries) {
+    if (entry.kind !== "work") continue;
+    if (entry.entry.sourceActivityKind === "approval.requested") open += 1;
+    else if (entry.entry.sourceActivityKind === "approval.resolved") open = Math.max(0, open - 1);
+  }
+  return open > 0;
+}
+
+/**
  * How long a run waited on the person: from each question or approval it
  * asked to the person's answer. Live, a wait still open is where the clock
  * stands still; settled, it lasted to the run's end.
@@ -951,7 +1001,8 @@ function liveActivity(
   writing: MessageEntry | null,
   tracked: TrackedCommands,
 ): TurnHeaderActivity {
-  if (pendingQuestion(stretch) !== null) return { kind: "waiting" };
+  if (pendingQuestion(stretch) !== null) return { kind: "waiting", on: "answer" };
+  if (approvalPending(stretch)) return { kind: "waiting", on: "approval" };
   if (writing !== null && stretch.entries.includes(writing)) return { kind: "writing" };
   let passed = false;
   for (let index = stretch.entries.length - 1; index >= 0; index -= 1) {
@@ -964,9 +1015,21 @@ function liveActivity(
       entry.entry.toolLifecycleStatus === "inProgress" &&
       isActivityWork(entry.entry)
     ) {
-      return isQuestionToolCall(entry.entry)
-        ? { kind: "waiting" }
-        : { kind: "step", step: stepOf(entry.entry, tracked, true) };
+      if (isQuestionToolCall(entry.entry)) return { kind: "waiting", on: "answer" };
+      const step = stepOf(entry.entry, tracked, true);
+      // What it runs at the same time is the now line's too: none of it is
+      // in the record until it returns.
+      const others = stretch.entries
+        .slice(0, index)
+        .flatMap((earlier) =>
+          (earlier.kind === "work" || earlier.kind === "generic-call") &&
+          earlier.entry.toolLifecycleStatus === "inProgress" &&
+          isActivityWork(earlier.entry) &&
+          !isQuestionToolCall(earlier.entry)
+            ? [stepOf(earlier.entry, tracked, true)]
+            : [],
+        );
+      return others.length > 0 ? { kind: "step", step, others } : { kind: "step", step };
     }
     if (entry.kind === "message") {
       if (entry.message.role !== "reasoning" || passed) {
@@ -1049,15 +1112,15 @@ export function thoughtPreview(messages: ReadonlyArray<Pick<ChatMessage, "text">
 }
 
 /**
- * A stretch's part of its run's record, each thing at the moment it happened,
- * and the rows it hands elsewhere: the person's answers to a question stand
- * on the page (`answer`); a plan to approve and a usage limit's pause stand
- * in the card after the record.
+ * A stretch's part of its run's record, each thing at the moment it happened
+ * — the question the Mate asked, and the person's answer under it, among
+ * them — and the rows it hands elsewhere: a plan to approve and a usage
+ * limit's pause stand in the card after the record.
  *
  * Live, the thought the Mate is thinking and the call it is making are not in
- * it: they stand beside its face at the record's end and join it once they
- * end, so nothing is ever drawn twice. A browser check is its row from its
- * start, its take filling in when it ends. A service's trouble is the working
+ * it: they are the now line's, beside its face at the card's foot, and join
+ * the record once they end, so nothing is ever drawn twice — a browser check
+ * too, a row of takes once it is taken. A service's trouble is the working
  * row's status bar while the stretch runs, and the record's once it is over.
  */
 function stretchRecord(input: {
@@ -1077,15 +1140,13 @@ function stretchRecord(input: {
     placed.push({ order: order++, item });
   };
   /**
-   * A browser check is its row of the chat from the moment it starts, live
-   * as settled, and a check that follows it with nothing between shares the
-   * row: a page checked on a desktop and then on a phone is one row of takes.
-   * A check after other work starts a row of its own, so a row above the
-   * newest never grows (Nova, 2026-09-28: the checks stood in a drawer under
-   * the chat for the rest of the run, a stale picture while it deployed, and
-   * reached the chat only when the run was over).
+   * A browser check is a step: the now line's while it is taken, its row of
+   * the chat once it is (K10), and a check that follows it with nothing
+   * between shares the row: a page checked on a desktop and then on a phone
+   * is one row of takes. A check after other work starts a row of its own,
+   * so a row above the newest never grows.
    */
-  const joinCheck = (check: ZeropsOperation) => {
+  const joinCheck = (check: ZeropsOperation, at: string) => {
     const last = placed.at(-1);
     if (last !== undefined && last.item.kind === "strip") {
       placed[placed.length - 1] = {
@@ -1100,7 +1161,7 @@ function stretchRecord(input: {
     push({
       kind: "strip",
       key: `operation:${check.key}`,
-      at: check.anchorAt,
+      at,
       strip: checksStrip([check], stretch.live),
     });
   };
@@ -1205,8 +1266,9 @@ function stretchRecord(input: {
       flushReasoning(entry.createdAt);
       continue;
     }
-    // The Mate's question tool: its question and the person's answer stand
-    // on the page, so the call itself is never a line of its own.
+    // The Mate's question tool: the question it asked and the person's answer
+    // are lines of the chat, from its request to the person (below), so the
+    // call itself is never a line of its own.
     if ((entry.kind === "work" || entry.kind === "generic-call") && isQuestionToolCall(entry.entry))
       continue;
     if (entry.kind === "message") {
@@ -1243,7 +1305,15 @@ function stretchRecord(input: {
       case "operation": {
         const op = entry.operation;
         if (op.kind === "browser") {
-          joinCheck(op);
+          // Taken now, it is the now line's; it joins where it ended.
+          if (stretch.live && op.phase === "running") break;
+          joinCheck(
+            op,
+            joinedAt(
+              op.phase === "running" ? null : (op.settledAt ?? entry.createdAt),
+              op.anchorAt,
+            ),
+          );
           break;
         }
         const incident = incidentsByKey.get(`incident:${op.key}`);
@@ -1265,8 +1335,17 @@ function stretchRecord(input: {
       }
       case "work": {
         const work = entry.entry;
-        // What the Mate asked waits above the composer while it waits.
-        if (work.inputQuestions !== undefined && work.inputAnswers === undefined) break;
+        // What the Mate asked stands in its card, asked and answered, in its
+        // own words; while it waits, the composer asks the person too.
+        if (work.inputQuestions !== undefined && work.inputAnswers === undefined) {
+          const questions = work.inputQuestions
+            .map((question) => (question.question || question.header).trim())
+            .filter((question) => question.length > 0);
+          if (questions.length > 0) {
+            push({ kind: "question", key: `question:${entry.id}`, at: entry.createdAt, questions });
+          }
+          break;
+        }
         if (work.crewSeam !== undefined) {
           push({
             kind: "crew-seam",
@@ -1288,40 +1367,13 @@ function stretchRecord(input: {
             push({ kind: "error", key: `error:${entry.id}`, at: entry.createdAt, entry: work });
           }
         } else if (work.inputAnswers !== undefined) {
-          const asked =
-            stretch.entries
-              .flatMap((candidate) =>
-                candidate.kind === "work" &&
-                candidate.entry.inputQuestions !== undefined &&
-                (work.inputRequestId === undefined ||
-                  candidate.entry.inputRequestId === work.inputRequestId)
-                  ? [candidate.entry.inputQuestions]
-                  : [],
-              )
-              .at(-1) ?? [];
-          // The record marks where the answer reached the Mate; the question
-          // and the answer themselves stand on the page.
+          // The person's answer, in their words, under the question it answers.
           push({
             kind: "person",
             key: `person:${entry.id}`,
             at: entry.createdAt,
             words: work.inputAnswers.map((given) => answerWords(given.answer)).join(" · "),
             imageOnly: false,
-          });
-          rows.push({
-            kind: "answer",
-            id: `answer:${entry.id}`,
-            createdAt: entry.createdAt,
-            pairs: work.inputAnswers.map((answer) => {
-              const question = asked.find(
-                (candidate) => candidate.id === answer.key || candidate.question === answer.key,
-              );
-              return {
-                key: answer.key,
-                question: question?.question ?? question?.header ?? answer.key,
-                answer: answerWords(answer.answer),
-              };
-            }),
           });
         } else if (work.agentSpawn !== undefined) {
           push({ kind: "helpers", key: `helpers:${entry.id}`, at: entry.createdAt, entry: work });
@@ -1395,7 +1447,7 @@ function stretchRecord(input: {
   return { items, rows };
 }
 
-/** What a settled run's calls came to, and the helpers it started: its result's pills. */
+/** What a settled run's calls came to, and the helpers it started: its effort. */
 function turnActivity(turn: ConversationTurn): OutcomeActivity[] {
   const entries = turn.stretches.flatMap((stretch) => stretch.entries);
   const calls = omitSupersededLifecycleMarkers(
@@ -1412,7 +1464,7 @@ function turnActivity(turn: ConversationTurn): OutcomeActivity[] {
   const launches = entries.flatMap((entry) =>
     entry.kind === "work" && entry.entry.agentSpawn !== undefined ? [entry.entry] : [],
   );
-  return activityPills(calls, launches);
+  return activityCounts(calls, launches);
 }
 
 /**
@@ -1453,8 +1505,11 @@ function crewSeamRow(
   return { kind: "crew-seam", id, createdAt: work.createdAt, seam, words: work.label };
 }
 
-/** A quiet stretch of the conversation this long draws its own seam. */
-const IDLE_SEAM_MS = 30 * 60 * 1000;
+/**
+ * A quiet stretch of the conversation this long draws a time line: minutes
+ * apart are one conversation, and a line between them split it in pieces.
+ */
+const IDLE_SEAM_MS = 60 * 60 * 1000;
 
 export function deriveMessagesTimelineRows(input: {
   timelineEntries: ReadonlyArray<TimelineEntry>;
@@ -1584,14 +1639,17 @@ export function deriveMessagesTimelineRows(input: {
   const seamBefore = (at: string, id: string) => {
     const day = localDayKey(at);
     const atMs = Date.parse(at);
-    if (day !== null && day !== lastDay) {
+    const endMs = lastEnd === null ? NaN : Date.parse(lastEnd);
+    // The conversation is dated at its top; after that a line stands only
+    // where an hour or a day passed — the day where a new one began, else the
+    // time. Midnight between two messages minutes apart is no reason for one.
+    const quiet =
+      !Number.isFinite(endMs) || (Number.isFinite(atMs) && atMs - endMs >= IDLE_SEAM_MS);
+    if (quiet && day !== null && day !== lastDay) {
       rows.push({ kind: "seam", id: `seam:day:${day}`, createdAt: at, seam: "day" });
       lastDay = day;
-    } else {
-      const endMs = lastEnd === null ? NaN : Date.parse(lastEnd);
-      if (Number.isFinite(endMs) && Number.isFinite(atMs) && atMs - endMs > IDLE_SEAM_MS) {
-        rows.push({ kind: "seam", id: `seam:gap:${id}`, createdAt: at, seam: "gap" });
-      }
+    } else if (quiet && Number.isFinite(endMs)) {
+      rows.push({ kind: "seam", id: `seam:gap:${id}`, createdAt: at, seam: "gap" });
     }
     if (!newSinceDrawn && Number.isFinite(atMs) && atMs > newSinceMs) {
       rows.push({ kind: "seam", id: "seam:new", createdAt: input.newSince!, seam: "new" });
@@ -1771,13 +1829,12 @@ export function deriveMessagesTimelineRows(input: {
     const pause = pauseByTurnKey.get(turn.key)?.row ?? null;
     const pausedHere = pause !== null || turn.limitOnly;
 
-    // What the person said while the run went on — a message sent into it,
-    // an answer to its question — stands on the page, in the order it was
-    // said, and the run's card stays whole under it, as a typing indicator
-    // stays under the last message; the card's chat marks where each reached
-    // the Mate (the owner, 2026-09-28, of the card breaking around them:
-    // "these split working groups have no chance to stay like this when the
-    // work is done").
+    // What the person sent into the run while it went on stands on the page,
+    // in the order it was sent, and the run's card stays whole under it, as a
+    // typing indicator stays under the last message; the card's chat marks
+    // where each reached the Mate (the owner, 2026-09-28, of the card
+    // breaking around them: "these split working groups have no chance to
+    // stay like this when the work is done").
     const exchanges: MessagesTimelineRow[] = [];
     // What the card holds besides its record: a plan to approve, a pause.
     const extras: MessagesTimelineRow[] = [];
@@ -1803,7 +1860,7 @@ export function deriveMessagesTimelineRows(input: {
         until: turn.live ? null : last.endedAt,
       });
       items.push(...built.items);
-      for (const row of built.rows) (row.kind === "answer" ? exchanges : extras).push(row);
+      extras.push(...built.rows);
     });
     const hasRecord = items.some((item) => item.kind !== "person");
     // A live run with nothing in its record whose answer is known already is
@@ -1821,6 +1878,7 @@ export function deriveMessagesTimelineRows(input: {
           landed: landedByTurnKey.get(turn.key) ?? [],
           diff,
           activity: turnActivity(turn),
+          later: turnsAfter(structure, turn.key),
         });
 
     if (lead === null) {
@@ -1909,6 +1967,7 @@ export function deriveMessagesTimelineRows(input: {
           now: working && answer === null ? liveActivity(last, turn.writing, tracked) : null,
           answering: answer !== null,
           status,
+          outcome,
         });
       }
       rows.push(...extras);
@@ -1928,8 +1987,9 @@ export function deriveMessagesTimelineRows(input: {
           incidents: stretchIncidents(wholeRun),
         });
       }
-      // Settled, what runs alongside becomes the run's result — the same
-      // pills, where it was — easing from its height, and the answer follows.
+      // Settled, what runs alongside becomes the run's result, where it was —
+      // its rows under the now line — easing from its height, and the answer
+      // follows.
       if (outcome !== null) {
         rows.push({
           kind: "outcome",
@@ -2188,6 +2248,9 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.live === br.live &&
         a.answering === br.answering &&
         Equal.equals(a.now, br.now) &&
+        // Its now line's clock and its worked line's effort.
+        Equal.equals(a.status, br.status) &&
+        Equal.equals(a.outcome, br.outcome) &&
         a.items.length === br.items.length &&
         a.items.every((item, index) => sameRecordItem(item, br.items[index]!))
       );

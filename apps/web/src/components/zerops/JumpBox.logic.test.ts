@@ -101,16 +101,16 @@ const INDEX: SidebarJumpIndex = {
       groupId: "shop",
       title: "Shop stage",
       line: "3f9c1b2",
-      tone: "pending",
-      word: "Deploying",
+      dot: "spinner",
+      word: "Stage, deploying",
     },
     {
       projectId: "shop-prod",
       groupId: "shop",
       title: "Shop production",
       line: "v2.11.0",
-      tone: "good",
-      word: "Running v2.11.0",
+      dot: "ok",
+      word: "Production v2.11.0, healthy",
     },
   ],
 };
@@ -145,8 +145,27 @@ describe("jumpGroups — what a query finds, grouped", () => {
         group: "Mates",
         items: ["mate:shop-nova", "mate:shop-kai", "mate:notes-nora", "mate:notes-ada"],
       },
-      { group: "Projects", items: ["project:shop", "project:notes"] },
+      { group: "Projects", items: ["project:shop", "project:notes", "new-project"] },
     ]);
+  });
+
+  // "New project" lives at the end of the menu's projects, and in the box
+  // (D11): the projects' last item, found by its own words.
+  it.each([
+    { value: "new", items: ["new-project"] },
+    { value: "new pro", items: ["new-project"] },
+    { value: "PROJECT", items: ["new-project"] },
+  ])("offers a new project for $value", ({ value, items }) => {
+    expect(labels(value)).toEqual([{ group: "Projects", items }]);
+  });
+
+  it("offers a new project to an account with no project yet", () => {
+    expect(
+      jumpGroups({ ...INDEX, mates: [], projects: [] }, "", []).map((group) => ({
+        group: group.label,
+        items: group.items.map((item) => item.value),
+      })),
+    ).toEqual([{ group: "Projects", items: ["new-project"] }]);
   });
 
   it.each([

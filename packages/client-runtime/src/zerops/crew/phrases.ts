@@ -482,11 +482,13 @@ export function crewServedWord(
   }
 }
 
-/** *Waiting on you*'s presses (PRD §4.3 item 4, §5.2). */
+/**
+ * *Waiting on you*'s presses (PRD §4.3 item 4, §5.2). A task lands from its review, whose door
+ * says *Review* (`REVIEW_LABEL`, pass 16): no row lands one itself.
+ */
 export const CREW_ATTENTION_VERBS = {
   answer: "Answer",
   commitEdit: "Commit my edit",
-  land: "Land",
   reviewPlan: "Review plan",
   allow: "Allow",
   notNow: "Not now",
@@ -494,7 +496,6 @@ export const CREW_ATTENTION_VERBS = {
   carryOn: "Continue",
   discard: "Discard",
   askLeadToReview: "Ask lead to review",
-  landMyself: "Land it myself",
   dropWait: "Drop the wait",
 } as const;
 
@@ -613,11 +614,10 @@ export function crewAppWord(
   }
 }
 
-/** The lane bar's presses beside *Land* (`CREW_ATTENTION_VERBS.land`) and the asks. */
+/** The lane bar's presses beside the door to its task's review (`REVIEW_LABEL`) and the asks. */
 export const CREW_LANE_VERBS = {
   showOnDev: "Show on dev",
   backToTree: "Back to my tree",
-  landNow: "Land now",
   addCrewPorts: "Add crew ports",
 } as const;
 
@@ -679,6 +679,28 @@ export function crewDevHostDatabaseWord(database: boolean | null): string {
 
 /** The lead's mark beside its name (PRD §2.3, §4.6), and its accessible name in the strip. */
 export const CREW_LEAD_WORD = "Lead";
+
+/**
+ * The crew's one line under its Mate in the left menu says its most urgent
+ * fact: who needs you, the lead first — "Bo needs you", "Bo and Cy need
+ * you", "Bo and 2 others need you".
+ */
+export function crewLineNeedsWord(names: ReadonlyArray<string>): string {
+  const [first, second, ...rest] = names;
+  if (second === undefined) return `${first ?? "The crew"} needs you`;
+  if (rest.length === 0) return `${first} and ${second} need you`;
+  return `${first} and ${String(names.length - 1)} others need you`;
+}
+
+/** A crewmate's face on that line, as its tooltip and accessible name say it. */
+export function crewFaceWord(name: string, lead: boolean): string {
+  return lead ? `${name}, the lead` : name;
+}
+
+/** …or how many tasks wait for your *Land*: "1 task ready to land". */
+export function crewLineReadyWord(count: number): string {
+  return `${String(count)} ${count === 1 ? "task" : "tasks"} ready to land`;
+}
 
 /** What the lead does, where a writer's chat shows its copy of the code (PRD §4.6). */
 export const CREW_LEAD_ROLE_LINE = "Plans and reviews · no copy of the code";

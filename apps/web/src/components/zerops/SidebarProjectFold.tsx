@@ -1,0 +1,114 @@
+/**
+ * A project's rows as they unfold under its heading and fold back into it.
+ *
+ * The heading never moves (M9, T3): everything a project keeps — its rows and
+ * the room after them (`projectRoom`) — is inside this fold, so opening it
+ * only ever pushes what is below. Opening grows it from nothing to its height
+ * as it fades in, over 220 ms on the menu's strong ease-out; folding shrinks
+ * it back in 160 ms on an ease-in-out, and only then is it gone. A press in
+ * the middle turns it round from wherever it stands. With reduced motion it
+ * only fades in, and folds at once.
+ *
+ * A paint that nobody asked for — a reload, a project already open — moves
+ * nothing: only a `motion` the heading's press set animates.
+ */
+import { useEffectEvent, useLayoutEffect, useRef, type ReactNode } from "react";
+
+import { cn } from "~/lib/utils";
+
+import { projectRoom } from "./SidebarProjects.logic";
+
+/** Why a fold is moving: the heading was pressed to open it, or to fold it. */
+export type ProjectFoldMotion = "opening" | "closing";
+
+const UNFOLD: KeyframeAnimationOptions = {
+  duration: 220,
+  easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+};
+const FOLD: KeyframeAnimationOptions = {
+  duration: 160,
+  easing: "cubic-bezier(0.4, 0, 0.6, 1)",
+  fill: "forwards",
+};
+
+/** The room below the rows, as the class that keeps it. */
+const ROOM_CLASS: Record<number, string> = { 0: "pb-0", 16: "pb-4", 44: "pb-11" };
+
+export function SidebarProjectFold({
+  open,
+  motion,
+  last,
+  onSettled,
+  children,
+}: {
+  readonly open: boolean;
+  /** What the heading's press set moving; `undefined` for a still paint. */
+  readonly motion: ProjectFoldMotion | undefined;
+  /** The list's last project, which keeps less room below it. */
+  readonly last: boolean;
+  /** The movement ended: folded shut, or all the way open. */
+  readonly onSettled: () => void;
+  readonly children: ReactNode;
+}) {
+  const fold = useRef<HTMLDivElement>(null);
+  const running = useRef<Animation | null>(null);
+  const drawn = useRef(false);
+  // The latest press's, read when the movement ends.
+  const settled = useEffectEvent(onSettled);
+  useLayoutEffect(() => {
+    const firstPaint = !drawn.current;
+    drawn.current = true;
+    if (motion === undefined) return;
+    const element = fold.current;
+    const settle = () => {
+      running.current = null;
+      settled();
+    };
+    // Nothing to move where there is nothing drawn (a test's renderer).
+    if (element === null || typeof element.animate !== "function") {
+      settle();
+      return;
+    }
+    // Where it stands now, mid-movement included; a fold just drawn to open
+    // starts from nothing.
+    const from = firstPaint && open ? 0 : element.getBoundingClientRect().height;
+    running.current?.cancel();
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!open && reduced) {
+      settle();
+      return;
+    }
+    element.style.overflow = "hidden";
+    const animation = open
+      ? element.animate(
+          reduced
+            ? [{ opacity: 0 }, { opacity: 1 }]
+            : [
+                { height: `${String(from)}px`, opacity: 0 },
+                { height: `${String(element.getBoundingClientRect().height)}px`, opacity: 1 },
+              ],
+          UNFOLD,
+        )
+      : element.animate(
+          [
+            { height: `${String(from)}px`, opacity: 1 },
+            { height: "0px", opacity: 0 },
+          ],
+          FOLD,
+        );
+    running.current = animation;
+    animation.onfinish = () => {
+      if (running.current !== animation) return;
+      if (open) element.style.overflow = "";
+      settle();
+    };
+  }, [open, motion]);
+  return (
+    <div data-zerops-surface="sidebar-project-rows" ref={fold}>
+      {/* The heading's 2 px before the first row; the rows' own padding is the air. */}
+      <div className={cn("flex flex-col pt-0.5", ROOM_CLASS[projectRoom({ open: true, last })])}>
+        {children}
+      </div>
+    </div>
+  );
+}

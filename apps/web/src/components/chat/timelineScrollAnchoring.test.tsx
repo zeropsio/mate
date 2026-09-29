@@ -1,12 +1,17 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
+  cssLengthToPx,
+  describeTimelineAnchor,
   getAnchoredTurnMetrics,
   getRowBottom,
+  judgeTimelinePlacing,
   keepTimelineEndVisibleAfterOverlayGrowth,
   readTimelinePosition,
   rememberTimelinePosition,
+  resolveTimelineRestoreTarget,
   resolveTimelineScrollAnchor,
   shouldRepinTimelineEndAfterRowResize,
+  type RememberedTimelinePosition,
 } from "./timelineScrollAnchoring";
 
 function buildState({
@@ -237,9 +242,24 @@ describe("timeline scroll anchoring", () => {
 });
 
 describe("remembered timeline positions", () => {
+  const reading: RememberedTimelinePosition = {
+    rowId: "message-4",
+    offsetWithinRow: 32,
+    rowHeight: 180,
+    cardTopId: null,
+    previousRowId: "message-3",
+    atEnd: false,
+  };
+  const following: RememberedTimelinePosition = {
+    rowId: "message-9",
+    offsetWithinRow: 10,
+    rowHeight: 120,
+    cardTopId: null,
+    previousRowId: "message-8",
+    atEnd: true,
+  };
+
   it("keeps reading positions and end-follow independent across threads and environments", () => {
-    const reading = { rowId: "message-4", offsetWithinRow: 32, scrollOffset: 932, atEnd: false };
-    const following = { rowId: "message-9", offsetWithinRow: 10, scrollOffset: 2010, atEnd: true };
     rememberTimelinePosition("scroll-test-a:thread-1", reading);
     rememberTimelinePosition("scroll-test-a:thread-2", following);
     rememberTimelinePosition("scroll-test-b:thread-1", following);
@@ -258,11 +278,262 @@ describe("remembered timeline positions", () => {
       scroll: 260,
       positionAtIndex: (index: number) => tops[index],
     };
-    expect(resolveTimelineScrollAnchor(state)).toEqual({
-      rowId: "row-2",
-      offsetWithinRow: 10,
-      scrollOffset: 260,
-    });
+    expect(resolveTimelineScrollAnchor(state)).toEqual({ rowId: "row-2", index: 2 });
     expect(resolveTimelineScrollAnchor({ ...state, data: [] })).toBeUndefined();
+  });
+
+  // What a reading position holds besides its row: the run's card the row
+  // stands in, whose line is where a folded run is come back to, and the row
+  // above it, whose foot is where a row since gone is come back to.
+  it.each<{
+    readonly case: string;
+    readonly rows: ReadonlyArray<{
+      readonly id: string;
+      readonly card?: "top" | "middle" | "bottom";
+    }>;
+    readonly index: number;
+    readonly cardTopId: string | null;
+    readonly previousRowId: string | null;
+  }>([
+    {
+      case: "a row outside any card has no run's line",
+      rows: [{ id: "ask-1" }, { id: "answer-1" }],
+      index: 1,
+      cardTopId: null,
+      previousRowId: "ask-1",
+    },
+    {
+      case: "a run's record is its own card's top",
+      rows: [{ id: "ask-1" }, { id: "record-1", card: "top" }, { id: "end-1", card: "bottom" }],
+      index: 1,
+      cardTopId: "record-1",
+      previousRowId: "ask-1",
+    },
+    {
+      case: "a row inside a card goes back to the card's top",
+      rows: [
+        { id: "record-1", card: "top" },
+        { id: "end-1", card: "bottom" },
+        { id: "ask-2" },
+        { id: "record-2", card: "top" },
+        { id: "working-2", card: "middle" },
+        { id: "result-2", card: "middle" },
+        { id: "end-2", card: "bottom" },
+      ],
+      index: 5,
+      cardTopId: "record-2",
+      previousRowId: "working-2",
+    },
+    {
+      case: "the conversation's first row has nothing above it",
+      rows: [{ id: "record-1", card: "top" }],
+      index: 0,
+      cardTopId: "record-1",
+      previousRowId: null,
+    },
+  ])("$case", ({ rows, index, cardTopId, previousRowId }) => {
+    expect(describeTimelineAnchor(rows, index)).toEqual({ cardTopId, previousRowId });
+  });
+
+  const inRun: RememberedTimelinePosition = {
+    rowId: "record-2",
+    offsetWithinRow: 640,
+    rowHeight: 900,
+    cardTopId: "record-2",
+    previousRowId: "ask-2",
+    atEnd: false,
+  };
+  const inResult: RememberedTimelinePosition = {
+    rowId: "result-2",
+    offsetWithinRow: 30,
+    rowHeight: 96,
+    cardTopId: "record-2",
+    previousRowId: "working-2",
+    atEnd: false,
+  };
+  const inAnswer: RememberedTimelinePosition = {
+    rowId: "answer-1",
+    offsetWithinRow: 120,
+    rowHeight: 400,
+    cardTopId: null,
+    previousRowId: "end-1",
+    atEnd: false,
+  };
+
+  // Where the person was is kept by row, not by pixels: a run folded since
+  // they left brings them back to its line, never to an offset that points
+  // somewhere else now.
+  it.each<{
+    readonly case: string;
+    readonly position: RememberedTimelinePosition;
+    readonly rowIds: ReadonlyArray<string>;
+    readonly heights: Readonly<Record<string, number>>;
+    readonly target: ReturnType<typeof resolveTimelineRestoreTarget>;
+  }>([
+    {
+      case: "following the end stays following the end",
+      position: { ...inAnswer, atEnd: true },
+      rowIds: ["ask-1", "answer-1"],
+      heights: {},
+      target: { kind: "end" },
+    },
+    {
+      case: "a row not measured yet is aimed at where it was read",
+      position: inAnswer,
+      rowIds: ["end-1", "answer-1"],
+      heights: {},
+      target: { kind: "row", rowId: "answer-1", offsetWithinRow: 120 },
+    },
+    {
+      case: "a row the same height comes back exactly where it was read",
+      position: inAnswer,
+      rowIds: ["end-1", "answer-1"],
+      heights: { "answer-1": 400.5 },
+      target: { kind: "row", rowId: "answer-1", offsetWithinRow: 120 },
+    },
+    {
+      case: "a row that grew at its end keeps the line that was read",
+      position: inAnswer,
+      rowIds: ["end-1", "answer-1"],
+      heights: { "answer-1": 760 },
+      target: { kind: "row", rowId: "answer-1", offsetWithinRow: 120 },
+    },
+    {
+      case: "a run folded since comes back to its line",
+      position: inRun,
+      rowIds: ["ask-2", "record-2", "result-2"],
+      heights: { "record-2": 212 },
+      target: { kind: "line", rowId: "record-2", edge: "top" },
+    },
+    {
+      case: "a row of a run's card that shrank comes back to the run's line",
+      position: inResult,
+      rowIds: ["ask-2", "record-2", "result-2"],
+      heights: { "result-2": 48, "record-2": 212 },
+      target: { kind: "line", rowId: "record-2", edge: "top" },
+    },
+    {
+      case: "a row of a run's card still whole is read on, whatever folded above it",
+      position: inResult,
+      rowIds: ["ask-2", "record-2", "result-2"],
+      heights: { "result-2": 96, "record-2": 212 },
+      target: { kind: "row", rowId: "result-2", offsetWithinRow: 30 },
+    },
+    {
+      case: "a row outside any card that shrank comes back to its own top",
+      position: inAnswer,
+      rowIds: ["end-1", "answer-1"],
+      heights: { "answer-1": 300 },
+      target: { kind: "line", rowId: "answer-1", edge: "top" },
+    },
+    {
+      case: "a row of a run's card since gone comes back to the run's line",
+      position: { ...inResult, rowId: "working-2" },
+      rowIds: ["ask-2", "record-2", "result-2"],
+      heights: {},
+      target: { kind: "line", rowId: "record-2", edge: "top" },
+    },
+    {
+      case: "a row since gone comes back to the foot of the row above it",
+      position: inAnswer,
+      rowIds: ["end-1", "answer-2"],
+      heights: {},
+      target: { kind: "line", rowId: "end-1", edge: "foot" },
+    },
+    {
+      case: "with nothing of it left, the conversation opens at its end",
+      position: inAnswer,
+      rowIds: ["ask-9", "answer-9"],
+      heights: {},
+      target: { kind: "end" },
+    },
+  ])("$case", ({ position, rowIds, heights, target }) => {
+    expect(
+      resolveTimelineRestoreTarget({
+        position,
+        rowIds,
+        heightOf: (rowId) => heights[rowId],
+      }),
+    ).toEqual(target);
+  });
+});
+
+describe("where a conversation's first line sits", () => {
+  // Under the fade the header casts on the list (`topbar-scroll-fade`), read
+  // from its custom property as the page declares it.
+  it.each([
+    { value: "3rem", px: 48 },
+    { value: " 2.5rem", px: 40 },
+    { value: "12px", px: 12 },
+    { value: "", px: 0 },
+    { value: "calc(1rem + 2px)", px: 0 },
+  ])("$value is $px px", ({ value, px }) => {
+    expect(cssLengthToPx(value, 16)).toBe(px);
+  });
+});
+
+describe("placing a conversation where it stays", () => {
+  // From the list's mount until it stands where it stays — a reading position
+  // put back, or the end reached — frame by frame, one loop however often its
+  // rows change (a Mate streaming its answer changes them every frame), and
+  // never longer than a while: then it shows where the best anchor puts it.
+  it.each<{
+    readonly case: string;
+    readonly frame: Parameters<typeof judgeTimelinePlacing>[0];
+    readonly stableFrames: number;
+    readonly verdict: ReturnType<typeof judgeTimelinePlacing>["verdict"];
+    readonly next: number;
+  }>([
+    {
+      case: "waits for the list to show its rows",
+      frame: { elapsedMs: 40, listReady: false, offBy: 0 },
+      stableFrames: 1,
+      verdict: "wait",
+      next: 0,
+    },
+    {
+      case: "waits for the row it lands on to be drawn",
+      frame: { elapsedMs: 40, listReady: true, offBy: null },
+      stableFrames: 1,
+      verdict: "wait",
+      next: 0,
+    },
+    {
+      case: "puts back a place more than a pixel off",
+      frame: { elapsedMs: 60, listReady: true, offBy: 74 },
+      stableFrames: 1,
+      verdict: "correct",
+      next: 0,
+    },
+    {
+      case: "counts a frame that stands where it stays",
+      frame: { elapsedMs: 80, listReady: true, offBy: 0.5 },
+      stableFrames: 0,
+      verdict: "wait",
+      next: 1,
+    },
+    {
+      case: "is placed after two frames standing where it stays",
+      frame: { elapsedMs: 96, listReady: true, offBy: -1 },
+      stableFrames: 1,
+      verdict: "placed",
+      next: 2,
+    },
+    {
+      case: "is overdue after a while, whatever it measures",
+      frame: { elapsedMs: 350, listReady: false, offBy: null },
+      stableFrames: 0,
+      verdict: "overdue",
+      next: 0,
+    },
+    {
+      case: "is overdue while still being put back",
+      frame: { elapsedMs: 420, listReady: true, offBy: 35 },
+      stableFrames: 0,
+      verdict: "overdue",
+      next: 0,
+    },
+  ])("$case", ({ frame, stableFrames, verdict, next }) => {
+    expect(judgeTimelinePlacing(frame, stableFrames)).toEqual({ verdict, stableFrames: next });
   });
 });

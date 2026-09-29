@@ -20,6 +20,7 @@ import {
   type EnvironmentId,
   isProviderDriverKind,
   ProjectId,
+  PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   type MessageId,
   type ModelSelection,
   type ProviderInteractionMode,
@@ -43,6 +44,10 @@ import { type ComposerImageAttachment, type DraftThreadState } from "../composer
 import * as Schema from "effect/Schema";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentThreadDetails } from "../state/threads";
+import {
+  reconcileInlinePicturePlaceholders,
+  stripInlinePicturePlaceholders,
+} from "../lib/composerPictures";
 import {
   filterTerminalContextsWithText,
   stripInlineTerminalContextPlaceholders,
@@ -125,10 +130,11 @@ export function resolveDraftHeroState(input: {
  * in light mode — while the thread detail reloads, even when the destination
  * was on screen moments ago.
  *
- * A thread only ever paints its own snapshot: showing another conversation
- * while the next one loads would paint something the reload takes back.
- * Stored at module scope because ChatView remounts when the thread route
- * changes; the account lifetime clears it.
+ * The timeline only ever holds a thread's own snapshot. While a thread with
+ * none loads, the pane keeps a still picture of the conversation left over
+ * it (`TimelineSwitch`, T1), never that conversation's rows under the next
+ * one's name. Stored at module scope so it outlives the view; the account
+ * lifetime clears it.
  */
 export type HeldThreadTimeline<T extends readonly unknown[]> = {
   threadKey: string | null;
@@ -706,6 +712,49 @@ export function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
+/**
+ * `read`, once for each file: a draft saved again and again reads only the
+ * files it has not read yet. A read that fails is tried again next time.
+ */
+export function readOncePerFile(
+  read: (file: File) => Promise<string>,
+): (file: File) => Promise<string> {
+  const reads = new WeakMap<File, Promise<string>>();
+  return (file) => {
+    const known = reads.get(file);
+    if (known) return known;
+    const reading = read(file);
+    reads.set(file, reading);
+    reading.catch(() => reads.delete(file));
+    return reading;
+  };
+}
+
+/**
+ * Queued messages put back into the composer (after Stop or a Cancel): their
+ * prompts after its own, blank lines between, and their pictures after its
+ * own while there is room. The pictures past the room go back to the queue,
+ * and their places, which sit last, leave the text with them.
+ */
+export function restoreQueuedToComposer<I>(input: {
+  readonly prompt: string;
+  readonly imageCount: number;
+  readonly messages: ReadonlyArray<{ readonly prompt: string; readonly images: ReadonlyArray<I> }>;
+}): { prompt: string; images: I[]; overflow: I[] } {
+  const room = Math.max(0, PROVIDER_SEND_TURN_MAX_ATTACHMENTS - input.imageCount);
+  const queued = input.messages.flatMap((message) => message.images);
+  const images = queued.slice(0, room);
+  const prompt = [input.prompt, ...input.messages.map((message) => message.prompt)]
+    .map((text) => text.trim())
+    .filter((text) => text.length > 0)
+    .join("\n\n");
+  return {
+    prompt: reconcileInlinePicturePlaceholders(prompt, input.imageCount + images.length),
+    images,
+    overflow: queued.slice(room),
+  };
+}
+
 export function resolveSendEnvMode(input: {
   requestedEnvMode: DraftThreadEnvMode;
   isGitRepo: boolean;
@@ -763,7 +812,9 @@ export function deriveComposerSendState(options: {
   expiredTerminalContextCount: number;
   hasSendableContent: boolean;
 } {
-  const trimmedPrompt = stripInlineTerminalContextPlaceholders(options.prompt).trim();
+  const trimmedPrompt = stripInlinePicturePlaceholders(
+    stripInlineTerminalContextPlaceholders(options.prompt),
+  ).trim();
   const sendableTerminalContexts = filterTerminalContextsWithText(options.terminalContexts);
   const expiredTerminalContextCount =
     options.terminalContexts.length - sendableTerminalContexts.length;

@@ -78,6 +78,72 @@ export const NO_TRACKED_COMMANDS: TrackedCommands = {
   trackers: new Set(),
 };
 
+/**
+ * A shell a runtime runs a command through — `/usr/bin/zsh -lc "…"`,
+ * `bash -c '…'`, `sh -c …` — its last flag the one that hands it the command.
+ */
+const SHELL_CALL = /^(?:\S*\/)?(?:ba|z|da|k)?sh((?:\s+-[A-Za-z]+)+)\s+(\S[\s\S]*)$/u;
+
+/**
+ * The first word of what a shell was handed, as the shell reads it: quoted,
+ * its quotes gone — `'…'` literal, `"…"` with its `\"` undone (how the
+ * runtime writes a command's arguments out), a `\` escaping what follows —
+ * up to the first space outside them, and where it ended. Null for a word
+ * that never closes.
+ */
+function firstShellWord(text: string): { readonly word: string; readonly end: number } | null {
+  let word = "";
+  let index = 0;
+  while (index < text.length && !/\s/u.test(text[index]!)) {
+    const character = text[index]!;
+    if (character === "'") {
+      const close = text.indexOf("'", index + 1);
+      if (close < 0) return null;
+      word += text.slice(index + 1, close);
+      index = close + 1;
+    } else if (character === '"') {
+      let cursor = index + 1;
+      let quoted = "";
+      while (cursor < text.length && text[cursor] !== '"') {
+        if (text[cursor] === "\\" && text[cursor + 1] === '"') {
+          quoted += '"';
+          cursor += 2;
+        } else {
+          quoted += text[cursor];
+          cursor += 1;
+        }
+      }
+      if (cursor >= text.length) return null;
+      word += quoted;
+      index = cursor + 1;
+    } else if (character === "\\" && index + 1 < text.length) {
+      word += text[index + 1];
+      index += 2;
+    } else {
+      word += character;
+      index += 1;
+    }
+  }
+  return { word, end: index };
+}
+
+/**
+ * A command as the shell it ran through got it: Codex runs every command as
+ * `/usr/bin/zsh -lc "…"` and says nothing of it, so the command a person
+ * reads is the one inside, unquoted. Only when that is the shell's whole
+ * argument: whatever follows it — a pipe, a fallback, a second command — is
+ * the command too, and the call stands as it is.
+ */
+export function unwrapShell(command: string): string {
+  const match = SHELL_CALL.exec(command.trim());
+  if (match === null) return command;
+  const lastFlag = match[1]!.trim().split(/\s+/u).at(-1) ?? "";
+  if (!lastFlag.includes("c")) return command;
+  const handed = firstShellWord(match[2]!);
+  if (handed === null || handed.word.trim().length === 0) return command;
+  return match[2]!.slice(handed.end).trim().length === 0 ? handed.word : command;
+}
+
 const STATEMENT_PREAMBLE =
   /^\s*(?:cd\s+(?:"[^"]*"|'[^']*'|[^\s;&|]+)|(?:export\s+)?[A-Za-z_]\w*=(?:"[^"]*"|'[^']*'|[^\s;&|]*))\s*(?:&&|;)\s*/;
 
@@ -188,6 +254,12 @@ function stepKind(entry: WorkLogEntry): StepKind {
   ) {
     return "read";
   }
+  // A search or a read of the web is known by its name before the files a
+  // call names: the folder a search looks in is no file it changed.
+  if (named === "Grep" || named === "Glob") return "search";
+  if (named === "WebFetch" || named === "WebSearch" || entry.itemType === "web_search") {
+    return /\bgrep\b/i.test(entry.toolTitle ?? entry.label) ? "search" : "web";
+  }
   if (
     named === "Edit" ||
     named === "MultiEdit" ||
@@ -198,10 +270,6 @@ function stepKind(entry: WorkLogEntry): StepKind {
     (entry.changedFiles?.length ?? 0) > 0
   ) {
     return "edit";
-  }
-  if (named === "Grep" || named === "Glob") return "search";
-  if (named === "WebFetch" || named === "WebSearch" || entry.itemType === "web_search") {
-    return /\bgrep\b/i.test(entry.toolTitle ?? entry.label) ? "search" : "web";
   }
   return "tool";
 }
@@ -417,9 +485,11 @@ export function stepOf(
   const ended = running
     ? null
     : new Date(Math.max(endOf(entry), track === undefined ? 0 : endOf(track.task))).toISOString();
-  const code = kind === "command" && entry.command ? commandShown(entry.command) : null;
-  const codeLines =
-    code === null ? 0 : (entry.rawCommand ?? entry.command ?? "").trim().split("\n").length;
+  // The command as it was written, out of the shell the runtime ran it in.
+  const unwrapped =
+    kind === "command" && entry.command ? unwrapShell(entry.rawCommand ?? entry.command) : null;
+  const code = unwrapped === null ? null : commandShown(unwrapped);
+  const script = unwrapped === null ? null : commandWhole(unwrapped);
   const look = kind === "look" ? lookedAt(entry) : null;
   const described = entry.callInput?.description ?? track?.description ?? null;
   return {
@@ -428,8 +498,8 @@ export function stepOf(
     words: described ?? plainWords(entry, kind, running),
     phrase: described === null ? plainPhrase(entry, kind, running) : null,
     code,
-    script: code === null ? null : commandWhole(entry.rawCommand ?? entry.command ?? ""),
-    codeLines,
+    script,
+    codeLines: script === null ? 0 : script.split("\n").length,
     state,
     startedAt: entry.startedAt ?? entry.createdAt,
     endedAt: ended,

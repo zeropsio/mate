@@ -391,20 +391,13 @@ export {
   type GroupNextStepTarget,
 } from "./groupFlow.ts";
 export {
-  productionDistance,
-  stageDistance,
   stageMarks,
   stageStandings,
-  stopRowLine,
   type ServiceChanges,
   type StageMark,
   type StageStandings,
   type StopChange,
-  type StopDistance,
-  type StopRowChange,
-  type StopRowLine,
-  type StopWordKind,
-} from "./stopDistance.ts";
+} from "./stageMarks.ts";
 export {
   changesNotLive,
   PROJECT_ALL_CLEAR,
@@ -421,6 +414,35 @@ export {
 } from "./changeConversation.ts";
 export { changeVerdict, type ChangeVerdict, type ChangeVerdictKind } from "./changeVerdict.ts";
 export {
+  REVIEW_LABEL,
+  REVIEW_RELEASE_LABEL,
+  changeReview,
+  crewTaskReview,
+  releaseReview,
+  reviewAge,
+  rollbackReview,
+  type ChangeReviewInput,
+  type CrewTaskReviewInput,
+  type ReleaseOutcome,
+  type ReleaseReviewInput,
+  type ReviewFix,
+  type ReviewFixProblem,
+  type ReviewModel,
+  type ReviewPress,
+  type ReviewPrimary,
+  type ReviewState,
+  type ReviewTone,
+  type ReviewVerdict,
+  type RollbackReviewInput,
+} from "./reviewVerdict.ts";
+export {
+  changeFileParts,
+  parseChangeDiff,
+  type ChangeDiffFile,
+  type ChangeDiffHunk,
+  type ChangeDiffLine,
+} from "./changeDiff.ts";
+export {
   base64Decode,
   base64Encode,
   createGiteaClient,
@@ -428,12 +450,14 @@ export {
   type GiteaActionJob,
   type GiteaActionRun,
   type GiteaBranch,
+  type GiteaChangedFile,
   type GiteaClient,
   type GiteaClientOptions,
   type GiteaCommit,
   type GiteaCommitDetail,
   type GiteaCommitFile,
   type GiteaCommitStatus,
+  type GiteaDiffText,
   type GiteaFile,
   type GiteaFileChange,
   type GiteaIssueComment,

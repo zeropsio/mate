@@ -553,11 +553,11 @@ describe("crewTaskSheet actions", () => {
       },
     });
   const actionsOf = (snapshot: CrewSnapshot, taskId: string) =>
-    crewTaskSheet(snapshot, viewOf(snapshot), taskId)?.actions.map(({ label, tone, command }) => ({
-      label,
-      tone,
-      command,
-    }));
+    crewTaskSheet(snapshot, viewOf(snapshot), taskId)?.actions.map((action) =>
+      "review" in action
+        ? { label: action.label, tone: action.tone, review: action.review }
+        : { label: action.label, tone: action.tone, command: action.command },
+    );
   const discard = (taskId: string) => ({
     label: "Discard",
     tone: "outline",
@@ -566,20 +566,20 @@ describe("crewTaskSheet actions", () => {
 
   it.each([
     {
-      name: "a ready task lands",
+      name: "a ready task opens its review, where it lands",
       snapshot: withTask("task-13", { state: "ready" }),
       taskId: "task-13",
       actions: [
-        { label: "Land", tone: "primary", command: { _tag: "land", taskId: "task-13" } },
+        { label: "Review", tone: "primary", review: { taskId: "task-13" } },
         discard("task-13"),
       ],
     },
     {
-      name: "a working task with a change lands now, before its crewmate reports",
+      name: "a working task with a change opens its review, which lands it now",
       snapshot: fixture,
       taskId: "task-12",
       actions: [
-        { label: "Land now", tone: "secondary", command: { _tag: "landNow", taskId: "task-12" } },
+        { label: "Review", tone: "secondary", review: { taskId: "task-12" } },
         discard("task-12"),
       ],
     },

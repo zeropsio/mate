@@ -65,14 +65,10 @@ import {
   projectAttention,
   type ProjectAttentionItem,
 } from "./projectAttention.ts";
-import {
-  changeState,
-  flowVerbLabel,
-  type ChangeState,
-  type FlowPullRequest,
-} from "./projectFlow.ts";
+import { changeState, type ChangeState, type FlowPullRequest } from "./projectFlow.ts";
 import type { ZeropsPublicRoute } from "./publicRoutes.ts";
 import { shortCommit, type ReleaseGate } from "./release.ts";
+import { REVIEW_LABEL, REVIEW_RELEASE_LABEL } from "./reviewVerdict.ts";
 
 /** One Mate of the project, as the flow's first column shows it. */
 export interface GroupFlowMate {
@@ -414,7 +410,8 @@ function nextStepOf(
     return {
       kind: "merge",
       text: `Pull request #${String(mergeable.number)} waits for your merge`,
-      verb: flowVerbLabel("merge", false),
+      // The door to the change's review, which merges it (pass 16, R1).
+      verb: REVIEW_LABEL,
       target: { kind: "change", repository: mergeable.repository, number: mergeable.number },
     };
 
@@ -425,7 +422,7 @@ function nextStepOf(
     return {
       kind: "release",
       text: notLive.text,
-      verb: `${flowVerbLabel("release", false)} ${input.release.suggestion}`,
+      verb: REVIEW_RELEASE_LABEL,
       target: { kind: "release", tag: input.release.suggestion },
     };
 

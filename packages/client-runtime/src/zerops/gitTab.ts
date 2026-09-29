@@ -53,6 +53,7 @@ import type { MergeabilityKind } from "./forge/mergeState.ts";
 import type { GiteaCommitStatus, GiteaPullRequest, GiteaRepository } from "./giteaClient.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
 import { branchLabel } from "./mateIdentity.ts";
+import { REVIEW_LABEL } from "./reviewVerdict.ts";
 import { foldedStageHostnames } from "./serviceMap.ts";
 import type { ZeropsTopologyService } from "./topology.ts";
 
@@ -134,7 +135,7 @@ export type GitBlockState =
 /** How the checks on the branch's head went — a dot's tone, with one word. */
 export type GitCheckTone = "none" | "pending" | "passing" | "failing";
 
-export type GitBlockActionKind = "open-pull-request" | "update-from-main" | "push" | "merge";
+export type GitBlockActionKind = "open-pull-request" | "update-from-main" | "push" | "review";
 
 export interface GitBlockAction {
   readonly kind: GitBlockActionKind;
@@ -204,12 +205,31 @@ export function environmentForBranch(
     ?.name;
 }
 
+/**
+ * Each check's newest status, the broker's own left out.
+ *
+ * Gitea keeps every status a commit was ever given, newest first (as `releaseDeploys` reads them),
+ * so a check that went pending → success, or failure → rerun → success, is listed twice; only its
+ * newest says how it went. Read whole, a rerun that passed still read "failing" — and a change
+ * whose checks once failed could never merge (pass 16's review blocks on failing checks).
+ *
+ * The broker's own deploy statuses are not checks on the change: they are what happened after it
+ * landed, and counting them would make a stage's failed deploy read as a failing pull request.
+ */
+function newestChecks(
+  statuses: ReadonlyArray<GiteaCommitStatus>,
+): ReadonlyArray<GiteaCommitStatus> {
+  const seen = new Set<string>();
+  return statuses.filter((status) => {
+    if (status.context.startsWith("mate/") || seen.has(status.context)) return false;
+    seen.add(status.context);
+    return true;
+  });
+}
+
 /** How the checks on one commit went, worst-first — a green among reds is not green. */
 export function checkTone(statuses: ReadonlyArray<GiteaCommitStatus>): GitCheckTone {
-  // The broker's own deploy statuses are not checks on the change: they are
-  // what happened after it landed, and counting them would make a stage's
-  // failed deploy read as a failing pull request.
-  const checks = statuses.filter((status) => !status.context.startsWith("mate/"));
+  const checks = newestChecks(statuses);
   if (checks.length === 0) return "none";
   if (checks.some((status) => status.state === "failure" || status.state === "error")) {
     return "failing";
@@ -222,10 +242,10 @@ export function checkTone(statuses: ReadonlyArray<GiteaCommitStatus>): GitCheckT
  * The checks' tone as a status dot's — `undefined` where no check ran and no
  * dot belongs.
  *
- * Here rather than beside a component: four surfaces paint this fact (a
- * change's row on the projects screen, the merge dialog, the left menu, the
- * Git tab), and a tone table that lives in one of them is a table the other
- * three are one edit away from disagreeing with.
+ * Here rather than beside a component: several surfaces paint this fact (a
+ * change's row on the projects screen, the left menu, the Git tab), and a
+ * tone table that lives in one of them is a table the others are one edit
+ * away from disagreeing with.
  */
 export function checkDotTone(input: {
   readonly checks: GitCheckTone;
@@ -248,6 +268,10 @@ export interface GitCheckRow {
   readonly name: string;
   readonly tone: ServiceStatusToneId;
   readonly word: string;
+  /** What the check said about itself — `pnpm build · 34s`; absent where it said nothing. */
+  readonly description?: string | undefined;
+  /** Where the check keeps its own page — its run, its log; absent where it keeps none. */
+  readonly url?: string | undefined;
 }
 
 const CHECK_STATE: Record<string, { readonly tone: ServiceStatusToneId; readonly word: string }> = {
@@ -267,13 +291,17 @@ const CHECK_STATE: Record<string, { readonly tone: ServiceStatusToneId; readonly
  * the change.
  */
 export function gitChecks(statuses: ReadonlyArray<GiteaCommitStatus>): ReadonlyArray<GitCheckRow> {
-  return statuses
-    .filter((status) => !status.context.startsWith("mate/"))
-    .map((status) => ({
+  return newestChecks(statuses).map((status) => {
+    const description = status.description?.trim();
+    const url = status.target_url?.trim();
+    return {
       name: status.context,
       tone: CHECK_STATE[status.state]?.tone ?? "off",
       word: CHECK_STATE[status.state]?.word ?? "Unknown",
-    }));
+      ...(description === undefined || description.length === 0 ? {} : { description }),
+      ...(url === undefined || url.length === 0 ? {} : { url }),
+    };
+  });
 }
 
 /** The one word beside the checks' dot (R5). */
@@ -604,11 +632,13 @@ function stateOf(checkout: GitCheckoutState, forge: GitForgeState): GitBlockStat
 
 /**
  * The one verb, in the order the work happens: push what is local, then take
- * what is remote, then ask for it to be merged.
+ * what is remote, then review what is open.
  *
- * A branch that *is* the default never offers a pull request — there would be
- * nothing to merge it into — and a merged one offers nothing at all: the
- * broker is deploying it, and the person's part is over.
+ * An open pull request offers *Review* whatever Gitea says about it — the one
+ * door to merging (pass 16, R1): the review says whether it can merge and why
+ * not, and carries *Merge*. A branch that *is* the default never offers a pull
+ * request — there would be nothing to merge it into — and a merged one offers
+ * nothing at all: the broker is deploying it, and the person's part is over.
  */
 function actionOf(
   checkout: GitCheckoutState,
@@ -628,11 +658,7 @@ function actionOf(
     };
   }
   if (state === "in-review") {
-    // Gitea decides whether this person may merge; the app only offers it
-    // where Gitea already said yes for that branch.
-    return forge.pullRequest?.mergeability === "mergeable"
-      ? { kind: "merge", label: "Merge", running: "Merging…", ownerOnly: false }
-      : undefined;
+    return { kind: "review", label: REVIEW_LABEL, running: REVIEW_LABEL, ownerOnly: false };
   }
   const defaultBranch = forge.repository?.default_branch ?? FALLBACK_DEFAULT_BRANCH;
   if (checkout.headRef === null || checkout.headRef === defaultBranch) return undefined;

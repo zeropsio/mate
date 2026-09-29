@@ -61,7 +61,9 @@ describe("CrewLaneBar", () => {
     expect(html).toContain("App on :3001");
     expect(html).toContain('href="https://appdev-1df2-3001.prg1.zerops.app"');
     expect(html).toContain(">Show on dev<");
-    expect(html).toContain(">Land now<");
+    // The door to the task's review, which lands it now: the bar lands nothing itself.
+    expect(html).toContain(">Review<");
+    expect(html).not.toContain(">Land now<");
   });
 
   it("offers what only the Mate can do: crew ports, and committing your edit", () => {
@@ -89,7 +91,7 @@ describe("CrewLaneBar", () => {
     state.current = false;
     const html = render("backend");
     state.current = true;
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Land now<\/button>/u);
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Review<\/button>/u);
   });
 });
 

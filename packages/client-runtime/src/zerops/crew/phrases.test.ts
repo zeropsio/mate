@@ -20,6 +20,9 @@ import {
   CREW_LEAD_WORD,
   crewAheadWord,
   crewAppWord,
+  crewFaceWord,
+  crewLineNeedsWord,
+  crewLineReadyWord,
   crewConflictWord,
   crewDevHostDatabaseWord,
   crewDiffStatWord,
@@ -577,7 +580,6 @@ describe("the section's words (PRD §4.3)", () => {
     expect(Object.values(CREW_ATTENTION_VERBS)).toEqual([
       "Answer",
       "Commit my edit",
-      "Land",
       "Review plan",
       "Allow",
       "Not now",
@@ -585,7 +587,6 @@ describe("the section's words (PRD §4.3)", () => {
       "Continue",
       "Discard",
       "Ask lead to review",
-      "Land it myself",
       "Drop the wait",
     ]);
     expect(crewAskToResolveWord("Backend")).toBe("Ask Backend to resolve");
@@ -684,7 +685,6 @@ describe("the chat's words (PRD §4.5, §5.6, §5.7)", () => {
     expect(CREW_LANE_VERBS).toEqual({
       showOnDev: "Show on dev",
       backToTree: "Back to my tree",
-      landNow: "Land now",
       addCrewPorts: "Add crew ports",
     });
   });
@@ -752,5 +752,30 @@ describe("crewRunsOnWord", () => {
     [{ login: "work", model: "Opus 5.5", effort: null }, "Runs on work · Opus 5.5"],
   ] as const)("says what a crewmate runs on: %o", (runsOn, word) => {
     expect(crewRunsOnWord(runsOn)).toBe(word);
+  });
+});
+
+describe("the crew's one line under its Mate", () => {
+  it.each([
+    { names: ["Bo"], says: "Bo needs you" },
+    { names: ["Bo", "Cy"], says: "Bo and Cy need you" },
+    { names: ["Bo", "Cy", "Dee"], says: "Bo and 2 others need you" },
+    { names: ["Ada", "Bo", "Cy", "Dee"], says: "Ada and 3 others need you" },
+  ])("says who needs you: $says", ({ names, says }) => {
+    expect(crewLineNeedsWord(names)).toBe(says);
+  });
+
+  it.each([
+    { count: 1, says: "1 task ready to land" },
+    { count: 2, says: "2 tasks ready to land" },
+    { count: 12, says: "12 tasks ready to land" },
+  ])("counts the tasks waiting for your Land: $says", ({ count, says }) => {
+    expect(crewLineReadyWord(count)).toBe(says);
+  });
+  it.each([
+    { name: "Ada", lead: true, says: "Ada, the lead" },
+    { name: "Bo", lead: false, says: "Bo" },
+  ])("names a face: $says", ({ name, lead, says }) => {
+    expect(crewFaceWord(name, lead)).toBe(says);
   });
 });

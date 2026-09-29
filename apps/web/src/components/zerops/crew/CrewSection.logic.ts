@@ -1,7 +1,7 @@
 /**
  * The Crew section's reading of the crew view (PRD §4.3): each crewmate row's
- * state and lead line, what each *Waiting on you* row lets you press, what a
- * dev service serves, and the sidebar's crew faces.
+ * state and lead line, what each *Waiting on you* row lets you press, and what
+ * a dev service serves.
  *
  * Every word comes from `crew/phrases.ts` (crew and task words) or the one
  * status resolver's phrase producer (a thread's word, R5); this file only
@@ -11,7 +11,6 @@ import {
   CREW_ATTENTION_VERBS,
   CREW_BRIEF_EMPTY_WORD,
   CREW_CARRY_ON_MESSAGE,
-  CREW_LANE_VERBS,
   crewBriefPlainText,
   CREW_IDLE_WORD,
   crewAskLeadToReviewMessage,
@@ -23,6 +22,7 @@ import {
   crewReworkMessage,
   crewServedWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
+import { REVIEW_LABEL } from "@t3tools/client-runtime/zerops";
 import type { CrewmateView, CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import { CREW_BRIEF_TEMPLATE } from "@t3tools/shared/crewTemplates";
 import type {
@@ -37,11 +37,8 @@ import type {
   Crewmate,
   ThreadId,
 } from "@t3tools/contracts";
-import type { MateMarkState, MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
-import {
-  mateMarkStateForThreadStatus,
-  type ThreadStatusToneId,
-} from "@t3tools/shared/threadStatus";
+import type { ServiceStatusToneId } from "@t3tools/shared/brand";
+import type { ThreadStatusToneId } from "@t3tools/shared/threadStatus";
 
 const THREAD_DOT_TONE: Record<ThreadStatusToneId, ServiceStatusToneId> = {
   attention: "attention",
@@ -166,7 +163,9 @@ export type CrewAttentionAction =
   | { readonly kind: "ask"; readonly label: string; readonly ask: string }
   | { readonly kind: "board"; readonly label: string }
   | { readonly kind: "chat"; readonly label: string; readonly threadId: ThreadId }
-  | { readonly kind: "command"; readonly label: string; readonly command: CrewCommand };
+  | { readonly kind: "command"; readonly label: string; readonly command: CrewCommand }
+  /** The door to the task's review, which is where it lands (pass 16, R1). */
+  | { readonly kind: "review"; readonly label: string; readonly taskId: string };
 
 function displayName(crewmates: ReadonlyArray<Crewmate>, handle: string | null): string {
   if (handle === null) return "the crew";
@@ -208,13 +207,7 @@ export function crewAttentionActions(
     case "ready-to-land":
       return row.taskId === null
         ? []
-        : [
-            {
-              kind: "command",
-              label: CREW_ATTENTION_VERBS.land,
-              command: { _tag: "land", taskId: row.taskId },
-            },
-          ];
+        : [{ kind: "review", label: REVIEW_LABEL, taskId: row.taskId }];
     case "plan":
       return can.board ? [{ kind: "board", label: CREW_ATTENTION_VERBS.reviewPlan }] : [];
     case "show-on-dev": {
@@ -286,11 +279,7 @@ export function crewAttentionActions(
                 attachments: [],
               },
             },
-            {
-              kind: "command",
-              label: CREW_LANE_VERBS.landNow,
-              command: { _tag: "landNow", taskId: row.taskId },
-            },
+            { kind: "review", label: REVIEW_LABEL, taskId: row.taskId },
             {
               kind: "command",
               label: CREW_ATTENTION_VERBS.discard,
@@ -346,15 +335,11 @@ export function crewAttentionActions(
           ];
     }
     case "review-wait": {
-      // Nobody reviews it: ask the lead as you, or land it yourself (your accept).
+      // Nobody reviews it: ask the lead as you, or review it yourself and land it from there.
       if (row.taskId === null) return [];
       const lead = crew.crewmates.find((mate) => mate.kind === "lead");
       const task = crew.board.tasks.find((entry) => entry.id === row.taskId);
-      const land: CrewAttentionAction = {
-        kind: "command",
-        label: CREW_ATTENTION_VERBS.landMyself,
-        command: { _tag: "land", taskId: row.taskId },
-      };
+      const land: CrewAttentionAction = { kind: "review", label: REVIEW_LABEL, taskId: row.taskId };
       return lead === undefined || task === undefined
         ? [land]
         : [
@@ -381,30 +366,4 @@ export function crewServedLine(
 ): { readonly text: string; readonly release: boolean } | null {
   const text = crewServedWord(host, crewmates);
   return text === null ? null : { text, release: host.served.by === "crewmate" };
-}
-
-export interface CrewFace {
-  readonly handle: string;
-  readonly displayName: string;
-  readonly tint: MateTintId;
-  /** Its thread's face; idle before its first turn. */
-  readonly state: MateMarkState;
-  readonly threadId: ThreadId | null;
-}
-
-/** The sidebar Mate row's crew faces (PRD §4.2): at most `max`, the lead first, and how many more. */
-export function crewFaceStack(
-  crewmates: ReadonlyArray<CrewmateView>,
-  max = 3,
-): { readonly faces: ReadonlyArray<CrewFace>; readonly more: number } {
-  return {
-    faces: crewmates.slice(0, max).map((row) => ({
-      handle: row.crewmate.handle,
-      displayName: row.crewmate.displayName,
-      tint: row.crewmate.tint,
-      state: row.status === null ? "idle" : mateMarkStateForThreadStatus(row.status.kind),
-      threadId: row.crewmate.currentThreadId,
-    })),
-    more: Math.max(0, crewmates.length - max),
-  };
 }

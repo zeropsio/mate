@@ -75,6 +75,24 @@ describe("userAskOf", () => {
       { kind: "text", text: "/var/www/app fails to build" },
     ],
     [
+      "words around a picture, its label left out and its notes kept",
+      {
+        text: "The header feels off:\n[Picture 1]\nNotes on picture 1:\n1. Bigger logo\nFix it",
+        attachments: [image],
+      },
+      { kind: "text", text: "The header feels off:\nBigger logo\nFix it" },
+    ],
+    [
+      "a picture with nothing written asks by its picture",
+      { text: "[Picture 1]\nNotes on picture 1:\n1. Marked, no note.", attachments: [image] },
+      { kind: "attachments", images: 1, files: 0 },
+    ],
+    [
+      "a label with no picture behind it is words",
+      { text: "[Picture 1]" },
+      { kind: "text", text: "[Picture 1]" },
+    ],
+    [
       "the image-only placeholder",
       { text: IMAGE_ONLY_BOOTSTRAP_PROMPT, attachments: [image] },
       { kind: "attachments", images: 1, files: 0 },
@@ -88,6 +106,28 @@ describe("userAskOf", () => {
       "attachments without text",
       { text: "", attachments: [image, file, image] },
       { kind: "attachments", images: 2, files: 1 },
+    ],
+    [
+      "a picture kept with its original asks as one picture",
+      {
+        text: "[Picture 1]",
+        attachments: [
+          { type: "image", mimeType: "image/png" },
+          { type: "file", mimeType: "image/png" },
+        ],
+      },
+      { kind: "attachments", images: 1, files: 0 },
+    ],
+    [
+      "a file after a picture that is no picture of its own counts as a file",
+      {
+        text: "[Picture 1]",
+        attachments: [
+          { type: "image", mimeType: "image/png" },
+          { type: "file", mimeType: "text/plain" },
+        ],
+      },
+      { kind: "attachments", images: 1, files: 1 },
     ],
   ])("%s asks", (_, message, expected) => {
     expect(userAskOf(message)).toEqual(expected);

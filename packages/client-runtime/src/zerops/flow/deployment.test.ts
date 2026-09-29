@@ -9,12 +9,14 @@ import type {
 } from "../data/types.ts";
 import { ReceiptOrdinal } from "../data/types.ts";
 import { serviceRecordToZeropsService } from "../data/dto.ts";
-import type { EnvironmentRow } from "../groupRows.ts";
+import { deployedVersion, type EnvironmentRow } from "../groupRows.ts";
 import type { Freshness, Shown, WithheldReason } from "../knowledge/known.ts";
 import { projectTopology } from "../topology.ts";
 import {
   buildNames,
   CHECKING_WHAT_RUNS,
+  deployActivatedAt,
+  deployBuilding,
   NOTHING_DEPLOYED,
   stopServices,
   stopView,
@@ -802,5 +804,57 @@ describe("buildNames", () => {
     const held = new Map([["v1", "first"]]);
     expect(buildNames(held, builds({ id: "v1", name: "first" }))).toBe(held);
     expect(buildNames(held, builds({ id: "v3" }))).toBe(held);
+  });
+});
+
+describe("what a surface reads off a stop's deployment", () => {
+  const v1 = deployedVersion("v0.1.44");
+  const v2 = deployedVersion("v0.1.45");
+  const running: Deployment = {
+    kind: "running",
+    activatedAt: "2026-09-29T09:00:00.000Z",
+    version: v1,
+  };
+  const building: Deployment = { kind: "deploying", version: v2, previous: running };
+
+  it.each<{
+    readonly name: string;
+    readonly deployment: Shown<Deployment> | undefined;
+    readonly activatedAt: string | null;
+    readonly building: ReturnType<typeof deployBuilding>;
+  }>([
+    {
+      name: "a running stop says when its version went live, and builds nothing",
+      deployment: known(running),
+      activatedAt: "2026-09-29T09:00:00.000Z",
+      building: undefined,
+    },
+    {
+      name: "a deploy on its way names what it builds and what served before it",
+      deployment: known(building),
+      activatedAt: null,
+      building: { version: v2, previous: running },
+    },
+    {
+      name: "a stop that runs nothing says neither",
+      deployment: known({ kind: "none" }),
+      activatedAt: null,
+      building: undefined,
+    },
+    {
+      name: "nothing read yet says neither",
+      deployment: { state: "reading", sinceMs: 0, attempt: 1 },
+      activatedAt: null,
+      building: undefined,
+    },
+    {
+      name: "no deployment at all says neither",
+      deployment: undefined,
+      activatedAt: null,
+      building: undefined,
+    },
+  ])("$name", ({ deployment, activatedAt, building: expected }) => {
+    expect(deployActivatedAt(deployment)).toBe(activatedAt);
+    expect(deployBuilding(deployment)).toEqual(expected);
   });
 });

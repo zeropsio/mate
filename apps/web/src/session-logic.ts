@@ -792,7 +792,15 @@ export function deriveWorkLogEntries(
   for (const activity of ordered) {
     if (exclude?.has(activity.id)) continue;
     if (activity.kind === "tool.started") {
-      const startedKey = toolLifecycleCollapseMapKey(toDerivedWorkLogEntry(activity));
+      const started = toDerivedWorkLogEntry(activity);
+      // A command that starts with all it will say — Codex's, whole in its
+      // start and silent until it ends — is drawn from its start, and its
+      // end merges into it: it is the Mate's step the whole time it runs.
+      if (startCarriesCommand(activity)) {
+        entries.push({ ...started, toolLifecycleStatus: "inProgress" });
+        continue;
+      }
+      const startedKey = toolLifecycleCollapseMapKey(started);
       if (startedKey !== undefined) {
         startedAnchorByKey.set(startedKey, { id: activity.id, createdAt: activity.createdAt });
       }
@@ -850,6 +858,21 @@ export function deriveWorkLogEntries(
     );
   }
   return collapseDerivedWorkLogEntries(entries);
+}
+
+/**
+ * Whether a command's start carries the command itself — in its own fields,
+ * never read off its detail, which is all a start whose input is still
+ * streaming in has ("Bash: {}").
+ */
+function startCarriesCommand(activity: OrchestrationThreadActivity): boolean {
+  const payload = asRecord(activity.payload);
+  if (asTrimmedString(payload?.itemType) !== "command_execution") return false;
+  const data = asRecord(payload?.data);
+  const item = asRecord(data?.item);
+  return [data?.command, item?.command, asRecord(item?.input)?.command].some(
+    (value) => formatCommandValue(value) !== null,
+  );
 }
 
 // Keyed by activity identity, like `derivedWorkLogEntryByActivity` below — a
@@ -1890,7 +1913,7 @@ function zeropsCallToolLifecycleStatus(status: ZeropsCallStatus): WorkLogToolLif
  * one place that shape is synthesized, so `MessagesTimeline` never has to
  * know a `ZeropsCall` exists.
  */
-function zeropsCallToWorkLogEntry(call: ZeropsCall): WorkLogEntry {
+export function zeropsCallToWorkLogEntry(call: ZeropsCall): WorkLogEntry {
   return {
     id: call.anchorActivityId,
     createdAt: call.startedAt,

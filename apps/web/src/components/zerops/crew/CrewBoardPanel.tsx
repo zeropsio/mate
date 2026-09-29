@@ -38,6 +38,7 @@ import { Textarea } from "~/components/ui/textarea";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useCrew } from "~/zerops/crew/useCrew";
 import { useCrewCommand } from "~/zerops/crew/useCrewCommand";
+import { useOpenReview } from "~/zerops/review";
 
 import { FlatCard, MateFace, MicroLabel, Pill, StatusDot } from "../primitives";
 import {
@@ -72,6 +73,7 @@ type OpenSheet = { readonly kind: "task"; readonly taskId: string } | { readonly
 export function CrewBoardPanel({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const { status, snapshot, view, current } = useCrew(environmentId);
   const crewCommand = useCrewCommand(environmentId);
+  const openReview = useOpenReview();
   const router = useRouter();
   const [open, setOpen] = useState<OpenSheet | null>(null);
   const [planEditing, setPlanEditing] = useState(false);
@@ -142,6 +144,11 @@ export function CrewBoardPanel({ environmentId }: { readonly environmentId: Envi
               canAct={canAct}
               error={crewCommand.error}
               onSend={(command) => send(command)}
+              onReview={(taskId) => {
+                // The sheet steps aside: the review is the one dialog in front.
+                closeSheet();
+                openReview({ kind: "crew-task", environmentId, taskId });
+              }}
               onOpenChat={(threadId) => {
                 closeSheet();
                 openChat(threadId);
@@ -405,6 +412,8 @@ export function CrewTaskSheetBody(props: {
   readonly canAct: boolean;
   readonly error: string | null;
   readonly onSend: (command: CrewCommand) => void;
+  /** Opens the task's review, which is where it lands (pass 16, R1). */
+  readonly onReview: (taskId: string) => void;
   readonly onOpenChat: (threadId: ThreadId) => void;
 }) {
   const { sheet, task } = props;
@@ -538,16 +547,29 @@ export function CrewTaskSheetBody(props: {
         {props.error === null ? null : <ErrorLine text={props.error} />}
         {sheet.actions.length === 0 && !sheet.editable ? null : (
           <div className="flex flex-wrap gap-2" data-crew-task-actions>
-            {sheet.actions.map((action) => (
-              <Pill
-                disabled={!props.canAct}
-                key={action.command._tag}
-                label={action.label}
-                onClick={() => props.onSend(action.command)}
-                size="sm"
-                tone={action.tone}
-              />
-            ))}
+            {sheet.actions.map((action) =>
+              "review" in action ? (
+                <Pill
+                  disabled={!props.canAct}
+                  key="review"
+                  label={action.label}
+                  onClick={() => {
+                    props.onReview(action.review.taskId);
+                  }}
+                  size="sm"
+                  tone={action.tone}
+                />
+              ) : (
+                <Pill
+                  disabled={!props.canAct}
+                  key={action.command._tag}
+                  label={action.label}
+                  onClick={() => props.onSend(action.command)}
+                  size="sm"
+                  tone={action.tone}
+                />
+              ),
+            )}
             {sheet.editable && draft === null ? (
               <Pill
                 label="Edit"

@@ -50,7 +50,9 @@ export type AppendStreamingProjectionThreadMessage =
 export const ProjectionThreadMessagePreviewSource = Schema.Struct({
   role: ThreadMessagePreviewRole,
   text: Schema.String,
-  attachments: Schema.Array(Schema.Struct({ type: Schema.String })),
+  attachments: Schema.Array(
+    Schema.Struct({ type: Schema.String, mimeType: Schema.optionalKey(Schema.String) }),
+  ),
   createdAt: IsoDateTime,
 });
 export type ProjectionThreadMessagePreviewSource = typeof ProjectionThreadMessagePreviewSource.Type;

@@ -45,6 +45,7 @@ import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQu
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import * as ThreadBackgroundLiveness from "../ThreadBackgroundLiveness.ts";
 import * as ThreadPlanProgress from "../ThreadPlanProgress.ts";
+import * as ThreadLiveStep from "../ThreadLiveStep.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { OrchestrationProjectionPipeline } from "../Services/ProjectionPipeline.ts";
 import { ServerConfig } from "../../config.ts";
@@ -3204,6 +3205,14 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
         mimeType: "image/png",
         sizeBytes: 5,
       };
+      // A picture's untouched file, kept beside it: one picture with it.
+      const keptOriginal = {
+        type: "file" as const,
+        id: "preview-shot-original",
+        name: "shot-original.png",
+        mimeType: "image/png",
+        sizeBytes: 9,
+      };
       const preview = (role: "user" | "assistant", text: string, second: number) => ({
         role,
         text,
@@ -3230,6 +3239,14 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
           latest: 7,
           user: 7,
           previewText: "3 images",
+        },
+        {
+          role: "user",
+          text: "[Picture 1]",
+          attachments: [image, keptOriginal],
+          latest: 8,
+          user: 8,
+          previewText: "1 image",
         },
       ] as const;
       const previewAt = (second: number) => {
@@ -4468,6 +4485,7 @@ const engineLayer = it.layer(
     Layer.provideMerge(OrchestrationProjectionSnapshotQueryLive),
     Layer.provide(ThreadBackgroundLiveness.layer),
     Layer.provide(ThreadPlanProgress.layer),
+    Layer.provide(ThreadLiveStep.layer),
     Layer.provideMerge(OrchestrationProjectionPipelineLive),
     Layer.provide(OrchestrationEventStoreLive),
     Layer.provide(OrchestrationCommandReceiptRepositoryLive),

@@ -253,6 +253,35 @@ it.layer(NodeServices.layer)("buildAntigravityPrompt", (it) => {
     }),
   );
 
+  it.effect("keeps a picture's kept original out of native context", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeAttachmentFixture();
+      const bytes = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jY9kAAAAASUVORK5CYII=",
+        "base64",
+      );
+      yield* fixture.write(imageAttachment, bytes);
+      const original = {
+        type: "file" as const,
+        id: "thread-1-00000000-0000-4000-8000-00000000000f",
+        name: "home-page.png",
+        mimeType: "image/png",
+        sizeBytes: bytes.length,
+      };
+      yield* fixture.write(original, bytes);
+      const prompt = yield* buildAntigravityPrompt({
+        input: "[Picture 1]\nUse the original on the site",
+        attachments: [imageAttachment, original],
+        attachmentsDir: fixture.attachmentsDir,
+      });
+
+      expect(prompt).toEqual([
+        { type: "text", text: "[Picture 1]\nUse the original on the site" },
+        { type: "image", data: bytes.toString("base64"), mimeType: "image/png" },
+      ]);
+    }),
+  );
+
   it.effect("embeds UTF-8 code from the selected environment and keeps the upload in place", () =>
     Effect.gen(function* () {
       const selectedEnvironment = yield* makeAttachmentFixture();

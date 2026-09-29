@@ -3,20 +3,23 @@ import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRunt
 import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+
+import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 
 import type { WorkLogEntry } from "../../session-logic";
 import type { ChatMessage } from "../../types";
 import type { MessagesTimelineRow, RecordItem, RunStatus } from "./MessagesTimeline.logic";
 import { foldsLikeAMessage, RunChat } from "./RunChat";
+import { forgetRunFolds, setRunFold } from "./runCard.logic";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
   type TimelineRowActivityState,
   type TimelineRowSharedState,
 } from "./timelineContext";
-import { checksStrip, formatWorkDuration } from "./conversation.logic";
-import { at as atMinute, operation } from "./conversationFixtures";
+import { checksStrip, formatWorkDuration, type OutcomeModel } from "./conversation.logic";
+import { operation } from "./conversationFixtures";
 import { stepOf } from "./workSteps.logic";
 
 const at = (second: number) => new Date(Date.UTC(2026, 8, 27, 10, 0, second)).toISOString();
@@ -47,6 +50,7 @@ const SHARED: TimelineRowSharedState = {
   onRemoveQueuedMessage: () => undefined,
   arrivedAfter: null,
   syncing: false,
+  onHoldReading: () => undefined,
 };
 
 const ACTIVITY: TimelineRowActivityState = {
@@ -116,6 +120,7 @@ function record(items: ReadonlyArray<RecordItem>, overrides: Partial<RecordRow> 
     now: null,
     answering: false,
     status: null,
+    outcome: null,
     ...overrides,
   };
 }
@@ -133,6 +138,23 @@ const step = (entry: WorkLogEntry): RecordItem => ({
   key: `step:${entry.id}`,
   at: at(9),
   step: stepOf(entry, undefined, false),
+});
+
+/** What a run came to, by its calls alone: what its worked line counts. */
+const outcomeOf = (activity: OutcomeModel["activity"]): OutcomeModel => ({
+  key: "outcome:turn-1",
+  turnKey: "turn-1",
+  live: [],
+  landed: [],
+  files: null,
+  checks: null,
+  created: [],
+  notDone: [],
+  planLeft: [],
+  change: null,
+  crewTask: null,
+  activity,
+  later: { services: [], changes: [], tasks: [], pages: [], answered: false },
 });
 
 /** A run's status: live and working by default. */
@@ -217,7 +239,10 @@ describe("RunChat", () => {
   // it, what it did the card's white in a hairline — and the mark each wears
   // in the Mate's column, beside it rather than in it, so every bubble's words
   // start on one edge.
-  it("draws every bubble in one shape, told apart by its surface and its mark", () => {
+  // Five weights, strongest first (K14): what anyone said at the prose size in
+  // its bubble; what the Mate did as compact 13 px rows in a light outline;
+  // what it thought quietest, 13 px on the faintest fill.
+  it("draws its words at the prose size, its calls and thoughts quieter", () => {
     const markup = draw(
       record([
         {
@@ -233,42 +258,55 @@ describe("RunChat", () => {
     const classes = (tag: string | undefined) => /class="([^"]*)"/u.exec(tag ?? "")?.[1] ?? "";
     const [said, thought_] = bubbles(markup);
     const card = /<div class="([^"]*)" data-chat-calls="true">/u.exec(markup)?.[1] ?? "";
-    for (const shape of [classes(said?.tag), classes(thought_?.tag)]) {
-      expect(shape.split(" ")).toEqual(
-        expect.arrayContaining(["w-full", "rounded-2xl", "text-prose", "px-3.5", "py-2.5"]),
-      );
-    }
+    expect(classes(said?.tag).split(" ")).toEqual(
+      expect.arrayContaining(["w-full", "rounded-2xl", "text-prose", "px-3.5", "py-2.5"]),
+    );
+    expect(classes(thought_?.tag).split(" ")).toEqual(
+      expect.arrayContaining(["w-full", "rounded-2xl", "text-line", "px-3", "py-2"]),
+    );
     expect(card.split(" ")).toEqual(expect.arrayContaining(["w-full", "rounded-2xl"]));
-    expect(classes(said?.tag)).toContain("bg-foreground/8");
-    expect(classes(thought_?.tag)).toContain("bg-foreground/4");
-    expect(card).toContain("bg-card ring-1 ring-foreground/12");
+    // Its words wear its tint, lightly; the face beside them says who spoke.
+    expect(classes(said?.tag)).toContain("run-speech");
+    expect(markup).toContain("--run-speaker-tint:var(--zerops-mate-tint-sky)");
+    expect(markup).toMatch(
+      /<span class="flex h-\[1lh\] items-center"><svg[^>]*class="[^"]*size-5[^"]*"[^>]*data-mate-face-tint="sky"/u,
+    );
+    expect(classes(thought_?.tag)).toContain("bg-foreground/3");
+    // Outlined on the tray, never filled: the composer keeps the only white.
+    expect(card).toContain("ring-1 ring-foreground/9");
+    expect(card).not.toContain("bg-card");
     // Each mark stands in the Mate's column, out of its bubble.
-    const column = (icon: string) =>
+    const column = (line: string, icon: string) =>
       new RegExp(
-        `<span aria-hidden="true" class="w-7 shrink-0 flex justify-center pt-2\\.5 text-prose"><span class="flex h-\\[1lh\\] items-center"><svg[^>]*lucide-${icon}`,
+        `<span aria-hidden="true" class="w-7 shrink-0 flex justify-center ${line}"><span class="flex h-\\[1lh\\] items-center"><svg[^>]*lucide-${icon}`,
         "u",
       );
-    expect(markup).toMatch(column("brain"));
-    expect(markup).toMatch(column("square-terminal"));
+    expect(markup).toMatch(column("pt-2 text-line", "asterisk"));
+    expect(markup).toMatch(column("pt-1\\.75 text-line", "square-terminal"));
     expect(markup).not.toMatch(/data-chat-bubble="speech"[^>]*>\s*<span aria-hidden/u);
   });
 
   // Ten reads in a row are one stretch of work (the owner, 2026-09-28: "there
   // is no spacing between items"): a run of calls shares one card, a hairline
   // between them; a thought or its words between two calls start a new one.
-  // A wheel over a long run's chat moves the chat, and past its ends the
-  // page: contained, the page stood still under the pointer until it left
-  // the card (2026-09-29). Its fades are always drawn, eased in and out.
-  it("lets the page scroll on past its chat's ends, and eases its fades", () => {
-    const markup = draw(record([step(command("w1", "ls"))]));
-    expect(markup).toContain("overflow-y-auto");
-    expect(markup).not.toContain("overscroll-contain");
-    expect(markup).toMatch(
-      /class="[^"]*transition-opacity[^"]*opacity-0[^"]*" data-chat-fade="above"/,
+  // Two scrollbars in one view is where the last passes' scroll bugs lived
+  // (K8): the card has no scroll of its own — the conversation is the one
+  // scroll, and nothing in the card scrolls inside it.
+  it("has no scroll of its own, and nothing in it scrolls", () => {
+    const markup = draw(
+      record([
+        step(
+          command("w1", "npm run build", {
+            callInput: { description: "Build" },
+            detail: Array.from({ length: 30 }, (_, index) => `line ${index}`).join("\n"),
+          }),
+        ),
+        thought("r1", LONG),
+      ]),
     );
-    expect(markup).toMatch(
-      /class="[^"]*transition-opacity[^"]*opacity-0[^"]*" data-chat-fade="below"/,
-    );
+    expect(markup).not.toMatch(/overflow-(?:y-)?auto/u);
+    expect(markup).not.toContain("max-h-110");
+    expect(markup).not.toContain("data-chat-fade");
   });
 
   it("gathers each run of calls into one card, and breaks it where anything else stands", () => {
@@ -288,24 +326,23 @@ describe("RunChat", () => {
     expect(markup).toMatch(/class="[^"]*divide-y[^"]*" data-chat-calls="true"/);
   });
 
-  // The Mate's status is the chat's last line, never a heading over the card
-  // (the owner, 2026-09-28: "it doesn't need to be at the top"): its face,
-  // what it is doing, its clock — the one face in the chat.
-  // The face does what the words say: it looks up and aside while it thinks,
-  // down along its line while it writes, and simply works otherwise.
+  // The now line is the card's foot, never a heading over it: its face, what
+  // the Mate is doing in words, its one clock — the one face in the chat. The
+  // face does what the words say: it looks up and aside while it thinks, down
+  // along its line while it writes, and simply works otherwise.
   it.each([
-    { name: "thinking", now: null, says: "Nova is thinking", face: "working", gaze: "up" },
+    { name: "thinking", now: null, says: ">Thinking<", face: "working", gaze: "up" },
     {
       name: "writing",
       now: { kind: "writing" },
-      says: "Nova is writing",
+      says: ">Writing<",
       face: "working",
       gaze: "down",
     },
     {
       name: "waiting on the person",
-      now: { kind: "waiting" },
-      says: "Nova is waiting for your answer",
+      now: { kind: "waiting", on: "answer" },
+      says: ">Waiting for your answer<",
       face: "needs",
       gaze: null,
     },
@@ -321,41 +358,227 @@ describe("RunChat", () => {
     // watched rise in.
     expect(markup).not.toContain("animate-words-in");
     expect(markup).toContain(says);
-    // It stands under the chat's scroll, not in it.
+    // It stands under the chat, never in it.
     expect(markup.indexOf(says)).toBeGreaterThan(markup.lastIndexOf("data-chat-row"));
     // No bubble stands in for what the status line says.
     expect(markup).not.toContain('data-chat-kind="typing');
     expect(markup).not.toContain('data-chat-kind="waiting"');
   });
 
-  it("says who worked and for how long once the run is over, where it said what it did", () => {
+  // Finished, the now line becomes the worked line: who, how long, and what
+  // the effort came to — the time in its words, no second clock.
+  it("says who worked, how long and what it came to once the run is over", () => {
     const markup = draw(
       record([thought("r1", "One.")], {
         status: status({ live: false, face: "produced", endedAt: at(72) }),
+        outcome: outcomeOf([
+          { kind: "command", count: 2 },
+          { kind: "read", count: 1 },
+        ]),
       }),
     );
-    expect(markup).toContain("Nova worked");
-    expect(markup).toMatch(/data-work-line-clock[^>]*>1m 12s</);
-    // It ends on the calls' time column, not under their chevrons.
-    expect(markup).toMatch(/class="[^"]*me-8\.5[^"]*" data-work-line-clock/);
+    expect(markup).toContain('<span class="run-now-worked">Nova worked 1m 12s</span>');
+    expect(markup).toContain('<span class="run-now-effort"> · 2 commands · 1 file read</span>');
+    expect(markup).not.toContain("data-work-line-clock");
     expect(markup).toContain('data-mate-face-state="done"');
     expect(draw(record([thought("r1", "One.")]))).not.toContain("data-mate-face-state");
   });
 
-  // A long thought scrolls inside itself while it is thought, its newest
-  // words in sight, and folds to its top once it ends — at the same height
-  // (the owner, 2026-09-28: "the long thinking blocks needs to start inner
-  // scrolling with fade at the same cutoff").
-  it("keeps the thought it is thinking to six lines that scroll, and offers no fold under it", () => {
+  // A command's title says what it does (K4): with no description from the
+  // agent — Codex never gives one — it is the command itself, in mono, out of
+  // the shell the runtime ran it in; a script's other lines a click away.
+  it("titles a command that said nothing of itself with the command, out of its shell", () => {
+    const one = draw(
+      record([
+        step(
+          command("w1", "cd /var/www/app && npm run build", {
+            rawCommand: '/usr/bin/zsh -lc "cd /var/www/app && npm run build"',
+          }),
+        ),
+      ]),
+    );
+    expect(one).not.toContain("Ran a command");
+    expect(one).not.toContain("zsh");
+    expect(one).toMatch(/<span class="font-mono text-foreground">npm run build<\/span>/u);
+    expect(one.match(/npm run build/g)).toHaveLength(1);
+    const script = draw(record([step(command("w2", SCRIPT))]));
+    expect(script).toMatch(
+      /<span class="font-mono text-foreground">cat &gt; status.ts &lt;&lt;&#x27;EOF&#x27;<\/span>/u,
+    );
+    expect(script).toContain(">Show all 16 lines<");
+    expect(script).not.toContain("line 13");
+  });
+
+  // Failures belong to the work, and red always means still broken (K9): a
+  // failed call wears a red mark and "Failed" on the right, never a pink row;
+  // once a later step undid it — the same command passing on a retry — it
+  // turns quiet.
+  it("marks a failure red while it stands, and quiet once a retry passed", () => {
+    const failed = command("w1", "npm test", { toolLifecycleStatus: "failed" });
+    const alone = draw(record([step(failed)]));
+    const standing = /data-chat-failed="broken"/u;
+    expect(alone).toMatch(standing);
+    expect(alone).toMatch(/lucide-triangle-alert[^"]*text-status-failed-text/u);
+    expect(alone).toMatch(/text-status-failed-text">Failed</u);
+    expect(alone).not.toContain("bg-status-failed-surface");
+    const retried = draw(
+      record([step(failed), { ...step(command("w2", "npm test")), key: "step:w2", at: at(20) }]),
+    );
+    expect(retried).not.toMatch(standing);
+    expect(retried).toContain('data-chat-failed="undone"');
+    expect(retried).not.toContain("text-status-failed-text");
+    expect(retried).toMatch(/lucide-triangle-alert[^"]*text-muted-foreground/u);
+  });
+
+  // A question and the person's answer are a pair (K14): the question in the
+  // Mate's tint with its face, the answer whole in the person's bubble 6 px
+  // under it — not the 12 px between other lines.
+  it("pairs the person's answer with the question above it, 6 px under it", () => {
+    const markup = draw(
+      record([
+        {
+          kind: "question",
+          key: "question:q1",
+          at: at(2),
+          questions: ["Should /status be public?"],
+        },
+        {
+          kind: "person",
+          key: "person:a1",
+          at: at(3),
+          words: "Yes, but show no secrets — and keep /health for the load balancer",
+          imageOnly: false,
+        },
+      ]),
+    );
+    expect(markup).toMatch(
+      /data-chat-bubble="speech" data-chat-kind="question"><p[^>]*>Should \/status be public\?</u,
+    );
+    expect(markup).toMatch(/<li class="[^"]*-mt-1\.5[^"]*" data-chat-row="true">/u);
+    // Its answer stands nowhere else: whole, never cut to a line.
+    expect(markup).toMatch(/<p class="[^"]*whitespace-pre-wrap[^"]*" data-chat-kind="person">/u);
+    expect(markup).not.toMatch(/<p class="[^"]*truncate[^"]*" data-chat-kind="person">/u);
+  });
+
+  // A screen reader hears the now line when its words change, never its
+  // ticking parts: the thought's latest words, the long-step time.
+  it("tells a screen reader the now line's words alone, as they change", () => {
     const markup = draw(
       record([], {
         live: true,
-        now: { kind: "thinking", key: "thought:r9", messages: [message("r9", "reasoning", LONG)] },
+        status: status(),
+        now: {
+          kind: "thinking",
+          key: "thought:r9",
+          messages: [message("r9", "reasoning", "The build needs Node 22. So I bump it")],
+        },
       }),
     );
-    expect(markup).toMatch(/class="[^"]*max-h-34[^"]*overflow-y-auto/);
-    expect(markup).not.toContain("data-chat-folded");
-    expect(markup).not.toContain("Show more");
+    expect(markup.match(/role="status"/g)).toHaveLength(1);
+    expect(markup).toMatch(/<span class="sr-only" role="status">Thinking<\/span>/u);
+  });
+
+  // Several at once (K10): how many on the line, a still line each under it.
+  it("says several steps at once by how many, a still line each under it", () => {
+    const runningCommand = (id: string, text: string) =>
+      stepOf(
+        command(id, text, { toolLifecycleStatus: "inProgress", updatedAt: undefined as never }),
+      );
+    const markup = draw(
+      record([], {
+        live: true,
+        status: status(),
+        now: {
+          kind: "step",
+          step: runningCommand("w3", "pnpm lint"),
+          others: [runningCommand("w1", "pnpm build"), runningCommand("w2", "pnpm test")],
+        },
+      }),
+    );
+    expect(markup).toContain('data-run-now="several"');
+    expect(markup).toContain(">Running 3 commands<");
+    expect(markup.match(/<li><span class="run-now-verb run-now-mono">/g)).toHaveLength(3);
+    expect(markup).not.toContain("data-run-shimmer");
+  });
+
+  // Blue means something to click (S3): the run's clock counts in ink, and a
+  // call running beside it counts in the calls' quiet ink.
+  // One ticking time for each thing that runs (K3): a command left running in
+  // the background ticks in its bar, never again in the chat; a deploy ticks
+  // in its bar, never again as the now line's long-step words.
+  it("ticks each running thing once: in its bar, or on the now line", () => {
+    const background: RecordItem = {
+      kind: "step",
+      key: "step:w1",
+      at: at(9),
+      step: stepOf(
+        command("w1", "pnpm dev", {
+          callInput: { description: "Serve the app on port 3000" },
+          toolLifecycleStatus: "inProgress",
+          updatedAt: undefined as never,
+        }),
+      ),
+    };
+    const serving = draw(record([background], { live: true, status: status() }));
+    const row = serving.slice(serving.indexOf('data-chat-kind="step:command"'));
+    expect(row).toMatch(/text-muted-foreground">Running</u);
+    expect(row).not.toMatch(/tabular-nums">\d/u);
+    const since = new Date(Date.now() - 45_000).toISOString();
+    const running = (kind: "deploy" | "browser") => {
+      const entry = operation("o1", "turn-1", 1, {
+        kind,
+        phase: "running",
+        anchorAt: since,
+        subject: kind === "deploy" ? "appdev" : "https://shop.dev/status",
+        voice: kind === "deploy" ? "Deploying appdev." : "Checking /status",
+      });
+      if (entry.kind !== "operation") throw new Error("an operation");
+      const { settledAt: _settled, ...taking } = entry.operation;
+      return draw(
+        record([], { live: true, now: { kind: "operation", operation: taking }, status: status() }),
+      );
+    };
+    expect(running("deploy")).not.toMatch(/run-now-long">· 0:4\d/u);
+    expect(running("browser")).toMatch(/run-now-long">· 0:4\d/u);
+  });
+
+  it("counts the run's time in ink, never in the busy blue", () => {
+    const markup = draw(
+      record([], {
+        live: true,
+        status: status(),
+        now: {
+          kind: "step",
+          step: stepOf(
+            command("w9", "npm run lint", {
+              toolLifecycleStatus: "inProgress",
+              updatedAt: undefined as never,
+            }),
+          ),
+        },
+      }),
+    );
+    // One clock (K3), m:ss, in ink: the step's own time is words on its line.
+    expect(markup.match(/data-work-line-clock/g)).toHaveLength(1);
+    expect(markup).toMatch(
+      /<span class="run-now-clock" data-work-line-clock="true">(?:\d+:)?\d+:\d\d</u,
+    );
+    expect(markup).not.toContain("text-status-busy-text");
+  });
+
+  // A thought is the quietest thing in the card: two lines of it, and where
+  // it runs on, the thought itself is the way to the rest (D4) — never a
+  // scroll inside the card.
+  it("clamps a thought to two lines, the whole of it a click away", () => {
+    const long = draw(record([thought("r1", LONG)]));
+    expect(long).toMatch(/<span class="line-clamp-2 italic" data-chat-folded="true">/u);
+    expect(long).toMatch(/<button aria-expanded="false" aria-label="[^"]*Show the whole thought"/u);
+    expect(long).not.toMatch(
+      /data-chat-bubble="thought"[^>]*>(?:(?!data-chat-row).)*overflow-y-auto/su,
+    );
+    const short = draw(record([thought("r1", "The route and the check disagree.")]));
+    expect(short).toContain('<span class="line-clamp-2 italic">The route and the check disagree.');
+    expect(short).not.toContain("Show the whole thought");
   });
 
   it("folds what the chat opens onto past the limits, and leaves the rest whole", () => {
@@ -367,7 +590,7 @@ describe("RunChat", () => {
       ]),
     );
     expect(markup.match(/data-chat-folded="true"/g)).toHaveLength(2);
-    expect(markup.match(/>Show more</g)).toHaveLength(1);
+    expect(markup.match(/Show the whole thought"/g)).toHaveLength(1);
     expect(markup.match(/>Show full message</g)).toHaveLength(1);
   });
 
@@ -409,10 +632,12 @@ describe("RunChat", () => {
     const running = draw(
       record([], {
         live: true,
+        status: status(),
         now: {
           kind: "step",
           step: stepOf(
             command("w9", SCRIPT, {
+              callInput: { description: "Write the status route" },
               toolLifecycleStatus: "inProgress",
               sourceActivityKind: "tool.started",
             }),
@@ -422,7 +647,11 @@ describe("RunChat", () => {
         },
       }),
     );
-    expect(running).toContain('data-chat-folded="true"');
+    // Running, the command is the now line's: its words and code, not a row.
+    expect(running).not.toContain('data-chat-kind="step:command"');
+    expect(running).toContain(
+      '<span class="run-now-verb" data-run-shimmer="">Write the status route',
+    );
   });
 
   // The call running now is the card's "this, now": a light sweeps across
@@ -431,6 +660,7 @@ describe("RunChat", () => {
     const running = draw(
       record([step(command("w1", "ls"))], {
         live: true,
+        status: status(),
         now: {
           kind: "step",
           step: stepOf(
@@ -499,7 +729,9 @@ describe("RunChat", () => {
   // page as the browser streams it, in the frame its picture will stand in —
   // never a line of its own beside the face as well (Nova, 2026-09-28: the
   // checks stood in a drawer under the chat until the run was over).
-  it("draws a check being taken as its row, a live frame where its picture will stand", () => {
+  // A check being taken is the now line's step (K10); taken, it lands as its
+  // row with its picture, in the words the now line said it in.
+  it("says a check being taken on the now line, and draws it taken as its row", () => {
     const check = (id: string, phase: "running" | "done") => {
       const entry = operation(id, "turn-1", 1, {
         kind: "browser",
@@ -517,14 +749,10 @@ describe("RunChat", () => {
     };
     const running = check("b1", "running");
     const live = draw(
-      record(
-        [{ kind: "strip", key: "operation:op:b1", at: at(1), strip: checksStrip([running], true) }],
-        { live: true, now: { kind: "operation", operation: running }, status: status() },
-      ),
+      record([], { live: true, now: { kind: "operation", operation: running }, status: status() }),
     );
-    expect(bubbles(live).map(({ kind }) => kind)).toEqual(["checks"]);
-    expect(live).toContain("Checking /health");
-    expect(live).toContain("data-report-take-live");
+    expect(bubbles(live)).toEqual([]);
+    expect(live).toContain(">Checking /health in the browser<");
     const done = draw(
       record([
         {
@@ -535,8 +763,8 @@ describe("RunChat", () => {
         },
       ]),
     );
-    expect(done).toContain("Checked /health");
-    expect(done).toContain("passed");
+    expect(done).toContain(">Checked /health in the browser<");
+    expect(done).not.toContain("passed");
     expect(done).not.toContain("data-report-take-live");
     expect(done).toMatch(/<button[^>]*data-report-take="desktop"/);
   });
@@ -545,20 +773,18 @@ describe("RunChat", () => {
   // first thing seen after every message: the face as far from the card's
   // top as from its foot, where the empty list's room stood it 31 px down
   // and 22 px up (Nova, 2026-09-28).
-  it("keeps an empty chat's room to the card's own, so the face stands in its middle", () => {
-    const list = (markup: string) => /<ol[^>]*class="([^"]*)"/u.exec(markup)?.[1]?.split(" ") ?? [];
-    const empty = list(draw(record([], { live: true, status: status() })));
-    expect(empty).toContain("pt-3");
-    expect(empty).not.toContain("pb-4");
-    const said = list(draw(record([thought("r1", "The route and the check disagree.")])));
-    expect(said).toEqual(expect.arrayContaining(["pt-2", "pb-4"]));
+  it("draws no list before anything is in the chat, so its status line stands alone", () => {
+    expect(draw(record([], { live: true, status: status() }))).not.toContain("<ol");
+    const said = draw(record([thought("r1", "The route and the check disagree.")]));
+    expect(said).toContain(
+      '<ol aria-label="Nova&#x27;s work" class="flex min-w-0 flex-col gap-3 focus:outline-none" tabindex="-1">',
+    );
   });
 
   // The Mate's column lines its bubbles up over the face at the chat's foot,
-  // and holds the marks that tell them apart — on a phone's card too, 8 px off
-  // the bubbles there and 10 where the card has room, so no bubble loses its
-  // edge.
-  it("keeps the Mate's column beside every bubble, the gap narrower on a phone's card", () => {
+  // and holds the marks that tell them apart: one grid for the whole card, a
+  // 28 px column 8 px off the bubbles (K1).
+  it("keeps the Mate's column beside every bubble, 8 px off it", () => {
     const markup = draw(
       record([
         { kind: "note", key: "note:a1", at: at(10), message: message("a1", "assistant", "Hi.") },
@@ -566,14 +792,15 @@ describe("RunChat", () => {
     );
     // One container holds the chat and its status line, so both keep one gap.
     expect(markup).toMatch(
-      /<div class="@container\/chat min-w-0"><div class="[^"]*" data-run-chat="true">/u,
+      /<div class="@container\/chat min-w-0" data-run-chat="true" style="[^"]*"><ol /u,
     );
     const row =
       /<li class="([^"]*)" data-chat-row="true"><span aria-hidden="true" class="([^"]*)"/u.exec(
         markup,
       );
-    expect(row?.[1]?.split(" ")).toEqual(expect.arrayContaining(["gap-2", "@md/chat:gap-2.5"]));
-    expect(row?.[2]).toBe("w-7 shrink-0");
+    expect(row?.[1]?.split(" ")).toContain("gap-2");
+    expect(row?.[1]).not.toContain("gap-2.5");
+    expect(row?.[2]?.split(" ").slice(0, 2)).toEqual(["w-7", "shrink-0"]);
   });
 
   // Two pages of one host are said by name, as one is; more by their count,
@@ -599,7 +826,7 @@ describe("RunChat", () => {
         { kind: "strip", key: "operation:op:b0", at: at(1), strip: checksStrip(checks, false) },
       ]),
     );
-    expect(markup).toContain(`>${words}<`);
+    expect(markup).toContain(`>${words} in the browser<`);
   });
 
   // A row saying a check failed showed only the pictures of the ones that
@@ -633,45 +860,35 @@ describe("RunChat", () => {
     expect(markup).toContain("couldn&#x27;t open http://shop.dev:9/: net::ERR_UNSAFE_PORT");
   });
 
-  // One clock for a row of checks, from its first: a second check running
-  // started it again from nothing, then the settled row said the whole time.
-  it("runs one clock for a row of checks, from its first check", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(atMinute(5)));
-    try {
-      const first = operation("b1", "turn-1", 1, {
-        kind: "browser",
-        subject: "https://shop.dev/",
-        screenshot: { src: "/shots/b1.png", width: 1280, height: 800 },
-      });
-      const second = operation("b2", "turn-1", 3, {
-        kind: "browser",
-        subject: "https://shop.dev/",
-        phase: "running",
-        deviceName: "iPhone 16",
-      });
-      if (first.kind !== "operation" || second.kind !== "operation") throw new Error("operations");
-      const { settledAt: _settled, ...taking } = second.operation;
-      const markup = draw(
-        record(
-          [
-            {
-              kind: "strip",
-              key: "operation:op:b1",
-              at: at(1),
-              strip: checksStrip([first.operation, taking], true),
-            },
-          ],
-          { live: true, status: status() },
-        ),
+  // A row of checks says how long it took from its first check to its last;
+  // one still being taken ticks nowhere in the chat — its time is the now
+  // line's (K3).
+  it("says a row of checks' time from its first check, and ticks none while one is taken", () => {
+    const first = operation("b1", "turn-1", 1, {
+      kind: "browser",
+      subject: "https://shop.dev/",
+      screenshot: { src: "/shots/b1.png", width: 1280, height: 800 },
+    });
+    const second = operation("b2", "turn-1", 3, {
+      kind: "browser",
+      subject: "https://shop.dev/",
+      deviceName: "iPhone 16",
+    });
+    if (first.kind !== "operation" || second.kind !== "operation") throw new Error("operations");
+    const strip = (checks: ReadonlyArray<ZeropsOperation>) =>
+      draw(
+        record([
+          { kind: "strip", key: "operation:op:b1", at: at(1), strip: checksStrip(checks, false) },
+        ]),
       );
-      const since = (minute: number) =>
-        formatWorkDuration(Date.parse(atMinute(5)) - Date.parse(atMinute(minute)));
-      expect(markup).toContain(`>${since(1)}<`);
-      expect(markup).not.toContain(`>${since(3)}<`);
-    } finally {
-      vi.useRealTimers();
-    }
+    const took = formatWorkDuration(
+      Date.parse(second.operation.settledAt!) - Date.parse(first.operation.anchorAt),
+    );
+    expect(strip([first.operation, second.operation])).toContain(`>${took}<`);
+    const { settledAt: _settled, ...taking } = { ...second.operation, phase: "running" as const };
+    const markup = strip([first.operation, taking]);
+    expect(markup).toContain(">Running<");
+    expect(markup).not.toContain(`>${took}<`);
   });
 
   it("opens nothing on a step that printed nothing", () => {
@@ -744,9 +961,7 @@ describe("RunChat, as the person uses it", () => {
       }),
     );
     expect(button(renderer, "Run the production build").props["aria-expanded"]).toBe(true);
-    expect(
-      JSON.stringify(details()[0]?.findAll((node) => node.type === "pre")[0]?.children),
-    ).toContain("48.2 kB");
+    expect(JSON.stringify(renderer.toJSON())).toContain("48.2 kB");
     act(() =>
       button(renderer, "Run the production build").props.onClick({
         currentTarget: { closest: () => null },
@@ -755,50 +970,278 @@ describe("RunChat, as the person uses it", () => {
     expect(details()).toHaveLength(0);
   });
 
-  // The timeline moves its rows' nodes as it lays them out, and the browser
-  // forgets a moved node's scroll with no event to say so: a chat at its
-  // newest opened at its first bubble after a reload (2026-09-28).
-  it("takes its newest bubble back when its end leaves sight while it follows", () => {
-    const savedObserver = globalThis.IntersectionObserver;
-    let report: ((entries: ReadonlyArray<{ readonly isIntersecting: boolean }>) => void) | null =
-      null;
-    globalThis.IntersectionObserver = class {
-      constructor(callback: typeof report) {
-        report = callback;
-      }
-      observe() {}
-      disconnect() {}
-    } as unknown as typeof IntersectionObserver;
-    const scroller = {
-      scrollTop: 0,
-      scrollHeight: 900,
-      clientHeight: 440,
-      getBoundingClientRect: () => ({ top: 0, bottom: 440, height: 440 }),
+  // D4: what a call printed never scrolls inside the card — past twelve lines
+  // it folds, and "Show all N lines" opens every line of it in place.
+  it("folds a long output past its twelfth line, every line of it a click away", () => {
+    const printed = Array.from({ length: 30 }, (_, index) => `line ${index + 1}`).join("\n");
+    const renderer = mount(
+      record([
+        step(command("w1", "npm test", { callInput: { description: "Test" }, detail: printed })),
+      ]),
+    );
+    act(() => button(renderer, "Test").props.onClick());
+    const more = button(renderer, "Show all 30 lines");
+    expect(more.props["aria-expanded"]).toBe(false);
+    act(() => more.props.onClick());
+    expect(button(renderer, "Show less").props["aria-expanded"]).toBe(true);
+    const pre = renderer.root.find((node) => node.type === "pre");
+    expect(pre.props["data-chat-folded"]).toBe("false");
+    expect(JSON.stringify(renderer.toJSON())).toContain("line 30");
+  });
+
+  // A run the person comes back to opens folded and keeps everything it said
+  // to them (K7, D3): its worked line on top, its words, their words and what
+  // it couldn't do under it; its thoughts and calls behind "Show work", which
+  // opens them under the line they clicked (K12).
+  describe("a run the person comes back to", () => {
+    const CONVERSATION = SHARED.routeThreadKey;
+    afterEach(() => forgetRunFolds(CONVERSATION));
+    const settledRun = (overrides: Partial<RecordRow> = {}) =>
+      record(
+        [
+          thought("r1", "The route and the check disagree."),
+          step(command("w1", "npm test", { callInput: { description: "Run the tests" } })),
+          {
+            kind: "note",
+            key: "note:a1",
+            at: at(10),
+            message: message("a1", "assistant", "Should /status be public?"),
+          },
+          {
+            kind: "person",
+            key: "person:x1",
+            at: at(11),
+            words: "Yes, no secrets",
+            imageOnly: false,
+          },
+          {
+            kind: "error",
+            key: "error:e1",
+            at: at(12),
+            entry: command("e1", "deploy", { tone: "error", label: "The deploy was refused" }),
+          },
+        ],
+        {
+          status: status({ live: false, face: "produced", endedAt: at(80) }),
+          outcome: outcomeOf([{ kind: "command", count: 1 }]),
+          ...overrides,
+        },
+      );
+    const text = (renderer: ReactTestRenderer) => JSON.stringify(renderer.toJSON());
+
+    it("opens folded, its words kept and its work behind Show work", () => {
+      const markup = draw(settledRun());
+      expect(markup).toContain('data-run-fold="folded"');
+      // The worked line first: the line the person clicks stands above what opens.
+      expect(markup.indexOf("Nova worked 1m 20s")).toBeLessThan(
+        markup.indexOf("Should /status be public?"),
+      );
+      expect(markup).toContain("Yes, no secrets");
+      expect(markup).toContain("The deploy was refused");
+      expect(markup).not.toContain("Run the tests");
+      expect(markup).not.toContain("The route and the check disagree.");
+      expect(markup).toMatch(/<button aria-expanded="false" class="run-now-fold"[^>]*>Show work/u);
+    });
+
+    it("keeps a run the person watched open, its line at the foot, until they leave", () => {
+      setRunFold(CONVERSATION, "turn-1", "watched");
+      const markup = draw(settledRun());
+      expect(markup).not.toContain("data-run-fold");
+      expect(markup).toContain("Run the tests");
+      expect(markup.indexOf("Run the tests")).toBeLessThan(markup.indexOf("Nova worked 1m 20s"));
+      expect(markup).not.toContain("Show work");
+      forgetRunFolds(CONVERSATION);
+      expect(draw(settledRun())).toContain('data-run-fold="folded"');
+    });
+
+    // Mounted as the page draws it: a markdown note reads the page's storage.
+    const workOnly = (overrides: Partial<RecordRow> = {}) =>
+      settledRun({
+        items: settledRun().items.filter((item) => item.kind !== "note"),
+        ...overrides,
+      });
+    it("marks a run watched while it runs, so it stays open once it settles", () => {
+      const renderer = mount(workOnly({ live: true, status: status() }));
+      act(() =>
+        renderer.update(
+          <Rows>
+            <RunChat row={workOnly()} />
+          </Rows>,
+        ),
+      );
+      expect(text(renderer)).toContain("Run the tests");
+      expect(text(renderer)).not.toContain("Show work");
+    });
+
+    it("opens the work under its line with Show work, and folds it with Hide work", () => {
+      const renderer = mount(workOnly());
+      expect(text(renderer)).not.toContain("Run the tests");
+      act(() => button(renderer, "Show work").props.onClick());
+      expect(text(renderer)).toContain("Run the tests");
+      expect(button(renderer, "Hide work").props["aria-expanded"]).toBe(true);
+      act(() => button(renderer, "Hide work").props.onClick());
+      expect(text(renderer)).not.toContain("Run the tests");
+      expect(button(renderer, "Show work").props["aria-expanded"]).toBe(false);
+    });
+
+    it("offers no Show work where nothing folds", () => {
+      const markup = draw(
+        record(
+          [
+            {
+              kind: "note",
+              key: "note:a1",
+              at: at(10),
+              message: message("a1", "assistant", "Nothing to do."),
+            },
+          ],
+          { status: status({ live: false, face: "idle", endedAt: at(5), worked: false }) },
+        ),
+      );
+      expect(markup).not.toContain("Show work");
+      expect(markup).toContain("Nothing to do.");
+    });
+  });
+
+  // D4: what the now line holds is never out of reach while it runs — its
+  // one line opens to the whole of it in place: a script's every line, the
+  // thought so far; still one clock.
+  it("opens the now line to the whole of what runs, one clock still", () => {
+    const renderer = mount(
+      record([], {
+        live: true,
+        status: status(),
+        now: {
+          kind: "step",
+          step: stepOf(
+            command("w9", SCRIPT, {
+              callInput: { description: "Write the status route" },
+              toolLifecycleStatus: "inProgress",
+              updatedAt: undefined as never,
+            }),
+          ),
+        },
+      }),
+    );
+    const words = () =>
+      renderer.root.find(
+        (node) => node.type === "button" && node.props["data-run-now-words"] !== undefined,
+      );
+    expect(words().props["aria-expanded"]).toBe(false);
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("line 13");
+    act(() => words().props.onClick());
+    expect(words().props["aria-expanded"]).toBe(true);
+    const shown = JSON.stringify(renderer.toJSON());
+    expect(shown).toContain("line 13");
+    expect(shown).toContain("EOF");
+    expect(
+      renderer.root.findAll((node) => node.props["data-work-line-clock"] !== undefined),
+    ).toHaveLength(1);
+  });
+
+  it("opens a thought on the now line to the whole of it so far", () => {
+    const thinking = "The app is a Hono server. So the page belongs on the server as its own route";
+    const renderer = mount(
+      record([], {
+        live: true,
+        status: status(),
+        now: {
+          kind: "thinking",
+          key: "thought:r9",
+          messages: [message("r9", "reasoning", thinking)],
+        },
+      }),
+    );
+    const words = renderer.root.find(
+      (node) => node.type === "button" && node.props["data-run-now-words"] !== undefined,
+    );
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("The app is a Hono server.");
+    act(() => words.props.onClick());
+    expect(JSON.stringify(renderer.toJSON())).toContain(thinking);
+  });
+
+  // A control that goes once pressed hands the focus on: the thought's way to
+  // the rest to its "Show less" and back, the last "Show N earlier" to the
+  // lines it drew — never to the page's body.
+  it("keeps the focus on the thought's toggle as it opens and closes", () => {
+    // The opened thought is markdown, which reads the page's own storage.
+    const savedWindow = (globalThis as { window?: unknown }).window;
+    (globalThis as { window?: unknown }).window = {
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      localStorage: { getItem: () => null, setItem: () => undefined },
+      matchMedia: () => ({
+        matches: false,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      }),
     };
     try {
+      const focused: string[] = [];
+      let renderer!: ReactTestRenderer;
       act(() => {
-        create(
+        renderer = create(
           <Rows>
-            <RunChat row={record([step(command("w1", "git status"))])} />
+            <RunChat row={record([thought("r1", LONG)])} />
           </Rows>,
           {
-            // The chat's scroll is the one element that listens to its scrolling.
             createNodeMock: (element) =>
-              element.type === "div" &&
-              (element.props as { readonly onScroll?: unknown }).onScroll !== undefined
-                ? scroller
-                : {},
+              element.type === "button"
+                ? {
+                    focus: () =>
+                      focused.push(
+                        String(
+                          (element.props as { "aria-label"?: string })["aria-label"] ?? "Show less",
+                        ),
+                      ),
+                    closest: () => null,
+                    isConnected: true,
+                    parentElement: null,
+                    ownerDocument: { scrollingElement: null },
+                    getBoundingClientRect: () => ({ top: 0, bottom: 0 }),
+                  }
+                : { scrollHeight: 100, clientHeight: 40 },
           },
         );
       });
-      expect(scroller.scrollTop).toBe(900);
-      // The row's node moved: the browser put the chat back at its top.
-      scroller.scrollTop = 0;
-      act(() => report?.([{ isIntersecting: false }]));
-      expect(scroller.scrollTop).toBe(900);
+      act(() => button(renderer, "Line 1").props.onClick());
+      expect(focused).toEqual(["Show less"]);
+      act(() =>
+        button(renderer, "Show less").props.onClick({
+          currentTarget: {
+            closest: () => null,
+            isConnected: true,
+            parentElement: null,
+            ownerDocument: { scrollingElement: null },
+            getBoundingClientRect: () => ({ top: 0, bottom: 0 }),
+          },
+        }),
+      );
+      expect(focused.at(-1)).toMatch(/Show the whole thought$/u);
     } finally {
-      globalThis.IntersectionObserver = savedObserver;
+      (globalThis as { window?: unknown }).window = savedWindow;
     }
+  });
+
+  it("hands the focus to the lines the last Show N earlier drew", () => {
+    const many = Array.from({ length: 50 }, (_, index) =>
+      step(command(`w${index}`, `echo ${index}`)),
+    );
+    let listFocused = 0;
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(
+        <Rows>
+          <RunChat row={record(many)} />
+        </Rows>,
+        {
+          createNodeMock: (element) =>
+            element.type === "ol" ? { focus: () => (listFocused += 1) } : {},
+        },
+      );
+    });
+    act(() => button(renderer, "Show 10 earlier").props.onClick());
+    expect(listFocused).toBe(1);
   });
 
   it("draws the earlier bubbles when the person asks for them", () => {
@@ -830,8 +1273,16 @@ describe("RunChat, as the person uses it", () => {
         (node) => node.type === "div" && node.props["data-chat-folded"] !== undefined,
       ).props["data-chat-folded"];
     expect(folded()).toBe("true");
+    // The button pressed, as the page has it: no scroll to keep it in.
+    const pressed = {
+      closest: () => null,
+      isConnected: true,
+      parentElement: null,
+      ownerDocument: { scrollingElement: null },
+      getBoundingClientRect: () => ({ top: 0, bottom: 0 }),
+    };
     const press = (words: string) =>
-      act(() => button(renderer, words).props.onClick({ currentTarget: { closest: () => null } }));
+      act(() => button(renderer, words).props.onClick({ currentTarget: pressed }));
     press("Show all 16 lines");
     expect(folded()).toBe("false");
     press("Show less");

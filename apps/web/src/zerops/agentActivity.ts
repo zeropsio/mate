@@ -41,6 +41,7 @@ import {
 } from "@t3tools/shared/threadStatus";
 
 import { threadStatusPill, type ThreadStatusPill } from "../components/Sidebar.logic";
+import { liveStepWords, type LiveStepWords } from "./liveStep";
 
 export interface ZeropsAgentActivity {
   readonly threadId: ThreadId;
@@ -79,16 +80,24 @@ export interface ZeropsAgentActivity {
    */
   readonly awaitingWords?: true;
   /**
-   * The plan's steps while it works, counted — what the ring around a
-   * working face is drawn from, one segment a step. Absent while it rests
-   * and where the server reports no plan: a ring nobody can fill is not
-   * drawn.
+   * The step the Mate is on right now, in the words its run's now line uses:
+   * what the menu's third line says while it works. The server relays it;
+   * absent where it relays none, and the row holds its dots.
    */
-  readonly progress: { readonly completed: number; readonly total: number } | undefined;
+  readonly liveStep?: LiveStepWords;
+  /**
+   * The question the Mate waits on the person to answer, in its words: what a
+   * needs-you row's third line says. The server relays it; absent while
+   * nothing waits, or where it relays none (the row keeps its last words).
+   */
+  readonly question?: string | undefined;
+  /** The first line of the error the Mate stopped on: a failed row's third line. */
+  readonly errorLine?: string | undefined;
   /**
    * The Mate finished something this device has not looked at since
-   * (`hasUnseenCompletion`, the resolver's own fact): its row is bold until
-   * its conversation is opened.
+   * (`hasUnseenCompletion`, the resolver's own fact): its row's name is at
+   * 600 and a blue dot stands before its age until its conversation is
+   * opened.
    */
   readonly unread: boolean;
   /** When the usage limit pausing it resets; absent while it is not paused. */
@@ -96,8 +105,9 @@ export interface ZeropsAgentActivity {
   /** The conversation's scoped key — what its unsent draft is kept under. */
   readonly threadKey: string;
   /**
-   * The last task as the person asked it, whatever the row's subject says
-   * meanwhile — a peek's "You asked" while the row names the step it is on.
+   * The last task as the person asked it, whatever the subject says
+   * meanwhile — the menu row's second line while the subject names the step
+   * the Mate is on.
    */
   readonly task: string | undefined;
   /**
@@ -210,7 +220,6 @@ export function threadAgentActivity(
   const visited = lastVisitedAt === undefined ? {} : { lastVisitedAt };
   const resolved = resolveThreadStatus({ ...thread, ...visited });
   const pause = thread.usagePause ?? undefined;
-  const plan = thread.planProgress ?? undefined;
   return {
     threadId: thread.id,
     kind: resolved.kind,
@@ -220,15 +229,54 @@ export function threadAgentActivity(
     at: agentActivityAt(thread),
     snippet: agentActivitySnippet(thread),
     ...(agentActivityAwaitsWords(thread) ? { awaitingWords: true as const } : {}),
-    progress:
-      resolved.kind === "working" && plan !== undefined && plan.totalSteps > 0
-        ? { completed: plan.completedSteps, total: plan.totalSteps }
-        : undefined,
     unread: hasUnseenCompletion({ latestTurn: thread.latestTurn, ...visited }),
     pausedUntil: pause?.resetsAt,
     threadKey: scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
     task: agentActivitySubject(thread, "idle"),
+    ...agentActivityLiveStep(thread, resolved.kind),
+    ...agentActivityQuestion(thread, resolved.kind),
+    ...agentActivityErrorLine(thread, resolved.kind),
   };
+}
+
+/**
+ * The step it is on, in its run card's words (`liveStep.ts`), while it
+ * works and its server relays one. A server from before it relays none: the
+ * row holds its dots.
+ */
+export function agentActivityLiveStep(
+  thread: Pick<EnvironmentThreadShell, "liveStep">,
+  kind: ThreadStatusKind,
+): { readonly liveStep?: LiveStepWords } {
+  if (kind !== "working" || thread.liveStep === undefined) return {};
+  return { liveStep: liveStepWords(thread.liveStep) };
+}
+
+/**
+ * The question it waits on the person to answer, while that is what it
+ * waits on — an approval waiting first is no question. Quoted by the server
+ * the way a preview is; a server from before it relays none.
+ */
+export function agentActivityQuestion(
+  thread: Pick<EnvironmentThreadShell, "pendingQuestion">,
+  kind: ThreadStatusKind,
+): { readonly question?: string } {
+  if (kind !== "input") return {};
+  const question = thread.pendingQuestion?.trim();
+  return question === undefined || question.length === 0 ? {} : { question };
+}
+
+/** The error's first line, while the Mate stands stopped on it. */
+export function agentActivityErrorLine(
+  thread: Pick<EnvironmentThreadShell, "session">,
+  kind: ThreadStatusKind,
+): { readonly errorLine?: string } {
+  if (kind !== "failed") return {};
+  const first = thread.session?.lastError
+    ?.split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  return first === undefined ? {} : { errorLine: maskSecrets(first) };
 }
 
 export function deriveZeropsAgentActivity(

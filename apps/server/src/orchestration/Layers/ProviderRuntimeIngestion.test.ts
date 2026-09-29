@@ -58,6 +58,7 @@ import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
 import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQuery.ts";
 import * as ThreadBackgroundLiveness from "../ThreadBackgroundLiveness.ts";
 import * as ThreadPlanProgress from "../ThreadPlanProgress.ts";
+import * as ThreadLiveStep from "../ThreadLiveStep.ts";
 import {
   ProviderRuntimeIngestionLive,
   splitBufferedAssistantText,
@@ -240,7 +241,10 @@ async function waitForThread(
 
 describe("ProviderRuntimeIngestion", () => {
   let runtime: ManagedRuntime.ManagedRuntime<
-    OrchestrationEngineService | ProviderRuntimeIngestionService | ProjectionSnapshotQuery,
+    | OrchestrationEngineService
+    | ProviderRuntimeIngestionService
+    | ProjectionSnapshotQuery
+    | ThreadLiveStep.ThreadLiveStepService,
     unknown
   > | null = null;
   let scope: Scope.Closeable | null = null;
@@ -328,6 +332,7 @@ describe("ProviderRuntimeIngestion", () => {
       // engine, and the snapshot query (reader).
       Layer.provideMerge(ThreadBackgroundLiveness.layer),
       Layer.provideMerge(ThreadPlanProgress.layer),
+      Layer.provideMerge(ThreadLiveStep.layer),
       Layer.provideMerge(SqlitePersistenceMemory),
       Layer.provideMerge(Layer.succeed(ProviderService, provider.service)),
       Layer.provideMerge(makeTestServerSettingsLayer(options?.serverSettings)),
@@ -5061,6 +5066,325 @@ describe("ProviderRuntimeIngestion", () => {
     );
     expect(thread.session?.status).toBe("error");
     expect(thread.session?.lastError).toBe("runtime still processed");
+  });
+
+  describe("the live step and the pending question on the thread's shell", () => {
+    const liveAt = (second: number) => `2026-09-29T08:00:${String(second).padStart(2, "0")}.000Z`;
+    const live = (
+      second: number,
+      type: string,
+      extra: Partial<LegacyProviderRuntimeEvent> = {},
+    ): LegacyProviderRuntimeEvent => ({
+      type,
+      eventId: asEventId(`evt-live-${type}-${second}`),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: liveAt(second),
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-live"),
+      ...extra,
+    });
+    const bash = (second: number, type: string, input: Record<string, unknown>, status = "") =>
+      live(second, type, {
+        itemId: asItemId("call-build"),
+        payload: {
+          itemType: "command_execution",
+          status: status === "" ? "inProgress" : status,
+          title: "Command run",
+          detail: typeof input.command === "string" ? `Bash: ${input.command}` : "Bash: {}",
+          data: { toolName: "Bash", input },
+        },
+      });
+    const buildInput = { command: "pnpm build", description: "Build the app" };
+    const building = {
+      id: "call-build",
+      activityKind: "tool.updated",
+      itemType: "command_execution",
+      title: "Command run",
+      detail: "Bash: pnpm build",
+      toolName: "Bash",
+      command: "pnpm build",
+      input: { description: "Build the app" },
+      startedAt: liveAt(5),
+    };
+    const turnStarted = live(0, "turn.started");
+    const thought = live(3, "content.delta", {
+      itemId: asItemId("thought-1"),
+      payload: { streamKind: "reasoning_text", delta: "The build comes first." },
+    });
+    const words = live(11, "content.delta", {
+      itemId: asItemId("words-1"),
+      payload: { streamKind: "assistant_text", delta: "Built it." },
+    });
+    const wordsDone = live(12, "item.completed", {
+      itemId: asItemId("words-1"),
+      payload: {
+        itemType: "assistant_message",
+        status: "completed",
+        title: "Assistant message",
+        detail: "Built it.",
+      },
+    });
+
+    it.each<{
+      readonly name: string;
+      readonly events: ReadonlyArray<LegacyProviderRuntimeEvent>;
+      readonly liveStep: unknown;
+    }>([
+      {
+        name: "a turn that has done nothing yet is thinking",
+        events: [turnStarted],
+        liveStep: { kind: "thinking", since: liveAt(0) },
+      },
+      {
+        name: "a call starting is the step before its input is in",
+        events: [turnStarted, bash(5, "item.started", {})],
+        liveStep: {
+          kind: "calls",
+          since: liveAt(5),
+          calls: [
+            {
+              id: "call-build",
+              activityKind: "tool.started",
+              itemType: "command_execution",
+              title: "Command run",
+              detail: "Bash: {}",
+              toolName: "Bash",
+              startedAt: liveAt(5),
+            },
+          ],
+        },
+      },
+      {
+        name: "its input in: what it is for and the command, from its start",
+        events: [turnStarted, bash(5, "item.started", {}), bash(6, "item.updated", buildInput)],
+        liveStep: { kind: "calls", since: liveAt(5), calls: [building] },
+      },
+      {
+        name: "its result in, not yet completed: still the step, the same",
+        events: [
+          turnStarted,
+          bash(5, "item.started", {}),
+          bash(6, "item.updated", buildInput),
+          bash(8, "item.updated", { ...buildInput, timeout: 1 }),
+        ],
+        liveStep: { kind: "calls", since: liveAt(5), calls: [building] },
+      },
+      {
+        name: "a call ending leaves it thinking, from the end",
+        events: [
+          turnStarted,
+          bash(5, "item.started", {}),
+          bash(6, "item.updated", buildInput),
+          bash(9, "item.completed", buildInput, "completed"),
+        ],
+        liveStep: { kind: "thinking", since: liveAt(9) },
+      },
+      {
+        name: "a call failing ends it",
+        events: [
+          turnStarted,
+          bash(5, "item.started", {}),
+          bash(9, "item.updated", buildInput, "failed"),
+        ],
+        liveStep: { kind: "thinking", since: liveAt(9) },
+      },
+      {
+        name: "a thought streaming is thinking",
+        events: [turnStarted, bash(1, "item.completed", buildInput, "completed"), thought],
+        liveStep: { kind: "thinking", since: liveAt(0) },
+      },
+      {
+        name: "its words streaming are writing",
+        events: [turnStarted, thought, words],
+        liveStep: { kind: "writing", since: liveAt(11) },
+      },
+      {
+        name: "its words out, it thinks again",
+        events: [turnStarted, thought, words, wordsDone],
+        liveStep: { kind: "thinking", since: liveAt(12) },
+      },
+      {
+        name: "a settled turn has no step",
+        events: [
+          turnStarted,
+          bash(5, "item.started", {}),
+          live(13, "turn.completed", { payload: { state: "completed" } }),
+        ],
+        liveStep: undefined,
+      },
+      {
+        name: "a helper's own call is not the Mate's step",
+        events: [
+          turnStarted,
+          live(5, "item.started", {
+            itemId: asItemId("helper-call"),
+            payload: {
+              itemType: "command_execution",
+              status: "inProgress",
+              title: "Command run",
+              agentId: "agent-1",
+              data: { toolName: "Bash", input: { command: "ls" } },
+            },
+          }),
+        ],
+        liveStep: { kind: "thinking", since: liveAt(0) },
+      },
+      {
+        name: "a stale event from a superseded turn changes nothing",
+        events: [
+          turnStarted,
+          live(5, "item.started", {
+            turnId: asTurnId("turn-old"),
+            itemId: asItemId("old-call"),
+            payload: {
+              itemType: "command_execution",
+              status: "inProgress",
+              title: "Command run",
+              data: { toolName: "Bash", input: { command: "ls" } },
+            },
+          }),
+        ],
+        liveStep: { kind: "thinking", since: liveAt(0) },
+      },
+    ])("$name", async ({ events, liveStep }) => {
+      const harness = await createHarness();
+      await harness.emitAndDrain(events);
+      expect((await harness.readThreadShell()).liveStep).toEqual(liveStep);
+    });
+
+    const question = live(20, "user-input.requested", {
+      requestId: ApprovalRequestId.make("req-merge"),
+      payload: {
+        questions: [
+          {
+            id: "merge",
+            header: "Merge",
+            question: "Ship the status page now, or after the review?",
+            options: [{ label: "Now", description: "Merge it now." }],
+          },
+        ],
+      },
+    });
+    const answer = live(30, "user-input.resolved", {
+      requestId: ApprovalRequestId.make("req-merge"),
+      payload: { answers: { merge: "Now" } },
+    });
+
+    it.each<{
+      readonly name: string;
+      readonly events: ReadonlyArray<LegacyProviderRuntimeEvent>;
+      readonly pendingQuestion: string | undefined;
+    }>([
+      { name: "nothing asked", events: [turnStarted], pendingQuestion: undefined },
+      {
+        name: "a question waiting is on the shell",
+        events: [turnStarted, question],
+        pendingQuestion: "Ship the status page now, or after the review?",
+      },
+      {
+        name: "answered, it is gone",
+        events: [turnStarted, question, answer],
+        pendingQuestion: undefined,
+      },
+      {
+        name: "a turn ending on it unanswered dismisses it",
+        events: [
+          turnStarted,
+          question,
+          live(40, "turn.completed", { payload: { state: "completed" } }),
+        ],
+        pendingQuestion: undefined,
+      },
+    ])("$name", async ({ events, pendingQuestion }) => {
+      const harness = await createHarness();
+      await harness.emitAndDrain(events);
+      const shell = await harness.readThreadShell();
+      expect(shell.pendingQuestion).toBe(pendingQuestion);
+      expect(shell.hasPendingUserInput).toBe(pendingQuestion !== undefined);
+    });
+
+    const relayed = async () =>
+      (
+        await runtime!.runPromise(Effect.service(ThreadLiveStep.ThreadLiveStepService))
+      ).getThreadLiveStep("thread-1");
+
+    it.each<{
+      readonly name: string;
+      readonly ending: LegacyProviderRuntimeEvent;
+    }>([
+      {
+        name: "a session that errors mid-turn",
+        ending: live(9, "session.state.changed", {
+          payload: { state: "error", reason: "The provider went away." },
+        }),
+      },
+      {
+        name: "a runtime error mid-turn",
+        ending: live(9, "runtime.error", { payload: { message: "The stream broke." } }),
+      },
+      {
+        name: "a session that goes ready with the turn still open",
+        ending: live(9, "session.state.changed", { payload: { state: "ready" } }),
+      },
+    ])("$name leaves nothing live, on the shell or behind it", async ({ ending }) => {
+      const harness = await createHarness();
+      await harness.emitAndDrain([turnStarted, bash(5, "item.started", {}), ending]);
+      expect((await harness.readThreadShell()).liveStep).toBeUndefined();
+      expect(await relayed()).toBeNull();
+    });
+
+    it.each([
+      { name: "deleted", command: "thread.delete" },
+      { name: "archived", command: "thread.archive" },
+    ] as const)("a thread $name mid-turn leaves nothing behind", async ({ command }) => {
+      const harness = await createHarness();
+      await harness.emitAndDrain([turnStarted, bash(5, "item.started", {})]);
+      expect(await relayed()).not.toBeNull();
+      await harness.dispatch({
+        type: command,
+        commandId: CommandId.make(`cmd-live-${command}`),
+        threadId: asThreadId("thread-1"),
+      });
+      // The domain event reaches ingestion's worker on its own subscription.
+      for (let attempt = 0; attempt < 200 && (await relayed()) !== null; attempt += 1) {
+        await harness.drain();
+        await Effect.runPromise(Effect.yieldNow);
+      }
+      expect(await relayed()).toBeNull();
+    });
+
+    it("the step is on the shell the call's own event refreshes", async () => {
+      const harness = await createHarness();
+      await harness.emitAndDrain([turnStarted]);
+      const testRuntime = runtime!;
+      const shellOnEvent = testRuntime.runPromise(
+        harness.engine.streamDomainEvents.pipe(
+          Stream.filter(
+            (event) =>
+              event.type === "thread.activity-appended" &&
+              event.payload.activity.kind === "tool.updated",
+          ),
+          Stream.take(1),
+          Stream.mapEffect(() =>
+            Effect.flatMap(ProjectionSnapshotQuery, (query) =>
+              query.getThreadShellById(asThreadId("thread-1")),
+            ),
+          ),
+          Stream.runHead,
+        ),
+      );
+      await Effect.runPromise(Effect.yieldNow);
+      await harness.emitAndDrain([
+        bash(5, "item.started", {}),
+        bash(6, "item.updated", buildInput),
+      ]);
+      const shell = Option.flatten(await shellOnEvent);
+      expect(Option.getOrThrow(shell).liveStep).toEqual({
+        kind: "calls",
+        since: liveAt(5),
+        calls: [building],
+      });
+    });
   });
 });
 

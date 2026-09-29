@@ -8,7 +8,6 @@ import { readCrewThread } from "../../../zerops/crew/useCrew";
 import {
   crewAttentionActions,
   crewBriefLine,
-  crewFaceStack,
   crewOffersStart,
   crewLoginMark,
   crewRowLead,
@@ -133,7 +132,7 @@ describe("crewAttentionActions", () => {
     },
     {
       kind: "ready-to-land" as const,
-      actions: [{ kind: "command", label: "Land", command: { _tag: "land", taskId: "task-12" } }],
+      actions: [{ kind: "review", label: "Review", taskId: "task-12" }],
     },
     { kind: "plan" as const, actions: [{ kind: "board", label: "Review plan" }] },
     {
@@ -183,7 +182,7 @@ describe("crewAttentionActions", () => {
             attachments: [],
           },
         },
-        { kind: "command", label: "Land now", command: { _tag: "landNow", taskId: "task-12" } },
+        { kind: "review", label: "Review", taskId: "task-12" },
         { kind: "command", label: "Discard", command: { _tag: "discard", taskId: "task-12" } },
       ],
     },
@@ -200,7 +199,7 @@ describe("crewAttentionActions", () => {
             attachments: [],
           },
         },
-        { kind: "command", label: "Land it myself", command: { _tag: "land", taskId: "task-12" } },
+        { kind: "review", label: "Review", taskId: "task-12" },
       ],
     },
     {
@@ -253,16 +252,14 @@ describe("crewAttentionActions", () => {
     ]);
   });
 
-  it("offers only Land it myself on a review where the crew has no lead", () => {
+  it("offers only the review, which lands it, where the crew has no lead to review it", () => {
     const noLead = {
       ...snapshot,
       crewmates: snapshot.crewmates.filter((mate) => mate.kind !== "lead"),
     };
     expect(
       crewAttentionActions(attention({ kind: "review-wait" }), noLead, { board: true }),
-    ).toEqual([
-      { kind: "command", label: "Land it myself", command: { _tag: "land", taskId: "task-12" } },
-    ]);
+    ).toEqual([{ kind: "review", label: "Review", taskId: "task-12" }]);
   });
 
   it("drops the wait on the dependency that will not land, or discards the task", () => {
@@ -382,19 +379,6 @@ describe("crewBriefLine", () => {
     },
   ])("$name", ({ excerpt, line }) => {
     expect(crewBriefLine({ ...crew, briefExcerpt: excerpt })).toEqual(line);
-  });
-});
-
-describe("crewFaceStack", () => {
-  it("shows at most three faces, the lead first, and counts the rest", () => {
-    const stack = crewFaceStack(view.crewmates);
-    expect(stack.faces.map((face) => [face.handle, face.state])).toEqual([
-      ["lead", "idle"],
-      ["backend", "working"],
-      ["frontend", "idle"],
-    ]);
-    expect(stack.more).toBe(1);
-    expect(crewFaceStack(view.crewmates.slice(0, 2)).more).toBe(0);
   });
 });
 

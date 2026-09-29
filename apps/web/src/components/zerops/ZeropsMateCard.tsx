@@ -20,7 +20,7 @@
  */
 import type { MateMarkState, MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
 import { ExternalLinkIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { MateFace } from "./primitives";
@@ -86,7 +86,8 @@ export function ZeropsMateVerb({
    * as *Ask*. Defaults to the label.
    */
   readonly action?: string | undefined;
-  readonly onClick: () => void;
+  /** The press, with what was pressed: a review opens from it (pass 16, R7). */
+  readonly onClick: (event: MouseEvent<HTMLButtonElement>) => void;
   readonly disabled?: boolean;
   /**
    * How much the verb would carry, worn on the verb itself.
