@@ -1642,23 +1642,51 @@ describe("a project collapsed to its heading", () => {
     expect(room("notes")).toEqual(["mt-1"]);
   });
 
-  it("points its chevron right while collapsed and always shows it; down, on hover, while open", () => {
+  it("wears one chevron that turns, the heading saying whether it is folded", () => {
+    const heading = (collapsed: boolean) =>
+      renderToStaticMarkup(
+        <ProjectHeader
+          collapsed={collapsed}
+          name="Links"
+          onBrowseProjects={() => {}}
+          onToggle={() => {}}
+        />,
+      );
     const chevron = (collapsed: boolean) =>
       /<svg[^>]*data-zerops-surface="sidebar-project-chevron"[^>]*>/u.exec(
-        renderToStaticMarkup(
-          <ProjectHeader
-            collapsed={collapsed}
-            name="Links"
-            onBrowseProjects={() => {}}
-            onToggle={() => {}}
-          />,
-        ),
+        heading(collapsed),
       )?.[0] ?? "";
-    expect(chevron(true)).toContain("lucide-chevron-right");
-    expect(chevron(true)).not.toContain("opacity-0");
-    expect(chevron(false)).toContain("lucide-chevron-down");
-    expect(chevron(false)).toContain("opacity-0");
-    expect(chevron(false)).toContain("group-hover/project:opacity-100");
+    // One glyph in both states: it turns a quarter down while open (the
+    // stylesheet's `.zerops-project-chevron`), so opening is one movement.
+    for (const collapsed of [true, false]) {
+      expect(chevron(collapsed)).toContain("lucide-chevron-right");
+      expect(chevron(collapsed)).toContain("zerops-project-chevron");
+    }
+    expect(heading(true)).toContain('data-collapsed="true"');
+    expect(heading(false)).not.toContain("data-collapsed");
+  });
+
+  it("is 32 px tall, its title on the mark edge, its verbs 28 px and always in their slot", () => {
+    const html = renderToStaticMarkup(
+      <ProjectHeader
+        group={buildZeropsGroupTree([CRM_DEV], { order: "name" }).groups[0]!.group}
+        onBrowseProjects={() => {}}
+        onToggle={() => {}}
+      />,
+    );
+    const heading = /<div class="([^"]*)"[^>]*data-zerops-surface="sidebar-project"/u.exec(html);
+    expect(heading?.[1]?.split(" ")).toEqual(expect.arrayContaining(["h-8", "ps-1.75", "pe-1"]));
+    const title = /<span class="([^"]*)">Beviro CRM</u.exec(html)?.[1]?.split(" ") ?? [];
+    expect(title).toEqual(
+      expect.arrayContaining(["text-base", "leading-6", "font-semibold", "zerops-project-name"]),
+    );
+    for (const verb of ["sidebar-project-add-mate", "sidebar-project-more"]) {
+      const button = new RegExp(`<button[^>]*data-zerops-surface="${verb}"[^>]*>`, "u").exec(
+        html,
+      )?.[0];
+      expect(button).toContain("size-7");
+      expect(button).toContain("rounded-md");
+    }
   });
 
   it("starts the title at the rail's own left edge and hangs the chevron after it", () => {
