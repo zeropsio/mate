@@ -7,19 +7,22 @@ import { ChevronDownIcon, type LucideIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Separator } from "../ui/separator";
 
-export type ComposerControlSize = "sm" | "xs";
+export type ComposerControlSize = "sm" | "xs" | "quiet";
 
 /**
- * The composer toolbar's control look. `sm` is the expanded toolbar; `xs` is the dimmer resting
- * strip. `aria-pressed` marks a toggle that is on (plan mode). This is an app control, not a
- * restyled Button, so it owns its classes.
+ * The composer toolbar's control look. `quiet` is the composer's own toolbar (C4): 13 px, muted,
+ * a 28 px ghost until pointed at or open. `sm` is the settings' pickers; `xs` is the dimmer
+ * resting strip. `aria-pressed` marks a toggle that is on (plan mode). This is an app control,
+ * not a restyled Button, so it owns its classes.
  */
 function composerControlClassName(size: ComposerControlSize, className?: string) {
   return cn(
     "relative inline-flex shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-(--control-radius) border border-transparent text-base outline-none hover:bg-accent data-pressed:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 data-disabled:pointer-events-none data-disabled:opacity-64 pointer-coarse:after:absolute pointer-coarse:after:size-full pointer-coarse:after:min-h-11 pointer-coarse:after:min-w-11 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:-mx-0.5 [&_svg[data-composer-control-icon]]:mx-0",
-    size === "xs"
-      ? "h-7 gap-1 px-1.75 font-normal text-muted-foreground/70 text-sm hover:text-foreground/80 sm:h-6 sm:text-xs [&_svg:not([class*='size-'])]:size-4 sm:[&_svg:not([class*='size-'])]:size-3.5 [&_svg[data-composer-control-chevron]]:ms-0 [&_svg[data-composer-control-chevron]]:-me-1"
-      : "h-7 gap-1.5 px-2.5 font-medium text-secondary-label [&_svg:not([class*='text-'])]:text-muted-foreground hover:text-foreground sm:text-sm [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
+    size === "quiet"
+      ? "h-7 gap-1.5 px-1.5 font-medium text-line text-muted-foreground hover:bg-foreground/8 hover:text-foreground data-popup-open:bg-foreground/8 data-popup-open:text-foreground data-pressed:bg-foreground/8 [&_svg:not([class*='size-'])]:size-3.5 [&_svg]:mx-0"
+      : size === "xs"
+        ? "h-7 gap-1 px-1.75 font-normal text-muted-foreground/70 text-sm hover:text-foreground/80 sm:h-6 sm:text-xs [&_svg:not([class*='size-'])]:size-4 sm:[&_svg:not([class*='size-'])]:size-3.5 [&_svg[data-composer-control-chevron]]:ms-0 [&_svg[data-composer-control-chevron]]:-me-1"
+        : "h-7 gap-1.5 px-2.5 font-medium text-secondary-label [&_svg:not([class*='text-'])]:text-muted-foreground hover:text-foreground sm:text-sm [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
     "aria-pressed:bg-accent aria-pressed:text-accent-foreground aria-pressed:hover:bg-accent/80",
     className,
   );
@@ -62,7 +65,13 @@ export function ComposerControlIcon({
       aria-hidden="true"
       className={cn(
         "shrink-0",
-        size === "xs" ? "size-3" : opticalSize === "large" ? "size-4.5" : "size-4",
+        size === "xs"
+          ? "size-3"
+          : size === "quiet"
+            ? "size-3.5"
+            : opticalSize === "large"
+              ? "size-4.5"
+              : "size-4",
         className,
       )}
       data-composer-control-icon
@@ -82,7 +91,11 @@ export function ComposerControlChevron({
       aria-hidden="true"
       className={cn(
         "shrink-0",
-        size === "xs" ? "size-3 text-current opacity-50" : "size-3.5 text-icon-muted",
+        size === "xs"
+          ? "size-3 text-current opacity-50"
+          : size === "quiet"
+            ? "size-3.5 text-current"
+            : "size-3.5 text-icon-muted",
         className,
       )}
       data-composer-control-chevron

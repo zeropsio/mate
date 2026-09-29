@@ -309,7 +309,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
           </span>
           {prompt.questions.length > 1 ? (
             <span
-              className="text-[10px] font-medium text-muted-foreground tabular-nums"
+              className="text-xs font-medium text-muted-foreground tabular-nums"
               data-pending-request-progress={`${questionIndex + 1}/${prompt.questions.length}`}
             >
               {questionIndex + 1}/{prompt.questions.length}
@@ -400,7 +400,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                   ) : shortcutKey !== null ? (
                     <kbd
                       className={cn(
-                        "flex size-5 shrink-0 items-center justify-center text-3xs font-medium text-muted-foreground tabular-nums",
+                        "flex size-5 shrink-0 items-center justify-center text-xs font-medium text-muted-foreground tabular-nums",
                       )}
                     >
                       {shortcutKey}
@@ -440,7 +440,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
             >
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="font-medium text-sm">Other</span>
-                <span className="text-[11px]">
+                <span className="text-line">
                   {customAnswerActive
                     ? progress.customAnswer
                     : "Type your own answer in the composer below."}
@@ -464,7 +464,7 @@ function PendingUserInputOptionLabel({
     <div className="min-w-0 flex-1 flex flex-col gap-0.5">
       <span className="text-sm font-medium">{option.label}</span>
       {option.description && option.description !== option.label ? (
-        <span className="text-secondary-label text-[11px]">{option.description}</span>
+        <span className="text-secondary-label text-line">{option.description}</span>
       ) : null}
     </div>
   );

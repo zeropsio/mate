@@ -126,10 +126,11 @@ export function resolveDraftHeroState(input: {
  * in light mode — while the thread detail reloads, even when the destination
  * was on screen moments ago.
  *
- * A thread only ever paints its own snapshot: showing another conversation
- * while the next one loads would paint something the reload takes back.
- * Stored at module scope because ChatView remounts when the thread route
- * changes; the account lifetime clears it.
+ * The timeline only ever holds a thread's own snapshot. While a thread with
+ * none loads, the pane keeps a still picture of the conversation left over
+ * it (`TimelineSwitch`, T1), never that conversation's rows under the next
+ * one's name. Stored at module scope so it outlives the view; the account
+ * lifetime clears it.
  */
 export type HeldThreadTimeline<T extends readonly unknown[]> = {
   threadKey: string | null;

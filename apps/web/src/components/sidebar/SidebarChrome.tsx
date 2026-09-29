@@ -32,6 +32,7 @@ import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUp
 export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   isElectron,
   waiting,
+  jump,
 }: {
   isElectron: boolean;
   /**
@@ -40,6 +41,11 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
    * menu lists no Mates.
    */
   waiting?: ReactNode;
+  /**
+   * The way into the jump box (`SidebarJumpButton`), on the row's end edge,
+   * 12 px from the menu's edge. Absent where the menu has no jump box.
+   */
+  jump?: ReactNode;
 }) {
   return (
     <SidebarHeader
@@ -50,12 +56,17 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
     >
       <SidebarTrigger className="md:hidden" />
       <SidebarBrand />
-      {waiting === undefined ? null : (
-        <div
-          className="ms-auto flex w-24 shrink-0 items-center justify-end md:pe-3"
-          data-zerops-surface="sidebar-waiting-slot"
-        >
-          {waiting}
+      {waiting === undefined && jump === undefined ? null : (
+        <div className="ms-auto flex shrink-0 items-center gap-2 md:pe-3">
+          {waiting === undefined ? null : (
+            <div
+              className="flex w-24 shrink-0 items-center justify-end"
+              data-zerops-surface="sidebar-waiting-slot"
+            >
+              {waiting}
+            </div>
+          )}
+          {jump}
         </div>
       )}
     </SidebarHeader>
@@ -74,7 +85,7 @@ function SidebarBrand() {
     >
       {/* Identity v1's lockup: the still mark and the wordmark, outlined — the
           one place the product's name is set, so no page repeats it. */}
-      <MateLockup decorative live className="h-6 w-auto" />
+      <MateLockup decorative live className="h-5.5 w-auto" />
     </Link>
   );
 }

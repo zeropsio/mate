@@ -175,14 +175,14 @@ describe("resolveZeropsAgentPickerPanelView — session lock notice", () => {
 
   // The live bug: signing in is project-wide, not per session, so the panel
   // still offers it even while locked out — but says where it will run.
-  it("names the locked agent and 'New session' (the header button's own name)", () => {
+  it("names the locked agent and 'Archive and start fresh' (the header menu's own words)", () => {
     expect(
       resolveZeropsAgentPickerPanelView({
         agentId: "codex",
         availability: { kind: "needs-sign-in", signInKind: "not-authorized" },
         lockedToAgentName: "Claude Code",
       }).sessionLockNotice,
-    ).toBe("This session runs on Claude Code. Codex is used in a New session.");
+    ).toBe("This session runs on Claude Code. Codex is used after Archive and start fresh.");
   });
 
   it("applies to every non-ready kind, not just needs-sign-in", () => {
@@ -192,7 +192,7 @@ describe("resolveZeropsAgentPickerPanelView — session lock notice", () => {
         availability: { kind: "someone-else", signerId: "user-b" },
         lockedToAgentName: "Codex",
       }).sessionLockNotice,
-    ).toBe("This session runs on Codex. Claude Code is used in a New session.");
+    ).toBe("This session runs on Codex. Claude Code is used after Archive and start fresh.");
   });
 });
 

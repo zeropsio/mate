@@ -11,6 +11,8 @@ import {
   ClientSurface,
   CommandId,
   EventId,
+  ForwardCompatibleArray,
+  ForwardCompatibleOptional,
   IsoDateTime,
   MessageId,
   NonNegativeInt,
@@ -722,6 +724,69 @@ export const OrchestrationProjectShell = Schema.Struct({
 });
 export type OrchestrationProjectShell = typeof OrchestrationProjectShell.Type;
 
+/**
+ * A call a thread's running turn is making, as its activities carry it: the
+ * raw facts its run's card phrases a step from, never the words — a client
+ * that has only the shell (the menu) puts them through the card's own
+ * phrasing, so the two never say different things. Strings, not literals, so
+ * a driver's new kind of call never fails an older client's decode.
+ */
+export const ThreadLiveCall = Schema.Struct({
+  /** The call's id, as its activities carry it (`toolCallId`). */
+  id: TrimmedNonEmptyString,
+  /**
+   * The kind of the last activity that told of it: `tool.started` until its
+   * first update, `tool.updated` after — a card draws a call only once it is
+   * updated, and a reader of these facts applies the card's rule.
+   */
+  activityKind: TrimmedNonEmptyString,
+  /** The runtime's kind of call: `command_execution`, `file_change`, `mcp_tool_call`, … */
+  itemType: TrimmedNonEmptyString,
+  /** The call's title, as its activity is summarised ("Command run", "Tool call"). */
+  title: TrimmedNonEmptyString,
+  /** The call's detail line, as its activity carries it ("Bash: pnpm build"). */
+  detail: Schema.optional(TrimmedNonEmptyString),
+  /** The tool's own name ("Bash", "Read", "mcp__zerops__zerops_deploy"). */
+  toolName: Schema.optional(TrimmedNonEmptyString),
+  /**
+   * The command it runs, as the runtime gave it — cut at 2,000 characters;
+   * any shell wrapper is the reader's to drop.
+   */
+  command: Schema.optional(TrimmedNonEmptyString),
+  /**
+   * What the call says of itself and names as its target, under its own
+   * keys — `description`, `file_path`, `path`, `pattern`, `glob`, `url`,
+   * `query` — and a Zerops tool's other plain arguments (the service it
+   * deploys, the page it checks). At most eight, each cut to 300 characters.
+   */
+  input: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  /** The picture it looks at. */
+  imagePath: Schema.optional(TrimmedNonEmptyString),
+  /** The files it changes. */
+  files: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  /** When it started. */
+  startedAt: IsoDateTime,
+});
+export type ThreadLiveCall = typeof ThreadLiveCall.Type;
+
+/**
+ * What a thread's running turn is on this moment
+ * (`OrchestrationThreadShell.liveStep`): thinking between steps, its words
+ * streaming, or the calls it made since it last thought or spoke that still
+ * run — the newest four, oldest first. `since` is when it began what it is
+ * on: the newest call's start while calls run.
+ */
+export const ThreadLiveStep = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("thinking"), since: IsoDateTime }),
+  Schema.Struct({ kind: Schema.Literal("writing"), since: IsoDateTime }),
+  Schema.Struct({
+    kind: Schema.Literal("calls"),
+    since: IsoDateTime,
+    calls: ForwardCompatibleArray(ThreadLiveCall),
+  }),
+]);
+export type ThreadLiveStep = typeof ThreadLiveStep.Type;
+
 export const OrchestrationThreadShell = Schema.Struct({
   id: ThreadId,
   projectId: ProjectId,
@@ -786,6 +851,22 @@ export const OrchestrationThreadShell = Schema.Struct({
       }),
     ),
   ),
+  /**
+   * What the running turn is on this moment (see ThreadLiveStep), for a row
+   * that says it the way the run's card does. Kept in memory while the turn
+   * runs, cleared when it settles — never persisted. Absent from a server
+   * from before it, while no turn runs, and for a step of a kind this client
+   * does not know: the row holds its dots.
+   */
+  liveStep: ForwardCompatibleOptional(ThreadLiveStep),
+  /**
+   * The question the thread waits on the person to answer, in its words: the
+   * first question of the oldest open user-input request, quoted the way a
+   * preview is. Set exactly while `hasPendingUserInput` is, from the same
+   * activities. Optional so old servers/clients interop; absent or null =
+   * nothing asked.
+   */
+  pendingQuestion: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   /**
    * The usage limit pausing the thread, while it does (see ThreadUsagePause).
    * Optional so old servers/clients interop; absent or null = not paused.

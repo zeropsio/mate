@@ -36,6 +36,7 @@ export type {
   ZeropsOperationKind,
   ZeropsOperationLink,
   ZeropsOperationPhase,
+  ZeropsOperationPullRequest,
   ZeropsOperationStep,
   ZeropsOperationStepState,
   ZeropsReadResult,

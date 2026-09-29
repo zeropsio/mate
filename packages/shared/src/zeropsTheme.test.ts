@@ -222,14 +222,6 @@ describe("ZEROPS_THEME", () => {
       0.14,
     ],
     [
-      "dark messageSurface: 15% core blue over surface",
-      "dark",
-      "messageSurface",
-      "#58a6ff",
-      "#141918",
-      0.15,
-    ],
-    [
       "light terminalSelection: 20% blue over surface",
       "light",
       "terminalSelection",

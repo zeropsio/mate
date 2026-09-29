@@ -1890,7 +1890,7 @@ function zeropsCallToolLifecycleStatus(status: ZeropsCallStatus): WorkLogToolLif
  * one place that shape is synthesized, so `MessagesTimeline` never has to
  * know a `ZeropsCall` exists.
  */
-function zeropsCallToWorkLogEntry(call: ZeropsCall): WorkLogEntry {
+export function zeropsCallToWorkLogEntry(call: ZeropsCall): WorkLogEntry {
   return {
     id: call.anchorActivityId,
     createdAt: call.startedAt,

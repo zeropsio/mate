@@ -5,7 +5,7 @@
  * Finding goes to the thing found. A Mate, or words in its conversation, open
  * that conversation, as its row does (`useOpenMate`). A project, a stop or a
  * change is shown where it is in the menu — its project opened, its row
- * focused and flashed, a Mate's change in its Mate's peek — or, on the
+ * focused and flashed — or, on the
  * settings pages, whose menu is their own, that thing's own page.
  *
  * Writing sends without opening anything, with what a send from the Mate's
@@ -68,7 +68,7 @@ import {
   type JumpWriteAction,
   type SidebarJumpIndex,
 } from "./JumpBox.logic";
-import { matePeekDecision } from "./SidebarMatePeek.logic";
+import { mateDecision } from "./mateDecision.logic";
 
 /** Enter's word in the keys row, for what Enter does now. */
 const ENTER_WORD: Record<JumpWriteAction, string | undefined> = {
@@ -201,6 +201,9 @@ function useJumpPages(): JumpPages {
           },
         });
       },
+      newProject: () => {
+        void router.navigate({ to: "/zerops/new" });
+      },
     }),
     [listing, openMateOf, router],
   );
@@ -246,7 +249,7 @@ function useJumpWrite(
   const decision =
     target?.conversation === undefined
       ? undefined
-      : matePeekDecision({
+      : mateDecision({
           name: target.name,
           kind: target.conversation.kind,
           read: detail !== undefined,
