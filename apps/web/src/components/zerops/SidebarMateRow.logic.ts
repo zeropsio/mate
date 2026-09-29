@@ -3,6 +3,9 @@
  * pure, so each rule has its table.
  */
 import { pullRequestBlocked, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import type { MateMarkState } from "@t3tools/shared/brand";
+
+import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 
 /** Whose Mate it is, as the mark before its name draws it. */
 export interface OwnerMark {
@@ -52,4 +55,143 @@ export function changeMarkTone(
   if (remembered) return undefined;
   if (pull.checks === "failing") return "failed";
   return pullRequestBlocked(pull)?.kind === "behind" ? "attention" : undefined;
+}
+
+/**
+ * A Mate's row in one of its states (M7): no status word says it — the
+ * face, a dot and the content itself do.
+ */
+export type MateRowState = "idle" | "working" | "needs" | "unread" | "failed" | "paused";
+
+/** The right of the name: when it last did something, the run's clock, or when it picks up. */
+export type MateRowSlot =
+  | { readonly kind: "age" }
+  | { readonly kind: "clock"; readonly since: string }
+  | { readonly kind: "paused"; readonly until: string }
+  | { readonly kind: "none" };
+
+/** The third line: the Mate's words in the state's ink, its live step, or the dots holding the line. */
+export type MateRowReply =
+  | {
+      readonly kind: "words";
+      readonly text: string;
+      /** Muted at rest, the second ink unread, full ink as a question, red as an error. */
+      readonly tone: "muted" | "ink-2" | "ink" | "failed";
+    }
+  | { readonly kind: "live"; readonly words: string; readonly code: string | undefined }
+  | { readonly kind: "pending" }
+  | undefined;
+
+export interface MateRowView {
+  readonly state: MateRowState;
+  /** The face it wears: the one mapping's, but still where it stands stopped on an error. */
+  readonly face: MateMarkState;
+  readonly slot: MateRowSlot;
+  /** The dot before the age: amber needs you, blue unread, red broken (S3). */
+  readonly dot: "attention" | "unread" | "failed" | undefined;
+  /** Finished and not seen: the name at 600. */
+  readonly strongName: boolean;
+  /** The second line: the person's last ask, whatever step the Mate is on. */
+  readonly ask: string | undefined;
+  readonly reply: MateRowReply;
+}
+
+/**
+ * What a Mate's row says, from what its conversation says (`activity`, the
+ * one resolver's reading, R5) and the face it wears (`mateFaceFor`):
+ *
+ * | state               | face                     | right of the name   | third line               |
+ * | ------------------- | ------------------------ | ------------------- | ------------------------ |
+ * | idle, seen          | still                    | age                 | its last words, muted    |
+ * | working             | turns, glances           | the run's clock     | its live step, or dots   |
+ * | needs you           | hops, waits with the "o" | amber dot + age     | the question, in ink     |
+ * | finished, not seen  | pops, smiles             | blue dot + age      | its last words, 2nd ink  |
+ * | stopped on an error | still                    | red dot + age       | the error's line, red    |
+ *
+ * The second line is always the person's last ask. A row with no answer is
+ * simply shorter; while words are coming — a run on, or a message sent and
+ * its run not started — the third line keeps its place with the dots.
+ */
+export function mateRowView(
+  activity: ZeropsAgentActivity | undefined,
+  face: MateMarkState,
+): MateRowView {
+  if (activity === undefined) {
+    return {
+      state: "idle",
+      face,
+      slot: { kind: "none" },
+      dot: undefined,
+      strongName: false,
+      ask: undefined,
+      reply: undefined,
+    };
+  }
+  const ask = activity.task ?? activity.subject;
+  const words = activity.snippet;
+  const said = (tone: "muted" | "ink-2" | "ink" | "failed"): MateRowReply =>
+    words === undefined
+      ? activity.awaitingWords === true
+        ? { kind: "pending" }
+        : undefined
+      : { kind: "words", text: words, tone };
+  const age: MateRowSlot = ask === undefined ? { kind: "none" } : { kind: "age" };
+  const state = mateRowState(activity, face);
+  const view = (reply: MateRowReply, slot: MateRowSlot = age) => ({
+    state,
+    face: state === "failed" ? ("idle" as const) : face,
+    slot,
+    dot:
+      state === "needs"
+        ? ("attention" as const)
+        : state === "unread"
+          ? ("unread" as const)
+          : state === "failed"
+            ? ("failed" as const)
+            : undefined,
+    strongName: state === "unread",
+    ask,
+    reply: ask === undefined ? undefined : reply,
+  });
+  switch (state) {
+    case "working":
+      return view(
+        activity.liveStep === undefined
+          ? { kind: "pending" }
+          : { kind: "live", words: activity.liveStep.words, code: activity.liveStep.code },
+        { kind: "clock", since: activity.at },
+      );
+    case "needs":
+      return view(
+        activity.question === undefined
+          ? said("ink")
+          : { kind: "words", text: activity.question, tone: "ink" },
+      );
+    case "failed":
+      return view(
+        activity.errorLine === undefined
+          ? said("muted")
+          : { kind: "words", text: activity.errorLine, tone: "failed" },
+      );
+    case "unread":
+      return view(said("ink-2"));
+    case "paused":
+      return view(said("muted"), { kind: "paused", until: activity.pausedUntil ?? activity.at });
+    case "idle":
+      return view(said("muted"));
+  }
+}
+
+/** Which of the table's states a row is in: what waits on the person first. */
+function mateRowState(activity: ZeropsAgentActivity, face: MateMarkState): MateRowState {
+  if (activity.kind === "failed") return "failed";
+  if (face === "needs") return "needs";
+  if (activity.pausedUntil !== undefined) return "paused";
+  if (
+    activity.kind === "working" ||
+    activity.kind === "connecting" ||
+    activity.kind === "monitoring"
+  )
+    return "working";
+  return activity.unread ? "unread" : "idle";
 }

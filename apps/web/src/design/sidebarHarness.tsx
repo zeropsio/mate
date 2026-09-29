@@ -34,7 +34,14 @@ import {
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
+import {
+  deriveCrewView,
+  type CrewShellInput,
+} from "@t3tools/client-runtime/zerops/projections/crew";
+import { EnvironmentId, ThreadId, type CrewSnapshot } from "@t3tools/contracts";
+import type { MateTintId } from "@t3tools/shared/brand";
+import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
 import { onOpenCommandPalette } from "~/commandPaletteBus";
 import { MateLockup } from "~/components/MateLockup";
@@ -56,18 +63,9 @@ import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountC
 import { SidebarZeropsAccount } from "~/components/zerops/SidebarZeropsAccount";
 import { SidebarWaitingStack } from "~/components/zerops/SidebarWaitingStack";
 import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
-import { MatePeekCard, useMatePeekKeys } from "~/components/zerops/SidebarMatePeek";
-import type {
-  MatePeekChoice,
-  MatePeekDecision,
-  MatePeekStep,
-} from "~/components/zerops/SidebarMatePeek.logic";
-import { askedLabelFor } from "~/components/zerops/SidebarMatePeek.logic";
-import {
-  SidebarZeropsTree,
-  type SidebarPeekRender,
-  type SidebarProjectFlow,
-} from "~/components/zerops/SidebarZeropsTree";
+import type { MateDecision } from "~/components/zerops/mateDecision.logic";
+import type { SidebarCrewRead } from "~/components/zerops/crew/SidebarCrewLine";
+import { SidebarZeropsTree, type SidebarProjectFlow } from "~/components/zerops/SidebarZeropsTree";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
@@ -76,7 +74,6 @@ import { isMacPlatform } from "~/lib/utils";
 import { formatShortTimestamp } from "~/timestampFormat";
 import { slashKeyOpensJumpBox } from "~/zerops/jumpSlash";
 import { useSidebarJump } from "~/zerops/sidebarJump";
-import { useSidebarPeek } from "~/zerops/sidebarPeek";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { PROJECT_ORDER_STORAGE_KEY, ProjectOrderSchema } from "~/zerops/projectOrderPreference";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
@@ -159,8 +156,8 @@ function activity(input: {
 
 const group = (id: string, name: string) => [`mate:g:${id}`, `mate:name:${name}`];
 
-/** What a waiting Mate's thread says it waits on, as a peek reads it. */
-const PEEK_DECISIONS = new Map<string, MatePeekDecision>([
+/** What a waiting Mate's thread says it waits on, as the jump box reads it. */
+const DECISIONS = new Map<string, MateDecision>([
   [
     "links-theo",
     {
@@ -192,28 +189,6 @@ const PEEK_DECISIONS = new Map<string, MatePeekDecision>([
   [
     "todo-fen",
     { kind: "failure", message: "The deploy to stage failed: the build timed out after 120 s." },
-  ],
-]);
-
-/** The plans a peek reads off a working Mate's thread. */
-const PEEK_STEPS = new Map<string, ReadonlyArray<MatePeekStep>>([
-  [
-    "links-enzo",
-    [
-      { text: "Read how the list is rendered", state: "done" },
-      { text: "Add the search box and its filter", state: "done" },
-      { text: "Run the build", state: "running" },
-      { text: "Deploy to stage", state: "waiting" },
-      { text: "Open a change", state: "waiting" },
-    ],
-  ],
-  [
-    "shop-mira",
-    [
-      { text: "Split the checkout into two steps", state: "done" },
-      { text: "Keep the basket across a reload", state: "running" },
-      { text: "Deploy to stage", state: "waiting" },
-    ],
   ],
 ]);
 
@@ -263,6 +238,8 @@ const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
 
   // A production somebody deployed by hand, and a stage that does not exist.
   candidate("notes-iris", "Notes - iris", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Iris"]),
+  candidate("notes-kai", "Notes - kai", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Kai"]),
+  candidate("notes-lena", "Notes - lena", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Lena"]),
   candidate("notes-prod", "Notes - production", [...NOTES, "mate:role:prod"], {
     container: false,
     routes: routes(["app", "notes.example.com"], ["app", "www.notes.example.com"]),
@@ -290,16 +267,20 @@ const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
 const ACTIVITY = new Map<string, ZeropsAgentActivity>([
   [
     "links-enzo",
-    activity({
-      id: "links-enzo",
-      task: "Add a search box above the list that filters the saved links",
-      subject: "Run the build",
-      snippet: "The search box filters as you type. Running the build now.",
-      hours: 0.053,
-      face: "working",
-      kind: "working",
-      progress: { completed: 2, total: 5 },
-    }),
+    {
+      // Working: the step it is on, as the server relays it (D5).
+      ...activity({
+        id: "links-enzo",
+        task: "Add a search box above the list that filters the saved links",
+        subject: "Run the build",
+        snippet: "The search box filters as you type. Running the build now.",
+        hours: 0.053,
+        face: "working",
+        kind: "working",
+        progress: { completed: 2, total: 5 },
+      }),
+      liveStep: { words: "Build the app", code: "pnpm build" },
+    },
   ],
   [
     "links-theo",
@@ -346,25 +327,56 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
   ],
   [
     "todo-vera",
-    activity({
-      id: "todo-vera",
-      subject: "Move finished items out of the way",
-      snippet: "Should finished items sink to the bottom, or hide behind a toggle?",
-      hours: 0.2,
-      face: "needs",
-      kind: "input",
-    }),
+    {
+      // Needs you: the question itself, as the server relays it (D6).
+      ...activity({
+        id: "todo-vera",
+        subject: "Move finished items out of the way",
+        snippet: "I looked at how the list sorts today.",
+        hours: 0.2,
+        face: "needs",
+        kind: "input",
+      }),
+      question: "Should finished items sink to the bottom, or hide behind a toggle?",
+    },
   ],
   [
     "todo-fen",
+    {
+      // Stopped on an error: its first line.
+      ...activity({
+        id: "todo-fen",
+        subject: "Rename the app in the page title and the main heading",
+        snippet: "Renamed it in the title; deploying to stage now.",
+        hours: 0.3,
+        face: "needs",
+        kind: "failed",
+      }),
+      errorLine: "The deploy to stage failed: the build timed out after 120 s.",
+    },
+  ],
+  [
+    "notes-kai",
+    // Asked, and no answer yet: the row is simply shorter.
     activity({
-      id: "todo-fen",
-      subject: "Rename the app in the page title and the main heading",
-      snippet: "The deploy to stage failed: the build timed out after 120 s.",
-      hours: 0.3,
-      face: "needs",
-      kind: "failed",
+      id: "notes-kai",
+      subject: "Add a dark mode to the note editor",
+      hours: 3,
+      face: "idle",
     }),
+  ],
+  [
+    "notes-lena",
+    {
+      // Sent a moment ago, its run not started: the dots hold the line.
+      ...activity({
+        id: "notes-lena",
+        subject: "Why is the export to PDF so slow?",
+        hours: 0.01,
+        face: "idle",
+      }),
+      awaitingWords: true,
+    },
   ],
   [
     "tokens-ada",
@@ -480,14 +492,8 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
         "Rename the app in the page title",
         "Cache the link previews",
       ),
-      merging: () => false,
       releasing: false,
-      onMerge: () => {},
       onRelease: () => {},
-      // Without this the menu draws no *Ask* at all, so the harness never
-      // showed the verb a blocked change wears — which is how it came to wear
-      // the same amber as *Release* unnoticed.
-      onAsk: () => {},
     },
   ],
   [
@@ -582,14 +588,8 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
         "Add a health check to the worker",
         "Drop the unused coupons table",
       ),
-      merging: () => false,
       releasing: false,
-      onMerge: () => {},
       onRelease: () => {},
-      // Without this the menu draws no *Ask* at all, so the harness never
-      // showed the verb a blocked change wears — which is how it came to wear
-      // the same amber as *Release* unnoticed.
-      onAsk: () => {},
     },
   ],
   [
@@ -613,14 +613,8 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
       missing: [
         { kind: "missing-environment", tier: "stage", name: "Stage", line: "not set up yet" },
       ],
-      merging: () => false,
       releasing: false,
-      onMerge: () => {},
       onRelease: () => {},
-      // Without this the menu draws no *Ask* at all, so the harness never
-      // showed the verb a blocked change wears — which is how it came to wear
-      // the same amber as *Release* unnoticed.
-      onAsk: () => {},
     },
   ],
   [
@@ -651,14 +645,8 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
         ],
       ]),
       releaseOffered: false,
-      merging: () => false,
       releasing: false,
-      onMerge: () => {},
       onRelease: () => {},
-      // Without this the menu draws no *Ask* at all, so the harness never
-      // showed the verb a blocked change wears — which is how it came to wear
-      // the same amber as *Release* unnoticed.
-      onAsk: () => {},
     },
   ],
   [
@@ -676,14 +664,8 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           line: "not set up yet",
         },
       ],
-      merging: () => false,
       releasing: false,
-      onMerge: () => {},
       onRelease: () => {},
-      // Without this the menu draws no *Ask* at all, so the harness never
-      // showed the verb a blocked change wears — which is how it came to wear
-      // the same amber as *Release* unnoticed.
-      onAsk: () => {},
     },
   ],
 ]);
@@ -702,64 +684,66 @@ const OWNERS = new Map<string, ZeropsMateOwner>([
   ["links-theo", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
   ["shop-mira", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: false }],
   ["notes-iris", { name: "Eva Dvořák", initials: "ED", avatarUrl: null, isViewer: false }],
+  ["notes-kai", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
+  ["notes-lena", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: true }],
   ["todo-vera", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: false }],
 ]);
 
 const activityOfCandidate = (item: ZeropsCandidate) => ACTIVITY.get(item.project.id);
 
-/** What the peek's keys and buttons did, and which Mate was opened, for the audit browser. */
-const peekActions: string[] = [];
-(window as unknown as { __peekActions?: string[] }).__peekActions = peekActions;
-
-/** A peek drawn from fixtures, with the app's own keys (`useMatePeekKeys`). */
-function HarnessPeek({ peek }: { readonly peek: SidebarPeekRender<ZeropsCandidate> }) {
-  const decision = PEEK_DECISIONS.get(peek.candidate.project.id);
-  const choose = (choice: MatePeekChoice) => {
-    peekActions.push(`${peek.name}: ${choice.label}`);
+/**
+ * A crew of four under a Mate — the lead first — built from the crew's own
+ * fixture, named and tinted as the plan's menu draws them: each crewmate's
+ * thread in the state given, and the board with its ready tasks.
+ */
+function harnessCrew(input: {
+  readonly states: Readonly<Record<string, ThreadStatusKind>>;
+  readonly ready: ReadonlyArray<string>;
+}): SidebarCrewRead {
+  const fixture = crewSnapshotFixture();
+  const names: Readonly<Record<string, readonly [string, MateTintId]>> = {
+    lead: ["Ada", "violet"],
+    backend: ["Bo", "sky"],
+    frontend: ["Cy", "coral"],
+    erik: ["Dee", "rose"],
   };
-  const stop =
-    peek.face === "working"
-      ? () => {
-          peekActions.push(`${peek.name}: stop`);
-        }
-      : undefined;
-  useMatePeekKeys({
-    choices: decision?.kind === "question" || decision?.kind === "approval" ? decision.choices : [],
-    answerable: true,
-    onChoose: choose,
-    onStop: stop,
-    onClose: peek.onClose,
-  });
-  return (
-    <MatePeekCard
-      appUrl={peek.appUrl ?? "https://example.com"}
-      askedLabel={askedLabelFor(peek.owner)}
-      changeCount={peek.changeCount}
-      changes={peek.changes}
-      decision={decision}
-      face={peek.face}
-      lastWords={peek.activity?.snippet}
-      name={peek.name}
-      onChoose={choose}
-      onMore={peek.onMore}
-      onOpen={peek.onOpen}
-      onStop={stop}
-      onText={(text) => {
-        peekActions.push(`${peek.name}: “${text}”`);
-      }}
-      projectName={peek.projectName}
-      responding={false}
-      steps={PEEK_STEPS.get(peek.candidate.project.id)}
-      stepsLabel={
-        peek.activity?.pausedUntil === undefined ? "Plan" : "Plan, paused at a usage limit"
-      }
-      task={peek.activity?.task}
-      time={peek.time}
-      tint={peek.tint}
-      waitingOn={undefined}
-    />
+  const snapshot: CrewSnapshot = {
+    ...fixture,
+    crewmates: fixture.crewmates.map((mate) => {
+      const [displayName, tint] = names[mate.handle] ?? [mate.displayName, mate.tint];
+      return { ...mate, displayName, tint };
+    }),
+    board: {
+      tasks: fixture.board.tasks.map((task) =>
+        input.ready.includes(task.id) ? { ...task, state: "ready" as const } : task,
+      ),
+    },
+    attention: [],
+  };
+  const shells: ReadonlyArray<CrewShellInput> = snapshot.crewmates.flatMap((mate) =>
+    mate.currentThreadId === null ? [] : [{ id: mate.currentThreadId, archivedAt: null }],
   );
+  const view = deriveCrewView(snapshot, shells, (shell) => {
+    const handle = snapshot.crewmates.find((mate) => mate.currentThreadId === shell.id)?.handle;
+    const kind = (handle === undefined ? undefined : input.states[handle]) ?? "idle";
+    return {
+      status: { kind, toneId: "neutral" },
+      word: kind === "idle" ? null : kind,
+      working: kind === "working",
+    };
+  });
+  return { status: "applied", view, attention: snapshot.attention };
 }
+
+/** Fen's crew as the plan draws it; Otto's with a crewmate waiting on you. */
+const CREWS = new Map<string, SidebarCrewRead>([
+  ["todo-fen", harnessCrew({ states: { backend: "working", erik: "done" }, ready: ["task-13"] })],
+  ["shop-otto", harnessCrew({ states: { backend: "input", frontend: "working" }, ready: [] })],
+]);
+
+/** Which Mate the menu opened, and what else it was asked to do, for the audit browser. */
+const menuActions: string[] = [];
+(window as unknown as { __menuActions?: string[] }).__menuActions = menuActions;
 
 const ACCOUNT = zeropsAccountDisplay({
   email: "ada@example.com",
@@ -770,31 +754,25 @@ const ORGANIZATION = { id: "org-acme", name: "Acme", membershipId: "m-acme" };
 
 /**
  * One sidebar, as the app lays it out: its header, the listing, its foot —
- * one of it, as in the app. Two trees on one page share the one peek (a
- * module store, as in the app), and each one's peek lands over the other.
- * `?w=` sets its width; the owner runs it near 368, the default is 256.
+ * one of it, as in the app. `?w=` sets its width; the owner runs it near
+ * 435, the default is 256.
  */
-function SidebarFrame({
-  width,
-  phone,
-  onJump,
-}: {
-  readonly width: number;
-  readonly phone: boolean;
-  readonly onJump: () => void;
-}) {
+function SidebarFrame({ width, onJump }: { readonly width: number; readonly onJump: () => void }) {
   // Mine / Everyone, from the account menu, as the app reads it.
   const [scope] = useMateScope();
+  // The Mate whose conversation is open: a row pressed opens it, as in the
+  // app, and the selected band slides to it.
+  const [open, setOpen] = useState("links-enzo");
   const shown = useCallback(
     (item: ZeropsCandidate) =>
-      shownInScope(scope, OWNERS.get(item.project.id), item.project.id === "links-enzo"),
-    [scope],
+      shownInScope(scope, OWNERS.get(item.project.id), item.project.id === open),
+    [open, scope],
   );
   const waiting = useSidebarWaiting({
     candidates: CANDIDATES,
     activityOf: activityOfCandidate,
     shown,
-    activeProjectId: "links-enzo",
+    activeProjectId: open,
     enabled: true,
   });
   return (
@@ -820,6 +798,7 @@ function SidebarFrame({
           getActivity={activityOfCandidate}
           getFlow={(groupId) => FLOWS.get(groupId)}
           getOwner={(item) => OWNERS.get(item.project.id)}
+          getCrew={(item) => CREWS.get(item.project.id)}
           getMateActions={(item, live) => ({
             muted: item.project.id === "notes-iris",
             toggleMute: () => {},
@@ -842,14 +821,13 @@ function SidebarFrame({
           })}
           onBrowseProjects={() => {}}
           onNewProject={() => {
-            peekActions.push("new project");
+            menuActions.push("new project");
           }}
           onSelect={(item) => {
-            peekActions.push(`open ${item.project.id}`);
+            menuActions.push(`open ${item.project.id}`);
+            setOpen(item.project.id);
           }}
-          activeProjectId="links-enzo"
-          phone={phone}
-          renderPeek={(peek) => <HarnessPeek peek={peek} />}
+          activeProjectId={open}
           shown={shown}
           timestampFormat="24-hour"
         />
@@ -940,7 +918,7 @@ function HarnessJumpBox({
               : formatShortTimestamp(target.pausedUntil, "24-hour"),
           started: true,
           readOnly: READ_ONLY_MATES.has(target.projectId),
-          decision: PEEK_DECISIONS.get(target.projectId),
+          decision: DECISIONS.get(target.projectId),
         });
   const enter: Record<string, string | undefined> = {
     send: "Send without opening",
@@ -1045,14 +1023,11 @@ function Harness() {
         onJump={() => {
           setJumping(true);
         }}
-        phone={phone}
         width={phone ? window.innerWidth : width}
       />
       {phone ? null : (
         <main className="flex min-w-0 flex-1 items-start justify-center p-10">
-          <p className="max-w-md text-sm text-muted-foreground">
-            The conversation opens here. A Mate&apos;s peek floats over it, beside the menu.
-          </p>
+          <p className="max-w-md text-sm text-muted-foreground">The conversation opens here.</p>
         </main>
       )}
     </div>
@@ -1084,9 +1059,6 @@ useComposerDraftStore
 
 // The menu is always on screen here: a find is shown in it, as on a desktop.
 useSidebarJump.getState().setShowable(true);
-
-// A handle for the audit browser: which Mate is peeked, and how.
-(window as unknown as { __sidebarPeek?: typeof useSidebarPeek }).__sidebarPeek = useSidebarPeek;
 
 const host = document.getElementById("design");
 if (host) {

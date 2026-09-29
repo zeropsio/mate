@@ -42,6 +42,7 @@ import {
   type TimelineRowSharedState,
 } from "~/components/chat/timelineContext";
 import { TurnReport } from "~/components/chat/TurnReport";
+import { ResultStates } from "./resultFixtures";
 import { foldSteps, stepOf } from "~/components/chat/workSteps.logic";
 import type { WorkLogEntry } from "~/session-logic";
 import type { ChatMessage } from "~/types";
@@ -851,6 +852,7 @@ function Harness() {
             threadRef={null}
           />
         </State>
+        <ResultStates />
       </div>
     </div>
   );

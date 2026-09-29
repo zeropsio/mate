@@ -27,7 +27,6 @@ const items = (props: Partial<Parameters<typeof MateMenuItems>[0]> = {}) =>
         actions={ACTIONS}
         appUrl="https://app.example"
         onOpenMate={() => {}}
-        onPeek={() => {}}
         onRename={() => {}}
         shortcuts
         unread={false}
@@ -42,7 +41,6 @@ describe("MateMenuItems — a Mate's own menu", () => {
   it("lists the ways in, what this viewer keeps, the shared verbs, then the stop", () => {
     expect(order(items({ actions: { ...ACTIONS, stop: () => {} } }))).toEqual([
       "open",
-      "peek",
       "open-app",
       "copy-link",
       "mute",
@@ -91,7 +89,9 @@ describe("MateMenuItems — a Mate's own menu", () => {
 
   it("shows the keys the list answers beside their items", () => {
     const html = items({ actions: { ...ACTIONS, stop: () => {} } });
-    for (const key of ["↵", "Space", "E", "X"]) expect(html).toContain(`>${key}</kbd>`);
+    for (const key of ["↵", "E", "X"]) expect(html).toContain(`>${key}</kbd>`);
+    // Space presses the row as any button's does: there is no peek to open.
+    expect(html).not.toContain(">Space</kbd>");
     expect(items({ shortcuts: false })).not.toContain("<kbd");
   });
 });

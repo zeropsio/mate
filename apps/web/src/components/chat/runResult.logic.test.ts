@@ -98,7 +98,7 @@ function checks(takes: ReadonlyArray<ZeropsOperation>): OutcomeModel["checks"] {
 }
 
 const APPDEV = "https://appdev-1f3c-3000.prg1.example.app";
-const STAGE = "https://letopisstage-2b7d.prg1.example.app";
+const STAGE = "https://worldstage-2b7d.prg1.example.app";
 
 const running = (versionAt = at(0)): ResultServiceNow => ({
   status: "ACTIVE",
@@ -172,8 +172,8 @@ const NOVA = outcome({
 // Fen's 1 h 31 m run: nine pills in the owner's screenshot.
 const FEN = outcome({
   live: [
-    service("letopisdev", { word: "Dev server running" }),
-    service("letopisstage", { version: "f578ec0", url: STAGE }),
+    service("worlddev", { word: "Dev server running" }),
+    service("worldstage", { version: "9e2c4b1", url: STAGE }),
   ],
   checks: checks([
     take("op:b1", `${STAGE}/`),
@@ -183,7 +183,7 @@ const FEN = outcome({
     take("op:b5", `${STAGE}/world`, { deviceName: "iPad Pro" }),
   ]),
   files: { count: 59, additions: 2400, deletions: 529, turnId: TURN },
-  change: { repository: "letopis", number: 4 },
+  change: { repository: "world", number: 4 },
   activity: [
     { kind: "edit", count: 59 },
     { kind: "command", count: 102 },
@@ -193,9 +193,9 @@ const FEN = outcome({
   ],
 });
 const WORLD_CORE: ResultChange = {
-  repository: "letopis",
+  repository: "world",
   number: 4,
-  title: "Rebuild the world core and durable server foundations",
+  title: "Move the world state into its own service",
 };
 
 // Juno's 2 h 8 m run: its first deploy failed and it came back; the
@@ -203,7 +203,7 @@ const WORLD_CORE: ResultChange = {
 const JUNO = outcome({
   live: [
     service("storedev", { word: "Dev server running" }),
-    service("storestage", { word: "Healthy", version: "d47f96a" }),
+    service("storestage", { word: "Healthy", version: "5a8d3f0" }),
   ],
   landed: [
     {
@@ -211,7 +211,7 @@ const JUNO = outcome({
       repository: "storedev",
       number: 54,
       line: "storedev #54",
-      title: "Performance tuning across the storefront and backend",
+      title: "Speed up the product pages",
     },
   ],
   activity: [
@@ -287,16 +287,16 @@ describe("resultRows", () => {
         [
           "waiting",
           "muted",
-          "#4 Rebuild the world core and durable server foundations",
+          "#4 Move the world state into its own service",
           "59 files · +2400 −529",
         ],
-        ["running", "ok", "letopisdev", "Dev server running"],
+        ["running", "ok", "worlddev", "Dev server running"],
         [
           "running",
           "ok",
-          "letopisstage",
+          "worldstage",
           "Deployed",
-          "f578ec0",
+          "9e2c4b1",
           "2 pages checked, all 5 checks passed",
         ],
       ],
@@ -307,7 +307,7 @@ describe("resultRows", () => {
       facts: facts({ services: { storedev: running(), storestage: running() } }),
       rows: [
         ["running", "ok", "storedev", "Dev server running"],
-        ["running", "ok", "storestage", "Healthy", "d47f96a"],
+        ["running", "ok", "storestage", "Healthy", "5a8d3f0"],
       ],
     },
     {
@@ -520,11 +520,27 @@ describe("resultRows", () => {
   it("opens a service at its own address when the run knew it", () => {
     const [row] = resultRows(
       outcome({
-        live: [service("letopisstage", { url: STAGE })],
+        live: [service("worldstage", { url: STAGE })],
         checks: checks([take("op:b1", `${STAGE}/world`)]),
       }),
     );
     expect(row?.url).toBe(STAGE);
+  });
+
+  // A broken row leads with its fix: what it would open is down or stale.
+  it.each([
+    { name: "a build still failing", outcome: outcome({ live: [BROKEN_BUILD] }), facts: {} },
+    {
+      name: "a service stopped since",
+      outcome: outcome({ live: [service("appdev", { url: APPDEV })] }),
+      facts: facts({
+        services: { appdev: { status: "STOPPED", since: at(50), versionAt: at(0) } },
+      }),
+    },
+  ])("opens nothing from $name", ({ outcome: model, facts: now }) => {
+    const [row] = resultRows(model, now);
+    expect(row?.group).toBe("broken");
+    expect(row?.url).toBeNull();
   });
 
   // One door (R1): the change and the crew task open the review; the files

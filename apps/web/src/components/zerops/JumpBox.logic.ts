@@ -24,7 +24,7 @@ import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 
-import type { MatePeekDecision } from "./SidebarMatePeek.logic";
+import type { MateDecision } from "./mateDecision.logic";
 
 /** Where a Mate's conversation stands, for writing to it. */
 export interface JumpConversation {
@@ -477,8 +477,8 @@ export function jumpWritePlan(input: {
   /** Whether anybody asked it anything yet; undefined while its conversation is unread. */
   readonly started: boolean | undefined;
   readonly readOnly: boolean;
-  /** What it waits on, as its peek reads it (`matePeekDecision`). */
-  readonly decision: MatePeekDecision | undefined;
+  /** What it waits on (`mateDecision`). */
+  readonly decision: MateDecision | undefined;
 }): JumpWritePlan {
   const { name, owner, conversation, decision } = input;
   if (input.readOnly) {

@@ -1649,7 +1649,45 @@ function crewTaskOf(turn: ConversationTurn): { number: number; title: string } |
   return match === null ? null : { number: Number(match[1]), title: match[2]!.trim() };
 }
 
-/** What the runs after one took over, read off their settled work. */
+/** What one run took over, read off its settled work: the same run is asked by every run before it. */
+interface TurnClaims {
+  readonly services: ReadonlyArray<string>;
+  readonly changes: ReadonlyArray<string>;
+  readonly pages: ReadonlyArray<string>;
+  readonly task: number | null;
+  /** The person wrote it: not a command, not the server resuming after a limit. */
+  readonly answers: boolean;
+}
+
+const claimsByTurn = new WeakMap<ConversationTurn, TurnClaims>();
+
+function turnClaims(turn: ConversationTurn): TurnClaims {
+  const known = claimsByTurn.get(turn);
+  if (known !== undefined) return known;
+  const services: string[] = [];
+  const changes: string[] = [];
+  const pages: string[] = [];
+  for (const operation of turn.stretches.flatMap(stretchOperations).flatMap(splitBatchDeploy)) {
+    if (operation.phase === "running") continue;
+    services.push(...takenServices(operation));
+    if (operation.pullRequest !== undefined) {
+      changes.push(`${operation.pullRequest.repository}#${operation.pullRequest.number}`);
+    }
+    if (operation.kind === "browser") pages.push(browserCheckPage(operation));
+  }
+  const opener = turn.span.opener;
+  const claims: TurnClaims = {
+    services,
+    changes,
+    pages,
+    task: crewTaskOf(turn)?.number ?? null,
+    answers: opener !== null && !isResumePrompt(opener.message.text) && !isCommandMessage(opener),
+  };
+  claimsByTurn.set(turn, claims);
+  return claims;
+}
+
+/** What the runs after one took over, and whether the person wrote since. */
 function laterClaims(turns: ReadonlyArray<ConversationTurn>): OutcomeLater {
   if (turns.length === 0) return NOTHING_LATER;
   const services = new Set<string>();
@@ -1658,18 +1696,12 @@ function laterClaims(turns: ReadonlyArray<ConversationTurn>): OutcomeLater {
   const pages = new Set<string>();
   let answered = false;
   for (const turn of turns) {
-    const opener = turn.span.opener;
-    if (opener !== null && !isResumePrompt(opener.message.text)) answered = true;
-    const task = crewTaskOf(turn);
-    if (task !== null) tasks.add(task.number);
-    for (const operation of turn.stretches.flatMap(stretchOperations).flatMap(splitBatchDeploy)) {
-      if (operation.phase === "running") continue;
-      for (const host of takenServices(operation)) services.add(host);
-      if (operation.pullRequest !== undefined) {
-        changes.add(`${operation.pullRequest.repository}#${operation.pullRequest.number}`);
-      }
-      if (operation.kind === "browser") pages.add(browserCheckPage(operation));
-    }
+    const claims = turnClaims(turn);
+    for (const host of claims.services) services.add(host);
+    for (const change of claims.changes) changes.add(change);
+    for (const page of claims.pages) pages.add(page);
+    if (claims.task !== null) tasks.add(claims.task);
+    answered ||= claims.answers;
   }
   return {
     services: [...services],

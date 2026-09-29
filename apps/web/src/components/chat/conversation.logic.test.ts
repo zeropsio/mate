@@ -1420,6 +1420,11 @@ describe("deriveOutcome", () => {
       later: { services: [], changes: [], tasks: [12], pages: [], answered: true },
     },
     {
+      name: "a later run a command opened: the person did not answer",
+      after: [user("m1", 10, "/compact"), tool("w2", "t2", 11), assistant("a2", "t2", 12)],
+      later: { services: [], changes: [], tasks: [], pages: [], answered: false },
+    },
+    {
       name: "no run after it",
       after: [],
       later: { services: [], changes: [], tasks: [], pages: [], answered: false },

@@ -8,7 +8,6 @@ import { readCrewThread } from "../../../zerops/crew/useCrew";
 import {
   crewAttentionActions,
   crewBriefLine,
-  crewFaceStack,
   crewOffersStart,
   crewLoginMark,
   crewRowLead,
@@ -382,19 +381,6 @@ describe("crewBriefLine", () => {
     },
   ])("$name", ({ excerpt, line }) => {
     expect(crewBriefLine({ ...crew, briefExcerpt: excerpt })).toEqual(line);
-  });
-});
-
-describe("crewFaceStack", () => {
-  it("shows at most three faces, the lead first, and counts the rest", () => {
-    const stack = crewFaceStack(view.crewmates);
-    expect(stack.faces.map((face) => [face.handle, face.state])).toEqual([
-      ["lead", "idle"],
-      ["backend", "working"],
-      ["frontend", "idle"],
-    ]);
-    expect(stack.more).toBe(1);
-    expect(crewFaceStack(view.crewmates.slice(0, 2)).more).toBe(0);
   });
 });
 
