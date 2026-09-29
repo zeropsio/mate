@@ -2369,22 +2369,26 @@ function MateReply({
   if (reply.kind === "pending" && !drafting) return <MateReplyPending />;
   if (reply.kind === "live") {
     return (
+      // The line rises as a new step arrives, and the sweep runs over its
+      // words inside it: two animations, two elements — on one, the sweep's
+      // took the rise's place and a new step never rose.
       <span
         className={cn(
           "truncate text-line leading-4.5 text-muted-foreground",
           wordsChanged && "animate-words-in motion-reduce:animate-none",
         )}
-        data-run-shimmer=""
         data-zerops-surface="sidebar-mate-live-step"
         key={`live:${reply.words}`}
       >
-        {reply.words}
-        {reply.code === undefined ? null : (
-          <>
-            {" · "}
-            <span className="font-mono">{reply.code}</span>
-          </>
-        )}
+        <span data-run-shimmer="">
+          {reply.words}
+          {reply.code === undefined ? null : (
+            <>
+              {" · "}
+              <span className="font-mono">{reply.code}</span>
+            </>
+          )}
+        </span>
       </span>
     );
   }

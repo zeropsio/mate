@@ -1769,6 +1769,41 @@ describe("a Mate's row says more without words", () => {
     expect(html).toContain('Build the app · <span class="font-mono">pnpm build</span>');
   });
 
+  // A new step rises into its line as the sweep keeps running over its words:
+  // the two are separate animations, so each stands on its own element — on
+  // one, the sweep's took the rise's place and a new step never rose.
+  it.each([
+    { case: "the step the menu opened onto", next: undefined, rises: false },
+    { case: "a new step while watched", next: "Deploy to stage", rises: true },
+  ])("sweeps the words and rises the line apart: $case", ({ next, rises }) => {
+    const tree = (words: string) => (
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getActivity={() => working({ liveStep: { words } })}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />
+    );
+    const mounted = mount(tree("Build the app"));
+    if (next !== undefined) {
+      act(() => {
+        mounted.update(tree(next));
+      });
+    }
+    const line = mounted.root.find(
+      (node) =>
+        typeof node.type === "string" &&
+        node.props["data-zerops-surface"] === "sidebar-mate-live-step",
+    );
+    expect(String(line.props.className).includes("animate-words-in")).toBe(rises);
+    expect(line.props["data-run-shimmer"]).toBeUndefined();
+    const words = line.findAll(
+      (node) => typeof node.type === "string" && node.props["data-run-shimmer"] === "",
+    );
+    expect(words).toHaveLength(1);
+  });
+
   describe("an unsent draft", () => {
     const ref = scopeThreadRef(EnvironmentId.make("env-crm-dev"), ThreadId.make("thread-1"));
     afterEach(() => {
