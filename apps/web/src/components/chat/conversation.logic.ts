@@ -1322,6 +1322,23 @@ export const TAKE_ASPECT: Record<BrowserDevice, number> = {
   phone: 0.45,
 };
 
+/**
+ * A check's picture's shape, width over height, before a byte of it: its own
+ * size where zcp sent it, else the viewport the check set, else its device's
+ * frame.
+ */
+export function browserCheckShape(check: ZeropsOperation): number {
+  const shot = check.screenshot;
+  if (shot?.width !== undefined && shot.height !== undefined && shot.width > 0 && shot.height > 0) {
+    return shot.width / shot.height;
+  }
+  const viewport = check.viewport;
+  if (viewport !== undefined && viewport.width > 0 && viewport.height > 0) {
+    return viewport.width / viewport.height;
+  }
+  return TAKE_ASPECT[browserCheckDevice(check)];
+}
+
 /** Which page a check looked at, for counting pages: its host and its path. */
 export function browserCheckPage(operation: ZeropsOperation): string {
   const url = browserCheckUrl(operation);
@@ -1593,6 +1610,8 @@ export type OutcomePicture =
       readonly device: string | null;
       /** Its check stayed failed. */
       readonly failed: boolean;
+      /** Its shape, width over height, known before it loads (`browserCheckShape`). */
+      readonly ratio: number;
     }
   | {
       readonly kind: "file";
@@ -1892,6 +1911,7 @@ function turnPictures(
         page: browserCheckPage(check),
         device: check.deviceName ?? null,
         failed: browserTakeState(check, checks) === "failed",
+        ratio: browserCheckShape(check),
       },
     });
   }

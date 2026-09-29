@@ -149,7 +149,13 @@ function looked(path: string): OutcomePicture {
 }
 
 /** A page a check took, by its address. */
-function checked(key: string, url: string, src: string, device: string | null = null) {
+function checked(
+  key: string,
+  url: string,
+  src: string,
+  device: string | null = null,
+  ratio = 1440 / 900,
+) {
   const address = new URL(url);
   return {
     kind: "check" as const,
@@ -159,6 +165,7 @@ function checked(key: string, url: string, src: string, device: string | null = 
     page: `${address.host}${address.pathname}`,
     device,
     failed: false,
+    ratio,
   };
 }
 

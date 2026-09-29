@@ -626,6 +626,25 @@ export function resultRows(outcome: OutcomeModel, facts: ResultFacts = NO_FACTS)
 // The pictures
 // ---------------------------------------------------------------------------
 
+/** The narrowest and the widest a tile stands: past them a picture shows its top. */
+export const TILE_RATIO_MIN = 0.45;
+export const TILE_RATIO_MAX = 2.4;
+/** The room a picture takes while its shape is not known: a desktop's. */
+const TILE_RATIO_UNKNOWN = 1.6;
+
+/**
+ * A tile's shape, width over height, at the strip's one height: the
+ * picture's own (the owner, 2026-09-29, of a phone's screenshot cut into a
+ * 16:10 tile: "why these has different ration than the result?") — a phone's
+ * whole and narrow, a desktop's whole and wide — within what a tile can hold:
+ * past it, a full-page capture or a panorama shows its top. A shape not
+ * known yet takes a desktop's room.
+ */
+export function tileRatio(ratio: number | null): number {
+  if (ratio === null || !Number.isFinite(ratio) || ratio <= 0) return TILE_RATIO_UNKNOWN;
+  return Math.min(TILE_RATIO_MAX, Math.max(TILE_RATIO_MIN, ratio));
+}
+
 /** A picture as the result shows it, with what it is in words: its tooltip's and the viewer's. */
 export type ResultPicture = OutcomePicture & { readonly label: string };
 

@@ -7,6 +7,7 @@ import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
   browserCheckCaption,
   browserCheckFailure,
+  browserCheckShape,
   checksStrip,
   browserTakeState,
   deriveConversationStructure,
@@ -938,6 +939,40 @@ describe("stretchFace", () => {
 });
 
 describe("browser checks", () => {
+  // A check's picture holds its shape from its first frame (the owner,
+  // 2026-09-29, of a phone's screenshot cut into a 16:10 tile: "why these
+  // has different ration than the result?"): its own size where zcp sent
+  // it, else the viewport the check set, else its device's frame.
+  it.each([
+    {
+      name: "its own size",
+      check: { screenshot: { src: "data:image/png;base64,A", width: 1179, height: 2556 } },
+      shape: 1179 / 2556,
+    },
+    {
+      name: "the viewport it set, where the picture came without a size",
+      check: {
+        screenshot: { src: "data:image/png;base64,A" },
+        viewport: { width: 1440, height: 900 },
+      },
+      shape: 1.6,
+    },
+    {
+      name: "a phone's frame, where only its device is named",
+      check: { deviceName: "iPhone 16" },
+      shape: 0.45,
+    },
+    { name: "a tablet's frame", check: { deviceName: "iPad Pro" }, shape: 0.75 },
+    { name: "a desktop's, where nothing is known", check: {}, shape: 1.6 },
+  ])("shapes a check's picture by $name", ({ check, shape }) => {
+    const entry = operation("b1", "t1", 1, {
+      kind: "browser",
+      subject: "https://a.dev/",
+      ...check,
+    }) as Extract<TimelineEntry, { kind: "operation" }>;
+    expect(browserCheckShape(entry.operation)).toBeCloseTo(shape, 4);
+  });
+
   it.each([
     ["https://shop.example.com/cz/products/%C5%A1umava?q=1.5&res=.5", "/cz/products/šumava"],
     ["https://shop.example.com/", "/"],
@@ -1726,6 +1761,32 @@ describe("deriveOutcome", () => {
       diff: null,
     });
     expect(readPictures(outcome?.pictures ?? [])).toEqual(read);
+  });
+
+  // A check's picture carries its shape, so its tile holds it before a byte
+  // of the picture has come; a file's is read with its address.
+  it("carries each check's picture's shape", () => {
+    const outcome = deriveOutcome({
+      turn: structure(
+        [
+          user("m0", 0),
+          check("b1", 1, "https://a.dev/", "A", {
+            screenshot: { src: "data:image/png;base64,A", width: 1179, height: 2556 },
+          }),
+          check("b2", 2, "https://a.dev/cart", "B", { viewport: { width: 1440, height: 900 } }),
+          look("v1", "t1", 3, "/var/www/shots/home.png"),
+          assistant("a1", "t1", 9),
+        ],
+        settled,
+      ).turns[0]!,
+      landed: [],
+      diff: null,
+    });
+    expect(
+      outcome?.pictures.map((picture) =>
+        picture.kind === "check" ? Number(picture.ratio.toFixed(3)) : picture.kind,
+      ),
+    ).toEqual([0.461, 1.6, "file"]);
   });
 
   // Each service says when the run last deployed or started it: a version

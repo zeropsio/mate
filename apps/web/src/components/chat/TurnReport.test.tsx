@@ -174,6 +174,7 @@ const checkPicture = (
   page: `appdev-1f3c-3000.prg1.example.app${caption}`,
   device,
   failed: false,
+  ratio: 1.6,
 });
 
 const filePicture = (name: string): OutcomePicture => ({
