@@ -22,6 +22,7 @@ import { useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useThreadShells } from "../state/entities";
+import { onAccountLifetimeClose } from "./accountLifetime";
 import { zeropsMateAt } from "./mateIdentities";
 import {
   MATE_STAND_UP_MESSAGE,
@@ -83,12 +84,15 @@ export function useMateStandUpAttempt(
   return state === undefined ? "none" : state === "failed" ? "failed" : "sending";
 }
 
-/** Forgets every attempt and clear: a test's fresh session. */
+/** Forgets every attempt and clear: the account's session is over. */
 export function resetMateStandUpSession(): void {
   attempts.clear();
   clearing.clear();
   for (const listener of attemptListeners) listener();
 }
+
+// Like every other account-scoped client state, it goes when the account does.
+onAccountLifetimeClose(resetMateStandUpSession);
 
 export function useMateStandUp(input: {
   readonly environmentId: EnvironmentId | null;
