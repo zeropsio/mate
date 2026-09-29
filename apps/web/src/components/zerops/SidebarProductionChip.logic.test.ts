@@ -10,14 +10,17 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildingOf,
   chipFace,
-  chipMenu,
   deployedAgo,
   draftParts,
   drawnChip,
   fixProblemOf,
   productionChip,
+  productionMenu,
+  projectChips,
   rememberedChipAfter,
   releaseFailureOf,
+  stageChip,
+  stageMenu,
   stopServing,
   type ChipView,
   type GiteaAnswer,
@@ -50,7 +53,9 @@ const live = (label: string): GroupFlowProduction => ({
   line: label,
 });
 
+const ABSENT: GroupFlowProduction = { kind: "absent", line: "Not set up", addable: false };
 const SERVING: StopServing = { kind: "serving" };
+const DOWN: StopServing = { kind: "down", services: ["web"] };
 const ANSWERED: GiteaAnswer = { kind: "answered", failure: undefined };
 const FAILED_RELEASE: ReleaseFailure = {
   tag: "v0.1.57",
@@ -63,99 +68,206 @@ const FAILED_RELEASE: ReleaseFailure = {
 type ChipInput = Parameters<typeof productionChip>[0];
 const input = (over: Partial<ChipInput> = {}): ChipInput => ({
   production: live("v0.1.44"),
-  stages: [],
-  stageBeingCreated: false,
   building: undefined,
   waiting: 0,
-  serving: { production: SERVING, stage: SERVING },
+  serving: SERVING,
   gitea: ANSWERED,
   ...over,
 });
 
+/** A stage as the stage chip reads it: its name, its stop, how it serves. */
+const staged = (
+  name: string,
+  over: Partial<GroupFlowStop> = {},
+  serving: StopServing = SERVING,
+) => ({ name, stop: stage({ projectId: name, name, ...over }), serving });
+
 const chip = (view: ChipView): ProductionChip | undefined =>
   view.kind === "chip" ? view.chip : undefined;
 
-describe("productionChip — the one chip on a project's heading (M2)", () => {
-  // The plan's table: what each state says, at a glance, on the heading.
+describe("projectChips — the chips a project's heading wears", () => {
+  // One for production and one for the stage or stages, each only where the
+  // project has it (the owner, 2026-09-29: "you'd have two badges one for
+  // prod, one for stage(s)").
   it.each([
+    { name: "none: no production and no stage", production: ABSENT, stages: [], chips: [] },
+    { name: "production only", production: live("v0.1.44"), stages: [], chips: ["prod"] },
+    { name: "a stage only", production: ABSENT, stages: [staged("stage")], chips: ["stage"] },
     {
-      state: "ok",
-      given: input({ production: live("v0.1.0") }),
-      face: { tone: "neutral", dot: "ok", label: "prod", version: "v0.1.0", extra: undefined },
+      name: "both",
+      production: live("v0.1.44"),
+      stages: [staged("stage")],
+      chips: ["stage", "prod"],
     },
     {
-      state: "waiting — still green: nothing is wrong, the count is what a release would carry",
+      name: "several stages: still one stage chip",
+      production: live("v0.1.44"),
+      stages: [staged("stage"), staged("qa")],
+      chips: ["stage", "prod"],
+    },
+  ])("$name", ({ production, stages, chips }) => {
+    const read = projectChips({
+      production,
+      building: undefined,
+      waiting: 0,
+      serving: SERVING,
+      stages,
+      stagesBeingCreated: false,
+      gitea: ANSWERED,
+    });
+    expect((["stage", "prod"] as const).filter((label) => read[label].kind === "chip")).toEqual(
+      chips,
+    );
+  });
+});
+
+describe("productionChip — production's chip: the word, its tone, its state in words", () => {
+  // The chip is the word alone; its tone says what is wrong and its
+  // accessible name says the whole state.
+  it.each([
+    {
+      state: "healthy",
+      given: input({ production: live("v0.1.0") }),
+      chip: { label: "prod", state: "ok", version: "v0.1.0" },
+      tone: "neutral",
+      words: "Production v0.1.0, healthy",
+    },
+    {
+      state: "changes waiting: nothing is wrong",
       given: input({ waiting: 1 }),
-      face: { tone: "neutral", dot: "ok", label: "prod", version: "v0.1.44", extra: "· 1 waiting" },
+      chip: { label: "prod", state: "waiting", version: "v0.1.44", waiting: 1 },
+      tone: "neutral",
+      words: "Production v0.1.44, 1 change waiting",
     },
     {
       state: "releasing",
       given: input({
         production: { kind: "releasing", stop: stop(), line: "v0.1.44", tag: "v0.1.45" },
       }),
-      face: {
-        tone: "neutral",
-        dot: "spinner",
-        label: "prod",
-        version: "v0.1.44 → v0.1.45",
-        extra: undefined,
-      },
+      chip: { label: "prod", state: "releasing", version: "v0.1.44", next: "v0.1.45" },
+      tone: "neutral",
+      words: "Production v0.1.44, releasing v0.1.45",
     },
     {
-      state: "release failed — the old one still serves",
+      state: "a deploy running with no release in flight",
+      given: input({
+        production: {
+          kind: "deploying",
+          stop: stop({ state: "deploying", version: version("v0.1.45") }),
+          line: "Deploying…",
+        },
+        building: { from: "v0.1.44", to: "v0.1.45" },
+      }),
+      chip: { label: "prod", state: "releasing", version: "v0.1.44", next: "v0.1.45" },
+      tone: "neutral",
+      words: "Production v0.1.44, releasing v0.1.45",
+    },
+    {
+      state: "a deploy whose target nothing names yet",
+      given: input({
+        production: {
+          kind: "deploying",
+          stop: stop({ state: "deploying", version: undefined }),
+          line: "Deploying…",
+        },
+        building: { from: "v0.1.44", to: undefined },
+      }),
+      chip: { label: "prod", state: "releasing", version: "v0.1.44" },
+      tone: "neutral",
+      words: "Production v0.1.44, deploying",
+    },
+    {
+      state: "the last release failed, the old one still serving",
       given: input({
         production: live("v0.1.56"),
         gitea: { kind: "answered", failure: FAILED_RELEASE },
       }),
-      face: {
-        tone: "amber",
-        dot: "attention",
-        label: "prod",
-        version: "v0.1.56",
-        extra: "· release failed",
-      },
+      chip: { label: "prod", state: "failed", version: "v0.1.56" },
+      tone: "amber",
+      words: "Production v0.1.56, the last release failed",
     },
     {
-      state: "down — production isn't serving",
+      state: "its own running commit's deploy failed",
       given: input({
-        production: live("v2.3.0"),
-        serving: { production: { kind: "down", services: ["app"] }, stage: SERVING },
+        production: {
+          kind: "deploy-failed",
+          stop: stop({ state: "failed" }),
+          line: "v0.1.44",
+          candidate: undefined,
+        },
       }),
-      face: {
-        tone: "red",
-        dot: "failed",
-        label: "prod down",
-        version: undefined,
-        extra: undefined,
-      },
+      chip: { label: "prod", state: "failed", version: "v0.1.44" },
+      tone: "amber",
+      words: "Production v0.1.44, the last release failed",
     },
     {
-      state: "stopped on purpose",
-      given: input({ serving: { production: { kind: "stopped" }, stage: SERVING } }),
-      face: {
-        tone: "neutral",
-        dot: "hollow",
-        label: "prod stopped",
-        version: undefined,
-        extra: undefined,
-      },
+      state: "down: production isn't serving",
+      given: input({ production: live("v2.3.0"), serving: { kind: "down", services: ["app"] } }),
+      chip: { label: "prod", state: "down", version: "v2.3.0" },
+      tone: "red",
+      words: "Production is down",
     },
     {
-      state: "no production, only stage",
+      state: "stopped on purpose: hollow, nothing wrong",
+      given: input({ serving: { kind: "stopped" } }),
+      chip: { label: "prod", state: "stopped", version: "v0.1.44" },
+      tone: "off",
+      words: "Production is stopped",
+    },
+    {
+      state: "being set up",
       given: input({
-        production: { kind: "absent", line: "Not set up", addable: false },
-        stages: [stage()],
+        production: {
+          kind: "creating",
+          line: "Setting up production…",
+          creation: {
+            projectId: "prod",
+            kind: "production",
+            name: "production",
+            step: "tags",
+            overdue: false,
+          },
+        },
       }),
-      face: { tone: "neutral", dot: "ok", label: "stage", version: "main", extra: undefined },
+      chip: { label: "prod", state: "creating" },
+      tone: "neutral",
+      words: "Production is being set up",
     },
-  ])("$state", ({ given, face }) => {
+    {
+      state: "nothing released yet",
+      given: input({
+        production: {
+          kind: "empty",
+          stop: stop({ state: "empty", version: undefined }),
+          line: "Nothing deployed yet",
+        },
+      }),
+      chip: { label: "prod", state: "empty" },
+      tone: "neutral",
+      words: "Production, nothing released yet",
+    },
+    {
+      state: "nothing released yet, changes waiting for the first release",
+      given: input({
+        production: {
+          kind: "ready-to-release",
+          stop: stop({ state: "empty", version: undefined }),
+          line: "Nothing deployed yet",
+          candidate: { tag: "v0.1.0", waiting: 3 },
+        },
+        waiting: 3,
+      }),
+      chip: { label: "prod", state: "empty", waiting: 3 },
+      tone: "neutral",
+      words: "Production, nothing released yet, 3 changes waiting",
+    },
+  ])("$state", ({ given, chip: expected, tone, words }) => {
     const drawn = chip(productionChip(given));
-    expect(drawn).toBeDefined();
-    const { words: _words, ...shown } = chipFace(drawn!);
-    expect(shown).toEqual(face);
+    expect(drawn).toEqual(expected);
+    expect(chipFace(drawn!)).toEqual({ tone, label: "prod", words });
   });
 
-  it("draws no chip where there is neither a production nor a stage", () => {
+  it("draws no production chip where the project has no production", () => {
     expect(
       productionChip(input({ production: { kind: "absent", line: "Not set up", addable: true } })),
     ).toEqual({ kind: "none" });
@@ -167,14 +279,7 @@ describe("productionChip — the one chip on a project's heading (M2)", () => {
     { name: "what production runs is still being read", given: { production: checking() } },
     {
       name: "the platform has not said how its services stand",
-      given: { serving: { production: { kind: "unknown" }, stage: SERVING } as const },
-    },
-    {
-      name: "a stage whose last deploy is unread",
-      given: {
-        production: { kind: "absent", line: "Not set up", addable: false } as const,
-        stages: [stage({ state: "checking", version: undefined })],
-      },
+      given: { serving: { kind: "unknown" } as const },
     },
   ])("is unknown while $name", ({ given }) => {
     expect(productionChip(input(given))).toEqual({ kind: "unknown" });
@@ -201,15 +306,6 @@ describe("productionChip — the one chip on a project's heading (M2)", () => {
       }),
       partial: { label: "prod", state: "empty" },
     },
-    {
-      name: "a stage alone",
-      given: input({
-        gitea: { kind: "waiting" },
-        production: { kind: "absent", line: "Not set up", addable: false },
-        stages: [stage()],
-      }),
-      partial: { label: "stage", state: "ok", version: "main" },
-    },
   ] as const)(
     "says what the platform alone says of $name until Gitea answers",
     ({ given, partial }) => {
@@ -235,26 +331,23 @@ describe("productionChip — the one chip on a project's heading (M2)", () => {
     expect(
       chip(
         productionChip(
-          input({
-            gitea: { kind: "waiting" },
-            serving: { production: { kind: "down", services: ["app"] }, stage: SERVING },
-          }),
+          input({ gitea: { kind: "waiting" }, serving: { kind: "down", services: ["app"] } }),
         ),
       )?.state,
     ).toBe("down");
   });
 
   // Down or stopped is the loudest thing the chip can say, and it says it at
-  // once — but a release on its way, or changes waiting, are true as well.
+  // once — but a release on its way, or changes waiting, are true as well,
+  // and its accessible name says them.
   it.each([
     {
       name: "down, a release on its way",
       given: input({
         production: { kind: "releasing", stop: stop(), line: "v0.1.44", tag: "v0.1.45" },
-        serving: { production: { kind: "down", services: ["app"] }, stage: SERVING },
+        serving: { kind: "down", services: ["app"] },
       }),
       chip: { label: "prod", state: "down", version: "v0.1.44", next: "v0.1.45" },
-      extra: "· releasing v0.1.45",
       words: "Production is down, releasing v0.1.45",
     },
     {
@@ -266,194 +359,225 @@ describe("productionChip — the one chip on a project's heading (M2)", () => {
           line: "Deploying…",
         },
         building: { from: "v0.1.44", to: "v0.1.45" },
-        serving: { production: { kind: "down", services: ["app"] }, stage: SERVING },
+        serving: { kind: "down", services: ["app"] },
       }),
       chip: { label: "prod", state: "down", version: "v0.1.44", next: "v0.1.45" },
-      extra: "· releasing v0.1.45",
       words: "Production is down, releasing v0.1.45",
     },
     {
       name: "down, changes waiting",
-      given: input({
-        waiting: 2,
-        serving: { production: { kind: "down", services: ["app"] }, stage: SERVING },
-      }),
+      given: input({ waiting: 2, serving: { kind: "down", services: ["app"] } }),
       chip: { label: "prod", state: "down", version: "v0.1.44", waiting: 2 },
-      extra: "· 2 waiting",
       words: "Production is down, 2 changes waiting",
     },
     {
       name: "down, the last release failed too",
       given: input({
         gitea: { kind: "answered", failure: FAILED_RELEASE },
-        serving: { production: { kind: "down", services: ["app"] }, stage: SERVING },
+        serving: { kind: "down", services: ["app"] },
       }),
       chip: { label: "prod", state: "down", version: "v0.1.44" },
-      extra: undefined,
       words: "Production is down",
     },
     {
       name: "stopped, a release on its way",
       given: input({
         production: { kind: "releasing", stop: stop(), line: "v0.1.44", tag: "v0.1.45" },
-        serving: { production: { kind: "stopped" }, stage: SERVING },
+        serving: { kind: "stopped" },
       }),
       chip: { label: "prod", state: "stopped", version: "v0.1.44", next: "v0.1.45" },
-      extra: "· releasing v0.1.45",
       words: "Production is stopped, releasing v0.1.45",
     },
     {
       name: "stopped, changes waiting",
-      given: input({ waiting: 1, serving: { production: { kind: "stopped" }, stage: SERVING } }),
+      given: input({ waiting: 1, serving: { kind: "stopped" } }),
       chip: { label: "prod", state: "stopped", version: "v0.1.44", waiting: 1 },
-      extra: "· 1 waiting",
       words: "Production is stopped, 1 change waiting",
     },
-  ])("says $name", ({ given, chip: expected, extra, words }) => {
+  ])("says $name", ({ given, chip: expected, words }) => {
     const drawn = chip(productionChip(given));
     expect(drawn).toEqual(expected);
-    expect(chipFace(drawn!).extra).toBe(extra);
     expect(chipFace(drawn!).words).toBe(words);
   });
+});
+
+describe("stageChip — one chip for the project's stage or stages", () => {
+  const read = (
+    stages: ReturnType<typeof staged>[],
+    over: Partial<Parameters<typeof stageChip>[0]> = {},
+  ) => stageChip({ stages, beingCreated: false, gitea: ANSWERED, ...over });
 
   it.each([
     {
-      name: "a production being set up",
-      given: input({
-        production: {
-          kind: "creating",
-          line: "Setting up production…",
-          creation: {
-            projectId: "prod",
-            kind: "production",
-            name: "production",
-            step: "tags",
-            overdue: false,
+      name: "healthy, by the branch it follows",
+      stages: [staged("stage")],
+      chip: { label: "stage", state: "ok", version: "main" },
+      tone: "neutral",
+      words: "Stage main, healthy",
+    },
+    {
+      name: "deploying",
+      stages: [staged("stage", { state: "deploying" })],
+      chip: { label: "stage", state: "releasing", version: "main" },
+      tone: "neutral",
+      words: "Stage main, deploying",
+    },
+    {
+      name: "its last deploy failed",
+      stages: [staged("stage", { state: "failed" })],
+      chip: { label: "stage", state: "failed", version: "main" },
+      tone: "amber",
+      words: "Stage main, the last deploy failed",
+    },
+    {
+      name: "down",
+      stages: [staged("stage", {}, DOWN)],
+      chip: { label: "stage", state: "down", version: "main" },
+      tone: "red",
+      words: "Stage is down",
+    },
+    {
+      name: "stopped",
+      stages: [staged("stage", {}, { kind: "stopped" })],
+      chip: { label: "stage", state: "stopped", version: "main" },
+      tone: "off",
+      words: "Stage is stopped",
+    },
+    {
+      name: "nothing deployed yet",
+      stages: [staged("stage", { state: "empty", version: undefined, source: undefined })],
+      chip: { label: "stage", state: "empty" },
+      tone: "neutral",
+      words: "Stage, nothing deployed yet",
+    },
+    {
+      name: "running a deploy somebody named, by its name",
+      stages: [
+        staged("stage", {
+          version: {
+            name: "hotfix-cache",
+            commit: undefined,
+            sha: undefined,
+            taggedBy: undefined,
+            label: "hotfix-cache",
           },
-        },
-      }),
-      face: { dot: "spinner", label: "prod", version: undefined, extra: "· setting up" },
+        }),
+      ],
+      chip: { label: "stage", state: "ok", version: "hotfix-cache" },
+      tone: "neutral",
+      words: "Stage hotfix-cache, healthy",
     },
-    {
-      name: "a stage being set up, and no production",
-      given: input({
-        production: { kind: "absent", line: "Not set up", addable: false },
-        stageBeingCreated: true,
-      }),
-      face: { dot: "spinner", label: "stage", version: undefined, extra: "· setting up" },
-    },
-    {
-      name: "a production nothing was released to yet",
-      given: input({
-        production: {
-          kind: "empty",
-          stop: stop({ state: "empty", version: undefined }),
-          line: "Nothing deployed yet",
-        },
-      }),
-      face: { dot: "off", label: "prod", version: undefined, extra: "· not released" },
-    },
-    {
-      name: "an empty production with changes waiting for its first release",
-      given: input({
-        production: {
-          kind: "ready-to-release",
-          stop: stop({ state: "empty", version: undefined }),
-          line: "Nothing deployed yet",
-          candidate: { tag: "v0.1.0", waiting: 3 },
-        },
-        waiting: 3,
-      }),
-      face: { dot: "off", label: "prod", version: undefined, extra: "· 3 waiting" },
-    },
-    {
-      name: "a deploy running on production with no release in flight",
-      given: input({
-        production: {
-          kind: "deploying",
-          stop: stop({ state: "deploying", version: version("v0.1.45") }),
-          line: "Deploying…",
-        },
-        building: { from: "v0.1.44", to: "v0.1.45" },
-      }),
-      face: { dot: "spinner", label: "prod", version: "v0.1.44 → v0.1.45", extra: undefined },
-    },
-    {
-      name: "a deploy whose target nothing names yet",
-      given: input({
-        production: {
-          kind: "deploying",
-          stop: stop({ state: "deploying", version: undefined }),
-          line: "Deploying…",
-        },
-        building: { from: "v0.1.44", to: undefined },
-      }),
-      face: { dot: "spinner", label: "prod", version: "v0.1.44", extra: "· deploying" },
-    },
-    {
-      name: "a production whose own running commit's deploy failed",
-      given: input({
-        production: {
-          kind: "deploy-failed",
-          stop: stop({ state: "failed" }),
-          line: "v0.1.44",
-          candidate: undefined,
-        },
-      }),
-      face: { dot: "attention", label: "prod", version: "v0.1.44", extra: "· release failed" },
-    },
-    {
-      name: "a stage-only project whose last deploy failed",
-      given: input({
-        production: { kind: "absent", line: "Not set up", addable: false },
-        stages: [stage({ state: "failed" })],
-      }),
-      face: { dot: "attention", label: "stage", version: "main", extra: "· deploy failed" },
-    },
-    {
-      name: "a stage-only project that is down",
-      given: input({
-        production: { kind: "absent", line: "Not set up", addable: false },
-        stages: [stage()],
-        serving: { production: SERVING, stage: { kind: "down", services: ["web"] } },
-      }),
-      face: { dot: "failed", label: "stage down", version: undefined, extra: undefined },
-    },
-    {
-      name: "a stage running a deploy somebody named, by its name",
-      given: input({
-        production: { kind: "absent", line: "Not set up", addable: false },
-        stages: [
-          stage({
-            version: {
-              name: "hotfix-cache",
-              commit: undefined,
-              sha: undefined,
-              taggedBy: undefined,
-              label: "hotfix-cache",
-            },
-          }),
-        ],
-      }),
-      face: { dot: "ok", label: "stage", version: "hotfix-cache", extra: undefined },
-    },
-  ])("draws $name", ({ given, face }) => {
-    const drawn = chip(productionChip(given));
-    expect(drawn).toBeDefined();
-    const { tone: _tone, words: _words, ...shown } = chipFace(drawn!);
-    expect(shown).toEqual(face);
+  ])("one stage: $name", ({ stages, chip: expected, tone, words }) => {
+    const drawn = chip(read(stages));
+    expect(drawn).toEqual(expected);
+    expect(chipFace(drawn!)).toEqual({ tone, label: "stage", words });
   });
 
-  it("names every state in words for the chip's accessible name", () => {
-    expect(
-      chipFace({ label: "prod", state: "waiting", version: "v0.1.44", waiting: 2 }).words,
-    ).toBe("Production v0.1.44, 2 changes waiting");
-    expect(chipFace({ label: "prod", state: "down", version: "v2.3.0" }).words).toBe(
-      "Production is down",
+  // Several stages are one chip, in the worst state any of them is in — red
+  // for one down, amber for one whose last deploy failed — and hollow only
+  // where every one is stopped. Its accessible name names each.
+  it.each([
+    {
+      name: "every stage healthy",
+      stages: [staged("stage"), staged("qa")],
+      state: "ok",
+      tone: "neutral",
+      words: "Stages: stage is healthy, qa is healthy",
+    },
+    {
+      name: "one down: red, whatever the others",
+      stages: [staged("stage", { state: "failed" }), staged("qa", {}, DOWN)],
+      state: "down",
+      tone: "red",
+      words: "Stages: stage's last deploy failed, qa is down",
+    },
+    {
+      name: "one whose last deploy failed: amber",
+      stages: [staged("stage"), staged("qa", { state: "failed" })],
+      state: "failed",
+      tone: "amber",
+      words: "Stages: stage is healthy, qa's last deploy failed",
+    },
+    {
+      name: "one deploying",
+      stages: [staged("stage", { state: "deploying" }), staged("qa")],
+      state: "releasing",
+      tone: "neutral",
+      words: "Stages: stage is deploying, qa is healthy",
+    },
+    {
+      name: "one stopped beside one serving: nothing wrong, nothing all off",
+      stages: [staged("stage"), staged("qa", {}, { kind: "stopped" })],
+      state: "ok",
+      tone: "neutral",
+      words: "Stages: stage is healthy, qa is stopped",
+    },
+    {
+      name: "every stage stopped",
+      stages: [staged("stage", {}, { kind: "stopped" }), staged("qa", {}, { kind: "stopped" })],
+      state: "stopped",
+      tone: "off",
+      words: "Stages: stage is stopped, qa is stopped",
+    },
+    {
+      name: "nothing deployed to either yet",
+      stages: [
+        staged("stage", { state: "empty", version: undefined }),
+        staged("qa", { state: "empty", version: undefined }),
+      ],
+      state: "empty",
+      tone: "neutral",
+      words: "Stages: nothing is deployed to stage yet, nothing is deployed to qa yet",
+    },
+  ])("several stages: $name", ({ stages, state, tone, words }) => {
+    const drawn = chip(read(stages));
+    expect(drawn?.state).toBe(state);
+    expect(chipFace(drawn!)).toEqual({ tone, label: "stage", words });
+  });
+
+  it("is being set up where the first stage is on its way", () => {
+    const drawn = chip(read([], { beingCreated: true }));
+    expect(drawn).toEqual({ label: "stage", state: "creating" });
+    expect(chipFace(drawn!)).toEqual({
+      tone: "neutral",
+      label: "stage",
+      words: "Stage is being set up",
+    });
+  });
+
+  it("draws no stage chip where the project has no stage", () => {
+    expect(read([])).toEqual({ kind: "none" });
+  });
+
+  it.each([
+    { name: "its last deploy is unread", stages: [staged("stage", { state: "checking" })] },
+    {
+      name: "the platform has not said how it stands",
+      stages: [staged("stage", {}, { kind: "unknown" })],
+    },
+    {
+      name: "one of several is unread",
+      stages: [staged("stage"), staged("qa", { state: "checking", version: undefined })],
+    },
+  ])("is unknown while $name", ({ stages }) => {
+    expect(read(stages)).toEqual({ kind: "unknown" });
+  });
+
+  it("says a stage down at once, even while another is unread", () => {
+    const drawn = chip(
+      read([staged("stage", { state: "checking", version: undefined }), staged("qa", {}, DOWN)]),
     );
-    expect(chipFace({ label: "stage", state: "ok", version: "main" }).words).toBe(
-      "Stage main, healthy",
-    );
+    expect(drawn?.state).toBe("down");
+    expect(chipFace(drawn!).tone).toBe("red");
+  });
+
+  it("says what the platform alone says of a stage until Gitea answers", () => {
+    const view = read([staged("stage")], { gitea: { kind: "waiting" } });
+    expect(view).toEqual({
+      kind: "unknown",
+      partial: { label: "stage", state: "ok", version: "main" },
+    });
+    expect(rememberedChipAfter(view)).toBeUndefined();
   });
 });
 
@@ -718,14 +842,18 @@ describe("releaseFailureOf — the release that did not go through, newer than w
   });
 });
 
-describe("chipMenu — what the chip's menu says, per state", () => {
+describe("productionMenu — what production's menu says, per state", () => {
   const NOW = Date.parse("2026-09-29T10:53:00Z");
-  const menu = (over: Partial<Parameters<typeof chipMenu>[0]>) =>
-    chipMenu({
+  const ROUTES = [
+    { service: "app", port: 80, host: "shop.example.com", url: "https://shop.example.com" },
+  ];
+  const menu = (over: Partial<Parameters<typeof productionMenu>[0]>) =>
+    productionMenu({
       chip: { label: "prod", state: "ok", version: "v0.1.0" },
+      projectId: "shop-prod",
       failure: undefined,
       down: [],
-      stages: [],
+      routes: ROUTES,
       waiting: 0,
       nowMs: NOW,
       ...over,
@@ -735,75 +863,62 @@ describe("chipMenu — what the chip's menu says, per state", () => {
     {
       name: "healthy",
       chip: { label: "prod", state: "ok", version: "v0.1.0" },
-      main: { name: "production", version: "v0.1.0", dot: "ok", word: "Healthy", tone: "muted" },
-      trouble: false,
+      row: { version: "v0.1.0", dot: "ok", word: "Healthy", tone: "muted" },
+      fixes: false,
     },
     {
       name: "release failed",
       chip: { label: "prod", state: "failed", version: "v0.1.56" },
-      main: {
-        name: "production",
-        version: "v0.1.56",
-        dot: "attention",
-        word: "Release failed",
-        tone: "amber",
-      },
-      trouble: true,
+      row: { version: "v0.1.56", dot: "attention", word: "Release failed", tone: "amber" },
+      fixes: true,
     },
     {
       name: "down",
       chip: { label: "prod", state: "down", version: "v2.3.0" },
-      main: { name: "production", version: "v2.3.0", dot: "failed", word: "Down", tone: "red" },
-      trouble: true,
+      row: { version: "v2.3.0", dot: "failed", word: "Down", tone: "red" },
+      fixes: true,
     },
     {
       name: "releasing",
       chip: { label: "prod", state: "releasing", version: "v0.1.44", next: "v0.1.45" },
-      main: {
-        name: "production",
-        version: "v0.1.44",
-        dot: "spinner",
-        word: "Releasing v0.1.45",
-        tone: "muted",
-      },
-      trouble: false,
+      row: { version: "v0.1.44", dot: "spinner", word: "Releasing v0.1.45", tone: "muted" },
+      fixes: false,
     },
     {
       name: "stopped on purpose — no fix to offer",
       chip: { label: "prod", state: "stopped", version: "v0.1.44" },
-      main: {
-        name: "production",
-        version: "v0.1.44",
-        dot: "hollow",
-        word: "Stopped",
-        tone: "muted",
-      },
-      trouble: false,
+      row: { version: "v0.1.44", dot: "hollow", word: "Stopped", tone: "muted" },
+      fixes: false,
     },
     {
-      name: "a stage alone",
-      chip: { label: "stage", state: "ok", version: "main" },
-      main: { name: "stage", version: "main", dot: "ok", word: "Healthy", tone: "muted" },
-      trouble: false,
+      name: "being set up",
+      chip: { label: "prod", state: "creating" },
+      row: { version: undefined, dot: "spinner", word: "Setting up…", tone: "muted" },
+      fixes: false,
     },
-  ] as const)("$name", ({ chip: shown, main, trouble }) => {
-    const model = menu({ chip: shown });
-    expect(model.main).toEqual(main);
-    expect(model.trouble).toBe(trouble);
-  });
+  ] as const)(
+    "$name: the state in words, where the version now lives",
+    ({ chip: shown, row, fixes }) => {
+      const model = menu({ chip: shown });
+      // Production alone: the stages have a chip and a menu of their own.
+      expect(model.stops).toHaveLength(1);
+      const [only] = model.stops;
+      expect(only).toMatchObject({
+        projectId: "shop-prod",
+        name: "production",
+        routes: ROUTES,
+        ...row,
+      });
+      expect(only?.fix !== undefined).toBe(fixes);
+    },
+  );
 
   it("says what failed, when, the broker's words, and what still serves", () => {
     expect(
       menu({
         chip: { label: "prod", state: "failed", version: "v0.1.56" },
-        failure: {
-          tag: "v0.1.57",
-          kind: "deploy-failed",
-          at: "2026-09-29T10:41:00Z",
-          error: "The build step exited with code 2 while installing packages.",
-          service: "app",
-        },
-      }).note,
+        failure: FAILED_RELEASE,
+      }).stops[0]?.note,
     ).toBe(
       "Release v0.1.57 failed 12 min ago: The build step exited with code 2 while installing packages. v0.1.56 is still serving.",
     );
@@ -820,7 +935,7 @@ describe("chipMenu — what the chip's menu says, per state", () => {
           error: "the tag's commit failed its checks",
           service: undefined,
         },
-      }).note,
+      }).stops[0]?.note,
     ).toBe(
       "Release v0.1.57 was refused: the tag's commit failed its checks. v0.1.56 is still serving.",
     );
@@ -829,7 +944,7 @@ describe("chipMenu — what the chip's menu says, per state", () => {
   it("says which services the platform marks failed while production is down", () => {
     expect(
       menu({ chip: { label: "prod", state: "down", version: "v2.3.0" }, down: ["app", "api"] })
-        .note,
+        .stops[0]?.note,
     ).toBe("Down: app and api failed on the platform. v2.3.0 was the last release.");
   });
 
@@ -839,63 +954,188 @@ describe("chipMenu — what the chip's menu says, per state", () => {
       chip: { label: "prod", state: "down", version: "v2.3.0" },
       failure: FAILED_RELEASE,
       note: "Down: app failed on the platform. v2.3.0 was the last release. Release v0.1.57 failed 12 min ago: The build step exited with code 2 while installing packages.",
-      trouble: true,
+      fixes: true,
     },
     {
       name: "down, a release on its way",
       chip: { label: "prod", state: "down", version: "v2.3.0", next: "v2.3.1" },
       failure: undefined,
       note: "Down: app failed on the platform. v2.3.0 was the last release. Releasing v2.3.1.",
-      trouble: true,
+      fixes: true,
     },
     {
       name: "stopped, and the last release failed",
       chip: { label: "prod", state: "stopped", version: "v0.1.56" },
       failure: FAILED_RELEASE,
       note: "Release v0.1.57 failed 12 min ago: The build step exited with code 2 while installing packages.",
-      trouble: true,
+      fixes: true,
     },
     {
       name: "stopped, a release on its way",
       chip: { label: "prod", state: "stopped", version: "v0.1.56", next: "v0.1.57" },
       failure: undefined,
       note: "Releasing v0.1.57.",
-      trouble: false,
+      fixes: false,
     },
-  ] as const)("says every true thing while $name", ({ chip: shown, failure, note, trouble }) => {
-    const model = menu({
+  ] as const)("says every true thing while $name", ({ chip: shown, failure, note, fixes }) => {
+    const [only] = menu({
       chip: shown,
       failure,
       down: shown.state === "down" ? ["app"] : [],
-      nowMs: Date.parse("2026-09-29T10:53:00Z"),
-    });
-    expect(model.note).toBe(note);
-    expect(model.trouble).toBe(trouble);
+    }).stops;
+    expect(only?.note).toBe(note);
+    expect(only?.fix !== undefined).toBe(fixes);
   });
 
   it("says nothing more where nothing is wrong", () => {
-    expect(menu({}).note).toBeUndefined();
+    expect(menu({}).stops[0]?.note).toBeUndefined();
   });
 
-  it("lists the stages under production, each with what it runs and when it was deployed", () => {
-    expect(
-      menu({
-        stages: [
-          { name: "stage", stop: stage(), deployedAt: "2026-09-29T10:13:00Z" },
-          { name: "qa", stop: stage({ state: "deploying" }), deployedAt: undefined },
-        ],
-      }).stages,
-    ).toEqual([
-      { name: "stage", version: "3f9c1b2", dot: "ok", word: "Deployed 40 min ago" },
-      { name: "qa", version: "3f9c1b2", dot: "spinner", word: "Deploying…" },
+  it("counts what waits for production", () => {
+    expect(menu({ waiting: 2 }).waiting).toBe(2);
+  });
+});
+
+describe("stageMenu — each stage, as production's menu says production", () => {
+  const NOW = Date.parse("2026-09-29T10:53:00Z");
+  const routes = (host: string) => [{ service: "app", port: 80, host, url: `https://${host}` }];
+  const entry = (
+    name: string,
+    over: Partial<Parameters<typeof stageMenu>[0]["stages"][number]> = {},
+  ): Parameters<typeof stageMenu>[0]["stages"][number] => ({
+    projectId: `shop-${name}`,
+    name,
+    stop: stage({ projectId: `shop-${name}`, name }),
+    chip: { label: "stage", state: "ok", version: "main" },
+    deployedAt: "2026-09-29T10:13:00Z",
+    down: [],
+    routes: routes(`${name}.example.app`),
+    ...over,
+  });
+  const menu = (over: Partial<Parameters<typeof stageMenu>[0]>) =>
+    stageMenu({ stages: [entry("stage")], creating: [], waiting: 0, nowMs: NOW, ...over });
+
+  it("says one stage's state in words, its version, when it was deployed, and its links", () => {
+    expect(menu({}).stops).toEqual([
+      {
+        projectId: "shop-stage",
+        name: "stage",
+        version: "3f9c1b2",
+        dot: "ok",
+        word: "Deployed 40 min ago",
+        tone: "muted",
+        note: undefined,
+        fix: undefined,
+        routes: routes("stage.example.app"),
+      },
     ]);
   });
 
-  it("counts what waits for production — only on production's menu", () => {
-    expect(menu({ waiting: 2 }).waiting).toBe(2);
+  it.each([
+    {
+      name: "deploying",
+      stage: entry("stage", {
+        stop: stage({ projectId: "shop-stage", state: "deploying" }),
+        chip: { label: "stage", state: "releasing", version: "main" },
+      }),
+      row: { dot: "spinner", word: "Deploying…", tone: "muted", note: undefined, fix: undefined },
+    },
+    {
+      name: "its last deploy failed",
+      stage: entry("stage", {
+        stop: stage({ projectId: "shop-stage", state: "failed" }),
+        chip: { label: "stage", state: "failed", version: "main" },
+      }),
+      row: {
+        dot: "attention",
+        word: "Deploy failed",
+        tone: "amber",
+        note: "The last deploy failed. 3f9c1b2 is still serving.",
+        fix: {
+          what: "The stage's last deploy failed",
+          at: undefined,
+          error: undefined,
+          ask: "3f9c1b2 is still serving. Find out why and fix it.",
+        },
+      },
+    },
+    {
+      name: "down",
+      stage: entry("stage", {
+        chip: { label: "stage", state: "down", version: "main" },
+        down: ["web"],
+      }),
+      row: {
+        dot: "failed",
+        word: "Down",
+        tone: "red",
+        note: "Down: web failed on the platform.",
+        fix: {
+          what: "The stage is down: web failed on the platform",
+          at: undefined,
+          error: undefined,
+          ask: "Find out why and bring it back.",
+        },
+      },
+    },
+    {
+      name: "stopped on purpose",
+      stage: entry("stage", { chip: { label: "stage", state: "stopped", version: "main" } }),
+      row: { dot: "hollow", word: "Stopped", tone: "muted", note: undefined, fix: undefined },
+    },
+    {
+      name: "not read yet",
+      stage: entry("stage", {
+        stop: stage({ projectId: "shop-stage", state: "checking", version: undefined }),
+        chip: undefined,
+      }),
+      row: { dot: "off", word: "Checking…", tone: "muted", note: undefined, fix: undefined },
+    },
+  ] as const)("says a stage $name", ({ stage: shown, row }) => {
+    expect(menu({ stages: [shown] }).stops[0]).toMatchObject(row);
+  });
+
+  it("holds several stages, each its own group, the fix naming which", () => {
+    const model = menu({
+      stages: [
+        entry("stage"),
+        entry("qa", {
+          stop: stage({ projectId: "shop-qa", name: "qa", state: "failed" }),
+          chip: { label: "stage", state: "failed", version: "main" },
+        }),
+      ],
+    });
+    expect(model.stops.map((each) => [each.name, each.word])).toEqual([
+      ["stage", "Deployed 40 min ago"],
+      ["qa", "Deploy failed"],
+    ]);
+    expect(model.stops[1]?.fix?.what).toBe("The qa stage's last deploy failed");
+    expect(model.stops[1]?.routes).toEqual(routes("qa.example.app"));
+  });
+
+  it("says a stage still being set up", () => {
     expect(
-      menu({ chip: { label: "stage", state: "ok", version: "main" }, waiting: 2 }).waiting,
-    ).toBe(0);
+      menu({ stages: [], creating: [{ projectId: "shop-stage", name: "stage" }] }).stops,
+    ).toEqual([
+      {
+        projectId: undefined,
+        name: "stage",
+        version: undefined,
+        dot: "spinner",
+        word: "Setting up…",
+        tone: "muted",
+        note: undefined,
+        fix: undefined,
+        routes: [],
+      },
+    ]);
+  });
+
+  // What a release would carry from here to production: known only where
+  // there is a production to carry it to.
+  it("counts what waits to go to production, as given", () => {
+    expect(menu({ waiting: 2 }).waiting).toBe(2);
+    expect(menu({}).waiting).toBe(0);
   });
 });
 
@@ -958,6 +1198,30 @@ describe("fixProblemOf — what 'Ask <your Mate> to fix it' writes (S6)", () => 
       error: "The build step exited with code 2 while installing packages.",
       ask: "Production is stopped. Find out why, fix it, and release again.",
     });
+  });
+
+  it.each([
+    {
+      name: "the stage",
+      input: { name: "stage", serving: "3f9c1b2" },
+      what: "The stage's last deploy failed",
+      ask: "3f9c1b2 is still serving. Find out why and fix it.",
+    },
+    {
+      name: "a stage by its own name",
+      input: { name: "qa", serving: undefined },
+      what: "The qa stage's last deploy failed",
+      ask: "Find out why and fix it.",
+    },
+  ])("hands over $name whose last deploy failed", ({ input: given, what, ask }) => {
+    expect(
+      fixProblemOf({
+        chip: { label: "stage", state: "failed" },
+        failure: FAILED_RELEASE,
+        down: [],
+        ...given,
+      }),
+    ).toEqual({ what, at: undefined, error: undefined, ask });
   });
 
   it.each([

@@ -1,18 +1,19 @@
 /**
- * A project's production as one chip on its heading (M2, D1), and the chip's
- * menu.
+ * A project's production and its stages as two chips on its heading — one
+ * for production, one for the stage or stages — and each chip's menu.
  *
- * What a person needs of production, by moment: always, at a glance, that
- * there is one, which release it serves, and that it is fine; when something
- * waits, that it does; when it is in trouble, at once and loudest, even with
- * the project folded; when they act, its links, what waits, what failed and
- * where to look. So the chip carries the four facts and never leaves the
- * heading, and its menu holds the rest — the note that says what went wrong,
- * the fix to ask a Mate for (S6), the links, the stages, what waits for a
- * release, and the way to Zerops.
- *
- * Stage is the chip only where there is no production; otherwise it lives in
- * the chip's menu, since the Mates' runs report the stage themselves.
+ * What a person needs of them, by moment: always, at a glance, that there is
+ * one; when one is in trouble, at once and loudest, even with the project
+ * folded; when they act, what it runs, its links, what waits, what failed and
+ * where to look. So a chip is its word alone, and the whole of it turns when
+ * something is wrong — amber while the last release or deploy did not go
+ * through and the old one still serves, red while it is down (S3), hollow
+ * while it is stopped on purpose (the owner, 2026-09-29: "the whole tag
+ * should get like reddish when something is wrong.. so you'd have two badges
+ * one for prod, one for stage(s)"). Its menu holds the rest: the state in
+ * words and the version, the note that says what went wrong, the fix to ask a
+ * Mate for (S6), the links, what waits for a release, and the way to Zerops —
+ * for each stage, on the stages' chip.
  *
  * Every fact comes from what the menu already reads — `groupFlow`'s stops, the
  * platform's services, Gitea's releases — and a chip is drawn only once what
@@ -31,6 +32,7 @@ import {
   type GroupEnvironmentRowInput,
   type GroupFlowProduction,
   type GroupFlowStop,
+  type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
 
 import { deployBuilding, type Deployment } from "@t3tools/client-runtime/zerops/flow";
@@ -184,7 +186,7 @@ export type ChipState =
   | "creating"
   | "empty";
 
-/** What the chip says: its stop, its state and the facts that state names. */
+/** What a chip says: its stops, their state and the facts that state names. */
 export interface ProductionChip {
   readonly label: ChipLabel;
   readonly state: ChipState;
@@ -194,6 +196,8 @@ export interface ProductionChip {
   readonly next?: string;
   /** Changes merged and not live, while they wait — and while down or stopped. */
   readonly waiting?: number;
+  /** The stage chip over several stages: each by its name, in the state it is in. */
+  readonly stages?: ReadonlyArray<{ readonly name: string; readonly state: ChipState }>;
 }
 
 export type ChipView =
@@ -219,8 +223,7 @@ const UNKNOWN: ChipView = { kind: "unknown" };
  * Gitea has not answered — or keeps failing while the person is signed in:
  * the chip the platform's facts alone make, as where Gitea is not coming.
  */
-function untilGitea(input: Parameters<typeof productionChip>[0]): ChipView {
-  const alone = productionChip({ ...input, gitea: { kind: "absent" } });
+function untilGitea(alone: ChipView): ChipView {
   return alone.kind === "chip" ? { kind: "unknown", partial: alone.chip } : UNKNOWN;
 }
 
@@ -246,35 +249,33 @@ function chipOf(
 }
 
 /**
- * The chip, worst first: production being set up; down or stopped, from the
- * platform alone and at once — with a release on its way, or changes waiting,
- * beside it, since those are true as well; unknown while what runs or how its
- * services stand is unread, and while Gitea's answer is, where it is coming —
- * with what the platform alone says as its `partial`; a release on its way; a
- * release that failed (amber: the old one still serves); nothing released
- * yet; changes waiting (still green: nothing is wrong); healthy. With no
- * production, the first stage in the same words; with neither, no chip.
+ * Production's chip, worst first: being set up; down or stopped, from the
+ * platform alone and at once — with a release on its way, or changes
+ * waiting, beside it, since those are true as well; unknown while what runs
+ * or how its services stand is unread, and while Gitea's answer is, where it
+ * is coming — with what the platform alone says as its `partial`; a release
+ * on its way; a release that failed (amber: the old one still serves);
+ * nothing released yet; changes waiting (nothing is wrong); healthy. No chip
+ * where the project has no production.
  */
 export function productionChip(input: {
   readonly production: GroupFlowProduction;
-  readonly stages: ReadonlyArray<GroupFlowStop>;
-  readonly stageBeingCreated: boolean;
   /** A deploy running on production: what served before it, and what it builds. */
   readonly building:
     | { readonly from: string | undefined; readonly to: string | undefined }
     | undefined;
   /** Changes merged and not live (`GroupFlowMain.notLive`). */
   readonly waiting: number;
-  readonly serving: { readonly production: StopServing; readonly stage: StopServing };
+  readonly serving: StopServing;
   readonly gitea: GiteaAnswer;
 }): ChipView {
   const { production } = input;
   if (production.kind === "creating") return chipOf("prod", "creating");
-  if (production.kind === "absent") return stageChip(input);
+  if (production.kind === "absent") return NONE;
   const served =
     input.building === undefined ? production.stop.version?.label : input.building.from;
   const waiting = input.waiting > 0 ? input.waiting : undefined;
-  const serving = input.serving.production;
+  const { serving } = input;
   if (serving.kind === "down" || serving.kind === "stopped") {
     // A release tagged for production, or a deploy the platform runs on it.
     const next = production.kind === "releasing" ? production.tag : input.building?.to;
@@ -285,7 +286,9 @@ export function productionChip(input: {
     });
   }
   if (production.kind === "checking" || serving.kind === "unknown") return UNKNOWN;
-  if (input.gitea.kind === "waiting") return untilGitea(input);
+  if (input.gitea.kind === "waiting") {
+    return untilGitea(productionChip({ ...input, gitea: { kind: "absent" } }));
+  }
   if (production.kind === "releasing") {
     return chipOf("prod", "releasing", { version: served, next: production.tag });
   }
@@ -329,16 +332,33 @@ function stageVersion(stop: GroupFlowStop): string | undefined {
   return stop.version?.name ?? source ?? stop.version?.label;
 }
 
-function stageChip(input: Parameters<typeof productionChip>[0]): ChipView {
-  const stage = input.stages[0];
-  if (stage === undefined) return input.stageBeingCreated ? chipOf("stage", "creating") : NONE;
-  const version = stageVersion(stage);
-  const serving = input.serving.stage;
+/** One stage as the stage chip reads it: its name under the heading, its stop, how it serves. */
+export interface StageInput {
+  readonly name: string;
+  readonly stop: GroupFlowStop;
+  readonly serving: StopServing;
+}
+
+/**
+ * One stage, as a chip of its own would say it — what the stages' chip is
+ * made of, and what its menu says of each: down or stopped at once, from the
+ * platform; unknown while its last deploy or how it serves is unread; then
+ * where its last deploy stands.
+ */
+export function stageStopChip(input: {
+  readonly stop: GroupFlowStop;
+  readonly serving: StopServing;
+  readonly gitea: GiteaAnswer;
+}): ChipView {
+  const { stop, serving } = input;
+  const version = stageVersion(stop);
   if (serving.kind === "down") return chipOf("stage", "down", { version });
   if (serving.kind === "stopped") return chipOf("stage", "stopped", { version });
-  if (stage.state === "checking" || serving.kind === "unknown") return UNKNOWN;
-  if (input.gitea.kind === "waiting") return untilGitea(input);
-  switch (stage.state) {
+  if (stop.state === "checking" || serving.kind === "unknown") return UNKNOWN;
+  if (input.gitea.kind === "waiting") {
+    return untilGitea(stageStopChip({ ...input, gitea: { kind: "absent" } }));
+  }
+  switch (stop.state) {
     case "deploying":
       return chipOf("stage", "releasing", { version });
     case "failed":
@@ -348,6 +368,93 @@ function stageChip(input: Parameters<typeof productionChip>[0]): ChipView {
     case "deployed":
       return chipOf("stage", "ok", { version });
   }
+}
+
+/**
+ * Several stages as one chip, in the worst state any of them is in: down,
+ * then a failed deploy, then one deploying. Stopped or empty only where every
+ * one is; one stopped beside another that serves is nothing wrong.
+ */
+function severalStages(
+  stages: ReadonlyArray<{ readonly name: string; readonly chip: ProductionChip }>,
+): ProductionChip {
+  const states = stages.map(({ chip }) => chip.state);
+  const state: ChipState = states.includes("down")
+    ? "down"
+    : states.includes("failed")
+      ? "failed"
+      : states.includes("releasing")
+        ? "releasing"
+        : states.every((each) => each === "stopped")
+          ? "stopped"
+          : states.every((each) => each === "empty")
+            ? "empty"
+            : "ok";
+  return {
+    label: "stage",
+    state,
+    stages: stages.map(({ name, chip }) => ({ name, state: chip.state })),
+  };
+}
+
+/**
+ * The stages' one chip: a stage as it stands (`stageStopChip`); several in
+ * the worst state of any of them, each named (`severalStages`) — red at once
+ * where one is down, whatever of the others is still unread; being set up
+ * where the first is on its way; no chip where the project has none.
+ */
+export function stageChip(input: {
+  readonly stages: ReadonlyArray<StageInput>;
+  /** A stage is being created that the listing does not hold yet. */
+  readonly beingCreated: boolean;
+  readonly gitea: GiteaAnswer;
+}): ChipView {
+  const views = input.stages.map((stage) => ({
+    name: stage.name,
+    view: stageStopChip({ stop: stage.stop, serving: stage.serving, gitea: input.gitea }),
+  }));
+  const [first] = views;
+  if (first === undefined) return input.beingCreated ? chipOf("stage", "creating") : NONE;
+  if (views.length === 1) return first.view;
+  const read = views.flatMap(({ name, view }) =>
+    view.kind === "chip" ? [{ name, chip: view.chip }] : [],
+  );
+  if (read.length === views.length) return chipView(severalStages(read));
+  if (read.some(({ chip }) => chip.state === "down")) return chipView(severalStages(read));
+  const drawn = views.flatMap(({ name, view }) =>
+    view.kind === "chip"
+      ? [{ name, chip: view.chip }]
+      : view.kind === "unknown" && view.partial !== undefined
+        ? [{ name, chip: view.partial }]
+        : [],
+  );
+  return drawn.length === views.length
+    ? { kind: "unknown", partial: severalStages(drawn) }
+    : UNKNOWN;
+}
+
+/** Both chips a project's heading wears, each only where the project has it. */
+export function projectChips(input: {
+  readonly production: GroupFlowProduction;
+  readonly building:
+    | { readonly from: string | undefined; readonly to: string | undefined }
+    | undefined;
+  /** Changes merged and not live (`GroupFlowMain.notLive`). */
+  readonly waiting: number;
+  /** How production serves. */
+  readonly serving: StopServing;
+  readonly stages: ReadonlyArray<StageInput>;
+  readonly stagesBeingCreated: boolean;
+  readonly gitea: GiteaAnswer;
+}): { readonly prod: ChipView; readonly stage: ChipView } {
+  return {
+    prod: productionChip(input),
+    stage: stageChip({
+      stages: input.stages,
+      beingCreated: input.stagesBeingCreated,
+      gitea: input.gitea,
+    }),
+  };
 }
 
 /**
@@ -371,22 +478,36 @@ export function rememberedChipAfter(view: ChipView): ProductionChip | null | und
   return view.kind === "none" ? null : undefined;
 }
 
-/** The chip's dot: a colour for a state, hollow for a stop on purpose, a spinner while moving. */
+/** A stop's dot in the chip's menu and the jump box: a colour for a state, hollow for a stop on purpose, a spinner while moving. */
 export type ChipDot = "ok" | "attention" | "failed" | "off" | "hollow" | "spinner";
 
-/** The chip as it is drawn. */
+/**
+ * The chip's whole ground and ink: neutral while nothing is wrong or nothing
+ * is known, amber while the last release or deploy did not go through and
+ * the old one still serves, red while it is down (S3) — and hollow while it
+ * is stopped on purpose, which is off rather than wrong.
+ */
+export type ChipTone = "neutral" | "off" | "amber" | "red";
+
+/** The chip as it is drawn: its word, and its tone — its menu says the rest. */
 export interface ChipFace {
-  /** Its ground: neutral, amber while a release did not go through, red while down. */
-  readonly tone: "neutral" | "amber" | "red";
-  readonly dot: ChipDot;
-  readonly label: string;
-  /** In mono: what serves, and what is on its way. */
-  readonly version: string | undefined;
-  /** The muted words after it. */
-  readonly extra: string | undefined;
+  readonly tone: ChipTone;
+  /** The one word on it. */
+  readonly label: ChipLabel;
   /** The whole state in a sentence: its accessible name. */
   readonly words: string;
 }
+
+const TONE: Record<ChipState, ChipTone> = {
+  ok: "neutral",
+  waiting: "neutral",
+  releasing: "neutral",
+  creating: "neutral",
+  empty: "neutral",
+  failed: "amber",
+  down: "red",
+  stopped: "off",
+};
 
 const TIER_WORD: Record<ChipLabel, string> = { prod: "Production", stage: "Stage" };
 
@@ -394,99 +515,70 @@ const plural = (count: number, one: string, many: string) =>
   `${String(count)} ${count === 1 ? one : many}`;
 
 /** What else is true of a stop down or stopped: a release on its way, else changes waiting. */
-function alongside(
-  chip: ProductionChip,
-): { readonly extra: string; readonly words: string } | undefined {
-  if (chip.next !== undefined) {
-    return { extra: `· releasing ${chip.next}`, words: `releasing ${chip.next}` };
-  }
+function alongside(chip: ProductionChip): string | undefined {
+  if (chip.next !== undefined) return `releasing ${chip.next}`;
   if (chip.waiting !== undefined) {
-    return {
-      extra: `· ${String(chip.waiting)} waiting`,
-      words: `${plural(chip.waiting, "change", "changes")} waiting`,
-    };
+    return `${plural(chip.waiting, "change", "changes")} waiting`;
   }
   return undefined;
 }
 
-export function chipFace(chip: ProductionChip): ChipFace {
+/** One of several stages, in words: "qa is down", "qa's last deploy failed". */
+function stagePhrase({ name, state }: { readonly name: string; readonly state: ChipState }) {
+  switch (state) {
+    case "ok":
+    case "waiting":
+      return `${name} is healthy`;
+    case "releasing":
+      return `${name} is deploying`;
+    case "failed":
+      return `${name}'s last deploy failed`;
+    case "down":
+      return `${name} is down`;
+    case "stopped":
+      return `${name} is stopped`;
+    case "creating":
+      return `${name} is being set up`;
+    case "empty":
+      return `nothing is deployed to ${name} yet`;
+  }
+}
+
+/** The whole state in a sentence, what the chip no longer draws included. */
+function chipWords(chip: ProductionChip): string {
+  if (chip.stages !== undefined && chip.stages.length > 1) {
+    return `Stages: ${chip.stages.map(stagePhrase).join(", ")}`;
+  }
   const tier = TIER_WORD[chip.label];
   const named = (rest: string) =>
     chip.version === undefined ? `${tier}, ${rest}` : `${tier} ${chip.version}, ${rest}`;
-  const face = (
-    parts: Omit<ChipFace, "label" | "tone"> & Partial<Pick<ChipFace, "label" | "tone">>,
-  ): ChipFace => ({ tone: "neutral", label: chip.label, ...parts });
   switch (chip.state) {
     case "ok":
-      return face({ dot: "ok", version: chip.version, extra: undefined, words: named("healthy") });
-    case "waiting": {
-      const waiting = chip.waiting ?? 0;
-      return face({
-        dot: "ok",
-        version: chip.version,
-        extra: `· ${String(waiting)} waiting`,
-        words: named(`${plural(waiting, "change", "changes")} waiting`),
-      });
-    }
-    case "releasing": {
-      const { version, next } = chip;
-      return face({
-        dot: "spinner",
-        version:
-          next === undefined
-            ? version
-            : version === undefined
-              ? `→ ${next}`
-              : `${version} → ${next}`,
-        extra: next === undefined ? "· deploying" : undefined,
-        words: named(next === undefined ? "deploying" : `releasing ${next}`),
-      });
-    }
+      return named("healthy");
+    case "waiting":
+      return named(`${plural(chip.waiting ?? 0, "change", "changes")} waiting`);
+    case "releasing":
+      return named(chip.next === undefined ? "deploying" : `releasing ${chip.next}`);
     case "failed":
-      return face({
-        tone: "amber",
-        dot: "attention",
-        version: chip.version,
-        extra: chip.label === "prod" ? "· release failed" : "· deploy failed",
-        words: named(chip.label === "prod" ? "the last release failed" : "the last deploy failed"),
-      });
+      return named(chip.label === "prod" ? "the last release failed" : "the last deploy failed");
     case "down":
     case "stopped": {
       const also = alongside(chip);
-      const state = chip.state === "down" ? "down" : "stopped";
-      return face({
-        ...(chip.state === "down" ? { tone: "red", dot: "failed" } : { dot: "hollow" }),
-        label: `${chip.label} ${state}`,
-        version: undefined,
-        extra: also?.extra,
-        words: also === undefined ? `${tier} is ${state}` : `${tier} is ${state}, ${also.words}`,
-      });
+      return also === undefined ? `${tier} is ${chip.state}` : `${tier} is ${chip.state}, ${also}`;
     }
     case "creating":
-      return face({
-        dot: "spinner",
-        version: undefined,
-        extra: "· setting up",
-        words: `${tier} is being set up`,
-      });
+      return `${tier} is being set up`;
     case "empty": {
-      const { waiting } = chip;
-      return face({
-        dot: "off",
-        version: undefined,
-        extra:
-          waiting !== undefined
-            ? `· ${String(waiting)} waiting`
-            : chip.label === "prod"
-              ? "· not released"
-              : "· not deployed",
-        words:
-          waiting !== undefined
-            ? `${tier}, nothing released yet, ${plural(waiting, "change", "changes")} waiting`
-            : `${tier}, nothing ${chip.label === "prod" ? "released" : "deployed"} yet`,
-      });
+      const nothing = `${tier}, nothing ${chip.label === "prod" ? "released" : "deployed"} yet`;
+      return chip.waiting === undefined
+        ? nothing
+        : `${nothing}, ${plural(chip.waiting, "change", "changes")} waiting`;
     }
   }
+}
+
+export function chipFace(chip: ProductionChip): ChipFace {
+  return { tone: TONE[chip.state], label: chip.label, words: chipWords(chip) };
 }
 
 /** "40 min ago", "3 h ago": how long ago, as the chip's menu says a deploy's age. */
@@ -507,30 +599,30 @@ function joined(names: ReadonlyArray<string>): string {
   return `${names.slice(0, -1).join(", ")} and ${names.at(-1) ?? ""}`;
 }
 
-/** One row of the chip's menu: a stop, what it runs, and the word for where it stands. */
+/**
+ * One stop in a chip's menu, a group of its own: its row — its name, what it
+ * runs and where it stands in words — then what went wrong, the fix while it
+ * is broken (S6), and its public links, each led by its service.
+ */
 export interface ChipMenuStop {
+  /** Its Zerops project, for its page and *Open in Zerops*; none while it is being set up. */
+  readonly projectId: string | undefined;
   readonly name: string;
   readonly version: string | undefined;
   readonly dot: ChipDot;
   readonly word: string;
+  readonly tone: "muted" | "amber" | "red";
+  /** What went wrong, when something did. */
+  readonly note: string | undefined;
+  /** What "Ask <your Mate> to fix it" writes, while it is broken. */
+  readonly fix: FixProblem | undefined;
+  readonly routes: ReadonlyArray<ZeropsPublicRoute>;
 }
 
 export interface ChipMenuModel {
-  /** The chip's own stop. */
-  readonly main: {
-    readonly name: "production" | "stage";
-    readonly version: string | undefined;
-    readonly dot: ChipDot;
-    readonly word: string;
-    readonly tone: "muted" | "amber" | "red";
-  };
-  /** What went wrong, when something did. */
-  readonly note: string | undefined;
-  /** Something is broken: the menu offers "Ask <your Mate> to fix it" (S6). */
-  readonly trouble: boolean;
-  /** The stages, under production. */
-  readonly stages: ReadonlyArray<ChipMenuStop>;
-  /** Changes waiting for production, with Review; none on a stage's menu. */
+  /** Production alone on production's menu; each stage on the stages'. */
+  readonly stops: ReadonlyArray<ChipMenuStop>;
+  /** Changes merged and not live on production, with Review; 0 where none, or no production. */
   readonly waiting: number;
 }
 
@@ -543,6 +635,22 @@ const MAIN_DOT: Record<ChipState, ChipDot> = {
   stopped: "hollow",
   creating: "spinner",
   empty: "off",
+};
+
+/** A stop's dot, by the state its chip says: in its menu's row and in the jump box. */
+export function chipDot(chip: ProductionChip): ChipDot {
+  return MAIN_DOT[chip.state];
+}
+
+const MENU_TONE: Record<ChipState, ChipMenuStop["tone"]> = {
+  ok: "muted",
+  waiting: "muted",
+  releasing: "muted",
+  creating: "muted",
+  empty: "muted",
+  stopped: "muted",
+  failed: "amber",
+  down: "red",
 };
 
 function mainWord(chip: ProductionChip): string {
@@ -603,15 +711,17 @@ function failureSentence(failure: ReleaseFailure, nowMs: number): string {
 /**
  * What went wrong, in sentences — every one that is true: production down or
  * stopped says as well that its last release failed, or that one is on its
- * way.
+ * way. `serving` is what the stop runs: production's release, a stage's
+ * commit.
  */
 function troubleNote(input: {
   readonly chip: ProductionChip;
   readonly failure: ReleaseFailure | undefined;
   readonly down: ReadonlyArray<string>;
+  readonly serving: string | undefined;
   readonly nowMs: number;
 }): string | undefined {
-  const { chip, failure } = input;
+  const { chip, failure, serving } = input;
   const production = chip.label === "prod";
   const failed =
     production && failure !== undefined ? failureSentence(failure, input.nowMs) : undefined;
@@ -620,56 +730,115 @@ function troubleNote(input: {
     const down =
       chip.state === "down"
         ? `Down: ${input.down.length === 0 ? "its services" : joined(input.down)} failed on the platform.${
-            production && chip.version !== undefined ? ` ${chip.version} was the last release.` : ""
+            production && serving !== undefined ? ` ${serving} was the last release.` : ""
           }`
         : undefined;
     const said = [down, failed, coming].filter((part) => part !== undefined);
     return said.length === 0 ? undefined : said.join(" ");
   }
   if (chip.state !== "failed") return undefined;
-  const serving =
-    chip.version === undefined ? " Nothing is serving yet." : ` ${chip.version} is still serving.`;
-  return failed === undefined ? `The last deploy failed.${serving}` : `${failed}${serving}`;
+  const still =
+    serving === undefined ? " Nothing is serving yet." : ` ${serving} is still serving.`;
+  return failed === undefined ? `The last deploy failed.${still}` : `${failed}${still}`;
 }
 
-/** What the chip's menu says, per state (`SidebarProductionChip`'s menu). */
-export function chipMenu(input: {
+/** Production's menu: production's row, what went wrong and the fix, its links, what waits. */
+export function productionMenu(input: {
   readonly chip: ProductionChip;
+  /** Production's Zerops project; none while it is being set up. */
+  readonly projectId: string | undefined;
   readonly failure: ReleaseFailure | undefined;
   /** The services the platform marks failed, while down. */
   readonly down: ReadonlyArray<string>;
-  /** The stages, each by its name under the heading, with when it was last deployed. */
-  readonly stages: ReadonlyArray<{
-    readonly name: string;
-    readonly stop: GroupFlowStop;
-    readonly deployedAt: string | undefined;
-  }>;
+  readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   /** Changes merged and not live. */
   readonly waiting: number;
   readonly nowMs: number;
 }): ChipMenuModel {
   const { chip } = input;
-  const production = chip.label === "prod";
   return {
-    main: {
-      name: production ? "production" : "stage",
-      version: chip.version,
-      dot: MAIN_DOT[chip.state],
-      word: mainWord(chip),
-      tone: chip.state === "failed" ? "amber" : chip.state === "down" ? "red" : "muted",
-    },
-    note: troubleNote(input),
-    trouble: fixProblemOf(input) !== undefined,
-    stages: production
-      ? input.stages.map(({ name, stop, deployedAt }) => ({
-          name,
-          version: stop.version?.label,
-          dot: STOP_DOT[stop.state],
-          word: stopWord(stop, deployedAt, input.nowMs),
-        }))
-      : [],
-    waiting: production ? input.waiting : 0,
+    stops: [
+      {
+        projectId: input.projectId,
+        name: "production",
+        version: chip.version,
+        dot: chipDot(chip),
+        word: mainWord(chip),
+        tone: MENU_TONE[chip.state],
+        note: troubleNote({ ...input, serving: chip.version }),
+        fix: fixProblemOf(input),
+        routes: input.routes,
+      },
+    ],
+    waiting: input.waiting,
   };
+}
+
+/**
+ * The stages' menu: each stage as production's menu says production — its
+ * row with what it runs and when it was deployed, what went wrong and the
+ * fix, its links — then what waits to go to production, where one is.
+ */
+export function stageMenu(input: {
+  readonly stages: ReadonlyArray<{
+    readonly projectId: string;
+    /** Its name under the heading. */
+    readonly name: string;
+    readonly stop: GroupFlowStop;
+    /** As a chip of its own says it (`stageStopChip`); `undefined` while unread. */
+    readonly chip: ProductionChip | undefined;
+    readonly deployedAt: string | undefined;
+    /** The services the platform marks failed, while down. */
+    readonly down: ReadonlyArray<string>;
+    readonly routes: ReadonlyArray<ZeropsPublicRoute>;
+  }>;
+  /** Stages being created that the listing does not hold yet. */
+  readonly creating: ReadonlyArray<{ readonly projectId: string; readonly name: string }>;
+  /** Changes merged and not live on production; 0 where there is no production. */
+  readonly waiting: number;
+  readonly nowMs: number;
+}): ChipMenuModel {
+  const listed = input.stages.map((stage): ChipMenuStop => {
+    const { chip, stop } = stage;
+    const serving = stop.version?.label;
+    const base = {
+      projectId: stage.projectId,
+      name: stage.name,
+      version: serving,
+      routes: stage.routes,
+    };
+    if (chip === undefined) {
+      return {
+        ...base,
+        dot: STOP_DOT[stop.state],
+        word: stopWord(stop, stage.deployedAt, input.nowMs),
+        tone: "muted",
+        note: undefined,
+        fix: undefined,
+      };
+    }
+    const problem = { chip, failure: undefined, down: stage.down, serving };
+    return {
+      ...base,
+      dot: chipDot(chip),
+      word: chip.state === "ok" ? stopWord(stop, stage.deployedAt, input.nowMs) : mainWord(chip),
+      tone: MENU_TONE[chip.state],
+      note: troubleNote({ ...problem, nowMs: input.nowMs }),
+      fix: fixProblemOf({ ...problem, name: stage.name }),
+    };
+  });
+  const coming = input.creating.map((stage): ChipMenuStop => ({
+    projectId: undefined,
+    name: stage.name,
+    version: undefined,
+    dot: "spinner",
+    word: "Setting up…",
+    tone: "muted",
+    note: undefined,
+    fix: undefined,
+    routes: [],
+  }));
+  return { stops: [...listed, ...coming], waiting: input.waiting };
 }
 
 /** How a release did not go through: "failed deploying app", "was refused". */
@@ -682,22 +851,30 @@ function failedHow(failure: ReleaseFailure): string {
  * What "Ask <your Mate> to fix it" writes into the Mate's composer (S6):
  * what failed, when, the broker's words, and the ask — for a release that
  * did not go through and for production down, both at once where both are
- * true. Nothing to fix otherwise: a production stopped on purpose is fine.
+ * true; for a stage whose last deploy failed, or which is down, by its name.
+ * Nothing to fix otherwise: a stop stopped on purpose is fine.
  */
 export function fixProblemOf(input: {
   readonly chip: ProductionChip;
   readonly failure: ReleaseFailure | undefined;
   readonly down: ReadonlyArray<string>;
+  /** A stage's name under the heading. */
+  readonly name?: string | undefined;
+  /** What the stop runs, where the chip's version says something else (a stage's branch). */
+  readonly serving?: string | undefined;
 }): FixProblem | undefined {
   const { chip } = input;
-  const tier = chip.label === "prod" ? "Production" : "The stage";
-  const failure = chip.label === "prod" ? input.failure : undefined;
+  const production = chip.label === "prod";
+  const tier = production
+    ? "Production"
+    : input.name === undefined || input.name === "stage"
+      ? "The stage"
+      : `The ${input.name} stage`;
+  const failure = production ? input.failure : undefined;
+  const runs = input.serving ?? chip.version;
   if (chip.state === "down") {
     const which = input.down.length === 0 ? "its services" : joined(input.down);
-    const last =
-      chip.label === "prod" && chip.version !== undefined
-        ? `${chip.version} was the last release. `
-        : "";
+    const last = production && runs !== undefined ? `${runs} was the last release. ` : "";
     if (failure !== undefined) {
       return {
         what: `${tier} is down: ${which} failed on the platform, and its release ${failure.tag} ${failedHow(failure)}`,
@@ -723,10 +900,10 @@ export function fixProblemOf(input: {
     };
   }
   if (chip.state !== "failed") return undefined;
-  const serving = chip.version === undefined ? "" : `${chip.version} is still serving. `;
-  if (chip.label === "stage") {
+  const serving = runs === undefined ? "" : `${runs} is still serving. `;
+  if (!production) {
     return {
-      what: "The stage's last deploy failed",
+      what: `${tier}'s last deploy failed`,
       at: undefined,
       error: undefined,
       ask: `${serving}Find out why and fix it.`,

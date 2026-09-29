@@ -34,10 +34,10 @@ const FOLD: KeyframeAnimationOptions = {
 };
 
 /** The room below the rows, as the class that keeps it. */
-const ROOM_CLASS: Record<number, string> = { 0: "pb-0", 16: "pb-4", 44: "pb-11" };
+const ROOM_CLASS: Record<number, string> = { 0: "pb-0", 16: "pb-4", 36: "pb-9" };
 
 /** The room under a folded heading, as the class that keeps it; none at the list's end. */
-const FOLDED_ROOM_CLASS: Record<number, string | undefined> = { 0: undefined, 8: "h-2" };
+const FOLDED_ROOM_CLASS: Record<number, string | undefined> = { 0: undefined, 12: "h-3" };
 
 export function SidebarProjectFold({
   open,
@@ -113,8 +113,10 @@ export function SidebarProjectFold({
   }, [open, motion, last]);
   return (
     <div data-zerops-surface="sidebar-project-rows" ref={fold}>
-      {/* The heading's 2 px before the first row; the rows' own padding is the air. */}
-      <div className={cn("flex flex-col pt-0.5", ROOM_CLASS[projectRoom({ open: true, last })])}>
+      {/* The heading's 6 px before the first row, with the rows' own 10 px
+          and the heading's 4 around its words: its title 20 px from its
+          first Mate's name, as from the next heading while it is folded. */}
+      <div className={cn("flex flex-col pt-1.5", ROOM_CLASS[projectRoom({ open: true, last })])}>
         {children}
       </div>
     </div>

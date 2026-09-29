@@ -1846,7 +1846,7 @@ export default function Sidebar() {
         environments: new Map(flow.environments.map((entry) => [entry.projectId, entry])),
         releaseOffered: flow.release.gate.allowed,
         // What a release would put in front of people: the count the
-        // production chip wears.
+        // chips' menus say waits for production.
         releaseContents: flow.release.contents,
         // The release that did not go through, which turns the chip amber.
         releaseFailure: releaseFailureOf({
@@ -1858,7 +1858,7 @@ export default function Sidebar() {
         missing: flow.missing,
         // The version a release would tag.
         releaseTag: flow.release.suggestion,
-        // The release on its way, which the production chip says.
+        // The release on its way, which production's chip and menu say.
         releaseInFlight: flow.release.inFlight,
       };
     },
@@ -2319,12 +2319,12 @@ export default function Sidebar() {
       ),
     );
   }, [zeropsAgentActivity, zeropsCandidates, zeropsHeld.complete]);
-  // The change rows and production chips the tree drew of what it read, for
+  // The change rows and the chips the tree drew of what it read, for
   // the next reload to paint while Gitea and the platform answer again.
   const zeropsRemembered = useMemo<SidebarRemembered>(
     () => ({
       changes: rememberedChanges,
-      chip: (groupId) => menuMemory().chips[groupId],
+      chips: (groupId) => menuMemory().chips[groupId],
     }),
     [],
   );
