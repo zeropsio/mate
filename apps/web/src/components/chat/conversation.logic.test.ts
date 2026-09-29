@@ -1259,6 +1259,89 @@ describe("deriveOutcome", () => {
     ]);
   });
 
+  // How a service is reached is not how it runs (the owner, 2026-09-29: "fix
+  // the state", of a titandev that ran with clean logs and read "Not healthy"
+  // because its subdomain was off). A check that failed only on a subdomain
+  // left off, or a domain whose DNS points elsewhere yet, leaves it healthy;
+  // a public address that answers an error does not.
+  it.each([
+    {
+      name: "its subdomain is off",
+      failed: [
+        {
+          id: "http_public",
+          note: "subdomain access not enabled — service is not reachable via HTTP",
+        },
+      ],
+      tone: "ok",
+      word: "Healthy",
+    },
+    {
+      name: "a domain's DNS points elsewhere yet",
+      failed: [
+        {
+          id: "public_domain",
+          note: "shop.example.com: DNS not pointing at Zerops yet (dnsCheckStatus=PENDING)",
+        },
+      ],
+      tone: "ok",
+      word: "Healthy",
+    },
+    {
+      name: "its public address answers an error",
+      failed: [{ id: "http_public", note: "502 · Bad Gateway" }],
+      tone: "failed",
+      word: "Not healthy",
+    },
+    {
+      name: "its subdomain is off, and its logs hold errors",
+      failed: [
+        {
+          id: "http_public",
+          note: "subdomain access not enabled — service is not reachable via HTTP",
+        },
+        { id: "error_logs", note: "3 errors in the last 5 minutes" },
+      ],
+      tone: "failed",
+      word: "Not healthy",
+    },
+  ])("reads a service by how it runs, not how it is reached: $name", ({ failed, tone, word }) => {
+    const steps = [
+      {
+        id: "service_running",
+        label: "Service running",
+        state: "done" as const,
+        stateLabel: "Done",
+      },
+      ...failed.map((step) => ({
+        id: step.id,
+        label: step.id,
+        state: "failed" as const,
+        stateLabel: "Failed",
+        note: step.note,
+      })),
+    ];
+    const outcome = deriveOutcome({
+      turn: structure(
+        [
+          user("m0", 0),
+          operation("x1", "t1", 1, {
+            kind: "verify",
+            phase: "failed",
+            statusWord: "Checks failed",
+            closing: `${String(failed.length)} of ${String(steps.length)} checks failed.`,
+            steps,
+          }),
+          assistant("a1", "t1", 2),
+        ],
+        settled,
+      ).turns[0]!,
+      landed: [],
+      diff: null,
+    });
+    expect(outcome?.live).toEqual([expect.objectContaining({ hostname: "appdev", tone, word })]);
+  });
+
   // A dev server the run stopped on purpose is no longer running because of
   // it; one it started, and nothing stopped, is.
   it.each([

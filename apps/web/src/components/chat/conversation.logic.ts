@@ -1569,6 +1569,32 @@ function failureWords(operation: ZeropsOperation): string {
 /** The pipeline's build steps: a deploy that failed in one of them has a build that fails. */
 const BUILD_STEP_IDS: ReadonlySet<string> = new Set(["INIT_BUILD_CONTAINER", "RUN_BUILD_COMMANDS"]);
 
+/**
+ * A failed check of how a service is reached, not of how it runs: its
+ * subdomain left off, or a domain whose DNS points elsewhere yet — zcp's own
+ * words for both (`verify_checks.go`). An address that answers an error is
+ * neither.
+ */
+function reachedOnly(step: ZeropsOperation["steps"][number]): boolean {
+  const note = step.note ?? "";
+  return (
+    (step.id === "http_public" && note.startsWith("subdomain access not enabled")) ||
+    (step.id === "public_domain" && note.includes("DNS not pointing at Zerops yet"))
+  );
+}
+
+/**
+ * Where a service stands after an operation, read by how it runs: a health
+ * check whose every failure is of how it is reached found it healthy (the
+ * owner, 2026-09-29: "fix the state", of a service with clean logs that read
+ * "Not healthy" because its subdomain was off).
+ */
+function standingPhase(operation: ZeropsOperation): ZeropsOperation["phase"] {
+  if (operation.kind !== "verify" || operation.phase !== "failed") return operation.phase;
+  const failed = operation.steps.filter((step) => step.state === "failed");
+  return failed.length > 0 && failed.every(reachedOnly) ? "done" : operation.phase;
+}
+
 /** A service a failure left broken, in a few words: where it broke, not the call's status word. */
 function brokenWord(operation: ZeropsOperation): string {
   if (operation.kind === "verify") return "Not healthy";
@@ -1765,7 +1791,8 @@ export function deriveOutcome(input: {
     if (isGitPushOnly(operation)) continue;
     const host = operationTargetKey(operation);
     const known = services.get(host);
-    if (operation.phase === "failed") {
+    const phase = standingPhase(operation);
+    if (phase === "failed") {
       services.set(host, {
         hostname: host,
         tone: "failed",
@@ -1777,7 +1804,7 @@ export function deriveOutcome(input: {
       });
       continue;
     }
-    if (operation.phase !== "done") continue;
+    if (phase !== "done") continue;
     const url = operation.links[0]?.url ?? known?.url ?? null;
     if (operation.kind === "devServer") {
       // Stopped on purpose, it no longer runs because of the run.
