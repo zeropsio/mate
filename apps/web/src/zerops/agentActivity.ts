@@ -95,8 +95,9 @@ export interface ZeropsAgentActivity {
   readonly errorLine?: string | undefined;
   /**
    * The Mate finished something this device has not looked at since
-   * (`hasUnseenCompletion`, the resolver's own fact): its row is bold until
-   * its conversation is opened.
+   * (`hasUnseenCompletion`, the resolver's own fact): its row's name is at
+   * 600 and a blue dot stands before its age until its conversation is
+   * opened.
    */
   readonly unread: boolean;
   /** When the usage limit pausing it resets; absent while it is not paused. */

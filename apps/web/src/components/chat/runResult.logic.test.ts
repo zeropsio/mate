@@ -352,6 +352,27 @@ describe("resultRows", () => {
       }),
       rows: [["broken", "failed", "appdev", "Action failed", `since ${at(40)}`]],
     },
+    // The platform's word follows only what the run left running: the first
+    // deploy of a new service failed, and Zerops leaves it ready to deploy —
+    // that is the same failure, and the run's own words say why.
+    {
+      name: "a first deploy that failed stays the run's failure, whatever the platform says since",
+      outcome: outcome({ live: [BROKEN_BUILD] }),
+      facts: facts({
+        services: { appstage: { status: "READY_TO_DEPLOY", since: at(5), versionAt: null } },
+      }),
+      rows: [["broken", "failed", "appstage", "Build failing", "3 type errors in session.ts"]],
+    },
+    {
+      name: "a dev server the run left not running keeps its words whatever the platform says",
+      outcome: outcome({
+        live: [service("appdev", { tone: "attention", word: "Dev server not running" })],
+      }),
+      facts: facts({
+        services: { appdev: { status: "STOPPED", since: at(40), versionAt: at(0) } },
+      }),
+      rows: [["waiting", "attention", "appdev", "Dev server not running"]],
+    },
     {
       name: "a page whose check stayed failed is broken; one retried until it passed is not",
       outcome: outcome({
@@ -597,6 +618,45 @@ describe("resultRows", () => {
         what: "appdev stopped",
         at: at(50),
         ask: "Find out why it stopped, fix it, and start it again.",
+      },
+    },
+    {
+      name: "a first deploy that failed, the service left ready to deploy",
+      outcome: outcome({ live: [BROKEN_BUILD] }),
+      facts: facts({
+        services: { appstage: { status: "READY_TO_DEPLOY", since: at(5), versionAt: null } },
+      }),
+      problem: {
+        what: "The build of appstage is failing",
+        at: at(3),
+        error: "3 type errors in session.ts",
+        logLines: ["src/session.ts(4,7): error TS2322", "Found 3 errors."],
+        logName: "Build log · appstage",
+        ask: "Find out why, fix it, and deploy it again.",
+      },
+    },
+    {
+      name: "a service the run left running that has nothing deployed on it since",
+      outcome: outcome({ live: [service("appdev")] }),
+      facts: facts({
+        services: { appdev: { status: "READY_TO_DEPLOY", since: at(40), versionAt: null } },
+      }),
+      problem: {
+        what: "appdev has nothing deployed",
+        at: at(40),
+        ask: "Find out why, fix it, and deploy it again.",
+      },
+    },
+    {
+      name: "a service the run left running that the platform says failed since",
+      outcome: outcome({ live: [service("appdev")] }),
+      facts: facts({
+        services: { appdev: { status: "ACTION_FAILED", since: at(40), versionAt: at(0) } },
+      }),
+      problem: {
+        what: "appdev: action failed",
+        at: at(40),
+        ask: "Find out why it failed, fix it, and get it running again.",
       },
     },
     {

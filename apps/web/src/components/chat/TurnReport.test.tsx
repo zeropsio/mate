@@ -235,4 +235,65 @@ describe("TurnReport", () => {
     expect(rows.map((row) => row.props["data-rising"] === true)).toEqual(rising);
     expect(rows.map((row) => row.props.style?.["--row-index"])).toEqual(order);
   });
+
+  // Once means once: a row whose rise ended never replays it when it moves
+  // later — appdev stopping tonight moves it up to the broken rows, and React
+  // moving its node would start a rise it still declared all over again.
+  it("never replays a row's rise once it ended, when the row moves", () => {
+    const renderer = render({ settling: true });
+    for (const row of rowsOf(renderer)) {
+      const node = { row: row.props["data-result-row"] };
+      act(() => row.props.onAnimationEnd({ target: node, currentTarget: node }));
+    }
+    expect(rowsOf(renderer).map((row) => row.props["data-rising"] === true)).toEqual([
+      false,
+      false,
+      false,
+    ]);
+    act(() =>
+      renderer.update(
+        <TurnReport
+          facts={{
+            ...FACTS,
+            services: new Map([
+              ["appdev", { status: "STOPPED", since: at(50), versionAt: null }],
+              ["appstage", { status: "ACTIVE", since: at(0), versionAt: null }],
+            ]),
+          }}
+          onOpenImage={() => undefined}
+          onOpenTurnDiff={() => undefined}
+          outcome={OUTCOME}
+          settling
+        />,
+      ),
+    );
+    const moved = rowsOf(renderer);
+    expect(moved.map((row) => row.props["data-result-row"])).toEqual([
+      "broken",
+      "broken",
+      "waiting",
+    ]);
+    expect(moved.some((row) => row.props["data-rising"] === true)).toBe(false);
+  });
+
+  // Only what the result arrived with rises: a row that turns up later —
+  // the forge naming the change a moment after — is simply there.
+  it("rises only the rows the result arrived with", () => {
+    const arrived: ResultFacts = { ...FACTS, changes: { ...FACTS.changes!, open: [] } };
+    const renderer = render({ settling: true, facts: arrived });
+    expect(rowsOf(renderer).map((row) => row.props["data-rising"] === true)).toEqual([true, true]);
+    act(() =>
+      renderer.update(
+        <TurnReport
+          facts={FACTS}
+          onOpenImage={() => undefined}
+          onOpenTurnDiff={() => undefined}
+          outcome={OUTCOME}
+          settling
+        />,
+      ),
+    );
+    const change = rowsOf(renderer).find((row) => row.props["data-result-row"] === "waiting");
+    expect(change?.props["data-rising"]).toBeUndefined();
+  });
 });

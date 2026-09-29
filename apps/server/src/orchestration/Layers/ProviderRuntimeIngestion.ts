@@ -126,6 +126,12 @@ type TurnStartRequestedDomainEvent = Extract<
   { type: "thread.turn-start-requested" }
 >;
 
+/** A thread leaving the active list: its runtime events are no longer followed. */
+type ThreadLeftDomainEvent = Extract<
+  OrchestrationEvent,
+  { type: "thread.deleted" | "thread.archived" }
+>;
+
 type ProviderDiffEvent = Extract<ProviderRuntimeEvent, { type: "turn.diff.updated" }>;
 
 type RuntimeIngestionInput =
@@ -135,7 +141,7 @@ type RuntimeIngestionInput =
     }
   | {
       source: "domain";
-      event: TurnStartRequestedDomainEvent;
+      event: TurnStartRequestedDomainEvent | ThreadLeftDomainEvent;
     }
   | {
       /** A diff whose workspace the diff worker confirmed is a Git repository. */
@@ -1899,13 +1905,14 @@ const make = Effect.gen(function* () {
                 : (thread.session?.lastError ?? null);
 
         if (shouldApplyThreadLifecycle) {
-          // The live step the menu says: a turn starts out thinking; a settled
-          // turn or a dead session has nothing live. Before the session change
-          // goes out, so the shell it refreshes says both at once.
-          if (event.type === "turn.started") {
-            threadLiveStep.observe(thread.id, { type: "turn-started", at: now });
-          } else if (isTerminalTurn || event.type === "session.exited") {
+          // The live step the menu says: a turn starts out thinking; once no
+          // turn is active — it settled, the session errored, stopped or went
+          // idle — nothing is live. Before the session change goes out, so the
+          // shell it refreshes says both at once.
+          if (nextActiveTurnId === null) {
             threadLiveStep.clearThread(thread.id);
+          } else if (event.type === "turn.started") {
+            threadLiveStep.observe(thread.id, { type: "turn-started", at: now });
           }
           if (event.type === "turn.started" && acceptedTurnStartedSourcePlan !== null) {
             yield* markSourceProposedPlanImplemented(
@@ -2442,6 +2449,7 @@ const make = Effect.gen(function* () {
           : activeTurnId === null || eventTurnId === undefined || sameId(activeTurnId, eventTurnId);
 
         if (shouldApplyRuntimeError) {
+          threadLiveStep.clearThread(thread.id);
           yield* orchestrationEngine.dispatch({
             type: "thread.session.set",
             commandId: yield* providerCommandId(event, "runtime-error-session-set"),
@@ -2631,7 +2639,13 @@ const make = Effect.gen(function* () {
       ).pipe(Effect.asVoid);
     });
 
-  const processDomainEvent = (_event: TurnStartRequestedDomainEvent) => Effect.void;
+  // A thread deleted or archived mid-turn: its runtime events are dropped from
+  // here on (no runtime context resolves for it), so nothing would ever clear
+  // what it was on.
+  const processDomainEvent = (event: TurnStartRequestedDomainEvent | ThreadLeftDomainEvent) =>
+    event.type === "thread.turn-start-requested"
+      ? Effect.void
+      : Effect.sync(() => threadLiveStep.clearThread(event.payload.threadId));
 
   // Records a mid-turn placeholder checkpoint for a provider diff. Runs on the
   // lifecycle worker, after repository detection, so the running-turn check
@@ -2730,7 +2744,11 @@ const make = Effect.gen(function* () {
       );
       yield* forkParked(
         Stream.runForEach(orchestrationEngine.streamDomainEvents, (event) => {
-          if (event.type !== "thread.turn-start-requested") {
+          if (
+            event.type !== "thread.turn-start-requested" &&
+            event.type !== "thread.deleted" &&
+            event.type !== "thread.archived"
+          ) {
             return Effect.void;
           }
           return worker.enqueue({ source: "domain", event });

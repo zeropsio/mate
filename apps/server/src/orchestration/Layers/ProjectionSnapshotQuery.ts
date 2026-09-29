@@ -453,8 +453,11 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
   const threadBackgroundLiveness = yield* ThreadBackgroundLivenessService;
   const threadPlanProgress = yield* ThreadPlanProgressService;
   const threadLiveStep = yield* ThreadLiveStepService;
-  // What a running turn is on this moment, on the shell only while there is one.
-  const liveStepField = (threadId: ThreadId) => {
+  // What a running turn is on this moment, on the shell only while the shell's
+  // own session says a turn runs: whatever ended it without a word to the
+  // relay (a session stopped from here, an error) cannot leave a step behind.
+  const liveStepField = (threadId: ThreadId, session: OrchestrationSession | null) => {
+    if (session?.status !== "running" || session.activeTurnId === null) return {};
     const liveStep = threadLiveStep.getThreadLiveStep(threadId);
     return liveStep === null ? {} : { liveStep };
   };
@@ -2586,7 +2589,7 @@ pending_approval_requests AS (
                         row.threadId,
                       ),
                       planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
-                      ...liveStepField(row.threadId),
+                      ...liveStepField(row.threadId, sessionByThread.get(row.threadId) ?? null),
                       usagePause: mapUsagePause(row),
                       ...(row.crew === null ? {} : { crew: row.crew }),
                     } satisfies OrchestrationThreadShell)
@@ -2756,7 +2759,6 @@ pending_approval_requests AS (
                   row.threadId,
                 ),
                 planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
-                ...liveStepField(row.threadId),
                 usagePause: mapUsagePause(row),
                 ...(row.crew === null ? {} : { crew: row.crew }),
               })),
@@ -3018,6 +3020,7 @@ pending_approval_requests AS (
       if (Option.isNone(threadRow)) {
         return Option.none<OrchestrationThreadShell>();
       }
+      const session = Option.isSome(sessionRow) ? mapSessionRow(sessionRow.value) : null;
       const pendingQuestions =
         threadRow.value.pendingUserInputCount > 0
           ? questionsByThread(
@@ -3059,7 +3062,7 @@ pending_approval_requests AS (
         autoSettleDisabledAt: threadRow.value.autoSettleDisabledAt ?? null,
         titleRegeneration: mapTitleRegeneration(threadRow.value),
         titleState: threadRow.value.titleState,
-        session: Option.isSome(sessionRow) ? mapSessionRow(sessionRow.value) : null,
+        session,
         latestUserMessageAt: threadRow.value.latestUserMessageAt,
         ...(threadRow.value.latestMessagePreview === null
           ? {}
@@ -3075,7 +3078,7 @@ pending_approval_requests AS (
           threadRow.value.threadId,
         ),
         planProgress: threadPlanProgress.getThreadPlanProgress(threadRow.value.threadId),
-        ...liveStepField(threadRow.value.threadId),
+        ...liveStepField(threadRow.value.threadId, session),
         usagePause: mapUsagePause(threadRow.value),
         ...(threadRow.value.crew === null ? {} : { crew: threadRow.value.crew }),
       } satisfies OrchestrationThreadShell);

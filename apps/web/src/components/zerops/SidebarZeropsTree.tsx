@@ -1,31 +1,33 @@
 /**
- * The left menu's projects, each drawn in the one order `groupFlow` draws
- * every surface in: the Mates and what each has waiting to land, then the
- * stops the code reaches — each stage, then production — in the chip on the
- * project's heading.
+ * The left menu's projects: each a heading, then its Mates, each with its
+ * crew and its open changes.
  *
- * A project reads top to bottom the way its code moves. First its Mates —
- * the menu's own kind of row, lit on hover and when it is the one open, and
- * a tall one, the way a messenger lists people: the face in its colour
- * wearing the conversation's state, the name, when the Mate last did
- * something at the right edge, and under it what the Mate is on or was last
- * on. The state is the face's to show; no word repeats it. Under each Mate,
- * its open pull requests: one row each, the number and the title, the checks
- * as a dot, and *Merge* where Gitea allows it — folded behind a count once
- * there are more than a handful (`pullRequestsFolded`). Then the pull
- * requests that are nobody's Mate's, a person's own branch.
+ * A project's heading is its name and its production chip — which release
+ * production serves, whether it is healthy, what waits to go out — and,
+ * while the project is folded, the faces of its Mates that are busy.
+ * Folding or unfolding it never moves the heading.
  *
- * Production and its stages are no rows (M1). They are the chip at the
- * heading's end (`SidebarProductionChip`, M2): production's state and version,
- * and how many changes wait for it; its menu says what broke, lists the
- * stages and the public routes, and offers the fix. `main` is no row either —
- * what waits for production is what `main` has and production does not run.
+ * Under it, its Mates: the menu's own kind of row, the way a messenger lists
+ * people. The face in its colour wears the conversation's state on the name's
+ * line; the owner's picture comes before the name; at the right edge, when
+ * the Mate last did something, or the run's clock; under the name, what the
+ * person last asked, then the Mate's last words — or the step it is on, the
+ * question it waits on, the error it stopped on (`mateRowView`). No word says
+ * the state: the face, a dot and the words do. One band, the list's own,
+ * lights the open Mate and slides to the next one opened
+ * (`SidebarSelectedBand`).
  *
- * A project folds to its heading, the usual sidebar gesture, and the menu
- * remembers it; opening one of its Mates' conversations opens it again. The
- * heading stands still while its rows fold away or unfold under it (M9), and
- * folded it shows the faces of those in it who need you, work, or finished
- * unseen (M15).
+ * A Mate's crew stands one line under it (`SidebarCrewLine`), then its open
+ * pull requests, a line each — the mark, `#N title` and *Review*, the one
+ * door to merging — folded behind a count past three (`pullRequestsFolded`).
+ * After the Mates come those being created, the ones untouched for a week
+ * folded behind their count, and the pull requests that are nobody's Mate's,
+ * a person's own branch. The list ends on *New project*.
+ *
+ * A project collapses to its heading, the usual sidebar gesture, and the menu
+ * remembers it; opening one of its Mates' conversations opens it again. A
+ * reload paints what the menu last drew (`menuMemory.ts`) — its rows, changes,
+ * chips and crews — so nothing it paints is taken back when the reads answer.
  *
  * Membership is `hasMate` — the project declares a Mate or a container backs
  * one, and never stage or production — not the live connection, so a
@@ -36,7 +38,7 @@
  * shared. Which pull requests are a Mate's to answer for, and what the
  * production chip says, are read from `groupFlow` — the same derivation the
  * projects page draws from — so a recipe change never counts as a Mate's own
- * work here, and the chip never says of production what the page would not.
+ * work here, and the chip never says what the page would not.
  *
  * Everything else about the account lives on the projects screen. This is
  * where you work; that is where you manage.
@@ -255,9 +257,9 @@ const NO_BIRTHS: ReadonlyArray<ZeropsPlacedBirth> = [];
 
 /**
  * One project's flow, as the menu needs it: the open pull requests, each
- * declared environment's row by its Zerops project, whether the production
- * has something to release, and the two verbs — both run as the person, in
- * Gitea, and the caller re-reads once they settle.
+ * declared environment's row by its Zerops project, and what production runs
+ * and has waiting — read as the person, in Gitea. Nothing here merges or
+ * releases: that is the review's (R1).
  */
 export interface SidebarProjectFlow {
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
@@ -352,19 +354,20 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly getActivity?: (candidate: T) => ZeropsAgentActivity | undefined;
   /**
    * Whose this Mate is — the person its project names as `OWNER`, once the
-   * org's member list has been read. Absent, the face goes without a badge.
+   * org's member list has been read. Absent, the mark before the name is a
+   * plain disc, so the name still starts where every other does.
    */
   readonly getOwner?: ((candidate: T) => ZeropsMateOwner | undefined) | undefined;
   /**
    * The project's flow, when the account has read it (`projectFlowContext`).
-   * Absent — signed out of Gitea, nothing read yet — the timeline keeps its
-   * shape and simply carries no pull request, no dot and no verb.
+   * Absent — signed out of Gitea, nothing read yet — the menu keeps its
+   * shape and simply carries none of what the flow says: no change row.
    */
   readonly getFlow?: ((groupId: string) => SidebarProjectFlow | undefined) | undefined;
   /**
    * What this browser remembers the menu drawing (`menuMemory.ts`), for what
-   * is not read yet: a project's change rows until Gitea answers, drawn
-   * without their verbs, and what a stop runs until its line settles.
+   * is not read yet: a project's change rows until Gitea answers, untinted,
+   * and its production chip as it last stood.
    * Absent, the menu draws only what it has read.
    */
   readonly remembered?: SidebarRemembered | undefined;
@@ -846,9 +849,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   };
 
   /**
-   * A project as a timeline: its name, its Mates with what each has waiting,
-   * the pull requests that are nobody's Mate's, then its other environments.
-   * Nothing when nobody lives in it.
+   * A project: its heading, then its Mates, each with its crew and what it
+   * has waiting, those being created, the quiet ones folded behind their
+   * count, and the pull requests that are nobody's Mate's. Nothing when
+   * nobody lives in it.
    */
   const section = (
     id: string,
@@ -1074,8 +1078,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // projects page, and is never one more thing a Mate's row here answers
     // for.
     // The change rows: Gitea's once it answered, and until then the ones this
-    // browser remembers drawing, without their verbs — so a reload grows no
-    // row when the answer comes (`menuMemory.ts`).
+    // browser remembers drawing, untinted — so a reload grows no row when the
+    // answer comes (`menuMemory.ts`).
     const changesKnown = flow !== undefined && flow.changesKnown !== false;
     const rememberedPulls = changesKnown ? undefined : remembered?.changes(id);
     const changeRows: ChangeRows | undefined =
@@ -1116,10 +1120,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       changesDrawn: changeRows !== undefined,
       stops: jumpStopsHere,
     });
-    // Folded, a project is its heading and nothing else — no summary and no
-    // small badges: a second, smaller design of the same rows is what the
-    // owner turned down (2026-09-25). The heading's faces still say who in it
-    // needs you, works or finished unseen, and its chip what production does.
+    // Collapsed, a project is its heading and nothing else — its production
+    // chip and its busy Mates' faces on it, never a second, smaller design of
+    // the same rows, which the owner turned down (2026-09-25).
     const fold = folds.get(id);
     // A fragment either way, so the heading keeps its node — and the focus of
     // the press that folded it — whether its rows are drawn or not.
@@ -1131,8 +1134,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       ...(quiet.length === 0 ? [] : [{ kind: "fold" as const, count: quiet.length }]),
       ...(quietOpen ? quiet.map(({ item }) => ({ kind: "mate" as const, item })) : []),
     ];
-    // Each block — a Mate with its changes, one being created, the quiet
-    // fold, the changes nobody's Mate owns — stands apart from the
+    // Each block — a Mate with its crew and its changes, one being created,
+    // the quiet fold, the changes nobody's Mate owns — stands apart from the
     // next by air alone: 10 px, which with a row's own 10 px above and below
     // its words puts 30 px between one Mate's words and the next's, whatever
     // hangs under the first (M16). The heading stands on the first.
@@ -1183,10 +1186,14 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 timestampFormat={timestampFormat}
                 tint={tints.get(item.project.id) ?? "slate"}
               />
-              {/* Its crew, one line right under it, before its changes. */}
-              {item.group === "connected" && item.environmentId !== undefined ? (
-                <SidebarCrewLine environmentId={item.environmentId} read={getCrew?.(item)} />
-              ) : null}
+              {/* Its crew, one line right under it, before its changes — read
+                  once its Mate is connected, and until then where this
+                  browser last saw it, so a reload moves no row. */}
+              <SidebarCrewLine
+                environmentId={item.group === "connected" ? item.environmentId : undefined}
+                projectId={item.project.id}
+                read={getCrew?.(item)}
+              />
               {pulls.length === 0 || changeRows === undefined ? null : (
                 <PullRequestList
                   groupId={id}
@@ -1209,10 +1216,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             {
               key: "others",
               node: (
-                // Nobody's Mate's: a person's own branch. Indented under the last
-                // Mate it read as that Mate's work, which is a lie the row's own
-                // `· ada` could not undo at 256px, where it is truncated away.
-                // The dedent is the whole signal.
+                // Nobody's Mate's: a person's own branch, a block of its own
+                // after the Mates. Hung under the last Mate it read as that
+                // Mate's work, which the row's own `· ada` could not undo at
+                // 256 px, where it is truncated away.
                 <ul className="flex flex-col" data-zerops-surface="sidebar-other-pull-requests">
                   {grouped.others.map((pull) => (
                     <PullRequestRow
@@ -2480,22 +2487,26 @@ function MateReply({
   if (reply.kind === "pending" && !drafting) return <MateReplyPending />;
   if (reply.kind === "live") {
     return (
+      // The line rises as a new step arrives, and the sweep runs over its
+      // words inside it: two animations, two elements — on one, the sweep's
+      // took the rise's place and a new step never rose.
       <span
         className={cn(
           "truncate text-line leading-4.5 text-muted-foreground",
           wordsChanged && "animate-words-in motion-reduce:animate-none",
         )}
-        data-run-shimmer=""
         data-zerops-surface="sidebar-mate-live-step"
         key={`live:${reply.words}`}
       >
-        {reply.words}
-        {reply.code === undefined ? null : (
-          <>
-            {" · "}
-            <span className="font-mono">{reply.code}</span>
-          </>
-        )}
+        <span data-run-shimmer="">
+          {reply.words}
+          {reply.code === undefined ? null : (
+            <>
+              {" · "}
+              <span className="font-mono">{reply.code}</span>
+            </>
+          )}
+        </span>
       </span>
     );
   }

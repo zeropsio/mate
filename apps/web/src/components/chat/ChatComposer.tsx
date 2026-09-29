@@ -1500,7 +1500,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     modelOptions: composerModelOptions?.[selectedInstanceId],
     planModeEnabled: settings.planModeEnabled,
   });
-  const accessInToolbar = showsAccessControl(runtimeMode);
+  // The access lives in the one control's menu, which opens only where the
+  // control stands and is enabled: with the provider's setup in its place, or
+  // while the catalog is read, the access keeps a control of its own.
+  const accessInToolbar = showsAccessControl(runtimeMode, {
+    modelMenuOpens: !(showProviderUnavailable && !zeropsSignInRequired) && !providerCatalogPending,
+  });
   const pendingPrimaryAction = useMemo(
     () =>
       activePendingProgress

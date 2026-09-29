@@ -10,8 +10,12 @@
  * thread (`ws.ts`, coalesced over 50 ms), so a step reaches subscribers on the
  * very event that changed it: no push of its own and no timer, and the step
  * changes only when a step does — a command's streaming output never moves
- * it. Cleared when the turn settles or the session dies; no persistence, no
- * migration (same pattern as ThreadPlanProgressService).
+ * it. Cleared once no turn is active — it settled, the session errored,
+ * stopped, went idle or exited — on a runtime error, and when the thread is
+ * deleted or archived (its events are not followed after); the shell carries
+ * it only while its own session runs a turn, so a turn ended by any other way
+ * leaves nothing behind. No persistence, no migration (same pattern as
+ * ThreadPlanProgressService).
  *
  * The step follows the card's rule for its now line
  * (`MessagesTimeline.logic.ts` `liveActivity`): the newest call made since the
