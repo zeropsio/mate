@@ -8,10 +8,12 @@
  * other Mate's is deterministic from the name, so a Mate keeps its colour
  * across reloads and across the places it appears: the left menu and the
  * projects screen both derive from the same account-wide list and so agree.
- * A derived name walks past the picked tints, and two names that hash to one
- * tint are told apart by walking to the next free one, in name order so the
- * result does not depend on the order the API listed the projects in. Past
- * eight Mates the tints repeat, which is what a palette of eight means.
+ * The derived names share their tints among themselves alone: a pick never
+ * recolours anybody else, and a Mate that picked a tint another wears is told
+ * apart by its shape. Two derived names that hash to one tint are told apart
+ * by walking to the next free one, in name order so the result does not depend
+ * on the order the API listed the projects in. Past eight Mates the tints
+ * repeat, which is what a palette of eight means.
  *
  * @module mateTints
  */
