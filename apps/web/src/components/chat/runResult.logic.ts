@@ -317,6 +317,8 @@ function serviceRow(
       group: "broken",
       mark: "alert",
       tone: "failed",
+      // It leads with its fix: what it would open is down.
+      url: null,
       words: word,
       sub: since === null ? null : { kind: "since", at: since },
       pictures: NO_PICTURES,
@@ -339,6 +341,7 @@ function serviceRow(
       group: "broken",
       mark: "alert",
       tone: "failed",
+      url: null,
       words: service.word,
       sub: textSub(service.failure?.reason ?? null),
       pictures: NO_PICTURES,
