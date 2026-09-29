@@ -4,8 +4,10 @@
  *
  * The broker is scripted: it mints person tokens, answers 502 while Gitea is still setting up,
  * 403 to a person who is not a member, 424 in Gitea's words, or nothing at all while it is
- * unreachable. Gitea answers 401 to a token revoked mid-read, and plays a pull request's
- * `mergeable` sequence. Every request is logged with the bearer it carried.
+ * unreachable. It reads a change's picture for the person the way the real one does: the bearer
+ * forwarded to Gitea's `/attachments/{uuid}`, Gitea's answer relayed. Gitea answers 401 to a token
+ * revoked mid-read, serves the pictures it is given, and plays a pull request's `mergeable`
+ * sequence. Every request is logged with the bearer it carried.
  */
 
 const GITEA_API_PREFIX = "/api/v1";
@@ -61,6 +63,8 @@ export interface FakeGitea extends FakeOrigin {
     number: number,
     sequence: ReadonlyArray<boolean | null>,
   ) => void;
+  /** An attachment Gitea serves at `/attachments/{uuid}` to every live token. */
+  readonly putPicture: (uuid: string, bytes: Uint8Array, type: string) => void;
   readonly requests: () => ReadonlyArray<FakeGiteaRequest>;
 }
 
@@ -69,6 +73,7 @@ export function makeFakeGitea(origin: string): FakeGitea {
   const revoked = new Set<string>();
   const tags = new Map<string, ReadonlyArray<string>>();
   const mergeable = new Map<string, Array<boolean | null>>();
+  const pictures = new Map<string, { readonly bytes: Uint8Array; readonly type: string }>();
   const log: FakeGiteaRequest[] = [];
   let issued = 0;
 
@@ -82,6 +87,15 @@ export function makeFakeGitea(origin: string): FakeGitea {
     log.push({ route, bearer });
     if (bearer === null || !tokens.has(bearer) || revoked.has(bearer)) {
       return json(401, { message: "token does not exist" });
+    }
+    const pictureRoute = /^GET \/attachments\/([0-9a-f-]+)$/u.exec(route);
+    if (pictureRoute !== null) {
+      const picture = pictures.get(pictureRoute[1] ?? "");
+      if (picture === undefined) return json(404, { message: "not found" });
+      return new Response(picture.bytes.slice(), {
+        status: 200,
+        headers: { "content-type": picture.type },
+      });
     }
     const tagsRoute = /^GET \/repos\/([^/]+)\/([^/]+)\/tags$/u.exec(route);
     if (tagsRoute !== null) {
@@ -123,6 +137,9 @@ export function makeFakeGitea(origin: string): FakeGitea {
     },
     scriptMergeable: (owner, repo, number, sequence) => {
       mergeable.set(`${owner}/${repo}#${String(number)}`, [...sequence]);
+    },
+    putPicture: (uuid, bytes, type) => {
+      pictures.set(uuid, { bytes: bytes.slice(), type });
     },
     requests: () => [...log],
   };
@@ -175,6 +192,26 @@ export function makeFakeBroker(input: {
     const bearer = bearerOf(init);
     const route = `${init?.method ?? "GET"} ${url.pathname}`;
     log.push({ route, bearer, mode: init?.mode ?? null });
+    const pictureRoute = /^GET \/person\/attachments\/([0-9a-f-]+)$/u.exec(route);
+    if (pictureRoute !== null) {
+      if (bearer === null) return json(401, { error: "gitea_token_required", message: "no token" });
+      const answer = await input.gitea.fetch(
+        `${input.gitea.origin}/attachments/${pictureRoute[1] ?? ""}`,
+        { headers: { authorization: `Bearer ${bearer}` } },
+      );
+      if (answer.status === 401) {
+        return json(401, {
+          error: "gitea_token_refused",
+          message: "Gitea did not accept that token",
+        });
+      }
+      if (!answer.ok)
+        return json(answer.status, { error: "not_found", message: "no such attachment" });
+      return new Response(await answer.arrayBuffer(), {
+        status: 200,
+        headers: { "content-type": answer.headers.get("content-type") ?? "image/png" },
+      });
+    }
     if (route !== "POST /person/token") return json(404, { error: "not_found" });
     if (bearer === null) return json(401, { error: "unauthorized", message: "no throwaway" });
     switch (mode) {
