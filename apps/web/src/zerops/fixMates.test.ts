@@ -10,7 +10,12 @@ const GROUP = "group-snap";
 function mate(
   id: string,
   bot: string,
-  overrides: { group?: string; environment?: string; missingContainer?: true } = {},
+  overrides: {
+    group?: string;
+    environment?: string;
+    missingContainer?: true;
+    connected?: false;
+  } = {},
 ): ZeropsCandidate {
   return {
     key: `candidate-${id}`,
@@ -19,7 +24,11 @@ function mate(
       name: `${bot.toLowerCase()}-project`,
       tagList: ["mate", `mate:g:${overrides.group ?? GROUP}`, `mate:bot:${bot}`],
     },
-    group: overrides.missingContainer ? "unavailable" : "connected",
+    group: overrides.missingContainer
+      ? "unavailable"
+      : overrides.connected === false
+        ? "ready"
+        : "connected",
     ...(overrides.missingContainer ? { missingContainer: true as const } : {}),
     ...(overrides.environment === undefined
       ? {}
@@ -61,6 +70,19 @@ describe("fixMatesOf", () => {
       names: ["Nova"],
     },
     {
+      // Asking one the app is not connected to would land on the projects
+      // screen, and the words written for it would be lost.
+      name: "only a Mate the app is connected to, with its conversation's environment",
+      candidates: [
+        mate("p-nova", "Nova", { environment: "env-nova" }),
+        mate("p-kai", "Kai", { connected: false }),
+        mate("p-lena", "Lena"),
+      ],
+      mine: {},
+      visits: {},
+      names: ["Nova"],
+    },
+    {
       name: "a colleague's conversation: none of the person's own to offer",
       candidates: [mate("p-lena", "Lena", { environment: "env-lena" })],
       mine: { "p-lena": false },
@@ -82,7 +104,10 @@ describe("fixMatesOf", () => {
     const options = fixMatesOf({
       projectId: "p-nova",
       groupId: undefined,
-      candidates: [mate("p-nova", "Nova"), mate("p-kai", "Kai")],
+      candidates: [
+        mate("p-nova", "Nova", { environment: "env-nova" }),
+        mate("p-kai", "Kai", { environment: "env-kai" }),
+      ],
       isMine: () => true,
       visitedAt: () => undefined,
     });

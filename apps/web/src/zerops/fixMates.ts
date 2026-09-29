@@ -3,7 +3,9 @@
  * the project the problem is in — a Mate nobody can say is someone else's
  * counts as theirs, as the menu's *Mine* keeps it — the one they used last
  * first. Nobody writes to a colleague's Mate, so a colleague's conversation
- * with none of the person's own Mates in its project offers nothing.
+ * with none of the person's own Mates in its project offers nothing. Only a
+ * Mate the app is connected to is offered: the words go into its
+ * conversation's composer, and one not connected has none to take them.
  */
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { botDisplayName, readZeropsGroupTags } from "@t3tools/client-runtime/zerops";
@@ -39,6 +41,8 @@ export function fixMatesOf(input: {
     const { project } = candidate;
     // A project with no Mate container of its own is an environment, not a Mate.
     if (candidate.missingContainer === true || candidate.creationFailed !== undefined) continue;
+    // Not connected: there is no conversation here to write the problem into.
+    if (candidate.group !== "connected" || candidate.environmentId === undefined) continue;
     const tags = readZeropsGroupTags(project.tagList);
     const inProject =
       project.id === input.projectId ||
