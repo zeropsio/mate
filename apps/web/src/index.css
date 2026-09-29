@@ -2974,4 +2974,23 @@ code {
 
 /* ==== Pass 16 · motion across switches ==== */
 
+/* A conversation put back where the person left it is out of sight until it
+   stands there: the list places a row from estimates first, and the frame
+   after corrected it by 96 px. Out of a switch, it then eases in as the list
+   shows a conversation (140 ms); hiding is instant. */
+[data-timeline-thread] {
+  transition: opacity 140ms ease-out;
+}
+
+[data-timeline-thread][data-timeline-placing] {
+  opacity: 0;
+  transition-duration: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-timeline-thread] {
+    transition: none;
+  }
+}
+
 /* ==== end of motion across switches ==== */

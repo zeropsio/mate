@@ -84,9 +84,12 @@ import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImage
 import { useAssetUrls } from "../../assets/assetUrls";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import {
+  describeTimelineAnchor,
   keepTimelineEndVisibleAfterOverlayGrowth,
+  readTimelineFirstLineInset,
   readTimelinePosition,
   rememberTimelinePosition,
+  resolveTimelineRestoreTarget,
   resolveTimelineScrollAnchor,
   shouldRepinTimelineEndAfterRowResize,
 } from "./timelineScrollAnchoring";
@@ -530,14 +533,17 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [rows],
   );
   const minimapItems = useMemo(() => deriveTimelineMinimapItems(rows), [rows]);
-  const restoreRowIndex =
-    restoringReadingPosition && rememberedPosition
-      ? rows.findIndex((row) => row.id === rememberedPosition.rowId)
-      : -1;
-  const restoringAlwaysRender = useMemo(
-    () => (restoreRowIndex >= 0 ? { indices: [restoreRowIndex] } : undefined),
-    [restoreRowIndex],
-  );
+  // The rows a reading position may land on stay drawn while it is put
+  // back: its own, the run's line and the row above it.
+  const restoringAlwaysRender = useMemo(() => {
+    if (!restoringReadingPosition || !rememberedPosition) return undefined;
+    const { rowId, cardTopId, previousRowId } = rememberedPosition;
+    const indices = [rowId, cardTopId, previousRowId].flatMap((id) => {
+      const index = id === null ? -1 : rows.findIndex((row) => row.id === id);
+      return index >= 0 ? [index] : [];
+    });
+    return indices.length > 0 ? { indices } : undefined;
+  }, [rememberedPosition, restoringReadingPosition, rows]);
   useLayoutEffect(() => {
     const position = rememberedPosition;
     if (!restoringReadingPosition || !position || rows.length === 0) return;
@@ -572,59 +578,84 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     viewport?.addEventListener("touchmove", cancelForNavigation, { passive: true });
     viewport?.addEventListener("pointerdown", cancelForNavigation, { passive: true });
     viewport?.ownerDocument.addEventListener("keydown", onScrollKey);
-    const index = rows.findIndex((row) => row.id === position.rowId);
     onManualNavigation();
     if (cancelPositionRestoreRef) cancelPositionRestoreRef.current = cancelRestoration;
-    const scrolling =
-      index >= 0
-        ? list.scrollToIndex({
-            index,
-            animated: false,
-            viewPosition: 0,
-            viewOffset: -position.offsetWithinRow,
-          })
-        : list.scrollToOffset({ offset: position.scrollOffset, animated: false });
-    void Promise.resolve(scrolling).then(() => {
+    const rowIds = rows.map((row) => row.id);
+    const rowElement = (rowId: string) => {
+      const state = list.getState();
+      const index = state.indexByKey(rowId);
+      return index === undefined ? undefined : (state.elementAtIndex(index) ?? undefined);
+    };
+    // Where the position lands is read again each frame from the rows as
+    // measured: a run that folded since the person left shows it only once
+    // its row is measured. Index scrolling starts from estimates, so the
+    // place is held until the DOM agrees for two layout frames; the list
+    // stays out of sight meanwhile (`data-timeline-placing`).
+    const firstLine = viewport === null ? 0 : readTimelineFirstLineInset(viewport);
+    let aimedAt: string | null = null;
+    let stableFrames = 0;
+    const settleAfter = (scrolling: unknown) => {
+      void Promise.resolve(scrolling).then(() => {
+        if (!cancelled) settleFrame = requestAnimationFrame(settle);
+      });
+    };
+    const settle = () => {
       if (cancelled) return;
-      if (index < 0) {
-        setPositionRestored(true);
+      const target = resolveTimelineRestoreTarget({
+        position,
+        rowIds,
+        heightOf: (rowId) => rowElement(rowId)?.getBoundingClientRect().height,
+      });
+      if (target.kind === "end") {
+        void Promise.resolve(list.scrollToEnd({ animated: false })).then(() => {
+          if (!cancelled) setPositionRestored(true);
+        });
         return;
       }
-      // Index scrolling starts from estimates. Keep the saved row mounted
-      // until its measured position and the DOM agree for two layout frames.
-      let stableFrames = 0;
-      const reconcile = () => {
-        if (cancelled) return;
-        const state = list.getState();
-        const rowIndex = state.indexByKey(position.rowId);
-        const row = rowIndex === undefined ? undefined : state.elementAtIndex(rowIndex);
-        const element = list.getScrollableNode();
-        if (!row || !element) return;
-        const offset = Math.max(
-          0,
-          Math.min(
-            element.scrollTop +
-              row.getBoundingClientRect().top -
-              element.getBoundingClientRect().top +
-              position.offsetWithinRow,
-            element.scrollHeight - element.clientHeight,
-          ),
+      const row = rowElement(target.rowId);
+      // A line stands where a conversation's first line sits: a row's top,
+      // or its foot once it is measured.
+      const offsetWithinRow =
+        target.kind === "row"
+          ? target.offsetWithinRow
+          : (target.edge === "foot" ? (row?.getBoundingClientRect().height ?? 0) : 0) - firstLine;
+      const aim = `${target.rowId}@${offsetWithinRow}`;
+      const element = list.getScrollableNode();
+      if (aim !== aimedAt || !row || !element) {
+        aimedAt = aim;
+        stableFrames = 0;
+        settleAfter(
+          list.scrollToIndex({
+            index: rowIds.indexOf(target.rowId),
+            animated: false,
+            viewPosition: 0,
+            viewOffset: -offsetWithinRow,
+          }),
         );
-        if (Math.abs(element.scrollTop - offset) > 1) {
-          stableFrames = 0;
-          void list.scrollToOffset({ offset, animated: false }).then(() => {
-            if (!cancelled) settleFrame = requestAnimationFrame(reconcile);
-          });
-          return;
-        }
-        if (++stableFrames >= 2) {
-          setPositionRestored(true);
-        } else {
-          settleFrame = requestAnimationFrame(reconcile);
-        }
-      };
-      settleFrame = requestAnimationFrame(reconcile);
-    });
+        return;
+      }
+      const offset = Math.max(
+        0,
+        Math.min(
+          element.scrollTop +
+            row.getBoundingClientRect().top -
+            element.getBoundingClientRect().top +
+            offsetWithinRow,
+          element.scrollHeight - element.clientHeight,
+        ),
+      );
+      if (Math.abs(element.scrollTop - offset) > 1) {
+        stableFrames = 0;
+        settleAfter(list.scrollToOffset({ offset, animated: false }));
+        return;
+      }
+      if (++stableFrames >= 2) {
+        setPositionRestored(true);
+      } else {
+        settleFrame = requestAnimationFrame(settle);
+      }
+    };
+    settle();
     return () => {
       cancelled = true;
       if (cancelPositionRestoreRef?.current === cancelRestoration) {
@@ -702,25 +733,43 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [listRef],
   );
 
+  // Where the person is, kept as they move, by row: the row at the reading
+  // line, how far into it, how tall it was, the run's line and the row above
+  // it — what finds the place again once rows have changed (a watched run
+  // folds when the person leaves).
+  const rememberPosition = useCallback((): boolean | undefined => {
+    const state = listRef.current?.getState?.();
+    if (restoringReadingPosition || state === undefined || state.data !== rows) return undefined;
+    const isAtEnd = resolveTimelineIsAtEnd(state, contentInsetEndAdjustment);
+    const anchor = state.data.length ? resolveTimelineScrollAnchor(state) : undefined;
+    const row = anchor === undefined ? undefined : state.elementAtIndex(anchor.index);
+    const element = listRef.current?.getScrollableNode();
+    if (anchor && row && element && isAtEnd !== undefined) {
+      const box = row.getBoundingClientRect();
+      rememberTimelinePosition(routeThreadKey, {
+        rowId: anchor.rowId,
+        // DOM geometry includes the header and the virtualizer's layout adjustment.
+        offsetWithinRow: element.getBoundingClientRect().top - box.top,
+        rowHeight: box.height,
+        ...describeTimelineAnchor(rows, anchor.index),
+        atEnd: isAtEnd,
+      });
+    }
+    return isAtEnd;
+  }, [contentInsetEndAdjustment, listRef, restoringReadingPosition, routeThreadKey, rows]);
+  // Once more as the conversation goes, while it still stands on the page:
+  // what changed since the last scroll (a run opened or closed in place) is
+  // where the person left it.
+  const rememberPositionRef = useRef(rememberPosition);
+  useLayoutEffect(() => {
+    rememberPositionRef.current = rememberPosition;
+  }, [rememberPosition]);
+  useLayoutEffect(() => () => void rememberPositionRef.current(), []);
+
   const handleScroll = useCallback(() => {
     const state = listRef.current?.getState?.();
     if (restoringReadingPosition || state?.data !== rows) return;
-    const isAtEnd = resolveTimelineIsAtEnd(state, contentInsetEndAdjustment);
-    const position = state.data.length ? resolveTimelineScrollAnchor(state) : undefined;
-    if (position && isAtEnd !== undefined) {
-      const index = state.indexByKey(position.rowId);
-      const row = index === undefined ? undefined : state.elementAtIndex(index);
-      const element = listRef.current?.getScrollableNode();
-      if (row && element) {
-        rememberTimelinePosition(routeThreadKey, {
-          ...position,
-          // DOM geometry includes the header and the virtualizer's layout adjustment.
-          offsetWithinRow: element.getBoundingClientRect().top - row.getBoundingClientRect().top,
-          scrollOffset: element.scrollTop,
-          atEnd: isAtEnd,
-        });
-      }
-    }
+    const isAtEnd = rememberPosition();
     if (isAtEnd !== undefined) {
       onIsAtEndChange(isAtEnd);
     }
@@ -759,13 +808,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       current === nextCurrentIndex ? current : nextCurrentIndex,
     );
   }, [
-    contentInsetEndAdjustment,
     listRef,
     minimapItems,
     minimapStripMap,
     onIsAtEndChange,
+    rememberPosition,
     restoringReadingPosition,
-    routeThreadKey,
     rows,
   ]);
 
@@ -970,7 +1018,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     <TimelineRowCtx value={sharedState}>
       <TimelineRowActivityCtx value={activityState}>
         <TimelineWorkingCtx value={working}>
-          <div ref={setTimelineViewportElement} className="relative h-full min-h-0">
+          <div
+            ref={setTimelineViewportElement}
+            className="relative h-full min-h-0"
+            data-timeline-placing={restoringReadingPosition ? "" : undefined}
+            data-timeline-thread={routeThreadKey}
+          >
             <LegendList<MessagesTimelineRow>
               ref={listRef}
               data={rows}
