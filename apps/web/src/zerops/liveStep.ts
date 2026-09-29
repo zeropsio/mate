@@ -21,10 +21,7 @@ import {
   type ThreadLiveCall,
   type ThreadLiveStep,
 } from "@t3tools/contracts";
-import {
-  deriveZeropsThreadModel,
-  type ZeropsOperation,
-} from "@t3tools/client-runtime/zerops/model";
+import { deriveZeropsThreadModel } from "@t3tools/client-runtime/zerops/model";
 import { maskSecrets } from "@t3tools/shared/messagePreview";
 
 import { isActivityWork, isQuestionToolCall } from "../components/chat/conversation.logic";

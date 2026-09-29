@@ -3,32 +3,32 @@
  * like a chat, treat it like my messages … different font style / bubble
  * color / special components depending on what kind of call it is").
  *
- * The card is its own scroll, the bars under it, and between them the Mate's
- * status: its face, what it is doing and its clock — the "is typing" line of a
- * chat, never a heading over the card (the owner, 2026-09-28: "it doesn't
- * need to be at the top"). Inside the scroll, everything the Mate said and did
- * stands in the order it happened, in three hands that cannot be mistaken for
- * one another (the owner, 2026-09-28: "command looks exactly like responses,
- * thinking is hugely prominent"):
- * - what it said to the person: the one filled, round bubble, at the prose size;
- * - what it did: an outlined box led by what kind of call it was — a command
- *   is a block of code under what it was for, a read or a search one line
- *   with its names in mono, a deploy its pipeline as a bar;
- * - what it thought: small, faint italics on a hairline, no box — talking to
- *   itself.
+ * The card is a quiet tray with one grid (K1, K11): a 28 px column of marks,
+ * the words one column in, times and actions on one right edge. Its foot is
+ * the now line (K10): the Mate's face, what it is doing this moment in words
+ * — the step itself while it runs — and the run's one clock (K3); once the
+ * run is over, the worked line. Above it, everything the Mate said and did
+ * stands in the order it happened, in five weights that cannot be mistaken
+ * for one another (K14):
+ * - what it said to the person, and what the person said: 14 px bubbles, its
+ *   words in its tint (K13), theirs in their own neutral bubble, a question
+ *   and its answer a pair;
+ * - what it did: compact 13 px rows in a light outline, a run of calls one
+ *   card with hairlines between, a command titled by its words or, with none,
+ *   by the command itself (K4);
+ * - what it thought: the quietest, 13 px faint italics, two lines of it.
  * What went wrong wears a red mark while it is still broken, and turns quiet
- * once a later step undid it — never a pink row; what merely happened (a context
- * condensed, a change landed) a caption between hairlines; where the person's
- * words reached it, a line in their bubble on their side — the words
- * themselves stand on the page above the card.
+ * once a later step undid it — never a pink row (K9); what merely happened (a
+ * context condensed, a change landed) a caption between hairlines.
  *
- * Nothing long prints whole. A command shows four lines of its code and the
- * way to the rest from its first frame; a thought past eight lines scrolls
- * inside itself, its newest words in sight, while it is thought, and folds to
- * its top and "Show more" once it is; the Mate's words stand whole while they
- * are the newest and fold as the person's own messages do once they are out of
- * sight. What a bubble holds besides — what a command printed, a deploy's
- * pipeline, a helper's report — opens inline under it; nothing opens a dialog.
+ * The card has no scroll of its own (K8), and nothing in it is cut without a
+ * way to the rest (D4): a long run's earlier lines fold behind "Show N
+ * earlier", a command at four lines and what it printed at twelve behind
+ * "Show all N lines", a thought behind a click, a long message of the Mate's
+ * behind "Show full message" — each opening in place, under the line the
+ * person clicked, which stays where it is. A run the person comes back to
+ * opens folded (K7): its worked line on top, what it said to them under it,
+ * its thoughts and calls behind "Show work". Nothing opens a dialog.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
@@ -97,7 +97,6 @@ import {
 import { useRunEffortWords } from "./runResultFacts";
 import { StatusBar, type BarTone } from "./ConversationPills";
 import { ElapsedSince } from "./ConversationRows";
-import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
   normalizeCompactToolLabel,
@@ -772,6 +771,18 @@ function ThoughtParagraphs({ messages }: { readonly messages: ReadonlyArray<Chat
   );
 }
 
+/** Values keyed by what they say and how often it came before: stable as a list only grows. */
+function keyedByOccurrence(
+  values: ReadonlyArray<string>,
+): ReadonlyArray<{ readonly key: string; readonly value: string }> {
+  const seen = new Map<string, number>();
+  return values.map((value) => {
+    const occurrence = seen.get(value) ?? 0;
+    seen.set(value, occurrence + 1);
+    return { key: `${value}#${occurrence}`, value };
+  });
+}
+
 /**
  * A question it asked the person with its question tool: its own words, in
  * its tint — the person's answer stands under it, in theirs.
@@ -779,9 +790,9 @@ function ThoughtParagraphs({ messages }: { readonly messages: ReadonlyArray<Chat
 function QuestionBubble({ questions }: { readonly questions: ReadonlyArray<string> }) {
   return (
     <Bubble className={BUBBLE_PAD} kind="question" tone="speech">
-      {questions.map((question, index) => (
-        <p key={`${index}:${question}`} className="whitespace-pre-wrap break-words">
-          {question}
+      {keyedByOccurrence(questions).map(({ key, value }) => (
+        <p key={key} className="whitespace-pre-wrap break-words">
+          {value}
         </p>
       ))}
     </Bubble>
@@ -2120,29 +2131,8 @@ function RunTicker({ status }: { readonly status: RunStatus }) {
     return () => clearInterval(id);
   });
   return (
-    <RunSpan status={status}>
-      <span ref={ref} className="run-now-clock" data-work-line-clock>
-        {read()}
-      </span>
-    </RunSpan>
-  );
-}
-
-/** When a run began and ended, a hover away over its time. */
-function RunSpan({
-  status,
-  children,
-}: {
-  readonly status: RunStatus;
-  readonly children: ReactNode;
-}) {
-  const { timestampFormat } = use(TimelineRowCtx);
-  const span = `${formatChatTimestampTooltip(status.startedAt, timestampFormat)}${
-    status.endedAt ? ` – ${formatDayAwareTimestamp(status.endedAt, timestampFormat)}` : ""
-  }`;
-  return (
-    <span className="min-w-0" title={span}>
-      {children}
+    <span ref={ref} className="run-now-clock" data-work-line-clock>
+      {read()}
     </span>
   );
 }
@@ -2197,10 +2187,10 @@ function StepNowWords({
     return (
       <span className="run-now-verb" data-run-shimmer={sweep}>
         {step.phrase.verb}
-        {step.phrase.targets.map((target, index) => (
-          <Fragment key={`${target}#${index}`}>
-            {index === 0 ? " " : index === step.phrase!.targets.length - 1 ? " and " : ", "}
-            <span className="run-now-mono">{target}</span>
+        {keyedByOccurrence(step.phrase.targets).map(({ key, value }, index, all) => (
+          <Fragment key={key}>
+            {index === 0 ? " " : index === all.length - 1 ? " and " : ", "}
+            <span className="run-now-mono">{value}</span>
           </Fragment>
         ))}
         {step.phrase.more > 0 ? ` and ${step.phrase.more} more` : null}
@@ -2220,7 +2210,7 @@ function StepNowWords({
 }
 
 /** The now line's words, by what the run is doing. */
-function NowWords({ line, status }: { readonly line: NowLineModel; readonly status: RunStatus }) {
+function NowWords({ line }: { readonly line: NowLineModel }) {
   switch (line.kind) {
     case "thinking":
       return (
@@ -2266,9 +2256,7 @@ function NowWords({ line, status }: { readonly line: NowLineModel; readonly stat
     case "worked":
       return (
         <>
-          <RunSpan status={status}>
-            <span className="run-now-worked">{line.words}</span>
-          </RunSpan>
+          <span className="run-now-worked">{line.words}</span>
           {line.effort === null ? null : (
             <span className="run-now-effort">{` · ${line.effort}`}</span>
           )}
@@ -2344,7 +2332,7 @@ function NowLine({
             wordsChanged && "animate-words-in motion-reduce:animate-none",
           )}
         >
-          <NowWords line={line} status={status} />
+          <NowWords line={line} />
         </span>
         {line.kind === "several" ? (
           <ul className="run-now-several">
@@ -2390,13 +2378,15 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   );
   const feedRef = useRef<HTMLDivElement>(null);
   const fromHeightRef = useRef<number | null>(null);
+  // A toggle leaves the height the work stood at: once the new fold is laid
+  // out, the room eases from it to its own.
   useLayoutEffect(() => {
     const from = fromHeightRef.current;
     fromHeightRef.current = null;
     const feed = feedRef.current;
     if (from === null || feed === null) return;
-    return easeFeedHeight(feed, from);
-  }, [fold]);
+    easeFeedHeight(feed, from);
+  });
   const feed = (
     <ChatFeed key={folded ? "kept" : "all"} label={`${ctx.speaker.name}'s work`} lines={lines} />
   );
@@ -2498,19 +2488,18 @@ const FOLD_EASING = "cubic-bezier(0.23, 1, 0.32, 1)";
  * its own: only what is under the line they clicked moves. Reduced motion
  * shows it at once.
  */
-function easeFeedHeight(feed: HTMLElement, from: number): (() => void) | undefined {
+function easeFeedHeight(feed: HTMLElement, from: number): void {
   const to = feed.getBoundingClientRect().height;
   if (Math.abs(to - from) < 1 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    return undefined;
+    return;
   }
-  const animation = feed.animate(
+  feed.animate(
     [
       { height: `${from}px`, overflow: "hidden" },
       { height: `${to}px`, overflow: "hidden" },
     ],
     { duration: FOLD_EASE_MS, easing: FOLD_EASING },
   );
-  return () => animation.cancel();
 }
 
 /** "Show work" on a folded run's line, "Hide work" once it is open: its chevron turns over. */
