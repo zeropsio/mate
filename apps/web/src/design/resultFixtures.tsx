@@ -65,12 +65,57 @@ function phonePage(accent: string, paper: string): string {
   );
 }
 
+/** A tablet's page, 1640 × 2360: a header, a map, a panel under it. */
+function tabletPage(accent: string, paper: string): string {
+  return svgUrl(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="1640" height="2360" viewBox="0 0 1640 2360"><rect width="1640" height="2360" fill="${paper}"/><rect width="1640" height="140" fill="${accent}"/><rect x="80" y="50" width="220" height="40" rx="10" fill="#ffffff" fill-opacity=".9"/><path d="M0 900 C 400 700 700 1000 1100 820 S 1500 700 1640 760 V1300 H0Z" fill="${accent}" fill-opacity=".35"/><circle cx="820" cy="640" r="30" fill="${accent}"/><rect x="80" y="1400" width="1480" height="700" rx="48" fill="#ffffff"/><rect x="140" y="1470" width="700" height="60" rx="14" fill="#1f2430" fill-opacity=".8"/><rect x="140" y="1570" width="1200" height="34" rx="10" fill="#1f2430" fill-opacity=".22"/></svg>`,
+  );
+}
+
+/** A whole page captured top to bottom, 1440 × 5200: a hero, then section after section. */
+function fullPage(accent: string, paper: string): string {
+  return svgUrl(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="5200" viewBox="0 0 1440 5200"><rect width="1440" height="5200" fill="${paper}"/><rect width="1440" height="76" fill="${accent}"/><rect x="64" y="26" width="160" height="24" rx="6" fill="#ffffff" fill-opacity=".85"/><rect x="64" y="160" width="760" height="64" rx="10" fill="#1f2430" fill-opacity=".85"/><rect x="64" y="250" width="560" height="20" rx="6" fill="#1f2430" fill-opacity=".3"/><rect x="64" y="310" width="200" height="56" rx="14" fill="${accent}"/>${[
+      0, 1, 2, 3, 4, 5,
+    ]
+      .map(
+        (section) =>
+          `<rect x="64" y="${520 + section * 760}" width="1312" height="620" rx="28" fill="#ffffff"/><rect x="112" y="${568 + section * 760}" width="420" height="30" rx="8" fill="${accent}" fill-opacity=".7"/><rect x="112" y="${624 + section * 760}" width="1100" height="14" rx="5" fill="#1f2430" fill-opacity=".18"/>`,
+      )
+      .join("")}</svg>`,
+  );
+}
+
+/** A panorama, 3600 × 900: the whole timeline laid side by side. */
+function panoramaPage(accent: string, paper: string): string {
+  return svgUrl(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="3600" height="900" viewBox="0 0 3600 900"><rect width="3600" height="900" fill="${paper}"/><rect width="3600" height="90" fill="${accent}"/><rect y="440" width="3600" height="12" fill="${accent}" fill-opacity=".5"/>${[
+      0, 1, 2, 3, 4, 5, 6, 7,
+    ]
+      .map(
+        (point) =>
+          `<circle cx="${220 + point * 450}" cy="446" r="36" fill="${accent}"/><rect x="${120 + point * 450}" y="540" width="200" height="120" rx="18" fill="#ffffff"/>`,
+      )
+      .join("")}</svg>`,
+  );
+}
+
 /** A phone turned on its side, 844 × 390: a map with its panel. */
 function landscapePage(accent: string, paper: string): string {
   return svgUrl(
     `<svg xmlns="http://www.w3.org/2000/svg" width="844" height="390" viewBox="0 0 844 390"><rect width="844" height="390" fill="${paper}"/><path d="M0 250 C 160 180 260 300 420 230 S 700 150 844 210 V390 H0Z" fill="${accent}" fill-opacity=".35"/><path d="M0 300 C 200 250 320 340 520 290 S 760 250 844 280 V390 H0Z" fill="${accent}" fill-opacity=".55"/><circle cx="430" cy="170" r="14" fill="${accent}"/><circle cx="610" cy="120" r="10" fill="${accent}" fill-opacity=".8"/><rect x="24" y="20" width="230" height="350" rx="22" fill="#ffffff" fill-opacity=".92"/><rect x="48" y="48" width="140" height="20" rx="6" fill="#1f2430" fill-opacity=".8"/><rect x="48" y="86" width="180" height="10" rx="4" fill="#1f2430" fill-opacity=".25"/><rect x="48" y="106" width="150" height="10" rx="4" fill="#1f2430" fill-opacity=".25"/></svg>`,
   );
 }
+
+/** Each picture's size in pixels, as a screenshot's header gives it. */
+const PHONE = { width: 1179, height: 2556 };
+const LANDSCAPE = { width: 844, height: 390 };
+const DESKTOP = { width: 1440, height: 900 };
+const TABLET = { width: 1640, height: 2360 };
+const FULL_PAGE = { width: 1440, height: 5200 };
+const PANORAMA = { width: 3600, height: 900 };
+const shapeOf = (size: { readonly width: number; readonly height: number }) =>
+  size.width / size.height;
 
 function take(key: string, url: string, overrides: Partial<ZeropsOperation> = {}): ZeropsOperation {
   return {
@@ -154,7 +199,7 @@ function checked(
   url: string,
   src: string,
   device: string | null = null,
-  ratio = 1440 / 900,
+  ratio = shapeOf(DESKTOP),
 ) {
   const address = new URL(url);
   return {
@@ -219,8 +264,20 @@ const FEN = outcome({
     ],
   },
   pictures: [
-    checked("op:b2", `${WORLDSTAGE}/`, phonePage("#3d5a99", "#eef1f7"), "iPhone 16"),
-    checked("op:b5", `${WORLDSTAGE}/map`, desktopPage("#2f6f5e", "#f1f6f3"), "iPad Pro"),
+    checked(
+      "op:b2",
+      `${WORLDSTAGE}/`,
+      phonePage("#3d5a99", "#eef1f7"),
+      "iPhone 16",
+      shapeOf(PHONE),
+    ),
+    checked(
+      "op:b5",
+      `${WORLDSTAGE}/map`,
+      tabletPage("#2f6f5e", "#f1f6f3"),
+      "iPad Pro",
+      shapeOf(TABLET),
+    ),
   ],
   files: { count: 59, additions: 2400, deletions: 529, turnId: TURN },
   change: { repository: "world", number: 4 },
@@ -280,7 +337,11 @@ const BROKEN = outcome({
 // The pictures
 // ---------------------------------------------------------------------------
 
-const read = (url: string): AssetUrlState => ({ _tag: "Success", url });
+/** A file the workspace answered for: its address, and the size it read off its header. */
+const read = (
+  url: string,
+  size: { readonly width: number; readonly height: number },
+): AssetUrlState => ({ _tag: "Success", url, imageDimensions: size });
 
 const SHOTS = "/var/www/world/.shots";
 const HOME_PHONE = `${SHOTS}/home-mobile.png`;
@@ -312,9 +373,69 @@ const LOOKED = outcome({
   ],
 });
 const LOOKED_FILES: ResultFiles = new Map([
-  [HOME_PHONE, read(phonePage("#2f6f5e", "#f4f1ea"))],
-  [WORLD_PHONE, read(phonePage("#3d5a99", "#eef1f7"))],
-  [MAP_LANDSCAPE, read(landscapePage("#2f6f5e", "#e7efe9"))],
+  [HOME_PHONE, read(phonePage("#2f6f5e", "#f4f1ea"), PHONE)],
+  [WORLD_PHONE, read(phonePage("#3d5a99", "#eef1f7"), PHONE)],
+  [MAP_LANDSCAPE, read(landscapePage("#2f6f5e", "#e7efe9"), LANDSCAPE)],
+]);
+
+// The same page checked on a phone and on a desktop: each picture whole, in
+// its own shape, at the strip's one height.
+const PHONE_AND_DESKTOP = outcome({
+  live: [service("worldstage", { version: "4b7e21a", url: WORLDSTAGE })],
+  checks: {
+    count: 2,
+    views: 2,
+    failures: 0,
+    takes: [
+      take("op:p1", `${WORLDSTAGE}/`, { deviceName: "iPhone 16" }),
+      take("op:p2", `${WORLDSTAGE}/map`),
+    ],
+  },
+  pictures: [
+    checked(
+      "op:p1",
+      `${WORLDSTAGE}/`,
+      phonePage("#3d5a99", "#eef1f7"),
+      "iPhone 16",
+      shapeOf(PHONE),
+    ),
+    checked(
+      "op:p2",
+      `${WORLDSTAGE}/map`,
+      desktopPage("#2f6f5e", "#f1f6f3"),
+      null,
+      shapeOf(DESKTOP),
+    ),
+  ],
+  activity: [{ kind: "command", count: 9 }],
+});
+
+// A page captured whole, top to bottom, and a panorama: past what a tile
+// holds, each shows its top.
+const PANORAMA_SHOT = `${SHOTS}/timeline-wide.png`;
+const PAST_THE_TILE = outcome({
+  live: [service("worldstage", { version: "4b7e21a", url: WORLDSTAGE })],
+  checks: {
+    count: 2,
+    views: 2,
+    failures: 0,
+    takes: [take("op:f1", `${WORLDSTAGE}/`), take("op:f2", `${WORLDSTAGE}/pricing`)],
+  },
+  pictures: [
+    checked("op:f1", `${WORLDSTAGE}/`, fullPage("#6b4fa3", "#f6f3fb"), null, shapeOf(FULL_PAGE)),
+    checked(
+      "op:f2",
+      `${WORLDSTAGE}/pricing`,
+      desktopPage("#b0532c", "#faf6f2"),
+      null,
+      shapeOf(DESKTOP),
+    ),
+    looked(PANORAMA_SHOT),
+  ],
+  activity: [{ kind: "command", count: 6 }],
+});
+const PAST_THE_TILE_FILES: ResultFiles = new Map([
+  [PANORAMA_SHOT, read(panoramaPage("#2f6f5e", "#eef4f0"), PANORAMA)],
 ]);
 
 // Nine pictures: four pages checked on a desktop, five screenshots looked at.
@@ -334,18 +455,24 @@ const NINE = outcome({
       "op:d1",
       "https://storestage-7c1e.prg1.example.app/",
       desktopPage("#b0532c", "#faf6f2"),
+      null,
+      shapeOf(DESKTOP),
     ),
     looked(NINE_PATHS[0]!),
     checked(
       "op:d2",
       "https://storestage-7c1e.prg1.example.app/products",
       desktopPage("#3d5a99", "#f3f5fa"),
+      null,
+      shapeOf(DESKTOP),
     ),
     looked(NINE_PATHS[1]!),
     checked(
       "op:d3",
       "https://storestage-7c1e.prg1.example.app/cart",
       desktopPage("#6b4fa3", "#f6f3fb"),
+      null,
+      shapeOf(DESKTOP),
     ),
     looked(NINE_PATHS[2]!),
     looked(NINE_PATHS[3]!),
@@ -353,6 +480,8 @@ const NINE = outcome({
       "op:d4",
       "https://storestage-7c1e.prg1.example.app/checkout",
       desktopPage("#2f6f5e", "#f1f6f3"),
+      null,
+      shapeOf(DESKTOP),
     ),
     looked(NINE_PATHS[4]!),
   ],
@@ -361,7 +490,10 @@ const NINE = outcome({
 const NINE_FILES: ResultFiles = new Map(
   NINE_PATHS.map((path, index) => [
     path,
-    read(phonePage(["#b0532c", "#3d5a99", "#6b4fa3", "#2f6f5e", "#8a6d1f"][index]!, "#f7f5f1")),
+    read(
+      phonePage(["#b0532c", "#3d5a99", "#6b4fa3", "#2f6f5e", "#8a6d1f"][index]!, "#f7f5f1"),
+      PHONE,
+    ),
   ]),
 );
 
@@ -374,19 +506,19 @@ const ONLY_PICTURES = outcome({
   ],
 });
 
-// A screenshot the Mate deleted since, and one still being read.
+// A screenshot still being read, and one the Mate deleted since.
 const GONE = outcome({
   live: [service("worlddev", { word: "Dev server running" })],
-  pictures: [looked(HOME_PHONE), looked(WORLD_PHONE), looked(MAP_LANDSCAPE)],
+  pictures: [looked(MAP_LANDSCAPE), looked(HOME_PHONE), looked(WORLD_PHONE)],
   activity: [{ kind: "command", count: 12 }],
 });
 const GONE_FILES: ResultFiles = new Map([
-  [HOME_PHONE, read(phonePage("#2f6f5e", "#f4f1ea"))],
+  [HOME_PHONE, read(phonePage("#2f6f5e", "#f4f1ea"), PHONE)],
   [WORLD_PHONE, { _tag: "Failure" }],
 ]);
 const GONE_FILES_READ: ResultFiles = new Map([
   ...GONE_FILES,
-  [MAP_LANDSCAPE, read(landscapePage("#2f6f5e", "#e7efe9"))],
+  [MAP_LANDSCAPE, read(landscapePage("#2f6f5e", "#e7efe9"), LANDSCAPE)],
 ]);
 
 /** `?late`: the file still being read is read a moment after the first frame, as a workspace answers. */
@@ -469,6 +601,21 @@ const STATES: ReadonlyArray<ResultState> = [
     files: LOOKED_FILES,
   },
   {
+    label: "A phone beside a desktop",
+    note: "The same stage checked on a phone and on a desktop: each picture whole, in its own shape, at the strip's one height.",
+    outcome: PHONE_AND_DESKTOP,
+    facts: {},
+    minutes: 8,
+  },
+  {
+    label: "Past what a tile holds",
+    note: "A page captured top to bottom and a panorama: each clamped, showing its top.",
+    outcome: PAST_THE_TILE,
+    facts: {},
+    minutes: 11,
+    files: PAST_THE_TILE_FILES,
+  },
+  {
     label: "Nine pictures",
     note: "Six tiles, the sixth saying how many more; the viewer holds all nine.",
     outcome: NINE,
@@ -486,7 +633,7 @@ const STATES: ReadonlyArray<ResultState> = [
   },
   {
     label: "A file gone, one still read",
-    note: "A screenshot deleted since keeps its tile, muted; one on its way is a quiet tile of the same size.",
+    note: "One on its way is a quiet tile in a desktop's room, at the strip's height; with ?late it is read after 1.2 s and takes its shape. One deleted since keeps its tile, muted.",
     outcome: GONE,
     facts: {},
     minutes: 12,
