@@ -3569,6 +3569,10 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   box-shadow: 0 0 0 2px var(--color-ring);
 }
 
+.composer-picture[data-dragging] {
+  opacity: 0.35;
+}
+
 /* An upload that did not go through: amber, with its way to try again. */
 .composer-picture[data-failed] .composer-picture-img {
   box-shadow: 0 0 0 2px var(--color-warning);

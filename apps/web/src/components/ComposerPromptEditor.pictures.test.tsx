@@ -12,7 +12,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { collapseExpandedComposerCursor } from "../composer-logic";
 import { INLINE_PICTURE_PLACEHOLDER as P } from "../lib/composerPictures";
 import type { ComposerPictureView } from "./chat/ComposerPicture";
-import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "./ComposerPromptEditor";
+import {
+  $moveComposerPicture,
+  ComposerPromptEditor,
+  type ComposerPromptEditorHandle,
+} from "./ComposerPromptEditor";
 
 vi.mock("./chat/FileTagChip", () => ({
   FILE_TAG_CHIP_CLASS_NAME: "",
@@ -152,4 +156,27 @@ describe("pictures in the composer's text", () => {
     });
     expect(changes.at(-1)).toEqual({ value: `ab${P}`, pictureIds: ["two"] });
   });
+
+  it.each([
+    ["to the start", `a${P}b${P}c`, "two", 0, `${P}a${P}bc`, ["two", "one"]],
+    ["between the words", `${P}ab`, "one", 2, `a${P}b`, ["one"]],
+    ["to the end", `${P}a${P}b`, "one", 4, `a${P}b${P}`, ["two", "one"]],
+    ["onto its own place, where nothing moves", `a${P}b`, "one", 1, `a${P}b`, ["one"]],
+  ])(
+    "moves a picture dropped %s",
+    async (_label, prompt, id, offset, expectedPrompt, expectedIds) => {
+      const pictures = [picture("one", 1), picture("two", 2)].filter((entry) =>
+        prompt.split(P).length > 2 ? true : entry.id === "one",
+      );
+      await render(prompt, pictures);
+      await act(() => {
+        lexicalEditor.update(() => $moveComposerPicture(id, offset), { discrete: true });
+      });
+      const snapshot = editorRef.current?.readSnapshot();
+      expect({ value: snapshot?.value, pictureIds: snapshot?.pictureIds }).toEqual({
+        value: expectedPrompt,
+        pictureIds: expectedIds,
+      });
+    },
+  );
 });

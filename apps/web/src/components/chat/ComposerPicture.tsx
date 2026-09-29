@@ -1,8 +1,9 @@
 /**
  * A picture where it sits in the composer's text: an 80 px tall thumbnail on a
  * line of its own, with the marks drawn in. Clicking it opens the picture to
- * mark or crop; its corner removes it. It is a Lexical decorator's content, so
- * it reads what it shows from the composer, by the picture's id.
+ * mark or crop, a drag moves it, its corner removes it. It is a Lexical
+ * decorator's content, so it reads what it shows from the composer, by the
+ * picture's id.
  */
 import { CircleAlertIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { createContext, use, type KeyboardEvent } from "react";
@@ -63,6 +64,7 @@ export function ComposerPicture({ id }: { readonly id: string }) {
   return (
     <span
       className="composer-picture"
+      draggable
       data-composer-picture={id}
       data-preparing={picture.preparing ? "true" : undefined}
       data-failed={picture.failed ? "true" : undefined}

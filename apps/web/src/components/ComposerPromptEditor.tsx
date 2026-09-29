@@ -33,11 +33,15 @@ import {
   COMMAND_PRIORITY_LOW,
   KEY_BACKSPACE_COMMAND,
   BLUR_COMMAND,
+  DRAGEND_COMMAND,
+  DRAGSTART_COMMAND,
+  DROP_COMMAND,
   FOCUS_COMMAND,
   $getRoot,
   HISTORY_MERGE_TAG,
   DecoratorNode,
   type ElementNode,
+  type LexicalEditor,
   type LexicalNode,
   type SerializedLexicalNode,
   type EditorState,
@@ -1588,6 +1592,155 @@ function ComposerChipSelectionPlugin() {
   return null;
 }
 
+/** A picture of this composer being dragged: its id, so a drop can move it. */
+const PICTURE_DRAG_TYPE = "application/x-mate-composer-picture";
+
+function $findComposerPicture(node: LexicalNode, imageId: string): ComposerPictureNode | null {
+  if (node instanceof ComposerPictureNode) return node.__imageId === imageId ? node : null;
+  if (!$isElementNode(node)) return null;
+  for (const child of node.getChildren()) {
+    const found = $findComposerPicture(child, imageId);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * Moves a picture to a caret offset of the text as it stands (each picture
+ * and chip one character), the caret following it. Dropped right before or
+ * after itself, it stays.
+ */
+export function $moveComposerPicture(imageId: string, offset: number): void {
+  const moved = $findComposerPicture($getRoot(), imageId);
+  if (!moved) return;
+  const start = getAbsoluteOffsetForPoint(moved, 0);
+  if (offset === start || offset === start + 1) return;
+  $setSelectionAtComposerOffset(offset);
+  const selection = $getSelection();
+  if (!$isRangeSelection(selection)) return;
+  const copy = $createComposerPictureNode(imageId);
+  selection.insertNodes([copy]);
+  moved.remove();
+  copy.selectNext(0, 0);
+}
+
+function caretRangeAtPoint(x: number, y: number): Range | null {
+  if (typeof document.caretRangeFromPoint === "function") return document.caretRangeFromPoint(x, y);
+  const position = document.caretPositionFromPoint?.(x, y);
+  if (!position) return null;
+  const range = document.createRange();
+  range.setStart(position.offsetNode, position.offset);
+  range.collapse(true);
+  return range;
+}
+
+/**
+ * The caret offset under a drop. A drop on a picture goes before it from its
+ * upper half and after it from its lower half, as it sits on a line of its own.
+ */
+function $offsetAtPoint(editor: LexicalEditor, event: DragEvent): number | null {
+  const root = editor.getRootElement();
+  const range = caretRangeAtPoint(event.clientX, event.clientY);
+  if (!root || !range || !root.contains(range.startContainer)) return null;
+  const container =
+    range.startContainer instanceof Element
+      ? range.startContainer
+      : range.startContainer.parentElement;
+  const slot = container?.closest(".composer-picture-slot");
+  if (slot && root.contains(slot)) {
+    const box = slot.getBoundingClientRect();
+    if (event.clientY < box.top + box.height / 2) range.setStartBefore(slot);
+    else range.setStartAfter(slot);
+    range.collapse(true);
+  }
+  const domSelection = window.getSelection();
+  if (!domSelection) return null;
+  domSelection.removeAllRanges();
+  domSelection.addRange(range);
+  const selection = $createRangeSelectionFromDom(domSelection, editor);
+  return selection
+    ? getAbsoluteOffsetForPoint(selection.anchor.getNode(), selection.anchor.offset)
+    : null;
+}
+
+/**
+ * Pictures move by drag and drop, and a file dropped on the text lands where
+ * it is dropped. The plain-text plugin cancels every drag and drop in the
+ * editor, so these run ahead of it.
+ */
+function ComposerPictureDragPlugin() {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    const unregisterDragStart = editor.registerCommand(
+      DRAGSTART_COMMAND,
+      (event) => {
+        const picture =
+          event.target instanceof Element ? event.target.closest("[data-composer-picture]") : null;
+        const imageId = picture?.getAttribute("data-composer-picture");
+        if (!picture || !imageId || !event.dataTransfer) return false;
+        event.dataTransfer.setData(PICTURE_DRAG_TYPE, imageId);
+        // Text in the drag lets the editor show its own drop caret.
+        event.dataTransfer.setData("text/plain", "");
+        event.dataTransfer.effectAllowed = "move";
+        const image = picture.querySelector("img");
+        if (image) event.dataTransfer.setDragImage(image, 24, 24);
+        picture.setAttribute("data-dragging", "true");
+        return true;
+      },
+      COMMAND_PRIORITY_HIGH,
+    );
+    const unregisterDragEnd = editor.registerCommand(
+      DRAGEND_COMMAND,
+      () => {
+        for (const picture of editor.getRootElement()?.querySelectorAll("[data-dragging]") ?? []) {
+          picture.removeAttribute("data-dragging");
+        }
+        return false;
+      },
+      COMMAND_PRIORITY_HIGH,
+    );
+    const unregisterDrop = editor.registerCommand(
+      DROP_COMMAND,
+      (event) => {
+        const types = new Set(Array.from(event.dataTransfer?.types ?? []));
+        if (types.has(PICTURE_DRAG_TYPE)) {
+          event.preventDefault();
+          const imageId = event.dataTransfer?.getData(PICTURE_DRAG_TYPE) ?? "";
+          editor.update(
+            () => {
+              const offset = $offsetAtPoint(editor, event);
+              if (offset !== null) $moveComposerPicture(imageId, offset);
+            },
+            { discrete: true },
+          );
+          editor.getRootElement()?.focus({ preventScroll: true });
+          return true;
+        }
+        if (types.has("Files")) {
+          // The workspace drop adds the files at the caret: it goes under the pointer first.
+          editor.update(
+            () => {
+              const offset = $offsetAtPoint(editor, event);
+              if (offset !== null) $setSelectionAtComposerOffset(offset);
+            },
+            { discrete: true },
+          );
+        }
+        return false;
+      },
+      COMMAND_PRIORITY_HIGH,
+    );
+    return () => {
+      unregisterDragStart();
+      unregisterDragEnd();
+      unregisterDrop();
+    };
+  }, [editor]);
+
+  return null;
+}
+
 function ComposerInlineTokenPastePlugin() {
   const [editor] = useLexicalComposerContext();
 
@@ -2187,6 +2340,7 @@ function ComposerPromptEditorInner({
           <ComposerInlineTokenSelectionNormalizePlugin />
           <ComposerInlineTokenBackspacePlugin />
           <ComposerInlineTokenPastePlugin />
+          <ComposerPictureDragPlugin />
           <ComposerChipSelectionPlugin />
           <HistoryPlugin />
         </div>
