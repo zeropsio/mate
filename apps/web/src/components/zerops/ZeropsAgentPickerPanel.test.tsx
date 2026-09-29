@@ -98,12 +98,12 @@ describe("ZeropsAgentPickerPanel", () => {
       />,
     );
 
-    expect(html).not.toContain("New session");
+    expect(html).not.toContain("Archive and start fresh");
   });
 
   // The live bug: signing in is project-wide, not per session, so the panel
   // still offers it while locked out, but says where it will actually run.
-  it("names the locked agent and New session when locked out of the current session", () => {
+  it("names the locked agent and Archive and start fresh when locked out of the current session", () => {
     const html = renderToStaticMarkup(
       <ZeropsAgentPickerPanel
         agentId="codex"
@@ -115,7 +115,9 @@ describe("ZeropsAgentPickerPanel", () => {
       />,
     );
 
-    expect(html).toContain("This session runs on Claude Code. Codex is used in a New session.");
+    expect(html).toContain(
+      "This session runs on Claude Code. Codex is used after Archive and start fresh.",
+    );
     expect(html).toContain("Sign in to Codex");
   });
 });

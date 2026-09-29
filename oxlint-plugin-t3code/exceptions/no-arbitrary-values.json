@@ -240,14 +240,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/chat/ChatHeader.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> ps-[8.5px] in \"ps-[8.5px]\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
     "kind": "Literal",
     "fingerprint": "<> shadow-[0_6px_18px_rgba(0,0,0,0.06)] in \"chat-composer-banner-stack-cap border border-b-0 shadow-[0_6px_18px_rgba(0,0,0,0.06)]\"",

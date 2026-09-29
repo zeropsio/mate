@@ -2958,6 +2958,23 @@ code {
 
 /* ==== Pass 16 · the conversation ==== */
 
+/* The conversation's header has one button style: borderless 28 px ghosts, a
+   muted glyph, the app's row hover and the ink under the pointer. The
+   workspace header fills every button it holds; these step out of it. */
+html[data-theme-id] [data-chat-header] [data-chat-header-ghost] {
+  --control-icon-color: currentColor;
+  border-color: transparent;
+  background-color: transparent;
+  color: var(--contrast-muted-foreground);
+}
+
+html[data-theme-id] [data-chat-header] [data-chat-header-ghost]:hover,
+html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-pressed],
+html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open] {
+  background-color: var(--sidebar-row-hover);
+  color: var(--contrast-foreground);
+}
+
 /* ==== end of the conversation ==== */
 
 /* ==== Pass 16 · the composer ==== */
