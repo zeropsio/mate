@@ -1,13 +1,14 @@
 /**
- * The pass 16 plan's menu, as fixtures: the six projects its mock draws, so
- * the harness (`design.html?set=plan`) can be put side by side with it.
+ * The pass 16 plan's menu, as fixtures: projects standing in every state its
+ * mock draws, so the harness (`design.html?set=plan`) can be put side by side
+ * with it.
  *
- * Every production chip state the plan names stands in one of them: Letopis
- * with a change waiting for production, Mate with none, Beviro whose last
- * release failed, Snap healthy, ZIT with only a stage, and Imperial Titan
- * folded, production down, and Lena at work in it — and, from the plan's
- * table of chips, Atlas releasing and Experiments stopped on purpose. Every
- * word is made up; the hosts are `example.app`.
+ * Every production chip state stands in one of them: Quillmark with a change
+ * waiting for production, Tiller with no production, Beviro whose last release
+ * failed, Brightfold healthy, Ferrow with only a stage, Imperial Titan folded
+ * with production down and Maren at work in it, Corvel releasing and
+ * Lanternfield stopped on purpose. Every name but Beviro's and Imperial
+ * Titan's, and every word, is made up; the hosts are `example.app`.
  *
  * Fixtures only: nothing here ships in the app bundle.
  */
@@ -95,48 +96,53 @@ function stop(
   } as ZeropsCandidate;
 }
 
-const LETOPIS = group("letopis", "Letopis");
-const MATE = group("mate", "Mate");
+const QUILLMARK = group("quillmark", "Quillmark");
+const TILLER = group("tiller", "Tiller");
 const BEVIRO = group("beviro", "Beviro");
-const SNAP = group("snap", "Snap");
-const ZIT = group("zit", "ZIT");
+const BRIGHTFOLD = group("brightfold", "Brightfold");
+const FERROW = group("ferrow", "Ferrow");
 const TITAN = group("titan", "Imperial Titan");
-const ATLAS = group("atlas", "Atlas");
-const EXPERIMENTS = group("experiments", "Experiments");
+const CORVEL = group("corvel", "Corvel");
+const LANTERNFIELD = group("lanternfield", "Lanternfield");
 
 export const PLAN_CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
-  mate("letopis-fen", "Fen", LETOPIS),
-  stop("letopis-stage", "stage", LETOPIS, {
-    hosts: ["letopis-stage.example.app"],
+  mate("quillmark-orla", "Orla", QUILLMARK),
+  stop("quillmark-stage", "stage", QUILLMARK, {
+    hosts: ["quillmark-stage.example.app"],
     deployedMinutesAgo: 180,
   }),
-  stop("letopis-prod", "prod", LETOPIS, {
-    hosts: ["letopis.example.app", "admin.letopis.example.app"],
+  stop("quillmark-prod", "prod", QUILLMARK, {
+    hosts: ["quillmark.example.app", "admin.quillmark.example.app"],
   }),
-  mate("mate-dara", "Dara", MATE),
-  mate("mate-exp", "Experimentator", MATE),
-  mate("beviro-cleo", "Cleo", BEVIRO),
-  mate("beviro-juno", "Juno", BEVIRO),
+  mate("tiller-pim", "Pim", TILLER),
+  mate("tiller-tamsin", "Tamsin", TILLER),
+  mate("beviro-rue", "Rue", BEVIRO),
+  mate("beviro-vesna", "Vesna", BEVIRO),
   stop("beviro-stage", "stage", BEVIRO, {
-    hosts: ["shop-stage.example.app"],
+    hosts: ["beviro-stage.example.app"],
     deployedMinutesAgo: 40,
   }),
-  stop("beviro-prod", "prod", BEVIRO, { hosts: ["shop.example.app", "admin.shop.example.app"] }),
-  mate("snap-kai", "Kai", SNAP),
-  mate("snap-nova", "Nova", SNAP),
-  stop("snap-prod", "prod", SNAP, { hosts: ["snap.example.app"] }),
-  mate("zit-theo", "Theo", ZIT),
-  stop("zit-stage", "stage", ZIT, {
-    hosts: ["zit-stage.example.app", "api.zit-stage.example.app", "ws.zit-stage.example.app"],
+  stop("beviro-prod", "prod", BEVIRO, {
+    hosts: ["beviro.example.app", "admin.beviro.example.app"],
+  }),
+  mate("brightfold-ilo", "Ilo", BRIGHTFOLD),
+  mate("brightfold-brin", "Brin", BRIGHTFOLD),
+  stop("brightfold-prod", "prod", BRIGHTFOLD, { hosts: ["brightfold.example.app"] }),
+  mate("ferrow-odo", "Odo", FERROW),
+  stop("ferrow-stage", "stage", FERROW, {
+    hosts: ["ferrow-stage.example.app", "api.ferrow-stage.example.app"],
     deployedMinutesAgo: 4 * 24 * 60,
   }),
-  mate("titan-lena", "Lena", TITAN),
-  stop("titan-prod", "prod", TITAN, { hosts: ["titan.example.app"], status: "CONTAINER_FAILED" }),
-  mate("atlas-oto", "Oto", ATLAS),
-  stop("atlas-prod", "prod", ATLAS, { hosts: ["atlas.example.app"] }),
-  mate("experiments-ida", "Ida", EXPERIMENTS),
-  stop("experiments-prod", "prod", EXPERIMENTS, {
-    hosts: ["lab.example.app"],
+  mate("titan-maren", "Maren", TITAN),
+  stop("titan-prod", "prod", TITAN, {
+    hosts: ["titan.example.app"],
+    status: "CONTAINER_FAILED",
+  }),
+  mate("corvel-sef", "Sef", CORVEL),
+  stop("corvel-prod", "prod", CORVEL, { hosts: ["corvel.example.app"] }),
+  mate("lanternfield-tove", "Tove", LANTERNFIELD),
+  stop("lanternfield-prod", "prod", LANTERNFIELD, {
+    hosts: ["lanternfield.example.app"],
     status: "STOPPED",
   }),
 ];
@@ -164,96 +170,96 @@ function activity(
 
 export const PLAN_ACTIVITY = new Map<string, ZeropsAgentActivity>([
   [
-    "letopis-fen",
-    activity("letopis-fen", {
+    "quillmark-orla",
+    activity("quillmark-orla", {
       minutes: 7 * 60,
-      subject: "Study the specification, then build the core and the server from the ground up",
-      snippet: "Rebuilt the core and the server foundation, keeping every behaviour it had.",
+      subject: "Sort the recipe cards by season, then by how long they take",
+      snippet: "The cards sort by season first; the time they take breaks the ties.",
     }),
   ],
   [
-    "mate-dara",
-    activity("mate-dara", {
+    "tiller-pim",
+    activity("tiller-pim", {
       minutes: 3 * 24 * 60,
-      subject: "What alternatives do we have for the dev URL?",
-      snippet: "A signed-in dev URL works without a platform change: the session allows it.",
+      subject: "Can the shared preview links expire after a day?",
+      snippet: "They can: each link carries its own expiry, a day unless you say otherwise.",
     }),
   ],
-  ["mate-exp", activity("mate-exp", { minutes: 5 * 24 * 60 })],
+  ["tiller-tamsin", activity("tiller-tamsin", { minutes: 5 * 24 * 60 })],
   [
-    "beviro-cleo",
-    activity("beviro-cleo", {
+    "beviro-rue",
+    activity("beviro-rue", {
       minutes: 24 * 60,
-      subject: "Check the admin sign-in after the upgrade",
-      snippet: "The admin signs in again; the session cookie lasts a day now.",
+      subject: "Tidy the invoice footer and move the bank details up",
+      snippet: "The bank details sit under the total now; the footer keeps only the address.",
     }),
   ],
   [
-    "beviro-juno",
-    activity("beviro-juno", {
+    "beviro-vesna",
+    activity("beviro-vesna", {
       minutes: 5,
       kind: "input",
       face: "needs",
-      subject: "Tune the storefront: page render, navigation, images and the cart",
-      snippet: "Merge #54 into production now, or wait for tonight's window?",
-      question: "Merge #54 into production now, or wait for tonight's window?",
+      subject: "Make the product gallery quicker on slow phones",
+      snippet: "Load the full-size photos only on a tap, or keep the first two ready?",
+      question: "Load the full-size photos only on a tap, or keep the first two ready?",
     }),
   ],
   [
-    "snap-kai",
-    activity("snap-kai", {
+    "brightfold-ilo",
+    activity("brightfold-ilo", {
       minutes: 12,
       face: "done",
       unread: true,
-      subject: "Make the spec usable by a separate service with its own session",
-      snippet: "Dropped every local assumption from the spec, so it stands on its own.",
+      subject: "Let the export run without the desktop app open",
+      snippet: "The export runs on the server now, and mails the file once it is ready.",
     }),
   ],
   [
-    "snap-nova",
-    activity("snap-nova", {
+    "brightfold-brin",
+    activity("brightfold-brin", {
       minutes: 1.1,
       kind: "working",
       face: "working",
-      subject: "Add a /status page showing hostname, Node version and server time",
+      subject: "Add a health page with the build number and the uptime",
       liveStep: { words: "Build the app", code: "pnpm build" },
     }),
   ],
   [
-    "zit-theo",
-    activity("zit-theo", {
+    "ferrow-odo",
+    activity("ferrow-odo", {
       minutes: 4 * 24 * 60,
       kind: "failed",
       face: "needs",
-      subject: "Deploy the zitcore stage from main",
-      snippet: "Build failed: tsc found 3 errors in src/net/session.ts",
-      errorLine: "Build failed: tsc found 3 errors in src/net/session.ts",
+      subject: "Deploy the ferrow stage from main",
+      snippet: "Build failed: 3 type errors in src/sync/queue.ts",
+      errorLine: "Build failed: 3 type errors in src/sync/queue.ts",
     }),
   ],
   [
-    "atlas-oto",
-    activity("atlas-oto", {
+    "corvel-sef",
+    activity("corvel-sef", {
       minutes: 50,
-      subject: "Ship the map tiles from the CDN",
-      snippet: "The tiles come from the CDN now; merged as #12.",
+      subject: "Serve the map tiles from the edge cache",
+      snippet: "The tiles come from the edge cache now; merged as #12.",
     }),
   ],
   [
-    "experiments-ida",
-    activity("experiments-ida", {
+    "lanternfield-tove",
+    activity("lanternfield-tove", {
       minutes: 9 * 24 * 60,
-      subject: "Try the new renderer",
-      snippet: "It renders, but the old one is faster for now.",
+      subject: "Try a lighter charting library",
+      snippet: "It draws, but the old one still handles long series better.",
     }),
   ],
   [
-    "titan-lena",
-    activity("titan-lena", {
+    "titan-maren",
+    activity("titan-maren", {
       minutes: 3.5,
       kind: "working",
       face: "working",
-      subject: "Titan game destruction and enemies",
-      liveStep: { words: "Checking the game in the browser" },
+      subject: "Make the level editor save while you draw",
+      liveStep: { words: "Checking the editor in the browser" },
     }),
   ],
 ]);
@@ -278,17 +284,17 @@ const MILO: ZeropsMateOwner = {
 };
 
 export const PLAN_OWNERS = new Map<string, ZeropsMateOwner>([
-  ["letopis-fen", KAREL],
-  ["mate-dara", VIEWER],
-  ["mate-exp", VIEWER],
-  ["beviro-cleo", MILO],
-  ["beviro-juno", VIEWER],
-  ["snap-kai", KAREL],
-  ["snap-nova", VIEWER],
-  ["zit-theo", KAREL],
-  ["titan-lena", VIEWER],
-  ["atlas-oto", VIEWER],
-  ["experiments-ida", KAREL],
+  ["quillmark-orla", KAREL],
+  ["tiller-pim", VIEWER],
+  ["tiller-tamsin", VIEWER],
+  ["beviro-rue", MILO],
+  ["beviro-vesna", VIEWER],
+  ["brightfold-ilo", KAREL],
+  ["brightfold-brin", VIEWER],
+  ["ferrow-odo", KAREL],
+  ["titan-maren", VIEWER],
+  ["corvel-sef", VIEWER],
+  ["lanternfield-tove", KAREL],
 ]);
 
 function row(
@@ -347,20 +353,18 @@ const flow = (input: Partial<SidebarProjectFlow>): SidebarProjectFlow => ({
 
 export const PLAN_FLOWS = new Map<string, SidebarProjectFlow>([
   [
-    "letopis",
+    "quillmark",
     flow({
-      pullRequests: [
-        change(4, "Rebuild the world core and durable server foundations", "letopis-fen"),
-      ],
+      pullRequests: [change(4, "Sort the recipe cards by season and time", "quillmark-orla")],
       environments: new Map([
-        ["letopis-stage", row("letopis-stage", "stage", sha("45a1c07"))],
-        ["letopis-prod", row("letopis-prod", "production", `${sha("44b2d19")} v0.1.44 petra`)],
+        ["quillmark-stage", row("quillmark-stage", "stage", sha("45a1c07"))],
+        ["quillmark-prod", row("quillmark-prod", "production", `${sha("44b2d19")} v0.1.44 petra`)],
       ]),
       releaseOffered: true,
-      releaseContents: waiting("Rebuild the world core and durable server foundations"),
+      releaseContents: waiting("Sort the recipe cards by season and time"),
     }),
   ],
-  ["mate", flow({})],
+  ["tiller", flow({})],
   [
     "beviro",
     flow({
@@ -369,35 +373,31 @@ export const PLAN_FLOWS = new Map<string, SidebarProjectFlow>([
         ["beviro-prod", row("beviro-prod", "production", `${sha("56d4f33")} v0.1.56 petra`)],
       ]),
       releaseOffered: true,
-      releaseContents: waiting("Tune the image sizes", "Keep the cart across a reload"),
+      releaseContents: waiting("Tidy the invoice footer", "Quicker gallery on slow phones"),
       releaseFailure: {
         tag: "v0.1.57",
         kind: "deploy-failed",
         at: minutesAgo(12),
-        error: "Build pipeline failed; no recognised log pattern matched.",
+        error: "The build step exited with code 2 while installing packages.",
         service: "app",
       },
     }),
   ],
   [
-    "snap",
+    "brightfold",
     flow({
       pullRequests: [
-        change(
-          2,
-          "Add a /status page to the app showing hostname, Node version and current server time",
-          "snap-nova",
-        ),
+        change(2, "Add a health page with the build number and the uptime", "brightfold-brin"),
       ],
       environments: new Map([
-        ["snap-prod", row("snap-prod", "production", `${sha("10e5a44")} v0.1.0 petra`)],
+        ["brightfold-prod", row("brightfold-prod", "production", `${sha("10e5a44")} v0.1.0 petra`)],
       ]),
     }),
   ],
   [
-    "zit",
+    "ferrow",
     flow({
-      environments: new Map([["zit-stage", row("zit-stage", "stage", sha("71f6b55"))]]),
+      environments: new Map([["ferrow-stage", row("ferrow-stage", "stage", sha("71f6b55"))]]),
     }),
   ],
   [
@@ -409,21 +409,21 @@ export const PLAN_FLOWS = new Map<string, SidebarProjectFlow>([
     }),
   ],
   [
-    "atlas",
+    "corvel",
     flow({
       environments: new Map([
-        ["atlas-prod", row("atlas-prod", "production", `${sha("12b8d77")} v1.2.0 petra`)],
+        ["corvel-prod", row("corvel-prod", "production", `${sha("12b8d77")} v1.2.0 petra`)],
       ]),
       releaseInFlight: "v1.2.1",
     }),
   ],
   [
-    "experiments",
+    "lanternfield",
     flow({
       environments: new Map([
         [
-          "experiments-prod",
-          row("experiments-prod", "production", `${sha("31c9e88")} v0.3.1 karel`),
+          "lanternfield-prod",
+          row("lanternfield-prod", "production", `${sha("31c9e88")} v0.3.1 karel`),
         ],
       ]),
     }),
@@ -434,4 +434,4 @@ export const PLAN_FLOWS = new Map<string, SidebarProjectFlow>([
 export const PLAN_COLLAPSED: ReadonlyArray<string> = ["titan"];
 
 /** The Mate whose conversation is open. */
-export const PLAN_ACTIVE = "snap-nova";
+export const PLAN_ACTIVE = "brightfold-brin";

@@ -56,7 +56,7 @@ const FAILED_RELEASE: ReleaseFailure = {
   tag: "v0.1.57",
   kind: "deploy-failed",
   at: "2026-09-29T10:41:00Z",
-  error: "Build pipeline failed; no recognised log pattern matched.",
+  error: "The build step exited with code 2 while installing packages.",
   service: "app",
 };
 
@@ -456,7 +456,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
             {
               context: "mate/deploy/shop-production/app",
               state: "failure",
-              description: "Build pipeline failed; no recognised log pattern matched.",
+              description: "The build step exited with code 2 while installing packages.",
               created_at: "2026-09-29T10:41:00Z",
             },
             { context: "mate/deploy/shop-stage/app", state: "success" },
@@ -492,7 +492,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
       tag: "v0.1.57",
       kind: "deploy-failed",
       at: "2026-09-29T10:41:00Z",
-      error: "Build pipeline failed; no recognised log pattern matched.",
+      error: "The build step exited with code 2 while installing packages.",
       service: "app",
     });
   });
@@ -643,12 +643,12 @@ describe("chipMenu — what the chip's menu says, per state", () => {
           tag: "v0.1.57",
           kind: "deploy-failed",
           at: "2026-09-29T10:41:00Z",
-          error: "Build pipeline failed; no recognised log pattern matched.",
+          error: "The build step exited with code 2 while installing packages.",
           service: "app",
         },
       }).note,
     ).toBe(
-      "Release v0.1.57 failed 12 min ago: Build pipeline failed; no recognised log pattern matched. v0.1.56 is still serving.",
+      "Release v0.1.57 failed 12 min ago: The build step exited with code 2 while installing packages. v0.1.56 is still serving.",
     );
   });
 
@@ -713,7 +713,7 @@ describe("fixProblemOf — what 'Ask <your Mate> to fix it' writes (S6)", () => 
     ).toEqual({
       what: "Production's release v0.1.57 failed deploying app",
       at: "2026-09-29T10:41:00Z",
-      error: "Build pipeline failed; no recognised log pattern matched.",
+      error: "The build step exited with code 2 while installing packages.",
       ask: "v0.1.56 is still serving. Find out why, fix it, and release again.",
     });
   });

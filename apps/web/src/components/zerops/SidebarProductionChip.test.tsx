@@ -16,7 +16,7 @@ import { chipMenu, type ChipMenuModel, type ProductionChip } from "./SidebarProd
 const PROBLEM: FixProblem = {
   what: "Production's release v0.1.57 failed deploying app",
   at: undefined,
-  error: "Build pipeline failed; no recognised log pattern matched.",
+  error: "The build step exited with code 2 while installing packages.",
   ask: "v0.1.56 is still serving. Find out why, fix it, and release again.",
 };
 
@@ -42,10 +42,10 @@ function mate(
   return { candidate, tint, mine, threadKey: `env-${id}:thread-${id}` };
 }
 
-const JUNO = mate("shop-juno", "Juno", "sky", true);
-const CLEO = mate("shop-cleo", "Cleo", "sand", false);
-const NOVA = mate("shop-nova", "Nova", "slate", true);
-const KAI = mate("shop-kai", "Kai", "violet", undefined);
+const ORSA = mate("shop-orsa", "Orsa", "sky", true);
+const PELL = mate("shop-pell", "Pell", "sand", false);
+const IVET = mate("shop-ivet", "Ivet", "slate", true);
+const BRAM = mate("shop-bram", "Bram", "violet", undefined);
 
 const menuOf = (chip: ProductionChip, over: Partial<Parameters<typeof chipMenu>[0]> = {}) =>
   chipMenu({ chip, failure: undefined, down: [], stages: [], waiting: 0, nowMs: 0, ...over });
@@ -58,7 +58,7 @@ function menu(model: ChipMenuModel, props: Partial<Parameters<typeof ProductionM
     <ProductionMenu
       fixProblem={PROBLEM}
       groupId="shop"
-      mates={[JUNO]}
+      mates={[ORSA]}
       menu={model}
       onAskToFix={() => {}}
       onOpenStop={undefined}
@@ -117,14 +117,14 @@ describe("the production chip", () => {
       <SidebarProductionChip
         chip={{ label: "prod", state: "waiting", version: "v0.1.44", waiting: 1 }}
         fixProblem={undefined}
-        groupId="letopis"
+        groupId="quillmark"
         mates={[]}
         menu={menuOf({ label: "prod", state: "waiting", version: "v0.1.44", waiting: 1 })}
         onAskToFix={undefined}
         onOpenStop={undefined}
-        projectName="Letopis"
+        projectName="Quillmark"
         routes={[]}
-        stopProjectId="letopis-prod"
+        stopProjectId="quillmark-prod"
       />,
     );
     expect(html).toContain('aria-label="Production v0.1.44, 1 change waiting"');
@@ -154,15 +154,15 @@ describe("the production chip's menu", () => {
   // S6: every problem offers its fix — only the person's own Mates, since
   // nobody writes to a colleague's, and only where something is broken.
   it.each([
-    { name: "in trouble, with an own Mate", model: FAILED, mates: [CLEO, JUNO], ask: "Juno" },
-    { name: "in trouble, with none of theirs", model: FAILED, mates: [CLEO], ask: undefined },
+    { name: "in trouble, with an own Mate", model: FAILED, mates: [PELL, ORSA], ask: "Orsa" },
+    { name: "in trouble, with none of theirs", model: FAILED, mates: [PELL], ask: undefined },
     {
       name: "in trouble, to a Mate nobody can say is someone else's",
       model: FAILED,
-      mates: [CLEO, KAI],
-      ask: "Kai",
+      mates: [PELL, BRAM],
+      ask: "Bram",
     },
-    { name: "healthy", model: HEALTHY, mates: [JUNO], ask: undefined },
+    { name: "healthy", model: HEALTHY, mates: [ORSA], ask: undefined },
   ])("offers the fix $name", ({ model, mates, ask }) => {
     const html = renderToStaticMarkup(menu(model, { mates }));
     if (ask === undefined) expect(html).not.toContain("to fix it");
@@ -172,12 +172,12 @@ describe("the production chip's menu", () => {
   it("offers the fix to the Mate used last first, and another from a small list", () => {
     useUiStateStore.setState({
       threadLastVisitedAtById: {
-        "env-shop-juno:thread-shop-juno": "2026-09-29T08:00:00Z",
-        "env-shop-nova:thread-shop-nova": "2026-09-29T10:00:00Z",
+        "env-shop-orsa:thread-shop-orsa": "2026-09-29T08:00:00Z",
+        "env-shop-ivet:thread-shop-ivet": "2026-09-29T10:00:00Z",
       },
     });
-    const tree = mount(menu(FAILED, { mates: [JUNO, NOVA] }));
-    expect(text(surface(tree, "sidebar-production-ask-button"))).toContain("Ask Nova to fix it");
+    const tree = mount(menu(FAILED, { mates: [ORSA, IVET] }));
+    expect(text(surface(tree, "sidebar-production-ask-button"))).toContain("Ask Ivet to fix it");
     act(() => {
       tree.root
         .find((node) => node.props["aria-label"] === "Ask another of your Mates")
@@ -185,10 +185,10 @@ describe("the production chip's menu", () => {
     });
     act(() => {
       tree.root
-        .find((node) => node.type === "button" && node.children.some((child) => child === "Juno"))
+        .find((node) => node.type === "button" && node.children.some((child) => child === "Orsa"))
         .props.onClick();
     });
-    expect(text(surface(tree, "sidebar-production-ask-button"))).toContain("Ask Juno to fix it");
+    expect(text(surface(tree, "sidebar-production-ask-button"))).toContain("Ask Orsa to fix it");
   });
 
   it("shows what will be written before it goes, then writes it into the Mate's composer", () => {
@@ -203,12 +203,14 @@ describe("the production chip's menu", () => {
     expect(() => surface(tree, "sidebar-production-draft")).toThrow();
     press(tree, "sidebar-production-ask-button");
     const draft = text(surface(tree, "sidebar-production-draft"));
-    expect(draft).toContain("Opens Juno's conversation with this in the composer");
+    expect(draft).toContain("Opens Orsa's conversation with this in the composer");
     expect(draft).toContain("Production's release v0.1.57 failed deploying app.");
-    expect(draft).toContain("The error: Build pipeline failed; no recognised log pattern matched.");
+    expect(draft).toContain(
+      "The error: The build step exited with code 2 while installing packages.",
+    );
     expect(asked).toEqual([]);
     press(tree, "sidebar-production-ask-open");
-    expect(asked).toEqual([["shop-juno", PROBLEM]]);
+    expect(asked).toEqual([["shop-orsa", PROBLEM]]);
   });
 
   it("counts what waits for production, and Review opens the release", () => {
@@ -220,7 +222,7 @@ describe("the production chip's menu", () => {
             { label: "prod", state: "waiting", version: "v0.1.44", waiting: 2 },
             { waiting: 2 },
           ),
-          { groupId: "letopis" },
+          { groupId: "quillmark" },
         )}
       </ReviewContext>,
     );
@@ -228,7 +230,7 @@ describe("the production chip's menu", () => {
       "2 changes wait for production",
     );
     press(tree, "sidebar-production-review");
-    expect(opened).toEqual([{ kind: "release", groupId: "letopis" }]);
+    expect(opened).toEqual([{ kind: "release", groupId: "quillmark" }]);
   });
 
   it("offers no Review where nothing waits", () => {
