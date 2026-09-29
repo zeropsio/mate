@@ -56,20 +56,10 @@ export type OwnerSeat =
   | { readonly kind: "unnamed" }
   | { readonly kind: "nobody"; readonly label: string };
 
-/** The row's second line where it says nothing else: nobody has signed its agent in. */
-export interface MateSignIn {
-  readonly words: string;
-  /**
-   * *Sign in*, in blue (S3): the viewer's to do — the Mate is nobody's, and
-   * the first to sign in owns it, or it is their own — and a press lands on
-   * it, the conversation open to them now with its sign-in in it.
-   */
-  readonly verb: boolean;
-}
-
 export interface MateOwnerView {
   readonly seat: OwnerSeat;
-  readonly signIn: MateSignIn | undefined;
+  /** The row's second line where it says nothing else: nobody has signed its agent in. */
+  readonly signInLine: string | undefined;
 }
 
 const NOBODY_SIGNED_IN = "Nobody has signed in yet";
@@ -82,34 +72,27 @@ const NOBODY_OWNS = "No owner yet. Whoever signs in its coding agent owns it.";
  *
  * | its records                   | the member list | seat           | never asked                       |
  * | ----------------------------- | --------------- | -------------- | --------------------------------- |
- * | name nobody                   | —               | the empty seat | the line, *Sign in* once open     |
- * | an `OWNER`, nobody signed in  | the viewer      | their picture  | the line, *Sign in* once open     |
- * | an `OWNER`, nobody signed in  | a colleague     | their picture  | the line — theirs to sign in      |
- * | an `OWNER`, nobody signed in  | not named yet   | a neutral disc | the line, no verb until named     |
+ * | name nobody                   | —               | the empty seat | the line                          |
+ * | an `OWNER`, nobody signed in  | named           | their picture  | the line                          |
+ * | an `OWNER`, nobody signed in  | not named yet   | a neutral disc | the line                          |
  * | somebody signed in            | named           | their picture  | nothing: a row as tall as it says |
  * | somebody signed in            | not named       | a neutral disc | nothing                           |
  *
  * The line takes the row's second line only where nothing was asked: a Mate
  * somebody has talked to says what was asked, and the seat alone says it is
- * nobody's. *Sign in* opens the Mate — its conversation holds the sign-in —
- * so it is offered only where that press lands there: connected, which this
- * viewer's role allowed.
+ * nobody's. It is a fact with nothing to press on it: the row's own press
+ * opens the Mate, whose conversation holds the sign-in (the owner,
+ * 2026-09-29, of a *Sign in* on the row: it did nothing there, and stood on
+ * the row's edge).
  */
 export function mateOwnerView(input: {
   readonly owner:
-    | {
-        readonly name: string;
-        readonly initials: string;
-        readonly avatarUrl: string | null;
-        readonly isViewer: boolean;
-      }
+    | { readonly name: string; readonly initials: string; readonly avatarUrl: string | null }
     | undefined;
   /** What its records say (`mateOwnerRecords`). */
   readonly records: { readonly named: boolean; readonly signedIn: boolean };
   /** The row already says what was asked under the name. */
   readonly asked: boolean;
-  /** Its conversation is open to this viewer now: a press lands on its sign-in. */
-  readonly connected: boolean;
 }): MateOwnerView {
   const { owner, records } = input;
   const seat: OwnerSeat =
@@ -118,9 +101,7 @@ export function mateOwnerView(input: {
       : records.named
         ? { kind: "unnamed" }
         : { kind: "nobody", label: NOBODY_OWNS };
-  if (records.signedIn || input.asked) return { seat, signIn: undefined };
-  const theirs = seat.kind === "nobody" || owner?.isViewer === true;
-  return { seat, signIn: { words: NOBODY_SIGNED_IN, verb: input.connected && theirs } };
+  return { seat, signInLine: records.signedIn || input.asked ? undefined : NOBODY_SIGNED_IN };
 }
 
 /**

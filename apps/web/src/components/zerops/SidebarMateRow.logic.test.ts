@@ -64,13 +64,15 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
   const SIGNED = { named: true, signedIn: true };
   const LINE = "Nobody has signed in yet";
 
+  // The line is a fact with nothing to press on it: the row's own press opens
+  // the Mate, whose conversation holds the sign-in (the owner, 2026-09-29, of
+  // a *Sign in* on the row: it did nothing there, and stood on the row's edge).
   it.each([
     {
       case: "a named owner, signed in: the person, no line",
       owner: KAREL,
       records: SIGNED,
       asked: false,
-      connected: true,
       seat: "person",
       line: undefined,
     },
@@ -79,80 +81,64 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
       owner: undefined,
       records: SIGNED,
       asked: false,
-      connected: true,
       seat: "unnamed",
       line: undefined,
     },
     {
-      case: "nobody's and never asked, open here: the empty seat, the line and Sign in",
+      case: "nobody's and never asked: the empty seat and the line",
       owner: undefined,
       records: NOBODY,
       asked: false,
-      connected: true,
       seat: "nobody",
-      line: { words: LINE, verb: true },
-    },
-    {
-      case: "nobody's, not open here yet: the line, and no verb a press would not reach",
-      owner: undefined,
-      records: NOBODY,
-      asked: false,
-      connected: false,
-      seat: "nobody",
-      line: { words: LINE, verb: false },
+      line: LINE,
     },
     {
       case: "nobody's, but asked already (a project token): the empty seat and its own lines",
       owner: undefined,
       records: NOBODY,
       asked: true,
-      connected: true,
       seat: "nobody",
       line: undefined,
     },
     {
-      case: "the viewer's own, nobody signed in: their picture, the line and Sign in",
+      case: "the viewer's own, nobody signed in: their picture and the line",
       owner: PETRA,
       records: OWNED_UNSIGNED,
       asked: false,
-      connected: true,
       seat: "person",
-      line: { words: LINE, verb: true },
+      line: LINE,
     },
     {
-      case: "a colleague's, nobody signed in: the line, theirs to sign in",
+      case: "a colleague's, nobody signed in: their picture and the line",
       owner: KAREL,
       records: OWNED_UNSIGNED,
       asked: false,
-      connected: true,
       seat: "person",
-      line: { words: LINE, verb: false },
+      line: LINE,
     },
     {
-      case: "an owner not named yet, nobody signed in: the line, no verb until they are",
+      case: "an owner not named yet, nobody signed in: a neutral seat and the line",
       owner: undefined,
       records: OWNED_UNSIGNED,
       asked: false,
-      connected: true,
       seat: "unnamed",
-      line: { words: LINE, verb: false },
+      line: LINE,
     },
-  ])("$case", ({ owner, records, asked, connected, seat, line }) => {
-    const view = mateOwnerView({ owner, records, asked, connected });
+  ])("$case", ({ owner, records, asked, seat, line }) => {
+    const view = mateOwnerView({ owner, records, asked });
     expect(view.seat.kind).toBe(seat);
-    expect(view.signIn).toEqual(line);
+    expect(view.signInLine).toBe(line);
   });
 
   it("says the empty seat in words, and draws a person as their mark", () => {
-    expect(
-      mateOwnerView({ owner: undefined, records: NOBODY, asked: true, connected: false }).seat,
-    ).toEqual({
+    expect(mateOwnerView({ owner: undefined, records: NOBODY, asked: true }).seat).toEqual({
       kind: "nobody",
       label: "No owner yet. Whoever signs in its coding agent owns it.",
     });
-    expect(
-      mateOwnerView({ owner: KAREL, records: SIGNED, asked: true, connected: true }).seat,
-    ).toEqual({ kind: "person", mark: ownerMark(KAREL) });
+    expect(mateOwnerView({ owner: KAREL, records: SIGNED, asked: true }).seat).toEqual({
+      kind: "person",
+      mark: ownerMark(KAREL),
+    });
   });
 });
 

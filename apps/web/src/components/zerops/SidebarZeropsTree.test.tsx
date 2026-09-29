@@ -576,7 +576,9 @@ const productionRow: EnvironmentRow = {
 // A Mate with no owner, or nobody signed in (the owner, 2026-09-29: "mate
 // without auth / owner should have the state specially handled"): nobody's
 // is an empty seat, said in words; a row with nothing else to say says that
-// nobody has signed in, and offers it where it is the viewer's to do.
+// nobody has signed in, and offers nothing to press there: the row's own
+// press opens the Mate, whose conversation holds the sign-in (the owner, of
+// a *Sign in* on the row: it did nothing there, and stood on the row's edge).
 describe("a Mate with no owner, or nobody signed in", () => {
   const OWNER_ROLE = (clientUserId: string) => ({ clientUserId, roleCode: "OWNER" });
   const mate = (
@@ -595,11 +597,7 @@ describe("a Mate with no owner, or nobody signed in", () => {
   };
   const seat = (html: string) => /data-zerops-avatar="([^"]*)"/u.exec(html)?.[1];
   const line = (html: string) =>
-    /<span[^>]*data-zerops-surface="sidebar-mate-sign-in"[^>]*>(.*?)<\/span><\/span>/u.exec(
-      html,
-    )?.[0];
-  const verb = (html: string) =>
-    /<span[^>]*data-zerops-surface="sidebar-mate-sign-in-verb"[^>]*>([^<]*)</u.exec(html);
+    /<span[^>]*data-zerops-surface="sidebar-mate-sign-in"[^>]*>([^<]*)<\/span>/u.exec(html);
   const PETRA = { name: "Petra Malá", initials: "PM", avatarUrl: null, isViewer: true };
   const KAREL = { name: "Karel Novák", initials: "KN", avatarUrl: null, isViewer: false };
 
@@ -615,35 +613,26 @@ describe("a Mate with no owner, or nobody signed in", () => {
     expect(html).toContain("No owner yet. Whoever signs in its coding agent owns it.");
   });
 
-  it("says nobody has signed in on the line under the name, and offers Sign in in blue", () => {
-    const html = render([mate([], { group: "connected" })], { getOwner: () => undefined });
-    expect(line(html)).toContain(">Nobody has signed in yet<");
-    const found = verb(html);
-    expect(found?.[1]).toBe("Sign in");
-    expect(found?.[0]).toContain("menu-textbtn");
-    // On the line's own 18 px: the word's pill does not grow the row.
-    expect(found?.[0]).toContain("-my-0.75");
-  });
-
-  it("offers no Sign in where a press would not land on it: not open here yet", () => {
-    const html = render([mate([], { group: "ready" })], { getOwner: () => undefined });
-    expect(line(html)).toContain(">Nobody has signed in yet<");
-    expect(verb(html)).toBeNull();
-  });
-
-  it("gives the viewer's own Mate the line and Sign in; a colleague's the line alone", () => {
-    const own = render([mate([], { group: "connected", userRoles: [OWNER_ROLE("cu-petra")] })], {
-      getOwner: () => PETRA,
-    });
-    expect(seat(own)).toBe("initials");
-    expect(verb(own)?.[1]).toBe("Sign in");
-    const theirs = render([mate([], { group: "connected", userRoles: [OWNER_ROLE("cu-karel")] })], {
-      getOwner: () => KAREL,
-    });
-    expect(seat(theirs)).toBe("initials");
-    expect(line(theirs)).toContain(">Nobody has signed in yet<");
-    expect(verb(theirs)).toBeNull();
-  });
+  it.each([
+    { case: "nobody's, open here", group: "connected", roles: [], owner: undefined },
+    { case: "nobody's, not open here yet", group: "ready", roles: [], owner: undefined },
+    { case: "the viewer's own", group: "connected", roles: ["cu-petra"], owner: PETRA },
+    { case: "a colleague's", group: "connected", roles: ["cu-karel"], owner: KAREL },
+  ] as const)(
+    "says nobody has signed in under the name, one muted line with nothing to press: $case",
+    ({ group, roles, owner }) => {
+      const html = render([mate([], { group, userRoles: roles.map((id) => OWNER_ROLE(id)) })], {
+        getOwner: () => owner,
+      });
+      const found = line(html);
+      expect(found?.[1]).toBe("Nobody has signed in yet");
+      // One line of the row's leading, on the words' edge, the words' muted ink.
+      expect(found?.[0]).toEqual(expect.stringContaining("leading-4.5"));
+      expect(found?.[0]).toEqual(expect.stringContaining("text-muted-foreground"));
+      expect(html).not.toContain(">Sign in<");
+      expect(html).not.toContain("sidebar-mate-sign-in-verb");
+    },
+  );
 
   it("says nothing of signing in once somebody has, or once it was asked something", () => {
     const signed = render([mate([SIGNER], { group: "connected" })], { getOwner: () => KAREL });
@@ -671,7 +660,7 @@ describe("a Mate with no owner, or nobody signed in", () => {
     expect(html).not.toContain("sidebar-mate-sign-in");
   });
 
-  it("opens the Mate — where its sign-in is — when Sign in is pressed", () => {
+  it("opens the Mate — where its sign-in is — when its row is pressed", () => {
     const opened: string[] = [];
     const mounted = mount(
       <SidebarZeropsTree
@@ -683,9 +672,9 @@ describe("a Mate with no owner, or nobody signed in", () => {
         }}
       />,
     );
-    // The word is the row's own press, said as the next step.
-    const word = surface(mounted, "sidebar-mate-sign-in-verb");
-    let row: ReactTestInstance | null = word.parent;
+    // The line is the row's, and so is its press.
+    const said = surface(mounted, "sidebar-mate-sign-in");
+    let row: ReactTestInstance | null = said.parent;
     while (row !== null && row.props["data-zerops-surface"] !== "sidebar-mate") row = row.parent;
     expect(row).not.toBeNull();
     act(() => {

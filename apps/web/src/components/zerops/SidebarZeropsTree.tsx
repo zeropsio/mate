@@ -168,7 +168,6 @@ import {
   mateRowView,
   type MateRowReply,
   type MateRowSlot,
-  type MateSignIn,
   type OwnerSeat,
 } from "./SidebarMateRow.logic";
 import { useSidebarJump } from "~/zerops/sidebarJump";
@@ -2074,7 +2073,6 @@ function MateRow<T extends RosterCandidate>({
     owner,
     records: mateOwnerRecords(candidate.project),
     asked: view.ask !== undefined,
-    connected: candidate.group === "connected",
   });
   const known = live !== undefined && live.remembered !== true;
   // A new ask rises into the row's second line as the person sets it; the
@@ -2276,7 +2274,7 @@ function MateRow<T extends RosterCandidate>({
               {view.ask}
             </span>
           )}
-          {seated.signIn === undefined ? null : <MateSignInLine signIn={seated.signIn} />}
+          {seated.signInLine === undefined ? null : <MateSignInLine words={seated.signInLine} />}
           {view.reply === undefined ? null : (
             <MateReply known={known} reply={view.reply} threadKey={live?.threadKey} />
           )}
@@ -2660,30 +2658,17 @@ function MateReplyPending() {
 
 /**
  * The row's second line where nobody has signed its agent in and nothing was
- * asked (`mateOwnerView`): the fact in the muted ink, and — where it is the
- * viewer's to do and a press lands on it — *Sign in* in blue on the row's
- * right edge (S3), as *Review* stands on a change. The word is the row's own
- * press said as the next step: the Mate's conversation holds the sign-in.
- * Its pill hangs outside the line's 18 px, so the row is as tall as with any
- * second line; a word that arrives while watched — the Mate connecting —
- * fades in.
+ * asked (`mateOwnerView`): the fact, in the muted ink, as one line of the
+ * row's leading on the words' edge. Nothing on it to press: the row's own
+ * press opens the Mate, whose conversation holds the sign-in.
  */
-function MateSignInLine({ signIn }: { readonly signIn: MateSignIn }) {
-  const arrived = useChangedSinceShown(signIn.verb);
+function MateSignInLine({ words }: { readonly words: string }) {
   return (
     <span
-      className="flex h-4.5 min-w-0 items-center gap-2 text-line leading-4.5"
+      className="truncate text-line leading-4.5 text-muted-foreground"
       data-zerops-surface="sidebar-mate-sign-in"
     >
-      <span className="min-w-0 flex-1 truncate text-muted-foreground">{signIn.words}</span>
-      {signIn.verb ? (
-        <span
-          className={cn("menu-textbtn -my-0.75 -me-2", arrived && "animate-zerops-appear")}
-          data-zerops-surface="sidebar-mate-sign-in-verb"
-        >
-          Sign in
-        </span>
-      ) : null}
+      {words}
     </span>
   );
 }
