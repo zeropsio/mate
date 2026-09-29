@@ -239,7 +239,12 @@ describe("RunChat", () => {
       );
     }
     expect(card.split(" ")).toEqual(expect.arrayContaining(["w-full", "rounded-2xl"]));
-    expect(classes(said?.tag)).toContain("bg-foreground/8");
+    // Its words wear its tint, lightly; the face beside them says who spoke.
+    expect(classes(said?.tag)).toContain("run-speech");
+    expect(markup).toContain("--run-speaker-tint:var(--zerops-mate-tint-sky)");
+    expect(markup).toMatch(
+      /<span class="flex h-\[1lh\] items-center"><svg[^>]*class="[^"]*size-5[^"]*"[^>]*data-mate-face-tint="sky"/u,
+    );
     expect(classes(thought_?.tag)).toContain("bg-foreground/4");
     // Outlined on the tray, never filled: the composer keeps the only white.
     expect(card).toContain("ring-1 ring-foreground/12");
@@ -568,14 +573,14 @@ describe("RunChat", () => {
     );
     // One container holds the chat and its status line, so both keep one gap.
     expect(markup).toMatch(
-      /<div class="@container\/chat min-w-0"><div class="[^"]*" data-run-chat="true">/u,
+      /<div class="@container\/chat min-w-0" style="[^"]*"><div class="[^"]*" data-run-chat="true">/u,
     );
     const row =
       /<li class="([^"]*)" data-chat-row="true"><span aria-hidden="true" class="([^"]*)"/u.exec(
         markup,
       );
     expect(row?.[1]?.split(" ")).toEqual(expect.arrayContaining(["gap-2", "@md/chat:gap-2.5"]));
-    expect(row?.[2]).toBe("w-7 shrink-0");
+    expect(row?.[2]?.split(" ").slice(0, 2)).toEqual(["w-7", "shrink-0"]);
   });
 
   // Two pages of one host are said by name, as one is; more by their count,

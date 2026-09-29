@@ -2994,6 +2994,13 @@ code {
   border-bottom-right-radius: 30px;
 }
 
+/* The Mate's words in its card wear its tint lightly (K13): with the
+   person's bubble neutral, who is speaking shows at a glance, in the one
+   colour that means "who" (S3). A crewmate speaks in its own. */
+.run-speech {
+  background: color-mix(in oklab, var(--run-speaker-tint) 17%, transparent);
+}
+
 /* A run's line with nothing under it keeps the tray's geometry in a frame
    nobody sees, so the tray drawn around it later never moves its words. */
 .run-tray-ghost {

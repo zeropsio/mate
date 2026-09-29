@@ -62,6 +62,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
   type UIEvent,
 } from "react";
@@ -93,7 +94,7 @@ import {
   type WorkLineFace,
 } from "./conversation.logic";
 import { StatusBar, type BarTone } from "./ConversationPills";
-import { ElapsedSince, MATE_BUBBLE_FILL, RunClock, settledRunVerb } from "./ConversationRows";
+import { ElapsedSince, RunClock, settledRunVerb } from "./ConversationRows";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
   normalizeCompactToolLabel,
@@ -477,8 +478,8 @@ const META = "text-line";
 type BubbleTone = "speech" | "thought" | "tool" | "failed" | "attention";
 
 const BUBBLE_TONE: Record<BubbleTone, string> = {
-  // Its words to the person: the fullest fill.
-  speech: `${MATE_BUBBLE_FILL} text-foreground`,
+  // Its words to the person: its own tint, lightly (`.run-speech`).
+  speech: "run-speech text-foreground",
   // Talking to itself: the same bubble, half the fill, the words italic and faint.
   thought: `${THOUGHT_FILL} text-muted-foreground`,
   // A thing it did: a hairline on the tray, never a fill, so a call never
@@ -2029,6 +2030,12 @@ interface ChatLine {
 /** A thought's mark. */
 const THOUGHT_MARK = <DidMark icon={BrainIcon} />;
 
+/** Its words' mark: its own face, at rest — who is speaking, beside what it said. */
+function SpeakerMark() {
+  const ctx = use(TimelineRowCtx);
+  return <MateFace size="sm" state="idle" tint={ctx.speaker.tint} />;
+}
+
 /** What the chat draws: a line on its own, or a run of calls in one card, keyed by its first. */
 type ChatEntry = ChatLine | { readonly key: string; readonly calls: ReadonlyArray<ChatLine> };
 
@@ -2092,7 +2099,11 @@ function itemLine(item: RecordItem): ChatLine | null {
         mark: THOUGHT_MARK,
       };
     case "note":
-      return { key: item.key, bubble: <NoteBubble message={item.message} /> };
+      return {
+        key: item.key,
+        bubble: <NoteBubble message={item.message} />,
+        mark: <SpeakerMark />,
+      };
     case "person":
       return { key: item.key, bubble: <PersonMark item={item} />, theirs: true };
     case "operation":
@@ -2357,8 +2368,14 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const shown = gatherCalls(from > 0 ? lines.slice(from) : lines);
   return (
     // One container for the chat and its status line: the Mate's column keeps
-    // one gap for both, the narrower on a phone's card.
-    <div className="@container/chat min-w-0">
+    // one gap for both, the narrower on a phone's card. Its words wear its
+    // tint (`.run-speech`).
+    <div
+      className="@container/chat min-w-0"
+      style={
+        { "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})` } as CSSProperties
+      }
+    >
       <ChatScroll
         empty={shown.length === 0 && from === 0}
         label={`${ctx.speaker.name}'s work`}
