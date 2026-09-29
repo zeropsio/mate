@@ -16,7 +16,7 @@ import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
-import type { MateTintId } from "@t3tools/shared/brand";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { ArrowUpRightIcon, ChevronDownIcon } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 
@@ -44,6 +44,8 @@ const ChipPortal = gatedPortal(PopoverPrimitive.Portal);
 export interface ChipMate {
   readonly candidate: ZeropsCandidate;
   readonly tint: MateTintId;
+  /** The shape its person picked, else its tint's own (`mateShapeOf`). */
+  readonly shape: MateShapeId;
   /** Whether it is the person's own; `undefined` where nobody can say yet. */
   readonly mine: boolean | undefined;
   /** Its conversation's key, whose last visit puts the one used last first. */
@@ -345,7 +347,7 @@ function AskToFix({
   readonly onAsk: (mateProjectId: string, problem: FixProblem) => void;
 }) {
   const visited = useUiStateStore((state) => state.threadLastVisitedAtById);
-  const tints = new Map(mates.map((mate) => [mate.candidate.project.id, mate.tint]));
+  const faces = new Map(mates.map((mate) => [mate.candidate.project.id, mate]));
   const choice = fixMatesOf({
     projectId: projectId ?? groupId,
     groupId,
@@ -356,7 +358,10 @@ function AskToFix({
       const mate = mates.find((entry) => entry.candidate.environmentId === environmentId);
       return mate?.threadKey === undefined ? undefined : visited[mate.threadKey];
     },
-  }).map((option) => ({ ...option, tint: tints.get(option.mateProjectId) ?? "slate" }));
+  }).map((option) => {
+    const face = faces.get(option.mateProjectId);
+    return { ...option, tint: face?.tint ?? "slate", shape: face?.shape };
+  });
   const [pickedId, setPickedId] = useState<string | undefined>(undefined);
   const [drafting, setDrafting] = useState(false);
   const [choosing, setChoosing] = useState(false);
@@ -376,7 +381,13 @@ function AskToFix({
           }}
           type="button"
         >
-          <MateFace className="size-4.5" size="sm" state="idle" tint={mate.tint} />
+          <MateFace
+            className="size-4.5"
+            shape={mate.shape}
+            size="sm"
+            state="idle"
+            tint={mate.tint}
+          />
           {`Ask ${mate.name} to fix it`}
         </button>
         {others.length === 0 ? null : (
@@ -405,7 +416,13 @@ function AskToFix({
               }}
               type="button"
             >
-              <MateFace className="size-4.5" size="sm" state="idle" tint={other.tint} />
+              <MateFace
+                className="size-4.5"
+                shape={other.shape}
+                size="sm"
+                state="idle"
+                tint={other.tint}
+              />
               {other.name}
             </button>
           ))}
@@ -414,7 +431,13 @@ function AskToFix({
       {drafting ? (
         <div className="zerops-envpop-draft" data-zerops-surface="sidebar-production-draft">
           <div className="zerops-envpop-draft-to">
-            <MateFace className="size-3.5" size="dot" state="idle" tint={mate.tint} />
+            <MateFace
+              className="size-3.5"
+              shape={mate.shape}
+              size="dot"
+              state="idle"
+              tint={mate.tint}
+            />
             {`Opens ${mate.name}'s conversation with this in the composer`}
           </div>
           {draftParts(fixRequestPrompt(problem)).map((part): ReactNode =>

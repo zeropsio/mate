@@ -20,7 +20,7 @@ import {
   type MateNextStep,
 } from "@t3tools/client-runtime/zerops";
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import type { MateTintId } from "@t3tools/shared/brand";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 
 import { zeropsMateAt } from "./mateIdentities";
 import { useZeropsProjectFlowOptional } from "./projectFlowContext";
@@ -43,6 +43,8 @@ export type ZeropsMateNextStep =
       readonly step: Extract<MateNextStep, { kind: "review" }>;
       /** Whose change it is: the Mate's face, in its tint, once the Mate is known. */
       readonly tint: MateTintId | undefined;
+      /** The shape its person picked, once the Mate is known. */
+      readonly shape: MateShapeId | undefined;
       /** What Review opens. */
       readonly target: Extract<ReviewTarget, { kind: "change" }>;
     };
@@ -73,6 +75,7 @@ export function useZeropsMateNextStep(threadRef: ScopedThreadRef | null): Zerops
     kind: "review",
     step,
     tint: mate.kind === "mate" ? mate.mate.tint : undefined,
+    shape: mate.kind === "mate" ? mate.mate.shape : undefined,
     target: {
       kind: "change",
       groupId,

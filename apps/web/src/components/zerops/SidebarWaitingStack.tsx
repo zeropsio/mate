@@ -13,7 +13,7 @@
  * the logo row is narrow, since the faces give way before the mark and ⌘K
  * do (`waitingFacesThatFit`).
  */
-import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
+import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useState } from "react";
 
 import { Kbd } from "../ui/kbd";
@@ -24,6 +24,8 @@ export interface WaitingMate {
   readonly projectId: string;
   readonly name: string;
   readonly tint: MateTintId;
+  /** The shape its person picked, else its tint's own (`mateShapeOf`). */
+  readonly shape: MateShapeId;
   readonly face: MateMarkState;
 }
 
@@ -120,7 +122,7 @@ export function SidebarWaitingStack({
                   key={mate.projectId}
                   style={{ zIndex: shown.length - index }}
                 >
-                  <MateFace size="sm" state={mate.face} tint={mate.tint} />
+                  <MateFace shape={mate.shape} size="sm" state={mate.face} tint={mate.tint} />
                 </span>
               ))}
             </span>

@@ -26,7 +26,7 @@ import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environ
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { ThreadId } from "@t3tools/contracts";
-import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
+import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
   mateMarkStateForThreadStatus,
   resolveThreadStatus,
@@ -87,6 +87,8 @@ export function replacementChatToPin(
 export interface LineMate {
   readonly name: string;
   readonly tint: MateTintId;
+  /** The shape its person picked; its tint's own when absent. */
+  readonly shape?: MateShapeId | undefined;
   /** Its face in the chat of its own on screen, else in its main chat. */
   readonly face: MateMarkState;
   /** One of its own chats is on screen — or one being started: it stands on the band. */
@@ -102,7 +104,12 @@ export interface LineMate {
 }
 
 export function lineMate(input: {
-  readonly mate: { readonly name: string; readonly tint: MateTintId; readonly connected: boolean };
+  readonly mate: {
+    readonly name: string;
+    readonly tint: MateTintId;
+    readonly shape?: MateShapeId | undefined;
+    readonly connected: boolean;
+  };
   /** The Mate's chats, main first (`mateChats`). */
   readonly chats: ReadonlyArray<EnvironmentThreadShell>;
   /** The chat on screen; `null` for one being started. */
@@ -121,6 +128,7 @@ export function lineMate(input: {
   return {
     name: mate.name,
     tint: mate.tint,
+    shape: mate.shape,
     face: mateFaceFor(
       mate.connected,
       status === null ? undefined : { face: mateMarkStateForThreadStatus(status.kind) },

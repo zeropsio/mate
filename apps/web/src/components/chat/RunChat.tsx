@@ -1992,7 +1992,7 @@ const THOUGHT_MARK = (
 /** Its words' mark: its own face, at rest — who is speaking, beside what it said. */
 function SpeakerMark() {
   const ctx = use(TimelineRowCtx);
-  return <MateFace size="sm" state="idle" tint={ctx.speaker.tint} />;
+  return <MateFace shape={ctx.speaker.shape} size="sm" state="idle" tint={ctx.speaker.tint} />;
 }
 
 /** What the chat draws: a line on its own, or a run of calls in one card, keyed by its first. */
@@ -2445,6 +2445,7 @@ function NowLine({
         gaze={face.gaze}
         greets
         known={ctx.arrivedAfter !== null && !ctx.syncing}
+        shape={ctx.speaker.shape}
         size="md"
         state={face.state}
         tint={ctx.speaker.tint}

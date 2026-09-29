@@ -199,7 +199,7 @@ function ReleaseData({
       row.mergedAt === undefined ? undefined : reviewAge(row.mergedAt, now)?.toLowerCase();
     return {
       ...row,
-      ...(mate === undefined ? {} : { face: { tint: mate.tint } }),
+      ...(mate === undefined ? {} : { face: { tint: mate.tint, shape: mate.shape } }),
       sub: [mateName, age === undefined ? undefined : `merged ${age}`]
         .filter((part) => part !== undefined)
         .join(" · "),

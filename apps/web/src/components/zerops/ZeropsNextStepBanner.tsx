@@ -25,7 +25,7 @@
  */
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import type { MateTintId } from "@t3tools/shared/brand";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useEffect, useMemo, type ReactNode } from "react";
 
 import {
@@ -49,6 +49,8 @@ export interface ZeropsNextStepStripModel {
   /** The change's own title. */
   readonly detail: string;
   readonly tint: MateTintId;
+  /** The shape its person picked; its tint's own when absent. */
+  readonly shape?: MateShapeId | undefined;
   readonly target: Extract<ReviewTarget, { kind: "change" }>;
 }
 
@@ -68,6 +70,7 @@ function stripOf(top: RememberedComposerTop): ZeropsNextStepStripModel {
     title: top.words,
     detail: top.title,
     tint: top.tint,
+    shape: top.shape,
     target: {
       kind: "change",
       groupId: top.groupId,
@@ -100,14 +103,16 @@ export function zeropsComposerTop(input: {
     case "none":
       return { strip: null, remember: null };
     case "review": {
+      // The face keeps the tint and the shape it was painted in until the Mate is known.
+      const shape = nextStep.tint === undefined ? remembered?.shape : nextStep.shape;
       const shown: RememberedComposerTop = {
         groupId: nextStep.target.groupId,
         repository: nextStep.target.repository,
         number: nextStep.target.number,
         title: nextStep.step.detail,
         words: nextStep.step.title,
-        // The face keeps the tint it was painted in until the Mate is known.
         tint: nextStep.tint ?? remembered?.tint ?? "slate",
+        ...(shape === undefined ? {} : { shape }),
       };
       return { strip: held ? null : stripOf(shown), remember: shown };
     }
@@ -128,7 +133,7 @@ export function ZeropsNextStepStrip({
       className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 border-foreground/8 border-b pt-3 pe-3.5 pb-3 ps-4"
       data-composer-top="review"
     >
-      <MateFace size="md" state="needs" tint={strip.tint} />
+      <MateFace shape={strip.shape} size="md" state="needs" tint={strip.tint} />
       <div className="min-w-0">
         <p className="truncate font-medium text-foreground text-line leading-4.5">{strip.title}</p>
         <p className="truncate text-muted-foreground text-line leading-4.5">{strip.detail}</p>
@@ -170,6 +175,7 @@ export function useZeropsNextStepStrip(
   const title = strip?.title;
   const detail = strip?.detail;
   const tint = strip?.tint;
+  const shape = strip?.shape;
   const groupId = strip?.target.groupId;
   const repository = strip?.target.repository;
   const number = strip?.target.number;
@@ -185,9 +191,15 @@ export function useZeropsNextStepStrip(
           onReview={(target, from) => {
             openReview(target, { from });
           }}
-          strip={{ title, detail, tint, target: { kind: "change", groupId, repository, number } }}
+          strip={{
+            title,
+            detail,
+            tint,
+            shape,
+            target: { kind: "change", groupId, repository, number },
+          }}
         />
       ),
-    [detail, groupId, number, openReview, repository, tint, title],
+    [detail, groupId, number, openReview, repository, shape, tint, title],
   );
 }

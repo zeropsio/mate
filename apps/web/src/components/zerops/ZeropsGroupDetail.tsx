@@ -20,6 +20,7 @@ import {
   botDisplayName,
   buildZeropsGroupTree,
   hasMate,
+  mateShapeOf,
   changeState,
   deployWord,
   environmentNameUnderGroup,
@@ -79,7 +80,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { ChevronRightIcon, ExternalLinkIcon, PlusIcon } from "lucide-react";
 import { Fragment, useCallback, useId, useMemo, useState } from "react";
 
-import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
+import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 
 import { useThreadShells } from "~/state/entities";
@@ -405,10 +406,12 @@ function useGroupMates(groupId: string): {
             ? activity.get(item.environmentId)
             : undefined;
         const subject = live?.subject;
+        const tint = tints.get(item.project.id) ?? "slate";
         return {
           projectId: item.project.id,
           name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
-          tint: tints.get(item.project.id) ?? "slate",
+          tint,
+          shape: mateShapeOf(item.project.tagList, tint),
           face: mateFaceFor(item.group === "connected", live),
           ...(live?.kind === "failed" ? { failed: true } : {}),
           subject,
@@ -1876,6 +1879,8 @@ export interface GroupMate {
   readonly projectId: string;
   readonly name: string;
   readonly tint: MateTintId;
+  /** The shape its person picked, else its tint's own (`mateShapeOf`). */
+  readonly shape: MateShapeId;
   readonly face: MateMarkState;
   /** Its last run stopped on an error: its face reads `needs`, and it asks nothing. */
   readonly failed?: boolean;
@@ -1920,7 +1925,7 @@ function MateLine({
         }}
         type="button"
       >
-        <MateFace size="md" state={mate.face} tint={mate.tint} />
+        <MateFace shape={mate.shape} size="md" state={mate.face} tint={mate.tint} />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex min-w-0 items-baseline gap-2">
             <span className="min-w-0 truncate text-sm leading-5 font-medium text-foreground">

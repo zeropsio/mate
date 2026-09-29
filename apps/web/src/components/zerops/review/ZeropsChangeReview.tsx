@@ -26,7 +26,7 @@ import {
   type GiteaCommit,
   type ReviewPress,
 } from "@t3tools/client-runtime/zerops";
-import type { MateTintId } from "@t3tools/shared/brand";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useRouter } from "@tanstack/react-router";
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 
@@ -66,7 +66,7 @@ import {
   type ReviewKind,
 } from "./ZeropsReview.logic";
 import { ReviewCommits } from "./ReviewCommits";
-import { ReviewConversation } from "./ReviewConversation";
+import { ReviewConversation, type MateFaceOf } from "./ReviewConversation";
 import { ReviewDescription } from "./ReviewDescription";
 import {
   ReviewChecks,
@@ -296,8 +296,9 @@ function ChangeReviewData({
                 tint: undefined,
                 mine,
               }
-          : { name: mate.name, tint: mate.tint, mine }
+          : { name: mate.name, tint: mate.tint, shape: mate.shape, mine }
       }
+      mateFaces={mates}
       now={now}
       comments={comments}
       remarks={remarks}
@@ -361,10 +362,17 @@ export interface ChangeReviewViewProps {
   /** A dialog over the conversation, or the change's own page. */
   readonly frame?: ReviewFrame | undefined;
   readonly pull: FlowPullRequest;
-  /** The Mate that wrote it — its name, its colour, and whether it is the person's own. */
+  /** The Mate that wrote it — its name, its face, and whether it is the person's own. */
   readonly mate:
-    | { readonly name: string; readonly tint: MateTintId | undefined; readonly mine: boolean }
+    | {
+        readonly name: string;
+        readonly tint: MateTintId | undefined;
+        readonly shape?: MateShapeId | undefined;
+        readonly mine: boolean;
+      }
     | undefined;
+  /** The project's Mates by project, so a remark a Mate made wears its face. */
+  readonly mateFaces?: ReadonlyMap<string, MateFaceOf> | undefined;
   readonly readout: {
     readonly files: ReadoutPart<ReadonlyArray<GiteaChangedFile>>;
     readonly diff: ReadoutPart<ChangeDiffRead>;
@@ -482,6 +490,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           age={historyAge(pull.updatedAt, props.now)}
           base={pull.baseBranch}
           face={mate?.tint}
+          faceShape={mate?.shape}
           number={pull.number}
           repository={pull.repository}
           who={changeAuthorName(pull, mate?.name)}
@@ -545,12 +554,15 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         </ReviewSection>
       )}
       <ReviewConversation
-        asker={mine === undefined ? undefined : { name: mine.name, tint: mine.tint }}
+        asker={
+          mine === undefined ? undefined : { name: mine.name, tint: mine.tint, shape: mine.shape }
+        }
         comments={props.comments}
         count={pull.commentCount}
         draftKey={`${pull.url ?? pull.repository}#${String(pull.number)}`}
         frame={props.frame ?? "dialog"}
         now={props.now}
+        mateFaces={props.mateFaces}
         onAsk={props.onAsk}
         remarks={props.remarks}
       />
@@ -566,6 +578,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
 function ChangeMeta({
   who,
   face,
+  faceShape,
   repository,
   base,
   number,
@@ -573,6 +586,7 @@ function ChangeMeta({
 }: {
   readonly who: string | undefined;
   readonly face: MateTintId | undefined;
+  readonly faceShape: MateShapeId | undefined;
   readonly repository: string;
   readonly base: string;
   readonly number: number;
@@ -585,7 +599,7 @@ function ChangeMeta({
       node: (
         <span className="rv-meta-who">
           {face === undefined ? null : (
-            <MateFace className="size-4" size="dot" state="idle" tint={face} />
+            <MateFace className="size-4" shape={faceShape} size="dot" state="idle" tint={face} />
           )}
           {who}
         </span>

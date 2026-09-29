@@ -71,6 +71,7 @@ const mate = (projectId: string, name: string, subject: string) => ({
   projectId,
   name,
   tint: "amber" as const,
+  shape: "seal" as const,
   face: "working" as const,
   subject,
   snippet: undefined,
@@ -126,6 +127,8 @@ describe("ZeropsGroupPane", () => {
     expect(markup).toContain("Split the checkout");
     expect(markup).toContain("Cache the link previews");
     expect(markup).toContain("production");
+    // Each Mate in the face its person picked.
+    expect(markup.match(/data-mate-face-shape="seal"/gu)).toHaveLength(2);
   });
 
   // DESIGN §3.4, M7: a stop the grant withholds keeps its place in the list and nothing of its

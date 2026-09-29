@@ -177,7 +177,9 @@ function MatePill({
   const band = crew && mate.open;
   const opens = crew && !mate.open && mate.threadId !== null;
   // The header's face is reused from one Mate to the next: it greets no arrival.
-  const face = <MateFace className="size-6" size="sm" state={mate.face} tint={mate.tint} />;
+  const face = (
+    <MateFace className="size-6" shape={mate.shape} size="sm" state={mate.face} tint={mate.tint} />
+  );
   const name = (
     <span className="max-w-48 truncate text-base leading-6 font-semibold text-foreground">
       {mate.name}

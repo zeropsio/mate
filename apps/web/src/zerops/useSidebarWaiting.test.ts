@@ -57,8 +57,25 @@ describe("waitingMatesOf — the faces the header stacks", () => {
       projectId: "kai",
       name: "Kai",
       tint: "amber",
+      shape: "hexagon",
       face: "needs",
     });
+  });
+
+  it("wears the shape a Mate's person picked", () => {
+    const picked = mate("juno", "Juno");
+    const juno = {
+      ...picked,
+      project: { ...picked.project, tagList: [...picked.project.tagList!, "mate:face:rose:seal"] },
+    };
+    const [waiting] = waitingMatesOf({
+      candidates: [juno],
+      activityOf: () => face("needs"),
+      tints: new Map([["juno", "rose"]]),
+      order: [],
+      shown: () => true,
+    });
+    expect(waiting).toMatchObject({ tint: "rose", shape: "seal" });
   });
 
   it("puts a Mate the menu has not drawn yet after the ones it has", () => {

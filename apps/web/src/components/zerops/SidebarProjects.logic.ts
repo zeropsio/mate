@@ -17,7 +17,7 @@ import {
   type ZeropsPlacedBirth,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
+import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 
 import type { MateRowState } from "./SidebarMateRow.logic";
 
@@ -63,6 +63,8 @@ export interface HeadingFace {
   readonly projectId: string;
   readonly name: string;
   readonly tint: MateTintId;
+  /** The shape its person picked, else its tint's own (`mateShapeOf`). */
+  readonly shape: MateShapeId;
   /** Its row's face: still where it stopped on an error, as in the list. */
   readonly face: MateMarkState;
   /** Absent while it only works: its turning face says that. */
@@ -95,6 +97,7 @@ export function headingFaces(
     readonly projectId: string;
     readonly name: string;
     readonly tint: MateTintId;
+    readonly shape: MateShapeId;
     /** Its row's state, face and dot (`mateRowView`). */
     readonly state: MateRowState;
     readonly face: MateMarkState;

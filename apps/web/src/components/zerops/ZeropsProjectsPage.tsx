@@ -108,6 +108,7 @@ import {
   assignCandidateMateTints,
   botDisplayName,
   buildZeropsGroupTree,
+  mateShapeOf,
   toolProjectName,
   flowVerbKey,
   flowVerbLabel,
@@ -2590,6 +2591,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       ) : undefined;
     const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
     const tint = tints.get(candidate.project.id) ?? "slate";
+    const shape = mateShapeOf(candidate.project.tagList, tint);
     // What the menu asked of this Mate's server — a check, an update — is
     // answered on its card, over its subject, until it settles: the menu
     // closes on the click, and the update restarts the Mate, so the card is
@@ -2620,6 +2622,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               name={name}
               onSelect={select}
               preview={preview}
+              shape={shape}
               snippet={live?.subject === undefined ? undefined : live.snippet}
               time={live?.subject === undefined ? undefined : formatRelativeTimeLabel(live.at)}
               tint={tint}
@@ -2639,6 +2642,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         name={name}
         onSelect={select}
         preview={preview}
+        shape={shape}
         tint={tint}
       />
     );
@@ -3045,13 +3049,17 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         renderGroupMenu={renderGroupMenu}
         renderGroupRows={renderGroupRows}
         renderMate={renderMate}
-        renderMateFace={(candidate: ZeropsCandidatePresentation, size) => (
-          <MateFace
-            size={size}
-            state={mateFace(candidate)}
-            tint={tints.get(candidate.project.id) ?? "slate"}
-          />
-        )}
+        renderMateFace={(candidate: ZeropsCandidatePresentation, size) => {
+          const tint = tints.get(candidate.project.id) ?? "slate";
+          return (
+            <MateFace
+              shape={mateShapeOf(candidate.project.tagList, tint)}
+              size={size}
+              state={mateFace(candidate)}
+              tint={tint}
+            />
+          );
+        }}
         renderNextStep={renderNextStep}
         renderPullRequest={pullRequestRowOf}
         renderReleaseVerb={({ group, flow }) => {

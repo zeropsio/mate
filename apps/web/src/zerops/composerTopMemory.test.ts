@@ -93,6 +93,18 @@ describe("the composer top's memory in this browser", () => {
     expect(rememberedComposerTop("env-nova:thread-1")).toBeUndefined();
   });
 
+  it.each<{ readonly case: string; readonly strip: RememberedComposerTop }>([
+    { case: "a strip kept before a face could be picked", strip: NOVA },
+    { case: "the shape its Mate's person picked", strip: { ...NOVA, shape: "seal" } },
+  ])("reads back $case", ({ strip }) => {
+    stored.set(
+      `mate:account:user-ales:${COMPOSER_TOP_MEMORY_STORAGE_KEY}`,
+      JSON.stringify({ "env-nova:thread-1": strip }),
+    );
+    openAccountLifetime("user-ales");
+    expect(rememberedComposerTop("env-nova:thread-1")).toEqual(strip);
+  });
+
   it("reads a stored shape it does not know as nothing remembered", () => {
     stored.set(
       `mate:account:user-ales:${COMPOSER_TOP_MEMORY_STORAGE_KEY}`,

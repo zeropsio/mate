@@ -53,6 +53,7 @@ const WAITING: ZeropsMateNextStep = {
     detail: "Add a status page",
   },
   tint: "slate",
+  shape: "squircle",
   target: { kind: "change", groupId: "g-1", repository: "app", number: 2 },
 };
 
@@ -69,12 +70,14 @@ const REMEMBERED: RememberedComposerTop = {
   title: "Add a status page",
   words: "Nova is waiting for your review of #2",
   tint: "slate",
+  shape: "squircle",
 };
 
 const SHOWN: ZeropsNextStepStripModel = {
   title: "Nova is waiting for your review of #2",
   detail: "Add a status page",
   tint: "slate",
+  shape: "squircle",
   target: { kind: "change", groupId: "g-1", repository: "app", number: 2 },
 };
 
@@ -192,6 +195,43 @@ describe("zeropsComposerTop", () => {
     expect(top.remember).toEqual({ ...REMEMBERED, tint: "sky" });
   });
 
+  /** A reload paints the face it will keep: the shape is remembered with the tint. */
+  it.each<{
+    readonly name: string;
+    readonly nextStep: ZeropsMateNextStep;
+    readonly remembered: RememberedComposerTop | undefined;
+    readonly shape: string | undefined;
+  }>([
+    {
+      name: "remembers the shape a Mate's person picked",
+      nextStep: { ...WAITING, tint: "rose", shape: "seal" } as ZeropsMateNextStep,
+      remembered: undefined,
+      shape: "seal",
+    },
+    {
+      name: "keeps the remembered shape until the Mate is known",
+      nextStep: { ...WAITING, tint: undefined, shape: undefined } as ZeropsMateNextStep,
+      remembered: { ...REMEMBERED, tint: "rose", shape: "seal" },
+      shape: "seal",
+    },
+    {
+      name: "paints a remembered shape until Gitea answers",
+      nextStep: UNANSWERED,
+      remembered: { ...REMEMBERED, tint: "rose", shape: "seal" },
+      shape: "seal",
+    },
+    {
+      name: "takes the known Mate's shape over what was remembered",
+      nextStep: { ...WAITING, tint: "rose", shape: "gem" } as ZeropsMateNextStep,
+      remembered: { ...REMEMBERED, tint: "rose", shape: "seal" },
+      shape: "gem",
+    },
+  ])("$name", ({ nextStep, remembered, shape }) => {
+    const top = zeropsComposerTop({ nextStep, remembered, pending: NOTHING_PENDING });
+    expect(top.strip?.shape).toBe(shape);
+    if (top.remember !== undefined) expect(top.remember?.shape).toBe(shape);
+  });
+
   it("holds the memory while a question waits, and leaves it as it was", () => {
     const top = zeropsComposerTop({
       nextStep: UNANSWERED,
@@ -207,6 +247,13 @@ describe("ZeropsNextStepStrip", () => {
 
   it("reads as the composer's top: the Mate's face asking, the words, Review", () => {
     const markup = renderToStaticMarkup(<ZeropsNextStepStrip onReview={() => {}} strip={STRIP} />);
+
+    expect(markup).toContain('data-mate-face-shape="squircle"');
+    expect(
+      renderToStaticMarkup(
+        <ZeropsNextStepStrip onReview={() => {}} strip={{ ...STRIP, shape: "flower" }} />,
+      ),
+    ).toContain('data-mate-face-shape="flower"');
 
     expect(markup).toContain('data-composer-top="review"');
     expect(markup).toContain("Nova is waiting for your review of #2");

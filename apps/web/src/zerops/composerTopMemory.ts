@@ -11,7 +11,7 @@
  * (`menuMemory.ts`), and forgotten when the account closes: it quotes a
  * change's title.
  */
-import { MATE_TINT_IDS } from "@t3tools/shared/brand";
+import { MATE_SHAPE_IDS, MATE_TINT_IDS } from "@t3tools/shared/brand";
 import * as Schema from "effect/Schema";
 
 import { accountLocalStorage, currentAccountId, onAccountLifetimeClose } from "./accountLifetime";
@@ -30,6 +30,8 @@ const StripSchema = Schema.Struct({
   /** What the strip said of it: `Nova is waiting for your review of #2`. */
   words: Schema.String,
   tint: Schema.Literals(MATE_TINT_IDS),
+  /** The shape its person picked; absent from a memory kept before a face could be picked. */
+  shape: Schema.optionalKey(Schema.Literals(MATE_SHAPE_IDS)),
 });
 
 const MemorySchema = Schema.Record(Schema.String, StripSchema);
