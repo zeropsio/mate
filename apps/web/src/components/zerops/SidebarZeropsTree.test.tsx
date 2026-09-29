@@ -1606,7 +1606,9 @@ describe("a project collapsed to its heading", () => {
       />,
     );
     const heading = /<div class="([^"]*)"[^>]*data-zerops-surface="sidebar-project"/u.exec(html);
-    expect(heading?.[1]?.split(" ")).toEqual(expect.arrayContaining(["h-8", "ps-1.75", "pe-2"]));
+    expect(heading?.[1]?.split(" ")).toEqual(
+      expect.arrayContaining(["h-8", "ms-px", "me-0.5", "ps-1.5", "pe-1.5"]),
+    );
     const title = /<span class="([^"]*)">Beviro CRM</u.exec(html)?.[1]?.split(" ") ?? [];
     expect(title).toEqual(
       expect.arrayContaining(["text-base", "leading-6", "font-semibold", "zerops-project-name"]),
@@ -1618,6 +1620,63 @@ describe("a project collapsed to its heading", () => {
       expect(button).toContain("size-7");
       expect(button).toContain("rounded-md");
     }
+  });
+
+  // The band stands as far from the window as from the divider, and the
+  // chips sit in it with one gap above, below and after them, so its corners
+  // run parallel to theirs (S4; the owner, 2026-09-29: "the tag no properly
+  // aligned on the left with border radius looking bad"). The title keeps the
+  // mark edge and the chips the menu's end edge: the band moved, not them.
+  it("stands its band 10 px from either side of the menu, the chips 6 px inside it, its corners parallel to theirs", () => {
+    const sheet = NodeFS.readFileSync(new URL("../../index.css", import.meta.url), "utf8").replace(
+      /\/\*[\s\S]*?\*\//gu,
+      "",
+    );
+    const rule = (selector: string) => {
+      const at = sheet.indexOf(`\n${selector} {`);
+      const body = sheet.slice(sheet.indexOf("{", at) + 1, sheet.indexOf("}", at));
+      return new Map(
+        body
+          .split(";")
+          .map((declaration) => declaration.split(":").map((part) => part.trim()))
+          .filter(([property]) => property !== undefined && property !== "")
+          .map(([property, ...value]) => [property!, Number.parseFloat(value.join(":"))]),
+      );
+    };
+    const PX: Record<string, number> = {
+      "ms-px": 1,
+      "me-0.5": 2,
+      "ps-1.5": 6,
+      "pe-1.5": 6,
+      "h-8": 32,
+    };
+    // The list's own inset: 9 px from the window, 8 from the divider.
+    const LIST = { start: 9, end: 8 };
+    const classes =
+      /<div class="([^"]*)"[^>]*data-zerops-surface="sidebar-project"/u
+        .exec(
+          renderToStaticMarkup(
+            <ProjectHeader name="Beviro" onBrowseProjects={() => {}} onToggle={() => {}} />,
+          ),
+        )?.[1]
+        ?.split(" ") ?? [];
+    const px = (pattern: RegExp) => PX[classes.find((name) => pattern.test(name)) ?? ""] ?? NaN;
+    const bandStart = LIST.start + px(/^ms-/u);
+    const bandEnd = LIST.end + px(/^me-/u);
+    expect(bandStart).toBe(10);
+    expect(bandEnd).toBe(bandStart);
+    // The title on the mark edge; the chips on the menu's end edge, 16 px in.
+    expect(bandStart + px(/^ps-/u)).toBe(16);
+    expect(bandEnd + px(/^pe-/u)).toBe(16);
+    const chip = rule(".zerops-envchip");
+    const band = rule(".zerops-project-heading");
+    const gap = (px(/^h-8$/u) - (chip.get("height") ?? NaN)) / 2;
+    // One gap above, below and after the chips.
+    expect(gap).toBe(px(/^pe-/u));
+    expect(band.get("border-radius")).toBe((chip.get("border-radius") ?? NaN) + gap);
+    expect(rule(".zerops-project-heading::before").get("border-radius")).toBe(
+      band.get("border-radius"),
+    );
   });
 
   // The whole heading folds the project, so it lights under the pointer as a
@@ -1987,8 +2046,8 @@ describe("arranging the projects by hand", () => {
     expect(gripEnd).toBeGreaterThan(bandStart);
     expect(gripTop).toBeGreaterThanOrEqual(0);
     expect(gripBottom).toBeLessThanOrEqual(bandBottom);
-    // The name stands 7 px inside the heading, on the mark edge (x = 16), grip or none.
-    expect(heading).toContain("ps-1.75");
+    // The name stands 6 px inside the heading, on the mark edge (x = 16), grip or none.
+    expect(heading).toContain("ps-1.5");
     // Lit under the pointer and while a menu of its is open; the grip shows then too.
     expect(band(".zerops-project-heading:hover::before").get("background-color")).toBeDefined();
     expect(

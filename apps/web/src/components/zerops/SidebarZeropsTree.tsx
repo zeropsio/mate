@@ -1673,15 +1673,17 @@ export function ProjectHeader({
     onBrowseProjects();
   };
   return (
-    // The title on the menu's mark edge (x = 16: 7 px inside the list's own
-    // 9), the heading 32 px tall, and its end on the menu's end edge, 16 px
-    // short of the divider — where a Mate row's time ends.
+    // The heading is its band: 32 px tall, 10 px from the window and 10 from
+    // the divider — the list's own 9 and 8, and 1 and 2 more — its title 6 px
+    // in, on the menu's mark edge (x = 16), and its chips' end 6 px short of
+    // its own, on the menu's end edge (16 px short of the divider), where a
+    // Mate row's time ends. The chips stand 6 px from its top and bottom too,
+    // so its corners run parallel to theirs (S4).
     // A heading that folds lights under the pointer, a band fainter than a
-    // Mate row's (`.zerops-project-heading`), which takes in the grip before
-    // the name in the Custom order.
+    // Mate row's (`.zerops-project-heading`).
     <div
       className={cn(
-        "group/project relative flex h-8 min-w-0 items-center gap-1 ps-1.75 pe-2",
+        "group/project relative flex h-8 min-w-0 items-center gap-1 ms-px me-0.5 ps-1.5 pe-1.5",
         onToggle !== undefined && "zerops-project-heading",
       )}
       data-collapsed={collapsed ? "true" : undefined}

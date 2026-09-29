@@ -3130,14 +3130,13 @@ code {
 }
 
 /* A heading that folds lights under the pointer, as a Mate's row does: a band
-   on the list's own inset, but fainter than a row's hover — pressing it folds
-   the project, it opens nothing. Its corners run parallel to the production
-   chip's inside it (12 + the 4 px around the chip, S4), and a reveal's ring
-   follows them. Lit while its ⋯ or its chip's menu is open; the chip and the
-   verbs keep their own, stronger hover over it. The band is drawn under the
-   heading's contents rather than as its fill, so it can reach past its box:
-   behind every row of the list, which is its own stacking context, as the
-   selected band is. */
+   10 px from either side of the menu, fainter than a row's hover — pressing
+   it folds the project, it opens nothing. Its corners run parallel to its
+   chips' (10 + the 6 px around them, S4), and a reveal's ring follows them.
+   Lit while its ⋯ or a chip's menu is open; the chips and the verbs keep
+   their own, stronger hover over it. The band is drawn under the heading's
+   contents rather than as its fill: behind every row of the list, which is
+   its own stacking context, as the selected band is. */
 .zerops-project-heading {
   border-radius: 16px;
 }
@@ -3211,7 +3210,7 @@ code {
 }
 
 /* A chip on a project's heading (M2): the stop's word alone — prod, stage —
-   12 · 500 in a quiet pill. Its whole ground and ink say what is wrong: amber
+   12 · 500 in a quiet 20 px pill, 6 px inside the heading's band. Its whole ground and ink say what is wrong: amber
    while the last release or deploy did not go through and the old one still
    serves, red while it is down (S3), hollow while it is stopped on purpose.
    Every tone keeps the one box, so the heading never moves when a tone
@@ -3221,9 +3220,9 @@ code {
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  height: 24px;
-  padding: 0 9px;
-  border-radius: 12px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
   background-color: color-mix(in oklab, var(--sidebar-foreground) 5.5%, transparent);
   color: var(--muted-foreground);
   font-size: 12px;
