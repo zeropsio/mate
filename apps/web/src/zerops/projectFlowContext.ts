@@ -55,7 +55,8 @@ export interface ZeropsProjectFlow {
   readonly environmentInputs: ReadonlyArray<GroupEnvironmentRowInput>;
   /**
    * `main`'s head per production service, as the deploy half read it — what
-   * every stop measures its distance against (`stopDistance.ts`).
+   * the release review orders the waiting changes by, to say how far each has
+   * come on stage (`stageMarks.ts`).
    */
   readonly mainHeads: ReadonlyMap<string, string>;
   /** The tiers the recipe offers and the project lacks — the rows that ask. */

@@ -1,7 +1,8 @@
 /**
  * The left menu's projects, each drawn in the one order `groupFlow` draws
- * every surface in: the Mates, what each has waiting to land, then every stop
- * the code reaches — each stage, then production (the owner, 2026-09-25).
+ * every surface in: the Mates and what each has waiting to land, then the
+ * stops the code reaches — each stage, then production — in the chip on the
+ * project's heading.
  *
  * A project reads top to bottom the way its code moves. First its Mates —
  * the menu's own kind of row, lit on hover and when it is the one open, and
@@ -12,21 +13,19 @@
  * its open pull requests: one row each, the number and the title, the checks
  * as a dot, and *Merge* where Gitea allows it — folded behind a count once
  * there are more than a handful (`pullRequestsFolded`). Then the pull
- * requests that are nobody's Mate's, a person's own branch. Then the stops,
- * one line each and every one the same line (the owner, 2026-09-25): the
- * last deploy as a badge on the rail, the role as a pill and the name only
- * where it says more, what the stop runs, how far it is behind `main` as a
- * `+N` chip, the verb, then the globe and the stop's menu in two slots that
- * are always there.
+ * requests that are nobody's Mate's, a person's own branch.
  *
- * `main` is not a row. It is what every stop measures itself against, so
- * `+N` means the same on a stage and on production, and a stage with none
- * above a production at `+3` says all three have run on the stage.
- * The row stays quiet unless something differs, and the distance opens to the
- * changes it counts — the one place a project lists them.
+ * Production and its stages are no rows (M1). They are the chip at the
+ * heading's end (`SidebarProductionChip`, M2): production's state and version,
+ * and how many changes wait for it; its menu says what broke, lists the
+ * stages and the public routes, and offers the fix. `main` is no row either —
+ * what waits for production is what `main` has and production does not run.
  *
- * A project collapses to its heading, the usual sidebar gesture, and the
- * menu remembers it; opening one of its Mates' conversations opens it again.
+ * A project folds to its heading, the usual sidebar gesture, and the menu
+ * remembers it; opening one of its Mates' conversations opens it again. The
+ * heading stands still while its rows fold away or unfold under it (M9), and
+ * folded it shows the faces of those in it who need you, work, or finished
+ * unseen (M15).
  *
  * Membership is `hasMate` — the project declares a Mate or a container backs
  * one, and never stage or production — not the live connection, so a
@@ -34,11 +33,10 @@
  * Grouping is `buildZeropsGroupTree`, the same derivation the projects screen
  * uses, so the two surfaces can never disagree about which project an
  * environment is in; the colours are `assignCandidateMateTints`, likewise
- * shared. Which pull requests are a Mate's to answer for, and the one next
- * step on the group's own heading, are read from `groupFlow` — the same
- * derivation the projects page draws from — so a recipe change never counts
- * as a Mate's own work here, and the dot on a heading never claims a step the
- * page would not offer.
+ * shared. Which pull requests are a Mate's to answer for, and what the
+ * production chip says, are read from `groupFlow` — the same derivation the
+ * projects page draws from — so a recipe change never counts as a Mate's own
+ * work here, and the chip never says of production what the page would not.
  *
  * Everything else about the account lives on the projects screen. This is
  * where you work; that is where you manage.
@@ -1072,10 +1070,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       changesDrawn: changeRows !== undefined,
       stops: jumpStopsHere,
     });
-    // Collapsed, a project is its heading and nothing else — no summary and
-    // no small badges: a second, smaller design of the same rows is what the
-    // owner turned down (2026-09-25). The dot on the heading still says
-    // whether it waits on somebody.
+    // Folded, a project is its heading and nothing else — no summary and no
+    // small badges: a second, smaller design of the same rows is what the
+    // owner turned down (2026-09-25). The heading's faces still say who in it
+    // needs you, works or finished unseen, and its chip what production does.
     const fold = folds.get(id);
     // A fragment either way, so the heading keeps its node — and the focus of
     // the press that folded it — whether its rows are drawn or not.
@@ -1088,7 +1086,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       ...(quietOpen ? quiet.map(({ item }) => ({ kind: "mate" as const, item })) : []),
     ];
     // Each block — a Mate with its changes, one being created, the quiet
-    // fold, the changes nobody's Mate owns, the stops — stands apart from the
+    // fold, the changes nobody's Mate owns — stands apart from the
     // next by air alone: 10 px, which with a row's own 10 px above and below
     // its words puts 30 px between one Mate's words and the next's, whatever
     // hangs under the first (M16). The heading stands on the first.
@@ -1168,8 +1166,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 // Nobody's Mate's: a person's own branch. Indented under the last
                 // Mate it read as that Mate's work, which is a lie the row's own
                 // `· ada` could not undo at 256px, where it is truncated away.
-                // The dedent is the whole signal; a rule as well would make this
-                // read as the start of the stops, which is the next block's rule.
+                // The dedent is the whole signal.
                 <ul className="flex flex-col" data-zerops-surface="sidebar-other-pull-requests">
                   {grouped.others.map((pull) => (
                     <PullRequestRow
@@ -1692,7 +1689,7 @@ function typedIntoField(target: EventTarget | null): boolean {
 /**
  * Where a reveal lands: the control a person would have pressed there takes
  * the focus, and the row that was asked for flashes once — a Mate's own row,
- * a project's heading, a stop's row, a change's row with its *Review*.
+ * a project's heading, a stop's chip, a change's row with its *Review*.
  */
 interface RevealLanding {
   readonly focus: HTMLElement;

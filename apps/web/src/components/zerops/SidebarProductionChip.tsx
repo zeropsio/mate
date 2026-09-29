@@ -62,7 +62,7 @@ export function SidebarProductionChip({
   onOpenStop,
 }: {
   readonly chip: ProductionChip;
-  /** What the menu says; `undefined` while it can say no more than the chip. */
+  /** What the menu says (`chipMenu`): the state in words, what broke, the stages, what waits. */
   readonly menu: ChipMenuModel;
   readonly projectName: string;
   readonly groupId: string;
