@@ -34,6 +34,11 @@ export function sessionExpiredError(traceId?: string): ConnectionBlockedError {
   });
 }
 
+/** Whether a link's last failure is only its session reaching the end of its life. */
+export function isSessionExpired(failure: ConnectionAttemptError | null): boolean {
+  return failure?._tag === "ConnectionBlockedError" && failure.expired === true;
+}
+
 export function environmentMismatchError(input: {
   readonly expected: EnvironmentId;
   readonly actual: EnvironmentId;

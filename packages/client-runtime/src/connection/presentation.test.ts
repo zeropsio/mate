@@ -167,6 +167,14 @@ describe("connection presentation", () => {
       new ConnectionTransientError({ reason, detail: RAW_DETAIL, traceId: "trace-1" });
     const blocked = (reason: ConnectionBlockedError["reason"]) =>
       new ConnectionBlockedError({ reason, detail: RAW_DETAIL, traceId: "trace-1" });
+    // A session at the end of its day: its door mints the next one, so nothing is wrong and
+    // nothing is refused — the Mate is on its way back.
+    const sessionExpired = new ConnectionBlockedError({
+      reason: "authentication",
+      detail: RAW_DETAIL,
+      traceId: "trace-1",
+      expired: true,
+    });
 
     const cases: ReadonlyArray<{
       readonly name: string;
@@ -218,6 +226,20 @@ describe("connection presentation", () => {
         description: "Wren refused the connection.",
         action: "Try again",
       })),
+      {
+        name: "blocked by an expired session",
+        state: supervisorState({ phase: "blocked", lastFailure: sessionExpired }),
+        title: "Reconnecting to Wren…",
+        description: null,
+        action: "Try now",
+      },
+      {
+        name: "next attempt after an expired session",
+        state: supervisorState({ phase: "connecting", attempt: 2, lastFailure: sessionExpired }),
+        title: "Reconnecting to Wren…",
+        description: null,
+        action: "Try now",
+      },
       {
         name: "offline",
         state: supervisorState({ network: "offline", phase: "offline", stage: null }),
@@ -301,6 +323,11 @@ describe("connection presentation", () => {
         name: "blocked as unsupported",
         state: supervisorState({ phase: "blocked", lastFailure: blocked("unsupported") }),
         text: "Connection failed",
+      },
+      {
+        name: "blocked by an expired session",
+        state: supervisorState({ phase: "blocked", lastFailure: sessionExpired }),
+        text: "Reconnecting...",
       },
     ])("status line, $name: the phase, never the failure's words", ({ state, text }) => {
       const rendered = connectionStatusText(presentConnectionState(state));

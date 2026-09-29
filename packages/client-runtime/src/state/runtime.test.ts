@@ -415,6 +415,39 @@ describe("environment query lifecycle", () => {
     ),
   );
 
+  // A Mate's session ends after a day and its door mints the next one; the link is blocked only
+  // until the new bearer is installed. What the Mate last answered stays on screen meanwhile, as
+  // through a reconnect — never a refusal the person would have to read.
+  it.effect("keeps its answer while an ended session is renewed", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* makeEnvironmentQueryHarness(Effect.succeed("connected"));
+        const registry = yield* mountEnvironmentQuery(harness.atom);
+        expect(
+          yield* AtomRegistry.getResult(registry, harness.atom, { suspendOnWaiting: true }),
+        ).toBe("connected");
+
+        yield* SubscriptionRef.set(
+          harness.supervisorState,
+          queryConnectionState({
+            phase: "blocked",
+            stage: null,
+            lastFailure: new ConnectionBlockedError({
+              reason: "authentication",
+              detail: "The environment session expired.",
+              expired: true,
+            }),
+          }),
+        );
+        yield* Effect.yieldNow;
+
+        const result = registry.get(harness.atom);
+        expect(AsyncResult.isFailure(result)).toBe(false);
+        expect(Option.getOrNull(AsyncResult.value(result))).toBe("connected");
+      }),
+    ),
+  );
+
   it.effect("keeps a genuine query failure settled while reconnecting", () =>
     Effect.scoped(
       Effect.gen(function* () {
