@@ -85,6 +85,14 @@ export interface ZeropsAgentActivity {
    */
   readonly liveStep?: { readonly words: string; readonly code?: string | undefined };
   /**
+   * The question the Mate waits on the person to answer, in its words: what a
+   * needs-you row's third line says. The server relays it; absent while
+   * nothing waits, or where it relays none (the row keeps its last words).
+   */
+  readonly question?: string | undefined;
+  /** The first line of the error the Mate stopped on: a failed row's third line. */
+  readonly errorLine?: string | undefined;
+  /**
    * The plan's steps while it works, counted — what the ring around a
    * working face is drawn from, one segment a step. Absent while it rests
    * and where the server reports no plan: a ring nobody can fill is not
@@ -234,7 +242,21 @@ export function threadAgentActivity(
     pausedUntil: pause?.resetsAt,
     threadKey: scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
     task: agentActivitySubject(thread, "idle"),
+    ...agentActivityErrorLine(thread, resolved.kind),
   };
+}
+
+/** The error's first line, while the Mate stands stopped on it. */
+export function agentActivityErrorLine(
+  thread: Pick<EnvironmentThreadShell, "session">,
+  kind: ThreadStatusKind,
+): { readonly errorLine?: string } {
+  if (kind !== "failed") return {};
+  const first = thread.session?.lastError
+    ?.split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  return first === undefined ? {} : { errorLine: maskSecrets(first) };
 }
 
 export function deriveZeropsAgentActivity(

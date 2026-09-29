@@ -6,6 +6,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   agentActivityAt,
   agentActivityAwaitsWords,
+  agentActivityErrorLine,
   agentActivitySnippet,
   agentActivitySubject,
   deriveZeropsAgentActivity,
@@ -515,5 +516,46 @@ describe("the task as the person asked it", () => {
     const activity = deriveZeropsAgentActivity([working], {}).get(FEN);
     expect(activity?.subject).toBe("Run the build");
     expect(activity?.task).toBe("Add a /status page");
+  });
+});
+
+describe("agentActivityErrorLine", () => {
+  const session = (lastError: string | null): EnvironmentThreadShell["session"] => ({
+    threadId: ThreadId.make("thread-1"),
+    status: "error",
+    providerName: null,
+    runtimeMode: "full-access",
+    activeTurnId: null,
+    lastError,
+    updatedAt: "2026-09-29T08:00:00.000Z",
+  });
+
+  it.each<{
+    readonly name: string;
+    readonly lastError: string | null;
+    readonly kind: Parameters<typeof agentActivityErrorLine>[1];
+    readonly line: string | undefined;
+  }>([
+    {
+      name: "a stopped Mate says the error's first line",
+      lastError: "Build failed: tsc found 3 errors\n  at src/net/session.ts",
+      kind: "failed",
+      line: "Build failed: tsc found 3 errors",
+    },
+    {
+      name: "blank leading lines are skipped",
+      lastError: "\n   \nProcess exited with code 137",
+      kind: "failed",
+      line: "Process exited with code 137",
+    },
+    {
+      name: "a Mate that is not stopped says none, whatever its session kept",
+      lastError: "Build failed",
+      kind: "idle",
+      line: undefined,
+    },
+    { name: "no error kept, no line", lastError: null, kind: "failed", line: undefined },
+  ])("$name", ({ lastError, kind, line }) => {
+    expect(agentActivityErrorLine({ session: session(lastError) }, kind).errorLine).toBe(line);
   });
 });
