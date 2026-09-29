@@ -46,6 +46,7 @@ const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
 const MATE: ZeropsMateIdentity = {
   name: "Fen",
   tint: "olive",
+  shape: "seal",
   project: "Acme Docs",
   projectUrl: "https://app.zerops.io/project/p1",
   connected: true,
@@ -73,6 +74,12 @@ const render = () =>
 describe("ZeropsMateEmptyState", () => {
   beforeEach(() => {
     feedState.agentAuth = undefined;
+  });
+
+  it("wears the face its person picked", () => {
+    const html = render();
+    expect(html).toContain('data-mate-face-tint="olive"');
+    expect(html).toContain('data-mate-face-shape="seal"');
   });
 
   it("an unread agent-auth feed never renders as nothing to sign in: it says it is checking", () => {

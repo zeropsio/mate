@@ -1,5 +1,7 @@
+import { assignCandidateMateTints } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { EnvironmentId } from "@t3tools/contracts";
+import { MATE_SHAPE_OF_TINT, type MateShapeId, type MateTintId } from "@t3tools/shared/brand";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -44,6 +46,42 @@ describe("zeropsMateIdentities", () => {
     expect(mates.get(JUNO)).toMatchObject({ name: "Juno", project: undefined });
     // Two Mates, two colours — the same assignment the left menu makes.
     expect(mates.get(FEN)?.tint).not.toBe(mates.get(JUNO)?.tint);
+  });
+
+  /**
+   * A Mate wears the face its person picked (`mate:face:`); one nobody picked
+   * a face for wears exactly the one it wore before: its derived tint, and
+   * that tint's own shape.
+   */
+  it.each<{
+    readonly case: string;
+    readonly tags: ReadonlyArray<string>;
+    readonly face: { readonly tint: MateTintId; readonly shape: MateShapeId } | "as before";
+  }>([
+    {
+      case: "the face its person picked",
+      tags: ["mate:face:sky:seal"],
+      face: { tint: "sky", shape: "seal" },
+    },
+    { case: "the face it wore before, when nobody picked one", tags: [], face: "as before" },
+    {
+      case: "its tint's own shape beside a picked tint",
+      tags: ["mate:face:rose:blob"],
+      face: { tint: "rose", shape: MATE_SHAPE_OF_TINT.rose },
+    },
+    {
+      case: "a picked shape beside the tint it wore before",
+      tags: ["mate:face:teal:clover"],
+      face: { tint: assignCandidateMateTints([FEN_DEV]).get("acme-docs-dev")!, shape: "clover" },
+    },
+  ])("gives a Mate $case", ({ tags, face }) => {
+    const fen = zeropsMateIdentities([candidate("acme-docs-dev", [...FEN_TAGS, ...tags], FEN)]).get(
+      FEN,
+    );
+    const before = assignCandidateMateTints([FEN_DEV]).get("acme-docs-dev")!;
+    expect({ tint: fen?.tint, shape: fen?.shape }).toEqual(
+      face === "as before" ? { tint: before, shape: MATE_SHAPE_OF_TINT[before] } : face,
+    );
   });
 
   it("keeps each environment's service identity when a project has two containers", () => {
@@ -100,6 +138,7 @@ describe("zeropsMateAt", () => {
   const FEN_MATE: ZeropsMateIdentity = {
     name: "Fen",
     tint: "coral",
+    shape: "pentagon",
     project: undefined,
     projectUrl: "https://app.zerops.io/project/acme-docs-dev",
     connected: false,
@@ -133,6 +172,7 @@ describe("withEnvironmentsOutsideZerops", () => {
   const FEN_MATE: ZeropsMateIdentity = {
     name: "Fen",
     tint: "coral",
+    shape: "pentagon",
     project: undefined,
     projectUrl: "https://app.zerops.io/project/acme-docs-dev",
     connected: false,
@@ -192,6 +232,7 @@ describe("mateQuestion", () => {
       mateQuestion({
         name: "Fen",
         tint: "coral",
+        shape: "pentagon",
         project: "Acme Docs",
         projectUrl: "https://app.zerops.io/project/acme-docs-dev",
         connected: true,
@@ -204,6 +245,7 @@ describe("mateQuestion", () => {
       mateQuestion({
         name: "Nova",
         tint: "rose",
+        shape: "flower",
         project: undefined,
         projectUrl: "https://app.zerops.io/project/scratch",
         connected: true,
