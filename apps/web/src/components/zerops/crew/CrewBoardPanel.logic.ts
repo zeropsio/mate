@@ -90,14 +90,7 @@ export interface CrewPlanCard {
   readonly rows: ReadonlyArray<CrewPlanRow>;
 }
 
-export interface CrewBoardHeader {
-  readonly briefTitle: string;
-  /** The crew state word (`crewStateWord`), steady: a run lasts hours. */
-  readonly state: CrewBoardStatus;
-}
-
 export interface CrewBoardModel {
-  readonly header: CrewBoardHeader;
   /** A run is running or paused: a plan's Start accepts it at once, else it opens the run dialog first. */
   readonly runOn: boolean;
   readonly columns: ReadonlyArray<CrewBoardColumn>;
@@ -198,19 +191,6 @@ export function crewPlanCard(snapshot: CrewSnapshot, view: CrewView): CrewPlanCa
   };
 }
 
-/** A run on is busy, a paused one waits on you; without one, the crew is busy while anyone works. */
-function crewStateTone(snapshot: CrewSnapshot, view: CrewView): ServiceStatusToneId {
-  switch (snapshot.run?.state) {
-    case "running":
-    case "finishing":
-      return "busy";
-    case "paused":
-      return "attention";
-    default:
-      return view.workingCount > 0 ? "busy" : "off";
-  }
-}
-
 /** A run is on while it runs or is paused: a plan's Start accepts at once, else a run starts first. */
 export const crewRunOn = (run: CrewSnapshot["run"]): boolean =>
   run?.state === "running" || run?.state === "paused";
@@ -229,10 +209,6 @@ export function crewBoardModel(snapshot: CrewSnapshot, view: CrewView): CrewBoar
   });
   return {
     runOn: crewRunOn(snapshot.run),
-    header: {
-      briefTitle: snapshot.crew?.briefTitle ?? "",
-      state: { word: view.stateWord, tone: crewStateTone(snapshot, view), pulse: false },
-    },
     columns,
     plan,
   };

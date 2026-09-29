@@ -19,7 +19,8 @@ import { useRightPanelStore } from "../../rightPanelStore";
  * The card lists every login of the project (crew mode's *Runs on*): the
  * crew feed says which crewmates run on each, and where the server keeps
  * logins, *Add another login* adds one and signs an account in through the
- * same dialog an agent's own login uses.
+ * same dialog an agent's own login uses. The crew itself is not here: its
+ * setup, its section and its board are the Crew tab's (`CrewPanel`).
  */
 import type { ScopedThreadRef, ZeropsAgentAuthSnapshot, ZeropsAgentId } from "@t3tools/contracts";
 import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
@@ -52,7 +53,6 @@ import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
 import { ZeropsAgentAuthorizationDialog } from "./ZeropsAgentAuthorizationDialog";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
-import { CrewSectionHost } from "./crew/CrewSectionHost";
 import { MicroLabel } from "./primitives";
 
 export function ZeropsPanel({
@@ -254,15 +254,6 @@ export function ZeropsPanel({
               {agents}
             </section>
           )}
-          <CrewSectionHost
-            mate={mate === undefined ? undefined : { name: mate.name, tint: mate.tint }}
-            onOpenBoard={
-              threadRef === null
-                ? null
-                : () => useRightPanelStore.getState().open(threadRef, "crew")
-            }
-            threadRef={threadRef}
-          />
         </div>
       </ScrollArea>
       {authorizationAgent === undefined ? null : (

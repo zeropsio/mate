@@ -1197,6 +1197,7 @@
       "id": "zerops-crew-section",
       "title": "Crew section",
       "components": [
+        "apps/web/src/components/zerops/crew/CrewPanel.tsx",
         "apps/web/src/components/zerops/crew/CrewSectionHost.tsx",
         "apps/web/src/components/zerops/crew/CrewSection.tsx",
         "apps/web/src/components/zerops/crew/CrewSection.logic.ts",
@@ -1210,8 +1211,8 @@
       ],
       "entryPoints": [
         {
-          "kind": "inline",
-          "value": "ZeropsPanel, after the coding agents' card, while the crew feed says none or applied"
+          "kind": "right-panel-tab",
+          "value": "Crew (shortcut C), at its top, while the crew feed says none or applied"
         }
       ],
       "clients": {
@@ -1304,6 +1305,7 @@
         "none": "No docs/user page documents crew mode yet."
       },
       "tests": [
+        "apps/web/src/components/zerops/crew/CrewPanel.test.tsx",
         "apps/web/src/components/zerops/crew/CrewSection.test.tsx",
         "apps/web/src/components/zerops/crew/CrewSection.logic.test.ts",
         "apps/web/src/components/zerops/crew/CrewTellComposer.logic.test.ts",
@@ -1420,11 +1422,11 @@
       "entryPoints": [
         {
           "kind": "right-panel-tab",
-          "value": "Crew (shortcut C), while the crew feed says none or applied"
+          "value": "Crew (shortcut C), under the crew's section, while a crew is applied"
         },
         {
           "kind": "inline",
-          "value": "Crew section footer: Board · N tasks"
+          "value": "Crew section: Waiting on you's Review plan brings the board's plan into view"
         }
       ],
       "clients": {

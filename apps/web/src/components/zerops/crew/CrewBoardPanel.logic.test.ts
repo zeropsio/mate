@@ -116,39 +116,6 @@ describe("crewBoardModel columns", () => {
   });
 });
 
-describe("crewBoardModel header", () => {
-  const fixture = crewSnapshotFixture();
-  const run = fixture.run!;
-
-  it.each([
-    {
-      name: "a run on",
-      snapshot: fixture,
-      state: { word: "Running · 1 h 12 m", tone: "busy", pulse: false },
-    },
-    {
-      name: "a paused run waits on you",
-      snapshot: crewSnapshotFixture({ run: { ...run, state: "paused", reason: "budget" } }),
-      state: { word: "Paused · budget reached", tone: "attention", pulse: false },
-    },
-    {
-      name: "no run, one crewmate working",
-      snapshot: crewSnapshotFixture({ run: null }),
-      state: { word: "1 working", tone: "busy", pulse: false },
-    },
-    {
-      name: "no run, nobody working",
-      snapshot: crewSnapshotFixture({
-        run: { ...run, state: "finished" },
-        crewmates: fixture.crewmates.map((crewmate) => ({ ...crewmate, currentThreadId: null })),
-      }),
-      state: { word: "Idle", tone: "off", pulse: false },
-    },
-  ] as const)("$name", ({ snapshot, state }) => {
-    expect(boardOf(snapshot).header).toEqual({ briefTitle: "Camera and HUD rework", state });
-  });
-});
-
 describe("crewBoardModel runOn", () => {
   const run = crewSnapshotFixture().run!;
 

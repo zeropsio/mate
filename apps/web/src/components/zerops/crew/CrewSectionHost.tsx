@@ -1,9 +1,9 @@
 /**
- * The Crew section's host in the Zerops tab (PRD §4.3, seam S6): reads the
- * crew, owns its commands, its editors and its drafts for Fen, and renders
- * nothing unless the crew feed says there is a crew surface — status `none`
- * (set one up) or `applied`. Status `off`, a Mate without the feed, or a feed
- * not read yet leaves the tab exactly as it was.
+ * The crew's section in the Crew tab (PRD §4.3, seam S6): owns its commands,
+ * its editors and its drafts for Fen, for the crew the tab read — the empty
+ * state and *Set up a crew* while there is none, the section once one is
+ * applied. The setup sheet stays mounted across Apply, so its progress reads
+ * on as the crew arrives.
  *
  * Three command states, so each outcome shows where it was pressed: the
  * section's presses, *Tell the crew*, and the editors.
@@ -16,18 +16,14 @@ import {
 } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { CrewmateView, CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
-import type { CrewSnapshot, EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
+import type { CrewSnapshot, EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 
 import { requestConfirmDialog } from "../../../confirmDialog";
-import { useServerConfigs } from "../../../state/entities";
 import { buildThreadRouteParams } from "../../../threadRoutes";
-import { hasCrewSurface, useCrew } from "../../../zerops/crew/useCrew";
 import { useCrewCommand } from "../../../zerops/crew/useCrewCommand";
-import { useAskMate } from "../../../zerops/useAskMate";
-import { useEnvironmentProjectRef } from "../../../zerops/useZeropsFeeds";
 import { ZeropsAskDialog } from "../ZeropsAskDialog";
 import { CrewBriefSheet } from "./CrewBriefSheet";
 import { crewDevHosts } from "./CrewEditors.logic";
@@ -44,55 +40,34 @@ type Editor =
   | { readonly kind: "crewmate"; readonly target: CrewmateSheetTarget }
   | null;
 
-interface HostProps {
+export interface CrewSectionHostProps {
+  readonly environmentId: EnvironmentId;
+  readonly snapshot: CrewSnapshot;
+  /** `null` while no crew is applied. */
+  readonly view: CrewView<EnvironmentThreadShell> | null;
   /** The Mate who lives here: Fen, in its tint. */
   readonly mate: { readonly name: string; readonly tint: MateTintId } | undefined;
-  /** Opens the board (right-panel kind `crew`); `null` while there is none to open. */
-  readonly onOpenBoard: (() => void) | null;
+  /** Your tree, where *Tell the crew*'s `@` finds files; `null` while unread. */
+  readonly treeCwd: string | null;
+  /** Hands Fen a draft, into the chat the tab is open beside when it is a person chat. */
+  readonly onAskMate: (draft: string) => void;
+  /** Brings the board under the section into view; `null` while there is none. */
+  readonly onShowBoard: (() => void) | null;
 }
 
 export function CrewSectionHost({
-  threadRef,
-  ...props
-}: HostProps & { readonly threadRef: ScopedThreadRef | null }) {
-  const environmentId = threadRef?.environmentId ?? null;
-  const crew = useCrew(environmentId);
-  if (environmentId === null || !hasCrewSurface(crew.status) || crew.snapshot === null) {
-    return null;
-  }
-  return (
-    <CrewSectionFor
-      {...props}
-      environmentId={environmentId}
-      snapshot={crew.snapshot}
-      threadId={threadRef?.threadId ?? null}
-      view={crew.status === "applied" ? crew.view : null}
-    />
-  );
-}
-
-function CrewSectionFor({
   environmentId,
   snapshot,
-  threadId,
   view,
   mate,
-  onOpenBoard,
-}: HostProps & {
-  readonly environmentId: EnvironmentId;
-  readonly snapshot: CrewSnapshot;
-  /** The chat the Zerops tab is open beside: Fen's drafts go there when it is a person chat. */
-  readonly threadId: ThreadId | null;
-  /** `null` while no crew is applied. */
-  readonly view: CrewView<EnvironmentThreadShell> | null;
-}) {
+  treeCwd,
+  onAskMate,
+  onShowBoard,
+}: CrewSectionHostProps) {
   const commands = useCrewCommand(environmentId);
   const tell = useCrewCommand(environmentId);
   const editorCommands = useCrewCommand(environmentId);
   const navigate = useNavigate();
-  const askMate = useAskMate();
-  const projectId = useEnvironmentProjectRef(environmentId)?.projectId;
-  const treeCwd = useServerConfigs().get(environmentId)?.cwd ?? null;
   const [setupOpen, setSetupOpen] = useState(false);
   const [editor, setEditor] = useState<Editor>(null);
   const [homeVersion, setHomeVersion] = useState(0);
@@ -169,14 +144,11 @@ function CrewSectionFor({
     });
   };
 
-  /** Every draft for Fen goes into the chat beside the tab when it is a person chat, else the main one. */
-  const askFen = (draft: string) => askMate(projectId, draft, { threadId: threadId ?? undefined });
-
   const addCrewPorts = (host: string, count: number) => {
     void commands.send({ _tag: "addCrewPorts", host, count }, CREW_ORIGIN.ports).then((result) => {
       if (result?._tag !== "crewPorts") return;
       setPortsHost(null);
-      askFen(crewPortsAsk(result.host, result.ports));
+      onAskMate(crewPortsAsk(result.host, result.ports));
     });
   };
 
@@ -201,7 +173,7 @@ function CrewSectionFor({
           onEditCrewmate={(handle) =>
             setEditor({ kind: "crewmate", target: { handle, lead: false } })
           }
-          onOpenBoard={onOpenBoard}
+          onShowBoard={onShowBoard}
           onOpenThread={openThread}
           onRemove={remove}
           onStartFresh={startFresh}
@@ -267,7 +239,7 @@ function CrewSectionFor({
         onConfirm={() => {
           if (ask === null) return;
           setAsk(null);
-          askFen(ask.ask);
+          onAskMate(ask.ask);
         }}
         onOpenChange={(open) => {
           if (!open) setAsk(null);

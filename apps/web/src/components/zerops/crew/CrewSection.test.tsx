@@ -24,7 +24,7 @@ const render = (snapshot: CrewSnapshot, overrides: Partial<CrewSectionProps> = {
       onDeliver={noop}
       onEditBrief={noop}
       onEditCrewmate={noop}
-      onOpenBoard={null}
+      onShowBoard={null}
       onOpenThread={noop}
       onRemove={noop}
       onStartFresh={noop}
@@ -72,7 +72,7 @@ describe("CrewSection", () => {
   });
 
   it("offers each Waiting on you row its presses", () => {
-    const markup = render(crewSnapshotFixture(), { onOpenBoard: noop });
+    const markup = render(crewSnapshotFixture(), { onShowBoard: noop });
     for (const label of ["Answer", "Commit my edit", "Review plan", "Allow", "Not now"]) {
       expect(markup).toContain(`>${label}<`);
     }
@@ -208,9 +208,20 @@ describe("CrewSection", () => {
     expect(render({ ...leadless, run: null })).toContain("+ Add lead");
   });
 
-  it("opens the board only where there is one to open", () => {
-    expect(render(crewSnapshotFixture())).not.toContain("Board ·");
-    expect(render(crewSnapshotFixture(), { onOpenBoard: noop })).toContain("Board · 8 tasks");
+  it("links to no board: the Crew tab draws it right under the section", () => {
+    expect(render(crewSnapshotFixture(), { onShowBoard: noop })).not.toContain("Board ·");
+  });
+
+  it("draws no footer where your tree has nothing to say", () => {
+    const snapshot = crewSnapshotFixture();
+    expect(render(snapshot)).toContain("data-crew-footer");
+    // A crew with no writer has no dev service; nothing landed waits to go out.
+    expect(render({ ...snapshot, hosts: [], landedNotDelivered: 0 })).not.toContain(
+      "data-crew-footer",
+    );
+    expect(render({ ...snapshot, hosts: [], landedNotDelivered: 2 })).toContain(
+      "Landed, not delivered · 2",
+    );
   });
 
   it("names a crewmate's copy served on dev, with the way back", () => {

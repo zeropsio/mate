@@ -406,10 +406,7 @@ export function crewApplyWord(mate: Pick<Crewmate, "displayName" | "lane">): str
   }
 }
 
-/** The section footer's way to the board (PRD §4.3 item 8). */
-export const crewBoardLinkWord = (count: number): string =>
-  `Board · ${count} ${count === 1 ? "task" : "tasks"}`;
-
+/** The section footer's landed work that has not gone out with *Deliver* yet. */
 export const crewLandedWord = (count: number): string => `Landed, not delivered · ${count}`;
 
 /**

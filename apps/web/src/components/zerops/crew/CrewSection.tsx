@@ -1,8 +1,9 @@
 /**
- * The Crew section of the Zerops tab (PRD §4.3): the crew's summary and its
- * controls. `CrewSectionEmpty` is the `none` state; `CrewSection` the
- * `applied` one, top to bottom — header and state, run meters (C), the brief,
- * *Waiting on you*, the crewmates, add, *Tell the crew*, and the footer.
+ * The crew's section, at the top of the Crew tab (PRD §4.3): the crew's
+ * summary and its controls. `CrewSectionEmpty` is the `none` state;
+ * `CrewSection` the `applied` one, top to bottom — header and state, run
+ * meters (C), the brief, *Waiting on you*, the crewmates, add, *Tell the
+ * crew*, and the footer.
  *
  * Presentational: every press is a callback, so the host
  * (`CrewSectionHost`) owns the commands, the sheets and the navigation. A (C)
@@ -14,7 +15,6 @@ import {
   CREW_CREWMATES_WORD,
   CREW_LEAD_WORD,
   crewAttentionSentence,
-  crewBoardLinkWord,
   crewLandedWord,
   crewLaneWord,
   crewNamingTheMate,
@@ -92,8 +92,8 @@ export interface CrewSectionProps {
     readonly error: string | null;
   };
   readonly onOpenThread: (threadId: ThreadId) => void;
-  /** Opens the board; `null` while there is no board to open. */
-  readonly onOpenBoard: (() => void) | null;
+  /** Brings the board under the section into view; `null` while there is none. */
+  readonly onShowBoard: (() => void) | null;
   readonly onEditBrief: () => void;
   /** `null` adds a crewmate. */
   readonly onEditCrewmate: (handle: string | null) => void;
@@ -123,7 +123,6 @@ export function CrewSection(unnamed: CrewSectionProps) {
   const { view, snapshot } = props;
   const run = snapshot.run;
   const runOn = run !== null && (run.state === "running" || run.state === "paused");
-  const boardCount = view.tasks.length;
   return (
     <section className="space-y-4" data-crew-section="applied">
       <CrewHeader {...props} runOn={runOn} />
@@ -183,7 +182,7 @@ export function CrewSection(unnamed: CrewSectionProps) {
         onSend={async (command) => (await props.tell.send(command)) !== null}
         sending={props.tell.pending}
       />
-      <CrewFooter {...props} boardCount={boardCount} />
+      <CrewFooter {...props} />
     </section>
   );
 }
@@ -302,7 +301,7 @@ function CrewAttentionRow(props: CrewSectionProps & { readonly row: CrewAttentio
   const [answering, setAnswering] = useState(false);
   const [answer, setAnswer] = useState("");
   const sentence = crewAttentionSentence(row, snapshot);
-  const actions = crewAttentionActions(row, snapshot, { board: props.onOpenBoard !== null });
+  const actions = crewAttentionActions(row, snapshot, { board: props.onShowBoard !== null });
   const submitAnswer = () => {
     const text = answer.trim();
     if (text === "" || row.handle === null) return;
@@ -343,7 +342,7 @@ function CrewAttentionRow(props: CrewSectionProps & { readonly row: CrewAttentio
                     props.onAsk(action.ask, sentence);
                     return;
                   case "board":
-                    props.onOpenBoard?.();
+                    props.onShowBoard?.();
                     return;
                   case "chat":
                     props.onOpenThread(action.threadId);
@@ -490,16 +489,29 @@ function CrewPressError({ message }: { readonly message: string | null }) {
   );
 }
 
-function CrewFooter(props: CrewSectionProps & { readonly boardCount: number }) {
+/**
+ * What your tree's dev services serve and what waits to go out — nothing at
+ * all where neither has anything to say: a crew without a writer has no dev
+ * service, and the board it used to link to stands right under the section.
+ */
+function CrewFooter(props: CrewSectionProps) {
   const { snapshot, send } = props;
+  const hosts = snapshot.hosts.filter(
+    (host) =>
+      crewServedLine(host, snapshot.crewmates) !== null ||
+      host.crewPorts.length === 0 ||
+      props.errorAt(CREW_ORIGIN.host(host.host)) !== null,
+  );
+  const deliverError = props.errorAt(CREW_ORIGIN.deliver);
+  if (hosts.length === 0 && snapshot.landedNotDelivered === 0 && deliverError === null) {
+    return null;
+  }
   return (
-    <div className="space-y-1.5 border-t border-border pt-3 text-xs text-muted-foreground">
-      {props.onOpenBoard === null ? null : (
-        <Button onClick={props.onOpenBoard} size="xs" variant="ghost">
-          {crewBoardLinkWord(props.boardCount)}
-        </Button>
-      )}
-      {snapshot.hosts.map((host) => (
+    <div
+      className="space-y-1.5 border-t border-border pt-3 text-xs text-muted-foreground"
+      data-crew-footer
+    >
+      {hosts.map((host) => (
         <CrewHostLine host={host} key={host.host} {...props} send={send} />
       ))}
       {snapshot.landedNotDelivered === 0 ? null : (
@@ -508,7 +520,7 @@ function CrewFooter(props: CrewSectionProps & { readonly boardCount: number }) {
           <Pill className="ms-auto" label="Deliver" onClick={props.onDeliver} size="sm" />
         </div>
       )}
-      <CrewPressError message={props.errorAt(CREW_ORIGIN.deliver)} />
+      <CrewPressError message={deliverError} />
     </div>
   );
 }
