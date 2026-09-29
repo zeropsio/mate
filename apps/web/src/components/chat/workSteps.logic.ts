@@ -88,9 +88,10 @@ const SHELL_CALL = /^(?:\S*\/)?(?:ba|z|da|k)?sh((?:\s+-[A-Za-z]+)+)\s+(\S[\s\S]*
  * The first word of what a shell was handed, as the shell reads it: quoted,
  * its quotes gone — `'…'` literal, `"…"` with its `\"` undone (how the
  * runtime writes a command's arguments out), a `\` escaping what follows —
- * up to the first space outside them. Null for a word that never closes.
+ * up to the first space outside them, and where it ended. Null for a word
+ * that never closes.
  */
-function firstShellWord(text: string): string | null {
+function firstShellWord(text: string): { readonly word: string; readonly end: number } | null {
   let word = "";
   let index = 0;
   while (index < text.length && !/\s/u.test(text[index]!)) {
@@ -123,26 +124,24 @@ function firstShellWord(text: string): string | null {
       index += 1;
     }
   }
-  return word;
+  return { word, end: index };
 }
 
 /**
  * A command as the shell it ran through got it: Codex runs every command as
  * `/usr/bin/zsh -lc "…"` and says nothing of it, so the command a person
- * reads is the one inside, unquoted. Anything else stands as it is.
+ * reads is the one inside, unquoted. Only when that is the shell's whole
+ * argument: whatever follows it — a pipe, a fallback, a second command — is
+ * the command too, and the call stands as it is.
  */
 export function unwrapShell(command: string): string {
   const match = SHELL_CALL.exec(command.trim());
   if (match === null) return command;
   const lastFlag = match[1]!.trim().split(/\s+/u).at(-1) ?? "";
   if (!lastFlag.includes("c")) return command;
-  const handed = match[2]!;
-  // Quoted, the command is that one word; bare, the rest of the line.
-  if (handed.startsWith("'") || handed.startsWith('"')) {
-    const word = firstShellWord(handed);
-    return word === null || word.trim().length === 0 ? command : word;
-  }
-  return handed;
+  const handed = firstShellWord(match[2]!);
+  if (handed === null || handed.word.trim().length === 0) return command;
+  return match[2]!.slice(handed.end).trim().length === 0 ? handed.word : command;
 }
 
 const STATEMENT_PREAMBLE =
