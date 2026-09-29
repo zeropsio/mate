@@ -46,7 +46,11 @@ import { createDeferredStorage } from "./lib/storage";
 import { getDefaultServerModel } from "./providerModels";
 import { UnifiedSettings } from "@t3tools/contracts/settings";
 import { ReviewCommentContextSchema, type ReviewCommentContext } from "./reviewCommentContext";
-import { type ComposerPicture, ensureInlinePicturePlaceholders } from "./lib/composerPictures";
+import {
+  type ComposerPicture,
+  ensureInlinePicturePlaceholders,
+  restorePicturePlaces,
+} from "./lib/composerPictures";
 const isRuntimeMode = Schema.is(RuntimeMode);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 const isReviewCommentContext = Schema.is(ReviewCommentContextSchema);
@@ -197,6 +201,10 @@ type PersistedTerminalContextDraft = typeof PersistedTerminalContextDraft.Type;
 const PersistedComposerThreadDraftState = Schema.Struct({
   prompt: Schema.String,
   attachments: Schema.Array(PersistedComposerImageAttachment),
+  // The draft's pictures in the order they sat, kept or not: a reload puts
+  // each kept one back in its own place, and takes the place of one that
+  // could not be kept out of the text.
+  pictureIds: Schema.optionalKey(Schema.Array(Schema.String)),
   terminalContexts: Schema.optionalKey(Schema.Array(PersistedTerminalContextDraft)),
   reviewComments: Schema.optionalKey(Schema.Array(ReviewCommentContextSchema)),
   // Keyed by `ProviderInstanceId` (open branded slug) so custom provider
@@ -1756,10 +1764,17 @@ function normalizePersistedDraftsByThreadId(
       draftCandidate.interactionMode === "plan" || draftCandidate.interactionMode === "default"
         ? draftCandidate.interactionMode
         : null;
-    const prompt = ensureInlinePicturePlaceholders(
+    const pictureIds =
+      Array.isArray(draftCandidate.pictureIds) &&
+      draftCandidate.pictureIds.every((id) => typeof id === "string")
+        ? draftCandidate.pictureIds
+        : undefined;
+    const restored = restorePicturePlaces(
       ensureInlineTerminalContextPlaceholders(promptCandidate, terminalContexts.length),
-      attachments.length,
+      pictureIds,
+      attachments,
     );
+    const prompt = ensureInlinePicturePlaceholders(restored.prompt, restored.attachments.length);
     // If the draft already has the v3 shape, use it directly
     const legacyDraftCandidate = draftValue as LegacyPersistedComposerThreadDraftState;
     let modelSelectionByProvider: Partial<Record<ProviderInstanceId, ModelSelection>> = {};
@@ -1833,7 +1848,7 @@ function normalizePersistedDraftsByThreadId(
             })();
     nextDraftsByThreadKey[normalizedThreadKey] = {
       prompt,
-      attachments,
+      attachments: restored.attachments,
       ...(terminalContexts.length > 0 ? { terminalContexts } : {}),
       ...(reviewComments.length > 0 ? { reviewComments } : {}),
       ...(hasModelData
@@ -1954,6 +1969,7 @@ export function partializeComposerDraftStoreState(
     const persistedDraft: DeepMutable<PersistedComposerThreadDraftState> = {
       prompt: draft.prompt,
       attachments: draft.persistedAttachments,
+      ...(draft.images.length > 0 ? { pictureIds: draft.images.map((image) => image.id) } : {}),
       ...(draft.terminalContexts.length > 0
         ? {
             terminalContexts: draft.terminalContexts.map((context) => ({
@@ -2184,6 +2200,36 @@ function hydratePersistedComposerImageAttachment(
   } catch {
     return null;
   }
+}
+
+/**
+ * What a draft's images save for a reload, in the draft's order: each read
+ * as a data URL, or, when its file cannot be read, as it was saved before
+ * (an image never saved is left out).
+ */
+export async function persistableImageAttachments(
+  images: ReadonlyArray<ComposerImageAttachment>,
+  saved: ReadonlyArray<PersistedComposerImageAttachment>,
+  readDataUrl: (file: File) => Promise<string>,
+): Promise<PersistedComposerImageAttachment[]> {
+  const savedById = new Map(saved.map((attachment) => [attachment.id, attachment]));
+  const attachments = await Promise.all(
+    images.map(async (image): Promise<PersistedComposerImageAttachment | undefined> => {
+      try {
+        return {
+          id: image.id,
+          name: image.name,
+          mimeType: image.mimeType,
+          sizeBytes: image.sizeBytes,
+          dataUrl: await readDataUrl(image.file),
+          ...(image.picture ? { picture: persistedPicture(image.picture) } : {}),
+        };
+      } catch {
+        return savedById.get(image.id);
+      }
+    }),
+  );
+  return attachments.filter((attachment) => attachment !== undefined);
 }
 
 export function hydrateImagesFromPersisted(

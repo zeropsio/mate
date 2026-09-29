@@ -16,6 +16,7 @@ import {
   pictureThumbSize,
   reconcileInlinePicturePlaceholders,
   removeInlinePicturePlaceholder,
+  restorePicturePlaces,
   stripInlinePicturePlaceholders,
   type ComposerPicture,
   type PictureMark,
@@ -98,6 +99,48 @@ describe("picture placeholders in the prompt", () => {
   it("counts and strips them", () => {
     expect(countInlinePicturePlaceholders(`${P}a${P}￼`)).toBe(2);
     expect(stripInlinePicturePlaceholders(`${P}a${P}￼`)).toBe("a￼");
+  });
+});
+
+describe("restorePicturePlaces", () => {
+  const saved = (...ids: string[]) => ids.map((id) => ({ id }));
+  it.each([
+    [
+      "every picture back, each in its place",
+      `a${P}b${P}`,
+      ["one", "two"],
+      saved("one", "two"),
+      `a${P}b${P}`,
+      ["one", "two"],
+    ],
+    [
+      "saved in another order, back in the text's",
+      `a${P}b${P}`,
+      ["one", "two"],
+      saved("two", "one"),
+      `a${P}b${P}`,
+      ["one", "two"],
+    ],
+    [
+      "a picture that could not be kept leaves its place",
+      `a${P}b${P}c${P}`,
+      ["one", "two", "three"],
+      saved("one", "three"),
+      `a${P}bc${P}`,
+      ["one", "three"],
+    ],
+    [
+      "a draft saved before pictures were named keeps its text",
+      `a${P}b`,
+      undefined,
+      saved("one"),
+      `a${P}b`,
+      ["one"],
+    ],
+  ])("%s", (_label, prompt, pictureIds, attachments, expectedPrompt, expectedIds) => {
+    const restored = restorePicturePlaces(prompt, pictureIds, attachments);
+    expect(restored.prompt).toBe(expectedPrompt);
+    expect(restored.attachments.map((attachment) => attachment.id)).toEqual(expectedIds);
   });
 });
 

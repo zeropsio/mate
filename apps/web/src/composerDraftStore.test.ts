@@ -65,6 +65,7 @@ import {
   type ComposerImageAttachment,
   hydrateImagesFromPersisted,
   partializeComposerDraftStoreState,
+  persistableImageAttachments,
   useComposerDraftStore,
   DraftId,
 } from "./composerDraftStore";
@@ -360,6 +361,110 @@ describe("composerDraftStore pictures in the text", () => {
       .updateImage(threadRef, makeImage({ id: "gone", previewUrl: "blob:gone" }));
     expect(ids()).toEqual(["one", "two"]);
     expect(revokeSpy).toHaveBeenCalledExactlyOnceWith("blob:gone");
+  });
+});
+
+describe("pictures across a reload", () => {
+  const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, ThreadId.make("thread-reload"));
+  const threadKey = threadKeyFor(threadRef.threadId, TEST_ENVIRONMENT_ID);
+  const P = INLINE_PICTURE_PLACEHOLDER;
+  const saved = (id: string) => ({
+    id,
+    name: `${id}.png`,
+    mimeType: "image/png",
+    sizeBytes: 3,
+    dataUrl: "data:image/png;base64,AQID",
+  });
+  const merge = (draft: Record<string, unknown>) =>
+    (
+      useComposerDraftStore.persist as unknown as {
+        getOptions: () => {
+          merge: (
+            persistedState: unknown,
+            currentState: ReturnType<typeof useComposerDraftStore.getState>,
+          ) => ReturnType<typeof useComposerDraftStore.getState>;
+        };
+      }
+    )
+      .getOptions()
+      .merge(
+        {
+          draftsByThreadKey: { [threadKey]: draft },
+          draftThreadsByThreadKey: {},
+          logicalProjectDraftThreadKeyByLogicalProjectKey: {},
+        },
+        useComposerDraftStore.getInitialState(),
+      ).draftsByThreadKey[threadKey];
+
+  beforeEach(() => {
+    resetComposerDraftStore();
+  });
+
+  it("saves the draft's pictures in the order they sit", () => {
+    const store = useComposerDraftStore.getState();
+    store.insertImage(threadRef, `a${P}`, makeImage({ id: "one", previewUrl: "blob:one" }), 0);
+    store.insertImage(threadRef, `${P}a${P}`, makeImage({ id: "two", previewUrl: "blob:two" }), 0);
+
+    const persisted = partializeComposerDraftStoreState(useComposerDraftStore.getState());
+
+    expect(persisted.draftsByThreadKey[threadKey]?.pictureIds).toEqual(["two", "one"]);
+  });
+
+  it("brings each picture back to its own place, whatever order they were saved in", () => {
+    const draft = merge({
+      prompt: `a${P}b${P}`,
+      attachments: [saved("two"), saved("one")],
+      pictureIds: ["one", "two"],
+    });
+    expect(draft?.prompt).toBe(`a${P}b${P}`);
+    expect(draft?.images.map((image) => image.id)).toEqual(["one", "two"]);
+  });
+
+  it("a picture that could not be kept leaves its place, and the others keep theirs", () => {
+    const draft = merge({
+      prompt: `a${P}b${P}c${P}`,
+      attachments: [saved("one"), saved("three")],
+      pictureIds: ["one", "two", "three"],
+    });
+    expect(draft?.prompt).toBe(`a${P}bc${P}`);
+    expect(draft?.images.map((image) => image.id)).toEqual(["one", "three"]);
+  });
+});
+
+describe("persistableImageAttachments", () => {
+  const image = (id: string) => makeImage({ id, previewUrl: `blob:${id}`, name: `${id}.png` });
+
+  it("keeps the images' order, whichever file is read first", async () => {
+    const reads = new Map<string, (dataUrl: string) => void>();
+    const saving = persistableImageAttachments(
+      [image("one"), image("two")],
+      [],
+      (file) =>
+        new Promise((resolve) => {
+          reads.set(file.name, resolve);
+        }),
+    );
+    reads.get("two.png")!("data:image/png;base64,Ag==");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    reads.get("one.png")!("data:image/png;base64,AQ==");
+
+    expect((await saving).map((attachment) => attachment.id)).toEqual(["one", "two"]);
+  });
+
+  it("an image whose file cannot be read keeps what was saved of it, or is left out", async () => {
+    const earlier = {
+      id: "one",
+      name: "one.png",
+      mimeType: "image/png",
+      sizeBytes: 4,
+      dataUrl: "data:image/png;base64,AQID",
+    };
+    const attachments = await persistableImageAttachments(
+      [image("one"), image("two")],
+      [earlier],
+      () => Promise.reject(new Error("unreadable")),
+    );
+    expect(attachments).toEqual([earlier]);
   });
 });
 

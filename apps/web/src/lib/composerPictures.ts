@@ -138,6 +138,42 @@ export function reconcileInlinePicturePlaceholders(prompt: string, pictureCount:
   return result;
 }
 
+/**
+ * A draft's pictures as a reload brings them back. `pictureIds` are the
+ * pictures the draft held, in the order they sat, and so the ids of its
+ * places, one by one: a picture that could not be kept (the browser's storage
+ * ran out) leaves its place, and the rest come back in the text's order,
+ * whatever order they were saved in. A draft saved without ids stays as it was.
+ */
+export function restorePicturePlaces<A extends { readonly id: string }>(
+  prompt: string,
+  pictureIds: ReadonlyArray<string> | undefined,
+  attachments: ReadonlyArray<A>,
+): { prompt: string; attachments: A[] } {
+  if (pictureIds === undefined) return { prompt, attachments: [...attachments] };
+  const byId = new Map(attachments.map((attachment) => [attachment.id, attachment]));
+  let place = -1;
+  const kept = [...prompt]
+    .filter((char) => {
+      if (char !== INLINE_PICTURE_PLACEHOLDER) return true;
+      place += 1;
+      const id = pictureIds[place];
+      return id === undefined || byId.has(id);
+    })
+    .join("");
+  const named = new Set(pictureIds);
+  return {
+    prompt: kept,
+    attachments: [
+      ...pictureIds.flatMap((id) => {
+        const attachment = byId.get(id);
+        return attachment ? [attachment] : [];
+      }),
+      ...attachments.filter((attachment) => !named.has(attachment.id)),
+    ],
+  };
+}
+
 /** Why the message cannot go while pictures are still being made, or null. */
 export function picturesBlockReason(
   images: ReadonlyArray<{ readonly picture?: Pick<ComposerPicture, "preparing"> | undefined }>,

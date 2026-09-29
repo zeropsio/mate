@@ -62,6 +62,7 @@ import {
   deriveComposerSendState,
   getAntigravitySendBlockReason,
   readFileAsDataUrl,
+  readOncePerFile,
   resolveComposerInteractionMode,
   resolveComposerProviderSelection,
   threadShellHasStarted,
@@ -76,6 +77,7 @@ import {
   type DraftId,
   type PersistedComposerImageAttachment,
   hydrateImagesFromPersisted,
+  persistableImageAttachments,
   persistedPicture,
   useComposerDraftStore,
   useComposerThreadDraft,
@@ -338,6 +340,9 @@ const extendReplacementRangeForTrailingSpace = (
 };
 
 const NO_PICTURES: ReadonlyArray<ComposerPictureView> = [];
+
+/** A draft's image as its save for a reload reads it: each file once. */
+const readComposerFileDataUrl = readOncePerFile(readFileAsDataUrl);
 
 const syncTerminalContextsByIds = (
   contexts: ReadonlyArray<TerminalContextDraft>,
@@ -1698,60 +1703,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // Image persist effect
   // ------------------------------------------------------------------
   useEffect(() => {
+    if (composerImages.length === 0) {
+      clearComposerDraftPersistedAttachments(composerDraftTarget);
+      return;
+    }
     let cancelled = false;
-    void (async () => {
-      if (composerImages.length === 0) {
-        clearComposerDraftPersistedAttachments(composerDraftTarget);
-        return;
-      }
-      const getPersistedAttachmentsForThread = () =>
-        getComposerDraft(composerDraftTarget)?.persistedAttachments ?? [];
-      try {
-        const currentPersistedAttachments = getPersistedAttachmentsForThread();
-        const existingPersistedById = new Map(
-          currentPersistedAttachments.map((attachment) => [attachment.id, attachment]),
-        );
-        const stagedAttachmentById = new Map<string, PersistedComposerImageAttachment>();
-        await Promise.all(
-          composerImages.map(async (image) => {
-            try {
-              const dataUrl = await readFileAsDataUrl(image.file);
-              stagedAttachmentById.set(image.id, {
-                id: image.id,
-                name: image.name,
-                mimeType: image.mimeType,
-                sizeBytes: image.sizeBytes,
-                dataUrl,
-                ...(image.picture ? { picture: persistedPicture(image.picture) } : {}),
-              });
-            } catch {
-              const existingPersisted = existingPersistedById.get(image.id);
-              if (existingPersisted) {
-                stagedAttachmentById.set(image.id, existingPersisted);
-              }
-            }
-          }),
-        );
-        const serialized = Array.from(stagedAttachmentById.values());
-        if (cancelled) return;
-        syncComposerDraftPersistedAttachments(composerDraftTarget, serialized);
-      } catch {
-        const currentImageIds = new Set(composerImages.map((image) => image.id));
-        const fallbackPersistedAttachments = getPersistedAttachmentsForThread();
-        const fallbackPersistedIds: Array<string> = [];
-        for (const attachment of fallbackPersistedAttachments) {
-          if (currentImageIds.has(attachment.id)) {
-            fallbackPersistedIds.push(attachment.id);
-          }
-        }
-        const fallbackPersistedIdSet = new Set(fallbackPersistedIds);
-        const fallbackAttachments = fallbackPersistedAttachments.filter((attachment) =>
-          fallbackPersistedIdSet.has(attachment.id),
-        );
-        if (cancelled) return;
-        syncComposerDraftPersistedAttachments(composerDraftTarget, fallbackAttachments);
-      }
-    })();
+    // In the draft's order, and only files not read before are read.
+    void persistableImageAttachments(
+      composerImages,
+      getComposerDraft(composerDraftTarget)?.persistedAttachments ?? [],
+      readComposerFileDataUrl,
+    ).then((attachments) => {
+      if (!cancelled) syncComposerDraftPersistedAttachments(composerDraftTarget, attachments);
+    });
     return () => {
       cancelled = true;
     };

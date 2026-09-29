@@ -56,6 +56,7 @@ import {
   resolveZeropsProviderAvailability,
   resolveDraftPromotionNavigationTarget,
   resolveThreadMetadataUpdateForNextTurn,
+  readOncePerFile,
   resolveSendEnvMode,
   threadShellHasStarted,
   resolveDraftHeroState,
@@ -2212,5 +2213,32 @@ describe("diffOpeningShowsWorkingTree", () => {
     expect(
       diffOpeningShowsWorkingTree({ diffOpen, activeThreadRef: thread, explicitThreadRef }),
     ).toBe(resets);
+  });
+});
+
+describe("readOncePerFile", () => {
+  const file = (name: string) => new File([new Uint8Array([1, 2, 3])], name, { type: "image/png" });
+
+  it("reads a file once however often its draft is saved, and each new file anew", async () => {
+    const read = vi.fn(async (source: File) => `data:${source.name}`);
+    const readOnce = readOncePerFile(read);
+    const copy = file("copy.png");
+
+    expect(await readOnce(copy)).toBe("data:copy.png");
+    expect(await readOnce(copy)).toBe("data:copy.png");
+    expect(await readOnce(file("copy.png"))).toBe("data:copy.png");
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it("tries a file that could not be read again", async () => {
+    const read = vi
+      .fn<(source: File) => Promise<string>>()
+      .mockRejectedValueOnce(new Error("busy"))
+      .mockResolvedValueOnce("data:shot.png");
+    const readOnce = readOncePerFile(read);
+    const shot = file("shot.png");
+
+    await expect(readOnce(shot)).rejects.toThrow("busy");
+    expect(await readOnce(shot)).toBe("data:shot.png");
   });
 });
