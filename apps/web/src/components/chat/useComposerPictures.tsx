@@ -41,6 +41,7 @@ import {
   INLINE_PICTURE_PLACEHOLDER,
   fullPictureCrop,
   insertInlinePicturePlaceholder,
+  pictureNeedsNewCopy,
   pictureThumbSize,
   removeInlinePicturePlaceholder,
   type ComposerPicture,
@@ -177,6 +178,27 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
     return tokens.current.get(id)!;
   }, []);
 
+  /** A picture's pasted file, decoded once for its thumbnail, its copy and its view. */
+  const decode = useCallback((id: string, file: File): Promise<ImageBitmap> => {
+    const known = bitmaps.current.get(id);
+    if (known) return Promise.resolve(known);
+    const pending = decoding.current.get(id);
+    if (pending) return pending;
+    const decoded = createImageBitmap(file).then(
+      (bitmap) => {
+        decoding.current.delete(id);
+        bitmaps.current.set(id, bitmap);
+        return bitmap;
+      },
+      (error: unknown) => {
+        decoding.current.delete(id);
+        throw error;
+      },
+    );
+    decoding.current.set(id, decoded);
+    return decoded;
+  }, []);
+
   const removePicture = useCallback(
     (id: string) => {
       const { draftTarget, promptRef, onPromptWritten } = latest.current;
@@ -200,26 +222,52 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
     [setPrompt, supersede, syncImages],
   );
 
+  /** The picture goes as it is: nothing is making its copy any more. */
+  const settleCopy = useCallback(
+    (id: string) => {
+      const image = imageOf(id);
+      if (!image?.picture?.preparing) return;
+      updateImage(latest.current.draftTarget, {
+        ...image,
+        picture: { ...image.picture, preparing: false },
+      });
+    },
+    [imageOf, updateImage],
+  );
+
   /** Makes the picture's copy from its current edits; the latest edit wins. */
   const makeCopy = useCallback(
     async (id: string) => {
       const token = supersede(id);
       const image = imageOf(id);
       const picture = image?.picture;
-      const bitmap = bitmaps.current.get(id);
-      if (!image || !picture?.source || !bitmap) return;
+      if (!image || !picture) return;
       const source = picture.source;
-      const copy = await fitPictureCopy({
-        source: {
-          type: source.type,
-          bytes: source.size,
-          width: picture.sourceWidth,
-          height: picture.sourceHeight,
-        },
-        crop: picture.crop,
-        markCount: picture.marks.length,
-        encode: pictureCanvasEncoder({ image: bitmap, crop: picture.crop, marks: picture.marks }),
-      });
+      // A reload dropped the pasted file: the copy it made is what goes.
+      if (!source) {
+        settleCopy(id);
+        return;
+      }
+      let copy: Awaited<ReturnType<typeof fitPictureCopy<Blob>>>;
+      try {
+        const bitmap = bitmaps.current.get(id) ?? (await decode(id, source));
+        copy = await fitPictureCopy({
+          source: {
+            type: source.type,
+            bytes: source.size,
+            width: picture.sourceWidth,
+            height: picture.sourceHeight,
+          },
+          crop: picture.crop,
+          markCount: picture.marks.length,
+          encode: pictureCanvasEncoder({ image: bitmap, crop: picture.crop, marks: picture.marks }),
+        });
+      } catch {
+        if (tokens.current.get(id) !== token) return;
+        settleCopy(id);
+        latest.current.onError(`'${source.name}' could not be prepared, so it goes as it was.`);
+        return;
+      }
       const now = imageOf(id);
       if (
         tokens.current.get(id) !== token ||
@@ -258,7 +306,7 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
         },
       });
     },
-    [imageOf, removePicture, supersede, updateImage],
+    [decode, imageOf, removePicture, settleCopy, supersede, updateImage],
   );
 
   const scheduleCopy = useCallback(
@@ -274,27 +322,6 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
     },
     [makeCopy, supersede],
   );
-
-  /** A picture's pasted file, decoded once for its thumbnail, its copy and its view. */
-  const decode = useCallback((id: string, file: File): Promise<ImageBitmap> => {
-    const known = bitmaps.current.get(id);
-    if (known) return Promise.resolve(known);
-    const pending = decoding.current.get(id);
-    if (pending) return pending;
-    const decoded = createImageBitmap(file).then(
-      (bitmap) => {
-        decoding.current.delete(id);
-        bitmaps.current.set(id, bitmap);
-        return bitmap;
-      },
-      (error: unknown) => {
-        decoding.current.delete(id);
-        throw error;
-      },
-    );
-    decoding.current.set(id, decoded);
-    return decoded;
-  }, []);
 
   const add = useCallback(
     async (files: ReadonlyArray<File>) => {
@@ -389,7 +416,7 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
     (id: string, next: ComposerPicture) => {
       const image = imageOf(id);
       if (!image?.picture) return;
-      const remake = next.crop !== image.picture.crop || next.marks !== image.picture.marks;
+      const remake = pictureNeedsNewCopy(image.picture, next);
       updateImage(latest.current.draftTarget, {
         ...image,
         picture: { ...next, preparing: remake || image.picture.preparing },

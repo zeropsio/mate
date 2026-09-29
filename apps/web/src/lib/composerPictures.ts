@@ -194,6 +194,34 @@ export function materializePicturePrompt(
 
 const trimBoth = (text: string): string => text.replace(/^\s+|\s+$/gu, "");
 
+/**
+ * Whether an edit changes what the copy shows: its crop, or where its marks
+ * sit and the order that numbers them. A note is words of the message, not
+ * pixels of the copy.
+ */
+export function pictureNeedsNewCopy(
+  before: Pick<ComposerPicture, "crop" | "marks">,
+  after: Pick<ComposerPicture, "crop" | "marks">,
+): boolean {
+  const { crop } = before;
+  if (
+    crop.x !== after.crop.x ||
+    crop.y !== after.crop.y ||
+    crop.w !== after.crop.w ||
+    crop.h !== after.crop.h ||
+    before.marks.length !== after.marks.length
+  ) {
+    return true;
+  }
+  return before.marks.some((mark, index) => {
+    const other = after.marks[index]!;
+    if (mark.kind !== other.kind || mark.x !== other.x || mark.y !== other.y) return true;
+    return (
+      mark.kind === "box" && other.kind === "box" && (mark.w !== other.w || mark.h !== other.h)
+    );
+  });
+}
+
 export function fullPictureCrop(width: number, height: number): PictureRect {
   return { x: 0, y: 0, w: width, h: height };
 }

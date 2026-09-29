@@ -11,6 +11,7 @@ import {
   materializePicturePrompt,
   optimisticPictureAttachments,
   pictureMarkAt,
+  pictureNeedsNewCopy,
   picturesBlockReason,
   pictureThumbSize,
   reconcileInlinePicturePlaceholders,
@@ -184,6 +185,23 @@ describe("materializePicturePrompt", () => {
     const text = materializePicturePrompt(prompt, images);
     expect(text).toBe(expected);
     expect(splitPictureText(text, images.length)).toEqual(segments);
+  });
+});
+
+describe("pictureNeedsNewCopy", () => {
+  const crop = { x: 0, y: 0, w: 1200, h: 800 };
+  const marks = [pin("a", 10, 10, "Logo"), box("b", 20, 20, 50, 40, "Grid")];
+  it.each([
+    ["nothing changed", { crop, marks }, false],
+    ["a note reworded", { crop, marks: [pin("a", 10, 10, "Bigger logo"), marks[1]!] }, false],
+    ["the same crop, drawn anew", { crop: { ...crop }, marks }, false],
+    ["the crop moved", { crop: { ...crop, x: 5 }, marks }, true],
+    ["a pin moved", { crop, marks: [pin("a", 11, 10, "Logo"), marks[1]!] }, true],
+    ["a box resized", { crop, marks: [marks[0]!, box("b", 20, 20, 60, 40, "Grid")] }, true],
+    ["a mark added", { crop, marks: [...marks, pin("c", 1, 1, "")] }, true],
+    ["the marks renumbered", { crop, marks: [marks[1]!, marks[0]!] }, true],
+  ])("%s: %s", (_label, after, expected) => {
+    expect(pictureNeedsNewCopy({ crop, marks }, after)).toBe(expected);
   });
 });
 
