@@ -14,7 +14,7 @@ import { buttonsLabelled, elementsOf, press, TestNode } from "../../../zerops/__
 import { Sheet } from "~/components/ui/sheet";
 import type { CrewRead } from "~/zerops/crew/useCrew";
 
-import { CrewBoard, CrewBoardPanel, CrewNewTaskBody, CrewTaskSheetBody } from "./CrewBoardPanel";
+import { CrewBoard, CrewBoardHost, CrewNewTaskBody, CrewTaskSheetBody } from "./CrewBoardPanel";
 import {
   crewBoardModel,
   crewDependencyOptions,
@@ -24,12 +24,10 @@ import {
   type CrewBoardModel,
 } from "./CrewBoardPanel.logic";
 
-/** What the crew feed answers the panel. */
-const feed = vi.hoisted(() => ({
-  read: { status: null, snapshot: null, view: null, current: false } as CrewRead,
+// The run dialog the board mounts closed reads the live feed: nothing read here.
+vi.mock("~/zerops/crew/useCrew", () => ({
+  useCrew: () => ({ status: null, snapshot: null, view: null, current: false }),
 }));
-
-vi.mock("~/zerops/crew/useCrew", () => ({ useCrew: () => feed.read }));
 vi.mock("~/zerops/crew/useCrewCommand", () => ({
   useCrewCommand: () => ({
     send: async () => null,
@@ -150,10 +148,11 @@ const textOf = (html: string) =>
 describe("CrewBoard", () => {
   const fixture = crewSnapshotFixture();
 
-  it("draws the header, the columns with their counts, and + New task", () => {
+  it("heads its tasks with + New task, and leaves the crew's name to the section above it", () => {
     const text = textOf(renderBoard(fixture));
-    expect(text).toContain("Crew Camera and HUD rework Running · 1 h 12 m");
-    expect(text).toContain("New task");
+    expect(text.startsWith("Board + New task Waiting on you 4")).toBe(true);
+    expect(text).not.toContain("Camera and HUD rework");
+    expect(text).not.toContain("Running · 1 h 12 m");
     for (const heading of [
       "Waiting on you 4",
       "Working 1",
@@ -187,6 +186,13 @@ describe("CrewBoard", () => {
     expect(plan).not.toContain("Remove #16 from the plan");
     expect(renderBoard(fixture, { planEditing: true })).toContain(
       'aria-label="Remove #16 from the plan"',
+    );
+  });
+
+  it("lets Review plan hand the plan the focus, outside the tab order", () => {
+    const html = renderBoard(fixture);
+    expect(html).toMatch(
+      /<div[^>]*data-crew-plan="true"[^>]*tabindex="-1"|<div[^>]*tabindex="-1"[^>]*data-crew-plan="true"/u,
     );
   });
 
@@ -373,31 +379,40 @@ describe("CrewNewTaskBody", () => {
   });
 });
 
-describe("CrewBoardPanel", () => {
-  it.each([
-    {
-      status: "none",
-      text: "No crew is set up yet. Set one up in the Crew section of the Zerops tab.",
-    },
-    { status: "off", text: "Crew mode is off in this Mate." },
-    { status: null, text: "" },
-  ] as const)("status $status: $text", ({ status, text }) => {
-    feed.read = { status, snapshot: null, view: null, current: true };
-    expect(
-      textOf(renderToStaticMarkup(<CrewBoardPanel environmentId={"env-1" as EnvironmentId} />)),
-    ).toBe(text);
+describe("CrewBoardHost", () => {
+  it("draws the board of the crew it is handed, under the section in the Crew tab", () => {
+    const snapshot = crewSnapshotFixture();
+    const html = renderToStaticMarkup(
+      <CrewBoardHost
+        current
+        environmentId={"env-1" as EnvironmentId}
+        snapshot={snapshot}
+        view={viewOf(snapshot) as NonNullable<CrewRead["view"]>}
+      />,
+    );
+    expect(html).toContain("data-crew-board");
+    expect(textOf(html)).toContain("Board + New task Waiting on you 4");
+    // The tab scrolls as one: the board has no scroll box of its own.
+    expect(html).not.toContain('data-slot="scroll-area-viewport"');
   });
 
-  it("status applied: the board", () => {
+  it("scrolls its columns sideways on its own where they stand wider than the tab", () => {
     const snapshot = crewSnapshotFixture();
-    feed.read = {
-      status: "applied",
-      snapshot,
-      view: viewOf(snapshot) as CrewRead["view"],
-      current: true,
-    };
-    const html = renderToStaticMarkup(<CrewBoardPanel environmentId={"env-1" as EnvironmentId} />);
-    expect(html).toContain("data-crew-board");
-    expect(textOf(html)).toContain("Crew Camera and HUD rework");
+    const html = renderToStaticMarkup(
+      <CrewBoardHost
+        current
+        environmentId={"env-1" as EnvironmentId}
+        snapshot={snapshot}
+        view={viewOf(snapshot) as NonNullable<CrewRead["view"]>}
+      />,
+    );
+    const row = /<div class="([^"]*@3xl\/board:flex-row[^"]*)"/u.exec(html)?.[1] ?? "";
+    // Side by side the columns scroll within the board: the section above stays put.
+    expect(row.split(" ")).toContain("@3xl/board:overflow-x-auto");
+    // A card's focus ring keeps its room at the scrolling row's edges, and the
+    // cards stand where they stood, scrolled back to as well.
+    expect(row.split(" ")).toEqual(
+      expect.arrayContaining(["@3xl/board:-m-1", "@3xl/board:p-1", "@3xl/board:scroll-px-1"]),
+    );
   });
 });

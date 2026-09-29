@@ -1,7 +1,6 @@
 import {
   type EnvironmentId,
   type EditorId,
-  type ProjectId,
   type ProjectScript,
   type ResolvedKeybindingsConfig,
   type ThreadId,
@@ -12,7 +11,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { ChangeRequestSettleSource } from "@t3tools/client-runtime/state/thread-settled";
-import { ArchiveIcon, ChevronDownIcon, EllipsisIcon, PlusIcon } from "lucide-react";
+import { ArchiveIcon, ChevronDownIcon, EllipsisIcon } from "lucide-react";
 import {
   memo,
   useCallback,
@@ -44,16 +43,12 @@ import { readLocalApi } from "~/localApi";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { ProjectFavicon } from "../ProjectFavicon";
-import { MateFace } from "../zerops/primitives";
-import { CrewmateHeader } from "../zerops/crew/CrewmateHeader";
 import { useThreadShell } from "../../state/entities";
-import { mateFaceFor } from "~/zerops/agentActivity";
 import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import type { ZeropsMateAt } from "~/zerops/mateIdentities";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsMark } from "../ZeropsMark";
 import { ConversationStrip } from "./ConversationStrip";
-import type { ConversationStripGroup } from "./ConversationStrip.logic";
 import { registerThreadSyncSlot } from "./threadSyncSlot";
 import {
   WorkspaceBreadcrumb,
@@ -86,25 +81,10 @@ interface ChatHeaderProps {
   onNewThreadInProject: () => void;
   /** Archives the Mate's conversation and opens a fresh one in its place. */
   onStartFresh: () => void;
-  /**
-   * Starts a second chat beside the Mate's one. Absent where the conversation
-   * strip carries its own New chat, and where no Mate lives.
-   */
-  onNewChat?: (() => void) | undefined;
-  /** In a crewmate's chat, *Edit job*: the crew's Crewmate editor on that crewmate. */
+  /** A crewmate's *Change its job*: the crew's Crewmate editor on that crewmate. */
   onEditCrewmateJob: (handle: string) => void;
-  /**
-   * Where the Mate's page holds more than one conversation — a second chat, a
-   * crew — the conversation strip takes the header's line: the Mate's face
-   * and name are its first entry, not a crumb beside it. What the chat on
-   * screen is about moves to the line under the header (`subjectSlot`).
-   */
-  strip?: {
-    readonly projectId: ProjectId;
-    readonly extraGroups: ReadonlyArray<ConversationStripGroup>;
-  } | null;
-  /** The line under the header that holds the subject while the strip holds the header's line. */
-  subjectSlot?: HTMLElement | null;
+  /** The lead's *Change the brief*: the crew's Brief editor. */
+  onEditBrief: () => void;
   onOpenProjectSettings?: (() => void) | undefined;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;
@@ -186,36 +166,10 @@ function ZeropsProjectLink({ projectUrl }: { readonly projectUrl: string }) {
 }
 
 /**
- * Another chat beside the Mate's one, for a Mate with a single chat — once
- * there are two, the conversation strip carries it. A glyph only; its name
- * is the tooltip.
- */
-function NewChatButton({ onNewChat }: { readonly onNewChat: () => void }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            aria-label="New chat"
-            data-chat-header-ghost
-            onClick={onNewChat}
-            size="icon-sm"
-            variant="ghost-muted"
-          />
-        }
-      >
-        <PlusIcon />
-      </TooltipTrigger>
-      <TooltipPopup side="top">New chat</TooltipPopup>
-    </Tooltip>
-  );
-}
-
-/**
  * Starting over in a Mate's chat, spelled out in the header's menu: the chat
  * on screen is archived and a fresh, empty one takes its place — the one
  * action in the header a second click does not undo, so it is never a bare
- * glyph beside New chat.
+ * glyph.
  */
 function StartFreshMenuItem({ onStartFresh }: { readonly onStartFresh: () => void }) {
   return (
@@ -245,10 +199,8 @@ export const ChatHeader = memo(function ChatHeader({
   gitCwd,
   onNewThreadInProject,
   onStartFresh,
-  onNewChat,
   onEditCrewmateJob,
-  strip = null,
-  subjectSlot = null,
+  onEditBrief,
   onOpenProjectSettings,
   onRunProjectScript,
   onAddProjectScript,
@@ -301,10 +253,11 @@ export const ChatHeader = memo(function ChatHeader({
   const stackedActionsSupported =
     useEnvironment(activeThreadEnvironmentId)?.serverConfig?.environment.capabilities
       .vcsStackedActions !== false;
-  // A Mate's conversation is headed by the Mate — its face wearing the
-  // conversation's state, its name — not by the folder it runs in, and it
-  // carries a title only once somebody has spoken into it. Elsewhere the
-  // header is upstream's: the project, then the thread.
+  // A Mate's conversation is headed by the Mate — the line of its
+  // conversations (`ConversationStrip`), its face wearing the chat's state,
+  // its name — not by the folder it runs in, and what the chat is about
+  // stands only once somebody has spoken into it. Elsewhere the header is
+  // upstream's: the project, then the thread.
   // While who lives here is not known, the header shows what both looks
   // share and leaves out what only one of them has.
   const whoLivesHere = useZeropsMate(activeThreadEnvironmentId);
@@ -320,13 +273,7 @@ export const ChatHeader = memo(function ChatHeader({
     () => scopeThreadRef(activeThreadEnvironmentId, activeThreadId),
     [activeThreadEnvironmentId, activeThreadId],
   );
-  // The face the lists draw, by the same rule, for the chat this heads — in a
-  // second chat, what the Mate does there, not in its main one. A Mate is
-  // known from its project's tags and its container's origin — before its
-  // socket is up — so an unconnected one sleeps here too rather than wearing
-  // an idle face it has not earned.
   const mateActivity = useZeropsThreadActivity(activeThreadRef);
-  const mateFace = mateFaceFor(mate?.connected === true, mateActivity);
   const activeThreadShell = useThreadShell(activeThreadRef);
   const spoken = activeThreadShell?.latestUserMessageAt != null;
   // A crewmate's chat is headed by the crewmate, and it is the crew engine's:
@@ -443,10 +390,10 @@ export const ChatHeader = memo(function ChatHeader({
     (event: ReactMouseEvent) => {
       if (renamingTitle !== null || crewOrigin !== null) return;
       // The right-side controls (git, scripts, open-in) keep their own
-      // behavior, and the strip's entries are other conversations; only the
-      // breadcrumb area and the subject open the thread menu.
+      // behavior, and the crew's faces are other conversations; the Mate, the
+      // task after it and the line's empty stretch open the thread menu.
       if ((event.target as HTMLElement).closest("[data-chat-header-actions]")) return;
-      if ((event.target as HTMLElement).closest("[data-conversation-strip]")) return;
+      if ((event.target as HTMLElement).closest("[data-conversation-crew]")) return;
       if (!isServerThread && onOpenProjectSettings === undefined) return;
       cancelPendingTitleMenu();
       event.preventDefault();
@@ -499,13 +446,19 @@ export const ChatHeader = memo(function ChatHeader({
     actionsCollapsed && (showProjectScripts || showOpenInPicker || showGitActions);
   const menuShown = startsFresh || projectActionsInMenu;
   if (!menuShown && actionsOpen) setActionsOpen(false);
-  // What the chat is on: renamed in place, and the thread's menu on a click.
-  const titleContent =
-    renamingTitle !== null ? (
+  // The chat's title as it is renamed: under a Mate — whose line says what the
+  // chat is about only on hover — over the line from the Mate's name, on the
+  // header's ground, so nothing on the line moves while it is edited; in
+  // upstream's header, in place of the title.
+  const renameInput = (over: boolean) =>
+    renamingTitle === null ? null : (
       <input
         autoFocus
         aria-label="Thread title"
-        className="min-w-0 flex-1 rounded-sm bg-transparent text-sm font-medium text-foreground outline-none ring-1 ring-ring/50 focus:ring-ring"
+        className={cn(
+          "min-w-0 flex-1 text-sm font-medium text-foreground outline-none ring-1 ring-ring/50 focus:ring-ring",
+          over ? "h-8 rounded-lg bg-background px-2" : "rounded-sm bg-transparent",
+        )}
         defaultValue={renamingTitle}
         onBlur={(event) => {
           if (renameCommittedRef.current) return;
@@ -514,6 +467,11 @@ export const ChatHeader = memo(function ChatHeader({
         onFocus={(event) => event.currentTarget.select()}
         onKeyDown={handleRenameKeyDown}
       />
+    );
+  // What the chat is on: renamed in place, and the thread's menu on a click.
+  const titleContent =
+    renamingTitle !== null ? (
+      renameInput(false)
     ) : isServerThread ? (
       <Tooltip>
         <TooltipTrigger
@@ -551,25 +509,6 @@ export const ChatHeader = memo(function ChatHeader({
         <TooltipPopup side="top">{headline}</TooltipPopup>
       </Tooltip>
     );
-  // With the strip on the header's line, what the chat on screen is about
-  // reads under it: a crewmate's job, or the task, on the names' edge.
-  const stripOn = strip !== null && mate !== undefined;
-  const subject = !stripOn ? null : crewOrigin !== null ? (
-    <CrewmateHeader
-      environmentId={activeThreadEnvironmentId}
-      identity={false}
-      onEditJob={onEditCrewmateJob}
-      origin={crewOrigin}
-      threadId={activeThreadId}
-    />
-  ) : spoken ? (
-    <div
-      className="flex min-w-0 flex-1 items-center text-muted-foreground transition-colors has-[button:hover]:text-foreground"
-      data-conversation-subject-title
-    >
-      {titleContent}
-    </div>
-  ) : null;
   // Upstream's project actions fold into one menu on a narrow header; the
   // Mate's own controls stay where they are.
   const headerActions = (
@@ -618,40 +557,33 @@ export const ChatHeader = memo(function ChatHeader({
       className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3"
       onContextMenu={handleHeaderContextMenu}
     >
-      {stripOn ? (
+      {mate !== undefined ? (
+        // The line of the Mate's conversations: the Mate, then its crew. What
+        // the chat is about is the Mate's hover, never words on the line.
         <ConversationStrip
+          crewChat={
+            crewOrigin === null ? null : { handle: crewOrigin.crewmate, title: activeThreadTitle }
+          }
           currentThreadId={isServerThread ? activeThreadId : null}
           environmentId={activeThreadEnvironmentId}
-          extraGroups={strip.extraGroups}
-          projectId={strip.projectId}
+          onEditBrief={onEditBrief}
+          onEditJob={onEditCrewmateJob}
+          onRename={isServerThread && crewOrigin === null ? startRename : null}
+          renameField={
+            renamingTitle === null ? null : (
+              <div className="absolute inset-y-0 start-8.5 end-0 flex max-w-96 items-center">
+                {renameInput(true)}
+              </div>
+            )
+          }
+          subject={crewOrigin === null && spoken ? headline : null}
         />
       ) : (
         <WorkspaceBreadcrumb ariaLabel="Thread breadcrumb" className="flex-1">
           {/* The project always leads the header: knowing which project a
             thread lives in is priority zero, and the thread title alone
             doesn't answer it. */}
-          {crewOrigin !== null ? (
-            <WorkspaceBreadcrumbItem current className="flex-1">
-              <CrewmateHeader
-                environmentId={activeThreadEnvironmentId}
-                onEditJob={onEditCrewmateJob}
-                origin={crewOrigin}
-                threadId={activeThreadId}
-              />
-            </WorkspaceBreadcrumbItem>
-          ) : mate !== undefined ? (
-            // The Mate, then what it is on in the muted voice: weight and ink
-            // tell them apart, no slash between them.
-            <WorkspaceBreadcrumbItem>
-              <span
-                className="inline-flex min-w-0 items-center gap-2.5 text-foreground"
-                data-zerops-surface="header-mate"
-              >
-                <MateFace size="sm" state={mateFace} tint={mate.tint} />
-                <span className="max-w-48 truncate font-medium">{mate.name}</span>
-              </span>
-            </WorkspaceBreadcrumbItem>
-          ) : whoLivesHere.kind === "nobody" && activeProjectName ? (
+          {whoLivesHere.kind === "nobody" && activeProjectName ? (
             <>
               <WorkspaceBreadcrumbItem>
                 <Tooltip>
@@ -680,22 +612,12 @@ export const ChatHeader = memo(function ChatHeader({
             </>
           ) : null}
           {crewOrigin !== null || (whoLivesHere.kind !== "nobody" && !spoken) ? null : (
-            // Under a Mate the heading is the Mate; what it is on reads in the
-            // quiet voice after it, not as a second heading as loud as its name.
-            <WorkspaceBreadcrumbItem
-              current
-              className={cn(
-                "flex-1",
-                mate !== undefined &&
-                  "font-normal text-muted-foreground transition-colors has-[button:hover]:text-foreground",
-              )}
-            >
+            <WorkspaceBreadcrumbItem current className="flex-1">
               {titleContent}
             </WorkspaceBreadcrumbItem>
           )}
         </WorkspaceBreadcrumb>
       )}
-      {subject === null || subjectSlot === null ? null : createPortal(subject, subjectSlot)}
       {/* The sync indicator's seat: always this size, so a thread catching up
           with its server spins here and moves nothing (`threadSyncSlot.ts`). */}
       <span
@@ -718,9 +640,6 @@ export const ChatHeader = memo(function ChatHeader({
       >
         {/* The Mate's version and its update live with its body in the right
             panel's Zerops view, not over the conversation. */}
-        {mate === undefined || onNewChat === undefined || crewOrigin !== null ? null : (
-          <NewChatButton onNewChat={onNewChat} />
-        )}
         <Menu open={menuShown && actionsOpen} onOpenChange={setActionsOpen}>
           <MenuTrigger
             className={menuShown ? undefined : "hidden"}

@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off -- The heading's band is checked against the stylesheet that draws it.
 import {
   buildZeropsGroupTree,
   groupFlow,
@@ -8,10 +9,13 @@ import {
   type ZeropsPlacedBirth,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
+import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
+import * as NodeFS from "node:fs";
 import { act, act as act_, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
@@ -24,6 +28,7 @@ import { useComposerDraftStore } from "~/composerDraftStore";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { activityFromMemory } from "~/zerops/menuMemory";
+import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import {
   PROJECT_CUSTOM_ORDER_STORAGE_KEY,
   PROJECT_ORDER_STORAGE_KEY,
@@ -44,6 +49,12 @@ vi.mock("~/zerops/collapsedProjects", () => ({
     stored.written = collapsed;
   },
 }));
+// A crew's faces open their chats through the router, which a menu drawn
+// here has none of.
+vi.mock("@tanstack/react-router", async (original) => ({
+  ...(await original<typeof import("@tanstack/react-router")>()),
+  useNavigate: () => () => undefined,
+}));
 afterEach(() => {
   // A tree left mounted would answer the next test's asks of the one menu.
   for (const tree of mountedTrees.splice(0)) {
@@ -63,6 +74,7 @@ import {
 } from "./projects/projectsView.logic";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarReveal } from "~/zerops/sidebarReveal";
+import type { SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
 import {
   ProjectHeader,
@@ -248,8 +260,9 @@ describe("SidebarZeropsTree", () => {
     expect(row).toContain("w-full");
     // Its corners are the menu's row's own (`.menu-row`, 12px).
     expect(row).toContain("menu-row");
-    // Lit from its row, so it stays lit while the pointer is on its menu.
-    expect(row).toContain("group-hover/mate:bg-sidebar-row-hover");
+    // Lit as its unit, which holds its menu too, so it stays lit while the
+    // pointer is on that ("a Mate and its crew, one unit in the menu").
+    expect(html).toContain('data-zerops-mate-unit="crm-dev"');
     expect(row).not.toContain("border");
   });
 
@@ -564,7 +577,9 @@ const productionRow: EnvironmentRow = {
 // A Mate with no owner, or nobody signed in (the owner, 2026-09-29: "mate
 // without auth / owner should have the state specially handled"): nobody's
 // is an empty seat, said in words; a row with nothing else to say says that
-// nobody has signed in, and offers it where it is the viewer's to do.
+// nobody has signed in, and offers nothing to press there: the row's own
+// press opens the Mate, whose conversation holds the sign-in (the owner, of
+// a *Sign in* on the row: it did nothing there, and stood on the row's edge).
 describe("a Mate with no owner, or nobody signed in", () => {
   const OWNER_ROLE = (clientUserId: string) => ({ clientUserId, roleCode: "OWNER" });
   const mate = (
@@ -583,11 +598,7 @@ describe("a Mate with no owner, or nobody signed in", () => {
   };
   const seat = (html: string) => /data-zerops-avatar="([^"]*)"/u.exec(html)?.[1];
   const line = (html: string) =>
-    /<span[^>]*data-zerops-surface="sidebar-mate-sign-in"[^>]*>(.*?)<\/span><\/span>/u.exec(
-      html,
-    )?.[0];
-  const verb = (html: string) =>
-    /<span[^>]*data-zerops-surface="sidebar-mate-sign-in-verb"[^>]*>([^<]*)</u.exec(html);
+    /<span[^>]*data-zerops-surface="sidebar-mate-sign-in"[^>]*>([^<]*)<\/span>/u.exec(html);
   const PETRA = { name: "Petra Malá", initials: "PM", avatarUrl: null, isViewer: true };
   const KAREL = { name: "Karel Novák", initials: "KN", avatarUrl: null, isViewer: false };
 
@@ -603,35 +614,26 @@ describe("a Mate with no owner, or nobody signed in", () => {
     expect(html).toContain("No owner yet. Whoever signs in its coding agent owns it.");
   });
 
-  it("says nobody has signed in on the line under the name, and offers Sign in in blue", () => {
-    const html = render([mate([], { group: "connected" })], { getOwner: () => undefined });
-    expect(line(html)).toContain(">Nobody has signed in yet<");
-    const found = verb(html);
-    expect(found?.[1]).toBe("Sign in");
-    expect(found?.[0]).toContain("menu-textbtn");
-    // On the line's own 18 px: the word's pill does not grow the row.
-    expect(found?.[0]).toContain("-my-0.75");
-  });
-
-  it("offers no Sign in where a press would not land on it: not open here yet", () => {
-    const html = render([mate([], { group: "ready" })], { getOwner: () => undefined });
-    expect(line(html)).toContain(">Nobody has signed in yet<");
-    expect(verb(html)).toBeNull();
-  });
-
-  it("gives the viewer's own Mate the line and Sign in; a colleague's the line alone", () => {
-    const own = render([mate([], { group: "connected", userRoles: [OWNER_ROLE("cu-petra")] })], {
-      getOwner: () => PETRA,
-    });
-    expect(seat(own)).toBe("initials");
-    expect(verb(own)?.[1]).toBe("Sign in");
-    const theirs = render([mate([], { group: "connected", userRoles: [OWNER_ROLE("cu-karel")] })], {
-      getOwner: () => KAREL,
-    });
-    expect(seat(theirs)).toBe("initials");
-    expect(line(theirs)).toContain(">Nobody has signed in yet<");
-    expect(verb(theirs)).toBeNull();
-  });
+  it.each([
+    { case: "nobody's, open here", group: "connected", roles: [], owner: undefined },
+    { case: "nobody's, not open here yet", group: "ready", roles: [], owner: undefined },
+    { case: "the viewer's own", group: "connected", roles: ["cu-petra"], owner: PETRA },
+    { case: "a colleague's", group: "connected", roles: ["cu-karel"], owner: KAREL },
+  ] as const)(
+    "says nobody has signed in under the name, one muted line with nothing to press: $case",
+    ({ group, roles, owner }) => {
+      const html = render([mate([], { group, userRoles: roles.map((id) => OWNER_ROLE(id)) })], {
+        getOwner: () => owner,
+      });
+      const found = line(html);
+      expect(found?.[1]).toBe("Nobody has signed in yet");
+      // One line of the row's leading, on the words' edge, the words' muted ink.
+      expect(found?.[0]).toEqual(expect.stringContaining("leading-4.5"));
+      expect(found?.[0]).toEqual(expect.stringContaining("text-muted-foreground"));
+      expect(html).not.toContain(">Sign in<");
+      expect(html).not.toContain("sidebar-mate-sign-in-verb");
+    },
+  );
 
   it("says nothing of signing in once somebody has, or once it was asked something", () => {
     const signed = render([mate([SIGNER], { group: "connected" })], { getOwner: () => KAREL });
@@ -659,7 +661,7 @@ describe("a Mate with no owner, or nobody signed in", () => {
     expect(html).not.toContain("sidebar-mate-sign-in");
   });
 
-  it("opens the Mate — where its sign-in is — when Sign in is pressed", () => {
+  it("opens the Mate — where its sign-in is — when its row is pressed", () => {
     const opened: string[] = [];
     const mounted = mount(
       <SidebarZeropsTree
@@ -671,9 +673,9 @@ describe("a Mate with no owner, or nobody signed in", () => {
         }}
       />,
     );
-    // The word is the row's own press, said as the next step.
-    const word = surface(mounted, "sidebar-mate-sign-in-verb");
-    let row: ReactTestInstance | null = word.parent;
+    // The line is the row's, and so is its press.
+    const said = surface(mounted, "sidebar-mate-sign-in");
+    let row: ReactTestInstance | null = said.parent;
     while (row !== null && row.props["data-zerops-surface"] !== "sidebar-mate") row = row.parent;
     expect(row).not.toBeNull();
     act(() => {
@@ -979,6 +981,91 @@ describe("the project's flow under it", () => {
   it("wears no dot of its own: the rows and the chip say what waits", () => {
     const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
     expect(html).not.toContain("sidebar-project-next-step");
+  });
+});
+
+// A Mate and its crew's line are one thing in the menu (the owner,
+// 2026-09-29: "why isn't crew included in the hover?"): one unit, lit as one
+// under the pointer, while a menu of its is open and by the selected band
+// (`SidebarSelectedBand.test.tsx`), and its changes rows of their own.
+describe("a Mate and its crew, one unit in the menu", () => {
+  const crew = (): SidebarCrewRead => {
+    const fixture = crewSnapshotFixture();
+    const view = deriveCrewView(fixture, [], () => {
+      throw new Error("no shells here");
+    });
+    return { status: "applied", view, attention: [] };
+  };
+  const drawn = (options: { readonly crew: boolean; readonly open?: boolean }) =>
+    mount(
+      <SidebarZeropsTree
+        {...(options.open === true ? { activeProjectId: "crm-dev" } : {})}
+        candidates={[CRM_DEV_CONNECTED, CRM_STAGE, CRM_PROD]}
+        complete
+        getCrew={() => (options.crew ? crew() : undefined)}
+        getFlow={() => ({
+          pullRequests: [pull(4)],
+          environments: new Map([
+            ["crm-stage", stageRow],
+            ["crm-prod", productionRow],
+          ]),
+          releaseOffered: true,
+        })}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+  const unitOf = (tree: ReactTestRenderer) =>
+    tree.root.find(
+      (node) => typeof node.type === "string" && node.props["data-zerops-mate-unit"] === "crm-dev",
+    );
+  const count = (node: ReactTestInstance, name: string) =>
+    node.findAll(
+      (child) => typeof child.type === "string" && child.props["data-zerops-surface"] === name,
+    ).length;
+
+  it("holds the Mate's row and its crew's line, and none of its changes", () => {
+    const tree = drawn({ crew: true });
+    const unit = unitOf(tree);
+    expect(count(unit, "sidebar-mate")).toBe(1);
+    expect(count(unit, "sidebar-crew")).toBe(1);
+    expect(count(unit, "sidebar-pull-request")).toBe(0);
+    // The change is still drawn, under the unit, as a row of its own.
+    expect(count(tree.root, "sidebar-pull-request")).toBe(1);
+  });
+
+  it("holds a Mate without a crew as its row alone, as it always stood", () => {
+    const unit = unitOf(drawn({ crew: false }));
+    const row = unit.find(
+      (node) => typeof node.type === "string" && node.props["data-zerops-mate-row"] === "crm-dev",
+    );
+    const elements = (node: ReactTestInstance) =>
+      node.findAll((child) => typeof child.type === "string").length;
+    expect(count(unit, "sidebar-crew")).toBe(0);
+    // Itself, and its row's elements: nothing else to be lit.
+    expect(elements(unit)).toBe(elements(row) + 1);
+  });
+
+  it("lights as one in the row's corners, under the pointer and while a menu of its is open", () => {
+    const tree = drawn({ crew: true });
+    const unit = String(unitOf(tree).props.className).split(" ");
+    expect(unit).toEqual(
+      expect.arrayContaining([
+        "menu-unit",
+        "group/mate",
+        "hover:bg-sidebar-row-hover",
+        "has-[[data-popup-open]]:bg-sidebar-row-hover",
+      ]),
+    );
+    // The row paints nothing of its own, so the crew's line is never outside it.
+    expect(String(surface(tree, "sidebar-mate").props.className)).not.toContain(
+      "bg-sidebar-row-hover",
+    );
+  });
+
+  it("leaves the open Mate's unit to the selected band, which slides to it", () => {
+    const unit = String(unitOf(drawn({ crew: true, open: true })).props.className);
+    expect(unit).not.toContain("bg-sidebar-row-hover");
   });
 });
 
@@ -1477,7 +1564,7 @@ describe("a project collapsed to its heading", () => {
     expect(heading(false)).not.toContain("data-collapsed");
   });
 
-  it("is 32 px tall, its title on the mark edge, its verbs 28 px and always in their slot", () => {
+  it("is 32 px tall, its title on the mark edge, its end on the rows' end edge, its verbs 28 px and always in their slot", () => {
     const html = renderToStaticMarkup(
       <ProjectHeader
         group={buildZeropsGroupTree([CRM_DEV], { order: "name" }).groups[0]!.group}
@@ -1486,7 +1573,7 @@ describe("a project collapsed to its heading", () => {
       />,
     );
     const heading = /<div class="([^"]*)"[^>]*data-zerops-surface="sidebar-project"/u.exec(html);
-    expect(heading?.[1]?.split(" ")).toEqual(expect.arrayContaining(["h-8", "ps-1.75", "pe-1"]));
+    expect(heading?.[1]?.split(" ")).toEqual(expect.arrayContaining(["h-8", "ps-1.75", "pe-2"]));
     const title = /<span class="([^"]*)">Beviro CRM</u.exec(html)?.[1]?.split(" ") ?? [];
     expect(title).toEqual(
       expect.arrayContaining(["text-base", "leading-6", "font-semibold", "zerops-project-name"]),
@@ -1776,6 +1863,11 @@ describe("the sidebar and the projects page read one group the same way", () => 
 });
 
 describe("arranging the projects by hand", () => {
+  /** The stylesheet the heading's band is drawn by, without its comments. */
+  const STYLESHEET = NodeFS.readFileSync(
+    new URL("../../index.css", import.meta.url),
+    "utf8",
+  ).replace(/\/\*[\s\S]*?\*\//gu, "");
   const SHOP_MATE = named("shop-dev", "Shop - dev", [
     "mate",
     "mate:g:shop",
@@ -1814,6 +1906,67 @@ describe("arranging the projects by hand", () => {
     expect(grip).toContain("absolute");
     expect(grip).toContain("opacity-0");
     expect(grip).toContain("group-hover/project:opacity-100");
+  });
+
+  // The grip belongs to its heading (the owner, 2026-09-29: "handle out of
+  // hover bg"): the heading's band takes it in, reaching the grip's own start
+  // 8 px toward the menu's edge in a heading that has one, and the grip shows
+  // whenever the band does, so the band never reaches out for nothing. The
+  // name keeps its edge in either order: nothing moves when the grip shows.
+  it("stands the grip inside its heading's band, the name on its edge", () => {
+    const px = (classes: ReadonlyArray<string>, pattern: RegExp) =>
+      Number(classes.map((name) => pattern.exec(name)?.[1]).find(Boolean)) * 4;
+    const band = (selector: string) => {
+      const at = STYLESHEET.indexOf(`${selector} {`);
+      if (at === -1) return new Map<string, string>();
+      const body = STYLESHEET.slice(STYLESHEET.indexOf("{", at) + 1, STYLESHEET.indexOf("}", at));
+      return new Map(
+        body
+          .split(";")
+          .map((declaration) => declaration.split(":").map((part) => part.trim()))
+          .filter(([property]) => property !== undefined && property !== "")
+          .map(([property, ...value]) => [property!, value.join(":")]),
+      );
+    };
+    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "custom", ProjectOrderSchema);
+    const html = render([LINKS_MATE, SHOP_MATE]);
+    const grip =
+      /<button[^>]*class="([^"]*)"[^>]*data-zerops-surface="sidebar-project-grip"/u
+        .exec(html)?.[1]
+        ?.split(" ") ?? [];
+    const heading =
+      /<div class="([^"]*)"[^>]*data-zerops-surface="sidebar-project"/u
+        .exec(html)?.[1]
+        ?.split(" ") ?? [];
+    // The grip, from the heading's start: 8 px before it, 16 wide, 4 to 28 down.
+    const gripStart = -px(grip, /^-start-([\d.]+)$/u);
+    const gripEnd = gripStart + px(grip, /^w-([\d.]+)$/u);
+    const gripTop = px(grip, /^top-([\d.]+)$/u);
+    const gripBottom = gripTop + px(grip, /^h-([\d.]+)$/u);
+    // The band: the heading's own box, its start reaching further only where a grip is.
+    const plain = band(".zerops-project-heading::before");
+    const gripped = band(".zerops-project-heading:has([data-zerops-grip])::before");
+    expect(plain.get("inset")).toBe("0");
+    expect(plain.get("border-radius")).toBe("16px");
+    const bandStart = Number.parseFloat(gripped.get("inset-inline-start") ?? "0");
+    const bandBottom = px(heading, /^h-([\d.]+)$/u);
+    expect(bandStart).toBeLessThanOrEqual(gripStart);
+    expect(gripEnd).toBeGreaterThan(bandStart);
+    expect(gripTop).toBeGreaterThanOrEqual(0);
+    expect(gripBottom).toBeLessThanOrEqual(bandBottom);
+    // The name stands 7 px inside the heading, on the mark edge (x = 16), grip or none.
+    expect(heading).toContain("ps-1.75");
+    // Lit under the pointer and while a menu of its is open; the grip shows then too.
+    expect(band(".zerops-project-heading:hover::before").get("background-color")).toBeDefined();
+    expect(
+      band(".zerops-project-heading:has([data-popup-open])::before").get("background-color"),
+    ).toBeDefined();
+    expect(grip).toEqual(
+      expect.arrayContaining([
+        "group-hover/project:opacity-100",
+        "group-has-[[data-popup-open]]/project:opacity-100",
+      ]),
+    );
   });
 
   // The heading's toggle covers the whole heading (`after:inset-0`): every
@@ -2292,6 +2445,123 @@ describe("a Mate's own menu, in its row", () => {
     const menu = mounted.root.findByType(MateMenu);
     expect(menu.props.open).toBe(true);
     expect(menu.props.at).toEqual({ x: 120, y: 340 });
+  });
+});
+
+// The owner, 2026-09-29: "allow setting up crew from more menu in the left
+// col". Only on the viewer's own Mate with crew mode on — a crew's turns run
+// only as the person who signed its agent in.
+describe("a Mate's own menu opens its crew, or sets one up", () => {
+  const ACTIONS: MateRowActions = { muted: false, entries: [] };
+  const MINE: ZeropsMateOwner = {
+    name: "Petra Malá",
+    initials: "PM",
+    avatarUrl: null,
+    isViewer: true,
+  };
+  const COLLEAGUES: ZeropsMateOwner = {
+    name: "Jan Beneš",
+    initials: "JB",
+    avatarUrl: null,
+    isViewer: false,
+  };
+  const crew = (status: "none" | "applied"): SidebarCrewRead => {
+    const fixture = crewSnapshotFixture({ status });
+    return {
+      status,
+      view:
+        status === "none"
+          ? null
+          : deriveCrewView(fixture, [], () => {
+              throw new Error("no shells here");
+            }),
+      attention: [],
+    };
+  };
+  const drawn = (options: {
+    readonly crew: SidebarCrewRead | undefined;
+    readonly owner: ZeropsMateOwner | undefined;
+    readonly onOpenCrew?: (candidate: ZeropsCandidate, setUp: boolean) => void;
+  }) =>
+    mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getCrew={() => options.crew}
+        getMateActions={() => ACTIONS}
+        getOwner={() => options.owner}
+        onBrowseProjects={() => {}}
+        onOpenCrew={options.onOpenCrew ?? (() => {})}
+        onSelect={() => {}}
+      />,
+    );
+
+  it.each([
+    { case: "crew mode not read", crew: undefined, owner: MINE, label: undefined },
+    {
+      case: "crew mode off",
+      crew: { ...crew("none"), status: "off" },
+      owner: MINE,
+      label: undefined,
+    },
+    {
+      case: "the viewer's own, without a crew",
+      crew: crew("none"),
+      owner: MINE,
+      label: "Set up a crew",
+    },
+    { case: "the viewer's own, with a crew", crew: crew("applied"), owner: MINE, label: "Crew" },
+    {
+      case: "a colleague's, without a crew",
+      crew: crew("none"),
+      owner: COLLEAGUES,
+      label: undefined,
+    },
+    {
+      case: "a colleague's, with a crew",
+      crew: crew("applied"),
+      owner: COLLEAGUES,
+      label: undefined,
+    },
+  ] as const)("$case: $label", ({ crew: read, owner, label }) => {
+    const tree = drawn({ crew: read, owner });
+    expect(tree.root.findByType(MateMenu).props.crew?.label).toBe(label);
+  });
+
+  it("offers nothing where nobody wired the way in", () => {
+    const tree = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getCrew={() => crew("applied")}
+        getMateActions={() => ACTIONS}
+        getOwner={() => MINE}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    expect(tree.root.findByType(MateMenu).props.crew).toBeUndefined();
+  });
+
+  it.each([
+    { case: "sets a crew up where it has none", read: crew("none"), setUp: true },
+    { case: "opens the crew where it has one", read: crew("applied"), setUp: false },
+  ])("closes the menu and $case", ({ read, setUp }) => {
+    const onOpenCrew = vi.fn();
+    const tree = drawn({ crew: read, owner: MINE, onOpenCrew });
+    act(() => {
+      surface(tree, "sidebar-mate-row").props.onContextMenu({
+        preventDefault: () => {},
+        clientX: 120,
+        clientY: 340,
+      });
+    });
+    expect(tree.root.findByType(MateMenu).props.open).toBe(true);
+    act(() => {
+      tree.root.findByType(MateMenu).props.crew.onSelect();
+    });
+    expect(onOpenCrew).toHaveBeenCalledExactlyOnceWith(CRM_DEV_CONNECTED, setUp);
+    expect(tree.root.findByType(MateMenu).props.open).toBe(false);
   });
 });
 

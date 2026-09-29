@@ -4,7 +4,11 @@
  * crewmates (saved, not yet applied), then **Apply**, which creates each
  * writer's copy of the code and reports per crewmate as it goes.
  */
-import { crewDescribeAsk, crewNoDevHostWord } from "@t3tools/client-runtime/zerops/crew/phrases";
+import {
+  CREW_SET_UP_WORD,
+  crewDescribeAsk,
+  crewNoDevHostWord,
+} from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { Crewmate } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { renderCrewHome } from "@t3tools/shared/crewHome";
@@ -58,7 +62,7 @@ export function CrewSetupSheet({
   readonly homeVersion: number;
 }) {
   return (
-    <CrewSheet onOpenChange={props.onOpenChange} open={open} title="Set up a crew">
+    <CrewSheet onOpenChange={props.onOpenChange} open={open} title={CREW_SET_UP_WORD}>
       {props.applied ? (
         <>
           <CrewSheetBody>

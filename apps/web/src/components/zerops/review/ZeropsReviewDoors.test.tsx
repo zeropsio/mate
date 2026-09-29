@@ -15,7 +15,6 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { elementsOf, TestNode } from "~/zerops/__fixtures__/testDom";
 
 import crewBoardSource from "../crew/CrewBoardPanel.tsx?raw";
-import crewLaneBarSource from "../crew/CrewLaneBar.tsx?raw";
 import crewLeadPlanSource from "../crew/CrewLeadPlan.tsx?raw";
 import crewSectionSource from "../crew/CrewSection.tsx?raw";
 import gitSurfaceSource from "../ZeropsGitSurface.tsx?raw";
@@ -60,7 +59,6 @@ describe("every door opens the review and never acts itself (R1)", () => {
     ["the crew board", crewBoardSource, ["openReview(", 'kind: "crew-task"']],
     ["the lead's plan", crewLeadPlanSource, ["openReview(", 'kind: "crew-task"']],
     ["the crew section's rows", crewSectionSource, ["openReview(", 'kind: "crew-task"']],
-    ["a crewmate's lane bar", crewLaneBarSource, ["openReview(", 'kind: "crew-task"']],
   ] as const)("%s", (_door, source, opens) => {
     for (const words of opens) expect(source).toContain(words);
     for (const act of ACTS) expect(source).not.toContain(act);

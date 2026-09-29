@@ -412,6 +412,8 @@ export function makeGiteaSessions(ports: GiteaSessionsPorts): GiteaSessions {
       if (entry === undefined || !giteaSessionReadable(entry.machine)) return null;
       return createGiteaClient({
         origin,
+        // The broker the token came from reads a change's pictures (`GiteaClient.picture`).
+        brokerOrigin: entry.demand === null ? undefined : normalize(entry.demand.brokerOrigin),
         // Replaced per request by the token `fetchAsPerson` waited for.
         token: () => giteaSessionToken(entry.machine) ?? "",
         fetch: fetchAsPerson(origin, onUnauthorized),

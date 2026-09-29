@@ -27,9 +27,12 @@ import { useZeropsBrowserStream } from "../../zerops/useZeropsFeeds";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   browserCheckCaption,
+  browserCheckDevice,
   browserCheckFailure,
   browserTakeState,
   formatWorkDuration,
+  TAKE_ASPECT,
+  type BrowserDevice,
   type BrowserStripModel,
   type BrowserTakeState,
 } from "./conversation.logic";
@@ -37,41 +40,7 @@ import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { CheckRead } from "./CheckRead";
 import { useTakeThumbnail } from "./takeThumbnail";
 
-type Device = "desktop" | "tablet" | "phone";
-
-/**
- * The device a check looked through: the device it emulated by name, else the
- * viewport it set (CSS pixels), else the picture it took — a phone's picture
- * is tall and, even at three device pixels per CSS pixel, under 1300 wide.
- */
-export function browserCheckDevice(check: ZeropsOperation): Device {
-  const name = check.deviceName;
-  if (name !== undefined) {
-    if (/desktop/i.test(name)) return "desktop";
-    return /ipad|tablet|\btab\b|kindle|nexus (7|9|10)/i.test(name) ? "tablet" : "phone";
-  }
-  const viewport = check.viewport;
-  if (viewport !== undefined) {
-    if (viewport.width <= 480) return "phone";
-    return viewport.width <= 1024 && viewport.height > viewport.width ? "tablet" : "desktop";
-  }
-  const shot = check.screenshot;
-  if (shot?.width !== undefined && shot.height !== undefined) {
-    const tall = shot.height / shot.width;
-    if (shot.width <= 480 || (tall >= 1.6 && shot.width < 1300)) return "phone";
-    if (tall >= 1.15 && shot.width < 2100) return "tablet";
-  }
-  return "desktop";
-}
-
-/** The shape of a take's frame, width over height, by device: a thumbnail crops its picture to it. */
-export const TAKE_ASPECT: Record<Device, number> = {
-  desktop: 1.6,
-  tablet: 0.75,
-  phone: 0.45,
-};
-
-const DEVICE_WORD: Record<Device, string> = {
+const DEVICE_WORD: Record<BrowserDevice, string> = {
   desktop: "Desktop",
   tablet: "Tablet",
   phone: "Phone",
@@ -82,13 +51,13 @@ const DEVICE_WORD: Record<Device, string> = {
  * the device. A narrow column gives the frame the width left under the
  * caption; a wide one keeps it beside the takes.
  */
-const FRAME_CLASS: Record<Device, string> = {
+const FRAME_CLASS: Record<BrowserDevice, string> = {
   desktop: "w-full rounded-lg @xl/strip:w-96",
   tablet: "w-36 rounded-2xl p-1.5 @xl/strip:w-50",
   phone: "w-24 rounded-3xl p-1 @xl/strip:w-32",
 };
 
-const SCREEN_CLASS: Record<Device, string> = {
+const SCREEN_CLASS: Record<BrowserDevice, string> = {
   desktop: "rounded-b-lg",
   tablet: "rounded-lg",
   phone: "rounded-2xl",
@@ -106,7 +75,7 @@ const TAKE_FRAME: Record<BrowserTakeState, string> = {
 };
 
 /** A take's thumbnail in the list of takes, in its device's shape. */
-const TAKE_CLASS: Record<Device, string> = {
+const TAKE_CLASS: Record<BrowserDevice, string> = {
   desktop: "w-13 rounded-sm",
   tablet: "w-6 rounded-sm",
   phone: "w-4 rounded-sm",
@@ -465,7 +434,7 @@ export function BrowserStrip({
 }
 
 /** A take among a run's pictures, in the shape of the device it was taken on. */
-const TAKE_PICTURE_CLASS: Record<Device, string> = {
+const TAKE_PICTURE_CLASS: Record<BrowserDevice, string> = {
   desktop: "w-32",
   tablet: "w-15",
   phone: "w-9",

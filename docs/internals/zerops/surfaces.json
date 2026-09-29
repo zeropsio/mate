@@ -977,6 +977,7 @@
         "apps/web/src/zerops/useSidebarWaiting.test.ts",
         "apps/web/src/zerops/mateScope.test.ts",
         "apps/web/src/zerops/useSidebarMateMenus.test.ts",
+        "apps/web/src/zerops/useOpenMate.test.ts",
         "apps/web/src/zerops/mutedMates.test.ts",
         "apps/web/src/components/zerops/projects/ZeropsProjectsFlow.test.tsx",
         "apps/web/src/components/zerops/projects/projectsView.logic.test.ts",
@@ -1197,6 +1198,7 @@
       "id": "zerops-crew-section",
       "title": "Crew section",
       "components": [
+        "apps/web/src/components/zerops/crew/CrewPanel.tsx",
         "apps/web/src/components/zerops/crew/CrewSectionHost.tsx",
         "apps/web/src/components/zerops/crew/CrewSection.tsx",
         "apps/web/src/components/zerops/crew/CrewSection.logic.ts",
@@ -1210,8 +1212,12 @@
       ],
       "entryPoints": [
         {
-          "kind": "inline",
-          "value": "ZeropsPanel, after the coding agents' card, while the crew feed says none or applied"
+          "kind": "right-panel-tab",
+          "value": "Crew (shortcut C), at its top, while the crew feed says none or applied"
+        },
+        {
+          "kind": "sidebar-item",
+          "value": "A Mate's own menu in the left menu: Crew, on the viewer's own Mate with a crew"
         }
       ],
       "clients": {
@@ -1304,6 +1310,7 @@
         "none": "No docs/user page documents crew mode yet."
       },
       "tests": [
+        "apps/web/src/components/zerops/crew/CrewPanel.test.tsx",
         "apps/web/src/components/zerops/crew/CrewSection.test.tsx",
         "apps/web/src/components/zerops/crew/CrewSection.logic.test.ts",
         "apps/web/src/components/zerops/crew/CrewTellComposer.logic.test.ts",
@@ -1321,6 +1328,7 @@
         "apps/web/src/components/zerops/crew/CrewSheetParts.tsx",
         "apps/web/src/components/zerops/crew/CrewSetupSheet.tsx",
         "apps/web/src/components/zerops/crew/CrewBriefSheet.tsx",
+        "apps/web/src/components/zerops/crew/CrewBriefEditor.tsx",
         "apps/web/src/components/zerops/crew/CrewmateEditor.tsx",
         "apps/web/src/components/zerops/crew/CrewmateSheet.tsx",
         "apps/web/src/components/zerops/crew/CrewEditors.logic.ts",
@@ -1328,7 +1336,8 @@
         "apps/web/src/components/zerops/crew/CrewRunDialog.tsx",
         "apps/web/src/components/zerops/crew/CrewRunDialog.logic.ts",
         "apps/web/src/zerops/crew/useCrewHome.ts",
-        "apps/web/src/zerops/crew/crewHome.ts"
+        "apps/web/src/zerops/crew/crewHome.ts",
+        "apps/web/src/zerops/crew/crewTab.ts"
       ],
       "entryPoints": [
         {
@@ -1337,11 +1346,15 @@
         },
         {
           "kind": "overlay",
-          "value": "Crewmate chat: the header's Edit job, the composer's Runs on"
+          "value": "A Mate's own menu in the left menu: Set up a crew, on the viewer's own Mate with crew mode on and no crew"
         },
         {
           "kind": "overlay",
-          "value": "Crew section and lane bar: Add crew ports"
+          "value": "Crewmate chat: its menu's Change its job, the lead's Change the brief, the composer's Runs on"
+        },
+        {
+          "kind": "overlay",
+          "value": "Crew section: Add crew ports"
         },
         {
           "kind": "overlay",
@@ -1406,7 +1419,8 @@
         "apps/web/src/components/zerops/crew/CrewEditors.logic.test.ts",
         "apps/web/src/components/zerops/crew/CrewRunDialog.test.tsx",
         "apps/web/src/components/zerops/crew/CrewRunDialog.logic.test.ts",
-        "apps/web/src/zerops/crew/crewHome.test.ts"
+        "apps/web/src/zerops/crew/crewHome.test.ts",
+        "apps/web/src/zerops/crew/crewTab.test.ts"
       ],
       "captures": []
     },
@@ -1420,11 +1434,11 @@
       "entryPoints": [
         {
           "kind": "right-panel-tab",
-          "value": "Crew (shortcut C), while the crew feed says none or applied"
+          "value": "Crew (shortcut C), under the crew's section, while a crew is applied"
         },
         {
           "kind": "inline",
-          "value": "Crew section footer: Board · N tasks"
+          "value": "Crew section: Waiting on you's Review plan brings the board's plan into view"
         }
       ],
       "clients": {
@@ -1492,21 +1506,21 @@
       "id": "zerops-crew-chat",
       "title": "Crewmate chat",
       "components": [
-        "apps/web/src/components/zerops/crew/CrewmateHeader.tsx",
-        "apps/web/src/components/zerops/crew/CrewmateHeader.logic.ts",
-        "apps/web/src/components/zerops/crew/CrewmateHeaderDialogs.tsx",
-        "apps/web/src/components/zerops/crew/CrewLaneBar.tsx",
-        "apps/web/src/components/zerops/crew/CrewLaneBar.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewmateMenu.tsx",
+        "apps/web/src/components/zerops/crew/CrewmateMenu.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewTryIt.tsx",
+        "apps/web/src/zerops/crew/crewTry.ts",
+        "apps/web/src/zerops/crew/useCrewTry.ts",
         "apps/web/src/components/zerops/crew/CrewTaskCard.tsx",
         "apps/web/src/components/zerops/crew/CrewTaskCard.logic.ts",
         "apps/web/src/components/zerops/crew/CrewSeamLine.tsx",
         "apps/web/src/components/zerops/crew/crewChatNotices.ts",
+        "apps/web/src/components/zerops/crew/crewChatSeams.ts",
         "apps/web/src/components/zerops/crew/crewComposerSend.ts",
         "apps/web/src/components/zerops/crew/SidebarCrewLine.tsx",
         "apps/web/src/components/zerops/crew/SidebarCrewLine.logic.ts",
         "apps/web/src/components/zerops/crew/CrewmateEmptyState.tsx",
         "apps/web/src/components/zerops/crew/CrewLeadPlan.tsx",
-        "apps/web/src/components/zerops/crew/CrewLeadBar.tsx",
         "apps/web/src/components/zerops/crew/CrewRunsOnControl.tsx"
       ],
       "entryPoints": [
@@ -1520,11 +1534,15 @@
         },
         {
           "kind": "inline",
-          "value": "Conversation strip: the crew group"
+          "value": "The conversation's line: the crew's faces, the open crewmate's pill and its menu"
         },
         {
           "kind": "inline",
-          "value": "ChatHeader, the lifecycle strip's slot and MessagesTimeline, in a crewmate's chat"
+          "value": "ChatHeader and MessagesTimeline, in a crewmate's chat"
+        },
+        {
+          "kind": "inline",
+          "value": "A finished run's result row: Try it beside Review, while its crew task is ready to land"
         },
         {
           "kind": "inline",
@@ -1557,24 +1575,24 @@
           "reverse": "none: a message stays in the conversation; the crewmate reads it at its next turn or steers by it now."
         },
         {
-          "action": "Run",
-          "reverse": "Stop"
+          "action": "Try its work",
+          "reverse": "Stop its app"
         },
         {
-          "action": "Stop",
-          "reverse": "Run"
+          "action": "Stop its app",
+          "reverse": "Try its work"
         },
         {
-          "action": "Open",
-          "reverse": "none: The action opens an external URL and does not mutate application state."
+          "action": "Try it",
+          "reverse": "Stop its app"
         },
         {
-          "action": "Show on dev",
-          "reverse": "Back to my tree"
+          "action": "Change its job",
+          "reverse": "none: it opens the crewmate's editor; nothing changes until Save."
         },
         {
-          "action": "Back to my tree",
-          "reverse": "Show on dev"
+          "action": "Change the brief",
+          "reverse": "none: it opens the Brief editor; nothing changes until Save."
         },
         {
           "action": "Land",
@@ -1585,32 +1603,8 @@
           "reverse": "none: a landing is undone by a revert in your tree, which is a new change."
         },
         {
-          "action": "Ask <crewmate> to resolve",
-          "reverse": "none: the crewmate works one turn on its own copy; nothing lands without Land."
-        },
-        {
-          "action": "Ask <crewmate> to fix",
-          "reverse": "none: the crewmate works one turn on its own copy; nothing lands without Land."
-        },
-        {
-          "action": "Commit my edit",
-          "reverse": "none: it drafts a message to the Mate in your chat; nothing runs until you send it."
-        },
-        {
-          "action": "New task…",
-          "reverse": "none: the task leaves the board by Discard."
-        },
-        {
-          "action": "Start fresh",
-          "reverse": "none: the previous conversation stays readable under Previous conversations and is never resumed."
-        },
-        {
-          "action": "Remove from crew…",
-          "reverse": "none: a crewmate added again is a new one with a new copy of the code."
-        },
-        {
-          "action": "Forget memory…",
-          "reverse": "none: forgotten entries are gone; the crewmate records new ones as it works."
+          "action": "Clear its conversation",
+          "reverse": "none: the previous conversation stays readable, linked from the new one's first line, and is never resumed."
         },
         {
           "action": "Start",
@@ -1625,19 +1619,17 @@
         "none": "No docs/user page documents crew mode yet."
       },
       "tests": [
-        "apps/web/src/components/zerops/crew/CrewmateHeader.test.tsx",
-        "apps/web/src/components/zerops/crew/CrewmateHeader.logic.test.ts",
-        "apps/web/src/components/zerops/crew/CrewLaneBar.test.tsx",
-        "apps/web/src/components/zerops/crew/CrewLaneBar.logic.test.ts",
+        "apps/web/src/components/zerops/crew/CrewmateMenu.logic.test.ts",
+        "apps/web/src/zerops/crew/crewTry.test.ts",
         "apps/web/src/components/zerops/crew/CrewTaskCard.test.tsx",
         "apps/web/src/components/zerops/crew/CrewTaskCard.logic.test.ts",
         "apps/web/src/components/zerops/crew/crewChatNotices.test.ts",
+        "apps/web/src/components/zerops/crew/crewChatSeams.test.ts",
         "apps/web/src/components/zerops/crew/crewComposerSend.test.ts",
         "apps/web/src/components/zerops/crew/SidebarCrewLine.test.tsx",
         "apps/web/src/components/zerops/crew/SidebarCrewLine.logic.test.ts",
         "apps/web/src/components/zerops/crew/CrewmateEmptyState.test.tsx",
         "apps/web/src/components/zerops/crew/CrewLeadPlan.test.tsx",
-        "apps/web/src/components/zerops/crew/CrewLeadBar.test.tsx",
         "apps/web/src/components/zerops/crew/CrewRunsOnControl.test.tsx"
       ],
       "captures": []

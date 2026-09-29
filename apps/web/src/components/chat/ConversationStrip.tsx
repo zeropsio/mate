@@ -1,48 +1,59 @@
-import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import type { CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
-import type { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
-import { ChevronDownIcon, MessagesSquareIcon, PlusIcon, XIcon } from "lucide-react";
-import { useLayoutEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
+import { ChevronDownIcon, MessagesSquareIcon } from "lucide-react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 
 import { cn } from "~/lib/utils";
 import { ThreadArchiveBlockedError, useThreadActions } from "~/hooks/useThreadActions";
-import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
-import { useEnvironment } from "~/state/environments";
 import { useThreadShells } from "~/state/entities";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useUiStateStore } from "~/uiStateStore";
+import { useCrew } from "~/zerops/crew/useCrew";
+import { menuMemory } from "~/zerops/menuMemory";
+import { useRegistrationRecord } from "~/zerops/registrationRecords";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
-import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import {
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuTrigger,
+} from "../ui/menu";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { CrewmateMenu } from "../zerops/crew/CrewmateMenu";
 import { MateFace } from "../zerops/primitives";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 import {
   alsoWorkingLine,
-  chatEntries,
-  crewEntries,
-  entryAccessibleName,
-  entryInk,
-  foldStrip,
-  loneChatNewChatShown,
+  crewmateAccessibleName,
+  foldCrew,
+  lineChats,
+  lineCrew,
+  lineMate,
   mateChats,
-  stripShown,
-  type ConversationStripEntry,
-  type ConversationStripGroup,
-  type StripRoom,
+  type CrewRoom,
+  type LineChats,
+  type LineCrewmate,
+  type LineMate,
 } from "./ConversationStrip.logic";
 
-/** Between two neighbours in the row (`gap-0.5`). */
-const GAP_PX = 2;
-/** Before the crew, on top of the gap (`ms-4`): spacing, not a rule, sets the groups apart. */
-const GROUP_GAP_PX = 16;
+/** Between two faces of the crew (`gap-0.5`). */
+const CREW_GAP_PX = 2;
 
 const isArchiveBlocked = Schema.is(ThreadArchiveBlockedError);
 
@@ -50,314 +61,292 @@ const isArchiveBlocked = Schema.is(ThreadArchiveBlockedError);
 const CLOSE_HELD = "Stop the agent before closing this chat";
 
 /**
- * A glyph button in the row: the row's height, the band's corners and hover.
- * In the header it is one of the header's ghosts (`data-chat-header-ghost`):
- * the header's rule keeps its fill off and sets its ink.
+ * A crewmate's face at 20 px: at rest while it is only remembered, and a slot
+ * of its size while its tint is not known yet.
  */
-const GLYPH_BUTTON =
-  "flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-hover data-popup-open:text-foreground";
-
-/** A control inside an entry, after its name: smaller, on the entry's own ground. */
-const ENTRY_CONTROL =
-  "flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring";
-
-export interface ConversationStripViewProps {
-  readonly groups: ReadonlyArray<ConversationStripGroup>;
-  readonly canMakeMain: boolean;
-  readonly onOpen: (threadId: ThreadId) => void;
-  readonly onClose: (entry: ConversationStripEntry) => void;
-  readonly onMakeMain: (entry: ConversationStripEntry) => void;
-  readonly onNewChat: () => void;
-}
-
-/** The lead's role on hover, where its name does not say it; everything else as it is. */
-function WithRole({
-  entry,
-  children,
-}: {
-  readonly entry: ConversationStripEntry;
-  readonly children: ReactElement;
-}) {
-  if (entry.role === undefined) return children;
+function CrewmateFace({ crewmate }: { readonly crewmate: LineCrewmate }) {
+  if (crewmate.tint === null) return <span aria-hidden="true" className="size-5 shrink-0" />;
   return (
-    <Tooltip>
-      <TooltipTrigger render={children} />
-      <TooltipPopup side="bottom">{entry.role}</TooltipPopup>
-    </Tooltip>
+    <MateFace greets known={crewmate.known} size="sm" state={crewmate.face} tint={crewmate.tint} />
   );
 }
 
-function StripEntry({
-  entry,
-  folded,
-  squeezed,
-  canMakeMain,
+/** Who a crewmate is, on hover: its name, whose crew it is on, and its job's first sentence. */
+function CrewmateTooltip({ crewmate }: { readonly crewmate: LineCrewmate }) {
+  return (
+    <span className="flex flex-col gap-0.5">
+      <span>
+        <span className="font-medium">{crewmate.name}</span>
+        {crewmate.role}
+      </span>
+      {crewmate.job === null ? null : <span className="text-muted-foreground">{crewmate.job}</span>}
+    </span>
+  );
+}
+
+/**
+ * The Mate's chats, from the ⌄ after its name — only while it holds more than
+ * one: the main one first and marked, the one on screen checked, and *Close
+ * this chat* for one on screen that is not the main one.
+ */
+function MateChatsMenu({
+  mateName,
+  chats,
   onOpen,
   onClose,
-  onMakeMain,
 }: {
-  readonly entry: ConversationStripEntry;
-  /** Folded into More: out of the row, kept only to be measured. */
-  readonly folded: boolean;
-  /**
-   * The one entry left when even it and More do not fit: its name gives way.
-   * Every other entry keeps its width, so what is measured is what it needs.
-   */
-  readonly squeezed: boolean;
-  readonly canMakeMain: boolean;
+  readonly mateName: string;
+  readonly chats: LineChats;
   readonly onOpen: (threadId: ThreadId) => void;
-  readonly onClose: (entry: ConversationStripEntry) => void;
-  readonly onMakeMain: (entry: ConversationStripEntry) => void;
+  readonly onClose: (chat: NonNullable<LineChats["close"]>) => void;
 }) {
-  const threadId = entry.threadId;
-  const menu = entry.current && threadId !== null && entry.canMakeMain;
-  const closable = entry.close === "open" || entry.close === "busy";
+  const open = chats.chats.find((chat) => chat.open)?.threadId ?? "";
+  const { close } = chats;
+  return (
+    <Menu>
+      <MenuTrigger
+        render={
+          <button
+            aria-label={`${mateName}'s chats`}
+            className="me-1.5 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:text-foreground"
+            data-chat-header-ghost
+            data-conversation-chats
+            type="button"
+          />
+        }
+      >
+        <ChevronDownIcon aria-hidden="true" className="size-3.5" />
+      </MenuTrigger>
+      <MenuPopup align="start" className="w-72">
+        <MenuRadioGroup
+          onValueChange={(value: string) => {
+            const chat = chats.chats.find((each) => each.threadId === value);
+            if (chat !== undefined && !chat.open) onOpen(chat.threadId);
+          }}
+          value={open}
+        >
+          {chats.chats.map((chat) => (
+            <MenuRadioItem key={chat.threadId} value={chat.threadId} variant="check">
+              <span className="flex min-w-0 items-baseline gap-2">
+                <span className="min-w-0 truncate">{chat.title}</span>
+                {chat.main ? (
+                  <span className="shrink-0 text-xs text-muted-foreground">main</span>
+                ) : null}
+              </span>
+            </MenuRadioItem>
+          ))}
+        </MenuRadioGroup>
+        {close === null ? null : (
+          <>
+            <MenuSeparator />
+            <MenuItem disabled={close.busy} onClick={() => onClose(close)}>
+              Close this chat
+            </MenuItem>
+          </>
+        )}
+      </MenuPopup>
+    </Menu>
+  );
+}
+
+/**
+ * The Mate, leading the line: its face at 24 and its name at 16/600 in ink,
+ * and nothing else — what its chat is about is its hover, never words on the
+ * line (the owner: descriptions live in tooltips). While its own chat is open
+ * a double-click renames that chat, and — with a crew — it stands on the
+ * menu's selected band; with a crewmate's chat on screen it is the same
+ * without the band, and a press opens its own chat. A Mate with no crew is
+ * drawn the same, never on the band.
+ */
+function MatePill({
+  mate,
+  crew,
+  chats,
+  onOpen,
+  onCloseChat,
+  onRename,
+}: {
+  readonly mate: LineMate;
+  /** It has a crew: the band says which conversation is on screen. */
+  readonly crew: boolean;
+  readonly chats: LineChats | null;
+  readonly onOpen: (threadId: ThreadId) => void;
+  readonly onCloseChat: (chat: NonNullable<LineChats["close"]>) => void;
+  readonly onRename: (() => void) | null;
+}) {
+  const band = crew && mate.open;
+  const opens = crew && !mate.open && mate.threadId !== null;
+  // The header's face is reused from one Mate to the next: it greets no arrival.
+  const face = <MateFace className="size-6" size="sm" state={mate.face} tint={mate.tint} />;
+  const name = (
+    <span className="max-w-48 truncate text-base leading-6 font-semibold text-foreground">
+      {mate.name}
+    </span>
+  );
+  const press = (
+    <button
+      aria-current={mate.open ? "page" : undefined}
+      aria-label={mate.open ? mate.name : (mate.tooltip ?? mate.name)}
+      className={cn(
+        "conversation-mate-press flex h-8 min-w-0 items-center gap-2.5 ps-2 outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        chats === null ? "pe-3" : "pe-1",
+        opens ? "cursor-pointer" : "cursor-default",
+      )}
+      data-conversation-mate-press
+      onClick={() => {
+        if (opens && mate.threadId !== null) onOpen(mate.threadId);
+      }}
+      onDoubleClick={(event: ReactMouseEvent) => {
+        if (!mate.open || onRename === null) return;
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        onRename();
+      }}
+      type="button"
+    >
+      {face}
+      {name}
+    </button>
+  );
   return (
     <div
-      className={cn(
-        "group/entry flex h-7 max-w-60 items-center rounded-lg transition-colors",
-        squeezed ? "min-w-0" : "shrink-0",
-        entry.current ? "bg-sidebar-row-active" : "hover:bg-sidebar-row-hover",
-        (menu || closable) && "pe-1",
-        folded && "invisible absolute start-0 top-0",
-      )}
-      data-conversation-strip-entry={entry.key}
-      data-current={entry.current ? "true" : undefined}
+      className="conversation-mate flex h-8 min-w-0 shrink-0 items-center"
+      data-conversation-mate
+      data-on={band ? "" : undefined}
+      data-opens={opens ? "" : undefined}
     >
-      <WithRole entry={entry}>
-        <button
-          aria-current={entry.current ? "page" : undefined}
-          aria-label={entryAccessibleName(entry)}
-          className="flex h-7 min-w-0 cursor-pointer items-center gap-2.5 rounded-lg ps-2 pe-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={() => {
-            if (threadId !== null && !entry.current) onOpen(threadId);
-          }}
-          type="button"
-        >
-          <MateFace greets size="sm" state={entry.face.state} tint={entry.face.tint} />
-          <span
-            className={cn(
-              "truncate text-sm font-medium transition-colors",
-              entryInk(entry) === "ink"
-                ? "text-foreground"
-                : "text-muted-foreground group-hover/entry:text-foreground",
-            )}
-          >
-            {entry.label}
-          </span>
-        </button>
-      </WithRole>
-      {menu ? (
-        <Menu>
-          <MenuTrigger
-            render={
-              <button
-                aria-label={`More for ${entry.label}`}
-                className={ENTRY_CONTROL}
-                data-chat-header-ghost
-                type="button"
-              />
-            }
-          >
-            <ChevronDownIcon aria-hidden="true" className="size-3.5" />
-          </MenuTrigger>
-          <MenuPopup align="start">
-            {canMakeMain ? <MenuItem onClick={() => onMakeMain(entry)}>Make main</MenuItem> : null}
-            <MenuItem disabled={entry.close !== "open"} onClick={() => onClose(entry)}>
-              Close chat
-            </MenuItem>
-          </MenuPopup>
-        </Menu>
-      ) : null}
-      {entry.close === "open" ? (
-        <button
-          aria-label={`Close ${entry.label}`}
-          className={ENTRY_CONTROL}
-          onClick={() => onClose(entry)}
-          type="button"
-        >
-          <XIcon aria-hidden="true" className="size-3.5" />
-        </button>
-      ) : entry.close === "busy" ? (
+      {mate.tooltip !== null ? (
         <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                aria-disabled="true"
-                aria-label={`Close ${entry.label}`}
-                className={cn(
-                  ENTRY_CONTROL,
-                  "cursor-not-allowed opacity-40 hover:text-muted-foreground",
-                )}
-                type="button"
-              />
-            }
-          >
-            <XIcon aria-hidden="true" className="size-3.5" />
-          </TooltipTrigger>
-          <TooltipPopup side="bottom">{CLOSE_HELD}</TooltipPopup>
+          <TooltipTrigger render={press} />
+          <TooltipPopup align="start" side="bottom">
+            {mate.tooltip}
+          </TooltipPopup>
         </Tooltip>
-      ) : null}
+      ) : (
+        press
+      )}
+      {chats === null ? null : (
+        <MateChatsMenu chats={chats} mateName={mate.name} onClose={onCloseChat} onOpen={onOpen} />
+      )}
     </div>
   );
 }
 
 /**
- * The row's room, measured before paint and again whenever the row or an
- * entry changes size — a panel opening, a chat renamed, a font settling. A
- * folded entry stays in the row, out of the flow and unseen, so its width is
- * always known.
+ * The crewmate whose chat is on screen, as a pill on the band — its face at
+ * 20 where its face stood, its name at 14/500 and a ⌄ — pressing it opening
+ * its menu.
  */
-function useStripRoom(): {
-  readonly ref: (row: HTMLElement | null) => void;
-  readonly room: StripRoom | null;
-} {
-  const [row, setRow] = useState<HTMLElement | null>(null);
-  const [room, setRoom] = useState<StripRoom | null>(null);
-  useLayoutEffect(() => {
-    if (row === null) return;
-    const widthOf = (selector: string) =>
-      row.querySelector(selector)?.getBoundingClientRect().width ?? 0;
-    const measure = () => {
-      const widths = new Map<string, number>();
-      for (const entry of row.querySelectorAll<HTMLElement>("[data-conversation-strip-entry]")) {
-        widths.set(entry.dataset.conversationStripEntry ?? "", entry.getBoundingClientRect().width);
-      }
-      const newChat = widthOf("[data-conversation-strip-new]");
-      const next: StripRoom = {
-        width: row.getBoundingClientRect().width,
-        widths,
-        gap: GAP_PX,
-        groupGap: GROUP_GAP_PX,
-        fixed: newChat === 0 ? 0 : newChat + GAP_PX,
-        more: widthOf("[data-conversation-strip-more]") + GAP_PX,
-      };
-      setRoom((previous) => (sameRoom(previous, next) ? previous : next));
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(row);
-    for (const child of row.querySelectorAll("[data-conversation-strip-entry]")) {
-      observer.observe(child);
-    }
-    return () => observer.disconnect();
-  });
-  return { ref: setRow, room };
-}
-
-function sameRoom(left: StripRoom | null, right: StripRoom): boolean {
-  if (left === null || left.width !== right.width || left.fixed !== right.fixed) return false;
-  if (left.more !== right.more || left.widths.size !== right.widths.size) return false;
-  for (const [key, width] of right.widths) if (left.widths.get(key) !== width) return false;
-  return true;
-}
-
-/**
- * The strip itself, as the header's line: each entry a face and a name, the
- * one on screen on the menu's selected band; the Mate's chats first with New
- * chat after them, then the crew a step apart; the tail folded into *N more*
- * when the line runs out.
- */
-export function ConversationStripView({
-  groups,
-  canMakeMain,
-  onOpen,
-  onClose,
-  onMakeMain,
-  onNewChat,
-}: ConversationStripViewProps) {
-  const { ref, room } = useStripRoom();
-  const { visible, folded } = foldStrip(groups, room);
-  const shownKeys = new Set(visible.flatMap((group) => group.entries.map((entry) => entry.key)));
-  const floor = folded.length > 0 && shownKeys.size === 1;
-  const drawn = groups.filter((group) => group.entries.length > 0 || group.id === "chats");
+function OpenCrewmate({
+  crewmate,
+  squeezed,
+  menu,
+}: {
+  readonly crewmate: LineCrewmate;
+  /**
+   * The line holds nothing else of the crew, not even *N more*: its name
+   * gives way. Otherwise it keeps its width, so what is measured is what it
+   * needs, and the other faces fold first.
+   */
+  readonly squeezed: boolean;
+  readonly menu: ReactNode;
+}) {
   return (
-    // The header's own line: its faces in the header's face column, the band
-    // reaching into the gutter around the one on screen.
-    <nav
-      aria-label="Conversations"
-      className="relative -ms-2 flex min-w-0 flex-1 items-center gap-0.5"
-      data-conversation-strip
-      ref={ref}
-    >
-      {drawn.map((group, index) => {
-        const shownHere = group.entries.some((entry) => shownKeys.has(entry.key));
-        return (
-          <div
-            aria-label={group.label}
-            className={cn("flex min-w-0 items-center gap-0.5", index > 0 && shownHere && "ms-4")}
-            key={group.id}
-            role="group"
-          >
-            {group.entries.map((entry) => (
-              <StripEntry
-                canMakeMain={canMakeMain}
-                entry={entry}
-                folded={!shownKeys.has(entry.key)}
-                key={entry.key}
-                squeezed={floor && shownKeys.has(entry.key)}
-                onClose={onClose}
-                onMakeMain={onMakeMain}
-                onOpen={onOpen}
-              />
-            ))}
-            {index === 0 ? <NewChatButton onNewChat={onNewChat} /> : null}
-          </div>
-        );
-      })}
-      <MoreMenu folded={folded} onOpen={onOpen} />
-    </nav>
+    <Menu>
+      <MenuTrigger
+        disabled={menu === null}
+        render={
+          <button
+            aria-current="page"
+            aria-label={crewmateAccessibleName(crewmate)}
+            className={cn(
+              "conversation-crewmate flex h-7 cursor-pointer items-center gap-2 rounded-lg ps-1 pe-2 outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
+              squeezed ? "min-w-15.5" : "shrink-0",
+            )}
+            data-conversation-crewmate={crewmate.handle}
+            data-current="true"
+            type="button"
+          />
+        }
+      >
+        <CrewmateFace crewmate={crewmate} />
+        <span className="min-w-0 truncate text-sm leading-5 font-medium text-foreground">
+          {crewmate.name}
+        </span>
+        <ChevronDownIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+      </MenuTrigger>
+      {menu}
+    </Menu>
   );
 }
 
-/** Another chat beside the Mate's: a glyph after its chats, its name on hover. */
-function NewChatButton({ onNewChat }: { readonly onNewChat: () => void }) {
+/** A crewmate whose chat is not on screen: its face alone in a 28 px press, who it is on hover. */
+function CrewmateFacePress({
+  crewmate,
+  folded,
+  onOpen,
+}: {
+  readonly crewmate: LineCrewmate;
+  /** Folded into *N more*: out of the line, kept only to be measured. */
+  readonly folded: boolean;
+  readonly onOpen: (threadId: ThreadId) => void;
+}) {
+  const threadId = crewmate.threadId;
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <button
-            aria-label="New chat"
-            className={GLYPH_BUTTON}
-            data-chat-header-ghost
-            data-conversation-strip-new
-            onClick={onNewChat}
+            aria-label={crewmateAccessibleName(crewmate)}
+            className={cn(
+              "conversation-crewface flex size-7 shrink-0 items-center justify-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              threadId === null ? "cursor-default" : "cursor-pointer",
+              folded && "invisible absolute start-0 top-0",
+            )}
+            data-conversation-crewmate={crewmate.handle}
+            onClick={() => {
+              if (threadId !== null) onOpen(threadId);
+            }}
+            tabIndex={folded ? -1 : undefined}
             type="button"
           />
         }
       >
-        <PlusIcon aria-hidden="true" className="size-4" />
+        <CrewmateFace crewmate={crewmate} />
       </TooltipTrigger>
-      <TooltipPopup side="bottom">New chat</TooltipPopup>
+      <TooltipPopup align="start" side="bottom">
+        <CrewmateTooltip crewmate={crewmate} />
+      </TooltipPopup>
     </Tooltip>
   );
 }
 
 /**
- * *N more* at the line's end, opening what folded: each with its face and
+ * *N more* at the crew's end, opening what folded: each with its face and
  * name. Drawn unseen while nothing folds, so its room is known before it is
  * needed.
  */
-function MoreMenu({
+function MoreCrew({
   folded,
+  shown,
   onOpen,
 }: {
-  readonly folded: ReadonlyArray<ConversationStripEntry>;
+  readonly folded: ReadonlyArray<LineCrewmate>;
+  /** Drawn in the line; unseen otherwise, still measured. */
+  readonly shown: boolean;
   readonly onOpen: (threadId: ThreadId) => void;
-}): ReactNode {
+}) {
   return (
     <Menu>
       <MenuTrigger
         render={
           <button
             className={cn(
-              GLYPH_BUTTON,
-              "w-auto gap-1 px-2 text-line font-medium tabular-nums",
-              folded.length === 0 && "invisible absolute start-0 top-0",
+              "flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-lg px-2 text-line font-medium text-muted-foreground tabular-nums outline-none transition-colors hover:bg-sidebar-row-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-hover data-popup-open:text-foreground",
+              !shown && "invisible absolute start-0 top-0",
             )}
             data-chat-header-ghost
-            data-conversation-strip-more
-            tabIndex={folded.length === 0 ? -1 : undefined}
+            data-conversation-more
+            tabIndex={shown ? undefined : -1}
             type="button"
           />
         }
@@ -367,16 +356,16 @@ function MoreMenu({
         <ChevronDownIcon aria-hidden="true" className="size-3.5" />
       </MenuTrigger>
       <MenuPopup align="end">
-        {folded.map((entry) => (
+        {folded.map((crewmate) => (
           <MenuItem
-            disabled={entry.threadId === null}
-            key={entry.key}
+            disabled={crewmate.threadId === null}
+            key={crewmate.handle}
             onClick={() => {
-              if (entry.threadId !== null) onOpen(entry.threadId);
+              if (crewmate.threadId !== null) onOpen(crewmate.threadId);
             }}
           >
-            <MateFace size="sm" state={entry.face.state} tint={entry.face.tint} />
-            <span className="min-w-0 flex-1 truncate">{entry.role ?? entry.label}</span>
+            <CrewmateFace crewmate={crewmate} />
+            <span className="min-w-0 flex-1 truncate">{crewmate.name}</span>
           </MenuItem>
         ))}
       </MenuPopup>
@@ -384,126 +373,206 @@ function MoreMenu({
   );
 }
 
-export interface ConversationStripProps {
-  readonly environmentId: EnvironmentId;
-  readonly projectId: ProjectId;
-  /** The chat on screen; null on a chat not sent yet. */
-  readonly currentThreadId: ThreadId | null;
-  /**
-   * Groups drawn after the chats, each a step apart — the crew's crewmates.
-   * An empty group draws nothing.
-   */
-  readonly extraGroups?: ReadonlyArray<ConversationStripGroup>;
+/**
+ * The crew's room on the line, measured before paint and again whenever the
+ * line or a face changes size — a panel opening, a name settling. A folded
+ * face stays in the line, out of the flow and unseen, so its width is always
+ * known.
+ */
+function useCrewRoom(): {
+  readonly ref: (line: HTMLElement | null) => void;
+  readonly room: CrewRoom | null;
+} {
+  const [line, setLine] = useState<HTMLElement | null>(null);
+  const [room, setRoom] = useState<CrewRoom | null>(null);
+  useLayoutEffect(() => {
+    if (line === null) return;
+    const widthOf = (selector: string) =>
+      line.querySelector(selector)?.getBoundingClientRect().width ?? 0;
+    const measure = () => {
+      const widths = new Map<string, number>();
+      for (const face of line.querySelectorAll<HTMLElement>("[data-conversation-crewmate]")) {
+        widths.set(face.dataset.conversationCrewmate ?? "", face.getBoundingClientRect().width);
+      }
+      const gap = Number.parseFloat(getComputedStyle(line).columnGap) || 0;
+      const next: CrewRoom = {
+        width:
+          line.getBoundingClientRect().width -
+          widthOf("[data-conversation-mate]") -
+          widthOf("[data-conversation-divider]") -
+          2 * gap,
+        widths,
+        gap: CREW_GAP_PX,
+        more: widthOf("[data-conversation-more]") + CREW_GAP_PX,
+      };
+      setRoom((previous) => (sameRoom(previous, next) ? previous : next));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(line);
+    for (const child of line.querySelectorAll(
+      "[data-conversation-mate], [data-conversation-crewmate]",
+    )) {
+      observer.observe(child);
+    }
+    return () => observer.disconnect();
+  });
+  return { ref: setLine, room };
 }
 
-const NO_GROUPS: ReadonlyArray<ConversationStripGroup> = [];
+function sameRoom(left: CrewRoom | null, right: CrewRoom): boolean {
+  if (left === null || left.width !== right.width || left.more !== right.more) return false;
+  if (left.widths.size !== right.widths.size) return false;
+  for (const [key, width] of right.widths) if (left.widths.get(key) !== width) return false;
+  return true;
+}
 
-/** The Mate's chats, main first, and their entries; null where no Mate lives. */
-function useMateChatEntries(
-  environmentId: EnvironmentId,
-  currentThreadId: ThreadId | null,
-): {
-  readonly chats: ReadonlyArray<EnvironmentThreadShell>;
-  readonly entries: ReadonlyArray<ConversationStripEntry>;
-} | null {
-  const whoLivesHere = useZeropsMate(environmentId);
-  const shells = useThreadShells();
-  const lastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
-  const mate = whoLivesHere.kind === "mate" ? whoLivesHere.mate : null;
-  return useMemo(() => {
-    if (mate === null) return null;
-    const chats = mateChats(shells.filter((thread) => thread.environmentId === environmentId));
-    const entries = chatEntries({
-      chats,
-      currentThreadId,
-      startingChat: currentThreadId === null,
-      mate: { name: mate.name, tint: mate.tint, connected: mate.connected },
-      lastVisitedAtById,
-    });
-    return { chats, entries };
-  }, [currentThreadId, environmentId, lastVisitedAtById, mate, shells]);
+export interface ConversationStripViewProps {
+  readonly mate: LineMate;
+  /** The Mate's chats, while it holds more than one. */
+  readonly chats: LineChats | null;
+  /** The crew, the lead first; `null` for a Mate with no crew. */
+  readonly crew: ReadonlyArray<LineCrewmate> | null;
+  /** The rename field, over the line from the Mate's name while its chat is renamed. */
+  readonly renameField: ReactNode;
+  /** The open crewmate's menu: its popup, or `null` while its crew is not read. */
+  readonly renderCrewmateMenu: (crewmate: LineCrewmate) => ReactNode;
+  readonly onOpen: (threadId: ThreadId) => void;
+  readonly onCloseChat: (chat: NonNullable<LineChats["close"]>) => void;
+  readonly onRename: (() => void) | null;
 }
 
 /**
- * The strip's groups after the chats: the Mate's crew, read off its crew view
- * (`useCrew`); nothing where no crew is applied.
+ * The top of a conversation, one line: the Mate, then — with a crew — a
+ * divider and the crew's faces, the crewmate on screen a pill on the band;
+ * where the line runs out, faces other than the one on screen fold into
+ * *N more*. Nothing on it moves between states: the band, a face's state
+ * and a remembered crew turning live change no width.
  */
-export function useCrewStripGroups({
-  environmentId,
-  currentThreadId,
-  view,
-}: {
-  readonly environmentId: EnvironmentId;
-  readonly currentThreadId: ThreadId | null;
-  readonly view: CrewView<EnvironmentThreadShell> | null;
-}): ReadonlyArray<ConversationStripGroup> {
-  const whoLivesHere = useZeropsMate(environmentId);
-  const lastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
-  const connected = whoLivesHere.kind === "mate" && whoLivesHere.mate.connected;
-  return useMemo(
-    () => [crewEntries({ view, currentThreadId, connected, lastVisitedAtById })],
-    [connected, currentThreadId, lastVisitedAtById, view],
+export function ConversationStripView({
+  mate,
+  chats,
+  crew,
+  renameField,
+  renderCrewmateMenu,
+  onOpen,
+  onCloseChat,
+  onRename,
+}: ConversationStripViewProps) {
+  const { ref, room } = useCrewRoom();
+  const { visible, folded, more } = foldCrew(crew ?? [], crew === null ? null : room);
+  const shown = new Set(visible);
+  return (
+    // The header's own line: the Mate's face on the header's face column, its
+    // band reaching into the gutter.
+    <nav
+      aria-label="Conversations"
+      className={cn("relative -ms-2 flex min-w-0 flex-1 items-center", crew !== null && "gap-3.5")}
+      data-conversation-strip
+      ref={ref}
+    >
+      <MatePill
+        chats={chats}
+        crew={crew !== null}
+        mate={mate}
+        onCloseChat={onCloseChat}
+        onOpen={onOpen}
+        onRename={onRename}
+      />
+      {crew === null ? null : (
+        <>
+          <span
+            aria-hidden="true"
+            className="h-4 w-px shrink-0 bg-border"
+            data-conversation-divider
+          />
+          <div
+            aria-label="Crew"
+            className="relative flex min-w-0 items-center gap-0.5"
+            data-conversation-crew
+            role="group"
+          >
+            {crew.map((crewmate) =>
+              crewmate.open ? (
+                <OpenCrewmate
+                  crewmate={crewmate}
+                  key={crewmate.handle}
+                  menu={renderCrewmateMenu(crewmate)}
+                  squeezed={folded.length > 0 && !more}
+                />
+              ) : (
+                <CrewmateFacePress
+                  crewmate={crewmate}
+                  folded={!shown.has(crewmate)}
+                  key={crewmate.handle}
+                  onOpen={onOpen}
+                />
+              ),
+            )}
+            <MoreCrew folded={folded} onOpen={onOpen} shown={more} />
+          </div>
+        </>
+      )}
+      {renameField}
+    </nav>
   );
 }
 
-/**
- * New chat for the header of a Mate with one chat, where no strip is drawn to
- * hold one; null wherever the strip has its own, or no Mate lives here.
- */
-export function useLoneChatNewChat({
-  environmentId,
-  projectId,
-  currentThreadId,
-  extraGroups = NO_GROUPS,
-}: Omit<ConversationStripProps, "projectId"> & {
-  /** Null while the conversation's project is not known yet. */
-  readonly projectId: ProjectId | null;
-}): (() => void) | null {
-  const mateChatEntries = useMateChatEntries(environmentId, currentThreadId);
-  const handleNewThread = useNewThreadHandler();
-  if (
-    projectId === null ||
-    mateChatEntries === null ||
-    !loneChatNewChatShown(mateChatEntries.entries, extraGroups)
-  ) {
-    return null;
-  }
-  return () => void handleNewThread(scopeProjectRef(environmentId, projectId), { chat: true });
+export interface ConversationStripProps {
+  readonly environmentId: EnvironmentId;
+  /** The chat on screen; `null` for one being started. */
+  readonly currentThreadId: ThreadId | null;
+  /** The chat on screen, when it is a crewmate's: whose, and its title. */
+  readonly crewChat: { readonly handle: string; readonly title: string } | null;
+  /** What the chat on screen is about, when it is the Mate's own: its hover. */
+  readonly subject: string | null;
+  readonly renameField: ReactNode;
+  /** Renames the Mate's chat on screen; `null` where it cannot be renamed. */
+  readonly onRename: (() => void) | null;
+  /** *Change its job*: the crew's Crewmate editor on that crewmate. */
+  readonly onEditJob: (handle: string) => void;
+  /** *Change the brief*: the crew's Brief editor. */
+  readonly onEditBrief: () => void;
 }
 
 /**
- * Whether the strip holds the header's line: where a Mate lives with a second
- * chat, or with a crew. Otherwise the header names the Mate itself.
- */
-export function useConversationStripShown({
-  environmentId,
-  currentThreadId,
-  extraGroups = NO_GROUPS,
-}: Omit<ConversationStripProps, "projectId">): boolean {
-  const mateChatEntries = useMateChatEntries(environmentId, currentThreadId);
-  return mateChatEntries !== null && stripShown(mateChatEntries.entries, extraGroups);
-}
-
-/**
- * Every conversation on a Mate's page, as the header's line: nothing where no
- * Mate lives, and nothing for a Mate with one chat and no crew — the line
- * appears with a second chat or a crew.
+ * The line where a Mate lives: its chats read off the thread shells, its crew
+ * off the crew's feed — or, until the feed answers, what this browser last
+ * read of it (`menuMemory.ts`) — and its presses: opening a chat, closing one
+ * of the Mate's, and a crewmate's menu. Nothing where no Mate lives.
  */
 export function ConversationStrip({
   environmentId,
-  projectId,
   currentThreadId,
-  extraGroups = NO_GROUPS,
+  crewChat,
+  subject,
+  renameField,
+  onRename,
+  onEditJob,
+  onEditBrief,
 }: ConversationStripProps) {
-  const mateChatEntries = useMateChatEntries(environmentId, currentThreadId);
-  const pinningSupported =
-    useEnvironment(environmentId)?.serverConfig?.environment.capabilities.threadPinning === true;
+  const whoLivesHere = useZeropsMate(environmentId);
+  const shells = useThreadShells();
+  const lastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
+  const { view } = useCrew(environmentId);
+  const projectId = useRegistrationRecord(environmentId)?.projectRef?.projectId;
   const router = useRouter();
-  const handleNewThread = useNewThreadHandler();
-  const { archiveThread, pinThread, unpinThread } = useThreadActions();
+  const { archiveThread } = useThreadActions();
+  const mate = whoLivesHere.kind === "mate" ? whoLivesHere.mate : null;
+  const chats = useMemo(
+    () => mateChats(shells.filter((thread) => thread.environmentId === environmentId)),
+    [environmentId, shells],
+  );
+  if (mate === null) return null;
 
-  if (mateChatEntries === null || !stripShown(mateChatEntries.entries, extraGroups)) return null;
-  const { chats, entries } = mateChatEntries;
+  const crew = lineCrew({
+    view,
+    remembered: projectId === undefined ? undefined : menuMemory().crews[projectId],
+    crewChat,
+    mateName: mate.name,
+    connected: mate.connected,
+    lastVisitedAtById,
+  });
 
   const open = (threadId: ThreadId) => {
     void router.navigate({
@@ -512,20 +581,20 @@ export function ConversationStrip({
     });
   };
 
-  // Closing the chat you are on lands on the main chat, never on a new one:
+  // Closing the chat on screen lands on the main chat, never on a new one:
   // the move happens first, so archiving does not start a replacement.
-  const close = async (entry: ConversationStripEntry) => {
-    if (entry.threadId === null || entry.close !== "open") return;
+  const close = async (chat: NonNullable<LineChats["close"]>) => {
+    if (chat.busy) return;
     const main = chats[0];
-    if (entry.current && main !== undefined) {
+    if (main !== undefined) {
       await router.navigate({
         to: "/$environmentId/$threadId",
         params: buildThreadRouteParams(scopeThreadRef(environmentId, main.id)),
         replace: true,
       });
     }
-    const result = await archiveThread(scopeThreadRef(environmentId, entry.threadId), {
-      toast: { title: "Chat closed", description: `‘${entry.label}’ is under Archived.` },
+    const result = await archiveThread(scopeThreadRef(environmentId, chat.threadId), {
+      toast: { title: "Chat closed", description: `‘${chat.title}’ is under Archived.` },
     });
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       const error = squashAtomCommandFailure(result);
@@ -540,35 +609,33 @@ export function ConversationStrip({
     }
   };
 
-  // The pin is what makes a chat main; the old pin goes as a step of the
-  // move, not as something to undo on its own.
-  const makeMain = async (entry: ConversationStripEntry) => {
-    if (entry.threadId === null) return;
-    const pinned = await pinThread(scopeThreadRef(environmentId, entry.threadId));
-    if (pinned._tag !== "Success") {
-      if (!isAtomCommandInterrupted(pinned)) {
-        toastManager.add(
-          stackedThreadToast({ type: "error", title: "Couldn't make this chat main" }),
-        );
-      }
-      return;
-    }
-    for (const chat of chats) {
-      if (chat.id === entry.threadId || chat.pinnedAt == null) continue;
-      await unpinThread(scopeThreadRef(environmentId, chat.id), { undoToast: false });
-    }
-  };
-
   return (
     <ConversationStripView
-      canMakeMain={pinningSupported}
-      groups={[{ id: "chats", label: "Chats", entries }, ...extraGroups]}
-      onClose={(entry) => void close(entry)}
-      onMakeMain={(entry) => void makeMain(entry)}
-      onNewChat={() =>
-        void handleNewThread(scopeProjectRef(environmentId, projectId), { chat: true })
+      chats={lineChats(chats, currentThreadId)}
+      crew={crew}
+      renderCrewmateMenu={(crewmate) =>
+        !crewmate.known ? null : (
+          <CrewmateMenu
+            environmentId={environmentId}
+            handle={crewmate.handle}
+            mateName={mate.name}
+            onEditBrief={onEditBrief}
+            onEditJob={onEditJob}
+          />
+        )
       }
+      mate={lineMate({
+        mate,
+        chats,
+        currentThreadId,
+        crewChatOpen: crewChat !== null,
+        subject,
+        lastVisitedAtById,
+      })}
+      onCloseChat={(chat) => void close(chat)}
       onOpen={open}
+      onRename={onRename}
+      renameField={renameField}
     />
   );
 }

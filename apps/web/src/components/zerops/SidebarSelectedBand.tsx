@@ -1,17 +1,19 @@
 /**
  * The menu's one selected band (pass 16, M11, T2): a single surface in the
- * list, the row's own inset and corners, standing over the open Mate's row.
- * Opening another Mate slides it there on a spring over 300 ms — transform
- * and height, never `top` — so the eye follows the selection instead of one
- * row going dark and another lighting up. Rows paint no background of their
- * own for being open.
+ * list, the row's own inset and corners, standing over the open Mate's unit —
+ * its row and its crew's line, one thing in the menu (`MateUnit`), never the
+ * changes under it. Opening another Mate slides it there on a spring over
+ * 300 ms — transform and height, never `top` — so the eye follows the
+ * selection instead of one row going dark and another lighting up. Units
+ * paint no background of their own for being open.
  *
  * It is placed after every draw, before paint, and again whenever the list
- * changes size — a row growing a line, a project unfolding above it — so it
- * never lags a frame behind its row (`bandPlacement`). While its row's
- * project folds it shrinks with the fold, and it is gone once the row is.
- * The first paint places it where it belongs, without moving; so does a row
- * coming back into view. With reduced motion it is placed, never slid.
+ * changes size — a row growing a line, a crew's line arriving, a project
+ * unfolding above it — so it never lags a frame behind its unit
+ * (`bandPlacement`). While its project folds it shrinks with the fold, and it
+ * is gone once the unit is. The first paint places it where it belongs,
+ * without moving; so does a unit coming back into view. With reduced motion
+ * it is placed, never slid.
  */
 import { useLayoutEffect, useRef } from "react";
 
@@ -31,14 +33,14 @@ const boxOf = (element: Element): BandBox => {
 };
 
 /**
- * Drawn inside the list it stands in — its parent, which its rows are
+ * Drawn inside the list it stands in — its parent, which its units are
  * measured from. Its own element is the one surely there when it places
  * itself: a parent's ref is attached only after its children's effects run.
  */
 export function SidebarSelectedBand({
   current,
 }: {
-  /** The open Mate's project id; absent, no row is open. */
+  /** The open Mate's project id; absent, no Mate is open. */
   readonly current: string | null | undefined;
 }) {
   const band = useRef<HTMLSpanElement>(null);
@@ -55,16 +57,14 @@ export function SidebarSelectedBand({
       const root = element?.parentElement ?? null;
       if (element === null || root === null) return;
       const open = key.current;
-      const row =
+      const unit =
         open === undefined
           ? null
-          : root.querySelector(
-              `[data-zerops-mate-row="${CSS.escape(open)}"] [data-zerops-surface="sidebar-mate"]`,
-            );
-      const fold = row?.closest('[data-zerops-surface="sidebar-project-rows"]') ?? null;
+          : root.querySelector(`[data-zerops-mate-unit="${CSS.escape(open)}"]`);
+      const fold = unit?.closest('[data-zerops-surface="sidebar-project-rows"]') ?? null;
       const placement = bandPlacement({
         list: boxOf(root),
-        row: row === null ? null : boxOf(row),
+        unit: unit === null ? null : boxOf(unit),
         clip: fold === null ? null : boxOf(fold),
       });
       const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -76,7 +76,7 @@ export function SidebarSelectedBand({
         return;
       }
       // A draw in the middle of a slide — the conversation opening, the row
-      // marked read — turns it toward where the row now is, still sliding.
+      // marked read — turns it toward where the unit now is, still sliding.
       const now = performance.now();
       if (move === "slide") slidingUntil.current = now + SLIDE_MS;
       if (now < slidingUntil.current) element.setAttribute("data-sliding", "");

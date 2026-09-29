@@ -60,7 +60,10 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
         // The room the mark leaves: ⌘K on the end edge, whole, and the
         // waiting faces before it in a slot of at most 96 px that gives way
         // first — fewer faces where the row is narrow (`waitingFacesThatFit`).
-        <div className="flex min-w-0 flex-1 items-center justify-end gap-2 md:pe-3">
+        // Its end is the menu's end edge, 16 px short of the divider, as the
+        // mark is 16 px in from the window (the owner, 2026-09-29: "padding
+        // around this whole column feels a little inconsistent").
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-2 md:pe-4">
           {waiting === undefined ? null : (
             <div
               className="flex min-w-0 max-w-24 flex-1 items-center justify-end"

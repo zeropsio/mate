@@ -1,19 +1,23 @@
 /**
- * The crew's board — right-panel kind `crew`, opened from the Crew section of
- * the Zerops tab (PRD §4.4).
+ * The crew's board — under the crew's section in the Crew tab (PRD §4.4), the
+ * record of every task by state, read after the section's who and what waits
+ * on you.
  *
  * Its columns follow the tasks' states (`CrewBoardPanel.logic.ts`): the lead's
  * proposed tasks sit on top of *Waiting on you* as one plan card, every other
- * task is a card that opens its sheet. The panel stacks the columns while it
- * is narrow and lays them side by side once widened (the panel's own maximize
- * control). Every press is one crew command; what it changes arrives on the
- * crew feed, so nothing here keeps a copy of the board.
+ * task is a card that opens its sheet. The board stacks the columns while it
+ * is narrow and lays them side by side once it is 48 rem wide (the panel
+ * maximized, or dragged wide), which is why it is the tab's last block, at the
+ * tab's full width.
+ * Every press is one crew command; what it changes arrives on the crew feed,
+ * so nothing here keeps a copy of the board.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { crewRefusalSentence } from "@t3tools/client-runtime/zerops/crew/phrases";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import type { CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type {
   CrewCommand,
-  CrewStatus,
+  CrewSnapshot,
   CrewTask,
   EnvironmentId,
   ThreadId,
@@ -25,7 +29,6 @@ import { useState, type ReactNode } from "react";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
-import { ScrollArea } from "~/components/ui/scroll-area";
 import {
   Select,
   SelectItem,
@@ -36,7 +39,6 @@ import {
 import { Sheet, SheetHeader, SheetPopup, SheetTitle } from "~/components/ui/sheet";
 import { Textarea } from "~/components/ui/textarea";
 import { buildThreadRouteParams } from "~/threadRoutes";
-import { useCrew } from "~/zerops/crew/useCrew";
 import { useCrewCommand } from "~/zerops/crew/useCrewCommand";
 import { useOpenReview } from "~/zerops/review";
 
@@ -70,8 +72,19 @@ const EMPTY_COLUMN: Readonly<Record<CrewBoardColumn["id"], string>> = {
 
 type OpenSheet = { readonly kind: "task"; readonly taskId: string } | { readonly kind: "new" };
 
-export function CrewBoardPanel({ environmentId }: { readonly environmentId: EnvironmentId }) {
-  const { status, snapshot, view, current } = useCrew(environmentId);
+/** The board of an applied crew, with its task sheets, its new task and its run dialog. */
+export function CrewBoardHost({
+  environmentId,
+  snapshot,
+  view,
+  current,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly snapshot: CrewSnapshot;
+  readonly view: CrewView<EnvironmentThreadShell>;
+  /** The snapshot is current: a press acts on what is shown. */
+  readonly current: boolean;
+}) {
   const crewCommand = useCrewCommand(environmentId);
   const openReview = useOpenReview();
   const router = useRouter();
@@ -79,11 +92,6 @@ export function CrewBoardPanel({ environmentId }: { readonly environmentId: Envi
   const [planEditing, setPlanEditing] = useState(false);
   /** A plan's `planAccept`, waiting for the run dialog to start a run first. */
   const [planToStart, setPlanToStart] = useState<CrewCommand | null>(null);
-
-  if (status === null) return null;
-  if (status !== "applied" || snapshot === null || view === null) {
-    return <CrewBoardNotice status={status} />;
-  }
 
   const canAct = current && !crewCommand.pending;
   const send = (command: CrewCommand, then?: () => void) => {
@@ -113,19 +121,17 @@ export function CrewBoardPanel({ environmentId }: { readonly environmentId: Envi
 
   return (
     <>
-      <ScrollArea className="h-full">
-        <CrewBoard
-          model={model}
-          canAct={canAct}
-          error={showing === null ? crewCommand.error : null}
-          planEditing={planEditing}
-          onNewTask={() => openSheet({ kind: "new" })}
-          onOpenTask={(taskId) => openSheet({ kind: "task", taskId })}
-          onSend={(command) => send(command)}
-          onStartPlan={(accept) => (model.runOn ? send(accept) : setPlanToStart(accept))}
-          onTogglePlanEditing={() => setPlanEditing((editing) => !editing)}
-        />
-      </ScrollArea>
+      <CrewBoard
+        model={model}
+        canAct={canAct}
+        error={showing === null ? crewCommand.error : null}
+        planEditing={planEditing}
+        onNewTask={() => openSheet({ kind: "new" })}
+        onOpenTask={(taskId) => openSheet({ kind: "task", taskId })}
+        onSend={(command) => send(command)}
+        onStartPlan={(accept) => (model.runOn ? send(accept) : setPlanToStart(accept))}
+        onTogglePlanEditing={() => setPlanEditing((editing) => !editing)}
+      />
       <CrewRunDialog
         environmentId={environmentId}
         open={planToStart !== null}
@@ -177,17 +183,6 @@ export function CrewBoardPanel({ environmentId }: { readonly environmentId: Envi
   );
 }
 
-/** A crew surface that has no board to draw: nothing applied yet, or crew mode off. */
-function CrewBoardNotice({ status }: { readonly status: CrewStatus }) {
-  return (
-    <div className="p-4 text-muted-foreground text-sm" data-crew-board-notice={status}>
-      {status === "none"
-        ? `${crewRefusalSentence("no-crew", null)} Set one up in the Crew section of the Zerops tab.`
-        : crewRefusalSentence("unavailable", null)}
-    </div>
-  );
-}
-
 export interface CrewBoardProps {
   readonly model: CrewBoardModel;
   /** The snapshot is current and nothing of the board's is in flight. */
@@ -205,11 +200,12 @@ export interface CrewBoardProps {
 export function CrewBoard(props: CrewBoardProps) {
   const { model } = props;
   return (
-    <div className="@container/board flex flex-col gap-4 p-4" data-crew-board>
-      <header className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-        <MicroLabel>Crew</MicroLabel>
-        <span className="min-w-0 truncate font-medium text-sm">{model.header.briefTitle}</span>
-        <StatusLine status={model.header.state} />
+    <div className="@container/board flex flex-col gap-2" data-crew-board>
+      {/* The crew's name and state are the section's, right above: the board
+          heads its tasks, as near its first column as its columns stand to
+          each other. */}
+      <header className="flex min-w-0 items-center gap-3">
+        <MicroLabel>Board</MicroLabel>
         <Pill
           className="ms-auto"
           disabled={!props.canAct}
@@ -220,10 +216,13 @@ export function CrewBoard(props: CrewBoardProps) {
         />
       </header>
       {props.error === null ? null : <ErrorLine text={props.error} />}
-      <div className="flex flex-col gap-5 @3xl/board:flex-row @3xl/board:items-start @3xl/board:gap-3">
+      {/* Side by side, a board wider than the tab scrolls sideways on its own:
+          the section above it stays put. The row keeps 4 px of room about the
+          cards, where they stood, for a focused card's ring. */}
+      <div className="flex flex-col gap-5 @3xl/board:-m-1 @3xl/board:flex-row @3xl/board:items-start @3xl/board:gap-3 @3xl/board:overflow-x-auto @3xl/board:p-1 @3xl/board:scroll-px-1">
         {model.columns.map((column) => (
           <section
-            className="flex min-w-0 flex-col gap-2 @3xl/board:w-60 @3xl/board:shrink-0"
+            className="flex min-w-0 scroll-mt-4 flex-col gap-2 @3xl/board:w-60 @3xl/board:shrink-0"
             data-crew-board-column={column.id}
             key={column.id}
           >
@@ -320,7 +319,12 @@ export function CrewPlanCardView(props: {
   };
   const accept = crewPlanCommand("planAccept", taskIds);
   return (
-    <FlatCard className="flex flex-col gap-2 px-3 py-2.5 text-xs" data-crew-plan>
+    // Outside the tab order: the section's Review plan hands it the focus.
+    <FlatCard
+      className="flex flex-col gap-2 px-3 py-2.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      data-crew-plan
+      tabIndex={-1}
+    >
       <span className="font-medium text-foreground text-sm">{plan.title}</span>
       {plan.sentence === null ? null : (
         <span className="text-muted-foreground">{plan.sentence}</span>

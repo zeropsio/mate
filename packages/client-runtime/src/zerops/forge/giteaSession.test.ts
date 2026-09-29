@@ -135,6 +135,8 @@ function world(
 
 const brokerPosts = (w: ReturnType<typeof world>) =>
   w.broker.requests().filter((request) => request.route === "POST /person/token");
+const pictureReads = (w: ReturnType<typeof world>) =>
+  w.broker.requests().filter((request) => request.route.startsWith("GET /person/attachments/"));
 const livenessChecks = (w: ReturnType<typeof world>) =>
   w.broker.requests().filter((request) => request.route === "GET /");
 
@@ -177,6 +179,36 @@ const readTags = (sessions: GiteaSessions) => {
   if (client === null) throw new Error("no Gitea client");
   return client.listTags("acme", "group");
 };
+
+describe("a change's pictures, read as the person through the broker", () => {
+  const UUID = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
+
+  it("reads a picture with the session's token through the demand's broker, and a 401 there reacquires", async () => {
+    const w = world();
+    w.gitea.putPicture(UUID, new Uint8Array([137, 80, 78, 71]), "image/png");
+    w.demand();
+    await w.time.advance(0);
+    const client = w.sessions.clientFor(HARNESS_GITEA_ORIGIN);
+    if (client === null) throw new Error("no Gitea client");
+
+    const picture = await client.picture(`${HARNESS_GITEA_ORIGIN}/attachments/${UUID}`);
+    expect(new Uint8Array(await picture.arrayBuffer())).toEqual(new Uint8Array([137, 80, 78, 71]));
+    expect(pictureReads(w)).toEqual([
+      { route: `GET /person/attachments/${UUID}`, bearer: "gitea-token-1", mode: null },
+    ]);
+
+    // The token is revoked: the broker relays Gitea's refusal as a 401, and the session mints
+    // another and reads again, exactly as it does for Gitea's own.
+    w.gitea.revoke("gitea-token-1");
+    const again = await client.picture(`${HARNESS_GITEA_ORIGIN}/attachments/${UUID}`);
+    expect(again.size).toBe(4);
+    expect(pictureReads(w).map((request) => request.bearer)).toEqual([
+      "gitea-token-1",
+      "gitea-token-1",
+      "gitea-token-2",
+    ]);
+  });
+});
 
 describe("the account's Gitea sessions", () => {
   it("acquires a token from the broker by throwaway, once for the account epoch however many surfaces ask", async () => {

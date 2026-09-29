@@ -552,3 +552,13 @@ In the order the owner ranked them, then the rest:
     about 128 × 80 (five would fit that); a file a later run overwrote without looking at it again
     shows its new contents under the older run. `changeVerdict.ts` is used only by a cross-check in
     `gitTab.test.ts`.
+
+36. **Pass 16's second feedback round, open** (2026-09-29, mate 0.11.65). The Crew tab now holds the
+    crew's section, but that section still speaks the engine: "CREW" and "LEAD" caps labels,
+    `@handles`, "V3 AT NEXT TURN" and "BRIEF V3" chips, jobs written to the crewmate ("You own…"),
+    and a run's mechanics ("Paused · time limit reached", "Spend … · Time 8 h of 8 h", _Resume_,
+    _Stop_). The owner: "all of this is totally shit essentially, it's not clear how it works at
+    all" — crew mode wants its model written in the owner's words and mocked as one flow before the
+    section is rebuilt. _Forget memory_ has no door in the web app since the header's rebuild. A
+    run's pictures from a late first answer may shift the strip once in a narrow column. The
+    end-to-end proof of a change's pictures on a real pull request waits on Nova's usage limit.

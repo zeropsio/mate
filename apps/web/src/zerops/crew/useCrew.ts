@@ -70,6 +70,18 @@ export function useCrew(environmentId: EnvironmentId | null): CrewRead {
   return { status, snapshot, view, current };
 }
 
+/**
+ * The crew feed's status alone — whether crew mode is on, and whether a crew is
+ * applied — for a surface that needs no view of the crew: a Mate's menu in the
+ * left menu. `null` for no environment, or a feed not read yet.
+ */
+export function useCrewStatus(environmentId: EnvironmentId | null): CrewStatus | null {
+  const read = useAtomValue(
+    environmentId === null ? NO_CREW_ATOM : zeropsFeeds.crew({ environmentId, input: {} }),
+  );
+  return crewFeedRead(read).status;
+}
+
 /** Whether the environment has a crew surface: a crew applied, or none yet to set up. */
 export function hasCrewSurface(status: CrewStatus | null): status is "none" | "applied" {
   return status === "none" || status === "applied";

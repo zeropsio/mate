@@ -171,7 +171,7 @@ import { ZeropsBrowserPanel } from "./zerops/ZeropsBrowserPanel";
 import { ZeropsDataPanel } from "./zerops/ZeropsDataPanel";
 import { ZeropsChangeDetailPage } from "./zerops/ZeropsGroupDetail";
 import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
-import { CrewBoardPanel } from "./zerops/crew/CrewBoardPanel";
+import { CrewPanel } from "./zerops/crew/CrewPanel";
 import { useCrew } from "../zerops/crew/useCrew";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useZeropsNextStepStrip } from "./zerops/ZeropsNextStepBanner";
@@ -180,14 +180,14 @@ import { useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
-import { CrewLaneBar } from "./zerops/crew/CrewLaneBar";
-import { CrewLeadBar } from "./zerops/crew/CrewLeadBar";
+import { CrewBriefEditor } from "./zerops/crew/CrewBriefEditor";
 import { CrewLeadPlan } from "./zerops/crew/CrewLeadPlan";
 import { CrewmateEditor } from "./zerops/crew/CrewmateEditor";
 import { CrewTimelineContext, type CrewTimeline } from "./zerops/crew/CrewTaskCard";
 import { crewCardOrigin } from "./zerops/crew/CrewTaskCard.logic";
 import { crewRunsOn } from "./zerops/crew/CrewEditors.logic";
 import { crewChatNotices } from "./zerops/crew/crewChatNotices";
+import { crewChatEntries } from "./zerops/crew/crewChatSeams";
 import { crewComposerMentions, crewMessageCommand } from "./zerops/crew/crewComposerSend";
 import {
   crewMessagePlaceholder,
@@ -344,12 +344,7 @@ import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { TimelineSwitch } from "./chat/TimelineSwitch";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
-import {
-  useAlsoWorkingBanner,
-  useCrewStripGroups,
-  useConversationStripShown,
-  useLoneChatNewChat,
-} from "./chat/ConversationStrip";
+import { useAlsoWorkingBanner } from "./chat/ConversationStrip";
 import { replacementChatToPin } from "./chat/ConversationStrip.logic";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
@@ -5286,14 +5281,21 @@ export default function ChatView(props: ChatViewProps) {
     currentThreadId: isServerThread ? threadId : null,
     typing: composerHasUnsentContent && activeThreadShell?.crew == null,
   });
-  const crewStripGroups = useCrewStripGroups({
-    environmentId,
-    currentThreadId: isServerThread ? threadId : null,
-    view: crew.view,
-  });
   const activeCrewOrigin = activeThreadShell?.crew ?? null;
-  // *Edit job* in a crewmate's header: the crew's own Crewmate editor.
+  // An empty crewmate chat opens on its own empty state: a save's seam from
+  // before its first message is not drawn (`crewChatSeams.ts`).
+  const inCrewChat = activeCrewOrigin !== null;
+  const conversationEntries = useMemo(
+    () =>
+      inCrewChat
+        ? crewChatEntries(displayedTimeline.entries, loadEarlierTurns === null)
+        : displayedTimeline.entries,
+    [displayedTimeline.entries, inCrewChat, loadEarlierTurns],
+  );
+  // A crewmate's *Change its job*, and its composer's *Runs on*: the crew's
+  // own Crewmate editor; the lead's *Change the brief*: its Brief editor.
   const [editingCrewmate, setEditingCrewmate] = useState<string | null>(null);
+  const [editingBrief, setEditingBrief] = useState(false);
   const activeCrewmate =
     activeCrewOrigin === null
       ? null
@@ -5407,29 +5409,6 @@ export default function ChatView(props: ChatViewProps) {
     navigate,
     threadId,
   ]);
-  // The header's New chat while the Mate has one chat and so no strip.
-  const startSecondChat = useLoneChatNewChat({
-    environmentId,
-    projectId: activeThread?.projectId ?? null,
-    currentThreadId: isServerThread ? threadId : null,
-    extraGroups: crewStripGroups,
-  });
-  // A second chat or a crew: the strip takes the header's line, and what the
-  // chat on screen is about reads on the line under it (`ChatHeader`).
-  const stripShown = useConversationStripShown({
-    environmentId,
-    currentThreadId: isServerThread ? threadId : null,
-    extraGroups: crewStripGroups,
-  });
-  const activeProjectId = activeThread?.projectId ?? null;
-  const headerStrip = useMemo(
-    () =>
-      stripShown && activeProjectId !== null
-        ? { projectId: activeProjectId, extraGroups: crewStripGroups }
-        : null,
-    [activeProjectId, crewStripGroups, stripShown],
-  );
-  const [subjectSlot, setSubjectSlot] = useState<HTMLDivElement | null>(null);
 
   const feedbackBannerItems = useMemo(
     () =>
@@ -7752,18 +7731,6 @@ export default function ChatView(props: ChatViewProps) {
   const onExpandTimelineImage = useCallback((preview: ExpandedImagePreview) => {
     setExpandedImage(preview);
   }, []);
-  // A crewmate's *Changes*: its copy against the tip of your tree the engine
-  // read — an explicit opening, so the panel keeps that branch diff.
-  const onOpenCrewChanges = useCallback(
-    (baseRef: string | null) => {
-      if (!isServerThread || !activeThreadRef) return;
-      explicitDiffOpenRef.current = diffOpen ? null : activeThreadRef;
-      useDiffPanelStore.getState().selectBranchBaseRef(activeThreadRef, baseRef);
-      useRightPanelStore.getState().open(activeThreadRef, "diff");
-      onDiffPanelOpen?.();
-    },
-    [activeThreadRef, diffOpen, isServerThread, onDiffPanelOpen],
-  );
   const onOpenTurnDiff = useCallback(
     (turnId: TurnId, filePath?: string) => {
       if (!isServerThread || !activeThreadRef) return;
@@ -7947,7 +7914,8 @@ export default function ChatView(props: ChatViewProps) {
             case "git":
               return <ZeropsGitSurface threadRef={zeropsChrome.threadRef} />;
             case "crew":
-              return <CrewBoardPanel environmentId={activeThreadRef.environmentId} />;
+              // One Mate's crew: another Mate's draws afresh, its sheets and drafts closed.
+              return <CrewPanel key={activeThreadRef.environmentId} threadRef={activeThreadRef} />;
             case "change":
               return (
                 <ZeropsChangeDetailPage
@@ -8057,9 +8025,7 @@ export default function ChatView(props: ChatViewProps) {
             onNewThreadInProject={handleNewThreadInActiveProject}
             onStartFresh={startFreshConversation}
             onEditCrewmateJob={setEditingCrewmate}
-            strip={headerStrip}
-            subjectSlot={subjectSlot}
-            {...(startSecondChat === null ? {} : { onNewChat: startSecondChat })}
+            onEditBrief={() => setEditingBrief(true)}
             {...(activeDraftLogicalProjectKey
               ? { onOpenProjectSettings: handleOpenDraftProjectSettings }
               : {})}
@@ -8069,44 +8035,25 @@ export default function ChatView(props: ChatViewProps) {
             onDeleteProjectScript={deleteProjectScript}
           />
         </WorkspacePageHeader>
-        {/* Under the strip, on the names' edge and tucked into the header's
-            last pixels: what the chat on screen is about. The line stands
-            while the strip does, so a first message moves nothing. */}
-        {headerStrip === null ? null : (
-          <div className="relative -mt-3 flex h-6 shrink-0 items-center ps-(--workspace-gutter-start) pe-(--workspace-gutter-end)">
-            <div
-              className="ms-7.5 flex min-w-0 flex-1 items-center text-line"
-              data-conversation-subject
-              ref={setSubjectSlot}
-            />
-          </div>
-        )}
-        {/* A crewmate with a copy of the code shows it where a person's chat
-            shows its lifecycle (seam S7); the lead says what it does instead. */}
-        {activeCrewmate?.crewmate.kind === "lead" ? (
-          <CrewLeadBar />
-        ) : activeCrewmate?.crewmate.lane != null && activeThreadRef !== null ? (
-          <CrewLaneBar
-            handle={activeCrewmate.crewmate.handle}
-            onOpenChanges={onOpenCrewChanges}
-            threadRef={activeThreadRef}
-          />
-        ) : (
-          <ZeropsLifecycleStrip
-            agentAuthNeedsAttention={zeropsChrome.agentSignInRequired}
-            onOpenAgentAuth={openAgentAuthDialog}
-            pendingUserInput={activePendingUserInput !== null}
-            running={zeropsThreadModel.running}
-            session={zeropsThreadModel.session}
-            threadRef={zeropsChrome.threadRef}
-            zeropsPanelOpen={activeRightPanelKind === "zerops"}
-          />
-        )}
+        <ZeropsLifecycleStrip
+          agentAuthNeedsAttention={zeropsChrome.agentSignInRequired}
+          onOpenAgentAuth={openAgentAuthDialog}
+          pendingUserInput={activePendingUserInput !== null}
+          running={zeropsThreadModel.running}
+          session={zeropsThreadModel.session}
+          threadRef={zeropsChrome.threadRef}
+          zeropsPanelOpen={activeRightPanelKind === "zerops"}
+        />
         {zeropsSignInDialog.dialog}
         <CrewmateEditor
           environmentId={environmentId}
           onClose={() => setEditingCrewmate(null)}
           target={editingCrewmate === null ? null : { handle: editingCrewmate, lead: false }}
+        />
+        <CrewBriefEditor
+          environmentId={environmentId}
+          onClose={() => setEditingBrief(false)}
+          open={editingBrief}
         />
 
         <ThreadErrorBanner
@@ -8175,7 +8122,7 @@ export default function ChatView(props: ChatViewProps) {
                     isCompacting={isCompacting}
                     activeTurnStartedAt={activeWorkStartedAt}
                     listRef={legendListRef}
-                    timelineEntries={displayedTimeline.entries}
+                    timelineEntries={conversationEntries}
                     latestTurn={activeLatestTurn}
                     runningTurnId={activeRunningTurnId}
                     turnDiffSummaries={activeThread.checkpoints}

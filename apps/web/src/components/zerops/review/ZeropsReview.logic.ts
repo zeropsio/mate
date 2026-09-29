@@ -142,6 +142,35 @@ export type DescriptionPicture =
   | { readonly kind: "elsewhere"; readonly url: string }
   | { readonly kind: "none" };
 
+/** The tallest a description's picture stands (`.rv-pic img`'s `max-height`). */
+export const REVIEW_PICTURE_MAX_HEIGHT = 560;
+
+/** The widest or tallest a picture a description sizes can be; anything past it is no size. */
+const PICTURE_SIZE_MAX = 16384;
+
+/**
+ * The box a description's picture holds before its bytes arrive, from the width and height its
+ * description gives it (zcp writes `<img alt width height src>`): its shape, and its width drawn
+ * the way the picture itself is — the column's at most, its own at most, and no wider than keeps
+ * it within {@link REVIEW_PICTURE_MAX_HEIGHT}. So the picture lands in the room it was given and
+ * nothing moves. `null` where no whole size is given: the picture takes its room when it arrives.
+ */
+export function reviewPictureBox(
+  width: string | number | undefined,
+  height: string | number | undefined,
+): { readonly aspectRatio: string; readonly width: string } | null {
+  const w = pictureSize(width);
+  const h = pictureSize(height);
+  if (w === null || h === null) return null;
+  const widest = Math.min(w, Math.floor((REVIEW_PICTURE_MAX_HEIGHT * w) / h));
+  return { aspectRatio: `${String(w)} / ${String(h)}`, width: `min(100%, ${String(widest)}px)` };
+}
+
+function pictureSize(value: string | number | undefined): number | null {
+  const size = typeof value === "number" ? value : value === undefined ? Number.NaN : Number(value);
+  return Number.isInteger(size) && size > 0 && size <= PICTURE_SIZE_MAX ? size : null;
+}
+
 /** `/{owner}/{repo}/attachments/{uuid}`: an attachment by its repository's older address. */
 const REPOSITORY_ATTACHMENT = /^\/[^/]+\/[^/]+\/attachments\/([^/?#]+)$/u;
 

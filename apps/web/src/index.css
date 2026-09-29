@@ -2903,6 +2903,13 @@ code {
     border-radius: 12px;
   }
 
+  /* A Mate's unit — its row and its crew's line, one thing in the menu
+     (`MateUnit`): the row's corners, which its hover and the selected band
+     paint it in. */
+  .menu-unit {
+    border-radius: 12px;
+  }
+
   /* A one-line row under the Mates — a change, the crew, a fold: 28 px tall
      and a smaller corner than the Mate's row above it. */
   .menu-line {
@@ -2983,14 +2990,23 @@ code {
   }
 
   /* A crewmate's face on its crew's line: a 24 px press around the 20 px
-     face, lit on hover like a row. */
+     face. It stands in its Mate's unit, lit by the pointer or by the
+     selected band, so its own hover is a tint of the ink, which reads on
+     either as on the menu's ground. */
   .menu-crewface {
     border-radius: 7px;
   }
 
+  @media (hover: hover) {
+    .menu-crewface:hover {
+      background: color-mix(in oklab, var(--contrast-sidebar-foreground) 8%, transparent);
+    }
+  }
+
   /* The one selected band (`SidebarSelectedBand`): behind every row of the
-     list, which is its own stacking context, with the row's corners. It is
-     placed by transform; only a slide to a newly opened row moves it. */
+     list, which is its own stacking context, over the open Mate's unit — its
+     row and its crew's line — with the row's corners. It is placed by
+     transform; only a slide to a newly opened Mate moves it. */
   .menu-band {
     position: absolute;
     top: 0;
@@ -3118,18 +3134,39 @@ code {
    the project, it opens nothing. Its corners run parallel to the production
    chip's inside it (12 + the 4 px around the chip, S4), and a reveal's ring
    follows them. Lit while its ⋯ or its chip's menu is open; the chip and the
-   verbs keep their own, stronger hover over it. */
+   verbs keep their own, stronger hover over it. The band is drawn under the
+   heading's contents rather than as its fill, so it can reach past its box:
+   behind every row of the list, which is its own stacking context, as the
+   selected band is. */
 .zerops-project-heading {
   border-radius: 16px;
-  transition: background-color 150ms ease;
 }
 
-.zerops-project-heading:has([data-popup-open]) {
+.zerops-project-heading::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 16px;
+  transition: background-color 150ms ease;
+  content: "";
+  pointer-events: none;
+}
+
+/* In the Custom order the grip stands in the gutter before the name
+   (`ProjectGrip`), and it belongs to the heading (the owner, 2026-09-29:
+   "handle out of hover bg"): the band reaches the grip's own start, 8 px
+   toward the menu's edge, and the name keeps its edge. The grip shows
+   whenever the band does. */
+.zerops-project-heading:has([data-zerops-grip])::before {
+  inset-inline-start: -8px;
+}
+
+.zerops-project-heading:has([data-popup-open])::before {
   background-color: color-mix(in oklab, var(--sidebar-foreground) 3.5%, transparent);
 }
 
 @media (hover: hover) {
-  .zerops-project-heading:hover {
+  .zerops-project-heading:hover::before {
     background-color: color-mix(in oklab, var(--sidebar-foreground) 3.5%, transparent);
   }
 }
@@ -4159,6 +4196,12 @@ button.run-bar:focus-visible {
 .run-result-action:hover {
   background: color-mix(in oklab, var(--color-info-foreground) 10%, transparent);
 }
+/* *Try it* held while there is nothing it can open yet: another crewmate's work on dev. */
+.run-result-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+  background: none;
+}
 .run-result-open {
   display: flex;
   align-items: center;
@@ -4188,12 +4231,10 @@ button.run-bar:focus-visible {
    28 px column left to the marks, and on its one right edge. They are the
    run's, not its last row's: 20 px under the rows, where the rows stand 14
    apart; alone, 14 px under the hairline, where a first row's words stand.
-   Six uniform 16:10 tiles at most, 8 px apart, each the top of its
-   picture. Their corners run parallel with the tray's (S4): 30 px = 12 +
-   the 18 px between a tile and the tray's edge — 6 px here, the tray's 12
-   under it. */
+   Six tiles at most, 8 px apart, wrapping into rows as the column needs.
+   Their corners run parallel with the tray's (S4): 30 px = 12 + the 18 px
+   between a tile and the tray's edge — 6 px here, the tray's 12 under it. */
 .run-result-pictures {
-  container: result-pictures / inline-size;
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
   column-gap: 8px;
@@ -4204,24 +4245,22 @@ button.run-bar:focus-visible {
 }
 .run-result-strip {
   grid-column: 2;
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 128px));
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
-/* A narrow column — the preview open beside a laptop's conversation —
-   stands the strip in two rows of three rather than six tiles too small to
-   read, from its width alone: nothing moves once it is drawn. */
-@container result-pictures (max-width: 665px) {
-  .run-result-strip {
-    grid-template-columns: repeat(3, minmax(0, 128px));
-  }
-}
-/* While its file is read, the tile is quiet and already its size: nothing
-   moves when the picture comes, or when it never does. */
+/* One height for every tile, each as wide as its picture's own shape makes
+   it (the owner, 2026-09-29: "why these has different ration than the
+   result?"): a phone's screenshot whole and narrow, a desktop's whole and
+   wide — the shape set on the tile from its first frame (`tileRatio`). While
+   its file is read, the tile is quiet and already its height: nothing under
+   the strip moves when the picture comes, or when it never does. */
 .run-result-tile {
   position: relative;
   display: block;
-  aspect-ratio: 16 / 10;
+  flex: none;
+  height: 96px;
+  max-width: 100%;
   overflow: hidden;
   border-radius: 12px;
   background: color-mix(in oklab, var(--color-foreground) 5%, transparent);
@@ -4324,6 +4363,36 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-pressed],
 html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open] {
   background-color: var(--sidebar-row-hover);
   color: var(--contrast-foreground);
+}
+
+/* The conversation's line (the owner, 2026-09-29): the Mate leads it, on the
+   menu's selected band while its own chat is open — 32 px tall, 11 px
+   corners — and with a crew, the crewmate whose chat is on screen stands on
+   the same band as a 28 px pill. The band coming and going changes no width:
+   the Mate's pill keeps its padding with or without it. */
+.conversation-mate,
+.conversation-mate-press {
+  border-radius: 11px;
+}
+
+.conversation-mate[data-on] {
+  background-color: var(--sidebar-row-active);
+}
+
+@media (hover: hover) {
+  .conversation-mate[data-opens]:hover,
+  .conversation-crewface:hover {
+    background-color: var(--sidebar-row-hover);
+  }
+}
+
+/* The crewmate's pill is its menu's trigger, which the header fills like any
+   other; it stands on the band instead, pressed or not. */
+.conversation-crewmate,
+html[data-theme-id] [data-chat-header] .conversation-crewmate,
+html[data-theme-id] [data-chat-header] .conversation-crewmate:hover,
+html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
+  background-color: var(--sidebar-row-active);
 }
 
 /* ==== end of the conversation ==== */
@@ -5584,6 +5653,20 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   from {
     opacity: 0;
   }
+}
+/* A picture its description sizes holds that box from the first paint (`reviewPictureBox` sets
+   its shape and width): its line fills it while it is read or when it cannot be, and the picture
+   fills it once read, so nothing moves either way. */
+.rv-pic[data-box] > .rv-pic-open,
+.rv-pic[data-box] img {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+}
+.rv-pic[data-box] > .rv-pic-line {
+  height: 100%;
+  margin: 0;
+  border-radius: 0;
 }
 .rv-pic-line {
   display: flex;

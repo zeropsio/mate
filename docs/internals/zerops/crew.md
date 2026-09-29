@@ -9,11 +9,11 @@ beside it. Words the UI uses are the glossary's ([`design-system.md`](design-sys
 
 Three levels, each built on the one before:
 
-| Level     | What it is                                                                                                                                                                                                                   |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Mate**  | one agent over one Zerops project's tree (`/var/www` on the zcp container); unchanged by crew mode                                                                                                                           |
-| **chats** | the Mate's several conversations over that same tree — person threads; the main chat is the pinned one, the others sit in the conversation strip (`apps/web/src/components/chat/ConversationStrip.tsx`)                      |
-| **crew**  | standing crewmates, one crew per Mate (id always `main`); each crewmate talks in its own chat, and a writer works in its own copy of the code on a dev service; the person lands each piece of work into the tree by a press |
+| Level     | What it is                                                                                                                                                                                                                                                                             |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Mate**  | one agent over one Zerops project's tree (`/var/www` on the zcp container); unchanged by crew mode                                                                                                                                                                                     |
+| **chats** | the Mate's several conversations over that same tree — person threads; the main chat is the pinned one; no new one is started, and a Mate holding more than one lists them from the ⌄ after its name on the conversation's line (`apps/web/src/components/chat/ConversationStrip.tsx`) |
+| **crew**  | standing crewmates, one crew per Mate (id always `main`); each crewmate talks in its own chat, and a writer works in its own copy of the code on a dev service; the person lands each piece of work into the tree by a press                                                           |
 
 A crewmate is one of three kinds (`packages/shared/src/crewHome.ts`):
 
@@ -69,8 +69,8 @@ for the engine's life.
 | Policy, tools  | `crewSeams.ts`, `CrewThreadPolicy.ts`, `CrewTools.ts`, `CrewRuntime.ts`, `CrewMemory.ts`                                                   | `CrewThreadDirectory` and `CrewToolHost`; the SPI answer for crew threads; the in-process crew tools; the Show-on-dev claim; memory, packet and delta |
 | RPC            | `registerCrewRpc.ts`                                                                                                                       | the four crew RPCs, spread by `ws.ts`                                                                                                                 |
 | Client runtime | `packages/client-runtime/src/zerops/crew/phrases.ts`, `crew/testing/fixtures.ts`, `projections/crew.ts`                                    | every crew word (R5); `crewSnapshotFixture`; `deriveCrewView` — the snapshot joined to the thread shells                                              |
-| Web            | `apps/web/src/zerops/crew/`                                                                                                                | `useCrew`, `useCrewCommand`, `crewCommands`, `useCrewHome`, `crewHome` (the editors' adapter over the format)                                         |
-|                | `apps/web/src/components/zerops/crew/`                                                                                                     | the section, the editors, the board and the crewmate chat — rows `zerops-crew-*` in [`surfaces.json`](surfaces.json)                                  |
+| Web            | `apps/web/src/zerops/crew/`                                                                                                                | `useCrew`, `useCrewCommand`, `crewCommands`, `useCrewHome`, `crewHome` (the editors' adapter over the format), `crewTab`                              |
+|                | `apps/web/src/components/zerops/crew/`                                                                                                     | the Crew tab (the section above the board), the editors and the crewmate chat — rows `zerops-crew-*` in [`surfaces.json`](surfaces.json)              |
 
 ## 4. The crew home and what the engine keeps
 
@@ -148,29 +148,38 @@ Server:
 
 Client:
 
-- **Zerops tab** — `ZeropsPanel.tsx` mounts `CrewSectionHost` after the coding agents' card; the
-  section exists only while the feed's status is `none` or `applied`.
-- **Right panel** — kind `crew` (`rightPanelKinds.ts`, `rightPanelStore.ts`, `RightPanelTabs.tsx`),
-  `hidden` unless the Zerops panel is available and the status is `none` or `applied`.
-- **Chat** — `ChatView.tsx`: in the lifecycle strip's slot a writer's lane bar or the lead's bar
-  ("Plans and reviews · no copy of the code", `CrewLeadBar`), the board in the right panel, the
-  lead's plan in the lead's chat (`CrewLeadPlan`), and a crew thread's send as
-  `zerops.crew.command` `message` instead of a turn start; `ChatHeader.tsx`: `CrewmateHeader`;
-  `MessagesTimeline.tsx` and `conversation.logic.ts`: a message opening with `CREW_CARD_OPENER`
-  drawn as a task card, `crew.seam` activities drawn as seam lines, and an empty crewmate
-  conversation opening with the crewmate (`CrewmateEmptyState`); `ConversationStrip.tsx`: the crew
-  group. In a crew thread the speaker — the work line, the answer's heading, the working face — is
-  the crewmate, in its name and tint, never the Mate.
-- **The lead** reads as the lead: first in the crew on the strip, named the lead on hover where its
-  name does not say so, a Lead chip beside its name in its header and the section, its own group
-  first in the section, and the coding-agents card names it on the login it runs on.
+- **Crew tab** — right-panel kind `crew` (`rightPanelKinds.ts`, `rightPanelStore.ts`,
+  `RightPanelTabs.tsx`), `hidden` unless the Zerops panel is available and the status is `none` or
+  `applied`, is the crew's one home (`CrewPanel.tsx`): for `none` the empty state and _Set up a
+  crew_, for `applied` the section (`CrewSectionHost`) above the board (`CrewBoardHost`) in one
+  column. The left menu asks for the setup sheet through `crewTab.ts`. The Zerops tab has no crew
+  section and no setup; its map still names crew ports by crewmate, and its coding agents' card
+  who runs on each login.
+- **Chat** — `ChatHeader.tsx` and `ConversationStrip.tsx`: the conversation's line — the Mate,
+  then the crew's faces, the crewmate on screen a pill whose menu (`CrewmateMenu`) offers _Try its
+  work_ (`useCrewTry`, `crewTry.ts`: its own app, run first while stopped, or its work shown at
+  the Mate's dev address), _Stop its app_, _Change its job_ (the lead's _Change the brief_,
+  `CrewBriefEditor`) and _Clear its conversation_; `ChatView.tsx`: the board in the right panel,
+  the lead's plan in the lead's chat (`CrewLeadPlan`), and a crew thread's send as
+  `zerops.crew.command` `message` instead of a turn start; `MessagesTimeline.tsx` and
+  `conversation.logic.ts`: a message opening with `CREW_CARD_OPENER` drawn as a task card,
+  `crew.seam` activities drawn as seam lines — a save's from before the first message left out
+  (`crewChatSeams.ts`) — and an empty crewmate conversation opening with the crewmate
+  (`CrewmateEmptyState`); `TurnReport.tsx`: _Try it_ beside _Review_ on a crew task ready to land
+  (`CrewTryIt`). In a crew thread the speaker — the work line, the answer's heading, the working
+  face — is the crewmate, in its name and tint, never the Mate.
+- **The lead** reads as the lead: first in the crew on the line, named the Mate's lead on hover, a
+  Lead chip beside its name in the section, its own group first in the section, and the
+  coding-agents card names it on the login it runs on.
 - **Composer** — trigger kind `crewmate` (`composer-logic.ts`, `ComposerCommandMenu.tsx`,
   `composer-editor-mentions.ts`), offered in _Tell the crew_ and in the lead's chat, in no other
   chat. In a crewmate's chat the model, effort and permission pickers give way to one read-only
   _Runs on_ line ("Runs on Claude Code · Haiku 4.5 · High") that opens the crewmate's editor
   (`CrewRunsOnControl`, `ChatComposer.tsx`): its Runs on and the crew gate decide those, not the
   message.
-- **Sidebar** — `SidebarZeropsTree.tsx`: the crew's faces on the Mate row. A crew thread is never
+- **Sidebar** — `SidebarZeropsTree.tsx`: the crew's faces on the Mate row, and in a Mate's own
+  menu (`SidebarMateMenu.tsx`) _Set up a crew_ or _Crew_ on the viewer's own Mate with crew mode on
+  (`mateCrewItem`), opening its conversation on the Crew tab (`openCrewTab`). A crew thread is never
   an ordinary row: `Sidebar.tsx`, the command palette, the archived list, thread notifications,
   mobile's thread list and prompt-history recall all leave crew threads or cards out.
 
@@ -187,7 +196,8 @@ Every crew turn traces to a person's press.
 
 **Show on dev** (`crewClaims.ts`, `CrewRuntime.ts`): the crewmate asks with `crew_show_on_dev`
 (the request times out after 10 minutes); the person answers with `claimGrant`, `claimDeny` or
-later `claimRelease`, or presses `showOnDev` on the lane bar as request and grant at once. A grant
+later `claimRelease`, or presses `showOnDev` — _Try its work_ for a writer whose app cannot run on
+its own — as request and grant at once. A grant
 pressed while the crewmate's turn runs waits for that turn's end, then sends the claim turn as the
 person who pressed it, and keeps the request from timing out; a deny or any other move of the
 claim drops it. The waiting grant is `grantWaiting` on the wire — _Waiting on you_ reads "Allowed ·

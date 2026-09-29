@@ -81,7 +81,7 @@ const SURFACE_DISABLED_REASONS = {
   browser: "The Browser view is only available from a Zerops project thread.",
   data: "Data is only available from a Zerops project thread.",
   git: "Git is only available from a Zerops project thread.",
-  crew: "The crew's board is only available from a Zerops project thread with crew mode on.",
+  crew: "The crew is only available from a Zerops project thread with crew mode on.",
 } as const satisfies Record<Exclude<RightPanelKind, "file">, string>;
 
 /** Overlays that must win over the launcher's letter shortcuts. */

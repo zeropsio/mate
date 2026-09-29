@@ -53,6 +53,25 @@ describe("MateMenuItems — a Mate's own menu", () => {
     ]);
   });
 
+  it("opens the Mate at its crew right after Open, where its crew is the viewer's to see", () => {
+    const crew = { label: "Set up a crew", onSelect: () => {} };
+    const html = items({ crew });
+    expect(order(html)).toEqual([
+      "open",
+      "crew",
+      "open-app",
+      "copy-link",
+      "mute",
+      "unread",
+      "rename",
+      "restart",
+      "assign",
+      "move",
+    ]);
+    expect(html).toContain(">Set up a crew<");
+    expect(order(items())).not.toContain("crew");
+  });
+
   it("offers no snooze and no pin, anywhere", () => {
     const html = items({ actions: { ...ACTIONS, stop: () => {} } }).toLowerCase();
     expect(html).not.toContain("snooze");
