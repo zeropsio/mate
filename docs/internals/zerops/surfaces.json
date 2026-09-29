@@ -808,6 +808,7 @@
         "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.logic.ts",
         "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx",
         "apps/web/src/components/zerops/ZeropsNewMateForm.tsx",
+        "apps/web/src/components/zerops/MateFacePicker.tsx",
         "apps/web/src/components/zerops/ZeropsEnvironmentRow.tsx",
         "apps/web/src/components/zerops/ZeropsMateCard.tsx",
         "apps/web/src/components/zerops/ZeropsBirthProgress.tsx",
