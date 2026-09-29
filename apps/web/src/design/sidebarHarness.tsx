@@ -124,9 +124,12 @@ function candidate(
   } = {},
 ): ZeropsCandidate {
   const { connected = true, container = true, routes: theRoutes } = options;
+  // Every Mate here has its agent signed in (D6's tag); the plan set's Hollin
+  // holds the ones nobody has.
+  const tagList = tags.includes("mate") ? [...tags, "mate:signer:claude-code:u-harness"] : tags;
   const base = {
     key: `${id}:zcp`,
-    project: { id, name, status: "ACTIVE", tagList: tags },
+    project: { id, name, status: "ACTIVE", tagList },
     group: connected ? ("connected" as const) : ("ready" as const),
     // Where its conversation lives: what the jump box searches.
     ...(connected && container ? { environmentId: EnvironmentId.make(`env-${id}`) } : {}),

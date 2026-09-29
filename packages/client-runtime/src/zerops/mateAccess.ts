@@ -289,6 +289,29 @@ export function resolveMateOwner<M extends MateOwnerCandidate>(input: {
   return input.members.find((entry) => entry.user?.id === signer);
 }
 
+/**
+ * What a Mate's own records say of its person before anybody is looked up —
+ * the records `resolveMateOwner` reads, as facts: whether they name anybody at
+ * all (an `OWNER` entry, or the signer of its agent), and whether anybody has
+ * signed its agent in (D6's tag of the agent's own login; a login added
+ * beside it names only who uses that one).
+ *
+ * Read off the project alone, so a list knows them from its first paint: a
+ * Mate whose records name nobody is nobody's whether or not the member list
+ * has been read, and the first person to sign its agent in makes it theirs.
+ * The tag says who signed in, not whether the agent is signed in this minute
+ * — a sign-out keeps it — but the app writes it at every sign-in, and a
+ * credential nobody recorded is refused a turn (`unrecorded`).
+ */
+export function mateOwnerRecords(project: Pick<MateAccessProject, "tagList" | "userRoles">): {
+  readonly named: boolean;
+  readonly signedIn: boolean;
+} {
+  const signedIn = mateSignerUserId(project.tagList) !== undefined;
+  const owned = project.userRoles?.some((entry) => entry.roleCode === "OWNER") === true;
+  return { named: owned || signedIn, signedIn };
+}
+
 /** The agents whose own signer speaks for the Mate; a login added beside them names only who uses it. */
 const MATE_OWNER_SIGNER_KEYS: ReadonlySet<string> = new Set(["claude-code", "codex"]);
 

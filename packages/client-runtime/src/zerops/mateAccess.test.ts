@@ -4,6 +4,7 @@ import {
   canCreateMates,
   mateMemberName,
   mateOnlyOwnerOpensIt,
+  mateOwnerRecords,
   mateSignerTag,
   resolveMateOwner,
   resolveMateOwnerName,
@@ -230,6 +231,60 @@ describe("resolveMateOwner", () => {
       expect(resolveMateOwner({ project: owned(userRoles), members: [jan] })).toBeUndefined();
     });
   }
+});
+
+// What the menu knows of a Mate's person from its first paint, before the
+// member list is read: whether its records name anybody, and whether anybody
+// signed its agent in.
+describe("mateOwnerRecords — what a Mate's own records say of its person", () => {
+  const OWNER = { clientUserId: "cu-jan", roleCode: "OWNER" };
+  const SERVICE = { clientUserId: "cu-zcp", roleCode: "BASIC_USER" };
+  it.each([
+    {
+      name: "an OWNER entry and its agent's signer",
+      userRoles: [OWNER],
+      tagList: ["mate", "mate:signer:claude-code:u-jan"],
+      records: { named: true, signedIn: true },
+    },
+    {
+      name: "an OWNER entry, nobody signed in (a creator below ADMIN, a hand-over)",
+      userRoles: [OWNER, SERVICE],
+      tagList: ["mate"],
+      records: { named: true, signedIn: false },
+    },
+    {
+      name: "no OWNER entry, the signer names the person (an org owner's Mate)",
+      userRoles: [SERVICE],
+      tagList: ["mate", "mate:signer:codex:u-eva"],
+      records: { named: true, signedIn: true },
+    },
+    {
+      name: "no OWNER entry and nobody signed in: nobody's",
+      userRoles: [SERVICE],
+      tagList: ["mate", "mate:bot:Kai"],
+      records: { named: false, signedIn: false },
+    },
+    {
+      name: "only a login added beside the agents: nobody's",
+      userRoles: [],
+      tagList: ["mate:signer:claudeAgent-work:u-jan"],
+      records: { named: false, signedIn: false },
+    },
+    {
+      name: "a signer tag that names no user",
+      userRoles: undefined,
+      tagList: ["mate:signer:codex:"],
+      records: { named: false, signedIn: false },
+    },
+    {
+      name: "no records at all",
+      userRoles: undefined,
+      tagList: undefined,
+      records: { named: false, signedIn: false },
+    },
+  ])("$name", ({ userRoles, tagList, records }) => {
+    expect(mateOwnerRecords({ userRoles, tagList })).toEqual(records);
+  });
 });
 
 describe("the signer tag (D6)", () => {
