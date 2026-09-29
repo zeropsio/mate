@@ -8,10 +8,11 @@
  * `deriveZeropsThreadModel` and `deriveWorkLogEntries` as the card's
  * timeline does, then `stepOf` — the step, in its words and its command.
  *
- * The newest call the card would draw is the step, as the card's own now
- * takes the newest call still running; a call it draws nothing for yet (a
- * call whose input is still streaming in, a Zerops call it keeps out of the
- * chat) is none, and with none left the Mate is still thinking.
+ * The newest call the card would draw is the step, said as the card's now
+ * line says it (`nowLineWords`), and several steps at once as it says them —
+ * "Running 3 commands"; a call it draws nothing for yet (a call whose input
+ * is still streaming in, a Zerops call it keeps out of the chat) is none, and
+ * with none left the Mate is still thinking.
  */
 import {
   EventId,
@@ -26,13 +27,8 @@ import {
 } from "@t3tools/client-runtime/zerops/model";
 import { maskSecrets } from "@t3tools/shared/messagePreview";
 
-import {
-  browserCheckCaption,
-  isActivityWork,
-  isQuestionToolCall,
-  operationLineWords,
-  toolCallWords,
-} from "../components/chat/conversation.logic";
+import { isActivityWork, isQuestionToolCall } from "../components/chat/conversation.logic";
+import { nowLineWords, severalWords, type NowLine } from "../components/chat/runCard.logic";
 import { stepOf } from "../components/chat/workSteps.logic";
 import {
   deriveWorkLogEntries,
@@ -47,10 +43,8 @@ export interface LiveStepWords {
 }
 
 // The now line's words for what is no call.
-const THINKING: LiveStepWords = { words: "Thinking" };
-const WRITING: LiveStepWords = { words: "Writing" };
-/** The question tool's own words: it waits on the person. */
-const WAITING: LiveStepWords = { words: toolCallWords("AskUserQuestion") };
+const THINKING: LiveStepWords = { words: nowLineWords({ kind: "thinking", thought: null }) };
+const WRITING: LiveStepWords = { words: nowLineWords({ kind: "writing" }) };
 
 /** The turn a relayed call runs under: the running one, for the card's model. */
 const LIVE_TURN = TurnId.make("live-step");
@@ -81,25 +75,28 @@ function callActivity(call: ThreadLiveCall): OrchestrationThreadActivity {
   };
 }
 
-/** A call on its way, as the card's step says it: none for what the card's now skips. */
-function entryWords(entry: WorkLogEntry): LiveStepWords | null {
+/** One call the card's now line carries: a step, a platform operation, or its question. */
+type CallLine = Extract<NowLine, { readonly kind: "step" | "operation" | "waiting" }>;
+
+/** A call on its way, as the card's now line has it: none for what the card's now skips. */
+function entryLine(entry: WorkLogEntry): CallLine | null {
   if (entry.toolLifecycleStatus !== "inProgress" || !isActivityWork(entry)) return null;
-  if (isQuestionToolCall(entry)) return WAITING;
+  if (isQuestionToolCall(entry)) return { kind: "waiting" };
   const step = stepOf(entry);
-  // A command that says nothing of itself is its own title.
-  if (step.words === null) return step.code === null ? null : { words: step.code };
-  return step.code === null ? { words: step.words } : { words: step.words, code: step.code };
+  // A command that says nothing of itself is its own title; with no command either, nothing yet.
+  return step.words === null && step.code === null ? null : { kind: "step", step };
 }
 
-/** A platform operation running, as its row in the chat says it while it runs. */
-function operationWords(operation: ZeropsOperation): string {
-  return operation.kind === "browser"
-    ? `Checking ${browserCheckCaption(operation)}`
-    : operationLineWords(operation);
+/** A call the now line carries, in its words — a command's code after its own words. */
+function lineWords(line: CallLine): LiveStepWords {
+  const words = nowLineWords(line);
+  return line.kind === "step" && line.step.words !== null && line.step.code !== null
+    ? { words, code: line.step.code }
+    : { words };
 }
 
-/** One running call in the card's words; null for a call the card draws nothing for yet. */
-function callWords(call: ThreadLiveCall): LiveStepWords | null {
+/** One running call as the card's now line has it; null for a call the card draws nothing for yet. */
+function callLine(call: ThreadLiveCall): CallLine | null {
   const activity = callActivity(call);
   const zerops = deriveZeropsThreadModel({
     activities: [activity],
@@ -109,11 +106,13 @@ function callWords(call: ThreadLiveCall): LiveStepWords | null {
   if (zerops.zeropsActivityIds.has(activity.id)) {
     const entry = zerops.entries[0];
     if (entry === undefined) return null;
-    if (entry.kind === "generic-call") return entryWords(zeropsCallToWorkLogEntry(entry.call));
-    return entry.operation.phase === "running" ? { words: operationWords(entry.operation) } : null;
+    if (entry.kind === "generic-call") return entryLine(zeropsCallToWorkLogEntry(entry.call));
+    return entry.operation.phase === "running"
+      ? { kind: "operation", operation: entry.operation }
+      : null;
   }
   const [entry] = deriveWorkLogEntries([activity]);
-  return entry === undefined ? null : entryWords(entry);
+  return entry === undefined ? null : entryLine(entry);
 }
 
 function masked(words: LiveStepWords): LiveStepWords {
@@ -130,11 +129,15 @@ export function liveStepWords(step: ThreadLiveStep): LiveStepWords {
     case "writing":
       return WRITING;
     case "calls": {
-      for (let index = step.calls.length - 1; index >= 0; index -= 1) {
-        const words = callWords(step.calls[index]!);
-        if (words !== null) return masked(words);
-      }
-      return THINKING;
+      const lines = step.calls.flatMap((call) => {
+        const line = callLine(call);
+        return line === null ? [] : [line];
+      });
+      const steps = lines.flatMap((line) => (line.kind === "step" ? [line.step] : []));
+      // Several steps at once, as the card's now line says them.
+      if (steps.length > 1 && steps.length === lines.length) return { words: severalWords(steps) };
+      const newest = lines.at(-1);
+      return newest === undefined ? THINKING : masked(lineWords(newest));
     }
   }
 }

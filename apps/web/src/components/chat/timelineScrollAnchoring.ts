@@ -119,10 +119,22 @@ export function getAnchoredTurnMetrics({
   };
 }
 
+/**
+ * Where the person was in a conversation, kept by row, not by pixels: the row
+ * at the reading line (the viewport's top edge) and how far into it, with
+ * what it takes to find that place again once the rows have changed — a run
+ * the person watched folds when they leave it (K7), and its offset in pixels
+ * points somewhere else then.
+ */
 export interface RememberedTimelinePosition {
   readonly rowId: string;
   readonly offsetWithinRow: number;
-  readonly scrollOffset: number;
+  /** The row's height then: shorter now, it has folded. */
+  readonly rowHeight: number;
+  /** The top of the run's card the row stands in: the run's line. */
+  readonly cardTopId: string | null;
+  /** The row above it: at its foot is where a row since gone stood. */
+  readonly previousRowId: string | null;
   readonly atEnd: boolean;
 }
 
@@ -155,8 +167,8 @@ export function resolveTimelineScrollAnchor(state: {
   let low = 0;
   let high = state.data.length - 1;
   let index = 0;
-  let rowTop = state.positionAtIndex(0);
-  if (rowTop === undefined || !Number.isFinite(rowTop)) return undefined;
+  const firstTop = state.positionAtIndex(0);
+  if (firstTop === undefined || !Number.isFinite(firstTop)) return undefined;
 
   while (low <= high) {
     const middle = Math.floor((low + high) / 2);
@@ -164,16 +176,96 @@ export function resolveTimelineScrollAnchor(state: {
     if (top === undefined || !Number.isFinite(top)) return undefined;
     if (top <= scrollOffset) {
       index = middle;
-      rowTop = top;
       low = middle + 1;
     } else {
       high = middle - 1;
     }
   }
 
-  return {
-    rowId: state.data[index]!.id,
-    offsetWithinRow: Math.max(0, scrollOffset - rowTop),
-    scrollOffset,
-  };
+  return { rowId: state.data[index]!.id, index };
+}
+
+/** The run's line and the row above, for the row at `index`. */
+export function describeTimelineAnchor(
+  rows: ReadonlyArray<{ readonly id: string; readonly card?: "top" | "middle" | "bottom" }>,
+  index: number,
+): Pick<RememberedTimelinePosition, "cardTopId" | "previousRowId"> {
+  let cardTopId: string | null = null;
+  if (rows[index]?.card !== undefined) {
+    for (let cursor = index; cursor >= 0; cursor -= 1) {
+      if (rows[cursor]!.card === "top") {
+        cardTopId = rows[cursor]!.id;
+        break;
+      }
+    }
+  }
+  return { cardTopId, previousRowId: rows[index - 1]?.id ?? null };
+}
+
+/**
+ * Where a remembered position lands: the reading line exactly where it was
+ * (`row`), or a row's top or foot where a conversation's first line sits,
+ * clear of the fade under the header (`line`).
+ */
+export type TimelineRestoreTarget =
+  | { readonly kind: "end" }
+  | { readonly kind: "row"; readonly rowId: string; readonly offsetWithinRow: number }
+  | { readonly kind: "line"; readonly rowId: string; readonly edge: "top" | "foot" };
+
+/** A row this much shorter than it was has folded; less is the measure's rounding. */
+const FOLDED_BY_PX = 1;
+
+/**
+ * Where a remembered position lands in the rows as they are now, measured
+ * once they are: the same line of the same row; the run's line when the row
+ * has folded since or is gone from its card; the foot of the row above one
+ * gone from outside a card; the end when nothing of it is left.
+ */
+export function resolveTimelineRestoreTarget({
+  position,
+  rowIds,
+  heightOf,
+}: {
+  readonly position: RememberedTimelinePosition;
+  readonly rowIds: ReadonlyArray<string>;
+  /** The row's height as measured now, once it is. */
+  readonly heightOf: (rowId: string) => number | undefined;
+}): TimelineRestoreTarget {
+  if (position.atEnd) return { kind: "end" };
+  const present = (rowId: string | null): rowId is string =>
+    rowId !== null && rowIds.includes(rowId);
+  const runLine = present(position.cardTopId) ? position.cardTopId : null;
+  if (present(position.rowId)) {
+    const height = heightOf(position.rowId);
+    if (height === undefined || height > position.rowHeight - FOLDED_BY_PX) {
+      return { kind: "row", rowId: position.rowId, offsetWithinRow: position.offsetWithinRow };
+    }
+    return { kind: "line", rowId: runLine ?? position.rowId, edge: "top" };
+  }
+  if (runLine !== null) return { kind: "line", rowId: runLine, edge: "top" };
+  if (present(position.previousRowId)) {
+    return { kind: "line", rowId: position.previousRowId, edge: "foot" };
+  }
+  return { kind: "end" };
+}
+
+/** A declared CSS length in px: rem against the root's font size; anything else is none. */
+export function cssLengthToPx(value: string, rootFontSize: number): number {
+  const length = /^(\d+(?:\.\d+)?)(rem|px)$/u.exec(value.trim());
+  if (length === null) return 0;
+  return length[2] === "rem" ? Number(length[1]) * rootFontSize : Number(length[1]);
+}
+
+/**
+ * Where a conversation's first line sits in `scroller`: under the fade the
+ * header casts on the list, when it casts one — a run's line put back at the
+ * very top would stand half faded.
+ */
+export function readTimelineFirstLineInset(scroller: Element): number {
+  const view = scroller.ownerDocument.defaultView;
+  if (view === null) return 0;
+  return cssLengthToPx(
+    view.getComputedStyle(scroller).getPropertyValue("--topbar-scroll-fade-height"),
+    Number.parseFloat(view.getComputedStyle(scroller.ownerDocument.documentElement).fontSize),
+  );
 }

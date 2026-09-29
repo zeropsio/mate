@@ -132,7 +132,7 @@ export function rememberedRowOf(activity: ZeropsAgentActivity): RememberedRow {
 /**
  * A remembered row as an activity to draw: its words and its time, and
  * nothing that is only true now — at rest, no status, no plan, no pause —
- * so no clock ticks, no ring turns and no *Stop* is offered from memory.
+ * so no clock ticks and no *Stop* is offered from memory.
  */
 export function activityFromMemory(row: RememberedRow): ZeropsAgentActivity {
   return {
@@ -144,7 +144,6 @@ export function activityFromMemory(row: RememberedRow): ZeropsAgentActivity {
     at: row.at,
     snippet: row.snippet,
     ...(row.awaitingWords === true ? { awaitingWords: true as const } : {}),
-    progress: undefined,
     unread: row.unread,
     pausedUntil: undefined,
     threadKey: row.threadKey,

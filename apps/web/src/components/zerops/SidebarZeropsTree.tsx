@@ -123,7 +123,7 @@ import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { SidebarCrewLine, type SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { SidebarSelectedBand } from "./SidebarSelectedBand";
-import { KeyChip, MateFace, PlanRing } from "./primitives";
+import { KeyChip, MateFace } from "./primitives";
 import { groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
 import { formatWorkingTime, isQuietMate, sidebarMateKey } from "./SidebarZeropsTree.logic";
 import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
@@ -1892,8 +1892,6 @@ function MateRow<T extends RosterCandidate>({
   // A new ask rises into the row's second line as the person sets it; the
   // ask this browser remembered gives way to the one read without a rise.
   const askChanged = useChangedSinceShown(view.ask, known);
-  // The plan as a ring around the face while it works: one segment a step.
-  const progress = view.face === "working" ? live?.progress : undefined;
   const unread = live?.unread === true;
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuAt, setMenuAt] = useState<MenuPoint | undefined>(undefined);
@@ -2011,8 +2009,8 @@ function MateRow<T extends RosterCandidate>({
         <span className="relative flex size-7">
           {/* The Mate wears the card's face rather than a row's, whole: the
               person it belongs to stands before its name instead of on its
-              corner. A ring, when it works, stands 4px clear all round, over
-              the row's own padding, so it never moves a line. */}
+              corner, and nothing rings it — the step it is on is its row's
+              third line. */}
           <span className="relative flex">
             {/* Until its socket answers the face stands in idle or asleep, the
                 row's words as this browser remembered them: a Mate found
@@ -2028,11 +2026,6 @@ function MateRow<T extends RosterCandidate>({
               state={view.face}
               tint={tint}
             />
-            {progress === undefined ? null : (
-              <span className="absolute -inset-1 flex" data-zerops-surface="sidebar-mate-ring">
-                <PlanRing completed={progress.completed} total={progress.total} />
-              </span>
-            )}
           </span>
         </span>
         {/* One even leading, three lines of one thing: the name 14/20, what

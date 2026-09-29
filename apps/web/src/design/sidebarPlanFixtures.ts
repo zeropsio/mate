@@ -154,7 +154,6 @@ function activity(
     subject: undefined,
     snippet: undefined,
     at: minutesAgo(minutes),
-    progress: undefined,
     unread: false,
     pausedUntil: undefined,
     threadKey: `env-${id}:thread-${id}`,

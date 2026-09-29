@@ -68,11 +68,11 @@ import type { SidebarCrewRead } from "~/components/zerops/crew/SidebarCrewLine";
 import { SidebarZeropsTree, type SidebarProjectFlow } from "~/components/zerops/SidebarZeropsTree";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { writeCollapsedProjects } from "~/zerops/collapsedProjects";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
 import { shownInScope, useMateScope } from "~/zerops/mateScope";
 import { isMacPlatform } from "~/lib/utils";
+import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { formatShortTimestamp } from "~/timestampFormat";
 import { slashKeyOpensJumpBox } from "~/zerops/jumpSlash";
 import { useSidebarJump } from "~/zerops/sidebarJump";
@@ -154,7 +154,6 @@ function activity(input: {
   readonly hours: number;
   readonly face: ZeropsAgentActivity["face"];
   readonly kind?: ZeropsAgentActivity["kind"];
-  readonly progress?: ZeropsAgentActivity["progress"];
   readonly unread?: boolean;
   readonly pausedUntil?: string;
   readonly task?: string;
@@ -168,7 +167,6 @@ function activity(input: {
     subject: input.subject,
     snippet: input.snippet,
     at: hoursAgo(input.hours),
-    progress: input.progress,
     unread: input.unread ?? false,
     pausedUntil: input.pausedUntil,
     threadKey: `env-${id}:thread-${id}`,
@@ -299,7 +297,6 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
         hours: 0.053,
         face: "working",
         kind: "working",
-        progress: { completed: 2, total: 5 },
       }),
       liveStep: { words: "Build the app", code: "pnpm build" },
     },
@@ -1075,10 +1072,18 @@ function Harness() {
 // The app sets the theme on the document element (`themePalette.ts`), so the
 // harness does the same rather than nesting a `.dark` wrapper the tokens never
 // reach — which is exactly how the first pass produced two identical light panels.
-const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
-document.documentElement.classList.toggle("dark", appearance === "dark");
-// In the Zerops palette a fresh install wears, as the app paints it.
-applyThemePalette(ZEROPS_THEME_ID, appearance);
+document.documentElement.classList.toggle(
+  "dark",
+  new URLSearchParams(location.search).get("theme") === "dark",
+);
+// The app's own palette with `?palette=zerops`, so a capture reads in the
+// colours the app paints — the base tokens are not the owner's menu.
+if (new URLSearchParams(location.search).get("palette") === "zerops") {
+  applyThemePalette(
+    ZEROPS_THEME_ID,
+    new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light",
+  );
+}
 
 // An account is open, as in the app: the order and the mutes are kept under
 // its key. A draft stands in Iris's composer, as the composer would keep it.

@@ -101,7 +101,6 @@ describe("mateRowView — a row's state lives in its right slot and its third li
     subject: "Tune the storefront",
     at: AT,
     snippet: "Merged the image pipeline; the cart renders in 80 ms.",
-    progress: undefined,
     unread: false,
     pausedUntil: undefined,
     threadKey: "env:thread-1",

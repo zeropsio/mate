@@ -614,6 +614,7 @@ function record(overrides: Partial<RecordRow>): RecordRow {
     now: null,
     answering: false,
     status: status({}),
+    outcome: null,
     ...overrides,
   };
 }
@@ -674,6 +675,7 @@ const SHARED: TimelineRowSharedState = {
   onRemoveQueuedMessage: () => undefined,
   arrivedAfter: null,
   syncing: false,
+  onHoldReading: () => undefined,
 };
 
 const WORKING: TimelineRowActivityState = {

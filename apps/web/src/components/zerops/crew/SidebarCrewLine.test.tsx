@@ -3,7 +3,7 @@ import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew"
 import { EnvironmentId } from "@t3tools/contracts";
 import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { create } from "react-test-renderer";
+import { create, type ReactTestInstance } from "react-test-renderer";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { ReviewContext } from "../../../zerops/review";
@@ -14,6 +14,11 @@ vi.mock("../../../zerops/crew/useCrew", () => ({ useCrew: () => read.current }))
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => () => undefined }));
 
 const ENVIRONMENT = EnvironmentId.make("env-crew");
+
+/** Everything a node says, as text. */
+function text(node: ReactTestInstance): string {
+  return node.children.map((child) => (typeof child === "string" ? child : text(child))).join("");
+}
 
 /** The fixture's crew with nothing waiting on you, and task 13 ready for your Land. */
 function applied(overrides: { readonly ready?: boolean; readonly waiting?: boolean } = {}) {
@@ -88,7 +93,9 @@ describe("SidebarCrewLine", () => {
     const fact = tree.root.find(
       (node) => node.props["data-zerops-surface"] === "sidebar-crew-fact",
     );
-    expect(fact.children).toEqual(["1 task ready to land"]);
+    expect(text(fact)).toBe("1 task ready to land");
+    // In a narrow menu the fact gives way to the faces; its Review still names it.
+    expect(review.props["aria-label"]).toBe("Review: 1 task ready to land");
     const pressed = { tagName: "BUTTON" };
     act(() => {
       review.props.onClick({ currentTarget: pressed });
