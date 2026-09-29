@@ -174,7 +174,7 @@ import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
 import { CrewBoardPanel } from "./zerops/crew/CrewBoardPanel";
 import { useCrew } from "../zerops/crew/useCrew";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
-import { useZeropsNextStepBanner } from "./zerops/ZeropsNextStepBanner";
+import { useZeropsNextStepStrip } from "./zerops/ZeropsNextStepBanner";
 import { zeropsMateAt } from "../zerops/mateIdentities";
 import { useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
@@ -5266,11 +5266,12 @@ export default function ChatView(props: ChatViewProps) {
   }, [openAgentAuthDialog, zeropsAgentOwnership, zeropsOwnedAgent, zeropsReadOnly]);
 
   /**
-   * The one next step this Mate's conversation offers, from the project's
-   * flow rather than from what the agent said (`ZeropsNextStepBanner.tsx`);
-   * it gives way while a question or an approval waits on the person.
+   * The composer's top: this Mate's change waiting for the person's review,
+   * from the project's flow rather than from what the agent said
+   * (`ZeropsNextStepBanner.tsx`); it gives way while a question or an
+   * approval waits on the person.
    */
-  const mateNextStepBannerItem = useZeropsNextStepBanner(activeThreadRef, {
+  const composerTop = useZeropsNextStepStrip(activeThreadRef, {
     question: activePendingUserInput !== null,
     approval: activePendingApproval !== null,
   });
@@ -5483,7 +5484,6 @@ export default function ChatView(props: ChatViewProps) {
       ...(agentOwnershipBannerItem === null ? [] : [agentOwnershipBannerItem]),
       ...systemComposerBannerItems.filter(isUrgentSystemItem),
     ];
-    const mateNextStepItems = mateNextStepBannerItem === null ? [] : [mateNextStepBannerItem];
     const alsoWorkingItems = alsoWorkingBannerItem === null ? [] : [alsoWorkingBannerItem];
     const calmSystemItems = systemComposerBannerItems.filter((item) => !isUrgentSystemItem(item));
     const resumeCompactionItems =
@@ -5497,7 +5497,6 @@ export default function ChatView(props: ChatViewProps) {
       return [
         ...urgentSystemItems,
         ...usageLimitsItems,
-        ...mateNextStepItems,
         ...crewBannerItems,
         ...alsoWorkingItems,
         ...feedbackBannerItems,
@@ -5511,7 +5510,6 @@ export default function ChatView(props: ChatViewProps) {
     return [
       ...urgentSystemItems,
       ...usageLimitsItems,
-      ...mateNextStepItems,
       ...crewBannerItems,
       ...alsoWorkingItems,
       ...feedbackBannerItems,
@@ -5569,7 +5567,6 @@ export default function ChatView(props: ChatViewProps) {
     handleRestoreThreadBranch,
     isRestoringThreadBranch,
     localCheckoutBranchMismatch,
-    mateNextStepBannerItem,
     parkedThreadBannerItem,
     projectCloneBannerItem,
     resumeCompactionBannerItem,
@@ -6867,7 +6864,7 @@ export default function ChatView(props: ChatViewProps) {
           releaseAttachmentUploads(composerImagesSnapshot);
         }
         acknowledgeActiveThreadWoke();
-        // New session in the main chat archived it with its pin: the chat
+        // Archive and start fresh in the main chat archived it with its pin: the chat
         // that took its place is main from its first send.
         if (isLocalDraftThread && zeropsMateAt(zeropsMates, environmentId).kind === "mate") {
           const mainChat = replacementChatToPin(
@@ -7058,7 +7055,7 @@ export default function ChatView(props: ChatViewProps) {
   const startFreshConversation = async () => {
     if (!activeThreadRef) return;
     const result = await archiveThread(activeThreadRef, {
-      toast: { title: "Started a new session", description: "The last one is under Archived." },
+      toast: { title: "Started fresh", description: "The last conversation is under Archived." },
     });
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       const error = squashAtomCommandFailure(result);
@@ -7066,9 +7063,7 @@ export default function ChatView(props: ChatViewProps) {
       toastManager.add(
         stackedThreadToast({
           type: "warning",
-          title: blocked
-            ? "Stop the agent before starting a new session"
-            : "Couldn't start a new session",
+          title: blocked ? "Stop the agent before starting fresh" : "Couldn't start fresh",
           description: blocked ? undefined : String(error),
         }),
       );
@@ -8307,7 +8302,7 @@ export default function ChatView(props: ChatViewProps) {
                           "chat-composer-glass-shell-with-context",
                       )}
                     >
-                      <div className="chat-composer-glass-host relative z-10 w-full rounded-[22px]">
+                      <div className="chat-composer-glass-host relative z-10 w-full">
                         <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
                           {zeropsReadOnly !== null ? (
                             <ZeropsReadOnlyConversationFooter
@@ -8344,6 +8339,7 @@ export default function ChatView(props: ChatViewProps) {
                                 crewComposerPlaceholder ?? connectedComposerPlaceholder
                               }
                               mentionCrewmates={crewMentions}
+                              top={composerTop}
                               {...(crewRunsOnLabel === null || activeCrewmate === null
                                 ? {}
                                 : {

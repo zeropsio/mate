@@ -680,6 +680,28 @@ export function crewDevHostDatabaseWord(database: boolean | null): string {
 /** The lead's mark beside its name (PRD §2.3, §4.6), and its accessible name in the strip. */
 export const CREW_LEAD_WORD = "Lead";
 
+/**
+ * The crew's one line under its Mate in the left menu says its most urgent
+ * fact: who needs you, the lead first — "Bo needs you", "Bo and Cy need
+ * you", "Bo and 2 others need you".
+ */
+export function crewLineNeedsWord(names: ReadonlyArray<string>): string {
+  const [first, second, ...rest] = names;
+  if (second === undefined) return `${first ?? "The crew"} needs you`;
+  if (rest.length === 0) return `${first} and ${second} need you`;
+  return `${first} and ${String(names.length - 1)} others need you`;
+}
+
+/** A crewmate's face on that line, as its tooltip and accessible name say it. */
+export function crewFaceWord(name: string, lead: boolean): string {
+  return lead ? `${name}, the lead` : name;
+}
+
+/** …or how many tasks wait for your *Land*: "1 task ready to land". */
+export function crewLineReadyWord(count: number): string {
+  return `${String(count)} ${count === 1 ? "task" : "tasks"} ready to land`;
+}
+
 /** What the lead does, where a writer's chat shows its copy of the code (PRD §4.6). */
 export const CREW_LEAD_ROLE_LINE = "Plans and reviews · no copy of the code";
 

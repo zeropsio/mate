@@ -142,3 +142,48 @@ describe("ProviderModelPicker", () => {
     expect(markup).not.toContain(">missing-model<");
   });
 });
+
+describe("ProviderModelPicker in the composer", () => {
+  // The composer's one quiet control (C4): the model beside its agent's mark,
+  // then its effort, and the shortcuts that open the one menu.
+  it("says the model and its effort on one quiet control", () => {
+    const instanceId = ProviderInstanceId.make("claudeAgent");
+    const markup = renderToStaticMarkup(
+      <ProviderModelPicker
+        activeInstanceId={instanceId}
+        model="claude-sonnet-5"
+        lockedProvider={null}
+        instanceEntries={[providerEntry("claudeAgent", "claudeAgent")]}
+        modelOptionsByInstance={
+          new Map([[instanceId, [{ slug: "claude-sonnet-5", name: "Claude Sonnet 5" }]]])
+        }
+        composer={{
+          traits: {
+            descriptors: [
+              {
+                id: "effort",
+                label: "Reasoning",
+                type: "select",
+                options: [
+                  { id: "low", label: "Low" },
+                  { id: "high", label: "High", isDefault: true },
+                ],
+              },
+            ],
+            ultrathinkPromptControlled: false,
+          },
+          choices: null,
+          shortcuts: "composer.effort composer.mode",
+        }}
+        onInstanceModelChange={() => {}}
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Sonnet 5 · High"');
+    expect(markup).toContain(">Sonnet 5<");
+    expect(markup).toContain("· High");
+    expect(markup).not.toContain("Claude Sonnet 5<");
+    expect(markup).toContain('data-composer-shortcut="composer.effort composer.mode"');
+    expect(markup).toContain("text-line");
+  });
+});

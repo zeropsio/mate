@@ -216,7 +216,6 @@ import {
 } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { useAddMateIntent } from "../zerops/addMateIntent";
-import { useAskMate } from "../zerops/useAskMate";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
@@ -234,11 +233,10 @@ import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
 import { useSidebarWaiting } from "../zerops/useSidebarWaiting";
 import { shownInScope, useMateScope } from "../zerops/mateScope";
-import { SidebarJumpRow } from "./zerops/SidebarJumpRow";
+import { SidebarJumpButton } from "./zerops/SidebarJumpButton";
 import { useOpenMate } from "../zerops/useOpenMate";
 import { SidebarWaitingStack } from "./zerops/SidebarWaitingStack";
 
-import { SidebarMatePeekLive } from "./zerops/SidebarMatePeekLive";
 import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
 import { placedBirthsIn, useZeropsBirths } from "../zerops/zeropsBirths";
 import {
@@ -1851,23 +1849,11 @@ export default function Sidebar() {
         // The stops the recipe offers and nobody has added: a next step the
         // timeline used not to mention at all.
         missing: flow.missing,
-        merging: (pull) =>
-          zeropsProjectFlow.pending.has(
-            flowVerbKey({
-              kind: "merge",
-              slug: flow.slug,
-              repository: pull.repository,
-              number: pull.number,
-            }),
-          ),
         releasing: zeropsProjectFlow.pending.has(flowVerbKey({ kind: "release", groupId })),
         // The version the verb would cut, so its confirm can name it.
         releaseTag: flow.release.suggestion,
         // The release on its way, which production's line says.
         releaseInFlight: flow.release.inFlight,
-        onMerge: (pull) => {
-          void zeropsProjectFlow.mergePullRequest(flow.slug, pull);
-        },
         onRelease: () => {
           void zeropsProjectFlow.release(groupId);
         },
@@ -1877,28 +1863,6 @@ export default function Sidebar() {
   );
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
-  /**
-   * Hands a blocked change back to the Mate that wrote it.
-   *
-   * "who is going to deal with it? you still need the agent to take care of
-   * it" (the owner, 2026-09-19): a rebase happens in the Mate's own checkout,
-   * so the menu opens that Mate's conversation with the request already
-   * written. It stops there rather than sending — every change to a project
-   * goes through the agent's own tools, and the seam where a prompt is
-   * composed and a person presses send is the one the quick actions and the
-   * file browser already use.
-   */
-  const handOver = useAskMate({
-    onNavigate: () => {
-      if (isMobile) setOpenMobile(false);
-    },
-  });
-  const askMate = useCallback<NonNullable<SidebarProjectFlow["onAsk"]>>(
-    (pull, ask) => {
-      handOver(pull.mateProjectId, ask);
-    },
-    [handOver],
-  );
   /** A stop's page, in place of the thread — the sidebar stays where it is. */
   const openStop = useCallback(
     (groupId: string, row: EnvironmentRow) => {
@@ -1929,14 +1893,13 @@ export default function Sidebar() {
     },
     [router],
   );
-  const zeropsSidebarFlowWithAsk = useCallback(
+  const zeropsSidebarFlowWithPages = useCallback(
     (groupId: string): SidebarProjectFlow | undefined => {
       const base = zeropsSidebarFlow(groupId);
       return base === undefined
         ? undefined
         : {
             ...base,
-            onAsk: askMate,
             onOpenStop: (row) => {
               openStop(groupId, row);
             },
@@ -1945,7 +1908,7 @@ export default function Sidebar() {
             },
           };
     },
-    [zeropsSidebarFlow, askMate, openStop, openChange],
+    [zeropsSidebarFlow, openStop, openChange],
   );
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const autoSettleAfterDays = useClientSettings((s) => s.sidebarAutoSettleAfterDays);
@@ -3906,6 +3869,23 @@ export default function Sidebar() {
     <>
       <SidebarChromeHeader
         isElectron={isElectron}
+        jump={
+          // Every environment is in the roster: there is no thread list to
+          // search, and the jump box finds anything the menu holds — from one
+          // small control in the logo row (M12). A new project is the list's
+          // last row, and one of the box's finds.
+          rosterOnly ? (
+            <SidebarJumpButton
+              onJump={() => {
+                // A phone's menu steps aside for the box, and comes back
+                // to show what is found in it (`SidebarRevealBridge`).
+                if (isMobile) setOpenMobile(false);
+                openCommandPalette();
+              }}
+              shortcut={shortcutLabelForCommand(keybindings, "commandPalette.toggle") ?? undefined}
+            />
+          ) : undefined
+        }
         waiting={
           zeropsSignedIn ? (
             <SidebarWaitingStack mates={zeropsWaiting.mates} onNext={zeropsWaiting.next} />
@@ -3914,27 +3894,10 @@ export default function Sidebar() {
       />
       <SidebarContent
         fixedHeader={
-          // Lifted above the stage backdrop, whose fade bleeds below the
-          // header and would otherwise paint across the search row's outline.
-          <SidebarGroup className="z-[1] gap-1">
-            {rosterOnly ? (
-              // Every environment is in the roster: there is no thread list to
-              // search and no project to start a thread in. The jump box finds
-              // anything the menu holds, and the one thing to make from here
-              // is another project.
-              <SidebarJumpRow
-                onJump={() => {
-                  // A phone's menu steps aside for the box, and comes back
-                  // to show what is found in it (`SidebarRevealBridge`).
-                  if (isMobile) setOpenMobile(false);
-                  openCommandPalette();
-                }}
-                onNewProject={navigateToNewZeropsProject}
-                shortcut={
-                  shortcutLabelForCommand(keybindings, "commandPalette.toggle") ?? undefined
-                }
-              />
-            ) : (
+          rosterOnly ? undefined : (
+            // Lifted above the stage backdrop, whose fade bleeds below the
+            // header and would otherwise paint across the search row's outline.
+            <SidebarGroup className="z-[1] gap-1">
               <div className="flex items-center gap-1">
                 <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground">
                   <SearchIcon className="size-4 shrink-0 text-sidebar-muted-foreground/80" />
@@ -4025,120 +3988,122 @@ export default function Sidebar() {
                   </Tooltip>
                 </div>
               </div>
-            )}
-            {projectGroups.length > 0 ? (
-              <div className="flex items-center gap-1">
-                <Menu open={projectScopeMenuOpen} onOpenChange={setProjectScopeMenuOpen}>
-                  <MenuTrigger
-                    render={
-                      <SidebarMenuButton
-                        aria-label="Filter threads by project"
-                        className="min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
-                      />
-                    }
-                  >
-                    {scopedProjectGroup ? (
-                      <ProjectFavicon
-                        environmentId={scopedProjectGroup.environmentId}
-                        cwd={scopedProjectGroup.workspaceRoot}
-                        faviconPath={scopedProjectGroup.faviconPath}
-                        className="size-4 shrink-0"
-                      />
-                    ) : (
-                      <FolderIcon className="size-4 shrink-0" />
-                    )}
-                    <span className="min-w-0 flex-1 truncate">
-                      {scopedProjectGroup?.displayName ?? "All projects"}
-                    </span>
-                    <ChevronDownIcon className="-mr-px size-4 shrink-0" />
-                  </MenuTrigger>
-                  <MenuPopup align="start" className="w-(--anchor-width)">
-                    <MenuRadioGroup
-                      value={projectScopeKey ?? "all"}
-                      onValueChange={(value) =>
-                        setProjectScopeKey(value === "all" ? null : (value as string))
+              {projectGroups.length > 0 ? (
+                <div className="flex items-center gap-1">
+                  <Menu open={projectScopeMenuOpen} onOpenChange={setProjectScopeMenuOpen}>
+                    <MenuTrigger
+                      render={
+                        <SidebarMenuButton
+                          aria-label="Filter threads by project"
+                          className="min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+                        />
                       }
                     >
-                      <MenuRadioItem
-                        value="all"
-                        closeOnClick
-                        className="h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2"
-                      >
+                      {scopedProjectGroup ? (
+                        <ProjectFavicon
+                          environmentId={scopedProjectGroup.environmentId}
+                          cwd={scopedProjectGroup.workspaceRoot}
+                          faviconPath={scopedProjectGroup.faviconPath}
+                          className="size-4 shrink-0"
+                        />
+                      ) : (
                         <FolderIcon className="size-4 shrink-0" />
-                        <span className="min-w-0 truncate text-sm">All projects</span>
-                      </MenuRadioItem>
-                      {projectGroups.map((project) => {
-                        const scopeKey = project.projectKey;
-                        return (
-                          <MenuRadioItem
-                            key={scopeKey}
-                            value={scopeKey}
-                            closeOnClick
-                            className="h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2"
-                          >
-                            <ProjectFavicon
-                              environmentId={project.environmentId}
-                              cwd={project.workspaceRoot}
-                              faviconPath={project.faviconPath}
-                              className="size-4 shrink-0"
-                            />
-                            <span className="min-w-0 truncate text-sm">{project.displayName}</span>
-                            <Button
-                              size="icon-xs"
-                              variant="ghost-muted"
-                              aria-label={`Add source to ${project.displayName}`}
-                              title={`Add source to ${project.displayName}`}
-                              className="ml-auto"
-                              onPointerDown={(event) => event.stopPropagation()}
-                              onClick={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                openAddProjectSourcePicker(project.environmentId);
-                              }}
+                      )}
+                      <span className="min-w-0 flex-1 truncate">
+                        {scopedProjectGroup?.displayName ?? "All projects"}
+                      </span>
+                      <ChevronDownIcon className="-mr-px size-4 shrink-0" />
+                    </MenuTrigger>
+                    <MenuPopup align="start" className="w-(--anchor-width)">
+                      <MenuRadioGroup
+                        value={projectScopeKey ?? "all"}
+                        onValueChange={(value) =>
+                          setProjectScopeKey(value === "all" ? null : (value as string))
+                        }
+                      >
+                        <MenuRadioItem
+                          value="all"
+                          closeOnClick
+                          className="h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2"
+                        >
+                          <FolderIcon className="size-4 shrink-0" />
+                          <span className="min-w-0 truncate text-sm">All projects</span>
+                        </MenuRadioItem>
+                        {projectGroups.map((project) => {
+                          const scopeKey = project.projectKey;
+                          return (
+                            <MenuRadioItem
+                              key={scopeKey}
+                              value={scopeKey}
+                              closeOnClick
+                              className="h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2"
                             >
-                              <GitBranchIcon className="size-3.5" />
-                            </Button>
-                            <Button
-                              size="icon-xs"
-                              variant="ghost-muted"
-                              aria-label={`Project settings for ${project.displayName}`}
-                              title={`Project settings for ${project.displayName}`}
-                              onPointerDown={(event) => event.stopPropagation()}
-                              onClick={(event) => {
-                                void handleProjectSettings(event, project);
-                              }}
-                            >
-                              <SettingsIcon className="size-3.5" />
-                            </Button>
-                          </MenuRadioItem>
-                        );
-                      })}
-                    </MenuRadioGroup>
-                  </MenuPopup>
-                </Menu>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <SidebarMenuButton
-                        size="icon"
-                        className="relative shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
-                        onClick={navigateToNewZeropsProject}
-                        type="button"
-                        aria-label="New project"
+                              <ProjectFavicon
+                                environmentId={project.environmentId}
+                                cwd={project.workspaceRoot}
+                                faviconPath={project.faviconPath}
+                                className="size-4 shrink-0"
+                              />
+                              <span className="min-w-0 truncate text-sm">
+                                {project.displayName}
+                              </span>
+                              <Button
+                                size="icon-xs"
+                                variant="ghost-muted"
+                                aria-label={`Add source to ${project.displayName}`}
+                                title={`Add source to ${project.displayName}`}
+                                className="ml-auto"
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  openAddProjectSourcePicker(project.environmentId);
+                                }}
+                              >
+                                <GitBranchIcon className="size-3.5" />
+                              </Button>
+                              <Button
+                                size="icon-xs"
+                                variant="ghost-muted"
+                                aria-label={`Project settings for ${project.displayName}`}
+                                title={`Project settings for ${project.displayName}`}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                  void handleProjectSettings(event, project);
+                                }}
+                              >
+                                <SettingsIcon className="size-3.5" />
+                              </Button>
+                            </MenuRadioItem>
+                          );
+                        })}
+                      </MenuRadioGroup>
+                    </MenuPopup>
+                  </Menu>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <SidebarMenuButton
+                          size="icon"
+                          className="relative shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+                          onClick={navigateToNewZeropsProject}
+                          type="button"
+                          aria-label="New project"
+                        />
+                      }
+                    >
+                      <FolderPlusIcon />
+                      <span
+                        className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
+                        aria-hidden="true"
                       />
-                    }
-                  >
-                    <FolderPlusIcon />
-                    <span
-                      className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
-                      aria-hidden="true"
-                    />
-                  </TooltipTrigger>
-                  <TooltipPopup side="right">New project</TooltipPopup>
-                </Tooltip>
-              </div>
-            ) : null}
-          </SidebarGroup>
+                    </TooltipTrigger>
+                    <TooltipPopup side="right">New project</TooltipPopup>
+                  </Tooltip>
+                </div>
+              ) : null}
+            </SidebarGroup>
+          )
         }
       >
         <SidebarGroup className="ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0">
@@ -4158,11 +4123,10 @@ export default function Sidebar() {
               }}
               onAddMate={requestAddMate}
               onBrowseProjects={navigateToZeropsProjects}
-              getFlow={zeropsSidebarFlowWithAsk}
+              onNewProject={navigateToNewZeropsProject}
+              getFlow={zeropsSidebarFlowWithPages}
               getOwner={zeropsMateOwner}
               getMateActions={zeropsMateMenus.getMateActions}
-              phone={isMobile}
-              renderPeek={(peek) => <SidebarMatePeekLive peek={peek} />}
               shown={zeropsShown}
               timestampFormat={timestampFormat}
               onOpenGroup={openGroup}

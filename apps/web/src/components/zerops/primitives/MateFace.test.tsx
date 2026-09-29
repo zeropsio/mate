@@ -149,7 +149,7 @@ describe("MateFace", () => {
     act(() => renderer!.unmount());
   });
 
-  // A face reused from one Mate to the next (a header, a peek), or drawn
+  // A face reused from one Mate to the next (a header), or drawn
   // asleep until its Mate connects, would greet arrivals that never happened:
   // greeting is the menu row's and the status line's alone.
   it("greets nothing unless asked to", () => {

@@ -1,16 +1,10 @@
-export const COMPOSER_FOOTER_COMPACT_BREAKPOINT_PX = 620;
 export const COMPOSER_FOOTER_WIDE_ACTIONS_COMPACT_BREAKPOINT_PX = 780;
 
-export function shouldUseCompactComposerFooter(
-  width: number | null,
-  options?: { hasWideActions?: boolean },
-): boolean {
-  const breakpoint = options?.hasWideActions
-    ? COMPOSER_FOOTER_WIDE_ACTIONS_COMPACT_BREAKPOINT_PX
-    : COMPOSER_FOOTER_COMPACT_BREAKPOINT_PX;
-  return width !== null && width < breakpoint;
-}
-
+/**
+ * Whether the composer's labeled primary actions (Submit answers, Implement)
+ * shorten to fit: only while they are wide, below the width that holds them
+ * beside the toolbar's one control.
+ */
 export function shouldUseCompactComposerPrimaryActions(
   width: number | null,
   options?: { hasWideActions?: boolean },

@@ -40,8 +40,8 @@ import {
 import {
   ActivityIcon,
   AppWindowIcon,
+  AsteriskIcon,
   BotIcon,
-  BrainIcon,
   ChevronDownIcon,
   FilePenLineIcon,
   FileTextIcon,
@@ -62,6 +62,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
   type UIEvent,
 } from "react";
@@ -93,7 +94,7 @@ import {
   type WorkLineFace,
 } from "./conversation.logic";
 import { StatusBar, type BarTone } from "./ConversationPills";
-import { ElapsedSince, MATE_BUBBLE_FILL, RunClock, settledRunVerb } from "./ConversationRows";
+import { ElapsedSince, RunClock, settledRunVerb } from "./ConversationRows";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
   normalizeCompactToolLabel,
@@ -214,11 +215,11 @@ const FOLD_FADE_HEIGHT_REM = 1.75;
 /** A folded message's bottom, fading into the bubble it sits in. */
 export const FOLD_FADE_MASK = `linear-gradient(to bottom, black calc(100% - ${FOLD_FADE_HEIGHT_REM}rem), transparent)`;
 
-/** A thought's surface: the Mate's own fill, halved. */
-const THOUGHT_FILL = "bg-foreground/4";
+/** A thought's surface: the faintest fill in the card — the quietest thing in it. */
+const THOUGHT_FILL = "bg-foreground/3";
 
-/** What the Mate did: the card's white inside a hairline drawn outside the box, so it takes no room. */
-const CALL_SURFACE = "bg-card ring-1 ring-foreground/12";
+/** What the Mate did: a light hairline drawn outside the box, so it takes no room — outlined on the tray, never filled. */
+const CALL_SURFACE = "ring-1 ring-foreground/9";
 
 // ---------------------------------------------------------------------------
 // The chat's scroll
@@ -419,7 +420,7 @@ function ChatScroll({
           <ol
             ref={contentRef}
             aria-label={label}
-            className={cn("mt-auto flex min-w-0 flex-col gap-4", empty ? "pt-3" : "pt-2 pb-4")}
+            className={cn("mt-auto flex min-w-0 flex-col gap-3", empty ? "pt-1" : "pt-px pb-4")}
           >
             {children}
           </ol>
@@ -430,7 +431,7 @@ function ChatScroll({
         <div
           aria-hidden="true"
           className={cn(
-            "pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-card to-transparent transition-opacity duration-200 ease-out",
+            "pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-run-tray to-transparent transition-opacity duration-200 ease-out",
             above ? "opacity-100" : "opacity-0",
           )}
           data-chat-fade="above"
@@ -440,7 +441,7 @@ function ChatScroll({
         <div
           aria-hidden="true"
           className={cn(
-            "pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-card to-transparent transition-opacity duration-200 ease-out",
+            "pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-run-tray to-transparent transition-opacity duration-200 ease-out",
             below ? "opacity-100" : "opacity-0",
           )}
           data-chat-fade="below"
@@ -463,12 +464,16 @@ function ChatScroll({
  */
 const BUBBLE_SHAPE = "rounded-2xl";
 const BUBBLE_PAD = "px-3.5 py-2.5";
+/** A call's row: compact beside the bubbles — 7 px down, 12 px in. */
+const CALL_PAD = "px-3 py-1.75";
+/** A thought: 8 px down, 12 px in. */
+const THOUGHT_PAD = "px-3 py-2";
 
 /**
- * The chat's two sizes. Everything said or done reads at the prose size, 14 px
- * — the person's words, the Mate's, its thoughts, every call — and only what
- * is about them, at 13 px: a time, a caption, the way to more, code (mono
- * at 13 px stands as tall as the words at 14).
+ * The chat's two sizes, by weight (K14): what anyone said — the person's
+ * words, the Mate's — at the prose size, 14 px; everything else at 13 px,
+ * quieter: what it did (a call's row), what it thought, a time, a caption,
+ * the way to more, code.
  */
 const WORDS = "text-prose";
 const META = "text-line";
@@ -477,12 +482,12 @@ const META = "text-line";
 type BubbleTone = "speech" | "thought" | "tool" | "failed" | "attention";
 
 const BUBBLE_TONE: Record<BubbleTone, string> = {
-  // Its words to the person: the fullest fill.
-  speech: `${MATE_BUBBLE_FILL} text-foreground`,
+  // Its words to the person: its own tint, lightly (`.run-speech`).
+  speech: "run-speech text-foreground",
   // Talking to itself: the same bubble, half the fill, the words italic and faint.
   thought: `${THOUGHT_FILL} text-muted-foreground`,
-  // A thing it did: the card's own white inside a hairline, never a fill, so a
-  // call never reads as something said.
+  // A thing it did: a hairline on the tray, never a fill, so a call never
+  // reads as something said.
   tool: `${CALL_SURFACE} text-foreground`,
   failed: "bg-status-failed-surface text-foreground ring-1 ring-status-failed/30",
   attention: "bg-status-attention-surface text-status-attention-text",
@@ -495,12 +500,15 @@ const BUBBLE_TONE: Record<BubbleTone, string> = {
 function Bubble({
   tone,
   kind,
+  size = WORDS,
   className,
   children,
 }: {
   readonly tone: BubbleTone;
   /** What the bubble stands for, for the page's own tests and probes. */
   readonly kind: string;
+  /** Its words' size: said at the prose size, thought at the quiet one. */
+  readonly size?: typeof WORDS | typeof META;
   readonly className?: string;
   readonly children: ReactNode;
 }) {
@@ -509,7 +517,7 @@ function Bubble({
       className={cn(
         "w-full min-w-0 overflow-hidden",
         BUBBLE_SHAPE,
-        WORDS,
+        size,
         BUBBLE_TONE[tone],
         className,
       )}
@@ -727,7 +735,7 @@ function OpensMark() {
   return (
     <ChevronDownIcon
       aria-hidden="true"
-      className="size-3.5 shrink-0 text-muted-foreground/60 transition-[color,rotate] duration-150 group-hover/disclose:text-foreground group-aria-expanded/disclose:rotate-180"
+      className="size-3.5 shrink-0 text-muted-foreground/55 transition-[color,rotate] duration-150 group-hover/disclose:text-foreground group-aria-expanded/disclose:rotate-180"
     />
   );
 }
@@ -780,7 +788,7 @@ function Headline({
 }: {
   readonly children: ReactNode;
   readonly time?: ReactNode;
-  readonly timeTone?: "muted" | "busy" | "failed";
+  readonly timeTone?: "muted" | "failed";
   readonly opens?: boolean;
   /** A row of a card of calls: the time and the chevron keep their column. */
   readonly column?: boolean;
@@ -791,7 +799,7 @@ function Headline({
   readonly running?: boolean;
 }) {
   return (
-    <span className={cn("flex min-w-0 items-start gap-2", WORDS)}>
+    <span className={cn("flex min-w-0 items-start gap-2", META)}>
       <span className="min-w-0 flex-1" data-run-shimmer={running ? "" : undefined}>
         {children}
       </span>
@@ -801,11 +809,7 @@ function Headline({
             className={cn(
               META,
               "tabular-nums",
-              timeTone === "busy"
-                ? "text-status-busy-text"
-                : timeTone === "failed"
-                  ? "text-status-failed-text"
-                  : "text-muted-foreground",
+              timeTone === "failed" ? "text-status-failed-text" : "text-muted-foreground",
             )}
           >
             {time}
@@ -829,7 +833,7 @@ function DidMark({
     <Icon
       aria-hidden="true"
       className={cn(
-        "size-3.5 shrink-0",
+        "size-4 shrink-0",
         failed ? "text-status-failed-text" : "text-muted-foreground",
       )}
     />
@@ -838,19 +842,35 @@ function DidMark({
 
 /**
  * The Mate's column, beside a bubble: 28 px, the width of its face at the
- * chat's foot, 10 px off the bubbles (8 on a phone's card). A bubble's mark
- * stands in it centred on the bubble's first line of words.
+ * chat's foot, 8 px off the bubbles — one grid for everything in the card
+ * (K1). A bubble's mark stands in it centred on the bubble's first line.
  */
 const MARK_COLUMN = "w-7 shrink-0";
-const MARK_GAP = "gap-2 @md/chat:gap-2.5";
+const MARK_GAP = "gap-2";
+
+/** Which first line a mark stands beside: the words', a call's or a thought's. */
+type MarkLine = "words" | "call" | "thought";
+
+/** Each first line's top and height: a bubble's 10 px and 14 px words, a call's 7 and 13, a thought's 8 and 13. */
+const MARK_LINE: Record<MarkLine, string> = {
+  words: "pt-2.5 text-prose",
+  call: "pt-1.75 text-line",
+  thought: "pt-2 text-line",
+};
 
 /**
  * A bubble's mark, where the Mate's column meets its first line: under the
- * bubble's 10 px top, one line of words tall.
+ * bubble's top, one line of its words tall.
  */
-function Mark({ children }: { readonly children: ReactNode }) {
+function Mark({
+  line = "words",
+  children,
+}: {
+  readonly line?: MarkLine | undefined;
+  readonly children: ReactNode;
+}) {
   return (
-    <span aria-hidden="true" className={cn(MARK_COLUMN, "flex justify-center pt-2.5", WORDS)}>
+    <span aria-hidden="true" className={cn(MARK_COLUMN, "flex justify-center", MARK_LINE[line])}>
       <span className="flex h-[1lh] items-center">{children}</span>
     </span>
   );
@@ -941,116 +961,95 @@ function NoteBubble({ message }: { readonly message: ChatMessage }) {
   );
 }
 
-/** A thought's hand: the words' size, faint and italic — its code and file names too. */
+/** A thought's hand: small, faint and italic — its code and file names too. */
 const THOUGHT_TEXT = "chat-markdown-aside text-muted-foreground";
 
-/** Six of a thought's lines: past them it scrolls while it is thought, and folds once it is. */
-const THOUGHT_CAP_PX = 136;
+/**
+ * A thought's words as one quiet run of text, for the two lines a thought
+ * shows: its markdown's marks dropped, its paragraphs run together.
+ */
+export function thoughtRunText(text: string): string {
+  return text
+    .split(/\n\s*\n/u)
+    .map((paragraph) => {
+      // A title standing alone reads as a sentence of its own, not the start of the next.
+      const title = /^\s*\*\*([^*\n]+)\*\*\s*$/u.exec(paragraph)?.[1]?.trim();
+      return title === undefined ? paragraph : /[.!?:…]$/u.test(title) ? title : `${title}.`;
+    })
+    .join("\n\n")
+    .replace(/```[\s\S]*?```/gu, " ")
+    .replace(/\*\*([^*\n]+)\*\*/gu, "$1")
+    .replace(/__([^_\n]+)__/gu, "$1")
+    .replace(/`([^`\n]+)`/gu, "$1")
+    .replace(/^\s{0,3}(?:#{1,6}|>|[-*+]|\d+[.)])\s+/gmu, "")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
 
-/** A thought scrolled inside itself: its older words fade out at the top. */
-const THOUGHT_TOP_FADE = `linear-gradient(to bottom, transparent, black ${FOLD_FADE_HEIGHT_REM}rem)`;
+/** About two of a thought's lines on a desktop card: what a first frame guesses runs past them. */
+const THOUGHT_GUESS_CHARS = 180;
 
 /**
- * Whether what `watch` is given stands taller than `cap` pixels — measured on
- * the content, not the box that caps it, so it holds folded or open. Until it
- * is measured — the first render, before the page paints it — the words' own
- * length guesses.
+ * Whether what `watch` is given runs past the lines it is clamped to. Until
+ * it is measured — the first render, before the page paints it — `guess`.
  */
-function useTallerThan(
-  cap: number,
-  guess: boolean,
-): readonly [boolean, (element: HTMLElement | null) => void] {
+function useRunsPast(guess: boolean): readonly [boolean, (element: HTMLElement | null) => void] {
   const [element, setElement] = useState<HTMLElement | null>(null);
-  const [taller, setTaller] = useState(guess);
+  const [past, setPast] = useState(guess);
   useLayoutEffect(() => {
     if (element === null) return;
-    const measure = () => setTaller(element.offsetHeight > cap + 1);
+    const measure = () => setPast(element.scrollHeight > element.clientHeight + 1);
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [element, cap]);
+  }, [element]);
   const [watch] = useState(() => (node: HTMLElement | null) => setElement(node));
-  return [taller, watch];
+  return [past, watch];
 }
 
 /**
- * A stretch of its thinking: the chat's bubble with half the Mate's fill and
- * its words faint and italic — the same shape as everything else in the chat
- * (the owner, 2026-09-28: "thinking doesn't look like a bubble"), kept quiet
- * by its surface and ink rather than a smaller size ("thinking is hugely
- * prominent which it should be suppressed"). Past six lines, the one it is
- * thinking now scrolls inside itself, its newest words in sight and the older
- * ones fading at the top; once it ends, the same box shows its top, a fade and
- * "Show more", so it never changes height on the way (the owner: "the long
- * thinking blocks needs to start inner scrolling with fade at the same cutoff
- * then 'sent' version will break it into 'show more'").
+ * A stretch of its thinking, the quietest thing in the card (K14): 13 px,
+ * faint and italic on the faintest fill, two lines of it at most. One that
+ * runs on is the way to the rest of itself — a click opens the whole thought
+ * in place, and "Show less" closes it (D4: nothing is cut without a way to
+ * reach it).
  */
-function ThoughtBubble({
-  messages,
-  live = false,
-}: {
-  readonly messages: ReadonlyArray<ChatMessage>;
-  readonly live?: boolean;
-}) {
-  const api = use(ChatScrollContext);
+function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMessage> }) {
   const text = messages.map((message) => message.text).join("\n\n");
-  const [taller, watch] = useTallerThan(THOUGHT_CAP_PX, foldsLikeAMessage(text));
+  const run = thoughtRunText(text);
   const [open, setOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-  const boxRef = useRef<HTMLDivElement>(null);
-  // While it is thought its newest words stay in sight, unless the person
-  // scrolled back inside it; once it ends it shows its top.
-  const pinnedRef = useRef(true);
-  useLayoutEffect(() => {
-    const box = boxRef.current;
-    if (box === null) return;
-    if (!live) box.scrollTop = 0;
-    else if (pinnedRef.current) box.scrollTop = box.scrollHeight;
-  });
+  const [past, watch] = useRunsPast(run.length > THOUGHT_GUESS_CHARS);
   if (text.trim().length === 0) return null;
-  const capped = live || (taller && !open);
-  const mask = !capped
-    ? undefined
-    : live
-      ? scrolled
-        ? THOUGHT_TOP_FADE
-        : undefined
-      : FOLD_FADE_MASK;
+  const clamped = (
+    <span ref={watch} className="line-clamp-2 italic" data-chat-folded={past ? "true" : undefined}>
+      {run}
+    </span>
+  );
   return (
-    <Bubble className={BUBBLE_PAD} kind="thought" tone="thought">
-      <div
-        ref={boxRef}
-        className={cn(
-          "min-w-0",
-          capped && "max-h-34",
-          capped &&
-            (live ? "overflow-y-auto overscroll-contain scrollbar-none" : "overflow-hidden"),
-        )}
-        data-chat-folded={taller && !live ? String(!open) : undefined}
-        onScroll={(event) => {
-          const box = event.currentTarget;
-          pinnedRef.current = box.scrollHeight - box.scrollTop - box.clientHeight <= 2;
-          setScrolled(box.scrollTop > 1);
-        }}
-        style={mask === undefined ? undefined : { WebkitMaskImage: mask, maskImage: mask }}
-      >
-        <div ref={watch}>
+    <Bubble className={THOUGHT_PAD} kind="thought" size={META} tone="thought">
+      {open ? (
+        <>
           <ThoughtParagraphs messages={messages} />
-        </div>
-      </div>
-      {taller && !live ? (
-        <MoreToggle
-          onToggle={(event) => {
-            const row = event.currentTarget.closest<HTMLElement>("[data-chat-row]");
-            if (row) api?.hold(row, true);
-            setOpen((value) => !value);
-          }}
-          open={open}
+          <MoreToggle onToggle={() => setOpen(false)} open>
+            Show less
+          </MoreToggle>
+        </>
+      ) : past ? (
+        <button
+          aria-expanded={false}
+          aria-label={`${run.slice(0, 80)}… Show the whole thought`}
+          className="block w-full min-w-0 cursor-pointer rounded-sm text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+          data-chat-disclose
+          data-scroll-anchor-ignore
+          onClick={() => setOpen(true)}
+          type="button"
         >
-          {open ? "Show less" : "Show more"}
-        </MoreToggle>
-      ) : null}
+          {clamped}
+        </button>
+      ) : (
+        clamped
+      )}
     </Bubble>
   );
 }
@@ -1114,15 +1113,14 @@ export function stepOutput(step: WorkStep): ReadonlyArray<StepOutput> {
   return blocks;
 }
 
-/** A call said plainly: the verb in the muted ink, the names it took in mono. */
+/**
+ * A call said plainly: the verb in the secondary ink, the names it took in
+ * full ink — in mono where the code knows them, a file by its name alone,
+ * never in a chip.
+ */
 function PhraseWords({ phrase }: { readonly phrase: StepPhrase }) {
   const name = (target: string) => (
-    <span
-      className={cn(
-        "min-w-0 break-words text-foreground/90",
-        phrase.code ? cn("font-mono", META) : WORDS,
-      )}
-    >
+    <span className={cn("min-w-0 break-words text-foreground", phrase.code && "font-mono")}>
       {target}
     </span>
   );
@@ -1135,22 +1133,18 @@ function PhraseWords({ phrase }: { readonly phrase: StepPhrase }) {
     parts.push(
       <span key={`${target}#${occurrence}`}>
         {index > 0 ? (
-          <span className="text-muted-foreground">
-            {last && phrase.more === 0 ? " and " : ", "}
-          </span>
+          <span className="text-foreground/75">{last && phrase.more === 0 ? " and " : ", "}</span>
         ) : null}
         {name(target)}
       </span>,
     );
   });
   return (
-    <span className={WORDS}>
-      <span className="text-muted-foreground">{phrase.verb}</span>
+    <span>
+      <span className="text-foreground/75">{phrase.verb}</span>
       {phrase.targets.length > 0 ? " " : null}
       {parts}
-      {phrase.more > 0 ? (
-        <span className="text-muted-foreground"> and {phrase.more} more</span>
-      ) : null}
+      {phrase.more > 0 ? <span className="text-foreground/75"> and {phrase.more} more</span> : null}
     </span>
   );
 }
@@ -1161,7 +1155,7 @@ function StepPictures({ paths }: { readonly paths: ReadonlyArray<string> }) {
   const { threadRef, onImageExpand } = use(TimelineRowCtx);
   if (threadRef === null) return null;
   return (
-    <span className="flex min-w-0 flex-wrap gap-1.5 px-3.5 pb-2.5">
+    <span className="flex min-w-0 flex-wrap gap-1.5 px-3 pb-1.75">
       {paths.map((path) => (
         <StepPicture key={path} onOpen={onImageExpand} path={path} threadRef={threadRef} />
       ))}
@@ -1228,6 +1222,30 @@ const CODE_CAP_PX = 80;
 const CODE_CAP_LINES = 4;
 
 /**
+ * Whether what `watch` is given stands taller than `cap` pixels — measured on
+ * the content, not the box that caps it, so it holds folded or open. Until it
+ * is measured — the first render, before the page paints it — the words' own
+ * length guesses.
+ */
+function useTallerThan(
+  cap: number,
+  guess: boolean,
+): readonly [boolean, (element: HTMLElement | null) => void] {
+  const [element, setElement] = useState<HTMLElement | null>(null);
+  const [taller, setTaller] = useState(guess);
+  useLayoutEffect(() => {
+    if (element === null) return;
+    const measure = () => setTaller(element.offsetHeight > cap + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [element, cap]);
+  const [watch] = useState(() => (node: HTMLElement | null) => setElement(node));
+  return [taller, watch];
+}
+
+/**
  * A run of calls, one after another, as one bubble of the chat's shape: each
  * call a row of it and a hairline between them. Ten reads in a row are one
  * stretch of work, not ten boxes, and every call's time stands on the
@@ -1242,7 +1260,7 @@ export function CallGroup({ children }: { readonly children: ReactNode }) {
   return (
     <CallGroupContext value={shownRef}>
       <div
-        className={cn("w-full min-w-0 divide-y divide-foreground/8", BUBBLE_SHAPE, CALL_SURFACE)}
+        className={cn("w-full min-w-0 divide-y divide-foreground/9", BUBBLE_SHAPE, CALL_SURFACE)}
         data-chat-calls
       >
         {children}
@@ -1287,8 +1305,8 @@ function CallRow({
       data-chat-row
     >
       {/* Its mark stands off the bubble, over the row's empty column. */}
-      <span className="absolute end-full top-0 me-2 @md/chat:me-2.5">
-        <Mark>{mark}</Mark>
+      <span className="absolute end-full top-0 me-2">
+        <Mark line="call">{mark}</Mark>
       </span>
       {children}
     </div>
@@ -1339,7 +1357,8 @@ function CommandCode({
  * says what it was for, then four lines of its code. The row opens as one
  * thing: its first line or "Show all N lines" shows the whole code and what it
  * printed, in an inset on the code's own left edge, and "Show less" folds it
- * back. The one it is making now keeps its clock in the busy blue.
+ * back. The one it is making now counts its time in the same quiet ink:
+ * blue means something to click (S3), and the run has one clock.
  */
 export function StepBubble({ step }: { readonly step: WorkStep }) {
   const disclosure = useDisclosure();
@@ -1349,8 +1368,12 @@ export function StepBubble({ step }: { readonly step: WorkStep }) {
   const time = stepTime(step);
   const timeWords = failed && time !== null ? <>Failed · {time}</> : failed ? "Failed" : time;
   const script = step.kind === "command" ? (step.script ?? step.code) : null;
+  // A command that said nothing of itself is its own title (K4): its first
+  // line, in mono, and the rest of it opens under it.
+  const bare = script !== null && step.words === null;
   const [taller, watchCode] = useTallerThan(CODE_CAP_PX, step.codeLines > CODE_CAP_LINES);
-  const cut = script !== null && taller;
+  const cut = script !== null && (bare ? step.codeLines > 1 : taller);
+  const showsCode = script !== null && (!bare || disclosure.open);
   const opens = outputs.length > 0 || cut;
   const title = step.words ?? step.code ?? "A command";
   const headline = (
@@ -1359,23 +1382,29 @@ export function StepBubble({ step }: { readonly step: WorkStep }) {
       opens={opens}
       running={running}
       time={timeWords}
-      timeTone={running ? "busy" : failed ? "failed" : "muted"}
+      timeTone={failed ? "failed" : "muted"}
     >
       {step.kind === "command" ? (
-        <span className={failed ? "text-status-failed-text" : "text-foreground/90"}>
-          {step.words ?? <span className="text-muted-foreground">Ran a command</span>}
-        </span>
+        step.words === null ? (
+          <span className={cn("font-mono", failed ? "text-status-failed-text" : "text-foreground")}>
+            {step.code}
+          </span>
+        ) : (
+          <span className={failed ? "text-status-failed-text" : "text-foreground/75"}>
+            {step.words}
+          </span>
+        )
       ) : step.phrase !== null ? (
         <PhraseWords phrase={step.phrase} />
       ) : (
-        <span className={failed ? "text-status-failed-text" : "text-foreground/90"}>{title}</span>
+        <span className={failed ? "text-status-failed-text" : "text-foreground/75"}>{title}</span>
       )}
       {step.kind === "edit" && step.entries.length > 1 ? (
         <span className="text-muted-foreground">{` · ${step.entries.length} edits`}</span>
       ) : null}
     </Headline>
   );
-  const pad = script !== null ? "px-3.5 pt-2.5 pb-1" : BUBBLE_PAD;
+  const pad = showsCode || cut ? "px-3 pt-1.75 pb-0.5" : CALL_PAD;
   return (
     <CallRow
       failed={failed}
@@ -1396,15 +1425,19 @@ export function StepBubble({ step }: { readonly step: WorkStep }) {
       ) : (
         <div className={pad}>{headline}</div>
       )}
-      {script !== null ? (
-        <div className={cn("px-3.5", cut ? "pb-1" : "pb-2.5")}>
-          <CommandCode folded={cut ? !disclosure.open : null} script={script} watch={watchCode} />
+      {showsCode ? (
+        <div className={cn("px-3", cut ? "pb-0.5" : "pb-1.75")}>
+          <CommandCode
+            folded={cut && !bare ? !disclosure.open : null}
+            script={script}
+            watch={watchCode}
+          />
         </div>
       ) : null}
       <StepPictures paths={step.images} />
       {disclosure.open && outputs.length > 0 ? (
         <div
-          className="grid animate-detail-in gap-2 px-3.5 pb-2.5 motion-reduce:animate-none"
+          className="grid animate-detail-in gap-2 px-3 pb-2 motion-reduce:animate-none"
           data-chat-detail
         >
           {outputs.map((output) => (
@@ -1415,11 +1448,11 @@ export function StepBubble({ step }: { readonly step: WorkStep }) {
         </div>
       ) : null}
       {cut ? (
-        <div className="px-3.5 pb-2.5">
+        <div className="px-3 pb-1.75">
           <MoreToggle onToggle={disclosure.toggle} open={disclosure.open}>
             {disclosure.open
               ? "Show less"
-              : step.codeLines > CODE_CAP_LINES
+              : bare || step.codeLines > CODE_CAP_LINES
                 ? `Show all ${step.codeLines} lines`
                 : "Show the whole command"}
           </MoreToggle>
@@ -1498,7 +1531,7 @@ function OperationBubble({
       mark={<KindGlyph kind={operation.kind} />}
     >
       <DisclosureButton
-        className={BUBBLE_PAD}
+        className={CALL_PAD}
         label={`${words}. ${disclosure.open ? "Hide" : "Show"} it`}
         onToggle={disclosure.toggle}
         open={disclosure.open}
@@ -1509,24 +1542,19 @@ function OperationBubble({
           time={running && newest ? null : operationTime(operation)}
           timeTone={failed ? "failed" : "muted"}
         >
-          <span className={cn("flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5", WORDS)}>
-            <span className={failed ? "text-status-failed-text" : "text-foreground/90"}>
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5">
+            <span className={failed ? "text-status-failed-text" : "text-foreground/75"}>
               {words}
             </span>
             {running ? null : <StatusBar className="w-12" segments={settledBar(operation)} />}
             {detail !== null ? (
-              <span className={cn("min-w-0 truncate font-mono text-muted-foreground", META)}>
-                {detail}
-              </span>
+              <span className="min-w-0 truncate font-mono text-muted-foreground">{detail}</span>
             ) : null}
           </span>
         </Headline>
       </DisclosureButton>
       {disclosure.open ? (
-        <div
-          className="animate-detail-in px-3.5 pb-2.5 motion-reduce:animate-none"
-          data-chat-detail
-        >
+        <div className="animate-detail-in px-3 pb-2 motion-reduce:animate-none" data-chat-detail>
           <OperationDetail
             environmentId={ctx.activeThreadEnvironmentId}
             operation={operation}
@@ -1597,19 +1625,14 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
   return (
     <CallRow failed={failed} kind="checks" mark={<DidMark failed={failed} icon={AppWindowIcon} />}>
       <DisclosureButton
-        className={BUBBLE_PAD}
+        className={CALL_PAD}
         label={`${words}${verdict === null ? "" : `, ${verdict}`}. ${disclosure.open ? "Hide" : "Show"} the checks`}
         onToggle={disclosure.toggle}
         open={disclosure.open}
       >
-        <Headline
-          column
-          opens
-          time={time}
-          timeTone={running ? "busy" : failed ? "failed" : "muted"}
-        >
-          <span className={WORDS}>
-            <span className="text-foreground/90">{words}</span>
+        <Headline column opens time={time} timeTone={failed ? "failed" : "muted"}>
+          <span>
+            <span className="text-foreground/75">{words}</span>
             {verdict === null ? null : (
               <span className={failed ? "text-status-failed-text" : "text-muted-foreground"}>
                 {` · ${verdict}`}
@@ -1619,7 +1642,7 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
         </Headline>
       </DisclosureButton>
       {disclosure.open || !takes ? null : (
-        <div className="px-3.5 pb-2.5">
+        <div className="px-3 pb-2">
           <BrowserTakes
             environmentId={ctx.activeThreadEnvironmentId}
             onOpenImage={ctx.onImageExpand}
@@ -1628,10 +1651,7 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
         </div>
       )}
       {disclosure.open ? (
-        <div
-          className="animate-detail-in px-3.5 pb-2.5 motion-reduce:animate-none"
-          data-chat-detail
-        >
+        <div className="animate-detail-in px-3 pb-2 motion-reduce:animate-none" data-chat-detail>
           <BrowserStrip
             bare
             environmentId={ctx.activeThreadEnvironmentId}
@@ -1697,7 +1717,7 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
       : AGENT_STATUS_WORD[agent.status];
   const firstLine = said?.split("\n").find((line) => line.trim().length > 0) ?? null;
   const line = (
-    <span className={cn("flex min-w-0 items-baseline gap-3", WORDS)}>
+    <span className={cn("flex min-w-0 items-baseline gap-3", META)}>
       <span
         className={cn(
           "min-w-0 flex-1 truncate",
@@ -1770,19 +1790,14 @@ export function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
   return (
     <CallRow failed={failed} kind="helpers" mark={<DidMark failed={failed} icon={BotIcon} />}>
       <DisclosureButton
-        className={BUBBLE_PAD}
+        className={CALL_PAD}
         label={`${words}. ${disclosure.open ? "Hide" : "Show"} them`}
         onToggle={disclosure.toggle}
         open={disclosure.open}
       >
-        <Headline
-          column
-          opens
-          timeTone={summary.live ? "busy" : "muted"}
-          time={summary.live ? "Working" : null}
-        >
-          <span className={WORDS}>
-            <span className="text-foreground/90">{words}</span>
+        <Headline column opens timeTone="muted" time={summary.live ? "Working" : null}>
+          <span>
+            <span className="text-foreground/75">{words}</span>
             {what ? <span className="text-muted-foreground">{` · ${what}`}</span> : null}
           </span>
         </Headline>
@@ -1840,7 +1855,7 @@ function TaskBubble({ entry }: { readonly entry: WorkLogEntry }) {
   const reported = Boolean(entry.detail?.trim());
   const line = (
     <Headline column opens={reported}>
-      <span className={failed ? "text-status-failed-text" : "text-foreground/90"}>{words}</span>
+      <span className={failed ? "text-status-failed-text" : "text-foreground/75"}>{words}</span>
       <span className="text-muted-foreground">{` · ${where}`}</span>
     </Headline>
   );
@@ -1857,7 +1872,7 @@ function TaskBubble({ entry }: { readonly entry: WorkLogEntry }) {
     >
       {reported ? (
         <DisclosureButton
-          className={BUBBLE_PAD}
+          className={CALL_PAD}
           label={`${words}. ${disclosure.open ? "Hide" : "Show"} what it reported`}
           onToggle={disclosure.toggle}
           open={disclosure.open}
@@ -1865,13 +1880,10 @@ function TaskBubble({ entry }: { readonly entry: WorkLogEntry }) {
           {line}
         </DisclosureButton>
       ) : (
-        <div className={BUBBLE_PAD}>{line}</div>
+        <div className={CALL_PAD}>{line}</div>
       )}
       {disclosure.open ? (
-        <div
-          className="animate-detail-in px-3.5 pb-2.5 motion-reduce:animate-none"
-          data-chat-detail
-        >
+        <div className="animate-detail-in px-3 pb-2 motion-reduce:animate-none" data-chat-detail>
           <TaskReport entry={entry} />
         </div>
       ) : null}
@@ -1891,14 +1903,14 @@ function PlanBubble({ plan }: { readonly plan: TurnPlanEntry }) {
   return (
     <CallRow kind="plan" mark={<DidMark icon={ListTodoIcon} />}>
       <DisclosureButton
-        className={BUBBLE_PAD}
+        className={CALL_PAD}
         label={`To-do list, ${done} of ${steps.length} done. ${disclosure.open ? "Hide" : "Show"} it`}
         onToggle={disclosure.toggle}
         open={disclosure.open}
       >
         <Headline column opens time={`${done}/${steps.length}`}>
-          <span className={WORDS}>
-            <span className="text-foreground/90">To-do list</span>
+          <span>
+            <span className="text-foreground/75">To-do list</span>
             {current !== null ? (
               <span className="text-muted-foreground">{` · ${current}`}</span>
             ) : null}
@@ -1906,10 +1918,7 @@ function PlanBubble({ plan }: { readonly plan: TurnPlanEntry }) {
         </Headline>
       </DisclosureButton>
       {disclosure.open ? (
-        <div
-          className="animate-detail-in px-3.5 pb-2.5 motion-reduce:animate-none"
-          data-chat-detail
-        >
+        <div className="animate-detail-in px-3 pb-2 motion-reduce:animate-none" data-chat-detail>
           <PlanSteps steps={steps} />
         </div>
       ) : null}
@@ -1946,10 +1955,7 @@ function ErrorBubble({ entry }: { readonly entry: WorkLogEntry }) {
         </DisclosureButton>
       )}
       {disclosure.open && more !== null ? (
-        <div
-          className="animate-detail-in px-3.5 pb-2.5 motion-reduce:animate-none"
-          data-chat-detail
-        >
+        <div className="animate-detail-in px-3 pb-2 motion-reduce:animate-none" data-chat-detail>
           <OutputBlock>{more}</OutputBlock>
         </div>
       ) : null}
@@ -2018,6 +2024,8 @@ interface ChatLine {
   readonly bubble: ReactNode;
   /** What kind of bubble it is, in the Mate's column beside it; a call wears its own. */
   readonly mark?: ReactNode;
+  /** The first line its mark stands beside: the words' by default. */
+  readonly markLine?: MarkLine;
   /** A caption across the chat, off the Mate's column. */
   readonly across?: boolean;
   /** The person's words, on their side of the chat. */
@@ -2026,8 +2034,16 @@ interface ChatLine {
   readonly call?: boolean;
 }
 
-/** A thought's mark. */
-const THOUGHT_MARK = <DidMark icon={BrainIcon} />;
+/** A thought's mark: a small asterisk, fainter than a call's. */
+const THOUGHT_MARK = (
+  <AsteriskIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground/70" />
+);
+
+/** Its words' mark: its own face, at rest — who is speaking, beside what it said. */
+function SpeakerMark() {
+  const ctx = use(TimelineRowCtx);
+  return <MateFace size="sm" state="idle" tint={ctx.speaker.tint} />;
+}
 
 /** What the chat draws: a line on its own, or a run of calls in one card, keyed by its first. */
 type ChatEntry = ChatLine | { readonly key: string; readonly calls: ReadonlyArray<ChatLine> };
@@ -2090,9 +2106,14 @@ function itemLine(item: RecordItem): ChatLine | null {
         key: item.key,
         bubble: <ThoughtBubble messages={item.messages} />,
         mark: THOUGHT_MARK,
+        markLine: "thought",
       };
     case "note":
-      return { key: item.key, bubble: <NoteBubble message={item.message} /> };
+      return {
+        key: item.key,
+        bubble: <NoteBubble message={item.message} />,
+        mark: <SpeakerMark />,
+      };
     case "person":
       return { key: item.key, bubble: <PersonMark item={item} />, theirs: true };
     case "operation":
@@ -2143,8 +2164,9 @@ function nowLine(now: TurnHeaderActivity | null): ChatLine | null {
         ? null
         : {
             key: now.key,
-            bubble: <ThoughtBubble live messages={now.messages} />,
+            bubble: <ThoughtBubble messages={now.messages} />,
             mark: THOUGHT_MARK,
+            markLine: "thought",
           };
     case "step":
       return { key: `step:${now.step.key}`, bubble: <StepBubble step={now.step} />, call: true };
@@ -2171,11 +2193,13 @@ function ChatRow({
   across,
   theirs,
   mark,
+  markLine,
   children,
 }: {
   readonly across: boolean;
   readonly theirs: boolean;
   readonly mark?: ReactNode;
+  readonly markLine?: MarkLine | undefined;
   readonly children: ReactNode;
 }) {
   const arrived = useArrivedLive();
@@ -2193,7 +2217,7 @@ function ChatRow({
       {mark === undefined ? (
         <span aria-hidden="true" className={MARK_COLUMN} />
       ) : (
-        <Mark>{mark}</Mark>
+        <Mark line={markLine}>{mark}</Mark>
       )}
       {/* Only what arrives while the person watches rises in. */}
       <div
@@ -2316,7 +2340,7 @@ function StatusLine({
             so every time in the card ends on one edge; it stood under the
             chevrons, 34 px right of the times it sums. */}
         <RunClock
-          className={cn("me-8.5", doing !== null && !doing.waiting && "text-status-busy-text")}
+          className="me-8.5 text-foreground"
           status={status}
           timestampFormat={ctx.timestampFormat}
         />
@@ -2357,8 +2381,14 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const shown = gatherCalls(from > 0 ? lines.slice(from) : lines);
   return (
     // One container for the chat and its status line: the Mate's column keeps
-    // one gap for both, the narrower on a phone's card.
-    <div className="@container/chat min-w-0">
+    // one gap for both, the narrower on a phone's card. Its words wear its
+    // tint (`.run-speech`).
+    <div
+      className="@container/chat min-w-0"
+      style={
+        { "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})` } as CSSProperties
+      }
+    >
       <ChatScroll
         empty={shown.length === 0 && from === 0}
         label={`${ctx.speaker.name}'s work`}
@@ -2379,6 +2409,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               key={entry.key}
               across={entry.across === true}
               mark={entry.mark}
+              markLine={entry.markLine}
               theirs={entry.theirs === true}
             >
               {entry.bubble}
