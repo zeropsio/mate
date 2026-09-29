@@ -238,28 +238,34 @@ describe("SidebarZeropsTree", () => {
     expect(row).not.toContain("border");
   });
 
-  it("pins the owner's picture to the corner of the Mate's face", () => {
+  it("puts the owner's picture before the Mate's name, off its face", () => {
     const jan = { name: "Jan Novák", initials: "JN", avatarUrl: "https://cdn/jan.png" };
     const html = render([CRM_DEV], { getOwner: () => jan });
     const rowAt = html.indexOf('data-zerops-surface="sidebar-mate"');
     const row = html.slice(rowAt, html.indexOf("</button>", rowAt));
     const ownerAt = row.indexOf('data-zerops-surface="sidebar-mate-owner"');
-    // In the Mate's own row, after the face, so it is painted on top of it.
-    expect(ownerAt).toBeGreaterThan(row.indexOf('data-zerops-primitive="mate-face"'));
+    // On the name's line, right before the name — and nothing on the face's
+    // corner any more: its shape stays whole.
+    expect(ownerAt).toBeGreaterThan(row.indexOf("</svg>"));
+    expect(ownerAt).toBeLessThan(row.indexOf('data-zerops-surface="sidebar-mate-name"'));
     expect(row).toContain('data-zerops-avatar="picture"');
     expect(row).toContain('src="https://cdn/jan.png"');
+    expect(row).toContain('class="menu-owner"');
     // The picture is decoration; whose Mate it is is still said.
     expect(row).toContain("Jan Novák&#x27;s Mate");
   });
 
-  it("gives an owner without a picture their initials, and a Mate without one no badge", () => {
+  it("gives an owner without a picture their initial on their own hue, and an unknown one a plain disc", () => {
     const quiet = { name: "Eva Dvořák", initials: "ED", avatarUrl: null };
     const withInitials = render([CRM_DEV], { getOwner: () => quiet });
     expect(withInitials).toContain('data-zerops-avatar="initials"');
-    expect(withInitials).toContain(">ED<");
+    expect(withInitials).toContain('<span aria-hidden="true">E</span>');
+    expect(withInitials).toMatch(/--menu-owner-hue:\d+/u);
 
+    // The mark keeps its place, so the name starts where every other one does.
     const nobody = render([CRM_DEV], { getOwner: () => undefined });
-    expect(nobody).not.toContain('data-zerops-surface="sidebar-mate-owner"');
+    expect(nobody).toContain('data-zerops-avatar="none"');
+    expect(nobody).not.toContain("&#x27;s Mate");
     expect(nobody).not.toContain('data-zerops-primitive="avatar"');
   });
 

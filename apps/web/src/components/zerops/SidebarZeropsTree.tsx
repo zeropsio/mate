@@ -115,6 +115,7 @@ import {
   useRef,
   useState,
   type ComponentProps,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -141,7 +142,7 @@ import {
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { SidebarCrewFaces } from "./crew/SidebarCrewFaces";
-import { Avatar, KeyChip, MateFace, PlanRing, StatusDot } from "./primitives";
+import { KeyChip, MateFace, PlanRing, StatusDot } from "./primitives";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { environmentRoleTag, groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
@@ -152,6 +153,7 @@ import {
   stopNameSaysOnlyRole,
 } from "./SidebarZeropsTree.logic";
 import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
+import { ownerMark } from "./SidebarMateRow.logic";
 import { MatePeekHost } from "./SidebarMatePeek";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarPeek, type SidebarRevealTarget } from "~/zerops/sidebarPeek";
@@ -2148,10 +2150,10 @@ function MateRow<T extends RosterCandidate>({
         type="button"
       >
         <span className="relative flex size-7">
-          {/* The Mate wears the card's face rather than a row's, and the
-              person it belongs to rides on its corner (a teammate,
-              2026-09-24). A ring, when it works, stands 4px clear all round,
-              over the row's own padding, so it never moves a line. */}
+          {/* The Mate wears the card's face rather than a row's, whole: the
+              person it belongs to stands before its name instead of on its
+              corner. A ring, when it works, stands 4px clear all round, over
+              the row's own padding, so it never moves a line. */}
           <span className="relative flex">
             {/* Until its socket answers the face stands in idle or asleep, the
                 row's words as this browser remembered them: a Mate found
@@ -2172,28 +2174,6 @@ function MateRow<T extends RosterCandidate>({
                 <PlanRing completed={progress.completed} total={progress.total} />
               </span>
             )}
-            {owner === undefined ? null : (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <span
-                      className="absolute -right-1 -bottom-1 flex"
-                      data-zerops-surface="sidebar-mate-owner"
-                    />
-                  }
-                >
-                  {/* Cut out of the face by a ring of the menu's own ground. */}
-                  <Avatar
-                    className="ring-2 ring-sidebar"
-                    initials={owner.initials}
-                    size="xs"
-                    src={owner.avatarUrl}
-                  />
-                  <span className="sr-only">{`${owner.name}'s Mate`}</span>
-                </TooltipTrigger>
-                <TooltipPopup side="right">{`${owner.name}'s Mate`}</TooltipPopup>
-              </Tooltip>
-            )}
           </span>
         </span>
         {/* One even leading, three lines of one thing: the name 14/20, what
@@ -2202,7 +2182,10 @@ function MateRow<T extends RosterCandidate>({
             air. The ask is the words' second ink, the answer muted. */}
         <span className="flex min-w-0 flex-col">
           <span className="flex h-5 min-w-0 items-center gap-2">
-            <span className={cn("flex min-w-0 flex-1 items-center gap-1", renaming && "invisible")}>
+            <span
+              className={cn("flex min-w-0 flex-1 items-center gap-1.5", renaming && "invisible")}
+            >
+              <MateOwnerMark owner={owner} />
               <span
                 className={cn(
                   "min-w-0 truncate text-sm leading-5",
@@ -2340,6 +2323,63 @@ function MateRow<T extends RosterCandidate>({
       <div className="min-w-0 flex-1">{row}</div>
       <SidebarCrewFaces environmentId={crewAt} />
     </div>
+  );
+}
+
+/**
+ * Whose Mate it is, before its name: the person's picture, 16 px round, or
+ * their initial on a colour of their own (`ownerMark`) — on every row, so a
+ * face you recognise answers "whose" before the name is read, and every name
+ * starts on one edge. Off the face, which it used to cover a quarter of with
+ * 7 px initials. A Mate whose owner nobody could name keeps the mark's place
+ * as a plain disc, so its name starts where every other does and nothing
+ * moves when the owner is read.
+ *
+ * The initial is part of a mark, not text: 9 px inside a 16 px disc, the one
+ * size under the menu's scale (S1), as a picture would be.
+ */
+function MateOwnerMark({ owner }: { readonly owner: ZeropsMateOwner | undefined }) {
+  const [failed, setFailed] = useState(false);
+  if (owner === undefined) {
+    return (
+      <span
+        aria-hidden="true"
+        className="menu-owner"
+        data-zerops-avatar="none"
+        data-zerops-surface="sidebar-mate-owner"
+      />
+    );
+  }
+  const mark = ownerMark(owner);
+  const picture = failed ? null : mark.picture;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            className="menu-owner"
+            data-zerops-avatar={picture === null ? "initials" : "picture"}
+            data-zerops-surface="sidebar-mate-owner"
+            style={{ "--menu-owner-hue": mark.hue } as CSSProperties}
+          />
+        }
+      >
+        {picture === null ? (
+          <span aria-hidden="true">{mark.initial}</span>
+        ) : (
+          <img
+            alt=""
+            className="size-full object-cover"
+            onError={() => {
+              setFailed(true);
+            }}
+            src={picture}
+          />
+        )}
+        <span className="sr-only">{mark.label}</span>
+      </TooltipTrigger>
+      <TooltipPopup side="right">{mark.label}</TooltipPopup>
+    </Tooltip>
   );
 }
 

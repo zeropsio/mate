@@ -2966,6 +2966,47 @@ code {
   .dark .menu-ink-2 {
     color: color-mix(in oklab, var(--contrast-sidebar-foreground) 78%, transparent);
   }
+
+  /* Whose Mate it is, before its name: 16 px round, the person's picture or
+     their initial on their own hue (`ownerMark`), lighter at the top left. A
+     hairline keeps a pale picture off the ground. With no owner to name, the
+     mark keeps its place as a plain disc. */
+  .menu-owner {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    overflow: hidden;
+    border-radius: 9999px;
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--color-white);
+    background: linear-gradient(
+      140deg,
+      oklch(calc(var(--menu-owner-l) + 0.06) var(--menu-owner-c) var(--menu-owner-hue)),
+      oklch(calc(var(--menu-owner-l) - 0.12) calc(var(--menu-owner-c) + 0.03) var(--menu-owner-hue))
+    );
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--contrast-sidebar-foreground) 8%, transparent);
+    user-select: none;
+  }
+
+  .menu-owner[data-zerops-avatar="none"] {
+    background: color-mix(in oklab, var(--contrast-sidebar-foreground) 10%, transparent);
+  }
+}
+
+/* The owner's disc is lighter on a light menu and deeper on a dark one. */
+:root {
+  --menu-owner-l: 0.74;
+  --menu-owner-c: 0.07;
+}
+
+:root.dark {
+  --menu-owner-l: 0.55;
 }
 
 /* ==== end of the menu's rows ==== */
