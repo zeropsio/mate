@@ -100,8 +100,6 @@ export interface ZeropsReviewSurfaceProps {
   /** The sections, in reading order. */
   readonly children?: ReactNode;
   readonly consequence: string;
-  /** "Ask Nova for changes" — with the Mate's face. */
-  readonly secondary?: (ReviewButton & { readonly face?: ReviewFaceProps | undefined }) | undefined;
   /** "Cancel" before anything was pressed, "Close" after. */
   readonly dismiss?: string | undefined;
   readonly primary?: ReviewPrimaryButton | undefined;
@@ -118,7 +116,6 @@ export function ZeropsReviewSurface({
   fix,
   children,
   consequence,
-  secondary,
   dismiss,
   primary,
   onClose,
@@ -160,19 +157,6 @@ export function ZeropsReviewSurface({
       <div className="rv-body">{children}</div>
       <footer className="rv-foot">
         <span className="rv-conseq">{consequence}</span>
-        {secondary === undefined ? null : (
-          <button className="rv-btn2" onClick={secondary.onPress} type="button">
-            {secondary.face === undefined ? null : (
-              <MateFace
-                className="size-4"
-                size="dot"
-                state={secondary.face.state ?? "idle"}
-                tint={secondary.face.tint}
-              />
-            )}
-            {secondary.label}
-          </button>
-        )}
         {dismiss === undefined ? null : (
           <button className="rv-btn2" onClick={onClose} type="button">
             {dismiss}
@@ -219,6 +203,36 @@ export function ReviewSection({
       </h3>
       {children}
     </section>
+  );
+}
+
+/**
+ * What could not be read, said where it would have stood, with *Try again*: a failure never
+ * blanks its section.
+ */
+export function ReviewFailed({
+  what,
+  reason,
+  onRetry,
+}: {
+  /** What could not be read: "The files couldn't be read." */
+  readonly what: string;
+  /** Why, in Gitea's words. */
+  readonly reason: string;
+  readonly onRetry: (() => void) | undefined;
+}) {
+  return (
+    <div className="rv-failed" role="status">
+      <TriangleAlertIcon aria-hidden="true" />
+      <span className="min-w-0">
+        {what} <span className="rv-failed-why">{reason}</span>
+      </span>
+      {onRetry === undefined ? null : (
+        <button className="rv-textbtn" onClick={onRetry} type="button">
+          Try again
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -273,20 +287,33 @@ export type ReviewDiffState =
 export function ReviewFiles({
   files,
   pending,
+  failed,
   diffOf,
   giteaOf,
   onOpen,
+  onRetry,
   initiallyOpen,
 }: {
   readonly files: ReadonlyArray<ReviewFileRow> | undefined;
   readonly pending: number;
+  /** Why the files could not be read, where they could not. */
+  readonly failed?: string | undefined;
   readonly diffOf: (path: string) => ReviewDiffState;
   /** Where the file's diff is on Gitea, for what is too long to show here. */
   readonly giteaOf?: ((path: string) => string | undefined) | undefined;
   readonly onOpen?: ((path: string) => void) | undefined;
+  /** Reads what could not be read again: the files, a diff. */
+  readonly onRetry?: (() => void) | undefined;
   readonly initiallyOpen?: ReadonlyArray<string> | undefined;
 }) {
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(initiallyOpen ?? []));
+  if (failed !== undefined) {
+    return (
+      <div className="rv-files">
+        <ReviewFailed onRetry={onRetry} reason={failed} what="The files couldn't be read." />
+      </div>
+    );
+  }
   if (files === undefined) {
     return (
       <div aria-busy="true" className="rv-files">
@@ -314,6 +341,7 @@ export function ReviewFiles({
             key={file.path}
             letter={letter}
             name={name}
+            onRetry={onRetry}
             onToggle={() => {
               if (!expanded) onOpen?.(file.path);
               setOpen((current) => {
@@ -339,6 +367,7 @@ function FileRow({
   diff,
   gitea,
   onToggle,
+  onRetry,
 }: {
   readonly file: ReviewFileRow;
   readonly dir: string;
@@ -348,6 +377,7 @@ function FileRow({
   readonly diff: ReviewDiffState | undefined;
   readonly gitea: string | undefined;
   readonly onToggle: () => void;
+  readonly onRetry: (() => void) | undefined;
 }) {
   return (
     <>
@@ -369,7 +399,7 @@ function FileRow({
         </span>
       </button>
       {diff === undefined ? null : (
-        <ReviewDiff diff={diff} gitea={gitea} previousPath={file.previousPath} />
+        <ReviewDiff diff={diff} gitea={gitea} onRetry={onRetry} previousPath={file.previousPath} />
       )}
     </>
   );
@@ -407,10 +437,12 @@ export function ReviewDiff({
   diff,
   gitea,
   previousPath,
+  onRetry,
 }: {
   readonly diff: ReviewDiffState;
   readonly gitea?: string | undefined;
   readonly previousPath?: string | undefined;
+  readonly onRetry?: (() => void) | undefined;
 }) {
   const [all, setAll] = useState(false);
   if (diff.kind === "reading") {
@@ -423,7 +455,7 @@ export function ReviewDiff({
   if (diff.kind === "failed") {
     return (
       <div className="rv-diff">
-        <p className="rv-diff-note">{diff.reason}</p>
+        <ReviewFailed onRetry={onRetry} reason={diff.reason} what="The diff couldn't be read." />
       </div>
     );
   }

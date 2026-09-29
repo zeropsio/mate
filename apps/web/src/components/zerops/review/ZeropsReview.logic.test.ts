@@ -7,7 +7,6 @@ import {
   absoluteDescription,
   changeConflict,
   changeFileLetter,
-  changeRequestPrefill,
   changeRunMessage,
   commitFold,
   crewLandCommand,
@@ -431,14 +430,6 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
       marks: new Map(),
     });
     expect(row?.mateProjectId).toBe(mate);
-  });
-});
-
-describe("changeRequestPrefill", () => {
-  it("names the change as the Mate's tools do, and leaves the rest to the person", () => {
-    expect(
-      changeRequestPrefill({ number: 2, title: "Add a /status page", repository: "appdev" }),
-    ).toBe('On #2 "Add a /status page" on appdev: ');
   });
 });
 

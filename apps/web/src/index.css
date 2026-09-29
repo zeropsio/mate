@@ -5621,6 +5621,252 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   color: var(--muted-foreground);
 }
 
+/* What could not be read, where it would have stood, with Try again: amber, it didn't go
+   through; a failure never blanks its section. */
+.rv-failed {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  font-size: 13px;
+  line-height: 18px;
+}
+.rv-failed svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--zerops-status-attention);
+}
+.rv-failed-why {
+  color: var(--muted-foreground);
+}
+.rv-failed .rv-textbtn {
+  margin: 0 -8px 0 auto;
+}
+.rv-files .rv-failed {
+  padding: 7px 14px 7px 12px;
+}
+.rv-diff .rv-failed {
+  padding: 0 6px 0 60px;
+}
+.rv-note {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--muted-foreground);
+}
+/* A fold's way open: its words on the edge of what it opens. */
+.rv-fold {
+  margin: 4px 0 0 -8px;
+}
+.rv-fold[data-fold="remarks"] {
+  margin: 0 0 0 22px;
+}
+
+/* The conversation: marks in a 20 px column, words beside them; then the one box. */
+.rv-remarks {
+  display: grid;
+  gap: 14px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+.rv-remark,
+.rv-remark-skeleton {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: start;
+}
+.rv-remark > :first-child {
+  grid-row: 1 / span 2;
+}
+.rv-remark-avatar {
+  width: 20px;
+  height: 20px;
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
+}
+.rv-remark-who {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+.rv-remark-at {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.rv-remark-body {
+  grid-column: 2;
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* A comment on its way holds a one-line comment's room: its mark, its name, its line. */
+.rv-remark-skeleton {
+  height: 44px;
+}
+.rv-remark-skeleton[data-fold] {
+  height: 24px;
+}
+.rv-remark-skeleton span {
+  height: 10px;
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+.rv-remark-skeleton span:first-child {
+  grid-row: 1 / span 2;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+}
+.rv-remark-skeleton span:nth-child(2) {
+  width: 96px;
+  margin: 5px 0;
+}
+.rv-remark-skeleton span:nth-child(3) {
+  width: 64%;
+  margin: 6px 0;
+}
+
+/* The one box: a quiet line that grows as it is written in, its two verbs at its end. */
+.rv-say {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 5px 5px 5px 12px;
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
+  transition: box-shadow 150ms ease;
+}
+.rv-say:focus-within {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--foreground) 22%, transparent),
+    0 0 0 3px color-mix(in oklab, var(--ring) 22%, transparent);
+}
+.rv-say[data-off] {
+  opacity: 0.6;
+}
+.rv-say-box {
+  flex: 1;
+  min-width: 0;
+  max-height: 200px;
+  /* One line until it is written in, then as tall as what is written, up to its cap. */
+  field-sizing: content;
+  padding: 4px 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  overflow-y: auto;
+  background: transparent;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--foreground);
+}
+.rv-say-box::placeholder {
+  color: var(--muted-foreground);
+}
+.rv-say-comment,
+.rv-say-ask {
+  display: inline-flex;
+  height: 30px;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--foreground);
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+.rv-say-ask {
+  padding-left: 8px;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
+}
+.rv-say-comment:hover:not([aria-disabled]),
+.rv-say-ask:hover:not([aria-disabled]) {
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+}
+.rv-say-comment[aria-disabled],
+.rv-say-ask[aria-disabled] {
+  color: var(--muted-foreground);
+  cursor: default;
+}
+.rv-say-comment:focus-visible,
+.rv-say-ask:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.rv-say-trouble {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--zerops-status-failed-text);
+}
+
+/* The commits: one line each, what it did, then its age and hash on the column's right edge. */
+.rv-commits {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rv-commit {
+  display: grid;
+  height: 32px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  column-gap: 12px;
+  align-items: center;
+  font-size: 14px;
+  line-height: 20px;
+}
+.rv-commit-t {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rv-commit-at {
+  font-size: 13px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.rv-commit-sha {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.rv-commit-skeleton {
+  display: grid;
+  height: 32px;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  column-gap: 12px;
+  align-items: center;
+}
+.rv-commit-skeleton span {
+  height: 10px;
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+.rv-commit-skeleton span:first-child {
+  width: 48%;
+}
+
 /* A release: what goes out, one row per change with its Mate's face; where it goes; and the way
    back if it goes wrong. */
 .rv-rel {

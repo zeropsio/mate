@@ -3,10 +3,12 @@
  * the app runs, with made-up reads. Fixtures only — no route imports this module.
  */
 import {
+  changeRemarks,
   parseChangeDiff,
   type FlowPullRequest,
   type GiteaChangedFile,
   type GiteaCommit,
+  type GiteaIssueComment,
   type ReviewPress,
 } from "@t3tools/client-runtime/zerops";
 import type { CrewTask } from "@t3tools/contracts";
@@ -22,6 +24,10 @@ import {
   RollbackReviewView,
 } from "~/components/zerops/review/ZeropsReleaseReview";
 import { ZeropsReviewDialog } from "~/components/zerops/review/ZeropsReviewDialog";
+import type {
+  ZeropsChangeComments,
+  ZeropsChangeCommentsState,
+} from "~/zerops/useZeropsChangeComments";
 
 import { HARNESS_GITEA, HARNESS_PICTURES, harnessDescription } from "./reviewHarnessPictures";
 
@@ -120,15 +126,88 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
   };
 }
 
+/** A change's commits, newest first, as a Mate's run leaves them. */
+const COMMIT_SUBJECTS = [
+  "Answer /status with the running version",
+  "Refresh the status page every 30 seconds",
+  "Keep /health for the load balancer",
+  "Move .nvmrc to Node 22",
+  "Read the uptime from performance.timeOrigin",
+  "Draw the requests of the last hour",
+  "Stack the status cards on a phone",
+  "Say when the last deploy was",
+  "Put the status page behind the sign-in",
+  "Name the status route in the admin menu",
+  "Cache the version for a minute",
+  "Test /status answers without a session",
+  "Test /status answers the version",
+  "Tidy the status route's imports",
+  "Add the status page's empty state",
+  "Add the status page's error state",
+  "Wire /status into the router",
+  "Add a status route",
+  "Start the status page",
+];
+
+function commits(count: number): ReadonlyArray<GiteaCommit> {
+  return COMMIT_SUBJECTS.slice(0, count).map((subject, index) => ({
+    sha: `${(0xb21d904 + index * 7919).toString(16)}${"c".repeat(33)}`,
+    subject,
+    at: minutesAgo(4 + index * 95),
+  }));
+}
+
 const READ = {
   files: { kind: "read", value: FILES },
   diff: { kind: "read", value: { files: parseChangeDiff(DIFF), cut: false } },
-  commits: {
-    kind: "read",
-    value: [{ sha: "b21d904cb21d904cb21d904cb21d904cb21d904c", subject: "Add a /status page" }],
-  },
+  commits: { kind: "read", value: commits(3) },
   mainSince: { kind: "none" },
 } as const;
+
+function said(id: number, author: string, body: string, minutes: number): GiteaIssueComment {
+  return { id, author, avatarUrl: undefined, body, at: minutesAgo(minutes) };
+}
+
+const TALK: ReadonlyArray<GiteaIssueComment> = [
+  said(
+    1,
+    "ales",
+    "Does the page still load when the database is down? That is when I'd open it.",
+    95,
+  ),
+  said(
+    2,
+    "mate-p-nova",
+    "It does now: the uptime and the version come from the process, and the requests card says it could not read them.",
+    41,
+  ),
+];
+
+/** A long thread, as a change that went back and forth gathers. */
+const LONG_TALK: ReadonlyArray<GiteaIssueComment> = Array.from({ length: 9 }, (_, index) =>
+  index % 2 === 0
+    ? said(
+        index + 1,
+        "ales",
+        `Round ${String(index / 2 + 1)}: the cards still jump on a phone.`,
+        400 - index * 40,
+      )
+    : said(index + 1, "mate-p-nova", "Fixed, and checked on a 390 px screen.", 390 - index * 40),
+);
+
+function comments(state: ZeropsChangeCommentsState): ZeropsChangeComments {
+  return { state, say: async () => null, saying: false, retry: noop };
+}
+
+const MATE_NAMES = new Map([["p-nova", "Nova"]]);
+
+function remarksOf(conversation: ZeropsChangeComments) {
+  return conversation.state.kind === "read"
+    ? changeRemarks({ comments: conversation.state.comments, mateNames: MATE_NAMES, me: "ales" })
+    : [];
+}
+
+const TALKING = comments({ kind: "read", comments: TALK });
 
 const NOVA = { name: "Nova", tint: "slate", mine: true } as const;
 
@@ -226,9 +305,14 @@ const WIDE = {
   },
 } as const;
 
-const FILES_UNREAD = {
-  reading: { files: { kind: "reading" } },
-  failed: { files: { kind: "failed", reason: "Gitea did not answer in time." } },
+/** Everything Gitea answers, still on its way: what the flow knew paints, the rest holds its room. */
+const ALL_READING = {
+  files: { kind: "reading" },
+  commits: { kind: "reading" },
+} as const;
+const ALL_FAILED = {
+  files: { kind: "failed", reason: "Gitea did not answer in time." },
+  commits: { kind: "failed", reason: "Gitea did not answer in time." },
 } as const;
 
 function Change({
@@ -238,6 +322,8 @@ function Change({
   press = IDLE,
   open = NONE_OPEN,
   run = RUN,
+  conversation = TALKING,
+  frame,
 }: {
   readonly over?: Partial<FlowPullRequest>;
   readonly mainSince?: ReadonlyArray<GiteaCommit>;
@@ -246,21 +332,27 @@ function Change({
   readonly press?: ReviewPress;
   readonly open?: ReadonlyArray<string>;
   readonly run?: { readonly words: string | undefined; readonly reading: boolean };
+  readonly conversation?: ZeropsChangeComments;
+  readonly frame?: ChangeReviewViewProps["frame"];
 }) {
   const value = pull(over);
   return (
     <ChangeReviewView
+      comments={conversation}
       downstream={{ production: true, stage: true }}
+      frame={frame}
       giteaOrigin={HARNESS_GITEA}
       initiallyOpen={open}
       live="v0.1.0"
       mate={value.mateProjectId === undefined ? undefined : NOVA}
       now={NOW}
-      onAskChanges={noop}
+      onAsk={async () => {}}
       onClose={noop}
+      onRetry={noop}
+      remarks={remarksOf(conversation)}
       onFix={noop}
       onMerge={noop}
-      onOpenRun={noop}
+      onOpenRun={run.words === undefined && value.description === undefined ? undefined : noop}
       onReviewRelease={noop}
       pictures={HARNESS_PICTURES}
       press={press}
@@ -406,8 +498,38 @@ export const REVIEW_STATES: ReadonlyArray<{
     label: "No description, and the run said nothing of it",
     node: <Change run={{ words: undefined, reading: false }} />,
   },
-  { id: "reading", label: "Its files being read", node: <Change readout={FILES_UNREAD.reading} /> },
-  { id: "unread", label: "Its files unread", node: <Change readout={FILES_UNREAD.failed} /> },
+  {
+    id: "reading",
+    label: "Everything Gitea answers, still being read",
+    node: (
+      <Change
+        conversation={comments({ kind: "reading" })}
+        over={{ commentCount: 2 }}
+        readout={ALL_READING}
+        run={{ words: undefined, reading: true }}
+      />
+    ),
+  },
+  {
+    id: "unread",
+    label: "Nothing Gitea answers could be read",
+    node: (
+      <Change
+        conversation={comments({ kind: "failed", reason: "Gitea did not answer in time." })}
+        readout={ALL_FAILED}
+      />
+    ),
+  },
+  {
+    id: "many-commits",
+    label: "Nineteen commits, the newest five shown",
+    node: <Change readout={{ commits: { kind: "read", value: commits(19) } }} />,
+  },
+  {
+    id: "long-conversation",
+    label: "A long conversation, its newest three shown",
+    node: <Change conversation={comments({ kind: "read", comments: LONG_TALK })} />,
+  },
   {
     id: "long",
     label: "A diff too long for here",
@@ -658,12 +780,14 @@ export function ReviewDialogTry() {
         open={open}
       >
         <ChangeReviewView
+          comments={read ? TALKING : comments({ kind: "reading" })}
           downstream={{ production: true, stage: true }}
           giteaOrigin={HARNESS_GITEA}
           live="v0.1.0"
           mate={NOVA}
           now={NOW}
-          onAskChanges={noop}
+          onAsk={async () => {}}
+          remarks={read ? remarksOf(TALKING) : []}
           onClose={() => {
             setOpen(false);
           }}
@@ -673,8 +797,11 @@ export function ReviewDialogTry() {
           onReviewRelease={noop}
           pictures={HARNESS_PICTURES}
           press={IDLE}
-          pull={pull({ description: harnessDescription({ after: TRY_READ_MS }) })}
-          readout={read ? READ : { ...READ, ...FILES_UNREAD.reading }}
+          pull={pull({
+            description: harnessDescription({ after: TRY_READ_MS }),
+            commentCount: TALK.length,
+          })}
+          readout={read ? READ : { ...READ, ...ALL_READING }}
           run={RUN}
           titleId="review-try-title"
           waitingForProduction={0}

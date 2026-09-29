@@ -14,6 +14,12 @@ import type { ReviewPrimary } from "@t3tools/client-runtime/zerops";
 
 export type ReviewKind = "change" | "release" | "rollback" | "crew-task";
 
+/**
+ * Where a review stands: a dialog over the conversation, a quick look with its way to the page;
+ * or the page itself, at its own address. The same sections in both, in the same words.
+ */
+export type ReviewFrame = "dialog" | "page";
+
 /** The kind line over the title (500 13 muted), after its icon. */
 export function reviewKindLine(kind: ReviewKind, pullKind?: "code" | "recipe"): string {
   switch (kind) {
@@ -239,7 +245,7 @@ const DIALOG_REMARKS_SHOWN = 3;
  * look, a long conversation shows its newest three and "Show N earlier" opens the rest.
  */
 export function remarkFold(input: {
-  readonly frame: "dialog" | "page";
+  readonly frame: ReviewFrame;
   readonly total: number;
   readonly all: boolean;
 }): { readonly hidden: number } {
@@ -445,18 +451,6 @@ export function releaseChangeRows(input: {
       stage: input.marks.get(key) ?? "none",
     };
   });
-}
-
-/**
- * What "Ask Nova for changes" writes into the Mate's composer: the change named the way its
- * tools address it, then room for the person's words. Written, not sent.
- */
-export function changeRequestPrefill(pull: {
-  readonly number: number;
-  readonly title: string;
-  readonly repository: string;
-}): string {
-  return `On #${String(pull.number)} "${pull.title}" on ${pull.repository}: `;
 }
 
 /**
