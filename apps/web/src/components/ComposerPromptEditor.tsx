@@ -29,9 +29,13 @@ import {
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
   KEY_TAB_COMMAND,
+  COMMAND_PRIORITY_CRITICAL,
   COMMAND_PRIORITY_HIGH,
   COMMAND_PRIORITY_LOW,
+  COPY_COMMAND,
+  CUT_COMMAND,
   KEY_BACKSPACE_COMMAND,
+  PASTE_COMMAND,
   BLUR_COMMAND,
   DRAGEND_COMMAND,
   DRAGSTART_COMMAND,
@@ -40,7 +44,6 @@ import {
   $getRoot,
   HISTORY_MERGE_TAG,
   DecoratorNode,
-  type ElementNode,
   type LexicalEditor,
   type LexicalNode,
   type SerializedLexicalNode,
@@ -649,6 +652,8 @@ function terminalContextSignature(contexts: ReadonlyArray<TerminalContextDraft>)
 const NO_CREWMATES: ReadonlyArray<ComposerCrewmateChip> = [];
 const NO_PICTURES: ReadonlyArray<ComposerPictureView> = [];
 const IGNORE_PICTURE = () => {};
+const PLACE_NO_PICTURES = (ids: ReadonlyArray<string>): ReadonlyArray<string | null> =>
+  ids.map(() => null);
 
 function crewmateSignature(crewmates: ReadonlyArray<ComposerCrewmateChip>): string {
   return crewmates.map((mate) => `${mate.handle}:${mate.tint}`).join("\u001f");
@@ -1000,17 +1005,49 @@ function $readExpandedSelectionOffsetFromEditorState(fallback: number): number {
   return Math.max(0, Math.min(offset, expandedLength));
 }
 
-function $appendTextWithLineBreaks(parent: ElementNode, text: string): void {
-  const lines = text.split("\n");
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? "";
-    if (line.length > 0) {
-      parent.append($createTextNode(line));
+function $textWithLineBreaks(text: string): LexicalNode[] {
+  return text
+    .split("\n")
+    .flatMap((line, index, lines) => [
+      ...(line.length > 0 ? [$createTextNode(line)] : []),
+      ...(index < lines.length - 1 ? [$createLineBreakNode()] : []),
+    ]);
+}
+
+/** The nodes that draw a prompt: its words and line breaks, its chips, its pictures. */
+function $composerPromptNodes(
+  prompt: string,
+  terminalContexts: ReadonlyArray<TerminalContextDraft>,
+  skillMetadata: ReadonlyMap<string, ComposerSkillMetadata>,
+  crewmates: ReadonlyArray<ComposerCrewmateChip>,
+  pictureIds: ReadonlyArray<string>,
+): LexicalNode[] {
+  const segments = splitPromptIntoEditorSegments(prompt, terminalContexts, crewmates, pictureIds);
+  return segments.flatMap((segment): LexicalNode[] => {
+    switch (segment.type) {
+      case "picture":
+        // A place whose picture is gone draws nothing, and so drops out of the text.
+        return segment.imageId === null ? [] : [$createComposerPictureNode(segment.imageId)];
+      case "mention":
+        return [$createComposerMentionNode(segment.path, segment.source)];
+      case "crewmate":
+        return [$createComposerCrewmateNode(segment.handle, segment.tint)];
+      case "skill": {
+        const metadata = skillMetadata.get(segment.name);
+        return [
+          $createComposerSkillNode(
+            segment.name,
+            metadata?.label ?? formatProviderSkillDisplayName({ name: segment.name }),
+            metadata?.description ?? null,
+          ),
+        ];
+      }
+      case "terminal-context":
+        return segment.context ? [$createComposerTerminalContextNode(segment.context)] : [];
+      default:
+        return $textWithLineBreaks(segment.text);
     }
-    if (index < lines.length - 1) {
-      parent.append($createLineBreakNode());
-    }
-  }
+  });
 }
 
 function $setComposerEditorPrompt(
@@ -1024,43 +1061,9 @@ function $setComposerEditorPrompt(
   root.clear();
   const paragraph = $createParagraphNode();
   root.append(paragraph);
-
-  const segments = splitPromptIntoEditorSegments(prompt, terminalContexts, crewmates, pictureIds);
-  for (const segment of segments) {
-    if (segment.type === "picture") {
-      // A place whose picture is gone draws nothing, and so drops out of the text.
-      if (segment.imageId !== null) {
-        paragraph.append($createComposerPictureNode(segment.imageId));
-      }
-      continue;
-    }
-    if (segment.type === "mention") {
-      paragraph.append($createComposerMentionNode(segment.path, segment.source));
-      continue;
-    }
-    if (segment.type === "crewmate") {
-      paragraph.append($createComposerCrewmateNode(segment.handle, segment.tint));
-      continue;
-    }
-    if (segment.type === "skill") {
-      const metadata = skillMetadata.get(segment.name);
-      paragraph.append(
-        $createComposerSkillNode(
-          segment.name,
-          metadata?.label ?? formatProviderSkillDisplayName({ name: segment.name }),
-          metadata?.description ?? null,
-        ),
-      );
-      continue;
-    }
-    if (segment.type === "terminal-context") {
-      if (segment.context) {
-        paragraph.append($createComposerTerminalContextNode(segment.context));
-      }
-      continue;
-    }
-    $appendTextWithLineBreaks(paragraph, segment.text);
-  }
+  paragraph.append(
+    ...$composerPromptNodes(prompt, terminalContexts, skillMetadata, crewmates, pictureIds),
+  );
 }
 
 function collectTerminalContextIds(node: LexicalNode): string[] {
@@ -1162,6 +1165,12 @@ interface ComposerPromptEditorProps {
   onOpenPicture?: ((id: string) => void) | undefined;
   onRemovePicture?: ((id: string) => void) | undefined;
   onRetryPicture?: ((id: string) => void) | undefined;
+  /**
+   * Pictures copied from a composer's text are pasted with their words: the
+   * id each picture's place takes, in order, or null for one the composer
+   * cannot place again (its words still come).
+   */
+  onPastePictures?: ((ids: ReadonlyArray<string>) => ReadonlyArray<string | null>) | undefined;
   disabled: boolean;
   placeholder: string;
   className?: string;
@@ -1756,6 +1765,134 @@ function ComposerInlineTokenPastePlugin() {
   return null;
 }
 
+/**
+ * What a copy from the composer carries beside its words: the text with its
+ * pictures' places, and their ids in the order they sit. A paste into a
+ * composer of the same app reads it; anything else reads the plain words.
+ */
+export const COMPOSER_CLIPBOARD_TYPE = "application/x-mate-composer-text";
+
+interface CopiedComposerText {
+  readonly text: string;
+  readonly pictures: ReadonlyArray<string>;
+}
+
+const withoutPlaces = (text: string): string =>
+  text
+    .replaceAll(INLINE_PICTURE_PLACEHOLDER, "")
+    .replaceAll(INLINE_TERMINAL_CONTEXT_PLACEHOLDER, "");
+
+const holdsPlaces = (text: string): boolean =>
+  text.includes(INLINE_PICTURE_PLACEHOLDER) || text.includes(INLINE_TERMINAL_CONTEXT_PLACEHOLDER);
+
+function readCopiedComposerText(raw: string): CopiedComposerText | null {
+  if (raw.length === 0) return null;
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null) return null;
+    const { text, pictures } = value as Record<string, unknown>;
+    if (typeof text !== "string" || !Array.isArray(pictures)) return null;
+    if (!pictures.every((id): id is string => typeof id === "string")) return null;
+    const places = [...text].filter((char) => char === INLINE_PICTURE_PLACEHOLDER).length;
+    return places === pictures.length ? { text, pictures } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Copy, cut and paste of the composer's text. A picture's place is one
+ * character of the text; it never reaches the clipboard as one, nor comes in
+ * from it: the plain words go out and come in without places, and a copy
+ * carries its pictures beside them (`COMPOSER_CLIPBOARD_TYPE`), so a picture
+ * cut or copied moves or is copied with its words. A terminal context stays
+ * where it is. Everything else is the plain-text plugin's, which runs after.
+ */
+function ComposerClipboardPlugin(props: {
+  readonly onPastePictures: (ids: ReadonlyArray<string>) => ReadonlyArray<string | null>;
+  readonly skillMetadataRef: React.RefObject<ReadonlyMap<string, ComposerSkillMetadata>>;
+  readonly crewmatesRef: React.RefObject<ReadonlyArray<ComposerCrewmateChip>>;
+}) {
+  const [editor] = useLexicalComposerContext();
+  const onPastePictures = useEffectEvent(props.onPastePictures);
+  const { skillMetadataRef, crewmatesRef } = props;
+
+  useEffect(() => {
+    const copy = (event: ClipboardEvent | KeyboardEvent | null, cut: boolean): boolean => {
+      const data = event instanceof ClipboardEvent ? event.clipboardData : null;
+      const selection = $getSelection();
+      if (!data || !$isRangeSelection(selection) || selection.isCollapsed()) return false;
+      const text = selection.getTextContent();
+      if (!holdsPlaces(text)) return false;
+      event?.preventDefault();
+      const pictures = selection
+        .getNodes()
+        .flatMap((node) => (node instanceof ComposerPictureNode ? [node.__imageId] : []));
+      data.setData("text/plain", withoutPlaces(text));
+      data.setData(
+        COMPOSER_CLIPBOARD_TYPE,
+        JSON.stringify({
+          text: text.replaceAll(INLINE_TERMINAL_CONTEXT_PLACEHOLDER, ""),
+          pictures,
+        } satisfies CopiedComposerText),
+      );
+      if (cut) selection.removeText();
+      return true;
+    };
+    const paste = (event: ClipboardEvent | InputEvent | KeyboardEvent): boolean => {
+      const data =
+        event instanceof ClipboardEvent
+          ? event.clipboardData
+          : event instanceof InputEvent
+            ? event.dataTransfer
+            : null;
+      const selection = $getSelection();
+      if (!data || data.files.length > 0 || !$isRangeSelection(selection)) return false;
+      const copied = readCopiedComposerText(data.getData(COMPOSER_CLIPBOARD_TYPE));
+      if (copied) {
+        event.preventDefault();
+        const placed = onPastePictures(copied.pictures);
+        let place = -1;
+        const text = [...copied.text]
+          .filter((char) => {
+            if (char !== INLINE_PICTURE_PLACEHOLDER) return true;
+            place += 1;
+            return (placed[place] ?? null) !== null;
+          })
+          .join("");
+        const ids = placed.filter((id): id is string => id !== null);
+        selection.insertNodes(
+          $composerPromptNodes(text, [], skillMetadataRef.current, crewmatesRef.current, ids),
+        );
+        return true;
+      }
+      const plain = data.getData("text/plain");
+      if (!holdsPlaces(plain)) return false;
+      event.preventDefault();
+      selection.insertRawText(withoutPlaces(plain));
+      return true;
+    };
+    const unregisterCopy = editor.registerCommand(
+      COPY_COMMAND,
+      (event) => copy(event, false),
+      COMMAND_PRIORITY_CRITICAL,
+    );
+    const unregisterCut = editor.registerCommand(
+      CUT_COMMAND,
+      (event) => copy(event, true),
+      COMMAND_PRIORITY_CRITICAL,
+    );
+    const unregisterPaste = editor.registerCommand(PASTE_COMMAND, paste, COMMAND_PRIORITY_CRITICAL);
+    return () => {
+      unregisterCopy();
+      unregisterCut();
+      unregisterPaste();
+    };
+  }, [crewmatesRef, editor, skillMetadataRef]);
+
+  return null;
+}
+
 function ComposerSurroundSelectionPlugin(props: {
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   skills: ReadonlyArray<ServerProviderSkill>;
@@ -2050,6 +2187,7 @@ function ComposerPromptEditorInner({
   onOpenPicture = IGNORE_PICTURE,
   onRemovePicture = IGNORE_PICTURE,
   onRetryPicture = IGNORE_PICTURE,
+  onPastePictures = PLACE_NO_PICTURES,
   disabled,
   placeholder,
   className,
@@ -2340,6 +2478,11 @@ function ComposerPromptEditorInner({
           <ComposerInlineTokenSelectionNormalizePlugin />
           <ComposerInlineTokenBackspacePlugin />
           <ComposerInlineTokenPastePlugin />
+          <ComposerClipboardPlugin
+            onPastePictures={onPastePictures}
+            skillMetadataRef={skillMetadataRef}
+            crewmatesRef={crewmatesRef}
+          />
           <ComposerPictureDragPlugin />
           <ComposerChipSelectionPlugin />
           <HistoryPlugin />
@@ -2359,6 +2502,7 @@ export function ComposerPromptEditor({
   onOpenPicture,
   onRemovePicture,
   onRetryPicture,
+  onPastePictures,
   disabled,
   placeholder,
   className,
@@ -2412,6 +2556,7 @@ export function ComposerPromptEditor({
         onOpenPicture={onOpenPicture}
         onRemovePicture={onRemovePicture}
         onRetryPicture={onRetryPicture}
+        onPastePictures={onPastePictures}
         disabled={disabled}
         placeholder={placeholder}
         onRemoveTerminalContext={onRemoveTerminalContext}

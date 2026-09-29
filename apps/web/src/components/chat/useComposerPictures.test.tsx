@@ -288,23 +288,23 @@ describe("whichever Mate is on screen", () => {
   });
 });
 
+async function addedPicture(target = A) {
+  await show(target);
+  await act(() => api.add([pngFile("shot-1200x800.png")]));
+  await settle();
+  return draftOf(target)!.images.at(-1)!;
+}
+
+/** What the editor reports after an edit: the pictures it holds, and its text. */
+async function textHolds(pictureIds: ReadonlyArray<string>, prompt: string) {
+  let healed: string | null = null;
+  await act(() => {
+    healed = api.sync(pictureIds, prompt);
+  });
+  return healed;
+}
+
 describe("a picture taken out of the text", () => {
-  async function addedPicture() {
-    await show(A);
-    await act(() => api.add([pngFile("shot-1200x800.png")]));
-    await settle();
-    return draftOf(A)!.images[0]!;
-  }
-
-  /** What the editor reports after an edit: the pictures it holds, and its text. */
-  async function textHolds(pictureIds: ReadonlyArray<string>, prompt: string) {
-    let healed: string | null = null;
-    await act(() => {
-      healed = api.sync(pictureIds, prompt);
-    });
-    return healed;
-  }
-
   it("comes back with an undo, as it was", async () => {
     const picture = await addedPicture();
 
@@ -355,5 +355,56 @@ describe("a picture taken out of the text", () => {
     const [id] = [...new Set(uploads.released)];
     expect(await textHolds([id!], `Look${P}`)).toBe("Look");
     expect(draftOf(A)?.images ?? []).toEqual([]);
+  });
+});
+
+describe("pictures pasted with words copied from the text", () => {
+  it("a picture cut from the text comes back itself", async () => {
+    const picture = await addedPicture();
+    await textHolds([], "");
+
+    expect(api.paste([picture.id])).toEqual([picture.id]);
+    expect(await textHolds([picture.id], P)).toBeNull();
+    expect(draftOf(A)!.images.map((image) => image.id)).toEqual([picture.id]);
+  });
+
+  it("a picture copied comes as a picture of its own, with the same edits", async () => {
+    const picture = await addedPicture();
+
+    const [copyId] = api.paste([picture.id]);
+    expect(copyId).not.toBe(picture.id);
+    expect(await textHolds([picture.id, copyId!], `${P}${P}`)).toBeNull();
+
+    const [, copy] = draftOf(A)!.images;
+    expect(copy).toEqual({ ...picture, id: copyId, previewUrl: copy!.previewUrl });
+    expect(copy!.previewUrl).not.toBe(picture.previewUrl);
+  });
+
+  it("a picture cut and pasted twice comes back once, then as a copy", async () => {
+    const picture = await addedPicture();
+    await textHolds([], "");
+
+    expect(api.paste([picture.id])).toEqual([picture.id]);
+    await textHolds([picture.id], P);
+    const [copyId] = api.paste([picture.id]);
+    await textHolds([picture.id, copyId!], `${P}${P}`);
+
+    expect(draftOf(A)!.images.map((image) => image.id)).toEqual([picture.id, copyId]);
+  });
+
+  it("a picture copied from another Mate's draft comes as one of this draft's", async () => {
+    const picture = await addedPicture(A);
+    await show(B);
+
+    const [copyId] = api.paste([picture.id]);
+    await textHolds([copyId!], P);
+
+    expect(draftOf(B)!.images.map((image) => image.id)).toEqual([copyId]);
+    expect(draftOf(A)!.images.map((image) => image.id)).toEqual([picture.id]);
+  });
+
+  it("a picture this composer never had cannot come", async () => {
+    await show(A);
+    expect(api.paste(["from-another-window"])).toEqual([null]);
   });
 });

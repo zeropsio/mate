@@ -3555,6 +3555,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onOpenPicture={composerPictures.open}
                     onRemovePicture={composerPictures.remove}
                     onRetryPicture={composerPictures.retry}
+                    onPastePictures={
+                      !isComposerApprovalState && pendingUserInputs.length === 0
+                        ? composerPictures.paste
+                        : undefined
+                    }
                     {...(showMobilePendingAnswerActions ? { className: "max-sm:pb-11" } : {})}
                     onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
                     onChange={onPromptChange}

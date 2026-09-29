@@ -96,6 +96,11 @@ export interface ComposerPictures {
    * without it is returned, or null when nothing had to go.
    */
   readonly sync: (pictureIds: ReadonlyArray<string>, prompt: string) => string | null;
+  /**
+   * Pictures pasted with words copied from a composer's text: the id each
+   * place takes, or null for a picture this composer cannot place again.
+   */
+  readonly paste: (ids: ReadonlyArray<string>) => ReadonlyArray<string | null>;
   /** Why the message cannot go yet, or null. */
   readonly blockReason: string | null;
   /** The open picture, rendered over everything. */
@@ -183,8 +188,11 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
     const thumbnail = bitmap ? thumbnailOf(bitmap, picture) : null;
     setThumbnails((current) => {
       // Thumbnails of pictures gone for good go as a new one comes.
+      const shown = new Set(latest.current.images.map((image) => image.id));
       const next = new Map(
-        [...current].filter(([key]) => bitmaps.current.has(key) || held.current.has(key)),
+        [...current].filter(
+          ([key]) => bitmaps.current.has(key) || held.current.has(key) || shown.has(key),
+        ),
       );
       if (thumbnail) next.set(id, thumbnail);
       else next.delete(id);
@@ -636,6 +644,34 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
     [hold, makeCopy, syncImages],
   );
 
+  /**
+   * A picture cut from the text comes back itself, once; one still in a draft
+   * (a copy, or a second paste of a cut) comes as a picture of its own with
+   * the same edits; one this composer never had cannot come. What comes waits
+   * with the pictures taken out, for the text to hold it.
+   */
+  const paste = useCallback(
+    (ids: ReadonlyArray<string>): ReadonlyArray<string | null> => {
+      const back = new Set<string>();
+      return ids.map((id) => {
+        if (held.current.has(id) && !back.has(id)) {
+          back.add(id);
+          return id;
+        }
+        const image = held.current.get(id) ?? imageOf(id);
+        if (!image) return null;
+        const copyId = randomUUID();
+        held.current.set(copyId, { ...image, id: copyId });
+        setThumbnails((current) => {
+          const thumbnail = current.get(id);
+          return thumbnail === undefined ? current : new Map(current).set(copyId, thumbnail);
+        });
+        return copyId;
+      });
+    },
+    [imageOf],
+  );
+
   const retry = useCallback(
     (id: string) => {
       const image = imageOf(id);
@@ -691,6 +727,7 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
     remove: removePicture,
     retry,
     sync,
+    paste,
     blockReason: input.images.some((image) => image.picture?.preparing)
       ? "Picture still preparing"
       : null,
