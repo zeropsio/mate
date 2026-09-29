@@ -8,9 +8,11 @@ import {
   type ZeropsPlacedBirth,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
+import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 import { act, act as act_, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -44,6 +46,12 @@ vi.mock("~/zerops/collapsedProjects", () => ({
     stored.written = collapsed;
   },
 }));
+// A crew's faces open their chats through the router, which a menu drawn
+// here has none of.
+vi.mock("@tanstack/react-router", async (original) => ({
+  ...(await original<typeof import("@tanstack/react-router")>()),
+  useNavigate: () => () => undefined,
+}));
 afterEach(() => {
   // A tree left mounted would answer the next test's asks of the one menu.
   for (const tree of mountedTrees.splice(0)) {
@@ -63,6 +71,7 @@ import {
 } from "./projects/projectsView.logic";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarReveal } from "~/zerops/sidebarReveal";
+import type { SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
 import {
   ProjectHeader,
@@ -248,8 +257,9 @@ describe("SidebarZeropsTree", () => {
     expect(row).toContain("w-full");
     // Its corners are the menu's row's own (`.menu-row`, 12px).
     expect(row).toContain("menu-row");
-    // Lit from its row, so it stays lit while the pointer is on its menu.
-    expect(row).toContain("group-hover/mate:bg-sidebar-row-hover");
+    // Lit as its unit, which holds its menu too, so it stays lit while the
+    // pointer is on that ("a Mate and its crew, one unit in the menu").
+    expect(html).toContain('data-zerops-mate-unit="crm-dev"');
     expect(row).not.toContain("border");
   });
 
@@ -979,6 +989,91 @@ describe("the project's flow under it", () => {
   it("wears no dot of its own: the rows and the chip say what waits", () => {
     const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
     expect(html).not.toContain("sidebar-project-next-step");
+  });
+});
+
+// A Mate and its crew's line are one thing in the menu (the owner,
+// 2026-09-29: "why isn't crew included in the hover?"): one unit, lit as one
+// under the pointer, while a menu of its is open and by the selected band
+// (`SidebarSelectedBand.test.tsx`), and its changes rows of their own.
+describe("a Mate and its crew, one unit in the menu", () => {
+  const crew = (): SidebarCrewRead => {
+    const fixture = crewSnapshotFixture();
+    const view = deriveCrewView(fixture, [], () => {
+      throw new Error("no shells here");
+    });
+    return { status: "applied", view, attention: [] };
+  };
+  const drawn = (options: { readonly crew: boolean; readonly open?: boolean }) =>
+    mount(
+      <SidebarZeropsTree
+        {...(options.open === true ? { activeProjectId: "crm-dev" } : {})}
+        candidates={[CRM_DEV_CONNECTED, CRM_STAGE, CRM_PROD]}
+        complete
+        getCrew={() => (options.crew ? crew() : undefined)}
+        getFlow={() => ({
+          pullRequests: [pull(4)],
+          environments: new Map([
+            ["crm-stage", stageRow],
+            ["crm-prod", productionRow],
+          ]),
+          releaseOffered: true,
+        })}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+  const unitOf = (tree: ReactTestRenderer) =>
+    tree.root.find(
+      (node) => typeof node.type === "string" && node.props["data-zerops-mate-unit"] === "crm-dev",
+    );
+  const count = (node: ReactTestInstance, name: string) =>
+    node.findAll(
+      (child) => typeof child.type === "string" && child.props["data-zerops-surface"] === name,
+    ).length;
+
+  it("holds the Mate's row and its crew's line, and none of its changes", () => {
+    const tree = drawn({ crew: true });
+    const unit = unitOf(tree);
+    expect(count(unit, "sidebar-mate")).toBe(1);
+    expect(count(unit, "sidebar-crew")).toBe(1);
+    expect(count(unit, "sidebar-pull-request")).toBe(0);
+    // The change is still drawn, under the unit, as a row of its own.
+    expect(count(tree.root, "sidebar-pull-request")).toBe(1);
+  });
+
+  it("holds a Mate without a crew as its row alone, as it always stood", () => {
+    const unit = unitOf(drawn({ crew: false }));
+    const row = unit.find(
+      (node) => typeof node.type === "string" && node.props["data-zerops-mate-row"] === "crm-dev",
+    );
+    const elements = (node: ReactTestInstance) =>
+      node.findAll((child) => typeof child.type === "string").length;
+    expect(count(unit, "sidebar-crew")).toBe(0);
+    // Itself, and its row's elements: nothing else to be lit.
+    expect(elements(unit)).toBe(elements(row) + 1);
+  });
+
+  it("lights as one in the row's corners, under the pointer and while a menu of its is open", () => {
+    const tree = drawn({ crew: true });
+    const unit = String(unitOf(tree).props.className).split(" ");
+    expect(unit).toEqual(
+      expect.arrayContaining([
+        "menu-unit",
+        "group/mate",
+        "hover:bg-sidebar-row-hover",
+        "has-[[data-popup-open]]:bg-sidebar-row-hover",
+      ]),
+    );
+    // The row paints nothing of its own, so the crew's line is never outside it.
+    expect(String(surface(tree, "sidebar-mate").props.className)).not.toContain(
+      "bg-sidebar-row-hover",
+    );
+  });
+
+  it("leaves the open Mate's unit to the selected band, which slides to it", () => {
+    const unit = String(unitOf(drawn({ crew: true, open: true })).props.className);
+    expect(unit).not.toContain("bg-sidebar-row-hover");
   });
 });
 

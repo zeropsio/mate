@@ -2903,6 +2903,13 @@ code {
     border-radius: 12px;
   }
 
+  /* A Mate's unit — its row and its crew's line, one thing in the menu
+     (`MateUnit`): the row's corners, which its hover and the selected band
+     paint it in. */
+  .menu-unit {
+    border-radius: 12px;
+  }
+
   /* A one-line row under the Mates — a change, the crew, a fold: 28 px tall
      and a smaller corner than the Mate's row above it. */
   .menu-line {
@@ -2983,14 +2990,23 @@ code {
   }
 
   /* A crewmate's face on its crew's line: a 24 px press around the 20 px
-     face, lit on hover like a row. */
+     face. It stands in its Mate's unit, lit by the pointer or by the
+     selected band, so its own hover is a tint of the ink, which reads on
+     either as on the menu's ground. */
   .menu-crewface {
     border-radius: 7px;
   }
 
+  @media (hover: hover) {
+    .menu-crewface:hover {
+      background: color-mix(in oklab, var(--contrast-sidebar-foreground) 8%, transparent);
+    }
+  }
+
   /* The one selected band (`SidebarSelectedBand`): behind every row of the
-     list, which is its own stacking context, with the row's corners. It is
-     placed by transform; only a slide to a newly opened row moves it. */
+     list, which is its own stacking context, over the open Mate's unit — its
+     row and its crew's line — with the row's corners. It is placed by
+     transform; only a slide to a newly opened Mate moves it. */
   .menu-band {
     position: absolute;
     top: 0;

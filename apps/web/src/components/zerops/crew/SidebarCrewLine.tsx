@@ -138,7 +138,7 @@ function CrewLineView({
                 render={
                   <button
                     aria-label={`Open ${who}`}
-                    className="menu-crewface flex size-6 cursor-pointer items-center justify-center outline-none transition-colors hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring"
+                    className="menu-crewface flex size-6 cursor-pointer items-center justify-center outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring"
                     onClick={() => {
                       void navigate({
                         to: "/$environmentId/$threadId",

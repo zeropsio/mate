@@ -9,11 +9,11 @@ const box = (top: number, height: number, left = 9, width = 411) => ({
   right: left + width,
 });
 
-describe("bandPlacement — the selected band over the open Mate's row", () => {
+describe("bandPlacement — the selected band over the open Mate's unit", () => {
   const list = box(92, 1400, 9, 411);
 
-  it("covers the row's own box, measured from the list", () => {
-    expect(bandPlacement({ list, row: box(212, 76), clip: box(184, 600) })).toEqual({
+  it("covers the unit's own box, measured from the list", () => {
+    expect(bandPlacement({ list, unit: box(212, 76), clip: box(184, 600) })).toEqual({
       top: 120,
       left: 0,
       width: 411,
@@ -22,15 +22,15 @@ describe("bandPlacement — the selected band over the open Mate's row", () => {
   });
 
   it.each([
-    { case: "no row is open", row: null, clip: null },
-    { case: "the open row's project is folded shut", row: box(212, 76), clip: box(212, 0) },
-    { case: "the fold ends above the row", row: box(212, 76), clip: box(100, 90) },
-  ])("hides where $case", ({ row, clip }) => {
-    expect(bandPlacement({ list, row, clip })).toBeNull();
+    { case: "no Mate is open", unit: null, clip: null },
+    { case: "the open Mate's project is folded shut", unit: box(212, 76), clip: box(212, 0) },
+    { case: "the fold ends above the unit", unit: box(212, 76), clip: box(100, 90) },
+  ])("hides where $case", ({ unit, clip }) => {
+    expect(bandPlacement({ list, unit, clip })).toBeNull();
   });
 
-  it("shrinks with a fold that is closing over the row, never standing out of it", () => {
-    expect(bandPlacement({ list, row: box(212, 76), clip: box(184, 60) })).toEqual({
+  it("shrinks with a fold that is closing over the unit, never standing out of it", () => {
+    expect(bandPlacement({ list, unit: box(212, 76), clip: box(184, 60) })).toEqual({
       top: 120,
       left: 0,
       width: 411,
@@ -38,8 +38,8 @@ describe("bandPlacement — the selected band over the open Mate's row", () => {
     });
   });
 
-  it("covers the whole row where nothing folds it", () => {
-    expect(bandPlacement({ list, row: box(212, 58), clip: null })?.height).toBe(58);
+  it("covers the whole unit where nothing folds it", () => {
+    expect(bandPlacement({ list, unit: box(212, 58), clip: null })?.height).toBe(58);
   });
 });
 

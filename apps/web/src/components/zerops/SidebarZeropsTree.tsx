@@ -17,9 +17,10 @@
  * lights the open Mate and slides to the next one opened
  * (`SidebarSelectedBand`).
  *
- * A Mate's crew stands one line under it (`SidebarCrewLine`), then its open
- * pull requests, a line each — the mark, `#N title` and *Review*, the one
- * door to merging — folded behind a count past three (`pullRequestsFolded`).
+ * A Mate's crew stands one line under it (`SidebarCrewLine`), lit with it as
+ * one (`MateUnit`), then its open pull requests, a line each — the mark,
+ * `#N title` and *Review*, the one door to merging — folded behind a count
+ * past three (`pullRequestsFolded`).
  * After the Mates come those being created, the ones untouched for a week
  * folded behind their count, and the pull requests that are nobody's Mate's,
  * a person's own branch. *New project* stands at the menu's foot, under the
@@ -1172,32 +1173,35 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           (mate) => mate.projectId === item.project.id,
         )?.preview;
         numbered += 1;
+        const active = item.project.id === activeProjectId;
         return {
           key: item.key,
           node: (
             <div className="flex flex-col">
-              <MateRow
-                actions={getMateActions?.(item, getActivity?.(item))}
-                active={item.project.id === activeProjectId}
-                activity={getActivity?.(item)}
-                appUrl={appUrl}
-                candidate={item}
-                keys={mateKeys}
-                number={numbered <= 9 ? numbered : undefined}
-                numbers={altHeld}
-                onSelect={onSelect}
-                owner={getOwner?.(item)}
-                timestampFormat={timestampFormat}
-                tint={tints.get(item.project.id) ?? "slate"}
-              />
-              {/* Its crew, one line right under it, before its changes — read
-                  once its Mate is connected, and until then where this
-                  browser last saw it, so a reload moves no row. */}
-              <SidebarCrewLine
-                environmentId={item.group === "connected" ? item.environmentId : undefined}
-                projectId={item.project.id}
-                read={getCrew?.(item)}
-              />
+              <MateUnit active={active} projectId={item.project.id}>
+                <MateRow
+                  actions={getMateActions?.(item, getActivity?.(item))}
+                  active={active}
+                  activity={getActivity?.(item)}
+                  appUrl={appUrl}
+                  candidate={item}
+                  keys={mateKeys}
+                  number={numbered <= 9 ? numbered : undefined}
+                  numbers={altHeld}
+                  onSelect={onSelect}
+                  owner={getOwner?.(item)}
+                  timestampFormat={timestampFormat}
+                  tint={tints.get(item.project.id) ?? "slate"}
+                />
+                {/* Its crew, one line right under it, before its changes — read
+                    once its Mate is connected, and until then where this
+                    browser last saw it, so a reload moves no row. */}
+                <SidebarCrewLine
+                  environmentId={item.group === "connected" ? item.environmentId : undefined}
+                  projectId={item.project.id}
+                  read={getCrew?.(item)}
+                />
+              </MateUnit>
               {pulls.length === 0 || changeRows === undefined ? null : (
                 <PullRequestList
                   groupId={id}
@@ -1990,6 +1994,38 @@ const ROW_ACTION_CLASS =
 const HEADING_ACTION_CLASS =
   "inline-flex size-7 cursor-pointer items-center justify-center rounded-md text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-hover data-popup-open:text-sidebar-foreground";
 
+/**
+ * A Mate and its crew's line, one thing in the menu (the owner, 2026-09-29:
+ * "why isn't crew included in the hover?"): one surface in the row's inset
+ * and corners, lit under the pointer anywhere on it and while a menu of its
+ * is open — its row's hover, so its menu takes the time's slot there too —
+ * and, open, by the list's one band, which measures it
+ * (`SidebarSelectedBand`). Its changes stand after it, rows of their own
+ * with their own hover. With no crew it is its row alone, to the pixel.
+ */
+function MateUnit({
+  projectId,
+  active,
+  children,
+}: {
+  readonly projectId: string;
+  /** Open: the selected band lights it, so it paints nothing of its own. */
+  readonly active: boolean;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "menu-unit group/mate flex flex-col transition-colors",
+        !active && "hover:bg-sidebar-row-hover has-[[data-popup-open]]:bg-sidebar-row-hover",
+      )}
+      data-zerops-mate-unit={projectId}
+    >
+      {children}
+    </div>
+  );
+}
+
 function MateRow<T extends RosterCandidate>({
   candidate,
   tint,
@@ -2067,10 +2103,10 @@ function MateRow<T extends RosterCandidate>({
 
   return (
     // The row is the container, not the button: the menu's trigger sits in
-    // the row beside the button, never inside it, and the row stays lit
-    // while the pointer is on either.
+    // the row beside the button, never inside it. Both are lit as the row's
+    // unit (`MateUnit`), wherever on it the pointer is.
     <div
-      className="group/mate relative"
+      className="relative"
       data-zerops-mate-row={candidate.project.id}
       data-zerops-surface="sidebar-mate-row"
       onContextMenu={
@@ -2100,19 +2136,14 @@ function MateRow<T extends RosterCandidate>({
     >
       <button
         aria-current={active ? "true" : undefined}
-        className={cn(
-          // Two columns: the face's 28 px, then the words. The face stands at
-          // the top, on the name's line, whatever number of lines follow it —
-          // centred on the row it sat beside the question in a three-line row
-          // and beside the name in a one-line one. Faces stand at 16 px from
-          // the menu's edge and every word at 56 (the list starts at 9).
-          "menu-row grid w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-left outline-none select-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
-          // The open Mate's row is lit by the list's one band, which slides
-          // to it (`SidebarSelectedBand`); a row lights only under the pointer.
-          active
-            ? "bg-transparent text-sidebar-foreground"
-            : "bg-transparent text-sidebar-foreground group-hover/mate:bg-sidebar-row-hover group-has-[[data-popup-open]]/mate:bg-sidebar-row-hover",
-        )}
+        // Two columns: the face's 28 px, then the words. The face stands at
+        // the top, on the name's line, whatever number of lines follow it —
+        // centred on the row it sat beside the question in a three-line row
+        // and beside the name in a one-line one. Faces stand at 16 px from
+        // the menu's edge and every word at 56 (the list starts at 9). It
+        // paints nothing of its own: its unit is lit, under the pointer or
+        // by the list's one band, which slides to it (`SidebarSelectedBand`).
+        className="menu-row grid w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring"
         data-zerops-surface="sidebar-mate"
         onClick={() => {
           if (longPress.current.fired) {
