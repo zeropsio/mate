@@ -212,7 +212,7 @@
     "kind": "css-declaration",
     "fingerprint": "[data-run-shimmer]{animation:run-shimmer 2s linear infinite}",
     "owner": "ales",
-    "reason": "A light sweeps across the words of the one call a Mate is running now, until it returns: the card's live moment, on one small element, stopped by reduced motion",
+    "reason": "A light sweeps across the words of each call a Mate is running now, until it returns: the card's live moment, on small elements, stopped by reduced motion",
     "expires": "never"
   }
 ]

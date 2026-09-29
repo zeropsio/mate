@@ -2094,8 +2094,10 @@ code {
 }
 
 /* A paragraph never ends on one word alone: the last lines are balanced
-   where the browser can (a progressive refinement; elsewhere it wraps as ever). */
-.chat-markdown :where(p, li, blockquote) {
+   where the browser can (a progressive refinement; elsewhere it wraps as ever).
+   Not while the words still stream in: balancing moves earlier words from
+   line to line as each new one lands. */
+.chat-markdown:not([data-streaming]) :where(p, li, blockquote) {
   text-wrap: pretty;
 }
 
@@ -2655,7 +2657,8 @@ code {
    paint — and lays a strip of its ground and its sides across the joint, so
    no edge falls in the joint's pixel. (An outer shadow is clipped at the very
    edge it had to cover; a strip beneath went under the pane's own ground.) */
-.legend-list-content-container
+.timeline-legend-list
+  .legend-list-content-container
   > div
   > div:has(> div > :is([data-card-slice="top"], [data-card-slice="middle"])) {
   contain: layout style !important;
@@ -2681,24 +2684,25 @@ code {
    whole conversation in one frame on every switch between Mates; it now
    comes in over 140 ms. Only the showing is eased: hiding stays instant, so
    rows the list has not placed yet are never seen on their way out. */
-.legend-list-content-container > div[style*="opacity"] {
+.timeline-legend-list .legend-list-content-container > div[style*="opacity"] {
   transition: opacity 140ms ease-out;
 }
 
-.legend-list-content-container > div[style*="opacity: 0"] {
+.timeline-legend-list .legend-list-content-container > div[style*="opacity: 0"] {
   transition-duration: 0ms;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .legend-list-content-container > div[style*="opacity"] {
+  .timeline-legend-list .legend-list-content-container > div[style*="opacity"] {
     transition: none;
   }
 }
 
 /* A call the Mate is running now: a band of light sweeps across its words,
    left to right, in their own inks (a mask, not a colour, so the verb stays
-   muted and the file name full), until the call returns. One element at a
-   time; with reduced motion the words simply stand. */
+   muted and the file name full), until the call returns — as a rule one call,
+   and a command still running beside it sweeps too. With reduced motion the
+   words simply stand. */
 @media (prefers-reduced-motion: no-preference) {
   [data-run-shimmer] {
     /* A mask reads only alpha: the words' own ink, at 70 % and whole. */
@@ -2733,9 +2737,10 @@ code {
    belongs to the state: at work the shape turns a notch at a time (its own
    symmetry, so it never looks like somebody else) and the eyes glance about;
    as it starts to need you, it hops; done after work while you watch, it pops
-   once. Idle and asleep it is still: a menu of faces must not fidget.
-   Transform and opacity only, each Mate on its own beat (`--mate-face-phase`)
-   so a menu of them never ticks in unison. */
+   once. Idle and asleep it is still: a menu of faces must not fidget. Its own
+   motion is transform and opacity (the morph eases the eyes' and the mouth's
+   geometry), each Mate on its own beat (`--mate-face-phase`) so a menu of them
+   never ticks in unison. */
 :root {
   /* A spring: 8 % past the mark and back, settled by two thirds of its time. */
   --ease-spring: linear(
