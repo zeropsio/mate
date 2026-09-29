@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { ownerMark } from "./SidebarMateRow.logic";
+import { changeMarkTone, ownerMark } from "./SidebarMateRow.logic";
 
 describe("ownerMark — whose Mate it is, as a 16 px mark before its name", () => {
   it.each([
@@ -46,5 +46,44 @@ describe("ownerMark — whose Mate it is, as a 16 px mark before its name", () =
       ),
     );
     expect(hues.size).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe("changeMarkTone — the one colour a change row's mark may wear", () => {
+  const change = (overrides: Partial<Parameters<typeof changeMarkTone>[0]> = {}) => ({
+    number: 4,
+    mergeability: "mergeable" as const,
+    checks: "passing" as const,
+    ...overrides,
+  });
+  // Amber is "didn't go through", red is "broken" (S3); everything else is
+  // the mark's own grey — the verdict itself lives in the review.
+  it.each([
+    { case: "merges, checks passing", pull: change(), tone: undefined },
+    { case: "merges, no checks", pull: change({ checks: "none" }), tone: undefined },
+    { case: "merges, checks running", pull: change({ checks: "pending" }), tone: undefined },
+    { case: "merges, checks failing", pull: change({ checks: "failing" }), tone: "failed" },
+    {
+      case: "behind main",
+      pull: change({ mergeability: "conflicting", checks: "passing" }),
+      tone: "attention",
+    },
+    {
+      case: "behind main, checks failing",
+      pull: change({ mergeability: "conflicting", checks: "failing" }),
+      tone: "failed",
+    },
+    {
+      case: "behind main, checks running",
+      pull: change({ mergeability: "conflicting", checks: "pending" }),
+      tone: undefined,
+    },
+    { case: "Gitea still checking", pull: change({ mergeability: "checking" }), tone: undefined },
+  ] as const)("$case: $tone", ({ pull, tone }) => {
+    expect(changeMarkTone(pull, false)).toBe(tone);
+  });
+
+  it("says nothing for a change drawn from memory: its verdict is Gitea's to say again", () => {
+    expect(changeMarkTone(change({ checks: "failing" }), true)).toBeUndefined();
   });
 });

@@ -2,6 +2,7 @@
  * What a Mate's row in the left menu draws, read from what the row knows —
  * pure, so each rule has its table.
  */
+import { pullRequestBlocked, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
 
 /** Whose Mate it is, as the mark before its name draws it. */
 export interface OwnerMark {
@@ -34,4 +35,21 @@ export function ownerMark(owner: {
     picture: owner.avatarUrl !== null && owner.avatarUrl.length > 0 ? owner.avatarUrl : null,
     label: `${owner.name}'s Mate`,
   };
+}
+
+/**
+ * The one colour a change row's pull-request mark may wear (S3): red where
+ * its checks fail — broken — and amber where it has fallen behind `main` and
+ * no longer merges — it didn't go through. Everything else is the mark's own
+ * grey: checks running, Gitea still working the answer out, or nothing wrong.
+ * The verdict itself lives in the review, not on the row; a change drawn from
+ * memory says nothing until Gitea says it again.
+ */
+export function changeMarkTone(
+  pull: Pick<FlowPullRequest, "number" | "mergeability" | "checks">,
+  remembered: boolean,
+): "failed" | "attention" | undefined {
+  if (remembered) return undefined;
+  if (pull.checks === "failing") return "failed";
+  return pullRequestBlocked(pull)?.kind === "behind" ? "attention" : undefined;
 }

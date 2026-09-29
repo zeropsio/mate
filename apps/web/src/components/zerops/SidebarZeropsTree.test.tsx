@@ -762,10 +762,11 @@ describe("the project's flow under it", () => {
     expect(html.indexOf("#4 Change 4")).toBeLessThan(html.indexOf("crm-stage"));
     // Nothing here opens Gitea: the app holds the only token, so every one of
     // its pages is a sign-in page for the person reading this menu. The title
-    // opens the change's own page. The checks are a dot, not a word.
+    // opens the change's own page, and the verdict lives in the review: no
+    // check dot on the row.
     expect(html).not.toContain("gitea.example");
-    expect(html).toContain('aria-label="Passing"');
-    expect(html).not.toContain(">Passing</span>");
+    expect(html).not.toContain('aria-label="Passing"');
+    expect(html).toContain('data-zerops-surface="sidebar-pull-request-review"');
   });
 
   // The menu has one text column (the owner, 2026-09-25: "everything jumps
@@ -787,54 +788,62 @@ describe("the project's flow under it", () => {
     const face = LIST + px(mate, /^ps-/u);
     expect(face).toBe(16);
     expect(face + px(mate, /^grid-cols-/u) + px(mate, /^gap-x-/u)).toBe(56);
+    // A change's mark in the faces' column, its title on the words' edge.
+    const change = /<li class="([^"]*)"[^>]*data-zerops-surface="sidebar-pull-request"/u.exec(
+      html,
+    )?.[1];
+    expect(classes(change)).toContain("grid-cols-[28px_minmax(0,1fr)_auto]");
+    expect(LIST + px(change, /^ps-/u) + 28 + px(change, /^gap-x-/u)).toBe(56);
   });
 
-  it("hands a change nobody here can fix back to the Mate that wrote it", () => {
-    const stale = flow({
-      pullRequests: [pull(4, { mergeability: "conflicting" })],
-      onAsk: () => {},
-    });
-    const html = withFlow([CRM_DEV, CRM_STAGE], stale);
-    // The words that name the problem are the way to hand it over: a rebase
-    // happens in the Mate's checkout, not in this menu.
-    expect(html).toContain('data-zerops-primary-action="Ask"');
-    // One casing down the column: it sat beside `Release` reading `needs a
-    // rebase`, two verbs in the same list opening differently.
-    expect(html).toContain("Needs a rebase");
-    // And it wears what it is about, so a rebase and a failed check are not
-    // the same grey pill.
-    expect(html).toContain("--zerops-status-attention-surface");
-    expect(html).toContain("Rebase it on main");
-    // Without a way to ask, the state stays a label rather than becoming a
-    // verb that goes nowhere.
-    expect(
-      withFlow(
+  // The one door to merging is the review (R1): every change says *Review*
+  // in blue, and nothing on the row merges, asks or grades it.
+  it("offers Review on every change, and never Merge, Ask or a check dot from the row", () => {
+    for (const change of [
+      pull(4),
+      pull(4, { mergeability: "conflicting" }),
+      pull(4, { mergeability: "conflicting", checks: "failing", checkWord: "Failing" }),
+      pull(4, { mergeability: "conflicting", checks: "pending", checkWord: "Pending" }),
+    ]) {
+      const html = withFlow(
         [CRM_DEV, CRM_STAGE],
-        flow({ pullRequests: [pull(4, { mergeability: "conflicting" })] }),
-      ),
-    ).not.toContain('data-zerops-primary-action="Ask"');
-    // Checks still running are the one refusal with nothing to ask for.
-    expect(
-      withFlow(
-        [CRM_DEV, CRM_STAGE],
-        flow({
-          pullRequests: [
-            pull(4, { mergeability: "conflicting", checks: "pending", checkWord: "Pending" }),
-          ],
-          onAsk: () => {},
-        }),
-      ),
-    ).not.toContain('data-zerops-primary-action="Ask"');
+        flow({ pullRequests: [change], onAsk: () => {} }),
+      );
+      const rows = html.slice(
+        html.indexOf('data-zerops-surface="sidebar-pull-requests"'),
+        html.indexOf('data-zerops-surface="sidebar-environment-rows"'),
+      );
+      expect(rows).toContain('data-zerops-surface="sidebar-pull-request-review"');
+      expect(rows).toContain(">Review</button>");
+      expect(rows).not.toContain('data-zerops-primary-action="Merge"');
+      expect(rows).not.toContain('data-zerops-primary-action="Ask"');
+      expect(rows).not.toContain("sidebar-pull-request-blocked");
+      expect(rows).not.toContain('data-zerops-primitive="status-dot"');
+    }
   });
 
-  it("offers Merge only where Gitea said the branch merges", () => {
-    expect(withFlow([CRM_DEV, CRM_STAGE])).toContain('data-zerops-primary-action="Merge"');
-    expect(
-      withFlow(
-        [CRM_DEV, CRM_STAGE],
-        flow({ pullRequests: [pull(4, { mergeability: "conflicting" })] }),
-      ),
-    ).not.toContain('data-zerops-primary-action="Merge"');
+  // One meaning per colour (S3): the mark is red where the checks fail,
+  // amber where the change fell behind main, and its own grey otherwise.
+  it.each([
+    { case: "that merges", change: pull(4), tone: undefined, ink: "text-muted-foreground" },
+    {
+      case: "that fell behind main",
+      change: pull(4, { mergeability: "conflicting" }),
+      tone: "attention",
+      ink: "text-status-attention-text",
+    },
+    {
+      case: "whose checks fail",
+      change: pull(4, { mergeability: "conflicting", checks: "failing" }),
+      tone: "failed",
+      ink: "text-status-failed-text",
+    },
+  ])("tints only the mark of a change $case", ({ change, tone, ink }) => {
+    const html = withFlow([CRM_DEV, CRM_STAGE], flow({ pullRequests: [change] }));
+    const row = html.slice(html.indexOf('data-zerops-surface="sidebar-pull-request"') - 400);
+    if (tone === undefined) expect(html).not.toContain("data-zerops-change-tone");
+    else expect(html).toContain(`data-zerops-change-tone="${tone}"`);
+    expect(row).toMatch(new RegExp(`<span class="flex justify-center ${ink}"><svg`, "u"));
   });
 
   it("offers to set up a stop the recipe has, in the project's menu rather than as a row", () => {
@@ -962,47 +971,9 @@ describe("the project's flow under it", () => {
     expect(html).not.toContain("puts");
   });
 
-  it("says why a pull request offers no Merge rather than leaving a dead end", () => {
-    const running = withFlow(
-      [CRM_DEV, CRM_STAGE],
-      flow({ pullRequests: [pull(4, { mergeability: "conflicting", checks: "pending" })] }),
-    );
-    expect(running).toContain('data-zerops-surface="sidebar-pull-request-blocked"');
-    expect(running).toContain("checks running");
-
-    const stale = withFlow(
-      [CRM_DEV, CRM_STAGE],
-      flow({ pullRequests: [pull(4, { mergeability: "conflicting", checks: "passing" })] }),
-    );
-    expect(stale).toContain("needs a rebase");
-
-    // A red dot with no word beside it is the row going quiet at the moment it
-    // has most to say: every refusal is written out, the red one included.
-    const failed = withFlow(
-      [CRM_DEV, CRM_STAGE],
-      flow({
-        pullRequests: [
-          pull(4, { mergeability: "conflicting", checks: "failing", checkWord: "Failing" }),
-        ],
-      }),
-    );
-    expect(failed).toContain('data-zerops-surface="sidebar-pull-request-blocked"');
-    expect(failed).toContain("checks failed");
-
-    // Nothing is added where the verb speaks for itself.
-    expect(withFlow([CRM_DEV, CRM_STAGE])).not.toContain(
-      'data-zerops-surface="sidebar-pull-request-blocked"',
-    );
-  });
-
   it("says a verb is running where it was pressed, and takes no second click", () => {
-    const html = withFlow(
-      [CRM_DEV, CRM_STAGE, CRM_PROD],
-      flow({ merging: () => true, releasing: true }),
-    );
-    expect(html).toContain('data-zerops-primary-action="Merging…" disabled=""');
+    const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD], flow({ releasing: true }));
     expect(html).toContain('data-zerops-primary-action="Releasing…" disabled=""');
-    expect(html).not.toContain('data-zerops-primary-action="Merge"');
   });
 
   it("folds a Mate's pull requests behind a count once there are more than three", () => {
@@ -2966,8 +2937,12 @@ describe("a reload paints what the menu last drew (menuMemory)", () => {
       remembered: remembering([pull(14, { title: "Add a /status page" })]),
     });
     expect(html).toContain("#14 Add a /status page");
-    expect(html).not.toContain('data-zerops-primary-action="Merge"');
-    expect(html).not.toContain('aria-label="Passing"');
+    // No verdict it may no longer have: the mark is untinted, and the title
+    // opens nothing until Gitea answers. *Review* stands, so nothing appears
+    // on the row when the answer comes.
+    expect(html).not.toContain("data-zerops-change-tone");
+    expect(html).not.toContain("sidebar-pull-request-open");
+    expect(html).toContain('data-zerops-surface="sidebar-pull-request-review"');
   });
 
   it("draws Gitea's change rows once it answered, and never the remembered ones", () => {
@@ -2977,7 +2952,7 @@ describe("a reload paints what the menu last drew (menuMemory)", () => {
     });
     expect(html).toContain("#15 Live");
     expect(html).not.toContain("Remembered");
-    expect(html).toContain('data-zerops-primary-action="Merge"');
+    expect(html).toContain('data-zerops-surface="sidebar-pull-request-review"');
   });
 
   it("says what a stop last ran until it is read, rather than Checking", () => {

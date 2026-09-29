@@ -2997,6 +2997,29 @@ code {
   .menu-owner[data-zerops-avatar="none"] {
     background: color-mix(in oklab, var(--contrast-sidebar-foreground) 10%, transparent);
   }
+
+  /* A verb in a row, as a blue word — *Review* on a change, on the crew's
+     line: blue is what clicks (S3), and no outlined pill repeats down the
+     list. Its hover is its own blue, faint. */
+  .menu-textbtn {
+    flex: none;
+    padding: 3px 8px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 18px;
+    color: var(--info-foreground);
+    cursor: pointer;
+    transition: background-color 150ms ease;
+  }
+
+  .menu-textbtn:hover {
+    background: color-mix(in oklab, var(--info-foreground) 10%, transparent);
+  }
+
+  .dark .menu-textbtn:hover {
+    background: color-mix(in oklab, var(--info-foreground) 14%, transparent);
+  }
 }
 
 /* The owner's disc is lighter on a light menu and deeper on a dark one. */

@@ -55,8 +55,6 @@ import {
   hasMate,
   mateEnvironmentsEmptyReason,
   pullRequestsByMate,
-  changeState,
-  pullRequestBlocked,
   pullRequestsFolded,
   PRODUCTION_SETTING_UP,
   releaseContentsSentence,
@@ -103,6 +101,7 @@ import {
   ChevronRightIcon,
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
+  GitPullRequestIcon,
   MinusIcon,
   MoreHorizontalIcon,
   PauseIcon,
@@ -133,6 +132,7 @@ import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/men
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
+import { useOpenReview } from "~/zerops/review";
 import { readCollapsedProjects, writeCollapsedProjects } from "~/zerops/collapsedProjects";
 import {
   movedBefore,
@@ -153,7 +153,7 @@ import {
   stopNameSaysOnlyRole,
 } from "./SidebarZeropsTree.logic";
 import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
-import { ownerMark } from "./SidebarMateRow.logic";
+import { changeMarkTone, ownerMark } from "./SidebarMateRow.logic";
 import { MatePeekHost } from "./SidebarMatePeek";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarPeek, type SidebarRevealTarget } from "~/zerops/sidebarPeek";
@@ -182,7 +182,6 @@ import {
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
 import { groupAddsOffered } from "./ZeropsProjectRow.logic";
-import { ZeropsAskDialog } from "./ZeropsAskDialog";
 import { ZeropsMergeDialog } from "./ZeropsMergeDialog";
 import { ZeropsReleaseDialog } from "./ZeropsReleaseDialog";
 import { ZeropsRoutesMenu } from "./ZeropsPublicRoutes";
@@ -495,15 +494,12 @@ function drawnActivity(
 }
 
 /** What a change row acts with: the project's flow, or nothing while it is remembered. */
-type ChangeRows = Pick<SidebarProjectFlow, "merging" | "onMerge" | "onAsk" | "onOpenChange"> & {
+type ChangeRows = Pick<SidebarProjectFlow, "onOpenChange"> & {
   readonly remembered?: true;
 };
 
-/** Change rows drawn from memory: their titles only, until Gitea answers. */
+/** Change rows drawn from memory: their titles, untinted, until Gitea answers. */
 const REMEMBERED_CHANGE_ROWS: ChangeRows = {
-  merging: () => false,
-  onMerge: () => undefined,
-  onAsk: undefined,
   onOpenChange: undefined,
   remembered: true,
 };
@@ -1216,13 +1212,11 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
               />
               {pulls.length === 0 || changeRows === undefined ? null : (
                 <PullRequestList
-                  merging={changeRows.merging}
-                  onMerge={changeRows.onMerge}
+                  groupId={id}
                   onToggle={() => {
                     toggle(listKey);
                   }}
                   open={openLists.has(listKey)}
-                  onAsk={changeRows.onAsk}
                   onOpenChange={changeRows.onOpenChange}
                   pulls={pulls}
                   remembered={changeRows.remembered === true}
@@ -1246,14 +1240,11 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 <ul className="flex flex-col" data-zerops-surface="sidebar-other-pull-requests">
                   {grouped.others.map((pull) => (
                     <PullRequestRow
+                      groupId={id}
                       key={`${pull.repository}#${pull.number}`}
-                      merging={changeRows.merging(pull)}
-                      onAsk={changeRows.onAsk}
-                      onMerge={changeRows.onMerge}
                       onOpenChange={changeRows.onOpenChange}
                       pull={pull}
                       remembered={changeRows.remembered === true}
-                      underMate={false}
                     />
                   ))}
                 </ul>
@@ -1870,6 +1861,14 @@ function focusOnceFree(element: HTMLElement, then: () => void, frames = 0): void
 }
 
 /**
+ * A row that stands in for rows folded away — a project's quiet Mates, a
+ * Mate's pull requests past three: the fold's own glyph in the faces'
+ * column, the count on the words' edge, 13/18 and 28 px tall like a change.
+ */
+const FOLD_ROW_CLASS =
+  "menu-line grid h-7 w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-center gap-x-3 ps-1.75 pe-1 text-left text-line leading-4.5 text-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring";
+
+/**
  * A project's Mates untouched for a week, folded behind their count at the
  * end of its Mates — the words on the Mates' text column — and opened with a
  * press, under the fold, which stays where it is.
@@ -1886,7 +1885,7 @@ function QuietMatesRow({
   return (
     <button
       aria-expanded={open}
-      className="menu-line grid h-7 w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-center gap-x-3 ps-1.75 pe-1 text-left text-line leading-4.5 text-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      className={FOLD_ROW_CLASS}
       data-zerops-surface="sidebar-quiet-mates"
       onClick={onToggle}
       type="button"
@@ -2570,23 +2569,20 @@ function ComingMateRow({
  * count that opens to them once there are more (`pullRequestsFolded`).
  */
 function PullRequestList({
+  groupId,
   pulls,
   open,
   onToggle,
-  merging,
-  onMerge,
-  onAsk,
   onOpenChange,
   remembered = false,
 }: {
+  /** The project whose repository they are open against, for *Review*. */
+  readonly groupId: string;
   readonly pulls: ReadonlyArray<FlowPullRequest>;
   readonly open: boolean;
   readonly onToggle: () => void;
-  readonly merging: (pull: FlowPullRequest) => boolean;
-  readonly onMerge: (pull: FlowPullRequest) => void;
-  readonly onAsk?: ((pull: FlowPullRequest, ask: string) => void) | undefined;
   readonly onOpenChange?: ((pull: FlowPullRequest) => void) | undefined;
-  /** Drawn from memory until Gitea answers: titles only. */
+  /** Drawn from memory until Gitea answers: no tint, and the title opens nothing yet. */
   readonly remembered?: boolean;
 }) {
   const folded = pullRequestsFolded(pulls.length);
@@ -2597,23 +2593,23 @@ function PullRequestList({
       {folded ? (
         <button
           aria-expanded={open}
-          className="flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-line leading-4.5 text-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+          className={FOLD_ROW_CLASS}
+          data-zerops-surface="sidebar-pull-request-fold"
           onClick={onToggle}
           type="button"
         >
-          <span aria-hidden="true" className="w-7 shrink-0" />
-          <FoldGlyph open={open} />
-          <span>{pulls.length} pull requests</span>
+          <span className="flex justify-center">
+            <FoldGlyph open={open} />
+          </span>
+          <span className="truncate">{`${String(pulls.length)} pull requests`}</span>
         </button>
       ) : null}
       {!folded || open ? (
         <ul className="flex flex-col">
           {pulls.map((pull) => (
             <PullRequestRow
+              groupId={groupId}
               key={`${pull.repository}#${pull.number}`}
-              merging={merging(pull)}
-              onAsk={onAsk}
-              onMerge={onMerge}
               onOpenChange={onOpenChange}
               pull={pull}
               remembered={remembered}
@@ -2626,51 +2622,55 @@ function PullRequestList({
 }
 
 /**
- * One pull request: its number and title, the way into Gitea; the checks as
- * a dot with its word in a tooltip; *Merge* where Gitea said the branch
- * merges. A person's own pull request names them after the title — there is
- * no room for a line.
+ * One pull request: the pull-request mark in the faces' column, the number
+ * and title on the words' edge — the way to the change's own page — and
+ * *Review* in blue at the right edge, the one door to merging it (R1). No
+ * *Merge*, no *Ask* and no check dot on the row: the outlined pill repeated
+ * on every change as the menu's only outlined control, and the verdict lives
+ * in the review. The mark alone may say that something is wrong (S3): red
+ * where its checks fail, amber where it fell behind `main`. A person's own
+ * pull request names them after the title — there is no room for a line.
  */
 function PullRequestRow({
   pull,
-  merging,
-  onMerge,
-  underMate = true,
-  onAsk,
+  groupId,
   onOpenChange,
   remembered = false,
 }: {
   readonly pull: FlowPullRequest;
-  readonly merging: boolean;
-  readonly onMerge: (pull: FlowPullRequest) => void;
-  readonly onAsk?: ((pull: FlowPullRequest, ask: string) => void) | undefined;
+  /** The project whose repository it is open against, for *Review*. */
+  readonly groupId: string;
   readonly onOpenChange?: ((pull: FlowPullRequest) => void) | undefined;
-  /** False for a change that is nobody's Mate's, which hangs under nothing. */
-  readonly underMate?: boolean;
-  /** Drawn from memory until Gitea answers: its title, and no verdict or verb it may no longer have. */
+  /** Drawn from memory until Gitea answers: its title, and no verdict it may no longer have. */
   readonly remembered?: boolean;
 }) {
-  const tone = checkDotTone({ checks: pull.checks });
+  const openReview = useOpenReview();
   const label = sidebarChangeLabel(pull);
-  const blocked = pullRequestBlocked(pull);
+  const tone = changeMarkTone(pull, remembered);
   return (
-    // The fork's cell is the spine's 20 px and its branch's 8: the gap after
-    // it is the rest of the Mates' 14, so the title starts on the menu's one
-    // text column, as a Mate's name and a stop's pill do (it stood 4 px right).
     <li
-      className={cn(
-        "flex h-8 min-w-0 items-center gap-1.5 px-2.5 text-line leading-4.5",
-        !underMate && "pe-0.5",
-      )}
+      className="menu-line grid h-7 min-w-0 grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 ps-1.75 pe-1 text-line leading-4.5 transition-colors hover:bg-sidebar-row-hover"
       data-zerops-change={changeRowKey(pull)}
+      data-zerops-change-tone={tone}
       data-zerops-surface="sidebar-pull-request"
     >
-      <span aria-hidden="true" className="w-7 shrink-0" />
+      <span
+        className={cn(
+          "flex justify-center",
+          tone === "failed"
+            ? "text-status-failed-text"
+            : tone === "attention"
+              ? "text-status-attention-text"
+              : "text-muted-foreground",
+        )}
+      >
+        <GitPullRequestIcon aria-hidden="true" className="size-3.5" />
+      </span>
       {onOpenChange === undefined ? (
-        <span className="min-w-0 flex-1 truncate text-sidebar-foreground">{label}</span>
+        <span className="min-w-0 truncate text-sidebar-foreground">{label}</span>
       ) : (
         <button
-          className="min-w-0 flex-1 cursor-pointer truncate rounded-sm text-left text-sidebar-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+          className="min-w-0 cursor-pointer truncate rounded-sm text-left text-sidebar-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
           data-zerops-surface="sidebar-pull-request-open"
           onClick={() => {
             onOpenChange(pull);
@@ -2680,42 +2680,19 @@ function PullRequestRow({
           {label}
         </button>
       )}
-      {/* The right edge is never a wordless dot on its own. Where Gitea
-          merges the branch the verb carries the row and the dot adds the
-          checks beside it; where Gitea refuses, the reason is written out —
-          a red dot alone was the row saying nothing at exactly the moment it
-          had something to say (seen in the harness, 2026-09-19). */}
-      {remembered ? null : pull.mergeability === "mergeable" ? (
-        <>
-          {tone === undefined || pull.checkWord === undefined ? null : (
-            <Tooltip>
-              <TooltipTrigger render={<StatusDot dotOnly label={pull.checkWord} tone={tone} />} />
-              <TooltipPopup side="right">{pull.checkWord}</TooltipPopup>
-            </Tooltip>
-          )}
-          <MergeVerb merging={merging} onMerge={onMerge} pull={pull} />
-        </>
-      ) : blocked === null ? null : blocked.ask === undefined || onAsk === undefined ? (
-        <StatusDot
-          className="shrink-0 text-[11px] text-sidebar-muted-foreground"
-          data-zerops-surface="sidebar-pull-request-blocked"
-          label={blocked.word}
-          sentence
-          tone={blocked.tone}
-        />
-      ) : (
-        // A refusal somebody has to act on is a verb, not a label — and it has
-        // to look like one. It was a coloured word with a tooltip, which reads
-        // as a status, so nobody pressed the only thing on the row that moves
-        // the change (the owner, 2026-09-19).
-        <AskVerb
-          ask={blocked.ask}
-          onAsk={onAsk}
-          pull={pull}
-          tone={blocked.tone}
-          word={changeState(pull)?.word ?? blocked.word}
-        />
-      )}
+      <button
+        className="menu-textbtn outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        data-zerops-surface="sidebar-pull-request-review"
+        onClick={(event) => {
+          openReview(
+            { kind: "change", groupId, repository: pull.repository, number: pull.number },
+            { from: event.currentTarget },
+          );
+        }}
+        type="button"
+      >
+        Review
+      </button>
     </li>
   );
 }
@@ -2759,55 +2736,6 @@ function PeekChangeLine({
         <MergeVerb merging={flow.merging(pull)} onMerge={flow.onMerge} pull={pull} />
       ) : null}
     </div>
-  );
-}
-
-/**
- * The verb that hands a stuck change back to the Mate that wrote it.
- *
- * It asks first, in the shape *Release* and *Merge* ask in, and the confirm
- * quotes the exact words that will be sent — because *Send* sends them.
- */
-function AskVerb({
-  pull,
-  word,
-  tone,
-  ask,
-  onAsk,
-}: {
-  readonly pull: FlowPullRequest;
-  readonly word: string;
-  /** What is wrong, as a colour: a rebase and a failed check are not one thing. */
-  readonly tone: ServiceStatusToneId;
-  readonly ask: string;
-  readonly onAsk: (pull: FlowPullRequest, ask: string) => void;
-}) {
-  const [confirming, setConfirming] = useState(false);
-  return (
-    <>
-      <ZeropsMateVerb
-        action="Ask"
-        description={ask}
-        label={word}
-        tone={tone}
-        onClick={() => {
-          setConfirming(true);
-        }}
-      />
-      <ZeropsAskDialog
-        ask={ask}
-        mateName={undefined}
-        onConfirm={() => {
-          setConfirming(false);
-          onAsk(pull, ask);
-        }}
-        onOpenChange={setConfirming}
-        open={confirming}
-        sending={false}
-        tint={undefined}
-        what={`Change #${String(pull.number)} ${word.toLocaleLowerCase()}.`}
-      />
-    </>
   );
 }
 
