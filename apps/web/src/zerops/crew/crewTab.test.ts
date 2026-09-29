@@ -45,10 +45,12 @@ describe("openCrewTab — a Mate's menu opening its conversation on the Crew tab
 
 describe("useCrewSetupSheet — one Mate's setup sheet, as its Crew tab holds it", () => {
   const mounted: ReactTestRenderer[] = [];
-  let setSheet: ((open: boolean) => void) | undefined;
+  /** The sheet's setter, as each draw of the tab hands it out. */
+  const setters: Array<(open: boolean) => void> = [];
+  const setSheet = (open: boolean) => setters.at(-1)?.(open);
   function Tab({ environmentId }: { readonly environmentId: EnvironmentId }) {
     const [open, setOpen] = useCrewSetupSheet(environmentId);
-    setSheet = setOpen;
+    setters.push(setOpen);
     return h("span", null, String(open));
   }
   const mount = (environmentId: EnvironmentId) => {
@@ -68,6 +70,7 @@ describe("useCrewSetupSheet — one Mate's setup sheet, as its Crew tab holds it
     };
   };
   afterEach(() => {
+    setters.length = 0;
     for (const tab of mounted.splice(0)) {
       act(() => {
         tab.unmount();
@@ -80,11 +83,11 @@ describe("useCrewSetupSheet — one Mate's setup sheet, as its Crew tab holds it
     const tab = mount(FEN.environmentId);
     expect(tab.said()).toBe("false");
     act(() => {
-      setSheet?.(true);
+      setSheet(true);
     });
     expect(tab.said()).toBe("true");
     act(() => {
-      setSheet?.(false);
+      setSheet(false);
     });
     expect(tab.said()).toBe("false");
   });

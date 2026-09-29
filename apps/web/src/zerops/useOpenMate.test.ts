@@ -59,9 +59,9 @@ const CANDIDATE = { key: "fen:zcp" } as unknown as ZeropsCandidate;
 /** Opens Fen as the left menu's item does, and hands back what was told of the conversation. */
 async function openFen(): Promise<ReadonlyArray<ScopedThreadRef>> {
   const told: Array<ScopedThreadRef> = [];
-  let open: ReturnType<typeof useOpenMate> | undefined;
+  const opens: Array<ReturnType<typeof useOpenMate>> = [];
   function Harness() {
-    open = useOpenMate();
+    opens.push(useOpenMate());
     return null;
   }
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -70,7 +70,7 @@ async function openFen(): Promise<ReadonlyArray<ScopedThreadRef>> {
     tree = create(h(Harness));
   });
   await act(async () => {
-    open?.(CANDIDATE, (conversation) => {
+    opens.at(-1)?.(CANDIDATE, (conversation) => {
       app.log.push("told");
       told.push(conversation);
     });
