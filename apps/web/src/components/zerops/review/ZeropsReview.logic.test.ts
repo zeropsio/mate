@@ -152,6 +152,23 @@ describe("sizeWords", () => {
 });
 
 describe("releaseChangeRows: what goes out, one row per change", () => {
+  const merged = [
+    {
+      number: 54,
+      title: "Performance tuning across the storefront",
+      mateProjectId: "p-juno",
+      mergedAt: "2026-09-28T09:00:00Z",
+      mergeCommitSha: "aaa111",
+    },
+    {
+      number: 55,
+      title: "Clearer copy on the admin sign-in",
+      mateProjectId: "p-cleo",
+      mergedAt: "2026-09-29T09:00:00Z",
+      mergeCommitSha: "BBB222",
+    },
+  ];
+
   it("names each commit by the change it landed as, whose Mate, and whether stage runs it", () => {
     const rows = releaseChangeRows({
       commits: [
@@ -159,20 +176,7 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
         { sha: "bbb222", subject: "Clearer copy on the admin sign-in (#55)" },
         { sha: "ccc333", subject: "A person's direct fix" },
       ],
-      merged: [
-        {
-          number: 54,
-          title: "Performance tuning across the storefront",
-          mateProjectId: "p-juno",
-          mergedAt: "2026-09-28T09:00:00Z",
-        },
-        {
-          number: 55,
-          title: "Clearer copy on the admin sign-in",
-          mateProjectId: "p-cleo",
-          mergedAt: "2026-09-29T09:00:00Z",
-        },
-      ],
+      merged,
       marks: new Map([
         ["aaa111", "on-stage"],
         ["bbb222", "deploying-on-stage"],
@@ -201,6 +205,28 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
         stage: "none",
       },
     ]);
+  });
+
+  it.each([
+    // Numbers are per repository: the recipe repo's #54 is not appdev's.
+    ["a commit naming #54 that another repository's #54 landed as", "ddd444", undefined],
+    ["the commit appdev's #54 landed as", "aaa111", "p-juno"],
+  ])("credits by the commit a change landed as: %s", (_case, sha, mate) => {
+    const [row] = releaseChangeRows({
+      commits: [{ sha, subject: "Performance tuning across the storefront (#54)" }],
+      merged: [
+        ...merged,
+        {
+          number: 54,
+          title: "Add a staging environment",
+          mateProjectId: "p-uma",
+          mergedAt: "2026-09-27T09:00:00Z",
+          mergeCommitSha: "eee555",
+        },
+      ],
+      marks: new Map(),
+    });
+    expect(row?.mateProjectId).toBe(mate);
   });
 });
 

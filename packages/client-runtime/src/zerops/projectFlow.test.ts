@@ -126,6 +126,16 @@ describe("one pull request in the flow", () => {
     });
   });
 
+  it("carries the commit it landed as, which a release names it by", () => {
+    const row = flowPullRequest({
+      mergeability: "mergeable",
+      repository: "appdev",
+      pull: pull({ state: "closed", merged: true, merge_commit_sha: "abc123" }),
+      checks: [],
+    });
+    expect(row.mergeCommitSha).toBe("abc123");
+  });
+
   it.each(["open", "closed"] as const)("carries whether it is %s", (state) => {
     const row = flowPullRequest({
       mergeability: "mergeable",
@@ -357,6 +367,7 @@ describe("types", () => {
         "line",
         "mateProjectId",
         "mergeBase",
+        "mergeCommitSha",
         "mergeability",
         "merged",
         "mergedAt",

@@ -211,12 +211,14 @@ export interface ReleaseChangeRow {
   readonly stage: ReleaseStageMark;
 }
 
-/** A squash commit on `main` names the pull request it landed: `Title (#54)`. */
+/** A squash commit's subject ends with the number of the change it landed: `Title (#54)`. */
 const LANDED_AS = /\s*\(#(\d+)\)\s*$/u;
 
 /**
- * What a release carries, one row per change: a squash-merged commit is the change it
- * landed, whose Mate wrote it and when; a commit nobody reviewed is its own words.
+ * What a release carries, one row per change: a commit is the change it landed as — matched by
+ * the commit Gitea says the change landed as, never by the `(#54)` in its subject, since numbers
+ * are per repository and the recipe's #54 is not appdev's — whose Mate wrote it and when; a
+ * commit nobody reviewed is its own words.
  */
 export function releaseChangeRows(input: {
   readonly commits: ReadonlyArray<{ readonly sha: string; readonly subject: string }>;
@@ -225,16 +227,20 @@ export function releaseChangeRows(input: {
     readonly title: string;
     readonly mateProjectId: string | undefined;
     readonly mergedAt: string | undefined;
+    readonly mergeCommitSha?: string | undefined;
   }>;
   readonly marks: ReadonlyMap<string, ReleaseStageMark>;
 }): ReadonlyArray<ReleaseChangeRow> {
+  const bySha = new Map(
+    input.merged.flatMap((change) =>
+      change.mergeCommitSha === undefined
+        ? []
+        : [[change.mergeCommitSha.toLowerCase(), change] as const],
+    ),
+  );
   return input.commits.map((commit) => {
     const key = commit.sha.toLowerCase();
-    const number = LANDED_AS.exec(commit.subject)?.[1];
-    const change =
-      number === undefined
-        ? undefined
-        : input.merged.find((entry) => entry.number === Number(number));
+    const change = bySha.get(key);
     return {
       key,
       title:
