@@ -141,6 +141,18 @@ const CHECK: ZeropsOperation = {
   hasResult: true,
 };
 
+/** What the build printed: past twelve lines, its output folds. */
+const BUILD_LOG = [
+  "> app@0.2.0 build /var/www/app",
+  "> tsc -p . && vite build",
+  "",
+  "vite v7.1.3 building for production...",
+  ...Array.from({ length: 22 }, (_, index) => `✓ src/routes/module-${index + 1}.ts transformed`),
+  "dist/index.html    0.46 kB",
+  "dist/assets/index.js  48.20 kB │ gzip: 15.12 kB",
+  "✓ built in 3.41s",
+].join("\n");
+
 /** Everything the /status run said and did, in order. */
 const RUN: ReadonlyArray<RecordItem> = [
   {
@@ -194,7 +206,10 @@ const RUN: ReadonlyArray<RecordItem> = [
       45,
     ),
   },
-  step(command("w3", "cd /var/www/app && pnpm build", "Build the app", 11, 34), 11),
+  step(
+    command("w3", "cd /var/www/app && pnpm build", "Build the app", 11, 34, { detail: BUILD_LOG }),
+    11,
+  ),
   {
     kind: "strip",
     key: "operation:op:status-check",
@@ -382,6 +397,17 @@ const THINKING: TurnHeaderActivity = {
 setRunFold(CONVERSATION, "status-watched", "watched");
 setRunFold(CONVERSATION, "status-shown", "shown");
 
+/** A command longer than its line: a route written with a heredoc. */
+const ROUTE_SCRIPT = [
+  "cat > src/routes/status.ts <<'EOF'",
+  'import { Hono } from "hono";',
+  "",
+  'export const status = new Hono().get("/status", (c) =>',
+  "  c.html(`<p>${process.version} · ${new Date().toISOString()}</p>`),",
+  ");",
+  "EOF",
+].join("\n");
+
 const FAILED = command("f1", "npm test -- status", "Run the tests for the page", 30, 6, {
   toolLifecycleStatus: "failed",
   detail:
@@ -427,6 +453,20 @@ export function CardStates() {
         />
       </CardState>
       <CardState
+        label="A whole command"
+        note="A command longer than its line: a click on the line shows every line of it in place; the run keeps its one clock."
+      >
+        <Turn
+          row={record("status-writing", {
+            items: upTo("step:w3"),
+            now: {
+              kind: "step",
+              step: stepOf(running(command("w5", ROUTE_SCRIPT, "Write the status route", 0, 3))),
+            },
+          })}
+        />
+      </CardState>
+      <CardState
         label="Several at once"
         note="How many, and a line each under it; each lands in the chat as it ends."
       >
@@ -451,7 +491,7 @@ export function CardStates() {
         <Turn
           row={record("status-waiting", {
             items: upTo("person:a1"),
-            now: { kind: "waiting" },
+            now: { kind: "waiting", on: "answer" },
             status: status({ waitingSince: ago(58) }),
           })}
         />

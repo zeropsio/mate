@@ -14,7 +14,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useMemo } from "react";
 
-import { runWords } from "../components/zerops/review/ZeropsReview.logic";
+import { changeRunMessage, runWords } from "../components/zerops/review/ZeropsReview.logic";
 import { useThreadMessages, useThreadShells, useThreadStatus } from "../state/entities";
 import { askMateThread } from "./useAskMate";
 import { useZeropsCandidates } from "./useZeropsCandidates";
@@ -64,9 +64,7 @@ export function useZeropsChangeRun(
       ? undefined
       : `/${change.owner}/${change.repository}/pulls/${String(change.number)}`;
   if (threadRef === undefined || path === undefined) return NO_RUN;
-  const linked = messages.findLast(
-    (message) => message.role === "assistant" && message.text.includes(path),
-  );
+  const linked = changeRunMessage(messages, path);
   if (linked !== undefined)
     return { words: runWords(linked.text, path), reading: false, threadRef };
   return { words: undefined, reading: status === "empty" || status === "synchronizing", threadRef };

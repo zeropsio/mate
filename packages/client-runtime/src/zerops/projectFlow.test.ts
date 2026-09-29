@@ -107,7 +107,6 @@ describe("one pull request in the flow", () => {
         deletions: 3,
         changed_files: 3,
         merge_base: "mb-sha",
-        created_at: "2026-09-17T17:00:00Z",
       }),
       checks: [
         { context: "build", state: "success", description: "pnpm build · 34s" },
@@ -122,8 +121,27 @@ describe("one pull request in the flow", () => {
       changedFiles: 3,
       mergeBase: "mb-sha",
       baseSha: "main-sha",
-      createdAt: "2026-09-17T17:00:00Z",
     });
+  });
+
+  it("carries the commit it landed as, which a release names it by", () => {
+    const row = flowPullRequest({
+      mergeability: "mergeable",
+      repository: "appdev",
+      pull: pull({ state: "closed", merged: true, merge_commit_sha: "abc123" }),
+      checks: [],
+    });
+    expect(row.mergeCommitSha).toBe("abc123");
+  });
+
+  it.each(["open", "closed"] as const)("carries whether it is %s", (state) => {
+    const row = flowPullRequest({
+      mergeability: "mergeable",
+      repository: "appdev",
+      pull: pull({ state }),
+      checks: [],
+    });
+    expect(row.state).toBe(state);
   });
 
   it("leaves a review's reads unknown where Gitea did not send them, never zero", () => {
@@ -339,7 +357,6 @@ describe("types", () => {
         "checkRows",
         "checkWord",
         "checks",
-        "createdAt",
         "deletions",
         "headBranch",
         "headSha",
@@ -347,11 +364,13 @@ describe("types", () => {
         "line",
         "mateProjectId",
         "mergeBase",
+        "mergeCommitSha",
         "mergeability",
         "merged",
         "mergedAt",
         "number",
         "repository",
+        "state",
         "title",
         "updatedAt",
         "url",

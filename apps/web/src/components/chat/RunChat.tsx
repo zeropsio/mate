@@ -61,12 +61,16 @@ import {
   use,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
   type CSSProperties,
   type ReactNode,
+  type Ref,
 } from "react";
+
+import { flushSync } from "react-dom";
 
 import { cn } from "~/lib/utils";
 import { useAssetUrlState } from "../../assets/assetUrls";
@@ -95,8 +99,8 @@ import {
   type OutcomeModel,
 } from "./conversation.logic";
 import { useRunEffortWords } from "./runResultFacts";
-import { StatusBar, type BarTone } from "./ConversationPills";
-import { ElapsedSince } from "./ConversationRows";
+import { StatusBar, type BarTone } from "./StatusBar";
+import { DOCKED_KINDS } from "./conversationDock.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
   normalizeCompactToolLabel,
@@ -128,6 +132,7 @@ import {
   type NowLine as NowLineModel,
   type RunFold,
 } from "./runCard.logic";
+import { keepInPlace, scrollerOf } from "./keepInPlace";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -204,17 +209,24 @@ export function PlanSteps({
 /** Kinds whose time says something: a read or an edit is over before it can be read. */
 const TIMED: ReadonlySet<StepKind> = new Set(["command", "web", "tool"]);
 
-/** How long a step took, or how long it has run so far. */
-export function stepTime(step: WorkStep): ReactNode {
-  if (step.state === "running") return <ElapsedSince since={step.startedAt} />;
+/**
+ * What a line of the chat still running says in its time's place: that it
+ * runs, never a second clock — what runs ticks once, in its bar or on the
+ * now line (K3).
+ */
+const STILL_RUNNING = "Running";
+
+/** How long a step took; one still running says so. */
+function stepTime(step: WorkStep): ReactNode {
+  if (step.state === "running") return STILL_RUNNING;
   if (!TIMED.has(step.kind) || step.endedAt === null) return null;
   const ms = Date.parse(step.endedAt) - Date.parse(step.startedAt);
   return Number.isFinite(ms) && ms >= 1000 ? formatWorkDuration(ms) : null;
 }
 
-/** How long a platform operation took, or how long it has run so far. */
-export function operationTime(operation: ZeropsOperation): ReactNode {
-  if (operation.phase === "running") return <ElapsedSince since={operation.anchorAt} />;
+/** How long a platform operation took; one still running says so. */
+function operationTime(operation: ZeropsOperation): ReactNode {
+  if (operation.phase === "running") return STILL_RUNNING;
   if (operation.settledAt === undefined) return null;
   const ms = Date.parse(operation.settledAt) - Date.parse(operation.anchorAt);
   return Number.isFinite(ms) && ms >= 1000 ? formatWorkDuration(ms) : null;
@@ -270,7 +282,7 @@ const HOLD_NOTHING = () => {};
  * stops following its end, so the line they clicked stays where it is and
  * only what is under it moves. Drawn outside a conversation, it holds nothing.
  */
-function useHoldReading(): () => void {
+export function useHoldReading(): () => void {
   const ctx = use(TimelineRowCtx) as TimelineRowSharedState | null;
   return ctx?.onHoldReading ?? HOLD_NOTHING;
 }
@@ -424,26 +436,43 @@ function FoldBody({
 function MoreToggle({
   open,
   onToggle,
+  ref,
   children,
 }: {
   readonly open: boolean;
   readonly onToggle: () => void;
+  readonly ref?: Ref<HTMLButtonElement>;
   readonly children: ReactNode;
 }) {
   return (
     <button
+      ref={ref}
       aria-expanded={open}
       className={cn(
         META,
         "mt-1 block cursor-pointer rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
       )}
-      data-scroll-anchor-ignore
-      onClick={onToggle}
+      // It stands at the foot of what it opened: closing folds what stands
+      // above it, and it stays under the pointer (K12).
+      onClick={(event) => (open ? collapseInPlace(event.currentTarget, onToggle) : onToggle())}
       type="button"
     >
       {children}
     </button>
   );
+}
+
+/**
+ * Closes what `pressed` opened, keeping `pressed` where it stands on screen
+ * — or, where it is gone once closed, the foot of the bubble it stood in.
+ */
+function collapseInPlace(pressed: HTMLElement, close: () => void) {
+  keepInPlace({
+    anchor: pressed,
+    fallback: pressed.closest<HTMLElement>("[data-chat-bubble], [data-chat-row]"),
+    scroller: scrollerOf(pressed),
+    change: () => flushSync(close),
+  });
 }
 
 /** The way to the rest of a folded bubble, in the person's own words for it. */
@@ -509,7 +538,6 @@ function DisclosureButton({
         className,
       )}
       data-chat-disclose
-      data-scroll-anchor-ignore
       onClick={onToggle}
       type="button"
     >
@@ -819,20 +847,29 @@ const THOUGHT_TEXT = "chat-markdown-aside text-muted-foreground";
 const THOUGHT_GUESS_CHARS = 180;
 
 /**
- * Whether what `watch` is given runs past the lines it is clamped to. Until
- * it is measured — the first render, before the page paints it — `guess`.
+ * Whether what `watch` is given runs past the lines it is clamped to — or,
+ * `across`, past the width of its one line. Until it is measured — the first
+ * render, before the page paints it — `guess`.
  */
-function useRunsPast(guess: boolean): readonly [boolean, (element: HTMLElement | null) => void] {
+function useRunsPast(
+  guess: boolean,
+  across = false,
+): readonly [boolean, (element: HTMLElement | null) => void] {
   const [element, setElement] = useState<HTMLElement | null>(null);
   const [past, setPast] = useState(guess);
   useLayoutEffect(() => {
     if (element === null) return;
-    const measure = () => setPast(element.scrollHeight > element.clientHeight + 1);
+    const measure = () =>
+      setPast(
+        across
+          ? element.scrollWidth > element.clientWidth + 1
+          : element.scrollHeight > element.clientHeight + 1,
+      );
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [element]);
+  }, [element, across]);
   const [watch] = useState(() => (node: HTMLElement | null) => setElement(node));
   return [past, watch];
 }
@@ -850,6 +887,20 @@ function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMess
   const hold = useHoldReading();
   const [open, setOpen] = useState(false);
   const [past, watch] = useRunsPast(run.length > THOUGHT_GUESS_CHARS);
+  // Opening swaps the thought's button for "Show less", and closing swaps it
+  // back: the focus goes with the person's press to the one that stands.
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const handOnRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!handOnRef.current) return;
+    handOnRef.current = false;
+    toggleRef.current?.focus();
+  });
+  const toggle = (next: boolean) => {
+    handOnRef.current = true;
+    hold();
+    setOpen(next);
+  };
   if (text.trim().length === 0) return null;
   const clamped = (
     <span ref={watch} className="line-clamp-2 italic" data-chat-folded={past ? "true" : undefined}>
@@ -861,27 +912,18 @@ function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMess
       {open ? (
         <>
           <ThoughtParagraphs messages={messages} />
-          <MoreToggle
-            onToggle={() => {
-              hold();
-              setOpen(false);
-            }}
-            open
-          >
+          <MoreToggle ref={toggleRef} onToggle={() => toggle(false)} open>
             Show less
           </MoreToggle>
         </>
       ) : past ? (
         <button
+          ref={toggleRef}
           aria-expanded={false}
           aria-label={`${run.slice(0, 80)}… Show the whole thought`}
           className="block w-full min-w-0 cursor-pointer rounded-sm text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
           data-chat-disclose
-          data-scroll-anchor-ignore
-          onClick={() => {
-            hold();
-            setOpen(true);
-          }}
+          onClick={() => toggle(true)}
           type="button"
         >
           {clamped}
@@ -1091,7 +1133,7 @@ function useTallerThan(
  * bubble's one right edge (the owner, 2026-09-28: "there is no spacing between
  * items"). Each row wears its own mark in the Mate's column, beside it.
  */
-export function CallGroup({ children }: { readonly children: ReactNode }) {
+function CallGroup({ children }: { readonly children: ReactNode }) {
   const shownRef = useRef(false);
   useEffect(() => {
     shownRef.current = true;
@@ -1200,7 +1242,7 @@ function CommandCode({
  * back. The one it is making now counts its time in the same quiet ink:
  * blue means something to click (S3), and the run has one clock.
  */
-export function StepBubble({
+function StepBubble({
   step,
   undone = false,
 }: {
@@ -1466,13 +1508,13 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
   const startedMs = Date.parse(strip.checks[0]!.anchorAt);
   const endedMs = Date.parse(latest.settledAt ?? latest.anchorAt);
   const tookMs = endedMs - startedMs;
-  // One clock for the row, from its first check: a second check running
-  // never starts it again from nothing.
-  const time = running ? (
-    <ElapsedSince since={strip.checks[0]!.anchorAt} />
-  ) : Number.isFinite(tookMs) && tookMs >= 1000 ? (
-    formatWorkDuration(tookMs)
-  ) : null;
+  // How long the row took, from its first check; one still being taken says
+  // so — its time ticks on the now line alone.
+  const time = running
+    ? STILL_RUNNING
+    : Number.isFinite(tookMs) && tookMs >= 1000
+      ? formatWorkDuration(tookMs)
+      : null;
   const failed = strip.failures > 0;
   const takes = strip.checks.some(
     (check) =>
@@ -1575,6 +1617,7 @@ const AGENT_STATUS_WORD: Record<RuntimeSubagent["status"], string> = {
  * under it once opened.
  */
 function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
+  const hold = useHoldReading();
   const [open, setOpen] = useState(false);
   const active = isActiveSubagentStatus(agent.status);
   const said = (
@@ -1608,7 +1651,10 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
         <button
           aria-expanded={open}
           className="grid min-w-0 cursor-pointer gap-0.5 rounded-lg px-1.5 py-1 text-start transition-colors hover:bg-foreground/4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-          onClick={() => setOpen((value) => !value)}
+          onClick={() => {
+            hold();
+            setOpen((value) => !value);
+          }}
           type="button"
         >
           {line}
@@ -1649,7 +1695,7 @@ function spawnAgents(model: AgentPanelModel, spawn: NonNullable<WorkLogEntry["ag
 }
 
 /** Helpers it started: how many and what for; each one, its state and what it said, opened under it. */
-export function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
+function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
   const ctx = use(TimelineRowCtx);
   const disclosure = useDisclosure();
   const spawn = entry.agentSpawn;
@@ -2170,10 +2216,13 @@ function LongStepTime({ since }: { readonly since: string }) {
 function StepNowWords({
   step,
   sweeps = true,
+  codeAfter = true,
 }: {
   readonly step: WorkStep;
   /** The one step on the line sweeps; a line each of several at once stands still. */
   readonly sweeps?: boolean;
+  /** A command's first line after its words — not where its whole stands under them. */
+  readonly codeAfter?: boolean;
 }) {
   const sweep = sweeps ? "" : undefined;
   if (step.kind === "command" && step.words === null) {
@@ -2202,27 +2251,55 @@ function StepNowWords({
       <span className="run-now-verb" data-run-shimmer={sweep}>
         {stepNowWords(step)}
       </span>
-      {step.kind === "command" && step.code !== null ? (
+      {codeAfter && step.kind === "command" && step.code !== null ? (
         <span className="run-now-code">{step.code}</span>
       ) : null}
     </>
   );
 }
 
+/** Whether a step's one line leaves some of what it runs unsaid: a command's lines past its first. */
+function saysLess(step: WorkStep): boolean {
+  return step.kind === "command" && step.script !== null && step.codeLines > 1;
+}
+
+/**
+ * A command's code under its words on the opened now line, as its call row
+ * shows it opened: in mono, in the muted ink, every line of it — past the
+ * first where the command, saying nothing of itself, leads with it.
+ */
+function NowScript({ step }: { readonly step: WorkStep }) {
+  if (!saysLess(step) || step.script === null) return null;
+  const script = step.words === null ? step.script.split("\n").slice(1).join("\n") : step.script;
+  return <code className="run-now-script">{script}</code>;
+}
+
 /** The now line's words, by what the run is doing. */
-function NowWords({ line }: { readonly line: NowLineModel }) {
+function NowWords({
+  line,
+  open = false,
+  thoughtSoFar = null,
+}: {
+  readonly line: NowLineModel;
+  /** Opened to the whole of what runs: the thought so far, a command's code under its words. */
+  readonly open?: boolean;
+  /** The thought so far, where the line shows only its latest words. */
+  readonly thoughtSoFar?: string | null;
+}) {
   switch (line.kind) {
-    case "thinking":
+    case "thinking": {
+      const thought = open && thoughtSoFar !== null ? thoughtSoFar : line.thought;
       return (
         <>
           <span className="run-now-verb">Thinking</span>
-          {line.thought === null ? null : <span className="run-now-thought">{line.thought}</span>}
+          {thought === null ? null : <span className="run-now-thought">{thought}</span>}
         </>
       );
+    }
     case "step":
       return (
         <>
-          <StepNowWords step={line.step} />
+          <StepNowWords codeAfter={!(open && saysLess(line.step))} step={line.step} />
           <LongStepTime since={line.step.startedAt} />
         </>
       );
@@ -2232,13 +2309,16 @@ function NowWords({ line }: { readonly line: NowLineModel }) {
           <span className="run-now-verb" data-run-shimmer="">
             {operationNowWords(line.operation)}
           </span>
-          <LongStepTime since={line.operation.anchorAt} />
+          {/* A pipeline counts its time in its bar under the line (K3). */}
+          {DOCKED_KINDS.has(line.operation.kind) ? null : (
+            <LongStepTime since={line.operation.anchorAt} />
+          )}
         </>
       );
     case "several":
       return <span className="run-now-verb">{severalWords(line.steps)}</span>;
     case "waiting":
-      return <span className="run-now-verb">Waiting for your answer</span>;
+      return <span className="run-now-verb">{nowLineWords(line)}</span>;
     case "writing":
       return (
         <>
@@ -2304,9 +2384,40 @@ function NowLine({
   // The line's words change in place as the run goes: the new ones rise into
   // it, so a change reads as the same line saying something new.
   const wordsChanged = useChangedSinceShown(words);
+  // D4: its one line opens to the whole of what runs — a command every line
+  // of it, the thought so far — for as long as the line says the same.
+  const hold = useHoldReading();
+  const [openFor, setOpenFor] = useState<string | null>(null);
+  if (openFor !== null && openFor !== words) setOpenFor(null);
+  const open = status.live && openFor === words;
+  const [clipped, watchHead] = useRunsPast(false, true);
+  const thoughtSoFar =
+    now?.kind === "thinking"
+      ? thoughtRunText(now.messages.map((message) => message.text).join("\n\n"))
+      : null;
+  const opens =
+    status.live &&
+    (clipped ||
+      (line.kind === "thinking" && thoughtSoFar !== null && thoughtSoFar !== line.thought) ||
+      (line.kind === "step" && saysLess(line.step)) ||
+      (line.kind === "several" && line.steps.some(saysLess)));
+  const head = (
+    <span
+      ref={watchHead}
+      key={words}
+      className={cn(
+        "run-now-head",
+        open && "run-now-head-open",
+        wordsChanged && "animate-words-in motion-reduce:animate-none",
+      )}
+    >
+      <NowWords line={line} open={open} thoughtSoFar={thoughtSoFar} />
+    </span>
+  );
   return (
     <div
       className="run-now"
+      data-open={open ? "" : undefined}
       data-run-now={line.kind}
       data-run-status={
         line.kind === "worked" ? status.face : line.kind === "waiting" ? "waiting" : "working"
@@ -2320,25 +2431,38 @@ function NowLine({
         state={face.state}
         tint={ctx.speaker.tint}
       />
-      <div
-        className="run-now-words"
-        data-work-line={status.face}
-        role={status.live ? "status" : undefined}
-      >
-        <span
-          key={words}
-          className={cn(
-            "run-now-head",
-            wordsChanged && "animate-words-in motion-reduce:animate-none",
-          )}
-        >
-          <NowWords line={line} />
-        </span>
+      <div className="run-now-words" data-work-line={status.face}>
+        {opens || open ? (
+          <button
+            aria-expanded={open}
+            className="run-now-reveal"
+            data-run-now-words=""
+            onClick={() => {
+              hold();
+              setOpenFor(open ? null : words);
+            }}
+            type="button"
+          >
+            {head}
+            <ChevronDownIcon aria-hidden="true" className="run-now-reveal-icon" />
+          </button>
+        ) : (
+          head
+        )}
+        {open && line.kind === "step" ? <NowScript step={line.step} /> : null}
+        {/* What a screen reader hears: the line's words as they change —
+            never the thought's latest words or a step's ticking time. */}
+        {status.live ? (
+          <span className="sr-only" role="status">
+            {words}
+          </span>
+        ) : null}
         {line.kind === "several" ? (
           <ul className="run-now-several">
             {line.steps.map((step) => (
               <li key={step.key}>
-                <StepNowWords step={step} sweeps={false} />
+                <StepNowWords codeAfter={!(open && saysLess(step))} step={step} sweeps={false} />
+                {open ? <NowScript step={step} /> : null}
               </li>
             ))}
           </ul>
@@ -2372,9 +2496,11 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // behind "Show work", which opens it under the line (K12).
   const later = row.status !== null && !row.live && fold !== "watched";
   const folded = later && fold === "folded";
+  // What a later step undid, read once per record, not once per redraw.
+  const undone = useMemo(() => recoveredFailures(row.items), [row.items]);
   const lines = chatLines(
     folded ? row.items.filter((item) => !foldsOnReturn(item)) : row.items,
-    row.items,
+    undone,
   );
   const feedRef = useRef<HTMLDivElement>(null);
   const fromHeightRef = useRef<number | null>(null);
@@ -2444,13 +2570,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
 
 /**
  * A record's items as the chat's lines, from the first thing the Mate did;
- * `all` the whole record, which says what a later step undid.
+ * `undone` the failures a later step undid (`recoveredFailures`).
  */
-function chatLines(
-  items: ReadonlyArray<RecordItem>,
-  all: ReadonlyArray<RecordItem> = items,
-): ChatLine[] {
-  const undone = recoveredFailures(all);
+function chatLines(items: ReadonlyArray<RecordItem>, undone: ReadonlySet<string>): ChatLine[] {
   const lines = items.flatMap((item) => {
     const line = itemLine(item, undone);
     return line === null ? [] : [line];
@@ -2505,13 +2627,7 @@ function easeFeedHeight(feed: HTMLElement, from: number): void {
 /** "Show work" on a folded run's line, "Hide work" once it is open: its chevron turns over. */
 function WorkToggle({ open, onToggle }: { readonly open: boolean; readonly onToggle: () => void }) {
   return (
-    <button
-      aria-expanded={open}
-      className="run-now-fold"
-      data-scroll-anchor-ignore
-      onClick={onToggle}
-      type="button"
-    >
+    <button aria-expanded={open} className="run-now-fold" onClick={onToggle} type="button">
       {open ? "Hide work" : "Show work"}
       <ChevronDownIcon aria-hidden="true" className="run-now-fold-icon" />
     </button>
@@ -2539,15 +2655,33 @@ function ChatFeed({
   // Where the chat starts, fixed when it opens: what arrives after it only
   // ever joins at the end, so the window grows and never slides.
   const [from, setFrom] = useState(() => chatOpensAt(lines.length));
+  // The last "Show N earlier" goes once pressed: the focus goes to the lines
+  // it drew, never to the page's body.
+  const listRef = useRef<HTMLOListElement>(null);
+  const focusListRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!focusListRef.current) return;
+    focusListRef.current = false;
+    listRef.current?.focus();
+  });
   const shown = gatherCalls(from > 0 ? lines.slice(from) : lines);
   if (shown.length === 0 && from === 0) return null;
   return (
     <ChatShownContext value={shownRef}>
-      <ol aria-label={label} className="flex min-w-0 flex-col gap-3">
+      <ol
+        ref={listRef}
+        aria-label={label}
+        className="flex min-w-0 flex-col gap-3 focus:outline-none"
+        tabIndex={-1}
+      >
         {from > 0 ? (
           <EarlierLine
             count={earlierShown(from).shows}
-            onShow={() => setFrom((start) => earlierShown(start).next)}
+            onShow={() => {
+              const { next } = earlierShown(from);
+              if (next === 0) focusListRef.current = true;
+              setFrom(next);
+            }}
           />
         ) : null}
         {shown.map((entry) =>
@@ -2590,7 +2724,6 @@ function EarlierLine({ count, onShow }: { readonly count: number; readonly onSho
       <button
         className="shrink-0 cursor-pointer rounded-md px-1.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
         data-chat-earlier
-        data-scroll-anchor-ignore
         onClick={() => {
           hold();
           onShow();
@@ -2624,6 +2757,7 @@ export function BackgroundLine({
   readonly failed: boolean;
   readonly entries: ReadonlyArray<WorkLogEntry>;
 }) {
+  const hold = useHoldReading();
   const [open, setOpen] = useState(false);
   const lastByTask = new Map<string, WorkLogEntry>();
   for (const entry of entries) lastByTask.set(entry.taskId ?? entry.id, entry);
@@ -2666,7 +2800,10 @@ export function BackgroundLine({
           aria-expanded={open}
           aria-label={`${words}, ${where}. ${open ? "Hide" : "Show"} what it reported`}
           className="group/disclose -mx-1.5 flex min-h-7 w-[calc(100%+0.75rem)] cursor-pointer items-center rounded-md px-1.5 text-start transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset"
-          onClick={() => setOpen((value) => !value)}
+          onClick={() => {
+            hold();
+            setOpen((value) => !value);
+          }}
           type="button"
         >
           {line}

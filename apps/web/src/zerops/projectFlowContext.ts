@@ -55,8 +55,8 @@ export interface ZeropsProjectFlow {
   readonly environmentInputs: ReadonlyArray<GroupEnvironmentRowInput>;
   /**
    * `main`'s head per production service, as the deploy half read it — what
-   * the release review orders the waiting changes by, to say how far each has
-   * come on stage (`stageMarks.ts`).
+   * tells a release's review which of its commits is newest, and so which the
+   * stage runs (`stageMarks.ts`).
    */
   readonly mainHeads: ReadonlyMap<string, string>;
   /** The tiers the recipe offers and the project lacks — the rows that ask. */
@@ -83,7 +83,8 @@ export interface ZeropsProjectFlow {
  * happened (pass 16, R6). A refusal carries the sentence `trouble` says too.
  */
 export type FlowVerbOutcome =
-  | { readonly ok: true }
+  /** Done; a release and a roll back name the tag they made, which their review follows. */
+  | { readonly ok: true; readonly tag?: string | undefined }
   | { readonly ok: false; readonly reason: string };
 
 export interface ZeropsProjectFlowValue {

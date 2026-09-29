@@ -92,7 +92,6 @@ function RowSub({
         <button
           aria-label={`${files} changed in this run. Open the diff`}
           className="run-result-files"
-          data-scroll-anchor-ignore
           onClick={() => onOpenTurnDiff(turnId)}
           type="button"
         >
@@ -134,7 +133,6 @@ function FixActionOffer({
     <span className="run-result-fix">
       <button
         className="run-result-action"
-        data-scroll-anchor-ignore
         onClick={() => askToFix(first.mateProjectId, problem)}
         type="button"
       >
@@ -195,7 +193,6 @@ function RowEnd({
             aria-label={`${browserCheckCaption(take)}${take.deviceName ? ` on ${take.deviceName}` : ""}. Open the screenshot`}
             className="run-result-picture"
             data-result-picture
-            data-scroll-anchor-ignore
             onClick={() => onOpenImage({ images, index })}
             type="button"
           >
@@ -208,7 +205,6 @@ function RowEnd({
         <button
           aria-label={`Review ${row.title}`}
           className="run-result-action"
-          data-scroll-anchor-ignore
           onClick={(event) => openReview(review, { from: event.currentTarget })}
           type="button"
         >

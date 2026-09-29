@@ -3,7 +3,9 @@ import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRunt
 import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+
+import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 
 import type { WorkLogEntry } from "../../session-logic";
 import type { ChatMessage } from "../../types";
@@ -17,7 +19,7 @@ import {
   type TimelineRowSharedState,
 } from "./timelineContext";
 import { checksStrip, formatWorkDuration, type OutcomeModel } from "./conversation.logic";
-import { at as atMinute, operation } from "./conversationFixtures";
+import { operation } from "./conversationFixtures";
 import { stepOf } from "./workSteps.logic";
 
 const at = (second: number) => new Date(Date.UTC(2026, 8, 27, 10, 0, second)).toISOString();
@@ -339,7 +341,7 @@ describe("RunChat", () => {
     },
     {
       name: "waiting on the person",
-      now: { kind: "waiting" },
+      now: { kind: "waiting", on: "answer" },
       says: ">Waiting for your answer<",
       face: "needs",
       gaze: null,
@@ -458,6 +460,24 @@ describe("RunChat", () => {
     expect(markup).not.toMatch(/<p class="[^"]*truncate[^"]*" data-chat-kind="person">/u);
   });
 
+  // A screen reader hears the now line when its words change, never its
+  // ticking parts: the thought's latest words, the long-step time.
+  it("tells a screen reader the now line's words alone, as they change", () => {
+    const markup = draw(
+      record([], {
+        live: true,
+        status: status(),
+        now: {
+          kind: "thinking",
+          key: "thought:r9",
+          messages: [message("r9", "reasoning", "The build needs Node 22. So I bump it")],
+        },
+      }),
+    );
+    expect(markup.match(/role="status"/g)).toHaveLength(1);
+    expect(markup).toMatch(/<span class="sr-only" role="status">Thinking<\/span>/u);
+  });
+
   // Several at once (K10): how many on the line, a still line each under it.
   it("says several steps at once by how many, a still line each under it", () => {
     const runningCommand = (id: string, text: string) =>
@@ -483,6 +503,45 @@ describe("RunChat", () => {
 
   // Blue means something to click (S3): the run's clock counts in ink, and a
   // call running beside it counts in the calls' quiet ink.
+  // One ticking time for each thing that runs (K3): a command left running in
+  // the background ticks in its bar, never again in the chat; a deploy ticks
+  // in its bar, never again as the now line's long-step words.
+  it("ticks each running thing once: in its bar, or on the now line", () => {
+    const background: RecordItem = {
+      kind: "step",
+      key: "step:w1",
+      at: at(9),
+      step: stepOf(
+        command("w1", "pnpm dev", {
+          callInput: { description: "Serve the app on port 3000" },
+          toolLifecycleStatus: "inProgress",
+          updatedAt: undefined as never,
+        }),
+      ),
+    };
+    const serving = draw(record([background], { live: true, status: status() }));
+    const row = serving.slice(serving.indexOf('data-chat-kind="step:command"'));
+    expect(row).toMatch(/text-muted-foreground">Running</u);
+    expect(row).not.toMatch(/tabular-nums">\d/u);
+    const since = new Date(Date.now() - 45_000).toISOString();
+    const running = (kind: "deploy" | "browser") => {
+      const entry = operation("o1", "turn-1", 1, {
+        kind,
+        phase: "running",
+        anchorAt: since,
+        subject: kind === "deploy" ? "appdev" : "https://shop.dev/status",
+        voice: kind === "deploy" ? "Deploying appdev." : "Checking /status",
+      });
+      if (entry.kind !== "operation") throw new Error("an operation");
+      const { settledAt: _settled, ...taking } = entry.operation;
+      return draw(
+        record([], { live: true, now: { kind: "operation", operation: taking }, status: status() }),
+      );
+    };
+    expect(running("deploy")).not.toMatch(/run-now-long">· 0:4\d/u);
+    expect(running("browser")).toMatch(/run-now-long">· 0:4\d/u);
+  });
+
   it("counts the run's time in ink, never in the busy blue", () => {
     const markup = draw(
       record([], {
@@ -718,7 +777,7 @@ describe("RunChat", () => {
     expect(draw(record([], { live: true, status: status() }))).not.toContain("<ol");
     const said = draw(record([thought("r1", "The route and the check disagree.")]));
     expect(said).toContain(
-      '<ol aria-label="Nova&#x27;s work" class="flex min-w-0 flex-col gap-3">',
+      '<ol aria-label="Nova&#x27;s work" class="flex min-w-0 flex-col gap-3 focus:outline-none" tabindex="-1">',
     );
   });
 
@@ -801,45 +860,35 @@ describe("RunChat", () => {
     expect(markup).toContain("couldn&#x27;t open http://shop.dev:9/: net::ERR_UNSAFE_PORT");
   });
 
-  // One clock for a row of checks, from its first: a second check running
-  // started it again from nothing, then the settled row said the whole time.
-  it("runs one clock for a row of checks, from its first check", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(atMinute(5)));
-    try {
-      const first = operation("b1", "turn-1", 1, {
-        kind: "browser",
-        subject: "https://shop.dev/",
-        screenshot: { src: "/shots/b1.png", width: 1280, height: 800 },
-      });
-      const second = operation("b2", "turn-1", 3, {
-        kind: "browser",
-        subject: "https://shop.dev/",
-        phase: "running",
-        deviceName: "iPhone 16",
-      });
-      if (first.kind !== "operation" || second.kind !== "operation") throw new Error("operations");
-      const { settledAt: _settled, ...taking } = second.operation;
-      const markup = draw(
-        record(
-          [
-            {
-              kind: "strip",
-              key: "operation:op:b1",
-              at: at(1),
-              strip: checksStrip([first.operation, taking], true),
-            },
-          ],
-          { live: true, status: status() },
-        ),
+  // A row of checks says how long it took from its first check to its last;
+  // one still being taken ticks nowhere in the chat — its time is the now
+  // line's (K3).
+  it("says a row of checks' time from its first check, and ticks none while one is taken", () => {
+    const first = operation("b1", "turn-1", 1, {
+      kind: "browser",
+      subject: "https://shop.dev/",
+      screenshot: { src: "/shots/b1.png", width: 1280, height: 800 },
+    });
+    const second = operation("b2", "turn-1", 3, {
+      kind: "browser",
+      subject: "https://shop.dev/",
+      deviceName: "iPhone 16",
+    });
+    if (first.kind !== "operation" || second.kind !== "operation") throw new Error("operations");
+    const strip = (checks: ReadonlyArray<ZeropsOperation>) =>
+      draw(
+        record([
+          { kind: "strip", key: "operation:op:b1", at: at(1), strip: checksStrip(checks, false) },
+        ]),
       );
-      const since = (minute: number) =>
-        formatWorkDuration(Date.parse(atMinute(5)) - Date.parse(atMinute(minute)));
-      expect(markup).toContain(`>${since(1)}<`);
-      expect(markup).not.toContain(`>${since(3)}<`);
-    } finally {
-      vi.useRealTimers();
-    }
+    const took = formatWorkDuration(
+      Date.parse(second.operation.settledAt!) - Date.parse(first.operation.anchorAt),
+    );
+    expect(strip([first.operation, second.operation])).toContain(`>${took}<`);
+    const { settledAt: _settled, ...taking } = { ...second.operation, phase: "running" as const };
+    const markup = strip([first.operation, taking]);
+    expect(markup).toContain(">Running<");
+    expect(markup).not.toContain(`>${took}<`);
   });
 
   it("opens nothing on a step that printed nothing", () => {
@@ -1054,6 +1103,147 @@ describe("RunChat, as the person uses it", () => {
     });
   });
 
+  // D4: what the now line holds is never out of reach while it runs — its
+  // one line opens to the whole of it in place: a script's every line, the
+  // thought so far; still one clock.
+  it("opens the now line to the whole of what runs, one clock still", () => {
+    const renderer = mount(
+      record([], {
+        live: true,
+        status: status(),
+        now: {
+          kind: "step",
+          step: stepOf(
+            command("w9", SCRIPT, {
+              callInput: { description: "Write the status route" },
+              toolLifecycleStatus: "inProgress",
+              updatedAt: undefined as never,
+            }),
+          ),
+        },
+      }),
+    );
+    const words = () =>
+      renderer.root.find(
+        (node) => node.type === "button" && node.props["data-run-now-words"] !== undefined,
+      );
+    expect(words().props["aria-expanded"]).toBe(false);
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("line 13");
+    act(() => words().props.onClick());
+    expect(words().props["aria-expanded"]).toBe(true);
+    const shown = JSON.stringify(renderer.toJSON());
+    expect(shown).toContain("line 13");
+    expect(shown).toContain("EOF");
+    expect(
+      renderer.root.findAll((node) => node.props["data-work-line-clock"] !== undefined),
+    ).toHaveLength(1);
+  });
+
+  it("opens a thought on the now line to the whole of it so far", () => {
+    const thinking = "The app is a Hono server. So the page belongs on the server as its own route";
+    const renderer = mount(
+      record([], {
+        live: true,
+        status: status(),
+        now: {
+          kind: "thinking",
+          key: "thought:r9",
+          messages: [message("r9", "reasoning", thinking)],
+        },
+      }),
+    );
+    const words = renderer.root.find(
+      (node) => node.type === "button" && node.props["data-run-now-words"] !== undefined,
+    );
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("The app is a Hono server.");
+    act(() => words.props.onClick());
+    expect(JSON.stringify(renderer.toJSON())).toContain(thinking);
+  });
+
+  // A control that goes once pressed hands the focus on: the thought's way to
+  // the rest to its "Show less" and back, the last "Show N earlier" to the
+  // lines it drew — never to the page's body.
+  it("keeps the focus on the thought's toggle as it opens and closes", () => {
+    // The opened thought is markdown, which reads the page's own storage.
+    const savedWindow = (globalThis as { window?: unknown }).window;
+    (globalThis as { window?: unknown }).window = {
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      localStorage: { getItem: () => null, setItem: () => undefined },
+      matchMedia: () => ({
+        matches: false,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      }),
+    };
+    try {
+      const focused: string[] = [];
+      let renderer!: ReactTestRenderer;
+      act(() => {
+        renderer = create(
+          <Rows>
+            <RunChat row={record([thought("r1", LONG)])} />
+          </Rows>,
+          {
+            createNodeMock: (element) =>
+              element.type === "button"
+                ? {
+                    focus: () =>
+                      focused.push(
+                        String(
+                          (element.props as { "aria-label"?: string })["aria-label"] ?? "Show less",
+                        ),
+                      ),
+                    closest: () => null,
+                    isConnected: true,
+                    parentElement: null,
+                    ownerDocument: { scrollingElement: null },
+                    getBoundingClientRect: () => ({ top: 0, bottom: 0 }),
+                  }
+                : { scrollHeight: 100, clientHeight: 40 },
+          },
+        );
+      });
+      act(() => button(renderer, "Line 1").props.onClick());
+      expect(focused).toEqual(["Show less"]);
+      act(() =>
+        button(renderer, "Show less").props.onClick({
+          currentTarget: {
+            closest: () => null,
+            isConnected: true,
+            parentElement: null,
+            ownerDocument: { scrollingElement: null },
+            getBoundingClientRect: () => ({ top: 0, bottom: 0 }),
+          },
+        }),
+      );
+      expect(focused.at(-1)).toMatch(/Show the whole thought$/u);
+    } finally {
+      (globalThis as { window?: unknown }).window = savedWindow;
+    }
+  });
+
+  it("hands the focus to the lines the last Show N earlier drew", () => {
+    const many = Array.from({ length: 50 }, (_, index) =>
+      step(command(`w${index}`, `echo ${index}`)),
+    );
+    let listFocused = 0;
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(
+        <Rows>
+          <RunChat row={record(many)} />
+        </Rows>,
+        {
+          createNodeMock: (element) =>
+            element.type === "ol" ? { focus: () => (listFocused += 1) } : {},
+        },
+      );
+    });
+    act(() => button(renderer, "Show 10 earlier").props.onClick());
+    expect(listFocused).toBe(1);
+  });
+
   it("draws the earlier bubbles when the person asks for them", () => {
     const many = Array.from({ length: 50 }, (_, index) =>
       step(command(`w${index}`, `echo ${index}`)),
@@ -1083,8 +1273,16 @@ describe("RunChat, as the person uses it", () => {
         (node) => node.type === "div" && node.props["data-chat-folded"] !== undefined,
       ).props["data-chat-folded"];
     expect(folded()).toBe("true");
+    // The button pressed, as the page has it: no scroll to keep it in.
+    const pressed = {
+      closest: () => null,
+      isConnected: true,
+      parentElement: null,
+      ownerDocument: { scrollingElement: null },
+      getBoundingClientRect: () => ({ top: 0, bottom: 0 }),
+    };
     const press = (words: string) =>
-      act(() => button(renderer, words).props.onClick({ currentTarget: { closest: () => null } }));
+      act(() => button(renderer, words).props.onClick({ currentTarget: pressed }));
     press("Show all 16 lines");
     expect(folded()).toBe("false");
     press("Show less");

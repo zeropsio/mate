@@ -710,6 +710,31 @@ describe("ZeropsProjectFlowProvider", () => {
       });
     });
 
+    it.each([
+      ["a release", (value: ZeropsProjectFlowValue) => value.release("g1")],
+      ["a roll back", (value: ZeropsProjectFlowValue) => value.rollBack("g1", "v1.0.0")],
+    ] as const)(
+      "%s answers with the tag it made, which its review follows",
+      async (_case, press) => {
+        const { seen, tags, render, root } = await mountReleasable();
+        const client = verbs.client as Record<string, unknown>;
+        verbs.client = {
+          ...client,
+          listTags: async () => [{ name: "v1.0.0", message: `app ${MERGED}` }],
+        };
+        await render();
+        let outcome: Awaited<ReturnType<typeof press>> | undefined;
+        await act(async () => {
+          outcome = await press(seen.at(-1)!);
+        });
+        expect(tags).toHaveLength(1);
+        expect(outcome).toEqual({ ok: true, tag: tags[0]?.tag });
+        await act(async () => {
+          root.unmount();
+        });
+      },
+    );
+
     it("Roll back tags main as read at the press while what production runs is not read yet", async () => {
       const { seen, tags, render, root } = await mountReleasable();
       const client = verbs.client as Record<string, unknown>;

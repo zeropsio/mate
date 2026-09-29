@@ -2528,7 +2528,6 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
               size="xs"
               variant="ghost-muted"
               aria-expanded={expanded}
-              data-scroll-anchor-ignore
               onClick={() => setExpanded((value) => !value)}
               className="-ml-1"
             >

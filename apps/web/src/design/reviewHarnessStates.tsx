@@ -10,9 +10,12 @@ import {
   type ReviewPress,
 } from "@t3tools/client-runtime/zerops";
 import type { CrewTask } from "@t3tools/contracts";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
-import { ChangeReviewView } from "~/components/zerops/review/ZeropsChangeReview";
+import {
+  ChangeReviewView,
+  type ChangeReviewViewProps,
+} from "~/components/zerops/review/ZeropsChangeReview";
 import { CrewTaskReviewView } from "~/components/zerops/review/ZeropsCrewTaskReview";
 import {
   ReleaseReviewView,
@@ -111,14 +114,13 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     changedFiles: 3,
     mergeBase: "base-sha",
     baseSha: "base-sha",
-    createdAt: minutesAgo(30),
     ...over,
   };
 }
 
 const READ = {
   files: { kind: "read", value: FILES },
-  diff: { kind: "read", value: parseChangeDiff(DIFF) },
+  diff: { kind: "read", value: { files: parseChangeDiff(DIFF), cut: false } },
   commits: { kind: "read", value: 1 },
   mainSince: { kind: "none" },
 } as const;
@@ -136,15 +138,71 @@ const NONE_OPEN: ReadonlyArray<string> = [];
 const RUN = { words: WORDS, reading: false } as const;
 const OFFERED = { kind: "offered" } as const;
 
+/** A change whose diff was too long to read whole: a lockfile first, the read stopping after. */
+const LONG_FILES: ReadonlyArray<GiteaChangedFile> = [
+  {
+    filename: "pnpm-lock.yaml",
+    previousFilename: undefined,
+    status: "modified",
+    additions: 2_600,
+    deletions: 0,
+  },
+  {
+    filename: "src/server/index.ts",
+    previousFilename: undefined,
+    status: "modified",
+    additions: 3,
+    deletions: 2,
+  },
+  {
+    filename: "src/web/app.tsx",
+    previousFilename: undefined,
+    status: "modified",
+    additions: 12,
+    deletions: 4,
+  },
+];
+const LONG_DIFF = [
+  "diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml",
+  "--- a/pnpm-lock.yaml",
+  "+++ b/pnpm-lock.yaml",
+  "@@ -1,0 +1,2600 @@",
+  ...Array.from({ length: 2_600 }, (_, index) => `+  /pkg-${String(index)}@1.0.0: {}`),
+  "diff --git a/src/server/index.ts b/src/server/index.ts",
+  "--- a/src/server/index.ts",
+  "+++ b/src/server/index.ts",
+  '@@ -10,7 +10,8 @@ import { web } from "./routes/web";',
+  ' import { health } from "./routes/health";',
+  '+import { status } from "./routes/status";',
+  " ",
+  " const app = new Hono();",
+  ' app.route("/he',
+].join("\n");
+const LONG = {
+  files: { kind: "read", value: LONG_FILES },
+  diff: {
+    kind: "read",
+    value: { files: parseChangeDiff(LONG_DIFF, { cut: true }), cut: true },
+  },
+} as const;
+
+const FILES_UNREAD = {
+  reading: { files: { kind: "reading" } },
+  failed: { files: { kind: "failed", reason: "Gitea did not answer in time." } },
+} as const;
+
 function Change({
   over,
   mainSince,
+  readout,
   press = IDLE,
   open = NONE_OPEN,
   run = RUN,
 }: {
   readonly over?: Partial<FlowPullRequest>;
   readonly mainSince?: ReadonlyArray<GiteaCommit>;
+  /** What was read of it, where that is not everything. */
+  readonly readout?: Partial<ChangeReviewViewProps["readout"]>;
   readonly press?: ReviewPress;
   readonly open?: ReadonlyArray<string>;
   readonly run?: { readonly words: string | undefined; readonly reading: boolean };
@@ -167,6 +225,7 @@ function Change({
       pull={value}
       readout={{
         ...READ,
+        ...readout,
         mainSince: mainSince === undefined ? READ.mainSince : { kind: "read", value: mainSince },
       }}
       route={value.merged ? undefined : ROUTE}
@@ -286,6 +345,19 @@ export const REVIEW_STATES: ReadonlyArray<{
   readonly node: ReactNode;
 }> = [
   { id: "ready", label: "A change, ready", node: <Change open={["src/server/index.ts"]} /> },
+  { id: "reading", label: "Its files being read", node: <Change readout={FILES_UNREAD.reading} /> },
+  { id: "unread", label: "Its files unread", node: <Change readout={FILES_UNREAD.failed} /> },
+  {
+    id: "long",
+    label: "A diff too long for here",
+    node: (
+      <Change
+        open={["pnpm-lock.yaml", "src/server/index.ts", "src/web/app.tsx"]}
+        over={{ additions: 2_615, deletions: 6 }}
+        readout={LONG}
+      />
+    ),
+  },
   {
     id: "unchecked",
     label: "Ready, nothing checked",
@@ -310,7 +382,7 @@ export const REVIEW_STATES: ReadonlyArray<{
           { sha: "c1", subject: "Tidy the README (#4)", files: ["README.md"] },
           { sha: "c2", subject: "Health routes (#5)", files: ["src/server/health.ts"] },
         ]}
-        over={{ baseSha: "main-now" }}
+        over={{ baseSha: "c2" }}
       />
     ),
   },
@@ -327,7 +399,7 @@ export const REVIEW_STATES: ReadonlyArray<{
             files: ["src/server/index.ts"],
           },
         ]}
-        over={{ mergeability: "conflicting", baseSha: "main-now" }}
+        over={{ mergeability: "conflicting", baseSha: "c2" }}
       />
     ),
   },
@@ -381,6 +453,11 @@ export const REVIEW_STATES: ReadonlyArray<{
     ),
   },
   { id: "merged", label: "After Merge", node: <Change press={{ kind: "done" }} /> },
+  {
+    id: "closed",
+    label: "Closed without merging",
+    node: <Change over={{ state: "closed", merged: false }} />,
+  },
   { id: "release", label: "A release", node: <Release /> },
   {
     id: "releasing",
@@ -422,9 +499,11 @@ export const REVIEW_STATES: ReadonlyArray<{
         mayRelease
         name="Beviro"
         nextTag="v0.1.58"
+        now={NOW}
         onClose={noop}
         onRollBack={noop}
-        press={{ kind: "idle" }}
+        outcome={OFFERED}
+        press={IDLE}
         services={["app", "api"]}
         tag="v0.1.55"
         where={[
@@ -465,10 +544,26 @@ export function ReviewStage({
   );
 }
 
-/** The real dialog, opened from a button, to try its motion, its focus and its keys. */
+/** How long the dialog's change takes to read its files, as a quick Gitea answers. */
+const TRY_READ_MS = 600;
+
+/**
+ * The real dialog, opened from a button, to try its motion, its focus and its keys — its files
+ * arriving a moment after it opens, as they do from Gitea, so Merge turns pressable then.
+ */
 export function ReviewDialogTry() {
   const [from, setFrom] = useState<HTMLElement | null>(null);
   const [open, setOpen] = useState(false);
+  const [read, setRead] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const timer = setTimeout(() => {
+      setRead(true);
+    }, TRY_READ_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [open]);
   return (
     <div className="flex gap-3 px-2">
       <button
@@ -476,6 +571,7 @@ export function ReviewDialogTry() {
         data-review-harness-open="ready"
         onClick={(event) => {
           setFrom(event.currentTarget);
+          setRead(false);
           setOpen(true);
         }}
         type="button"
@@ -504,7 +600,7 @@ export function ReviewDialogTry() {
           onReviewRelease={noop}
           press={IDLE}
           pull={pull()}
-          readout={READ}
+          readout={read ? READ : { ...READ, ...FILES_UNREAD.reading }}
           route={ROUTE}
           run={RUN}
           titleId="review-try-title"
