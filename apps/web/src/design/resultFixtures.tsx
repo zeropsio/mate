@@ -708,7 +708,7 @@ export function ResultStates() {
             <div className="run-tray run-tray-top">
               <RunChat row={record(`result-${index}`, state)} />
             </div>
-            <div className="run-tray run-tray-middle">
+            <div className="run-tray run-tray-middle pt-1">
               <div className="run-band">
                 <TurnReport
                   facts={state.facts}

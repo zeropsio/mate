@@ -3774,25 +3774,27 @@ code {
   border-width: 0 1px;
 }
 
-/* Corners run parallel (S4): the tray's 30 px is its bubbles' 18 px plus the
-   12 px between them — 11 px of padding inside the 1 px ring. */
+/* Corners run parallel (S4): the tray's 34 px is its bubbles' 18 px plus the
+   16 px between them — 15 px of padding inside the 1 px ring. At 12 the
+   bubbles pressed on its edge, the top most of all (the owner, 2026-09-29:
+   "some spacing, especially at the top is pretty poor"). */
 .run-tray-top {
   border-top-width: 1px;
-  border-top-left-radius: 30px;
-  border-top-right-radius: 30px;
-  padding-top: 11px;
-  padding-inline: 11px;
+  border-top-left-radius: 34px;
+  border-top-right-radius: 34px;
+  padding-top: 15px;
+  padding-inline: 15px;
 }
 
 .run-tray-middle {
-  padding-inline: 11px;
+  padding-inline: 15px;
 }
 
 .run-tray-bottom {
-  height: 12px;
+  height: 16px;
   border-bottom-width: 1px;
-  border-bottom-left-radius: 30px;
-  border-bottom-right-radius: 30px;
+  border-bottom-left-radius: 34px;
+  border-bottom-right-radius: 34px;
 }
 
 /* A line with nothing under it is no card (the owner, 2026-09-29: "shape of
@@ -3814,25 +3816,30 @@ code {
 
 /* The now line, the card's foot (K10): the face in the card's 28 px column,
    what the Mate is doing in words, the run's one clock on the right edge
-   (K3) in ink (S3). A hairline sets it off the chat above it, unless it is
-   all the card holds. */
+   (K3) in ink (S3). A hairline 16 px under the chat sets it off, and its words
+   stand 20 px from that hairline and 20 px from whatever is under them (4 px
+   of its own, then the card's 16) — centred in their band (the owner,
+   2026-09-29: "alignmen of the bot row is pretty stupid"). Heading the card —
+   closed to its summary, or nothing above it yet — it has no hairline, and
+   its words stand 20 px under the card's top edge. */
 .run-now {
-  /* How much lower its one line stands where no hairline sets it off. */
-  --run-now-lead: 0px;
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr) auto;
   column-gap: 8px;
   align-items: center;
-  min-height: 44px;
-  margin-top: 8px;
-  padding: 5px 14px 0 0;
+  margin-top: 16px;
+  padding: 20px 14px 4px 0;
   border-top: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
 }
 .run-now:first-child {
-  --run-now-lead: 3px;
   margin-top: 0;
-  padding-top: 0;
+  padding-top: 4px;
   border-top: 0;
+}
+/* The face stands in the middle of the column, over the chat's glyphs and
+   the result's marks. */
+.run-now > svg:first-child {
+  justify-self: center;
 }
 .run-now-words {
   min-width: 0;
@@ -3897,19 +3904,10 @@ code {
 }
 /* Several at once — how many on the line, and one line each under it — and a
    line opened to the whole of what runs: the face, the first words and the
-   clock keep to the pixel the places they had on one line, and the rest
-   grows under them. */
+   clock, each one 20 px line, keep the places they had on one line, and the
+   rest grows under them. */
 .run-now:is([data-run-now="several"], [data-open]) {
   align-items: start;
-}
-.run-now:is([data-run-now="several"], [data-open]) > svg {
-  margin-top: calc(5px + var(--run-now-lead));
-}
-.run-now:is([data-run-now="several"], [data-open]) > .run-now-words {
-  padding-block: calc(9px + var(--run-now-lead));
-}
-.run-now:is([data-run-now="several"], [data-open]) > :last-child {
-  margin-top: calc(9px + var(--run-now-lead));
 }
 .run-now-several > li {
   overflow: hidden;
@@ -3980,17 +3978,17 @@ code {
 }
 
 /* What runs alongside while the run goes on, and the result once it is over,
-   stand under the now line inside the tray (T5): a hairline 8 px under the
-   line, 6 px of room, then their rows in the card's grid; nothing at all
-   when they have no row. */
+   stand under the now line inside the tray (T5): a hairline 16 px under the
+   line — the row's 4 px and 12 of its own — 6 px of room, then their rows in
+   the card's grid; nothing at all when they have no row. */
 .run-band {
   position: relative;
-  padding-top: 15px;
+  padding-top: 19px;
 }
 .run-band::before {
   content: "";
   position: absolute;
-  top: 8px;
+  top: 12px;
   inset-inline: 0;
   height: 1px;
   background: color-mix(in oklab, var(--color-foreground) 8%, transparent);
@@ -4029,8 +4027,8 @@ button.run-bar:focus-visible {
 /* A tray on its own, not sliced: the Mate at work once its turn is over. */
 .run-tray-whole {
   border-width: 1px;
-  border-radius: 30px;
-  padding: 11px;
+  border-radius: 34px;
+  padding: 15px;
 }
 
 /* The run's one scroll (the owner, 2026-09-29: "open with scroll and all
@@ -4072,16 +4070,20 @@ button.run-bar:focus-visible {
 
 /* A run the person comes back to (D3): its worked line alone, "Show work" on
    its right edge — the chevron turning over as the work opens (K12) — and the
-   scroll under a hairline, as the live card's scroll stands over its now line. */
+   scroll under a hairline as far under the line as the live card's is over
+   it. */
 .run-later-feed:not(:empty) {
-  margin-top: 5px;
-  padding-top: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
   border-top: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
 }
+/* Its 24 px of ground stand in the line's 20, so the words keep their
+   centre. */
 .run-now-fold {
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-block: -2px;
   margin-right: -4px;
   padding: 2px 4px 2px 8px;
   border-radius: 8px;
@@ -4142,7 +4144,7 @@ button.run-bar:focus-visible {
 .run-tray-ghost {
   border: 1px solid transparent;
   border-bottom: 0;
-  padding: 11px 11px 0;
+  padding: 15px 15px 0;
 }
 
 /* ==== end of the run's card ==== */

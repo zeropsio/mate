@@ -2446,7 +2446,7 @@ function NowLine({
         greets
         known={ctx.arrivedAfter !== null && !ctx.syncing}
         shape={ctx.speaker.shape}
-        size="md"
+        size="sm"
         state={face.state}
         tint={ctx.speaker.tint}
       />

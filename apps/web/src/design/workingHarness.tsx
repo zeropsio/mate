@@ -692,7 +692,7 @@ function Card({
     <div>
       <div className="run-tray run-tray-top">{children}</div>
       {result === null ? null : (
-        <div className="run-tray run-tray-middle">
+        <div className="run-tray run-tray-middle pt-1">
           <div className="run-band">{result}</div>
         </div>
       )}

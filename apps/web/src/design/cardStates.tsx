@@ -334,7 +334,7 @@ function Turn({
           <RunChat row={row} />
         </div>
         {result ? (
-          <div className="run-tray run-tray-middle">
+          <div className="run-tray run-tray-middle pt-1">
             <div className="run-band">
               <TurnReport
                 facts={FACTS}
