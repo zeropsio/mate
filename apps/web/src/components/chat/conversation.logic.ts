@@ -1911,18 +1911,26 @@ export function deriveOutcome(input: {
     activity: input.activity ?? [],
     later: laterClaims(input.later ?? []),
   };
-  const empty =
-    outcome.activity.length === 0 &&
-    outcome.live.length === 0 &&
-    outcome.landed.length === 0 &&
-    outcome.files === null &&
-    outcome.checks === null &&
-    outcome.created.length === 0 &&
-    outcome.notDone.length === 0 &&
-    outcome.planLeft.length === 0 &&
-    outcome.change === null &&
-    outcome.crewTask === null;
-  return empty ? null : outcome;
+  return outcome.activity.length === 0 && !outcomeDraws(outcome) ? null : outcome;
+}
+
+/**
+ * Whether a run's outcome draws anything under its line. What its calls came
+ * to is said on the line itself (`runEffortWords`), so an outcome of that
+ * alone draws nothing, and its card is its line (`cardAlone`).
+ */
+export function outcomeDraws(outcome: OutcomeModel): boolean {
+  return (
+    outcome.live.length > 0 ||
+    outcome.landed.length > 0 ||
+    outcome.files !== null ||
+    outcome.checks !== null ||
+    outcome.created.length > 0 ||
+    outcome.notDone.length > 0 ||
+    outcome.planLeft.length > 0 ||
+    outcome.change !== null ||
+    outcome.crewTask !== null
+  );
 }
 
 // ---------------------------------------------------------------------------

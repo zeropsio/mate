@@ -225,7 +225,6 @@ describe("deriveMessagesTimelineRows", () => {
       expect.stringMatching(/^seam:seam:day:/),
       "message:m0",
       "record:record:msg:m0",
-      "outcome:outcome:msg:m0",
       "message:a2",
     ]);
     // Who worked and for how long is the chat's last line, never a heading.
@@ -243,11 +242,13 @@ describe("deriveMessagesTimelineRows", () => {
       "· pnpm test",
     ]);
     expect(recordOf(list)).toMatchObject({ live: false, now: null });
-    // What its calls came to is the result's, in pills (the owner, 2026-09-27).
-    expect(list[3]).toMatchObject({
+    // What its calls came to is said on its line (the owner, 2026-09-29): the
+    // record carries it, and nothing is drawn under the line for it.
+    expect(recordOf(list)).toMatchObject({
       outcome: { activity: [{ kind: "command", count: 2 }] },
     });
-    expect(list[4]).toMatchObject({ showAssistantMeta: true, receipt: null });
+    expect(list.some((row) => row.kind === "outcome")).toBe(false);
+    expect(list.at(-1)).toMatchObject({ showAssistantMeta: true, receipt: null });
   });
 
   // What the person sent into the run stands on the page above its card, and
@@ -271,7 +272,6 @@ describe("deriveMessagesTimelineRows", () => {
       "message:m1",
       "message:m2",
       "record:record:msg:m0",
-      "outcome:outcome:msg:m0",
       "message:a3",
     ]);
     // One card, its status on the chat's last line.
@@ -693,8 +693,9 @@ describe("deriveMessagesTimelineRows", () => {
       item.kind === "step" ? item.step.entries.map((entry) => entry.id) : [],
     );
     expect(logged).toEqual(["w1"]);
-    const outcome = list.find((row) => row.kind === "outcome");
-    expect(outcome?.kind === "outcome" ? runEffortWords(outcome.outcome) : null).toBe("1 command");
+    // What it ran is said on its line: the record carries it.
+    const outcome = recordOf(list)?.outcome;
+    expect(outcome ? runEffortWords(outcome) : null).toBe("1 command");
   });
 
   // A run that thought and asked the person something worked, it did not
@@ -1387,8 +1388,8 @@ describe("deriveMessagesTimelineRows", () => {
       settled: "t1",
     });
     expect(lines(list)?.at(-1)).toBe(`helpers ${spawned.length}`);
-    const outcome = list.find((row) => row.kind === "outcome");
-    expect(outcome?.kind === "outcome" ? runEffortWords(outcome.outcome) : null).toBe(effort);
+    const outcome = recordOf(list)?.outcome;
+    expect(outcome ? runEffortWords(outcome) : null).toBe(effort);
     expect(statusOf(list)).toMatchObject({ worked: true });
   });
 
@@ -1538,7 +1539,6 @@ describe("deriveMessagesTimelineRows", () => {
       "message:m0",
       "record:record:msg:m0",
       "pause:pause:msg:m0",
-      "outcome:outcome:msg:m0",
       "message:m1",
       "work-line:work-line:msg:m1",
     ]);
@@ -1549,7 +1549,7 @@ describe("deriveMessagesTimelineRows", () => {
     });
     expect(recordOf(list)?.status).toMatchObject({ face: "paused" });
     // A turn the limit refused before it did anything is its line alone.
-    expect(list[6]).toMatchObject({ kind: "work-line", face: "paused", worked: false });
+    expect(list.at(-1)).toMatchObject({ kind: "work-line", face: "paused", worked: false });
   });
 
   it("tells a limit once when the server adds its own error row, and keeps a real answer", () => {
@@ -1570,7 +1570,6 @@ describe("deriveMessagesTimelineRows", () => {
       "message:m0",
       "record:record:msg:m0",
       "pause:pause:msg:m0",
-      "outcome:outcome:msg:m0",
       "message:a1",
     ]);
     expect(statusOf(list)).toMatchObject({ face: "paused" });
@@ -1655,7 +1654,7 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       live: undefined,
       settled: "t2",
-      after: ["message:m1", "record:record:msg:m1", "outcome:outcome:msg:m1", "message:a1"],
+      after: ["message:m1", "record:record:msg:m1", "message:a1"],
     },
     {
       name: "a /compact's own turn, then a run",
@@ -1668,7 +1667,7 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       live: undefined,
       settled: "t2",
-      after: ["message:m1", "record:record:msg:m1", "outcome:outcome:msg:m1", "message:a1"],
+      after: ["message:m1", "record:record:msg:m1", "message:a1"],
     },
     {
       name: "a message sent while the /compact ran",
@@ -1682,7 +1681,7 @@ describe("deriveMessagesTimelineRows", () => {
       live: undefined,
       settled: "t1",
       // The result is the turn's, and the turn is the /compact's.
-      after: ["message:m1", "record:record:msg:m1", "outcome:outcome:msg:m0", "message:a1"],
+      after: ["message:m1", "record:record:msg:m1", "message:a1"],
     },
   ])("draws the person's message after $name as theirs, and its run", (scene) => {
     const list = rows({
@@ -2157,12 +2156,12 @@ describe("a run's card", () => {
       expected: ["message", "record:top", "outcome:middle", "card-end:bottom", "message"],
     },
     {
-      case: "settled, a command: what it ran counted in its result",
+      case: "settled, a command: counted on its line, nothing under it",
       scene: {
         entries: [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, "Done.")],
         settled: "t1",
       } satisfies Scene,
-      expected: ["message", "record:top", "outcome:middle", "card-end:bottom", "message"],
+      expected: ["message", "record:top", "card-end:bottom", "message"],
     },
     {
       case: "live: the record, then what runs alongside",
@@ -2235,6 +2234,55 @@ describe("a run's card", () => {
     ]);
     expect(list.at(-1)).toMatchObject({ kind: "message", id: "a1" });
     expect(recordOf(list)).toMatchObject({ answering: true, now: null });
+  });
+
+  // A line with nothing under it is no card (the owner, 2026-09-29: "shape of
+  // this with no items below is pretty weird"): a settled run with nothing
+  // under its line marks its card alone, by the run whose fold draws the box
+  // — closed, the line stands by itself; open, the card is drawn around it.
+  it.each([
+    {
+      case: "settled, nothing under its line: alone",
+      scene: {
+        entries: [user("m0", 0), reasoning("r1", "t1", 1), assistant("a1", "t1", 2, "Done.")],
+        settled: "t1",
+      } satisfies Scene,
+      alone: ["record", "card-end"],
+    },
+    {
+      // "Cleo worked 13s · 1 command": what it ran is said on the line.
+      case: "settled, a command counted on its line: alone",
+      scene: {
+        entries: [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, "Done.")],
+        settled: "t1",
+      } satisfies Scene,
+      alone: ["record", "card-end"],
+    },
+    {
+      case: "settled, its result under its line: a card",
+      scene: {
+        entries: [
+          user("m0", 0),
+          operation("d1", "t1", 1, { kind: "deploy" }),
+          assistant("a1", "t1", 2, "Done."),
+        ],
+        settled: "t1",
+      } satisfies Scene,
+      alone: [],
+    },
+    {
+      case: "live: a card",
+      scene: {
+        entries: [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, "Looking.")],
+        live: "t1",
+      } satisfies Scene,
+      alone: [],
+    },
+  ])("marks a card alone: $case", ({ scene, alone }) => {
+    const list = framed(scene);
+    const marked = list.filter((row) => row.cardAlone !== undefined);
+    expect(marked.map((row) => row.kind)).toEqual(alone);
+    expect(marked.map((row) => row.cardAlone)).toEqual(alone.map(() => "msg:m0"));
   });
 
   // A run with nothing to report settles into its heading and record: the
