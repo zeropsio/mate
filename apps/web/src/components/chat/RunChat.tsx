@@ -66,6 +66,7 @@ import {
   useSyncExternalStore,
   type CSSProperties,
   type ReactNode,
+  type Ref,
 } from "react";
 
 import { flushSync } from "react-dom";
@@ -434,14 +435,17 @@ function FoldBody({
 function MoreToggle({
   open,
   onToggle,
+  ref,
   children,
 }: {
   readonly open: boolean;
   readonly onToggle: () => void;
+  readonly ref?: Ref<HTMLButtonElement>;
   readonly children: ReactNode;
 }) {
   return (
     <button
+      ref={ref}
       aria-expanded={open}
       className={cn(
         META,
@@ -873,6 +877,20 @@ function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMess
   const hold = useHoldReading();
   const [open, setOpen] = useState(false);
   const [past, watch] = useRunsPast(run.length > THOUGHT_GUESS_CHARS);
+  // Opening swaps the thought's button for "Show less", and closing swaps it
+  // back: the focus goes with the person's press to the one that stands.
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const handOnRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!handOnRef.current) return;
+    handOnRef.current = false;
+    toggleRef.current?.focus();
+  });
+  const toggle = (next: boolean) => {
+    handOnRef.current = true;
+    hold();
+    setOpen(next);
+  };
   if (text.trim().length === 0) return null;
   const clamped = (
     <span ref={watch} className="line-clamp-2 italic" data-chat-folded={past ? "true" : undefined}>
@@ -884,26 +902,18 @@ function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMess
       {open ? (
         <>
           <ThoughtParagraphs messages={messages} />
-          <MoreToggle
-            onToggle={() => {
-              hold();
-              setOpen(false);
-            }}
-            open
-          >
+          <MoreToggle ref={toggleRef} onToggle={() => toggle(false)} open>
             Show less
           </MoreToggle>
         </>
       ) : past ? (
         <button
+          ref={toggleRef}
           aria-expanded={false}
           aria-label={`${run.slice(0, 80)}… Show the whole thought`}
           className="block w-full min-w-0 cursor-pointer rounded-sm text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
           data-chat-disclose
-          onClick={() => {
-            hold();
-            setOpen(true);
-          }}
+          onClick={() => toggle(true)}
           type="button"
         >
           {clamped}
@@ -2349,11 +2359,7 @@ function NowLine({
         state={face.state}
         tint={ctx.speaker.tint}
       />
-      <div
-        className="run-now-words"
-        data-work-line={status.face}
-        role={status.live ? "status" : undefined}
-      >
+      <div className="run-now-words" data-work-line={status.face}>
         <span
           key={words}
           className={cn(
@@ -2363,6 +2369,13 @@ function NowLine({
         >
           <NowWords line={line} />
         </span>
+        {/* What a screen reader hears: the line's words as they change —
+            never the thought's latest words or a step's ticking time. */}
+        {status.live ? (
+          <span className="sr-only" role="status">
+            {words}
+          </span>
+        ) : null}
         {line.kind === "several" ? (
           <ul className="run-now-several">
             {line.steps.map((step) => (
@@ -2562,15 +2575,33 @@ function ChatFeed({
   // Where the chat starts, fixed when it opens: what arrives after it only
   // ever joins at the end, so the window grows and never slides.
   const [from, setFrom] = useState(() => chatOpensAt(lines.length));
+  // The last "Show N earlier" goes once pressed: the focus goes to the lines
+  // it drew, never to the page's body.
+  const listRef = useRef<HTMLOListElement>(null);
+  const focusListRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!focusListRef.current) return;
+    focusListRef.current = false;
+    listRef.current?.focus();
+  });
   const shown = gatherCalls(from > 0 ? lines.slice(from) : lines);
   if (shown.length === 0 && from === 0) return null;
   return (
     <ChatShownContext value={shownRef}>
-      <ol aria-label={label} className="flex min-w-0 flex-col gap-3">
+      <ol
+        ref={listRef}
+        aria-label={label}
+        className="flex min-w-0 flex-col gap-3 focus:outline-none"
+        tabIndex={-1}
+      >
         {from > 0 ? (
           <EarlierLine
             count={earlierShown(from).shows}
-            onShow={() => setFrom((start) => earlierShown(start).next)}
+            onShow={() => {
+              const { next } = earlierShown(from);
+              if (next === 0) focusListRef.current = true;
+              setFrom(next);
+            }}
           />
         ) : null}
         {shown.map((entry) =>

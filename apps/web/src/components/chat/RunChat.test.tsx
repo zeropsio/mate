@@ -460,6 +460,24 @@ describe("RunChat", () => {
     expect(markup).not.toMatch(/<p class="[^"]*truncate[^"]*" data-chat-kind="person">/u);
   });
 
+  // A screen reader hears the now line when its words change, never its
+  // ticking parts: the thought's latest words, the long-step time.
+  it("tells a screen reader the now line's words alone, as they change", () => {
+    const markup = draw(
+      record([], {
+        live: true,
+        status: status(),
+        now: {
+          kind: "thinking",
+          key: "thought:r9",
+          messages: [message("r9", "reasoning", "The build needs Node 22. So I bump it")],
+        },
+      }),
+    );
+    expect(markup.match(/role="status"/g)).toHaveLength(1);
+    expect(markup).toMatch(/<span class="sr-only" role="status">Thinking<\/span>/u);
+  });
+
   // Several at once (K10): how many on the line, a still line each under it.
   it("says several steps at once by how many, a still line each under it", () => {
     const runningCommand = (id: string, text: string) =>
@@ -759,7 +777,7 @@ describe("RunChat", () => {
     expect(draw(record([], { live: true, status: status() }))).not.toContain("<ol");
     const said = draw(record([thought("r1", "The route and the check disagree.")]));
     expect(said).toContain(
-      '<ol aria-label="Nova&#x27;s work" class="flex min-w-0 flex-col gap-3">',
+      '<ol aria-label="Nova&#x27;s work" class="flex min-w-0 flex-col gap-3 focus:outline-none" tabindex="-1">',
     );
   });
 
@@ -1083,6 +1101,90 @@ describe("RunChat, as the person uses it", () => {
       expect(markup).not.toContain("Show work");
       expect(markup).toContain("Nothing to do.");
     });
+  });
+
+  // A control that goes once pressed hands the focus on: the thought's way to
+  // the rest to its "Show less" and back, the last "Show N earlier" to the
+  // lines it drew — never to the page's body.
+  it("keeps the focus on the thought's toggle as it opens and closes", () => {
+    // The opened thought is markdown, which reads the page's own storage.
+    const savedWindow = (globalThis as { window?: unknown }).window;
+    (globalThis as { window?: unknown }).window = {
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      localStorage: { getItem: () => null, setItem: () => undefined },
+      matchMedia: () => ({
+        matches: false,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      }),
+    };
+    try {
+      const focused: string[] = [];
+      let renderer!: ReactTestRenderer;
+      act(() => {
+        renderer = create(
+          <Rows>
+            <RunChat row={record([thought("r1", LONG)])} />
+          </Rows>,
+          {
+            createNodeMock: (element) =>
+              element.type === "button"
+                ? {
+                    focus: () =>
+                      focused.push(
+                        String(
+                          (element.props as { "aria-label"?: string })["aria-label"] ?? "Show less",
+                        ),
+                      ),
+                    closest: () => null,
+                    isConnected: true,
+                    parentElement: null,
+                    ownerDocument: { scrollingElement: null },
+                    getBoundingClientRect: () => ({ top: 0, bottom: 0 }),
+                  }
+                : { scrollHeight: 100, clientHeight: 40 },
+          },
+        );
+      });
+      act(() => button(renderer, "Line 1").props.onClick());
+      expect(focused).toEqual(["Show less"]);
+      act(() =>
+        button(renderer, "Show less").props.onClick({
+          currentTarget: {
+            closest: () => null,
+            isConnected: true,
+            parentElement: null,
+            ownerDocument: { scrollingElement: null },
+            getBoundingClientRect: () => ({ top: 0, bottom: 0 }),
+          },
+        }),
+      );
+      expect(focused.at(-1)).toMatch(/Show the whole thought$/u);
+    } finally {
+      (globalThis as { window?: unknown }).window = savedWindow;
+    }
+  });
+
+  it("hands the focus to the lines the last Show N earlier drew", () => {
+    const many = Array.from({ length: 50 }, (_, index) =>
+      step(command(`w${index}`, `echo ${index}`)),
+    );
+    let listFocused = 0;
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(
+        <Rows>
+          <RunChat row={record(many)} />
+        </Rows>,
+        {
+          createNodeMock: (element) =>
+            element.type === "ol" ? { focus: () => (listFocused += 1) } : {},
+        },
+      );
+    });
+    act(() => button(renderer, "Show 10 earlier").props.onClick());
+    expect(listFocused).toBe(1);
   });
 
   it("draws the earlier bubbles when the person asks for them", () => {

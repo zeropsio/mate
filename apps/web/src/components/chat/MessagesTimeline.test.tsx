@@ -1413,7 +1413,11 @@ describe("MessagesTimeline — the conversation", () => {
     expect(markup).not.toContain('data-chat-kind="step:web"');
     expect(markup).toContain('data-run-now="step"');
     expect(markup).toContain('data-mate-face-state="working"');
-    expect(markup.match(/docs\.example\.dev\/guides/g)).toHaveLength(1);
+    // Once on the line, and once more for a screen reader, in its words alone.
+    expect(markup.match(/docs\.example\.dev\/guides/g)).toHaveLength(2);
+    expect(markup).toContain(
+      '<span class="sr-only" role="status">Reading docs.example.dev/guides</span>',
+    );
     expect(markup).toMatch(
       />Reading(?:<!-- -->)? <span class="run-now-mono">docs\.example\.dev\/guides</u,
     );
