@@ -371,6 +371,28 @@ describe("RunChat", () => {
     expect(draw(record([thought("r1", "One.")]))).not.toContain("data-mate-face-state");
   });
 
+  // Blue means something to click (S3): the run's clock counts in ink, and a
+  // call running beside it counts in the calls' quiet ink.
+  it("counts the run's time in ink, never in the busy blue", () => {
+    const markup = draw(
+      record([], {
+        live: true,
+        status: status(),
+        now: {
+          kind: "step",
+          step: stepOf(
+            command("w9", "npm run lint", {
+              toolLifecycleStatus: "inProgress",
+              updatedAt: undefined as never,
+            }),
+          ),
+        },
+      }),
+    );
+    expect(markup).toMatch(/class="[^"]*me-8\.5 text-foreground[^"]*" data-work-line-clock/u);
+    expect(markup).not.toContain("text-status-busy-text");
+  });
+
   // A thought is the quietest thing in the card: two lines of it, and where
   // it runs on, the thought itself is the way to the rest (D4) — never a
   // scroll inside the card.

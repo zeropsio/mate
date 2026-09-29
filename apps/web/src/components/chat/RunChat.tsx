@@ -788,7 +788,7 @@ function Headline({
 }: {
   readonly children: ReactNode;
   readonly time?: ReactNode;
-  readonly timeTone?: "muted" | "busy" | "failed";
+  readonly timeTone?: "muted" | "failed";
   readonly opens?: boolean;
   /** A row of a card of calls: the time and the chevron keep their column. */
   readonly column?: boolean;
@@ -809,11 +809,7 @@ function Headline({
             className={cn(
               META,
               "tabular-nums",
-              timeTone === "busy"
-                ? "text-status-busy-text"
-                : timeTone === "failed"
-                  ? "text-status-failed-text"
-                  : "text-muted-foreground",
+              timeTone === "failed" ? "text-status-failed-text" : "text-muted-foreground",
             )}
           >
             {time}
@@ -1361,7 +1357,8 @@ function CommandCode({
  * says what it was for, then four lines of its code. The row opens as one
  * thing: its first line or "Show all N lines" shows the whole code and what it
  * printed, in an inset on the code's own left edge, and "Show less" folds it
- * back. The one it is making now keeps its clock in the busy blue.
+ * back. The one it is making now counts its time in the same quiet ink:
+ * blue means something to click (S3), and the run has one clock.
  */
 export function StepBubble({ step }: { readonly step: WorkStep }) {
   const disclosure = useDisclosure();
@@ -1381,7 +1378,7 @@ export function StepBubble({ step }: { readonly step: WorkStep }) {
       opens={opens}
       running={running}
       time={timeWords}
-      timeTone={running ? "busy" : failed ? "failed" : "muted"}
+      timeTone={failed ? "failed" : "muted"}
     >
       {step.kind === "command" ? (
         <span className={failed ? "text-status-failed-text" : "text-foreground/75"}>
@@ -1619,12 +1616,7 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
         onToggle={disclosure.toggle}
         open={disclosure.open}
       >
-        <Headline
-          column
-          opens
-          time={time}
-          timeTone={running ? "busy" : failed ? "failed" : "muted"}
-        >
+        <Headline column opens time={time} timeTone={failed ? "failed" : "muted"}>
           <span>
             <span className="text-foreground/75">{words}</span>
             {verdict === null ? null : (
@@ -1789,12 +1781,7 @@ export function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
         onToggle={disclosure.toggle}
         open={disclosure.open}
       >
-        <Headline
-          column
-          opens
-          timeTone={summary.live ? "busy" : "muted"}
-          time={summary.live ? "Working" : null}
-        >
+        <Headline column opens timeTone="muted" time={summary.live ? "Working" : null}>
           <span>
             <span className="text-foreground/75">{words}</span>
             {what ? <span className="text-muted-foreground">{` · ${what}`}</span> : null}
@@ -2339,7 +2326,7 @@ function StatusLine({
             so every time in the card ends on one edge; it stood under the
             chevrons, 34 px right of the times it sums. */}
         <RunClock
-          className={cn("me-8.5", doing !== null && !doing.waiting && "text-status-busy-text")}
+          className="me-8.5 text-foreground"
           status={status}
           timestampFormat={ctx.timestampFormat}
         />
