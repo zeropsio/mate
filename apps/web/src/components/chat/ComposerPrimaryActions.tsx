@@ -207,10 +207,12 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     );
   }
 
+  // Blue is for what can be clicked (S3): with nothing to send the button is
+  // the toolbar's neutral grey, and it turns blue the moment there is.
   const sendButton = (
     <button
       type="submit"
-      className="flex h-9 w-9 items-center justify-center rounded-full bg-message-action text-message-action-foreground shadow-xs transition-[scale,background-color,box-shadow,opacity] duration-150 ease-out enabled:cursor-pointer enabled:inset-shadow-[0_1px_--theme(--color-white/16%)] enabled:shadow-message-action/24 hover:scale-105 hover:bg-message-action-hover active:scale-95 active:inset-shadow-[0_1px_--theme(--color-black/8%)] active:shadow-none disabled:pointer-events-none disabled:opacity-64 disabled:shadow-none disabled:hover:scale-100 sm:h-8 sm:w-8"
+      className="flex h-9 w-9 items-center justify-center rounded-full bg-message-action text-message-action-foreground shadow-xs transition-[scale,background-color,box-shadow,opacity] duration-150 ease-out enabled:cursor-pointer enabled:inset-shadow-[0_1px_--theme(--color-white/16%)] enabled:shadow-message-action/24 hover:scale-105 hover:bg-message-action-hover active:scale-95 active:inset-shadow-[0_1px_--theme(--color-black/8%)] active:shadow-none disabled:pointer-events-none disabled:bg-foreground/9 disabled:text-muted-foreground disabled:shadow-none disabled:hover:scale-100 sm:h-8 sm:w-8"
       {...pointerFocusProps}
       disabled={
         isSendBusy ||

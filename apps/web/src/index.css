@@ -2933,6 +2933,34 @@ code {
   border-radius: 19px;
 }
 
+/* C4: the one control's menu — the models, and beside them the model's
+   effort, its other choices and the access. Both columns share one height,
+   tall enough for a Claude model's six efforts, two context windows and the
+   four accesses without a scroll; a narrow screen stacks them. */
+.composer-model-menu {
+  display: flex;
+  height: min(28rem, var(--available-height, 100vh));
+}
+
+.composer-model-menu > [data-model-picker-content] {
+  height: 100%;
+  max-height: none;
+}
+
+@media (max-width: 39.999rem) {
+  .composer-model-menu {
+    flex-direction: column;
+    height: auto;
+    max-height: var(--available-height, 100vh);
+    overflow-y: auto;
+  }
+
+  .composer-model-menu > [data-model-picker-content] {
+    flex: none;
+    height: 21.625rem;
+  }
+}
+
 /* ==== end of the composer ==== */
 
 /* ==== Pass 16 · composer pictures ==== */

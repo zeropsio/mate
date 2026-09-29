@@ -203,7 +203,7 @@ function getSelectedTraits(
   };
 }
 
-function getTraitsSectionVisibility(input: {
+export function getTraitsSectionVisibility(input: {
   provider: ProviderDriverKind;
   models: ReadonlyArray<ServerProviderModel>;
   model: string | null | undefined;
@@ -270,7 +270,14 @@ export interface TraitsMenuContentProps {
   triggerClassName?: string;
 }
 
-export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
+/**
+ * A model's traits as choices the person makes: each option's value as chosen
+ * now, and the handlers that persist a pick — the draft store, or the caller's
+ * own store — including the effort that "ultrathink" writes into the prompt
+ * instead of an option. The traits menu and the composer's one control render
+ * the same choices from here.
+ */
+export function useTraitsControls({
   provider,
   instanceId,
   models,
@@ -280,6 +287,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   modelOptions,
   allowPromptInjectedEffort = true,
   planModeEnabled,
+  triggerClassName: _triggerClassName,
   ...persistence
 }: TraitsMenuContentProps & TraitsPersistence) {
   const setProviderModelOptions = useComposerDraftStore((store) => store.setProviderModelOptions);
@@ -301,16 +309,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
     },
     [instanceId, model, persistence, provider, setProviderModelOptions],
   );
-  const {
-    descriptors,
-    selectDescriptors,
-    booleanDescriptors,
-    primarySelectDescriptor,
-    ultrathinkPromptControlled,
-    ultrathinkInBodyText,
-    hasAnyControls,
-    modelIsUnavailable,
-  } = getTraitsSectionVisibility({
+  const traits = getTraitsSectionVisibility({
     provider,
     models,
     model,
@@ -319,11 +318,23 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
     allowPromptInjectedEffort,
     planModeEnabled,
   });
+  const { descriptors, primarySelectDescriptor, ultrathinkPromptControlled, ultrathinkInBodyText } =
+    traits;
   const updateDescriptors = (nextDescriptors: ReadonlyArray<ProviderOptionDescriptor>) => {
     updateModelOptions(buildProviderOptionSelectionsFromDescriptors(nextDescriptors));
   };
 
-  const handleSelectChange = (
+  /** The option chosen now, "ultrathink" while the prompt sets the effort. */
+  const selectedValue = (descriptor: Extract<ProviderOptionDescriptor, { type: "select" }>) =>
+    ultrathinkPromptControlled && descriptor.id === primarySelectDescriptor?.id
+      ? "ultrathink"
+      : (getDescriptorStringValue(descriptor) ?? "");
+
+  /** The effort is held by "ultrathink" in the prompt's own words until they go. */
+  const isLocked = (descriptor: ProviderOptionDescriptor) =>
+    ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id;
+
+  const select = (
     descriptor: Extract<ProviderOptionDescriptor, { type: "select" }>,
     value: string,
   ) => {
@@ -336,13 +347,38 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
       onPromptChange(nextPrompt);
       return;
     }
-    if (ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id) return;
+    if (isLocked(descriptor)) return;
     if (ultrathinkPromptControlled && descriptor.id === primarySelectDescriptor?.id) {
       const stripped = prompt.replace(/^Ultrathink:\s*/i, "");
       onPromptChange(stripped);
     }
     updateDescriptors(replaceDescriptorCurrentValue(descriptors, descriptor.id, value));
   };
+
+  const toggle = (
+    descriptor: Extract<ProviderOptionDescriptor, { type: "boolean" }>,
+    on: boolean,
+  ) => {
+    updateDescriptors(replaceDescriptorCurrentValue(descriptors, descriptor.id, on));
+  };
+
+  return { ...traits, selectedValue, isLocked, select, toggle };
+}
+
+export const TraitsMenuContent = memo(function TraitsMenuContentImpl(
+  props: TraitsMenuContentProps & TraitsPersistence,
+) {
+  const {
+    descriptors,
+    selectDescriptors,
+    booleanDescriptors,
+    hasAnyControls,
+    modelIsUnavailable,
+    selectedValue,
+    isLocked,
+    select,
+    toggle,
+  } = useTraitsControls(props);
 
   if (!hasAnyControls) {
     return null;
@@ -373,11 +409,6 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   return (
     <>
       {selectDescriptors.map((descriptor, index) => {
-        const selectedValue =
-          ultrathinkPromptControlled && descriptor.id === primarySelectDescriptor?.id
-            ? "ultrathink"
-            : (getDescriptorStringValue(descriptor) ?? "");
-
         return (
           <div key={descriptor.id}>
             {index > 0 ? <MenuDivider /> : null}
@@ -385,15 +416,15 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
               <div className="px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-xs">
                 {descriptor.label}
               </div>
-              {ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id ? (
+              {isLocked(descriptor) ? (
                 <div className="px-2 pb-1.5 text-muted-foreground/80 text-xs">
                   Your prompt contains &quot;ultrathink&quot; in the text. Remove it to change this
                   option.
                 </div>
               ) : null}
               <MenuRadioGroup
-                value={selectedValue}
-                onValueChange={(value) => handleSelectChange(descriptor, value)}
+                value={selectedValue(descriptor)}
+                onValueChange={(value) => select(descriptor, value)}
               >
                 {descriptor.options.map((option) => (
                   <MenuRadioItem
@@ -402,7 +433,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
                     // Base UI keeps radio menus open by default. Close on pick so
                     // the traits menu behaves like the model picker.
                     closeOnClick
-                    disabled={ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id}
+                    disabled={isLocked(descriptor)}
                   >
                     <span className="flex w-full min-w-0 flex-col">
                       <span className="flex w-full min-w-0 items-center justify-between gap-3">
@@ -430,7 +461,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
         );
       })}
       {booleanDescriptors.map((descriptor, index) => {
-        const selectedValue = descriptor.currentValue === true ? "on" : "off";
+        const toggledValue = descriptor.currentValue === true ? "on" : "off";
 
         return (
           <div key={descriptor.id}>
@@ -440,11 +471,9 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
                 {descriptor.label}
               </div>
               <MenuRadioGroup
-                value={selectedValue}
+                value={toggledValue}
                 onValueChange={(value) => {
-                  updateDescriptors(
-                    replaceDescriptorCurrentValue(descriptors, descriptor.id, value === "on"),
-                  );
+                  toggle(descriptor, value === "on");
                 }}
               >
                 {(["on", "off"] as const).map((value) => (

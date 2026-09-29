@@ -592,30 +592,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/chat/CompactComposerControlsMenu.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> hover:text-foreground/80 in \"shrink-0 px-2 text-muted-foreground/70 hover:text-foreground/80\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/CompactComposerControlsMenu.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> px-2 in \"shrink-0 px-2 text-muted-foreground/70 hover:text-foreground/80\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/CompactComposerControlsMenu.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> text-muted-foreground/70 in \"shrink-0 px-2 text-muted-foreground/70 hover:text-foreground/80\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
     "kind": "Literal",
     "fingerprint": "<Alert> alert-glass in \"alert-glass rounded-2xl\"",
