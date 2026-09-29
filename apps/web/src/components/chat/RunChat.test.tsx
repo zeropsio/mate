@@ -9,6 +9,7 @@ import type { WorkLogEntry } from "../../session-logic";
 import type { ChatMessage } from "../../types";
 import type { MessagesTimelineRow, RecordItem, RunStatus } from "./MessagesTimeline.logic";
 import { foldsLikeAMessage, RunChat } from "./RunChat";
+import { forgetRunFolds, setRunFold } from "./runCard.logic";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -845,6 +846,120 @@ describe("RunChat, as the person uses it", () => {
     const pre = renderer.root.find((node) => node.type === "pre");
     expect(pre.props["data-chat-folded"]).toBe("false");
     expect(JSON.stringify(renderer.toJSON())).toContain("line 30");
+  });
+
+  // A run the person comes back to opens folded and keeps everything it said
+  // to them (K7, D3): its worked line on top, its words, their words and what
+  // it couldn't do under it; its thoughts and calls behind "Show work", which
+  // opens them under the line they clicked (K12).
+  describe("a run the person comes back to", () => {
+    const CONVERSATION = SHARED.routeThreadKey;
+    afterEach(() => forgetRunFolds(CONVERSATION));
+    const settledRun = (overrides: Partial<RecordRow> = {}) =>
+      record(
+        [
+          thought("r1", "The route and the check disagree."),
+          step(command("w1", "npm test", { callInput: { description: "Run the tests" } })),
+          {
+            kind: "note",
+            key: "note:a1",
+            at: at(10),
+            message: message("a1", "assistant", "Should /status be public?"),
+          },
+          {
+            kind: "person",
+            key: "person:x1",
+            at: at(11),
+            words: "Yes, no secrets",
+            imageOnly: false,
+          },
+          {
+            kind: "error",
+            key: "error:e1",
+            at: at(12),
+            entry: command("e1", "deploy", { tone: "error", label: "The deploy was refused" }),
+          },
+        ],
+        {
+          status: status({ live: false, face: "produced", endedAt: at(80) }),
+          effort: "1 command",
+          ...overrides,
+        },
+      );
+    const text = (renderer: ReactTestRenderer) => JSON.stringify(renderer.toJSON());
+
+    it("opens folded, its words kept and its work behind Show work", () => {
+      const markup = draw(settledRun());
+      expect(markup).toContain('data-run-fold="folded"');
+      // The worked line first: the line the person clicks stands above what opens.
+      expect(markup.indexOf("Nova worked 1m 20s")).toBeLessThan(
+        markup.indexOf("Should /status be public?"),
+      );
+      expect(markup).toContain("Yes, no secrets");
+      expect(markup).toContain("The deploy was refused");
+      expect(markup).not.toContain("Run the tests");
+      expect(markup).not.toContain("The route and the check disagree.");
+      expect(markup).toMatch(/<button aria-expanded="false" class="run-now-fold"[^>]*>Show work/u);
+    });
+
+    it("keeps a run the person watched open, its line at the foot, until they leave", () => {
+      setRunFold(CONVERSATION, "turn-1", "watched");
+      const markup = draw(settledRun());
+      expect(markup).not.toContain("data-run-fold");
+      expect(markup).toContain("Run the tests");
+      expect(markup.indexOf("Run the tests")).toBeLessThan(markup.indexOf("Nova worked 1m 20s"));
+      expect(markup).not.toContain("Show work");
+      forgetRunFolds(CONVERSATION);
+      expect(draw(settledRun())).toContain('data-run-fold="folded"');
+    });
+
+    // Mounted as the page draws it: a markdown note reads the page's storage.
+    const workOnly = (overrides: Partial<RecordRow> = {}) =>
+      settledRun({
+        items: settledRun().items.filter((item) => item.kind !== "note"),
+        ...overrides,
+      });
+    it("marks a run watched while it runs, so it stays open once it settles", () => {
+      const renderer = mount(workOnly({ live: true, status: status() }));
+      act(() =>
+        renderer.update(
+          <Rows>
+            <RunChat row={workOnly()} />
+          </Rows>,
+        ),
+      );
+      expect(text(renderer)).toContain("Run the tests");
+      expect(text(renderer)).not.toContain("Show work");
+    });
+
+    it("opens the work under its line with Show work, and folds it with Hide work", () => {
+      const renderer = mount(workOnly());
+      expect(text(renderer)).not.toContain("Run the tests");
+      act(() => button(renderer, "Show work").props.onClick());
+      expect(text(renderer)).toContain("Run the tests");
+      expect(button(renderer, "Hide work").props["aria-expanded"]).toBe(true);
+      act(() => button(renderer, "Hide work").props.onClick());
+      expect(text(renderer)).not.toContain("Run the tests");
+      expect(button(renderer, "Show work").props["aria-expanded"]).toBe(false);
+    });
+
+    it("offers no Show work where nothing folds", () => {
+      const markup = draw(
+        record(
+          [
+            {
+              kind: "note",
+              key: "note:a1",
+              at: at(10),
+              message: message("a1", "assistant", "Nothing to do."),
+            },
+          ],
+          { status: status({ live: false, face: "idle", endedAt: at(5), worked: false }) },
+        ),
+      );
+      expect(markup).not.toContain("Show work");
+      expect(markup).toContain("Nothing to do.");
+    });
   });
 
   it("draws the earlier bubbles when the person asks for them", () => {

@@ -3197,6 +3197,49 @@ code {
   color: var(--color-muted-foreground);
 }
 
+/* A run the person comes back to (K7): its worked line on top, what it said
+   under it 8 px down, and "Show work" on the line's right edge — its chevron
+   on the edge, turning over as the work opens (K12). */
+.run-later-feed:not(:empty) {
+  padding-top: 8px;
+}
+.run-now-fold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: -4px;
+  padding: 2px 4px 2px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease;
+}
+.run-now-fold:hover {
+  color: var(--color-foreground);
+  background: color-mix(in oklab, var(--color-foreground) 5%, transparent);
+}
+.run-now-fold:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
+  outline-offset: 1px;
+}
+.run-now-fold-icon {
+  width: 14px;
+  height: 14px;
+  transition: rotate 220ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.run-now-fold[aria-expanded="true"] .run-now-fold-icon {
+  rotate: 180deg;
+}
+@media (prefers-reduced-motion: reduce) {
+  .run-now-fold-icon {
+    transition: none;
+  }
+}
+
 /* T4: a step ending lands in the chat above the now line, rising 6 px into
    its place over 320 ms, once; reduced motion fades only (T8). */
 @keyframes run-rise {

@@ -141,6 +141,7 @@ import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic
 import { TurnReport } from "./TurnReport";
 import { ConversationAfterWork, ConversationWorking } from "./ConversationWorking";
 import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat, RunLine } from "./RunChat";
+import { forgetRunFolds } from "./runCard.logic";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -841,6 +842,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     setOpenedWith({ key: routeThreadKey, at: newestMessageAt });
   }
   const arrivedAfter = openedWith?.key === routeThreadKey ? openedWith.at : null;
+  // A run the person watched stays open while they are here; once they leave
+  // the conversation every run in it folds, so coming back it is folded from
+  // the first frame and nothing moves (K7).
+  useEffect(() => () => forgetRunFolds(routeThreadKey), [routeThreadKey]);
 
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({

@@ -9,6 +9,7 @@ import type { LegendListRef } from "@legendapp/list/react";
 import type { ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
 import { InventoryContext, type Inventory } from "../../zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "../../zerops/zeropsDataContext";
+import { forgetRunFolds, setRunFold } from "./runCard.logic";
 
 vi.mock("@legendapp/list/react", async () => {
   const legendListTestId = "legend-list";
@@ -1259,11 +1260,15 @@ describe("MessagesTimeline — the conversation", () => {
     // follows. No heading stands over the card.
     expect(markup).toContain(">Assistant worked 1m<");
     expect(markup).not.toContain('data-timeline-row-kind="work-line"');
-    // The record stays on the page, everything the Mate did in order (the
-    // owner, 2026-09-27: "after the work is done I'd leave it on the page").
+    // Come back to, the run opens folded (K7): its worked line on top, what it
+    // said to the person under it, its calls behind "Show work".
     const record = markup.slice(markup.indexOf('data-timeline-row-kind="record"'));
-    expect(record.indexOf("pnpm build")).toBeLessThan(record.indexOf("Building the shop now."));
-    expect(record.match(/>pnpm build</g)).toHaveLength(2);
+    expect(record).toContain('data-run-fold="folded"');
+    expect(record.indexOf(">Assistant worked 1m<")).toBeLessThan(
+      record.indexOf("Building the shop now."),
+    );
+    expect(record).toMatch(/<button aria-expanded="false" class="run-now-fold"[^>]*>Show work/u);
+    expect(record).not.toContain(">pnpm build<");
     // What its calls came to is the work's and the worked line's, never a
     // result row (K6): a run that only ran commands leaves no result.
     expect(markup).not.toContain("Ran 2 commands");
@@ -1277,6 +1282,8 @@ describe("MessagesTimeline — the conversation", () => {
   // A step is a bubble of the run's chat; what it printed opens in place,
   // under it — never a dialog (the owner, 2026-09-27: "I hate the dialog").
   it("opens what a step printed in place, under its bubble", () => {
+    // A run the person watched stays open while they are in the conversation.
+    setRunFold("environment-local:thread-1", "msg:message-1", "watched");
     const built = tool("w1", 5);
     const markup = renderToStaticMarkup(
       <MessagesTimeline
@@ -1293,6 +1300,7 @@ describe("MessagesTimeline — the conversation", () => {
       /<div[^>]*data-chat-bubble="tool"[^>]*data-chat-kind="step:command"[^>]*>(?:<span class="absolute[^"]*">[\s\S]*?<\/svg><\/span><\/span><\/span>)<button aria-expanded="false" aria-label="pnpm build\. Show what it returned"/,
     );
     expect(markup).not.toContain("dist/index.js");
+    forgetRunFolds("environment-local:thread-1");
   });
 
   it("says the Mate is working from the moment a message is sent", () => {

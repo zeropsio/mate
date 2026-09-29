@@ -9,7 +9,7 @@ import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
 import { browserCheckCaption, formatWorkDuration, operationLineWords } from "./conversation.logic";
-import type { RunStatus, TurnHeaderActivity } from "./MessagesTimeline.logic";
+import type { RecordItem, RunStatus, TurnHeaderActivity } from "./MessagesTimeline.logic";
 import type { StepKind, WorkStep } from "./workSteps.logic";
 
 // ---------------------------------------------------------------------------
@@ -263,4 +263,74 @@ export function formatClock(ms: number): string {
   return hours > 0
     ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}`
     : `${minutes}:${seconds}`;
+}
+
+// ---------------------------------------------------------------------------
+// A run you come back to
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether a line of the chat folds when the person comes back to a run (K7,
+ * D3): only thoughts and calls do — its work. Everything it said to them
+ * stays as it was: its words, what they said into the run, anything it
+ * couldn't do, a change that landed, a command they ran.
+ */
+export function foldsOnReturn(item: RecordItem): boolean {
+  switch (item.kind) {
+    case "note":
+    case "person":
+    case "error":
+    case "crew-seam":
+      return false;
+    case "event":
+      return item.event.type === "compaction" || item.event.type === "resumed";
+    default:
+      return true;
+  }
+}
+
+/**
+ * How a settled run's card stands (K7, K12): open as it was while the person
+ * watched it — until they leave the conversation — folded when they come
+ * back, and open again, its line on top, once they ask for the work.
+ */
+export type RunFold = "watched" | "folded" | "shown";
+
+/** The runs of each conversation the person watched or opened, by the conversation's key. */
+const runFolds = new Map<string, Map<string, Exclude<RunFold, "folded">>>();
+const runFoldListeners = new Set<() => void>();
+
+function runFoldsChanged(): void {
+  for (const listener of runFoldListeners) listener();
+}
+
+/** Hears the folds change. */
+export function subscribeRunFolds(listener: () => void): () => void {
+  runFoldListeners.add(listener);
+  return () => runFoldListeners.delete(listener);
+}
+
+/** How a settled run stands in a conversation: folded unless the person watched or opened it. */
+export function runFoldOf(conversation: string, run: string): RunFold {
+  return runFolds.get(conversation)?.get(run) ?? "folded";
+}
+
+/** Marks how a run stands in a conversation. */
+export function setRunFold(conversation: string, run: string, fold: RunFold): void {
+  if (runFoldOf(conversation, run) === fold) return;
+  const runs = runFolds.get(conversation) ?? new Map<string, Exclude<RunFold, "folded">>();
+  if (fold === "folded") runs.delete(run);
+  else runs.set(run, fold);
+  if (runs.size === 0) runFolds.delete(conversation);
+  else runFolds.set(conversation, runs);
+  runFoldsChanged();
+}
+
+/**
+ * The person left a conversation: every run in it folds, so when they come
+ * back it is folded from the first frame and nothing moves.
+ */
+export function forgetRunFolds(conversation: string): void {
+  if (!runFolds.delete(conversation)) return;
+  runFoldsChanged();
 }

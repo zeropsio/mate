@@ -4,17 +4,22 @@ import { describe, expect, it } from "vite-plus/test";
 import type { WorkLogEntry } from "../../session-logic";
 import type { ChatMessage } from "../../types";
 import { operation as operationEntry } from "./conversationFixtures";
-import type { RunStatus, TurnHeaderActivity } from "./MessagesTimeline.logic";
+import type { RecordItem, RunStatus, TurnHeaderActivity } from "./MessagesTimeline.logic";
 import {
   CHAT_OPENS_WITH,
   chatOpensAt,
   EARLIER_CHUNK,
   earlierShown,
+  foldsOnReturn,
+  forgetRunFolds,
   formatClock,
   nowLineFace,
   nowLineOf,
   nowLineWords,
+  runFoldOf,
+  setRunFold,
   severalWords,
+  subscribeRunFolds,
   thoughtRunText,
   thoughtTicker,
   workedWords,
@@ -380,5 +385,96 @@ describe("severalWords", () => {
     { steps: [read("a", "a.ts"), command("b", "ls")], words: "Running 2 steps" },
   ])("says $words", ({ steps, words }) => {
     expect(severalWords(steps)).toBe(words);
+  });
+});
+
+// A run you come back to opens folded, and keeps everything it said to you
+// (K7, D3): the Mate's words, what the person said into the run and anything
+// it couldn't do stay as they were; only thoughts and calls fold.
+describe("foldsOnReturn", () => {
+  const base = { key: "k", at: at(1) };
+  const entry = call("e1", {});
+  const operationItem = { ...base, kind: "operation", operation: deploy } as const;
+  const message = {
+    id: MessageId.make("a1"),
+    role: "assistant",
+    text: "Found it.",
+    turnId: TurnId.make("t1"),
+    streaming: false,
+    createdAt: at(1),
+  } as ChatMessage;
+  it.each([
+    {
+      name: "a thought",
+      item: { ...base, kind: "thought", messages: [], durationMs: null },
+      folds: true,
+    },
+    { name: "a step", item: { ...base, kind: "step", step: command("w1", "ls") }, folds: true },
+    { name: "a call", item: { ...base, kind: "call", entry }, folds: true },
+    { name: "an operation", item: operationItem, folds: true },
+    { name: "helpers", item: { ...base, kind: "helpers", entry }, folds: true },
+    { name: "a task", item: { ...base, kind: "task", entry }, folds: true },
+    { name: "its to-do list", item: { ...base, kind: "plan", plan: {} }, folds: true },
+    { name: "checks", item: { ...base, kind: "strip", strip: {} }, folds: true },
+    { name: "an incident", item: { ...base, kind: "incident", incident: {} }, folds: true },
+    {
+      name: "a condensed context",
+      item: { ...base, kind: "event", event: { type: "compaction", label: "Context compacted" } },
+      folds: true,
+    },
+    { name: "a resume", item: { ...base, kind: "event", event: { type: "resumed" } }, folds: true },
+    { name: "its words", item: { ...base, kind: "note", message }, folds: false },
+    {
+      name: "the person's words",
+      item: { ...base, kind: "person", words: "Yes", imageOnly: false },
+      folds: false,
+    },
+    { name: "what stopped it", item: { ...base, kind: "error", entry }, folds: false },
+    {
+      name: "a crew seam",
+      item: { ...base, kind: "crew-seam", seam: {}, words: "Stint two" },
+      folds: false,
+    },
+    {
+      name: "a change that landed",
+      item: { ...base, kind: "event", event: { type: "landed", event: {} } },
+      folds: false,
+    },
+    {
+      name: "a command the person ran",
+      item: {
+        ...base,
+        kind: "event",
+        event: { type: "command", command: { name: "compact", args: "" }, done: true },
+      },
+      folds: false,
+    },
+  ] as ReadonlyArray<{ name: string; item: RecordItem; folds: boolean }>)(
+    "$name folds: $folds",
+    ({ item, folds }) => {
+      expect(foldsOnReturn(item)).toBe(folds);
+    },
+  );
+});
+
+describe("the runs a person watched", () => {
+  it("folds a run nobody watched, keeps one watched or opened, and folds all once left", () => {
+    const heard: string[] = [];
+    const stop = subscribeRunFolds(() => heard.push("changed"));
+    expect(runFoldOf("thread-a", "turn-1")).toBe("folded");
+    setRunFold("thread-a", "turn-1", "watched");
+    setRunFold("thread-a", "turn-2", "shown");
+    setRunFold("thread-b", "turn-1", "watched");
+    expect(runFoldOf("thread-a", "turn-1")).toBe("watched");
+    expect(runFoldOf("thread-a", "turn-2")).toBe("shown");
+    setRunFold("thread-a", "turn-2", "folded");
+    expect(runFoldOf("thread-a", "turn-2")).toBe("folded");
+    forgetRunFolds("thread-a");
+    expect(runFoldOf("thread-a", "turn-1")).toBe("folded");
+    // Another conversation keeps its own.
+    expect(runFoldOf("thread-b", "turn-1")).toBe("watched");
+    forgetRunFolds("thread-b");
+    stop();
+    expect(heard).toHaveLength(6);
   });
 });

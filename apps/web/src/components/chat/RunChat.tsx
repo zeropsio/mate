@@ -61,6 +61,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type ReactNode,
 } from "react";
@@ -92,7 +93,6 @@ import {
 } from "./conversation.logic";
 import { StatusBar, type BarTone } from "./ConversationPills";
 import { ElapsedSince } from "./ConversationRows";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
@@ -108,16 +108,21 @@ import {
 import {
   chatOpensAt,
   earlierShown,
+  foldsOnReturn,
   formatClock,
   LONG_STEP_MS,
   nowLineFace,
   nowLineOf,
   nowLineWords,
   operationNowWords,
+  runFoldOf,
+  setRunFold,
   severalWords,
   stepNowWords,
+  subscribeRunFolds,
   thoughtRunText,
   type NowLine as NowLineModel,
+  type RunFold,
 } from "./runCard.logic";
 import {
   TimelineRowActivityCtx,
@@ -2019,7 +2024,7 @@ function RunTicker({ status }: { readonly status: RunStatus }) {
   );
 }
 
-/** What a run's time stands on, and when it began and ended, a hover away. */
+/** When a run began and ended, a hover away over its time. */
 function RunSpan({
   status,
   children,
@@ -2028,14 +2033,13 @@ function RunSpan({
   readonly children: ReactNode;
 }) {
   const { timestampFormat } = use(TimelineRowCtx);
+  const span = `${formatChatTimestampTooltip(status.startedAt, timestampFormat)}${
+    status.endedAt ? ` – ${formatDayAwareTimestamp(status.endedAt, timestampFormat)}` : ""
+  }`;
   return (
-    <Tooltip>
-      <TooltipTrigger render={<span className="min-w-0" />}>{children}</TooltipTrigger>
-      <TooltipPopup>
-        {formatChatTimestampTooltip(status.startedAt, timestampFormat)}
-        {status.endedAt ? ` – ${formatDayAwareTimestamp(status.endedAt, timestampFormat)}` : ""}
-      </TooltipPopup>
-    </Tooltip>
+    <span className="min-w-0" title={span}>
+      {children}
+    </span>
   );
 }
 
@@ -2259,12 +2263,81 @@ export function RunLine({ status }: { readonly status: RunStatus }) {
  */
 export function RunChat({ row }: { readonly row: RecordRow }) {
   const ctx = use(TimelineRowCtx);
-  // Drawn once: from here on, what arrives arrives while the person watches.
-  const shownRef = useRef(false);
-  useEffect(() => {
-    shownRef.current = true;
-  }, []);
-  const lines: ChatLine[] = row.items.flatMap((item) => {
+  const hold = useHoldReading();
+  const fold = useRunFold(ctx.routeThreadKey, row.turnKey, row.live);
+  // A run the person comes back to (K7): its worked line on top, what it
+  // said to them under it, and its work — its thoughts and calls — folded
+  // behind "Show work", which opens it under the line (K12).
+  const later = row.status !== null && !row.live && fold !== "watched";
+  const folded = later && fold === "folded";
+  const lines = chatLines(folded ? row.items.filter((item) => !foldsOnReturn(item)) : row.items);
+  const feedRef = useRef<HTMLDivElement>(null);
+  const fromHeightRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const from = fromHeightRef.current;
+    fromHeightRef.current = null;
+    const feed = feedRef.current;
+    if (from === null || feed === null) return;
+    return easeFeedHeight(feed, from);
+  }, [fold]);
+  const feed = (
+    <ChatFeed key={folded ? "kept" : "all"} label={`${ctx.speaker.name}'s work`} lines={lines} />
+  );
+  return (
+    // One container for the chat and its now line: the Mate's column keeps
+    // one gap for both. Its words wear its tint (`.run-speech`).
+    <div
+      className="@container/chat min-w-0"
+      data-run-chat
+      data-run-fold={later ? fold : undefined}
+      style={
+        { "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})` } as CSSProperties
+      }
+    >
+      {later && row.status !== null ? (
+        <>
+          <NowLine
+            answering={false}
+            effort={row.effort}
+            end={
+              row.items.some(foldsOnReturn) ? (
+                <WorkToggle
+                  onToggle={() => {
+                    hold();
+                    fromHeightRef.current = feedRef.current?.getBoundingClientRect().height ?? null;
+                    setRunFold(ctx.routeThreadKey, row.turnKey, folded ? "shown" : "folded");
+                  }}
+                  open={!folded}
+                />
+              ) : null
+            }
+            now={null}
+            status={row.status}
+          />
+          <div ref={feedRef} className="run-later-feed">
+            {feed}
+          </div>
+        </>
+      ) : (
+        <>
+          {feed}
+          {row.status === null ? null : (
+            <NowLine
+              answering={row.answering}
+              effort={row.effort}
+              now={row.now}
+              status={row.status}
+            />
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** A record's items as the chat's lines, from the first thing the Mate did. */
+function chatLines(items: ReadonlyArray<RecordItem>): ChatLine[] {
+  const lines = items.flatMap((item) => {
     const line = itemLine(item);
     return line === null ? [] : [line];
   });
@@ -2272,61 +2345,117 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // did it marks nothing — their words stand on the page right above the
   // card, and the card opened on a second copy of them.
   while (lines[0]?.theirs === true) lines.shift();
+  return lines;
+}
+
+/**
+ * How a run's card stands in this conversation: a live run is watched, and
+ * stays open once it settles until the person leaves (`forgetRunFolds`); a
+ * settled run they come back to is folded.
+ */
+function useRunFold(conversation: string, run: string, live: boolean): RunFold {
+  const read = () => runFoldOf(conversation, run);
+  const fold = useSyncExternalStore(subscribeRunFolds, read, read);
+  useEffect(() => {
+    if (live) setRunFold(conversation, run, "watched");
+  }, [conversation, run, live]);
+  return live ? "watched" : fold;
+}
+
+/** How "Show work" and "Hide work" ease the work's room open or shut (K12). */
+const FOLD_EASE_MS = 220;
+const FOLD_EASING = "cubic-bezier(0.23, 1, 0.32, 1)";
+
+/**
+ * Eases a run's work from the height it stood at before the person asked, to
+ * its own: only what is under the line they clicked moves. Reduced motion
+ * shows it at once.
+ */
+function easeFeedHeight(feed: HTMLElement, from: number): (() => void) | undefined {
+  const to = feed.getBoundingClientRect().height;
+  if (Math.abs(to - from) < 1 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return undefined;
+  }
+  const animation = feed.animate(
+    [
+      { height: `${from}px`, overflow: "hidden" },
+      { height: `${to}px`, overflow: "hidden" },
+    ],
+    { duration: FOLD_EASE_MS, easing: FOLD_EASING },
+  );
+  return () => animation.cancel();
+}
+
+/** "Show work" on a folded run's line, "Hide work" once it is open: its chevron turns over. */
+function WorkToggle({ open, onToggle }: { readonly open: boolean; readonly onToggle: () => void }) {
+  return (
+    <button
+      aria-expanded={open}
+      className="run-now-fold"
+      data-scroll-anchor-ignore
+      onClick={onToggle}
+      type="button"
+    >
+      {open ? "Hide work" : "Show work"}
+      <ChevronDownIcon aria-hidden="true" className="run-now-fold-icon" />
+    </button>
+  );
+}
+
+/**
+ * The chat's lines, in the order they happened: the newest where it opens,
+ * a long run's earlier lines behind "Show N earlier" at its top. What
+ * arrives after it was first drawn arrived while the person watched, and
+ * rises in.
+ */
+function ChatFeed({
+  label,
+  lines,
+}: {
+  readonly label: string;
+  readonly lines: ReadonlyArray<ChatLine>;
+}) {
+  // Drawn once: from here on, what arrives arrives while the person watches.
+  const shownRef = useRef(false);
+  useEffect(() => {
+    shownRef.current = true;
+  }, []);
   // Where the chat starts, fixed when it opens: what arrives after it only
   // ever joins at the end, so the window grows and never slides.
   const [from, setFrom] = useState(() => chatOpensAt(lines.length));
   const shown = gatherCalls(from > 0 ? lines.slice(from) : lines);
+  if (shown.length === 0 && from === 0) return null;
   return (
     <ChatShownContext value={shownRef}>
-      {/* One container for the chat and its status line: the Mate's column
-          keeps one gap for both. Its words wear its tint (`.run-speech`). */}
-      <div
-        className="@container/chat min-w-0"
-        data-run-chat
-        style={
-          { "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})` } as CSSProperties
-        }
-      >
-        {shown.length > 0 || from > 0 ? (
-          <ol aria-label={`${ctx.speaker.name}'s work`} className="flex min-w-0 flex-col gap-3">
-            {from > 0 ? (
-              <EarlierLine
-                count={earlierShown(from).shows}
-                onShow={() => setFrom((start) => earlierShown(start).next)}
-              />
-            ) : null}
-            {shown.map((entry) =>
-              "calls" in entry ? (
-                <ChatRow key={entry.key} across={false} theirs={false}>
-                  <CallGroup>
-                    {entry.calls.map((line) => (
-                      <Fragment key={line.key}>{line.bubble}</Fragment>
-                    ))}
-                  </CallGroup>
-                </ChatRow>
-              ) : (
-                <ChatRow
-                  key={entry.key}
-                  across={entry.across === true}
-                  mark={entry.mark}
-                  markLine={entry.markLine}
-                  theirs={entry.theirs === true}
-                >
-                  {entry.bubble}
-                </ChatRow>
-              ),
-            )}
-          </ol>
-        ) : null}
-        {row.status === null ? null : (
-          <NowLine
-            answering={row.answering}
-            effort={row.effort}
-            now={row.now}
-            status={row.status}
+      <ol aria-label={label} className="flex min-w-0 flex-col gap-3">
+        {from > 0 ? (
+          <EarlierLine
+            count={earlierShown(from).shows}
+            onShow={() => setFrom((start) => earlierShown(start).next)}
           />
+        ) : null}
+        {shown.map((entry) =>
+          "calls" in entry ? (
+            <ChatRow key={entry.key} across={false} theirs={false}>
+              <CallGroup>
+                {entry.calls.map((line) => (
+                  <Fragment key={line.key}>{line.bubble}</Fragment>
+                ))}
+              </CallGroup>
+            </ChatRow>
+          ) : (
+            <ChatRow
+              key={entry.key}
+              across={entry.across === true}
+              mark={entry.mark}
+              markLine={entry.markLine}
+              theirs={entry.theirs === true}
+            >
+              {entry.bubble}
+            </ChatRow>
+          ),
         )}
-      </div>
+      </ol>
     </ChatShownContext>
   );
 }
