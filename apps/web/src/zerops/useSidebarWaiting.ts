@@ -3,7 +3,7 @@
  * the next one — the header's button and ⌥↓.
  *
  * Waiting is the one resolver's word (R5): a Mate whose face says it needs
- * somebody. The order is the menu's own (`sidebarPeek.ts`'s `mateOrder`), so
+ * somebody. The order is the menu's own (`sidebarReveal.ts`'s `mateOrder`), so
  * "the next one" is the next one down the list the viewer is looking at.
  */
 import {
@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import type { WaitingMate } from "~/components/zerops/SidebarWaitingStack";
 
 import type { ZeropsAgentActivity } from "./agentActivity";
-import { nextWaitingMate, useSidebarPeek } from "./sidebarPeek";
+import { nextWaitingMate, useSidebarReveal } from "./sidebarReveal";
 
 /** The Mates that wait on somebody, in the menu's order; one the menu does not hold, last. */
 export function waitingMatesOf<T extends ZeropsCandidate>(input: {
@@ -69,7 +69,7 @@ export function useSidebarWaiting<T extends ZeropsCandidate>(input: {
   readonly beforeReveal?: (() => void) | undefined;
   readonly enabled: boolean;
 }): { readonly mates: ReadonlyArray<WaitingMate>; readonly next: () => void } {
-  const order = useSidebarPeek((state) => state.mateOrder);
+  const order = useSidebarReveal((state) => state.mateOrder);
   const tints = useMemo(() => assignCandidateMateTints(input.candidates), [input.candidates]);
   const { activityOf, candidates, shown, activeProjectId, beforeReveal, enabled } = input;
   const mates = useMemo(
@@ -77,7 +77,7 @@ export function useSidebarWaiting<T extends ZeropsCandidate>(input: {
     [activityOf, candidates, order, shown, tints],
   );
   const next = useCallback(() => {
-    const { cursor, reveal, mateOrder } = useSidebarPeek.getState();
+    const { cursor, reveal, mateOrder } = useSidebarReveal.getState();
     const waiting = mates.map((mate) => mate.projectId);
     // The whole menu's order, so a cursor on a Mate that waits on nobody
     // still says where "next" starts.

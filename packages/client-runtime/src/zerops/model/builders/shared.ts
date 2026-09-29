@@ -27,6 +27,7 @@ import type {
   ZeropsOperationKind,
   ZeropsOperationLink,
   ZeropsOperationPhase,
+  ZeropsOperationPullRequest,
   ZeropsOperationStep,
   ZeropsOperationStepState,
   ZeropsOperationVersion,
@@ -67,6 +68,8 @@ export interface BuiltCardFields {
   readonly batch?: true;
   /** `deploy` only: delivered by a push to a git remote. */
   readonly strategy?: "git-push";
+  /** `deploy` with the git-push strategy only: the pull request the branch lands through. */
+  readonly pullRequest?: ZeropsOperationPullRequest;
   readonly resultStatus?: string;
   readonly hasResult: boolean;
   readonly version?: ZeropsOperationVersion;

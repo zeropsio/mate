@@ -1,6 +1,9 @@
+import { ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { changeMarkTone, ownerMark } from "./SidebarMateRow.logic";
+import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+
+import { changeMarkTone, mateRowView, ownerMark } from "./SidebarMateRow.logic";
 
 describe("ownerMark — whose Mate it is, as a 16 px mark before its name", () => {
   it.each([
@@ -85,5 +88,227 @@ describe("changeMarkTone — the one colour a change row's mark may wear", () =>
 
   it("says nothing for a change drawn from memory: its verdict is Gitea's to say again", () => {
     expect(changeMarkTone(change({ checks: "failing" }), true)).toBeUndefined();
+  });
+});
+
+describe("mateRowView — a row's state lives in its right slot and its third line", () => {
+  const AT = "2026-09-29T08:00:00.000Z";
+  const activity = (overrides: Partial<ZeropsAgentActivity> = {}): ZeropsAgentActivity => ({
+    threadId: ThreadId.make("thread-1"),
+    kind: "idle",
+    status: null,
+    face: "idle",
+    subject: "Tune the storefront",
+    at: AT,
+    snippet: "Merged the image pipeline; the cart renders in 80 ms.",
+    progress: undefined,
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread-1",
+    task: "Tune the storefront",
+    ...overrides,
+  });
+  const face = (overrides: Partial<ZeropsAgentActivity> = {}) => activity(overrides).face;
+
+  // The plan's table (M7): no status words anywhere — the face, a dot and
+  // the content itself say it.
+  it.each([
+    {
+      case: "idle, seen",
+      input: activity(),
+      state: "idle",
+      rowFace: "idle",
+      slot: { kind: "age" },
+      dot: undefined,
+      strong: false,
+      reply: {
+        kind: "words",
+        text: "Merged the image pipeline; the cart renders in 80 ms.",
+        tone: "muted",
+      },
+    },
+    {
+      case: "working, its live step relayed",
+      input: activity({
+        kind: "working",
+        face: "working",
+        subject: "Build the app",
+        liveStep: { words: "Build the app", code: "pnpm build" },
+      }),
+      state: "working",
+      rowFace: "working",
+      slot: { kind: "clock", since: AT },
+      dot: undefined,
+      strong: false,
+      reply: { kind: "live", words: "Build the app", code: "pnpm build" },
+    },
+    {
+      case: "working, no step relayed",
+      input: activity({ kind: "working", face: "working" }),
+      state: "working",
+      rowFace: "working",
+      slot: { kind: "clock", since: AT },
+      dot: undefined,
+      strong: false,
+      reply: { kind: "pending" },
+    },
+    {
+      case: "needs you, its question relayed",
+      input: activity({
+        kind: "input",
+        face: "needs",
+        question: "Merge #54 into production now, or wait for tonight's window?",
+      }),
+      state: "needs",
+      rowFace: "needs",
+      slot: { kind: "age" },
+      dot: "attention",
+      strong: false,
+      reply: {
+        kind: "words",
+        text: "Merge #54 into production now, or wait for tonight's window?",
+        tone: "ink",
+      },
+    },
+    {
+      case: "needs you, no question relayed",
+      input: activity({ kind: "approval", face: "needs" }),
+      state: "needs",
+      rowFace: "needs",
+      slot: { kind: "age" },
+      dot: "attention",
+      strong: false,
+      reply: {
+        kind: "words",
+        text: "Merged the image pipeline; the cart renders in 80 ms.",
+        tone: "ink",
+      },
+    },
+    {
+      case: "finished, not seen",
+      input: activity({ kind: "done", face: "done", unread: true }),
+      state: "unread",
+      rowFace: "done",
+      slot: { kind: "age" },
+      dot: "unread",
+      strong: true,
+      reply: {
+        kind: "words",
+        text: "Merged the image pipeline; the cart renders in 80 ms.",
+        tone: "ink-2",
+      },
+    },
+    {
+      case: "stopped on an error",
+      input: activity({
+        kind: "failed",
+        face: "needs",
+        errorLine: "Build failed: tsc found 3 errors in src/net/session.ts",
+      }),
+      state: "failed",
+      rowFace: "idle",
+      slot: { kind: "age" },
+      dot: "failed",
+      strong: false,
+      reply: {
+        kind: "words",
+        text: "Build failed: tsc found 3 errors in src/net/session.ts",
+        tone: "failed",
+      },
+    },
+    {
+      case: "stopped on an error it did not name",
+      input: activity({ kind: "failed", face: "needs" }),
+      state: "failed",
+      rowFace: "idle",
+      slot: { kind: "age" },
+      dot: "failed",
+      strong: false,
+      reply: {
+        kind: "words",
+        text: "Merged the image pipeline; the cart renders in 80 ms.",
+        tone: "muted",
+      },
+    },
+    {
+      case: "paused at a usage limit",
+      input: activity({ face: "sleep", pausedUntil: "2026-09-29T14:20:00.000Z" }),
+      state: "paused",
+      rowFace: "sleep",
+      slot: { kind: "paused", until: "2026-09-29T14:20:00.000Z" },
+      dot: undefined,
+      strong: false,
+      reply: {
+        kind: "words",
+        text: "Merged the image pipeline; the cart renders in 80 ms.",
+        tone: "muted",
+      },
+    },
+    {
+      case: "sent, its run not started yet",
+      input: activity({ snippet: undefined, awaitingWords: true }),
+      state: "idle",
+      rowFace: "idle",
+      slot: { kind: "age" },
+      dot: undefined,
+      strong: false,
+      reply: { kind: "pending" },
+    },
+    {
+      case: "asked, with no answer",
+      input: activity({ snippet: undefined }),
+      state: "idle",
+      rowFace: "idle",
+      slot: { kind: "age" },
+      dot: undefined,
+      strong: false,
+      reply: undefined,
+    },
+  ] as const)("$case", ({ input, state, rowFace, slot, dot, strong, reply }) => {
+    const view = mateRowView(input, input.face);
+    expect(view.state).toBe(state);
+    expect(view.face).toBe(rowFace);
+    expect(view.slot).toEqual(slot);
+    expect(view.dot).toBe(dot);
+    expect(view.strongName).toBe(strong);
+    expect(view.ask).toBe("Tune the storefront");
+    expect(view.reply).toEqual(reply);
+  });
+
+  it("asks the person's last ask, never the plan step the Mate is on", () => {
+    const view = mateRowView(
+      activity({ kind: "working", face: "working", subject: "Run the build", task: "Tune it" }),
+      "working",
+    );
+    expect(view.ask).toBe("Tune it");
+  });
+
+  it("says nothing of a Mate nobody has spoken to: no age, no lines", () => {
+    const view = mateRowView(
+      activity({ subject: undefined, task: undefined, snippet: undefined }),
+      "idle",
+    );
+    expect(view.slot).toEqual({ kind: "none" });
+    expect(view.ask).toBeUndefined();
+    expect(view.reply).toBeUndefined();
+  });
+
+  it("wears its own face where nothing is known of it: asleep, or idle", () => {
+    expect(mateRowView(undefined, "sleep")).toMatchObject({
+      state: "idle",
+      face: "sleep",
+      slot: { kind: "none" },
+      dot: undefined,
+      ask: undefined,
+      reply: undefined,
+    });
+  });
+
+  it("keeps a working row's third line whatever it said before, so nothing jumps", () => {
+    const before = mateRowView(activity(), "idle");
+    const working = mateRowView(activity({ kind: "working", face: "working" }), "working");
+    expect(before.reply).toBeDefined();
+    expect(working.reply).toBeDefined();
+    expect(face({ kind: "working", face: "working" })).toBe("working");
   });
 });

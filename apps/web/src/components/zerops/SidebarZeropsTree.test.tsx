@@ -63,7 +63,7 @@ import {
 } from "./projects/projectsView.logic";
 import { PortalGate } from "../ui/portal-gate";
 import { useSidebarJump } from "~/zerops/sidebarJump";
-import { useSidebarPeek } from "~/zerops/sidebarPeek";
+import { useSidebarReveal } from "~/zerops/sidebarReveal";
 import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
 import {
   ProjectHeader,
@@ -408,10 +408,17 @@ describe("SidebarZeropsTree", () => {
     );
   });
 
-  it("lights the open Mate's row the way the menu lights its open thread", () => {
+  // One band in the list lights the open Mate's row and slides to the next
+  // one opened (M11): the row itself paints nothing for being open, and
+  // lights only under the pointer.
+  it("lights the open Mate's row with the list's one band, not a fill of its own", () => {
     const html = render([CRM_DEV], { activeProjectId: "crm-dev" });
     expect(html).toContain('aria-current="true"');
-    expect(html).toContain("bg-sidebar-row-active");
+    expect(html.match(/data-zerops-surface="sidebar-selected-band"/gu)).toHaveLength(1);
+    expect(html).toContain('<nav aria-label="Mates" class="relative isolate');
+    const row = /<button aria-current="true" class="([^"]*)"/u.exec(html)?.[1] ?? "";
+    expect(row).not.toContain("bg-sidebar-row-active");
+    expect(row).not.toContain("hover:bg-sidebar-row-hover");
   });
 
   it("never makes production a Mate, whatever runs in it", () => {
@@ -619,8 +626,6 @@ describe("the project's flow under it", () => {
       ["crm-prod", productionRow],
     ]),
     releaseOffered: true,
-    merging: () => false,
-    onMerge: () => {},
     ...overrides,
   });
   const withFlow = (candidates: ReadonlyArray<ZeropsCandidate>, state = flow()) =>
@@ -678,10 +683,7 @@ describe("the project's flow under it", () => {
       pull(4, { mergeability: "conflicting", checks: "failing", checkWord: "Failing" }),
       pull(4, { mergeability: "conflicting", checks: "pending", checkWord: "Pending" }),
     ]) {
-      const html = withFlow(
-        [CRM_DEV, CRM_STAGE],
-        flow({ pullRequests: [change], onAsk: () => {} }),
-      );
+      const html = withFlow([CRM_DEV, CRM_STAGE], flow({ pullRequests: [change] }));
       const rows = html.slice(html.indexOf('data-zerops-surface="sidebar-pull-requests"'));
       expect(rows).toContain('data-zerops-surface="sidebar-pull-request-review"');
       expect(rows).toContain(">Review</button>");
@@ -868,8 +870,6 @@ describe("production is one chip on the project's heading (M2, M1)", () => {
       ["crm-prod", released("v2.4.0")],
     ]),
     releaseOffered: false,
-    merging: () => false,
-    onMerge: () => {},
     ...overrides,
   });
   /** The heading alone: everything before the project's rows. */
@@ -1082,8 +1082,6 @@ describe("a project collapsed to its heading", () => {
           pullRequests: [pull(4)],
           environments: new Map([["crm-prod", productionRow]]),
           releaseOffered: true,
-          merging: () => false,
-          onMerge: () => {},
         }),
       }),
     );
@@ -1460,8 +1458,6 @@ describe("the sidebar and the projects page read one group the same way", () => 
       releaseContents: groupReads.release.contents,
       missing: groupReads.missing,
       releaseTag: groupReads.release.suggestion,
-      merging: () => false,
-      onMerge: () => {},
     };
     // The heading carries no step of its own any more (M15): its rows, its
     // faces and its production chip say what waits, each where it is.
@@ -1589,10 +1585,13 @@ describe("a Mate's row says more without words", () => {
     expect(row(activity)).not.toContain("sidebar-mate-ring");
   });
 
-  it("counts up how long it has been working, in the busy blue, where its age was", () => {
+  // A running clock is not something to click, so it is not blue (S3): it
+  // counts up in ink where the age was.
+  it("counts up how long it has been working, in ink, where its age was", () => {
     const time = slot(row(working()));
     expect(time).toContain("3:12");
-    expect(time).toContain("text-status-busy-text");
+    expect(time).toContain("text-sidebar-foreground");
+    expect(time).not.toContain("text-status-busy-text");
     expect(slot(row(live()))).toContain(">2h<");
   });
 
@@ -1602,7 +1601,7 @@ describe("a Mate's row says more without words", () => {
   it("counts up work left running in the background, as it counts a run", () => {
     const time = slot(row(working({ kind: "monitoring", progress: undefined })));
     expect(time).toContain("3:12");
-    expect(time).toContain("text-status-busy-text");
+    expect(time).toContain("text-sidebar-foreground");
   });
 
   it.each([
@@ -1662,7 +1661,10 @@ describe("a Mate's row says more without words", () => {
   });
 
   it.each([
-    { case: "a working Mate with words back already", activity: working() },
+    {
+      case: "a working Mate whose step is relayed",
+      activity: working({ liveStep: { words: "Build the app", code: "pnpm build" } }),
+    },
     { case: "a resting Mate with no last words", activity: live({ snippet: undefined }) },
     {
       case: "a working Mate nobody has asked anything",
@@ -1682,18 +1684,76 @@ describe("a Mate's row says more without words", () => {
     expect(time).not.toContain(">2h<");
   });
 
-  it("sets an unread Mate's name in bold, and keeps what was asked in its one ink either way", () => {
+  it("sets an unread Mate's name at 600, and keeps what was asked in its one ink either way", () => {
     const name = (html: string) =>
       /<span class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate-name"/u.exec(html)?.[1] ?? "";
     const subject = (html: string) =>
       /<span class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate-subject"/u.exec(html)?.[1] ?? "";
     const unread = row(live({ unread: true }));
-    expect(name(unread)).toContain("font-bold");
+    expect(name(unread)).toContain("font-semibold");
     expect(subject(unread)).toContain("menu-ink-2");
     const read = row(live());
     expect(name(read)).toContain("font-medium");
-    expect(name(read)).not.toContain("font-bold");
+    expect(name(read)).not.toContain("font-semibold");
     expect(subject(read)).toBe(subject(unread));
+  });
+
+  // The plan's table (M7), as the row draws it: a dot, the face and the
+  // third line say the state, and no word does.
+  it.each([
+    {
+      case: "idle, seen",
+      activity: live(),
+      face: "idle",
+      dot: undefined,
+      third: 'data-zerops-reply-tone="muted"',
+    },
+    {
+      case: "working, its step relayed",
+      activity: working({ liveStep: { words: "Build the app", code: "pnpm build" } }),
+      face: "working",
+      dot: undefined,
+      third: 'data-zerops-surface="sidebar-mate-live-step"',
+    },
+    {
+      case: "needs you",
+      activity: live({ kind: "input", face: "needs", question: "Pricing in CZK or EUR?" }),
+      face: "needs",
+      dot: "attention",
+      third: 'data-zerops-reply-tone="ink"',
+    },
+    {
+      case: "finished, not seen",
+      activity: live({ kind: "done", face: "done", unread: true }),
+      face: "done",
+      dot: "unread",
+      third: 'data-zerops-reply-tone="ink-2"',
+    },
+    {
+      case: "stopped on an error",
+      activity: live({ kind: "failed", face: "needs", errorLine: "Build failed" }),
+      face: "idle",
+      dot: "failed",
+      third: 'data-zerops-reply-tone="failed"',
+    },
+  ])("draws $case", ({ activity, face, dot, third }) => {
+    const html = row(activity);
+    expect(html).toContain(`data-mate-face-state="${face}"`);
+    if (dot === undefined) expect(html).not.toContain("sidebar-mate-dot");
+    else
+      expect(html).toMatch(
+        new RegExp(`data-tone="${dot}" data-zerops-surface="sidebar-mate-dot"`, "u"),
+      );
+    expect(html).toContain(third);
+    for (const word of ["Idle", "Working", "Needs you", "Done", "Failed", "Unread"]) {
+      expect(html).not.toContain(`>${word}<`);
+    }
+  });
+
+  it("writes the live step's command in mono under the sweep", () => {
+    const html = row(working({ liveStep: { words: "Build the app", code: "pnpm build" } }));
+    expect(html).toContain('data-run-shimmer=""');
+    expect(html).toContain('Build the app · <span class="font-mono">pnpm build</span>');
   });
 
   describe("an unsent draft", () => {
@@ -1800,6 +1860,33 @@ describe("a Mate's own menu, in its row", () => {
     expect(row(ACTIONS)).not.toContain("sidebar-mate-muted");
   });
 
+  it("opens the same menu under a finger held on the row, and the lift does not open the Mate", () => {
+    vi.useFakeTimers();
+    const onSelect = vi.fn();
+    const mounted = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getActivity={() => spoken}
+        getMateActions={() => ACTIONS}
+        onBrowseProjects={() => {}}
+        onSelect={onSelect}
+      />,
+    );
+    act(() => {
+      surface(mounted, "sidebar-mate-row").props.onPointerDown({ pointerType: "touch" });
+    });
+    act(() => {
+      vi.advanceTimersByTime(480);
+    });
+    expect(mounted.root.findByType(MateMenu).props.open).toBe(true);
+    act(() => {
+      surface(mounted, "sidebar-mate").props.onClick();
+    });
+    expect(onSelect).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
   it("opens the same menu at the pointer on a right-click", () => {
     const mounted = mount(
       <SidebarZeropsTree
@@ -1822,165 +1909,6 @@ describe("a Mate's own menu, in its row", () => {
     const menu = mounted.root.findByType(MateMenu);
     expect(menu.props.open).toBe(true);
     expect(menu.props.at).toEqual({ x: 120, y: 340 });
-  });
-});
-
-describe("a Mate's peek", () => {
-  const spoken: ZeropsAgentActivity = {
-    threadId: "thread-1" as ZeropsAgentActivity["threadId"],
-    kind: "idle",
-    status: null,
-    face: "idle",
-    subject: "Add a /status page",
-    at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    snippet: "Done. /status answers on stage.",
-    progress: undefined,
-    unread: false,
-    pausedUntil: undefined,
-    threadKey: "env:thread",
-    task: "Add a /status page",
-  };
-  const renderPeek = vi.fn((_peek: unknown) => null);
-  const mounted = () =>
-    mount(
-      <PortalGate closed>
-        <SidebarZeropsTree
-          candidates={[CRM_DEV_CONNECTED]}
-          complete
-          getActivity={() => spoken}
-          onBrowseProjects={() => {}}
-          onSelect={() => {}}
-          renderPeek={renderPeek}
-        />
-      </PortalGate>,
-    );
-  const row = (tree: ReactTestRenderer) => surface(tree, "sidebar-mate-row");
-  const peek = () => useSidebarPeek.getState().peek;
-  afterEach(() => {
-    act(() => {
-      useSidebarPeek.getState().close();
-    });
-    renderPeek.mockClear();
-    vi.useRealTimers();
-  });
-
-  // The owner, 2026-09-27: "this pop needs to show up with much bigger delay".
-  it("opens after the pointer rests on the row a while, and closes once it has left", () => {
-    vi.useFakeTimers();
-    const tree = mounted();
-    act(() => {
-      row(tree).props.onPointerEnter({ pointerType: "mouse" });
-    });
-    act(() => {
-      vi.advanceTimersByTime(1199);
-    });
-    expect(peek()).toBeNull();
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-    expect(peek()).toEqual({ projectId: "crm-dev", mode: "hover" });
-    expect(renderPeek).toHaveBeenLastCalledWith(
-      expect.objectContaining({ name: "crm-dev", projectName: "Beviro CRM" }),
-    );
-    // Lit while its peek is open.
-    expect(surface(tree, "sidebar-mate").props.className).toContain("bg-sidebar-row-hover");
-    act(() => {
-      row(tree).props.onPointerLeave({ pointerType: "mouse" });
-    });
-    act(() => {
-      vi.advanceTimersByTime(220);
-    });
-    expect(peek()).toBeNull();
-  });
-
-  it("never opens for a pointer that only passes over the row", () => {
-    vi.useFakeTimers();
-    const tree = mounted();
-    act(() => {
-      row(tree).props.onPointerEnter({ pointerType: "mouse" });
-      vi.advanceTimersByTime(900);
-      row(tree).props.onPointerLeave({ pointerType: "mouse" });
-      vi.advanceTimersByTime(2000);
-    });
-    expect(peek()).toBeNull();
-  });
-
-  // It waits for the pointer to rest: one still moving across the row is on
-  // its way somewhere else.
-  it("waits while the pointer keeps moving over the row", () => {
-    vi.useFakeTimers();
-    const tree = mounted();
-    act(() => {
-      row(tree).props.onPointerEnter({ pointerType: "mouse" });
-    });
-    for (let moved = 0; moved < 4; moved += 1) {
-      act(() => {
-        vi.advanceTimersByTime(800);
-        row(tree).props.onPointerMove({ pointerType: "mouse", movementY: 2 });
-      });
-    }
-    expect(peek()).toBeNull();
-    act(() => {
-      vi.advanceTimersByTime(1200);
-    });
-    expect(peek()).toEqual({ projectId: "crm-dev", mode: "hover" });
-  });
-
-  it("is offered in the Mate's own menu, which pins it open", () => {
-    const tree = mount(
-      <PortalGate closed>
-        <SidebarZeropsTree
-          candidates={[CRM_DEV_CONNECTED]}
-          complete
-          getActivity={() => spoken}
-          getMateActions={() => ({ muted: false, entries: [] })}
-          onBrowseProjects={() => {}}
-          onSelect={() => {}}
-          renderPeek={renderPeek}
-        />
-      </PortalGate>,
-    );
-    const menu = tree.root.findByType(MateMenu);
-    expect(menu.props.onPeek).toBeTypeOf("function");
-    act(() => {
-      menu.props.onPeek();
-    });
-    expect(peek()).toEqual({ projectId: "crm-dev", mode: "pinned" });
-  });
-
-  it("opens with Space and keeps it, and Space again puts it away — never pressing the row", () => {
-    const tree = mounted();
-    let prevented = 0;
-    const space = { key: " ", preventDefault: () => (prevented += 1) };
-    act(() => {
-      surface(tree, "sidebar-mate").props.onKeyDown(space);
-    });
-    expect(peek()).toEqual({ projectId: "crm-dev", mode: "pinned" });
-    expect(prevented).toBe(1);
-    act(() => {
-      row(tree).props.onPointerLeave({ pointerType: "mouse" });
-    });
-    expect(peek()?.mode).toBe("pinned");
-    act(() => {
-      surface(tree, "sidebar-mate").props.onKeyDown(space);
-    });
-    expect(peek()).toBeNull();
-  });
-
-  it("gives no peek where nobody draws one", () => {
-    const tree = mount(
-      <SidebarZeropsTree
-        candidates={[CRM_DEV_CONNECTED]}
-        complete
-        getActivity={() => spoken}
-        onBrowseProjects={() => {}}
-        onSelect={() => {}}
-      />,
-    );
-    act(() => {
-      surface(tree, "sidebar-mate").props.onKeyDown({ key: " ", preventDefault: () => {} });
-    });
-    expect(peek()).toBeNull();
   });
 });
 
@@ -2142,24 +2070,24 @@ describe("a surface's ask to show a Mate", () => {
       );
     expect(mateRows()).toHaveLength(0);
     act(() => {
-      useSidebarPeek.getState().reveal({ kind: "mate", projectId: "crm-dev" });
+      useSidebarReveal.getState().reveal({ kind: "mate", projectId: "crm-dev" });
     });
     expect(mateRows()).toHaveLength(1);
     // Answered: a menu drawn again later has nothing left to show.
-    expect(useSidebarPeek.getState().revealing).toBeNull();
+    expect(useSidebarReveal.getState().revealing).toBeNull();
   });
 
   it("leaves an ask for a Mate it does not hold standing until one does", () => {
     mount(tree());
     act(() => {
-      useSidebarPeek.getState().reveal({ kind: "mate", projectId: "elsewhere" });
+      useSidebarReveal.getState().reveal({ kind: "mate", projectId: "elsewhere" });
     });
-    expect(useSidebarPeek.getState().revealing?.target).toEqual({
+    expect(useSidebarReveal.getState().revealing?.target).toEqual({
       kind: "mate",
       projectId: "elsewhere",
     });
     act(() => {
-      useSidebarPeek.getState().answerReveal(useSidebarPeek.getState().revealing!.seq);
+      useSidebarReveal.getState().answerReveal(useSidebarReveal.getState().revealing!.seq);
     });
   });
 });
@@ -2172,8 +2100,6 @@ describe("what the jump box finds in the menu", () => {
       ["links-prod", { ...productionRow, projectId: "links-prod" }],
     ]),
     releaseOffered: false,
-    merging: () => false,
-    onMerge: () => {},
     onOpenChange: () => {},
     onOpenStop: () => {},
   });
@@ -2258,10 +2184,10 @@ describe("what the jump box finds in the menu", () => {
       );
     expect(mateRows()).toHaveLength(0);
     act_(() => {
-      useSidebarPeek.getState().reveal({ kind: "project", groupId: "links" });
+      useSidebarReveal.getState().reveal({ kind: "project", groupId: "links" });
     });
     expect(mateRows()).toHaveLength(1);
-    expect(useSidebarPeek.getState().revealing).toBeNull();
+    expect(useSidebarReveal.getState().revealing).toBeNull();
   });
 
   it("opens a Mate's folded changes when a jump lands on one of them", () => {
@@ -2276,7 +2202,7 @@ describe("what the jump box finds in the menu", () => {
     const folded = changeRows().length;
     expect(folded).toBeLessThan(4);
     act_(() => {
-      useSidebarPeek.getState().reveal({
+      useSidebarReveal.getState().reveal({
         kind: "change",
         groupId: "links",
         key: "appdev#1",
@@ -2285,45 +2211,6 @@ describe("what the jump box finds in the menu", () => {
     });
     expect(changeRows()).toHaveLength(4);
     expect(changeRows().map((row) => row.props["data-zerops-change"])).toContain("appdev#1");
-  });
-
-  // Every change the Mate has open stands in its peek, as each stands under
-  // its row (the owner, 2026-09-27: "it shows only one of the two merge
-  // requests"): the one a jump asked for first, then the rest newest first.
-  it("shows every open change of its Mate in its peek, the one a jump asked for first", () => {
-    const older = pull(2, { mateProjectId: "links-dev", title: "Older change" });
-    const newer = pull(3, { mateProjectId: "links-dev", title: "Newer change" });
-    const peeks: Array<{ readonly changes: unknown; readonly changeCount: number }> = [];
-    const mounted = mount(
-      <PortalGate closed>
-        {tree({
-          getFlow: () => linksFlow([older, newer]),
-          renderPeek: (peek: { readonly changes: unknown; readonly changeCount: number }) => {
-            peeks.push(peek);
-            return null;
-          },
-        })}
-      </PortalGate>,
-    );
-    const shown = () => {
-      const list = peeks.at(-1)?.changes as
-        | ReactElement<{ children: ReadonlyArray<ReactElement<{ pull: FlowPullRequest }>> }>
-        | undefined;
-      return list?.props.children.map((line) => line.props.pull.number);
-    };
-    act_(() => {
-      useSidebarPeek.getState().open("links-dev", "pinned", "appdev#2");
-    });
-    expect(shown()).toEqual([2, 3]);
-    expect(peeks.at(-1)?.changeCount).toBe(2);
-    act_(() => {
-      useSidebarPeek.getState().open("links-dev", "pinned");
-    });
-    expect(shown()).toEqual([3, 2]);
-    act_(() => {
-      useSidebarPeek.getState().close();
-      mounted.unmount();
-    });
   });
 });
 
@@ -2349,8 +2236,6 @@ describe("a reload paints what the menu last drew (menuMemory)", () => {
     pullRequests: [],
     environments: new Map(),
     releaseOffered: false,
-    merging: () => false,
-    onMerge: () => {},
     ...overrides,
   });
   const remembering = (changes: ReadonlyArray<FlowPullRequest> | undefined) => ({

@@ -59,7 +59,7 @@ type MateFaceProps = Omit<React.ComponentProps<"svg">, "children" | "viewBox"> &
    * Whether it greets an arrival it watches (`mateFaceArrival`): a face that
    * stands for one Mate the whole time it is on screen and knows when its
    * state is read — a menu row, a run's status line. Off by default: a face
-   * reused from one Mate to the next (a header, a peek) or first drawn asleep
+   * reused from one Mate to the next (a header) or first drawn asleep
    * until its Mate connects would greet arrivals that never happened.
    */
   readonly greets?: boolean;

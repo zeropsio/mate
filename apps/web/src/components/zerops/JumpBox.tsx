@@ -31,7 +31,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { useSidebarPeek } from "~/zerops/sidebarPeek";
+import { useSidebarReveal } from "~/zerops/sidebarReveal";
 
 import { CommandPaletteContent } from "../CommandPaletteContent";
 import {
@@ -185,7 +185,7 @@ export function chooseJumpItem(
     return;
   }
   close();
-  const { reveal } = useSidebarPeek.getState();
+  const { reveal } = useSidebarReveal.getState();
   switch (item.kind) {
     case "mate":
     case "write":

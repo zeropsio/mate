@@ -516,6 +516,12 @@ export interface ChatComposerProps {
    * the crew gate decide those — with a way into its editor.
    */
   crewRunsOn?: { readonly label: string; readonly onEdit: () => void } | undefined;
+  /**
+   * The composer's top (C3): what waits on the person — this Mate's change,
+   * waiting for their review — as a section inside the composer, sharing its
+   * edges and corners, over what they write.
+   */
+  top?: ReactNode;
 
   // Session phase
   phase: SessionPhase;
@@ -667,6 +673,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     idlePlaceholder = DISCONNECTED_COMPOSER_PLACEHOLDER,
     mentionCrewmates,
     crewRunsOn,
+    top,
     phase,
     isConnecting,
     isSendBusy,
@@ -3471,6 +3478,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 composerProviderState.composerSurfaceClassName,
               )}
             >
+              {top}
               {showCollapsedMobilePromptRow ? (
                 <div className="flex items-center justify-between gap-2 px-3 py-2">
                   <button

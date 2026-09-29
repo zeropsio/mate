@@ -2973,6 +2973,87 @@ code {
   .dark .menu-textbtn:hover {
     background: color-mix(in oklab, var(--info-foreground) 14%, transparent);
   }
+
+  /* A crewmate's face on its crew's line: a 24 px press around the 20 px
+     face, lit on hover like a row. */
+  .menu-crewface {
+    border-radius: 7px;
+  }
+
+  /* The one selected band (`SidebarSelectedBand`): behind every row of the
+     list, which is its own stacking context, with the row's corners. It is
+     placed by transform; only a slide to a newly opened row moves it. */
+  .menu-band {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: -1;
+    border-radius: 12px;
+    background: var(--sidebar-row-active);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .menu-band[data-on] {
+    opacity: 1;
+  }
+
+  /* The dot before a row's age: one meaning per colour (S3) — amber needs
+     you, blue finished and unseen (the blue of what clicks), red broken. */
+  .menu-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 9999px;
+  }
+
+  .menu-dot[data-tone="attention"] {
+    background: var(--zerops-status-attention);
+  }
+
+  .menu-dot[data-tone="unread"] {
+    background: var(--info-foreground);
+  }
+
+  .menu-dot[data-tone="failed"] {
+    background: var(--zerops-status-failed-text);
+  }
+}
+
+/* A dot that arrives while the person watches scales in, once (T6); with
+   reduced motion it only fades in (T8). */
+@media (prefers-reduced-motion: no-preference) {
+  .menu-dot[data-arrived] {
+    animation: menu-dot-in 220ms var(--ease-out-strong) both;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-dot[data-arrived] {
+    animation: menu-dot-fade 220ms ease-out both;
+  }
+}
+
+@keyframes menu-dot-in {
+  from {
+    scale: 0;
+    opacity: 0;
+  }
+}
+
+@keyframes menu-dot-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .menu-band[data-sliding] {
+    transition:
+      transform 300ms var(--ease-spring),
+      height 300ms var(--ease-spring),
+      width 300ms var(--ease-spring);
+  }
 }
 
 /* The owner's disc is lighter on a light menu and deeper on a dark one. */
@@ -3623,6 +3704,17 @@ code {
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
+/* The files a run changed open its own diff: quiet, a link only under the pointer. */
+.run-result-files {
+  color: inherit;
+  text-decoration-line: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 2px;
+  transition: text-decoration-color 150ms ease;
+}
+.run-result-files:hover {
+  text-decoration-color: currentColor;
+}
 .run-result-add {
   color: var(--color-diff-addition-foreground);
 }
@@ -3633,6 +3725,12 @@ code {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+/* The fix and the menu that picks another Mate for it, one action. */
+.run-result-fix {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 /* Blue is something to click (S3): a text action, never a filled button. */
 .run-result-action {
@@ -3681,6 +3779,7 @@ code {
   object-position: top;
 }
 .run-result-action:focus-visible,
+.run-result-files:focus-visible,
 .run-result-open:focus-visible,
 .run-result-picture:focus-visible {
   outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
@@ -3753,6 +3852,49 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 
 [data-chat-composer-surface="true"] {
   border-radius: 19px;
+}
+
+/* C3: Review, the one blue button on the composer's top — blue is for what
+   can be clicked (S3), and the strip around it stays neutral. */
+.composer-review-button {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 9px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: var(--text-line);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+  transition:
+    transform 120ms cubic-bezier(0.23, 1, 0.32, 1),
+    filter 150ms ease;
+}
+
+.composer-review-button:hover {
+  filter: brightness(1.06);
+}
+
+.composer-review-button:active {
+  transform: scale(0.97);
+}
+
+.composer-review-button:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--card),
+    0 0 0 4px var(--ring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-review-button {
+    transition: filter 150ms ease;
+  }
+
+  .composer-review-button:active {
+    transform: none;
+  }
 }
 
 /* C4: the one control's menu — the models, and beside them the model's

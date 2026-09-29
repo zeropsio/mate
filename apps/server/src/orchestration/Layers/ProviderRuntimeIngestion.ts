@@ -45,6 +45,7 @@ import { ProjectionThreadProposedPlanRepositoryLive } from "../../persistence/La
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ThreadBackgroundLivenessService } from "../ThreadBackgroundLiveness.ts";
 import { ThreadPlanProgressService } from "../ThreadPlanProgress.ts";
+import { liveStepObservationOf, ThreadLiveStepService } from "../ThreadLiveStep.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import {
   ProviderRuntimeIngestionService,
@@ -1027,6 +1028,7 @@ export function runtimeEventToActivities(
 const make = Effect.gen(function* () {
   const threadBackgroundLiveness = yield* ThreadBackgroundLivenessService;
   const threadPlanProgress = yield* ThreadPlanProgressService;
+  const threadLiveStep = yield* ThreadLiveStepService;
   const crypto = yield* Crypto.Crypto;
   const orchestrationEngine = yield* OrchestrationEngineService;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
@@ -1897,6 +1899,14 @@ const make = Effect.gen(function* () {
                 : (thread.session?.lastError ?? null);
 
         if (shouldApplyThreadLifecycle) {
+          // The live step the menu says: a turn starts out thinking; a settled
+          // turn or a dead session has nothing live. Before the session change
+          // goes out, so the shell it refreshes says both at once.
+          if (event.type === "turn.started") {
+            threadLiveStep.observe(thread.id, { type: "turn-started", at: now });
+          } else if (isTerminalTurn || event.type === "session.exited") {
+            threadLiveStep.clearThread(thread.id);
+          }
           if (event.type === "turn.started" && acceptedTurnStartedSourcePlan !== null) {
             yield* markSourceProposedPlanImplemented(
               acceptedTurnStartedSourcePlan.sourceThreadId,
@@ -1961,6 +1971,9 @@ const make = Effect.gen(function* () {
       // block could never be completed, and a row stuck mid-thought is worse
       // than no row at all.
       if (reasoningDelta && reasoningDelta.delta.length > 0 && reasoningTurnId) {
+        if (!conflictsWithActiveTurn) {
+          threadLiveStep.observe(thread.id, { type: "thinking", at: now });
+        }
         const turnId = reasoningTurnId;
         const reasoningMessageId = yield* getOrCreateReasoningMessageId({
           threadId: thread.id,
@@ -2019,6 +2032,9 @@ const make = Effect.gen(function* () {
       }
 
       if (assistantDelta && assistantDelta.length > 0) {
+        if (!conflictsWithActiveTurn) {
+          threadLiveStep.observe(thread.id, { type: "writing", at: now });
+        }
         const turnId = toTurnId(event.turnId);
         // Visible text ends the thinking block that preceded it, so the next
         // block does not swallow this answer.
@@ -2083,6 +2099,9 @@ const make = Effect.gen(function* () {
           ? toTurnId(event.turnId)
           : undefined;
       if (pauseForUserTurnId) {
+        if (!conflictsWithActiveTurn) {
+          threadLiveStep.observe(thread.id, { type: "words-ended", at: now });
+        }
         const hasProjectedMessage = yield* projectionThreadMessages.hasAssistantMessageForTurn({
           threadId: thread.id,
           turnId: pauseForUserTurnId,
@@ -2194,6 +2213,9 @@ const make = Effect.gen(function* () {
               );
               const existingSnapshot = yield* getThreadMessageById(thread.id, snapshotMessageId);
               if (existingSnapshot === undefined) {
+                if (!conflictsWithActiveTurn) {
+                  threadLiveStep.observe(thread.id, { type: "thinking", at: now });
+                }
                 yield* orchestrationEngine.dispatch({
                   type: "thread.message.reasoning.delta",
                   commandId: yield* providerCommandId(event, "reasoning-delta-snapshot"),
@@ -2248,6 +2270,9 @@ const make = Effect.gen(function* () {
           : undefined;
 
       if (assistantCompletion) {
+        if (!conflictsWithActiveTurn) {
+          threadLiveStep.observe(thread.id, { type: "words-ended", at: now });
+        }
         const turnId = toTurnId(event.turnId);
         if (turnId) {
           yield* finalizeActiveSegmentForTurn({
@@ -2583,6 +2608,14 @@ const make = Effect.gen(function* () {
       }
 
       const activities = runtimeEventToActivities(activityEvent, taskTitle);
+      // A call the Mate makes is its live step from its start until it ends,
+      // told from the very activity about to be appended.
+      if (!conflictsWithActiveTurn) {
+        for (const activity of activities) {
+          const observation = liveStepObservationOf(activity);
+          if (observation !== null) threadLiveStep.observe(thread.id, observation);
+        }
+      }
       yield* Effect.forEach(activities, (activity) =>
         providerCommandId(event, "thread-activity-append").pipe(
           Effect.flatMap((commandId) =>

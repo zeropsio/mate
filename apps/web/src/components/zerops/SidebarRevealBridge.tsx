@@ -1,7 +1,7 @@
 /**
  * The left menu comes out to show what a surface asked it to show.
  *
- * A reveal (`sidebarPeek.ts`) is answered by the tree, and the tree is only
+ * A reveal (`sidebarReveal.ts`) is answered by the tree, and the tree is only
  * drawn while the menu is: a phone's menu is a sheet that steps aside for the
  * jump box, and a collapsed menu is out of sight. So an ask opens the menu —
  * the sheet on a phone, the panel on a desktop — and the tree, drawn again,
@@ -15,13 +15,13 @@
 import { useEffect, useRef } from "react";
 
 import { useSidebarJump } from "~/zerops/sidebarJump";
-import { useSidebarPeek } from "~/zerops/sidebarPeek";
+import { useSidebarReveal } from "~/zerops/sidebarReveal";
 
 import { useSidebar } from "../ui/sidebar";
 
 export function SidebarRevealBridge({ showable }: { readonly showable: boolean }) {
   const { isMobile, openMobile, setOpenMobile, open, setOpen } = useSidebar();
-  const seq = useSidebarPeek((state) => state.revealing?.seq ?? null);
+  const seq = useSidebarReveal((state) => state.revealing?.seq ?? null);
   const answered = useRef<number | null>(null);
 
   useEffect(() => {

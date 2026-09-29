@@ -315,9 +315,6 @@ const flow = (input: Partial<SidebarProjectFlow>): SidebarProjectFlow => ({
   pullRequests: [],
   environments: new Map(),
   releaseOffered: false,
-  merging: () => false,
-  onMerge: () => {},
-  onAsk: () => {},
   ...input,
 });
 

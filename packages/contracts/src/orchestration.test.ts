@@ -1411,3 +1411,74 @@ it("isProviderSendTurnSupportedImageMimeType accepts raster formats and rejects 
   assert.strictEqual(isProviderSendTurnSupportedImageMimeType("IMAGE/JPEG"), true);
   assert.strictEqual(isProviderSendTurnSupportedImageMimeType("image/svg+xml"), false);
 });
+
+const buildCall = {
+  id: "call-build",
+  activityKind: "tool.updated",
+  itemType: "command_execution",
+  title: "Command run",
+  detail: "Bash: pnpm build",
+  toolName: "Bash",
+  command: "pnpm build",
+  input: { description: "Build the app", command: "pnpm build" },
+  startedAt: "2026-09-29T08:00:05.000Z",
+};
+
+it.effect.each([
+  { name: "a shell from an older server", extra: {}, expected: undefined },
+  {
+    name: "a Mate between steps",
+    extra: { liveStep: { kind: "thinking", since: "2026-09-29T08:00:00.000Z" } },
+    expected: { kind: "thinking", since: "2026-09-29T08:00:00.000Z" },
+  },
+  {
+    name: "a Mate whose words stream",
+    extra: { liveStep: { kind: "writing", since: "2026-09-29T08:00:09.000Z" } },
+    expected: { kind: "writing", since: "2026-09-29T08:00:09.000Z" },
+  },
+  {
+    name: "a Mate running a command",
+    extra: {
+      liveStep: { kind: "calls", since: "2026-09-29T08:00:05.000Z", calls: [buildCall] },
+    },
+    expected: { kind: "calls", since: "2026-09-29T08:00:05.000Z", calls: [buildCall] },
+  },
+  {
+    name: "a call a later server tells more of: what this client does not know is dropped",
+    extra: {
+      liveStep: {
+        kind: "calls",
+        since: "2026-09-29T08:00:05.000Z",
+        calls: [{ ...buildCall, elapsedMs: 31_000 }],
+      },
+    },
+    expected: { kind: "calls", since: "2026-09-29T08:00:05.000Z", calls: [buildCall] },
+  },
+  {
+    name: "a step of a kind a later server added: absent, the shell intact",
+    extra: { liveStep: { kind: "compacting", since: "2026-09-29T08:00:00.000Z" } },
+    expected: undefined,
+  },
+  { name: "no step relayed", extra: { liveStep: null }, expected: undefined },
+])("decodes the live step of $name", ({ extra, expected }) =>
+  Effect.gen(function* () {
+    const shell = yield* decodeOrchestrationThreadShell({ ...usagePauseShell, ...extra });
+    assert.deepStrictEqual<unknown>(shell.liveStep, expected);
+    assert.strictEqual(shell.title, "Paused thread");
+  }),
+);
+
+it.effect.each([
+  { name: "a shell from an older server", extra: {}, expected: undefined },
+  { name: "a shell with nothing asked", extra: { pendingQuestion: null }, expected: null },
+  {
+    name: "a Mate waiting on its question",
+    extra: { pendingQuestion: " Ship the status page now, or after the review? " },
+    expected: "Ship the status page now, or after the review?",
+  },
+])("decodes the pending question of $name", ({ extra, expected }) =>
+  Effect.gen(function* () {
+    const shell = yield* decodeOrchestrationThreadShell({ ...usagePauseShell, ...extra });
+    assert.deepStrictEqual(shell.pendingQuestion, expected);
+  }),
+);

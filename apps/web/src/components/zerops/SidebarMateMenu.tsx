@@ -4,8 +4,8 @@
  * The menu lives in the row's time slot: on hover and on focus the time gives
  * way to the menu's trigger, in a slot that is always reserved, so nothing on
  * the row moves when it appears; a right-click on the row opens the same menu
- * at the pointer. What it offers, in order: the ways in (*Open*, *Peek*, *Open
- * app*, *Copy link*), what this viewer keeps about it (*Mute notifications*,
+ * at the pointer. What it offers, in order: the ways in (*Open*, *Open app*,
+ * *Copy link*), what this viewer keeps about it (*Mute notifications*,
  * *Mark as unread*, *Rename*), the verbs the projects screen offers too
  * (`useMateActions`: *Restart* or *Start*, *Register in …*, *Hand over…*,
  * *Move to project…*), and last, while it works, *Stop the run*. No snooze
@@ -63,7 +63,6 @@ export interface MateMenuItemsProps {
   /** The Mate's app — its pair's stage route — where it has one. */
   readonly appUrl: string | undefined;
   readonly onOpenMate: () => void;
-  readonly onPeek?: (() => void) | undefined;
   readonly onRename: () => void;
   /** The keys the list answers, shown beside their items. */
   readonly shortcuts: boolean;
@@ -74,7 +73,6 @@ export function MateMenuItems({
   unread,
   appUrl,
   onOpenMate,
-  onPeek,
   onRename,
   shortcuts,
 }: MateMenuItemsProps) {
@@ -89,12 +87,6 @@ export function MateMenuItems({
         Open
         {hint("↵")}
       </MenuItem>
-      {onPeek === undefined ? null : (
-        <MenuItem data-zerops-mate-menu="peek" onClick={onPeek}>
-          Peek
-          {hint("Space")}
-        </MenuItem>
-      )}
       {appUrl === undefined ? (
         <MenuItem data-zerops-mate-menu="open-app" disabled>
           Open app
