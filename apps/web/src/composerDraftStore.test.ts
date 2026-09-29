@@ -63,6 +63,7 @@ import {
   finalizePromotedDraftThreadByRef,
   markPromotedDraftThreadByRef,
   type ComposerImageAttachment,
+  hydrateImagesFromPersisted,
   partializeComposerDraftStoreState,
   useComposerDraftStore,
   DraftId,
@@ -74,6 +75,7 @@ import {
   replaceMentionWithInlineContextPlaceholder,
   type TerminalContextDraft,
 } from "./lib/terminalContext";
+import { INLINE_PICTURE_PLACEHOLDER } from "./lib/composerPictures";
 import { createDeferredStorage } from "./lib/storage";
 import { closeAccountLifetime, openAccountLifetime } from "./zerops/accountLifetime";
 
@@ -256,6 +258,113 @@ describe("composerDraftStore addImages", () => {
     const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
     expect(draft?.images.map((image) => image.id)).toEqual(["img-shared"]);
     expect(revokeSpy).not.toHaveBeenCalledWith("blob:shared");
+  });
+});
+
+describe("composerDraftStore pictures in the text", () => {
+  const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, ThreadId.make("thread-pictures"));
+  let originalRevokeObjectUrl: typeof URL.revokeObjectURL;
+  let revokeSpy: ReturnType<typeof vi.fn<(url: string) => void>>;
+  const P = INLINE_PICTURE_PLACEHOLDER;
+  const ids = () => draftFor(threadRef.threadId, TEST_ENVIRONMENT_ID)?.images.map((i) => i.id);
+
+  beforeEach(() => {
+    resetComposerDraftStore();
+    originalRevokeObjectUrl = URL.revokeObjectURL;
+    revokeSpy = vi.fn();
+    URL.revokeObjectURL = revokeSpy;
+    const store = useComposerDraftStore.getState();
+    store.insertImage(threadRef, `a${P}`, makeImage({ id: "one", previewUrl: "blob:one" }), 0);
+    store.insertImage(threadRef, `a${P}b${P}`, makeImage({ id: "two", previewUrl: "blob:two" }), 1);
+  });
+
+  afterEach(() => {
+    URL.revokeObjectURL = originalRevokeObjectUrl;
+  });
+
+  it.each([
+    ["before the first", 0, ["new", "one", "two"]],
+    ["between the two", 1, ["one", "new", "two"]],
+    ["after the last", 2, ["one", "two", "new"]],
+    ["past the end, at the end", 9, ["one", "two", "new"]],
+  ])("a pasted picture takes its index among the pictures: %s", (_label, index, expected) => {
+    useComposerDraftStore
+      .getState()
+      .insertImage(
+        threadRef,
+        "the new prompt",
+        makeImage({ id: "new", previewUrl: "blob:new" }),
+        index,
+      );
+    expect(ids()).toEqual(expected);
+    expect(draftFor(threadRef.threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe("the new prompt");
+  });
+
+  it("a picture pasted twice stays twice: places, not files, are what count", () => {
+    useComposerDraftStore
+      .getState()
+      .insertImage(threadRef, "p", makeImage({ id: "three", previewUrl: "blob:three" }), 2);
+    expect(ids()).toEqual(["one", "two", "three"]);
+  });
+
+  it.each([
+    ["the text's order wins", ["two", "one"], ["two", "one"], []],
+    ["a picture no longer in the text goes", ["two"], ["two"], ["blob:one"]],
+    ["an id the draft never had is ignored", ["one", "ghost", "two"], ["one", "two"], []],
+  ])("syncs to the text: %s", (_label, next, expected, revoked) => {
+    useComposerDraftStore.getState().syncImages(threadRef, next);
+    expect(ids()).toEqual(expected);
+    expect(revokeSpy.mock.calls.map(([url]) => url)).toEqual(revoked);
+  });
+
+  it("a picture made again keeps its place and lets its old copy go", () => {
+    const again = makeImage({ id: "one", previewUrl: "blob:one-again", sizeBytes: 9 });
+    useComposerDraftStore.getState().updateImage(threadRef, again);
+    const images = draftFor(threadRef.threadId, TEST_ENVIRONMENT_ID)?.images ?? [];
+    expect(images.map((image) => [image.id, image.previewUrl])).toEqual([
+      ["one", "blob:one-again"],
+      ["two", "blob:two"],
+    ]);
+    expect(revokeSpy).toHaveBeenCalledExactlyOnceWith("blob:one");
+  });
+
+  it("a copy for a picture already gone is let go", () => {
+    useComposerDraftStore
+      .getState()
+      .updateImage(threadRef, makeImage({ id: "gone", previewUrl: "blob:gone" }));
+    expect(ids()).toEqual(["one", "two"]);
+    expect(revokeSpy).toHaveBeenCalledExactlyOnceWith("blob:gone");
+  });
+});
+
+describe("hydrateImagesFromPersisted", () => {
+  const picture = {
+    sourceWidth: 3024,
+    sourceHeight: 1964,
+    crop: { x: 0, y: 0, w: 3024, h: 1964 },
+    marks: [{ kind: "pin" as const, id: "m1", x: 252, y: 74, note: "Bigger logo" }],
+    width: 2000,
+    height: 1299,
+    asPasted: false,
+  };
+  const persisted = {
+    id: "pic",
+    name: "home-page.png",
+    mimeType: "image/png",
+    sizeBytes: 3,
+    dataUrl: "data:image/png;base64,AQID",
+  };
+
+  it.each([
+    ["an image without a picture stays one", persisted, undefined],
+    [
+      "a picture keeps its edits and notes, without the pasted file",
+      { ...persisted, picture },
+      { ...picture, source: null, keepOriginal: false, preparing: false },
+    ],
+  ])("%s", (_label, attachment, expected) => {
+    const [image] = hydrateImagesFromPersisted([attachment]);
+    expect(image?.picture).toEqual(expected);
   });
 });
 
