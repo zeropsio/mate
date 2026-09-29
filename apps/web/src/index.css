@@ -2954,6 +2954,177 @@ code {
 
 /* ==== Pass 16 · the run's result ==== */
 
+/* What a finished run left, as rows in the card's grid (K5): the mark in the
+   card's 28 px column, the words one column in, the actions on its right
+   edge. One type scale (S1): 14/20 the row, 13/18 the line under it. */
+.run-result {
+  display: flex;
+  flex-direction: column;
+}
+.run-result-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: center;
+  min-height: 34px;
+  padding-right: 14px;
+  font-size: 14px;
+  line-height: 20px;
+}
+/* A row with a line under it hangs from its first line. */
+.run-result-row[data-tall] {
+  align-items: start;
+  padding-block: 7px;
+}
+.run-result-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--color-muted-foreground);
+}
+.run-result-row[data-tall] .run-result-mark {
+  height: 20px;
+}
+/* One meaning per colour (S3): green runs, amber waits on the person, red is
+   still broken; a thing's glyph stays muted. */
+.run-result-mark[data-tone="ok"] {
+  color: var(--color-status-ok);
+}
+.run-result-mark[data-tone="attention"] {
+  color: var(--color-status-attention);
+}
+.run-result-mark[data-tone="failed"] {
+  color: var(--color-status-failed);
+}
+.run-result-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.run-result-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 8px;
+  min-width: 0;
+}
+/* Nothing is cut off (D4): a long name or reason wraps. */
+.run-result-main > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.run-result-title {
+  font-weight: 500;
+  color: var(--color-foreground);
+}
+.run-result-title[data-broken] {
+  color: var(--color-status-failed-text);
+}
+.run-result-words {
+  color: var(--color-muted-foreground);
+}
+.run-result-version {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--color-muted-foreground);
+}
+.run-result-sub {
+  display: block;
+  margin-top: 1px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-muted-foreground);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.run-result-add {
+  color: var(--color-diff-addition-foreground);
+}
+.run-result-del {
+  color: var(--color-diff-deletion-foreground);
+}
+.run-result-end {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* Blue is something to click (S3): a text action, never a filled button. */
+.run-result-action {
+  padding: 3px 8px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--color-info-foreground);
+  transition: background-color 150ms ease;
+}
+.run-result-action:hover {
+  background: color-mix(in oklab, var(--color-info-foreground) 10%, transparent);
+}
+.run-result-open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  color: var(--color-muted-foreground);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+.run-result-open:hover {
+  background: var(--color-accent);
+  color: var(--color-foreground);
+}
+/* A check's picture, the page's top: an object by its hairline, no shadow. */
+.run-result-picture {
+  width: 44px;
+  height: 28px;
+  overflow: hidden;
+  border-radius: 5px;
+  box-shadow: 0 0 0 1px var(--color-border);
+  background: var(--color-card);
+  cursor: zoom-in;
+}
+.run-result-picture img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+.run-result-action:focus-visible,
+.run-result-open:focus-visible,
+.run-result-picture:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
+  outline-offset: 1px;
+}
+/* T5: the result arriving while the person watched is the moment worth
+   seeing — row by row, 40 ms apart, once; reduced motion fades only. */
+@keyframes run-result-rise {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+@keyframes run-result-fade {
+  from {
+    opacity: 0;
+  }
+}
+.run-result-row[data-rising] {
+  animation: run-result-rise 320ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  animation-delay: calc(var(--row-index, 0) * 40ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .run-result-row[data-rising] {
+    animation-name: run-result-fade;
+  }
+}
+
 /* ==== end of the run's result ==== */
 
 /* ==== Pass 16 · the conversation ==== */

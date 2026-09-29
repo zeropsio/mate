@@ -1137,7 +1137,10 @@ describe("deriveOutcome", () => {
       completedAt: at(9),
     }) as TurnDiffSummary;
 
-  it("lists each service once with its final state and keeps a recovered failure as history", () => {
+  // A failure the run came back from is the work's, never its result (the
+  // owner, 2026-09-29: "it doesn't make sense to keep log of things that were
+  // fixed later"), and what it removed is gone, not something it left.
+  it("lists each service once in the state the run left it, nothing it came back from", () => {
     const entries = [
       user("m0", 0),
       operation("d1", "t1", 1, {
@@ -1178,7 +1181,7 @@ describe("deriveOutcome", () => {
           word: "Healthy",
           version: null,
           url: "https://medusastage.example.dev",
-          recovered: "First check failed: HTTP internal 403. It came back after that.",
+          failure: null,
         },
       ],
       landed: [{ key: "landed:l1", line: "titandev #17", title: "Draw distance" }],
@@ -1190,9 +1193,101 @@ describe("deriveOutcome", () => {
         takes: [expect.objectContaining({ kind: "browser" })],
       },
       created: [],
-      removed: ["oldtier"],
       notDone: [],
     });
+  });
+
+  // What is still broken says why, when, and what its log said last: the
+  // row's words and the fix request's (S6).
+  it.each([
+    {
+      name: "a build that failed",
+      op: {
+        kind: "deploy" as const,
+        phase: "failed" as const,
+        statusWord: "Failed",
+        steps: [
+          {
+            id: "INIT_BUILD_CONTAINER",
+            label: "Build container",
+            state: "done" as const,
+            stateLabel: "Done",
+          },
+          {
+            id: "RUN_BUILD_COMMANDS",
+            label: "Build",
+            state: "failed" as const,
+            stateLabel: "Failed",
+          },
+        ],
+        explanation: {
+          reason: "3 type errors in session.ts.",
+          logTail: ["src/session.ts(4,7): error TS2322", "Found 3 errors."],
+        },
+      },
+      word: "Build failing",
+      failure: {
+        reason: "3 type errors in session.ts",
+        at: at(1, 30),
+        logLines: ["src/session.ts(4,7): error TS2322", "Found 3 errors."],
+      },
+    },
+    {
+      name: "a deploy that failed after its build",
+      op: {
+        kind: "deploy" as const,
+        phase: "failed" as const,
+        statusWord: "Failed",
+        steps: [{ id: "DEPLOY", label: "Deploy", state: "failed" as const, stateLabel: "Failed" }],
+        closing: "The deploy failed.",
+      },
+      word: "Deploy failed",
+      failure: { reason: "The deploy failed", at: at(1, 30), logLines: [] },
+    },
+    {
+      name: "a health check that failed",
+      op: {
+        kind: "verify" as const,
+        phase: "failed" as const,
+        statusWord: "Checks failed",
+        explanation: { reason: "HTTP 502" },
+      },
+      word: "Not healthy",
+      failure: { reason: "HTTP 502", at: at(1, 30), logLines: [] },
+    },
+  ])("keeps what is still broken, with its failure: $name", ({ op, word, failure }) => {
+    const outcome = deriveOutcome({
+      turn: structure(
+        [user("m0", 0), operation("x1", "t1", 1, op), assistant("a1", "t1", 2)],
+        settled,
+      ).turns[0]!,
+      landed: [],
+      diff: null,
+    });
+    expect(outcome?.live).toEqual([
+      expect.objectContaining({ hostname: "appdev", tone: "failed", word, failure }),
+    ]);
+  });
+
+  // A dev server the run stopped on purpose is no longer running because of
+  // it; one it started, and nothing stopped, is.
+  it.each([
+    { name: "started", actions: ["start"], words: ["Dev server running"] },
+    { name: "started, then stopped", actions: ["start", "stop"], words: [] },
+  ])("follows a dev server to where the run left it: $name", ({ actions, words }) => {
+    const ops = actions.map((action, index) =>
+      operation(`s${index}`, "t1", index + 1, {
+        kind: "devServer",
+        statusWord: action === "stop" ? "Not running" : "Running",
+        steps: [{ id: action, label: action, state: "done", stateLabel: "Done" }],
+      }),
+    );
+    const outcome = deriveOutcome({
+      turn: structure([user("m0", 0), ...ops, assistant("a1", "t1", 5)], settled).turns[0]!,
+      landed: [],
+      diff: null,
+    });
+    expect(outcome?.live.map((service) => service.word) ?? []).toEqual(words);
   });
 
   // A git push is no deploy: the build that follows it, if any, says what
@@ -1350,7 +1445,7 @@ describe("deriveOutcome", () => {
     });
     expect(outcome?.live).toEqual([
       expect.objectContaining({ hostname: "apistage", tone: "ok", word: "Deployed" }),
-      expect.objectContaining({ hostname: "webstage", tone: "failed", word: "Failed" }),
+      expect.objectContaining({ hostname: "webstage", tone: "failed", word: "Deploy failed" }),
     ]);
   });
 
@@ -1372,7 +1467,15 @@ describe("deriveOutcome", () => {
       landed: [],
       diff: null,
     });
-    expect(outcome?.notDone).toEqual(["Importing gitea: Gitea isn't connected yet"]);
+    expect(outcome?.notDone).toEqual([
+      {
+        key: "op:i1",
+        subject: "gitea",
+        word: "Import failed",
+        reason: "Gitea isn't connected yet",
+        at: at(1, 30),
+      },
+    ]);
   });
 
   // A call that failed on the way is a stumble the log keeps, never an
@@ -1405,7 +1508,9 @@ describe("deriveOutcome", () => {
       landed: [],
       diff: null,
     });
-    expect(outcome?.notDone).toEqual(["Creating gitea: Gitea isn't connected yet"]);
+    expect(outcome?.notDone).toEqual([
+      expect.objectContaining({ subject: "gitea", reason: "Gitea isn't connected yet" }),
+    ]);
   });
 });
 

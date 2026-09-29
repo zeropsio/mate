@@ -281,7 +281,7 @@ const REPORT: OutcomeModel = {
       word: "Healthy",
       version: "11ea406",
       url: "https://example.dev",
-      recovered: null,
+      failure: null,
     },
     {
       hostname: "apistage",
@@ -289,7 +289,7 @@ const REPORT: OutcomeModel = {
       word: "Deployed",
       version: null,
       url: null,
-      recovered: null,
+      failure: null,
     },
     {
       hostname: "webstage",
@@ -297,14 +297,13 @@ const REPORT: OutcomeModel = {
       word: "Failed",
       version: null,
       url: null,
-      recovered: null,
+      failure: null,
     },
   ],
   landed: [],
   files: { count: 3, additions: 42, deletions: 7, turnId: TurnId.make("turn-1") },
   checks: { count: 5, views: 2, failures: 0, takes: [] },
   created: [],
-  removed: [],
   notDone: [],
   activity: [],
 };
