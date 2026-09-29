@@ -141,6 +141,7 @@ import {
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { SidebarCrewLine, type SidebarCrewRead } from "./crew/SidebarCrewLine";
+import { SidebarSelectedBand } from "./SidebarSelectedBand";
 import { KeyChip, MateFace, PlanRing, StatusDot } from "./primitives";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { environmentRoleTag, groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
@@ -1254,11 +1255,13 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   return (
     <nav
       aria-label="Mates"
-      // The list starts 6 px under the logo row, as the plan's menu does.
-      className={cn("relative flex flex-col pt-1.5", className)}
+      // The list starts 6 px under the logo row, as the plan's menu does. Its
+      // own stacking context, so the selected band stands behind every row.
+      className={cn("relative isolate flex flex-col pt-1.5", className)}
       data-zerops-surface="sidebar-environments"
       ref={treeRef}
     >
+      <SidebarSelectedBand current={activeProjectId} />
       {groupSections}
       {ungroupedSection}
 
@@ -1853,8 +1856,10 @@ function MateRow<T extends RosterCandidate>({
           // and beside the name in a one-line one. Faces stand at 16 px from
           // the menu's edge and every word at 56 (the list starts at 9).
           "menu-row grid w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-left outline-none select-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+          // The open Mate's row is lit by the list's one band, which slides
+          // to it (`SidebarSelectedBand`); a row lights only under the pointer.
           active
-            ? "bg-sidebar-row-active text-sidebar-foreground"
+            ? "bg-transparent text-sidebar-foreground"
             : "bg-transparent text-sidebar-foreground group-hover/mate:bg-sidebar-row-hover group-has-[[data-popup-open]]/mate:bg-sidebar-row-hover",
         )}
         data-zerops-surface="sidebar-mate"

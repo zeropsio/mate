@@ -396,10 +396,17 @@ describe("SidebarZeropsTree", () => {
     );
   });
 
-  it("lights the open Mate's row the way the menu lights its open thread", () => {
+  // One band in the list lights the open Mate's row and slides to the next
+  // one opened (M11): the row itself paints nothing for being open, and
+  // lights only under the pointer.
+  it("lights the open Mate's row with the list's one band, not a fill of its own", () => {
     const html = render([CRM_DEV], { activeProjectId: "crm-dev" });
     expect(html).toContain('aria-current="true"');
-    expect(html).toContain("bg-sidebar-row-active");
+    expect(html.match(/data-zerops-surface="sidebar-selected-band"/gu)).toHaveLength(1);
+    expect(html).toContain('<nav aria-label="Mates" class="relative isolate');
+    const row = /<button aria-current="true" class="([^"]*)"/u.exec(html)?.[1] ?? "";
+    expect(row).not.toContain("bg-sidebar-row-active");
+    expect(row).not.toContain("hover:bg-sidebar-row-hover");
   });
 
   it("lists the stage then production after the Mates, one row each, the Mate's own left out", () => {

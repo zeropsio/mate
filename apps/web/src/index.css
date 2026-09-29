@@ -2979,6 +2979,33 @@ code {
   .menu-crewface {
     border-radius: 7px;
   }
+
+  /* The one selected band (`SidebarSelectedBand`): behind every row of the
+     list, which is its own stacking context, with the row's corners. It is
+     placed by transform; only a slide to a newly opened row moves it. */
+  .menu-band {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: -1;
+    border-radius: 12px;
+    background: var(--sidebar-row-active);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .menu-band[data-on] {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .menu-band[data-sliding] {
+    transition:
+      transform 300ms var(--ease-spring),
+      height 300ms var(--ease-spring),
+      width 300ms var(--ease-spring);
+  }
 }
 
 /* The owner's disc is lighter on a light menu and deeper on a dark one. */

@@ -721,16 +721,19 @@ const ORGANIZATION = { id: "org-acme", name: "Acme", membershipId: "m-acme" };
 function SidebarFrame({ width, onJump }: { readonly width: number; readonly onJump: () => void }) {
   // Mine / Everyone, from the account menu, as the app reads it.
   const [scope] = useMateScope();
+  // The Mate whose conversation is open: a row pressed opens it, as in the
+  // app, and the selected band slides to it.
+  const [open, setOpen] = useState("links-enzo");
   const shown = useCallback(
     (item: ZeropsCandidate) =>
-      shownInScope(scope, OWNERS.get(item.project.id), item.project.id === "links-enzo"),
-    [scope],
+      shownInScope(scope, OWNERS.get(item.project.id), item.project.id === open),
+    [open, scope],
   );
   const waiting = useSidebarWaiting({
     candidates: CANDIDATES,
     activityOf: activityOfCandidate,
     shown,
-    activeProjectId: "links-enzo",
+    activeProjectId: open,
     enabled: true,
   });
   return (
@@ -783,8 +786,9 @@ function SidebarFrame({ width, onJump }: { readonly width: number; readonly onJu
           }}
           onSelect={(item) => {
             menuActions.push(`open ${item.project.id}`);
+            setOpen(item.project.id);
           }}
-          activeProjectId="links-enzo"
+          activeProjectId={open}
           shown={shown}
           timestampFormat="24-hour"
         />
