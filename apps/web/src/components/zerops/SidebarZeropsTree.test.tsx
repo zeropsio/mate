@@ -28,6 +28,7 @@ import { useComposerDraftStore } from "~/composerDraftStore";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { activityFromMemory } from "~/zerops/menuMemory";
+import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import {
   PROJECT_CUSTOM_ORDER_STORAGE_KEY,
   PROJECT_ORDER_STORAGE_KEY,
@@ -2444,6 +2445,123 @@ describe("a Mate's own menu, in its row", () => {
     const menu = mounted.root.findByType(MateMenu);
     expect(menu.props.open).toBe(true);
     expect(menu.props.at).toEqual({ x: 120, y: 340 });
+  });
+});
+
+// The owner, 2026-09-29: "allow setting up crew from more menu in the left
+// col". Only on the viewer's own Mate with crew mode on — a crew's turns run
+// only as the person who signed its agent in.
+describe("a Mate's own menu opens its crew, or sets one up", () => {
+  const ACTIONS: MateRowActions = { muted: false, entries: [] };
+  const MINE: ZeropsMateOwner = {
+    name: "Petra Malá",
+    initials: "PM",
+    avatarUrl: null,
+    isViewer: true,
+  };
+  const COLLEAGUES: ZeropsMateOwner = {
+    name: "Jan Beneš",
+    initials: "JB",
+    avatarUrl: null,
+    isViewer: false,
+  };
+  const crew = (status: "none" | "applied"): SidebarCrewRead => {
+    const fixture = crewSnapshotFixture({ status });
+    return {
+      status,
+      view:
+        status === "none"
+          ? null
+          : deriveCrewView(fixture, [], () => {
+              throw new Error("no shells here");
+            }),
+      attention: [],
+    };
+  };
+  const drawn = (options: {
+    readonly crew: SidebarCrewRead | undefined;
+    readonly owner: ZeropsMateOwner | undefined;
+    readonly onOpenCrew?: (candidate: ZeropsCandidate, setUp: boolean) => void;
+  }) =>
+    mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getCrew={() => options.crew}
+        getMateActions={() => ACTIONS}
+        getOwner={() => options.owner}
+        onBrowseProjects={() => {}}
+        onOpenCrew={options.onOpenCrew ?? (() => {})}
+        onSelect={() => {}}
+      />,
+    );
+
+  it.each([
+    { case: "crew mode not read", crew: undefined, owner: MINE, label: undefined },
+    {
+      case: "crew mode off",
+      crew: { ...crew("none"), status: "off" },
+      owner: MINE,
+      label: undefined,
+    },
+    {
+      case: "the viewer's own, without a crew",
+      crew: crew("none"),
+      owner: MINE,
+      label: "Set up a crew",
+    },
+    { case: "the viewer's own, with a crew", crew: crew("applied"), owner: MINE, label: "Crew" },
+    {
+      case: "a colleague's, without a crew",
+      crew: crew("none"),
+      owner: COLLEAGUES,
+      label: undefined,
+    },
+    {
+      case: "a colleague's, with a crew",
+      crew: crew("applied"),
+      owner: COLLEAGUES,
+      label: undefined,
+    },
+  ] as const)("$case: $label", ({ crew: read, owner, label }) => {
+    const tree = drawn({ crew: read, owner });
+    expect(tree.root.findByType(MateMenu).props.crew?.label).toBe(label);
+  });
+
+  it("offers nothing where nobody wired the way in", () => {
+    const tree = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getCrew={() => crew("applied")}
+        getMateActions={() => ACTIONS}
+        getOwner={() => MINE}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    expect(tree.root.findByType(MateMenu).props.crew).toBeUndefined();
+  });
+
+  it.each([
+    { case: "sets a crew up where it has none", read: crew("none"), setUp: true },
+    { case: "opens the crew where it has one", read: crew("applied"), setUp: false },
+  ])("closes the menu and $case", ({ read, setUp }) => {
+    const onOpenCrew = vi.fn();
+    const tree = drawn({ crew: read, owner: MINE, onOpenCrew });
+    act(() => {
+      surface(tree, "sidebar-mate-row").props.onContextMenu({
+        preventDefault: () => {},
+        clientX: 120,
+        clientY: 340,
+      });
+    });
+    expect(tree.root.findByType(MateMenu).props.open).toBe(true);
+    act(() => {
+      tree.root.findByType(MateMenu).props.crew.onSelect();
+    });
+    expect(onOpenCrew).toHaveBeenCalledExactlyOnceWith(CRM_DEV_CONNECTED, setUp);
+    expect(tree.root.findByType(MateMenu).props.open).toBe(false);
   });
 });
 

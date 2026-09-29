@@ -238,6 +238,7 @@ import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
 import { useSidebarWaiting } from "../zerops/useSidebarWaiting";
 import { shownInScope, useMateScope } from "../zerops/mateScope";
 import { SidebarJumpButton } from "./zerops/SidebarJumpButton";
+import { openCrewTab } from "../zerops/crew/crewTab";
 import { useOpenMate } from "../zerops/useOpenMate";
 import { SidebarWaitingStack } from "./zerops/SidebarWaitingStack";
 
@@ -4149,6 +4150,12 @@ export default function Sidebar() {
                   setOpenMobile(false);
                 }
                 openMate(candidate);
+              }}
+              onOpenCrew={(candidate, setUp) => {
+                if (isMobile) setOpenMobile(false);
+                openMate(candidate, (conversation) => {
+                  openCrewTab(conversation, { setUp });
+                });
               }}
             />
           ) : null}

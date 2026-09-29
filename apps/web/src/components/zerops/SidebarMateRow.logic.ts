@@ -3,6 +3,8 @@
  * pure, so each rule has its table.
  */
 import { pullRequestBlocked, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import { CREW_SET_UP_WORD } from "@t3tools/client-runtime/zerops/crew/phrases";
+import type { CrewStatus } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -102,6 +104,38 @@ export function mateOwnerView(input: {
         ? { kind: "unnamed" }
         : { kind: "nobody", label: NOBODY_OWNS };
   return { seat, signInLine: records.signedIn || input.asked ? undefined : NOBODY_SIGNED_IN };
+}
+
+/** The crew's door in a Mate's own menu, and whether it sets a crew up. */
+export interface MateCrewItem {
+  readonly label: string;
+  /** *Set up a crew*: the Crew tab opens with its setup sheet. */
+  readonly setUp: boolean;
+}
+
+/**
+ * The crew's door in a Mate's own menu (the owner, 2026-09-29: "allow setting
+ * up crew from more menu in the left col"): *Set up a crew* where the Mate has
+ * none, *Crew* where it has one, each opening its conversation on the Crew
+ * tab. Only where crew mode is on — its feed says `none` or `applied`, as the
+ * tab's own availability reads it — and only on the viewer's own Mate: a
+ * crew's turns run only as the person who signed its agent in (D6), so a
+ * colleague's Mate, and one whose owner is not named yet, offer none.
+ */
+export function mateCrewItem(input: {
+  readonly status: CrewStatus | null;
+  readonly owner: { readonly isViewer: boolean } | undefined;
+}): MateCrewItem | null {
+  if (input.owner?.isViewer !== true) return null;
+  switch (input.status) {
+    case "none":
+      return { label: CREW_SET_UP_WORD, setUp: true };
+    case "applied":
+      return { label: "Crew", setUp: false };
+    case "off":
+    case null:
+      return null;
+  }
 }
 
 /**

@@ -3,7 +3,8 @@
  * its editors and its drafts for Fen, for the crew the tab read — the empty
  * state and *Set up a crew* while there is none, the section once one is
  * applied. The setup sheet stays mounted across Apply, so its progress reads
- * on as the crew arrives.
+ * on as the crew arrives; whether it is open is kept outside the tab
+ * (`crewTab.ts`), so the Mate's menu in the left menu can open it too.
  *
  * Three command states, so each outcome shows where it was pressed: the
  * section's presses, *Tell the crew*, and the editors.
@@ -23,6 +24,7 @@ import { useCallback, useState } from "react";
 
 import { requestConfirmDialog } from "../../../confirmDialog";
 import { buildThreadRouteParams } from "../../../threadRoutes";
+import { useCrewSetupSheet } from "../../../zerops/crew/crewTab";
 import { useCrewCommand } from "../../../zerops/crew/useCrewCommand";
 import { ZeropsAskDialog } from "../ZeropsAskDialog";
 import { CrewBriefSheet } from "./CrewBriefSheet";
@@ -68,7 +70,8 @@ export function CrewSectionHost({
   const tell = useCrewCommand(environmentId);
   const editorCommands = useCrewCommand(environmentId);
   const navigate = useNavigate();
-  const [setupOpen, setSetupOpen] = useState(false);
+  // Open here, or asked for by the Mate's menu in the left menu before the tab drew.
+  const [setupOpen, setSetupOpen] = useCrewSetupSheet(environmentId);
   const [editor, setEditor] = useState<Editor>(null);
   const [homeVersion, setHomeVersion] = useState(0);
   const [portsHost, setPortsHost] = useState<string | null>(null);

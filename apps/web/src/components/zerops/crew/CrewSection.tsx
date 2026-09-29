@@ -14,6 +14,7 @@ import {
   CREW_BOARD_COLUMNS,
   CREW_CREWMATES_WORD,
   CREW_LEAD_WORD,
+  CREW_SET_UP_WORD,
   crewAttentionSentence,
   crewLandedWord,
   crewLaneWord,
@@ -66,7 +67,7 @@ export function CrewSectionEmpty({ onSetUp }: { readonly onSetUp: () => void }) 
         Named crewmates, each with its own job and its own copy of the code. You review and land
         their work into your tree.
       </p>
-      <Pill label="Set up a crew" onClick={onSetUp} size="sm" />
+      <Pill label={CREW_SET_UP_WORD} onClick={onSetUp} size="sm" />
     </FlatCard>
   );
 }

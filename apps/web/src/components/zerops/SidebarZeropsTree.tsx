@@ -117,6 +117,7 @@ import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
+import { useCrewStatus } from "~/zerops/crew/useCrew";
 import { readCollapsedProjects, writeCollapsedProjects } from "~/zerops/collapsedProjects";
 import {
   movedBefore,
@@ -164,6 +165,7 @@ import {
 } from "./SidebarProductionChip.logic";
 import {
   changeMarkTone,
+  mateCrewItem,
   mateOwnerView,
   mateRowView,
   type MateRowReply,
@@ -428,6 +430,12 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
     | ((candidate: T, activity: ZeropsAgentActivity | undefined) => MateRowActions | undefined)
     | undefined;
   /**
+   * Opens a Mate's conversation on its Crew tab, with the setup sheet over it
+   * for *Set up a crew* — its menu's crew item (`mateCrewItem`). Absent, the
+   * menu offers none.
+   */
+  readonly onOpenCrew?: ((candidate: T, setUp: boolean) => void) | undefined;
+  /**
    * Whether the menu lists this Mate — the account menu's Mine / Everyone
    * (`shownInScope`). Absent, every Mate.
    */
@@ -502,6 +510,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   births = NO_BIRTHS,
   timestampFormat = "locale",
   getMateActions,
+  onOpenCrew,
   shown,
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
@@ -1184,6 +1193,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   activity={getActivity?.(item)}
                   appUrl={appUrl}
                   candidate={item}
+                  crew={getCrew?.(item)}
+                  onOpenCrew={onOpenCrew}
                   keys={mateKeys}
                   number={numbered <= 9 ? numbered : undefined}
                   numbers={altHeld}
@@ -2035,6 +2046,8 @@ function MateRow<T extends RosterCandidate>({
   owner,
   timestampFormat,
   actions,
+  crew,
+  onOpenCrew,
   appUrl,
   keys,
   number,
@@ -2049,6 +2062,10 @@ function MateRow<T extends RosterCandidate>({
   readonly timestampFormat: TimestampFormat;
   /** Its menu's verbs; absent, the row carries no menu (a harness, a test). */
   readonly actions?: MateRowActions | undefined;
+  /** Its crew as a fixture draws it (a harness); absent, its feed once connected. */
+  readonly crew?: SidebarCrewRead | undefined;
+  /** Opens it on its Crew tab; absent, its menu offers no crew. */
+  readonly onOpenCrew?: ((candidate: T, setUp: boolean) => void) | undefined;
   /** Its app — its pair's stage route — where it has one. */
   readonly appUrl?: string | undefined;
   /** j and k, handed back to the tree. */
@@ -2075,6 +2092,17 @@ function MateRow<T extends RosterCandidate>({
     asked: view.ask !== undefined,
   });
   const known = live !== undefined && live.remembered !== true;
+  // Its menu's door to its crew (`mateCrewItem`): whether crew mode is on and
+  // a crew applied — a fixture's, or its feed's once it is connected.
+  const liveCrewStatus = useCrewStatus(
+    onOpenCrew !== undefined && crew === undefined && candidate.group === "connected"
+      ? (candidate.environmentId ?? null)
+      : null,
+  );
+  const crewItem =
+    onOpenCrew === undefined
+      ? null
+      : mateCrewItem({ status: crew === undefined ? liveCrewStatus : crew.status, owner });
   // A new ask rises into the row's second line as the person sets it; the
   // ask this browser remembered gives way to the one read without a rise.
   const askChanged = useChangedSinceShown(view.ask, known);
@@ -2308,6 +2336,17 @@ function MateRow<T extends RosterCandidate>({
             actions={actions}
             appUrl={appUrl}
             at={menuAt}
+            crew={
+              crewItem === null || onOpenCrew === undefined
+                ? undefined
+                : {
+                    label: crewItem.label,
+                    onSelect: () => {
+                      setMenuOpen(false);
+                      onOpenCrew(candidate, crewItem.setUp);
+                    },
+                  }
+            }
             name={name}
             onOpenChange={(next) => {
               setMenuOpen(next);

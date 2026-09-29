@@ -10,10 +10,15 @@
  * screen, which owns the connect flow — better than a row that looks
  * clickable and quietly does nothing. Whatever its socket is doing, a
  * registered one opens: the route says what the Mate is up to.
+ *
+ * `then` is told which conversation opened — its thread, or the one a Mate
+ * with none starts — for what the caller opens beside it (its menu's *Crew*,
+ * the Crew tab). Nothing is told where the projects screen takes over.
  */
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback } from "react";
 
@@ -22,14 +27,17 @@ import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { useProjects, useThreadShells } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
 
-export function useOpenMate(): (candidate: ZeropsCandidate) => void {
+export function useOpenMate(): (
+  candidate: ZeropsCandidate,
+  then?: (conversation: ScopedThreadRef) => void,
+) => void {
   const router = useRouter();
   const { linkTarget } = useEnvironmentLinks();
   const threads = useThreadShells();
   const projects = useProjects();
   const handleNewThread = useNewThreadHandler();
   return useCallback(
-    (candidate: ZeropsCandidate) => {
+    (candidate: ZeropsCandidate, then?: (conversation: ScopedThreadRef) => void) => {
       const environmentId = linkTarget(candidate);
       if (environmentId === undefined) {
         void router.navigate({ to: "/zerops" });
@@ -39,15 +47,20 @@ export function useOpenMate(): (candidate: ZeropsCandidate) => void {
         threads.filter((thread) => thread.environmentId === environmentId),
       );
       if (primary !== undefined) {
+        const conversation = scopeThreadRef(environmentId, primary.id);
+        // Before the route changes, so the conversation paints with it.
+        then?.(conversation);
         void router.navigate({
           to: "/$environmentId/$threadId",
-          params: buildThreadRouteParams(scopeThreadRef(environmentId, primary.id)),
+          params: buildThreadRouteParams(conversation),
         });
         return;
       }
       const project = projects.find((entry) => entry.environmentId === environmentId);
       if (project !== undefined) {
-        void handleNewThread(scopeProjectRef(project.environmentId, project.id));
+        void handleNewThread(scopeProjectRef(project.environmentId, project.id)).then((opened) => {
+          if (opened !== null) then?.(scopeThreadRef(project.environmentId, opened.threadId));
+        });
         return;
       }
       void router.navigate({ to: "/" });

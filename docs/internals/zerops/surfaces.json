@@ -1213,6 +1213,10 @@
         {
           "kind": "right-panel-tab",
           "value": "Crew (shortcut C), at its top, while the crew feed says none or applied"
+        },
+        {
+          "kind": "sidebar-item",
+          "value": "A Mate's own menu in the left menu: Crew, on the viewer's own Mate with a crew"
         }
       ],
       "clients": {
@@ -1330,12 +1334,17 @@
         "apps/web/src/components/zerops/crew/CrewRunDialog.tsx",
         "apps/web/src/components/zerops/crew/CrewRunDialog.logic.ts",
         "apps/web/src/zerops/crew/useCrewHome.ts",
-        "apps/web/src/zerops/crew/crewHome.ts"
+        "apps/web/src/zerops/crew/crewHome.ts",
+        "apps/web/src/zerops/crew/crewTab.ts"
       ],
       "entryPoints": [
         {
           "kind": "overlay",
           "value": "Crew section: Set up a crew, the brief's Edit, a crewmate's Edit job, + Add crewmate, + Add lead"
+        },
+        {
+          "kind": "overlay",
+          "value": "A Mate's own menu in the left menu: Set up a crew, on the viewer's own Mate with crew mode on and no crew"
         },
         {
           "kind": "overlay",
@@ -1408,7 +1417,8 @@
         "apps/web/src/components/zerops/crew/CrewEditors.logic.test.ts",
         "apps/web/src/components/zerops/crew/CrewRunDialog.test.tsx",
         "apps/web/src/components/zerops/crew/CrewRunDialog.logic.test.ts",
-        "apps/web/src/zerops/crew/crewHome.test.ts"
+        "apps/web/src/zerops/crew/crewHome.test.ts",
+        "apps/web/src/zerops/crew/crewTab.test.ts"
       ],
       "captures": []
     },

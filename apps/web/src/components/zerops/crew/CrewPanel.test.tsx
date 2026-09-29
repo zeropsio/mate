@@ -6,7 +6,7 @@ import {
 } from "@t3tools/client-runtime/zerops/projections/crew";
 import { EnvironmentId, ThreadId, type CrewSnapshot } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { CrewRead } from "~/zerops/crew/useCrew";
 
@@ -34,6 +34,33 @@ vi.mock("~/zerops/crew/useCrewCommand", () => ({
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => async () => undefined,
   useRouter: () => ({ navigate: async () => undefined }),
+}));
+// Which Mates' setup sheets the left menu asked for (`crewTab.ts`).
+const setupAsks = vi.hoisted(() => ({
+  open: new Set<string>(),
+  setOpen: vi.fn(),
+}));
+vi.mock("~/zerops/crew/crewTab", () => ({
+  useCrewSetupSheet: (environmentId: string) =>
+    [
+      setupAsks.open.has(environmentId),
+      (open: boolean) => setupAsks.setOpen(environmentId, open),
+    ] as const,
+}));
+// The setup sheet as the tab mounts it: whether it is open, and its way to close.
+const setupSheet = vi.hoisted(() => ({
+  last: undefined as
+    | { readonly open: boolean; readonly onOpenChange: (open: boolean) => void }
+    | undefined,
+}));
+vi.mock("./CrewSetupSheet", () => ({
+  CrewSetupSheet: (props: {
+    readonly open: boolean;
+    readonly onOpenChange: (open: boolean) => void;
+  }) => {
+    setupSheet.last = props;
+    return <div data-crew-setup-open={String(props.open)} />;
+  },
 }));
 
 const ENVIRONMENT = EnvironmentId.make("env-crew");
@@ -145,5 +172,30 @@ describe("CrewPanelBody — the Crew tab, the crew's one home", () => {
 
   it("keeps Review plan, which brings the board's plan into view", () => {
     expect(render(readOf(APPLIED))).toContain(">Review plan<");
+  });
+});
+
+describe("CrewPanelBody — Set up a crew asked for from the left menu", () => {
+  beforeEach(() => {
+    setupAsks.open = new Set();
+    setupAsks.setOpen.mockClear();
+  });
+
+  it("opens the setup sheet as the tab draws the Mate's crew", () => {
+    expect(render(readOf(NONE))).toContain('data-crew-setup-open="false"');
+    setupAsks.open = new Set([ENVIRONMENT]);
+    expect(render(readOf(NONE))).toContain('data-crew-setup-open="true"');
+  });
+
+  it("opens no other Mate's sheet", () => {
+    setupAsks.open = new Set([EnvironmentId.make("env-other")]);
+    expect(render(readOf(NONE))).toContain('data-crew-setup-open="false"');
+  });
+
+  it("puts the ask away as the sheet closes", () => {
+    setupAsks.open = new Set([ENVIRONMENT]);
+    render(readOf(NONE));
+    setupSheet.last?.onOpenChange(false);
+    expect(setupAsks.setOpen).toHaveBeenCalledExactlyOnceWith(ENVIRONMENT, false);
   });
 });

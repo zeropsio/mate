@@ -410,6 +410,12 @@ export function crewApplyWord(mate: Pick<Crewmate, "displayName" | "lane">): str
 export const crewLandedWord = (count: number): string => `Landed, not delivered · ${count}`;
 
 /**
+ * *Set up a crew*, one press wherever it stands: the Crew tab's for a Mate
+ * without a crew, the sheet it opens, and the Mate's own menu in the left menu.
+ */
+export const CREW_SET_UP_WORD = "Set up a crew";
+
+/**
  * Why a crewmate that changes files has no service to pick: the Mate has not
  * mounted a dev service yet, which its develop flow does first.
  */
