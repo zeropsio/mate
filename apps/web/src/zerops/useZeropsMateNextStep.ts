@@ -30,17 +30,25 @@ import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsMateDirectory } from "./useZeropsMates";
 
 export type ZeropsMateNextStep =
+  /**
+   * Gitea has not answered for this Mate's project yet — nor, until it is
+   * known, whose project this conversation is: the strip the conversation
+   * showed last stands in (`composerTopMemory.ts`).
+   */
+  | { readonly kind: "unknown" }
+  /** Gitea answered, and nothing of this Mate's waits on the person. */
   | { readonly kind: "none" }
   | {
       readonly kind: "review";
       readonly step: Extract<MateNextStep, { kind: "review" }>;
-      /** Whose change it is: the Mate's face, in its tint. */
-      readonly tint: MateTintId;
+      /** Whose change it is: the Mate's face, in its tint, once the Mate is known. */
+      readonly tint: MateTintId | undefined;
       /** What Review opens. */
       readonly target: Extract<ReviewTarget, { kind: "change" }>;
     };
 
 const NOTHING: ZeropsMateNextStep = { kind: "none" };
+const UNKNOWN: ZeropsMateNextStep = { kind: "unknown" };
 
 export function useZeropsMateNextStep(threadRef: ScopedThreadRef | null): ZeropsMateNextStep {
   const flow = useZeropsProjectFlowOptional();
@@ -52,18 +60,19 @@ export function useZeropsMateNextStep(threadRef: ScopedThreadRef | null): Zerops
   const groupId = readZeropsGroupTags(project?.tagList ?? []).groupId;
   const projectFlow = groupId === undefined ? undefined : flow?.flows.get(groupId);
 
+  if (threadRef === null) return NOTHING;
+  if (groupId === undefined || projectFlow?.changesKnown !== true) return UNKNOWN;
   const step = mateNextStep({
-    pullRequests: projectFlow?.pullRequests,
+    pullRequests: projectFlow.pullRequests,
     mateProjectId: projectId,
     mateName: projectId === undefined ? undefined : flow?.mateNames.get(projectId),
   });
-
-  if (threadRef === null || groupId === undefined || step.kind === "none") return NOTHING;
+  if (step.kind === "none") return NOTHING;
   const mate = zeropsMateAt(mates, threadRef.environmentId);
   return {
     kind: "review",
     step,
-    tint: mate.kind === "mate" ? mate.mate.tint : "slate",
+    tint: mate.kind === "mate" ? mate.mate.tint : undefined,
     target: {
       kind: "change",
       groupId,
