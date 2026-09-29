@@ -111,8 +111,9 @@ export interface ZeropsAgentActivity {
   /** The conversation's scoped key — what its unsent draft is kept under. */
   readonly threadKey: string;
   /**
-   * The last task as the person asked it, whatever the row's subject says
-   * meanwhile — a peek's "You asked" while the row names the step it is on.
+   * The last task as the person asked it, whatever the subject says
+   * meanwhile — the menu row's second line while the subject names the step
+   * the Mate is on.
    */
   readonly task: string | undefined;
   /**
