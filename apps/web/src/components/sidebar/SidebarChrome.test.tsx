@@ -81,7 +81,7 @@ vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   }),
 }));
 
-import { SidebarChromeHeader, SidebarUtilityMenu } from "./SidebarChrome";
+import { SidebarChromeHeader, SidebarCornerMark, SidebarUtilityMenu } from "./SidebarChrome";
 
 describe("SidebarChromeHeader", () => {
   it("renders the live mark alone, the product named once, without T3 branding", () => {
@@ -131,6 +131,22 @@ describe("SidebarChromeHeader", () => {
     // Its left inset: at least a rem, past the window's own controls.
     expect(markup).toContain("ml-[max(var(--workspace-controls-left),1rem)]");
     expect((row - markHeight) / 2).toBe(16);
+  });
+
+  // Closed, the menu leaves its mark in the window's corner: a link home,
+  // centred in the top bar's row.
+  it("stands the closed menu's corner mark in the top bar's row, centred", () => {
+    const markup = renderToStaticMarkup(<SidebarCornerMark />);
+    const row = /<div class="([^"]*)" data-sidebar-control=""/u.exec(markup)?.[1]?.split(" ") ?? [];
+    expect(row).toEqual(
+      expect.arrayContaining([
+        "top-[var(--workspace-controls-top)]",
+        "h-[var(--workspace-topbar-height)]",
+        "items-center",
+      ]),
+    );
+    expect(markup).toContain(`aria-label="${APP_BASE_NAME}"`);
+    expect(markup).toContain('data-mate-mark="live"');
   });
 
   it("ends the logo row in the jump box's way in, after the waiting faces' slot", () => {

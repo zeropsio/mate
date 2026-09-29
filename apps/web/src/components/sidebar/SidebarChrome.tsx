@@ -101,6 +101,32 @@ function SidebarBrand() {
   );
 }
 
+/**
+ * The mark in the window's corner while the menu is closed: a link home,
+ * live, where the open menu's logo row holds its own (`SidebarBrand`).
+ */
+export function SidebarCornerMark() {
+  return (
+    // The mark is centred in a box the size of a titlebar control, which
+    // insets it by half the difference — the same pixel the open panel's
+    // lockup starts from, so closing the panel does not move it.
+    <div
+      className="pointer-events-none fixed left-[var(--workspace-controls-left)] top-[var(--workspace-controls-top)] z-50 flex h-[var(--workspace-topbar-height)] items-center"
+      data-sidebar-control=""
+    >
+      <Link
+        aria-label={APP_BASE_NAME}
+        className="pointer-events-auto grid size-[var(--workspace-titlebar-control-size)] place-items-center rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2 [-webkit-app-region:no-drag]"
+        to="/"
+      >
+        {/* Live, as the open panel's lockup is: the same mark in the same
+            corner, so closing the panel does not still it. */}
+        <MateMark playful className="h-6 w-auto" />
+      </Link>
+    </div>
+  );
+}
+
 function SidebarUtilityItem({
   active = false,
   className,
