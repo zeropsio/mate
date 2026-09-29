@@ -133,6 +133,7 @@ export function ZeropsPanel({
       : {
           name: mateIdentity.name,
           tint: mateIdentity.tint,
+          shape: mateIdentity.shape,
           // Asleep until the socket is up, as the lists draw it: a Mate is
           // known from its project's tags and its container's origin before
           // there is anything to resolve — see `ChatHeader`.

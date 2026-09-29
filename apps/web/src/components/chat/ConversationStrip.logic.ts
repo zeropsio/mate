@@ -26,7 +26,7 @@ import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environ
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { ThreadId } from "@t3tools/contracts";
-import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
+import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
   mateMarkStateForThreadStatus,
   resolveThreadStatus,
@@ -87,6 +87,8 @@ export function replacementChatToPin(
 export interface LineMate {
   readonly name: string;
   readonly tint: MateTintId;
+  /** The shape its person picked; its tint's own when absent. */
+  readonly shape?: MateShapeId | undefined;
   /** Its face in the chat of its own on screen, else in its main chat. */
   readonly face: MateMarkState;
   /** One of its own chats is on screen — or one being started: it stands on the band. */
@@ -102,7 +104,12 @@ export interface LineMate {
 }
 
 export function lineMate(input: {
-  readonly mate: { readonly name: string; readonly tint: MateTintId; readonly connected: boolean };
+  readonly mate: {
+    readonly name: string;
+    readonly tint: MateTintId;
+    readonly shape?: MateShapeId | undefined;
+    readonly connected: boolean;
+  };
   /** The Mate's chats, main first (`mateChats`). */
   readonly chats: ReadonlyArray<EnvironmentThreadShell>;
   /** The chat on screen; `null` for one being started. */
@@ -121,6 +128,7 @@ export function lineMate(input: {
   return {
     name: mate.name,
     tint: mate.tint,
+    shape: mate.shape,
     face: mateFaceFor(
       mate.connected,
       status === null ? undefined : { face: mateMarkStateForThreadStatus(status.kind) },
@@ -129,6 +137,27 @@ export function lineMate(input: {
     threadId: chats[0]?.id ?? null,
     tooltip: open ? input.subject : mateOwnChatWord(mate.name),
   };
+}
+
+/**
+ * What the Mate's press says after its name, and on hover (the owner,
+ * 2026-09-29: "with a single mate it doesnt have to be in tooltip"). A Mate
+ * with no crew has the line to itself: its chat's subject stands on it, and
+ * is its hover only where the line cuts it off. With a crew the faces need
+ * the room, and the subject — or, on a crewmate's chat, that a press opens
+ * the Mate's own — stays the name's hover.
+ */
+export function mateWords(
+  mate: Pick<LineMate, "open" | "tooltip">,
+  line: {
+    /** A crew stands on the line. */
+    readonly crew: boolean;
+    /** The subject, written on the line, ends in an ellipsis. */
+    readonly cut: boolean;
+  },
+): { readonly subject: string | null; readonly hover: string | null } {
+  if (line.crew || !mate.open) return { subject: null, hover: mate.tooltip };
+  return { subject: mate.tooltip, hover: line.cut ? mate.tooltip : null };
 }
 
 /**
@@ -359,6 +388,85 @@ export function foldCrew(
     folded: crew.filter((entry) => !shown.has(entry)),
     more: used(kept, true) <= room.width,
   };
+}
+
+/**
+ * The Mate's own place on the band. No crewmate's handle (`[a-z0-9-]`) is
+ * ever this, so one key names either.
+ */
+export const MATE_SEAT = "@mate";
+
+/** The line as its motion reads it: where the band stands, and the crew in its order. */
+export interface LineStage {
+  /** The Mate (`MATE_SEAT`) or the crewmate whose chat is on screen; `null` for a Mate with no crew. */
+  readonly band: string | null;
+  /** The crew's handles, the lead first; `null` for a Mate with no crew. */
+  readonly crew: ReadonlyArray<string> | null;
+}
+
+export function lineStage(
+  mate: Pick<LineMate, "open">,
+  crew: ReadonlyArray<Pick<LineCrewmate, "handle" | "open">> | null,
+): LineStage {
+  if (crew === null) return { band: null, crew: null };
+  const open = crew.find((entry) => entry.open);
+  return {
+    band: mate.open || open === undefined ? MATE_SEAT : open.handle,
+    crew: crew.map((entry) => entry.handle),
+  };
+}
+
+function sameCrew(
+  left: ReadonlyArray<string> | null,
+  right: ReadonlyArray<string> | null,
+): boolean {
+  if (left === null || right === null) return left === right;
+  return left.length === right.length && left.every((handle, index) => handle === right[index]);
+}
+
+export function sameLineStage(left: LineStage, right: LineStage): boolean {
+  return left.band === right.band && sameCrew(left.crew, right.crew);
+}
+
+/**
+ * How the line goes from one drawing to the next (the owner, 2026-09-29:
+ * "why isn't the transition between these ten time more smooth, animated,
+ * beautiful?"). The band travels — the faces between sliding, the name left
+ * folding back into its face and the one opened opening out of its own —
+ * only when the conversation on screen changed between two drawings of the
+ * same crew: a switch the person made, on the line, in the menu or back
+ * through history, since nothing else changes it. A first paint, a reload,
+ * the crew arriving and a crewmate added or removed are placed where they
+ * stand. With reduced motion what would travel cross-fades instead.
+ */
+export function lineMotion(
+  previous: LineStage | null,
+  next: LineStage,
+  options: { readonly reducedMotion: boolean },
+): "travel" | "fade" | "place" {
+  if (previous === null || previous.band === null || next.band === null) return "place";
+  if (previous.band === next.band || !sameCrew(previous.crew, next.crew)) return "place";
+  return options.reducedMotion ? "fade" : "travel";
+}
+
+/**
+ * The crewmates whose names are folding back into their faces after a move:
+ * the one whose chat was left — the Mate's name never folds — and any still
+ * folding from a press before, less the one opened again. A line placed has
+ * none.
+ */
+export function lineLeaving(
+  previous: { readonly stage: LineStage; readonly leaving: ReadonlyArray<string> },
+  next: LineStage,
+  motion: "travel" | "fade" | "place",
+): ReadonlyArray<string> {
+  if (motion === "place") return [];
+  const left = previous.stage.band;
+  const folding =
+    left === null || left === MATE_SEAT || left === next.band
+      ? previous.leaving
+      : [...previous.leaving.filter((handle) => handle !== left), left];
+  return folding.filter((handle) => handle !== next.band);
 }
 
 /**

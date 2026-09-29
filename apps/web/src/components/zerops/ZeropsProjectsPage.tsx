@@ -108,6 +108,8 @@ import {
   assignCandidateMateTints,
   botDisplayName,
   buildZeropsGroupTree,
+  mateShapeOf,
+  newMateTint,
   toolProjectName,
   flowVerbKey,
   flowVerbLabel,
@@ -943,6 +945,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     organizationStatus,
     selectOrganization,
     status,
+    user,
   } = useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const inventory = useZeropsInventory();
@@ -1094,7 +1097,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // them is a platform write the platform would refuse from the wrong role.
   const verbsOf = (candidate: ZeropsCandidate): MateVerbs =>
     viewer === null
-      ? { open: true, rename: true, tag: true, move: true, assign: false }
+      ? { open: true, rename: true, tag: true, move: true, delete: false, assign: false }
       : resolveMateVerbs({ project: candidate.project, viewer });
   // The member list is read when a row would use a name — a Mate this person
   // may see and not open — and when they may hand a Mate over and so need
@@ -2025,6 +2028,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         recipe: choice.recipe,
         withAgent: choice.withAgent,
         ...(choice.botName === undefined ? {} : { botName: choice.botName }),
+        ...(user?.id ? { standUpBy: user.id } : {}),
+        ...(choice.face === undefined ? {} : { face: choice.face }),
       });
       if (!isCurrent()) return;
       if (!plan.ok) {
@@ -2219,6 +2224,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       client,
       giteaOrigin,
       giteaProjectId,
+      user?.id,
     ],
   );
 
@@ -2590,6 +2596,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       ) : undefined;
     const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
     const tint = tints.get(candidate.project.id) ?? "slate";
+    const shape = mateShapeOf(candidate.project.tagList, tint);
     // What the menu asked of this Mate's server — a check, an update — is
     // answered on its card, over its subject, until it settles: the menu
     // closes on the click, and the update restarts the Mate, so the card is
@@ -2620,6 +2627,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               name={name}
               onSelect={select}
               preview={preview}
+              shape={shape}
               snippet={live?.subject === undefined ? undefined : live.snippet}
               time={live?.subject === undefined ? undefined : formatRelativeTimeLabel(live.at)}
               tint={tint}
@@ -2639,6 +2647,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         name={name}
         onSelect={select}
         preview={preview}
+        shape={shape}
         tint={tint}
       />
     );
@@ -3045,13 +3054,17 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         renderGroupMenu={renderGroupMenu}
         renderGroupRows={renderGroupRows}
         renderMate={renderMate}
-        renderMateFace={(candidate: ZeropsCandidatePresentation, size) => (
-          <MateFace
-            size={size}
-            state={mateFace(candidate)}
-            tint={tints.get(candidate.project.id) ?? "slate"}
-          />
-        )}
+        renderMateFace={(candidate: ZeropsCandidatePresentation, size) => {
+          const tint = tints.get(candidate.project.id) ?? "slate";
+          return (
+            <MateFace
+              shape={mateShapeOf(candidate.project.tagList, tint)}
+              size={size}
+              state={mateFace(candidate)}
+              tint={tint}
+            />
+          );
+        }}
         renderNextStep={renderNextStep}
         renderPullRequest={pullRequestRowOf}
         renderReleaseVerb={({ group, flow }) => {
@@ -3117,6 +3130,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               taken: requestedGroup.environments.map(({ item }) => item.project.name),
             })
           }
+          defaultTintFor={(name) => newMateTint(candidates, name)}
           defaultWithAgent={defaultAgentForRole(creationRequest.role)}
           groupName={requestedGroup.group.name}
           key={`${creationRequest.groupId}:${creationRequest.role}`}

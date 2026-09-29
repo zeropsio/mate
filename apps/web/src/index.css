@@ -2609,7 +2609,16 @@ code {
    paints past its box — its row keeps layout and style containment, not
    paint — and lays a strip of its ground and its sides across the joint, so
    no edge falls in the joint's pixel. (An outer shadow is clipped at the very
-   edge it had to cover; a strip beneath went under the pane's own ground.) */
+   edge it had to cover; a strip beneath went under the pane's own ground.)
+   The strip hangs off the slice's row, whose box is the tray's border box: hung
+   off the bordered tray a pixel outside its padding box, it snapped to another
+   device pixel than the tray's own sides at a fractional pixel ratio. And a
+   side is drawn one of two ways: along its corners' curve where the box has a
+   radius, snapped to whole device pixels where it has none — at the owner's
+   1.58× the top slice's side took one device column and the middle slice's
+   two, and the side jogged at every joint (2026-09-29). So every slice and
+   strip takes a radius, the middle ones one nobody can see, and all their
+   sides are drawn the same way. */
 .timeline-legend-list
   .legend-list-content-container
   > div
@@ -2617,14 +2626,15 @@ code {
   contain: layout style !important;
 }
 
-:is([data-card-slice="top"], [data-card-slice="middle"]) > div {
+:is([data-card-slice="top"], [data-card-slice="middle"]) {
   position: relative;
 }
 
-:is([data-card-slice="top"], [data-card-slice="middle"]) > div::after {
+:is([data-card-slice="top"], [data-card-slice="middle"])::after {
   content: "";
   position: absolute;
-  inset-inline: -1px;
+  inset-inline: 0;
+  border-radius: 0.05px;
   bottom: -1.5px;
   height: 3px;
   border-inline: 1px solid var(--run-tray-ring);
@@ -2893,6 +2903,95 @@ code {
   }
 }
 
+/* ==== Pass 18 · the New Mate dialog ==== */
+
+/* The face being made. A change crossfades in one cell: the face before fades
+   out under the new one, which settles from 92 %, so a colour or a shape
+   picked, or a name typed, turns the same somebody into someone else rather
+   than swapping a picture. The first paint is still; reduced motion keeps
+   only the fade. The face that leaves rests invisible, so one whose fade
+   never ran is gone all the same. */
+.new-mate-face {
+  display: grid;
+  flex-shrink: 0;
+}
+
+.new-mate-face > * {
+  grid-area: 1 / 1;
+}
+
+[data-new-mate-face="out"] {
+  opacity: 0;
+  animation: new-mate-face-out 160ms var(--ease-out-strong);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-new-mate-face="in"] {
+    animation: new-mate-face-in 220ms var(--ease-out-strong);
+  }
+}
+
+@keyframes new-mate-face-out {
+  from {
+    opacity: 1;
+  }
+}
+
+@keyframes new-mate-face-in {
+  from {
+    scale: 0.92;
+  }
+}
+
+/* A colour or a shape to pick: a 36 px button holding its mark in the tint it
+   is given (`--new-mate-tint`). The one picked wears a ring of that tint, its
+   mark's own outline a gap out, so picking never changes a size; the pointer
+   over another shows the ring faintly. Pressed, it gives a little. */
+.new-mate-option {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  outline: none;
+  cursor: pointer;
+}
+
+.new-mate-mark {
+  fill: var(--new-mate-tint);
+}
+
+.new-mate-ring {
+  fill: none;
+  stroke: var(--new-mate-tint);
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.new-mate-option[data-checked] .new-mate-ring {
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .new-mate-option:not([data-checked]):hover .new-mate-ring {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .new-mate-option {
+    transition: scale 150ms var(--ease-out-strong);
+  }
+
+  .new-mate-option:active {
+    scale: 0.92;
+  }
+}
+
+/* ==== end of the New Mate dialog ==== */
+
 /* ==== Pass 16 · the menu's rows ==== */
 
 @layer components {
@@ -3130,14 +3229,13 @@ code {
 }
 
 /* A heading that folds lights under the pointer, as a Mate's row does: a band
-   on the list's own inset, but fainter than a row's hover — pressing it folds
-   the project, it opens nothing. Its corners run parallel to the production
-   chip's inside it (12 + the 4 px around the chip, S4), and a reveal's ring
-   follows them. Lit while its ⋯ or its chip's menu is open; the chip and the
-   verbs keep their own, stronger hover over it. The band is drawn under the
-   heading's contents rather than as its fill, so it can reach past its box:
-   behind every row of the list, which is its own stacking context, as the
-   selected band is. */
+   10 px from either side of the menu, fainter than a row's hover — pressing
+   it folds the project, it opens nothing. Its corners run parallel to its
+   chips' (10 + the 6 px around them, S4), and a reveal's ring follows them.
+   Lit while its ⋯ or a chip's menu is open; the chips and the verbs keep
+   their own, stronger hover over it. The band is drawn under the heading's
+   contents rather than as its fill: behind every row of the list, which is
+   its own stacking context, as the selected band is. */
 .zerops-project-heading {
   border-radius: 16px;
 }
@@ -3150,15 +3248,6 @@ code {
   transition: background-color 150ms ease;
   content: "";
   pointer-events: none;
-}
-
-/* In the Custom order the grip stands in the gutter before the name
-   (`ProjectGrip`), and it belongs to the heading (the owner, 2026-09-29:
-   "handle out of hover bg"): the band reaches the grip's own start, 8 px
-   toward the menu's edge, and the name keeps its edge. The grip shows
-   whenever the band does. */
-.zerops-project-heading:has([data-zerops-grip])::before {
-  inset-inline-start: -8px;
 }
 
 .zerops-project-heading:has([data-popup-open])::before {
@@ -3210,18 +3299,20 @@ code {
   line-height: 1;
 }
 
-/* The production chip on a project's heading (M2): a quiet 24 px pill with a
-   7 px dot, the stop's word, what it serves in mono and anything more in the
-   muted ink — amber while a release did not go through, red while it is down. */
+/* A chip on a project's heading (M2): the stop's word alone — prod, stage —
+   12 · 500 in a quiet 20 px pill, 6 px inside the heading's band. Its whole ground and ink say what is wrong: amber
+   while the last release or deploy did not go through and the old one still
+   serves, red while it is down (S3), hollow while it is stopped on purpose.
+   Every tone keeps the one box, so the heading never moves when a tone
+   changes, and a change cross-fades. */
 .zerops-envchip {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 6px;
-  height: 24px;
-  max-width: 100%;
-  padding: 0 9px 0 8px;
-  border-radius: 12px;
+  justify-content: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
   background-color: color-mix(in oklab, var(--sidebar-foreground) 5.5%, transparent);
   color: var(--muted-foreground);
   font-size: 12px;
@@ -3230,69 +3321,60 @@ code {
   white-space: nowrap;
   cursor: pointer;
   outline: none;
-  transition: background-color 150ms ease;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .zerops-envchip:hover,
 .zerops-envchip[data-popup-open] {
   background-color: color-mix(in oklab, var(--sidebar-foreground) 9%, transparent);
+  color: var(--sidebar-foreground);
 }
 
 .zerops-envchip:focus-visible {
   box-shadow: 0 0 0 2px var(--ring);
 }
 
-.zerops-envchip-version {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: color-mix(in oklab, var(--sidebar-foreground) 76%, transparent);
-  font-family: var(--font-mono);
+.zerops-envchip[data-tone="off"] {
+  background-color: transparent;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 18%, transparent);
 }
 
+.zerops-envchip[data-tone="off"]:is(:hover, [data-popup-open]) {
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 5.5%, transparent);
+}
+
+.zerops-envchip[data-tone="off"]:focus-visible {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 18%, transparent),
+    0 0 0 2px var(--ring);
+}
+
+/* Amber and red take a strong ground, and their ink leans toward the
+   foreground so the word reads at 4.5:1 or better on it in either theme. */
 .zerops-envchip[data-tone="amber"] {
-  background-color: color-mix(in oklab, var(--zerops-status-attention) 16%, transparent);
-  color: var(--zerops-status-attention-text);
+  background-color: color-mix(in oklab, var(--zerops-status-attention) 34%, transparent);
+  color: color-mix(in oklab, var(--zerops-status-attention-text) 76%, var(--foreground));
 }
 
 .zerops-envchip[data-tone="amber"]:is(:hover, [data-popup-open]) {
-  background-color: color-mix(in oklab, var(--zerops-status-attention) 24%, transparent);
-}
-
-.zerops-envchip[data-tone="amber"] .zerops-envchip-version {
-  color: var(--zerops-status-attention-text);
+  background-color: color-mix(in oklab, var(--zerops-status-attention) 42%, transparent);
 }
 
 .zerops-envchip[data-tone="red"] {
-  background-color: color-mix(in oklab, var(--zerops-status-failed) 12%, transparent);
-  color: var(--zerops-status-failed-text);
+  background-color: color-mix(in oklab, var(--zerops-status-failed) 26%, transparent);
+  color: color-mix(in oklab, var(--zerops-status-failed-text) 80%, var(--foreground));
 }
 
 .zerops-envchip[data-tone="red"]:is(:hover, [data-popup-open]) {
-  background-color: color-mix(in oklab, var(--zerops-status-failed) 18%, transparent);
+  background-color: color-mix(in oklab, var(--zerops-status-failed) 34%, transparent);
 }
 
-.zerops-envchip[data-tone="red"] .zerops-envchip-label {
-  font-weight: 600;
-}
-
-/* A narrow menu keeps the heading's name: the chip's extra words go first,
-   then what it serves — its tone, dot and word stay, and its menu says the
-   rest. At 435 all of it shows, at 304 the words go, at 256 the version too. */
+/* The heading's end edge measures its room: a narrow menu drops the + first. */
 [data-zerops-surface="sidebar-project"] {
   container-type: inline-size;
-}
-
-@container (width < 340px) {
-  .zerops-envchip-extra {
-    display: none;
-  }
-}
-
-@container (width < 260px) {
-  .zerops-envchip-version {
-    display: none;
-  }
 }
 
 /* The heading's + gives its room to the name under 300 px; Add a Mate is the
@@ -3681,6 +3763,7 @@ code {
    (the plan's K11 and S5). */
 :root {
   --run-tray: oklch(0.968 0.004 255.5);
+  --run-tray-ring: color-mix(in oklab, var(--foreground) 7%, transparent);
   @variant dark {
     --run-tray: oklch(0.19 0.007 180);
   }
@@ -3691,32 +3774,35 @@ code {
 }
 
 .run-tray {
-  --run-tray-ring: color-mix(in oklab, var(--foreground) 7%, transparent);
   background: var(--run-tray);
   border-color: var(--run-tray-ring);
   border-style: solid;
   border-width: 0 1px;
 }
 
-/* Corners run parallel (S4): the tray's 30 px is its bubbles' 18 px plus the
-   12 px between them — 11 px of padding inside the 1 px ring. */
+/* Corners run parallel (S4): the tray's 34 px is its bubbles' 18 px plus the
+   16 px between them — 15 px of padding inside the 1 px ring. At 12 the
+   bubbles pressed on its edge, the top most of all (the owner, 2026-09-29:
+   "some spacing, especially at the top is pretty poor"). */
 .run-tray-top {
   border-top-width: 1px;
-  border-top-left-radius: 30px;
-  border-top-right-radius: 30px;
-  padding-top: 11px;
-  padding-inline: 11px;
+  border-top-left-radius: 34px;
+  border-top-right-radius: 34px;
+  padding-top: 15px;
+  padding-inline: 15px;
 }
 
 .run-tray-middle {
-  padding-inline: 11px;
+  /* Drawn as the rounded slices are (the joint's note above). */
+  border-radius: 0.05px;
+  padding-inline: 15px;
 }
 
 .run-tray-bottom {
-  height: 12px;
+  height: 16px;
   border-bottom-width: 1px;
-  border-bottom-left-radius: 30px;
-  border-bottom-right-radius: 30px;
+  border-bottom-left-radius: 34px;
+  border-bottom-right-radius: 34px;
 }
 
 /* A line with nothing under it is no card (the owner, 2026-09-29: "shape of
@@ -3724,7 +3810,7 @@ code {
    itself in the card's geometry, and opening its work draws the card around
    it — the line never moves. */
 .run-tray-alone,
-[data-card-slice] > .run-tray-alone::after {
+[data-card-slice]:has(> .run-tray-alone)::after {
   background: transparent;
   border-color: transparent;
 }
@@ -3738,25 +3824,31 @@ code {
 
 /* The now line, the card's foot (K10): the face in the card's 28 px column,
    what the Mate is doing in words, the run's one clock on the right edge
-   (K3) in ink (S3). A hairline sets it off the chat above it, unless it is
-   all the card holds. */
+   (K3) in ink (S3). A hairline 16 px under the chat sets it off, and its words
+   stand 20 px from that hairline and 20 px from whatever is under them (4 px
+   of its own, then the card's 16) — centred in their band (the owner,
+   2026-09-29: "alignmen of the bot row is pretty stupid"). Heading the card —
+   closed to its summary, or nothing above it yet — it has no hairline, and
+   its words stand 20 px under the card's top edge. */
 .run-now {
-  /* How much lower its one line stands where no hairline sets it off. */
-  --run-now-lead: 0px;
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr) auto;
   column-gap: 8px;
   align-items: center;
-  min-height: 44px;
-  margin-top: 8px;
-  padding: 5px 14px 0 0;
+  margin-top: 16px;
+  padding: 20px 14px 4px 0;
   border-top: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
 }
-.run-now:first-child {
-  --run-now-lead: 3px;
+.run-now:first-child,
+.run-above[data-folding] + .run-now {
   margin-top: 0;
-  padding-top: 0;
+  padding-top: 4px;
   border-top: 0;
+}
+/* The face stands in the middle of the column, over the chat's glyphs and
+   the result's marks. */
+.run-now > svg:first-child {
+  justify-self: center;
 }
 .run-now-words {
   min-width: 0;
@@ -3821,19 +3913,10 @@ code {
 }
 /* Several at once — how many on the line, and one line each under it — and a
    line opened to the whole of what runs: the face, the first words and the
-   clock keep to the pixel the places they had on one line, and the rest
-   grows under them. */
+   clock, each one 20 px line, keep the places they had on one line, and the
+   rest grows under them. */
 .run-now:is([data-run-now="several"], [data-open]) {
   align-items: start;
-}
-.run-now:is([data-run-now="several"], [data-open]) > svg {
-  margin-top: calc(5px + var(--run-now-lead));
-}
-.run-now:is([data-run-now="several"], [data-open]) > .run-now-words {
-  padding-block: calc(9px + var(--run-now-lead));
-}
-.run-now:is([data-run-now="several"], [data-open]) > :last-child {
-  margin-top: calc(9px + var(--run-now-lead));
 }
 .run-now-several > li {
   overflow: hidden;
@@ -3904,17 +3987,17 @@ code {
 }
 
 /* What runs alongside while the run goes on, and the result once it is over,
-   stand under the now line inside the tray (T5): a hairline 8 px under the
-   line, 6 px of room, then their rows in the card's grid; nothing at all
-   when they have no row. */
+   stand under the now line inside the tray (T5): a hairline 16 px under the
+   line — the row's 4 px and 12 of its own — 6 px of room, then their rows in
+   the card's grid; nothing at all when they have no row. */
 .run-band {
   position: relative;
-  padding-top: 15px;
+  padding-top: 19px;
 }
 .run-band::before {
   content: "";
   position: absolute;
-  top: 8px;
+  top: 12px;
   inset-inline: 0;
   height: 1px;
   background: color-mix(in oklab, var(--color-foreground) 8%, transparent);
@@ -3953,8 +4036,8 @@ button.run-bar:focus-visible {
 /* A tray on its own, not sliced: the Mate at work once its turn is over. */
 .run-tray-whole {
   border-width: 1px;
-  border-radius: 30px;
-  padding: 11px;
+  border-radius: 34px;
+  padding: 15px;
 }
 
 /* The run's one scroll (the owner, 2026-09-29: "open with scroll and all
@@ -3994,18 +4077,43 @@ button.run-bar:focus-visible {
   );
 }
 
-/* A run the person comes back to (D3): its worked line alone, "Show work" on
-   its right edge — the chevron turning over as the work opens (K12) — and the
-   scroll under a hairline, as the live card's scroll stands over its now line. */
-.run-later-feed:not(:empty) {
-  margin-top: 5px;
-  padding-top: 12px;
+/* The work over a running line. As the run settles it folds shut into the
+   line (the owner, 2026-09-29: "why didn't this autocollapse at the end?"):
+   its box eases from its height to nothing, the newest lines and the hairline
+   the last to go, while the line keeps its place (`foldAway`). */
+.run-above[data-folding] {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+.run-above[data-folding] > * {
+  flex: none;
+}
+/* The line's hairline and the room under it, while the line already stands
+   as it will once folded. */
+.run-above-rule {
+  height: 17px;
+  margin-top: 16px;
   border-top: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
 }
+
+/* A run the person comes back to (D3): its worked line alone, "Show work" on
+   its right edge — the chevron turning over as the work opens (K12) — and the
+   scroll under a hairline as far under the line as the live card's is over
+   it. */
+.run-later-feed:not(:empty) {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
+}
+/* Its 24 px of ground stand in the line's 20, so the words keep their
+   centre. */
 .run-now-fold {
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-block: -2px;
   margin-right: -4px;
   padding: 2px 4px 2px 8px;
   border-radius: 8px;
@@ -4066,7 +4174,7 @@ button.run-bar:focus-visible {
 .run-tray-ghost {
   border: 1px solid transparent;
   border-bottom: 0;
-  padding: 11px 11px 0;
+  padding: 15px 15px 0;
 }
 
 /* ==== end of the run's card ==== */
@@ -4368,15 +4476,13 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 /* The conversation's line (the owner, 2026-09-29): the Mate leads it, on the
    menu's selected band while its own chat is open — 32 px tall, 11 px
    corners — and with a crew, the crewmate whose chat is on screen stands on
-   the same band as a 28 px pill. The band coming and going changes no width:
-   the Mate's pill keeps its padding with or without it. */
+   the same band as a 28 px pill. The band is one surface of its own that
+   travels between them (`.conversation-band`, pass 18). The band coming and
+   going changes no width: the Mate's pill keeps its padding with or without
+   it. */
 .conversation-mate,
 .conversation-mate-press {
   border-radius: 11px;
-}
-
-.conversation-mate[data-on] {
-  background-color: var(--sidebar-row-active);
 }
 
 @media (hover: hover) {
@@ -4387,12 +4493,13 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 }
 
 /* The crewmate's pill is its menu's trigger, which the header fills like any
-   other; it stands on the band instead, pressed or not. */
+   other; it is clear instead, pressed or not: the band under it is its
+   ground. */
 .conversation-crewmate,
 html[data-theme-id] [data-chat-header] .conversation-crewmate,
 html[data-theme-id] [data-chat-header] .conversation-crewmate:hover,
 html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
-  background-color: var(--sidebar-row-active);
+  background-color: transparent;
 }
 
 /* ==== end of the conversation ==== */
@@ -6419,3 +6526,106 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 }
 
 /* ==== end of motion across switches ==== */
+
+/* ==== Pass 18 · the stand-up ==== */
+
+/* A new Mate's empty conversation while its stand-up is its person's to start
+   (`ZeropsMateEmptyState`). Its phases share one box, the tallest's, each
+   from its top — 24 px under the face, as the question — so a new phase fades
+   its words in where the last ones began and nothing around them moves:
+   180 ms, a phase left behind leaving upward and the next arriving from below,
+   4 px; under reduced motion, a fade alone. A failure carries its Try again
+   12 px under its words. What hangs below the box — the sign-in rows, the
+   sign-in still being read — fades in layers of its own, where it stands. A
+   first paint shows its phase at once: only a change of state moves. */
+[data-standup-headline] {
+  display: grid;
+}
+
+[data-standup-phrase] {
+  grid-area: 1 / 1;
+  align-self: start;
+  transition:
+    opacity 180ms var(--ease-out-strong),
+    translate 180ms var(--ease-out-strong);
+}
+
+[data-standup-phrase="past"] {
+  opacity: 0;
+  translate: 0 -4px;
+}
+
+[data-standup-phrase="next"] {
+  opacity: 0;
+  translate: 0 4px;
+}
+
+[data-standup-layer] {
+  grid-area: 1 / 1;
+  transition: opacity 180ms var(--ease-out-strong);
+}
+
+[data-standup-layer="hidden"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-standup-phrase],
+  [data-standup-phrase="past"],
+  [data-standup-phrase="next"] {
+    translate: none;
+  }
+}
+
+/* The composer while a new Mate's stand-up waits on its person (`ChatView`): kept in its place,
+   since it is what sends the stand-up, but unseen; once the stand-up has gone it fades back in
+   180 ms, and nothing around it moves. */
+[data-slot="composer-shell"] {
+  transition: opacity 180ms var(--ease-out-strong);
+}
+
+[data-standup-holds-composer] [data-slot="composer-shell"] {
+  opacity: 0;
+}
+
+/* ==== end of the stand-up ==== */
+
+/* ==== Pass 18 · motion ==== */
+
+/* The line's one band (`ConversationStripMotion.tsx`): the menu's
+   selected-band colour under the Mate or the crewmate whose chat is on
+   screen, behind everything on the line. Three pieces — two round ends and
+   the run between, tucked under both — so that as it travels its ends move
+   and only the run stretches: the corners stay round on every frame. */
+.conversation-band {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.conversation-band:not([data-on]) {
+  display: none;
+}
+
+.conversation-band > span {
+  position: absolute;
+  background-color: var(--sidebar-row-active);
+  transform-origin: 0 0;
+}
+
+/* A crewless Mate's subject arriving after its line stands — the first
+   words sent — fades in where it stays: the name before it never moves. */
+.conversation-subject[data-arrived] {
+  animation: conversation-subject-in 180ms var(--ease-out-strong) both;
+}
+
+@keyframes conversation-subject-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ==== end of motion ==== */

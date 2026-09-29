@@ -280,6 +280,25 @@ export function mateRowView(
   }
 }
 
+/**
+ * A Mate on its way off Zerops (`mateDeleting`): its row says *Deleting…* in
+ * place of its last line — its words, else what was asked, else the sign-in
+ * line — so it keeps its height, and nothing on it waits on anybody: asleep,
+ * no time, no dot, its name at rest. What was asked stays above the line
+ * where there was a line under it.
+ */
+export function mateDeletingView(view: MateRowView): MateRowView {
+  return {
+    ...view,
+    face: "sleep",
+    slot: { kind: "none" },
+    dot: undefined,
+    strongName: false,
+    ask: view.reply === undefined ? undefined : view.ask,
+    reply: undefined,
+  };
+}
+
 /** Which of the table's states a row is in: what waits on the person first. */
 function mateRowState(activity: ZeropsAgentActivity, face: MateMarkState): MateRowState {
   // Paused at a usage limit it sleeps, whatever its last turn said: a turn

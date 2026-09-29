@@ -3,13 +3,16 @@
  * mock draws, so the harness (`design.html?set=plan`) can be put side by side
  * with it.
  *
- * Every production chip state stands in one of them: Quillmark with a change
- * waiting for production, Tiller with no production, Beviro whose last release
- * failed, Brightfold healthy, Ferrow with only a stage, Imperial Titan folded
- * with production down and Maren at work in it, Corvel releasing and
- * Lanternfield stopped on purpose. Hollin holds a Mate in each state of its
- * owner's seat. Every name but Beviro's and Imperial Titan's, and every word,
- * is made up; the hosts are `example.app`.
+ * Every chip's every tone stands in one of them: Quillmark with a change
+ * waiting for production and a stage, Tiller with neither, Beviro whose last
+ * release failed (amber), Brightfold healthy, Ferrow with only a stage,
+ * Imperial Titan folded with production down (red) and Maren at work in it,
+ * Corvel releasing and Lanternfield stopped on purpose (hollow); Harbourline,
+ * a name too long for the heading, whose stage's last deploy failed while its
+ * production is down, and Marlow, whose stages are two, one of them down.
+ * Hollin holds a Mate in each state of its owner's seat. Every name but
+ * Beviro's and Imperial Titan's, and every word, is made up; the hosts are
+ * `example.app`.
  *
  * Fixtures only: nothing here ships in the app bundle.
  */
@@ -82,13 +85,15 @@ function stop(
     readonly hosts: ReadonlyArray<string>;
     readonly status?: string;
     readonly deployedMinutesAgo?: number;
+    /** Its own name, where a project has more than one stage. */
+    readonly name?: string;
   },
 ): ZeropsCandidate {
   return {
     key: `${id}:zcp`,
     project: {
       id,
-      name: role === "prod" ? "production" : "stage",
+      name: options.name ?? (role === "prod" ? "production" : "stage"),
       status: "ACTIVE",
       tagList: [...groupTags, `mate:role:${role}`],
     },
@@ -128,6 +133,8 @@ const TITAN = group("titan", "Imperial Titan");
 const CORVEL = group("corvel", "Corvel");
 const LANTERNFIELD = group("lanternfield", "Lanternfield");
 const HOLLIN = group("hollin", "Hollin");
+const HARBOURLINE = group("harbourline", "Harbourline Field Service Scheduler");
+const MARLOW = group("marlow", "Marlow");
 
 export const PLAN_CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
   mate("quillmark-orla", "Orla", QUILLMARK),
@@ -169,6 +176,27 @@ export const PLAN_CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
     hosts: ["lanternfield.example.app"],
     status: "STOPPED",
   }),
+  mate("harbourline-arlo", "Arlo", HARBOURLINE),
+  stop("harbourline-stage", "stage", HARBOURLINE, {
+    hosts: ["harbourline-stage.example.app"],
+    deployedMinutesAgo: 25,
+  }),
+  stop("harbourline-prod", "prod", HARBOURLINE, {
+    hosts: ["harbourline.example.app"],
+    status: "CONTAINER_FAILED",
+  }),
+  mate("marlow-wren", "Wren", MARLOW),
+  stop("marlow-stage", "stage", MARLOW, {
+    hosts: ["marlow-stage.example.app"],
+    deployedMinutesAgo: 90,
+  }),
+  stop("marlow-qa", "stage", MARLOW, {
+    hosts: ["marlow-qa.example.app"],
+    status: "CONTAINER_FAILED",
+    deployedMinutesAgo: 300,
+    name: "qa",
+  }),
+  stop("marlow-prod", "prod", MARLOW, { hosts: ["marlow.example.app"] }),
   // Whose each Mate is, in every state its seat has (the owner, 2026-09-29):
   // nobody's and nobody signed in, open here and not yet; the viewer's own
   // and a colleague's, nobody signed in; and one signed in by somebody the
@@ -294,6 +322,22 @@ export const PLAN_ACTIVITY = new Map<string, ZeropsAgentActivity>([
     }),
   ],
   [
+    "harbourline-arlo",
+    activity("harbourline-arlo", {
+      minutes: 30,
+      subject: "Let a dispatcher drag a visit to another technician",
+      snippet: "The visit moves, and the technician's day recounts its travel.",
+    }),
+  ],
+  [
+    "marlow-wren",
+    activity("marlow-wren", {
+      minutes: 3 * 60,
+      subject: "Send the weekly digest on Monday mornings",
+      snippet: "The digest goes out at 7:00 in each reader's own time zone.",
+    }),
+  ],
+  [
     "titan-maren",
     activity("titan-maren", {
       minutes: 3.5,
@@ -336,6 +380,8 @@ export const PLAN_OWNERS = new Map<string, ZeropsMateOwner>([
   ["titan-maren", VIEWER],
   ["corvel-sef", VIEWER],
   ["lanternfield-tove", KAREL],
+  ["harbourline-arlo", VIEWER],
+  ["marlow-wren", KAREL],
   ["hollin-idris", VIEWER],
   ["hollin-tamar", KAREL],
 ]);
@@ -468,6 +514,29 @@ export const PLAN_FLOWS = new Map<string, SidebarProjectFlow>([
           "lanternfield-prod",
           row("lanternfield-prod", "production", `${sha("31c9e88")} v0.3.1 karel`),
         ],
+      ]),
+    }),
+  ],
+  [
+    "harbourline",
+    flow({
+      environments: new Map([
+        // The stage's last deploy failed; what it ran before still serves.
+        ["harbourline-stage", row("harbourline-stage", "stage", sha("64e0b19"), "bad")],
+        [
+          "harbourline-prod",
+          row("harbourline-prod", "production", `${sha("61c2f08")} v1.8.2 petra`),
+        ],
+      ]),
+    }),
+  ],
+  [
+    "marlow",
+    flow({
+      environments: new Map([
+        ["marlow-stage", row("marlow-stage", "stage", sha("29d7a13"))],
+        ["marlow-qa", row("marlow-qa", "stage", sha("27b5c90"))],
+        ["marlow-prod", row("marlow-prod", "production", `${sha("25a4e81")} v3.0.1 karel`)],
       ]),
     }),
   ],

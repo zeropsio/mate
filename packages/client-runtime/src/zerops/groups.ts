@@ -44,6 +44,12 @@
  * @module groups
  */
 
+import {
+  MATE_SHAPE_IDS,
+  MATE_TINT_IDS,
+  type MateShapeId,
+  type MateTintId,
+} from "@t3tools/shared/brand";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
 import type { ZeropsProject } from "./api.ts";
@@ -59,6 +65,14 @@ const ROLE_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:role:`;
 const LABEL_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:name:`;
 /** The agent living in this environment, named so a person can address it. */
 const BOT_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:bot:`;
+/**
+ * A Mate whose project's development is still to be stood up, and the Zerops user who asked for
+ * it by adding the Mate: their first sign-in sends "Stand up development of the project."
+ * (`mateStandUp.ts` in the web app), and the send clears the tag.
+ */
+const STAND_UP_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:standup:`;
+/** The face its person picked for it: `mate:face:<tint>:<shape>`. */
+const FACE_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:face:`;
 
 /**
  * The marker: this project has a Mate. The bare namespace word, so the Zerops
@@ -138,6 +152,10 @@ export interface ZeropsGroupTags {
   readonly label: string | undefined;
   /** The agent's own name (`mate:bot:`), the thing a person addresses. */
   readonly bot: string | undefined;
+  /** Who asked for the project's development to be stood up (`mate:standup:`), while it waits. */
+  readonly standUp?: { readonly by: string } | undefined;
+  /** The face its person picked (`mate:face:`); absent where the tag says nothing this client knows. */
+  readonly face: ZeropsMateFaceTag | undefined;
 }
 
 /**
@@ -151,10 +169,17 @@ export function readZeropsGroupTags(tagList: ReadonlyArray<string> | undefined):
   let role: ZeropsEnvironmentRole | undefined;
   let label: string | undefined;
   let bot: string | undefined;
+  let standUp: { readonly by: string } | undefined;
+  let face: ZeropsMateFaceTag | undefined;
 
   for (const tag of tagList ?? []) {
     if (tag === MATE_MARKER_TAG) {
       mate = true;
+      continue;
+    }
+    if (tag.startsWith(STAND_UP_TAG_PREFIX)) {
+      const by = tag.slice(STAND_UP_TAG_PREFIX.length).trim();
+      if (standUp === undefined && by.length > 0) standUp = { by };
       continue;
     }
     if (groupId === undefined && tag.startsWith(GROUP_TAG_PREFIX)) {
@@ -172,13 +197,50 @@ export function readZeropsGroupTags(tagList: ReadonlyArray<string> | undefined):
       if (value.length > 0) bot = value;
       continue;
     }
+    if (face === undefined && tag.startsWith(FACE_TAG_PREFIX)) {
+      face = readFaceTag(tag.slice(FACE_TAG_PREFIX.length));
+      continue;
+    }
     if (label === undefined && tag.startsWith(LABEL_TAG_PREFIX)) {
       const value = tag.slice(LABEL_TAG_PREFIX.length).trim();
       if (value.length > 0) label = value;
     }
   }
 
-  return { mate, groupId, role, label, bot };
+  return { mate, groupId, role, label, bot, standUp, face };
+}
+
+/** A Mate's face: the colour and the shape its person picked for it. */
+export interface ZeropsMateFace {
+  readonly tint: MateTintId;
+  readonly shape: MateShapeId;
+}
+
+/**
+ * A face as its tag reads. A part this client does not know — a tint or a
+ * shape a newer client added, a tag edited by hand — is absent, and the face
+ * derived from the Mate's name stands in for it (`mateTints.ts`).
+ */
+export interface ZeropsMateFaceTag {
+  readonly tint: MateTintId | undefined;
+  readonly shape: MateShapeId | undefined;
+}
+
+const TINT_VALUES: ReadonlySet<string> = new Set(MATE_TINT_IDS);
+const SHAPE_VALUES: ReadonlySet<string> = new Set(MATE_SHAPE_IDS);
+
+function readFaceTag(value: string): ZeropsMateFaceTag | undefined {
+  // Parts past the shape are a newer client's; the two this one knows still read.
+  const [tint, shape] = value.split(":");
+  const face = {
+    tint: tint !== undefined && TINT_VALUES.has(tint) ? (tint as MateTintId) : undefined,
+    shape: shape !== undefined && SHAPE_VALUES.has(shape) ? (shape as MateShapeId) : undefined,
+  };
+  return face.tint === undefined && face.shape === undefined ? undefined : face;
+}
+
+export function formatFaceTag(face: ZeropsMateFace): string {
+  return `${FACE_TAG_PREFIX}${face.tint}:${face.shape}`;
 }
 
 /**
@@ -252,6 +314,20 @@ export function withZeropsBotTag(
 }
 
 /**
+ * Gives the Mate living in this project its face, touching nothing else. Like
+ * its name, the face belongs to the project and not to its group, so no
+ * membership write drops it (`withZeropsGroupTags` keeps every `mate:` tag it
+ * was not asked about).
+ */
+export function withZeropsFaceTag(
+  tagList: ReadonlyArray<string> | undefined,
+  face: ZeropsMateFace,
+): ReadonlyArray<string> {
+  const kept = (tagList ?? []).filter((tag) => !tag.startsWith(FACE_TAG_PREFIX));
+  return [...kept, formatFaceTag(face)];
+}
+
+/**
  * Declares the Mate: the marker, once, after every other tag. Idempotent, so
  * every path that stands a Mate up — the wizard, "Add dev" with an agent,
  * "Set up Mate", naming the agent — can write it without checking first.
@@ -261,6 +337,27 @@ export function withZeropsMateTag(
 ): ReadonlyArray<string> {
   const existing = tagList ?? [];
   return existing.includes(MATE_MARKER_TAG) ? existing : [...existing, MATE_MARKER_TAG];
+}
+
+/**
+ * Asks for the project's development to be stood up, on behalf of `userId` — the person adding
+ * the Mate, whose first sign-in sends the ask. Written at birth; one ask per project, so one naming
+ * somebody else is replaced. A blank user asks for nothing.
+ */
+export function withZeropsStandUpTag(
+  tagList: ReadonlyArray<string> | undefined,
+  userId: string,
+): ReadonlyArray<string> {
+  const kept = withoutZeropsStandUpTag(tagList);
+  const by = userId.trim();
+  return by.length === 0 ? kept : [...kept, `${STAND_UP_TAG_PREFIX}${by}`];
+}
+
+/** The ask answered: every stand-up tag goes, every other tag stays. Idempotent. */
+export function withoutZeropsStandUpTag(
+  tagList: ReadonlyArray<string> | undefined,
+): ReadonlyArray<string> {
+  return (tagList ?? []).filter((tag) => !tag.startsWith(STAND_UP_TAG_PREFIX));
 }
 
 export const ZEROPS_GROUP_ID_LENGTH = 12;

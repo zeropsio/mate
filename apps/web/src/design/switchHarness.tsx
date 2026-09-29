@@ -8,9 +8,11 @@
  *
  * Served by the dev server at `/design-switch.html` (`?theme=dark`,
  * `?latency=<ms>` for the first open's wait, `?stream=<ms>` for how often the
- * live Mate's answer grows). `window.__switchHarness.switchTo("juno")`
- * switches from a script, so a per-frame sampler can watch a switch it
- * started itself.
+ * live Mate's answer grows, `?line=1` to head the pane with the conversation
+ * line — Fen and a crew of three, each chat one of the four — so a press on
+ * a face swaps the conversation as the line moves). `window.__switchHarness
+ * .switchTo("juno")` switches from a script, so a per-frame sampler can watch
+ * a switch it started itself.
  *
  * Fixtures only. Nothing here ships — `design-switch.html` is not
  * `index.html`, and no route imports this module.
@@ -26,10 +28,13 @@ import {
 } from "react";
 import { createRoot } from "react-dom/client";
 import type { LegendListRef } from "@legendapp/list/react";
-import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
+import { EnvironmentId, MessageId, ThreadId, TurnId } from "@t3tools/contracts";
+import type { MateTintId } from "@t3tools/shared/brand";
 import type { ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
 import * as Stream from "effect/Stream";
 
+import { ConversationStripView } from "~/components/chat/ConversationStrip";
+import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
 import { MessagesTimeline } from "~/components/chat/MessagesTimeline";
 import { TimelineSwitch } from "~/components/chat/TimelineSwitch";
 import { readTimelinePosition } from "~/components/chat/timelineScrollAnchoring";
@@ -41,6 +46,8 @@ import "../index.css";
 
 const params = new URLSearchParams(location.search);
 const LATENCY_MS = Number(params.get("latency") ?? 320);
+/** Head the pane with the conversation line: Fen's own chat, then its crew's. */
+const LINE = params.get("line") === "1";
 const ENVIRONMENT = EnvironmentId.make("environment-harness");
 const BASE = Date.parse("2026-09-29T07:00:00.000Z");
 const at = (minute: number, second = 0) =>
@@ -186,6 +193,13 @@ const liveAt = (second: number) => new Date(LIVE_STARTED + second * 1000).toISOS
  */
 const STREAM_EVERY_MS = Number(params.get("stream") ?? 50);
 const STREAM_STARTED = Date.now();
+/**
+ * `?end=<ms>`: the live run settles that long after the page loads — its
+ * answer done, its turn completed — so its card's fold at the end can be
+ * watched and sampled in the real list.
+ */
+const END_MS = Number(params.get("end") ?? 0);
+const runEnded = () => END_MS > 0 && Date.now() - STREAM_STARTED >= END_MS;
 const streamTick = () => Math.floor((Date.now() - STREAM_STARTED) / STREAM_EVERY_MS);
 const STREAM_WORDS =
   "The checkout now asks the payment service once per basket instead of once per line, so a basket of twelve items makes one call where it made twelve. I kept the old path behind the flag for a day in case the service rejects batched requests under load, and wrote down what to watch in the logs before we remove it.".split(
@@ -193,7 +207,12 @@ const STREAM_WORDS =
   );
 
 /** The run still going: its ask, the calls it made, one running, its answer on its way. */
-function liveTurnEntries(thread: string, turn: number, tick: number): TimelineEntry[] {
+function liveTurnEntries(
+  thread: string,
+  turn: number,
+  tick: number,
+  ended: boolean,
+): TimelineEntry[] {
   const turnId = TurnId.make(`${thread}-turn-${turn}`);
   const ask = `${thread}-ask-${turn}`;
   return [
@@ -244,17 +263,17 @@ function liveTurnEntries(thread: string, turn: number, tick: number): TimelineEn
         turnId,
         createdAt: liveAt(95),
         updatedAt: liveAt(95),
-        streaming: true,
+        streaming: !ended,
       },
     },
   ];
 }
 
 /** A thread's conversation; the runs the person left fold to their Mate's words (K7). */
-function conversationOf(thread: HarnessThread, tick: number): TimelineEntry[] {
+function conversationOf(thread: HarnessThread, tick: number, ended: boolean): TimelineEntry[] {
   return Array.from({ length: thread.turns }, (_, turn) =>
     thread.live && turn === thread.turns - 1
-      ? liveTurnEntries(thread.key, turn, tick)
+      ? liveTurnEntries(thread.key, turn, tick, ended)
       : turnEntries(
           thread.key,
           turn,
@@ -265,9 +284,17 @@ function conversationOf(thread: HarnessThread, tick: number): TimelineEntry[] {
   ).flat();
 }
 
-function latestTurnOf(thread: HarnessThread) {
+function latestTurnOf(thread: HarnessThread, ended: boolean) {
   const last = thread.turns - 1;
   const turnId = TurnId.make(`${thread.key}-turn-${last}`);
+  if (thread.live && ended) {
+    return {
+      turnId,
+      state: "completed" as const,
+      startedAt: liveAt(0),
+      completedAt: new Date(STREAM_STARTED + END_MS).toISOString(),
+    };
+  }
   return thread.live
     ? { turnId, state: "running" as const, startedAt: liveAt(0), completedAt: null }
     : {
@@ -302,26 +329,30 @@ function useHarnessThread(key: string) {
   }, [key, opened]);
   const thread = THREADS.find((candidate) => candidate.key === key)!;
   const shown = state.key === key ? state.phase : opened.has(key) ? "syncing" : "loading";
-  // A live run's rows change every 50 ms while it is shown.
+  // A live run's rows change every 50 ms while it is shown, until it ends.
   const [, setStreamed] = useState(0);
+  const [ended, setEnded] = useState(runEnded);
   useEffect(() => {
-    if (!thread.live) return;
-    const stream = setInterval(() => setStreamed(streamTick), STREAM_EVERY_MS);
+    if (!thread.live || ended) return;
+    const stream = setInterval(() => {
+      if (runEnded()) setEnded(true);
+      else setStreamed(streamTick());
+    }, STREAM_EVERY_MS);
     return () => clearInterval(stream);
-  }, [thread.live]);
-  const tick = thread.live ? streamTick() : 0;
+  }, [thread.live, ended]);
+  const tick = thread.live ? (ended ? Math.floor(END_MS / STREAM_EVERY_MS) : streamTick()) : 0;
   const loading = shown === "loading";
   const entries = useMemo(
-    () => (loading ? [] : conversationOf(thread, tick)),
-    [loading, thread, tick],
+    () => (loading ? [] : conversationOf(thread, tick, ended)),
+    [loading, thread, tick, ended],
   );
-  return { thread, phase: shown, entries };
+  return { thread, live: thread.live === true && !ended, ended, phase: shown, entries };
 }
 
 const COMPOSER_HEIGHT = 132;
 
 function Pane({ threadKey }: { readonly threadKey: string }) {
-  const { thread, phase, entries } = useHarnessThread(threadKey);
+  const { thread, live, ended, phase, entries } = useHarnessThread(threadKey);
   const listRef = useRef<LegendListRef | null>(null);
   const routeThreadKey = threadKeyOf(thread.key);
   // As ChatView: a thread left mid-read reopens there, any other follows its
@@ -347,7 +378,7 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
     () => setFollow((current) => ({ ...current, enabled: false })),
     [],
   );
-  const latestTurn = useMemo(() => latestTurnOf(thread), [thread]);
+  const latestTurn = useMemo(() => latestTurnOf(thread, ended), [thread, ended]);
   const loading = phase === "loading";
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
@@ -361,12 +392,12 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
       >
         <TimelineSwitch switchKey={routeThreadKey}>
           <MessagesTimeline
-            isWorking={thread.live === true}
-            activeTurnStartedAt={thread.live ? latestTurn.startedAt : null}
+            isWorking={live}
+            activeTurnStartedAt={live ? latestTurn.startedAt : null}
             listRef={listRef}
             timelineEntries={entries}
             latestTurn={latestTurn}
-            runningTurnId={thread.live ? latestTurn.turnId : null}
+            runningTurnId={live ? latestTurn.turnId : null}
             turnDiffSummaries={[]}
             routeThreadKey={routeThreadKey}
             onOpenTurnDiff={() => undefined}
@@ -405,8 +436,64 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
   );
 }
 
+/** Fen's crew on the line: each crewmate's chat one of the harness's conversations. */
+const LINE_CREW: ReadonlyArray<{
+  readonly key: string;
+  readonly name: string;
+  readonly tint: MateTintId;
+  readonly lead: boolean;
+}> = [
+  { key: "nova", name: "Lead", tint: "violet", lead: true },
+  { key: "juno", name: "World Server", tint: "sky", lead: false },
+  { key: "mira", name: "Game Rules", tint: "rose", lead: false },
+];
+
+/** The line over the pane, as `ChatHeader` draws it for a Mate with a crew. */
+function LineHeader({
+  current,
+  onOpen,
+}: {
+  readonly current: string;
+  readonly onOpen: (key: string) => void;
+}) {
+  const crew = LINE_CREW.map((seat): LineCrewmate => ({
+    handle: seat.key,
+    name: seat.name,
+    tint: seat.tint,
+    face: seat.key === "mira" ? "working" : "idle",
+    lead: seat.lead,
+    open: seat.key === current,
+    known: true,
+    threadId: ThreadId.make(seat.key),
+    role: seat.lead ? ", Fen's lead" : ", one of Fen's crew",
+    job: null,
+    status: null,
+  }));
+  return (
+    <div className="flex min-w-0 flex-1 items-center">
+      <ConversationStripView
+        chats={null}
+        crew={crew}
+        mate={{
+          name: "Fen",
+          tint: "amber",
+          face: "idle",
+          open: current === "fen",
+          threadId: ThreadId.make("fen"),
+          tooltip: current === "fen" ? null : "Fen's own chat",
+        }}
+        onCloseChat={() => undefined}
+        onOpen={(threadId) => onOpen(threadId)}
+        onRename={null}
+        renameField={null}
+        renderCrewmateMenu={() => null}
+      />
+    </div>
+  );
+}
+
 function Harness() {
-  const [current, setCurrent] = useState(THREADS[0]!.key);
+  const [current, setCurrent] = useState(LINE ? "fen" : THREADS[0]!.key);
   useEffect(() => {
     (window as unknown as { __switchHarness: unknown }).__switchHarness = {
       switchTo: (key: string) => setCurrent(key),
@@ -441,7 +528,7 @@ function Harness() {
           className="flex shrink-0 items-center border-border border-b px-5 font-medium text-sm"
           style={{ height: 52 }}
         >
-          {thread.name}
+          {LINE ? <LineHeader current={current} onOpen={setCurrent} /> : thread.name}
         </header>
         <Pane threadKey={current} />
       </main>

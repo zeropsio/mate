@@ -48,10 +48,15 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   jump?: ReactNode;
 }) {
   return (
+    // On the web the row is 65 px, so the mark (33 px, centred) stands 16 px
+    // from the top as it stands 16 px from the left (the owner, 2026-09-29:
+    // "visually logo has smaller padding on top than on the left"), and ⌘K
+    // and the waiting faces share its centre. Beside a desktop's traffic
+    // lights the row is theirs: the title bar's height, centred on them.
     <SidebarHeader
       className={cn(
         "@container/sidebar-header relative h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center px-3 py-0 md:px-0",
-        isElectron && "drag-region",
+        isElectron ? "drag-region" : "md:h-16.25",
       )}
     >
       <SidebarTrigger className="md:hidden" />

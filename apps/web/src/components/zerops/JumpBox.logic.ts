@@ -17,7 +17,12 @@
  *
  * Pure: no React, no clock, no store.
  */
-import type { MateMarkState, MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
+import type {
+  MateMarkState,
+  MateShapeId,
+  MateTintId,
+  ServiceStatusToneId,
+} from "@t3tools/shared/brand";
 import { maskSecrets, messageWords } from "@t3tools/shared/messagePreview";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
@@ -39,6 +44,8 @@ export interface JumpMate {
   readonly projectId: string;
   readonly name: string;
   readonly tint: MateTintId;
+  /** The shape its person picked, else its tint's own (`mateShapeOf`). */
+  readonly shape: MateShapeId;
   readonly face: MateMarkState;
   /** Its project's name; nothing for a Mate no project groups. */
   readonly projectName: string | undefined;
@@ -88,7 +95,7 @@ export interface JumpStop {
   readonly title: string;
   /** What it runs. */
   readonly line: string;
-  /** The production chip's dot, or the one its chip's menu wears for it. */
+  /** The dot its chip's menu wears for it: production's, or the stage's own. */
   readonly dot: ChipDot;
   /** Where it stands, in words: the dot's accessible name. */
   readonly word: string;
@@ -124,6 +131,7 @@ export function jumpMateOf(input: {
   readonly projectId: string;
   readonly name: string;
   readonly tint: MateTintId;
+  readonly shape: MateShapeId;
   readonly projectName: string | undefined;
   readonly environmentId: string | undefined;
   readonly owner: JumpMate["owner"];
@@ -135,6 +143,7 @@ export function jumpMateOf(input: {
     projectId: input.projectId,
     name: input.name,
     tint: input.tint,
+    shape: input.shape,
     face: mateFaceFor(input.connected, input.activity),
     projectName: input.projectName,
     subject: live?.subject,

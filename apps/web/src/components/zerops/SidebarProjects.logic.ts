@@ -17,7 +17,7 @@ import {
   type ZeropsPlacedBirth,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
+import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 
 import type { MateRowState } from "./SidebarMateRow.logic";
 
@@ -41,18 +41,29 @@ export function newProjectOffered(input: {
   return mateEnvironmentsEmptyReason(input.candidates) !== "no-mate";
 }
 
+/** From a heading's words to the next words under it: its first Mate's, or the next heading's. */
+const HEADING_STEP = 20;
+/** From one Mate's last words to the next Mate's name. */
+const MATE_STEP = 30;
+/** How deep words stand in their boxes: a heading's title in its 32 px, a Mate row's lines. */
+const HEADING_INSET = 4;
+const ROW_INSET = 10;
+
 /**
- * The room below a project's rows, in px: 44 while it is open (58 px from its
- * last row's words to the next heading's, M16), 16 at the list's end; 8 while
- * it is folded — its rows and their room fold into the heading, and folded
- * names stand 40 px apart rather than back to back (the owner, 2026-09-29:
- * "increase the spacing between a little") — and none at the list's end.
+ * The room below a project's rows, in px — one rule for both, read from one
+ * text's foot to the next text's head (the owner, 2026-09-29: "slightly
+ * decrease the space between open project and next project", "slightly
+ * increase the space between closed projects"): a folded project's name
+ * stands a heading's step (20) from the next project's, as a heading's does
+ * from its first Mate's; an open project's last words stand that and one
+ * Mate's step more (50) from the next heading's. So 12 folded and 36 open,
+ * less the words' own insets; at the list's end, 16 open and none folded.
  * Folded or open, the room is the project's own, below its heading, so a
  * heading's own fold never moves it.
  */
 export function projectRoom(at: { readonly open: boolean; readonly last: boolean }): number {
-  if (!at.open) return at.last ? 0 : 8;
-  return at.last ? 16 : 44;
+  if (!at.open) return at.last ? 0 : HEADING_STEP - 2 * HEADING_INSET;
+  return at.last ? 16 : HEADING_STEP + MATE_STEP - ROW_INSET - HEADING_INSET;
 }
 
 /** The dot on a folded heading's face: needs you, unread, or stopped on an error. */
@@ -63,6 +74,8 @@ export interface HeadingFace {
   readonly projectId: string;
   readonly name: string;
   readonly tint: MateTintId;
+  /** The shape its person picked, else its tint's own (`mateShapeOf`). */
+  readonly shape: MateShapeId;
   /** Its row's face: still where it stopped on an error, as in the list. */
   readonly face: MateMarkState;
   /** Absent while it only works: its turning face says that. */
@@ -95,6 +108,7 @@ export function headingFaces(
     readonly projectId: string;
     readonly name: string;
     readonly tint: MateTintId;
+    readonly shape: MateShapeId;
     /** Its row's state, face and dot (`mateRowView`). */
     readonly state: MateRowState;
     readonly face: MateMarkState;

@@ -11,10 +11,12 @@ function render(props: Partial<Parameters<typeof ZeropsEnvironmentCreationForm>[
       <ZeropsEnvironmentCreationForm
         defaultBotName="Otto"
         defaultName="Acme Docs - stage"
+        defaultTintFor={() => "violet"}
         defaultWithAgent
         groupName="Acme Docs"
         onCancel={() => {}}
         onCreate={() => {}}
+        proposeName={() => "Acme Docs - stage"}
         role="stage"
         takenBotNames={{ names: ["Fen"], complete: true }}
         tier={{
@@ -39,11 +41,19 @@ describe("ZeropsEnvironmentCreationForm", () => {
     expect(html).toContain("Add stage to Acme Docs");
   });
 
-  it("calls a dev environment a Mate, as the product does", () => {
+  it("hands a Mate to a form of its own: who it is, and nothing else", () => {
     const html = render({ role: "dev", defaultName: "Acme Docs - Otto" });
-    expect(html).toContain("Add Mate to Acme Docs");
-    expect(html).toContain("The project&#x27;s Mate recipe");
-    expect(html).not.toContain("dev ");
+    expect(html).toContain('data-zerops-surface="new-mate-form"');
+    expect(html).toContain(">New Mate<");
+    expect(html).toContain("Add Otto to Acme Docs");
+    expect(html).not.toContain("Environment");
+    expect(html).not.toContain("Application");
+  });
+
+  it("keeps a stage's own form, its title naming the role", () => {
+    const html = render();
+    expect(html).toContain(">New stage environment<");
+    expect(html).not.toContain('data-zerops-surface="new-mate-form"');
   });
 
   it("offers the project's own recipe, and nothing yet", () => {

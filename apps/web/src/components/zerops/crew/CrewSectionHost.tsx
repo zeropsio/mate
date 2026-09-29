@@ -18,7 +18,7 @@ import {
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { CrewmateView, CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { CrewSnapshot, EnvironmentId, ThreadId } from "@t3tools/contracts";
-import type { MateTintId } from "@t3tools/shared/brand";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 
@@ -47,8 +47,10 @@ export interface CrewSectionHostProps {
   readonly snapshot: CrewSnapshot;
   /** `null` while no crew is applied. */
   readonly view: CrewView<EnvironmentThreadShell> | null;
-  /** The Mate who lives here: Fen, in its tint. */
-  readonly mate: { readonly name: string; readonly tint: MateTintId } | undefined;
+  /** The Mate who lives here: Fen, in its face. */
+  readonly mate:
+    | { readonly name: string; readonly tint: MateTintId; readonly shape?: MateShapeId }
+    | undefined;
   /** Your tree, where *Tell the crew*'s `@` finds files; `null` while unread. */
   readonly treeCwd: string | null;
   /** Hands Fen a draft, into the chat the tab is open beside when it is a person chat. */
@@ -249,6 +251,7 @@ export function CrewSectionHost({
         }}
         open={ask !== null}
         sending={false}
+        shape={mate?.shape}
         tint={mate?.tint}
         what={ask?.what ?? ""}
       />

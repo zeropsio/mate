@@ -16,7 +16,7 @@
  * Structural only: the sentence is `projectFlow.ts`'s (R5).
  */
 import { changeAskLabel } from "@t3tools/client-runtime/zerops";
-import type { MateTintId } from "@t3tools/shared/brand";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 
 import { Button } from "../ui/button";
 import {
@@ -35,6 +35,7 @@ export function ZeropsAskConfirm({
   ask,
   mateName,
   tint,
+  shape,
   what,
   sending,
   onConfirm,
@@ -44,6 +45,8 @@ export function ZeropsAskConfirm({
   readonly mateName: string | undefined;
   /** The Mate's colour, so the face here is the face everywhere else. */
   readonly tint: MateTintId | undefined;
+  /** The shape its person picked; its tint's own when absent. */
+  readonly shape?: MateShapeId | undefined;
   /** What is wrong, in the words the row that offered this used. */
   readonly what: string;
   readonly sending: boolean;
@@ -60,7 +63,9 @@ export function ZeropsAskConfirm({
       </DialogHeader>
       <DialogPanel className="space-y-0">
         <div className="my-2 flex min-w-0 items-start gap-3" data-zerops-surface="ask-confirm">
-          {tint === undefined ? null : <MateFace size="md" state="idle" tint={tint} />}
+          {tint === undefined ? null : (
+            <MateFace shape={shape} size="md" state="idle" tint={tint} />
+          )}
           {/* Quoted, not paraphrased: this is the text being authorised. */}
           <p className="min-w-0 flex-1 rounded-md bg-muted px-3 py-2 text-sm wrap-anywhere text-foreground">
             {ask}

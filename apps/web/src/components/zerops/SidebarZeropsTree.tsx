@@ -2,9 +2,10 @@
  * The left menu's projects: each a heading, then its Mates, each with its
  * crew and its open changes.
  *
- * A project's heading is its name and its production chip — which release
- * production serves, whether it is healthy, what waits to go out — and,
- * while the project is folded, the faces of its Mates that are busy.
+ * A project's heading is its name and its chips — one for its stage or
+ * stages, one for production, each its word alone, turning amber or red when
+ * something is wrong — and, while the project is folded, the faces of its
+ * Mates that are busy.
  * Folding or unfolding it never moves the heading.
  *
  * Under it, its Mates: the menu's own kind of row, the way a messenger lists
@@ -38,9 +39,9 @@
  * uses, so the two surfaces can never disagree about which project an
  * environment is in; the colours are `assignCandidateMateTints`, likewise
  * shared. Which pull requests are a Mate's to answer for, and what the
- * production chip says, are read from `groupFlow` — the same derivation the
- * projects page draws from — so a recipe change never counts as a Mate's own
- * work here, and the chip never says what the page would not.
+ * chips say, are read from `groupFlow` — the same derivation the projects
+ * page draws from — so a recipe change never counts as a Mate's own work
+ * here, and a chip never says what the page would not.
  *
  * Everything else about the account lives on the projects screen. This is
  * where you work; that is where you manage.
@@ -54,6 +55,7 @@ import {
   groupFlow,
   hasMate,
   mateEnvironmentsEmptyReason,
+  mateShapeOf,
   pullRequestsByMate,
   pullRequestsFolded,
   rankZeropsCandidateForListing,
@@ -81,7 +83,7 @@ import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
-import type { MateTintId } from "@t3tools/shared/brand";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
   BellOffIcon,
   ChevronRightIcon,
@@ -150,14 +152,17 @@ import {
 import { SidebarProductionChip } from "./SidebarProductionChip";
 import {
   buildingOf,
+  chipDot,
   chipFace,
-  chipMenu,
   drawnChip,
-  fixProblemOf,
-  productionChip,
+  productionMenu,
+  projectChips,
   rememberedChipAfter,
+  stageMenu,
+  stageStopChip,
   STOP_DOT,
   stopServing,
+  type ChipView,
   type GiteaAnswer,
   type ProductionChip,
   type ReleaseFailure,
@@ -166,12 +171,15 @@ import {
 import {
   changeMarkTone,
   mateCrewItem,
+  mateDeletingView,
   mateOwnerView,
   mateRowView,
   type MateRowReply,
   type MateRowSlot,
   type OwnerSeat,
 } from "./SidebarMateRow.logic";
+import { MATE_DELETING_WORD } from "./ZeropsDeleteMateDialog.logic";
+import { mateDeleting, useDeletingMates } from "~/zerops/deletingMates";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarReveal, type SidebarRevealTarget } from "~/zerops/sidebarReveal";
 import {
@@ -449,20 +457,40 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly getCrew?: ((candidate: T) => SidebarCrewRead | undefined) | undefined;
 }
 
+/** A project's chips as the menu last drew them: production's and the stages'. */
+export interface SidebarChips<Chip> {
+  readonly prod?: Chip;
+  readonly stage?: Chip;
+}
+
 /** What the menu remembers drawing (`menuMemory.ts`). */
 export interface SidebarRemembered {
   readonly changes: (groupId: string) => ReadonlyArray<FlowPullRequest> | undefined;
-  /** A project's production chip as last drawn, for while what decides it is unread. */
-  readonly chip: (groupId: string) => ProductionChip | undefined;
+  /** A project's chips as last drawn, for while what decides each is unread. */
+  readonly chips: (groupId: string) => SidebarChips<ProductionChip> | undefined;
 }
 
 /**
  * What the menu drew of what it has read: the change rows Gitea answered, and
- * each project's production chip — `null` where it no longer has one.
+ * each project's chips — `null` where it no longer has one, absent while
+ * what decides it is unread.
  */
 export interface SidebarDrawn {
   readonly changes: Readonly<Record<string, ReadonlyArray<FlowPullRequest>>>;
-  readonly chips: Readonly<Record<string, ProductionChip | null>>;
+  readonly chips: Readonly<Record<string, SidebarChips<ProductionChip | null>>>;
+}
+
+/** What a draw learned of a project's chips, for the memory: each one read, or gone. */
+function chipsLearned(read: {
+  readonly prod: ChipView;
+  readonly stage: ChipView;
+}): SidebarChips<ProductionChip | null> {
+  const prod = rememberedChipAfter(read.prod);
+  const stage = rememberedChipAfter(read.stage);
+  return {
+    ...(prod === undefined ? {} : { prod }),
+    ...(stage === undefined ? {} : { stage }),
+  };
 }
 
 const NOTHING_DRAWN: SidebarDrawn = { changes: {}, chips: {} };
@@ -766,6 +794,11 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   const onScreen = view.groups.map(({ group }) => group.groupId);
   rememberProjectsOnScreen(onScreen);
   const tints = assignCandidateMateTints(candidates);
+  /** A Mate's face: its tint, and the shape its person picked or that tint's own. */
+  const faceOf = (project: ZeropsCandidate["project"]) => {
+    const tint = tints.get(project.id) ?? "slate";
+    return { tint, shape: mateShapeOf(project.tagList, tint) };
+  };
 
   const toggle = (key: string) => {
     setOpenLists((current) => {
@@ -797,7 +830,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   const jumpStops: JumpStop[] = [];
   // What the memory keeps of this draw (`onDrawn`), gathered alike.
   const drawnChanges: Record<string, ReadonlyArray<FlowPullRequest>> = {};
-  const drawnChips: Record<string, ProductionChip | null> = {};
+  const drawnChips: Record<string, SidebarChips<ProductionChip | null>> = {};
   const indexSection = (input: {
     readonly id: string;
     readonly group: ZeropsGroup | undefined;
@@ -826,7 +859,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         jumpMateOf({
           projectId: item.project.id,
           name,
-          tint: tints.get(item.project.id) ?? "slate",
+          ...faceOf(item.project),
           projectName: groupName,
           environmentId: item.environmentId,
           owner: getOwner?.(item),
@@ -869,8 +902,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     id: string,
     entries: ReadonlyArray<Entry<T>>,
     renderHeader: (heading: {
-      /** The production chip, where the project has a production or a stage. */
-      readonly production: ReactNode;
+      /** Its chips: the stages' and production's, each where the project has it. */
+      readonly chips: ReactNode;
       /** Its busy Mates' faces, while it is folded. */
       readonly faces: ReactNode;
     }) => ReactNode,
@@ -920,9 +953,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         pending: group?.pending ?? [],
       }),
     );
-    // Production and its stages are the chip on the heading (M2), never rows:
-    // a row would make production a peer of the Mates, whom you talk to, and
-    // a row disappears when the project folds.
+    // Production and its stages are the chips on the heading (M2), never rows:
+    // a row would make them peers of the Mates, whom you talk to, and a row
+    // disappears when the project folds. One chip for production, one for
+    // the stage or stages (the owner, 2026-09-29).
     const stopItem = (projectId: string | undefined) =>
       projectId === undefined
         ? undefined
@@ -930,7 +964,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     const productionStop =
       "stop" in projectFlow.production ? projectFlow.production.stop : undefined;
     const productionItem = stopItem(productionStop?.projectId);
-    const stageItem = stopItem(projectFlow.stages[0]?.projectId);
     const servingOf = (item: T | undefined): StopServing =>
       item === undefined
         ? { kind: "unknown" }
@@ -939,119 +972,158 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             services: item.services?.statuses,
             routes: item.routes ?? [],
           });
+    const downOf = (serving: StopServing) => (serving.kind === "down" ? serving.services : []);
     const gitea: GiteaAnswer =
       flow !== undefined && flow.changesKnown !== false
         ? { kind: "answered", failure: flow.releaseFailure }
         : giteaComing
           ? { kind: "waiting" }
           : { kind: "absent" };
-    const chipRead = productionChip({
+    const stopName = (stop: GroupFlowStop) =>
+      environmentNameUnderGroup(groupName, stopItem(stop.projectId)?.project.name ?? stop.name);
+    const stages = projectFlow.stages.map((stop) => ({
+      name: stopName(stop),
+      stop,
+      serving: servingOf(stopItem(stop.projectId)),
+    }));
+    const productionServing = servingOf(productionItem);
+    const chipsRead = projectChips({
       production: projectFlow.production,
-      stages: projectFlow.stages,
-      stageBeingCreated: projectFlow.creatingStages.length > 0,
       building:
         productionStop === undefined
           ? undefined
           : buildingOf(deployments?.get(productionStop.projectId)),
       waiting: projectFlow.main.notLive,
-      serving: { production: servingOf(productionItem), stage: servingOf(stageItem) },
+      serving: productionServing,
+      stages,
+      stagesBeingCreated: projectFlow.creatingStages.length > 0,
       gitea,
     });
-    const chip = group === undefined ? undefined : drawnChip(chipRead, remembered?.chip(id));
-    const chipLearned = rememberedChipAfter(chipRead);
-    if (group !== undefined && chipLearned !== undefined) drawnChips[id] = chipLearned;
-    const chipItem = chip?.label === "stage" ? stageItem : productionItem;
-    const chipServing = servingOf(chipItem);
-    const down = chipServing.kind === "down" ? chipServing.services : [];
-    const failure = gitea.kind === "answered" ? gitea.failure : undefined;
+    const rememberedChips = group === undefined ? undefined : remembered?.chips(id);
+    const prodChip =
+      group === undefined ? undefined : drawnChip(chipsRead.prod, rememberedChips?.prod);
+    const stageChipDrawn =
+      group === undefined ? undefined : drawnChip(chipsRead.stage, rememberedChips?.stage);
+    if (group !== undefined) drawnChips[id] = chipsLearned(chipsRead);
+    // Each stage as a chip of its own says it: its dot and words in the jump
+    // box, its row in the stages' menu.
+    const stageChips = stages.map(({ stop, serving }) =>
+      drawnChip(stageStopChip({ stop, serving, gitea }), undefined),
+    );
     const stopDeployedAt = (projectId: string) => {
       const activated = deployActivatedAt(deployments?.get(projectId));
       return activated ?? stopItem(projectId)?.services?.deployedAt;
     };
-    const stopName = (stop: GroupFlowStop) =>
-      environmentNameUnderGroup(groupName, stopItem(stop.projectId)?.project.name ?? stop.name);
-    const chipDeclared =
-      chipItem === undefined ? undefined : flow?.environments.get(chipItem.project.id);
-    const production =
-      chip === undefined || group === undefined ? null : (
-        <SidebarProductionChip
-          chip={chip}
-          fixProblem={fixProblemOf({ chip, failure, down })}
-          groupId={id}
-          mates={mateEntries.map(({ item }) => ({
-            candidate: item,
-            tint: tints.get(item.project.id) ?? "slate",
-            mine: getOwner?.(item)?.isViewer,
-            threadKey: getActivity?.(item)?.threadKey,
-          }))}
-          menu={(openedAt) =>
-            chipMenu({
-              chip,
-              failure,
-              down,
-              stages: projectFlow.stages.map((stop) => ({
-                name: stopName(stop),
-                stop,
-                deployedAt: stopDeployedAt(stop.projectId),
-              })),
-              waiting: projectFlow.main.notLive,
-              nowMs: openedAt,
-            })
-          }
-          onAskToFix={onAskToFix}
-          onOpenStop={
-            chipDeclared === undefined || flow?.onOpenStop === undefined
-              ? undefined
-              : () => {
-                  flow.onOpenStop?.(chipDeclared);
-                }
-          }
-          projectName={groupName ?? group.name}
-          routes={chipItem?.routes ?? []}
-          stopProjectId={chipItem?.project.id}
-        />
+    const openStop = (projectId: string) => {
+      const declared = flow?.environments.get(projectId);
+      return declared === undefined || flow?.onOpenStop === undefined
+        ? undefined
+        : () => {
+            flow.onOpenStop?.(declared);
+          };
+    };
+    const chipMates = mateEntries.map(({ item }) => ({
+      candidate: item,
+      ...faceOf(item.project),
+      mine: getOwner?.(item)?.isViewer,
+      threadKey: getActivity?.(item)?.threadKey,
+    }));
+    const projectName = groupName ?? group?.name ?? "";
+    // What waits to go out, said on the stages' menu too — where there is a
+    // production for it to go to.
+    const waitingForProduction = prodChip === undefined ? 0 : projectFlow.main.notLive;
+    const chips =
+      group === undefined || (prodChip === undefined && stageChipDrawn === undefined) ? null : (
+        // The stage first, production on the heading's end edge: the order a
+        // change travels in, and production's chip never moves for a stage's.
+        <>
+          {stageChipDrawn === undefined ? null : (
+            <SidebarProductionChip
+              chip={stageChipDrawn}
+              groupId={id}
+              mates={chipMates}
+              menu={(openedAt) =>
+                stageMenu({
+                  stages: stages.map(({ name, stop, serving }, index) => ({
+                    projectId: stop.projectId,
+                    name,
+                    stop,
+                    chip: stageChips[index],
+                    deployedAt: stopDeployedAt(stop.projectId),
+                    down: downOf(serving),
+                    routes: stopItem(stop.projectId)?.routes ?? [],
+                  })),
+                  creating: projectFlow.creatingStages.map((creation) => ({
+                    projectId: creation.projectId,
+                    name: creation.name,
+                  })),
+                  waiting: waitingForProduction,
+                  nowMs: openedAt,
+                })
+              }
+              onAskToFix={onAskToFix}
+              onOpenStop={openStop}
+              projectName={projectName}
+              stops={stages.map(({ stop }) => stop.projectId)}
+            />
+          )}
+          {prodChip === undefined ? null : (
+            <SidebarProductionChip
+              chip={prodChip}
+              groupId={id}
+              mates={chipMates}
+              menu={(openedAt) =>
+                productionMenu({
+                  chip: prodChip,
+                  projectId: productionItem?.project.id,
+                  failure: gitea.kind === "answered" ? gitea.failure : undefined,
+                  down: downOf(productionServing),
+                  routes: productionItem?.routes ?? [],
+                  waiting: projectFlow.main.notLive,
+                  nowMs: openedAt,
+                })
+              }
+              onAskToFix={onAskToFix}
+              onOpenStop={openStop}
+              projectName={projectName}
+              stops={productionStop === undefined ? [] : [productionStop.projectId]}
+            />
+          )}
+        </>
       );
-    // The jump box finds each of them, and shows the chip where one is found
-    // — only where the heading draws one: a find lands on the chip.
+    // The jump box finds each of them, with the dot and words its chip's menu
+    // gives it — only where the heading draws its chip: a find lands on it.
     const title = (name: string) => (groupName === undefined ? name : `${groupName} ${name}`);
-    const chipFaceOf = chip === undefined ? undefined : chipFace(chip);
-    const jumpStopsHere: ReadonlyArray<JumpStop> =
-      chip === undefined
+    const jumpStopsHere: ReadonlyArray<JumpStop> = [
+      ...(stageChipDrawn === undefined
         ? []
-        : [
-            ...projectFlow.stages.map((stop) => ({
+        : stages.map(({ stop, name }, index) => {
+            const own = stageChips[index];
+            return {
               projectId: stop.projectId,
               groupId: id,
-              title: title(stopName(stop)),
+              title: title(name),
               line: stop.version?.label ?? "",
-              dot:
-                chip?.label === "stage" && chipItem?.project.id === stop.projectId && chipFaceOf
-                  ? chipFaceOf.dot
-                  : STOP_DOT[stop.state],
+              dot: own === undefined ? STOP_DOT[stop.state] : chipDot(own),
               word:
-                chip?.label === "stage" && chipItem?.project.id === stop.projectId && chipFaceOf
-                  ? chipFaceOf.words
-                  : `Stage ${stop.version?.label ?? ""}`.trim(),
-            })),
-            ...(productionStop === undefined
-              ? []
-              : [
-                  {
-                    projectId: productionStop.projectId,
-                    groupId: id,
-                    title: title(stopName(productionStop)),
-                    line: productionStop.version?.label ?? "",
-                    dot:
-                      chip?.label === "prod" && chipFaceOf !== undefined
-                        ? chipFaceOf.dot
-                        : STOP_DOT[productionStop.state],
-                    word:
-                      chip?.label === "prod" && chipFaceOf !== undefined
-                        ? chipFaceOf.words
-                        : `Production ${productionStop.version?.label ?? ""}`.trim(),
-                  },
-                ]),
-          ];
+                own === undefined
+                  ? `Stage ${stop.version?.label ?? ""}`.trim()
+                  : chipFace(own).words,
+            };
+          })),
+      ...(productionStop === undefined || prodChip === undefined
+        ? []
+        : [
+            {
+              projectId: productionStop.projectId,
+              groupId: id,
+              title: title(stopName(productionStop)),
+              line: productionStop.version?.label ?? "",
+              dot: chipDot(prodChip),
+              word: chipFace(prodChip).words,
+            },
+          ]),
+    ];
     // Folded, the heading shows who is busy in it (M15): its Mates that need
     // you, work, stopped on an error or finished unseen, each as its row draws
     // it (`mateRowView`) — once its rows have folded away.
@@ -1068,7 +1140,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 bot: readZeropsGroupTags(item.project.tagList).bot,
                 projectName: item.project.name,
               }),
-              tint: tints.get(item.project.id) ?? "slate",
+              ...faceOf(item.project),
               state: view.state,
               face: view.face,
               dot: view.dot,
@@ -1078,7 +1150,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         )
       : [];
     const header = renderHeader({
-      production,
+      chips,
       faces: busy.length === 0 ? null : <HeadingFaces faces={busy} />,
     });
     // Code only — a recipe change is the group's document, left to the
@@ -1203,7 +1275,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   onSelect={onSelect}
                   owner={getOwner?.(item)}
                   timestampFormat={timestampFormat}
-                  tint={tints.get(item.project.id) ?? "slate"}
+                  {...faceOf(item.project)}
                 />
                 {/* Its crew, one line right under it, before its changes — read
                     once its Mate is connected, and until then where this
@@ -1331,13 +1403,13 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       {section(
         group.groupId,
         environments,
-        ({ production, faces }) => (
+        ({ chips, faces }) => (
           <ProjectHeader
+            chips={chips}
             collapsed={collapsed.has(group.groupId)}
             faces={faces}
             group={group}
             missing={getFlow?.(group.groupId)?.missing ?? []}
-            production={production}
             onAddMate={onAddMate}
             onBrowseProjects={onBrowseProjects}
             onOpen={
@@ -1428,9 +1500,12 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   return (
     <nav
       aria-label="Mates"
-      // The list starts 6 px under the logo row, as the plan's menu does. Its
-      // own stacking context, so the selected band stands behind every row.
-      className={cn("relative isolate flex flex-col pt-1.5", className)}
+      // The list stands 16 px under the logo row: the row and the projects
+      // are two groups, and the first project's name reads as the start of
+      // another, 43 px under the mark's foot (the owner, 2026-09-29: "first
+      // project is too close to logo"). Its own stacking context, so the
+      // selected band stands behind every row.
+      className={cn("relative isolate flex flex-col pt-4", className)}
       data-zerops-surface="sidebar-environments"
       ref={treeRef}
     >
@@ -1571,7 +1646,7 @@ export function ProjectHeader({
   collapsed = false,
   onToggle,
   reorder,
-  production,
+  chips,
   faces,
 }: {
   readonly group?: ZeropsGroup;
@@ -1589,15 +1664,16 @@ export function ProjectHeader({
   readonly onToggle?: (() => void) | undefined;
   /**
    * Moving the project among the others: *Move up* and *Move down* in its
-   * menu from any order, and in *Custom* a grip to drag it by. Absent for the
-   * ungrouped heading, which always stands last.
+   * menu from any order, and in *Custom* a grip to drag it by, first of the
+   * heading's verbs. Absent for the ungrouped heading, which always stands
+   * last.
    */
   readonly reorder?: ProjectHeaderReorder | undefined;
   /**
-   * The project's production chip (`SidebarProductionChip`), on the heading's
-   * end edge whether the project is open or folded.
+   * The project's chips (`SidebarProductionChip`) — the stages', then
+   * production's — on the heading's end edge whether it is open or folded.
    */
-  readonly production?: ReactNode;
+  readonly chips?: ReactNode;
   /** Its busy Mates' faces (`HeadingFaces`), after the title while it is folded. */
   readonly faces?: ReactNode;
 }) {
@@ -1610,30 +1686,22 @@ export function ProjectHeader({
     onBrowseProjects();
   };
   return (
-    // The title on the menu's mark edge (x = 16: 7 px inside the list's own
-    // 9), the heading 32 px tall, and its end on the menu's end edge, 16 px
-    // short of the divider — where a Mate row's time ends.
+    // The heading is its band: 32 px tall, 10 px from the window and 10 from
+    // the divider — the list's own 9 and 8, and 1 and 2 more — its title 6 px
+    // in, on the menu's mark edge (x = 16), and its chips' end 6 px short of
+    // its own, on the menu's end edge (16 px short of the divider), where a
+    // Mate row's time ends. The chips stand 6 px from its top and bottom too,
+    // so its corners run parallel to theirs (S4).
     // A heading that folds lights under the pointer, a band fainter than a
-    // Mate row's (`.zerops-project-heading`), which takes in the grip before
-    // the name in the Custom order.
+    // Mate row's (`.zerops-project-heading`).
     <div
       className={cn(
-        "group/project relative flex h-8 min-w-0 items-center gap-1 ps-1.75 pe-2",
+        "group/project relative flex h-8 min-w-0 items-center gap-1 ms-px me-0.5 ps-1.5 pe-1.5",
         onToggle !== undefined && "zerops-project-heading",
       )}
       data-collapsed={collapsed ? "true" : undefined}
       data-zerops-surface="sidebar-project"
     >
-      {reorder?.custom === true && group !== undefined ? (
-        <ProjectGrip
-          groupId={group.groupId}
-          name={title}
-          onMove={(direction) => {
-            reorder.onMove(direction, true);
-          }}
-          onPointerDown={reorder.onGripPointerDown}
-        />
-      ) : null}
       {/* A name, not a label: no uppercase and no `MicroLabel`. The weight
           comes from size and room instead — at 13px it was *smaller* than the
           Mate names beneath it, which is a heading losing to its own contents
@@ -1686,6 +1754,18 @@ export function ProjectHeader({
           always there: nothing moves when they show. */}
       {muted ? null : (
         <span className="relative z-1 flex shrink-0 items-center opacity-0 transition-opacity group-focus-within/project:opacity-100 group-hover/project:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100">
+          {/* In the Custom order the grip leads the verbs: inside the band,
+              clear of its rounded ends, and the name keeps the mark edge. */}
+          {reorder?.custom === true && group !== undefined ? (
+            <ProjectGrip
+              groupId={group.groupId}
+              name={title}
+              onMove={(direction) => {
+                reorder.onMove(direction, true);
+              }}
+              onPointerDown={reorder.onGripPointerDown}
+            />
+          ) : null}
           <Tooltip>
             <TooltipTrigger
               render={
@@ -1761,7 +1841,9 @@ export function ProjectHeader({
           </Menu>
         </span>
       )}
-      {production}
+      {chips === undefined || chips === null ? null : (
+        <span className="flex shrink-0 items-center gap-1">{chips}</span>
+      )}
     </div>
   );
 }
@@ -1815,6 +1897,7 @@ function HeadingFaceMark({ face }: { readonly face: HeadingFace }) {
         className="size-4.5"
         greets
         known={face.known}
+        shape={face.shape}
         size="sm"
         state={face.face}
         tint={face.tint}
@@ -1886,11 +1969,11 @@ function revealLanding(
         : { focus: toggle ?? heading, flash: heading };
     }
     case "stop": {
-      // A stop is no row of its own: its project's production chip carries
-      // it, and its menu says the rest — so the chip is focused, flashed and
-      // opened.
+      // A stop is no row of its own: its chip on the heading carries it —
+      // production's, or the stages' — and its menu says the rest, so that
+      // chip is focused, flashed and opened.
       const chip = find(
-        `[data-zerops-group="${target.groupId}"] [data-zerops-surface="sidebar-production-chip"]`,
+        `[data-zerops-group="${target.groupId}"] [data-zerops-surface="sidebar-production-chip"][data-zerops-stops~="${CSS.escape(target.projectId)}"]`,
       );
       return chip === null ? null : { focus: chip, flash: chip, press: chip };
     }
@@ -2042,12 +2125,13 @@ function MateUnit({
 function MateRow<T extends RosterCandidate>({
   candidate,
   tint,
+  shape,
   active,
   activity,
   onSelect,
   owner,
   timestampFormat,
-  actions,
+  actions: offered,
   crew,
   onOpenCrew,
   appUrl,
@@ -2057,6 +2141,8 @@ function MateRow<T extends RosterCandidate>({
 }: {
   readonly candidate: T;
   readonly tint: MateTintId;
+  /** The shape its person picked, else its tint's own (`mateShapeOf`). */
+  readonly shape: MateShapeId;
   readonly active: boolean;
   readonly activity: ZeropsAgentActivity | undefined;
   readonly onSelect: (candidate: T) => void;
@@ -2079,13 +2165,19 @@ function MateRow<T extends RosterCandidate>({
 }) {
   const tags = readZeropsGroupTags(candidate.project.tagList);
   const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
+  // On its way off Zerops (`deletingMates.ts`): it says so in its last line,
+  // offers no menu and does not open, until the listing lets it go.
+  const deletingIds = useDeletingMates();
+  const deleting = mateDeleting(candidate.project, deletingIds);
+  const actions = deleting ? undefined : offered;
   // What it is on, or was last on, and since when — knowable only through an
   // open socket, and only once somebody has spoken to it; until the socket
   // opens, what this browser remembers the row saying.
   const live = drawnActivity(candidate, activity);
   // What the row says in its state (`mateRowView`, M7): the face, the right
   // of the name, what was asked and the third line.
-  const view = mateRowView(live, mateFaceFor(candidate.group === "connected", activity));
+  const read = mateRowView(live, mateFaceFor(candidate.group === "connected", activity));
+  const view = deleting ? mateDeletingView(read) : read;
   // Whose seat it is, and whether anybody has signed its agent in — read off
   // its own records, so from the first paint (`mateOwnerView`).
   const seated = mateOwnerView({
@@ -2172,13 +2264,15 @@ function MateRow<T extends RosterCandidate>({
         // the menu's edge and every word at 56 (the list starts at 9). It
         // paints nothing of its own: its unit is lit, under the pointer or
         // by the list's one band, which slides to it (`SidebarSelectedBand`).
-        className="menu-row grid w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-disabled={deleting || undefined}
+        className="menu-row grid w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default"
         data-zerops-surface="sidebar-mate"
         onClick={() => {
           if (longPress.current.fired) {
             longPress.current.fired = false;
             return;
           }
+          if (deleting) return;
           onSelect(candidate);
         }}
         onKeyDown={(event) => {
@@ -2233,6 +2327,7 @@ function MateRow<T extends RosterCandidate>({
                 activity !== undefined &&
                 activity.remembered !== true
               }
+              shape={shape}
               size="md"
               state={view.face}
               tint={tint}
@@ -2304,10 +2399,13 @@ function MateRow<T extends RosterCandidate>({
               {view.ask}
             </span>
           )}
-          {seated.signInLine === undefined ? null : <MateSignInLine words={seated.signInLine} />}
+          {deleting || seated.signInLine === undefined ? null : (
+            <MateSignInLine words={seated.signInLine} />
+          )}
           {view.reply === undefined ? null : (
             <MateReply known={known} reply={view.reply} threadKey={live?.threadKey} />
           )}
+          {deleting ? <MateDeletingLine /> : null}
         </span>
       </button>
       {actions === undefined ? null : (
@@ -2710,6 +2808,21 @@ function MateSignInLine({ words }: { readonly words: string }) {
       data-zerops-surface="sidebar-mate-sign-in"
     >
       {words}
+    </span>
+  );
+}
+
+/**
+ * The row's last line while its Mate is on its way off Zerops
+ * (`mateDeletingView`): the fact, in the muted ink, where its words stood.
+ */
+function MateDeletingLine() {
+  return (
+    <span
+      className="truncate text-line leading-4.5 text-muted-foreground"
+      data-zerops-surface="sidebar-mate-deleting"
+    >
+      {MATE_DELETING_WORD}
     </span>
   );
 }

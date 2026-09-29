@@ -2,8 +2,8 @@
  * What a Mate's own menu in the left menu does, wired to the session.
  *
  * The verbs the projects screen offers too — *Restart* or *Start*, *Register
- * in …*, *Hand over…*, *Move to project…* — are `useMateActions`', one
- * definition with its dialogs; *Rename* is its write too, done where the name
+ * in …*, *Hand over…*, *Move to project…*, *Delete {name}…* — are
+ * `useMateActions`', one definition with its dialogs; *Rename* is its write too, done where the name
  * stands instead of in a dialog. The rest is this viewer's own: a mute this
  * browser keeps (`mutedMates.ts`), read or unread (the visit marks the thread
  * rows use), a link to the conversation, and stopping the run it is on —
@@ -48,6 +48,7 @@ const SHARED_VERBS: Readonly<Record<string, string | null>> = {
   register: null,
   assign: "Hand over…",
   move: "Move to project…",
+  delete: null,
 };
 
 /** `useMateActions`' entries this menu offers, in its words; the rest are the projects screen's. */

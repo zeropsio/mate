@@ -14,6 +14,9 @@
  * `then` is told which conversation opened — its thread, or the one a Mate
  * with none starts — for what the caller opens beside it (its menu's *Crew*,
  * the Crew tab). Nothing is told where the projects screen takes over.
+ *
+ * A Mate on its way off Zerops (`deletingMates.ts`) does not open, from any
+ * door: its row says *Deleting…*, and what it held is going with it.
  */
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
@@ -26,6 +29,7 @@ import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { readThreadShells, useProjects, useThreadShells } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
+import { deletingMates, mateDeleting } from "./deletingMates";
 
 export function useOpenMate(): (
   candidate: ZeropsCandidate,
@@ -38,6 +42,7 @@ export function useOpenMate(): (
   const handleNewThread = useNewThreadHandler();
   return useCallback(
     (candidate: ZeropsCandidate, then?: (conversation: ScopedThreadRef) => void) => {
+      if (mateDeleting(candidate.project, deletingMates())) return;
       const environmentId = linkTarget(candidate);
       if (environmentId === undefined) {
         void router.navigate({ to: "/zerops" });

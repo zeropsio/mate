@@ -30,9 +30,12 @@
 import type { ZeropsAgentType } from "./newProject.ts";
 import {
   withZeropsBotTag,
+  withZeropsFaceTag,
   withZeropsGroupTags,
   withZeropsMateTag,
+  withZeropsStandUpTag,
   type ZeropsEnvironmentRole,
+  type ZeropsMateFace,
 } from "./groups.ts";
 import {
   hasProjectBlock,
@@ -100,6 +103,17 @@ export interface EnvironmentCreationInput {
    * name — legible, but not somebody you can address.
    */
   readonly botName?: string;
+  /**
+   * The Zerops user adding this Mate. A dev environment with an agent is born asking for its
+   * development to be stood up on their behalf (`mate:standup:`): the services arrive empty
+   * (`startWithoutCode`), and their first sign-in sends the Mate the ask that finishes the setup.
+   */
+  readonly standUpBy?: string;
+  /**
+   * The face its person picked for the agent, written beside its name. A
+   * caller that omits it gets a Mate whose face is derived from its name.
+   */
+  readonly face?: ZeropsMateFace;
   /**
    * The coding agents the new container offers, normally the ones this
    * group's existing environments are signed in with (`agentSelection.ts`).
@@ -312,7 +326,7 @@ export function environmentCreationStepLabel(step: EnvironmentCreationStep): str
 
 /**
  * The tags a new environment is created with: its membership, and — when it
- * gets an agent — the `mate` marker and the agent's name. The marker is
+ * gets an agent — the `mate` marker, the agent's name and its face. The marker is
  * written here, at birth, rather than after the container import, so a
  * creation that fails between the two still leaves a project that says what
  * it was meant to be.
@@ -325,5 +339,10 @@ function taggedAtBirth(input: EnvironmentCreationInput, withAgent: boolean): Rea
   });
   if (!withAgent) return membership;
   const declared = withZeropsMateTag(membership);
-  return input.botName === undefined ? declared : withZeropsBotTag(declared, input.botName);
+  const named = input.botName === undefined ? declared : withZeropsBotTag(declared, input.botName);
+  const faced = input.face === undefined ? named : withZeropsFaceTag(named, input.face);
+  // Only a dev Mate stands development up; a stage or a production with an agent is a target.
+  return input.role === "dev" && input.standUpBy !== undefined
+    ? withZeropsStandUpTag(faced, input.standUpBy)
+    : faced;
 }

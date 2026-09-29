@@ -1,21 +1,27 @@
+import { MATE_SHAPE_IDS, MATE_TINT_IDS } from "@t3tools/shared/brand";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsProject } from "./api.ts";
 import {
   deriveZeropsGroups,
+  formatFaceTag,
   formatGroupTag,
   formatRoleTag,
   generateZeropsGroupId,
   readZeropsGroupTags,
   withZeropsBotTag,
+  withZeropsFaceTag,
   withZeropsGroupTags,
   withZeropsMateTag,
+  withZeropsStandUpTag,
+  withoutZeropsStandUpTag,
   formatLabelTag,
   ZEROPS_GROUP_ID_LENGTH,
   ZEROPS_GROUP_LABEL_MAX_LENGTH,
   type ZeropsEnvironmentRole,
   type ZeropsPlacedBirth,
 } from "./groups.ts";
+import { withMateSignerTag } from "./mateAccess.ts";
 
 function project(
   name: string,
@@ -143,6 +149,99 @@ describe("withZeropsMateTag", () => {
     const declared = withZeropsMateTag(["mate:g:old", "mate:role:dev"]);
     expect(withZeropsGroupTags(declared, { groupId: "new", role: "dev" })).toContain("mate");
     expect(withZeropsGroupTags(declared, {})).toEqual(["mate"]);
+  });
+});
+
+describe("the stand-up marker (mate:standup:)", () => {
+  it.each([
+    {
+      name: "names who asked for it",
+      tagList: ["mate:g:abc", "mate", "mate:standup:u-ada"],
+      standUp: { by: "u-ada" },
+    },
+    {
+      name: "is absent on a Mate nobody asked it of",
+      tagList: ["mate:g:abc", "mate"],
+      standUp: undefined,
+    },
+    {
+      name: "names nobody when blank",
+      tagList: ["mate:standup:", "mate:standup:  "],
+      standUp: undefined,
+    },
+    {
+      name: "takes the first when a list carries two",
+      tagList: ["mate:standup:u-ada", "mate:standup:u-fen"],
+      standUp: { by: "u-ada" },
+    },
+    {
+      name: "is not a foreign tag that merely looks alike",
+      tagList: ["standup:u-ada"],
+      standUp: undefined,
+    },
+  ])("$name", ({ tagList, standUp }) => {
+    expect(readZeropsGroupTags(tagList).standUp).toEqual(standUp);
+  });
+
+  it.each([
+    {
+      name: "is written after every other tag",
+      tagList: ["mate:g:abc", "mate"],
+      userId: "u-ada",
+      expected: ["mate:g:abc", "mate", "mate:standup:u-ada"],
+    },
+    {
+      name: "replaces one naming somebody else",
+      tagList: ["mate:standup:u-fen", "keep"],
+      userId: "u-ada",
+      expected: ["keep", "mate:standup:u-ada"],
+    },
+    { name: "is not written for nobody", tagList: ["keep"], userId: "  ", expected: ["keep"] },
+  ])("$name", ({ tagList, userId, expected }) => {
+    expect(withZeropsStandUpTag(tagList, userId)).toEqual(expected);
+  });
+
+  it("clears every stand-up and nothing else, and clearing again changes nothing", () => {
+    const cleared = withoutZeropsStandUpTag([
+      "person:own",
+      "mate:g:abc",
+      "mate:standup:u-ada",
+      "mate:bot:Ada",
+      "mate:signer:codex:u-ada",
+      "mate:standup:u-fen",
+      "mate",
+    ]);
+    expect(cleared).toEqual([
+      "person:own",
+      "mate:g:abc",
+      "mate:bot:Ada",
+      "mate:signer:codex:u-ada",
+      "mate",
+    ]);
+    expect(withoutZeropsStandUpTag(cleared)).toEqual(cleared);
+  });
+
+  it.each([
+    {
+      name: "a move to another group",
+      write: (tags: ReadonlyArray<string>) =>
+        withZeropsGroupTags(tags, { groupId: "new", role: "dev", label: "Acme Docs" }),
+    },
+    {
+      name: "leaving the group",
+      write: (tags: ReadonlyArray<string>) => withZeropsGroupTags(tags, {}),
+    },
+    {
+      name: "naming the agent",
+      write: (tags: ReadonlyArray<string>) => withZeropsBotTag(tags, "Fen"),
+    },
+    {
+      name: "declaring the Mate again",
+      write: (tags: ReadonlyArray<string>) => withZeropsMateTag(tags),
+    },
+  ])("stands through $name", ({ write }) => {
+    const asked = withZeropsStandUpTag(["mate:g:old", "mate:role:dev", "mate"], "u-ada");
+    expect(readZeropsGroupTags(write(asked)).standUp).toEqual({ by: "u-ada" });
   });
 });
 
@@ -707,6 +806,120 @@ describe("bot names on the tag", () => {
 
   it("still preserves tags this product does not own", () => {
     expect(withZeropsBotTag(["billing:team-a"], "Ada")).toContain("billing:team-a");
+  });
+});
+
+/**
+ * A Mate's face — the colour and the shape its person picked — rides on one
+ * tag, `mate:face:<tint>:<shape>`. Read permissively: a part this client does
+ * not know is left out, so the derived one stands in for it.
+ */
+describe("a Mate's face on the tag", () => {
+  it.each(MATE_TINT_IDS)("reads back every shape %s is written with", (tint) => {
+    for (const shape of MATE_SHAPE_IDS) {
+      const tag = formatFaceTag({ tint, shape });
+      expect(tag).toBe(`mate:face:${tint}:${shape}`);
+      expect(readZeropsGroupTags(["mate:g:aaa", tag]).face).toEqual({ tint, shape });
+    }
+  });
+
+  it.each([
+    { case: "no face tag", tagList: ["mate:g:aaa", "mate:bot:Ada"], face: undefined },
+    {
+      case: "a tint a newer client added",
+      tagList: ["mate:face:teal:gem"],
+      face: { tint: undefined, shape: "gem" },
+    },
+    {
+      case: "a shape a newer client added",
+      tagList: ["mate:face:coral:blob"],
+      face: { tint: "coral", shape: undefined },
+    },
+    { case: "nothing this client knows", tagList: ["mate:face:teal:blob"], face: undefined },
+    {
+      case: "a tag with no shape",
+      tagList: ["mate:face:coral"],
+      face: { tint: "coral", shape: undefined },
+    },
+    {
+      case: "a part a newer client appended",
+      tagList: ["mate:face:coral:gem:wink"],
+      face: { tint: "coral", shape: "gem" },
+    },
+    {
+      case: "an id in another case, never guessed at",
+      tagList: ["mate:face:Coral:Gem"],
+      face: undefined,
+    },
+    { case: "an empty tag", tagList: ["mate:face:"], face: undefined },
+    {
+      case: "two tags: the first this client can read",
+      tagList: ["mate:face:teal:blob", "mate:face:sky:seal", "mate:face:rose:pick"],
+      face: { tint: "sky", shape: "seal" },
+    },
+  ] as const)("reads $case", ({ tagList, face }) => {
+    expect(readZeropsGroupTags(tagList).face).toEqual(face);
+  });
+
+  it("does not mistake a face for the marker, the name or membership", () => {
+    const tags = readZeropsGroupTags(["mate:face:olive:clover"]);
+    expect(tags).toMatchObject({ mate: false, groupId: undefined, bot: undefined });
+  });
+
+  it("writes one face, replacing the one before and keeping every other tag", () => {
+    expect(
+      withZeropsFaceTag(["billing:team-a", "mate:g:aaa", "mate:face:coral:gem", "mate"], {
+        tint: "sky",
+        shape: "seal",
+      }),
+    ).toEqual(["billing:team-a", "mate:g:aaa", "mate", "mate:face:sky:seal"]);
+  });
+
+  /** A face belongs to the Mate, not to its group: no other write of the list drops it. */
+  it.each([
+    {
+      write: "a move to another group",
+      after: (tags: ReadonlyArray<string>) =>
+        withZeropsGroupTags(tags, { groupId: "bbb", role: "dev", label: "Acme Shop" }),
+    },
+    {
+      write: "leaving the group",
+      after: (tags: ReadonlyArray<string>) => withZeropsGroupTags(tags, {}),
+    },
+    {
+      write: "a role change",
+      after: (tags: ReadonlyArray<string>) =>
+        withZeropsGroupTags(tags, { groupId: "aaa", role: "devstage", label: "Acme Docs" }),
+    },
+    {
+      write: "a renamed project",
+      after: (tags: ReadonlyArray<string>) =>
+        withZeropsGroupTags(tags, { groupId: "aaa", role: "dev", label: "Acme Handbook" }),
+    },
+    {
+      write: "a renamed Mate",
+      after: (tags: ReadonlyArray<string>) => withZeropsBotTag(tags, "Bo"),
+    },
+    {
+      write: "an unnamed Mate",
+      after: (tags: ReadonlyArray<string>) => withZeropsBotTag(tags, ""),
+    },
+    { write: "the marker", after: (tags: ReadonlyArray<string>) => withZeropsMateTag(tags) },
+    {
+      write: "a signer recorded",
+      after: (tags: ReadonlyArray<string>) => withMateSignerTag(tags, "claude", "user-1"),
+    },
+  ])("keeps the face through $write", ({ after }) => {
+    const tags = after([
+      "mate:g:aaa",
+      "mate:role:dev",
+      "mate:name:Acme Docs",
+      "mate:bot:Ada",
+      "mate",
+      "mate:face:violet:flower",
+    ]);
+    expect(tags).toContain("mate:face:violet:flower");
+    expect(readZeropsGroupTags(tags).face).toEqual({ tint: "violet", shape: "flower" });
   });
 });
 

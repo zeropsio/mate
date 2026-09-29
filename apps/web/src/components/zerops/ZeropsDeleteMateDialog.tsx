@@ -1,0 +1,131 @@
+/**
+ * Deleting a Mate: one paragraph that says what goes, one field that asks for its name, one
+ * button that does it (`ZeropsDeleteMateDialog.logic.ts` holds the words and the rules).
+ *
+ * The button stays shut until the name is typed as it is spelled, and Enter presses it only then.
+ * While the platform answers, it says *Deleting…* and neither button takes a press; the two words
+ * hold one room, so the button keeps its width and nothing beside it moves. A refusal keeps the
+ * dialog open and says the platform's reason under the field, on a line that is always there.
+ */
+import { useId, useState } from "react";
+
+import { cn } from "~/lib/utils";
+import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "../ui/dialog";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { deleteMateConfirmed, type DeleteMateWords } from "./ZeropsDeleteMateDialog.logic";
+
+export function ZeropsDeleteMateForm({
+  name,
+  words,
+  pending,
+  error,
+  onCancel,
+  onConfirm,
+}: {
+  /** The Mate's name, as the field asks for it. */
+  readonly name: string;
+  readonly words: DeleteMateWords;
+  /** The platform is answering the press. */
+  readonly pending: boolean;
+  /** The platform's reason for refusing the last press; `null` where it did not. */
+  readonly error: string | null;
+  readonly onCancel: () => void;
+  readonly onConfirm: () => void;
+}) {
+  const id = useId();
+  const [typed, setTyped] = useState("");
+  const confirmed = deleteMateConfirmed(typed, name);
+
+  return (
+    <form
+      className="flex min-h-0 flex-col"
+      data-zerops-surface="delete-mate-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!confirmed || pending) return;
+        onConfirm();
+      }}
+    >
+      <DialogHeader>
+        <DialogTitle>{words.title}</DialogTitle>
+        <DialogDescription>
+          <span className="block text-pretty">{words.body}</span>
+        </DialogDescription>
+      </DialogHeader>
+      <DialogPanel>
+        <div className="space-y-1.5">
+          <Label htmlFor={`${id}-name`}>{words.label}</Label>
+          <Input
+            aria-describedby={`${id}-reason`}
+            autoComplete="off"
+            autoFocus
+            id={`${id}-name`}
+            onChange={(event) => {
+              setTyped(event.target.value);
+            }}
+            readOnly={pending}
+            spellCheck={false}
+            value={typed}
+          />
+          <p className="min-h-4 text-xs text-status-failed-text" id={`${id}-reason`} role="alert">
+            {error}
+          </p>
+        </div>
+      </DialogPanel>
+      <DialogFooter>
+        <Button disabled={pending} onClick={onCancel} type="button" variant="ghost">
+          Cancel
+        </Button>
+        <Button
+          aria-busy={pending || undefined}
+          disabled={!confirmed || pending}
+          type="submit"
+          variant="destructive"
+        >
+          <span className="grid">
+            <span className={cn("col-start-1 row-start-1", pending && "invisible")}>
+              {words.submit}
+            </span>
+            <span className={cn("col-start-1 row-start-1", !pending && "invisible")}>
+              {words.pending}
+            </span>
+          </span>
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+export function ZeropsDeleteMateDialog({
+  open,
+  onOpenChange,
+  ...form
+}: Parameters<typeof ZeropsDeleteMateForm>[0] & {
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Dialog
+      onOpenChange={(next) => {
+        // A press the platform is answering is seen through: its refusal has somewhere to land.
+        if (!next && form.pending) return;
+        onOpenChange(next);
+      }}
+      open={open}
+    >
+      <DialogPopup className="max-w-md">
+        <ZeropsDeleteMateForm {...form} />
+      </DialogPopup>
+    </Dialog>
+  );
+}

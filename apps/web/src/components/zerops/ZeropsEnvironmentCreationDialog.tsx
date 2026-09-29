@@ -1,16 +1,20 @@
 /**
  * Adding an environment to a group, as a short form.
  *
- * Three things are the person's to decide and nothing else: what the
- * environment is called, whether it runs an agent and what that agent is
- * called, and what application goes in — the group's published recipe, a
- * clone of a sibling, or nothing yet. Everything else follows from the role.
+ * A Mate is somebody: its dialog asks who — a name, a colour, a shape — and
+ * decides the rest (`ZeropsNewMateForm`). A stage or a production leaves
+ * three things to the person: what the environment is called, whether it
+ * runs an agent and what that agent is called, and what application goes in
+ * — the group's published recipe, or nothing yet. Everything else follows
+ * from the role.
  */
 import type {
   EnvironmentRecipeChoice,
   ZeropsEnvironmentRole,
+  ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
+import type { MateTintId } from "@t3tools/shared/brand";
 import { useId, useMemo, useState } from "react";
 
 import { Button } from "../ui/button";
@@ -36,6 +40,7 @@ import {
   validateCreationForm,
   type CreationFormErrors,
 } from "./ZeropsEnvironmentCreationDialog.logic";
+import { ZeropsNewMateForm } from "./ZeropsNewMateForm";
 
 export interface EnvironmentCreationChoice {
   readonly name: string;
@@ -43,6 +48,8 @@ export interface EnvironmentCreationChoice {
   /** Present when `withAgent`. */
   readonly botName?: string;
   readonly recipe: EnvironmentRecipeChoice;
+  /** The face its person picked: present for a Mate. */
+  readonly face?: ZeropsMateFace;
 }
 
 export interface ZeropsEnvironmentCreationFormProps {
@@ -51,11 +58,11 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly defaultName: string;
   readonly defaultBotName: string;
   /**
-   * The name to propose for a bot's name, while the person has not named the
-   * environment by hand: a Mate is named after its bot, so renaming Fen to
-   * Ada renames "Todo - Fen" to "Todo - Ada" until the name field is touched.
+   * What the project calls an environment whose agent goes by `botName`: a
+   * Mate after its bot, so renaming Fen to Ada renames "Todo - Fen" to
+   * "Todo - Ada"; a stage or a production after its role.
    */
-  readonly proposeName?: ((botName: string) => string) | undefined;
+  readonly proposeName: (botName: string) => string;
   readonly defaultWithAgent: boolean;
   /** The account's Mates' names, and whether the listing read them all (`takenBotNames`). */
   readonly takenBotNames: TakenBotNames;
@@ -65,12 +72,36 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly tierServices: ReadonlyArray<string>;
   /** True while the group repo is still being read. */
   readonly tierLoading: boolean;
+  /** The tint the account gives a new Mate of this name (`newMateTint`). */
+  readonly defaultTintFor: (name: string) => MateTintId;
   readonly onCancel: () => void;
   readonly onCreate: (choice: EnvironmentCreationChoice) => void;
 }
 
 /** The form on its own, so it can be rendered and read without a portal. */
-export function ZeropsEnvironmentCreationForm({
+export function ZeropsEnvironmentCreationForm(props: ZeropsEnvironmentCreationFormProps) {
+  if (props.role !== "dev") return <EnvironmentForm {...props} />;
+  const { groupName, defaultBotName, proposeName, takenBotNames, tier, tierLoading } = props;
+  const { defaultTintFor, onCancel, onCreate } = props;
+  return (
+    <ZeropsNewMateForm
+      defaultBotName={defaultBotName}
+      defaultTintFor={defaultTintFor}
+      groupName={groupName}
+      onCancel={onCancel}
+      onCreate={({ name, botName, recipe, face }) => {
+        onCreate({ name, withAgent: true, botName, recipe, face });
+      }}
+      proposeName={proposeName}
+      takenBotNames={takenBotNames}
+      tier={tier}
+      tierLoading={tierLoading}
+    />
+  );
+}
+
+/** A stage's or a production's form: its name, its agent, its application. */
+function EnvironmentForm({
   groupName,
   role,
   defaultName,
@@ -127,7 +158,7 @@ export function ZeropsEnvironmentCreationForm({
       <DialogHeader>
         {/* The title names the thing, the button names what happens to it.
             Carrying one string in both said nothing twice. */}
-        <DialogTitle>{role === "dev" ? "New Mate" : `New ${what} environment`}</DialogTitle>
+        <DialogTitle>{`New ${what} environment`}</DialogTitle>
         <DialogDescription>
           A new Zerops project in {groupName}. It takes a couple of minutes to come up.
         </DialogDescription>
@@ -172,7 +203,7 @@ export function ZeropsEnvironmentCreationForm({
                 id={`${id}-bot`}
                 onChange={(event) => {
                   setBotName(event.target.value);
-                  if (!nameTouched && proposeName !== undefined) {
+                  if (!nameTouched) {
                     setName(proposeName(event.target.value.replace(/\s+/g, " ").trim()));
                   }
                 }}
@@ -239,13 +270,9 @@ export function ZeropsEnvironmentCreationForm({
   );
 }
 
-/**
- * What the dialog calls the thing it adds: a dev environment is a Mate — the
- * product's word everywhere else (the audit run, 2026-09-17: "Add dev to
- * Todo") — and the others go by their role.
- */
+/** What the dialog calls the environment it adds: its role. A Mate has a form of its own. */
 function environmentWord(role: ZeropsEnvironmentRole): string {
-  return role === "dev" ? "Mate" : (environmentRoleLabel(role) ?? role).toLowerCase();
+  return (environmentRoleLabel(role) ?? role).toLowerCase();
 }
 
 /**

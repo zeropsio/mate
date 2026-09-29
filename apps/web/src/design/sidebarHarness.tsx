@@ -23,7 +23,13 @@
  * Fixtures only. Nothing here ships in the app bundle — `design.html` is not
  * `index.html`, and no route imports this module.
  */
-import { StrictMode, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
+import { StrictMode, useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { createRoot } from "react-dom/client";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -45,7 +51,7 @@ import type { MateTintId } from "@t3tools/shared/brand";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
 import { onOpenCommandPalette } from "~/commandPaletteBus";
-import { MateLockup } from "~/components/MateLockup";
+import { SidebarChromeHeader } from "~/components/sidebar/SidebarChrome";
 import { CommandDialog, CommandDialogPopup } from "~/components/ui/command";
 import {
   chooseJumpItem,
@@ -72,7 +78,7 @@ import {
   SidebarZeropsTree,
   type SidebarProjectFlow,
 } from "~/components/zerops/SidebarZeropsTree";
-import { SidebarContent } from "~/components/ui/sidebar";
+import { SidebarContent, SidebarProvider } from "~/components/ui/sidebar";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { writeCollapsedProjects } from "~/zerops/collapsedProjects";
@@ -86,6 +92,7 @@ import { useSidebarJump } from "~/zerops/sidebarJump";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { PROJECT_ORDER_STORAGE_KEY, ProjectOrderSchema } from "~/zerops/projectOrderPreference";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
+import type { AppRouter } from "~/router";
 
 import "../index.css";
 import {
@@ -807,8 +814,11 @@ const ORGANIZATION = { id: "org-acme", name: "Acme", membershipId: "m-acme" };
  * one of it, as in the app. `?w=` sets its width; the owner runs it near
  * 435, the default is 256.
  */
-/** Where the logo row's mark starts: 16 px on the web, `?inset=` px beside a desktop's window controls. */
-const INSET = Number(new URLSearchParams(location.search).get("inset") ?? 16);
+/**
+ * Where the window's own controls end: nothing on the web, where the logo
+ * row's mark stands 16 px in; `?inset=` px beside a desktop's traffic lights.
+ */
+const CONTROLS = new URLSearchParams(location.search).get("inset");
 
 function SidebarFrame({ width, onJump }: { readonly width: number; readonly onJump: () => void }) {
   // Mine / Everyone, from the account menu, as the app reads it.
@@ -832,22 +842,19 @@ function SidebarFrame({ width, onJump }: { readonly width: number; readonly onJu
     <aside
       className="flex h-screen shrink-0 flex-col border-e border-border bg-sidebar text-sidebar-foreground"
       data-sidebar="sidebar"
-      style={{ width }}
+      style={
+        CONTROLS === null
+          ? { width }
+          : ({ width, "--workspace-controls-left": `${CONTROLS}px` } as CSSProperties)
+      }
     >
-      {/* The logo row as the app's (`SidebarChromeHeader`): the mark 16 px in
-          on the web, or `?inset=90` beside macOS's traffic lights. */}
-      <header className="flex h-13 shrink-0 items-center" style={{ paddingInlineStart: INSET }}>
-        <MateLockup className="h-5.5 w-auto shrink-0" decorative />
-        <div className="flex min-w-0 flex-1 items-center justify-end gap-2 pe-3">
-          <div
-            className="flex min-w-0 max-w-24 flex-1 items-center justify-end"
-            data-zerops-surface="sidebar-waiting-slot"
-          >
-            <SidebarWaitingStack mates={waiting.mates} onNext={waiting.next} />
-          </div>
-          <SidebarJumpButton onJump={onJump} shortcut={JUMP_KEY} />
-        </div>
-      </header>
+      {/* The app's own logo row: the mark 16 px in on the web, or `?inset=90`
+          beside macOS's traffic lights; the waiting faces and ⌘K at its end. */}
+      <SidebarChromeHeader
+        isElectron={false}
+        jump={<SidebarJumpButton onJump={onJump} shortcut={JUMP_KEY} />}
+        waiting={<SidebarWaitingStack mates={waiting.mates} onNext={waiting.next} />}
+      />
       {/* The list scrolls as the app's does (`SidebarContent`): fading into
           the canvas at an edge only while something is scrolled under it. */}
       <SidebarContent>
@@ -1158,11 +1165,25 @@ useComposerDraftStore
 // The menu is always on screen here: a find is shown in it, as on a desktop.
 useSidebarJump.getState().setShowable(true);
 
+// The logo row's mark is a link home, so the harness stands in a router of
+// its own — one page, in memory — and in the sidebar's provider, as the app's
+// menu does.
+const router = createRouter({
+  routeTree: createRootRoute({
+    component: () => (
+      <SidebarProvider className="block">
+        <Harness />
+      </SidebarProvider>
+    ),
+  }),
+  history: createMemoryHistory({ initialEntries: ["/"] }),
+}) as unknown as AppRouter;
+
 const host = document.getElementById("design");
 if (host) {
   createRoot(host).render(
     <StrictMode>
-      <Harness />
+      <RouterProvider router={router} />
     </StrictMode>,
   );
 }

@@ -3,7 +3,11 @@
  * the words on the change, Ask hands them to the person's own Mate, who changes the code — told
  * apart by what they do, with no line explaining them.
  */
-import { changeRemarks, type ChangeRemark } from "@t3tools/client-runtime/zerops";
+import {
+  changeRemarks,
+  preferredMateTint,
+  type ChangeRemark,
+} from "@t3tools/client-runtime/zerops";
 import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -71,6 +75,30 @@ describe("a change's conversation in its review", () => {
     const markup = html({ asker });
     expect(markup).toContain(">Comment</button>");
     expect(markup.includes("Ask Nova")).toBe(asks);
+  });
+
+  /**
+   * A Mate's remark wears the face the menu gives it — its person's pick — rather than the tint
+   * its name alone asks for; a Mate the project no longer lists still gets that one.
+   */
+  it.each([
+    {
+      case: "the face the project gives it",
+      mateFaces: new Map([["p-nova", { tint: "rose" as const, shape: "seal" as const }]]),
+      face: 'data-mate-face-shape="seal" data-mate-face-size="sm" data-mate-face-state="idle" data-mate-face-tint="rose"',
+    },
+    {
+      case: "the tint its name asks for once the project no longer lists it",
+      mateFaces: new Map(),
+      face: `data-mate-face-tint="${preferredMateTint("Nova")}"`,
+    },
+  ])("draws a Mate's remark in $case", ({ mateFaces, face }) => {
+    expect(html({ mateFaces })).toContain(face);
+  });
+
+  it("draws Ask in the face its person picked", () => {
+    const markup = html({ asker: { name: "Nova", tint: "slate", shape: "clover" } });
+    expect(markup).toContain('data-mate-face-shape="clover" data-mate-face-size="dot"');
   });
 
   it("tells the verbs apart without a line explaining them", () => {

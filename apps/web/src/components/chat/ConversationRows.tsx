@@ -11,7 +11,7 @@
  * Presentational: every word comes from the row. Every row here has its final
  * height from its first frame; only words and fixed-size marks change in place.
  */
-import type { MateTintId } from "@t3tools/shared/brand";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
   CircleAlertIcon,
@@ -34,6 +34,8 @@ import type { ConversationEvent, MessagesTimelineRow } from "./MessagesTimeline.
 export interface ConversationSpeaker {
   readonly name: string;
   readonly tint: MateTintId;
+  /** The shape its person picked for the Mate; a crewmate, or nobody, wears its tint's own. */
+  readonly shape?: MateShapeId | undefined;
 }
 
 /**

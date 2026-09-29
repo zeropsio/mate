@@ -12,6 +12,7 @@ const waiting = (id: string): WaitingMate => ({
   projectId: id,
   name: id,
   tint: "sky",
+  shape: "gem",
   face: "needs",
 });
 
@@ -26,6 +27,8 @@ describe("SidebarWaitingStack — the Mates waiting on you, in the header", () =
       'aria-label="Kai and Juno wait on you. Go to the next one: Option and Down."',
     );
     expect(html).toContain('data-mate-face-state="needs"');
+    // Each in the face its person picked.
+    expect(html.match(/data-mate-face-shape="gem"/gu)).toHaveLength(2);
     // No count and no word beside the faces.
     expect(html).not.toContain(">2<");
   });

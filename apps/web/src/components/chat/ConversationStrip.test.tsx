@@ -202,20 +202,42 @@ describe("ConversationStrip", () => {
     expect(line({ current: "main" })).toBe("");
   });
 
-  it("draws a Mate with no crew as its face at 24 and its name at 16/600, and nothing else — what its chat is about is its hover", () => {
+  it("draws a Mate with no crew as its face at 24, its name at 16/600 and what its chat is about on the line, 14/400 muted after a divider", () => {
     state.shells = [shell("main")];
     const html = line({ current: "main" });
     expect(matePill(html)).not.toContain("data-on");
     expect(html).toMatch(/class="[^"]*\bsize-6\b[^"]*"[^>]*data-mate-face-size="sm"/);
     expect(html).toContain(
-      'class="max-w-48 truncate text-base leading-6 font-semibold text-foreground">Fen</span>',
+      'class="max-w-48 shrink-0 truncate text-base leading-6 font-semibold text-foreground">Fen</span>',
     );
-    expect(onLine(html)).not.toContain("Build the game server");
-    expect(tooltips(html)).toEqual(["Build the game server"]);
+    expect(onLine(html)).toContain(
+      '<span class="conversation-subject flex min-w-0 items-center gap-2.5" data-conversation-subject=""><span aria-hidden="true" class="h-4 w-px shrink-0 bg-border"></span><span class="min-w-0 truncate text-sm text-muted-foreground">Build the game server</span></span>',
+    );
+    // Written whole on the line, it has no hover to repeat it.
+    expect(tooltips(html)).toEqual([]);
     expect(html).not.toContain("data-conversation-divider");
     expect(html).not.toContain("data-conversation-crew");
     expect(html).not.toContain("New chat");
     expect(html).not.toContain("Close ");
+  });
+
+  it("writes nothing after a crewless Mate's name in a chat nobody has spoken into", () => {
+    state.shells = [shell("main")];
+    const html = renderToStaticMarkup(
+      <ConversationStrip
+        crewChat={null}
+        currentThreadId={ThreadId.make("main")}
+        environmentId={FEN}
+        onEditBrief={() => {}}
+        onEditJob={() => {}}
+        onRename={() => {}}
+        renameField={null}
+        subject={null}
+      />,
+    );
+    expect(html).not.toContain("data-conversation-subject");
+    expect(html).not.toContain("bg-border");
+    expect(tooltips(html)).toEqual([]);
   });
 
   it("stands the Mate on the band on its own chat, then a divider and a face per crewmate, their names unwritten", () => {
@@ -291,8 +313,18 @@ describe("ConversationStrip", () => {
   it("draws every face in the line before it is measured", () => {
     state.shells = [shell("main")];
     state.view = crewView();
-    expect(line({ current: "main" })).not.toContain(
-      'invisible absolute start-0 top-0" data-conversation-crewmate',
+    const html = line({ current: "main" });
+    expect(html.match(/data-conversation-seat="/g)).toHaveLength(4);
+    expect(html).not.toContain('invisible absolute start-0 top-0" data-conversation-seat');
+  });
+
+  it("draws the band behind the line, placed by its motion once the line stands", () => {
+    state.shells = [shell("main")];
+    state.view = crewView();
+    const html = line({ current: "main" });
+    expect(html).toMatch(/<nav [^>]*class="relative isolate -ms-2 /);
+    expect(html).toContain(
+      '<span aria-hidden="true" class="conversation-band"><span></span><span></span><span></span></span>',
     );
   });
 });
@@ -351,6 +383,99 @@ describe("ConversationStripView", () => {
     expect(onOpen).not.toHaveBeenCalled();
     act(() => mate.props.onDoubleClick({ ...KEYS, metaKey: true }));
     expect(onRename).toHaveBeenCalledOnce();
+  });
+
+  const crewOf = (open: string | null, handles = ["lead", "rules", "web"]) =>
+    handles.map((handle): LineCrewmate => ({
+      ...RULES,
+      handle,
+      name: handle,
+      open: handle === open,
+      threadId: ThreadId.make(`thread-crew-${handle}-1`),
+    }));
+  function drawn(open: string | null, handles?: ReadonlyArray<string>) {
+    return (
+      <ConversationStripView
+        chats={null}
+        crew={crewOf(open, handles ? [...handles] : undefined)}
+        mate={{
+          name: "Fen",
+          tint: "amber",
+          face: "idle",
+          open: open === null,
+          threadId: ThreadId.make("main"),
+          tooltip: null,
+        }}
+        onCloseChat={() => {}}
+        onOpen={() => {}}
+        onRename={null}
+        renameField={null}
+        renderCrewmateMenu={() => null}
+      />
+    );
+  }
+  const seatOf = (renderer: ReactTestRenderer, handle: string) =>
+    renderer.root.find(
+      (node) => node.type === "span" && node.props["data-conversation-seat"] === handle,
+    );
+  const labelsOf = (renderer: ReactTestRenderer) =>
+    renderer.root
+      .findAll(
+        (node) => node.type === "span" && node.props["data-conversation-label"] !== undefined,
+      )
+      .map((node) => node.props["data-conversation-label"] as string);
+
+  it("keeps each crewmate's seat through a switch: its face is drawn once, the press over it changes", () => {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(drawn("rules"));
+    });
+    const seat = seatOf(renderer, "lead");
+    const face = seat.findByProps({ "data-mate-face-size": "sm" });
+    act(() => renderer.update(drawn("lead")));
+    expect(seatOf(renderer, "lead")).toBe(seat);
+    expect(seatOf(renderer, "lead").findByProps({ "data-mate-face-size": "sm" })).toBe(face);
+    expect(
+      seat.find((node) => node.type === "button" && node.props["aria-current"] === "page").props[
+        "data-conversation-crewmate"
+      ],
+    ).toBe("lead");
+  });
+
+  it.each<{
+    readonly name: string;
+    readonly from: string | null;
+    readonly to: string | null;
+    readonly handles?: ReadonlyArray<string>;
+    readonly labels: ReadonlyArray<string>;
+  }>([
+    {
+      name: "a switch folds the name left while the one opened opens",
+      from: "rules",
+      to: "lead",
+      labels: ["open", "leaving"],
+    },
+    {
+      name: "the Mate's own chat folds the crewmate's name left",
+      from: "web",
+      to: null,
+      labels: ["leaving"],
+    },
+    { name: "leaving the Mate's own chat folds nothing", from: null, to: "web", labels: ["open"] },
+    {
+      name: "a crewmate added as the chat changes is placed: nothing folds",
+      from: "rules",
+      to: "lead",
+      handles: ["lead", "rules", "web", "docs"],
+      labels: ["open"],
+    },
+  ])("$name", ({ from, to, handles, labels }) => {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(drawn(from));
+    });
+    act(() => renderer.update(drawn(to, handles)));
+    expect(labelsOf(renderer)).toEqual(labels);
   });
 
   it("opens the Mate's own chat from a crewmate's, and renames nothing there", () => {

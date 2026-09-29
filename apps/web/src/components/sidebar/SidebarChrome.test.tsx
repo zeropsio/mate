@@ -99,6 +99,40 @@ describe("SidebarChromeHeader", () => {
     expect(markup).not.toContain("T3");
   });
 
+  // The owner, 2026-09-29: "visually logo has smaller padding on top than on
+  // the left". On the web the row is 65 px, so the 33 px mark, centred in it,
+  // stands 16 px from the top as it stands 16 px from the left — its drawn
+  // slab a third of a pixel inside its box either way — and ⌘K and the
+  // waiting faces, centred in the same row, share its centre. Beside a
+  // desktop's traffic lights the row stays theirs.
+  it.each([
+    { shell: "the web", isElectron: false, row: 65 },
+    { shell: "a desktop window", isElectron: true, row: undefined },
+  ])("stands the mark as far from the top as from the left on $shell", ({ isElectron, row }) => {
+    const markup = renderToStaticMarkup(
+      <SidebarChromeHeader
+        isElectron={isElectron}
+        jump={<button data-zerops-surface="sidebar-jump" type="button" />}
+      />,
+    );
+    const header = /<header class="([^"]*)"/u.exec(markup)?.[1]?.split(" ") ?? [];
+    expect(header).toEqual(
+      expect.arrayContaining(["h-[var(--workspace-topbar-height)]", "items-center"]),
+    );
+    const tall = header.find((name) => name.startsWith("md:h-"));
+    if (row === undefined) {
+      expect(tall).toBeUndefined();
+      return;
+    }
+    expect(Number(tall?.slice("md:h-".length)) * 4).toBe(row);
+    const mark = /class="mate-mark h-([\d.]+) w-([\d.]+)"/u.exec(markup);
+    const markHeight = Number(mark?.[1]) * 4;
+    expect(markHeight).toBe(33);
+    // Its left inset: at least a rem, past the window's own controls.
+    expect(markup).toContain("ml-[max(var(--workspace-controls-left),1rem)]");
+    expect((row - markHeight) / 2).toBe(16);
+  });
+
   it("ends the logo row in the jump box's way in, after the waiting faces' slot", () => {
     const markup = renderToStaticMarkup(
       <SidebarChromeHeader

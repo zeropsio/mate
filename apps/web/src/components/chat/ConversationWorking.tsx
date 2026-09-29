@@ -668,7 +668,7 @@ export function ConversationAfterWork({
       data-conversation-after-work={state}
     >
       <div className="run-now">
-        <MateFace size="md" state="working" tint={speaker.tint} />
+        <MateFace shape={speaker.shape} size="md" state="working" tint={speaker.tint} />
         <span className="run-now-words run-now-head">
           <span className="run-now-verb">
             {watching ? "Watching in the background" : "Still working in the background"}

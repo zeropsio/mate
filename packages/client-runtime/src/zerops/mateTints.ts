@@ -3,18 +3,27 @@
  *
  * A Mate is somebody, and a menu of six of them should read as six people
  * rather than six copies of the logo — so each gets one of the eight tints in
- * `MATE_TINTS` (shared/brand.ts). Deterministic from the name, so a Mate keeps
- * its colour across reloads and across the two places it appears: the left
- * menu and the projects screen both derive from the same account-wide list
- * and so agree. Two names that hash to one tint are told apart by walking to
- * the next free one, in name order so the result does not depend on the
- * order the API listed the projects in. Past eight Mates the tints repeat,
- * which is what a palette of eight means.
+ * `MATE_TINTS` (shared/brand.ts). A Mate whose person picked its face when
+ * they made it (`mate:face:`, `groups.ts`) wears the tint they picked. Every
+ * other Mate's is deterministic from the name, so a Mate keeps its colour
+ * across reloads and across the places it appears: the left menu and the
+ * projects screen both derive from the same account-wide list and so agree.
+ * The derived names share their tints among themselves alone: a pick never
+ * recolours anybody else, and a Mate that picked a tint another wears is told
+ * apart by its shape. Two derived names that hash to one tint are told apart
+ * by walking to the next free one, in name order so the result does not depend
+ * on the order the API listed the projects in. Past eight Mates the tints
+ * repeat, which is what a palette of eight means.
  *
  * @module mateTints
  */
 
-import { MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
+import {
+  MATE_SHAPE_OF_TINT,
+  MATE_TINT_IDS,
+  type MateShapeId,
+  type MateTintId,
+} from "@t3tools/shared/brand";
 
 import { botDisplayName } from "./bots.ts";
 import type { ZeropsCandidate } from "./candidates.ts";
@@ -72,27 +81,63 @@ export function assignMateTints(names: ReadonlyArray<string>): ReadonlyMap<strin
  * The account's Mates, each with its tint, keyed by the project it lives in.
  * Membership is `selectMateEnvironments` — the project has a Mate container —
  * and the name is what the menu calls the row (`botDisplayName`), so a Mate
- * named by its project falls back the same way everywhere.
+ * named by its project falls back the same way everywhere. A Mate that picked
+ * its tint wears it. The rest share the tints their names give them among
+ * themselves alone, exactly as before any Mate could pick: a pick — even of a
+ * tint another Mate wears — never recolours anybody else. Two Mates may then
+ * wear one tint, which their shapes tell apart.
  */
 export function assignCandidateMateTints(
   candidates: ReadonlyArray<ZeropsCandidate>,
 ): ReadonlyMap<string, MateTintId> {
   const mates = selectMateEnvironments(candidates);
+  const byProject = new Map<string, MateTintId>();
   const nameByProject = new Map<string, string>();
   for (const mate of mates) {
+    const tags = readZeropsGroupTags(mate.project.tagList);
+    const picked = tags.face?.tint;
+    if (picked !== undefined) {
+      byProject.set(mate.project.id, picked);
+      continue;
+    }
     nameByProject.set(
       mate.project.id,
-      botDisplayName({
-        bot: readZeropsGroupTags(mate.project.tagList).bot,
-        projectName: mate.project.name,
-      }),
+      botDisplayName({ bot: tags.bot, projectName: mate.project.name }),
     );
   }
   const byName = assignMateTints([...nameByProject.values()]);
-  const byProject = new Map<string, MateTintId>();
   for (const [projectId, name] of nameByProject) {
     const tint = byName.get(name);
     if (tint !== undefined) byProject.set(projectId, tint);
   }
   return byProject;
+}
+
+/**
+ * The tint a new Mate called `name` is offered first: its own, walking past
+ * every tint a Mate on the account already wears, the way a clash always
+ * walks. So adding a Mate never recolours another — a name that sorts first
+ * would otherwise take a tint it hashes to from a Mate that has worn it all
+ * along. Past eight Mates it is the name's own again.
+ */
+export function newMateTint(candidates: ReadonlyArray<ZeropsCandidate>, name: string): MateTintId {
+  const worn = new Set(assignCandidateMateTints(candidates).values());
+  const count = MATE_TINT_IDS.length;
+  let index = hashName(normalize(name)) % count;
+  if (worn.size < count) {
+    while (worn.has(MATE_TINT_IDS[index]!)) index = (index + 1) % count;
+  }
+  return MATE_TINT_IDS[index]!;
+}
+
+/**
+ * The shape a Mate wears: the one its person picked (`mate:face:`), else its
+ * tint's own (`MATE_SHAPE_OF_TINT`) — which is every Mate's shape from before
+ * a face could be picked.
+ */
+export function mateShapeOf(
+  tagList: ReadonlyArray<string> | undefined,
+  tint: MateTintId,
+): MateShapeId {
+  return readZeropsGroupTags(tagList).face?.shape ?? MATE_SHAPE_OF_TINT[tint];
 }

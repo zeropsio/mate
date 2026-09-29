@@ -252,6 +252,113 @@ describe("the agent's name", () => {
   });
 });
 
+describe("the stand-up ask", () => {
+  const birthTags = (plan: ReturnType<typeof planEnvironmentCreation>) => {
+    const step = plan.ok ? plan.steps[0] : undefined;
+    return step?.kind === "create-project" || step?.kind === "import-project" ? step.tagList : [];
+  };
+  const DEV_TIER = { ...TIER, tier: "stage" as const };
+
+  it.each([
+    {
+      name: "a Mate added to a project, by the person who added it",
+      input: { role: "dev" as const, standUpBy: "u-ada" },
+      expected: "mate:standup:u-ada",
+    },
+    {
+      name: "a Mate whose recipe arrives as a whole project",
+      input: {
+        role: "dev" as const,
+        standUpBy: "u-ada",
+        recipe: { ...DEV_TIER, yaml: `project:\n  name: x\n${DEV_TIER.yaml}` },
+      },
+      expected: "mate:standup:u-ada",
+    },
+    {
+      name: "nobody named: nobody's first sign-in sends it",
+      input: { role: "dev" as const },
+      expected: undefined,
+    },
+    {
+      name: "a dev environment with no agent: nobody there to stand it up",
+      input: { role: "dev" as const, standUpBy: "u-ada", withAgent: false },
+      expected: undefined,
+    },
+    {
+      name: "a stage with an agent: a deploy target, never stood up for development",
+      input: { role: "stage" as const, standUpBy: "u-ada", withAgent: true },
+      expected: undefined,
+    },
+    {
+      name: "a production",
+      input: { role: "prod" as const, standUpBy: "u-ada" },
+      expected: undefined,
+    },
+  ])("$name", ({ input, expected }) => {
+    const plan = planEnvironmentCreation({ ...BASE, recipe: DEV_TIER, ...input });
+    const tags = birthTags(plan);
+    expect(tags.find((tag) => tag.startsWith("mate:standup:"))).toBe(expected);
+    const step = plan.ok ? plan.steps[0] : undefined;
+    if (expected !== undefined && step?.kind === "import-project") {
+      expect(step.yaml).toContain(expected);
+    }
+  });
+});
+
+/**
+ * The face its person picked is the Mate's from its first moment: written with
+ * its name, onto the project the platform creates, whichever call creates it.
+ */
+describe("the Mate's face", () => {
+  const WHOLE = "project:\n  name: published-name\nservices:\n  - hostname: app\n";
+  const birthTags = (plan: ReturnType<typeof planEnvironmentCreation>) => {
+    if (!plan.ok) throw new Error(plan.reason);
+    const [step] = plan.steps;
+    return step?.kind === "create-project" || step?.kind === "import-project" ? step.tagList : [];
+  };
+
+  it.each([
+    { case: "an empty Mate", recipe: { kind: "none" as const }, step: "create-project" },
+    { case: "a Mate from a services recipe", recipe: TIER, step: "create-project" },
+    {
+      case: "a Mate from a whole-project recipe",
+      recipe: { ...TIER, yaml: WHOLE },
+      step: "import-project",
+    },
+  ])("is written at birth for $case", ({ recipe, step }) => {
+    const plan = planEnvironmentCreation({
+      ...BASE,
+      role: "dev",
+      name: "Go Hello World - Ada",
+      recipe,
+      botName: "Ada",
+      face: { tint: "coral", shape: "gem" },
+    });
+    expect(plan.ok && plan.steps[0]?.kind).toBe(step);
+    const tags = birthTags(plan);
+    expect(tags).toContain("mate:face:coral:gem");
+    expect(tags).toContain("mate:bot:Ada");
+    expect(tags).toContain("mate");
+    if (plan.ok && plan.steps[0]?.kind === "import-project") {
+      expect(plan.steps[0].yaml).toContain("- mate:face:coral:gem");
+    }
+  });
+
+  it.each([
+    {
+      case: "a Mate whose person picked nothing: its face is derived, as today",
+      input: { role: "dev" as const },
+    },
+    {
+      case: "an environment with no agent: there is no Mate to wear it",
+      input: { role: "prod" as const, face: { tint: "sky" as const, shape: "pick" as const } },
+    },
+  ])("is not written for $case", ({ input }) => {
+    const tags = birthTags(planEnvironmentCreation({ ...BASE, ...input }));
+    expect(tags.some((tag) => tag.startsWith("mate:face:"))).toBe(false);
+  });
+});
+
 describe("the recipe choice", () => {
   it("imports the tier it is handed, and keeps its source map", () => {
     const plan = planEnvironmentCreation(BASE);

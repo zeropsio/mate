@@ -21,7 +21,7 @@ import { ServiceBrowserLink, ServiceBrowserLinkIndicator } from "../ServiceBrows
  * — and the coding agents' card, the agents the Mate works through, grows out
  * of its bottom edge rather than standing on its own further down the panel.
  */
-import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
+import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { ArrowUpRightIcon, ChevronDownIcon, DatabaseIcon } from "lucide-react";
 import { useContext, type ReactElement, type ReactNode } from "react";
 
@@ -79,6 +79,8 @@ const HOVER_CLOSE_DELAY_MS = 120;
 export interface ZeropsMateOnMap {
   readonly name: string;
   readonly tint: MateTintId;
+  /** The shape its person picked; its tint's own when absent. */
+  readonly shape?: MateShapeId | undefined;
   readonly face: MateMarkState;
 }
 
@@ -626,7 +628,7 @@ function StageLine({
 function MateHome({ mate }: { mate: ZeropsMateOnMap }) {
   return (
     <div className="mt-2.5 flex min-w-0 max-w-full items-center gap-2" data-zerops-mate-home>
-      <MateFace size="sm" state={mate.face} tint={mate.tint} />
+      <MateFace shape={mate.shape} size="sm" state={mate.face} tint={mate.tint} />
       <span className="min-w-0 text-sm leading-snug">
         <span className="font-medium text-foreground">{mate.name}</span>
         <span className="text-muted-foreground"> lives here</span>

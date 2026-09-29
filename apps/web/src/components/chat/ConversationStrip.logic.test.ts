@@ -18,11 +18,18 @@ import {
   foldCrew,
   lineChats,
   lineCrew,
+  lineLeaving,
   lineMate,
+  lineMotion,
+  lineStage,
+  MATE_SEAT,
   mateChats,
+  mateWords,
   replacementChatToPin,
   type CrewRoom,
   type LineCrewmate,
+  type LineMate,
+  type LineStage,
 } from "./ConversationStrip.logic";
 
 const FEN = EnvironmentId.make("env-fen");
@@ -173,9 +180,76 @@ describe("lineMate", () => {
     });
   });
 
+  it.each([
+    { name: "the shape its person picked", shape: "seal" as const },
+    { name: "its tint's own when nobody picked one", shape: undefined },
+  ])("leads the line wearing $name", ({ shape }) => {
+    expect(mate({ mate: { ...MATE, shape } }).shape).toBe(shape);
+  });
+
   it("opens its main chat, and nothing while it has none", () => {
     expect(mate({ crewChatOpen: true }).threadId).toBe(main.id);
     expect(mate({ chats: [], currentThreadId: null }).threadId).toBeNull();
+  });
+});
+
+describe("mateWords", () => {
+  const MATE: LineMate = {
+    name: "Fen",
+    tint: "amber",
+    face: "idle",
+    open: true,
+    threadId: ThreadId.make("main"),
+    tooltip: "Build the game server from the spec, tests first.",
+  };
+
+  it.each<{
+    readonly name: string;
+    readonly mate: Partial<LineMate>;
+    readonly crew: boolean;
+    readonly cut: boolean;
+    readonly words: ReturnType<typeof mateWords>;
+  }>([
+    {
+      name: "a Mate with no crew writes its chat's subject on the line, no hover while it fits",
+      mate: {},
+      crew: false,
+      cut: false,
+      words: { subject: "Build the game server from the spec, tests first.", hover: null },
+    },
+    {
+      name: "and the subject whole on hover once the line cuts it off",
+      mate: {},
+      crew: false,
+      cut: true,
+      words: {
+        subject: "Build the game server from the spec, tests first.",
+        hover: "Build the game server from the spec, tests first.",
+      },
+    },
+    {
+      name: "a chat nobody has spoken into has nothing to write, nor to hover",
+      mate: { tooltip: null },
+      crew: false,
+      cut: false,
+      words: { subject: null, hover: null },
+    },
+    {
+      name: "with a crew the faces need the room: the subject is the name's hover",
+      mate: {},
+      crew: true,
+      cut: false,
+      words: { subject: null, hover: "Build the game server from the spec, tests first." },
+    },
+    {
+      name: "on a crewmate's chat the Mate's hover says a press opens its own",
+      mate: { open: false, tooltip: "Fen's own chat" },
+      crew: true,
+      cut: false,
+      words: { subject: null, hover: "Fen's own chat" },
+    },
+  ])("$name", ({ mate, crew, cut, words }) => {
+    expect(mateWords({ ...MATE, ...mate }, { crew, cut })).toEqual(words);
   });
 });
 
@@ -543,6 +617,197 @@ describe("foldCrew", () => {
     expect(handles(folding.visible)).toEqual(["lead", "a", "b"]);
     expect(handles(folding.folded)).toEqual(["c", "d", "e"]);
     expect(folding.more).toBe(true);
+  });
+});
+
+describe("lineStage", () => {
+  const seat = (handle: string, open = false) => ({ handle, open });
+
+  it.each<{
+    readonly name: string;
+    readonly mate: { readonly open: boolean };
+    readonly crew: ReadonlyArray<{ readonly handle: string; readonly open: boolean }> | null;
+    readonly stage: LineStage;
+  }>([
+    {
+      name: "a Mate with no crew: no band, no crew",
+      mate: { open: true },
+      crew: null,
+      stage: { band: null, crew: null },
+    },
+    {
+      name: "the Mate's own chat: the band on the Mate, the crew in its order",
+      mate: { open: true },
+      crew: [seat("lead"), seat("rules"), seat("web")],
+      stage: { band: MATE_SEAT, crew: ["lead", "rules", "web"] },
+    },
+    {
+      name: "a crewmate's chat: the band on that crewmate",
+      mate: { open: false },
+      crew: [seat("lead"), seat("rules", true), seat("web")],
+      stage: { band: "rules", crew: ["lead", "rules", "web"] },
+    },
+  ])("$name", ({ mate, crew, stage }) => {
+    expect(lineStage(mate, crew)).toEqual(stage);
+  });
+
+  it("names the Mate's place with a key no crewmate's handle can be", () => {
+    expect(/^[a-z0-9-]{1,20}$/.test(MATE_SEAT)).toBe(false);
+  });
+});
+
+describe("lineMotion", () => {
+  const CREW = ["lead", "rules", "web"];
+  const on = (band: string | null, crew: ReadonlyArray<string> | null = CREW): LineStage => ({
+    band,
+    crew,
+  });
+
+  it.each<{
+    readonly name: string;
+    readonly previous: LineStage | null;
+    readonly next: LineStage;
+    readonly motion: "travel" | "place";
+  }>([
+    {
+      name: "the first paint — a reload, a Mate opened — is placed",
+      previous: null,
+      next: on(MATE_SEAT),
+      motion: "place",
+    },
+    {
+      name: "the Mate's own chat to a crewmate's travels",
+      previous: on(MATE_SEAT),
+      next: on("rules"),
+      motion: "travel",
+    },
+    {
+      name: "one crewmate's chat to its neighbour's travels",
+      previous: on("lead"),
+      next: on("rules"),
+      motion: "travel",
+    },
+    {
+      name: "a crewmate's chat to one far down the line travels",
+      previous: on("lead"),
+      next: on("web"),
+      motion: "travel",
+    },
+    {
+      name: "a crewmate's chat back to the Mate's own travels",
+      previous: on("web"),
+      next: on(MATE_SEAT),
+      motion: "travel",
+    },
+    {
+      name: "another of the Mate's own chats keeps the band where it is",
+      previous: on(MATE_SEAT),
+      next: on(MATE_SEAT),
+      motion: "place",
+    },
+    {
+      name: "the crew arriving — the crewmate on screen alone, then its whole crew — is placed",
+      previous: on("rules", ["rules"]),
+      next: on("rules"),
+      motion: "place",
+    },
+    {
+      name: "a crewmate added as the chat changes is placed",
+      previous: on("lead"),
+      next: on("rules", [...CREW, "docs"]),
+      motion: "place",
+    },
+    {
+      name: "a crewmate removed is placed",
+      previous: on("lead"),
+      next: on(MATE_SEAT, ["lead", "rules"]),
+      motion: "place",
+    },
+    {
+      name: "the crew read in another order is placed",
+      previous: on("lead"),
+      next: on("rules", ["rules", "lead", "web"]),
+      motion: "place",
+    },
+    {
+      name: "a crew appearing under a Mate that had none is placed",
+      previous: on(null, null),
+      next: on(MATE_SEAT),
+      motion: "place",
+    },
+    {
+      name: "a crew gone, its band with it, is placed",
+      previous: on("rules"),
+      next: on(null, null),
+      motion: "place",
+    },
+  ])("$name", ({ previous, next, motion }) => {
+    expect(lineMotion(previous, next, { reducedMotion: false })).toBe(motion);
+    // Reduced motion cross-fades what would travel, and places the rest the same.
+    expect(lineMotion(previous, next, { reducedMotion: true })).toBe(
+      motion === "travel" ? "fade" : "place",
+    );
+  });
+});
+
+describe("lineLeaving", () => {
+  const CREW = ["lead", "rules", "web"];
+  const on = (band: string | null, crew: ReadonlyArray<string> | null = CREW): LineStage => ({
+    band,
+    crew,
+  });
+
+  it.each<{
+    readonly name: string;
+    readonly previous: { readonly stage: LineStage; readonly leaving: ReadonlyArray<string> };
+    readonly next: LineStage;
+    readonly motion: "travel" | "fade" | "place";
+    readonly leaving: ReadonlyArray<string>;
+  }>([
+    {
+      name: "the crewmate left folds its name back into its face",
+      previous: { stage: on("lead"), leaving: [] },
+      next: on("rules"),
+      motion: "travel",
+      leaving: ["lead"],
+    },
+    {
+      name: "the Mate keeps its name: leaving it folds nothing",
+      previous: { stage: on(MATE_SEAT), leaving: [] },
+      next: on("rules"),
+      motion: "travel",
+      leaving: [],
+    },
+    {
+      name: "a name still folding keeps folding as the next press lands",
+      previous: { stage: on("rules"), leaving: ["lead"] },
+      next: on("web"),
+      motion: "travel",
+      leaving: ["lead", "rules"],
+    },
+    {
+      name: "a crewmate pressed again while its name folds opens it again",
+      previous: { stage: on("rules"), leaving: ["lead"] },
+      next: on("lead"),
+      motion: "travel",
+      leaving: ["rules"],
+    },
+    {
+      name: "reduced motion fades the name left the same way",
+      previous: { stage: on("lead"), leaving: [] },
+      next: on(MATE_SEAT),
+      motion: "fade",
+      leaving: ["lead"],
+    },
+    {
+      name: "a line placed keeps nothing folding",
+      previous: { stage: on("rules"), leaving: ["lead"] },
+      next: on("web", [...CREW, "docs"]),
+      motion: "place",
+      leaving: [],
+    },
+  ])("$name", ({ previous, next, motion, leaving }) => {
+    expect(lineLeaving(previous, next, motion)).toEqual(leaving);
   });
 });
 

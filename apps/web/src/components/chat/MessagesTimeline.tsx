@@ -749,7 +749,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             tint: crewmate.profile?.tint ?? "slate",
           }
         : mate.kind === "mate"
-          ? { name: mate.mate.name, tint: mate.mate.tint }
+          ? { name: mate.mate.name, tint: mate.mate.tint, shape: mate.mate.shape }
           : { name: "Assistant", tint: "slate" },
     [crewmate, mate],
   );
@@ -1057,6 +1057,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           <div
             ref={setTimelineViewportElement}
             className="relative h-full min-h-0"
+            // Whether the list follows its end: a run's fold then keeps its
+            // line in place while the list catches up (`foldAway`).
+            data-timeline-follows-end={followingEnd ? "" : undefined}
             data-timeline-placing={listPlaced ? undefined : ""}
             data-timeline-thread={routeThreadKey}
           >
@@ -1166,7 +1169,7 @@ function TimelineLoadingPane({
           className="flex animate-held-appear"
           role="status"
         >
-          <MateFace size="lg" state="working" tint={speaker.tint} />
+          <MateFace shape={speaker.shape} size="lg" state="working" tint={speaker.tint} />
         </span>
       ) : null}
     </div>

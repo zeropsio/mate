@@ -495,6 +495,7 @@ const PURE_EFFECT_MODULES: ReadonlySet<string> = new Set([
 // Shared modules that compute values, import nothing and run nothing.
 const PURE_SHARED_MODULES: ReadonlySet<string> = new Set([
   "@t3tools/shared/basePath",
+  "@t3tools/shared/brand",
   "@t3tools/shared/semver",
 ]);
 

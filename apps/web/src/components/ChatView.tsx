@@ -81,7 +81,6 @@ import {
   useEffectEvent,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 import { flushSync } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
@@ -256,6 +255,7 @@ import { useNowMinute } from "../hooks/useNowMinute";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useRemoveClonedProject } from "../hooks/useRemoveClonedProject";
 import { ThreadArchiveBlockedError, useThreadActions } from "../hooks/useThreadActions";
+import { useComposerSendRequests } from "../hooks/useComposerSendRequests";
 import { resolveAppModelSelectionForInstance } from "../modelSelection";
 import { confirmTerminalClose, isTerminalCloseConfirmPending } from "../lib/terminalCloseConfirm";
 import { getTerminalFocusOwner } from "../lib/terminalFocus";
@@ -274,6 +274,7 @@ import {
   clearBackgroundDraftSubmissionByRef,
   composerDraftHasUserContent,
   type ComposerImageAttachment,
+  type ComposerSendIds,
   type DraftThreadEnvMode,
   finalizePromotedDraftThreadByRef,
   markPromotedDraftThreadByRef,
@@ -337,6 +338,7 @@ import {
   useZeropsAgentSignerRecord,
   useZeropsEnvironmentProject,
 } from "~/zerops/useZeropsAgentSigner";
+import { useMateStandUp } from "~/zerops/useMateStandUp";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
@@ -3875,6 +3877,18 @@ export default function ChatView(props: ChatViewProps) {
     providers: providerStatuses,
     availabilityByInstanceId: zeropsAgentAvailabilityByInstanceId,
   });
+  // Beside the signer record: a new Mate's first sign-in sends its stand-up, as this person,
+  // through this composer, into a conversation read live and still empty.
+  const mateStandUp = useMateStandUp({
+    environmentId: activeThreadEnvironmentId,
+    threadRef: isServerThread && threadSyncPhase === null ? activeThreadRef : null,
+    messageCount: activeThread?.messages.length ?? 0,
+    canSend:
+      !activeEnvironmentUnavailable &&
+      selectedProviderEntry !== undefined &&
+      zeropsSendBlockReason === undefined,
+    sendBusy: isSendBusy,
+  });
   const activeProjectDisplayName = zeropsChrome.projectName ?? activeProject?.title;
   const chromeLogicalProjectEnvironments = useMemo(
     () =>
@@ -6109,43 +6123,19 @@ export default function ChatView(props: ChatViewProps) {
   };
 
   const queuedMessages = useQueuedMessages(activeThreadKey ?? "");
-  const onSendRef = useRef<(() => Promise<void>) | null>(null);
-  // Re-runs the effect below when a surface files a request while this thread
-  // is already open; the store is outside React, so it has to say so.
-  const sendRequestGeneration = useSyncExternalStore(
-    useComposerDraftStore.subscribe,
-    () => Object.keys(useComposerDraftStore.getState().sendRequestsByThreadKey).join(","),
-    () => "",
-  );
-
-  /**
-   * A surface elsewhere has already asked the person and been told to send.
-   *
-   * Every hand-over to a Mate used to stop at composing and wait for a
-   * keystroke (spec §5.4). A confirm dialog moves that decision earlier: the
-   * person reads the exact request and presses *Send*, so nothing is left to
-   * press here. The send itself stays in this component because only it knows
-   * the model selection, the runtime mode and the attachments a turn needs —
-   * a dialog reproducing that would be a second, worse sender.
-   *
-   * Taken once, and only while this thread is the live one and nothing is
-   * already in flight, so a re-render never sends twice.
-   */
-  useEffect(() => {
-    if (activeThread === undefined) return;
-    if (composerDraftTarget === null || composerDraftTarget === undefined) return;
-    const pending = useComposerDraftStore.getState().takeSendRequest(composerDraftTarget);
-    if (pending === null || pending.trim().length === 0) return;
-    promptRef.current = pending;
-    setComposerDraftPrompt(composerDraftTarget, pending);
-    // After paint, so the composer has the text before the turn reads it.
-    const timer = setTimeout(() => {
-      void onSendRef.current?.();
-    }, 0);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [activeThread, composerDraftTarget, sendRequestGeneration]);
+  const onSendRef = useRef<((ids?: ComposerSendIds) => Promise<void>) | null>(null);
+  // What a surface asked this composer to send goes out through its own send.
+  useComposerSendRequests({
+    target: activeThread === undefined ? null : composerDraftTarget,
+    targetKey: activeThread === undefined ? null : routeThreadKey,
+    write: (prompt) => {
+      promptRef.current = prompt;
+      setComposerDraftPrompt(composerDraftTarget, prompt);
+    },
+    send: (ids) => {
+      void onSendRef.current?.(ids);
+    },
+  });
 
   // Puts queued messages back into the composer, e.g. after Stop or a Cancel.
   // Prompts join with blank lines; attachments and contexts are added.
@@ -6210,14 +6200,16 @@ export default function ChatView(props: ChatViewProps) {
 
   // Bound on every render, as `restoreQueuedMessagesRef` is: the effect above
   // is declared before this and would otherwise hold a stale closure.
-  onSendRef.current = async () => {
-    await onSend();
+  onSendRef.current = async (ids) => {
+    await onSend(undefined, "foreground", undefined, ids);
   };
   const onSend = async (
     e?: { preventDefault: () => void },
     submissionIntent: ComposerSubmissionIntent = "foreground",
     /** A queued message being sent now instead of the live composer draft. */
     queuedMessage?: QueuedComposerMessage,
+    /** The ids a requested send carries, so clients making the same send make one command. */
+    sendIds?: ComposerSendIds,
   ) => {
     e?.preventDefault();
     // Typed out in full rather than picked from the menu. Attachments or contexts
@@ -6644,7 +6636,7 @@ export default function ChatView(props: ChatViewProps) {
       submissionIntent: resolvedSubmissionIntent,
     });
 
-    const messageIdForSend = newMessageId();
+    const messageIdForSend = sendIds?.messageId ?? newMessageId();
     const messageCreatedAt = new Date().toISOString();
     const turnAttachmentsPromise = Promise.all(
       composerImagesSnapshot.map(async (image) => {
@@ -6822,6 +6814,7 @@ export default function ChatView(props: ChatViewProps) {
       const startResult = await startThreadTurn({
         environmentId,
         input: {
+          ...(sendIds === undefined ? {} : { commandId: sendIds.commandId }),
           threadId: threadIdForSend,
           message: {
             messageId: messageIdForSend,
@@ -8255,7 +8248,13 @@ export default function ChatView(props: ChatViewProps) {
                     <ThreadSyncStatusPill phase={shownThreadSyncPhase} />
                   ) : null}
                   <div
+                    // While a new Mate's stand-up waits on this person, the conversation's one
+                    // message is its headline: the composer keeps its place (it is what sends the
+                    // stand-up) but is neither seen nor reached, and fades back once it has gone.
+                    aria-hidden={mateStandUp.holdsComposer ? true : undefined}
                     className="relative"
+                    data-standup-holds-composer={mateStandUp.holdsComposer ? "" : undefined}
+                    inert={mateStandUp.holdsComposer}
                     style={
                       forceExpandedMobileComposer
                         ? { viewTransitionName: MOBILE_COMPOSER_VIEW_TRANSITION_NAME }
