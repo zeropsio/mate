@@ -111,7 +111,6 @@ import {
   TriangleAlertIcon,
 } from "lucide-react";
 import {
-  Fragment,
   useEffect,
   useRef,
   useState,
@@ -143,7 +142,6 @@ import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { SidebarCrewFaces } from "./crew/SidebarCrewFaces";
 import { Avatar, KeyChip, MateFace, PlanRing, StatusDot } from "./primitives";
-import { RAIL_BLANK, RAIL_LINE } from "./rail";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { environmentRoleTag, groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
@@ -1064,11 +1062,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       flowPulls,
       everyMate.map(({ item }) => item.project.id),
     );
-    // Which row the spine ends on: the last stop where a project has one,
-    // then a change nobody's Mate owns, then the last Mate's own last row. A
-    // line that runs past its final node into the gap below reads as a list
-    // that got cut off rather than as work arriving somewhere.
-    const otherPulls = changeRows === undefined ? [] : grouped.others;
     // Every stage, then production — the order the code travels (the owner,
     // 2026-09-25), not the order the tags happen to list. A stop being
     // created follows the listed ones of its tier.
@@ -1082,7 +1075,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         member.kind === "mate" ? [] : [{ kind: "creating", member, tier: member.kind }],
       ),
     ].sort((a, b) => stopTierRank(a.tier) - stopTierRank(b.tier));
-    const endsOnMates = stopRows.length === 0 && otherPulls.length === 0;
     // Its Mates in the order drawn: the ones at work or lately at it, those
     // being created, then — folded behind their count at the end — the ones
     // untouched for a week (`isQuietMate`), open only when asked.
@@ -1120,21 +1112,13 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     ];
     // Each block — a Mate with its changes, one being created, the quiet
     // fold, the changes nobody's Mate owns, the stops — stands apart from the
-    // next by a gap the spine runs through; the heading stands on the first.
+    // next by air alone; the heading stands on the first.
     const blocks: Array<{ readonly key: string; readonly node: ReactNode }> = [
-      ...slots.map((slot, index) => {
-        const first = index === 0;
-        const last = endsOnMates && index === slots.length - 1;
+      ...slots.map((slot) => {
         if (slot.kind === "coming") {
           return {
             key: `coming:${slot.member.projectId}`,
-            node: (
-              <ComingMateRow
-                coming={slot.member}
-                name={slot.member.name}
-                railCap={railCapFor({ first, last })}
-              />
-            ),
+            node: <ComingMateRow coming={slot.member} name={slot.member.name} />,
           };
         }
         if (slot.kind === "fold") {
@@ -1147,7 +1131,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   setOpenQuiet((current) => withCollapsed(current, id, !current.has(id)));
                 }}
                 open={quietOpen}
-                railCap={railCapFor({ first, last })}
               />
             ),
           };
@@ -1155,7 +1138,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         const { item } = slot;
         const pulls = grouped.byMate.get(item.project.id) ?? [];
         const listKey = `${id}:${item.project.id}`;
-        const ownRow = pulls.length === 0 || changeRows === undefined;
         const appUrl = projectFlow.mates.find(
           (mate) => mate.projectId === item.project.id,
         )?.preview;
@@ -1225,7 +1207,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 onSelect={selectMate}
                 peek={peekFor(item.project.id)}
                 owner={getOwner?.(item)}
-                railCap={railCapFor({ first, last: last && ownRow })}
                 timestampFormat={timestampFormat}
                 tint={tints.get(item.project.id) ?? "slate"}
               />
@@ -1240,7 +1221,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   onAsk={changeRows.onAsk}
                   onOpenChange={changeRows.onOpenChange}
                   pulls={pulls}
-                  railCap={last ? "end" : undefined}
                   remembered={changeRows.remembered === true}
                 />
               )}
@@ -1260,7 +1240,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 // The dedent is the whole signal; a rule as well would make this
                 // read as the start of the stops, which is the next block's rule.
                 <ul className="flex flex-col" data-zerops-surface="sidebar-other-pull-requests">
-                  {grouped.others.map((pull, index) => (
+                  {grouped.others.map((pull) => (
                     <PullRequestRow
                       key={`${pull.repository}#${pull.number}`}
                       merging={changeRows.merging(pull)}
@@ -1269,9 +1249,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                       onOpenChange={changeRows.onOpenChange}
                       pull={pull}
                       remembered={changeRows.remembered === true}
-                      railCap={
-                        stopRows.length === 0 && index === otherPulls.length - 1 ? "end" : undefined
-                      }
                       underMate={false}
                     />
                   ))}
@@ -1302,10 +1279,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       <>
         {header}
         {blocks.map((block, index) => (
-          <Fragment key={block.key}>
-            {index === 0 ? null : <RailGap />}
+          <div className={cn("flex flex-col", index > 0 && "mt-2")} key={block.key}>
             {block.node}
-          </Fragment>
+          </div>
         ))}
       </>
     );
@@ -1891,19 +1867,17 @@ function focusOnceFree(element: HTMLElement, then: () => void, frames = 0): void
 
 /**
  * A project's Mates untouched for a week, folded behind their count at the
- * end of its Mates — on the spine, the words on the Mates' text column — and
- * opened with a press, under the fold, which stays where it is.
+ * end of its Mates — the words on the Mates' text column — and opened with a
+ * press, under the fold, which stays where it is.
  */
 function QuietMatesRow({
   count,
   open,
   onToggle,
-  railCap,
 }: {
   readonly count: number;
   readonly open: boolean;
   readonly onToggle: () => void;
-  readonly railCap: RailCap;
 }) {
   return (
     <button
@@ -1913,7 +1887,7 @@ function QuietMatesRow({
       onClick={onToggle}
       type="button"
     >
-      <RailCell cap={railCap} />
+      <span aria-hidden="true" className="w-5 shrink-0" />
       <span className="flex min-w-0 items-center gap-1.5">
         <FoldGlyph open={open} />
         <span className="truncate">{`${String(count)} quiet ${count === 1 ? "Mate" : "Mates"}`}</span>
@@ -1975,7 +1949,6 @@ function MateRow<T extends RosterCandidate>({
   activity,
   onSelect,
   owner,
-  railCap,
   timestampFormat,
   actions,
   appUrl,
@@ -1990,7 +1963,6 @@ function MateRow<T extends RosterCandidate>({
   readonly activity: ZeropsAgentActivity | undefined;
   readonly onSelect: (candidate: T) => void;
   readonly owner: ZeropsMateOwner | undefined;
-  readonly railCap?: RailCap;
   readonly timestampFormat: TimestampFormat;
   /** Its menu's verbs; absent, the row carries no menu (a harness, a test). */
   readonly actions?: MateRowActions | undefined;
@@ -2173,13 +2145,11 @@ function MateRow<T extends RosterCandidate>({
         ref={rowButton}
         type="button"
       >
-        <RailCell cap={railCap}>
-          {/* The Mate is the node the rest of its project hangs from, so it
-              wears the card's face rather than a row's, and the person it
-              belongs to rides on its corner (a teammate, 2026-09-24). The
-              column stays 20px: the spine keeps its x, and the face overhangs
-              it. A ring, when it works, stands 4px clear all round, and the
-              spine stops at the ring instead of running under it. */}
+        <span className="relative flex w-5 shrink-0 items-center justify-center self-stretch">
+          {/* The Mate wears the card's face rather than a row's, and the
+              person it belongs to rides on its corner (a teammate,
+              2026-09-24). The column stays 20px and the face overhangs it. A
+              ring, when it works, stands 4px clear all round. */}
           <span className={cn("relative flex", progress !== undefined && "my-1")}>
             {/* Until its socket answers the face stands in idle or asleep, the
                 row's words as this browser remembered them: a Mate found
@@ -2223,9 +2193,7 @@ function MateRow<T extends RosterCandidate>({
               </Tooltip>
             )}
           </span>
-        </RailCell>
-        {/* The row's own vertical padding lives here: the rail has to run the
-            full height of the row to meet the rows either side of it. */}
+        </span>
         <span className="flex min-w-0 flex-1 flex-col py-2">
           <span className="flex min-w-0 items-center gap-2">
             <span className={cn("flex min-w-0 flex-1 items-center gap-1", renaming && "invisible")}>
@@ -2529,11 +2497,9 @@ function MateReplyPending() {
 function ComingMateRow({
   name,
   coming,
-  railCap,
 }: {
   readonly name: string;
   readonly coming: GroupFlowComing;
-  readonly railCap?: RailCap;
 }) {
   return (
     <div
@@ -2541,11 +2507,9 @@ function ComingMateRow({
       className="flex w-full min-w-0 items-center gap-3.5 rounded-md px-2.5 text-sidebar-foreground select-none"
       data-zerops-surface="sidebar-mate-coming"
     >
-      <RailCell cap={railCap}>
-        <span className="relative flex">
-          <MateFace size="md" state="sleep" tint="slate" />
-        </span>
-      </RailCell>
+      <span className="relative flex w-5 shrink-0 items-center justify-center self-stretch">
+        <MateFace size="md" state="sleep" tint="slate" />
+      </span>
       <span className="flex min-w-0 flex-1 flex-col py-2">
         <span className="min-w-0 truncate text-sm leading-5.5 font-medium">{name}</span>
         <span className="mt-0.5 truncate text-xs leading-4.5 text-sidebar-muted-foreground">
@@ -2555,148 +2519,6 @@ function ComingMateRow({
     </div>
   );
 }
-
-/**
- * The spine a project hangs on.
- *
- * A project is a timeline — a Mate writes a change, the change waits as a pull
- * request, it lands on the stage, it goes live on the production — and the
- * menu drew it as a flat list of rows that all weighed the same, so it read as
- * "one big same item" (the owner, 2026-09-19) rather than as work moving.
- *
- * The line is drawn per row but spans the row's *padding* box, so consecutive
- * rows meet across the one pixel the list puts between them. An earlier pass
- * drew it inside the icon column instead, which is the row's content box: each
- * row's `py-2` left eight blank pixels at both ends and the spine measured as
- * twenty-eight separate ticks with gaps of nine to twenty-four pixels — a
- * dashed ladder, which is what the owner was looking at when they called it
- * the main problem. Measure the gaps between the segments, never the centres
- * of the nodes; the nodes were always aligned.
- *
- * The node is painted after the line and so sits on it. Nothing is painted
- * opaque underneath, because the row's background changes on hover and a
- * halo in the resting colour would show; a hairline passing behind a tinted
- * badge is what a timeline looks like anyway.
- *
- * The ends are capped: the line starts at the first node of a group and stops
- * at the last, because a spine that runs past its final stop into the gap
- * below reads as a list that got cut off.
- */
-function RailCell({ children, cap }: { readonly children?: ReactNode; readonly cap?: RailCap }) {
-  const first = cap === "start" || cap === "only";
-  const last = cap === "end" || cap === "only";
-  return (
-    <span className="relative flex w-5 shrink-0 flex-col items-center justify-center self-stretch">
-      <span aria-hidden="true" className={first ? RAIL_BLANK : RAIL_LINE} />
-      {children}
-      <span aria-hidden="true" className={last ? RAIL_BLANK : RAIL_LINE} />
-    </span>
-  );
-}
-
-/**
- * Half a row's share of the spine. It grows into whatever the node leaves, so
- * it meets the node exactly whether that is a 28px face, a 20px badge or the
- * 6px dot a change wears — and it can never be drawn across one. Positioning
- * the line absolutely behind the node instead drew it straight through every
- * tinted face, which no amount of z-index fixes: the faces are not opaque.
- *
- * A capped end keeps its half and gives up only the paint. Leaving the span
- * out altogether let the other half take the free space, which pushed the
- * first face of every group 24px above its row and every last badge 17px
- * below it — the node's place on the row may not depend on where the row
- * happens to sit on the line.
- */
-/*
- * The spine's ink is its own token, not `sidebar-border`: that one is the
- * faintest in the set — about five percent of contrast against the sidebar's
- * own ground — which is right for a rule nobody should notice and wrong for
- * the structure a whole group hangs on. It is opaque rather than an alpha of
- * the foreground because the branch's arc leaves the line by drawing over it,
- * and two thirty-percent strokes stack to half again as dark: a notch cut
- * into the spine at every change.
- *
- * The rows themselves sit flush for the same reason. A pixel of air between
- * them went unseen while the line was faint and became a row of dashes the
- * moment it was not.
- */
-
-/**
- * A change branches off the line rather than standing on it.
- *
- * Drawn as a node in the spine it read as one more Mate — "the merge requests
- * still blend together with the item" (the owner, 2026-09-19) — because a row
- * *on* the line and a row *of* the line look alike at a glance, however small
- * the dot. A pull request is a branch off the Mate's work, so it is drawn as
- * one: the spine runs through unbroken, an elbow carries the dot out to an
- * indent of its own, and the title starts from there rather than from the
- * Mates' left edge. The indent is the point — an earlier pass deliberately
- * lined the title up with the names above it, which is what made it blend.
- */
-function RailFork({ cap }: { readonly cap?: RailCap }) {
-  return (
-    <span className="relative flex w-7 shrink-0 self-stretch">
-      {/* The spine, built exactly as a row that stands on it builds it — two
-          halves centred in the same 20px column — so it lands on the same half
-          pixel. Anchored at a round offset instead it sat 0.5px right of the
-          Mates' line and the column visibly jogged at every change. */}
-      <span className="flex w-5 shrink-0 flex-col items-center self-stretch">
-        <span aria-hidden="true" className={RAIL_LINE} />
-        <span aria-hidden="true" className={cap === "end" ? RAIL_BLANK : RAIL_LINE} />
-      </span>
-      {/* The branch: a quarter circle leaving the spine ten pixels above the
-          row's centre, then a short run out to the dot. Both borders are
-          drawn — given only the bottom one, CSS tapers the arc to nothing
-          where the left border would be, which is exactly where it meets the
-          spine, so the branch looked detached and read as invisible. The half
-          pixel is the spine's own: a 1px line centred in a 20px column sits
-          at 9.5, not at 10. */}
-      <span
-        aria-hidden="true"
-        className="absolute start-[9.5px] top-[calc(50%-0.625rem)] h-2.5 w-3.5 rounded-bl-[0.625rem] border-b border-s border-[var(--zerops-rail)]"
-        data-zerops-rail="fork"
-      />
-      <span
-        aria-hidden="true"
-        className="absolute start-[23.5px] top-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--zerops-rail)]"
-      />
-    </span>
-  );
-}
-
-/**
- * The air between two of a project's blocks, with the spine carried through
- * it. A Mate with its changes, the quiet fold and the stops each stand apart,
- * so the heading reads as theirs and a Mate's three lines as one thing (the
- * owner, 2026-09-28: "the gap between project name and under project is the
- * same"). The line stays unbroken, from the first node to the last. It is
- * built as a row builds its own share, the same column at the same inset, so
- * it lands on the same half pixel.
- */
-function RailGap() {
-  return (
-    <span aria-hidden="true" className="flex h-2 px-2.5" data-zerops-rail="gap">
-      <span className="flex w-5 shrink-0 flex-col items-center">
-        <span className={RAIL_LINE} />
-      </span>
-    </span>
-  );
-}
-
-/** Where a row sits on its group's spine: the first node, the last, both, or between. */
-type RailCap = "start" | "end" | "only" | undefined;
-
-/** A row that is both ends of its group's spine carries no line at all. */
-function railCapFor(at: { readonly first: boolean; readonly last: boolean }): RailCap {
-  if (at.first && at.last) return "only";
-  if (at.first) return "start";
-  if (at.last) return "end";
-  return undefined;
-}
-
-/**
- * One row's share of the spine, spanning its whole box so it meets the rows
- * either side of it.
 
 /**
  * A Mate's open pull requests: the rows themselves while there are a few, a
@@ -2710,7 +2532,6 @@ function PullRequestList({
   onMerge,
   onAsk,
   onOpenChange,
-  railCap,
   remembered = false,
 }: {
   readonly pulls: ReadonlyArray<FlowPullRequest>;
@@ -2720,13 +2541,10 @@ function PullRequestList({
   readonly onMerge: (pull: FlowPullRequest) => void;
   readonly onAsk?: ((pull: FlowPullRequest, ask: string) => void) | undefined;
   readonly onOpenChange?: ((pull: FlowPullRequest) => void) | undefined;
-  /** Carried to whichever row is last on screen — folded shut, that is the count. */
-  readonly railCap?: RailCap;
   /** Drawn from memory until Gitea answers: titles only. */
   readonly remembered?: boolean;
 }) {
   const folded = pullRequestsFolded(pulls.length);
-  const listed = !folded || open;
   return (
     <div className="flex flex-col" data-zerops-surface="sidebar-pull-requests">
       {folded ? (
@@ -2736,14 +2554,14 @@ function PullRequestList({
           onClick={onToggle}
           type="button"
         >
-          <RailFork cap={listed ? undefined : railCap} />
+          <span aria-hidden="true" className="w-7 shrink-0" />
           <FoldGlyph open={open} />
           <span>{pulls.length} pull requests</span>
         </button>
       ) : null}
       {!folded || open ? (
         <ul className="flex flex-col">
-          {pulls.map((pull, index) => (
+          {pulls.map((pull) => (
             <PullRequestRow
               key={`${pull.repository}#${pull.number}`}
               merging={merging(pull)}
@@ -2751,7 +2569,6 @@ function PullRequestList({
               onMerge={onMerge}
               onOpenChange={onOpenChange}
               pull={pull}
-              railCap={index === pulls.length - 1 ? railCap : undefined}
               remembered={remembered}
             />
           ))}
@@ -2772,7 +2589,6 @@ function PullRequestRow({
   merging,
   onMerge,
   underMate = true,
-  railCap,
   onAsk,
   onOpenChange,
   remembered = false,
@@ -2784,7 +2600,6 @@ function PullRequestRow({
   readonly onOpenChange?: ((pull: FlowPullRequest) => void) | undefined;
   /** False for a change that is nobody's Mate's, which hangs under nothing. */
   readonly underMate?: boolean;
-  readonly railCap?: RailCap;
   /** Drawn from memory until Gitea answers: its title, and no verdict or verb it may no longer have. */
   readonly remembered?: boolean;
 }) {
@@ -2800,7 +2615,7 @@ function PullRequestRow({
       data-zerops-change={changeRowKey(pull)}
       data-zerops-surface="sidebar-pull-request"
     >
-      <RailFork cap={railCap} />
+      <span aria-hidden="true" className="w-7 shrink-0" />
       {onOpenChange === undefined ? (
         <span className="min-w-0 flex-1 truncate text-sidebar-foreground">{label}</span>
       ) : (
@@ -3177,17 +2992,9 @@ function EnvironmentRows<T extends RosterCandidate>({
   return (
     // The stops belong to the project, not to the Mate they happen to follow.
     <ul className="flex flex-col" data-zerops-surface="sidebar-environment-rows">
-      {stops.map((row, index) => {
-        const railCap = index === stops.length - 1 ? "end" : undefined;
+      {stops.map((row) => {
         if (row.kind === "creating") {
-          return (
-            <CreatingStopRow
-              key={row.member.projectId}
-              member={row.member}
-              railCap={railCap}
-              tier={row.tier}
-            />
-          );
+          return <CreatingStopRow key={row.member.projectId} member={row.member} tier={row.tier} />;
         }
         const { item, role, tier } = row;
         const projectId = item.project.id;
@@ -3217,7 +3024,6 @@ function EnvironmentRows<T extends RosterCandidate>({
                   }
             }
             projectId={projectId}
-            railCap={railCap}
             release={
               flow !== undefined && flow.releaseOffered && tier === "production" ? flow : undefined
             }
@@ -3365,7 +3171,6 @@ function StopRowItem({
   marks,
   routes,
   release,
-  railCap,
   onOpenStop,
   onOpenProject,
 }: {
@@ -3383,7 +3188,6 @@ function StopRowItem({
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   /** The project's flow where *Release* is offered on this stop. */
   readonly release: SidebarProjectFlow | undefined;
-  readonly railCap: RailCap;
   readonly onOpenStop: (() => void) | undefined;
   readonly onOpenProject: () => void;
 }) {
@@ -3404,9 +3208,9 @@ function StopRowItem({
             column. The gap after it is the Mate row's, so what follows starts
             on the Mates' text column — at `gap-2.5` it sat 4px left of theirs
             (the owner, 2026-09-25: "everything jumps around differently"). */}
-        <RailCell cap={listed ? undefined : railCap}>
+        <span className="relative flex w-5 shrink-0 items-center justify-center self-stretch">
           <StopBadge tone={badge.tone} word={badge.word} />
-        </RailCell>
+        </span>
         {/* Gaps of 4px: at the menu's 208px a production waiting on
             *Release* needs every one of them for its pill, its verb and the
             two end slots. */}
@@ -3547,13 +3351,10 @@ function StopRowItem({
       {listed ? (
         <li data-zerops-surface="sidebar-stop-changes">
           <ul className="flex flex-col">
-            {distance.changes.map((change, index) => (
+            {distance.changes.map((change) => (
               <StopChangeRow
                 key={change.sha}
                 mark={marks?.get(change.sha.toLowerCase())}
-                railCap={
-                  railCap === "end" && index === distance.changes.length - 1 ? "end" : undefined
-                }
                 title={change.title}
               />
             ))}
@@ -3573,11 +3374,9 @@ function StopRowItem({
 function StopChangeRow({
   title,
   mark,
-  railCap,
 }: {
   readonly title: string;
   readonly mark: StageMark | undefined;
-  readonly railCap: RailCap;
 }) {
   const shown = mark === undefined || mark === "none" ? undefined : STAGE_MARK[mark];
   return (
@@ -3586,8 +3385,7 @@ function StopChangeRow({
       data-zerops-stage-mark={mark ?? "none"}
       data-zerops-surface="sidebar-stop-change"
     >
-      {/* The line runs on past a list under a stop that is not the last. */}
-      <RailCell cap={railCap} />
+      <span aria-hidden="true" className="w-5 shrink-0" />
       {/* The title on the Mates' text column, the mark trailing it: a mark
           slot in front pushed every title 24px past the names above (the
           owner, 2026-09-25: "everything jumps around differently"). */}
@@ -3651,11 +3449,9 @@ function creatingStopLine(tier: GroupEnvironmentTier): string {
 function CreatingStopRow({
   member,
   tier,
-  railCap,
 }: {
   readonly member: ZeropsGroupPendingMember;
   readonly tier: GroupEnvironmentTier;
-  readonly railCap?: RailCap;
 }) {
   const line = creatingStopLine(tier);
   return (
@@ -3665,9 +3461,9 @@ function CreatingStopRow({
       data-zerops-project={member.projectId}
       data-zerops-surface="sidebar-environment-creating"
     >
-      <RailCell cap={railCap}>
+      <span className="relative flex w-5 shrink-0 items-center justify-center self-stretch">
         <StopBadge tone="pending" word={line} />
-      </RailCell>
+      </span>
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <StopTitle
           name={member.name}

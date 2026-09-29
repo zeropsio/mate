@@ -759,9 +759,9 @@ describe("the project's flow under it", () => {
 
   // The menu has one text column (the owner, 2026-09-25: "everything jumps
   // around differently"): a Mate's name, a change's title and a stop's pill
-  // start on it. A change's cell is wider — the spine, its branch and dot —
-  // so its gap is narrower: at the Mates' gap its title stood 4 px right of
-  // the column (57 against 53 px, measured 2026-09-28).
+  // start on it. A change's cell is wider, so its gap is narrower: at the
+  // Mates' gap its title stood 4 px right of the column (57 against 53 px,
+  // measured 2026-09-28).
   it("starts a change's title on the menu's one text column, as a Mate's name and a stop's pill", () => {
     const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
     const PX: Record<string, number> = {
@@ -777,15 +777,15 @@ describe("the project's flow under it", () => {
       return (PX[width] ?? Number.NaN) + (PX[gap] ?? Number.NaN);
     };
     const mate =
-      /<button class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate"[^>]*><span class="([^"]*)"/u.exec(
+      /<button class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate"[^>]*><span[^>]*class="([^"]*)"/u.exec(
         html,
       );
     const change =
-      /<li class="([^"]*)"[^>]*data-zerops-surface="sidebar-pull-request"[^>]*><span class="([^"]*)"/u.exec(
+      /<li class="([^"]*)"[^>]*data-zerops-surface="sidebar-pull-request"[^>]*><span[^>]*class="([^"]*)"/u.exec(
         html,
       );
     const stop =
-      /<li class="([^"]*)"[^>]*data-zerops-surface="sidebar-environment"[^>]*><span class="([^"]*)"/u.exec(
+      /<li class="([^"]*)"[^>]*data-zerops-surface="sidebar-environment"[^>]*><span[^>]*class="([^"]*)"/u.exec(
         html,
       );
     expect(inset(mate?.[1], mate?.[2])).toBe(34);
@@ -1429,48 +1429,6 @@ describe("the project's flow under it", () => {
     expect(html).not.toContain("sidebar-pull-request");
     expect(html).not.toContain("status-dot");
     expect(html).not.toContain("Release");
-  });
-
-  it("draws one spine, and branches a change off it instead of onto it", () => {
-    const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
-    const count = (needle: string) => html.split(needle).length - 1;
-    const rows =
-      count('data-zerops-surface="sidebar-mate"') +
-      count('data-zerops-surface="sidebar-environment"') +
-      count('data-zerops-surface="sidebar-pull-request"');
-    const changes = count('data-zerops-surface="sidebar-pull-request"');
-    const painted = count('class="w-px flex-1 bg-[var(--zerops-rail)]"');
-    const blank = count('class="w-px flex-1"');
-    // The air between a Mate's block and the stops carries the line through
-    // it, painted, so the blocks stand apart and the spine stays whole.
-    const gaps = count('data-zerops-rail="gap"');
-    expect(rows).toBeGreaterThan(0);
-    expect(changes).toBeGreaterThan(0);
-    expect(gaps).toBeGreaterThan(0);
-    // Every row carries both halves wherever it sits on the line, a change
-    // included: its fork builds the spine the same way so it lands on the same
-    // half pixel. Leaving one out lets the other take the free space, which shoved the
-    // first face of every group 24px above its row and every last badge 17px
-    // below it.
-    expect(painted + blank).toBe(rows * 2 + gaps);
-    // Unpainted only at the two ends: the first node of the group, and the
-    // last stop, production. The stage stands on the line like any stop.
-    expect(blank).toBe(2);
-    const production = html.slice(html.indexOf('data-zerops-project="crm-prod"'));
-    expect(production).toContain('class="w-px flex-1 bg-[var(--zerops-rail)]"');
-    expect(production).toContain('class="w-px flex-1"');
-    // A change is not a node on the line — it branches off one. Drawn as a
-    // node it read as one more Mate however small its dot.
-    expect(count('data-zerops-rail="fork"')).toBe(changes);
-  });
-
-  it("runs the line to a stage that is the group's only stop, and ends it there", () => {
-    const html = render([CRM_DEV, CRM_STAGE]);
-    const stage = stop(html, "crm-stage");
-    expect(stage).toContain('data-zerops-surface="sidebar-stop-badge"');
-    // Its top half meets the Mate above; nothing runs on below it.
-    expect(stage).toContain('class="w-px flex-1 bg-[var(--zerops-rail)]"');
-    expect(stage).toContain('class="w-px flex-1"');
   });
 
   it("keeps a recipe change out of the Mate's own pull-request list — only code moves through the shared flow", () => {
