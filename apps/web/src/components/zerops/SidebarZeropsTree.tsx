@@ -319,18 +319,6 @@ export interface SidebarProjectFlow {
   /** Where each change production does not run stands on the stage, by lower-case sha. */
   readonly stageMarks?: ReadonlyMap<string, StageMark> | undefined;
   /**
-   * Hands a blocked change to the Mate that wrote it, as a sentence in that
-   * Mate's composer.
-   *
-   * Nobody reading this menu is going to rebase a branch they have not checked
-   * out, in a repository they have no session for — the Mate does it, so the
-   * row that reports the problem is the row that hands it over. It opens the
-   * conversation with the request written and stops there: every change to a
-   * project goes through the agent's own tools, and a menu that sent work off
-   * on its own would be the first thing here that acts without being read.
-   */
-  readonly onAsk?: ((pull: FlowPullRequest, ask: string) => void) | undefined;
-  /**
    * Opens the stop's own page, in place of the thread.
    *
    * What is running, what is in it, what is not in it yet and where it is —
@@ -355,11 +343,8 @@ export interface SidebarProjectFlow {
    * owner, twice, 2026-09-17: "it never asked me to setup production").
    */
   readonly missing?: ReadonlyArray<MissingEnvironmentRow> | undefined;
-  /** Whether this pull request's *Merge* is running. */
-  readonly merging: (pull: FlowPullRequest) => boolean;
   /** Whether the project's *Release* is running. */
   readonly releasing: boolean;
-  readonly onMerge: (pull: FlowPullRequest) => void;
   readonly onRelease: () => void;
   /** The version *Release* would tag, named in its confirm. */
   readonly releaseTag?: string | undefined;

@@ -216,7 +216,6 @@ import {
 } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { useAddMateIntent } from "../zerops/addMateIntent";
-import { useAskMate } from "../zerops/useAskMate";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
@@ -1850,23 +1849,11 @@ export default function Sidebar() {
         // The stops the recipe offers and nobody has added: a next step the
         // timeline used not to mention at all.
         missing: flow.missing,
-        merging: (pull) =>
-          zeropsProjectFlow.pending.has(
-            flowVerbKey({
-              kind: "merge",
-              slug: flow.slug,
-              repository: pull.repository,
-              number: pull.number,
-            }),
-          ),
         releasing: zeropsProjectFlow.pending.has(flowVerbKey({ kind: "release", groupId })),
         // The version the verb would cut, so its confirm can name it.
         releaseTag: flow.release.suggestion,
         // The release on its way, which production's line says.
         releaseInFlight: flow.release.inFlight,
-        onMerge: (pull) => {
-          void zeropsProjectFlow.mergePullRequest(flow.slug, pull);
-        },
         onRelease: () => {
           void zeropsProjectFlow.release(groupId);
         },
@@ -1876,28 +1863,6 @@ export default function Sidebar() {
   );
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
-  /**
-   * Hands a blocked change back to the Mate that wrote it.
-   *
-   * "who is going to deal with it? you still need the agent to take care of
-   * it" (the owner, 2026-09-19): a rebase happens in the Mate's own checkout,
-   * so the menu opens that Mate's conversation with the request already
-   * written. It stops there rather than sending — every change to a project
-   * goes through the agent's own tools, and the seam where a prompt is
-   * composed and a person presses send is the one the quick actions and the
-   * file browser already use.
-   */
-  const handOver = useAskMate({
-    onNavigate: () => {
-      if (isMobile) setOpenMobile(false);
-    },
-  });
-  const askMate = useCallback<NonNullable<SidebarProjectFlow["onAsk"]>>(
-    (pull, ask) => {
-      handOver(pull.mateProjectId, ask);
-    },
-    [handOver],
-  );
   /** A stop's page, in place of the thread — the sidebar stays where it is. */
   const openStop = useCallback(
     (groupId: string, row: EnvironmentRow) => {
@@ -1928,14 +1893,13 @@ export default function Sidebar() {
     },
     [router],
   );
-  const zeropsSidebarFlowWithAsk = useCallback(
+  const zeropsSidebarFlowWithPages = useCallback(
     (groupId: string): SidebarProjectFlow | undefined => {
       const base = zeropsSidebarFlow(groupId);
       return base === undefined
         ? undefined
         : {
             ...base,
-            onAsk: askMate,
             onOpenStop: (row) => {
               openStop(groupId, row);
             },
@@ -1944,7 +1908,7 @@ export default function Sidebar() {
             },
           };
     },
-    [zeropsSidebarFlow, askMate, openStop, openChange],
+    [zeropsSidebarFlow, openStop, openChange],
   );
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const autoSettleAfterDays = useClientSettings((s) => s.sidebarAutoSettleAfterDays);
@@ -4160,7 +4124,7 @@ export default function Sidebar() {
               onAddMate={requestAddMate}
               onBrowseProjects={navigateToZeropsProjects}
               onNewProject={navigateToNewZeropsProject}
-              getFlow={zeropsSidebarFlowWithAsk}
+              getFlow={zeropsSidebarFlowWithPages}
               getOwner={zeropsMateOwner}
               getMateActions={zeropsMateMenus.getMateActions}
               shown={zeropsShown}

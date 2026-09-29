@@ -447,14 +447,8 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
         "Rename the app in the page title",
         "Cache the link previews",
       ),
-      merging: () => false,
       releasing: false,
-      onMerge: () => {},
       onRelease: () => {},
-      // Without this the menu draws no *Ask* at all, so the harness never
-      // showed the verb a blocked change wears — which is how it came to wear
-      // the same amber as *Release* unnoticed.
-      onAsk: () => {},
     },
   ],
   [
@@ -549,14 +543,8 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
         "Add a health check to the worker",
         "Drop the unused coupons table",
       ),
-      merging: () => false,
       releasing: false,
-      onMerge: () => {},
       onRelease: () => {},
-      // Without this the menu draws no *Ask* at all, so the harness never
-      // showed the verb a blocked change wears — which is how it came to wear
-      // the same amber as *Release* unnoticed.
-      onAsk: () => {},
     },
   ],
   [
@@ -580,14 +568,8 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
       missing: [
         { kind: "missing-environment", tier: "stage", name: "Stage", line: "not set up yet" },
       ],
-      merging: () => false,
       releasing: false,
-      onMerge: () => {},
       onRelease: () => {},
-      // Without this the menu draws no *Ask* at all, so the harness never
-      // showed the verb a blocked change wears — which is how it came to wear
-      // the same amber as *Release* unnoticed.
-      onAsk: () => {},
     },
   ],
   [
@@ -618,14 +600,8 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
         ],
       ]),
       releaseOffered: false,
-      merging: () => false,
       releasing: false,
-      onMerge: () => {},
       onRelease: () => {},
-      // Without this the menu draws no *Ask* at all, so the harness never
-      // showed the verb a blocked change wears — which is how it came to wear
-      // the same amber as *Release* unnoticed.
-      onAsk: () => {},
     },
   ],
   [
@@ -643,14 +619,8 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           line: "not set up yet",
         },
       ],
-      merging: () => false,
       releasing: false,
-      onMerge: () => {},
       onRelease: () => {},
-      // Without this the menu draws no *Ask* at all, so the harness never
-      // showed the verb a blocked change wears — which is how it came to wear
-      // the same amber as *Release* unnoticed.
-      onAsk: () => {},
     },
   ],
 ]);

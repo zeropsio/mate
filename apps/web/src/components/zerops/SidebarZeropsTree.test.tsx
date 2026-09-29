@@ -743,9 +743,7 @@ describe("the project's flow under it", () => {
       ["crm-prod", productionRow],
     ]),
     releaseOffered: true,
-    merging: () => false,
     releasing: false,
-    onMerge: () => {},
     onRelease: () => {},
     ...overrides,
   });
@@ -805,10 +803,7 @@ describe("the project's flow under it", () => {
       pull(4, { mergeability: "conflicting", checks: "failing", checkWord: "Failing" }),
       pull(4, { mergeability: "conflicting", checks: "pending", checkWord: "Pending" }),
     ]) {
-      const html = withFlow(
-        [CRM_DEV, CRM_STAGE],
-        flow({ pullRequests: [change], onAsk: () => {} }),
-      );
+      const html = withFlow([CRM_DEV, CRM_STAGE], flow({ pullRequests: [change] }));
       const rows = html.slice(
         html.indexOf('data-zerops-surface="sidebar-pull-requests"'),
         html.indexOf('data-zerops-surface="sidebar-environment-rows"'),
@@ -1565,9 +1560,7 @@ describe("a project collapsed to its heading", () => {
           pullRequests: [pull(4)],
           environments: new Map([["crm-prod", productionRow]]),
           releaseOffered: true,
-          merging: () => false,
           releasing: false,
-          onMerge: () => {},
           onRelease: () => {},
         }),
       }),
@@ -1779,9 +1772,7 @@ describe("a stop's deployment", () => {
             pullRequests: [],
             environments: new Map(),
             releaseOffered: false,
-            merging: () => false,
             releasing: false,
-            onMerge: () => {},
             onRelease: () => {},
           })}
           onBrowseProjects={() => {}}
@@ -2049,9 +2040,7 @@ describe("the sidebar and the projects page read one group the same way", () => 
       releaseContents: groupReads.release.contents,
       missing: groupReads.missing,
       releaseTag: groupReads.release.suggestion,
-      merging: () => false,
       releasing: false,
-      onMerge: () => {},
       onRelease: () => {},
     };
     const html = render(candidates, { getFlow: () => sidebar, health, mayCreate });
@@ -2635,9 +2624,7 @@ describe("what the jump box finds in the menu", () => {
       ["links-prod", { ...productionRow, projectId: "links-prod" }],
     ]),
     releaseOffered: false,
-    merging: () => false,
     releasing: false,
-    onMerge: () => {},
     onRelease: () => {},
     onOpenChange: () => {},
     onOpenStop: () => {},
@@ -2775,9 +2762,7 @@ describe("a reload paints what the menu last drew (menuMemory)", () => {
     pullRequests: [],
     environments: new Map(),
     releaseOffered: false,
-    merging: () => false,
     releasing: false,
-    onMerge: () => {},
     onRelease: () => {},
     ...overrides,
   });
