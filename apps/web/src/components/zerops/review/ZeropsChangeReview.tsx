@@ -25,7 +25,7 @@ import {
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { useRouter } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
@@ -61,6 +61,8 @@ import {
 } from "./ZeropsReviewSurface";
 
 const KIND: ReviewKind = "change";
+/** How long "What it does" holds its lines for the Mate's conversation to answer. */
+const RUN_WORDS_WAIT_MS = 3_000;
 
 type ChangeTarget = Extract<ReviewTarget, { readonly kind: "change" }>;
 
@@ -188,6 +190,17 @@ function ChangeReviewData({
     repository: pull.repository,
     number: pull.number,
   });
+  // A conversation that never answers is not waited on for ever: its lines give way.
+  const [runGaveUp, setRunGaveUp] = useState(false);
+  useEffect(() => {
+    if (!run.reading) return;
+    const timer = setTimeout(() => {
+      setRunGaveUp(true);
+    }, RUN_WORDS_WAIT_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [run.reading]);
   const routes = useMemo(() => {
     const id = pull.mateProjectId;
     if (id === undefined) return [];
@@ -253,7 +266,7 @@ function ChangeReviewData({
       pull={pull}
       readout={readout}
       route={pull.merged ? undefined : previewRoute(pull.repository, routes)}
-      run={{ words: run.words, reading: run.reading }}
+      run={{ words: run.words, reading: run.reading && !runGaveUp }}
       titleId={titleId}
       waitingForProduction={releaseContentsCommits(flow.release.contents).length}
     />
