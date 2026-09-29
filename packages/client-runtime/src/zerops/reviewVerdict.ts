@@ -72,6 +72,10 @@ export type ReviewState =
   | "land-check-failed"
   | "land-check-running"
   | "land-waiting"
+  | "land-review"
+  | "land-parked"
+  | "land-discarded"
+  | "land-not-yet"
   | "landing"
   | "land-refused"
   | "landed";
@@ -770,6 +774,7 @@ export function rollbackReview(input: RollbackReviewInput): ReviewModel {
 export interface CrewTaskReviewInput {
   /** The crewmate whose work it is. */
   readonly ownerName: string;
+  /** The task's state as the crew's snapshot has it now — the only word on what happened. */
   readonly state: string;
   readonly check: {
     readonly state: "running" | "passed" | "failed";
@@ -781,7 +786,15 @@ export interface CrewTaskReviewInput {
   /** Your tree's edited paths its landing waits on. */
   readonly waitingOn: ReadonlyArray<string>;
   readonly landedCommit: string | null;
+  /** Why it went to `rework` or `parked`, in the engine's words. */
+  readonly reason?: string | null | undefined;
   readonly press?: ReviewPress | undefined;
+  /**
+   * The task's state when Land was pressed. The engine answering is not the task landing — it
+   * answers too for a landing that waits on the person's edits, or parks — so until the snapshot
+   * moves off this state the landing is on its way.
+   */
+  readonly pressedAt?: string | undefined;
 }
 
 /** The last line a check printed: what failed, in its own words. */
@@ -793,13 +806,23 @@ function lastLine(output: string): string | undefined {
   return lines.at(-1);
 }
 
+/** The states Land now takes: work its crewmate never reported, or work sent back. */
+function landsNow(state: string): boolean {
+  return state === "working" || state === "rework";
+}
+
 export function crewTaskReview(input: CrewTaskReviewInput): ReviewModel {
-  const { ownerName: owner } = input;
+  const { ownerName: owner, state } = input;
   const press = input.press ?? { kind: "idle" };
   const lands = `Lands ${owner}'s work in your tree as one commit. Nothing is pushed until you deliver.`;
-  const landsNow = `Commits what ${owner} has so far and lands it in your tree. Nothing is pushed until you deliver.`;
+  const landsNowSentence = `Commits what ${owner} has so far and lands it in your tree. Nothing is pushed until you deliver.`;
+  const now = landsNow(state);
+  const label = now ? "Land now" : "Land";
+  const consequence = now ? landsNowSentence : lands;
+  const off = { label, enabled: false, safe: false };
 
-  if (input.state === "landed" || press.kind === "done") {
+  // Only the snapshot says a task landed: Land's answer comes for one that waits or parks too.
+  if (state === "landed") {
     const short = input.landedCommit?.slice(0, 7);
     return {
       verdict: {
@@ -813,27 +836,69 @@ export function crewTaskReview(input: CrewTaskReviewInput): ReviewModel {
       primary: undefined,
     };
   }
-
-  const working = input.state !== "ready";
-  const label = working ? "Land now" : "Land";
-  if (press.kind === "running" || input.state === "landing") {
+  const onItsWay =
+    press.kind === "running" ||
+    (press.kind === "done" && input.pressedAt !== undefined && state === input.pressedAt);
+  if (onItsWay || state === "landing" || state === "merging") {
     return {
       verdict: {
         state: "landing",
         tone: "busy",
         title: "Landing",
-        why: `${owner}'s work goes into your tree`,
+        why:
+          state === "merging"
+            ? `${owner}'s copy takes in what landed first`
+            : `${owner}'s work goes into your tree`,
         fix: undefined,
       },
-      consequence: working ? landsNow : lands,
-      primary: { label, enabled: false, safe: false },
+      consequence,
+      primary: off,
+    };
+  }
+  if (press.kind === "refused") {
+    return {
+      verdict: {
+        state: "land-refused",
+        tone: "attention",
+        title: "Not landed",
+        why: press.reason,
+        fix: undefined,
+      },
+      consequence,
+      primary: { label, enabled: true, safe: false },
+    };
+  }
+  if (state === "parked") {
+    return {
+      verdict: {
+        state: "land-parked",
+        tone: "attention",
+        title: "Parked",
+        why: input.reason ?? `${owner}'s task stopped where it was`,
+        fix: undefined,
+      },
+      consequence: "Nothing lands while it is parked.",
+      primary: undefined,
+    };
+  }
+  if (state === "discarded") {
+    return {
+      verdict: {
+        state: "land-discarded",
+        tone: "done",
+        title: "Discarded",
+        why: "Its work never went into your tree",
+        fix: undefined,
+      },
+      consequence: "Nothing lands from a discarded task.",
+      primary: undefined,
     };
   }
 
   const blocked = (verdict: ReviewVerdict): ReviewModel => ({
     verdict,
     consequence: "Landing waits until it is fixed.",
-    primary: { label, enabled: false, safe: false },
+    primary: off,
   });
   if (input.conflicts.length > 0) {
     const where =
@@ -871,7 +936,7 @@ export function crewTaskReview(input: CrewTaskReviewInput): ReviewModel {
       },
     });
   }
-  if (input.check?.state === "running") {
+  if (input.check?.state === "running" || state === "checking") {
     return blocked({
       state: "land-check-running",
       tone: "busy",
@@ -880,51 +945,72 @@ export function crewTaskReview(input: CrewTaskReviewInput): ReviewModel {
       fix: undefined,
     });
   }
-  if (input.waitingOn.length > 0) {
-    return blocked({
-      state: "land-waiting",
-      tone: "attention",
-      title: `Waits on your edits to ${listed(input.waitingOn.map(baseName))}`,
-      why: "Commit them locally and it lands",
-      fix: undefined,
-    });
-  }
-
-  // Its size is the line under the title's: said once.
-  const why = working
-    ? "It hasn't said it's done"
-    : input.check?.state === "passed"
-      ? "Check passed · nothing waits on your edits"
-      : "No check ran · nothing waits on your edits";
-  if (press.kind === "refused") {
+  if (state === "waiting-on-you" || input.waitingOn.length > 0) {
+    // Land takes it from here once the edits are committed: it merges again first.
     return {
       verdict: {
-        state: "land-refused",
+        state: "land-waiting",
         tone: "attention",
-        title: "Not landed",
-        why: press.reason,
+        title:
+          input.waitingOn.length === 0
+            ? "Waits on your edits"
+            : `Waits on your edits to ${listed(input.waitingOn.map(baseName))}`,
+        why: "Commit them locally, then land it",
         fix: undefined,
       },
-      consequence: working ? landsNow : lands,
-      primary: { label, enabled: true, safe: !working },
+      consequence: lands,
+      primary: { label: "Land", enabled: true, safe: false },
     };
   }
-  if (working) {
+  if (now) {
     return {
       verdict: {
         state: "land-now",
         tone: "quiet",
-        title: `${owner} is still on it`,
-        why,
+        title: state === "rework" ? `${owner} is reworking it` : `${owner} is still on it`,
+        why: state === "rework" ? (input.reason ?? "It was sent back") : "It hasn't said it's done",
         fix: undefined,
       },
-      consequence: landsNow,
+      consequence,
       primary: { label, enabled: input.diffStat !== null, safe: false },
     };
   }
+  const checked = input.check?.state === "passed" ? "check passed" : "no check ran";
+  if (state === "review") {
+    return {
+      verdict: {
+        state: "land-review",
+        tone: input.check?.state === "passed" ? "ok" : "quiet",
+        title: "Reported done",
+        why: `Landing accepts it · ${checked}`,
+        fix: undefined,
+      },
+      consequence: `Accepts ${owner}'s work and lands it in your tree as one commit. Nothing is pushed until you deliver.`,
+      primary: { label: "Land", enabled: true, safe: true },
+    };
+  }
+  if (state === "ready") {
+    // Its size is the line under the title's: said once.
+    const why =
+      input.check?.state === "passed"
+        ? "Check passed · nothing waits on your edits"
+        : "No check ran · nothing waits on your edits";
+    return {
+      verdict: { state: "land-ready", tone: "ok", title: "Ready to land", why, fix: undefined },
+      consequence: lands,
+      primary: { label: "Land", enabled: true, safe: true },
+    };
+  }
+  // Not started, waiting on another task, or asking something: nothing to land yet.
   return {
-    verdict: { state: "land-ready", tone: "ok", title: "Ready to land", why, fix: undefined },
-    consequence: lands,
-    primary: { label, enabled: true, safe: true },
+    verdict: {
+      state: "land-not-yet",
+      tone: "quiet",
+      title: "Nothing to land yet",
+      why: state === "blocked" ? `${owner} asked something first` : `${owner} hasn't started it`,
+      fix: undefined,
+    },
+    consequence: "Nothing lands until it is done.",
+    primary: undefined,
   };
 }

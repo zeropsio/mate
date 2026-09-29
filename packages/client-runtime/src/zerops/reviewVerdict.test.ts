@@ -635,3 +635,105 @@ describe("reviewAge", () => {
     expect(reviewAge(at, NOW)).toBe(words);
   });
 });
+
+describe("crewTaskReview: only a landed task has landed (Land's answer is not its landing)", () => {
+  it.each<[string, Partial<CrewTaskReviewInput>, Record<string, unknown>]>([
+    [
+      "Land accepted, the snapshot not moved yet: on its way",
+      { state: "ready", press: { kind: "done" }, pressedAt: "ready" },
+      { state: "landing", tone: "busy", title: "Landing" },
+    ],
+    [
+      "Land accepted on a dirty tree: the task waits on the person's edits",
+      {
+        state: "waiting-on-you",
+        waitingOn: ["src/hud.ts"],
+        press: { kind: "done" },
+        pressedAt: "ready",
+      },
+      { state: "land-waiting", tone: "attention", title: "Waits on your edits to hud.ts" },
+    ],
+    [
+      "Land accepted and the task parked (frozen, lane gone, disk full)",
+      {
+        state: "parked",
+        reason: "appdev is redeploying",
+        press: { kind: "done" },
+        pressedAt: "ready",
+      },
+      { state: "land-parked", tone: "attention", title: "Parked", why: "appdev is redeploying" },
+    ],
+    [
+      "Land now whose merge-in or check failed: back to rework",
+      {
+        state: "rework",
+        reason: "Its check failed: tsc exited 2",
+        press: { kind: "done" },
+        pressedAt: "working",
+      },
+      {
+        state: "land-now",
+        tone: "quiet",
+        title: "Juno is reworking it",
+        why: "Its check failed: tsc exited 2",
+      },
+    ],
+    [
+      "landed at last",
+      { state: "landed", landedCommit: "a1b2c3d4e5", press: { kind: "done" }, pressedAt: "ready" },
+      { state: "landed", tone: "done", title: "Landed as a1b2c3d" },
+    ],
+    [
+      "refused, in the engine's own words",
+      {
+        state: "ready",
+        press: {
+          kind: "refused",
+          reason: "A chat of this Mate is working; land between its turns.",
+        },
+      },
+      {
+        state: "land-refused",
+        tone: "attention",
+        title: "Not landed",
+        why: "A chat of this Mate is working; land between its turns.",
+      },
+    ],
+    [
+      "reported and waiting for its review: landing accepts it",
+      { state: "review" },
+      {
+        state: "land-review",
+        tone: "ok",
+        title: "Reported done",
+        why: "Landing accepts it · check passed",
+      },
+    ],
+  ])("%s", (_case, over, verdict) => {
+    expect(crewTaskReview(task(over)).verdict).toMatchObject(verdict);
+  });
+
+  it.each<[string, Partial<CrewTaskReviewInput>, Record<string, unknown> | undefined]>([
+    ["a ready task lands", { state: "ready" }, { label: "Land", enabled: true, safe: true }],
+    [
+      "a reported one lands, accepting it",
+      { state: "review" },
+      { label: "Land", enabled: true, safe: true },
+    ],
+    [
+      "one waiting on the person's edits lands once they are committed",
+      { state: "waiting-on-you", waitingOn: ["src/hud.ts"] },
+      { label: "Land", enabled: true, safe: false },
+    ],
+    [
+      "a working one lands now",
+      { state: "working" },
+      { label: "Land now", enabled: true, safe: false },
+    ],
+    ["a parked one offers nothing", { state: "parked", reason: "disk full" }, undefined],
+  ])("its button: %s", (_case, over, primary) => {
+    const review = crewTaskReview(task(over));
+    if (primary === undefined) expect(review.primary).toBeUndefined();
+    else expect(review.primary).toMatchObject(primary);
+  });
+});

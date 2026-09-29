@@ -262,3 +262,18 @@ export function changeConflict(input: {
   );
   return { files: overlap, by: by === undefined ? undefined : { subject: by.subject, at: by.at } };
 }
+
+/**
+ * The command a crew task's Land sends. *Land now* takes only work its crewmate never reported or
+ * that was sent back (the engine refuses it on anything else); *Land* takes the rest — a ready
+ * task, a reported one it accepts first, one that waited on the person's edits.
+ */
+export function crewLandCommand(task: { readonly id: string; readonly state: string }): {
+  readonly _tag: "land" | "landNow";
+  readonly taskId: string;
+} {
+  return {
+    _tag: task.state === "working" || task.state === "rework" ? "landNow" : "land",
+    taskId: task.id,
+  };
+}

@@ -5,6 +5,7 @@ import {
   changeConflict,
   changeFileLetter,
   changeRequestPrefill,
+  crewLandCommand,
   diffLinesShown,
   pressesPrimary,
   previewRoute,
@@ -239,5 +240,17 @@ describe("changeConflict: which files main moved under a change that no longer m
     ],
   ])("%s", (_name, input, expected) => {
     expect(changeConflict(input)).toEqual(expected);
+  });
+});
+
+describe("crewLandCommand: Land now takes only work never reported or sent back", () => {
+  it.each([
+    ["ready", "land"],
+    ["review", "land"],
+    ["waiting-on-you", "land"],
+    ["working", "landNow"],
+    ["rework", "landNow"],
+  ] as const)("a %s task sends %s", (state, tag) => {
+    expect(crewLandCommand({ id: "task-12", state })).toEqual({ _tag: tag, taskId: "task-12" });
   });
 });
