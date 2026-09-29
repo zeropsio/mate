@@ -1,54 +1,58 @@
 /**
- * The Crew tab's one piece of state kept outside it: whether a Mate's
- * *Set up a crew* sheet is open. The left menu's ⋯ asks for the sheet before
- * the tab has drawn, and the tab opens it as it draws that Mate's crew
- * (`CrewSectionHost`); closing the sheet puts the ask away. In memory only: a
- * reload closes it.
+ * *Set up a crew* asked for from outside the Crew tab: the left menu's ⋯ asks
+ * a Mate's tab for its setup sheet before the tab has drawn. The ask waits
+ * here, one per Mate, until that Mate's tab draws and takes it up: the sheet
+ * opens as the tab's own state, and the ask is spent — so a tab that goes
+ * away with its sheet open never opens it again by itself. *Crew* drops an
+ * ask no tab took up. In memory only: a reload forgets it.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { useCallback } from "react";
+import { useEffect, useState } from "react";
 import { create } from "zustand";
 
 import { useRightPanelStore } from "~/rightPanelStore";
 
-interface CrewSetupSheetState {
-  /** The Mates whose setup sheet is open, by environment. */
-  readonly open: ReadonlySet<EnvironmentId>;
-  readonly setOpen: (environmentId: EnvironmentId, open: boolean) => void;
+interface CrewSetupAskState {
+  /** The Mates whose tab is asked to open its setup sheet, by environment. */
+  readonly asked: ReadonlySet<EnvironmentId>;
+  readonly setAsked: (environmentId: EnvironmentId, asked: boolean) => void;
 }
 
-export const useCrewSetupSheetStore = create<CrewSetupSheetState>()((set) => ({
-  open: new Set(),
-  setOpen: (environmentId, open) =>
+export const useCrewSetupAskStore = create<CrewSetupAskState>()((set) => ({
+  asked: new Set(),
+  setAsked: (environmentId, asked) =>
     set((state) => {
-      if (state.open.has(environmentId) === open) return state;
-      const next = new Set(state.open);
-      if (open) next.add(environmentId);
+      if (state.asked.has(environmentId) === asked) return state;
+      const next = new Set(state.asked);
+      if (asked) next.add(environmentId);
       else next.delete(environmentId);
-      return { open: next };
+      return { asked: next };
     }),
 }));
 
-/** One Mate's setup sheet, open or not, handed to the tab the way `useState` would. */
+/**
+ * One Mate's setup sheet in its Crew tab: the tab's own state, which the
+ * menu's ask opens as the tab draws.
+ */
 export function useCrewSetupSheet(
   environmentId: EnvironmentId,
 ): readonly [boolean, (open: boolean) => void] {
-  const open = useCrewSetupSheetStore((state) => state.open.has(environmentId));
-  const setOpen = useCrewSetupSheetStore((state) => state.setOpen);
-  const setThisOpen = useCallback(
-    (next: boolean) => {
-      setOpen(environmentId, next);
-    },
-    [environmentId, setOpen],
-  );
-  return [open, setThisOpen];
+  const asked = useCrewSetupAskStore((state) => state.asked.has(environmentId));
+  const [open, setOpen] = useState(false);
+  // Taken up while drawing, so the sheet opens with the tab rather than a
+  // frame after it; spent once drawn.
+  if (asked && !open) setOpen(true);
+  useEffect(() => {
+    if (asked) useCrewSetupAskStore.getState().setAsked(environmentId, false);
+  }, [asked, environmentId]);
+  return [open, setOpen];
 }
 
 /**
  * A Mate's conversation opened on its Crew tab, as its menu's *Crew* does —
- * and for *Set up a crew*, with the setup sheet over it.
+ * and for *Set up a crew*, with the tab asked to open its setup sheet.
  */
 export function openCrewTab(ref: ScopedThreadRef, options: { readonly setUp: boolean }): void {
   useRightPanelStore.getState().open(ref, "crew");
-  if (options.setUp) useCrewSetupSheetStore.getState().setOpen(ref.environmentId, true);
+  useCrewSetupAskStore.getState().setAsked(ref.environmentId, options.setUp);
 }

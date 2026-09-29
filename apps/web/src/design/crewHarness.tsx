@@ -28,7 +28,7 @@ import { RightPanelTabs } from "~/components/RightPanelTabs";
 import { CrewPanelBody } from "~/components/zerops/crew/CrewPanel";
 import { resolveRightPanelAvailability } from "~/rightPanelKinds";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
-import { useCrewSetupSheetStore } from "~/zerops/crew/crewTab";
+import { useCrewSetupAskStore } from "~/zerops/crew/crewTab";
 import type { CrewRead } from "~/zerops/crew/useCrew";
 import "../index.css";
 
@@ -135,7 +135,7 @@ function Harness() {
 }
 
 // As the Mate's menu in the left menu asks for it: the tab opens the sheet as it draws.
-if (params.get("setup") === "1") useCrewSetupSheetStore.getState().setOpen(ENVIRONMENT, true);
+if (params.get("setup") === "1") useCrewSetupAskStore.getState().setAsked(ENVIRONMENT, true);
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
 applyThemePalette(ZEROPS_THEME_ID, appearance);

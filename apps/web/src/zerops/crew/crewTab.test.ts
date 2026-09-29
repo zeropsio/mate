@@ -1,80 +1,125 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { act, createElement as h } from "react";
-import { create } from "react-test-renderer";
+import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { selectActiveRightPanel, useRightPanelStore } from "~/rightPanelStore";
 
-import { openCrewTab, useCrewSetupSheet, useCrewSetupSheetStore } from "./crewTab";
+import { openCrewTab, useCrewSetupAskStore, useCrewSetupSheet } from "./crewTab";
 
 const FEN = scopeThreadRef(EnvironmentId.make("env-fen"), ThreadId.make("thread-fen"));
 const JUNO = scopeThreadRef(EnvironmentId.make("env-juno"), ThreadId.make("thread-juno"));
 
-const sheetOpen = (ref: typeof FEN) =>
-  useCrewSetupSheetStore.getState().open.has(ref.environmentId);
+/** Whether the left menu's ask for this Mate's setup sheet still waits for its tab. */
+const asked = (ref: typeof FEN) => useCrewSetupAskStore.getState().asked.has(ref.environmentId);
 
 beforeEach(() => {
   useRightPanelStore.setState({ byThreadKey: {} });
-  useCrewSetupSheetStore.setState({ open: new Set() });
+  useCrewSetupAskStore.setState({ asked: new Set() });
 });
 
 describe("openCrewTab — a Mate's menu opening its conversation on the Crew tab", () => {
   it.each([
-    { case: "Crew opens the tab alone", setUp: false, sheet: false },
-    { case: "Set up a crew opens the tab and its setup sheet", setUp: true, sheet: true },
-  ])("$case", ({ setUp, sheet }) => {
+    { case: "Crew opens the tab alone", setUp: false, ask: false },
+    { case: "Set up a crew opens the tab and asks it for its setup sheet", setUp: true, ask: true },
+  ])("$case", ({ setUp, ask }) => {
     openCrewTab(FEN, { setUp });
     expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, FEN)).toBe("crew");
-    expect(sheetOpen(FEN)).toBe(sheet);
+    expect(asked(FEN)).toBe(ask);
   });
 
   it("asks for one Mate's sheet only: another Mate's tab opens without it", () => {
     openCrewTab(FEN, { setUp: true });
     openCrewTab(JUNO, { setUp: false });
-    expect(sheetOpen(FEN)).toBe(true);
-    expect(sheetOpen(JUNO)).toBe(false);
+    expect(asked(FEN)).toBe(true);
+    expect(asked(JUNO)).toBe(false);
   });
 
-  it("puts the sheet away when it closes, so it does not open again by itself", () => {
+  it("drops an ask no tab took up when Crew opens the same Mate's tab", () => {
     openCrewTab(FEN, { setUp: true });
-    useCrewSetupSheetStore.getState().setOpen(FEN.environmentId, false);
-    expect(sheetOpen(FEN)).toBe(false);
-    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, FEN)).toBe("crew");
+    openCrewTab(FEN, { setUp: false });
+    expect(asked(FEN)).toBe(false);
   });
 });
 
-describe("useCrewSetupSheet — one Mate's sheet, as the Crew tab reads it", () => {
+describe("useCrewSetupSheet — one Mate's setup sheet, as its Crew tab holds it", () => {
+  const mounted: ReactTestRenderer[] = [];
+  let setSheet: ((open: boolean) => void) | undefined;
+  function Tab({ environmentId }: { readonly environmentId: EnvironmentId }) {
+    const [open, setOpen] = useCrewSetupSheet(environmentId);
+    setSheet = setOpen;
+    return h("span", null, String(open));
+  }
+  const mount = (environmentId: EnvironmentId) => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    let tab: ReactTestRenderer | undefined;
+    act(() => {
+      tab = create(h(Tab, { environmentId }));
+    });
+    mounted.push(tab!);
+    return {
+      said: () => tab!.root.findByType("span").children.join(""),
+      unmount: () => {
+        act(() => {
+          tab!.unmount();
+        });
+      },
+    };
+  };
   afterEach(() => {
+    for (const tab of mounted.splice(0)) {
+      act(() => {
+        tab.unmount();
+      });
+    }
     vi.unstubAllGlobals();
   });
 
-  it("follows the ask while the tab is drawn, and closes it for that Mate alone", () => {
-    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-    let close: ((open: boolean) => void) | undefined;
-    function Tab() {
-      const [open, setOpen] = useCrewSetupSheet(FEN.environmentId);
-      close = setOpen;
-      return h("span", null, String(open));
-    }
-    let tab: ReturnType<typeof create> | undefined;
+  it("opens and closes in the tab like its own state", () => {
+    const tab = mount(FEN.environmentId);
+    expect(tab.said()).toBe("false");
     act(() => {
-      tab = create(h(Tab));
+      setSheet?.(true);
     });
-    const said = () => tab!.root.findByType("span").children.join("");
-    expect(said()).toBe("false");
+    expect(tab.said()).toBe("true");
+    act(() => {
+      setSheet?.(false);
+    });
+    expect(tab.said()).toBe("false");
+  });
+
+  it("opens as the tab draws on the menu's ask, and spends the ask", () => {
     act(() => {
       openCrewTab(FEN, { setUp: true });
+    });
+    const tab = mount(FEN.environmentId);
+    expect(tab.said()).toBe("true");
+    expect(asked(FEN)).toBe(false);
+  });
+
+  it("opens in a tab already drawn, for its own Mate alone", () => {
+    const tab = mount(FEN.environmentId);
+    act(() => {
       openCrewTab(JUNO, { setUp: true });
     });
-    expect(said()).toBe("true");
+    expect(tab.said()).toBe("false");
     act(() => {
-      close?.(false);
+      openCrewTab(FEN, { setUp: true });
     });
-    expect(said()).toBe("false");
-    expect(sheetOpen(JUNO)).toBe(true);
+    expect(tab.said()).toBe("true");
+    expect(asked(JUNO)).toBe(true);
+  });
+
+  it("never opens again by itself once its tab went away with it open", () => {
     act(() => {
-      tab!.unmount();
+      openCrewTab(FEN, { setUp: true });
     });
+    const first = mount(FEN.environmentId);
+    expect(first.said()).toBe("true");
+    mounted.splice(0);
+    first.unmount();
+    const again = mount(FEN.environmentId);
+    expect(again.said()).toBe("false");
   });
 });

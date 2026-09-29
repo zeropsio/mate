@@ -7947,7 +7947,8 @@ export default function ChatView(props: ChatViewProps) {
             case "git":
               return <ZeropsGitSurface threadRef={zeropsChrome.threadRef} />;
             case "crew":
-              return <CrewPanel threadRef={activeThreadRef} />;
+              // One Mate's crew: another Mate's draws afresh, its sheets and drafts closed.
+              return <CrewPanel key={activeThreadRef.environmentId} threadRef={activeThreadRef} />;
             case "change":
               return (
                 <ZeropsChangeDetailPage
