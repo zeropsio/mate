@@ -55,6 +55,7 @@ import {
 } from "../../persistence/Errors.ts";
 import { ThreadBackgroundLivenessService } from "../ThreadBackgroundLiveness.ts";
 import { ThreadPlanProgressService } from "../ThreadPlanProgress.ts";
+import { ThreadLiveStepService } from "../ThreadLiveStep.ts";
 import { ProjectionProject } from "../../persistence/Services/ProjectionProjects.ts";
 import { ProjectionState } from "../../persistence/Services/ProjectionState.ts";
 import { ProjectionThreadActivity } from "../../persistence/Services/ProjectionThreadActivities.ts";
@@ -450,6 +451,12 @@ function toPersistenceSqlOrDecodeError(sqlOperation: string, decodeOperation: st
 const makeProjectionSnapshotQuery = Effect.gen(function* () {
   const threadBackgroundLiveness = yield* ThreadBackgroundLivenessService;
   const threadPlanProgress = yield* ThreadPlanProgressService;
+  const threadLiveStep = yield* ThreadLiveStepService;
+  // What a running turn is on this moment, on the shell only while there is one.
+  const liveStepField = (threadId: ThreadId) => {
+    const liveStep = threadLiveStep.getThreadLiveStep(threadId);
+    return liveStep === null ? {} : { liveStep };
+  };
   const sql = yield* SqlClient.SqlClient;
   const repositoryIdentityResolver = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
   const repositoryIdentityResolutionConcurrency = 4;
@@ -2494,6 +2501,7 @@ pending_approval_requests AS (
                         row.threadId,
                       ),
                       planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
+                      ...liveStepField(row.threadId),
                       usagePause: mapUsagePause(row),
                       ...(row.crew === null ? {} : { crew: row.crew }),
                     } satisfies OrchestrationThreadShell)
@@ -2653,6 +2661,7 @@ pending_approval_requests AS (
                   row.threadId,
                 ),
                 planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
+                ...liveStepField(row.threadId),
                 usagePause: mapUsagePause(row),
                 ...(row.crew === null ? {} : { crew: row.crew }),
               })),
@@ -2957,6 +2966,7 @@ pending_approval_requests AS (
           threadRow.value.threadId,
         ),
         planProgress: threadPlanProgress.getThreadPlanProgress(threadRow.value.threadId),
+        ...liveStepField(threadRow.value.threadId),
         usagePause: mapUsagePause(threadRow.value),
         ...(threadRow.value.crew === null ? {} : { crew: threadRow.value.crew }),
       } satisfies OrchestrationThreadShell);
