@@ -94,13 +94,6 @@ export interface ZeropsAgentActivity {
   /** The first line of the error the Mate stopped on: a failed row's third line. */
   readonly errorLine?: string | undefined;
   /**
-   * The plan's steps while it works, counted — what the ring around a
-   * working face is drawn from, one segment a step. Absent while it rests
-   * and where the server reports no plan: a ring nobody can fill is not
-   * drawn.
-   */
-  readonly progress: { readonly completed: number; readonly total: number } | undefined;
-  /**
    * The Mate finished something this device has not looked at since
    * (`hasUnseenCompletion`, the resolver's own fact): its row is bold until
    * its conversation is opened.
@@ -226,7 +219,6 @@ export function threadAgentActivity(
   const visited = lastVisitedAt === undefined ? {} : { lastVisitedAt };
   const resolved = resolveThreadStatus({ ...thread, ...visited });
   const pause = thread.usagePause ?? undefined;
-  const plan = thread.planProgress ?? undefined;
   return {
     threadId: thread.id,
     kind: resolved.kind,
@@ -236,10 +228,6 @@ export function threadAgentActivity(
     at: agentActivityAt(thread),
     snippet: agentActivitySnippet(thread),
     ...(agentActivityAwaitsWords(thread) ? { awaitingWords: true as const } : {}),
-    progress:
-      resolved.kind === "working" && plan !== undefined && plan.totalSteps > 0
-        ? { completed: plan.completedSteps, total: plan.totalSteps }
-        : undefined,
     unread: hasUnseenCompletion({ latestTurn: thread.latestTurn, ...visited }),
     pausedUntil: pause?.resetsAt,
     threadKey: scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),

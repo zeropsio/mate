@@ -447,32 +447,6 @@ describe("what a Mate's row says without words", () => {
 
   it.each([
     {
-      case: "a working plan, counted",
-      shell: shell({
-        ...RUNNING,
-        planProgress: { step: "Run the build", completedSteps: 2, totalSteps: 5 },
-      }),
-      progress: { completed: 2, total: 5 },
-    },
-    {
-      case: "no plan while it works",
-      shell: RUNNING,
-      progress: undefined,
-    },
-    {
-      case: "a plan left over from a settled turn — never drawn",
-      shell: shell({
-        latestTurn: COMPLETED,
-        planProgress: { step: "Run the build", completedSteps: 2, totalSteps: 5 },
-      }),
-      progress: undefined,
-    },
-  ])("counts the plan's steps only while it works: $case", ({ shell: thread, progress }) => {
-    expect(deriveZeropsAgentActivity([thread], {}).get(FEN)?.progress).toEqual(progress);
-  });
-
-  it.each([
-    {
       case: "a completion after the last visit",
       visited: "2026-09-05T10:04:00.000Z",
       unread: true,

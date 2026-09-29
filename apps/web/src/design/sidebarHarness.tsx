@@ -132,7 +132,6 @@ function activity(input: {
   readonly hours: number;
   readonly face: ZeropsAgentActivity["face"];
   readonly kind?: ZeropsAgentActivity["kind"];
-  readonly progress?: ZeropsAgentActivity["progress"];
   readonly unread?: boolean;
   readonly pausedUntil?: string;
   readonly task?: string;
@@ -146,7 +145,6 @@ function activity(input: {
     subject: input.subject,
     snippet: input.snippet,
     at: hoursAgo(input.hours),
-    progress: input.progress,
     unread: input.unread ?? false,
     pausedUntil: input.pausedUntil,
     threadKey: `env-${id}:thread-${id}`,
@@ -277,7 +275,6 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
         hours: 0.053,
         face: "working",
         kind: "working",
-        progress: { completed: 2, total: 5 },
       }),
       liveStep: { words: "Build the app", code: "pnpm build" },
     },

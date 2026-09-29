@@ -279,7 +279,6 @@ describe("SidebarZeropsTree", () => {
       subject: "Fix the login redirect",
       at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
       snippet: undefined,
-      progress: undefined,
       unread: false,
       pausedUntil: undefined,
       threadKey: "env:thread",
@@ -305,7 +304,6 @@ describe("SidebarZeropsTree", () => {
       subject: "give it optimistic updates",
       at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
       snippet: "Deploying and verifying now.",
-      progress: undefined,
       unread: false,
       pausedUntil: undefined,
       threadKey: "env:thread",
@@ -895,7 +893,6 @@ describe("the project's flow under it", () => {
       subject: "Something already asked",
       at: new Date().toISOString(),
       snippet: undefined,
-      progress: undefined,
       unread: false,
       pausedUntil: undefined,
       threadKey: "env:thread",
@@ -1433,7 +1430,6 @@ describe("the project's flow under it", () => {
         subject: "Ship it",
         at: new Date().toISOString(),
         snippet: undefined,
-        progress: undefined,
         unread: false,
         pausedUntil: undefined,
         threadKey: "env:thread",
@@ -1884,7 +1880,6 @@ describe("the Mate's card", () => {
     subject: "Reviewing the migration",
     at: "2026-09-06T10:00:00.000Z",
     snippet: undefined,
-    progress: undefined,
     unread: false,
     pausedUntil: undefined,
     threadKey: "env:thread",
@@ -2141,7 +2136,6 @@ describe("a Mate's row says more without words", () => {
     subject: "Add a /status page with the build number",
     at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     snippet: "The handler reads the build number from the environment.",
-    progress: undefined,
     unread: false,
     pausedUntil: undefined,
     threadKey: "env-crm-dev:thread-1",
@@ -2156,24 +2150,15 @@ describe("a Mate's row says more without words", () => {
       face: "working",
       subject: "Run the build",
       at: new Date(Date.now() - 192_000).toISOString(),
-      progress: { completed: 2, total: 5 },
       ...overrides,
     });
   const slot = (html: string) =>
     /<span[^>]*data-zerops-surface="sidebar-mate-time"[^>]*>(.*?)<\/span>/u.exec(html)?.[0] ?? "";
 
-  it("rings a working face with its plan, one segment a step", () => {
-    const html = row(working());
-    expect(html).toContain('data-zerops-surface="sidebar-mate-ring"');
-    expect(html.match(/data-plan-ring-segment=/gu)).toHaveLength(5);
-    expect(html.match(/data-plan-ring-segment="done"/gu)).toHaveLength(2);
-  });
-
-  it.each([
-    { case: "a resting Mate", activity: live() },
-    { case: "a working one with no plan", activity: working({ progress: undefined }) },
-  ])("draws no ring on $case", ({ activity }) => {
-    expect(row(activity)).not.toContain("sidebar-mate-ring");
+  // The working face turns and glances, and its step is the row's third
+  // line: no ring around it repeats the step as a count in blue (S3).
+  it("rings no working face", () => {
+    expect(row(working())).not.toContain("plan-ring");
   });
 
   // A running clock is not something to click, so it is not blue (S3): it
@@ -2190,7 +2175,7 @@ describe("a Mate's row says more without words", () => {
   // Stop: its slot counts it up as any working face's does, never a grey age
   // beside a working face (the approved menu; the 2026-09-28 audit's gap).
   it("counts up work left running in the background, as it counts a run", () => {
-    const time = slot(row(working({ kind: "monitoring", progress: undefined })));
+    const time = slot(row(working({ kind: "monitoring" })));
     expect(time).toContain("3:12");
     expect(time).toContain("text-sidebar-foreground");
   });
@@ -2407,7 +2392,6 @@ describe("a Mate's own menu, in its row", () => {
     subject: "Add a /status page",
     at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     snippet: undefined,
-    progress: undefined,
     unread: false,
     pausedUntil: undefined,
     threadKey: "env:thread",
@@ -2516,7 +2500,6 @@ describe("a long list, kept scannable", () => {
     subject: "Something",
     at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
     snippet: undefined,
-    progress: undefined,
     unread: false,
     pausedUntil: undefined,
     threadKey: "env:thread",
