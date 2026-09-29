@@ -2502,6 +2502,13 @@ code {
   border-bottom: 1px solid color-mix(in srgb, var(--contrast-border) 60%, transparent);
 }
 
+/* The last column keeps clear of the copy that stands on the table's corner
+   (24 px, shown under the pointer and always on a touch screen), so a header
+   or a number set to the right is never under it. */
+.chat-markdown .chat-markdown-table-container :is(th, td):last-child {
+  padding-inline-end: 2.25rem;
+}
+
 :root {
   --diff-addition: var(--success);
   --diff-deletion: var(--destructive);
