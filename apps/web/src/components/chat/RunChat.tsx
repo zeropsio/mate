@@ -1133,7 +1133,7 @@ function useTallerThan(
  * bubble's one right edge (the owner, 2026-09-28: "there is no spacing between
  * items"). Each row wears its own mark in the Mate's column, beside it.
  */
-export function CallGroup({ children }: { readonly children: ReactNode }) {
+function CallGroup({ children }: { readonly children: ReactNode }) {
   const shownRef = useRef(false);
   useEffect(() => {
     shownRef.current = true;
@@ -1242,7 +1242,7 @@ function CommandCode({
  * back. The one it is making now counts its time in the same quiet ink:
  * blue means something to click (S3), and the run has one clock.
  */
-export function StepBubble({
+function StepBubble({
   step,
   undone = false,
 }: {
@@ -1695,7 +1695,7 @@ function spawnAgents(model: AgentPanelModel, spawn: NonNullable<WorkLogEntry["ag
 }
 
 /** Helpers it started: how many and what for; each one, its state and what it said, opened under it. */
-export function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
+function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
   const ctx = use(TimelineRowCtx);
   const disclosure = useDisclosure();
   const spawn = entry.agentSpawn;
