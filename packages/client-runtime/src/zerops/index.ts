@@ -421,6 +421,8 @@ export {
 } from "./changeConversation.ts";
 export { changeVerdict, type ChangeVerdict, type ChangeVerdictKind } from "./changeVerdict.ts";
 export {
+  REVIEW_LABEL,
+  REVIEW_RELEASE_LABEL,
   changeReview,
   crewTaskReview,
   releaseReview,

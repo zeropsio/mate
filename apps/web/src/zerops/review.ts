@@ -41,6 +41,9 @@ export interface OpenReviewOptions {
 
 export type OpenReview = (target: ReviewTarget, options?: OpenReviewOptions) => void;
 
+/** The words on every door: *Review*, *Review release* — never the review's own button's. */
+export { REVIEW_LABEL, REVIEW_RELEASE_LABEL } from "@t3tools/client-runtime/zerops";
+
 const NO_REVIEW: OpenReview = () => {};
 
 export const ReviewContext = createContext<OpenReview>(NO_REVIEW);

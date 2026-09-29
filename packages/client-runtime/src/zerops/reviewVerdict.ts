@@ -31,6 +31,14 @@ import {
 } from "./release.ts";
 
 /**
+ * The word on every door to a change's review. Never *Merge*: that is the review's own button,
+ * pressed after the change was read (R1).
+ */
+export const REVIEW_LABEL = "Review";
+/** The word on every door to the next release's review; *Release* is the review's own button. */
+export const REVIEW_RELEASE_LABEL = "Review release";
+
+/**
  * The verdict box's look: green passed, amber needs you, red broken, a
  * spinner while it moves, ink for what is over, and grey for no signal.
  */
