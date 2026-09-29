@@ -40,6 +40,7 @@ function change(over: Partial<ChangeReviewInput> = {}): ChangeReviewInput {
       baseSha: "mb",
     },
     mateName: "Nova",
+    readout: "read",
     commits: 1,
     downstream: { production: true, stage: true },
     now: NOW,
@@ -798,5 +799,39 @@ describe("changeReview: a change closed without merging", () => {
     ["a landed one", { state: "closed", merged: true, mergedAt: minutesAgo(5) }, "merged"],
   ] as const)("does not take %s for it", (_case, over, state) => {
     expect(changeReview(change({ pull: pull(over) })).verdict.state).toBe(state);
+  });
+});
+
+describe("changeReview: Merge takes only a head whose change was shown", () => {
+  it.each<[string, ChangeReviewInput["readout"], { enabled: boolean; safe: boolean }, string]>([
+    [
+      "its files for this head still being read",
+      "reading",
+      { enabled: false, safe: false },
+      "Merging waits until the change is read.",
+    ],
+    [
+      "its files for this head could not be read",
+      "failed",
+      { enabled: true, safe: false },
+      "Squash-merges 1 commit into main without its files shown. Production isn't touched until you release.",
+    ],
+    [
+      "its files for this head read",
+      "read",
+      { enabled: true, safe: true },
+      "Squash-merges 1 commit into main. Production isn't touched until you release.",
+    ],
+  ])("%s", (_case, readout, primary, consequence) => {
+    const review = changeReview(change({ readout }));
+    expect(review.primary).toMatchObject({ label: "Merge", ...primary });
+    expect(review.consequence).toBe(consequence);
+  });
+
+  it("keeps a blocked change's reason while its files are read", () => {
+    expect(
+      changeReview(change({ pull: pull({ mergeability: "conflicting" }), readout: "reading" }))
+        .consequence,
+    ).toBe("Merging waits until the conflict is resolved.");
   });
 });

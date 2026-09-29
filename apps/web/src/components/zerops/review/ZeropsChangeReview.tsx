@@ -210,7 +210,8 @@ function ChangeReviewData({
   const merge = async () => {
     if (flowValue === null) return;
     setPress({ kind: "running" });
-    const outcome = await flowValue.mergePullRequest(flow.slug, pull);
+    // The head whose change was shown: one pushed since is Gitea's to refuse, never merged unseen.
+    const outcome = await flowValue.mergePullRequest(flow.slug, { ...pull, headSha: readout.head });
     setPress(outcome.ok ? { kind: "done" } : { kind: "refused", reason: outcome.reason });
   };
   const runRef = run.threadRef;
@@ -312,6 +313,12 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   const model = changeReview({
     pull,
     mateName: mate?.name,
+    readout:
+      readout.files.kind === "read"
+        ? "read"
+        : readout.files.kind === "failed"
+          ? "failed"
+          : "reading",
     commits: readout.commits.kind === "read" ? readout.commits.value : undefined,
     conflict: changeConflict({ mergeability: pull.mergeability, files, mainSince }),
     behindBy: mainSince?.length,

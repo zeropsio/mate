@@ -136,15 +136,23 @@ const NONE_OPEN: ReadonlyArray<string> = [];
 const RUN = { words: WORDS, reading: false } as const;
 const OFFERED = { kind: "offered" } as const;
 
+const FILES_UNREAD = {
+  reading: { kind: "reading" },
+  failed: { kind: "failed", reason: "Gitea did not answer in time." },
+} as const;
+
 function Change({
   over,
   mainSince,
+  files,
   press = IDLE,
   open = NONE_OPEN,
   run = RUN,
 }: {
   readonly over?: Partial<FlowPullRequest>;
   readonly mainSince?: ReadonlyArray<GiteaCommit>;
+  /** Its files, where they are not read yet. */
+  readonly files?: keyof typeof FILES_UNREAD;
   readonly press?: ReviewPress;
   readonly open?: ReadonlyArray<string>;
   readonly run?: { readonly words: string | undefined; readonly reading: boolean };
@@ -167,6 +175,7 @@ function Change({
       pull={value}
       readout={{
         ...READ,
+        files: files === undefined ? READ.files : FILES_UNREAD[files],
         mainSince: mainSince === undefined ? READ.mainSince : { kind: "read", value: mainSince },
       }}
       route={value.merged ? undefined : ROUTE}
@@ -286,6 +295,8 @@ export const REVIEW_STATES: ReadonlyArray<{
   readonly node: ReactNode;
 }> = [
   { id: "ready", label: "A change, ready", node: <Change open={["src/server/index.ts"]} /> },
+  { id: "reading", label: "Its files being read", node: <Change files="reading" /> },
+  { id: "unread", label: "Its files unread", node: <Change files="failed" /> },
   {
     id: "unchecked",
     label: "Ready, nothing checked",

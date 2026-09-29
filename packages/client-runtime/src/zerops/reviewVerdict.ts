@@ -184,6 +184,12 @@ export interface ChangeReviewInput {
   };
   /** The Mate that wrote it; `undefined` for a person's own branch. */
   readonly mateName: string | undefined;
+  /**
+   * How far its files were read for the head it is at. Merge takes only a head whose change was
+   * shown: nothing merges while they are read, and one that could not be read is merged only by
+   * a deliberate press.
+   */
+  readonly readout: "reading" | "read" | "failed";
   /** How many commits it squashes, where they were read. */
   readonly commits?: number | undefined;
   /**
@@ -227,15 +233,17 @@ function squashSentence(
   pull: ChangeReviewInput["pull"],
   commits: number | undefined,
   behindBy: number | undefined,
+  unshown: boolean,
 ): string {
   const what =
     commits === undefined ? "it" : commits === 1 ? "1 commit" : `${String(commits)} commits`;
   const asOne = commits !== undefined && commits > 1 ? " as one" : "";
+  const unseen = unshown ? " without its files shown" : "";
   const onTop =
     behindBy === undefined || behindBy === 0
       ? ""
       : `, on top of ${count(behindBy, "change", "changes")} it wasn't checked with`;
-  return `Squash-merges ${what} into ${pull.baseBranch}${asOne}${onTop}.`;
+  return `Squash-merges ${what} into ${pull.baseBranch}${asOne}${unseen}${onTop}.`;
 }
 
 /** What happens once `main` has it, as far as anything downstream goes. */
@@ -472,12 +480,16 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
     };
   }
 
-  const { verdict, enabled } = changeVerdictOf(input);
+  const verdictOf = changeVerdictOf(input);
+  const { verdict } = verdictOf;
+  // A head whose files are still being read was not shown: it waits for them.
+  const enabled = verdictOf.enabled && input.readout !== "reading";
   const squash = sentences(
     squashSentence(
       pull,
       input.commits,
       verdict.state === "behind-clean" ? input.behindBy : undefined,
+      input.readout === "failed",
     ),
     afterMain(input),
   );
@@ -488,6 +500,10 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
     "checks-running": "Merging waits for the checks to finish.",
     checking: "Merging waits until Gitea knows it merges cleanly.",
   };
+  // What holds it back: the change's own trouble first, then its files still being read.
+  const held = verdictOf.enabled
+    ? "Merging waits until the change is read."
+    : (waits[verdict.state] ?? squash);
 
   if (press.kind === "running") {
     return {
@@ -514,16 +530,21 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
         why: press.reason,
         fix: verdict.fix,
       },
-      consequence: enabled ? squash : (waits[verdict.state] ?? squash),
+      consequence: enabled ? squash : held,
       // A second try is the person's deliberate press, never ⌘↵'s.
       primary: { label: "Merge", enabled, safe: false },
     };
   }
   return {
     verdict,
-    consequence: enabled ? squash : (waits[verdict.state] ?? squash),
-    // Behind main is amber: still pressable, never pressed for the person.
-    primary: { label: "Merge", enabled, safe: enabled && verdict.state !== "behind-clean" },
+    consequence: enabled ? squash : held,
+    // Behind main is amber, and a change whose files could not be read was never shown: both
+    // still pressable, never pressed for the person.
+    primary: {
+      label: "Merge",
+      enabled,
+      safe: enabled && verdict.state !== "behind-clean" && input.readout === "read",
+    },
   };
 }
 

@@ -7,6 +7,7 @@ import {
   changeRequestPrefill,
   changeRunMessage,
   crewLandCommand,
+  focusesPrimaryLate,
   linksChange,
   diffLinesShown,
   pressesPrimary,
@@ -305,5 +306,24 @@ describe("linksChange: a message links this change, never one whose number start
     expect(changeRunMessage(messages, "/snap/appdev/pulls/5")?.text).toContain("Added the route.");
     expect(changeRunMessage(messages, "/snap/appdev/pulls/53")?.text).toContain("Footer done.");
     expect(changeRunMessage(messages, "/snap/appdev/pulls/7")).toBeUndefined();
+  });
+});
+
+describe("focusesPrimaryLate: focus reaches the button once it turns safe, soon after opening", () => {
+  it.each([
+    [
+      "safe while focus still rests on the review, just after it opened",
+      { safe: true, onReview: true, sinceOpenMs: 300 },
+      true,
+    ],
+    [
+      "safe after the person moved the focus on",
+      { safe: true, onReview: false, sinceOpenMs: 300 },
+      false,
+    ],
+    ["safe only long after it opened", { safe: true, onReview: true, sinceOpenMs: 4000 }, false],
+    ["not safe", { safe: false, onReview: true, sinceOpenMs: 300 }, false],
+  ])("%s", (_case, input, focuses) => {
+    expect(focusesPrimaryLate(input)).toBe(focuses);
   });
 });

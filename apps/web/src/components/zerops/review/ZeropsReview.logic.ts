@@ -69,6 +69,23 @@ export function pressesPrimary(
   );
 }
 
+/** How soon after opening a primary that turns safe still takes the focus it would have had. */
+export const REVIEW_LATE_FOCUS_MS = 1_500;
+
+/**
+ * A primary that turns safe once the review has read what it shows — Merge, once the change's
+ * files are in — takes the focus it would have had on opening: only just after it opened, and
+ * only while the focus still rests on the review itself, never taken from where the person
+ * moved it.
+ */
+export function focusesPrimaryLate(input: {
+  readonly safe: boolean;
+  readonly onReview: boolean;
+  readonly sinceOpenMs: number;
+}): boolean {
+  return input.safe && input.onReview && input.sinceOpenMs < REVIEW_LATE_FOCUS_MS;
+}
+
 const DEV_SUFFIX = "dev";
 const STAGE_SUFFIX = "stage";
 
