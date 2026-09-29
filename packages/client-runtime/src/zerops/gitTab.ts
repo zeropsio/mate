@@ -242,10 +242,10 @@ export function checkTone(statuses: ReadonlyArray<GiteaCommitStatus>): GitCheckT
  * The checks' tone as a status dot's — `undefined` where no check ran and no
  * dot belongs.
  *
- * Here rather than beside a component: four surfaces paint this fact (a
- * change's row on the projects screen, the merge dialog, the left menu, the
- * Git tab), and a tone table that lives in one of them is a table the other
- * three are one edit away from disagreeing with.
+ * Here rather than beside a component: several surfaces paint this fact (a
+ * change's row on the projects screen, the left menu, the Git tab), and a
+ * tone table that lives in one of them is a table the others are one edit
+ * away from disagreeing with.
  */
 export function checkDotTone(input: {
   readonly checks: GitCheckTone;
