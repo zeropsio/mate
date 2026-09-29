@@ -2359,11 +2359,13 @@ code {
 
 /* Code in a sentence is marked, not caged: a tint of the ink behind it and no
    rule round it. With a border every token drew four lines, and a sentence
-   naming five files read as a row of buttons. */
+   naming five files read as a row of buttons. It hugs its punctuation: 3 px
+   at its sides and no margin, where 5 px pushed commas away ("Login , Boards ,"). */
 .chat-markdown :not(pre) > code {
-  border-radius: 0.3125rem;
+  margin: 0;
+  border-radius: 0.25rem;
   background: color-mix(in srgb, var(--contrast-foreground) 7%, transparent);
-  padding: 0.125rem 0.3125rem;
+  padding: 0.125rem 0.1875rem;
   color: var(--contrast-foreground);
   /* 12 px in the log's 14, 13 in an answer's 15: a step below its sentence. */
   font-size: 0.86em;
