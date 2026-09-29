@@ -16,6 +16,7 @@ import {
   nowLineFace,
   nowLineOf,
   nowLineWords,
+  recoveredFailures,
   runFoldOf,
   setRunFold,
   severalWords,
@@ -476,5 +477,92 @@ describe("the runs a person watched", () => {
     forgetRunFolds("thread-b");
     stop();
     expect(heard).toHaveLength(6);
+  });
+});
+
+// Red always means still broken (K9): a failure a later step undid — the
+// same command passing on a retry, the same service deploying again, the
+// same page passing its check — turns quiet.
+describe("recoveredFailures", () => {
+  const ran = (id: string, text: string, failed: boolean, description?: string): RecordItem => ({
+    kind: "step",
+    key: `step:${id}`,
+    at: at(Number(id.replace(/\D/g, "")) || 1),
+    step: stepOf(
+      call(id, {
+        label: "Command run",
+        itemType: "command_execution",
+        command: text,
+        toolLifecycleStatus: failed ? "failed" : "completed",
+        ...(description === undefined ? {} : { callInput: { description } }),
+      }),
+      undefined,
+      false,
+    ),
+  });
+  const deployed = (id: string, service: string, phase: "done" | "failed"): RecordItem => {
+    const entry = operationEntry(id, "t1", 1, {
+      kind: "deploy",
+      phase,
+      subject: service,
+      target: { hostname: service },
+    });
+    return {
+      kind: "operation",
+      key: `operation:op:${id}`,
+      at: at(1),
+      operation: entry.kind === "operation" ? entry.operation : (null as never),
+    };
+  };
+  it.each([
+    {
+      name: "a command that passed on a retry",
+      items: [ran("w1", "npm test", true), ran("w2", "npm test", false)],
+      recovered: ["step:w1"],
+    },
+    {
+      name: "a command a different one followed",
+      items: [ran("w1", "npm test", true), ran("w2", "npm run build", false)],
+      recovered: [],
+    },
+    {
+      name: "a command that failed twice, then passed",
+      items: [
+        ran("w1", "npm test", true),
+        ran("w2", "npm test", true),
+        ran("w3", "npm test", false),
+      ],
+      recovered: ["step:w1", "step:w2"],
+    },
+    {
+      name: "a command that failed again",
+      items: [ran("w1", "npm test", true), ran("w2", "npm test", true)],
+      recovered: [],
+    },
+    {
+      name: "a step retried under the same words",
+      items: [
+        ran("w1", "npm test -- status", true, "Run the tests"),
+        ran("w2", "npm test -- --run status", false, "Run the tests"),
+      ],
+      recovered: ["step:w1"],
+    },
+    {
+      name: "a service that deployed again",
+      items: [deployed("d1", "appdev", "failed"), deployed("d2", "appdev", "done")],
+      recovered: ["operation:op:d1"],
+    },
+    {
+      name: "another service that deployed",
+      items: [deployed("d1", "appdev", "failed"), deployed("d2", "apidev", "done")],
+      recovered: [],
+    },
+    {
+      name: "a success before the failure",
+      items: [ran("w1", "npm test", false), ran("w2", "npm test", true)],
+      recovered: [],
+    },
+  ])("$name: $recovered", ({ items, recovered }) => {
+    expect([...recoveredFailures(items)]).toEqual(recovered);
   });
 });

@@ -8,7 +8,12 @@
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
-import { browserCheckCaption, formatWorkDuration, operationLineWords } from "./conversation.logic";
+import {
+  browserCheckCaption,
+  formatWorkDuration,
+  operationLineWords,
+  unrecoveredFailures,
+} from "./conversation.logic";
 import type { RecordItem, RunStatus, TurnHeaderActivity } from "./MessagesTimeline.logic";
 import type { StepKind, WorkStep } from "./workSteps.logic";
 
@@ -333,4 +338,61 @@ export function setRunFold(conversation: string, run: string, fold: RunFold): vo
 export function forgetRunFolds(conversation: string): void {
   if (!runFolds.delete(conversation)) return;
   runFoldsChanged();
+}
+
+// ---------------------------------------------------------------------------
+// A failure, and what undid it
+// ---------------------------------------------------------------------------
+
+/** What a step did, to know it again when the Mate retries it: its command, else its words. */
+function stepSignatures(step: WorkStep): ReadonlyArray<string> {
+  const said = (value: string | null) =>
+    value === null ? [] : [`${step.kind}:${value.replace(/\s+/gu, " ").trim()}`];
+  return [...said(step.script ?? step.code), ...said(step.words)];
+}
+
+/** Whether a line of the record failed, as its own record says. */
+function itemFailed(item: RecordItem): boolean {
+  switch (item.kind) {
+    case "step":
+      return item.step.state === "failed";
+    case "operation":
+      return item.operation.phase === "failed";
+    default:
+      return false;
+  }
+}
+
+/**
+ * The failures a later step undid (K9): a command or a call that failed and
+ * passed when the Mate ran it again — the same command, or the same words —
+ * and a platform operation that failed and then went through on the same
+ * service. Red always means still broken, so these turn quiet; the rest stay
+ * red.
+ */
+export function recoveredFailures(items: ReadonlyArray<RecordItem>): ReadonlySet<string> {
+  const recovered = new Set<string>();
+  items.forEach((item, index) => {
+    if (!itemFailed(item)) return;
+    const later = items.slice(index + 1);
+    if (item.kind === "step") {
+      const signatures = new Set(stepSignatures(item.step));
+      const undone = later.some(
+        (next) =>
+          next.kind === "step" &&
+          next.step.state === "done" &&
+          stepSignatures(next.step).some((signature) => signatures.has(signature)),
+      );
+      if (undone) recovered.add(item.key);
+      return;
+    }
+    if (item.kind === "operation") {
+      const operations = [
+        item.operation,
+        ...later.flatMap((next) => (next.kind === "operation" ? [next.operation] : [])),
+      ];
+      if (!unrecoveredFailures(operations).includes(item.operation)) recovered.add(item.key);
+    }
+  });
+  return recovered;
 }

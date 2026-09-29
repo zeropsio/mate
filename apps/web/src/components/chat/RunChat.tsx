@@ -16,7 +16,8 @@
  *   with its names in mono, a deploy its pipeline as a bar;
  * - what it thought: small, faint italics on a hairline, no box — talking to
  *   itself.
- * What went wrong is the failed surface; what merely happened (a context
+ * What went wrong wears a red mark while it is still broken, and turns quiet
+ * once a later step undid it — never a pink row; what merely happened (a context
  * condensed, a change landed) a caption between hairlines; where the person's
  * words reached it, a line in their bubble on their side — the words
  * themselves stand on the page above the card.
@@ -50,6 +51,7 @@ import {
   OctagonAlertIcon,
   SearchIcon,
   SquareTerminalIcon,
+  TriangleAlertIcon,
   WrenchIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -112,6 +114,7 @@ import {
   earlierShown,
   foldsOnReturn,
   formatClock,
+  recoveredFailures,
   LONG_STEP_MS,
   nowLineFace,
   nowLineOf,
@@ -305,7 +308,7 @@ const WORDS = "text-prose";
 const META = "text-line";
 
 /** How a bubble reads: its words to the person, a thought, a thing it did — and in what state. */
-type BubbleTone = "speech" | "thought" | "tool" | "failed" | "attention";
+type BubbleTone = "speech" | "thought" | "tool";
 
 const BUBBLE_TONE: Record<BubbleTone, string> = {
   // Its words to the person: its own tint, lightly (`.run-speech`).
@@ -315,8 +318,6 @@ const BUBBLE_TONE: Record<BubbleTone, string> = {
   // A thing it did: a hairline on the tray, never a fill, so a call never
   // reads as something said.
   tool: `${CALL_SURFACE} text-foreground`,
-  failed: "bg-status-failed-surface text-foreground ring-1 ring-status-failed/30",
-  attention: "bg-status-attention-surface text-status-attention-text",
 };
 
 /**
@@ -640,19 +641,24 @@ function Headline({
 }
 
 /** What kind of thing a bubble is, in the muted ink: the mark it wears in the Mate's column. */
-function DidMark({
-  icon: Icon,
-  failed = false,
-}: {
-  readonly icon: LucideIcon;
-  readonly failed?: boolean;
-}) {
+function DidMark({ icon: Icon }: { readonly icon: LucideIcon }) {
+  return <Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />;
+}
+
+/** Whether a failure still stands, or a later step undid it (K9). */
+type Failure = "broken" | "undone";
+
+/**
+ * A failure's mark, in place of its kind's: red while it is still broken,
+ * quiet once a later step undid it — red always means still broken (K9).
+ */
+function FailedMark({ failure }: { readonly failure: Failure }) {
   return (
-    <Icon
+    <TriangleAlertIcon
       aria-hidden="true"
       className={cn(
         "size-4 shrink-0",
-        failed ? "text-status-failed-text" : "text-muted-foreground",
+        failure === "broken" ? "text-status-failed-text" : "text-muted-foreground",
       )}
     />
   );
@@ -1079,7 +1085,7 @@ export function CallGroup({ children }: { readonly children: ReactNode }) {
 const CallGroupContext = createContext<{ readonly current: boolean } | null>(null);
 
 /**
- * One call, as its row of the bubble: in the failed surface where it failed,
+ * One call, as its row of the bubble — a failure by its mark, never a flood —
  * its mark in the Mate's column beside it — out of the bubble, in the column
  * the chat's row keeps for it. A call joining a bubble already there rises in
  * on its own; one that came with its bubble rises in with it.
@@ -1087,14 +1093,15 @@ const CallGroupContext = createContext<{ readonly current: boolean } | null>(nul
 function CallRow({
   kind,
   mark,
-  failed = false,
+  failure = null,
   children,
 }: {
   /** What the call stands for, for the page's own tests and probes. */
   readonly kind: string;
   /** What kind of call it is, in the Mate's column. */
   readonly mark: ReactNode;
-  readonly failed?: boolean;
+  /** Where it failed: still broken, or undone by a later step. */
+  readonly failure?: Failure | null;
   readonly children: ReactNode;
 }) {
   const group = use(CallGroupContext);
@@ -1103,10 +1110,10 @@ function CallRow({
     <div
       className={cn(
         "relative min-w-0 first:rounded-t-2xl last:rounded-b-2xl",
-        failed && "bg-status-failed-surface",
         joined && "run-rise",
       )}
-      data-chat-bubble={failed ? "failed" : "tool"}
+      data-chat-bubble={failure === null ? "tool" : "failed"}
+      data-chat-failed={failure ?? undefined}
       data-chat-kind={kind}
       data-chat-row
     >
@@ -1123,8 +1130,8 @@ function CallRow({
  * A command's code, in mono: four lines of it from its first frame and a fade
  * where it goes on — a script never prints whole into the chat (the owner,
  * 2026-09-28: "I see 100s of LoC printed directly"). It is how, under what the
- * command was for, on the words' own edge: in the muted ink, failed too — the
- * headline, the surface and the time say that it failed.
+ * command was for, on the words' own edge: in the muted ink, failed too — its
+ * mark and its right edge say that it failed.
  */
 function CommandCode({
   script,
@@ -1166,13 +1173,19 @@ function CommandCode({
  * back. The one it is making now counts its time in the same quiet ink:
  * blue means something to click (S3), and the run has one clock.
  */
-export function StepBubble({ step }: { readonly step: WorkStep }) {
+export function StepBubble({
+  step,
+  undone = false,
+}: {
+  readonly step: WorkStep;
+  /** It failed, and a later step undid it: quiet, not red (K9). */
+  readonly undone?: boolean;
+}) {
   const disclosure = useDisclosure();
   const outputs = stepOutput(step);
-  const failed = step.state === "failed";
+  const failure: Failure | null = step.state !== "failed" ? null : undone ? "undone" : "broken";
   const running = step.state === "running";
   const time = stepTime(step);
-  const timeWords = failed && time !== null ? <>Failed · {time}</> : failed ? "Failed" : time;
   const script = step.kind === "command" ? (step.script ?? step.code) : null;
   // A command that said nothing of itself is its own title (K4): its first
   // line, in mono, and the rest of it opens under it.
@@ -1187,23 +1200,19 @@ export function StepBubble({ step }: { readonly step: WorkStep }) {
       column
       opens={opens}
       running={running}
-      time={timeWords}
-      timeTone={failed ? "failed" : "muted"}
+      time={failure === null ? time : "Failed"}
+      timeTone={failure === "broken" ? "failed" : "muted"}
     >
       {step.kind === "command" ? (
         step.words === null ? (
-          <span className={cn("font-mono", failed ? "text-status-failed-text" : "text-foreground")}>
-            {step.code}
-          </span>
+          <span className="font-mono text-foreground">{step.code}</span>
         ) : (
-          <span className={failed ? "text-status-failed-text" : "text-foreground/75"}>
-            {step.words}
-          </span>
+          <span className="text-foreground/75">{step.words}</span>
         )
       ) : step.phrase !== null ? (
         <PhraseWords phrase={step.phrase} />
       ) : (
-        <span className={failed ? "text-status-failed-text" : "text-foreground/75"}>{title}</span>
+        <span className="text-foreground/75">{title}</span>
       )}
       {step.kind === "edit" && step.entries.length > 1 ? (
         <span className="text-muted-foreground">{` · ${step.entries.length} edits`}</span>
@@ -1213,9 +1222,15 @@ export function StepBubble({ step }: { readonly step: WorkStep }) {
   const pad = showsCode || cut ? "ps-3 pe-3.5 pt-1.75 pb-0.5" : CALL_PAD;
   return (
     <CallRow
-      failed={failed}
+      failure={failure}
       kind={`step:${step.kind}`}
-      mark={<DidMark failed={failed} icon={STEP_GLYPH[step.kind]} />}
+      mark={
+        failure === null ? (
+          <DidMark icon={STEP_GLYPH[step.kind]} />
+        ) : (
+          <FailedMark failure={failure} />
+        )
+      }
     >
       {opens ? (
         <DisclosureButton
@@ -1284,19 +1299,24 @@ export function OperationDetail({
   return <ZeropsOperationCard headless operation={operation} threadRef={threadRef} {...regions} />;
 }
 
-/** A settled operation's bar, from what it knew of its steps: whole, or cut where it failed. */
+/**
+ * A settled operation's bar, from what it knew of its steps: whole, or cut
+ * where it failed — in red while that still stands, quiet once undone (K9).
+ */
 function settledBar(
   operation: ZeropsOperation,
+  undone: boolean,
 ): ReadonlyArray<{ readonly key: string; readonly tone: BarTone }> {
   const failed = operation.phase === "failed";
-  if (operation.steps.length === 0) return [{ key: "whole", tone: failed ? "failed" : "done" }];
+  const cut: BarTone = undone ? "waiting" : "failed";
+  if (operation.steps.length === 0) return [{ key: "whole", tone: failed ? cut : "done" }];
   return operation.steps.map((step) => ({
     key: step.id,
     tone: failed
       ? step.state === "done"
         ? "done"
         : step.state === "failed" || step.state === "running"
-          ? "failed"
+          ? cut
           : "waiting"
       : "done",
   }));
@@ -1308,10 +1328,18 @@ function settledBar(
  * runs, what the Mate waits on beside its face (the bar under the chat has
  * its clock). Its card — the pipeline, the build log — opens under it.
  */
-function OperationBubble({ operation }: { readonly operation: ZeropsOperation }) {
+function OperationBubble({
+  operation,
+  undone = false,
+}: {
+  readonly operation: ZeropsOperation;
+  /** It failed, and a later one on the same service went through: quiet (K9). */
+  readonly undone?: boolean;
+}) {
   const ctx = use(TimelineRowCtx);
   const disclosure = useDisclosure();
   const failed = operation.phase === "failed";
+  const failure: Failure | null = !failed ? null : undone ? "undone" : "broken";
   const running = operation.phase === "running";
   const words = operationLineWords(operation);
   const version = operation.version?.name ?? null;
@@ -1324,9 +1352,11 @@ function OperationBubble({ operation }: { readonly operation: ZeropsOperation })
       : null;
   return (
     <CallRow
-      failed={failed}
+      failure={failure}
       kind={`operation:${operation.kind}`}
-      mark={<KindGlyph kind={operation.kind} />}
+      mark={
+        failure === null ? <KindGlyph kind={operation.kind} /> : <FailedMark failure={failure} />
+      }
     >
       <DisclosureButton
         className={CALL_PAD}
@@ -1338,13 +1368,13 @@ function OperationBubble({ operation }: { readonly operation: ZeropsOperation })
           column
           opens
           time={operationTime(operation)}
-          timeTone={failed ? "failed" : "muted"}
+          timeTone={failure === "broken" ? "failed" : "muted"}
         >
           <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5">
-            <span className={failed ? "text-status-failed-text" : "text-foreground/75"}>
-              {words}
-            </span>
-            {running ? null : <StatusBar className="w-12" segments={settledBar(operation)} />}
+            <span className="text-foreground/75">{words}</span>
+            {running ? null : (
+              <StatusBar className="w-12" segments={settledBar(operation, undone)} />
+            )}
             {detail !== null ? (
               <span className="min-w-0 truncate font-mono text-muted-foreground">{detail}</span>
             ) : null}
@@ -1421,7 +1451,11 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
       browserTakeState(check, strip.checks) === "failed",
   );
   return (
-    <CallRow failed={failed} kind="checks" mark={<DidMark failed={failed} icon={AppWindowIcon} />}>
+    <CallRow
+      failure={failed ? "broken" : null}
+      kind="checks"
+      mark={failed ? <FailedMark failure="broken" /> : <DidMark icon={AppWindowIcon} />}
+    >
       <DisclosureButton
         className={CALL_PAD}
         label={`${words}${verdict === null ? "" : `, ${verdict}`}. ${disclosure.open ? "Hide" : "Show"} the checks`}
@@ -1463,16 +1497,27 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
   );
 }
 
+/** A service's trouble, in its colour: red while broken, amber while it needs the person. */
+function IncidentMark({ tone }: { readonly tone: IncidentModel["tone"] }) {
+  return (
+    <ActivityIcon
+      aria-hidden="true"
+      className={cn(
+        "size-4 shrink-0",
+        tone === "failed"
+          ? "text-status-failed-text"
+          : tone === "attention"
+            ? "text-status-attention-text"
+            : "text-muted-foreground",
+      )}
+    />
+  );
+}
+
 /** A service that stopped answering, and what became of it: its phases in order. */
 function IncidentBubble({ incident }: { readonly incident: IncidentModel }) {
   return (
-    <Bubble
-      kind="incident"
-      tone={
-        incident.tone === "failed" ? "failed" : incident.tone === "attention" ? "attention" : "tool"
-      }
-      className={BUBBLE_PAD}
-    >
+    <Bubble kind="incident" tone="tool" className={BUBBLE_PAD}>
       <span className="font-medium">{incident.hostname}</span>
       <span className="text-muted-foreground">{` ${incident.phases.join(" → ")}`}</span>
     </Bubble>
@@ -1586,7 +1631,11 @@ export function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
     (agents.length === 1 ? agents[0]!.title : agents.map((agent) => agent.title).join(" · "));
   const failed = summary.tone === "failed";
   return (
-    <CallRow failed={failed} kind="helpers" mark={<DidMark failed={failed} icon={BotIcon} />}>
+    <CallRow
+      failure={failed ? "broken" : null}
+      kind="helpers"
+      mark={failed ? <FailedMark failure="broken" /> : <DidMark icon={BotIcon} />}
+    >
       <DisclosureButton
         className={CALL_PAD}
         label={`${words}. ${disclosure.open ? "Hide" : "Show"} them`}
@@ -1653,19 +1702,20 @@ function TaskBubble({ entry }: { readonly entry: WorkLogEntry }) {
   const reported = Boolean(entry.detail?.trim());
   const line = (
     <Headline column opens={reported}>
-      <span className={failed ? "text-status-failed-text" : "text-foreground/75"}>{words}</span>
+      <span className="text-foreground/75">{words}</span>
       <span className="text-muted-foreground">{` · ${where}`}</span>
     </Headline>
   );
   return (
     <CallRow
-      failed={failed}
+      failure={failed ? "broken" : null}
       kind="task"
       mark={
-        <DidMark
-          failed={failed}
-          icon={entry.agentRole !== undefined ? BotIcon : SquareTerminalIcon}
-        />
+        failed ? (
+          <FailedMark failure="broken" />
+        ) : (
+          <DidMark icon={entry.agentRole !== undefined ? BotIcon : SquareTerminalIcon} />
+        )
       }
     >
       {reported ? (
@@ -1728,7 +1778,11 @@ function PlanBubble({ plan }: { readonly plan: TurnPlanEntry }) {
 // What stopped it, and what merely happened
 // ---------------------------------------------------------------------------
 
-/** Something that stopped it: the failed surface, the whole error under it. */
+/**
+ * Something that stopped it — what it couldn't do: its words in red on the
+ * tray's outline, its mark red beside it, never a pink flood; the whole error
+ * under it.
+ */
 function ErrorBubble({ entry }: { readonly entry: WorkLogEntry }) {
   const disclosure = useDisclosure();
   const { label, detail } = entry;
@@ -1739,7 +1793,7 @@ function ErrorBubble({ entry }: { readonly entry: WorkLogEntry }) {
     </Headline>
   );
   return (
-    <Bubble kind="error" tone="failed">
+    <Bubble kind="error" tone="tool">
       {more === null ? (
         <div className={BUBBLE_PAD}>{line}</div>
       ) : (
@@ -1888,11 +1942,18 @@ function PersonMark({ item }: { readonly item: Extract<RecordItem, { kind: "pers
   );
 }
 
-/** A record's item as its line of the chat. */
-function itemLine(item: RecordItem): ChatLine | null {
+/**
+ * A record's item as its line of the chat; `undone` the failures a later step
+ * undid (`recoveredFailures`), which stand quiet.
+ */
+function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine | null {
   switch (item.kind) {
     case "step":
-      return { key: item.key, bubble: <StepBubble step={item.step} />, call: true };
+      return {
+        key: item.key,
+        bubble: <StepBubble step={item.step} undone={undone.has(item.key)} />,
+        call: true,
+      };
     case "call":
       return {
         key: item.key,
@@ -1915,7 +1976,11 @@ function itemLine(item: RecordItem): ChatLine | null {
     case "person":
       return { key: item.key, bubble: <PersonMark item={item} />, theirs: true };
     case "operation":
-      return { key: item.key, bubble: <OperationBubble operation={item.operation} />, call: true };
+      return {
+        key: item.key,
+        bubble: <OperationBubble operation={item.operation} undone={undone.has(item.key)} />,
+        call: true,
+      };
     case "helpers":
       return { key: item.key, bubble: <HelpersBubble entry={item.entry} />, call: true };
     case "task":
@@ -1928,7 +1993,7 @@ function itemLine(item: RecordItem): ChatLine | null {
       return {
         key: item.key,
         bubble: <IncidentBubble incident={item.incident} />,
-        mark: <DidMark failed={item.incident.tone === "failed"} icon={ActivityIcon} />,
+        mark: <IncidentMark tone={item.incident.tone} />,
       };
     case "event":
       return { key: item.key, bubble: <EventCaption event={item.event} />, across: true };
@@ -1942,7 +2007,12 @@ function itemLine(item: RecordItem): ChatLine | null {
       return {
         key: item.key,
         bubble: <ErrorBubble entry={item.entry} />,
-        mark: <DidMark failed icon={OctagonAlertIcon} />,
+        mark: (
+          <OctagonAlertIcon
+            aria-hidden="true"
+            className="size-4 shrink-0 text-status-failed-text"
+          />
+        ),
       };
   }
 }
@@ -2271,7 +2341,10 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // behind "Show work", which opens it under the line (K12).
   const later = row.status !== null && !row.live && fold !== "watched";
   const folded = later && fold === "folded";
-  const lines = chatLines(folded ? row.items.filter((item) => !foldsOnReturn(item)) : row.items);
+  const lines = chatLines(
+    folded ? row.items.filter((item) => !foldsOnReturn(item)) : row.items,
+    row.items,
+  );
   const feedRef = useRef<HTMLDivElement>(null);
   const fromHeightRef = useRef<number | null>(null);
   useLayoutEffect(() => {
@@ -2336,10 +2409,17 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   );
 }
 
-/** A record's items as the chat's lines, from the first thing the Mate did. */
-function chatLines(items: ReadonlyArray<RecordItem>): ChatLine[] {
+/**
+ * A record's items as the chat's lines, from the first thing the Mate did;
+ * `all` the whole record, which says what a later step undid.
+ */
+function chatLines(
+  items: ReadonlyArray<RecordItem>,
+  all: ReadonlyArray<RecordItem> = items,
+): ChatLine[] {
+  const undone = recoveredFailures(all);
   const lines = items.flatMap((item) => {
-    const line = itemLine(item);
+    const line = itemLine(item, undone);
     return line === null ? [] : [line];
   });
   // A mark says where in the run the person spoke; before anything the Mate

@@ -407,6 +407,27 @@ describe("RunChat", () => {
     expect(script).not.toContain("line 13");
   });
 
+  // Failures belong to the work, and red always means still broken (K9): a
+  // failed call wears a red mark and "Failed" on the right, never a pink row;
+  // once a later step undid it — the same command passing on a retry — it
+  // turns quiet.
+  it("marks a failure red while it stands, and quiet once a retry passed", () => {
+    const failed = command("w1", "npm test", { toolLifecycleStatus: "failed" });
+    const alone = draw(record([step(failed)]));
+    const standing = /data-chat-failed="broken"/u;
+    expect(alone).toMatch(standing);
+    expect(alone).toMatch(/lucide-triangle-alert[^"]*text-status-failed-text/u);
+    expect(alone).toMatch(/text-status-failed-text">Failed</u);
+    expect(alone).not.toContain("bg-status-failed-surface");
+    const retried = draw(
+      record([step(failed), { ...step(command("w2", "npm test")), key: "step:w2", at: at(20) }]),
+    );
+    expect(retried).not.toMatch(standing);
+    expect(retried).toContain('data-chat-failed="undone"');
+    expect(retried).not.toContain("text-status-failed-text");
+    expect(retried).toMatch(/lucide-triangle-alert[^"]*text-muted-foreground/u);
+  });
+
   // Blue means something to click (S3): the run's clock counts in ink, and a
   // call running beside it counts in the calls' quiet ink.
   it("counts the run's time in ink, never in the busy blue", () => {
