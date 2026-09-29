@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { TestNode } from "./__fixtures__/testDom";
 
-const ENVIRONMENT = EnvironmentId.make("environment-quinn");
+const ENVIRONMENT = EnvironmentId.make("environment-fen");
 const MAIN = scopeThreadRef(ENVIRONMENT, ThreadId.make("thread-main"));
 const SECOND = scopeThreadRef(ENVIRONMENT, ThreadId.make("thread-second"));
 const ADA = "u-ada";
@@ -21,9 +21,9 @@ vi.mock("./useZeropsMates", () => ({
   useZeropsMateDirectory: () =>
     new Map([
       [
-        "environment-quinn",
+        "environment-fen",
         {
-          name: "Quinn",
+          name: "Fen",
           tint: "olive",
           project: "Acme Docs",
           projectUrl: "https://app.zerops.io/project/p1",
@@ -41,7 +41,7 @@ vi.mock("../state/entities", () => ({
   useThreadShells: () => world.threads,
 }));
 vi.mock("./useZeropsAgentSigner", () => ({
-  useZeropsEnvironmentProject: () => ({ projectId: "project-quinn", orgId: "org-acme" }),
+  useZeropsEnvironmentProject: () => ({ projectId: "project-fen", orgId: "org-acme" }),
 }));
 vi.mock("./zeropsDataContext", async () => {
   const { createContext } = await import("react");
@@ -274,7 +274,7 @@ describe("useMateStandUp", () => {
       await views.show({ messageCount: 2 });
       expect(world.updateProjectTags).toHaveBeenCalledTimes(1);
       expect(world.updateProjectTags).toHaveBeenCalledWith(
-        { organizationId: "org-acme", projectId: "project-quinn" },
+        { organizationId: "org-acme", projectId: "project-fen" },
         { kind: "stand-up-done" },
       );
     } finally {
