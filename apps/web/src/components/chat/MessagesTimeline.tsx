@@ -1057,6 +1057,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           <div
             ref={setTimelineViewportElement}
             className="relative h-full min-h-0"
+            // Whether the list follows its end: a run's fold then keeps its
+            // line in place while the list catches up (`foldAway`).
+            data-timeline-follows-end={followingEnd ? "" : undefined}
             data-timeline-placing={listPlaced ? undefined : ""}
             data-timeline-thread={routeThreadKey}
           >
