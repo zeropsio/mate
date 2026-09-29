@@ -5,7 +5,9 @@ import {
   changeConflict,
   changeFileLetter,
   changeRequestPrefill,
+  changeRunMessage,
   crewLandCommand,
+  linksChange,
   diffLinesShown,
   pressesPrimary,
   previewRoute,
@@ -254,5 +256,28 @@ describe("crewLandCommand: Land now takes only work never reported or sent back"
     ["rework", "landNow"],
   ] as const)("a %s task sends %s", (state, tag) => {
     expect(crewLandCommand({ id: "task-12", state })).toEqual({ _tag: tag, taskId: "task-12" });
+  });
+});
+
+describe("linksChange: a message links this change, never one whose number starts the same", () => {
+  it.each([
+    ["its own address", "Ready to merge: https://gitea.example/snap/appdev/pulls/5", true],
+    ["its address before punctuation", "(https://gitea.example/snap/appdev/pulls/5).", true],
+    ["its files page", "https://gitea.example/snap/appdev/pulls/5/files", true],
+    ["#53's address", "https://gitea.example/snap/appdev/pulls/53", false],
+    ["another repository's #5", "https://gitea.example/snap/api/pulls/5", false],
+  ])("%s: %s", (_case, text, links) => {
+    expect(linksChange(text, "/snap/appdev/pulls/5")).toBe(links);
+  });
+
+  it("picks the run that linked #5, not a newer one that linked #53", () => {
+    const messages = [
+      { role: "assistant", text: "Added the route. PR: https://gitea.example/snap/appdev/pulls/5" },
+      { role: "user", text: "Now the footer." },
+      { role: "assistant", text: "Footer done. PR: https://gitea.example/snap/appdev/pulls/53" },
+    ];
+    expect(changeRunMessage(messages, "/snap/appdev/pulls/5")?.text).toContain("Added the route.");
+    expect(changeRunMessage(messages, "/snap/appdev/pulls/53")?.text).toContain("Footer done.");
+    expect(changeRunMessage(messages, "/snap/appdev/pulls/7")).toBeUndefined();
   });
 });

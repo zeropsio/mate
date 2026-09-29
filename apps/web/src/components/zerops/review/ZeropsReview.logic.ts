@@ -92,6 +92,25 @@ export function previewRoute(
   );
 }
 
+/**
+ * Whether `text` links the change at `changePath` (`/{org}/{repo}/pulls/{n}`) — its page or one
+ * under it, never a change whose number only starts the same (`/pulls/5` is not `/pulls/53`).
+ */
+export function linksChange(text: string, changePath: string): boolean {
+  const escaped = changePath.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  return new RegExp(`${escaped}(?![0-9])`, "u").test(text);
+}
+
+/** The newest of a Mate's answers that links the change: the run that made it. */
+export function changeRunMessage<M extends { readonly role: string; readonly text: string }>(
+  messages: ReadonlyArray<M>,
+  changePath: string,
+): M | undefined {
+  return messages.findLast(
+    (message) => message.role === "assistant" && linksChange(message.text, changePath),
+  );
+}
+
 /** How much of what the Mate said stands in the review: four lines of it, about. */
 const RUN_WORDS_MAX = 400;
 
@@ -119,7 +138,7 @@ export function runWords(text: string, changePath: string): string | undefined {
     .map((sentence) => sentence.trim())
     .filter(
       (sentence) =>
-        sentence.length > 0 && !sentence.includes(changePath) && !/https?:\/\//u.test(sentence),
+        sentence.length > 0 && !linksChange(sentence, changePath) && !/https?:\/\//u.test(sentence),
     );
   const kept: Array<string> = [];
   let length = 0;
