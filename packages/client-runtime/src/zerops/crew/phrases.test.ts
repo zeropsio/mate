@@ -31,6 +31,14 @@ import {
   crewLandedAsWord,
   crewMessagePlaceholder,
   crewPendingNotice,
+  CREW_MENU,
+  CREW_MENU_LINES,
+  CREW_TRY_IT_WORD,
+  crewJobSentence,
+  crewMenuFailureWord,
+  crewmateRoleWords,
+  crewTryWorkLine,
+  mateOwnChatWord,
   crewRunsOnWord,
   crewStintWord,
   crewTaskSourceWord,
@@ -739,6 +747,75 @@ describe("the lead's words", () => {
   it("names the lead and what it does in place of a copy of the code", () => {
     expect(CREW_LEAD_WORD).toBe("Lead");
     expect(CREW_LEAD_ROLE_LINE).toBe("Plans and reviews · no copy of the code");
+  });
+});
+
+describe("the conversation's line and a crewmate's menu", () => {
+  it.each([
+    { lead: false, says: ", one of Fen's crew" },
+    { lead: true, says: ", Fen's lead — plans and reviews the crew's work" },
+  ])("says who a face is after its name: $says", ({ lead, says }) => {
+    expect(crewmateRoleWords("Fen", lead)).toBe(says);
+  });
+
+  it("names the Mate's own chat, for its face while another chat is open", () => {
+    expect(mateOwnChatWord("Fen")).toBe("Fen's own chat");
+  });
+
+  it.each([
+    {
+      line: "Owns the world server under server/ and its tests.",
+      says: "Owns the world server under server/ and its tests.",
+    },
+    {
+      line: "How life in the harbour town works. Seasons, weather and trade.",
+      says: "How life in the harbour town works.",
+    },
+    { line: "Is the build green? Then land it.", says: "Is the build green?" },
+    { line: "**Owns** the `server/` tree. Tests first.", says: "Owns the server/ tree." },
+    { line: "## Game rules", says: "Game rules" },
+    {
+      line: "- Keeps the [README](https://docs.example.test/readme) current",
+      says: "Keeps the README current",
+    },
+    { line: "Owns index.ts and the v1.2 router", says: "Owns index.ts and the v1.2 router" },
+    {
+      line: "Keeps snake_case names and _emphasis_ apart.",
+      says: "Keeps snake_case names and emphasis apart.",
+    },
+    { line: "   ", says: "" },
+  ])("reads a job's first sentence in plain words: $line", ({ line, says }) => {
+    expect(crewJobSentence(line)).toBe(says);
+  });
+
+  it("names the menu's presses and what each does", () => {
+    expect(CREW_MENU).toEqual({
+      tryWork: "Try its work",
+      stopApp: "Stop its app",
+      changeJob: "Change its job",
+      changeBrief: "Change the brief",
+      clearConversation: "Clear its conversation",
+    });
+    expect(crewTryWorkLine("Fen", "own")).toBe(
+      "Opens its copy of the app. Nothing is in Fen's code yet.",
+    );
+    expect(crewTryWorkLine("Fen", "dev")).toBe(
+      "Opens it at Fen's dev address. Nothing is in Fen's code yet.",
+    );
+    expect(CREW_MENU_LINES).toEqual({
+      changeJob: "What it's responsible for.",
+      changeBrief: "What the whole crew works toward.",
+      clearConversation: "It keeps its job and its work.",
+    });
+    expect(CREW_TRY_IT_WORD).toBe("Try it");
+  });
+
+  it.each([
+    { press: "try", says: "Couldn't open Bo's work" },
+    { press: "stop", says: "Couldn't stop Bo's app" },
+    { press: "clear", says: "Couldn't clear Bo's conversation" },
+  ] as const)("titles a refused press: $says", ({ press, says }) => {
+    expect(crewMenuFailureWord(press, "Bo")).toBe(says);
   });
 });
 
