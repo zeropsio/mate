@@ -505,6 +505,57 @@ describe("resultRows", () => {
       facts: {},
       rows: [["running", "ok", "docs.example.org", "2 pages checked, both checks passed"]],
     },
+    // A check the Mate made on the page already open names no address: its
+    // row said "the page", and under it "the page checked ✓" (the owner,
+    // 2026-09-29). Passed, it says nothing a row can hold — its picture, if
+    // it took one, is the strip's; failed, it stays broken, by what it can
+    // name.
+    {
+      name: "a passed check with no address is no row",
+      outcome: outcome({ checks: checks([take("op:b1", "the page")]) }),
+      facts: {},
+      rows: [],
+    },
+    {
+      name: "a passed check with no address says nothing under a service",
+      outcome: outcome({
+        live: [service("appdev", { word: "Dev server running" })],
+        checks: checks([take("op:b1", "the page")]),
+      }),
+      facts: {},
+      rows: [["running", "ok", "appdev", "Dev server running"]],
+    },
+    {
+      name: "a failed check with no address stays broken, by what it can name",
+      outcome: outcome({
+        checks: checks([
+          take("op:b1", "the page", {
+            deviceName: "iPhone 16",
+            browserSummary: {
+              stepCount: 2,
+              errorCount: 0,
+              failedRequestCount: 0,
+              line: "",
+              failedStep: { id: "s2", label: "click Save", state: "failed", stateLabel: "Failed" },
+            },
+          }),
+        ]),
+      }),
+      facts: {},
+      rows: [["broken", "failed", "Browser check", "Failed on iPhone 16", "couldn't click Save"]],
+    },
+    {
+      name: "a check that failed with no word of why says it once",
+      outcome: outcome({
+        live: [service("appdev", { word: "Dev server running" })],
+        checks: checks([withoutPicture(take("op:b1", `${APPDEV}/admin`, { phase: "failed" }))]),
+      }),
+      facts: {},
+      rows: [
+        ["broken", "failed", "appdev", "Check of /admin failed"],
+        ["running", "ok", "appdev", "Dev server running"],
+      ],
+    },
     {
       name: "a dev server that is not running waits for the person",
       outcome: outcome({
@@ -675,6 +726,25 @@ describe("resultRows", () => {
       facts: {},
       problem: {
         what: "The check of /admin on appdev-1f3c-3000.prg1.example.app failed",
+        at: at(4),
+        error: "The page never loaded",
+        ask: "Find out why, fix it, and check the page again.",
+      },
+    },
+    {
+      name: "a check with no address that stayed failed",
+      outcome: outcome({
+        checks: checks([
+          take("op:b1", "the page", {
+            phase: "failed",
+            closing: "The page never loaded.",
+            settledAt: at(4),
+          }),
+        ]),
+      }),
+      facts: {},
+      problem: {
+        what: "A check in the browser failed",
         at: at(4),
         error: "The page never loaded",
         ask: "Find out why, fix it, and check the page again.",

@@ -155,12 +155,15 @@ const NO_PICTURES: ReadonlyArray<ZeropsOperation> = [];
 interface CheckedPage {
   readonly page: string;
   readonly caption: string;
+  /** Null for a check of the page already open, which named no address. */
   readonly host: string | null;
   readonly url: string | null;
   readonly takes: ReadonlyArray<ZeropsOperation>;
   /** Why its check failed, while it stays failed; null once a take passed. */
   readonly failure: string | null;
   readonly failedAt: string | null;
+  /** The device its failed take emulated, where it named one. */
+  readonly failedOn: string | null;
 }
 
 function checkedPages(takes: ReadonlyArray<ZeropsOperation>): CheckedPage[] {
@@ -183,6 +186,7 @@ function checkedPages(takes: ReadonlyArray<ZeropsOperation>): CheckedPage[] {
       takes: list,
       failure: failed === undefined ? null : (browserCheckFailure(failed) ?? "failed"),
       failedAt: failed === undefined ? null : (failed.settledAt ?? failed.anchorAt),
+      failedOn: failed?.deviceName ?? null,
     };
   });
 }
@@ -384,22 +388,33 @@ function serviceRow(
   };
 }
 
-function failedPageRow(page: CheckedPage, owner: string): ResultRow {
+/**
+ * A page whose check stayed failed, under what it belongs to: its service,
+ * else its host. A check of the page already open named no address, so it
+ * stands by what it can name — the browser, and the device it was on —
+ * never "the page … the page".
+ */
+function failedPageRow(page: CheckedPage, owner: string | null): ResultRow {
+  const on = page.failedOn === null ? "" : ` on ${page.failedOn}`;
   return {
     key: `page:${page.page}`,
     group: "broken",
     mark: "alert",
     tone: "failed",
-    title: owner,
-    words: `Check of ${page.caption} failed`,
+    title: owner ?? "Browser check",
+    words: owner === null ? `Failed${on}` : `Check of ${page.caption} failed`,
     version: null,
-    sub: textSub(page.failure),
+    // A failure with no word of why is said once, by the row's own words.
+    sub: textSub(page.failure === "failed" ? null : page.failure),
     pictures: picturesOf([page]),
     url: page.url,
     action: {
       kind: "fix",
       problem: {
-        what: `The check of ${page.caption} on ${owner} failed`,
+        what:
+          owner === null
+            ? `A check in the browser${on} failed`
+            : `The check of ${page.caption} on ${owner} failed`,
         ...(page.failedAt === null ? {} : { at: page.failedAt }),
         ...(page.failure === null ? {} : { error: page.failure }),
         ask: "Find out why, fix it, and check the page again.",
@@ -589,16 +604,17 @@ export function resultRows(outcome: OutcomeModel, facts: ResultFacts = NO_FACTS)
   };
   for (const page of pages) {
     if (page.failure !== null && standing(page)) {
-      rows.push(failedPageRow(page, owners.get(page) ?? page.host ?? page.caption));
+      rows.push(failedPageRow(page, owners.get(page) ?? page.host));
     }
   }
+  // A page no service of the run serves stands by its host; one with no
+  // address has nothing a row can say.
   const loose = new Map<string, CheckedPage[]>();
   for (const page of pages) {
-    if (page.failure !== null || owners.get(page) !== undefined) continue;
-    const host = page.host ?? page.caption;
-    const list = loose.get(host);
+    if (page.failure !== null || owners.get(page) !== undefined || page.host === null) continue;
+    const list = loose.get(page.host);
     if (list) list.push(page);
-    else loose.set(host, [page]);
+    else loose.set(page.host, [page]);
   }
   for (const [host, list] of loose) rows.push(pagesRow(host, list));
 
