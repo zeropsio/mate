@@ -71,6 +71,36 @@ describe("updateProjectTags' writer", () => {
     expect(rest.log).toEqual(row.requests);
   });
 
+  it("a face changed puts back every tag the platform holds, and only its face changes", async () => {
+    const held = [
+      "mate:g:g1",
+      "mate:role:dev",
+      "mate:bot:Ada",
+      "mate",
+      "mate:face:coral:gem",
+      "person:own",
+    ];
+    const rest = platform(held, {
+      beforeRead: (tags: ReadonlyArray<string>) => [...tags, "theirs"],
+    });
+    const writer = makeProjectTagWriter({ source: rest.source });
+
+    const written = await writer.write("p1", {
+      kind: "mate-face",
+      face: { tint: "sky", shape: "seal" },
+    });
+
+    expect(written.kind).toBe("written");
+    expect([...rest.tags()].sort()).toEqual(
+      [
+        ...held.filter((tag) => tag !== "mate:face:coral:gem"),
+        "theirs",
+        "mate:face:sky:seal",
+      ].sort(),
+    );
+    expect(rest.log).toEqual(["GET", "PUT", "GET"]);
+  });
+
   it("a patch the project already holds costs a read and writes nothing", async () => {
     const rest = platform(["mate:bot:Vera", "mate"]);
     const writer = makeProjectTagWriter({ source: rest.source });

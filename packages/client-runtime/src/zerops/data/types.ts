@@ -8,7 +8,7 @@ import type { Atom } from "effect/unstable/reactivity";
 import type { ActivityAppVersion } from "../activity/dto.ts";
 import type { ZeropsProject } from "../api.ts";
 import type { ZeropsProjectGrant, ZeropsTokenDelegation } from "../groupReach.ts";
-import type { ZeropsEnvironmentRole } from "../groups.ts";
+import type { ZeropsEnvironmentRole, ZeropsMateFace } from "../groups.ts";
 import type { ZeropsAgentType } from "../newProject.ts";
 import type { ZeropsToolKind } from "../tools.ts";
 import type { ZeropsIntegrationTokenGrantMetadata } from "./resources.ts";
@@ -1684,6 +1684,10 @@ export interface CreateProjectWithMateCommandIntent {
     readonly label?: string;
   };
   readonly botName?: string;
+  /** The face its person picked (`mate:face:`). */
+  readonly face?: ZeropsMateFace;
+  /** Who asks, by making it, for the project's development to be stood up (`mate:standup:`). */
+  readonly standUpBy?: string;
 }
 
 export interface ImportProjectCommandIntent {

@@ -78,7 +78,7 @@ function face(tree: ReactTestRenderer) {
     tree,
     (node) =>
       node.props["data-zerops-primitive"] === "mate-face" &&
-      node.props["data-new-mate-face"] !== "out",
+      node.props["data-mate-face-preview"] !== "out",
   );
   return { tint: svg.props["data-mate-face-tint"], shape: svg.props["data-mate-face-shape"] };
 }

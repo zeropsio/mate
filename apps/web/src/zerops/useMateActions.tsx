@@ -1,9 +1,9 @@
 /**
  * What can be done to a Mate, from wherever a Mate is listed.
  *
- * Eight verbs — *Start*, *Restart*, *Rename Mate*, *Register in …*, *Hand this
- * Mate over*, *Change project or role*, *Leave the project*, *Delete {name}…*
- * — and the server's version under them. Every one but the last lived inside
+ * Nine verbs — *Start*, *Restart*, *Rename Mate*, *Change face…*, *Register
+ * in …*, *Hand this Mate over*, *Change project or role*, *Leave the project*,
+ * *Delete {name}…* — and the server's version under them. Most lived inside
  * the projects screen's own row menu, wired to that page's state, so a
  * project's own page listed its Mates and could do nothing to any of them.
  *
@@ -25,8 +25,13 @@
  * the Mate is left to paint on a reload, its row reads *Deleting…* until the
  * listing lets it go (`deletingMates.ts`), and a viewer who was in its
  * conversation is taken to the next Mate of its project, or to the projects.
+ *
+ * *Change face…* writes the Mate's face onto its project (`mate:face:`), where
+ * every surface reads it, through the one tag writer: offered where *Rename
+ * Mate* is, its dialog open until the platform answers, a refusal said there.
  */
 import {
+  assignCandidateMateTints,
   botDisplayName,
   buildZeropsGroupTree,
   generateZeropsGroupId,
@@ -36,6 +41,7 @@ import {
   registerMateVerb,
   resolveMateRegistration,
   type ZeropsGroupTags,
+  type ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import {
@@ -60,6 +66,12 @@ import {
 } from "../components/zerops/ZeropsProjectRow.logic";
 import type { ZeropsMenuEntry } from "../components/zerops/ZeropsProjectMenu";
 import { ZeropsAssignMateDialog } from "../components/zerops/ZeropsAssignMateDialog";
+import { ZeropsChangeFaceDialog } from "../components/zerops/ZeropsChangeFaceDialog";
+import {
+  CHANGE_FACE_VERB,
+  changeFaceOffered,
+  mateFaceOf,
+} from "../components/zerops/ZeropsChangeFaceDialog.logic";
 import { ZeropsDeleteMateDialog } from "../components/zerops/ZeropsDeleteMateDialog";
 import {
   deleteMateOffered,
@@ -98,17 +110,26 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 /** Which Mate a dialog is about, and which dialog it is. */
 type MateDialog =
   | { readonly kind: "rename"; readonly candidate: ZeropsCandidatePresentation }
+  | {
+      readonly kind: "face";
+      readonly candidate: ZeropsCandidatePresentation;
+      /** Saved or let go: it closes the way a dialog does, over the face it leaves. */
+      readonly closing?: true;
+    }
   | { readonly kind: "assign"; readonly candidate: ZeropsCandidatePresentation }
   | { readonly kind: "move"; readonly candidate: ZeropsCandidatePresentation }
   | { readonly kind: "delete"; readonly candidate: ZeropsCandidatePresentation };
 
-/** Where the Delete dialog's press stands: the platform answering it, or why it refused. */
-interface DeletePress {
+/**
+ * Where a dialog's press stands — Delete's, or Change face's: the platform answering it, or why
+ * it refused. One dialog is open at a time, and opening one starts it unpressed.
+ */
+interface DialogPress {
   readonly pending: boolean;
   readonly error: string | null;
 }
 
-const DELETE_UNPRESSED: DeletePress = { pending: false, error: null };
+const UNPRESSED: DialogPress = { pending: false, error: null };
 
 /** The Mate's name, as its row says it. */
 function mateName(candidate: ZeropsCandidatePresentation): string {
@@ -138,6 +159,11 @@ export interface MateActions {
    * may not rename the Mate.
    */
   readonly renameInPlace: (candidate: ZeropsCandidatePresentation) => MateRenameInPlace | undefined;
+  /**
+   * Opens the Mate's *Change face…* dialog, for a menu that places the verb itself: `undefined`
+   * where this person may not change it (where they may not rename it).
+   */
+  readonly changeFace: (candidate: ZeropsCandidatePresentation) => (() => void) | undefined;
   /** Which Mate has a write in flight, so its own row says so and takes no second press. */
   readonly busyKey: string | null;
   /** Why the last write failed; `null` when none did. */
@@ -186,7 +212,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     if (!listingComplete) return;
     settleDeletingMates(new Set(candidates.map((candidate) => candidate.project.id)));
   }, [candidates, listingComplete]);
-  const [deletePress, setDeletePress] = useState<DeletePress>(DELETE_UNPRESSED);
+  const [press, setPress] = useState<DialogPress>(UNPRESSED);
   // A dialog holds its Mate's project as it opened: it closes once the grant withholds it.
   const [dialog, setDialog] = useProjectDialog((open: MateDialog) => open.candidate.project.id);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -206,6 +232,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     [candidates, projectOrder],
   );
   const taken = useMemo(() => takenBotNames(listing), [listing]);
+  // Every Mate's tint as every surface draws it: the face a Change face dialog opens on.
+  const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   const viewer = useMemo(
     () =>
       activeOrganization === null
@@ -514,7 +542,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const isCurrent = captureAccountLifetime();
       const organization = organizationRef(activeOrganization.id);
       const projectId = candidate.project.id;
-      setDeletePress({ pending: true, error: null });
+      setPress({ pending: true, error: null });
       runZeropsCommand(runtime.commands.deleteProject({ organization, projectId })).then(
         () => {
           if (!isCurrent()) return;
@@ -522,17 +550,60 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           rememberMenu((memory) => withoutMate(memory, projectId));
           forgetBirth(projectId);
           invalidateZerops({ topic: "inventory", organization });
-          setDeletePress(DELETE_UNPRESSED);
+          setPress(UNPRESSED);
           setDialog(null);
           leaveDeleted(candidate);
         },
         (cause: unknown) => {
           if (!isCurrent()) return;
-          setDeletePress({ pending: false, error: zeropsErrorMessage(cause) });
+          setPress({ pending: false, error: zeropsErrorMessage(cause) });
         },
       );
     },
     [activeOrganization, leaveDeleted, organizationRef, runtime.commands, setDialog],
+  );
+
+  /**
+   * Writes the Mate's face: a patch the tag writer applies to the project's tags as the platform
+   * holds them, every other tag kept, and reads back — the read every surface redraws from. The
+   * dialog stays open until the platform answers: a refusal is said there, and nothing changes.
+   */
+  const saveFace = useCallback(
+    (candidate: ZeropsCandidatePresentation, face: ZeropsMateFace) => {
+      if (activeOrganization === null) return;
+      const isCurrent = captureAccountLifetime();
+      setPress({ pending: true, error: null });
+      runZeropsCommand(
+        runtime.commands.updateProjectTags(
+          projectRef(activeOrganization.id, candidate.project.id),
+          { kind: "mate-face", face },
+        ),
+      ).then(
+        () => {
+          if (!isCurrent()) return;
+          // Still saying Saving… as it fades: the face it saved shows through it.
+          setDialog({ kind: "face", candidate, closing: true });
+        },
+        (cause: unknown) => {
+          if (!isCurrent()) return;
+          setPress({ pending: false, error: zeropsErrorMessage(cause) });
+        },
+      );
+    },
+    [activeOrganization, projectRef, runtime.commands, setDialog],
+  );
+
+  const changeFace = useCallback(
+    (candidate: ZeropsCandidatePresentation): (() => void) | undefined => {
+      const mayRename =
+        viewer === null ? true : resolveMateVerbs({ project: candidate.project, viewer }).rename;
+      if (!changeFaceOffered({ candidate, mayRename })) return undefined;
+      return () => {
+        setPress(UNPRESSED);
+        setDialog({ kind: "face", candidate });
+      };
+    },
+    [setDialog, viewer],
   );
 
   const actionsFor = useCallback(
@@ -550,6 +621,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         mayDelete: verbs.delete,
         deleting: mateDeleting(candidate.project, deleting),
       });
+      const openFace = changeFace(candidate);
       const input = rowInputFor(candidate);
       const rowAction = deriveZeropsRowAction(input);
       const restartAction = deriveZeropsRestartAction(input);
@@ -586,6 +658,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               },
             ]
           : []),
+        ...(openFace === undefined
+          ? []
+          : [{ id: "face", label: CHANGE_FACE_VERB, onSelect: openFace }]),
         ...(registerLabel === undefined
           ? []
           : [
@@ -634,7 +709,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
                 variant: "destructive" as const,
                 disabled: busy,
                 onSelect: () => {
-                  setDeletePress(DELETE_UNPRESSED);
+                  setPress(UNPRESSED);
                   setDialog({ kind: "delete", candidate });
                 },
               },
@@ -657,6 +732,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     },
     [
       busyKey,
+      changeFace,
       deleting,
       move,
       register,
@@ -718,6 +794,33 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           }}
         />
       ) : null}
+      {dialog?.kind === "face" ? (
+        <ZeropsChangeFaceDialog
+          error={press.error}
+          face={mateFaceOf(
+            tints,
+            // The face it wears now, a write landed since the dialog opened included.
+            candidates.find((entry) => entry.project.id === dialog.candidate.project.id)?.project ??
+              dialog.candidate.project,
+          )}
+          key={`face:${dialog.candidate.key}`}
+          name={mateName(dialog.candidate)}
+          onCancel={() => {
+            setDialog({ ...dialog, closing: true });
+          }}
+          onOpenChange={(open) => {
+            if (!open) setDialog({ ...dialog, closing: true });
+          }}
+          onOpenChangeComplete={(open) => {
+            if (!open) close();
+          }}
+          onSave={(face) => {
+            saveFace(dialog.candidate, face);
+          }}
+          open={dialog.closing !== true}
+          pending={press.pending}
+        />
+      ) : null}
       {dialog?.kind === "assign" ? (
         <ZeropsAssignMateDialog
           currentOwnerId={
@@ -760,7 +863,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       ) : null}
       {dialog?.kind === "delete" ? (
         <ZeropsDeleteMateDialog
-          error={deletePress.error}
+          error={press.error}
           key={`delete:${dialog.candidate.key}`}
           name={mateName(dialog.candidate)}
           onCancel={close}
@@ -771,7 +874,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             if (!open) close();
           }}
           open
-          pending={deletePress.pending}
+          pending={press.pending}
           words={deleteMateWords({
             name: mateName(dialog.candidate),
             environment: dialog.candidate.project.name,
@@ -783,5 +886,5 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     </>
   );
 
-  return { actionsFor, dialogs, busyKey, trouble, renameInPlace };
+  return { actionsFor, dialogs, busyKey, trouble, renameInPlace, changeFace };
 }

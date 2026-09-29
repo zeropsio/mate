@@ -15,11 +15,17 @@ import { ZeropsApiError } from "@t3tools/client-runtime/zerops";
  * tagged into a group the registry does not know about is a Mate with no reach
  * and no bot (guide 4.2).
  *
- * ## One question
+ * ## Two questions
  *
- * The name. No brief — the Mate opens on its own onboarding line — and no
- * agent pick: the container offers every agent when `ZCP_AGENTS` is absent,
- * which an empty selection is (`newProject.ts`).
+ * The project's name, and who its first Mate is: a name, a colour and a
+ * shape, asked with the picker *New Mate* uses (`MateFacePicker`) and the same
+ * rules — the face follows the name until a pick sticks, the name is new on
+ * the account. The Mate is born as *New Mate* makes one: its face on its
+ * project, and asking, on behalf of the person who made it, for the project's
+ * development to be stood up, which their first sign-in sends
+ * (`mateStandUp.ts`). No brief and no agent pick: the container offers every
+ * agent when `ZCP_AGENTS` is absent, which an empty selection is
+ * (`newProject.ts`).
  *
  * The rest is the Mate's birth (`zeropsBirths.ts`, DESIGN §4.5), begun the
  * moment the platform accepts the project: its registry entry, the broker's
@@ -35,21 +41,31 @@ import {
   type OrganizationLocationsResourceRequest,
   type ProjectTagWrite,
 } from "@t3tools/client-runtime/zerops/data";
-import { useEffect, useMemo, useState } from "react";
+import {
+  heldCandidates,
+  takenBotNames,
+  type TakenBotNames,
+} from "@t3tools/client-runtime/zerops/projections";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import {
   generateBotName,
   generateZeropsGroupId,
+  newMateTint,
   resolveAddProjectVerb,
   type ZeropsAgentType,
   type ZeropsEnvironmentRole,
+  type ZeropsMateFace,
   type ZeropsOrganization,
   toolProjectName,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
+import { cn } from "~/lib/utils";
 import { useAccountGitea } from "~/zerops/giteaProject";
+import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { creationAccepted } from "~/zerops/zeropsBirths";
 import { runZeropsCommand, useKnown, useZeropsData } from "~/zerops/zeropsDataContext";
 
@@ -68,6 +84,13 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
+import { MateFacePicker } from "./MateFacePicker";
+import {
+  faceName,
+  newMateFace,
+  newMateSubmit,
+  newMateWords,
+} from "./ZeropsEnvironmentCreationDialog.logic";
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
 
 const CARD_CLASS = "rounded-[var(--zerops-card-radius)] border border-border/60 bg-card";
@@ -145,6 +168,8 @@ export async function submitZeropsNewProject(input: {
       readonly label?: string;
     };
     readonly botName?: string;
+    readonly face?: ZeropsMateFace;
+    readonly standUpBy?: string;
   }) => Promise<{ readonly project: ZeropsProject; readonly serviceName: string }>;
   readonly clientId: string;
   readonly name: string;
@@ -153,6 +178,10 @@ export async function submitZeropsNewProject(input: {
   /** The group this project starts as, and the name of the Mate in it. */
   readonly groupId: string;
   readonly botName: string;
+  /** The face its person picked for the Mate (`mate:face:`). */
+  readonly face?: ZeropsMateFace;
+  /** The person making it, whose first sign-in stands the project's development up. */
+  readonly standUpBy?: string;
   /** Which half is running, for a button that says so. */
   readonly onPhase?: (phase: ZeropsNewProjectPhase) => void;
   readonly onStartWaiting: () => void;
@@ -204,6 +233,8 @@ export async function submitZeropsNewProject(input: {
       agents: input.agents,
       group: { groupId: input.groupId, role: "dev", label: groupName },
       botName: input.botName,
+      ...(input.face === undefined ? {} : { face: input.face }),
+      ...(input.standUpBy === undefined ? {} : { standUpBy: input.standUpBy }),
     });
     input.onCreated?.(created.project.id, gitea.projectId);
     input.onStartWaiting();
@@ -214,12 +245,25 @@ export async function submitZeropsNewProject(input: {
 }
 
 function ZeropsNewProjectContent() {
-  const { activeOrganization, organizationStatus, organizations, selectOrganization, status } =
-    useZeropsSession();
+  const {
+    activeOrganization,
+    organizationStatus,
+    organizations,
+    selectOrganization,
+    status,
+    user,
+  } = useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const navigate = useNavigate();
+  // The account's Mates: the names a new one may not take, and the tints its face walks past.
+  const { listing } = useZeropsCandidates();
+  const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
+  const taken = useMemo(() => takenBotNames(listing), [listing]);
+  // Proposed once, free among the names read by then; a clash read later is refused by name.
+  const [defaultBotName] = useState(() =>
+    generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),
+  );
 
-  const [name, setName] = useState("");
   const [locationChoice, setLocationChoice] = useState<{
     readonly key: string;
     readonly id: string;
@@ -345,11 +389,10 @@ function ZeropsNewProjectContent() {
     );
   }
 
-  const createProject = () => {
+  const createProject = ({ name, botName, face }: NewProjectChoice) => {
     const home = gitea === undefined ? undefined : { projectId: gitea.projectId };
     setCreating(true);
     setCreateError(null);
-    const botName = generateBotName([], (bytes) => crypto.getRandomValues(bytes));
     const groupId = generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes));
     const environmentName = `${name.trim()} - ${botName}`;
     const organizationId = activeOrganization.id;
@@ -392,6 +435,9 @@ function ZeropsNewProjectContent() {
       agents: [],
       groupId,
       botName,
+      face,
+      // Its person's first sign-in sends the Mate "Stand up development of the project." (D6).
+      ...(user?.id ? { standUpBy: user.id } : {}),
       onCreated: (projectId, giteaProjectId) => {
         // The birth owes the Mate's registry entry and the broker's grant,
         // then its harden and its health; the listing is read again so the
@@ -430,6 +476,119 @@ function ZeropsNewProjectContent() {
   };
 
   return (
+    <ZeropsNewProjectForm
+      blocked={createUncertain}
+      createError={createError}
+      creating={creating}
+      defaultBotName={defaultBotName}
+      defaultTintFor={(botName) => newMateTint(candidates, botName)}
+      locationError={locationError}
+      locationId={locationId}
+      locationLoading={locationStatus === "loading"}
+      locations={locations}
+      onCreate={createProject}
+      onLocation={(id) => {
+        setLocationChoice({ key: locationKey, id });
+      }}
+      phase={phase}
+      takenBotNames={taken}
+    />
+  );
+}
+
+/** What the form hands over: the project's name, its first Mate's, and the Mate's face. */
+export interface NewProjectChoice {
+  readonly name: string;
+  readonly botName: string;
+  readonly face: ZeropsMateFace;
+}
+
+export interface ZeropsNewProjectFormProps {
+  /** The platform's locations; only more than one is a choice to offer. */
+  readonly locations: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  readonly locationId: string | null;
+  readonly onLocation: (id: string) => void;
+  /** The locations are still being read: the button waits, with a spinner. */
+  readonly locationLoading: boolean;
+  /** Why the locations could not be read; `null` when they were. */
+  readonly locationError: string | null;
+  /** The first Mate's name proposed, free on the account (`generateBotName`). */
+  readonly defaultBotName: string;
+  /** The account's Mates' names, and whether the listing read them all (`takenBotNames`). */
+  readonly takenBotNames: TakenBotNames;
+  /** The tint the account gives a new Mate of this name (`newMateTint`). */
+  readonly defaultTintFor: (name: string) => MateTintId;
+  readonly creating: boolean;
+  readonly phase: ZeropsNewProjectPhase;
+  /** A create the platform may have taken already: pressing again could make a second one. */
+  readonly blocked: boolean;
+  readonly createError: string | null;
+  readonly onCreate: (choice: NewProjectChoice) => void;
+}
+
+/**
+ * The project's name, and its first Mate: a name, a colour and a shape, beside the face they
+ * make — the picker and the rules *New Mate* uses. Until its person picks, the face follows the
+ * name as it is typed (the tint the account would give it, and that tint's shape); a pick sticks.
+ * A name that will not do is said beside the button once it is pressed; while the account's
+ * Mates' names are still being read, the button waits and says so.
+ */
+export function ZeropsNewProjectForm({
+  locations,
+  locationId,
+  onLocation,
+  locationLoading,
+  locationError,
+  defaultBotName,
+  takenBotNames: taken,
+  defaultTintFor,
+  creating,
+  phase,
+  blocked,
+  createError,
+  onCreate,
+}: ZeropsNewProjectFormProps) {
+  const [name, setName] = useState("");
+  const [botName, setBotName] = useState(defaultBotName);
+  // The last name typed: a blank field keeps the face it had rather than flashing another.
+  const [heldName, setHeldName] = useState(defaultBotName);
+  const [picked, setPicked] = useState<{
+    readonly tint?: MateTintId | undefined;
+    readonly shape?: MateShapeId | undefined;
+  }>({});
+  // Create was pressed: from then on what is wrong with the Mate's name is said, as it is typed.
+  const [pressed, setPressed] = useState(false);
+  const [selected, setSelected] = useState(false);
+
+  const face = newMateFace({
+    name: faceName(botName, heldName),
+    picked,
+    defaultTint: defaultTintFor,
+  });
+  // A new project has no recipe to wait on: only the name, new on the account.
+  const submit = newMateSubmit({
+    botName,
+    takenBotNames: taken,
+    tier: undefined,
+    tierLoading: false,
+  });
+  const error = pressed && submit.kind === "refuse" ? submit.error : undefined;
+  const line =
+    error ??
+    newMateWords({
+      groupName: name,
+      botName,
+      recipe: "none",
+      waitingOn: submit.kind === "wait" ? submit.on : null,
+    }).line;
+
+  const press = () => {
+    setPressed(true);
+    if (submit.kind !== "create") return;
+    onCreate({ name: name.trim(), botName: botName.replace(/\s+/g, " ").trim(), face });
+  };
+
+  return (
     <section className={`max-w-xl space-y-4 px-5 py-5 ${CARD_CLASS}`}>
       <div className="space-y-1.5">
         <Label htmlFor="zerops-new-project">Name</Label>
@@ -448,7 +607,7 @@ function ZeropsNewProjectContent() {
           <Select
             value={locationId}
             onValueChange={(value) => {
-              if (value !== null) setLocationChoice({ key: locationKey, id: value });
+              if (value !== null) onLocation(value);
             }}
           >
             <SelectTrigger id="zerops-new-project-location" aria-label="Project location">
@@ -467,21 +626,71 @@ function ZeropsNewProjectContent() {
           </Select>
         </div>
       ) : null}
-      <Button
-        size="sm"
-        disabled={
-          creating ||
-          createUncertain ||
-          name.trim().length === 0 ||
-          locationStatus === "loading" ||
-          locationStatus === "failed" ||
-          (locations.length > 0 && !locationId)
-        }
-        onClick={createProject}
-      >
-        {creating || locationStatus === "loading" ? <Spinner size="md" /> : null}
-        {creating && phase === "gitea" ? "Setting up Git hosting" : "Create project"}
-      </Button>
+      <div className="space-y-1.5">
+        <Label htmlFor="zerops-new-project-mate">First Mate</Label>
+        <MateFacePicker
+          face={face}
+          onPickShape={(shape) => {
+            setPicked((current) => ({ ...current, shape }));
+          }}
+          onPickTint={(tint) => {
+            setPicked((current) => ({ ...current, tint }));
+          }}
+        >
+          <Input
+            aria-describedby="zerops-new-project-line"
+            aria-invalid={error === undefined ? undefined : true}
+            autoComplete="off"
+            id="zerops-new-project-mate"
+            onChange={(event) => {
+              const typed = event.target.value;
+              setBotName(typed);
+              const typedName = typed.replace(/\s+/g, " ").trim();
+              if (typedName.length > 0) setHeldName(typedName);
+            }}
+            onFocus={(event) => {
+              // The proposed name is taken whole by the first key typed over it.
+              if (selected) return;
+              setSelected(true);
+              event.currentTarget.select();
+            }}
+            placeholder="Name"
+            spellCheck={false}
+            value={botName}
+          />
+        </MateFacePicker>
+      </div>
+      <div className="flex items-center gap-3">
+        <Button
+          size="sm"
+          data-zerops-new-project="create"
+          disabled={
+            creating ||
+            blocked ||
+            name.trim().length === 0 ||
+            locationLoading ||
+            locationError !== null ||
+            (locations.length > 0 && !locationId) ||
+            submit.kind === "wait"
+          }
+          onClick={press}
+        >
+          {creating || locationLoading ? <Spinner size="md" /> : null}
+          {creating && phase === "gitea" ? "Setting up Git hosting" : "Create project"}
+        </Button>
+        {/* The one quiet line, beside the button it is about: what it waits on, or why the
+            Mate's name will not do. */}
+        <p
+          aria-live="polite"
+          className={cn(
+            "min-h-4 text-line leading-4",
+            error === undefined ? "text-muted-foreground" : "text-status-failed-text",
+          )}
+          id="zerops-new-project-line"
+        >
+          {line}
+        </p>
+      </div>
       {locationError ? (
         <p className="rounded-lg border border-destructive/40 bg-destructive/8 px-3 py-2 text-sm text-destructive-foreground">
           Could not load project locations. {locationError}
@@ -496,10 +705,17 @@ function ZeropsNewProjectContent() {
   );
 }
 
-export function ZeropsNewProjectWizard() {
+/** The page around the form: its breadcrumb, its one line, and the bar's right side. */
+export function ZeropsNewProjectFrame({
+  actions,
+  children,
+}: {
+  readonly actions?: ReactNode;
+  readonly children: ReactNode;
+}) {
   return (
     <ZeropsHostedFrame
-      actions={<ZeropsSessionAccountControl />}
+      actions={actions}
       breadcrumb={
         <WorkspaceBreadcrumb ariaLabel="Zerops breadcrumb" className="min-w-0">
           <WorkspaceBreadcrumbItem>
@@ -513,9 +729,17 @@ export function ZeropsNewProjectWizard() {
       }
     >
       <p className="text-sm text-muted-foreground" data-zerops-project-scope="true">
-        Name it. Its first Mate is up in a few minutes, with Git hosting alongside.
+        Name it and its first Mate. The Mate is up in a few minutes, with Git hosting alongside.
       </p>
-      <ZeropsNewProjectContent />
+      {children}
     </ZeropsHostedFrame>
+  );
+}
+
+export function ZeropsNewProjectWizard() {
+  return (
+    <ZeropsNewProjectFrame actions={<ZeropsSessionAccountControl />}>
+      <ZeropsNewProjectContent />
+    </ZeropsNewProjectFrame>
   );
 }

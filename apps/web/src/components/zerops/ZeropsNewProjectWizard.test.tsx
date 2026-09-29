@@ -1,10 +1,18 @@
-import { describe, expect, it, vi } from "vite-plus/test";
+import { MATE_SHAPE_IDS, MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
+import { act, type ReactElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { ZeropsOrganization, ZeropsProject } from "@t3tools/client-runtime/zerops";
 import type { ProjectTagWrite } from "@t3tools/client-runtime/zerops/data";
 import wizardSource from "./ZeropsNewProjectWizard.tsx?raw";
 
-import { submitZeropsNewProject, zeropsNewProjectScopeStepVisible } from "./ZeropsNewProjectWizard";
+import {
+  submitZeropsNewProject,
+  ZeropsNewProjectForm,
+  zeropsNewProjectScopeStepVisible,
+} from "./ZeropsNewProjectWizard";
 
 const ORGANIZATION: ZeropsOrganization = {
   id: "client-1",
@@ -33,9 +41,10 @@ describe("ZeropsNewProjectWizard source", () => {
     expect(wizardSource).not.toContain(".listClientLocations(");
   });
 
-  it("is one form: a name, a location, one button", () => {
-    // No brief (the Mate falls back to its onboarding line) and no agents
-    // step (an empty selection omits `ZCP_AGENTS`, which offers every agent).
+  it("is one form: a name, a location, its first Mate, one button", () => {
+    // No brief (the Mate stands the project's development up once its person
+    // signs in) and no agents step (an empty selection omits `ZCP_AGENTS`,
+    // which offers every agent).
     expect(wizardSource).not.toContain("Textarea");
     expect(wizardSource).not.toContain("What are we building?");
     expect(wizardSource).not.toContain("ZeropsNewProjectAgents");
@@ -43,6 +52,15 @@ describe("ZeropsNewProjectWizard source", () => {
     expect(wizardSource).toContain("agents: [],");
     expect(wizardSource).not.toContain(">Continue<");
     expect(wizardSource).not.toContain("in {activeOrganization.name}");
+  });
+
+  it("asks the first Mate's name and face with the picker New Mate uses, and its stand-up", () => {
+    expect(wizardSource).toContain("<MateFacePicker");
+    expect(wizardSource).toContain("newMateFace(");
+    expect(wizardSource).toContain("newMateTint(");
+    expect(wizardSource).toContain("standUpBy: user.id");
+    // The name is the person's now, proposed free on the account.
+    expect(wizardSource).not.toContain("generateBotName([],");
   });
 
   it("hands the wait to the projects page instead of rendering one", () => {
@@ -55,7 +73,7 @@ describe("ZeropsNewProjectWizard source", () => {
   it("says the page's name once, in the breadcrumb", () => {
     expect(wizardSource).not.toContain("<h1");
     expect(wizardSource).toContain(
-      "Name it. Its first Mate is up in a few minutes, with Git hosting alongside.",
+      "Name it and its first Mate. The Mate is up in a few minutes, with Git hosting alongside.",
     );
     expect(wizardSource).not.toContain("lowest-latency location is preselected");
   });
@@ -240,6 +258,37 @@ describe("submitZeropsNewProject", () => {
     });
   });
 
+  it("gives the first Mate the face its person picked, and asks its stand-up for them", async () => {
+    const createProject = vi.fn().mockResolvedValue({ project: PROJECT, serviceName: "zcp" });
+
+    await submitZeropsNewProject({
+      gitea: GITEA,
+      ensureGitea: neverEnsure(),
+      registerGroup: vi.fn().mockResolvedValue(WRITTEN),
+      createProject,
+      clientId: "client-1",
+      name: "Acme CRM",
+      locationId: null,
+      groupId: "g-1",
+      botName: "Ada",
+      face: { tint: "rose", shape: "seal" },
+      standUpBy: "user-ada",
+      agents: [],
+      onStartWaiting: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(createProject).toHaveBeenCalledWith({
+      clientId: "client-1",
+      name: "Acme CRM - Ada",
+      agents: [],
+      group: { groupId: "g-1", role: "dev", label: "Acme CRM" },
+      botName: "Ada",
+      face: { tint: "rose", shape: "seal" },
+      standUpBy: "user-ada",
+    });
+  });
+
   it("surfaces a create failure's message and never advances into the wait", async () => {
     const createProject = vi.fn().mockRejectedValue(new Error("Project name is taken."));
     const onStartWaiting = vi.fn();
@@ -418,5 +467,172 @@ describe("submitZeropsNewProject", () => {
     });
 
     expect(ensureGitea).not.toHaveBeenCalled();
+  });
+});
+
+/** The tint the account gives each name: fixed here, so every case reads. */
+const TINTS: Readonly<Record<string, MateTintId>> = { Ada: "sky", Otto: "violet", Fen: "sand" };
+
+type FormProps = Parameters<typeof ZeropsNewProjectForm>[0];
+
+function wizardForm(props: Partial<FormProps> = {}): ReactElement {
+  return (
+    <ZeropsNewProjectForm
+      blocked={false}
+      createError={null}
+      creating={false}
+      defaultBotName="Ada"
+      defaultTintFor={(name) => TINTS[name] ?? "slate"}
+      locationError={null}
+      locationId={null}
+      locationLoading={false}
+      locations={[]}
+      onCreate={() => {}}
+      onLocation={() => {}}
+      phase="project"
+      takenBotNames={{ names: ["Fen"], complete: true }}
+      {...props}
+    />
+  );
+}
+
+const mountedForms: ReactTestRenderer[] = [];
+afterEach(() => {
+  for (const tree of mountedForms.splice(0)) {
+    act(() => {
+      tree.unmount();
+    });
+  }
+});
+
+function mount(element: ReactElement): ReactTestRenderer {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  let tree: ReactTestRenderer | undefined;
+  act(() => {
+    tree = create(element);
+  });
+  mountedForms.push(tree!);
+  return tree!;
+}
+
+const host = (tree: ReactTestRenderer, match: (node: ReactTestInstance) => boolean) =>
+  tree.root.find((node) => typeof node.type === "string" && match(node));
+
+const field = (tree: ReactTestRenderer, id: string) =>
+  host(tree, (node) => node.type === "input" && node.props.id === id);
+
+function type(tree: ReactTestRenderer, id: string, value: string) {
+  act(() => {
+    field(tree, id).props.onChange({ target: { value }, currentTarget: { value } });
+  });
+}
+
+function pick(tree: ReactTestRenderer, label: string) {
+  act(() => {
+    host(
+      tree,
+      (node) => node.props.role === "radio" && node.props["aria-label"] === label,
+    ).props.onClick();
+  });
+}
+
+const createButton = (tree: ReactTestRenderer) =>
+  host(
+    tree,
+    (node) => node.type === "button" && node.props["data-zerops-new-project"] === "create",
+  );
+
+function press(tree: ReactTestRenderer) {
+  act(() => {
+    createButton(tree).props.onClick();
+  });
+}
+
+/** The face the preview draws now, not the one fading out. */
+function face(tree: ReactTestRenderer) {
+  const svg = host(
+    tree,
+    (node) =>
+      node.props["data-zerops-primitive"] === "mate-face" &&
+      node.props["data-mate-face-preview"] !== "out",
+  );
+  return { tint: svg.props["data-mate-face-tint"], shape: svg.props["data-mate-face-shape"] };
+}
+
+const line = (tree: ReactTestRenderer) =>
+  host(tree, (node) => node.type === "p" && node.props.id === "zerops-new-project-line");
+
+const PROJECT_FIELD = "zerops-new-project";
+const MATE_FIELD = "zerops-new-project-mate";
+
+describe("ZeropsNewProjectForm — the project and its first Mate", () => {
+  it("asks the project's name, then its first Mate's: a name, a colour and a shape", () => {
+    const html = renderToStaticMarkup(wizardForm());
+    expect(html.match(/<input/gu)).toHaveLength(2);
+    expect(html).toContain(">Name<");
+    expect(html).toContain(">First Mate<");
+    expect(html).toContain('value="Ada"');
+    expect(html.match(/role="radiogroup"/gu)).toHaveLength(2);
+    expect(html.match(/role="radio"/gu)).toHaveLength(MATE_TINT_IDS.length + MATE_SHAPE_IDS.length);
+    expect(html).toContain('data-zerops-surface="mate-face-preview"');
+    expect(html).toContain(">Create project<");
+  });
+
+  it("shows the face the Mate's name asks for, and follows the name until a pick sticks", () => {
+    const tree = mount(wizardForm());
+    expect(face(tree)).toEqual({ tint: "sky", shape: "pick" });
+    type(tree, MATE_FIELD, "Otto");
+    expect(face(tree)).toEqual({ tint: "violet", shape: "gem" });
+    pick(tree, "Rose");
+    expect(face(tree)).toEqual({ tint: "rose", shape: "flower" });
+    pick(tree, "Seal");
+    type(tree, MATE_FIELD, "Ada");
+    expect(face(tree)).toEqual({ tint: "rose", shape: "seal" });
+  });
+
+  it("hands over the project's name, the Mate's and the face picked", () => {
+    const onCreate = vi.fn();
+    const tree = mount(wizardForm({ onCreate }));
+    type(tree, PROJECT_FIELD, "Acme CRM");
+    type(tree, MATE_FIELD, "  Mira   Lin ");
+    pick(tree, "Olive");
+    pick(tree, "Hexagon");
+    press(tree);
+    expect(onCreate).toHaveBeenCalledWith({
+      name: "Acme CRM",
+      botName: "Mira Lin",
+      face: { tint: "olive", shape: "hexagon" },
+    });
+  });
+
+  it.each([
+    { name: "", says: "Give the Mate a name." },
+    { name: "Fen", says: "Another Mate already has that name." },
+    { name: "A name far longer than twenty-four", says: "Keep it under 24 characters." },
+  ])("refuses '$name' beside the button once pressed, and creates nothing", ({ name, says }) => {
+    const onCreate = vi.fn();
+    const tree = mount(wizardForm({ onCreate }));
+    type(tree, PROJECT_FIELD, "Acme CRM");
+    type(tree, MATE_FIELD, name);
+    expect(line(tree).children).toEqual([]);
+    press(tree);
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(line(tree).children).toEqual([says]);
+    expect(String(line(tree).props.className)).toContain("text-status-failed-text");
+    expect(field(tree, MATE_FIELD).props["aria-invalid"]).toBe(true);
+  });
+
+  it("waits for every Mate's name to be read before it can create, and says so", () => {
+    const tree = mount(wizardForm({ takenBotNames: { names: [], complete: false } }));
+    type(tree, PROJECT_FIELD, "Acme CRM");
+    expect(createButton(tree).props.disabled).toBe(true);
+    expect(line(tree).children).toEqual(["Checking which names are taken…"]);
+  });
+
+  it("creates nothing without the project's name", () => {
+    const tree = mount(wizardForm());
+    expect(createButton(tree).props.disabled).toBe(true);
+    type(tree, PROJECT_FIELD, "Acme CRM");
+    expect(createButton(tree).props.disabled).toBe(false);
   });
 });

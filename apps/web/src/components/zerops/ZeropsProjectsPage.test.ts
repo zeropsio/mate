@@ -745,6 +745,10 @@ describe("an environment's menu", () => {
     expect(mateActionsSource).toContain("...(verbs.move");
     expect(mateActionsSource).toContain("...(verbs.rename");
     expect(mateActionsSource).toContain("...(verbs.move && tags.groupId !== undefined");
+    // Change face writes the project's tags, as a rename does: the same gate, on a Mate.
+    expect(mateActionsSource).toContain(
+      "resolveMateVerbs({ project: candidate.project, viewer }).rename;\n      if (!changeFaceOffered({ candidate, mayRename })) return undefined;",
+    );
   });
 
   it("carries the update verbs wherever a Mate is listed, not only on the projects screen", () => {
