@@ -106,7 +106,8 @@ export type NowLine =
   | { readonly kind: "operation"; readonly operation: ZeropsOperation }
   /** Several steps at once, oldest first: how many, and a line each under it. */
   | { readonly kind: "several"; readonly steps: ReadonlyArray<WorkStep> }
-  | { readonly kind: "waiting" }
+  /** It waits on the person: their answer to its question, or their approval. */
+  | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
   | { readonly kind: "writing" }
   | { readonly kind: "condensing" }
   /** Over: who, what it did and for how long, and what the effort came to. */
@@ -157,7 +158,7 @@ export function nowLineOf(input: {
   if (now === null) return { kind: "thinking", thought: null };
   switch (now.kind) {
     case "waiting":
-      return { kind: "waiting" };
+      return { kind: "waiting", on: now.on };
     case "writing":
       return { kind: "writing" };
     case "thinking":
@@ -216,7 +217,7 @@ export function nowLineWords(line: NowLine): string {
     case "several":
       return severalWords(line.steps);
     case "waiting":
-      return "Waiting for your answer";
+      return line.on === "approval" ? "Waiting for your approval" : "Waiting for your answer";
     case "writing":
       return "Writing";
     case "condensing":

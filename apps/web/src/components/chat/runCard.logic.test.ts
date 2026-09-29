@@ -254,9 +254,15 @@ describe("the now line", () => {
       face: { state: "working" },
     },
     {
-      name: "waiting for the person",
-      now: { kind: "waiting" },
+      name: "waiting for the person's answer",
+      now: { kind: "waiting", on: "answer" },
       words: "Waiting for your answer",
+      face: { state: "needs" },
+    },
+    {
+      name: "waiting for the person's approval",
+      now: { kind: "waiting", on: "approval" },
+      words: "Waiting for your approval",
       face: { state: "needs" },
     },
     {

@@ -466,7 +466,7 @@ export function CardStates() {
         <Turn
           row={record("status-waiting", {
             items: upTo("person:a1"),
-            now: { kind: "waiting" },
+            now: { kind: "waiting", on: "answer" },
             status: status({ waitingSince: ago(58) }),
           })}
         />

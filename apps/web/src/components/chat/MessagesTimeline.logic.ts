@@ -387,8 +387,8 @@ export type TurnHeaderActivity =
     }
   /** It writes words that cannot be placed yet: a note or its answer. */
   | { readonly kind: "writing" }
-  /** It asked the person something and waits for the answer. */
-  | { readonly kind: "waiting" }
+  /** It asked the person something — a question, an approval — and waits. */
+  | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
   /**
    * A call it is making, as the step it is — the newest, and any others it
    * runs at the same time, oldest first.
@@ -952,6 +952,20 @@ function pendingQuestion(stretch: Stretch): Extract<TimelineEntry, { kind: "work
 }
 
 /**
+ * Whether an approval the Mate asked for still waits on the person: one asked
+ * for and not given yet, the clock standing still meanwhile (`waitedOnPerson`).
+ */
+function approvalPending(stretch: Stretch): boolean {
+  let open = 0;
+  for (const entry of stretch.entries) {
+    if (entry.kind !== "work") continue;
+    if (entry.entry.sourceActivityKind === "approval.requested") open += 1;
+    else if (entry.entry.sourceActivityKind === "approval.resolved") open = Math.max(0, open - 1);
+  }
+  return open > 0;
+}
+
+/**
  * How long a run waited on the person: from each question or approval it
  * asked to the person's answer. Live, a wait still open is where the clock
  * stands still; settled, it lasted to the run's end.
@@ -986,7 +1000,8 @@ function liveActivity(
   writing: MessageEntry | null,
   tracked: TrackedCommands,
 ): TurnHeaderActivity {
-  if (pendingQuestion(stretch) !== null) return { kind: "waiting" };
+  if (pendingQuestion(stretch) !== null) return { kind: "waiting", on: "answer" };
+  if (approvalPending(stretch)) return { kind: "waiting", on: "approval" };
   if (writing !== null && stretch.entries.includes(writing)) return { kind: "writing" };
   let passed = false;
   for (let index = stretch.entries.length - 1; index >= 0; index -= 1) {
@@ -999,7 +1014,7 @@ function liveActivity(
       entry.entry.toolLifecycleStatus === "inProgress" &&
       isActivityWork(entry.entry)
     ) {
-      if (isQuestionToolCall(entry.entry)) return { kind: "waiting" };
+      if (isQuestionToolCall(entry.entry)) return { kind: "waiting", on: "answer" };
       const step = stepOf(entry.entry, tracked, true);
       // What it runs at the same time is the now line's too: none of it is
       // in the record until it returns.

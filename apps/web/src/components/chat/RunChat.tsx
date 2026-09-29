@@ -2267,7 +2267,7 @@ function NowWords({ line }: { readonly line: NowLineModel }) {
     case "several":
       return <span className="run-now-verb">{severalWords(line.steps)}</span>;
     case "waiting":
-      return <span className="run-now-verb">Waiting for your answer</span>;
+      return <span className="run-now-verb">{nowLineWords(line)}</span>;
     case "writing":
       return (
         <>

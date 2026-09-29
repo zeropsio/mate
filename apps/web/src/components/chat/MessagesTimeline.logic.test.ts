@@ -180,6 +180,22 @@ const asked = (id: string, minute: number) =>
     ],
   });
 
+/** An approval asked of the person, or given. */
+const approvalOf = (
+  id: string,
+  minute: number,
+  kind: "approval.requested" | "approval.resolved",
+): TimelineEntry =>
+  tool(id, "t1", minute, {
+    tone: "info",
+    label: kind === "approval.requested" ? "Approval requested" : "Approval resolved",
+    command: undefined as never,
+    toolCallId: undefined as never,
+    toolLifecycleStatus: undefined as never,
+    requestKind: "command",
+    sourceActivityKind: kind,
+  });
+
 const answeredWith = (id: string, minute: number, answer: string) =>
   tool(id, "t1", minute, {
     tone: "info",
@@ -403,7 +419,34 @@ describe("deriveMessagesTimelineRows", () => {
     {
       name: "a question asked: it waits for the person",
       entries: [assistant("a1", "t1", 1, "One question first."), asked("q1", 2)],
-      now: { kind: "waiting" },
+      now: { kind: "waiting", on: "answer" },
+    },
+    {
+      // The clock stands still while an approval waits on the person, so the
+      // line must say it waits too — not the command it may not run yet.
+      name: "an approval asked for a running command: it waits for the person",
+      entries: [
+        tool("w1", "t1", 1, {
+          command: "pnpm build",
+          toolLifecycleStatus: "inProgress",
+          sourceActivityKind: "tool.updated",
+        }),
+        approvalOf("p1", 2, "approval.requested"),
+      ],
+      now: { kind: "waiting", on: "approval" },
+    },
+    {
+      name: "an approval given: back to the step",
+      entries: [
+        tool("w1", "t1", 1, {
+          command: "pnpm build",
+          toolLifecycleStatus: "inProgress",
+          sourceActivityKind: "tool.updated",
+        }),
+        approvalOf("p1", 2, "approval.requested"),
+        approvalOf("p2", 3, "approval.resolved"),
+      ],
+      now: { kind: "step" },
     },
   ])("says beside its face what the Mate is on: $name", ({ entries, now }) => {
     expect(recordOf(rows({ entries: [user("m0", 0), ...entries], live: "t1" }))).toMatchObject({

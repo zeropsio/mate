@@ -341,7 +341,7 @@ describe("RunChat", () => {
     },
     {
       name: "waiting on the person",
-      now: { kind: "waiting" },
+      now: { kind: "waiting", on: "answer" },
       says: ">Waiting for your answer<",
       face: "needs",
       gaze: null,

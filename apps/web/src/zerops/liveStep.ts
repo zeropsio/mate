@@ -78,7 +78,7 @@ type CallLine = Extract<NowLine, { readonly kind: "step" | "operation" | "waitin
 /** A call on its way, as the card's now line has it: none for what the card's now skips. */
 function entryLine(entry: WorkLogEntry): CallLine | null {
   if (entry.toolLifecycleStatus !== "inProgress" || !isActivityWork(entry)) return null;
-  if (isQuestionToolCall(entry)) return { kind: "waiting" };
+  if (isQuestionToolCall(entry)) return { kind: "waiting", on: "answer" };
   const step = stepOf(entry);
   // A command that says nothing of itself is its own title; with no command either, nothing yet.
   return step.words === null && step.code === null ? null : { kind: "step", step };
