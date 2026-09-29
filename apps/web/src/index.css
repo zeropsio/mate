@@ -5223,11 +5223,16 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 .rv-body {
   display: grid;
   flex: 1 1 auto;
+  /* One column no wider than the review: a long line inside it wraps, never widens it. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
   min-height: 0;
   padding: 8px 24px 20px;
-  overflow-y: auto;
+  overflow: hidden auto;
   overscroll-behavior: contain;
+}
+.rv-body > * {
+  min-width: 0;
 }
 .rv-body:empty {
   display: none;
@@ -5267,8 +5272,7 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   width: 62%;
 }
 
-/* The files, each a 36 px row; a file's diff opens in place under it and scrolls sideways on
-   its own. */
+/* The files, each a 36 px row; a file's diff opens in place under it, its long lines wrapped. */
 .rv-files {
   overflow: hidden;
   border-radius: 12px;
@@ -5358,23 +5362,25 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 }
 
 .rv-diff {
-  overflow-x: auto;
   padding: 6px 0;
   background: color-mix(in oklab, var(--foreground) 2%, transparent);
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 19px;
+  tab-size: 4;
 }
 .rv-diff-lines {
   display: grid;
-  width: max-content;
-  min-width: 100%;
+  grid-template-columns: minmax(0, 1fr);
 }
+/* A long line wraps inside its own column and hangs under its code: the number and the sign
+   keep theirs, so the gutter stays one straight edge. */
 .rv-dl {
   display: grid;
-  grid-template-columns: 44px 16px auto;
+  grid-template-columns: 44px 16px minmax(0, 1fr);
   padding-right: 12px;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .rv-dl .ln {
   padding-right: 8px;

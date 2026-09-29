@@ -434,8 +434,9 @@ function DiffElsewhere({
 }
 
 /**
- * One file's diff: hunk headers, numbers, + green and − red; it scrolls sideways alone. What is
- * too long to show here says so, and links the file's diff on Gitea (`gitea`).
+ * One file's diff: hunk headers, numbers, + green and − red; a long line wraps under its code,
+ * so nothing ever scrolls sideways. What is too long to show here says so, and links the file's
+ * diff on Gitea (`gitea`).
  */
 export function ReviewDiff({
   diff,
