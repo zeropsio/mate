@@ -44,7 +44,23 @@ describe("summarizeEnvironmentServices", () => {
       hostnames: [],
       deployedAt: undefined,
       deployable: [],
+      statuses: [],
     });
+  });
+
+  it("says how each of the developer's services stands, as the platform says it", () => {
+    expect(
+      summarizeEnvironmentServices([
+        BUILD,
+        ZCP,
+        DB,
+        service("app", { status: "CONTAINER_FAILED" }),
+        CORE,
+      ]).statuses,
+    ).toEqual([
+      { hostname: "app", status: "CONTAINER_FAILED" },
+      { hostname: "db", status: "ACTIVE" },
+    ]);
   });
 
   it("carries the same services by id, for the reads that need one", () => {

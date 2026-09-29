@@ -97,6 +97,7 @@ const NO_SERVICES: ZeropsEnvironmentServices = {
   hostnames: [],
   deployedAt: undefined,
   deployable: [],
+  statuses: [],
 };
 
 /**
