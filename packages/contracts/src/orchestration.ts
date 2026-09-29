@@ -194,6 +194,9 @@ export const ChatImageAttachment = Schema.Struct({
   name: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
   mimeType: TrimmedNonEmptyString.check(Schema.isMaxLength(100), Schema.isPattern(/^image\//i)),
   sizeBytes: NonNegativeInt.check(Schema.isLessThanOrEqualTo(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES)),
+  /** The picture's size in pixels, when known: a conversation holds its room before it loads. */
+  width: Schema.optionalKey(PositiveInt),
+  height: Schema.optionalKey(PositiveInt),
 });
 export type ChatImageAttachment = typeof ChatImageAttachment.Type;
 

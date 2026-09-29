@@ -139,13 +139,13 @@ const NAME_EXTENSIONS: Record<FittedPictureType, ReadonlyArray<string>> = {
 };
 
 /**
- * The attachment as its fitted picture: the new type and size, and a name
- * that ends in the new type (`shot.png` becomes `shot.jpg`). A picture that
- * kept its type keeps its name.
+ * The attachment as its fitted picture: the new type, bytes and pixel size,
+ * and a name that ends in the new type (`shot.png` becomes `shot.jpg`). A
+ * picture that kept its type keeps its name.
  */
 export function withFittedPicture<
   A extends { readonly name: string; readonly mimeType: string; readonly sizeBytes: number },
->(attachment: A, picture: FittedPicture): A {
+>(attachment: A, picture: FittedPicture): A & { readonly width: number; readonly height: number } {
   return {
     ...attachment,
     name:
@@ -154,7 +154,22 @@ export function withFittedPicture<
         : pictureName(attachment.name, picture.mimeType),
     mimeType: picture.mimeType,
     sizeBytes: picture.bytes.byteLength,
+    width: picture.width,
+    height: picture.height,
   };
+}
+
+/**
+ * The attachment with the pixel size its header names, as it is shown (a
+ * photo's EXIF turn applied), so a conversation holds its room before the
+ * picture loads. A picture whose header this cannot read goes without one.
+ */
+export function withPictureSize<A extends object>(
+  attachment: A,
+  bytes: Uint8Array,
+): A | (A & { readonly width: number; readonly height: number }) {
+  const size = readImageDimensions(bytes);
+  return size === null ? attachment : { ...attachment, width: size.width, height: size.height };
 }
 
 function pictureName(name: string, mimeType: FittedPictureType): string {

@@ -12,7 +12,7 @@ import {
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
 } from "@t3tools/contracts";
 
-import { fitImageForProviders, withFittedPicture } from "../attachmentFit.ts";
+import { fitImageForProviders, withFittedPicture, withPictureSize } from "../attachmentFit.ts";
 import {
   createAttachmentId,
   planAttachmentClaim,
@@ -218,18 +218,17 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
                 message: `Failed to claim attachment '${attachment.name}' for this thread.`,
                 cause,
               });
-            const picture =
+            const pictureBytes =
               normalizedAttachment.type === "image"
-                ? yield* fileSystem.readFile(claim.currentPath).pipe(
-                    Effect.mapError(claimFailed),
-                    Effect.flatMap((bytes) =>
-                      fitPicture(attachment.name, {
-                        bytes,
-                        mimeType: normalizedAttachment.mimeType,
-                      }),
-                    ),
-                  )
+                ? yield* fileSystem.readFile(claim.currentPath).pipe(Effect.mapError(claimFailed))
                 : null;
+            const picture =
+              pictureBytes === null
+                ? null
+                : yield* fitPicture(attachment.name, {
+                    bytes: pictureBytes,
+                    mimeType: normalizedAttachment.mimeType,
+                  });
             // A fitted picture is the claimed copy, under the path its own type
             // gives it (`.png` may become `.jpg`).
             if (picture !== null) {
@@ -259,7 +258,9 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
               .pipe(Effect.mapError(claimFailed));
             claimedAttachmentPaths.push(claim.finalPath);
 
-            return normalizedAttachment;
+            return pictureBytes === null
+              ? normalizedAttachment
+              : withPictureSize(normalizedAttachment, pictureBytes);
           }
 
           const parsed = parseBase64DataUrl(attachment.dataUrl);
@@ -295,7 +296,9 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
             sizeBytes: decoded.byteLength,
           };
           const persistedAttachment =
-            picture === null ? decodedAttachment : withFittedPicture(decodedAttachment, picture);
+            picture === null
+              ? withPictureSize(decodedAttachment, decoded)
+              : withFittedPicture(decodedAttachment, picture);
           const bytes = picture === null ? decoded : picture.bytes;
           attachmentsWithDecodedSizes[index] = persistedAttachment;
           const decodedLimitError = getProviderAttachmentLimitError(attachmentsWithDecodedSizes);

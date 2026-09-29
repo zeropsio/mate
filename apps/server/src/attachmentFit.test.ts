@@ -724,6 +724,8 @@ describe("withFittedPicture", () => {
       name: expected,
       mimeType: to,
       sizeBytes: 1234,
+      width: 2000,
+      height: 1500,
     });
   });
 });

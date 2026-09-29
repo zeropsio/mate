@@ -483,6 +483,8 @@ describe("normalizeDispatchCommand picture fitting", () => {
         name: "screenshot.jpg",
         mimeType: "image/jpeg",
         sizeBytes: fitted.byteLength,
+        width: 1500,
+        height: 1000,
       });
       expect(fitted.byteLength).toBeLessThanOrEqual(PICTURE_MAX_BYTES);
       expect(JpegJs.decode(fitted, { useTArray: true })).toMatchObject({
@@ -532,6 +534,8 @@ describe("normalizeDispatchCommand picture fitting", () => {
         name: "IMG_0412.jpg",
         mimeType: "image/jpeg",
         sizeBytes: fitted.byteLength,
+        width: 2000,
+        height: 1500,
       });
       expect(JpegJs.decode(fitted, { useTArray: true })).toMatchObject({
         width: 2000,
@@ -574,6 +578,8 @@ describe("normalizeDispatchCommand picture fitting", () => {
         name: "screenshot.png",
         mimeType: "image/png",
         sizeBytes: picture.byteLength,
+        width: 1200,
+        height: 800,
       });
       expect(
         NodeFS.readFileSync(NodePath.join(config.attachmentsDir, `${attachment.id}.png`)),

@@ -340,6 +340,41 @@ it.effect("tolerates attachment types from newer builds when decoding messages",
   }),
 );
 
+// A picture's pixel size lets the conversation hold its room before its bytes
+// arrive; older messages carry none.
+it.effect.each([
+  { name: "a picture's pixel size", size: { width: 2000, height: 1299 }, keeps: true },
+  { name: "no size", size: {}, keeps: true },
+  { name: "a size of nothing", size: { width: 0, height: 1299 }, keeps: false },
+])("decodes an image attachment with $name", ({ size, keeps }) =>
+  Effect.gen(function* () {
+    const attachment = {
+      type: "image",
+      id: "thread-1-00000000-0000-4000-8000-000000000004-png",
+      name: "home-page.png",
+      mimeType: "image/png",
+      sizeBytes: 12,
+      ...size,
+    };
+    const decoded = yield* Effect.exit(
+      decodeOrchestrationMessage({
+        id: "message-1",
+        role: "user",
+        text: "[Picture 1]",
+        attachments: [attachment],
+        turnId: null,
+        streaming: false,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    assert.strictEqual(Exit.isSuccess(decoded), keeps);
+    if (Exit.isSuccess(decoded)) {
+      assert.deepStrictEqual(decoded.value.attachments?.[0], attachment);
+    }
+  }),
+);
+
 // The tolerant member must not catch malformed known attachments: a file over
 // the size cap or an image with a bad mime has to fail its own schema, not
 // slide through the open one with those constraints unchecked.
