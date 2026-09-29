@@ -896,8 +896,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const arrivedAfter = openedWith?.key === routeThreadKey ? openedWith.at : null;
   // A run the person watched stays open while they are here; once they leave
   // the conversation every run in it folds, so coming back it is folded from
-  // the first frame and nothing moves (K7).
-  useEffect(() => () => forgetRunFolds(routeThreadKey), [routeThreadKey]);
+  // the first frame and nothing moves (K7). It folds as the timeline goes,
+  // never while it is still on screen: the switch has taken its picture by
+  // then.
+  const foldsOfRef = useRef(routeThreadKey);
+  useLayoutEffect(() => {
+    foldsOfRef.current = routeThreadKey;
+  }, [routeThreadKey]);
+  useEffect(() => () => forgetRunFolds(foldsOfRef.current), []);
 
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
