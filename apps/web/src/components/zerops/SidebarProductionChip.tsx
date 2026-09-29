@@ -29,6 +29,7 @@ import { useOpenReview } from "~/zerops/review";
 import { gatedPortal } from "../ui/portal-gate";
 import { ZeropsMark } from "../ZeropsMark";
 import { MateFace } from "./primitives";
+import { routeMenuEntries } from "./ZeropsPublicRoutes";
 import {
   chipFace,
   draftParts,
@@ -236,16 +237,22 @@ export function ProductionMenu({
           projectId={stopProjectId}
         />
       )}
-      {routes.map((route) => (
+      {routeMenuEntries(routes).map((entry) => (
         <a
           className="zerops-envpop-link"
           data-zerops-surface="sidebar-production-link"
-          href={route.url}
-          key={`${route.service}:${String(route.port)}:${route.host}`}
+          href={entry.url}
+          key={entry.key}
           rel="noreferrer"
           target="_blank"
         >
-          <span className="min-w-0 truncate">{route.host}</span>
+          <span className="zerops-envpop-service">
+            {entry.service}
+            {entry.port === undefined ? null : (
+              <span className="zerops-envpop-port">:{entry.port}</span>
+            )}
+          </span>
+          <span className="min-w-0 truncate">{entry.host}</span>
           <ArrowUpRightIcon aria-hidden="true" className="size-3.25 shrink-0" />
         </a>
       ))}

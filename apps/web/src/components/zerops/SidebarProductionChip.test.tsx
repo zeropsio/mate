@@ -188,6 +188,54 @@ describe("the production chip's menu", () => {
     expect(html).toContain("Open in Zerops");
   });
 
+  // An address says where, not what answers there (the owner, 2026-09-29:
+  // "shouldn't this show to which service it points?"). The service leads each
+  // link as the routes menu writes it, with its port only where one service
+  // answers on several.
+  it.each([
+    {
+      name: "one service",
+      routes: [
+        { service: "app", port: 80, host: "shop.example.com", url: "https://shop.example.com" },
+      ],
+      rows: [["app", "shop.example.com"]],
+    },
+    {
+      name: "two services",
+      routes: [
+        { service: "api", port: 80, host: "api.example.com", url: "https://api.example.com" },
+        { service: "app", port: 80, host: "shop.example.com", url: "https://shop.example.com" },
+      ],
+      rows: [
+        ["api", "api.example.com"],
+        ["app", "shop.example.com"],
+      ],
+    },
+    {
+      name: "one service on two ports",
+      routes: [
+        { service: "api", port: 3000, host: "api-a.example.com", url: "https://api-a.example.com" },
+        { service: "api", port: 8080, host: "api-b.example.com", url: "https://api-b.example.com" },
+      ],
+      rows: [
+        ["api:3000", "api-a.example.com"],
+        ["api:8080", "api-b.example.com"],
+      ],
+    },
+  ])("names the service each link reaches: $name", ({ routes, rows }) => {
+    const tree = mount(menu(HEALTHY, { routes }));
+    const links = tree.root.findAll(
+      (node) =>
+        typeof node.type === "string" &&
+        node.props["data-zerops-surface"] === "sidebar-production-link",
+    );
+    const words = (link: ReactTestInstance) =>
+      link.children
+        .flatMap((child) => (typeof child === "string" ? [child] : [text(child)]))
+        .filter((each) => each.length > 0);
+    expect(links.map(words)).toEqual(rows);
+  });
+
   // S6: every problem offers its fix — only the person's own Mates, since
   // nobody writes to a colleague's, and only where something is broken.
   it.each([

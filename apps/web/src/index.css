@@ -3436,6 +3436,17 @@ code {
   background-color: color-mix(in oklab, var(--info-foreground) 10%, transparent);
 }
 
+.zerops-envpop-service {
+  flex-shrink: 0;
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.zerops-envpop-port {
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+
 .zerops-envpop-separator {
   height: 1px;
   margin: 6px 4px;
