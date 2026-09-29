@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { CrewRead } from "~/zerops/crew/useCrew";
 
-import { CrewPanelBody } from "./CrewPanel";
+import { bringPlanIntoView, CrewPanelBody } from "./CrewPanel";
 
 // The editors and dialogs the tab mounts closed read the live feed; the tab
 // itself is handed its crew.
@@ -192,10 +192,63 @@ describe("CrewPanelBody — Set up a crew asked for from the left menu", () => {
     expect(render(readOf(NONE))).toContain('data-crew-setup-open="false"');
   });
 
-  it("puts the ask away as the sheet closes", () => {
+  it("closes the sheet through the tab's own state", () => {
     setupAsks.open = new Set([ENVIRONMENT]);
     render(readOf(NONE));
     setupSheet.last?.onOpenChange(false);
     expect(setupAsks.setOpen).toHaveBeenCalledExactlyOnceWith(ENVIRONMENT, false);
+  });
+});
+
+describe("bringPlanIntoView — Review plan, pressed in the section", () => {
+  const element = () => ({ scrollIntoView: vi.fn(), focus: vi.fn() });
+  /** A board whose plan tops its Waiting on you column; `plan: false` draws none. */
+  const boardOf = (options: { readonly plan: boolean }) => {
+    const plan = element();
+    const column = element();
+    const board = {
+      ...element(),
+      querySelector: vi.fn((selector: string) => {
+        if (selector === "[data-crew-plan]") return options.plan ? plan : null;
+        if (selector === '[data-crew-board-column="waiting-on-you"]') return column;
+        return null;
+      }),
+    };
+    return { board, plan, column };
+  };
+
+  it.each([
+    { case: "glides", reducedMotion: false, behavior: "smooth" },
+    { case: "jumps where motion is reduced", reducedMotion: true, behavior: "auto" },
+  ] as const)(
+    "brings the plan's column to the top, sideways too, and $case",
+    ({ reducedMotion, behavior }) => {
+      const { board, plan, column } = boardOf({ plan: true });
+      bringPlanIntoView(board, { reducedMotion });
+      expect(column.scrollIntoView).toHaveBeenCalledExactlyOnceWith({
+        behavior,
+        block: "start",
+        inline: "nearest",
+      });
+      expect(plan.scrollIntoView).not.toHaveBeenCalled();
+      expect(board.scrollIntoView).not.toHaveBeenCalled();
+    },
+  );
+
+  it("moves focus to the plan, where the keyboard goes on to Start", () => {
+    const { board, plan } = boardOf({ plan: true });
+    bringPlanIntoView(board, { reducedMotion: false });
+    expect(plan.focus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true });
+  });
+
+  it("brings the board itself into view while its plan is not drawn", () => {
+    const { board, column } = boardOf({ plan: false });
+    bringPlanIntoView(board, { reducedMotion: false });
+    expect(board.scrollIntoView).toHaveBeenCalledExactlyOnceWith({
+      behavior: "smooth",
+      block: "start",
+      inline: "nearest",
+    });
+    expect(column.scrollIntoView).not.toHaveBeenCalled();
   });
 });

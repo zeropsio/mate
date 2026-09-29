@@ -8,9 +8,10 @@
  * - a crew: its section, then its board, in one column. The section reads
  *   first — who is on the crew, what waits on you, the run and *Tell the
  *   crew*: what the tab is opened for, each a press away. The board follows
- *   as the record of every task by state; it widens into columns side by side
- *   when the panel is maximized, so it is the column's last block and the only
- *   one at the tab's full width, while the section keeps a reading measure.
+ *   as the record of every task by state; it lays its columns side by side
+ *   once it is 48 rem wide (the panel maximized, or dragged wide), so it is the
+ *   column's last block and the only one at the tab's full width, while the
+ *   section keeps a reading measure.
  *
  * A tab kept open after crew mode went off says so; a feed not read yet draws
  * nothing.
@@ -67,6 +68,35 @@ export interface CrewPanelBodyProps {
   readonly onAskMate: (draft: string) => void;
 }
 
+/** As much of an element as bringing it into view needs. */
+interface Viewable {
+  readonly scrollIntoView: (options: ScrollIntoViewOptions) => void;
+  readonly focus: (options: FocusOptions) => void;
+}
+
+/**
+ * *Review plan*, pressed in the section: the board's plan — the first card of
+ * *Waiting on you* — brought into view under its column's title, sideways too
+ * where the board's row scrolls, and handed the focus, so the keyboard goes
+ * on to its Start. The board itself while its plan is not drawn.
+ */
+export function bringPlanIntoView(
+  board: (Viewable & { readonly querySelector: (selector: string) => Viewable | null }) | null,
+  options: { readonly reducedMotion: boolean },
+): void {
+  const plan = board?.querySelector("[data-crew-plan]") ?? null;
+  const column =
+    plan === null
+      ? null
+      : (board?.querySelector('[data-crew-board-column="waiting-on-you"]') ?? null);
+  (column ?? board)?.scrollIntoView({
+    behavior: options.reducedMotion ? "auto" : "smooth",
+    block: "start",
+    inline: "nearest",
+  });
+  plan?.focus({ preventScroll: true });
+}
+
 /** The tab's column for the crew it is handed — what a harness draws too. */
 export function CrewPanelBody({
   environmentId,
@@ -85,10 +115,10 @@ export function CrewPanelBody({
     );
   }
   const view = crew.status === "applied" ? crew.view : null;
-  // *Review plan* brings the board's plan, at its top, into view.
   const showBoard = () => {
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    board.current?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+    bringPlanIntoView(board.current, {
+      reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    });
   };
   return (
     <ScrollArea className="h-full">

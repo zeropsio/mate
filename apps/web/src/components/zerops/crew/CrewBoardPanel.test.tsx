@@ -189,6 +189,13 @@ describe("CrewBoard", () => {
     );
   });
 
+  it("lets Review plan hand the plan the focus, outside the tab order", () => {
+    const html = renderBoard(fixture);
+    expect(html).toMatch(
+      /<div[^>]*data-crew-plan="true"[^>]*tabindex="-1"|<div[^>]*tabindex="-1"[^>]*data-crew-plan="true"/u,
+    );
+  });
+
   it("draws no plan at all while nothing is proposed", () => {
     const html = renderBoard(
       crewSnapshotFixture({
@@ -402,5 +409,10 @@ describe("CrewBoardHost", () => {
     const row = /<div class="([^"]*@3xl\/board:flex-row[^"]*)"/u.exec(html)?.[1] ?? "";
     // Side by side the columns scroll within the board: the section above stays put.
     expect(row.split(" ")).toContain("@3xl/board:overflow-x-auto");
+    // A card's focus ring keeps its room at the scrolling row's edges, and the
+    // cards stand where they stood, scrolled back to as well.
+    expect(row.split(" ")).toEqual(
+      expect.arrayContaining(["@3xl/board:-m-1", "@3xl/board:p-1", "@3xl/board:scroll-px-1"]),
+    );
   });
 });

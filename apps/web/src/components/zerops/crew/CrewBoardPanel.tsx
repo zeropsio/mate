@@ -6,8 +6,9 @@
  * Its columns follow the tasks' states (`CrewBoardPanel.logic.ts`): the lead's
  * proposed tasks sit on top of *Waiting on you* as one plan card, every other
  * task is a card that opens its sheet. The board stacks the columns while it
- * is narrow and lays them side by side once widened (the panel's own maximize
- * control), which is why it is the tab's last block, at the tab's full width.
+ * is narrow and lays them side by side once it is 48 rem wide (the panel
+ * maximized, or dragged wide), which is why it is the tab's last block, at the
+ * tab's full width.
  * Every press is one crew command; what it changes arrives on the crew feed,
  * so nothing here keeps a copy of the board.
  */
@@ -216,11 +217,12 @@ export function CrewBoard(props: CrewBoardProps) {
       </header>
       {props.error === null ? null : <ErrorLine text={props.error} />}
       {/* Side by side, a board wider than the tab scrolls sideways on its own:
-          the section above it stays put. */}
-      <div className="flex flex-col gap-5 @3xl/board:flex-row @3xl/board:items-start @3xl/board:gap-3 @3xl/board:overflow-x-auto">
+          the section above it stays put. The row keeps 4 px of room about the
+          cards, where they stood, for a focused card's ring. */}
+      <div className="flex flex-col gap-5 @3xl/board:-m-1 @3xl/board:flex-row @3xl/board:items-start @3xl/board:gap-3 @3xl/board:overflow-x-auto @3xl/board:p-1 @3xl/board:scroll-px-1">
         {model.columns.map((column) => (
           <section
-            className="flex min-w-0 flex-col gap-2 @3xl/board:w-60 @3xl/board:shrink-0"
+            className="flex min-w-0 scroll-mt-4 flex-col gap-2 @3xl/board:w-60 @3xl/board:shrink-0"
             data-crew-board-column={column.id}
             key={column.id}
           >
@@ -317,7 +319,12 @@ export function CrewPlanCardView(props: {
   };
   const accept = crewPlanCommand("planAccept", taskIds);
   return (
-    <FlatCard className="flex flex-col gap-2 px-3 py-2.5 text-xs" data-crew-plan>
+    // Outside the tab order: the section's Review plan hands it the focus.
+    <FlatCard
+      className="flex flex-col gap-2 px-3 py-2.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      data-crew-plan
+      tabIndex={-1}
+    >
       <span className="font-medium text-foreground text-sm">{plan.title}</span>
       {plan.sentence === null ? null : (
         <span className="text-muted-foreground">{plan.sentence}</span>
