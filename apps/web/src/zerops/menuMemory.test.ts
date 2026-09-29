@@ -197,23 +197,45 @@ describe("what the memory keeps", () => {
   });
 });
 
-describe("a remembered production chip", () => {
+describe("a project's remembered chips", () => {
   const OK = { label: "prod", state: "ok", version: "v0.1.0" } as const;
   const WAITING = { label: "prod", state: "waiting", version: "v0.1.44", waiting: 1 } as const;
+  const STAGE = { label: "stage", state: "failed", version: "main" } as const;
+  const STAGES = {
+    label: "stage",
+    state: "down",
+    stages: [
+      { name: "stage", state: "ok" },
+      { name: "qa", state: "down" },
+    ],
+  } as const;
 
-  it("keeps each project's chip as last drawn, and forgets one that is no more", () => {
-    const first = withChips(EMPTY_MENU_MEMORY, { g1: OK, g2: WAITING }, new Set(["g1", "g2"]));
-    expect(first.chips).toEqual({ g1: OK, g2: WAITING });
-    // Read again: g2 has no production any more.
-    const next = withChips(first, { g2: null }, new Set(["g1", "g2"]));
-    expect(next.chips).toEqual({ g1: OK });
-    // A project no longer listed takes its chip with it.
-    expect(withChips(next, {}, new Set(["g2"])).chips).toEqual({});
+  it("keeps each project's chips as last drawn, and forgets one that is no more", () => {
+    const first = withChips(
+      EMPTY_MENU_MEMORY,
+      { g1: { prod: OK, stage: STAGE }, g2: { prod: WAITING } },
+      new Set(["g1", "g2"]),
+    );
+    expect(first.chips).toEqual({ g1: { prod: OK, stage: STAGE }, g2: { prod: WAITING } });
+    // Read again: g1's stage is gone; g2's production is unread, so kept.
+    const next = withChips(first, { g1: { stage: null }, g2: {} }, new Set(["g1", "g2"]));
+    expect(next.chips).toEqual({ g1: { prod: OK }, g2: { prod: WAITING } });
+    // A project that has neither any more keeps nothing.
+    expect(withChips(next, { g1: { prod: null } }).chips).toEqual({ g2: { prod: WAITING } });
+    // A project no longer listed takes its chips with it.
+    expect(withChips(next, {}, new Set(["g2"])).chips).toEqual({ g2: { prod: WAITING } });
+  });
+
+  it("keeps a chip over several stages with each of them", () => {
+    expect(withChips(EMPTY_MENU_MEMORY, { g1: { stage: STAGES } }).chips).toEqual({
+      g1: { stage: STAGES },
+    });
   });
 
   it("is the same memory when no chip changed, so nothing is written", () => {
-    const first = withChips(EMPTY_MENU_MEMORY, { g1: OK }, new Set(["g1"]));
-    expect(withChips(first, { g1: { ...OK } }, new Set(["g1"]))).toBe(first);
+    const first = withChips(EMPTY_MENU_MEMORY, { g1: { prod: OK } }, new Set(["g1"]));
+    expect(withChips(first, { g1: { prod: { ...OK } } }, new Set(["g1"]))).toBe(first);
+    expect(withChips(first, { g1: {} })).toBe(first);
     expect(withChips(first, {})).toBe(first);
   });
 });
@@ -309,6 +331,24 @@ describe("the memory in this browser", () => {
     expect(memory.changes.g1).toHaveLength(1);
     expect(memory.members["org-1"]).toEqual([{ id: "cu-jan", roleCode: "OWNER" }]);
     expect(memory.chips).toEqual({});
+  });
+
+  // A memory written while a project wore one chip keeps all else it held,
+  // and has no chip yet: one reload draws them once they are read.
+  it("reads a memory written with one chip per project, keeping all else it held", () => {
+    const key = `mate:account:user-ales:${MENU_MEMORY_STORAGE_KEY}`;
+    stored.set(
+      key,
+      JSON.stringify({
+        ...EMPTY_MENU_MEMORY,
+        rows: { nova: rememberedRowOf(WORKING) },
+        chips: { g1: { label: "prod", state: "ok", version: "v1.4.0" } },
+      }),
+    );
+    openAccountLifetime("user-ales");
+    const memory = menuMemory();
+    expect(Object.keys(memory.rows)).toEqual(["nova"]);
+    expect(memory.chips).toEqual({ g1: {} });
   });
 
   // A memory written before crews were kept reads with none, rather than

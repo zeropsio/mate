@@ -3210,17 +3210,19 @@ code {
   line-height: 1;
 }
 
-/* The production chip on a project's heading (M2): a quiet 24 px pill with a
-   7 px dot, the stop's word, what it serves in mono and anything more in the
-   muted ink — amber while a release did not go through, red while it is down. */
+/* A chip on a project's heading (M2): the stop's word alone — prod, stage —
+   12 · 500 in a quiet pill. Its whole ground and ink say what is wrong: amber
+   while the last release or deploy did not go through and the old one still
+   serves, red while it is down (S3), hollow while it is stopped on purpose.
+   Every tone keeps the one box, so the heading never moves when a tone
+   changes, and a change cross-fades. */
 .zerops-envchip {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
   height: 24px;
-  max-width: 100%;
-  padding: 0 9px 0 8px;
+  padding: 0 9px;
   border-radius: 12px;
   background-color: color-mix(in oklab, var(--sidebar-foreground) 5.5%, transparent);
   color: var(--muted-foreground);
@@ -3230,69 +3232,58 @@ code {
   white-space: nowrap;
   cursor: pointer;
   outline: none;
-  transition: background-color 150ms ease;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .zerops-envchip:hover,
 .zerops-envchip[data-popup-open] {
   background-color: color-mix(in oklab, var(--sidebar-foreground) 9%, transparent);
+  color: var(--sidebar-foreground);
 }
 
 .zerops-envchip:focus-visible {
   box-shadow: 0 0 0 2px var(--ring);
 }
 
-.zerops-envchip-version {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: color-mix(in oklab, var(--sidebar-foreground) 76%, transparent);
-  font-family: var(--font-mono);
+.zerops-envchip[data-tone="off"] {
+  background-color: transparent;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 18%, transparent);
+}
+
+.zerops-envchip[data-tone="off"]:is(:hover, [data-popup-open]) {
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 5.5%, transparent);
+}
+
+.zerops-envchip[data-tone="off"]:focus-visible {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 18%, transparent),
+    0 0 0 2px var(--ring);
 }
 
 .zerops-envchip[data-tone="amber"] {
-  background-color: color-mix(in oklab, var(--zerops-status-attention) 16%, transparent);
+  background-color: color-mix(in oklab, var(--zerops-status-attention) 24%, transparent);
   color: var(--zerops-status-attention-text);
 }
 
 .zerops-envchip[data-tone="amber"]:is(:hover, [data-popup-open]) {
-  background-color: color-mix(in oklab, var(--zerops-status-attention) 24%, transparent);
-}
-
-.zerops-envchip[data-tone="amber"] .zerops-envchip-version {
-  color: var(--zerops-status-attention-text);
+  background-color: color-mix(in oklab, var(--zerops-status-attention) 32%, transparent);
 }
 
 .zerops-envchip[data-tone="red"] {
-  background-color: color-mix(in oklab, var(--zerops-status-failed) 12%, transparent);
+  background-color: color-mix(in oklab, var(--zerops-status-failed) 20%, transparent);
   color: var(--zerops-status-failed-text);
 }
 
 .zerops-envchip[data-tone="red"]:is(:hover, [data-popup-open]) {
-  background-color: color-mix(in oklab, var(--zerops-status-failed) 18%, transparent);
+  background-color: color-mix(in oklab, var(--zerops-status-failed) 28%, transparent);
 }
 
-.zerops-envchip[data-tone="red"] .zerops-envchip-label {
-  font-weight: 600;
-}
-
-/* A narrow menu keeps the heading's name: the chip's extra words go first,
-   then what it serves — its tone, dot and word stay, and its menu says the
-   rest. At 435 all of it shows, at 304 the words go, at 256 the version too. */
+/* The heading's end edge measures its room: a narrow menu drops the + first. */
 [data-zerops-surface="sidebar-project"] {
   container-type: inline-size;
-}
-
-@container (width < 340px) {
-  .zerops-envchip-extra {
-    display: none;
-  }
-}
-
-@container (width < 260px) {
-  .zerops-envchip-version {
-    display: none;
-  }
 }
 
 /* The heading's + gives its room to the name under 300 px; Add a Mate is the

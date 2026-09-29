@@ -1094,7 +1094,7 @@ const SIGNED_IN = {
   signedIn: true,
 } as unknown as ZeropsProjectFlowValue;
 
-describe("production is one chip on the project's heading (M2, M1)", () => {
+describe("production and the stages are two chips on the project's heading (M2, M1)", () => {
   const released = (label: string): EnvironmentRow => ({
     ...productionRow,
     version: { ...productionRow.version, name: label, label },
@@ -1117,26 +1117,31 @@ describe("production is one chip on the project's heading (M2, M1)", () => {
         ? html.indexOf('data-zerops-surface="sidebar-project-rows"')
         : undefined,
     );
-  const chipOf = (html: string) =>
-    /<button[^>]*data-zerops-surface="sidebar-production-chip"[^>]*>(.*?)<\/button>/u.exec(
-      heading(html),
-    );
+  /** Each chip on the heading: its word, its tone, its accessible name. */
+  const chipsOf = (html: string) =>
+    [
+      ...heading(html).matchAll(
+        /<button[^>]*data-zerops-surface="sidebar-production-chip"[^>]*>(.*?)<\/button>/gu,
+      ),
+    ].map(([button, word]) => ({
+      word,
+      tone: /data-tone="([^"]*)"/u.exec(button)?.[1],
+      words: /aria-label="([^"]*)"/u.exec(button)?.[1],
+    }));
 
-  it("carries what production serves, and that it is healthy, on the heading", () => {
+  it("wears a chip for the stage and one for production, each its word alone", () => {
     const html = render([CRM_DEV, up(CRM_STAGE), up(CRM_PROD)], { getFlow: () => flow() });
-    const chip = chipOf(html);
-    expect(chip).not.toBeNull();
-    expect(chip![0]).toContain('aria-label="Production v2.4.0, healthy"');
-    expect(chip![0]).toContain('data-tone="neutral"');
-    expect(chip![1]).toContain('data-dot="ok"');
-    expect(chip![1]).toContain(">prod</span>");
-    expect(chip![1]).toContain(">v2.4.0</span>");
-    // No stop is a row under the heading any more.
+    expect(chipsOf(html)).toEqual([
+      { word: "stage", tone: "neutral", words: "Stage main, healthy" },
+      { word: "prod", tone: "neutral", words: "Production v2.4.0, healthy" },
+    ]);
+    // No stop is a row under the heading, and no chip draws a dot.
     expect(html).not.toContain('sidebar-environment"');
+    expect(heading(html)).not.toContain("zerops-envdot");
   });
 
-  it("counts what waits for production, and stays green: nothing is wrong", () => {
-    const html = render([CRM_DEV, up(CRM_STAGE), up(CRM_PROD)], {
+  it("says what waits for production in words, and stays neutral: nothing is wrong", () => {
+    const html = render([CRM_DEV, up(CRM_PROD)], {
       getFlow: () =>
         flow({
           releaseOffered: true,
@@ -1150,13 +1155,13 @@ describe("production is one chip on the project's heading (M2, M1)", () => {
           ],
         }),
     });
-    const chip = chipOf(html);
-    expect(chip![1]).toContain(">· 2 waiting</span>");
-    expect(chip![1]).toContain('data-dot="ok"');
+    expect(chipsOf(html)).toEqual([
+      { word: "prod", tone: "neutral", words: "Production v2.4.0, 2 changes waiting" },
+    ]);
   });
 
-  it("turns amber when the newest release did not go through, the old one still serving", () => {
-    const html = render([CRM_DEV, up(CRM_STAGE), up(CRM_PROD)], {
+  it("turns production amber when the newest release did not go through, the old one serving", () => {
+    const html = render([CRM_DEV, up(CRM_PROD)], {
       getFlow: () =>
         flow({
           releaseFailure: {
@@ -1168,32 +1173,40 @@ describe("production is one chip on the project's heading (M2, M1)", () => {
           },
         }),
     });
-    const chip = chipOf(html);
-    expect(chip![0]).toContain('data-tone="amber"');
-    expect(chip![1]).toContain(">· release failed</span>");
+    expect(chipsOf(html)).toEqual([
+      { word: "prod", tone: "amber", words: "Production v2.4.0, the last release failed" },
+    ]);
   });
 
-  it("turns red at once where the platform marks a service failed, whatever is still unread", () => {
+  it("turns production red at once where the platform marks a service failed, whatever is unread", () => {
     const html = render([CRM_DEV, up(CRM_PROD, "CONTAINER_FAILED")]);
-    const chip = chipOf(html);
-    expect(chip![0]).toContain('data-tone="red"');
-    expect(chip![1]).toContain(">prod down</span>");
+    expect(chipsOf(html)).toEqual([{ word: "prod", tone: "red", words: "Production is down" }]);
   });
 
-  it("stays on the heading while the project is folded", () => {
+  it("turns the stage chip alone when only the stage is in trouble", () => {
+    const html = render([CRM_DEV, up(CRM_STAGE, "CONTAINER_FAILED"), up(CRM_PROD)], {
+      getFlow: () => flow(),
+    });
+    expect(chipsOf(html).map((chip) => [chip.word, chip.tone])).toEqual([
+      ["stage", "red"],
+      ["prod", "neutral"],
+    ]);
+  });
+
+  it("keeps both chips on the heading while the project is folded", () => {
     stored.collapsed = new Set(["aaa"]);
     const html = render([CRM_DEV, up(CRM_STAGE), up(CRM_PROD)], { getFlow: () => flow() });
     expect(html).not.toContain("sidebar-project-rows");
-    expect(chipOf(html)).not.toBeNull();
+    expect(chipsOf(html).map((chip) => chip.word)).toEqual(["stage", "prod"]);
   });
 
-  it("says stage where there is no production, by the branch it follows", () => {
+  it("wears the stage chip alone where there is no production", () => {
     const html = render([CRM_DEV, up(CRM_STAGE)], {
       getFlow: () => flow({ environments: new Map([["crm-stage", stageRow]]) }),
     });
-    const chip = chipOf(html);
-    expect(chip![1]).toContain(">stage</span>");
-    expect(chip![1]).toContain(">main</span>");
+    expect(chipsOf(html)).toEqual([
+      { word: "stage", tone: "neutral", words: "Stage main, healthy" },
+    ]);
   });
 
   it("draws no chip where there is neither a production nor a stage", () => {
@@ -1202,16 +1215,24 @@ describe("production is one chip on the project's heading (M2, M1)", () => {
     );
   });
 
-  it("draws the chip it remembers while what decides it is unread, and else nothing", () => {
+  it("draws the chips it remembers while what decides them is unread, and else nothing", () => {
     const remembering = {
       changes: () => undefined,
-      chip: () => ({ label: "prod", state: "waiting", version: "v2.3.0", waiting: 1 }),
+      chips: () => ({
+        prod: { label: "prod", state: "failed", version: "v2.3.0" },
+        stage: { label: "stage", state: "ok", version: "main" },
+      }),
     };
-    // The platform has not said how production's services stand.
-    const unread = render([CRM_DEV, CRM_PROD], { getFlow: () => flow(), remembered: remembering });
-    expect(chipOf(unread)![1]).toContain(">v2.3.0</span>");
-    expect(chipOf(unread)![1]).toContain(">· 1 waiting</span>");
-    expect(render([CRM_DEV, CRM_PROD], { getFlow: () => flow() })).not.toContain(
+    // The platform has not said how the stops' services stand.
+    const unread = render([CRM_DEV, CRM_STAGE, CRM_PROD], {
+      getFlow: () => flow(),
+      remembered: remembering,
+    });
+    expect(chipsOf(unread).map((chip) => [chip.word, chip.tone])).toEqual([
+      ["stage", "neutral"],
+      ["prod", "amber"],
+    ]);
+    expect(render([CRM_DEV, CRM_STAGE, CRM_PROD], { getFlow: () => flow() })).not.toContain(
       "sidebar-production-chip",
     );
   });
@@ -1234,13 +1255,14 @@ describe("production is one chip on the project's heading (M2, M1)", () => {
         node.type === "button" && node.props["data-zerops-surface"] === "sidebar-production-chip",
     );
     expect(chips.map((chip) => chip.props["aria-label"])).toEqual(["Production v2.4.0, healthy"]);
-    expect(drawn.at(-1)?.chips).toEqual({});
+    // Production is unknown, not learned; there is no stage, which is.
+    expect(drawn.at(-1)?.chips).toEqual({ aaa: { stage: null } });
   });
 
-  it("lets the jump box find production and each stage, with the chip's dot", () => {
+  it("lets the jump box find production and each stage, each with its own dot and words", () => {
     mount(
       <SidebarZeropsTree
-        candidates={[CRM_DEV, up(CRM_STAGE), up(CRM_PROD)]}
+        candidates={[CRM_DEV, up(CRM_STAGE, "CONTAINER_FAILED"), up(CRM_PROD)]}
         complete
         getFlow={() => flow()}
         onBrowseProjects={() => {}}
@@ -1248,7 +1270,12 @@ describe("production is one chip on the project's heading (M2, M1)", () => {
       />,
     );
     expect(useSidebarJump.getState().index?.stops).toEqual([
-      expect.objectContaining({ projectId: "crm-stage", dot: "ok", line: "3f9c1b2" }),
+      expect.objectContaining({
+        projectId: "crm-stage",
+        dot: "failed",
+        line: "3f9c1b2",
+        word: "Stage is down",
+      }),
       expect.objectContaining({
         projectId: "crm-prod",
         dot: "ok",
@@ -1256,6 +1283,12 @@ describe("production is one chip on the project's heading (M2, M1)", () => {
         word: "Production v2.4.0, healthy",
       }),
     ]);
+  });
+
+  it("names on each chip the stops a find lands on", () => {
+    const html = render([CRM_DEV, up(CRM_STAGE), up(CRM_PROD)], { getFlow: () => flow() });
+    expect(heading(html)).toContain('data-zerops-stops="crm-stage"');
+    expect(heading(html)).toContain('data-zerops-stops="crm-prod"');
   });
 });
 
@@ -1529,7 +1562,7 @@ describe("a project collapsed to its heading", () => {
         name="Links"
         onBrowseProjects={() => {}}
         onToggle={() => {}}
-        production={<span data-zerops-surface="sidebar-production-chip" />}
+        chips={<span data-zerops-surface="sidebar-production-chip" />}
       />,
     );
     const at = (needle: string) => html.indexOf(needle);
@@ -2917,7 +2950,7 @@ describe("a reload paints what the menu last drew (menuMemory)", () => {
   });
   const remembering = (changes: ReadonlyArray<FlowPullRequest> | undefined) => ({
     changes: () => changes,
-    chip: () => undefined,
+    chips: () => undefined,
   });
   const running = (label: string) =>
     ({
@@ -3001,7 +3034,7 @@ describe("a reload paints what the menu last drew (menuMemory)", () => {
     );
     expect(drawn.at(-1)).toEqual({
       changes: { aaa: [change] },
-      chips: { aaa: { label: "prod", state: "ok", version: "v2.5.0" } },
+      chips: { aaa: { prod: { label: "prod", state: "ok", version: "v2.5.0" }, stage: null } },
     });
   });
 });

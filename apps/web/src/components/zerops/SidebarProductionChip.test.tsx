@@ -10,8 +10,13 @@ import { ReviewContext, type ReviewTarget } from "~/zerops/review";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { EnvironmentId } from "@t3tools/contracts";
 
-import { ProductionMenu, SidebarProductionChip, type ChipMate } from "./SidebarProductionChip";
-import { chipMenu, type ChipMenuModel, type ProductionChip } from "./SidebarProductionChip.logic";
+import { ChipMenu, SidebarProductionChip, type ChipMate } from "./SidebarProductionChip";
+import {
+  productionMenu,
+  stageMenu,
+  type ChipMenuModel,
+  type ProductionChip,
+} from "./SidebarProductionChip.logic";
 
 const PROBLEM: FixProblem = {
   what: "Production's release v0.1.57 failed deploying app",
@@ -47,31 +52,82 @@ const PELL = mate("shop-pell", "Pell", "sand", false);
 const IVET = mate("shop-ivet", "Ivet", "slate", true);
 const BRAM = mate("shop-bram", "Bram", "violet", undefined);
 
-const menuOf = (chip: ProductionChip, over: Partial<Parameters<typeof chipMenu>[0]> = {}) =>
-  chipMenu({ chip, failure: undefined, down: [], stages: [], waiting: 0, nowMs: 0, ...over });
+const ROUTES = [
+  { service: "app", port: 80, host: "shop.example.com", url: "https://shop.example.com" },
+];
 
-const FAILED = menuOf({ label: "prod", state: "failed", version: "v0.1.56" });
+const menuOf = (chip: ProductionChip, over: Partial<Parameters<typeof productionMenu>[0]> = {}) =>
+  productionMenu({
+    chip,
+    projectId: "shop-prod",
+    failure: undefined,
+    down: [],
+    routes: ROUTES,
+    waiting: 0,
+    nowMs: 0,
+    ...over,
+  });
+
+const FAILED = menuOf(
+  { label: "prod", state: "failed", version: "v0.1.56" },
+  {
+    failure: {
+      tag: "v0.1.57",
+      kind: "deploy-failed",
+      at: undefined,
+      error: "The build step exited with code 2 while installing packages.",
+      service: "app",
+    },
+  },
+);
 const HEALTHY = menuOf({ label: "prod", state: "ok", version: "v0.1.0" });
+
+/** A stage of the project `shop`, by its name. */
+function stageOf(
+  name: string,
+  over: Partial<Parameters<typeof stageMenu>[0]["stages"][number]> = {},
+): Parameters<typeof stageMenu>[0]["stages"][number] {
+  return {
+    projectId: `shop-${name}`,
+    name,
+    stop: {
+      projectId: `shop-${name}`,
+      name,
+      state: "deployed",
+      version: {
+        name: undefined,
+        commit: "3f9c1b2",
+        sha: undefined,
+        taggedBy: undefined,
+        label: "3f9c1b2",
+      },
+      source: "main",
+      route: undefined,
+    },
+    chip: { label: "stage", state: "ok", version: "main" },
+    deployedAt: undefined,
+    down: [],
+    routes: [
+      { service: "app", port: 80, host: `${name}.example.app`, url: `https://${name}.example.app` },
+    ],
+    ...over,
+  };
+}
 
 function menu(
   model: ChipMenuModel | ((nowMs: number) => ChipMenuModel),
-  props: Partial<Parameters<typeof ProductionMenu>[0]> = {},
+  props: Partial<Parameters<typeof ChipMenu>[0]> = {},
 ) {
   return (
-    <ProductionMenu
-      fixProblem={PROBLEM}
+    <ChipMenu
       groupId="shop"
       mates={[ORSA]}
       menu={typeof model === "function" ? model : () => model}
       onAskToFix={() => {}}
-      onOpenStop={undefined}
+      onOpenStop={() => undefined}
       onReview={() => {}}
       projectName="Beviro"
       reviewFrom={{ current: null }}
-      routes={[
-        { service: "app", port: 80, host: "shop.example.com", url: "https://shop.example.com" },
-      ]}
-      stopProjectId="shop-prod"
       {...props}
     />
   );
@@ -115,69 +171,106 @@ function press(tree: ReactTestRenderer, name: string): void {
   });
 }
 
-describe("the production chip", () => {
-  it("is one button on the heading, its words the state's, its menu closed until pressed", () => {
-    const html = renderToStaticMarkup(
+describe("a chip on the project's heading", () => {
+  const chipHtml = (chip: ProductionChip) =>
+    renderToStaticMarkup(
       <SidebarProductionChip
-        chip={{ label: "prod", state: "waiting", version: "v0.1.44", waiting: 1 }}
-        fixProblem={undefined}
+        chip={chip}
         groupId="quillmark"
         mates={[]}
-        menu={() => menuOf({ label: "prod", state: "waiting", version: "v0.1.44", waiting: 1 })}
+        menu={() => menuOf(chip)}
         onAskToFix={undefined}
-        onOpenStop={undefined}
+        onOpenStop={() => undefined}
         projectName="Quillmark"
-        routes={[]}
-        stopProjectId="quillmark-prod"
+        stops={chip.label === "prod" ? ["quillmark-prod"] : ["quillmark-stage", "quillmark-qa"]}
       />,
     );
-    expect(html).toContain('aria-label="Production v0.1.44, 1 change waiting"');
-    expect(html).toContain(">· 1 waiting</span>");
+
+  // The word alone — no version, no dot, no extras (the owner, 2026-09-29:
+  // "I'm not sure version here is needed, not sure the status icon is needed
+  // either") — its whole ground turning when something is wrong, and its
+  // accessible name the state in words.
+  it.each([
+    {
+      name: "healthy",
+      chip: { label: "prod", state: "ok", version: "v0.1.0" },
+      tone: "neutral",
+      words: "Production v0.1.0, healthy",
+    },
+    {
+      name: "changes waiting",
+      chip: { label: "prod", state: "waiting", version: "v0.1.44", waiting: 1 },
+      tone: "neutral",
+      words: "Production v0.1.44, 1 change waiting",
+    },
+    {
+      name: "releasing",
+      chip: { label: "prod", state: "releasing", version: "v1.2.0", next: "v1.2.1" },
+      tone: "neutral",
+      words: "Production v1.2.0, releasing v1.2.1",
+    },
+    {
+      name: "the last release failed",
+      chip: { label: "prod", state: "failed", version: "v0.1.56" },
+      tone: "amber",
+      words: "Production v0.1.56, the last release failed",
+    },
+    {
+      name: "down",
+      chip: { label: "prod", state: "down", version: "v2.3.0" },
+      tone: "red",
+      words: "Production is down",
+    },
+    {
+      name: "stopped",
+      chip: { label: "prod", state: "stopped", version: "v0.3.1" },
+      tone: "off",
+      words: "Production is stopped",
+    },
+    {
+      name: "a stage whose last deploy failed",
+      chip: { label: "stage", state: "failed", version: "main" },
+      tone: "amber",
+      words: "Stage main, the last deploy failed",
+    },
+  ] as const)("$name: one button, the word alone, its tone", ({ chip, tone, words }) => {
+    const html = chipHtml(chip);
+    const button = /<button[^>]*>(.*?)<\/button>/u.exec(html);
+    expect(button?.[1]).toBe(chip.label);
+    expect(button?.[0]).toContain(`aria-label="${words}"`);
+    expect(button?.[0]).toContain(`data-tone="${tone}"`);
+    expect(button?.[0]).toContain(`data-zerops-chip="${chip.label}"`);
+    expect(html).not.toContain("zerops-envdot");
     expect(html).not.toContain("sidebar-production-menu");
+  });
+
+  it("names the stops it stands for, where a find in the jump box lands", () => {
+    expect(chipHtml({ label: "stage", state: "ok", version: "main" })).toContain(
+      'data-zerops-stops="quillmark-stage quillmark-qa"',
+    );
   });
 });
 
-describe("the production chip's menu", () => {
+describe("production's menu", () => {
   it("says the project, production, what it serves, and its state", () => {
     const html = renderToStaticMarkup(menu(FAILED));
     expect(html).toContain(">Beviro</h5>");
     expect(html).toContain(">production</b>");
     expect(html).toContain(">v0.1.56</span>");
     expect(html).toContain('data-tone="amber">Release failed</span>');
-    expect(html).toContain(">The last deploy failed. v0.1.56 is still serving.</p>");
+    expect(html).toContain(
+      ">Release v0.1.57 failed: The build step exited with code 2 while installing packages. v0.1.56 is still serving.</p>",
+    );
   });
 
-  // The heading drew the chip long before anybody pressed it: the menu's ages
-  // are as of the moment it opens.
-  it("says how long ago each stage was deployed as of when it opens", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-09-29T09:01:00Z"));
-    const element = menu((nowMs) =>
-      chipMenu({
-        chip: { label: "prod", state: "ok", version: "v0.1.0" },
-        failure: undefined,
-        down: [],
-        stages: [
-          {
-            name: "stage",
-            stop: {
-              projectId: "shop-stage",
-              name: "stage",
-              state: "deployed",
-              version: undefined,
-              source: "main",
-              route: undefined,
-            },
-            deployedAt: "2026-09-29T09:00:00Z",
-          },
-        ],
-        waiting: 0,
-        nowMs,
-      }),
+  it("holds production alone: the stages have a chip and a menu of their own", () => {
+    const tree = mount(menu(HEALTHY));
+    const rows = tree.root.findAll(
+      (node) =>
+        typeof node.type === "string" &&
+        node.props["data-zerops-surface"] === "sidebar-production-main",
     );
-    vi.setSystemTime(new Date("2026-09-29T12:00:00Z"));
-    const tree = mount(element);
-    expect(text(surface(tree, "sidebar-production-stage"))).toContain("Deployed 3 h ago");
+    expect(rows.map(text)).toEqual(["productionv0.1.0Healthy"]);
   });
 
   it("links every public route, in a new tab, and opens the project in Zerops", () => {
@@ -223,7 +316,7 @@ describe("the production chip's menu", () => {
       ],
     },
   ])("names the service each link reaches: $name", ({ routes, rows }) => {
-    const tree = mount(menu(HEALTHY, { routes }));
+    const tree = mount(menu(menuOf({ label: "prod", state: "ok", version: "v0.1.0" }, { routes })));
     const links = tree.root.findAll(
       (node) =>
         typeof node.type === "string" &&
@@ -323,50 +416,135 @@ describe("the production chip's menu", () => {
   });
 
   it("opens the stop's own page from its row, where one opens", () => {
-    let opened = 0;
+    const opened: string[] = [];
     const tree = mount(
       menu(HEALTHY, {
-        onOpenStop: () => {
-          opened += 1;
+        onOpenStop: (projectId) => () => {
+          opened.push(projectId);
         },
       }),
     );
     press(tree, "sidebar-production-main");
-    expect(opened).toBe(1);
+    expect(opened).toEqual(["shop-prod"]);
+  });
+});
+
+describe("the stages' menu", () => {
+  const rows = (tree: ReactTestRenderer, name: string) =>
+    tree.root
+      .findAll(
+        (node) => typeof node.type === "string" && node.props["data-zerops-surface"] === name,
+      )
+      .map(text);
+
+  // One stage reads as production's menu does: its row, its links, what waits
+  // to go to production, and Open in Zerops last.
+  it("reads one stage as production's menu reads production", () => {
+    const tree = mount(
+      menu(stageMenu({ stages: [stageOf("stage")], creating: [], waiting: 2, nowMs: 0 })),
+    );
+    expect(rows(tree, "sidebar-production-main")).toEqual(["stage3f9c1b2Deployed"]);
+    expect(rows(tree, "sidebar-production-link")).toEqual(["appstage.example.app"]);
+    expect(rows(tree, "sidebar-production-waiting")).toEqual([
+      "2 changes wait for productionReview",
+    ]);
+    const html = renderToStaticMarkup(
+      menu(stageMenu({ stages: [stageOf("stage")], creating: [], waiting: 2, nowMs: 0 })),
+    );
+    expect(html.match(/Open in Zerops/gu)).toHaveLength(1);
+    expect(html.lastIndexOf("Open in Zerops")).toBeGreaterThan(html.indexOf("wait for production"));
+    expect(html).toContain('href="https://app.zerops.io/project/shop-stage"');
   });
 
-  it("lists the stages under production, each with when it was deployed", () => {
-    const html = renderToStaticMarkup(
+  // The heading drew the chip long before anybody pressed it: the menu's ages
+  // are as of the moment it opens.
+  it("says how long ago a stage was deployed as of when it opens", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-29T09:01:00Z"));
+    const element = menu((nowMs) =>
+      stageMenu({
+        stages: [stageOf("stage", { deployedAt: "2026-09-29T09:00:00Z" })],
+        creating: [],
+        waiting: 0,
+        nowMs,
+      }),
+    );
+    vi.setSystemTime(new Date("2026-09-29T12:00:00Z"));
+    const tree = mount(element);
+    expect(text(surface(tree, "sidebar-production-main"))).toContain("Deployed 3 h ago");
+  });
+
+  it("holds several stages, each a group with its links, its fix and its own Open in Zerops", () => {
+    const model = stageMenu({
+      stages: [
+        stageOf("stage"),
+        stageOf("qa", {
+          stop: { ...stageOf("qa").stop, state: "failed" },
+          chip: { label: "stage", state: "failed", version: "main" },
+        }),
+      ],
+      creating: [],
+      waiting: 0,
+      nowMs: 0,
+    });
+    const tree = mount(menu(model));
+    expect(rows(tree, "sidebar-production-main")).toEqual([
+      "stage3f9c1b2Deployed",
+      "qa3f9c1b2Deploy failed",
+    ]);
+    expect(rows(tree, "sidebar-production-link")).toEqual([
+      "appstage.example.app",
+      "appqa.example.app",
+    ]);
+    expect(rows(tree, "sidebar-production-note")).toEqual([
+      "The last deploy failed. 3f9c1b2 is still serving.",
+    ]);
+    expect(rows(tree, "sidebar-production-ask-button")).toEqual(["Ask Orsa to fix it"]);
+    const zerops = tree.root.findAll(
+      (node) =>
+        typeof node.type === "string" &&
+        node.props["data-zerops-surface"] === "sidebar-production-zerops",
+    );
+    expect(zerops.map((link) => link.props.href)).toEqual([
+      "https://app.zerops.io/project/shop-stage",
+      "https://app.zerops.io/project/shop-qa",
+    ]);
+  });
+
+  it("writes the fix for the stage it was offered under", () => {
+    const asked: Array<[string, FixProblem]> = [];
+    const tree = mount(
       menu(
-        menuOf(
-          { label: "prod", state: "ok", version: "v0.1.44" },
-          {
-            stages: [
-              {
-                name: "stage",
-                stop: {
-                  projectId: "stage",
-                  name: "stage",
-                  state: "deployed",
-                  version: {
-                    name: "v0.1.45",
-                    commit: "3f9c1b2",
-                    sha: undefined,
-                    taggedBy: undefined,
-                    label: "v0.1.45",
-                  },
-                  source: "main",
-                  route: undefined,
-                },
-                deployedAt: new Date(-40 * 60_000).toISOString(),
-              },
-            ],
+        stageMenu({
+          stages: [
+            stageOf("qa", {
+              chip: { label: "stage", state: "down", version: "main" },
+              down: ["web"],
+            }),
+          ],
+          creating: [],
+          waiting: 0,
+          nowMs: 0,
+        }),
+        {
+          onAskToFix: (mateProjectId, problem) => {
+            asked.push([mateProjectId, problem]);
           },
-        ),
+        },
       ),
     );
-    expect(html).toMatch(
-      /data-zerops-surface="sidebar-production-stage".*>stage<\/b>.*>v0\.1\.45<\/span>.*>Deployed 40 min ago</u,
-    );
+    press(tree, "sidebar-production-ask-button");
+    press(tree, "sidebar-production-ask-open");
+    expect(asked).toEqual([
+      [
+        "shop-orsa",
+        {
+          what: "The qa stage is down: web failed on the platform",
+          at: undefined,
+          error: undefined,
+          ask: "Find out why and bring it back.",
+        },
+      ],
+    ]);
   });
 });

@@ -6,7 +6,7 @@
  * 2026-09-27). Each piece stands until its own live read replaces it:
  * - a Mate's row: what was asked, its last words, when, and whether unread;
  * - a project's change rows, drawn without their verbs;
- * - a project's production chip, as it last said it;
+ * - a project's chips, production's and the stages', as they last said it;
  * - a Mate's crew, its faces, so its line keeps its place;
  * - an organization's members, whose each Mate is.
  *
@@ -51,22 +51,36 @@ const ChangeSchema = Schema.Struct({
   updatedAt: Schema.optionalKey(Schema.String),
 });
 
-/** A project's production chip as it was drawn (`SidebarProductionChip.logic.ts`). */
+const ChipStateSchema = Schema.Literals([
+  "ok",
+  "waiting",
+  "releasing",
+  "failed",
+  "down",
+  "stopped",
+  "creating",
+  "empty",
+]);
+
+/** A chip on a project's heading as it was drawn (`SidebarProductionChip.logic.ts`). */
 const ChipSchema = Schema.Struct({
   label: Schema.Literals(["prod", "stage"]),
-  state: Schema.Literals([
-    "ok",
-    "waiting",
-    "releasing",
-    "failed",
-    "down",
-    "stopped",
-    "creating",
-    "empty",
-  ]),
+  state: ChipStateSchema,
   version: Schema.optionalKey(Schema.String),
   next: Schema.optionalKey(Schema.String),
   waiting: Schema.optionalKey(Schema.Number),
+  stages: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ name: Schema.String, state: ChipStateSchema })),
+  ),
+});
+
+/**
+ * A project's chips: production's and the stages', each where it had one. A
+ * memory from when a project wore one chip reads here as none, once.
+ */
+const ChipsSchema = Schema.Struct({
+  prod: Schema.optionalKey(ChipSchema),
+  stage: Schema.optionalKey(ChipSchema),
 });
 
 /**
@@ -116,7 +130,7 @@ const MenuMemorySchema = Schema.Struct({
   changes: Schema.Record(Schema.String, Schema.Array(ChangeSchema)),
   // Absent from a memory written before the production chip: none remembered
   // yet, and the rest of that memory still reads.
-  chips: Schema.Record(Schema.String, ChipSchema).pipe(
+  chips: Schema.Record(Schema.String, ChipsSchema).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed({})),
   ),
   // A memory written before crews were kept reads with none.
@@ -129,6 +143,11 @@ const MenuMemorySchema = Schema.Struct({
 export type RememberedRow = typeof RowSchema.Type;
 export type RememberedChange = typeof ChangeSchema.Type;
 export type RememberedChip = typeof ChipSchema.Type;
+export type RememberedChips = typeof ChipsSchema.Type;
+/** A draw's word on a project's chips: one to keep, `null` to forget, absent to leave as it is. */
+export type DrawnChips = {
+  readonly [Label in keyof RememberedChips]?: RememberedChip | null;
+};
 export type RememberedCrew = typeof CrewSchema.Type;
 export type RememberedMember = typeof MemberSchema.Type;
 export type MenuMemory = typeof MenuMemorySchema.Type;
@@ -263,19 +282,29 @@ export function withChanges(
 }
 
 /**
- * Each project's production chip as last drawn, `null` forgetting one that no
- * longer is, and — given the listing — none for a project gone.
+ * Each project's chips as last drawn — `null` forgetting one that no longer
+ * is, an absent one left as it was — and, given the listing, none for a
+ * project gone.
  */
 export function withChips(
   memory: MenuMemory,
-  chips: Readonly<Record<string, RememberedChip | null>>,
+  chips: Readonly<Record<string, DrawnChips>>,
   listed?: ReadonlySet<string>,
 ): MenuMemory {
-  const next: Record<string, RememberedChip> = {};
-  for (const [key, chip] of Object.entries(memory.chips)) {
-    if ((listed === undefined || listed.has(key)) && chips[key] !== null) next[key] = chip;
+  const next: Record<string, RememberedChips> = {};
+  for (const [key, kept] of Object.entries(memory.chips)) {
+    if (listed === undefined || listed.has(key)) next[key] = kept;
   }
-  for (const [key, chip] of Object.entries(chips)) if (chip !== null) next[key] = chip;
+  for (const [key, drawn] of Object.entries(chips)) {
+    const merged: { prod?: RememberedChip; stage?: RememberedChip } = { ...next[key] };
+    for (const label of ["prod", "stage"] as const) {
+      const chip = drawn[label];
+      if (chip === null) delete merged[label];
+      else if (chip !== undefined) merged[label] = chip;
+    }
+    if (merged.prod === undefined && merged.stage === undefined) delete next[key];
+    else next[key] = merged;
+  }
   return same(next, memory.chips) ? memory : { ...memory, chips: next };
 }
 

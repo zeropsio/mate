@@ -2,9 +2,10 @@
  * The left menu's projects: each a heading, then its Mates, each with its
  * crew and its open changes.
  *
- * A project's heading is its name and its production chip — which release
- * production serves, whether it is healthy, what waits to go out — and,
- * while the project is folded, the faces of its Mates that are busy.
+ * A project's heading is its name and its chips — one for its stage or
+ * stages, one for production, each its word alone, turning amber or red when
+ * something is wrong — and, while the project is folded, the faces of its
+ * Mates that are busy.
  * Folding or unfolding it never moves the heading.
  *
  * Under it, its Mates: the menu's own kind of row, the way a messenger lists
@@ -38,9 +39,9 @@
  * uses, so the two surfaces can never disagree about which project an
  * environment is in; the colours are `assignCandidateMateTints`, likewise
  * shared. Which pull requests are a Mate's to answer for, and what the
- * production chip says, are read from `groupFlow` — the same derivation the
- * projects page draws from — so a recipe change never counts as a Mate's own
- * work here, and the chip never says what the page would not.
+ * chips say, are read from `groupFlow` — the same derivation the projects
+ * page draws from — so a recipe change never counts as a Mate's own work
+ * here, and a chip never says what the page would not.
  *
  * Everything else about the account lives on the projects screen. This is
  * where you work; that is where you manage.
@@ -150,14 +151,17 @@ import {
 import { SidebarProductionChip } from "./SidebarProductionChip";
 import {
   buildingOf,
+  chipDot,
   chipFace,
-  chipMenu,
   drawnChip,
-  fixProblemOf,
-  productionChip,
+  productionMenu,
+  projectChips,
   rememberedChipAfter,
+  stageMenu,
+  stageStopChip,
   STOP_DOT,
   stopServing,
+  type ChipView,
   type GiteaAnswer,
   type ProductionChip,
   type ReleaseFailure,
@@ -449,20 +453,40 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly getCrew?: ((candidate: T) => SidebarCrewRead | undefined) | undefined;
 }
 
+/** A project's chips as the menu last drew them: production's and the stages'. */
+export interface SidebarChips<Chip> {
+  readonly prod?: Chip;
+  readonly stage?: Chip;
+}
+
 /** What the menu remembers drawing (`menuMemory.ts`). */
 export interface SidebarRemembered {
   readonly changes: (groupId: string) => ReadonlyArray<FlowPullRequest> | undefined;
-  /** A project's production chip as last drawn, for while what decides it is unread. */
-  readonly chip: (groupId: string) => ProductionChip | undefined;
+  /** A project's chips as last drawn, for while what decides each is unread. */
+  readonly chips: (groupId: string) => SidebarChips<ProductionChip> | undefined;
 }
 
 /**
  * What the menu drew of what it has read: the change rows Gitea answered, and
- * each project's production chip — `null` where it no longer has one.
+ * each project's chips — `null` where it no longer has one, absent while
+ * what decides it is unread.
  */
 export interface SidebarDrawn {
   readonly changes: Readonly<Record<string, ReadonlyArray<FlowPullRequest>>>;
-  readonly chips: Readonly<Record<string, ProductionChip | null>>;
+  readonly chips: Readonly<Record<string, SidebarChips<ProductionChip | null>>>;
+}
+
+/** What a draw learned of a project's chips, for the memory: each one read, or gone. */
+function chipsLearned(read: {
+  readonly prod: ChipView;
+  readonly stage: ChipView;
+}): SidebarChips<ProductionChip | null> {
+  const prod = rememberedChipAfter(read.prod);
+  const stage = rememberedChipAfter(read.stage);
+  return {
+    ...(prod === undefined ? {} : { prod }),
+    ...(stage === undefined ? {} : { stage }),
+  };
 }
 
 const NOTHING_DRAWN: SidebarDrawn = { changes: {}, chips: {} };
@@ -797,7 +821,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   const jumpStops: JumpStop[] = [];
   // What the memory keeps of this draw (`onDrawn`), gathered alike.
   const drawnChanges: Record<string, ReadonlyArray<FlowPullRequest>> = {};
-  const drawnChips: Record<string, ProductionChip | null> = {};
+  const drawnChips: Record<string, SidebarChips<ProductionChip | null>> = {};
   const indexSection = (input: {
     readonly id: string;
     readonly group: ZeropsGroup | undefined;
@@ -869,8 +893,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     id: string,
     entries: ReadonlyArray<Entry<T>>,
     renderHeader: (heading: {
-      /** The production chip, where the project has a production or a stage. */
-      readonly production: ReactNode;
+      /** Its chips: the stages' and production's, each where the project has it. */
+      readonly chips: ReactNode;
       /** Its busy Mates' faces, while it is folded. */
       readonly faces: ReactNode;
     }) => ReactNode,
@@ -920,9 +944,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         pending: group?.pending ?? [],
       }),
     );
-    // Production and its stages are the chip on the heading (M2), never rows:
-    // a row would make production a peer of the Mates, whom you talk to, and
-    // a row disappears when the project folds.
+    // Production and its stages are the chips on the heading (M2), never rows:
+    // a row would make them peers of the Mates, whom you talk to, and a row
+    // disappears when the project folds. One chip for production, one for
+    // the stage or stages (the owner, 2026-09-29).
     const stopItem = (projectId: string | undefined) =>
       projectId === undefined
         ? undefined
@@ -930,7 +955,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     const productionStop =
       "stop" in projectFlow.production ? projectFlow.production.stop : undefined;
     const productionItem = stopItem(productionStop?.projectId);
-    const stageItem = stopItem(projectFlow.stages[0]?.projectId);
     const servingOf = (item: T | undefined): StopServing =>
       item === undefined
         ? { kind: "unknown" }
@@ -939,119 +963,158 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             services: item.services?.statuses,
             routes: item.routes ?? [],
           });
+    const downOf = (serving: StopServing) => (serving.kind === "down" ? serving.services : []);
     const gitea: GiteaAnswer =
       flow !== undefined && flow.changesKnown !== false
         ? { kind: "answered", failure: flow.releaseFailure }
         : giteaComing
           ? { kind: "waiting" }
           : { kind: "absent" };
-    const chipRead = productionChip({
+    const stopName = (stop: GroupFlowStop) =>
+      environmentNameUnderGroup(groupName, stopItem(stop.projectId)?.project.name ?? stop.name);
+    const stages = projectFlow.stages.map((stop) => ({
+      name: stopName(stop),
+      stop,
+      serving: servingOf(stopItem(stop.projectId)),
+    }));
+    const productionServing = servingOf(productionItem);
+    const chipsRead = projectChips({
       production: projectFlow.production,
-      stages: projectFlow.stages,
-      stageBeingCreated: projectFlow.creatingStages.length > 0,
       building:
         productionStop === undefined
           ? undefined
           : buildingOf(deployments?.get(productionStop.projectId)),
       waiting: projectFlow.main.notLive,
-      serving: { production: servingOf(productionItem), stage: servingOf(stageItem) },
+      serving: productionServing,
+      stages,
+      stagesBeingCreated: projectFlow.creatingStages.length > 0,
       gitea,
     });
-    const chip = group === undefined ? undefined : drawnChip(chipRead, remembered?.chip(id));
-    const chipLearned = rememberedChipAfter(chipRead);
-    if (group !== undefined && chipLearned !== undefined) drawnChips[id] = chipLearned;
-    const chipItem = chip?.label === "stage" ? stageItem : productionItem;
-    const chipServing = servingOf(chipItem);
-    const down = chipServing.kind === "down" ? chipServing.services : [];
-    const failure = gitea.kind === "answered" ? gitea.failure : undefined;
+    const rememberedChips = group === undefined ? undefined : remembered?.chips(id);
+    const prodChip =
+      group === undefined ? undefined : drawnChip(chipsRead.prod, rememberedChips?.prod);
+    const stageChipDrawn =
+      group === undefined ? undefined : drawnChip(chipsRead.stage, rememberedChips?.stage);
+    if (group !== undefined) drawnChips[id] = chipsLearned(chipsRead);
+    // Each stage as a chip of its own says it: its dot and words in the jump
+    // box, its row in the stages' menu.
+    const stageChips = stages.map(({ stop, serving }) =>
+      drawnChip(stageStopChip({ stop, serving, gitea }), undefined),
+    );
     const stopDeployedAt = (projectId: string) => {
       const activated = deployActivatedAt(deployments?.get(projectId));
       return activated ?? stopItem(projectId)?.services?.deployedAt;
     };
-    const stopName = (stop: GroupFlowStop) =>
-      environmentNameUnderGroup(groupName, stopItem(stop.projectId)?.project.name ?? stop.name);
-    const chipDeclared =
-      chipItem === undefined ? undefined : flow?.environments.get(chipItem.project.id);
-    const production =
-      chip === undefined || group === undefined ? null : (
-        <SidebarProductionChip
-          chip={chip}
-          fixProblem={fixProblemOf({ chip, failure, down })}
-          groupId={id}
-          mates={mateEntries.map(({ item }) => ({
-            candidate: item,
-            tint: tints.get(item.project.id) ?? "slate",
-            mine: getOwner?.(item)?.isViewer,
-            threadKey: getActivity?.(item)?.threadKey,
-          }))}
-          menu={(openedAt) =>
-            chipMenu({
-              chip,
-              failure,
-              down,
-              stages: projectFlow.stages.map((stop) => ({
-                name: stopName(stop),
-                stop,
-                deployedAt: stopDeployedAt(stop.projectId),
-              })),
-              waiting: projectFlow.main.notLive,
-              nowMs: openedAt,
-            })
-          }
-          onAskToFix={onAskToFix}
-          onOpenStop={
-            chipDeclared === undefined || flow?.onOpenStop === undefined
-              ? undefined
-              : () => {
-                  flow.onOpenStop?.(chipDeclared);
-                }
-          }
-          projectName={groupName ?? group.name}
-          routes={chipItem?.routes ?? []}
-          stopProjectId={chipItem?.project.id}
-        />
+    const openStop = (projectId: string) => {
+      const declared = flow?.environments.get(projectId);
+      return declared === undefined || flow?.onOpenStop === undefined
+        ? undefined
+        : () => {
+            flow.onOpenStop?.(declared);
+          };
+    };
+    const chipMates = mateEntries.map(({ item }) => ({
+      candidate: item,
+      tint: tints.get(item.project.id) ?? "slate",
+      mine: getOwner?.(item)?.isViewer,
+      threadKey: getActivity?.(item)?.threadKey,
+    }));
+    const projectName = groupName ?? group?.name ?? "";
+    // What waits to go out, said on the stages' menu too — where there is a
+    // production for it to go to.
+    const waitingForProduction = prodChip === undefined ? 0 : projectFlow.main.notLive;
+    const chips =
+      group === undefined || (prodChip === undefined && stageChipDrawn === undefined) ? null : (
+        // The stage first, production on the heading's end edge: the order a
+        // change travels in, and production's chip never moves for a stage's.
+        <>
+          {stageChipDrawn === undefined ? null : (
+            <SidebarProductionChip
+              chip={stageChipDrawn}
+              groupId={id}
+              mates={chipMates}
+              menu={(openedAt) =>
+                stageMenu({
+                  stages: stages.map(({ name, stop, serving }, index) => ({
+                    projectId: stop.projectId,
+                    name,
+                    stop,
+                    chip: stageChips[index],
+                    deployedAt: stopDeployedAt(stop.projectId),
+                    down: downOf(serving),
+                    routes: stopItem(stop.projectId)?.routes ?? [],
+                  })),
+                  creating: projectFlow.creatingStages.map((creation) => ({
+                    projectId: creation.projectId,
+                    name: creation.name,
+                  })),
+                  waiting: waitingForProduction,
+                  nowMs: openedAt,
+                })
+              }
+              onAskToFix={onAskToFix}
+              onOpenStop={openStop}
+              projectName={projectName}
+              stops={stages.map(({ stop }) => stop.projectId)}
+            />
+          )}
+          {prodChip === undefined ? null : (
+            <SidebarProductionChip
+              chip={prodChip}
+              groupId={id}
+              mates={chipMates}
+              menu={(openedAt) =>
+                productionMenu({
+                  chip: prodChip,
+                  projectId: productionItem?.project.id,
+                  failure: gitea.kind === "answered" ? gitea.failure : undefined,
+                  down: downOf(productionServing),
+                  routes: productionItem?.routes ?? [],
+                  waiting: projectFlow.main.notLive,
+                  nowMs: openedAt,
+                })
+              }
+              onAskToFix={onAskToFix}
+              onOpenStop={openStop}
+              projectName={projectName}
+              stops={productionStop === undefined ? [] : [productionStop.projectId]}
+            />
+          )}
+        </>
       );
-    // The jump box finds each of them, and shows the chip where one is found
-    // — only where the heading draws one: a find lands on the chip.
+    // The jump box finds each of them, with the dot and words its chip's menu
+    // gives it — only where the heading draws its chip: a find lands on it.
     const title = (name: string) => (groupName === undefined ? name : `${groupName} ${name}`);
-    const chipFaceOf = chip === undefined ? undefined : chipFace(chip);
-    const jumpStopsHere: ReadonlyArray<JumpStop> =
-      chip === undefined
+    const jumpStopsHere: ReadonlyArray<JumpStop> = [
+      ...(stageChipDrawn === undefined
         ? []
-        : [
-            ...projectFlow.stages.map((stop) => ({
+        : stages.map(({ stop, name }, index) => {
+            const own = stageChips[index];
+            return {
               projectId: stop.projectId,
               groupId: id,
-              title: title(stopName(stop)),
+              title: title(name),
               line: stop.version?.label ?? "",
-              dot:
-                chip?.label === "stage" && chipItem?.project.id === stop.projectId && chipFaceOf
-                  ? chipFaceOf.dot
-                  : STOP_DOT[stop.state],
+              dot: own === undefined ? STOP_DOT[stop.state] : chipDot(own),
               word:
-                chip?.label === "stage" && chipItem?.project.id === stop.projectId && chipFaceOf
-                  ? chipFaceOf.words
-                  : `Stage ${stop.version?.label ?? ""}`.trim(),
-            })),
-            ...(productionStop === undefined
-              ? []
-              : [
-                  {
-                    projectId: productionStop.projectId,
-                    groupId: id,
-                    title: title(stopName(productionStop)),
-                    line: productionStop.version?.label ?? "",
-                    dot:
-                      chip?.label === "prod" && chipFaceOf !== undefined
-                        ? chipFaceOf.dot
-                        : STOP_DOT[productionStop.state],
-                    word:
-                      chip?.label === "prod" && chipFaceOf !== undefined
-                        ? chipFaceOf.words
-                        : `Production ${productionStop.version?.label ?? ""}`.trim(),
-                  },
-                ]),
-          ];
+                own === undefined
+                  ? `Stage ${stop.version?.label ?? ""}`.trim()
+                  : chipFace(own).words,
+            };
+          })),
+      ...(productionStop === undefined || prodChip === undefined
+        ? []
+        : [
+            {
+              projectId: productionStop.projectId,
+              groupId: id,
+              title: title(stopName(productionStop)),
+              line: productionStop.version?.label ?? "",
+              dot: chipDot(prodChip),
+              word: chipFace(prodChip).words,
+            },
+          ]),
+    ];
     // Folded, the heading shows who is busy in it (M15): its Mates that need
     // you, work, stopped on an error or finished unseen, each as its row draws
     // it (`mateRowView`) — once its rows have folded away.
@@ -1078,7 +1141,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         )
       : [];
     const header = renderHeader({
-      production,
+      chips,
       faces: busy.length === 0 ? null : <HeadingFaces faces={busy} />,
     });
     // Code only — a recipe change is the group's document, left to the
@@ -1331,13 +1394,13 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       {section(
         group.groupId,
         environments,
-        ({ production, faces }) => (
+        ({ chips, faces }) => (
           <ProjectHeader
+            chips={chips}
             collapsed={collapsed.has(group.groupId)}
             faces={faces}
             group={group}
             missing={getFlow?.(group.groupId)?.missing ?? []}
-            production={production}
             onAddMate={onAddMate}
             onBrowseProjects={onBrowseProjects}
             onOpen={
@@ -1571,7 +1634,7 @@ export function ProjectHeader({
   collapsed = false,
   onToggle,
   reorder,
-  production,
+  chips,
   faces,
 }: {
   readonly group?: ZeropsGroup;
@@ -1594,10 +1657,10 @@ export function ProjectHeader({
    */
   readonly reorder?: ProjectHeaderReorder | undefined;
   /**
-   * The project's production chip (`SidebarProductionChip`), on the heading's
-   * end edge whether the project is open or folded.
+   * The project's chips (`SidebarProductionChip`) — the stages', then
+   * production's — on the heading's end edge whether it is open or folded.
    */
-  readonly production?: ReactNode;
+  readonly chips?: ReactNode;
   /** Its busy Mates' faces (`HeadingFaces`), after the title while it is folded. */
   readonly faces?: ReactNode;
 }) {
@@ -1761,7 +1824,9 @@ export function ProjectHeader({
           </Menu>
         </span>
       )}
-      {production}
+      {chips === undefined || chips === null ? null : (
+        <span className="flex shrink-0 items-center gap-1">{chips}</span>
+      )}
     </div>
   );
 }
@@ -1886,11 +1951,11 @@ function revealLanding(
         : { focus: toggle ?? heading, flash: heading };
     }
     case "stop": {
-      // A stop is no row of its own: its project's production chip carries
-      // it, and its menu says the rest — so the chip is focused, flashed and
-      // opened.
+      // A stop is no row of its own: its chip on the heading carries it —
+      // production's, or the stages' — and its menu says the rest, so that
+      // chip is focused, flashed and opened.
       const chip = find(
-        `[data-zerops-group="${target.groupId}"] [data-zerops-surface="sidebar-production-chip"]`,
+        `[data-zerops-group="${target.groupId}"] [data-zerops-surface="sidebar-production-chip"][data-zerops-stops~="${CSS.escape(target.projectId)}"]`,
       );
       return chip === null ? null : { focus: chip, flash: chip, press: chip };
     }
