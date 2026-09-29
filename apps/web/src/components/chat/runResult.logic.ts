@@ -6,7 +6,8 @@
  * finished or taken over (the owner, 2026-09-29: "when something fails, the
  * agent tries again, it doesn't make sense to keep log of things that were
  * fixed later … only show like live things, tasks"). How it got there,
- * failures and retries included, is the work, one click away.
+ * failures and retries included, is the work, one click away. Under the
+ * rows, the pictures the run took and looked at, in one strip.
  *
  * Each row follows the real thing. A later run of the conversation that
  * deploys, starts or stops the same service, pushes to the same change,
@@ -35,6 +36,7 @@ import {
   browserTakeState,
   type ActivityKind,
   type OutcomeModel,
+  type OutcomePicture,
   type OutcomeService,
 } from "./conversation.logic";
 
@@ -139,17 +141,10 @@ export interface ResultRow {
   readonly version: string | null;
   /** The line under it: why it is broken, since when, the pages checked on it, what changed. */
   readonly sub: ResultSub | null;
-  /** The checks' pictures: each page's last. */
-  readonly pictures: ReadonlyArray<ZeropsOperation>;
   /** Where it runs, opened from the row's end. */
   readonly url: string | null;
   readonly action: ResultAction | null;
 }
-
-/** At most this many pictures stand at a row's end; the work holds every take. */
-const PICTURES_PER_ROW = 3;
-
-const NO_PICTURES: ReadonlyArray<ZeropsOperation> = [];
 
 /** One page the run checked, with every take of it and how the last of them ended. */
 interface CheckedPage {
@@ -234,16 +229,6 @@ function checkedLine(pages: ReadonlyArray<CheckedPage>): string | null {
     return count === 1 ? `${caption} checked ✓` : `${caption} checked, ${checksWord(count)}`;
   }
   return `${pages.length} pages checked, ${checksWord(count)}`;
-}
-
-/** Each page's last take that took a picture. */
-function picturesOf(pages: ReadonlyArray<CheckedPage>): ReadonlyArray<ZeropsOperation> {
-  return pages
-    .flatMap((page) => {
-      const last = page.takes.findLast((take) => take.screenshot !== undefined);
-      return last === undefined ? [] : [last];
-    })
-    .slice(0, PICTURES_PER_ROW);
 }
 
 function textSub(text: string | null): ResultSub | null {
@@ -350,7 +335,6 @@ function serviceRow(
       url: null,
       words: word,
       sub: since === null ? null : { kind: "since", at: since },
-      pictures: NO_PICTURES,
       action: {
         kind: "fix",
         problem: {
@@ -371,7 +355,6 @@ function serviceRow(
       url: null,
       words: service.word,
       sub: textSub(service.failure?.reason ?? null),
-      pictures: NO_PICTURES,
       action: service.failure === null ? null : { kind: "fix", problem: serviceProblem(service) },
     };
   }
@@ -383,7 +366,6 @@ function serviceRow(
     tone: service.tone,
     words: service.word,
     sub: ok ? textSub(checkedLine(pages)) : null,
-    pictures: ok ? picturesOf(pages) : NO_PICTURES,
     action: null,
   };
 }
@@ -406,7 +388,6 @@ function failedPageRow(page: CheckedPage, owner: string | null): ResultRow {
     version: null,
     // A failure with no word of why is said once, by the row's own words.
     sub: textSub(page.failure === "failed" ? null : page.failure),
-    pictures: picturesOf([page]),
     url: page.url,
     action: {
       kind: "fix",
@@ -433,7 +414,6 @@ function pagesRow(host: string, pages: ReadonlyArray<CheckedPage>): ResultRow {
     words: null,
     version: null,
     sub: textSub(checkedLine(pages)),
-    pictures: picturesOf(pages),
     url: pages.length === 1 ? pages[0]!.url : null,
     action: null,
   };
@@ -474,7 +454,6 @@ function changeRow(outcome: OutcomeModel, facts: ResultFacts): ResultRow | null 
             deletions: files.deletions,
             turnId: files.turnId,
           },
-    pictures: NO_PICTURES,
     url: null,
     action: {
       kind: "review",
@@ -513,7 +492,6 @@ function taskRow(outcome: OutcomeModel, facts: ResultFacts): ResultRow | null {
     words,
     version: null,
     sub: null,
-    pictures: NO_PICTURES,
     url: null,
     action: {
       kind: "review",
@@ -548,7 +526,6 @@ export function resultRows(outcome: OutcomeModel, facts: ResultFacts = NO_FACTS)
         words: item.word,
         version: null,
         sub: textSub(item.reason),
-        pictures: NO_PICTURES,
         url: null,
         action: {
           kind: "fix",
@@ -571,7 +548,6 @@ export function resultRows(outcome: OutcomeModel, facts: ResultFacts = NO_FACTS)
         words: "Not done",
         version: null,
         sub: null,
-        pictures: NO_PICTURES,
         url: null,
         action: null,
       });
@@ -608,7 +584,7 @@ export function resultRows(outcome: OutcomeModel, facts: ResultFacts = NO_FACTS)
     }
   }
   // A page no service of the run serves stands by its host; one with no
-  // address has nothing a row can say.
+  // address has nothing a row can say — its picture is the strip's.
   const loose = new Map<string, CheckedPage[]>();
   for (const page of pages) {
     if (page.failure !== null || owners.get(page) !== undefined || page.host === null) continue;
@@ -632,7 +608,6 @@ export function resultRows(outcome: OutcomeModel, facts: ResultFacts = NO_FACTS)
       words: "Created",
       version: null,
       sub: null,
-      pictures: NO_PICTURES,
       url: null,
       action: null,
     });
@@ -645,6 +620,40 @@ export function resultRows(outcome: OutcomeModel, facts: ResultFacts = NO_FACTS)
         GROUP_ORDER[left.row.group] - GROUP_ORDER[right.row.group] || left.index - right.index,
     )
     .map(({ row }) => row);
+}
+
+// ---------------------------------------------------------------------------
+// The pictures
+// ---------------------------------------------------------------------------
+
+/** A picture as the result shows it, with what it is in words: its tooltip's and the viewer's. */
+export type ResultPicture = OutcomePicture & { readonly label: string };
+
+/** "/status in the browser", "/ on iPhone 16", "/admin in the browser, failed", "home-mobile.png". */
+function pictureLabel(picture: OutcomePicture): string {
+  if (picture.kind === "file") return picture.name;
+  const where = picture.device === null ? "in the browser" : `on ${picture.device}`;
+  return `${picture.caption} ${where}${picture.failed ? ", failed" : ""}`;
+}
+
+/**
+ * The pictures a run's result shows, in the order they were taken: what its
+ * checks took and what the Mate looked at (the owner, 2026-09-29: "if
+ * anything it should show the screenshots") — less what a later run took
+ * again: a page checked since, or a file looked at since, is that run's
+ * picture now.
+ */
+export function resultPictures(outcome: OutcomeModel): ReadonlyArray<ResultPicture> {
+  const { later } = outcome;
+  return outcome.pictures.flatMap((picture) =>
+    (
+      picture.kind === "check"
+        ? later.pages.includes(picture.page)
+        : later.files.includes(picture.path)
+    )
+      ? []
+      : [{ ...picture, label: pictureLabel(picture) }],
+  );
 }
 
 // ---------------------------------------------------------------------------

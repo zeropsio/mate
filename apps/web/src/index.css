@@ -4172,29 +4172,101 @@ button.run-bar:focus-visible {
   background: var(--color-accent);
   color: var(--color-foreground);
 }
-/* A check's picture, the page's top: an object by its hairline, no shadow. */
-.run-result-picture {
-  width: 44px;
-  height: 28px;
-  overflow: hidden;
-  border-radius: 5px;
-  box-shadow: 0 0 0 1px var(--color-border);
-  background: var(--color-card);
-  cursor: zoom-in;
+.run-result-action:focus-visible,
+.run-result-files:focus-visible,
+.run-result-open:focus-visible,
+.run-result-tile:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
+  outline-offset: 1px;
 }
-.run-result-picture img {
+
+/* The run's pictures, one strip under its rows (the owner, 2026-09-29: "if
+   anything it should show the screenshots"): on the card's words edge, the
+   28 px column left to the marks, and on its one right edge. They are the
+   run's, not its last row's: 20 px under the rows, where the rows stand 14
+   apart; alone, 14 px under the hairline, where a first row's words stand.
+   Six uniform 16:10 tiles at most, 8 px apart, each the top of its
+   picture. Their corners run parallel with the tray's (S4): 30 px = 12 +
+   the 18 px between a tile and the tray's edge — 6 px here, the tray's 12
+   under it. */
+.run-result-pictures {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  column-gap: 8px;
+  padding: 7px 14px 6px 0;
+}
+.run-result-row + .run-result-pictures {
+  padding-top: 13px;
+}
+.run-result-strip {
+  grid-column: 2;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 128px));
+  gap: 8px;
+}
+/* While its file is read, the tile is quiet and already its size: nothing
+   moves when the picture comes, or when it never does. */
+.run-result-tile {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--color-foreground) 5%, transparent);
+}
+/* Its edge is the card's hairline, drawn over the picture: a white page on
+   the tray keeps its edge. */
+.run-result-tile::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-foreground) 8%, transparent);
+  pointer-events: none;
+  transition: box-shadow 150ms ease;
+}
+.run-result-tile img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
   object-position: top;
 }
-.run-result-action:focus-visible,
-.run-result-files:focus-visible,
-.run-result-open:focus-visible,
-.run-result-picture:focus-visible {
-  outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
-  outline-offset: 1px;
+button.run-result-tile {
+  cursor: zoom-in;
+}
+button.run-result-tile:hover::after {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-foreground) 20%, transparent);
+}
+/* A page whose check stayed failed is broken (S3): its edge in red. */
+.run-result-tile[data-failed]::after {
+  box-shadow: inset 0 0 0 1px var(--color-status-failed);
+}
+/* A file that is gone keeps its tile, muted, saying so. */
+.run-result-gone {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-muted-foreground);
+}
+/* The last tile of a run with more: how many more, over its picture sunk
+   into the tray. */
+.run-result-more {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in oklab, var(--run-tray) 72%, transparent);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--color-foreground);
+  font-variant-numeric: tabular-nums;
 }
 /* T5: the result arriving while the person watched is the moment worth
    seeing — row by row, 40 ms apart, once; reduced motion fades only. */
@@ -4209,12 +4281,14 @@ button.run-bar:focus-visible {
     opacity: 0;
   }
 }
-.run-result-row[data-rising] {
+.run-result-row[data-rising],
+.run-result-pictures[data-rising] {
   animation: run-result-rise 320ms cubic-bezier(0.23, 1, 0.32, 1) both;
   animation-delay: calc(var(--row-index, 0) * 40ms);
 }
 @media (prefers-reduced-motion: reduce) {
-  .run-result-row[data-rising] {
+  .run-result-row[data-rising],
+  .run-result-pictures[data-rising] {
     animation-name: run-result-fade;
   }
 }

@@ -1,14 +1,50 @@
-import { TurnId } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import type { AssetUrlState } from "../../assets/assetUrls";
 import { ReviewContext } from "../../zerops/review";
-import type { OutcomeModel } from "./conversation.logic";
+import type { OutcomeModel, OutcomePicture } from "./conversation.logic";
 import type { ResultFacts } from "./runResult.logic";
+import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
 import { TurnReport } from "./TurnReport";
+
+/** What the workspace answers for each picture's file, by its path: loading unless told. */
+const workspace = vi.hoisted(() => ({ files: new Map<string, AssetUrlState>() }));
+
+// A tile's tooltip, drawn in place of its popup: the words a pointer reads.
+vi.mock("../ui/tooltip", async () => {
+  const { cloneElement, isValidElement } = await import("react");
+  return {
+    Tooltip: ({ children }: { readonly children: ReactNode }) => <>{children}</>,
+    TooltipTrigger: ({
+      render,
+      children,
+    }: {
+      readonly render: unknown;
+      readonly children: ReactNode;
+    }) => (isValidElement(render) ? cloneElement(render, undefined, children) : <>{children}</>),
+    TooltipPopup: ({ children }: { readonly children: ReactNode }) => (
+      <span data-tooltip="">{children}</span>
+    ),
+  };
+});
+
+vi.mock("../../assets/assetUrls", () => {
+  const stateOf = (path: string): AssetUrlState => workspace.files.get(path) ?? { _tag: "Loading" };
+  return {
+    useAssetUrlState: (_environment: unknown, resource: { readonly path: string }) =>
+      stateOf(resource.path),
+    useAssetUrls: (_environment: unknown, resources: ReadonlyArray<{ readonly path: string }>) =>
+      resources.map((resource) => {
+        const state = stateOf(resource.path);
+        return state._tag === "Success" ? state.url : null;
+      }),
+  };
+});
 
 const at = (second: number) => new Date(Date.UTC(2026, 8, 29, 10, 0, second)).toISOString();
 
@@ -113,6 +149,256 @@ const rowsOf = (renderer: ReactTestRenderer) =>
     (node) => node.type === "div" && node.props["data-result-row"] !== undefined,
   );
 
+/** The conversation the result stands in: its thread, whose workspace holds the pictures' files. */
+const CONVERSATION = {
+  timestampFormat: "24-hour",
+  threadRef: {
+    environmentId: EnvironmentId.make("env-nova"),
+    threadId: ThreadId.make("thread-nova"),
+  },
+} as unknown as TimelineRowSharedState;
+
+const inConversation = (node: ReactNode) => (
+  <TimelineRowCtx value={CONVERSATION}>{node}</TimelineRowCtx>
+);
+
+const checkPicture = (
+  key: string,
+  caption: string,
+  device: string | null = null,
+): OutcomePicture => ({
+  kind: "check",
+  key,
+  src: `data:image/png;base64,${key}`,
+  caption,
+  page: `appdev-1f3c-3000.prg1.example.app${caption}`,
+  device,
+  failed: false,
+});
+
+const filePicture = (name: string): OutcomePicture => ({
+  kind: "file",
+  key: `file:/var/www/app/.shots/${name}`,
+  path: `/var/www/app/.shots/${name}`,
+  name,
+});
+
+/** The file a picture was read from, as the workspace answers it. */
+const served = (name: string) => `https://mate.example.dev/api/assets/${name}`;
+
+function renderPictures(
+  pictures: ReadonlyArray<OutcomePicture>,
+  props: Partial<Parameters<typeof TurnReport>[0]> = {},
+): ReactTestRenderer {
+  let renderer!: ReactTestRenderer;
+  act(() => {
+    renderer = create(
+      inConversation(
+        <TurnReport
+          facts={FACTS}
+          onOpenImage={() => undefined}
+          onOpenTurnDiff={() => undefined}
+          outcome={{ ...OUTCOME, pictures }}
+          {...props}
+        />,
+      ),
+    );
+  });
+  return renderer;
+}
+
+/** The strip's tiles, in order: what each is, and whether it opens. */
+const tilesOf = (renderer: ReactTestRenderer) =>
+  renderer.root.findAll(
+    (node) =>
+      (node.type === "button" || node.type === "span") &&
+      node.props["data-result-picture"] !== undefined,
+  );
+
+describe("TurnReport's pictures", () => {
+  beforeEach(() => {
+    workspace.files = new Map(
+      ["home-mobile.png", "world-mobile.png", "map-landscape.png"].map((name) => [
+        `/var/www/app/.shots/${name}`,
+        { _tag: "Success", url: served(name) },
+      ]),
+    );
+  });
+
+  // The owner, 2026-09-29, of a result that had none: "if anything it
+  // should show the screenshots". What the checks took and what the Mate
+  // looked at stand in one strip under the rows, in the order they were
+  // taken, each named by what it is; no row carries a picture of its own.
+  it("draws the run's pictures in one strip under its rows, each named by what it is", () => {
+    const renderer = renderPictures([
+      checkPicture("op:b1", "/status"),
+      filePicture("home-mobile.png"),
+      checkPicture("op:b2", "/", "iPhone 16"),
+    ]);
+    expect(tilesOf(renderer).map((tile) => tile.props["aria-label"])).toEqual([
+      "/status in the browser. Open the picture",
+      "home-mobile.png. Open the picture",
+      "/ on iPhone 16. Open the picture",
+    ]);
+    expect(
+      renderer.root
+        .findAll((node) => node.props["data-tooltip"] !== undefined)
+        .map((tooltip) => tooltip.children.join("")),
+    ).toEqual(["/status in the browser", "home-mobile.png", "/ on iPhone 16"]);
+    const markup = renderToStaticMarkup(
+      inConversation(
+        <TurnReport
+          facts={FACTS}
+          onOpenImage={() => undefined}
+          onOpenTurnDiff={() => undefined}
+          outcome={{ ...OUTCOME, pictures: [filePicture("home-mobile.png")] }}
+        />,
+      ),
+    );
+    expect(markup.indexOf("Dev server running")).toBeLessThan(markup.indexOf("data-result-strip"));
+    for (const row of rowsOf(renderer)) {
+      expect(row.findAll((node) => node.type === "img")).toEqual([]);
+    }
+  });
+
+  it("stands six tiles at most, the sixth saying how many more", () => {
+    const names = ["a", "b", "c", "d", "e", "f", "g", "h", "i"];
+    const renderer = renderPictures(names.map((name) => checkPicture(`op:${name}`, `/${name}`)));
+    const tiles = tilesOf(renderer);
+    expect(tiles).toHaveLength(6);
+    expect(tiles.at(-1)!.props["aria-label"]).toBe(
+      "/f in the browser, and 3 more. Open the pictures",
+    );
+    expect(tiles.at(-1)!.findByProps({ className: "run-result-more" }).children).toEqual([
+      "+",
+      "3",
+    ]);
+    expect(
+      tiles
+        .slice(0, -1)
+        .some(
+          (tile) => tile.findAll((node) => node.props.className === "run-result-more").length > 0,
+        ),
+    ).toBe(false);
+  });
+
+  // The viewer holds every picture of the run, the ones past the strip's
+  // sixth tile too, and opens on the one clicked.
+  it.each([
+    { name: "a tile", tile: 1, index: 1 },
+    { name: "the last tile of a run with more", tile: 5, index: 5 },
+  ])("opens the viewer on every picture of the run, from $name", ({ tile, index }) => {
+    const onOpenImage = vi.fn();
+    const pictures = [
+      checkPicture("op:b1", "/status"),
+      filePicture("home-mobile.png"),
+      checkPicture("op:b2", "/cart"),
+      filePicture("world-mobile.png"),
+      checkPicture("op:b3", "/checkout"),
+      checkPicture("op:b4", "/account"),
+      filePicture("map-landscape.png"),
+    ];
+    const tiles = tilesOf(renderPictures(pictures, { onOpenImage }));
+    act(() => tiles[tile]!.props.onClick());
+    expect(onOpenImage).toHaveBeenCalledWith({
+      images: [
+        { src: "data:image/png;base64,op:b1", name: "/status in the browser" },
+        { src: served("home-mobile.png"), name: "home-mobile.png" },
+        { src: "data:image/png;base64,op:b2", name: "/cart in the browser" },
+        { src: served("world-mobile.png"), name: "world-mobile.png" },
+        { src: "data:image/png;base64,op:b3", name: "/checkout in the browser" },
+        { src: "data:image/png;base64,op:b4", name: "/account in the browser" },
+        { src: served("map-landscape.png"), name: "map-landscape.png" },
+      ],
+      index,
+    });
+  });
+
+  // Nothing ever shifts: a file on its way is a quiet tile of its size, one
+  // that is gone keeps its tile saying so, and neither is in the viewer.
+  it("keeps a tile for a file still read and for one gone, and the viewer skips them", () => {
+    workspace.files.set("/var/www/app/.shots/world-mobile.png", { _tag: "Failure" });
+    const onOpenImage = vi.fn();
+    const tiles = tilesOf(
+      renderPictures(
+        [
+          filePicture("home-mobile.png"),
+          filePicture("world-mobile.png"),
+          filePicture("draft-mobile.png"),
+          checkPicture("op:b1", "/status"),
+        ],
+        { onOpenImage },
+      ),
+    );
+    expect(tiles.map((tile) => [tile.type, tile.props["data-result-picture"]])).toEqual([
+      ["button", "ready"],
+      ["span", "gone"],
+      ["span", "loading"],
+      ["button", "ready"],
+    ]);
+    expect(tiles[1]!.props["aria-label"]).toBe("world-mobile.png, gone");
+    expect(tiles[1]!.findByProps({ className: "run-result-gone" }).children).toEqual(["Gone"]);
+    act(() => tiles[3]!.props.onClick());
+    expect(onOpenImage).toHaveBeenCalledWith({
+      images: [
+        { src: served("home-mobile.png"), name: "home-mobile.png" },
+        { src: "data:image/png;base64,op:b1", name: "/status in the browser" },
+      ],
+      index: 1,
+    });
+  });
+
+  // The last tile of a run with more stands for the rest: its own file
+  // gone, it still says how many more, and opens the viewer on the next.
+  it("reaches the rest from the last tile when its own file is gone", () => {
+    workspace.files.set("/var/www/app/.shots/world-mobile.png", { _tag: "Failure" });
+    const onOpenImage = vi.fn();
+    const pictures = [
+      ...["a", "b", "c", "d", "e"].map((name) => checkPicture(`op:${name}`, `/${name}`)),
+      filePicture("world-mobile.png"),
+      filePicture("map-landscape.png"),
+    ];
+    const last = tilesOf(renderPictures(pictures, { onOpenImage })).at(-1)!;
+    expect([last.type, last.props["data-result-picture"], last.props["aria-label"]]).toEqual([
+      "button",
+      "gone",
+      "world-mobile.png, gone, and 1 more. Open the pictures",
+    ]);
+    expect(last.findAll((node) => node.props.className === "run-result-gone")).toEqual([]);
+    expect(last.findByProps({ className: "run-result-more" }).children).toEqual(["+", "1"]);
+    act(() => last.props.onClick());
+    expect(onOpenImage).toHaveBeenCalledWith(expect.objectContaining({ index: 5 }));
+    expect(onOpenImage.mock.calls[0]![0].images.at(5)).toEqual({
+      src: served("map-landscape.png"),
+      name: "map-landscape.png",
+    });
+  });
+
+  it("is the whole result when the run left no row", () => {
+    const renderer = renderPictures([filePicture("home-mobile.png")], {
+      outcome: {
+        ...OUTCOME,
+        live: [],
+        change: null,
+        checks: null,
+        pictures: [filePicture("home-mobile.png")],
+      },
+    });
+    expect(rowsOf(renderer)).toEqual([]);
+    expect(tilesOf(renderer)).toHaveLength(1);
+  });
+
+  // T5: the strip rises with the rows, last, when the run finished while the
+  // person watched.
+  it("rises last, after the rows, when watched", () => {
+    const renderer = renderPictures([filePicture("home-mobile.png")], { settling: true });
+    const strip = renderer.root.find(
+      (node) => node.type === "div" && node.props.className === "run-result-pictures",
+    );
+    expect([strip.props["data-rising"], strip.props.style?.["--row-index"]]).toEqual([true, 3]);
+  });
+});
+
 describe("TurnReport", () => {
   // Rows in the card's grid, most important first (K5): what is still
   // broken, then what waits for the person, then what runs.
@@ -191,18 +477,6 @@ describe("TurnReport", () => {
     );
     act(() => files.props.onClick());
     expect(onOpenTurnDiff).toHaveBeenCalledWith(TurnId.make("turn-1"));
-  });
-
-  it("opens a check's picture from its row", () => {
-    const onOpenImage = vi.fn();
-    const picture = render({ onOpenImage }).root.find(
-      (node) => node.type === "button" && node.props["data-result-picture"] !== undefined,
-    );
-    act(() => picture.props.onClick());
-    expect(onOpenImage).toHaveBeenCalledWith({
-      images: [{ src: "data:image/png;base64,iVBORw0KGgo=", name: "/status" }],
-      index: 0,
-    });
   });
 
   // A service that stopped since comes back in red, saying since when.
