@@ -1433,13 +1433,16 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
   // another port is not the app's front page).
   const pages = [...new Set(strip.checks.map(browserCheckCaption))];
   const hosts = new Set(strip.checks.map((check) => checkHost(check.subject)));
-  const words = running
-    ? `Checking ${browserCheckCaption(latest)}`
-    : strip.views === 1
-      ? `Checked ${browserCheckCaption(latest)}`
-      : strip.views === 2 && pages.length === 2 && hosts.size === 1
-        ? `Checked ${pages[0]} and ${pages[1]}`
-        : `Checked ${strip.views} pages`;
+  // As the now line said it while it ran: "Checking /status in the browser".
+  const words = `${
+    running
+      ? `Checking ${browserCheckCaption(latest)}`
+      : strip.views === 1
+        ? `Checked ${browserCheckCaption(latest)}`
+        : strip.views === 2 && pages.length === 2 && hosts.size === 1
+          ? `Checked ${pages[0]} and ${pages[1]}`
+          : `Checked ${strip.views} pages`
+  } in the browser`;
   const verdict = running
     ? null
     : strip.failures > 0
@@ -1447,7 +1450,7 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
         ? "1 check failed"
         : `${strip.failures} checks failed`
       : settled.length === 1
-        ? "passed"
+        ? null
         : `${settled.length} checks passed`;
   const startedMs = Date.parse(strip.checks[0]!.anchorAt);
   const endedMs = Date.parse(latest.settledAt ?? latest.anchorAt);
