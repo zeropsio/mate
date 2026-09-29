@@ -16,12 +16,14 @@ import { useMateActions, type MateActions } from "./useMateActions";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 
 interface FaceDialogProps {
+  readonly open: boolean;
   readonly name: string;
   readonly face: ZeropsMateFace;
   readonly pending: boolean;
   readonly error: string | null;
   readonly onSave: (face: ZeropsMateFace) => void;
   readonly onCancel: () => void;
+  readonly onOpenChangeComplete: (open: boolean) => void;
 }
 
 const mock = vi.hoisted(() => ({
@@ -202,6 +204,7 @@ describe("useMateActions — Change face…", () => {
     );
     mount();
     openFace(FEN);
+    expect(mock.dialog.current).toMatchObject({ open: true });
     act(() => {
       mock.dialog.current!.onSave({ tint: "rose", shape: "seal" });
     });
@@ -209,12 +212,38 @@ describe("useMateActions — Change face…", () => {
       { organizationId: "org-acme", projectId: FEN.project.id },
       { kind: "mate-face", face: { tint: "rose", shape: "seal" } },
     );
-    expect(mock.dialog.current).toMatchObject({ pending: true, error: null });
-    mock.dialog.current = null;
+    expect(mock.dialog.current).toMatchObject({ open: true, pending: true, error: null });
     await act(async () => {
       answer({ kind: "written" });
     });
+    // It closes the way a dialog does, fading over the face it saved, still saying Saving…
+    expect(mock.dialog.current).toMatchObject({ open: false, pending: true });
+    act(() => {
+      mock.dialog.current!.onOpenChangeComplete(false);
+    });
+    mock.dialog.current = null;
+    act(() => {
+      mounted[0]!.update(<Probe />);
+    });
     expect(mock.dialog.current).toBeNull();
+  });
+
+  it("closes the way a dialog does on Cancel too, and then is gone", () => {
+    mount();
+    openFace(FEN);
+    act(() => {
+      mock.dialog.current!.onCancel();
+    });
+    expect(mock.dialog.current).toMatchObject({ open: false, pending: false });
+    act(() => {
+      mock.dialog.current!.onOpenChangeComplete(false);
+    });
+    mock.dialog.current = null;
+    act(() => {
+      mounted[0]!.update(<Probe />);
+    });
+    expect(mock.dialog.current).toBeNull();
+    expect(mock.updateProjectTags).not.toHaveBeenCalled();
   });
 
   it("says a refused write's reason in the dialog, and changes nothing else", async () => {
@@ -229,6 +258,7 @@ describe("useMateActions — Change face…", () => {
       mock.dialog.current!.onSave({ tint: "rose", shape: "seal" });
     });
     expect(mock.dialog.current).toMatchObject({
+      open: true,
       pending: false,
       error: "Zerops rejected the request (forbidden).",
     });

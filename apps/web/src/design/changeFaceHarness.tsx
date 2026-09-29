@@ -151,7 +151,8 @@ function click(selector: string): void {
 
 function Harness() {
   const [mates, setMates] = useState(MATES);
-  const [open, setOpen] = useState(OPENS_AT_START);
+  // Open, closing (fading out, as the app's does), or gone.
+  const [dialog, setDialog] = useState<"open" | "closing" | null>(OPENS_AT_START ? "open" : null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const waiting = useRef<ZeropsMateFace | null>(null);
@@ -169,7 +170,8 @@ function Harness() {
           setError("Zerops rejected the request (forbidden).");
           return;
         }
-        // The write landed: the read that confirms it is what the menu redraws from.
+        // The write landed: the read that confirms it is what the menu redraws from, and the
+        // dialog fades over it still saying Saving…, as the app's does.
         setMates((current) =>
           current.map((entry) =>
             entry.project.id === FEN
@@ -183,11 +185,12 @@ function Harness() {
               : entry,
           ),
         );
-        setOpen(false);
+        setDialog("closing");
       },
       open: () => {
         setError(null);
-        setOpen(true);
+        setPending(false);
+        setDialog("open");
       },
       saved,
     };
@@ -253,7 +256,8 @@ function Harness() {
       rename: { initialValue: name, validate: () => undefined, commit: () => {} },
       changeFace: () => {
         setError(null);
-        setOpen(true);
+        setPending(false);
+        setDialog("open");
       },
       entries: [
         { id: "restart", label: "Restart", onSelect: () => {} },
@@ -292,16 +296,19 @@ function Harness() {
       <main className="flex min-w-0 flex-1 items-start justify-center p-10">
         <p className="max-w-md text-sm text-muted-foreground">The conversation opens here.</p>
       </main>
-      {open ? (
+      {dialog === null ? null : (
         <ZeropsChangeFaceDialog
           error={error}
           face={mateFaceOf(tints, fen.project)}
           name="Fen"
           onCancel={() => {
-            setOpen(false);
+            setDialog("closing");
           }}
           onOpenChange={(next) => {
-            if (!next) setOpen(false);
+            if (!next) setDialog("closing");
+          }}
+          onOpenChangeComplete={(next) => {
+            if (!next) setDialog(null);
           }}
           onSave={(face) => {
             saved.push(face);
@@ -309,10 +316,10 @@ function Harness() {
             setError(null);
             setPending(true);
           }}
-          open
+          open={dialog === "open"}
           pending={pending}
         />
-      ) : null}
+      )}
     </div>
   );
 }

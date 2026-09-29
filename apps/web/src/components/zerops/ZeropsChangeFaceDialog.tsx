@@ -6,7 +6,9 @@
  * Save writes nothing when the face picked is the one worn; it just closes. While the platform
  * answers, the button says *Saving…* in its own room, so it keeps its width, and neither button
  * takes a press. A refusal keeps the dialog open and says the platform's reason beside the
- * buttons, on a line that is always there, the face picked still picked.
+ * buttons, on a line that is always there, the face picked still picked. Taken, it closes the way
+ * a dialog does — fading as the Mate's rows behind it take the face — and its host lets it go
+ * once that has finished (`onOpenChangeComplete`).
  */
 import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import { useId, useState } from "react";
@@ -104,10 +106,13 @@ export function ZeropsChangeFaceForm({
 export function ZeropsChangeFaceDialog({
   open,
   onOpenChange,
+  onOpenChangeComplete,
   ...form
 }: Parameters<typeof ZeropsChangeFaceForm>[0] & {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
+  /** Its opening or closing has finished moving: a closed one may go. */
+  readonly onOpenChangeComplete?: ((open: boolean) => void) | undefined;
 }) {
   return (
     <Dialog
@@ -116,6 +121,7 @@ export function ZeropsChangeFaceDialog({
         if (!next && form.pending) return;
         onOpenChange(next);
       }}
+      {...(onOpenChangeComplete === undefined ? {} : { onOpenChangeComplete })}
       open={open}
     >
       <DialogPopup className="max-w-lg">

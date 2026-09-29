@@ -202,4 +202,25 @@ describe("ZeropsChangeFaceDialog", () => {
     request(at(false));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
+
+  it("tells its host when its closing has finished moving, so it goes only then", () => {
+    const onOpenChangeComplete = vi.fn();
+    const tree = mount(
+      <ZeropsChangeFaceDialog
+        error={null}
+        face={WORN}
+        name="Fen"
+        onCancel={() => {}}
+        onOpenChange={() => {}}
+        onOpenChangeComplete={onOpenChangeComplete}
+        onSave={() => {}}
+        open={false}
+        pending
+      />,
+    );
+    act(() => {
+      tree.root.findByType(Dialog).props.onOpenChangeComplete(false);
+    });
+    expect(onOpenChangeComplete).toHaveBeenCalledWith(false);
+  });
 });

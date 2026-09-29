@@ -110,7 +110,12 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 /** Which Mate a dialog is about, and which dialog it is. */
 type MateDialog =
   | { readonly kind: "rename"; readonly candidate: ZeropsCandidatePresentation }
-  | { readonly kind: "face"; readonly candidate: ZeropsCandidatePresentation }
+  | {
+      readonly kind: "face";
+      readonly candidate: ZeropsCandidatePresentation;
+      /** Saved or let go: it closes the way a dialog does, over the face it leaves. */
+      readonly closing?: true;
+    }
   | { readonly kind: "assign"; readonly candidate: ZeropsCandidatePresentation }
   | { readonly kind: "move"; readonly candidate: ZeropsCandidatePresentation }
   | { readonly kind: "delete"; readonly candidate: ZeropsCandidatePresentation };
@@ -576,8 +581,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       ).then(
         () => {
           if (!isCurrent()) return;
-          setPress(UNPRESSED);
-          setDialog(null);
+          // Still saying Saving… as it fades: the face it saved shows through it.
+          setDialog({ kind: "face", candidate, closing: true });
         },
         (cause: unknown) => {
           if (!isCurrent()) return;
@@ -800,14 +805,19 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           )}
           key={`face:${dialog.candidate.key}`}
           name={mateName(dialog.candidate)}
-          onCancel={close}
+          onCancel={() => {
+            setDialog({ ...dialog, closing: true });
+          }}
           onOpenChange={(open) => {
+            if (!open) setDialog({ ...dialog, closing: true });
+          }}
+          onOpenChangeComplete={(open) => {
             if (!open) close();
           }}
           onSave={(face) => {
             saveFace(dialog.candidate, face);
           }}
-          open
+          open={dialog.closing !== true}
           pending={press.pending}
         />
       ) : null}
