@@ -153,9 +153,24 @@ describe("a picture's room before it loads", () => {
   // draws a row again whenever it recycles it: opening a conversation, its
   // pictures grew from nothing and everything in sight jumped (2026-09-29).
   it("holds the room a picture usually takes the first time it is seen", () => {
-    const html = render("![first](https://example.com/first-sight.png)");
+    const html = render("![first](.t3/first-sight.png)");
     expect(html).toMatch(/<img[^>]*class="[^"]*aspect-video w-full[^"]*"/);
     expect(html).not.toMatch(/<img[^>]*width=/);
+    // Inside its opener, the opener is as wide as that room: a width in
+    // percent inside a button that shrinks to its content is no width.
+    const opened = renderToStaticMarkup(
+      <ChatMarkdown
+        cwd={"C:\\Users\\shawn\\project"}
+        onOpenImage={() => undefined}
+        threadRef={threadRef}
+        text="![first](.t3/first-sight-opened.png)"
+      />,
+    );
+    expect(opened).toMatch(
+      /<button[^>]*class="[^"]*w-full max-w-\[30rem\][^"]*"[^>]*data-markdown-image-opener/,
+    );
+    // A picture from an address of its own is as often a badge: no 16:9 place.
+    expect(render("![badge](https://example.com/badge.svg)")).not.toContain("aspect-video");
   });
 
   it("holds its own shape from its first frame once it has been seen", () => {
@@ -177,5 +192,10 @@ describe("a picture's room before it loads", () => {
     expect(html).toMatch(/<img[^>]*height="600"/);
     expect(html).toMatch(/<img[^>]*width="800"/);
     expect(html).not.toContain("aspect-video");
+    // A width it will stand at, so the attributes' ratio gives its height
+    // before a byte has come — `w-auto` alone left it none.
+    expect(html).toMatch(
+      /<img[^>]*style="width:min\(800px, 30rem, calc\(30rem \* 1\.3333333333333333\)\)"/,
+    );
   });
 });

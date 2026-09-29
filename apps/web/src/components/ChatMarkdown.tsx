@@ -1077,21 +1077,40 @@ const KNOWN_IMAGE_SIZES_MAX = 256;
 
 /**
  * The room a picture takes before it has loaded, and what it learns as it
- * does: its own shape when it has been seen before; otherwise the room a
- * picture usually takes, 16:9 across the text, rather than none. Only a first
- * sight fades in — a row the list draws again shows its picture as it was.
+ * does. Seen before, it takes the width it will stand at — its own, at most
+ * 30rem either way — so its size attributes' ratio gives its height before a
+ * byte has come (a plain `w-auto` let a picture with no bytes yet take none).
+ * Seen for the first time, a picture that holds a place (a workspace one)
+ * takes the room a picture usually takes, 16:9 across the text, its opener
+ * as wide as that room: a width in percent inside a button that shrinks to
+ * its content is no width at all. Only a first sight fades in — a row the
+ * list draws again shows its picture as it was.
  */
-function useImageRoom(key: string) {
-  const [size, setSize] = useState(() => knownImageSizes.get(key));
-  const [firstSight] = useState(() => !knownImageSizes.has(key));
-  const [loaded, setLoaded] = useState(false);
+function useImageRoom(key: string, holdsPlace: boolean) {
+  const fresh = () => ({
+    key,
+    size: knownImageSizes.get(key),
+    firstSight: !knownImageSizes.has(key),
+    loaded: false,
+  });
+  const [room, setRoom] = useState(fresh);
+  // Another picture in the same place starts from what is known of it.
+  const current = room.key === key ? room : fresh();
+  if (current !== room) setRoom(current);
+  const { size, firstSight, loaded } = current;
+  const placeholder = holdsPlace && size === undefined && !loaded;
   return {
     width: size?.width,
     height: size?.height,
+    style:
+      size === undefined
+        ? undefined
+        : { width: `min(${size.width}px, 30rem, calc(30rem * ${size.width / size.height}))` },
     className: cn(
-      size === undefined && !loaded && "aspect-video w-full rounded-lg bg-muted/60",
+      placeholder && "aspect-video w-full rounded-lg bg-muted/60",
       firstSight && loaded && "animate-zerops-appear motion-reduce:animate-none",
     ),
+    openerClassName: placeholder ? "w-full max-w-[30rem]" : undefined,
     onLoad: (event: React.SyntheticEvent<HTMLImageElement>) => {
       const { naturalWidth: width, naturalHeight: height } = event.currentTarget;
       if (width > 0 && height > 0) {
@@ -1100,9 +1119,13 @@ function useImageRoom(key: string) {
           if (!oldest.done) knownImageSizes.delete(oldest.value);
         }
         knownImageSizes.set(key, { width, height });
-        setSize({ width, height });
       }
-      setLoaded(true);
+      setRoom({
+        key,
+        size: width > 0 && height > 0 ? { width, height } : current.size,
+        firstSight: current.firstSight,
+        loaded: true,
+      });
     },
   };
 }
@@ -1148,10 +1171,13 @@ function openMarkdownImage(button: HTMLElement, open: (preview: ExpandedImagePre
 function OpenableMarkdownImage({
   alt,
   block = false,
+  className,
   children,
 }: {
   readonly alt: string;
   readonly block?: boolean;
+  /** The room its picture holds before it loads, when the picture cannot give it. */
+  readonly className?: string | undefined;
   readonly children: ReactNode;
 }) {
   const open = use(MarkdownImageOpenerContext);
@@ -1162,6 +1188,7 @@ function OpenableMarkdownImage({
       className={cn(
         "max-w-full cursor-zoom-in rounded-lg align-top focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
         block ? "block" : "inline-block",
+        className,
       )}
       data-markdown-image-opener
       onClick={(event) => openMarkdownImage(event.currentTarget, open)}
@@ -1184,22 +1211,32 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
     path: props.path,
   });
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  const room = useImageRoom(props.path);
+  const room = useImageRoom(props.path, true);
 
   if (assetUrl._tag === "Failure" || (assetUrl._tag === "Success" && failedUrl === assetUrl.url)) {
     return <ChatMarkdownImageFallback alt={props.alt} />;
   }
   if (assetUrl._tag !== "Success") {
+    // While its address is signed it holds the room it will stand in: its
+    // own, when it has been seen before.
     return (
       <span
         role="status"
         aria-label="Loading image"
-        className="my-1 block aspect-video w-full max-w-[30rem] rounded-lg bg-muted/60"
+        className={cn(
+          "my-1 block max-w-full rounded-lg bg-muted/60",
+          room.width === undefined && "aspect-video w-full max-w-[30rem]",
+        )}
+        style={
+          room.width === undefined || room.height === undefined
+            ? undefined
+            : { ...room.style, aspectRatio: `${room.width} / ${room.height}` }
+        }
       />
     );
   }
   return (
-    <OpenableMarkdownImage alt={props.alt} block>
+    <OpenableMarkdownImage alt={props.alt} block className={room.openerClassName}>
       <img
         src={assetUrl.url}
         alt={props.alt}
@@ -1210,6 +1247,7 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
         height={room.height}
         onError={() => setFailedUrl(assetUrl.url)}
         onLoad={room.onLoad}
+        style={room.style}
         width={room.width}
       />
     </OpenableMarkdownImage>
@@ -1226,7 +1264,9 @@ function DirectMarkdownImage({
   readonly uri: string;
   readonly alt: string;
 }) {
-  const room = useImageRoom(uri);
+  // A picture from an address of its own is as often a badge as a
+  // screenshot: it holds no 16:9 place, only its own shape once seen.
+  const room = useImageRoom(uri, false);
   return (
     <OpenableMarkdownImage alt={alt}>
       <img
@@ -1238,6 +1278,7 @@ function DirectMarkdownImage({
         data-markdown-image
         height={room.height ?? props.height}
         onLoad={room.onLoad}
+        style={room.style ?? props.style}
         width={room.width ?? props.width}
       />
     </OpenableMarkdownImage>
