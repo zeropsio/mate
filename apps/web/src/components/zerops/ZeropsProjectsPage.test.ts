@@ -45,7 +45,6 @@ import sidebarTreeSource from "./SidebarZeropsTree.tsx?raw";
 import sidebarSource from "../Sidebar.tsx?raw";
 import wizardSource from "./ZeropsNewProjectWizard.tsx?raw";
 import gitBlockSource from "./ZeropsGitBlock.tsx?raw";
-import mergeDialogSource from "./ZeropsMergeDialog.tsx?raw";
 import deployRunSource from "./ZeropsDeployRun.tsx?raw";
 import verdictPanelSource from "./primitives/VerdictPanel.tsx?raw";
 import releaseRowsSource from "./ZeropsReleaseRows.tsx?raw";
@@ -768,7 +767,6 @@ describe("a status word's hand", () => {
     ["the Git page", giteaPageSource],
     ["the left menu", sidebarTreeSource],
     ["the Git tab", gitBlockSource],
-    ["the merge dialog", mergeDialogSource],
     ["a deploy's run", deployRunSource],
     ["the verdict panel", verdictPanelSource],
     ["a project's releases", releaseRowsSource],
