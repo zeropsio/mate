@@ -74,13 +74,13 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
           {fallbackLabel}
         </span>
         {approval.appName ? (
-          <span className="max-w-32 shrink truncate text-[11px] font-medium text-foreground">
+          <span className="max-w-32 shrink truncate text-xs font-medium text-foreground">
             {approval.appName}
           </span>
         ) : null}
         {pendingCount > 1 ? (
           <span
-            className="ml-auto shrink-0 text-[10px] font-medium text-muted-foreground tabular-nums"
+            className="ml-auto shrink-0 text-xs font-medium text-muted-foreground tabular-nums"
             data-pending-request-progress={`1/${pendingCount}`}
           >
             1/{pendingCount}
@@ -93,7 +93,7 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
           "block max-h-20 min-w-0 w-full overflow-auto text-foreground/85 [scrollbar-width:thin] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70 [&::-webkit-scrollbar]:h-1.5",
           approval.requestKind === "mcp-elicitation"
             ? "whitespace-pre-wrap font-sans text-xs wrap-break-word"
-            : "whitespace-pre font-mono text-[11px]",
+            : "whitespace-pre font-mono text-line",
         )}
         data-approval-detail="complete"
         tabIndex={0}

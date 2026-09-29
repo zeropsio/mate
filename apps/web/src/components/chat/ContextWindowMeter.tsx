@@ -95,7 +95,7 @@ export function ContextWindowMeter(props: {
           <div className="flex items-center justify-between gap-3">
             <div className="font-medium text-muted-foreground text-xs">Context Window</div>
             {usage.maxTokens !== null && usedPercentage ? (
-              <div className="text-secondary-label text-2xs tabular-nums">
+              <div className="text-secondary-label text-xs tabular-nums">
                 <span>{usedPercentage}</span>
                 <span className="mx-1">·</span>
                 <span>
@@ -104,7 +104,7 @@ export function ContextWindowMeter(props: {
                 </span>
               </div>
             ) : (
-              <div className="text-secondary-label text-2xs tabular-nums">
+              <div className="text-secondary-label text-xs tabular-nums">
                 {formatContextWindowTokens(usage.usedTokens)}
               </div>
             )}
@@ -125,7 +125,7 @@ export function ContextWindowMeter(props: {
             </div>
           ) : null}
           {showTotalProcessed ? (
-            <div className="flex items-center justify-between gap-3 text-2xs leading-4">
+            <div className="flex items-center justify-between gap-3 text-xs leading-4">
               <span className="text-secondary-label">Total processed</span>
               <span className="font-medium tabular-nums text-secondary-label">
                 {formatContextWindowTokens(totalProcessedTokens)}
@@ -133,7 +133,7 @@ export function ContextWindowMeter(props: {
             </div>
           ) : null}
           {usage.compactsAutomatically ? (
-            <div className="mt-1 text-pretty text-secondary-label text-2xs font-medium">
+            <div className="mt-1 text-pretty text-secondary-label text-xs font-medium">
               {formatContextWindowCompactionMessage(modelDisplayName, usage.autoCompactThreshold)}
             </div>
           ) : null}
@@ -150,7 +150,7 @@ export function ContextWindowMeter(props: {
                 Compact context
               </Button>
               {compactDisabled && compactDisabledReason ? (
-                <div className="text-pretty text-secondary-label text-2xs">
+                <div className="text-pretty text-secondary-label text-xs">
                   {compactDisabledReason}
                 </div>
               ) : null}
