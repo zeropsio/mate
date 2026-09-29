@@ -161,9 +161,9 @@ Client:
   conversation opening with the crewmate (`CrewmateEmptyState`); `ConversationStrip.tsx`: the crew
   group. In a crew thread the speaker — the work line, the answer's heading, the working face — is
   the crewmate, in its name and tint, never the Mate.
-- **The lead** reads as the lead: the compass mark on its strip chip (the icon map's `crew-lead`),
-  a Lead chip beside its name in its header and the section, its own group first in the section,
-  and the coding-agents card names it on the login it runs on.
+- **The lead** reads as the lead: first in the crew on the strip, named the lead on hover where its
+  name does not say so, a Lead chip beside its name in its header and the section, its own group
+  first in the section, and the coding-agents card names it on the login it runs on.
 - **Composer** — trigger kind `crewmate` (`composer-logic.ts`, `ComposerCommandMenu.tsx`,
   `composer-editor-mentions.ts`), offered in _Tell the crew_ and in the lead's chat, in no other
   chat. In a crewmate's chat the model, effort and permission pickers give way to one read-only

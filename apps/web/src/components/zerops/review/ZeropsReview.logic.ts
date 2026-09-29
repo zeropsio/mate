@@ -1,17 +1,24 @@
 /**
  * The review's own decisions that are about drawing it, not about the change:
- * its kind line, where it opens from, which key presses it, where Try it goes,
- * which of the Mate's words say what the change does, and how much of a long
- * diff stands before its fold and where the rest of it is. What the verdict
- * says is `reviewVerdict.ts`'s.
+ * its kind line, where it opens from, which key presses it, whose words say
+ * what the change does, which of its description's pictures are read as the
+ * person, and how much of a long diff, a long run of commits or a long
+ * conversation stands before its fold. What the verdict says is
+ * `reviewVerdict.ts`'s.
  *
  * Pure: no DOM, no clock.
  */
 import { sha1 } from "@noble/hashes/legacy";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
-import type { ReviewPrimary, ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
+import type { ReviewPrimary } from "@t3tools/client-runtime/zerops";
 
 export type ReviewKind = "change" | "release" | "rollback" | "crew-task";
+
+/**
+ * Where a review stands: a dialog over the conversation, a quick look with its way to the page;
+ * or the page itself, at its own address. The same sections in both, in the same words.
+ */
+export type ReviewFrame = "dialog" | "page";
 
 /** The kind line over the title (500 13 muted), after its icon. */
 export function reviewKindLine(kind: ReviewKind, pullKind?: "code" | "recipe"): string {
@@ -51,7 +58,8 @@ export function reviewOrigin(
 
 /**
  * ⌘↵ (Ctrl+↵ off a Mac) presses the primary — only while it is safe to, and once: a key held
- * down repeats, and Merge would walk on into the release review it hands over to.
+ * down repeats, and Merge would walk on into the release review it hands over to. Typed in a
+ * field — the comment box — it is the field's, never the change's.
  */
 export function pressesPrimary(
   event: {
@@ -59,11 +67,14 @@ export function pressesPrimary(
     readonly metaKey: boolean;
     readonly ctrlKey: boolean;
     readonly repeat: boolean;
+    /** Pressed while the focus is in a field somebody types into. */
+    readonly inField: boolean;
   },
   primary: Pick<ReviewPrimary, "safe" | "enabled"> | undefined,
 ): boolean {
   return (
     !event.repeat &&
+    !event.inField &&
     event.key === "Enter" &&
     (event.metaKey || event.ctrlKey) &&
     primary !== undefined &&
@@ -98,27 +109,130 @@ export function focusesPrimaryLate(input: {
   return input.safe && input.onReview && input.sinceOpenMs < REVIEW_LATE_FOCUS_MS;
 }
 
-const DEV_SUFFIX = "dev";
-const STAGE_SUFFIX = "stage";
+/**
+ * What a change's review says it does, first: the description its author wrote; where it wrote
+ * none, what the run that made it said of it; while that run's conversation is read, the room its
+ * words will take; and where neither said anything, nothing at all — no heading over no words.
+ */
+export type ReviewDescription =
+  | { readonly kind: "body"; readonly text: string }
+  | { readonly kind: "run"; readonly words: string }
+  | { readonly kind: "reading" }
+  | { readonly kind: "none" };
+
+export function reviewDescription(input: {
+  readonly description: string | undefined;
+  readonly run: { readonly words: string | undefined; readonly reading: boolean };
+}): ReviewDescription {
+  if (input.description !== undefined) return { kind: "body", text: input.description };
+  if (input.run.words !== undefined) return { kind: "run", words: input.run.words };
+  return input.run.reading ? { kind: "reading" } : { kind: "none" };
+}
 
 /**
- * Where a change runs: the preview — the stage half of its repository's dev/stage pair
- * (`appstage` beside `appdev`, or beside `app`), which runs the change as it was deployed
- * before its pull request opened — and failing that the dev service itself, where the Mate
- * works on it. Nothing where neither serves on a public route.
+ * Where one of a description's pictures is read from. A picture on the app's own Gitea — a
+ * change's attachment, a file of its repository — is read as the person and shown from its bytes:
+ * a private repository answers nobody without a token, and a page's own `<img>` carries none. An
+ * attachment written by its repository's older address is read by its own, `/attachments/{uuid}`
+ * (the older one does not even answer a preflight: 405). A picture anywhere else stays a plain
+ * link, never read with the person's token; one inline or scripted is nothing.
  */
-export function previewRoute(
-  repository: string,
-  routes: ReadonlyArray<ZeropsPublicRoute>,
-): ZeropsPublicRoute | undefined {
-  const name =
-    repository.endsWith(DEV_SUFFIX) && repository.length > DEV_SUFFIX.length
-      ? repository.slice(0, -DEV_SUFFIX.length)
-      : repository;
-  return (
-    routes.find((route) => route.service === `${name}${STAGE_SUFFIX}`) ??
-    routes.find((route) => route.service === repository)
-  );
+export type DescriptionPicture =
+  | { readonly kind: "gitea"; readonly url: string }
+  | { readonly kind: "elsewhere"; readonly url: string }
+  | { readonly kind: "none" };
+
+/** `/{owner}/{repo}/attachments/{uuid}`: an attachment by its repository's older address. */
+const REPOSITORY_ATTACHMENT = /^\/[^/]+\/[^/]+\/attachments\/([^/?#]+)$/u;
+
+export function descriptionPicture(
+  src: string,
+  giteaOrigin: string | undefined,
+): DescriptionPicture {
+  const gitea = originOf(giteaOrigin);
+  let url: URL;
+  try {
+    url = new URL(src, gitea ?? undefined);
+  } catch {
+    return { kind: "none" };
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return { kind: "none" };
+  // Written without its host, it is read against the Gitea — and with no Gitea known it is
+  // no address at all.
+  if (url.origin !== gitea) return { kind: "elsewhere", url: url.href };
+  const attachment = REPOSITORY_ATTACHMENT.exec(url.pathname)?.[1];
+  return {
+    kind: "gitea",
+    url: attachment === undefined ? url.href : `${gitea}/attachments/${attachment}`,
+  };
+}
+
+function originOf(address: string | undefined): string | null {
+  if (address === undefined) return null;
+  try {
+    return new URL(address).origin;
+  } catch {
+    return null;
+  }
+}
+
+/** `](/…)` in Markdown, and `src="/…"` or `href="/…"` in its HTML: an address with no host. */
+const HOSTLESS_ADDRESS = /(\]\(\s*<?|\b(?:src|href)\s*=\s*["']?)\/(?!\/)/gu;
+/** A line that opens or closes a fenced block of code. */
+const FENCE = /^\s{0,3}(?:```|~~~)/u;
+
+/**
+ * A description with every address Gitea wrote without its host — the web editor writes an
+ * uploaded picture as `![image](/attachments/…)` — pointing at its Gitea, so its pictures are
+ * read there and its links open the change they name. Code is left as it was written.
+ */
+export function absoluteDescription(text: string, giteaOrigin: string | undefined): string {
+  const gitea = originOf(giteaOrigin);
+  if (gitea === null) return text;
+  let inCode = false;
+  return text
+    .split("\n")
+    .map((line) => {
+      if (FENCE.test(line)) {
+        inCode = !inCode;
+        return line;
+      }
+      return inCode ? line : line.replace(HOSTLESS_ADDRESS, `$1${gitea}/`);
+    })
+    .join("\n");
+}
+
+/** How many of a change's commits stand before "Show all N". */
+export const REVIEW_COMMITS_SHOWN = 5;
+
+/**
+ * How many commits stand (D4): all of a short run — folding one or two away saves nothing — and
+ * the newest few of a long one, with "Show all N" (`rest`, the total) opening the rest in place.
+ */
+export function commitFold(input: { readonly total: number; readonly all: boolean }): {
+  readonly shown: number;
+  readonly rest: number | undefined;
+} {
+  const folds = !input.all && input.total > REVIEW_COMMITS_SHOWN + 2;
+  return folds
+    ? { shown: REVIEW_COMMITS_SHOWN, rest: input.total }
+    : { shown: input.total, rest: undefined };
+}
+
+/** How many of a long conversation's newest comments the dialog shows. */
+const DIALOG_REMARKS_SHOWN = 3;
+
+/**
+ * How many of a change's comments are folded away (D4): none on its page; in the dialog, a quick
+ * look, a long conversation shows its newest three and "Show N earlier" opens the rest.
+ */
+export function remarkFold(input: {
+  readonly frame: ReviewFrame;
+  readonly total: number;
+  readonly all: boolean;
+}): { readonly hidden: number } {
+  const folds = input.frame === "dialog" && !input.all && input.total > DIALOG_REMARKS_SHOWN + 1;
+  return { hidden: folds ? input.total - DIALOG_REMARKS_SHOWN : 0 };
 }
 
 /**
@@ -319,18 +433,6 @@ export function releaseChangeRows(input: {
       stage: input.marks.get(key) ?? "none",
     };
   });
-}
-
-/**
- * What "Ask Nova for changes" writes into the Mate's composer: the change named the way its
- * tools address it, then room for the person's words. Written, not sent.
- */
-export function changeRequestPrefill(pull: {
-  readonly number: number;
-  readonly title: string;
-  readonly repository: string;
-}): string {
-  return `On #${String(pull.number)} "${pull.title}" on ${pull.repository}: `;
 }
 
 /**

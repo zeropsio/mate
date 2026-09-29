@@ -10,7 +10,7 @@
  * on its last line.
  *
  * No count and no word: four faces at most, then how many more — fewer where
- * the logo row is narrow, since the faces give way before the lockup and ⌘K
+ * the logo row is narrow, since the faces give way before the mark and ⌘K
  * do (`waitingFacesThatFit`).
  */
 import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
@@ -55,8 +55,8 @@ function stackWidth(shown: number, more: number): number {
 /**
  * How many faces fit the room the logo row leaves the stack, and how many
  * more it counts: as many as fit with their count, else one face alone, else
- * none — the lockup and ⌘K stay whole. Beside macOS's traffic lights a 304 px
- * menu fits three and a count, a 256 px one a single face.
+ * none — the mark and ⌘K stay whole. Beside macOS's traffic lights a 304 px
+ * menu fits four and a count, a 256 px one two faces.
  */
 export function waitingFacesThatFit(
   room: number,

@@ -2,8 +2,14 @@ import { EnvironmentId, TurnId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { OutcomeLater, OutcomeModel, OutcomeService } from "./conversation.logic";
+import type {
+  OutcomeLater,
+  OutcomeModel,
+  OutcomePicture,
+  OutcomeService,
+} from "./conversation.logic";
 import {
+  resultPictures,
   resultRows,
   runEffortWords,
   type ResultChange,
@@ -67,6 +73,7 @@ const NOTHING_LATER: OutcomeLater = {
   changes: [],
   tasks: [],
   pages: [],
+  files: [],
   answered: false,
 };
 
@@ -78,6 +85,7 @@ function outcome(overrides: Partial<OutcomeModel> = {}): OutcomeModel {
     landed: [],
     files: null,
     checks: null,
+    pictures: [],
     created: [],
     notDone: [],
     planLeft: [],
@@ -503,6 +511,57 @@ describe("resultRows", () => {
       facts: {},
       rows: [["running", "ok", "docs.example.org", "2 pages checked, both checks passed"]],
     },
+    // A check the Mate made on the page already open names no address: its
+    // row said "the page", and under it "the page checked ✓" (the owner,
+    // 2026-09-29). Passed, it says nothing a row can hold — its picture, if
+    // it took one, is the strip's; failed, it stays broken, by what it can
+    // name.
+    {
+      name: "a passed check with no address is no row",
+      outcome: outcome({ checks: checks([take("op:b1", "the page")]) }),
+      facts: {},
+      rows: [],
+    },
+    {
+      name: "a passed check with no address says nothing under a service",
+      outcome: outcome({
+        live: [service("appdev", { word: "Dev server running" })],
+        checks: checks([take("op:b1", "the page")]),
+      }),
+      facts: {},
+      rows: [["running", "ok", "appdev", "Dev server running"]],
+    },
+    {
+      name: "a failed check with no address stays broken, by what it can name",
+      outcome: outcome({
+        checks: checks([
+          take("op:b1", "the page", {
+            deviceName: "iPhone 16",
+            browserSummary: {
+              stepCount: 2,
+              errorCount: 0,
+              failedRequestCount: 0,
+              line: "",
+              failedStep: { id: "s2", label: "click Save", state: "failed", stateLabel: "Failed" },
+            },
+          }),
+        ]),
+      }),
+      facts: {},
+      rows: [["broken", "failed", "Browser check", "Failed on iPhone 16", "couldn't click Save"]],
+    },
+    {
+      name: "a check that failed with no word of why says it once",
+      outcome: outcome({
+        live: [service("appdev", { word: "Dev server running" })],
+        checks: checks([withoutPicture(take("op:b1", `${APPDEV}/admin`, { phase: "failed" }))]),
+      }),
+      facts: {},
+      rows: [
+        ["broken", "failed", "appdev", "Check of /admin failed"],
+        ["running", "ok", "appdev", "Dev server running"],
+      ],
+    },
     {
       name: "a dev server that is not running waits for the person",
       outcome: outcome({
@@ -521,20 +580,15 @@ describe("resultRows", () => {
     expect(resultRows(model, now).map(read)).toEqual(rows);
   });
 
-  // The pictures are the checks': each page's last one, and a page's link
-  // is where the row opens when its service's own address is unknown.
-  it("shows each passed page's last picture and opens the app where it was checked", () => {
+  // A page's link is where the row opens when its service's own address is
+  // unknown.
+  it("opens the app where it was checked", () => {
     const [row] = resultRows(
       outcome({
         live: [service("appdev", { word: "Dev server running" })],
-        checks: checks([
-          take("op:b1", `${APPDEV}/status`),
-          take("op:b2", `${APPDEV}/status`, { deviceName: "iPhone 16" }),
-          withoutPicture(take("op:b3", `${APPDEV}/health`)),
-        ]),
+        checks: checks([take("op:b1", `${APPDEV}/status`), take("op:b2", `${APPDEV}/health`)]),
       }),
     );
-    expect(row?.pictures.map((picture) => picture.key)).toEqual(["op:b2"]);
     expect(row?.url).toBe(`${APPDEV}/status`);
   });
 
@@ -679,6 +733,25 @@ describe("resultRows", () => {
       },
     },
     {
+      name: "a check with no address that stayed failed",
+      outcome: outcome({
+        checks: checks([
+          take("op:b1", "the page", {
+            phase: "failed",
+            closing: "The page never loaded.",
+            settledAt: at(4),
+          }),
+        ]),
+      }),
+      facts: {},
+      problem: {
+        what: "A check in the browser failed",
+        at: at(4),
+        error: "The page never loaded",
+        ask: "Find out why, fix it, and check the page again.",
+      },
+    },
+    {
       name: "something that did not go through",
       outcome: outcome({
         notDone: [
@@ -702,6 +775,76 @@ describe("resultRows", () => {
   ])("offers the fix for $name", ({ outcome: model, facts: now, problem }) => {
     const [row] = resultRows(model, now);
     expect(row?.action).toEqual({ kind: "fix", problem });
+  });
+});
+
+describe("resultPictures", () => {
+  const checkPicture = (
+    key: string,
+    caption: string,
+    overrides: Partial<Extract<OutcomePicture, { kind: "check" }>> = {},
+  ): OutcomePicture => ({
+    kind: "check",
+    key,
+    src: `data:image/png;base64,${key}`,
+    caption,
+    page: `appdev-1f3c-3000.prg1.example.app${caption}`,
+    device: null,
+    failed: false,
+    ...overrides,
+  });
+  const filePicture = (path: string): OutcomePicture => ({
+    kind: "file",
+    key: `file:${path}`,
+    path,
+    name: path.split("/").at(-1)!,
+  });
+
+  // Every picture the run took or looked at, in the order it was taken, each
+  // named by what it is — the words its tooltip and the viewer say.
+  it.each([
+    {
+      name: "the run's pictures, in the order taken, each named by what it is",
+      outcome: outcome({
+        pictures: [
+          checkPicture("op:b1", "/status"),
+          filePicture("/var/www/shots/home-mobile.png"),
+          checkPicture("op:b2", "/", { device: "iPhone 16" }),
+        ],
+      }),
+      labels: ["/status in the browser", "home-mobile.png", "/ on iPhone 16"],
+    },
+    {
+      name: "a check that stayed failed says so",
+      outcome: outcome({ pictures: [checkPicture("op:b1", "/admin", { failed: true })] }),
+      labels: ["/admin in the browser, failed"],
+    },
+    {
+      name: "a check with no address names the page as its check did",
+      outcome: outcome({
+        pictures: [checkPicture("op:b1", "the page", { page: "the page" })],
+      }),
+      labels: ["the page in the browser"],
+    },
+    {
+      name: "a page a later run checked again is that run's picture now",
+      outcome: outcome({
+        pictures: [checkPicture("op:b1", "/status"), filePicture("/var/www/shots/home.png")],
+        later: later({ pages: ["appdev-1f3c-3000.prg1.example.app/status"] }),
+      }),
+      labels: ["home.png"],
+    },
+    {
+      name: "a file a later run looked at again is that run's picture now",
+      outcome: outcome({
+        pictures: [checkPicture("op:b1", "/status"), filePicture("/var/www/shots/home.png")],
+        later: later({ files: ["/var/www/shots/home.png"] }),
+      }),
+      labels: ["/status in the browser"],
+    },
+    { name: "a run that took no picture has none", outcome: NOVA, labels: [] },
+  ])("$name", ({ outcome: model, labels }) => {
+    expect(resultPictures(model).map((picture) => picture.label)).toEqual(labels);
   });
 });
 

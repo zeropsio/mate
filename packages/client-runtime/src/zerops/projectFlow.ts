@@ -111,6 +111,13 @@ export interface FlowPullRequest {
   readonly mergeBase?: string | undefined;
   /** The base branch's head as read: past {@link mergeBase}, `main` moved on since. */
   readonly baseSha?: string | undefined;
+  /**
+   * Its description as its author wrote it, Markdown with its pictures; `undefined` where none was
+   * written. What a review reads first.
+   */
+  readonly description?: string | undefined;
+  /** How many comments were said on it, as Gitea counts them: the room its conversation takes. */
+  readonly commentCount?: number | undefined;
 }
 
 /** The default branch until Gitea says otherwise. */
@@ -162,6 +169,8 @@ export function flowPullRequest(input: {
     changedFiles: pull.changed_files,
     mergeBase: pull.merge_base,
     baseSha: pull.base?.sha,
+    description: pull.body === undefined || pull.body.trim().length === 0 ? undefined : pull.body,
+    commentCount: pull.comments,
   };
 }
 
@@ -341,34 +350,6 @@ export function changeAuthorName(
   mateName: string | undefined,
 ): string | undefined {
   return pull.mateProjectId === undefined ? pull.author : mateName;
-}
-
-/**
- * A change's one line under its title.
- *
- * It used to be `shop · appdev · main` — the Gitea org, the repository and the
- * base branch, three bare nouns whose first is the project's name with a
- * typo's worth of difference, and whose relationship to each other the reader
- * had to guess. Meanwhile the number, the author and the age sat in a
- * definition list below, where a line of provenance has no business being.
- *
- * So the provenance is one line and reads as one: which change, in what, going
- * where, from whom, how long ago. Anything not known is left out rather than
- * drawn as a gap.
- */
-export function changeSubtitle(input: {
-  readonly number: number;
-  readonly repository: string;
-  readonly baseBranch: string;
-  /** Who wrote it, already resolved to a name — never a bot login. */
-  readonly author: string | undefined;
-  /** How long since it last moved, as `historyAge` says it. */
-  readonly age: string | undefined;
-}): string {
-  const parts = [`#${String(input.number)}`, `${input.repository} → ${input.baseBranch}`];
-  if (input.author !== undefined) parts.push(input.author);
-  if (input.age !== undefined) parts.push(input.age);
-  return parts.join(" · ");
 }
 
 /** Where a change stands, as one word and the tone that means it. */

@@ -62,6 +62,20 @@ export function fixMatesOf(input: {
 }
 
 /**
+ * The Mate a run's problem goes to: the run's own, and only while it is the
+ * person's. The problem was found in its conversation, in its services, and
+ * only the person who signed it in runs it (D6) — another of the person's
+ * Mates would be pointed at a service that is not its own, and a colleague's
+ * Mate is the colleague's to ask. `options` are `fixMatesOf`'s.
+ */
+export function runFixMate(
+  options: ReadonlyArray<FixMateOption>,
+  runProjectId: string,
+): FixMateOption | undefined {
+  return options.find((option) => option.mateProjectId === runProjectId);
+}
+
+/**
  * The Mates a fix found by the Mate of project `projectId` can go to, in the
  * order they are offered; empty until the listing names one.
  */

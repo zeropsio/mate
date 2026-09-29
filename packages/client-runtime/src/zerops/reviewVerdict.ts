@@ -505,9 +505,13 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
     "checks-running": "Merging waits for the checks to finish.",
     checking: "Merging waits until Gitea knows it merges cleanly.",
   };
-  // What holds it back is the change's own trouble; files still being read hold it only briefly,
-  // and the sentence stays what Merge will do.
-  const held = verdictOf.enabled ? squash : (waits[verdict.state] ?? squash);
+  // What holds it back, said beside it: the change's own trouble, or — for a change nothing is
+  // wrong with — its files still being read, which Merge waits for.
+  const held = verdictOf.enabled
+    ? input.readout === "reading"
+      ? "Merging waits until its files are read."
+      : squash
+    : (waits[verdict.state] ?? squash);
 
   if (press.kind === "running") {
     return {
@@ -544,7 +548,7 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
   const safeOnceRead = verdictOf.enabled && verdict.state !== "behind-clean";
   return {
     verdict,
-    consequence: enabled ? squash : held,
+    consequence: held,
     primary: {
       label: "Merge",
       enabled,

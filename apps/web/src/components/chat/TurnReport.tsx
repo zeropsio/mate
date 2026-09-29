@@ -2,41 +2,54 @@
  * What a finished run left, as its result: rows in the card's grid under its
  * worked line, most important first — anything still broken, then what waits
  * for the person, then what runs because of the run with its checks attached
- * (K5). Not pills and not a log: a failure the run came back from, a retry,
- * and what its calls came to are the work's, one click away (K6, K9). Each
- * row follows the real thing — the change merged, the service redeployed by
- * a later run or stopped since (`runResult.logic.ts`, `runResultFacts.ts`).
+ * (K5) — and under them the pictures it took and looked at, in one strip.
+ * Not pills and not a log: a failure the run came back from, a retry, and
+ * what its calls came to are the work's, one click away (K6, K9). Each row
+ * follows the real thing — the change merged, the service redeployed by a
+ * later run or stopped since (`runResult.logic.ts`, `runResultFacts.ts`).
  *
  * A row's mark stands in the card's 28 px column — a state's dot, or a glyph
  * for what the thing is — its words one column in, and its actions on the
- * card's right edge: the pictures its checks took, a blue text action, a way
- * to open what it runs. The rows rise in once, 40 ms apart, when the run
- * finished while the person watched (T5); read later, they are simply there.
+ * card's right edge: a blue text action, a way to open what it runs. The
+ * strip stands on the same words edge. The rows and the strip rise in once,
+ * 40 ms apart, when the run finished while the person watched (T5); read
+ * later, they are simply there.
  */
-import type { TurnId } from "@t3tools/contracts";
+import type { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
+import { ArrowUpRightIcon, GitPullRequestIcon, TriangleAlertIcon, UsersIcon } from "lucide-react";
 import {
-  ArrowUpRightIcon,
-  ChevronDownIcon,
-  GitPullRequestIcon,
-  TriangleAlertIcon,
-  UsersIcon,
-} from "lucide-react";
-import { useCallback, useContext, useMemo, useState, type CSSProperties } from "react";
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+  type AnimationEvent,
+  type CSSProperties,
+} from "react";
 
+import { useAssetUrlState, useAssetUrls, type AssetUrlState } from "../../assets/assetUrls";
 import { formatDayAwareTimestamp } from "../../timestampFormat";
-import { useFixMates } from "../../zerops/fixMates";
+import { runFixMate, useFixMates } from "../../zerops/fixMates";
 import { useAskMateToFix, type FixProblem } from "../../zerops/fixRequest";
 import { useOpenReview } from "../../zerops/review";
 import { useZeropsSessionOptional } from "../../zerops/sessionContext";
 import { ServiceBrowserLink } from "../ServiceBrowserLink";
-import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
-import { browserCheckCaption, type OutcomeModel } from "./conversation.logic";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import type { OutcomeModel } from "./conversation.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
-import { resultRows, type ResultFacts, type ResultRow } from "./runResult.logic";
+import {
+  resultPictures,
+  resultRows,
+  type ResultFacts,
+  type ResultPicture,
+  type ResultRow,
+} from "./runResult.logic";
 import { useRunResultFacts } from "./runResultFacts";
 import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
 
 const NOTHING_RISING: ReadonlySet<string> = new Set();
+
+/** The strip's key among what rises: the rows' are theirs. */
+const PICTURES = "pictures";
 
 function compactCount(value: number): string {
   return value >= 1000 ? `${(value / 1000).toFixed(value >= 10_000 ? 0 : 1)}k` : String(value);
@@ -108,9 +121,11 @@ function RowSub({
 type MateOfRun = ResultFacts["mate"];
 
 /**
- * "Ask Nova to fix it" (S6): the person's own Mate, the one they used last in
- * the project, with the problem written into its composer — not sent; a menu
- * picks another of theirs. Outside a Zerops session there is no Mate to ask.
+ * "Ask Nova to fix it" (S6): the run's own Mate, with the problem written into
+ * its composer — not sent. Only while it is the person's: a colleague's Mate is
+ * theirs to ask (D6), and another of the person's would be pointed at a service
+ * that is not its own (`runFixMate`). Outside a Zerops session there is no Mate
+ * to ask.
  */
 function FixAction({ problem, mate }: { readonly problem: FixProblem; readonly mate: MateOfRun }) {
   const session = useZeropsSessionOptional();
@@ -125,81 +140,28 @@ function FixActionOffer({
   readonly problem: FixProblem;
   readonly mate: NonNullable<MateOfRun>;
 }) {
-  const mates = useFixMates(mate);
+  const fixer = runFixMate(useFixMates(mate), mate.projectId);
   const askToFix = useAskMateToFix();
-  const [first, ...others] = mates;
-  if (first === undefined) return null;
+  if (fixer === undefined) return null;
   return (
-    <span className="run-result-fix">
-      <button
-        className="run-result-action"
-        onClick={() => askToFix(first.mateProjectId, problem)}
-        type="button"
-      >
-        Ask {first.name} to fix it
-      </button>
-      {others.length === 0 ? null : (
-        <Menu>
-          <MenuTrigger
-            render={
-              <button
-                aria-label="Ask another Mate to fix it"
-                className="run-result-open"
-                type="button"
-              />
-            }
-          >
-            <ChevronDownIcon aria-hidden="true" className="size-3.5" />
-          </MenuTrigger>
-          <MenuPopup align="end">
-            {others.map((other) => (
-              <MenuItem
-                key={other.mateProjectId}
-                onClick={() => askToFix(other.mateProjectId, problem)}
-              >
-                Ask {other.name}
-              </MenuItem>
-            ))}
-          </MenuPopup>
-        </Menu>
-      )}
-    </span>
+    <button
+      className="run-result-action"
+      onClick={() => askToFix(fixer.mateProjectId, problem)}
+      type="button"
+    >
+      Ask {fixer.name} to fix it
+    </button>
   );
 }
 
-function RowEnd({
-  row,
-  mate,
-  onOpenImage,
-}: {
-  readonly row: ResultRow;
-  readonly mate: MateOfRun;
-  readonly onOpenImage: (preview: ExpandedImagePreview) => void;
-}) {
+function RowEnd({ row, mate }: { readonly row: ResultRow; readonly mate: MateOfRun }) {
   const openReview = useOpenReview();
-  const { action, pictures, url } = row;
+  const { action, url } = row;
   const review = action?.kind === "review" ? action.target : null;
   const fix = action?.kind === "fix" ? action.problem : null;
-  if (pictures.length === 0 && action === null && url === null) return <span />;
-  const images = pictures.flatMap((take) =>
-    take.screenshot ? [{ src: take.screenshot.src, name: browserCheckCaption(take) }] : [],
-  );
+  if (action === null && url === null) return <span />;
   return (
     <span className="run-result-end">
-      {pictures.map((take, index) =>
-        take.screenshot ? (
-          <button
-            key={take.key}
-            aria-label={`${browserCheckCaption(take)}${take.deviceName ? ` on ${take.deviceName}` : ""}. Open the screenshot`}
-            className="run-result-picture"
-            data-result-picture
-            onClick={() => onOpenImage({ images, index })}
-            type="button"
-          >
-            <img alt="" src={take.screenshot.src} />
-          </button>
-        ) : null,
-      )}
       {fix === null ? null : <FixAction mate={mate} problem={fix} />}
       {review === null ? null : (
         <button
@@ -227,12 +189,268 @@ function RowEnd({
   );
 }
 
+/** At most this many tiles stand in the strip; the last says how many more the viewer holds. */
+const STRIP_TILES = 6;
+
+/** The pictures' files, by path, as a harness gives them where the app does not read them. */
+export type ResultFiles = ReadonlyMap<string, AssetUrlState>;
+
+const LOADING: AssetUrlState = { _tag: "Loading" };
+
+const NO_FILES: ResultFiles = new Map();
+
+/**
+ * Where the strip reads a file's picture: the Mate's workspace — each file's
+ * address once the workspace gave one — or the files a harness gives.
+ */
+type FileSource =
+  | {
+      readonly kind: "workspace";
+      readonly environmentId: EnvironmentId;
+      readonly threadId: ThreadId;
+      readonly urls: ReadonlyMap<string, string>;
+    }
+  | { readonly kind: "given"; readonly files: ResultFiles };
+
+/**
+ * One picture of the strip, in its tile: the page's top, whatever its shape,
+ * so a phone's screenshot shows its top. While its file is read, a quiet tile
+ * of the same size; a file that is gone keeps its tile, muted, saying so.
+ * The last tile of a run with more says how many more over its picture.
+ */
+function PictureTile({
+  picture,
+  state,
+  more,
+  onOpen,
+}: {
+  readonly picture: ResultPicture;
+  readonly state: AssetUrlState;
+  /** The pictures past the strip's last tile. */
+  readonly more: number;
+  /** Opens the viewer here; null where nothing here can be opened. */
+  readonly onOpen: (() => void) | null;
+}) {
+  const status = state._tag === "Success" ? "ready" : state._tag === "Failure" ? "gone" : "loading";
+  const own = status === "gone" ? `${picture.label}, gone` : picture.label;
+  const said = more > 0 ? `${own}, and ${more} more` : own;
+  const failed = (picture.kind === "check" && picture.failed) || undefined;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          onOpen === null ? (
+            <span
+              aria-label={said}
+              className="run-result-tile"
+              data-failed={failed}
+              data-result-picture={status}
+              role="img"
+            />
+          ) : (
+            <button
+              aria-label={`${said}. Open ${more > 0 ? "the pictures" : "the picture"}`}
+              className="run-result-tile"
+              data-failed={failed}
+              data-result-picture={status}
+              onClick={onOpen}
+              type="button"
+            />
+          )
+        }
+      >
+        {state._tag === "Success" ? <img alt="" src={state.url} /> : null}
+        {/* The count stands for the rest over a last tile whose own file is gone. */}
+        {status === "gone" && more === 0 ? <span className="run-result-gone">Gone</span> : null}
+        {more > 0 ? <span className="run-result-more">+{more}</span> : null}
+      </TooltipTrigger>
+      <TooltipPopup side="bottom">{said}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
+/** A file's tile, its picture read from the Mate's workspace. */
+function WorkspaceTile({
+  environmentId,
+  threadId,
+  picture,
+  more,
+  onOpen,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+  readonly picture: Extract<ResultPicture, { kind: "file" }>;
+  readonly more: number;
+  readonly onOpen: (() => void) | null;
+}) {
+  const state = useAssetUrlState(environmentId, {
+    _tag: "workspace-file",
+    threadId,
+    path: picture.path,
+  });
+  return <PictureTile more={more} onOpen={onOpen} picture={picture} state={state} />;
+}
+
+/** A file's tile, read where the strip reads its files. */
+function FileTile({
+  source,
+  picture,
+  more,
+  onOpen,
+}: {
+  readonly source: FileSource;
+  readonly picture: Extract<ResultPicture, { kind: "file" }>;
+  readonly more: number;
+  readonly onOpen: (() => void) | null;
+}) {
+  if (source.kind === "given") {
+    const state = source.files.get(picture.path) ?? LOADING;
+    return <PictureTile more={more} onOpen={onOpen} picture={picture} state={state} />;
+  }
+  return (
+    <WorkspaceTile
+      environmentId={source.environmentId}
+      more={more}
+      onOpen={onOpen}
+      picture={picture}
+      threadId={source.threadId}
+    />
+  );
+}
+
+/** Where a picture is read from now: a check's own pixels, a file once its address is known. */
+function pictureUrl(picture: ResultPicture, source: FileSource): string | null {
+  if (picture.kind === "check") return picture.src;
+  if (source.kind === "workspace") return source.urls.get(picture.path) ?? null;
+  const state = source.files.get(picture.path);
+  return state?._tag === "Success" ? state.url : null;
+}
+
+/**
+ * The run's pictures as one strip under its rows (the owner, 2026-09-29: "if
+ * anything it should show the screenshots"): six uniform tiles at most, in
+ * the order they were taken. A click opens the viewer on every one of them,
+ * from the one clicked; the last tile of a run with more opens it there, on
+ * its way to the rest.
+ */
+function PictureStrip({
+  pictures,
+  source,
+  onOpenImage,
+}: {
+  readonly pictures: ReadonlyArray<ResultPicture>;
+  readonly source: FileSource;
+  readonly onOpenImage: (preview: ExpandedImagePreview) => void;
+}) {
+  const shown = pictures.slice(0, STRIP_TILES);
+  const more = pictures.length - shown.length;
+  const viewable = pictures.flatMap((picture, at) => {
+    const src = pictureUrl(picture, source);
+    return src === null ? [] : [{ at, src, name: picture.label }];
+  });
+  // Opens the viewer on the first picture it can show among those a tile
+  // stands for: the last tile of a run with more still reaches the rest when
+  // its own picture is gone.
+  const opener = (from: number, reach: number): (() => void) | null => {
+    const start = viewable.findIndex(({ at }) => at >= from && at < from + reach);
+    if (start < 0) return null;
+    return () =>
+      onOpenImage({ images: viewable.map(({ src, name }) => ({ src, name })), index: start });
+  };
+  return (
+    <div className="run-result-strip" data-result-strip>
+      {shown.map((picture, index) => {
+        const last = index === shown.length - 1 && more > 0;
+        const tileMore = last ? more : 0;
+        const onOpen = opener(index, last ? pictures.length - index : 1);
+        return picture.kind === "file" ? (
+          <FileTile
+            key={picture.key}
+            more={tileMore}
+            onOpen={onOpen}
+            picture={picture}
+            source={source}
+          />
+        ) : (
+          <PictureTile
+            key={picture.key}
+            more={tileMore}
+            onOpen={onOpen}
+            picture={picture}
+            state={{ _tag: "Success", url: picture.src }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+/** The strip, its files read from the conversation's workspace. */
+function WorkspaceStrip({
+  environmentId,
+  threadId,
+  pictures,
+  onOpenImage,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+  readonly pictures: ReadonlyArray<ResultPicture>;
+  readonly onOpenImage: (preview: ExpandedImagePreview) => void;
+}) {
+  const paths = useMemo(
+    () => pictures.flatMap((picture) => (picture.kind === "file" ? [picture.path] : [])),
+    [pictures],
+  );
+  const resources = useMemo(
+    () => paths.map((path) => ({ _tag: "workspace-file" as const, threadId, path })),
+    [paths, threadId],
+  );
+  const read = useAssetUrls(environmentId, resources);
+  const source = useMemo<FileSource>(
+    () => ({
+      kind: "workspace",
+      environmentId,
+      threadId,
+      urls: new Map(
+        paths.flatMap((path, index) => {
+          const url = read[index];
+          return url === null || url === undefined ? [] : [[path, url] as const];
+        }),
+      ),
+    }),
+    [environmentId, paths, read, threadId],
+  );
+  return <PictureStrip onOpenImage={onOpenImage} pictures={pictures} source={source} />;
+}
+
+/** What makes a part of the result rise in once (T5), and drop its rise once it ended. */
+function riseOf(
+  key: string,
+  index: number,
+  rising: ReadonlySet<string>,
+  risen: (key: string) => void,
+): {
+  readonly "data-rising"?: true;
+  readonly style?: CSSProperties;
+  readonly onAnimationEnd?: (event: AnimationEvent<HTMLElement>) => void;
+} {
+  if (!rising.has(key)) return {};
+  return {
+    "data-rising": true,
+    style: { "--row-index": index } as CSSProperties,
+    onAnimationEnd: (event) => {
+      if (event.target === event.currentTarget) risen(key);
+    },
+  };
+}
+
 export function TurnReport({
   outcome,
   onOpenTurnDiff,
   onOpenImage,
   settling = false,
   facts,
+  files,
 }: {
   readonly outcome: OutcomeModel;
   readonly onOpenTurnDiff: (turnId: TurnId) => void;
@@ -241,16 +459,30 @@ export function TurnReport({
   readonly settling?: boolean;
   /** What is true now outside the run, where it is not read from the app (a harness). */
   readonly facts?: ResultFacts;
+  /** The pictures' files, where they are not read from the app's workspace (a harness). */
+  readonly files?: ResultFiles;
 }) {
   const read = useRunResultFacts(outcome);
   const now = facts ?? read;
   const rows = useMemo(() => resultRows(outcome, now), [now, outcome]);
+  const timeline = useContext(TimelineRowCtx) as TimelineRowSharedState | null;
+  const threadRef = timeline?.threadRef ?? null;
+  // Outside a conversation there is no workspace to read a file from: only
+  // what the checks took stands.
+  const workspace = files !== undefined || threadRef !== null;
+  const all = useMemo(() => resultPictures(outcome), [outcome]);
+  const pictures = useMemo(
+    () => (workspace ? all : all.filter((picture) => picture.kind === "check")),
+    [all, workspace],
+  );
   // The rows the result arrived with, while the person watched, rise once
   // and drop their rise as it ends: a row that turns up later is simply
   // there, and one that moves later (a service stopping tonight moves up to
-  // the broken rows) never replays the arrival.
+  // the broken rows) never replays the arrival. The strip rises last.
   const [rising, setRising] = useState<ReadonlySet<string>>(() =>
-    settling ? new Set(rows.map((row) => row.key)) : NOTHING_RISING,
+    settling
+      ? new Set([...rows.map((row) => row.key), ...(pictures.length > 0 ? [PICTURES] : [])])
+      : NOTHING_RISING,
   );
   const risen = useCallback((key: string) => {
     setRising((current) => {
@@ -260,7 +492,7 @@ export function TurnReport({
       return next;
     });
   }, []);
-  if (rows.length === 0) return null;
+  if (rows.length === 0 && pictures.length === 0) return null;
   return (
     <section aria-label="What this run left" className="run-result" data-turn-report>
       {rows.map((row, index) => (
@@ -268,16 +500,8 @@ export function TurnReport({
           key={row.key}
           className="run-result-row"
           data-result-row={row.group}
-          data-rising={rising.has(row.key) || undefined}
           data-tall={row.sub !== null || undefined}
-          onAnimationEnd={
-            rising.has(row.key)
-              ? (event) => {
-                  if (event.target === event.currentTarget) risen(row.key);
-                }
-              : undefined
-          }
-          style={rising.has(row.key) ? ({ "--row-index": index } as CSSProperties) : undefined}
+          {...riseOf(row.key, index, rising, risen)}
         >
           <RowMark row={row} />
           <div className="min-w-0">
@@ -292,9 +516,27 @@ export function TurnReport({
             </div>
             <RowSub onOpenTurnDiff={onOpenTurnDiff} row={row} />
           </div>
-          <RowEnd mate={now.mate} onOpenImage={onOpenImage} row={row} />
+          <RowEnd mate={now.mate} row={row} />
         </div>
       ))}
+      {pictures.length === 0 ? null : (
+        <div className="run-result-pictures" {...riseOf(PICTURES, rows.length, rising, risen)}>
+          {files !== undefined || threadRef === null ? (
+            <PictureStrip
+              onOpenImage={onOpenImage}
+              pictures={pictures}
+              source={{ kind: "given", files: files ?? NO_FILES }}
+            />
+          ) : (
+            <WorkspaceStrip
+              environmentId={threadRef.environmentId}
+              onOpenImage={onOpenImage}
+              pictures={pictures}
+              threadId={threadRef.threadId}
+            />
+          )}
+        </div>
+      )}
     </section>
   );
 }

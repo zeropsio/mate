@@ -480,7 +480,6 @@ export {
   changeLandedEvents,
   type ChangeLandedEvent,
   changeState,
-  changeSubtitle,
   mergeConsequence,
   pullRequestMergeLine,
   pullRequestsFolded,

@@ -12,7 +12,7 @@
  * forty-minute run, all 27 "background tasks" were commands the Mate waited on.
  */
 import type { WorkLogEntry } from "../../session-logic";
-import { namedToolCall, toolCallWords } from "./conversation.logic";
+import { lookedAt, namedToolCall, toolCallWords } from "./conversation.logic";
 
 export type StepKind = "command" | "look" | "read" | "edit" | "search" | "web" | "tool";
 
@@ -272,14 +272,6 @@ function stepKind(entry: WorkLogEntry): StepKind {
     return "edit";
   }
   return "tool";
-}
-
-function lookedAt(entry: WorkLogEntry): string | null {
-  return (
-    entry.viewedImagePath ??
-    entry.callInput?.filePath ??
-    (entry.detail !== undefined && /^\/\S+$/.test(entry.detail.trim()) ? entry.detail.trim() : null)
-  );
 }
 
 function listed(names: ReadonlyArray<string>): string {

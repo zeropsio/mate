@@ -5,7 +5,7 @@ import {
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
 import { ZapIcon } from "lucide-react";
-import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Badge } from "../ui/badge";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -83,6 +83,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
 }) {
   const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
   const isMenuOpen = props.open ?? uncontrolledIsMenuOpen;
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // Resolve the active instance entry by exact routing key. The composer
   // resolves fallbacks before rendering this component; if the selected
@@ -154,8 +155,10 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       body.style.paddingRight = `${scrollbarWidth}px`;
     }
 
+    // The wheel and a touch drag scroll what the open menu holds — its model
+    // list and, in the composer, the choices beside it — and nothing behind it.
     const shouldAllowOverlayScroll = (target: EventTarget | null) => {
-      return target instanceof Element && target.closest("[data-model-picker-content]");
+      return target instanceof Node && menuRef.current?.contains(target) === true;
     };
     const preventBackgroundWheel = (event: WheelEvent) => {
       if (shouldAllowOverlayScroll(event.target)) {
@@ -273,7 +276,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           ) : null}
           <ComposerControlChevron size="quiet" />
         </PopoverTrigger>
-        <PopoverPopup align="start" className="before:hidden" padding="none">
+        <PopoverPopup align="start" className="before:hidden" padding="none" ref={menuRef}>
           <div className="composer-model-menu">
             {content}
             {props.composer.choices}
@@ -339,7 +342,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           <ComposerControlChevron />
         </span>
       </PopoverTrigger>
-      <PopoverPopup align="start" className="before:hidden" padding="none">
+      <PopoverPopup align="start" className="before:hidden" padding="none" ref={menuRef}>
         {content}
       </PopoverPopup>
     </Popover>

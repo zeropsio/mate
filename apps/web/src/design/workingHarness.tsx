@@ -309,13 +309,14 @@ const REPORT: OutcomeModel = {
   landed: [],
   files: { count: 3, additions: 42, deletions: 7, turnId: TurnId.make("turn-1") },
   checks: { count: 5, views: 2, failures: 0, takes: [] },
+  pictures: [],
   created: [],
   notDone: [],
   planLeft: [],
   change: null,
   crewTask: null,
   activity: [],
-  later: { services: [], changes: [], tasks: [], pages: [], answered: false },
+  later: { services: [], changes: [], tasks: [], pages: [], files: [], answered: false },
 };
 
 const TURN = TurnId.make("turn-1");

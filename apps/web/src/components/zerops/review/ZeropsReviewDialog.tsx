@@ -23,6 +23,7 @@ import {
   pressesPrimary,
   reviewOrigin,
 } from "./ZeropsReview.logic";
+import { isField } from "./ZeropsReviewSurface";
 
 const ReviewPortal = gatedPortal(DialogPrimitive.Portal);
 
@@ -111,7 +112,13 @@ export function ZeropsReviewDialog({
     if (primary === null) return;
     if (
       !pressesPrimary(
-        { key: event.key, metaKey: event.metaKey, ctrlKey: event.ctrlKey, repeat: event.repeat },
+        {
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          repeat: event.repeat,
+          inField: isField(event.target),
+        },
         { safe: primary.dataset.safe === "true", enabled: !primary.disabled },
       )
     ) {

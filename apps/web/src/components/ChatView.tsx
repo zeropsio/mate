@@ -345,9 +345,9 @@ import { TimelineSwitch } from "./chat/TimelineSwitch";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
 import {
-  ConversationStrip,
   useAlsoWorkingBanner,
   useCrewStripGroups,
+  useConversationStripShown,
   useLoneChatNewChat,
 } from "./chat/ConversationStrip";
 import { replacementChatToPin } from "./chat/ConversationStrip.logic";
@@ -5414,6 +5414,22 @@ export default function ChatView(props: ChatViewProps) {
     currentThreadId: isServerThread ? threadId : null,
     extraGroups: crewStripGroups,
   });
+  // A second chat or a crew: the strip takes the header's line, and what the
+  // chat on screen is about reads on the line under it (`ChatHeader`).
+  const stripShown = useConversationStripShown({
+    environmentId,
+    currentThreadId: isServerThread ? threadId : null,
+    extraGroups: crewStripGroups,
+  });
+  const activeProjectId = activeThread?.projectId ?? null;
+  const headerStrip = useMemo(
+    () =>
+      stripShown && activeProjectId !== null
+        ? { projectId: activeProjectId, extraGroups: crewStripGroups }
+        : null,
+    [activeProjectId, crewStripGroups, stripShown],
+  );
+  const [subjectSlot, setSubjectSlot] = useState<HTMLDivElement | null>(null);
 
   const feedbackBannerItems = useMemo(
     () =>
@@ -8041,6 +8057,8 @@ export default function ChatView(props: ChatViewProps) {
             onNewThreadInProject={handleNewThreadInActiveProject}
             onStartFresh={startFreshConversation}
             onEditCrewmateJob={setEditingCrewmate}
+            strip={headerStrip}
+            subjectSlot={subjectSlot}
             {...(startSecondChat === null ? {} : { onNewChat: startSecondChat })}
             {...(activeDraftLogicalProjectKey
               ? { onOpenProjectSettings: handleOpenDraftProjectSettings }
@@ -8051,12 +8069,18 @@ export default function ChatView(props: ChatViewProps) {
             onDeleteProjectScript={deleteProjectScript}
           />
         </WorkspacePageHeader>
-        <ConversationStrip
-          environmentId={activeThread.environmentId}
-          projectId={activeThread.projectId}
-          currentThreadId={isServerThread ? activeThread.id : null}
-          extraGroups={crewStripGroups}
-        />
+        {/* Under the strip, on the names' edge and tucked into the header's
+            last pixels: what the chat on screen is about. The line stands
+            while the strip does, so a first message moves nothing. */}
+        {headerStrip === null ? null : (
+          <div className="relative -mt-3 flex h-6 shrink-0 items-center ps-(--workspace-gutter-start) pe-(--workspace-gutter-end)">
+            <div
+              className="ms-7.5 flex min-w-0 flex-1 items-center text-line"
+              data-conversation-subject
+              ref={setSubjectSlot}
+            />
+          </div>
+        )}
         {/* A crewmate with a copy of the code shows it where a person's chat
             shows its lifecycle (seam S7); the lead says what it does instead. */}
         {activeCrewmate?.crewmate.kind === "lead" ? (

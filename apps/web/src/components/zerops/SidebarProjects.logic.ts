@@ -1,27 +1,57 @@
 /**
- * How the left menu lays its projects out, one after another, and lands a
- * reveal on the row it asked for.
+ * How the left menu lays its projects out, one after another, lands a reveal
+ * on the row it asked for, and whether its foot offers *New project*.
  *
  * A heading never moves when it is clicked (M9). The room between two
  * projects used to sit above a heading and depend on that project's own
  * state — 4 px folded, 36 px open — so opening one dropped its heading 32 px
- * under the pointer (measured 166 → 198). The room belongs to the end of an
- * open project instead: its rows unfold below the heading with the room after
- * them, and folded projects stack as a list of names.
+ * under the pointer (measured 166 → 198). The room belongs to the end of a
+ * project instead: an open one's rows unfold below the heading with the room
+ * after them, and folded projects stack as a list of names, each with its own
+ * few px under it — the room an unfold grows from and a fold shrinks back to.
  *
  * Pure: no React, no clock, no store.
  */
+import {
+  mateEnvironmentsEmptyReason,
+  type ZeropsPlacedBirth,
+} from "@t3tools/client-runtime/zerops";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
 
 import type { MateRowState } from "./SidebarMateRow.logic";
 
 /**
+ * Whether the menu's foot offers *New project* (D11), pinned above the
+ * account's row whatever the list's length (the owner, 2026-09-29): from the
+ * first paint, while the listing is still read, and where the account has
+ * no project at all — there it is the one way in. Not where the listing says
+ * the account has projects and none with a Mate: the list's own *Set up
+ * Mate* is the one thing to do there.
+ */
+export function newProjectOffered(input: {
+  readonly candidates: ReadonlyArray<ZeropsCandidate>;
+  /** The creations under way: a Mate being made is a Mate to list. */
+  readonly births: ReadonlyArray<ZeropsPlacedBirth>;
+  /** The listing is known and complete (`candidatesComplete`). */
+  readonly complete: boolean;
+}): boolean {
+  if (!input.complete) return true;
+  if (input.births.some((birth) => birth.placement.kind === "mate")) return true;
+  return mateEnvironmentsEmptyReason(input.candidates) !== "no-mate";
+}
+
+/**
  * The room below a project's rows, in px: 44 while it is open (58 px from its
- * last row's words to the next heading's, M16), 16 at the list's end, none
- * while it is folded — its rows, and their room, fold into the heading.
+ * last row's words to the next heading's, M16), 16 at the list's end; 8 while
+ * it is folded — its rows and their room fold into the heading, and folded
+ * names stand 40 px apart rather than back to back (the owner, 2026-09-29:
+ * "increase the spacing between a little") — and none at the list's end.
+ * Folded or open, the room is the project's own, below its heading, so a
+ * heading's own fold never moves it.
  */
 export function projectRoom(at: { readonly open: boolean; readonly last: boolean }): number {
-  if (!at.open) return 0;
+  if (!at.open) return at.last ? 0 : 8;
   return at.last ? 16 : 44;
 }
 

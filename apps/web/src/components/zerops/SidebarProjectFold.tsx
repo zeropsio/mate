@@ -2,10 +2,12 @@
  * A project's rows as they unfold under its heading and fold back into it.
  *
  * The heading never moves (M9, T3): everything a project keeps — its rows and
- * the room after them (`projectRoom`) — is inside this fold, so opening it
- * only ever pushes what is below. Opening grows it from nothing to its height
- * as it fades in, over 220 ms on the menu's strong ease-out; folding shrinks
- * it back in 160 ms on an ease-in-out, and only then is it gone. A press in
+ * the room after them (`projectRoom`) — is below it, so opening it only ever
+ * pushes what is below. Folded, a project keeps a few px of room under its
+ * heading (`SidebarProjectFoldedRoom`); opening grows the fold from that room
+ * to its height as it fades in, over 220 ms on the menu's strong ease-out;
+ * folding shrinks it back to that room in 160 ms on an ease-in-out, and only
+ * then is it gone — so the room under the heading never jumps. A press in
  * the middle turns it round from wherever it stands. With reduced motion it
  * only fades in, and folds at once.
  *
@@ -33,6 +35,9 @@ const FOLD: KeyframeAnimationOptions = {
 
 /** The room below the rows, as the class that keeps it. */
 const ROOM_CLASS: Record<number, string> = { 0: "pb-0", 16: "pb-4", 44: "pb-11" };
+
+/** The room under a folded heading, as the class that keeps it; none at the list's end. */
+const FOLDED_ROOM_CLASS: Record<number, string | undefined> = { 0: undefined, 8: "h-2" };
 
 export function SidebarProjectFold({
   open,
@@ -69,9 +74,12 @@ export function SidebarProjectFold({
       settle();
       return;
     }
+    // What a folded project keeps under its heading: where an unfold starts
+    // and a fold ends, so the room there never jumps.
+    const rest = projectRoom({ open: false, last });
     // Where it stands now, mid-movement included; a fold just drawn to open
-    // starts from nothing.
-    const from = firstPaint && open ? 0 : element.getBoundingClientRect().height;
+    // starts from the room the folded heading kept.
+    const from = firstPaint && open ? rest : element.getBoundingClientRect().height;
     running.current?.cancel();
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (!open && reduced) {
@@ -92,7 +100,7 @@ export function SidebarProjectFold({
       : element.animate(
           [
             { height: `${String(from)}px`, opacity: 1 },
-            { height: "0px", opacity: 0 },
+            { height: `${String(rest)}px`, opacity: 0 },
           ],
           FOLD,
         );
@@ -102,7 +110,7 @@ export function SidebarProjectFold({
       if (open) element.style.overflow = "";
       settle();
     };
-  }, [open, motion]);
+  }, [open, motion, last]);
   return (
     <div data-zerops-surface="sidebar-project-rows" ref={fold}>
       {/* The heading's 2 px before the first row; the rows' own padding is the air. */}
@@ -110,5 +118,21 @@ export function SidebarProjectFold({
         {children}
       </div>
     </div>
+  );
+}
+
+/**
+ * What a folded project keeps under its heading once its rows have folded
+ * away (`projectRoom`): the few px that set folded names apart, which an
+ * unfold grows from. Nothing at the list's end.
+ */
+export function SidebarProjectFoldedRoom({ last }: { readonly last: boolean }) {
+  const room = FOLDED_ROOM_CLASS[projectRoom({ open: false, last })];
+  return room === undefined ? null : (
+    <div
+      aria-hidden="true"
+      className={cn(room, "shrink-0")}
+      data-zerops-surface="sidebar-project-room"
+    />
   );
 }

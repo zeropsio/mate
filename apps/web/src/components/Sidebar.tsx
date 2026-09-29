@@ -225,11 +225,13 @@ import { useNowMs } from "../zerops/useNowMs";
 import { useZeropsContainers } from "../zerops/zeropsContainers";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
 import {
+  SidebarNewProject,
   SidebarZeropsTree,
   type SidebarDrawn,
   type SidebarProjectFlow,
   type SidebarRemembered,
 } from "./zerops/SidebarZeropsTree";
+import { newProjectOffered } from "./zerops/SidebarProjects.logic";
 import { releaseFailureOf } from "./zerops/SidebarProductionChip.logic";
 import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
@@ -4129,7 +4131,6 @@ export default function Sidebar() {
               }}
               onAddMate={requestAddMate}
               onBrowseProjects={navigateToZeropsProjects}
-              onNewProject={navigateToNewZeropsProject}
               onAskToFix={(mateProjectId, problem) => {
                 if (isMobile) setOpenMobile(false);
                 askMateToFix(mateProjectId, problem);
@@ -4657,6 +4658,19 @@ export default function Sidebar() {
           ) : null}
         </SidebarGroup>
       </SidebarContent>
+      {/* *New project*, pinned just above the account's row whatever the
+          list's length (D11): the list scrolls under it, and fades into the
+          canvas above it only while something is scrolled there. */}
+      {zeropsSignedIn &&
+      !isSearchingThreads &&
+      zeropsSession.organizationStatus !== "needs-selection" &&
+      newProjectOffered({
+        candidates: zeropsCandidates,
+        births: zeropsPlacedBirths,
+        complete: zeropsHeld.complete,
+      }) ? (
+        <SidebarNewProject onNewProject={navigateToNewZeropsProject} />
+      ) : null}
       <SidebarChromeFooter />
     </>
   );

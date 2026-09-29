@@ -24,7 +24,7 @@ export interface ZeropsChangeRun {
   readonly words: string | undefined;
   /** The Mate's conversation is still being read. */
   readonly reading: boolean;
-  /** Where "The run that made it" goes. */
+  /** Where "The run that made it" goes: only where one of its answers links the change. */
   readonly threadRef: ScopedThreadRef | undefined;
 }
 
@@ -67,5 +67,10 @@ export function useZeropsChangeRun(
   const linked = changeRunMessage(messages, path);
   if (linked !== undefined)
     return { words: runWords(linked.text, path), reading: false, threadRef };
-  return { words: undefined, reading: status === "empty" || status === "synchronizing", threadRef };
+  // A conversation where no answer links it has no run that made it to go back to.
+  return {
+    words: undefined,
+    reading: status === "empty" || status === "synchronizing",
+    threadRef: undefined,
+  };
 }

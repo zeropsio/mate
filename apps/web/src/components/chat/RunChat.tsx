@@ -21,14 +21,19 @@
  * once a later step undid it — never a pink row (K9); what merely happened (a
  * context condensed, a change landed) a caption between hairlines.
  *
- * The card has no scroll of its own (K8), and nothing in it is cut without a
- * way to the rest (D4): a long run's earlier lines fold behind "Show N
- * earlier", a command at four lines and what it printed at twelve behind
- * "Show all N lines", a thought behind a click, a long message of the Mate's
- * behind "Show full message" — each opening in place, under the line the
- * person clicked, which stays where it is. A run the person comes back to
- * opens folded (K7): its worked line on top, what it said to them under it,
- * its thoughts and calls behind "Show work". Nothing opens a dialog.
+ * Closed, the card is its summary line: who worked, for how long, what the
+ * effort came to, and "Show work". Open — while the run goes on, and once
+ * the person asks for the work — it is one scroll holding everything the run
+ * said and did (the owner, 2026-09-29: "when open with scroll and all events
+ * and when close just the summary -> expand open the scroll with
+ * everything"). The scroll follows the newest line while it stands at its
+ * foot, and stays where the person scrolled to once they leave it; a long
+ * run's earlier lines are drawn as the person scrolls up to them. Inside it
+ * nothing is cut without a way to the rest (D4): a command at four lines and
+ * what it printed at twelve behind "Show all N lines", a thought behind a
+ * click, a long message of the Mate's behind "Show full message" — each
+ * opening in place, under the line the person clicked, which stays where it
+ * is. Nothing opens a dialog.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
@@ -115,7 +120,6 @@ import {
 import {
   chatOpensAt,
   earlierShown,
-  foldsOnReturn,
   formatClock,
   recoveredFailures,
   LONG_STEP_MS,
@@ -123,14 +127,17 @@ import {
   nowLineOf,
   nowLineWords,
   operationNowWords,
+  reachesEarlier,
   runFoldOf,
   setRunFold,
   severalWords,
+  standsAtFoot,
   stepNowWords,
   subscribeRunFolds,
   thoughtRunText,
   type NowLine as NowLineModel,
   type RunFold,
+  type RunScrollPosition,
 } from "./runCard.logic";
 import { keepInPlace, scrollerOf } from "./keepInPlace";
 import {
@@ -262,11 +269,15 @@ const CALL_SURFACE = "ring-1 ring-foreground/9";
 
 /**
  * Whether the chat has been drawn once: a bubble mounting after that arrived
- * while the person watched. The chat has no scroll of its own (K8, D4): the
- * conversation is the one scroll, and what the chat does not draw folds
- * behind a control that draws it.
+ * while the person watched.
  */
 const ChatShownContext = createContext<{ readonly current: boolean } | null>(null);
+
+/**
+ * The run's scroll, to the lines in it: what the person opens or closes there
+ * holds the scroll where it stands, rather than following its foot.
+ */
+const RunScrollHoldContext = createContext<(() => void) | null>(null);
 
 /** Whether this bubble arrived while the person watched: what the chat opened onto is simply there. */
 function useArrivedLive(): boolean {
@@ -279,12 +290,19 @@ const HOLD_NOTHING = () => {};
 
 /**
  * What the person opened or closed is theirs to read (K12): the conversation
- * stops following its end, so the line they clicked stays where it is and
- * only what is under it moves. Drawn outside a conversation, it holds nothing.
+ * stops following its end, and so does the run's scroll it stands in, so the
+ * line they clicked stays where it is and only what is under it moves. Drawn
+ * outside a conversation, it holds nothing.
  */
 export function useHoldReading(): () => void {
   const ctx = use(TimelineRowCtx) as TimelineRowSharedState | null;
-  return ctx?.onHoldReading ?? HOLD_NOTHING;
+  const holdScroll = use(RunScrollHoldContext);
+  const holdPage = ctx?.onHoldReading ?? HOLD_NOTHING;
+  if (holdScroll === null) return holdPage;
+  return () => {
+    holdScroll();
+    holdPage();
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -574,8 +592,8 @@ function OutputBlock({
   const lines = text.split("\n").length;
   const [taller, watch] = useTallerThan(OUTPUT_CAP_PX, lines > OUTPUT_CAP_LINES);
   const [open, setOpen] = useState(false);
-  // No scroll inside the card (K8): past twelve lines it folds, and the way
-  // to the rest opens it in place (D4).
+  // No scroll inside the run's scroll: past twelve lines it folds, and the
+  // way to the rest opens it in place (D4).
   const folded = taller && !open;
   return (
     <section aria-label={label ?? undefined} className="grid min-w-0 gap-1">
@@ -2483,25 +2501,20 @@ export function RunLine({ status }: { readonly status: RunStatus }) {
 
 /**
  * A run's chat in its card: what the Mate said and did, in the order it
- * happened, and under it the Mate's status — the present said once. The
- * card has no scroll of its own (K8): the conversation is the one scroll,
- * and a long run's earlier lines fold behind "Show N earlier" at its top.
+ * happened, in one scroll, and under it the Mate's status — the present said
+ * once. A run the person comes back to is closed to its summary line; "Show
+ * work" opens the scroll under it.
  */
 export function RunChat({ row }: { readonly row: RecordRow }) {
   const ctx = use(TimelineRowCtx);
   const hold = useHoldReading();
   const fold = useRunFold(ctx.routeThreadKey, row.turnKey, row.live);
-  // A run the person comes back to (K7): its worked line on top, what it
-  // said to them under it, and its work — its thoughts and calls — folded
-  // behind "Show work", which opens it under the line (K12).
+  // A run the person comes back to (D3): its worked line alone — the
+  // summary — and "Show work" opens the whole run under it (K12).
   const later = row.status !== null && !row.live && fold !== "watched";
   const folded = later && fold === "folded";
   // What a later step undid, read once per record, not once per redraw.
   const undone = useMemo(() => recoveredFailures(row.items), [row.items]);
-  const lines = chatLines(
-    folded ? row.items.filter((item) => !foldsOnReturn(item)) : row.items,
-    undone,
-  );
   const feedRef = useRef<HTMLDivElement>(null);
   const fromHeightRef = useRef<number | null>(null);
   // A toggle leaves the height the work stood at: once the new fold is laid
@@ -2513,9 +2526,11 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     if (from === null || feed === null) return;
     easeFeedHeight(feed, from);
   });
-  const feed = (
-    <ChatFeed key={folded ? "kept" : "all"} label={`${ctx.speaker.name}'s work`} lines={lines} />
-  );
+  const lines = folded ? [] : chatLines(row.items, undone);
+  // The scroll mounts with its first line, so its box is there from its
+  // first frame for what keeps it at its foot.
+  const scroll =
+    lines.length === 0 ? null : <RunScroll label={`${ctx.speaker.name}'s work`} lines={lines} />;
   return (
     // One container for the chat and its now line: the Mate's column keeps
     // one gap for both. Its words wear its tint (`.run-speech`).
@@ -2533,7 +2548,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
             answering={false}
             outcome={row.outcome}
             end={
-              row.items.some(foldsOnReturn) ? (
+              // A chat opens from its first thing the Mate did (`chatLines`).
+              row.items.some((item) => item.kind !== "person") ? (
                 <WorkToggle
                   onToggle={() => {
                     hold();
@@ -2548,12 +2564,12 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
             status={row.status}
           />
           <div ref={feedRef} className="run-later-feed">
-            {feed}
+            {scroll}
           </div>
         </>
       ) : (
         <>
-          {feed}
+          {scroll}
           {row.status === null ? null : (
             <NowLine
               answering={row.answering}
@@ -2635,12 +2651,17 @@ function WorkToggle({ open, onToggle }: { readonly open: boolean; readonly onTog
 }
 
 /**
- * The chat's lines, in the order they happened: the newest where it opens,
- * a long run's earlier lines behind "Show N earlier" at its top. What
- * arrives after it was first drawn arrived while the person watched, and
- * rises in.
+ * The run's one scroll (the owner, 2026-09-29: "open with scroll and all
+ * events"): every line it said and did, in the order it happened, the newest
+ * at its foot. It opens at its foot and follows what arrives while it stands
+ * there; once the person scrolls up to read, or opens something in it, it
+ * stays where they are until they scroll back down. A long run opens on its
+ * newest lines and draws the earlier ones as the person scrolls up to them,
+ * the lines in view kept where they stand. A fade at an edge says there is
+ * more past it. What arrives after it was first drawn arrived while the
+ * person watched, and rises in. It mounts with its first line (`RunChat`).
  */
-function ChatFeed({
+function RunScroll({
   label,
   lines,
 }: {
@@ -2652,89 +2673,114 @@ function ChatFeed({
   useEffect(() => {
     shownRef.current = true;
   }, []);
-  // Where the chat starts, fixed when it opens: what arrives after it only
-  // ever joins at the end, so the window grows and never slides.
+  // Where the chat starts: its newest lines when it opens. What arrives after
+  // only ever joins at the end, so the window grows and never slides.
   const [from, setFrom] = useState(() => chatOpensAt(lines.length));
-  // The last "Show N earlier" goes once pressed: the focus goes to the lines
-  // it drew, never to the page's body.
+  const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
-  const focusListRef = useRef(false);
+  // It follows its foot until the person scrolls up or opens something in it.
+  const followsRef = useRef(true);
+  const hold = useMemo(
+    () => () => {
+      followsRef.current = false;
+    },
+    [],
+  );
+  // How far above its foot the scroll stood before earlier lines were drawn
+  // over the ones in view.
+  const keepFromFootRef = useRef<number | null>(null);
+  const drawEarlier = (position: RunScrollPosition) => {
+    if (!reachesEarlier(position, from)) return;
+    keepFromFootRef.current = position.scrollHeight - position.scrollTop;
+    setFrom(earlierShown(from).next);
+  };
+  // It opens at its foot, before the first paint.
   useLayoutEffect(() => {
-    if (!focusListRef.current) return;
-    focusListRef.current = false;
-    listRef.current?.focus();
-  });
+    const element = scrollRef.current;
+    if (element === null) return;
+    element.scrollTop = element.scrollHeight;
+    markEdges(element);
+  }, []);
+  // Earlier lines drawn above the ones in view keep those where they stood;
+  // a chat too short to scroll draws them at once, as nothing reaches them.
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    const keep = keepFromFootRef.current;
+    keepFromFootRef.current = null;
+    if (element === null) return;
+    if (keep !== null) element.scrollTop = element.scrollHeight - keep;
+    if (from > 0 && element.scrollHeight <= element.clientHeight) setFrom(earlierShown(from).next);
+    markEdges(element);
+  }, [from]);
+  // A line arriving, a bubble growing as its words stream, a call opening:
+  // a scroll that follows its foot stays at it.
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    const list = listRef.current;
+    if (element === null || list === null || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (followsRef.current) element.scrollTop = element.scrollHeight;
+      markEdges(element);
+    });
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, []);
   const shown = gatherCalls(from > 0 ? lines.slice(from) : lines);
-  if (shown.length === 0 && from === 0) return null;
   return (
-    <ChatShownContext value={shownRef}>
-      <ol
-        ref={listRef}
-        aria-label={label}
-        className="flex min-w-0 flex-col gap-3 focus:outline-none"
-        tabIndex={-1}
-      >
-        {from > 0 ? (
-          <EarlierLine
-            count={earlierShown(from).shows}
-            onShow={() => {
-              const { next } = earlierShown(from);
-              if (next === 0) focusListRef.current = true;
-              setFrom(next);
-            }}
-          />
-        ) : null}
-        {shown.map((entry) =>
-          "calls" in entry ? (
-            <ChatRow key={entry.key} across={false} theirs={false}>
-              <CallGroup>
-                {entry.calls.map((line) => (
-                  <Fragment key={line.key}>{line.bubble}</Fragment>
-                ))}
-              </CallGroup>
-            </ChatRow>
-          ) : (
-            <ChatRow
-              key={entry.key}
-              across={entry.across === true}
-              mark={entry.mark}
-              markLine={entry.markLine}
-              pairs={entry.pairs === true}
-              theirs={entry.theirs === true}
-            >
-              {entry.bubble}
-            </ChatRow>
-          ),
-        )}
-      </ol>
-    </ChatShownContext>
+    <RunScrollHoldContext value={hold}>
+      <ChatShownContext value={shownRef}>
+        <div
+          ref={scrollRef}
+          aria-label={label}
+          className="run-scroll"
+          data-run-scroll=""
+          onScroll={(event) => {
+            const position = event.currentTarget;
+            followsRef.current = standsAtFoot(position);
+            if (scrollRef.current !== null) markEdges(scrollRef.current);
+            drawEarlier(position);
+          }}
+          role="region"
+          tabIndex={0}
+        >
+          <ol ref={listRef} className="flex min-w-0 flex-col gap-3">
+            {shown.map((entry) =>
+              "calls" in entry ? (
+                <ChatRow key={entry.key} across={false} theirs={false}>
+                  <CallGroup>
+                    {entry.calls.map((line) => (
+                      <Fragment key={line.key}>{line.bubble}</Fragment>
+                    ))}
+                  </CallGroup>
+                </ChatRow>
+              ) : (
+                <ChatRow
+                  key={entry.key}
+                  across={entry.across === true}
+                  mark={entry.mark}
+                  markLine={entry.markLine}
+                  pairs={entry.pairs === true}
+                  theirs={entry.theirs === true}
+                >
+                  {entry.bubble}
+                </ChatRow>
+              ),
+            )}
+          </ol>
+        </div>
+      </ChatShownContext>
+    </RunScrollHoldContext>
   );
 }
 
 /**
- * The lines a long chat has not drawn yet, above the ones it opened with: a
- * caption between hairlines that draws the chunk just before them — the
- * button stays where it was clicked, and what it draws opens under it.
+ * Marks the edges the scroll has more past — a fade there says so — straight
+ * on the element: a scroll never redraws the chat.
  */
-function EarlierLine({ count, onShow }: { readonly count: number; readonly onShow: () => void }) {
-  const hold = useHoldReading();
-  return (
-    <li className={cn("flex min-w-0 items-center gap-3", META)} data-chat-row>
-      <span aria-hidden="true" className="h-px min-w-4 flex-1 bg-border/70" />
-      <button
-        className="shrink-0 cursor-pointer rounded-md px-1.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-        data-chat-earlier
-        onClick={() => {
-          hold();
-          onShow();
-        }}
-        type="button"
-      >
-        {count === 1 ? "Show 1 earlier" : `Show ${count} earlier`}
-      </button>
-      <span aria-hidden="true" className="h-px min-w-4 flex-1 bg-border/70" />
-    </li>
-  );
+function markEdges(element: HTMLElement): void {
+  const overflows = element.scrollHeight > element.clientHeight + 1;
+  element.toggleAttribute("data-more-above", overflows && element.scrollTop > 1);
+  element.toggleAttribute("data-more-below", overflows && !standsAtFoot(element));
 }
 
 // ---------------------------------------------------------------------------

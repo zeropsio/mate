@@ -66,6 +66,7 @@ import { useSidebarReveal } from "~/zerops/sidebarReveal";
 import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
 import {
   ProjectHeader,
+  SidebarNewProject,
   SidebarZeropsTree,
   type SidebarDrawn,
   type SidebarProjectFlow,
@@ -92,6 +93,9 @@ function candidate(
         missingContainer: true,
       };
 }
+
+/** D6's record of who signed a Mate's agent in: its person, somebody signed in. */
+const SIGNER = "mate:signer:claude-code:u-ada";
 
 const CRM_DEV = candidate("crm-dev", [
   "mate",
@@ -273,11 +277,14 @@ describe("SidebarZeropsTree", () => {
     expect(withInitials).toContain('<span aria-hidden="true">E</span>');
     expect(withInitials).toMatch(/--menu-owner-hue:\d+/u);
 
-    // The mark keeps its place, so the name starts where every other one does.
-    const nobody = render([CRM_DEV], { getOwner: () => undefined });
-    expect(nobody).toContain('data-zerops-avatar="none"');
-    expect(nobody).not.toContain("&#x27;s Mate");
-    expect(nobody).not.toContain('data-zerops-primitive="avatar"');
+    // Somebody its records name, whom the member list has not named: the mark
+    // keeps its place, so the name starts where every other one does.
+    const signed = candidate("crm-dev", [...CRM_DEV.project.tagList!, SIGNER]);
+    const unnamed = render([signed], { getOwner: () => undefined });
+    expect(unnamed).toContain('data-zerops-avatar="none"');
+    expect(unnamed).not.toContain("&#x27;s Mate");
+    expect(unnamed).not.toContain('data-zerops-primitive="avatar"');
+    expect(unnamed).not.toContain("sidebar-mate-sign-in");
   });
 
   it("keeps saying what a connected Mate is on, or was last on, under its name", () => {
@@ -553,6 +560,128 @@ const productionRow: EnvironmentRow = {
   source: "release",
   tone: "neutral",
 };
+
+// A Mate with no owner, or nobody signed in (the owner, 2026-09-29: "mate
+// without auth / owner should have the state specially handled"): nobody's
+// is an empty seat, said in words; a row with nothing else to say says that
+// nobody has signed in, and offers it where it is the viewer's to do.
+describe("a Mate with no owner, or nobody signed in", () => {
+  const OWNER_ROLE = (clientUserId: string) => ({ clientUserId, roleCode: "OWNER" });
+  const mate = (
+    tags: ReadonlyArray<string>,
+    options: {
+      readonly group?: ZeropsCandidate["group"];
+      readonly userRoles?: ReadonlyArray<{ clientUserId: string; roleCode: string }>;
+    } = {},
+  ): ZeropsCandidate => {
+    const base = candidate("crm-dev", [...CRM_DEV.project.tagList!, ...tags], options.group);
+    return {
+      ...base,
+      project: { ...base.project, userRoles: options.userRoles ?? [] },
+      ...(options.group === "connected" ? { environmentId: "env-crm-dev" } : {}),
+    } as ZeropsCandidate;
+  };
+  const seat = (html: string) => /data-zerops-avatar="([^"]*)"/u.exec(html)?.[1];
+  const line = (html: string) =>
+    /<span[^>]*data-zerops-surface="sidebar-mate-sign-in"[^>]*>(.*?)<\/span><\/span>/u.exec(
+      html,
+    )?.[0];
+  const verb = (html: string) =>
+    /<span[^>]*data-zerops-surface="sidebar-mate-sign-in-verb"[^>]*>([^<]*)</u.exec(html);
+  const PETRA = { name: "Petra Malá", initials: "PM", avatarUrl: null, isViewer: true };
+  const KAREL = { name: "Karel Novák", initials: "KN", avatarUrl: null, isViewer: false };
+
+  it("seats nobody's Mate on a dashed ring, and says so in words, never as a person", () => {
+    const html = render([mate([], { group: "connected" })], { getOwner: () => undefined });
+    expect(seat(html)).toBe("nobody");
+    const ring = /<span[^>]*data-zerops-avatar="nobody"[^>]*>(.*?)<\/span><\/span>/u.exec(
+      html,
+    )?.[1];
+    expect(ring).toContain("<svg");
+    expect(ring).toContain("stroke-dasharray");
+    expect(ring).not.toMatch(/<img|>[A-Z]</u);
+    expect(html).toContain("No owner yet. Whoever signs in its coding agent owns it.");
+  });
+
+  it("says nobody has signed in on the line under the name, and offers Sign in in blue", () => {
+    const html = render([mate([], { group: "connected" })], { getOwner: () => undefined });
+    expect(line(html)).toContain(">Nobody has signed in yet<");
+    const found = verb(html);
+    expect(found?.[1]).toBe("Sign in");
+    expect(found?.[0]).toContain("menu-textbtn");
+    // On the line's own 18 px: the word's pill does not grow the row.
+    expect(found?.[0]).toContain("-my-0.75");
+  });
+
+  it("offers no Sign in where a press would not land on it: not open here yet", () => {
+    const html = render([mate([], { group: "ready" })], { getOwner: () => undefined });
+    expect(line(html)).toContain(">Nobody has signed in yet<");
+    expect(verb(html)).toBeNull();
+  });
+
+  it("gives the viewer's own Mate the line and Sign in; a colleague's the line alone", () => {
+    const own = render([mate([], { group: "connected", userRoles: [OWNER_ROLE("cu-petra")] })], {
+      getOwner: () => PETRA,
+    });
+    expect(seat(own)).toBe("initials");
+    expect(verb(own)?.[1]).toBe("Sign in");
+    const theirs = render([mate([], { group: "connected", userRoles: [OWNER_ROLE("cu-karel")] })], {
+      getOwner: () => KAREL,
+    });
+    expect(seat(theirs)).toBe("initials");
+    expect(line(theirs)).toContain(">Nobody has signed in yet<");
+    expect(verb(theirs)).toBeNull();
+  });
+
+  it("says nothing of signing in once somebody has, or once it was asked something", () => {
+    const signed = render([mate([SIGNER], { group: "connected" })], { getOwner: () => KAREL });
+    expect(signed).not.toContain("sidebar-mate-sign-in");
+    const asked: ZeropsAgentActivity = {
+      threadId: "thread-1" as ZeropsAgentActivity["threadId"],
+      kind: "idle",
+      status: null,
+      face: "idle",
+      subject: "Fix the login redirect",
+      at: new Date().toISOString(),
+      snippet: undefined,
+      unread: false,
+      pausedUntil: undefined,
+      threadKey: "env-crm-dev:thread-1",
+      task: undefined,
+    };
+    const html = render([mate([], { group: "connected" })], {
+      getOwner: () => undefined,
+      getActivity: () => asked,
+    });
+    // Still nobody's — the seat says it — but the row says what was asked.
+    expect(seat(html)).toBe("nobody");
+    expect(html).toContain("Fix the login redirect");
+    expect(html).not.toContain("sidebar-mate-sign-in");
+  });
+
+  it("opens the Mate — where its sign-in is — when Sign in is pressed", () => {
+    const opened: string[] = [];
+    const mounted = mount(
+      <SidebarZeropsTree
+        candidates={[mate([], { group: "connected" })]}
+        complete
+        onBrowseProjects={() => {}}
+        onSelect={(item) => {
+          opened.push(item.project.id);
+        }}
+      />,
+    );
+    // The word is the row's own press, said as the next step.
+    const word = surface(mounted, "sidebar-mate-sign-in-verb");
+    let row: ReactTestInstance | null = word.parent;
+    while (row !== null && row.props["data-zerops-surface"] !== "sidebar-mate") row = row.parent;
+    expect(row).not.toBeNull();
+    act(() => {
+      row!.props.onClick();
+    });
+    expect(opened).toEqual(["crm-dev"]);
+  });
+});
 
 describe("a creation under way in the menu", () => {
   const birth = (
@@ -1043,16 +1172,26 @@ describe("production is one chip on the project's heading (M2, M1)", () => {
   });
 });
 
-describe("New project at the list's end (D11)", () => {
+describe("New project at the menu's foot (D11)", () => {
   const row = (html: string) =>
     /<button[^>]*data-zerops-surface="sidebar-new-project"[^>]*>(.*?)<\/button>/u.exec(html);
 
-  it("ends the list with New project: the + in the face column, the words on the text edge", () => {
-    const html = render([CRM_DEV, LINKS_MATE], { onNewProject: () => {} });
+  // Pinned above the account's row, the same place whatever the list's
+  // length (the owner, 2026-09-29: "not sure if this shouldn't be stuck to
+  // the bottom somehow"): the list scrolls under it, so it is never one of
+  // the list's rows.
+  it("is never one of the list's rows", () => {
+    expect(row(render([CRM_DEV, LINKS_MATE]))).toBeNull();
+    expect(row(render([]))).toBeNull();
+  });
+
+  it("keeps the row's look: the + in the faces' column, the words on the text edge", () => {
+    const html = renderToStaticMarkup(<SidebarNewProject onNewProject={() => {}} />);
+    // On the list's own inset, so the + stands at 16 px and the words at 56.
+    const slot = /<div class="([^"]*)"/u.exec(html)![1]!.split(" ");
+    expect(slot).toEqual(expect.arrayContaining(["shrink-0", "ps-2.25", "pe-2"]));
     const found = row(html);
     expect(found).not.toBeNull();
-    // After every project, the list's last row.
-    expect(html.indexOf("sidebar-new-project")).toBeGreaterThan(html.lastIndexOf("<section"));
     const classes = /class="([^"]*)"/u.exec(found![0])![1]!.split(" ");
     expect(classes).toEqual(expect.arrayContaining(["h-7", "ps-1.75", "gap-3", "rounded-lg"]));
     expect(found![1]).toContain("lucide-plus");
@@ -1060,31 +1199,17 @@ describe("New project at the list's end (D11)", () => {
     expect(found![1]).toContain(">New project</span>");
   });
 
-  it("offers New project alone to an account with no project yet", () => {
-    const html = render([], { onNewProject: () => {} });
-    expect(row(html)).not.toBeNull();
-    expect(html).not.toContain("sidebar-environments-empty");
-  });
-
   it("starts a new project when pressed", () => {
     let started = 0;
     const mounted = mount(
-      <SidebarZeropsTree
-        candidates={[CRM_DEV]}
-        complete
-        onBrowseProjects={() => {}}
+      <SidebarNewProject
         onNewProject={() => {
           started += 1;
         }}
-        onSelect={() => {}}
       />,
     );
     press(mounted, "sidebar-new-project");
     expect(started).toBe(1);
-  });
-
-  it("draws no New project where nobody said how to make one", () => {
-    expect(row(render([CRM_DEV]))).toBeNull();
   });
 });
 
@@ -1158,6 +1283,29 @@ describe("a project collapsed to its heading", () => {
     ].map(([, classes]) => classes!.split(" "));
     expect(rows).toHaveLength(1);
     expect(rows[0]).toEqual(expect.arrayContaining(["pt-0.5", "pb-11"]));
+  });
+
+  // Folded names stand a little apart (the owner, 2026-09-29: "increase the
+  // spacing between a little"): 8 px under a folded heading, its own — the
+  // room a fold leaves and an unfold starts from — so no heading moves.
+  it("leaves 8 px under a folded heading, and none under the list's last", () => {
+    const notes = named("notes-dev", "Notes - dev", [
+      "mate",
+      "mate:g:notes",
+      "mate:name:Notes",
+      "mate:role:dev",
+    ]);
+    stored.collapsed = new Set(["links", "notes"]);
+    const html = render([CRM_DEV, LINKS_MATE, notes]);
+    const room = (group: string) => {
+      const at = html.indexOf(`data-zerops-group="${group}"`);
+      const section = html.slice(at, html.indexOf("</section>", at));
+      return /<div[^>]*data-zerops-surface="sidebar-project-room"[^>]*>/u.exec(section)?.[0];
+    };
+    expect(room("links")).toContain('class="h-2 shrink-0"');
+    expect(room("links")).toContain('aria-hidden="true"');
+    expect(room("notes")).toBeUndefined();
+    expect(room("aaa")).toBeUndefined();
   });
 
   // Folded, a heading shows who is busy in it (M15): the faces of its Mates
@@ -1350,6 +1498,26 @@ describe("a project collapsed to its heading", () => {
       expect(button).toContain("size-7");
       expect(button).toContain("rounded-md");
     }
+  });
+
+  // The whole heading folds the project, so it lights under the pointer as a
+  // row does (the owner, 2026-09-29: "very slight grey bg on the hover"); the
+  // ungrouped heading folds nothing and stays unlit.
+  it("lights a heading that folds under the pointer, and never the ungrouped one", () => {
+    const classes = (html: string) =>
+      /<div class="([^"]*)"[^>]*data-zerops-surface="sidebar-project"/u.exec(html)?.[1]?.split(" ");
+    expect(
+      classes(
+        renderToStaticMarkup(
+          <ProjectHeader name="Beviro" onBrowseProjects={() => {}} onToggle={() => {}} />,
+        ),
+      ),
+    ).toContain("zerops-project-heading");
+    expect(
+      classes(
+        renderToStaticMarkup(<ProjectHeader muted name="Ungrouped" onBrowseProjects={() => {}} />),
+      ),
+    ).not.toContain("zerops-project-heading");
   });
 
   it("starts the title at the rail's own left edge and hangs the chevron after it", () => {

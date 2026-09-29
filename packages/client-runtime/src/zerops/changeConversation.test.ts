@@ -104,9 +104,9 @@ describe("changeAskPrompt", () => {
     );
   });
 
-  it("asks for the change itself when nothing was written", () => {
-    expect(changeAskPrompt({ ...change, said: "   " })).toBe(
-      'Take #4 "Cache the link previews" on appdev forward: read it, do what it still needs, and push.',
+  it("quotes the words without the space around them", () => {
+    expect(changeAskPrompt({ ...change, said: "  rebase it \n" })).toBe(
+      'On #4 "Cache the link previews" on appdev:\n\nrebase it\n\nDo that, then push.',
     );
   });
 

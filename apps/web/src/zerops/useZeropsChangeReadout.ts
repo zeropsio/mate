@@ -1,12 +1,13 @@
 /**
  * What a review reads of one change beyond what the flow carries (pass 16, R4 · R8): the
- * files it changes with their +/−, its diff, how many commits it squashes, and — for a change
+ * files it changes with their +/−, its diff, the commits it squashes, and — for a change
  * `main` moved under — what `main` did since the branch was cut.
  *
  * Read when the review opens, never polled, and kept per head sha: a change whose head did not
  * move reads the same, so opening it again paints at once with nothing to wait for, and a head
  * that moved is a new question. Each part answers on its own — the file list is small and
- * quick, a diff of fifty files is not — and a part that failed is asked again next time.
+ * quick, a diff of fifty files is not — and a part that failed is asked again on *Try again*
+ * (`retry`), or the next time it opens.
  *
  * The diff is read only once a file is opened, and no further than {@link DIFF_READ_BYTES}: a
  * change that regenerates a lockfile can run to hundreds of megabytes. What is kept is bounded
@@ -20,7 +21,7 @@ import {
   type GiteaCommit,
 } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { LRUCache } from "~/lib/lruCache";
 
@@ -60,10 +61,12 @@ export interface ZeropsChangeReadout {
   readonly files: ReadoutPart<ReadonlyArray<GiteaChangedFile>>;
   /** `none` until a file is opened. */
   readonly diff: ReadoutPart<ChangeDiffRead>;
-  /** How many commits it squashes. */
-  readonly commits: ReadoutPart<number>;
+  /** The commits it squashes, newest first. */
+  readonly commits: ReadoutPart<ReadonlyArray<GiteaCommit>>;
   /** `main`'s commits since the branch was cut, each with the files it touched; `none` when it did not move. */
   readonly mainSince: ReadoutPart<ReadonlyArray<GiteaCommit>>;
+  /** Asks every part that failed again. */
+  readonly retry: () => void;
 }
 
 const NONE = { kind: "none" } as const;
@@ -117,40 +120,53 @@ function usePart<T>(
   key: string | null,
   read: Reader<T>,
   giteaOrigin: string | undefined,
+  /** Counts the person's *Try again*: a part that failed is read again on each. */
+  attempt: number,
 ): ReadoutPart<T> {
   const readable = useGiteaReadable(giteaOrigin);
   const initial = (): ReadoutPart<T> =>
     key === null ? NONE : ((settled.get(key) as ReadoutPart<T> | null) ?? READING);
-  const [held, setHeld] = useState<{ readonly key: string | null; readonly part: ReadoutPart<T> }>(
-    () => ({ key, part: initial() }),
-  );
+  const [held, setHeld] = useState<{
+    readonly key: string | null;
+    readonly attempt: number;
+    readonly part: ReadoutPart<T>;
+  }>(() => ({ key, attempt, part: initial() }));
   let part = held.part;
-  if (held.key !== key) {
+  // Another change, or *Try again* after a failure: its rows are read again where they stood.
+  if (held.key !== key || (held.attempt !== attempt && held.part.kind === "failed")) {
     part = initial();
-    setHeld({ key, part });
+    setHeld({ key, attempt, part });
   }
   const latestRead = useRef(read);
   useEffect(() => {
     latestRead.current = read;
   });
+  const reading = part.kind === "reading";
   useEffect(() => {
-    if (key === null || giteaOrigin === undefined || !readable || settled.get(key) !== null) return;
+    if (!reading || key === null || giteaOrigin === undefined || !readable) return;
     const client = giteaClientFor(giteaOrigin);
     if (client === null) return;
     let live = true;
     void readOnce(key, () => latestRead.current(client)).then((answer) => {
-      if (live) setHeld({ key, part: answer });
+      if (!live) return;
+      setHeld((current) =>
+        current.key === key && current.attempt === attempt ? { ...current, part: answer } : current,
+      );
     });
     return () => {
       live = false;
     };
-  }, [giteaOrigin, key, readable]);
+  }, [attempt, giteaOrigin, key, readable, reading]);
   return part;
 }
 
 export function useZeropsChangeReadout(
   request: ZeropsChangeReadoutRequest | null,
 ): ZeropsChangeReadout {
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => {
+    setAttempt((current) => current + 1);
+  }, []);
   const origin = request?.giteaOrigin;
   const owner = request?.owner;
   const head = request?.headSha;
@@ -169,6 +185,7 @@ export function useZeropsChangeReadout(
         await client.pullRequestFiles(owner ?? "", request?.repository ?? "", request?.number ?? 0),
       ),
     origin,
+    attempt,
   );
   const diff = usePart<ChangeDiffRead>(
     at === null || request?.diff !== true ? null : `diff|${at}`,
@@ -183,11 +200,13 @@ export function useZeropsChangeReadout(
       return { value: { files: parseChangeDiff(text, { cut }), cut }, bytes: text.length * 3 };
     },
     origin,
+    attempt,
   );
   const commits = usePart(
     at === null ? null : `commits|${at}|${request?.baseSha ?? request?.baseBranch ?? ""}`,
     async (client) =>
       light(
+        // Newest first, as a history reads; Gitea lists a comparison oldest first.
         (
           await client.compareCommits(
             owner ?? "",
@@ -195,9 +214,10 @@ export function useZeropsChangeReadout(
             request?.baseBranch ?? "main",
             head ?? "",
           )
-        ).length,
+        ).toReversed(),
       ),
     origin,
+    attempt,
   );
   const mainSince = usePart(
     at === null || !moved
@@ -213,6 +233,7 @@ export function useZeropsChangeReadout(
         ),
       ),
     origin,
+    attempt,
   );
-  return { head: at === null ? undefined : head, files, diff, commits, mainSince };
+  return { head: at === null ? undefined : head, files, diff, commits, mainSince, retry };
 }

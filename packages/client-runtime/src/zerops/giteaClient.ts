@@ -275,6 +275,10 @@ export interface GiteaPullRequest {
   readonly base?: { readonly ref?: string | undefined; readonly sha?: string | undefined };
   readonly user?: { readonly login?: string | undefined } | undefined;
   readonly updated_at?: string | undefined;
+  /** Its description as its author wrote it, Markdown; empty where they wrote none. */
+  readonly body?: string | undefined;
+  /** How many comments were said on it. */
+  readonly comments?: number | undefined;
   /** How many lines it adds and removes, and how many files it touches — Gitea's own count. */
   readonly additions?: number | undefined;
   readonly deletions?: number | undefined;
@@ -488,6 +492,19 @@ export interface GiteaClient {
     maxBytes: number,
   ): Promise<GiteaDiffText>;
 
+  /**
+   * A picture this Gitea serves — an attachment of a change, its description's screenshots — read
+   * as the person, as bytes a page can show (`URL.createObjectURL`). A private repository's
+   * pictures answer nobody without a token, and a page's own `<img>` carries none. Only an address
+   * on this Gitea is read: the token never goes anywhere else.
+   *
+   * From a browser on another origin this read fails today, as a network error with no status:
+   * the bearer makes it preflight, and Gitea 1.27.2 answers the preflight of `/attachments/{uuid}`
+   * with a 303 to its sign-in, not its CORS headers (the GET itself would carry them); no API
+   * route serves an attachment's bytes (measured 2026-09-29). It reads where no preflight is made.
+   */
+  picture(url: string): Promise<Blob>;
+
   /** What has been said on a change, oldest first — Gitea's own order. */
   listIssueComments(
     owner: string,
@@ -596,6 +613,8 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
     input: {
       readonly method: string;
       readonly path: string;
+      /** The whole address, for a read outside the API — always one on this Gitea. */
+      readonly url?: string | undefined;
       readonly query?: Readonly<Record<string, string | number | undefined>> | undefined;
       readonly body?: unknown;
       readonly accept?: string;
@@ -618,7 +637,7 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         : { signal: caller, rearm: () => undefined, done: () => undefined };
     const arrived = input.deadline === "idle" ? rearm : () => undefined;
     try {
-      const response = await options.fetch(`${base}${input.path}${suffix}`, {
+      const response = await options.fetch(input.url ?? `${base}${input.path}${suffix}`, {
         method: input.method,
         headers: {
           authorization: `Bearer ${tokenOf()}`,
@@ -884,6 +903,20 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         },
       ),
 
+    picture: (url) => {
+      if (!onOrigin(url, options.origin)) {
+        return Promise.reject(new GiteaApiError("That picture is not on this Gitea.", 0));
+      }
+      return send(
+        // A screenshot can run to megabytes: only one that stops arriving ends.
+        { method: "GET", path: "", url, accept: "image/*", deadline: "idle" },
+        async (response, arrived) => {
+          if (!response.ok) return fail(response, "hand over the picture");
+          return blobOf(response, arrived);
+        },
+      );
+    },
+
     listIssueComments: async (owner, repo, index) => {
       const wire = await json<ReadonlyArray<GiteaIssueCommentWire>>(
         {
@@ -1063,6 +1096,30 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         },
       ),
   };
+}
+
+/** Whether `url` is an address on `origin` — the same scheme, host and port. */
+function onOrigin(url: string, origin: string): boolean {
+  try {
+    return new URL(url).origin === new URL(origin).origin;
+  } catch {
+    return false;
+  }
+}
+
+/** The body as bytes of its own type, saying each time more of it arrived. */
+async function blobOf(response: Response, arrived: () => void): Promise<Blob> {
+  const type = response.headers.get("content-type") ?? "";
+  if (response.body === null) return new Blob([], { type });
+  const reader = response.body.getReader();
+  const parts: Array<Uint8Array<ArrayBuffer>> = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    arrived();
+    parts.push(new Uint8Array(value));
+  }
+  return new Blob(parts, { type });
 }
 
 /** A diff as far as it was read: `cut` where it went on past what was read. */

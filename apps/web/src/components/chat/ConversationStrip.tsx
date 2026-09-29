@@ -8,9 +8,8 @@ import type { CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
-import { CREW_LEAD_WORD } from "@t3tools/client-runtime/zerops/crew/phrases";
-import { ChevronDownIcon, CompassIcon, MessagesSquareIcon, PlusIcon, XIcon } from "lucide-react";
-import { useLayoutEffect, useMemo, useState } from "react";
+import { ChevronDownIcon, MessagesSquareIcon, PlusIcon, XIcon } from "lucide-react";
+import { useLayoutEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { ThreadArchiveBlockedError, useThreadActions } from "~/hooks/useThreadActions";
@@ -20,45 +19,50 @@ import { useThreadShells } from "~/state/entities";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useUiStateStore } from "~/uiStateStore";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
-import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
-import { Separator } from "../ui/separator";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { MateFace, StatusDot } from "../zerops/primitives";
+import { MateFace } from "../zerops/primitives";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 import {
   alsoWorkingLine,
   chatEntries,
   crewEntries,
+  entryAccessibleName,
+  entryInk,
   foldStrip,
   loneChatNewChatShown,
   mateChats,
   stripShown,
   type ConversationStripEntry,
   type ConversationStripGroup,
+  type StripRoom,
 } from "./ConversationStrip.logic";
 
-/** An entry's widest chip and the gap after it: what one slot costs. */
-const SLOT_PX = 148;
-/** The New chat button at the end of the row. */
-const NEW_CHAT_PX = 104;
-/** The divider before each further group, with its margins. */
-const DIVIDER_PX = 9;
-/** Below this the status words fold into their dots, the word kept as the name. */
-const NARROW_PX = 480;
+/** Between two neighbours in the row (`gap-0.5`). */
+const GAP_PX = 2;
+/** Before the crew, on top of the gap (`ms-4`): spacing, not a rule, sets the groups apart. */
+const GROUP_GAP_PX = 16;
 
 const isArchiveBlocked = Schema.is(ThreadArchiveBlockedError);
 
-const CLOSE_HELD: Record<"main" | "busy", string> = {
-  main: "Close the other chats first",
-  busy: "Stop the agent before closing this chat",
-};
+/** Why a chat mid-turn keeps its close. */
+const CLOSE_HELD = "Stop the agent before closing this chat";
+
+/**
+ * A glyph button in the row: the row's height, the band's corners and hover.
+ * In the header it is one of the header's ghosts (`data-chat-header-ghost`):
+ * the header's rule keeps its fill off and sets its ink.
+ */
+const GLYPH_BUTTON =
+  "flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-hover data-popup-open:text-foreground";
+
+/** A control inside an entry, after its name: smaller, on the entry's own ground. */
+const ENTRY_CONTROL =
+  "flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring";
 
 export interface ConversationStripViewProps {
   readonly groups: ReadonlyArray<ConversationStripGroup>;
-  /** Measured row width; null before it is measured, when nothing folds. */
-  readonly width: number | null;
   readonly canMakeMain: boolean;
   readonly onOpen: (threadId: ThreadId) => void;
   readonly onClose: (entry: ConversationStripEntry) => void;
@@ -66,47 +70,40 @@ export interface ConversationStripViewProps {
   readonly onNewChat: () => void;
 }
 
-function EntryStatus({
+/** The lead's role on hover, where its name does not say it; everything else as it is. */
+function WithRole({
   entry,
-  narrow,
+  children,
 }: {
   readonly entry: ConversationStripEntry;
-  readonly narrow: boolean;
+  readonly children: ReactElement;
 }) {
-  if (entry.status === null) return null;
+  if (entry.role === undefined) return children;
   return (
-    <StatusDot
-      className="shrink-0"
-      dotOnly={narrow}
-      label={entry.status.word}
-      pulse={entry.status.pulse}
-      tone={entry.status.tone}
-    />
+    <Tooltip>
+      <TooltipTrigger render={children} />
+      <TooltipPopup side="bottom">{entry.role}</TooltipPopup>
+    </Tooltip>
   );
 }
 
-/** The crew's lead, told apart from its crewmates at a glance. */
-function LeadMark() {
-  return (
-    <CompassIcon
-      aria-label={CREW_LEAD_WORD}
-      className="size-3 shrink-0 text-muted-foreground"
-      data-crew-lead-mark
-      role="img"
-    />
-  );
-}
-
-function StripChip({
+function StripEntry({
   entry,
-  narrow,
+  folded,
+  squeezed,
   canMakeMain,
   onOpen,
   onClose,
   onMakeMain,
 }: {
   readonly entry: ConversationStripEntry;
-  readonly narrow: boolean;
+  /** Folded into More: out of the row, kept only to be measured. */
+  readonly folded: boolean;
+  /**
+   * The one entry left when even it and More do not fit: its name gives way.
+   * Every other entry keeps its width, so what is measured is what it needs.
+   */
+  readonly squeezed: boolean;
   readonly canMakeMain: boolean;
   readonly onOpen: (threadId: ThreadId) => void;
   readonly onClose: (entry: ConversationStripEntry) => void;
@@ -114,45 +111,55 @@ function StripChip({
 }) {
   const threadId = entry.threadId;
   const menu = entry.current && threadId !== null && entry.canMakeMain;
+  const closable = entry.close === "open" || entry.close === "busy";
   return (
     <div
       className={cn(
-        "flex h-6 max-w-36 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs",
-        entry.current
-          ? "bg-accent text-foreground"
-          : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+        "group/entry flex h-7 max-w-60 items-center rounded-lg transition-colors",
+        squeezed ? "min-w-0" : "shrink-0",
+        entry.current ? "bg-sidebar-row-active" : "hover:bg-sidebar-row-hover",
+        (menu || closable) && "pe-1",
+        folded && "invisible absolute start-0 top-0",
       )}
       data-conversation-strip-entry={entry.key}
       data-current={entry.current ? "true" : undefined}
     >
-      <button
-        aria-current={entry.current ? "page" : undefined}
-        className="flex min-w-0 cursor-pointer items-center gap-1.5"
-        onClick={() => {
-          if (threadId !== null && !entry.current) onOpen(threadId);
-        }}
-        type="button"
-      >
-        {entry.face === undefined ? null : (
-          <MateFace size="dot" state={entry.face.state} tint={entry.face.tint} />
-        )}
-        {entry.mark === "lead" ? <LeadMark /> : null}
-        <span className="truncate">{entry.label}</span>
-      </button>
-      <EntryStatus entry={entry} narrow={narrow} />
+      <WithRole entry={entry}>
+        <button
+          aria-current={entry.current ? "page" : undefined}
+          aria-label={entryAccessibleName(entry)}
+          className="flex h-7 min-w-0 cursor-pointer items-center gap-2.5 rounded-lg ps-2 pe-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={() => {
+            if (threadId !== null && !entry.current) onOpen(threadId);
+          }}
+          type="button"
+        >
+          <MateFace greets size="sm" state={entry.face.state} tint={entry.face.tint} />
+          <span
+            className={cn(
+              "truncate text-sm font-medium transition-colors",
+              entryInk(entry) === "ink"
+                ? "text-foreground"
+                : "text-muted-foreground group-hover/entry:text-foreground",
+            )}
+          >
+            {entry.label}
+          </span>
+        </button>
+      </WithRole>
       {menu ? (
         <Menu>
           <MenuTrigger
             render={
-              <Button
+              <button
                 aria-label={`More for ${entry.label}`}
-                className="shrink-0"
-                size="icon-xs"
-                variant="ghost-muted"
+                className={ENTRY_CONTROL}
+                data-chat-header-ghost
+                type="button"
               />
             }
           >
-            <ChevronDownIcon aria-hidden="true" className="size-3" />
+            <ChevronDownIcon aria-hidden="true" className="size-3.5" />
           </MenuTrigger>
           <MenuPopup align="start">
             {canMakeMain ? <MenuItem onClick={() => onMakeMain(entry)}>Make main</MenuItem> : null}
@@ -162,111 +169,218 @@ function StripChip({
           </MenuPopup>
         </Menu>
       ) : null}
-      {entry.close === "none" ? null : entry.close === "open" ? (
+      {entry.close === "open" ? (
         <button
           aria-label={`Close ${entry.label}`}
-          className="flex size-4 shrink-0 cursor-pointer items-center justify-center rounded-sm hover:bg-muted"
+          className={ENTRY_CONTROL}
           onClick={() => onClose(entry)}
           type="button"
         >
-          <XIcon aria-hidden="true" className="size-3" />
+          <XIcon aria-hidden="true" className="size-3.5" />
         </button>
-      ) : (
+      ) : entry.close === "busy" ? (
         <Tooltip>
           <TooltipTrigger
             render={
               <button
                 aria-disabled="true"
                 aria-label={`Close ${entry.label}`}
-                className="flex size-4 shrink-0 cursor-not-allowed items-center justify-center rounded-sm opacity-40"
+                className={cn(
+                  ENTRY_CONTROL,
+                  "cursor-not-allowed opacity-40 hover:text-muted-foreground",
+                )}
                 type="button"
               />
             }
           >
-            <XIcon aria-hidden="true" className="size-3" />
+            <XIcon aria-hidden="true" className="size-3.5" />
           </TooltipTrigger>
-          <TooltipPopup side="bottom">{CLOSE_HELD[entry.close]}</TooltipPopup>
+          <TooltipPopup side="bottom">{CLOSE_HELD}</TooltipPopup>
         </Tooltip>
-      )}
+      ) : null}
     </div>
   );
 }
 
 /**
- * The row itself: the chats, then each further group behind a divider, the
- * tail folded into *More* when the row runs out, and *New chat* at its end.
+ * The row's room, measured before paint and again whenever the row or an
+ * entry changes size — a panel opening, a chat renamed, a font settling. A
+ * folded entry stays in the row, out of the flow and unseen, so its width is
+ * always known.
+ */
+function useStripRoom(): {
+  readonly ref: (row: HTMLElement | null) => void;
+  readonly room: StripRoom | null;
+} {
+  const [row, setRow] = useState<HTMLElement | null>(null);
+  const [room, setRoom] = useState<StripRoom | null>(null);
+  useLayoutEffect(() => {
+    if (row === null) return;
+    const widthOf = (selector: string) =>
+      row.querySelector(selector)?.getBoundingClientRect().width ?? 0;
+    const measure = () => {
+      const widths = new Map<string, number>();
+      for (const entry of row.querySelectorAll<HTMLElement>("[data-conversation-strip-entry]")) {
+        widths.set(entry.dataset.conversationStripEntry ?? "", entry.getBoundingClientRect().width);
+      }
+      const newChat = widthOf("[data-conversation-strip-new]");
+      const next: StripRoom = {
+        width: row.getBoundingClientRect().width,
+        widths,
+        gap: GAP_PX,
+        groupGap: GROUP_GAP_PX,
+        fixed: newChat === 0 ? 0 : newChat + GAP_PX,
+        more: widthOf("[data-conversation-strip-more]") + GAP_PX,
+      };
+      setRoom((previous) => (sameRoom(previous, next) ? previous : next));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(row);
+    for (const child of row.querySelectorAll("[data-conversation-strip-entry]")) {
+      observer.observe(child);
+    }
+    return () => observer.disconnect();
+  });
+  return { ref: setRow, room };
+}
+
+function sameRoom(left: StripRoom | null, right: StripRoom): boolean {
+  if (left === null || left.width !== right.width || left.fixed !== right.fixed) return false;
+  if (left.more !== right.more || left.widths.size !== right.widths.size) return false;
+  for (const [key, width] of right.widths) if (left.widths.get(key) !== width) return false;
+  return true;
+}
+
+/**
+ * The strip itself, as the header's line: each entry a face and a name, the
+ * one on screen on the menu's selected band; the Mate's chats first with New
+ * chat after them, then the crew a step apart; the tail folded into *N more*
+ * when the line runs out.
  */
 export function ConversationStripView({
   groups,
-  width,
   canMakeMain,
   onOpen,
   onClose,
   onMakeMain,
   onNewChat,
 }: ConversationStripViewProps) {
-  const dividers = Math.max(0, groups.filter((group) => group.entries.length > 0).length - 1);
-  const slots =
-    width === null
-      ? Number.POSITIVE_INFINITY
-      : Math.floor((width - NEW_CHAT_PX - dividers * DIVIDER_PX) / SLOT_PX);
-  const narrow = width !== null && width < NARROW_PX;
-  const { visible, folded } = foldStrip(groups, slots);
-  const drawn = visible.filter((group) => group.entries.length > 0);
+  const { ref, room } = useStripRoom();
+  const { visible, folded } = foldStrip(groups, room);
+  const shownKeys = new Set(visible.flatMap((group) => group.entries.map((entry) => entry.key)));
+  const floor = folded.length > 0 && shownKeys.size === 1;
+  const drawn = groups.filter((group) => group.entries.length > 0 || group.id === "chats");
   return (
-    <div className="flex min-w-0 items-center gap-1" data-conversation-strip-row>
-      {drawn.map((group, index) => (
-        <div
-          aria-label={group.label}
-          className="flex min-w-0 items-center gap-1"
-          key={group.id}
-          role="group"
-        >
-          {index === 0 ? null : <Separator className="mx-1 h-4" orientation="vertical" />}
-          {group.entries.map((entry) => (
-            <StripChip
-              canMakeMain={canMakeMain}
-              entry={entry}
-              key={entry.key}
-              narrow={narrow}
-              onClose={onClose}
-              onMakeMain={onMakeMain}
-              onOpen={onOpen}
-            />
-          ))}
-        </div>
-      ))}
-      {folded.length === 0 ? null : (
-        <Menu>
-          <MenuTrigger render={<Button className="shrink-0" size="xs" variant="ghost-muted" />}>
-            More
-            <ChevronDownIcon aria-hidden="true" className="size-3" />
-          </MenuTrigger>
-          <MenuPopup align="start">
-            {folded.map((entry) => (
-              <MenuItem
-                disabled={entry.threadId === null}
+    // The header's own line: its faces in the header's face column, the band
+    // reaching into the gutter around the one on screen.
+    <nav
+      aria-label="Conversations"
+      className="relative -ms-2 flex min-w-0 flex-1 items-center gap-0.5"
+      data-conversation-strip
+      ref={ref}
+    >
+      {drawn.map((group, index) => {
+        const shownHere = group.entries.some((entry) => shownKeys.has(entry.key));
+        return (
+          <div
+            aria-label={group.label}
+            className={cn("flex min-w-0 items-center gap-0.5", index > 0 && shownHere && "ms-4")}
+            key={group.id}
+            role="group"
+          >
+            {group.entries.map((entry) => (
+              <StripEntry
+                canMakeMain={canMakeMain}
+                entry={entry}
+                folded={!shownKeys.has(entry.key)}
                 key={entry.key}
-                onClick={() => {
-                  if (entry.threadId !== null) onOpen(entry.threadId);
-                }}
-              >
-                {entry.face === undefined ? null : (
-                  <MateFace size="dot" state={entry.face.state} tint={entry.face.tint} />
-                )}
-                {entry.mark === "lead" ? <LeadMark /> : null}
-                <span className="min-w-0 flex-1 truncate">{entry.label}</span>
-                <EntryStatus entry={entry} narrow={false} />
-              </MenuItem>
+                squeezed={floor && shownKeys.has(entry.key)}
+                onClose={onClose}
+                onMakeMain={onMakeMain}
+                onOpen={onOpen}
+              />
             ))}
-          </MenuPopup>
-        </Menu>
-      )}
-      <Button className="shrink-0" onClick={onNewChat} size="xs" variant="ghost">
-        <PlusIcon aria-hidden="true" className="size-3.5" />
-        New chat
-      </Button>
-    </div>
+            {index === 0 ? <NewChatButton onNewChat={onNewChat} /> : null}
+          </div>
+        );
+      })}
+      <MoreMenu folded={folded} onOpen={onOpen} />
+    </nav>
+  );
+}
+
+/** Another chat beside the Mate's: a glyph after its chats, its name on hover. */
+function NewChatButton({ onNewChat }: { readonly onNewChat: () => void }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            aria-label="New chat"
+            className={GLYPH_BUTTON}
+            data-chat-header-ghost
+            data-conversation-strip-new
+            onClick={onNewChat}
+            type="button"
+          />
+        }
+      >
+        <PlusIcon aria-hidden="true" className="size-4" />
+      </TooltipTrigger>
+      <TooltipPopup side="bottom">New chat</TooltipPopup>
+    </Tooltip>
+  );
+}
+
+/**
+ * *N more* at the line's end, opening what folded: each with its face and
+ * name. Drawn unseen while nothing folds, so its room is known before it is
+ * needed.
+ */
+function MoreMenu({
+  folded,
+  onOpen,
+}: {
+  readonly folded: ReadonlyArray<ConversationStripEntry>;
+  readonly onOpen: (threadId: ThreadId) => void;
+}): ReactNode {
+  return (
+    <Menu>
+      <MenuTrigger
+        render={
+          <button
+            className={cn(
+              GLYPH_BUTTON,
+              "w-auto gap-1 px-2 text-line font-medium tabular-nums",
+              folded.length === 0 && "invisible absolute start-0 top-0",
+            )}
+            data-chat-header-ghost
+            data-conversation-strip-more
+            tabIndex={folded.length === 0 ? -1 : undefined}
+            type="button"
+          />
+        }
+      >
+        {/* Unseen while nothing folds, it holds a count's room. */}
+        {folded.length === 0 ? 9 : folded.length} more
+        <ChevronDownIcon aria-hidden="true" className="size-3.5" />
+      </MenuTrigger>
+      <MenuPopup align="end">
+        {folded.map((entry) => (
+          <MenuItem
+            disabled={entry.threadId === null}
+            key={entry.key}
+            onClick={() => {
+              if (entry.threadId !== null) onOpen(entry.threadId);
+            }}
+          >
+            <MateFace size="sm" state={entry.face.state} tint={entry.face.tint} />
+            <span className="min-w-0 flex-1 truncate">{entry.role ?? entry.label}</span>
+          </MenuItem>
+        ))}
+      </MenuPopup>
+    </Menu>
   );
 }
 
@@ -276,8 +390,8 @@ export interface ConversationStripProps {
   /** The chat on screen; null on a chat not sent yet. */
   readonly currentThreadId: ThreadId | null;
   /**
-   * Groups drawn after the chats, each behind a divider — the crew's
-   * crewmates. An empty group draws nothing.
+   * Groups drawn after the chats, each a step apart — the crew's crewmates.
+   * An empty group draws nothing.
    */
   readonly extraGroups?: ReadonlyArray<ConversationStripGroup>;
 }
@@ -358,8 +472,22 @@ export function useLoneChatNewChat({
 }
 
 /**
- * A Mate's chats over its conversation. Nothing where no Mate lives, and
- * nothing for a Mate with one chat: the row appears with a second one.
+ * Whether the strip holds the header's line: where a Mate lives with a second
+ * chat, or with a crew. Otherwise the header names the Mate itself.
+ */
+export function useConversationStripShown({
+  environmentId,
+  currentThreadId,
+  extraGroups = NO_GROUPS,
+}: Omit<ConversationStripProps, "projectId">): boolean {
+  const mateChatEntries = useMateChatEntries(environmentId, currentThreadId);
+  return mateChatEntries !== null && stripShown(mateChatEntries.entries, extraGroups);
+}
+
+/**
+ * Every conversation on a Mate's page, as the header's line: nothing where no
+ * Mate lives, and nothing for a Mate with one chat and no crew — the line
+ * appears with a second chat or a crew.
  */
 export function ConversationStrip({
   environmentId,
@@ -373,17 +501,6 @@ export function ConversationStrip({
   const router = useRouter();
   const handleNewThread = useNewThreadHandler();
   const { archiveThread, pinThread, unpinThread } = useThreadActions();
-  // Measured once the row exists — it comes and goes with the second chat.
-  const [row, setRow] = useState<HTMLDivElement | null>(null);
-  const [width, setWidth] = useState<number | null>(null);
-  useLayoutEffect(() => {
-    if (row === null) return;
-    const update = () => setWidth(row.clientWidth);
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(row);
-    return () => observer.disconnect();
-  }, [row]);
 
   if (mateChatEntries === null || !stripShown(mateChatEntries.entries, extraGroups)) return null;
   const { chats, entries } = mateChatEntries;
@@ -416,7 +533,7 @@ export function ConversationStrip({
       toastManager.add(
         stackedThreadToast({
           type: "warning",
-          title: blocked ? CLOSE_HELD.busy : "Couldn't close the chat",
+          title: blocked ? CLOSE_HELD : "Couldn't close the chat",
           description: blocked ? undefined : String(error),
         }),
       );
@@ -443,23 +560,16 @@ export function ConversationStrip({
   };
 
   return (
-    <div
-      className="flex h-9 shrink-0 items-center ps-(--workspace-gutter-start) pe-(--workspace-gutter-end)"
-      data-conversation-strip
-      ref={setRow}
-    >
-      <ConversationStripView
-        canMakeMain={pinningSupported}
-        groups={[{ id: "chats", label: "Chats", entries }, ...extraGroups]}
-        onClose={(entry) => void close(entry)}
-        onMakeMain={(entry) => void makeMain(entry)}
-        onNewChat={() =>
-          void handleNewThread(scopeProjectRef(environmentId, projectId), { chat: true })
-        }
-        onOpen={open}
-        width={width}
-      />
-    </div>
+    <ConversationStripView
+      canMakeMain={pinningSupported}
+      groups={[{ id: "chats", label: "Chats", entries }, ...extraGroups]}
+      onClose={(entry) => void close(entry)}
+      onMakeMain={(entry) => void makeMain(entry)}
+      onNewChat={() =>
+        void handleNewThread(scopeProjectRef(environmentId, projectId), { chat: true })
+      }
+      onOpen={open}
+    />
   );
 }
 
