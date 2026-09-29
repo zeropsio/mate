@@ -48,15 +48,17 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   jump?: ReactNode;
 }) {
   return (
-    // On the web the row is 65 px, so the mark (33 px, centred) stands 16 px
-    // from the top as it stands 16 px from the left (the owner, 2026-09-29:
-    // "visually logo has smaller padding on top than on the left"), and ⌘K
-    // and the waiting faces share its centre. Beside a desktop's traffic
-    // lights the row is theirs: the title bar's height, centred on them.
+    // The row is the top bar's (`--workspace-topbar-height`), so a page's
+    // header beside it shares its centre and its bottom edge. On the web
+    // that is 65 px, so the mark (33 px, centred) stands 16 px from the top
+    // as it stands 16 px from the left (the owner, 2026-09-29: "visually logo
+    // has smaller padding on top than on the left"), and ⌘K and the waiting
+    // faces share its centre. Beside a desktop's traffic lights the bar is
+    // the title bar's height, centred on them.
     <SidebarHeader
       className={cn(
         "@container/sidebar-header relative h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center px-3 py-0 md:px-0",
-        isElectron ? "drag-region" : "md:h-16.25",
+        isElectron && "drag-region",
       )}
     >
       <SidebarTrigger className="md:hidden" />
@@ -107,9 +109,9 @@ function SidebarBrand() {
  */
 export function SidebarCornerMark() {
   return (
-    // The mark is centred in a box the size of a titlebar control, which
-    // insets it by half the difference — the same pixel the open panel's
-    // lockup starts from, so closing the panel does not move it.
+    // Centred in the top bar's row, as the open menu's mark is in its logo
+    // row, and in a box the size of a titlebar control, which insets it by
+    // half the difference: its left edge stands where the open mark's does.
     <div
       className="pointer-events-none fixed left-[var(--workspace-controls-left)] top-[var(--workspace-controls-top)] z-50 flex h-[var(--workspace-topbar-height)] items-center"
       data-sidebar-control=""
