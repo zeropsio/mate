@@ -1,7 +1,8 @@
 /**
- * An empty conversation with a Mate: the Mate's mark in its colour, the
- * question — "What should Fen do on Acme Docs?" — and, when no coding agent
- * is signed in so nothing typed here could be acted on, the sign-in itself,
+ * An empty conversation with a Mate: the Mate's own face — its shape in its
+ * colour, awake or asleep as its container is — the question — "What should
+ * Fen do on Acme Docs?" — and, when no coding agent is signed in so nothing
+ * typed here could be acted on, the sign-in itself,
  * right where the first message would go. Asking there is the empty state
  * doing its one job; a line above the timeline asking the same was a second
  * voice.
@@ -21,13 +22,13 @@ import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 
 import { cn } from "~/lib/utils";
 
-import { MateMark } from "../MateMark";
+import { mateFaceFor } from "../../zerops/agentActivity";
 import { mateQuestion, type ZeropsMateIdentity } from "../../zerops/mateIdentities";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
 import { useZeropsAgentAuth } from "../../zerops/useZeropsFeeds";
 import { useZeropsAgentSignInDialog } from "../../zerops/useZeropsAgentSignInDialog";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
-import { FlatCard } from "./primitives";
+import { FlatCard, MateFace } from "./primitives";
 import { ZeropsAgentAuthRows } from "./ZeropsAgentAuthCard";
 
 export function ZeropsMateEmptyState({
@@ -61,7 +62,14 @@ export function ZeropsMateEmptyState({
       className="flex h-full flex-col items-center justify-center gap-6 px-5 sm:px-6"
       data-zerops-surface="mate-empty-state"
     >
-      <MateMark playful className="h-16 w-auto sm:h-[72px]" tint={mate.tint} />
+      {/* The brand mark's box: a draft's hero shows the mark until it is
+          known who lives here, and the face takes its place without a jump. */}
+      <MateFace
+        className="size-16 sm:size-18"
+        size="lg"
+        state={mateFaceFor(mate.connected, undefined)}
+        tint={mate.tint}
+      />
       <h1 className="text-center text-2xl font-normal tracking-tight text-foreground sm:text-3xl">
         {mateQuestion(mate)}
       </h1>
