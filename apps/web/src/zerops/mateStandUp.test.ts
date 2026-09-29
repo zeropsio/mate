@@ -7,6 +7,7 @@ import {
   mateStandUpCleared,
   mateStandUpDecision,
   mateStandUpHeadline,
+  mateStandUpHeadlineClauses,
   mateStandUpPhase,
   mateStandUpSendIds,
   mateStandUpSignedIn,
@@ -34,31 +35,40 @@ describe("the stand-up's words", () => {
   it.each([
     {
       phase: "sign-in" as const,
-      project: "Beviro",
-      words: "Quinn will stand up development of Beviro after you sign in your agent.",
+      project: "Acme Docs",
+      words: "Fen will stand up development of Acme Docs after you sign in your agent.",
     },
     {
       phase: "standing-up" as const,
-      project: "Beviro",
-      words: "Quinn is standing up development of Beviro…",
+      project: "Acme Docs",
+      words: "Fen is standing up development of Acme Docs…",
     },
     {
       phase: "failed" as const,
-      project: "Beviro",
-      words: "The message to Quinn didn't go through.",
+      project: "Acme Docs",
+      words: "The message to Fen didn't go through.",
     },
     {
       phase: "sign-in" as const,
       project: undefined,
-      words: "Quinn will stand up development of the project after you sign in your agent.",
+      words: "Fen will stand up development of the project after you sign in your agent.",
     },
     {
       phase: "standing-up" as const,
       project: undefined,
-      words: "Quinn is standing up development of the project…",
+      words: "Fen is standing up development of the project…",
     },
   ])("say, $phase in $project: $words", ({ phase, project, words }) => {
-    expect(mateStandUpHeadline({ name: "Quinn", project }, phase)).toBe(words);
+    expect(mateStandUpHeadline({ name: "Fen", project }, phase)).toBe(words);
+  });
+
+  it("break, when they must, between their clauses, never inside a name", () => {
+    expect(
+      mateStandUpHeadlineClauses({ name: "Fen", project: "Acme Docs Portal" }, "sign-in"),
+    ).toEqual([
+      "Fen will stand up development of Acme\u00a0Docs\u00a0Portal",
+      "after you sign in your agent.",
+    ]);
   });
 });
 

@@ -4,7 +4,7 @@
  * Adding a Mate to a project deploys the project's recipe with its services
  * empty (`startWithoutCode`) and writes `mate:standup:<userId>` on the Mate's
  * project, naming the person who pressed Add. Their empty conversation with
- * the Mate says what will happen — "Quinn will stand up development of Beviro
+ * the Mate says what will happen — "Fen will stand up development of Acme Docs
  * after you sign in your agent." — and the moment they have signed an agent
  * in, their own client sends "Stand up development of the project." as them,
  * through the composer's own send, and clears the tag once the conversation
@@ -146,18 +146,34 @@ export function mateStandUpPhase(input: {
   return "sign-in";
 }
 
-/** The empty conversation's headline in each phase, the owner's words for the first. */
+/** A name the headline never breaks inside. */
+const keptWhole = (name: string) => name.replaceAll(" ", "\u00a0");
+
+/**
+ * The empty conversation's headline in each phase, the owner's words for the first, in the
+ * clauses it breaks between when it takes two lines — "Fen will stand up development of Acme
+ * Docs / after you sign in your agent." — and with no name torn in two.
+ */
+export function mateStandUpHeadlineClauses(
+  mate: Pick<ZeropsMateIdentity, "name" | "project">,
+  phase: MateStandUpPhase,
+): ReadonlyArray<string> {
+  const name = keptWhole(mate.name);
+  const project = mate.project === undefined ? "the project" : keptWhole(mate.project);
+  switch (phase) {
+    case "sign-in":
+      return [`${name} will stand up development of ${project}`, "after you sign in your agent."];
+    case "standing-up":
+      return [`${name} is standing up development of ${project}…`];
+    case "failed":
+      return [`The message to ${name} didn't go through.`];
+  }
+}
+
+/** The headline as one sentence, as a person reads it. */
 export function mateStandUpHeadline(
   mate: Pick<ZeropsMateIdentity, "name" | "project">,
   phase: MateStandUpPhase,
 ): string {
-  const project = mate.project ?? "the project";
-  switch (phase) {
-    case "sign-in":
-      return `${mate.name} will stand up development of ${project} after you sign in your agent.`;
-    case "standing-up":
-      return `${mate.name} is standing up development of ${project}…`;
-    case "failed":
-      return `The message to ${mate.name} didn't go through.`;
-  }
+  return mateStandUpHeadlineClauses(mate, phase).join(" ").replaceAll("\u00a0", " ");
 }
