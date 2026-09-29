@@ -20,6 +20,7 @@ import {
   type EnvironmentId,
   isProviderDriverKind,
   ProjectId,
+  PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   type MessageId,
   type ModelSelection,
   type ProviderInteractionMode,
@@ -43,7 +44,10 @@ import { type ComposerImageAttachment, type DraftThreadState } from "../composer
 import * as Schema from "effect/Schema";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentThreadDetails } from "../state/threads";
-import { stripInlinePicturePlaceholders } from "../lib/composerPictures";
+import {
+  reconcileInlinePicturePlaceholders,
+  stripInlinePicturePlaceholders,
+} from "../lib/composerPictures";
 import {
   filterTerminalContextsWithText,
   stripInlineTerminalContextPlaceholders,
@@ -723,6 +727,31 @@ export function readOncePerFile(
     reads.set(file, reading);
     reading.catch(() => reads.delete(file));
     return reading;
+  };
+}
+
+/**
+ * Queued messages put back into the composer (after Stop or a Cancel): their
+ * prompts after its own, blank lines between, and their pictures after its
+ * own while there is room. The pictures past the room go back to the queue,
+ * and their places, which sit last, leave the text with them.
+ */
+export function restoreQueuedToComposer<I>(input: {
+  readonly prompt: string;
+  readonly imageCount: number;
+  readonly messages: ReadonlyArray<{ readonly prompt: string; readonly images: ReadonlyArray<I> }>;
+}): { prompt: string; images: I[]; overflow: I[] } {
+  const room = Math.max(0, PROVIDER_SEND_TURN_MAX_ATTACHMENTS - input.imageCount);
+  const queued = input.messages.flatMap((message) => message.images);
+  const images = queued.slice(0, room);
+  const prompt = [input.prompt, ...input.messages.map((message) => message.prompt)]
+    .map((text) => text.trim())
+    .filter((text) => text.length > 0)
+    .join("\n\n");
+  return {
+    prompt: reconcileInlinePicturePlaceholders(prompt, input.imageCount + images.length),
+    images,
+    overflow: queued.slice(room),
   };
 }
 

@@ -8,6 +8,7 @@ import {
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
+  PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   type ScopedThreadRef,
   type ServerProvider,
   ThreadId,
@@ -57,6 +58,7 @@ import {
   resolveDraftPromotionNavigationTarget,
   resolveThreadMetadataUpdateForNextTurn,
   readOncePerFile,
+  restoreQueuedToComposer,
   resolveSendEnvMode,
   threadShellHasStarted,
   resolveDraftHeroState,
@@ -2240,5 +2242,32 @@ describe("readOncePerFile", () => {
 
     await expect(readOnce(shot)).rejects.toThrow("busy");
     expect(await readOnce(shot)).toBe("data:shot.png");
+  });
+});
+
+describe("restoreQueuedToComposer", () => {
+  const P = "\uFFFB";
+  const messages = [
+    { prompt: `One${P}`, images: ["a"] },
+    { prompt: ` Two${P} `, images: ["b"] },
+  ];
+
+  it("joins the prompts after the composer's, and their pictures after its own", () => {
+    expect(restoreQueuedToComposer({ prompt: "Mine", imageCount: 0, messages })).toEqual({
+      prompt: `Mine\n\nOne${P}\n\nTwo${P}`,
+      images: ["a", "b"],
+      overflow: [],
+    });
+  });
+
+  it("sends pictures past the room back to the queue, and takes their places out", () => {
+    const held = P.repeat(PROVIDER_SEND_TURN_MAX_ATTACHMENTS - 1);
+    expect(
+      restoreQueuedToComposer({
+        prompt: held,
+        imageCount: PROVIDER_SEND_TURN_MAX_ATTACHMENTS - 1,
+        messages,
+      }),
+    ).toEqual({ prompt: `${held}\n\nOne${P}\n\nTwo`, images: ["a"], overflow: ["b"] });
   });
 });

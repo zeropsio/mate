@@ -86,6 +86,7 @@ import {
 import {
   MAX_STASH_ENTRIES,
   partitionStashAttachments,
+  restoreStashedPictures,
   usePromptStashStore,
   type PromptStashEntry,
 } from "../../promptStashStore";
@@ -106,10 +107,7 @@ import {
   useAttachmentUploadStore,
 } from "../../lib/attachmentUploadQueue";
 import { attachmentUploadBlockReason } from "../../lib/attachmentUploadState";
-import {
-  picturesBlockReason,
-  reconcileInlinePicturePlaceholders,
-} from "../../lib/composerPictures";
+import { picturesBlockReason } from "../../lib/composerPictures";
 import type { ComposerPictureView } from "./ComposerPicture";
 import { useComposerPictures } from "./useComposerPictures";
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
@@ -2502,40 +2500,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       setIsStashMenuOpen(false);
 
-      let unrestoredImageNames: string[] = [];
-      let restoredImages: ComposerImageAttachment[] = [];
-      if (entry.attachments.length > 0) {
-        const existingIds = new Set(composerImagesRef.current.map((image) => image.id));
-        // The draft store also dedupes by mimeType+sizeBytes+name, so filter
-        // on the same key here. Counting a duplicate against capacity would
-        // burn a slot the store then refuses to fill, pushing a genuinely
-        // unique image into the overflow list for nothing.
-        const existingDedupKeys = new Set(
-          composerImagesRef.current.map(
-            (image) => `${image.mimeType} ${image.sizeBytes} ${image.name}`,
-          ),
-        );
-        const capacity = Math.max(
-          0,
-          PROVIDER_SEND_TURN_MAX_ATTACHMENTS - composerImagesRef.current.length,
-        );
-        const pending = entry.attachments.filter(
-          (attachment) =>
-            !existingIds.has(attachment.id) &&
-            !existingDedupKeys.has(
-              `${attachment.mimeType} ${attachment.sizeBytes} ${attachment.name}`,
-            ),
-        );
-        // Anything past the attachment limit cannot be restored. The entry is
-        // already out of the queue, so report the overflow by name instead of
-        // discarding it silently.
-        unrestoredImageNames = pending.slice(capacity).map((attachment) => attachment.name);
-        restoredImages = hydrateImagesFromPersisted(pending.slice(0, capacity));
-      }
+      // Each picture that comes back takes its own place in the text; the
+      // place of one that does not leaves it. Anything past the attachment
+      // limit cannot be restored: the entry is already out of the queue, so
+      // the overflow is reported by name instead of discarded silently.
+      const {
+        prompt: entryPrompt,
+        images: restoredImages,
+        unrestoredNames: unrestoredImageNames,
+      } = restoreStashedPictures(entry, {
+        heldIds: new Set(composerImagesRef.current.map((image) => image.id)),
+        room: PROVIDER_SEND_TURN_MAX_ATTACHMENTS - composerImagesRef.current.length,
+        hydrate: hydrateImagesFromPersisted,
+      });
 
       const currentPrompt = promptRef.current;
-      // One place in the text per picture that came back.
-      const entryPrompt = reconcileInlinePicturePlaceholders(entry.prompt, restoredImages.length);
       // An image-only stash must not append blank lines to whatever is
       // already in the composer.
       const nextPrompt =
@@ -2657,6 +2636,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         droppedImageNames: [],
         unreadableImageNames: [],
         pendingImageCount: images.length,
+        pictureIds: images.map((image) => image.id),
       });
 
       // Clearing the composer is only safe once the write actually landed.

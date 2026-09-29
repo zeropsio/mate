@@ -193,7 +193,7 @@ describe("composerDraftStore addImages", () => {
     URL.revokeObjectURL = originalRevokeObjectUrl;
   });
 
-  it("deduplicates identical images in one batch by file signature", () => {
+  it("keeps two alike images of one batch: each is a picture with a place of its own", () => {
     const first = makeImage({
       id: "img-1",
       previewUrl: "blob:first",
@@ -214,11 +214,11 @@ describe("composerDraftStore addImages", () => {
     useComposerDraftStore.getState().addImages(threadRef, [first, duplicate]);
 
     const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
-    expect(draft?.images.map((image) => image.id)).toEqual(["img-1"]);
-    expect(revokeSpy).toHaveBeenCalledWith("blob:duplicate");
+    expect(draft?.images.map((image) => image.id)).toEqual(["img-1", "img-2"]);
+    expect(revokeSpy).not.toHaveBeenCalled();
   });
 
-  it("deduplicates against existing images across calls by file signature", () => {
+  it("keeps an image alike to one the draft already has", () => {
     const first = makeImage({
       id: "img-a",
       previewUrl: "blob:a",
@@ -240,8 +240,8 @@ describe("composerDraftStore addImages", () => {
     useComposerDraftStore.getState().addImage(threadRef, duplicateLater);
 
     const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
-    expect(draft?.images.map((image) => image.id)).toEqual(["img-a"]);
-    expect(revokeSpy).toHaveBeenCalledWith("blob:b");
+    expect(draft?.images.map((image) => image.id)).toEqual(["img-a", "img-b"]);
+    expect(revokeSpy).not.toHaveBeenCalled();
   });
 
   it("does not revoke blob URLs that are still used by an accepted duplicate image", () => {

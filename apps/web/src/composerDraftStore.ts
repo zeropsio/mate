@@ -733,12 +733,6 @@ function createEmptyThreadDraft(): ComposerThreadDraftState {
   };
 }
 
-function composerImageDedupKey(image: ComposerImageAttachment): string {
-  // Keep this independent from File.lastModified so dedupe is stable for hydrated
-  // images reconstructed from localStorage (which get a fresh lastModified value).
-  return `${image.mimeType}\u0000${image.sizeBytes}\u0000${image.name}`;
-}
-
 /**
  * A data context is identified by where it came from, never by how many lines
  * its snapshot happens to have: re-picking the same table after its schema
@@ -3079,15 +3073,13 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           }
           set((state) => {
             const existing = state.draftsByThreadKey[threadKey] ?? createEmptyThreadDraft();
+            // An image the draft has is one with its id. Two alike files are two
+            // pictures, each with a place of its own in the text.
             const existingIds = new Set(existing.images.map((image) => image.id));
-            const existingDedupKeys = new Set(
-              existing.images.map((image) => composerImageDedupKey(image)),
-            );
             const acceptedPreviewUrls = new Set(existing.images.map((image) => image.previewUrl));
             const dedupedIncoming: ComposerImageAttachment[] = [];
             for (const image of images) {
-              const dedupKey = composerImageDedupKey(image);
-              if (existingIds.has(image.id) || existingDedupKeys.has(dedupKey)) {
+              if (existingIds.has(image.id)) {
                 // Avoid revoking a blob URL that's still referenced by an accepted image.
                 if (!acceptedPreviewUrls.has(image.previewUrl)) {
                   revokeObjectPreviewUrl(image.previewUrl);
@@ -3096,7 +3088,6 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               }
               dedupedIncoming.push(image);
               existingIds.add(image.id);
-              existingDedupKeys.add(dedupKey);
               acceptedPreviewUrls.add(image.previewUrl);
             }
             if (dedupedIncoming.length === 0) {

@@ -2,11 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { removeLocalStorageItem } from "./hooks/useLocalStorage";
 
+import { INLINE_PICTURE_PLACEHOLDER as P } from "./lib/composerPictures";
 import {
   MAX_STASH_ENTRIES,
   PROMPT_STASH_STORAGE_KEY,
   MAX_STASH_ENTRY_ATTACHMENT_CHARS,
   partitionStashAttachments,
+  restoreStashedPictures,
   usePromptStashStore,
   writePromptStashStorageForTest,
   type PromptStashEntry,
@@ -42,6 +44,89 @@ function resetPromptStashStore() {
   writePromptStashStorageForTest("");
   removeLocalStorageItem(PROMPT_STASH_STORAGE_KEY);
 }
+
+describe("restoreStashedPictures", () => {
+  const saved = (id: string, name = `${id}.png`) => ({
+    id,
+    name,
+    mimeType: "image/png",
+    sizeBytes: 3,
+    dataUrl: "data:image/png;base64,AQID",
+  });
+  const entry = (
+    attachments: ReadonlyArray<ReturnType<typeof saved>>,
+    pictureIds?: ReadonlyArray<string>,
+  ): PromptStashEntry => ({
+    id: "entry",
+    createdAt: "2026-09-29T12:00:00.000Z",
+    prompt: `a${P}b${P}c${P}`,
+    attachments,
+    droppedImageNames: [],
+    ...(pictureIds ? { pictureIds } : {}),
+  });
+  const restore = (
+    stashed: PromptStashEntry,
+    options: { heldIds?: ReadonlyArray<string>; room?: number; unreadable?: string } = {},
+  ) => {
+    const restored = restoreStashedPictures(stashed, {
+      heldIds: new Set(options.heldIds ?? []),
+      room: options.room ?? 10,
+      hydrate: (attachments) =>
+        attachments.filter((attachment) => attachment.id !== options.unreadable),
+    });
+    return { ...restored, images: restored.images.map((image) => image.id) };
+  };
+
+  it.each([
+    [
+      "every picture back in its place",
+      entry([saved("one"), saved("two"), saved("three")], ["one", "two", "three"]),
+      {},
+      { prompt: `a${P}b${P}c${P}`, images: ["one", "two", "three"], unrestoredNames: [] },
+    ],
+    [
+      "a picture dropped when it was stashed leaves its own place",
+      entry([saved("one"), saved("three")], ["one", "two", "three"]),
+      {},
+      { prompt: `a${P}bc${P}`, images: ["one", "three"], unrestoredNames: [] },
+    ],
+    [
+      "pictures past the composer's room stay out, named, and so do their places",
+      entry([saved("one"), saved("two"), saved("three")], ["one", "two", "three"]),
+      { room: 1 },
+      { prompt: `a${P}bc`, images: ["one"], unrestoredNames: ["two.png", "three.png"] },
+    ],
+    [
+      "two alike pictures both come back",
+      entry(
+        [saved("one", "image.png"), saved("two", "image.png"), saved("three")],
+        ["one", "two", "three"],
+      ),
+      {},
+      { prompt: `a${P}b${P}c${P}`, images: ["one", "two", "three"], unrestoredNames: [] },
+    ],
+    [
+      "a picture the composer holds already does not come twice",
+      entry([saved("one"), saved("two"), saved("three")], ["one", "two", "three"]),
+      { heldIds: ["two"] },
+      { prompt: `a${P}bc${P}`, images: ["one", "three"], unrestoredNames: [] },
+    ],
+    [
+      "a picture that cannot be read back leaves its place",
+      entry([saved("one"), saved("two"), saved("three")], ["one", "two", "three"]),
+      { unreadable: "one" },
+      { prompt: `ab${P}c${P}`, images: ["two", "three"], unrestoredNames: [] },
+    ],
+    [
+      "a prompt stashed before pictures were named loses places from its end",
+      entry([saved("one"), saved("three")]),
+      {},
+      { prompt: `a${P}b${P}c`, images: ["one", "three"], unrestoredNames: [] },
+    ],
+  ])("%s", (_label, stashed, options, expected) => {
+    expect(restore(stashed, options)).toEqual(expected);
+  });
+});
 
 describe("partitionStashAttachments", () => {
   it("keeps attachments within the budget and reports dropped names in order", () => {

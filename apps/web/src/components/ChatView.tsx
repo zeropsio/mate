@@ -280,10 +280,7 @@ import {
   useComposerDraftStore,
   type DraftId,
 } from "../composerDraftStore";
-import {
-  materializePicturePrompt,
-  optimisticPictureAttachments,
-} from "../lib/composerPictures";
+import { materializePicturePrompt, optimisticPictureAttachments } from "../lib/composerPictures";
 import {
   appendTerminalContextsToPrompt,
   formatTerminalContextLabel,
@@ -430,6 +427,7 @@ import {
   cloneComposerImageForRetry,
   deriveLockedProvider,
   readFileAsDataUrl,
+  restoreQueuedToComposer,
   reconcileMountedTerminalThreadIds,
   recallCheckoutIsRepo,
   rememberCheckoutIsRepo,
@@ -6159,22 +6157,20 @@ export default function ChatView(props: ChatViewProps) {
   restoreQueuedMessagesRef.current = (messages) => restoreQueuedMessagesToComposer(messages);
   const restoreQueuedMessagesToComposer = (messages: ReadonlyArray<QueuedComposerMessage>) => {
     if (messages.length === 0) return;
-    const prompts = [promptRef.current, ...messages.map((message) => message.prompt)]
-      .map((prompt) => prompt.trim())
-      .filter((prompt) => prompt.length > 0);
-    const nextPrompt = prompts.join("\n\n");
+    // The draft holds at most the per-turn cap of pictures. The overflow goes
+    // back into the queue so nothing is lost, its places out of the text; the
+    // user can send the first batch and the rest follows as a queued message.
+    const {
+      prompt: nextPrompt,
+      images: restoredImages,
+      overflow,
+    } = restoreQueuedToComposer({
+      prompt: promptRef.current,
+      imageCount: composerImagesRef.current.length,
+      messages,
+    });
     promptRef.current = nextPrompt;
     setComposerDraftPrompt(composerDraftTarget, nextPrompt);
-    // The draft store silently drops images over the per-turn cap. Split the
-    // overflow back into the queue so nothing is lost; the user can send the
-    // first batch and the rest follows as a queued message.
-    const attachmentRoom = Math.max(
-      0,
-      PROVIDER_SEND_TURN_MAX_ATTACHMENTS - composerImagesRef.current.length,
-    );
-    const images = messages.flatMap((message) => message.images);
-    const restoredImages = images.slice(0, attachmentRoom);
-    const overflow = images.slice(attachmentRoom);
     // The composer syncs this ref from the draft in an effect; a send before
     // that effect runs must already see the restored content.
     composerImagesRef.current = [...composerImagesRef.current, ...restoredImages];
