@@ -132,7 +132,13 @@ export {
   summarizeEnvironmentServices,
   type ZeropsEnvironmentServices,
 } from "./environmentSummary.ts";
-export { assignCandidateMateTints, assignMateTints, preferredMateTint } from "./mateTints.ts";
+export {
+  assignCandidateMateTints,
+  assignMateTints,
+  mateShapeOf,
+  newMateTint,
+  preferredMateTint,
+} from "./mateTints.ts";
 export {
   selectAutoConnectTargets,
   ZEROPS_AUTO_CONNECT_LIMIT,
