@@ -697,10 +697,14 @@ const PORTRAIT = `data:image/svg+xml,${encodeURIComponent(
 /**
  * Whose each Mate is: a picture, initials where the account has none, and a
  * Mate whose owner the member list could not name — which wears no badge.
+ * Fen's crew is the viewer's own and Otto's a colleague's, so their menus
+ * differ by *Crew*.
  */
 const OWNERS = new Map<string, ZeropsMateOwner>([
   ["links-enzo", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: true }],
   ["links-theo", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
+  ["todo-fen", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: true }],
+  ["shop-otto", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
   ["shop-mira", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: false }],
   ["notes-iris", { name: "Eva Dvořák", initials: "ED", avatarUrl: null, isViewer: false }],
   ["notes-kai", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
@@ -777,10 +781,14 @@ function harnessCrew(input: {
   return { status: "applied", view, attention: snapshot.attention };
 }
 
-/** Fen's crew as the plan draws it; Otto's with a crewmate waiting on you. */
+/**
+ * Fen's crew as the plan draws it; Otto's with a crewmate waiting on you;
+ * Enzo with crew mode on and no crew yet, whose menu offers *Set up a crew*.
+ */
 const CREWS = new Map<string, SidebarCrewRead>([
   ["todo-fen", harnessCrew({ states: { backend: "working", erik: "done" }, ready: ["task-13"] })],
   ["shop-otto", harnessCrew({ states: { backend: "input", frontend: "working" }, ready: [] })],
+  ["links-enzo", { status: "none", view: null, attention: [] }],
 ]);
 
 /** Which Mate the menu opened, and what else it was asked to do, for the audit browser. */
@@ -878,6 +886,10 @@ function SidebarFrame({ width, onJump }: { readonly width: number; readonly onJu
             }}
             onSelect={(item) => {
               menuActions.push(`open ${item.project.id}`);
+              setOpen(item.project.id);
+            }}
+            onOpenCrew={(item, setUp) => {
+              menuActions.push(`${setUp ? "set up a crew" : "crew"} ${item.project.id}`);
               setOpen(item.project.id);
             }}
             activeProjectId={open}

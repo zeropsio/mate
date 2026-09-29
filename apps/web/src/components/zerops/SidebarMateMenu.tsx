@@ -4,7 +4,8 @@
  * The menu lives in the row's time slot: on hover and on focus the time gives
  * way to the menu's trigger, in a slot that is always reserved, so nothing on
  * the row moves when it appears; a right-click on the row opens the same menu
- * at the pointer. What it offers, in order: the ways in (*Open*, *Open app*,
+ * at the pointer. What it offers, in order: the ways in (*Open*, then *Crew*
+ * or *Set up a crew* on the viewer's own Mate with crew mode on, *Open app*,
  * *Copy link*), what this viewer keeps about it (*Mute notifications*,
  * *Mark as unread*, *Rename*), the verbs the projects screen offers too
  * (`useMateActions`: *Restart* or *Start*, *Register in …*, *Hand over…*,
@@ -56,9 +57,17 @@ export interface MenuPoint {
 const ROW_ACTION_CLASS =
   "inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground";
 
+/** The crew's door (`mateCrewItem`): its conversation on the Crew tab, set up or not. */
+export interface MateCrewEntry {
+  readonly label: string;
+  readonly onSelect: () => void;
+}
+
 /** What a Mate's menu lists: see the module's own comment for the order. */
 export interface MateMenuItemsProps {
   readonly actions: MateRowActions;
+  /** Absent where it is not the viewer's own Mate, or crew mode is not on. */
+  readonly crew?: MateCrewEntry | undefined;
   readonly unread: boolean;
   /** The Mate's app — its pair's stage route — where it has one. */
   readonly appUrl: string | undefined;
@@ -70,6 +79,7 @@ export interface MateMenuItemsProps {
 
 export function MateMenuItems({
   actions,
+  crew,
   unread,
   appUrl,
   onOpenMate,
@@ -87,6 +97,11 @@ export function MateMenuItems({
         Open
         {hint("↵")}
       </MenuItem>
+      {crew === undefined ? null : (
+        <MenuItem data-zerops-mate-menu="crew" onClick={crew.onSelect}>
+          {crew.label}
+        </MenuItem>
+      )}
       {appUrl === undefined ? (
         <MenuItem data-zerops-mate-menu="open-app" disabled>
           Open app

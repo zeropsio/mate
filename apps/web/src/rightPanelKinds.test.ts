@@ -96,7 +96,7 @@ describe("right panel kinds", () => {
       {
         kind: "crew",
         label: "Crew",
-        description: "Follow the crew's tasks on its board.",
+        description: "Set up this Mate's crew and follow its tasks.",
         shortcut: "C",
         unavailableHint: "Available in a Zerops project with crew mode on.",
       },

@@ -41,7 +41,6 @@ import {
   crewAskToResolveWord,
   crewBriefPlainText,
   crewAttentionSentence,
-  crewBoardLinkWord,
   crewCommitEditAsk,
   crewDeliverAsk,
   crewDescribeAsk,
@@ -566,8 +565,6 @@ describe("the section's words (PRD §4.3)", () => {
 
   it("words the footer", () => {
     const host = crew.hosts[0]!;
-    expect(crewBoardLinkWord(7)).toBe("Board · 7 tasks");
-    expect(crewBoardLinkWord(1)).toBe("Board · 1 task");
     expect(crewLandedWord(3)).toBe("Landed, not delivered · 3");
     expect(crewPortsOffWord("appdev")).toBe("appdev · Crew ports: off");
     expect(crewServedWord(host, crew.crewmates)).toBe("appdev serves: your tree");

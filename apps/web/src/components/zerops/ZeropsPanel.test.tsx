@@ -4,6 +4,8 @@ import {
   type ScopedThreadRef,
   type ZeropsAgentAuthSnapshot,
 } from "@t3tools/contracts";
+import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
+import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 import * as DateTime from "effect/DateTime";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -119,6 +121,16 @@ vi.mock("../../zerops/useZeropsAgentActivity", () => ({
   useZeropsAgentActivity: () => mateState.faces,
 }));
 
+/** What the crew feed answers: nothing read yet, unless a test hands it a crew. */
+const crewFeed = vi.hoisted(() => ({
+  read: { status: null, snapshot: null, view: null, current: false } as CrewRead,
+}));
+
+vi.mock("../../zerops/crew/useCrew", async (original) => ({
+  ...(await original<typeof import("../../zerops/crew/useCrew")>()),
+  useCrew: () => crewFeed.read,
+}));
+
 vi.mock("~/components/ui/button", () => ({
   Button: ({
     children,
@@ -138,6 +150,7 @@ vi.mock("~/components/ui/button", () => ({
   },
 }));
 
+import type { CrewRead } from "../../zerops/crew/useCrew";
 import { ZeropsPanel, ZeropsPanelPlaceholder } from "./ZeropsPanel";
 
 const THREAD_REF: ScopedThreadRef = {
@@ -248,6 +261,7 @@ beforeEach(() => {
   buttonState.handlers.clear();
   mateState.mates.clear();
   mateState.faces.clear();
+  crewFeed.read = { status: null, snapshot: null, view: null, current: false };
   feedState.topology = {
     view: undefined,
     liveness: undefined,
@@ -577,5 +591,35 @@ describe("ZeropsPanel — signing an agent out (D6 round 5)", () => {
 
     expect(html).toContain("data-zerops-agent-sign-out-error");
     expect(html).toContain("The container could not be reached.");
+  });
+});
+
+// The owner, 2026-09-29: "shouldn't we put the 'setup crew' screen from the
+// zerops tab to the 'crew' tab?" — the crew's section and its setup live in the
+// Crew tab alone; the map still names a crew port by whose app answers there.
+describe("ZeropsPanel — no crew section, no setup", () => {
+  const applied = crewSnapshotFixture();
+  const none = { ...applied, status: "none" as const, crew: null, crewmates: [], attention: [] };
+  const readOf = (snapshot: typeof applied): CrewRead => ({
+    status: snapshot.status,
+    snapshot,
+    view: deriveCrewView(snapshot, [], () => {
+      throw new Error("no shells here");
+    }) as CrewRead["view"],
+    current: true,
+  });
+
+  it.each([
+    { case: "a Mate without a crew", read: readOf(none) },
+    { case: "a Mate with a crew", read: readOf(applied) },
+  ])("$case: no crew section, no setup, no brief", ({ read }) => {
+    feedState.topology = resolved(VIEW);
+    crewFeed.read = read;
+    const html = renderToStaticMarkup(<ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />);
+
+    expect(html).not.toContain("data-zerops-crew");
+    expect(html).not.toContain("data-crew-section");
+    expect(html).not.toContain("Set up a crew");
+    expect(html).not.toContain("Camera and HUD rework");
   });
 });

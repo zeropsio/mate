@@ -52,7 +52,7 @@ export type RightPanelSurface =
   | { id: `service:${string}`; kind: "browser"; service: string; url: string }
   | { id: "data"; kind: "data" }
   | { id: "git"; kind: "git" }
-  /** The crew's board, opened from the Crew section of the Zerops tab. */
+  /** The crew's one home: its setup, or its section above its board. */
   | { id: "crew"; kind: "crew" }
   /**
    * One change, drawn where the reader already is.

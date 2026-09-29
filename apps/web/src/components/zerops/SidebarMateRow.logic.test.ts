@@ -3,7 +3,13 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 
-import { changeMarkTone, mateOwnerView, mateRowView, ownerMark } from "./SidebarMateRow.logic";
+import {
+  changeMarkTone,
+  mateCrewItem,
+  mateOwnerView,
+  mateRowView,
+  ownerMark,
+} from "./SidebarMateRow.logic";
 
 describe("ownerMark — whose Mate it is, as a 16 px mark before its name", () => {
   it.each([
@@ -139,6 +145,26 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
       kind: "person",
       mark: ownerMark(KAREL),
     });
+  });
+});
+
+// The owner, 2026-09-29: "allow setting up crew from more menu in the left col".
+describe("mateCrewItem — the crew's door in a Mate's own menu", () => {
+  const MINE = { isViewer: true };
+  const COLLEAGUES = { isViewer: false };
+  const SET_UP = { label: "Set up a crew", setUp: true };
+  const CREW = { label: "Crew", setUp: false };
+
+  it.each([
+    { case: "crew mode not read yet", status: null, owner: MINE, item: null },
+    { case: "crew mode off", status: "off", owner: MINE, item: null },
+    { case: "the viewer's own, without a crew", status: "none", owner: MINE, item: SET_UP },
+    { case: "the viewer's own, with a crew", status: "applied", owner: MINE, item: CREW },
+    { case: "a colleague's, without a crew", status: "none", owner: COLLEAGUES, item: null },
+    { case: "a colleague's, with a crew", status: "applied", owner: COLLEAGUES, item: null },
+    { case: "one whose owner is not named", status: "applied", owner: undefined, item: null },
+  ] as const)("$case", ({ status, owner, item }) => {
+    expect(mateCrewItem({ status, owner })).toEqual(item);
   });
 });
 

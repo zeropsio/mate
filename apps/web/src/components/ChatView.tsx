@@ -171,7 +171,7 @@ import { ZeropsBrowserPanel } from "./zerops/ZeropsBrowserPanel";
 import { ZeropsDataPanel } from "./zerops/ZeropsDataPanel";
 import { ZeropsChangeDetailPage } from "./zerops/ZeropsGroupDetail";
 import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
-import { CrewBoardPanel } from "./zerops/crew/CrewBoardPanel";
+import { CrewPanel } from "./zerops/crew/CrewPanel";
 import { useCrew } from "../zerops/crew/useCrew";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useZeropsNextStepStrip } from "./zerops/ZeropsNextStepBanner";
@@ -7914,7 +7914,8 @@ export default function ChatView(props: ChatViewProps) {
             case "git":
               return <ZeropsGitSurface threadRef={zeropsChrome.threadRef} />;
             case "crew":
-              return <CrewBoardPanel environmentId={activeThreadRef.environmentId} />;
+              // One Mate's crew: another Mate's draws afresh, its sheets and drafts closed.
+              return <CrewPanel key={activeThreadRef.environmentId} threadRef={activeThreadRef} />;
             case "change":
               return (
                 <ZeropsChangeDetailPage
