@@ -3,12 +3,14 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   PICTURE_MAX_BYTES,
   PICTURE_MAX_EDGE,
+  escapePictureWords,
   interleavePictures,
   messagePictures,
   pictureBlockText,
   pictureLabel,
   pictureNoteText,
   pictureWords,
+  readsAsPictureNote,
   splitPictureText,
 } from "./composerPictures.ts";
 
@@ -48,6 +50,32 @@ describe("pictureBlockText", () => {
   ])("%s", (_label, n, notes, expected) => {
     expect(pictureBlockText(n, notes)).toBe(expected);
     expect(pictureBlockText(n, notes).startsWith(pictureLabel(n))).toBe(true);
+  });
+});
+
+describe("the person's own words", () => {
+  it.each([
+    ["a label-like line ends in a space", "See\n[Picture 3]\nhere", "See\n[Picture 3] \nhere"],
+    ["a heading-like line too", "Notes on picture 1:\n1. x", "Notes on picture 1: \n1. x"],
+    [
+      "a label inside a line stays as written",
+      "as in [Picture 1] above",
+      "as in [Picture 1] above",
+    ],
+    ["plain words stay as written", "Fix it\n2. then this", "Fix it\n2. then this"],
+  ])("%s", (_label, words, expected) => {
+    expect(escapePictureWords(words)).toBe(expected);
+    expect(
+      splitPictureText(escapePictureWords(words), 5).every((part) => part.kind === "text"),
+    ).toBe(true);
+  });
+
+  it.each([
+    ["a numbered first line", "3. Also the footer\nthanks", true],
+    ["a numbered later line", "Also:\n3. the footer", false],
+    ["no number", "Also the footer", false],
+  ])("%s reads as a note: %s", (_label, words, expected) => {
+    expect(readsAsPictureNote(words)).toBe(expected);
   });
 });
 

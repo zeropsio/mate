@@ -1,3 +1,4 @@
+import { splitPictureText } from "@t3tools/shared/composerPictures";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -135,6 +136,54 @@ describe("materializePicturePrompt", () => {
     ],
   ])("%s", (_label, prompt, images, expected) => {
     expect(materializePicturePrompt(prompt, images)).toBe(expected);
+  });
+
+  it.each([
+    [
+      "a line of theirs that reads as a label",
+      `[Picture 1]\n${P}`,
+      [{}],
+      "[Picture 1] \n[Picture 1]",
+      [
+        { kind: "text", text: "[Picture 1] " },
+        { kind: "picture", n: 1, notes: [] },
+      ],
+    ],
+    [
+      "a later picture's label written before it",
+      `${P}\n[Picture 2]\n${P}`,
+      [{}, {}],
+      "[Picture 1]\n[Picture 2] \n[Picture 2]",
+      [
+        { kind: "picture", n: 1, notes: [] },
+        { kind: "text", text: "[Picture 2] " },
+        { kind: "picture", n: 2, notes: [] },
+      ],
+    ],
+    [
+      "a line of theirs that reads as a notes heading",
+      `${P}\nNotes on picture 1:\n1. mine`,
+      [{}],
+      "[Picture 1]\nNotes on picture 1: \n1. mine",
+      [
+        { kind: "picture", n: 1, notes: [] },
+        { kind: "text", text: "Notes on picture 1: \n1. mine" },
+      ],
+    ],
+    [
+      "a numbered line right after a picture's notes",
+      `${P}\n3. Also the footer`,
+      [withNotes("Logo", "Grid")],
+      "[Picture 1]\nNotes on picture 1:\n1. Logo\n2. Grid\n\n3. Also the footer",
+      [
+        { kind: "picture", n: 1, notes: ["Logo", "Grid"] },
+        { kind: "text", text: "3. Also the footer" },
+      ],
+    ],
+  ])("the person's own words stay words: %s", (_label, prompt, images, expected, segments) => {
+    const text = materializePicturePrompt(prompt, images);
+    expect(text).toBe(expected);
+    expect(splitPictureText(text, images.length)).toEqual(segments);
   });
 });
 

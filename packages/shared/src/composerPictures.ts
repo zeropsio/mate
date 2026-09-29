@@ -32,6 +32,7 @@ export const PICTURE_MAX_BYTES = Math.floor((5 * 1024 * 1024) / 4) * 3;
 export const PICTURE_EMPTY_NOTE = "Marked, no note.";
 
 const LABEL_PATTERN = /^\[Picture (\d+)\]$/u;
+const HEADING_PATTERN = /^Notes on picture \d+:$/u;
 const NOTE_PATTERN = /^(\d+)\. (.*)$/u;
 
 export function pictureLabel(n: number): string {
@@ -56,6 +57,27 @@ export function pictureBlockText(n: number, notes: ReadonlyArray<string>): strin
     notesHeading(n),
     ...notes.map((note, index) => `${index + 1}. ${pictureNoteText(note)}`),
   ].join("\n");
+}
+
+/**
+ * The person's own words as they go around pictures: a line of theirs that
+ * would read as a picture's label or its notes heading ends in a space, so
+ * only the composer's own lines are ever read as pictures.
+ */
+export function escapePictureWords(words: string): string {
+  return words
+    .split("\n")
+    .map((line) => (LABEL_PATTERN.test(line) || HEADING_PATTERN.test(line) ? `${line} ` : line))
+    .join("\n");
+}
+
+/**
+ * Whether words written right after a picture's notes would be read as more
+ * of them: their first line numbered as the next note would be. A blank line
+ * between the two keeps them apart.
+ */
+export function readsAsPictureNote(words: string): boolean {
+  return NOTE_PATTERN.test(words.split("\n", 1)[0] ?? "");
 }
 
 export type PictureTextSegment =

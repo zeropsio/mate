@@ -8,7 +8,11 @@
  * becomes the picture's label and notes (`@t3tools/shared/composerPictures`),
  * on lines of their own, and the images go in the same order.
  */
-import { pictureBlockText } from "@t3tools/shared/composerPictures";
+import {
+  escapePictureWords,
+  pictureBlockText,
+  readsAsPictureNote,
+} from "@t3tools/shared/composerPictures";
 
 import type { ComposerImageAttachment } from "../composerDraftStore";
 import type { ChatAttachment } from "../types";
@@ -151,7 +155,7 @@ export function stripInlinePicturePlaceholders(prompt: string): string {
  * The prompt with each picture's place written out as its label and notes on
  * lines of their own, numbered in the order the pictures sit. A place without
  * a picture says nothing. Terminal-context places are left for their own
- * materializer.
+ * materializer. The person's own words never read as a picture's lines.
  */
 export function materializePicturePrompt(
   prompt: string,
@@ -163,8 +167,11 @@ export function materializePicturePrompt(
   let words = "";
   let placeIndex = 0;
   let pictureNumber = 0;
+  let afterNotes = false;
   const flush = (text: string) => {
-    if (text.trim().length > 0) parts.push(text);
+    if (text.trim().length === 0) return;
+    if (afterNotes && readsAsPictureNote(text)) parts.push("");
+    parts.push(escapePictureWords(text));
   };
   for (const char of placed) {
     if (char !== INLINE_PICTURE_PLACEHOLDER) {
@@ -177,9 +184,9 @@ export function materializePicturePrompt(
     flush(pictureNumber === 0 && parts.length === 0 ? words.replace(/\s+$/u, "") : trimBoth(words));
     words = "";
     pictureNumber += 1;
-    parts.push(
-      pictureBlockText(pictureNumber, image.picture?.marks.map((mark) => mark.note) ?? []),
-    );
+    const notes = image.picture?.marks.map((mark) => mark.note) ?? [];
+    parts.push(pictureBlockText(pictureNumber, notes));
+    afterNotes = notes.length > 0;
   }
   flush(pictureNumber === 0 ? words : words.replace(/^\s+/u, ""));
   return parts.join("\n");
