@@ -595,8 +595,9 @@ describe("ZeropsPanel — signing an agent out (D6 round 5)", () => {
 });
 
 // The owner, 2026-09-29: "shouldn't we put the 'setup crew' screen from the
-// zerops tab to the 'crew' tab?" — the crew lives in the Crew tab alone.
-describe("ZeropsPanel — nothing of the crew", () => {
+// zerops tab to the 'crew' tab?" — the crew's section and its setup live in the
+// Crew tab alone; the map still names a crew port by whose app answers there.
+describe("ZeropsPanel — no crew section, no setup", () => {
   const applied = crewSnapshotFixture();
   const none = { ...applied, status: "none" as const, crew: null, crewmates: [], attention: [] };
   const readOf = (snapshot: typeof applied): CrewRead => ({

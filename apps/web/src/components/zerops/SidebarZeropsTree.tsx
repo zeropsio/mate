@@ -441,8 +441,10 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    */
   readonly shown?: ((candidate: T) => boolean) | undefined;
   /**
-   * A Mate's crew as a fixture draws it (a harness). Absent, each connected
-   * Mate's crew line reads its own crew feed (`useCrew`).
+   * A Mate's crew as a fixture draws it (a harness): its crew line, and
+   * whether its menu offers *Set up a crew* or *Crew*. Absent, each connected
+   * Mate's crew line and menu read its own crew feed (`useCrew`,
+   * `useCrewStatus`).
    */
   readonly getCrew?: ((candidate: T) => SidebarCrewRead | undefined) | undefined;
 }

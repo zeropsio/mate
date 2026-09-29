@@ -152,8 +152,9 @@ Client:
   `RightPanelTabs.tsx`), `hidden` unless the Zerops panel is available and the status is `none` or
   `applied`, is the crew's one home (`CrewPanel.tsx`): for `none` the empty state and _Set up a
   crew_, for `applied` the section (`CrewSectionHost`) above the board (`CrewBoardHost`) in one
-  column. Whether the setup sheet is open is kept outside the tab (`crewTab.ts`). The Zerops tab
-  shows nothing of the crew.
+  column. The left menu asks for the setup sheet through `crewTab.ts`. The Zerops tab has no crew
+  section and no setup; its map still names crew ports by crewmate, and its coding agents' card
+  who runs on each login.
 - **Chat** — `ChatView.tsx`: in the lifecycle strip's slot a writer's lane bar or the lead's bar
   ("Plans and reviews · no copy of the code", `CrewLeadBar`), the board in the right panel, the
   lead's plan in the lead's chat (`CrewLeadPlan`), and a crew thread's send as
