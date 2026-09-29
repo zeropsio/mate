@@ -75,6 +75,24 @@ describe("userAskOf", () => {
       { kind: "text", text: "/var/www/app fails to build" },
     ],
     [
+      "words around a picture, its label left out and its notes kept",
+      {
+        text: "The header feels off:\n[Picture 1]\nNotes on picture 1:\n1. Bigger logo\nFix it",
+        attachments: [image],
+      },
+      { kind: "text", text: "The header feels off:\nBigger logo\nFix it" },
+    ],
+    [
+      "a picture with nothing written asks by its picture",
+      { text: "[Picture 1]\nNotes on picture 1:\n1. Marked, no note.", attachments: [image] },
+      { kind: "attachments", images: 1, files: 0 },
+    ],
+    [
+      "a label with no picture behind it is words",
+      { text: "[Picture 1]" },
+      { kind: "text", text: "[Picture 1]" },
+    ],
+    [
       "the image-only placeholder",
       { text: IMAGE_ONLY_BOOTSTRAP_PROMPT, attachments: [image] },
       { kind: "attachments", images: 1, files: 0 },
