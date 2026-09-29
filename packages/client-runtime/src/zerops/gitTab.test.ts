@@ -13,6 +13,7 @@ import {
   gitVerdict,
   type GitBlockEvidence,
   type GitCheckoutState,
+  type GitCheckTone,
   type GitForgePullRequest,
   type GitForgeState,
 } from "./gitTab.ts";
