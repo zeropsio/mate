@@ -11,8 +11,11 @@
  * - **Pausing or stopping** interrupts every running crew turn: each ends
  *   with its WIP commit, so a run that stops leaves every copy committed.
  * - **Meters.** Spend is every crew turn's `totalCostUsd` while the run is
- *   on; time is wall time running, paused time excluded, recorded at every
- *   tick; usage is the fullest window of the crewmates' logins, from the
+ *   on; time is the time its crew works — the run running and a crew turn
+ *   running, so a crew sitting idle, waiting on you or with nothing to do,
+ *   never uses up its time limit (the owner, 2026-09-29, of a run that spent
+ *   8 h at $0.00) — recorded at every tick and whenever the crew stops
+ *   working; usage is the fullest window of the crewmates' logins, from the
  *   provider's rate-limit events.
  * - **Budget.** A crew session starts with `maxBudgetUsd` = what the run has
  *   left (`crewDirectory.memberFor`); *No limit* never sets it.
@@ -120,12 +123,41 @@ export const leadReviews = (applied: AppliedCrew): boolean => {
   );
 };
 
-/** Wall time the run has run, paused time excluded, at `nowMs`. */
+/**
+ * The run's clock: the time it counted and kept (`crew_run.wall_ms`), and
+ * since when it counts on; `since` is `null` while it stands.
+ */
+export interface RunClock {
+  readonly keptMs: number;
+  readonly since: number | null;
+}
+
+/** The clock's reading at `nowMs`. */
+export const runClockAt = (clock: RunClock, nowMs: number): number =>
+  clock.keptMs + (clock.since === null ? 0 : Math.max(0, nowMs - clock.since));
+
+/**
+ * The clock once, from `nowMs` on, it `counts` — while the run runs and a
+ * crew turn runs — or stands: what it counted is kept, and a stretch of
+ * nobody working adds nothing.
+ */
+export const runClockFollows = (clock: RunClock, counts: boolean, nowMs: number): RunClock => {
+  if (counts) return clock.since === null ? { keptMs: clock.keptMs, since: nowMs } : clock;
+  return clock.since === null ? clock : { keptMs: runClockAt(clock, nowMs), since: null };
+};
+
+/** Whether the run's clock counts: the run runs and one of the crew's turns does. */
+const clockCounts = (core: CrewCore, run: CrewRunRow | undefined): boolean =>
+  run?.state === "running" && core.memory.working.size > 0;
+
+const clockOf = (core: CrewCore, run: CrewRunRow): RunClock => ({
+  keptMs: run.wallMs,
+  since: run.state === "running" ? core.memory.runningSince : null,
+});
+
+/** The time the run's crew has worked, paused and idle time excluded, at `nowMs`. */
 const elapsedMs = (core: CrewCore, run: CrewRunRow, nowMs: number): number =>
-  run.wallMs +
-  (run.state === "running" && core.memory.runningSince !== null
-    ? Math.max(0, nowMs - core.memory.runningSince)
-    : 0);
+  runClockAt(clockOf(core, run), nowMs);
 
 /** The fullest usage window of the crewmates' logins; `null` before any reading. */
 export const usagePercentOf = (core: CrewCore, applied: AppliedCrew): number | null => {
@@ -208,7 +240,10 @@ const interruptCrewTurns = (core: CrewCore, applied: AppliedCrew) =>
     }
   });
 
-/** Records the running run's time and pauses it at a limit; the section's meters move with it. */
+/**
+ * Records the running run's time and pauses it at a limit; the section's
+ * meters move with it. A run whose crew sits idle keeps its time as it was.
+ */
 export const checkRunLimits = (core: CrewCore) =>
   Effect.gen(function* () {
     const applied = yield* core.applied;
@@ -216,19 +251,46 @@ export const checkRunLimits = (core: CrewCore) =>
     const options = run === undefined ? undefined : runOptionsOf(run);
     if (applied === undefined || run?.state !== "running" || options === undefined) return;
     const nowMs = yield* Clock.currentTimeMillis;
+    const counted = elapsedMs(core, run, nowMs);
     const reached = runLimitReached({
       budgetUsd: run.budgetUsd,
       spentUsd: run.spentUsd,
-      elapsedMs: elapsedMs(core, run, nowMs),
+      elapsedMs: counted,
       timeLimitHours: options.timeLimitHours,
       usagePercent: usagePercentOf(core, applied),
       stopAtUsagePercent: options.stopAtUsagePercent,
     });
     if (reached !== undefined) return yield* pauseRun(core, reached);
-    yield* asRefusal(core.store.putRun({ ...run, wallMs: elapsedMs(core, run, nowMs) }));
-    core.memory.runningSince = nowMs;
+    core.memory.runningSince = clockCounts(core, run) ? nowMs : null;
+    if (counted === run.wallMs) return;
+    yield* asRefusal(core.store.putRun({ ...run, wallMs: counted }));
     yield* asRefusal(core.reload);
     yield* core.changed;
+  });
+
+/**
+ * The running run's clock follows its crew's work: it counts from the moment
+ * a crew turn starts and stops, keeping what it counted, once none runs.
+ * Called wherever a crew turn begins or ends.
+ */
+export const followCrewWork = (core: CrewCore) =>
+  Effect.gen(function* () {
+    const run = (yield* core.applied)?.run;
+    if (run?.state !== "running") return;
+    const counts = clockCounts(core, run);
+    if (counts === (core.memory.runningSince !== null)) return;
+    const clock = runClockFollows(clockOf(core, run), counts, yield* Clock.currentTimeMillis);
+    core.memory.runningSince = clock.since;
+    if (clock.keptMs === run.wallMs) return;
+    yield* asRefusal(core.store.putRun({ ...run, wallMs: clock.keptMs }));
+    yield* asRefusal(core.reload);
+    yield* core.changed;
+  });
+
+/** A run starting to run counts at once only while a crew turn already runs. */
+const clockFromNow = (core: CrewCore) =>
+  Effect.map(Clock.currentTimeMillis, (nowMs) => {
+    core.memory.runningSince = core.memory.working.size > 0 ? nowMs : null;
   });
 
 /** The tick that keeps a running run's time and limits; one per engine, forked on demand. */
@@ -249,11 +311,14 @@ export const ensureRunTick = (core: CrewCore) =>
     );
   });
 
-/** After a restart a running run counts its time again from now; the downtime is not its time. */
+/**
+ * After a restart a running run counts its time again once its crew works;
+ * the downtime is not its time.
+ */
 export const runOnAfterRestart = (core: CrewCore) =>
   Effect.gen(function* () {
     if ((yield* core.applied)?.run?.state !== "running") return;
-    core.memory.runningSince = yield* Clock.currentTimeMillis;
+    yield* clockFromNow(core);
     yield* ensureRunTick(core);
   });
 
@@ -281,7 +346,7 @@ export const startRun = (core: CrewCore, principal: TurnPrincipal, options: Crew
       waitingMs: 0,
       finishedAt: null,
     });
-    core.memory.runningSince = yield* Clock.currentTimeMillis;
+    yield* clockFromNow(core);
     // The person's press wakes the lead at once; the spacing is between the engine's own wakes.
     core.memory.lastWakeAt = null;
     yield* ensureRunTick(core);
@@ -366,7 +431,7 @@ export const resumeRun = (
       budgetUsd,
       options,
     });
-    core.memory.runningSince = yield* Clock.currentTimeMillis;
+    yield* clockFromNow(core);
     // The person's press wakes the lead at once; the spacing is between the engine's own wakes.
     core.memory.lastWakeAt = null;
     yield* ensureRunTick(core);

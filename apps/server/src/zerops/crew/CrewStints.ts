@@ -42,6 +42,7 @@ import { appendSeam } from "./crewSeamLines.ts";
 import { crewLane } from "./CrewDefinition.ts";
 import { modelSelectionFor } from "./CrewDispatch.ts";
 import { CREW_ID } from "./CrewHome.ts";
+import { followCrewWork } from "./crewRuns.ts";
 import type { CrewStintRow } from "./CrewStore.ts";
 import { isOpenTask } from "./crewSnapshot.ts";
 import { readTaskCard, readTaskReport } from "./crewTaskData.ts";
@@ -187,6 +188,7 @@ export const retireStint = (core: CrewCore, stint: CrewStintRow) =>
     });
     core.memory.working.delete(stint.threadId);
     core.memory.shaped.delete(stint.threadId);
+    yield* followCrewWork(core);
     yield* asRefusal(core.reload);
   });
 

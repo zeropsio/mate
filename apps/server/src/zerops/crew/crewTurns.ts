@@ -39,7 +39,7 @@ import { grantAfterTurn, moveClaim, releaseAfterTurn, settleClaim } from "./crew
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
 import { crewStateRef } from "./CrewStateRef.ts";
 import { attemptRef, type LaneSpec } from "./CrewWorkspace.ts";
-import { RUN_PAUSED, recordRunSpend, recordUsage, turnCost } from "./crewRuns.ts";
+import { followCrewWork, RUN_PAUSED, recordRunSpend, recordUsage, turnCost } from "./crewRuns.ts";
 import { rotate, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
 import { continueAfterSave, openTaskOf, parkTask, requeueTask, stepTask } from "./crewTasks.ts";
@@ -157,6 +157,7 @@ const turnEnded = (
     const { memory } = core;
     const shaped = memory.shaped.get(stint.threadId);
     memory.working.delete(stint.threadId);
+    yield* followCrewWork(core);
     memory.endings.set(stint.threadId, event.payload.state);
     memory.shaped.delete(stint.threadId);
     if (event.payload.terminalReason !== undefined) {
@@ -444,6 +445,7 @@ export const makeTurnHandler = (core: CrewCore) => {
         case "turn.started":
           core.memory.working.add(stint.threadId);
           core.memory.terminalReasons.delete(stint.threadId);
+          yield* followCrewWork(core);
           break;
         case "turn.completed":
           yield* turnEnded(core, stint, event);
