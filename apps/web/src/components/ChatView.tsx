@@ -280,6 +280,7 @@ import {
   useComposerDraftStore,
   type DraftId,
 } from "../composerDraftStore";
+import { materializePicturePrompt } from "../lib/composerPictures";
 import {
   appendTerminalContextsToPrompt,
   formatTerminalContextLabel,
@@ -6478,8 +6479,10 @@ export default function ChatView(props: ChatViewProps) {
     const composerImagesSnapshot = [...composerImages];
     const composerTerminalContextsSnapshot = [...sendableComposerTerminalContexts];
     const composerReviewCommentsSnapshot: ReviewCommentContext[] = [...composerReviewComments];
+    // Each picture's place becomes its label and notes, so the Mate reads words
+    // and pictures in the order they were written.
     const messageTextWithContexts = appendTerminalContextsToPrompt(
-      promptForSend,
+      materializePicturePrompt(promptForSend, composerImagesSnapshot),
       composerTerminalContextsSnapshot,
     );
     const messageTextForSend = appendReviewCommentsToPrompt(
@@ -6669,14 +6672,31 @@ export default function ChatView(props: ChatViewProps) {
         };
       }),
     );
-    const optimisticAttachments = composerImagesSnapshot.map((image) => ({
-      type: "image" as const,
-      id: image.id,
-      name: image.name,
-      mimeType: image.mimeType,
-      sizeBytes: image.sizeBytes,
-      previewUrl: image.previewUrl,
-    }));
+    const optimisticAttachments = composerImagesSnapshot.flatMap((image) => {
+      const original = image.picture?.keepOriginal ? image.picture.source : null;
+      return [
+        {
+          type: "image" as const,
+          id: image.id,
+          name: image.name,
+          mimeType: image.mimeType,
+          sizeBytes: image.sizeBytes,
+          previewUrl: image.previewUrl,
+        },
+        // A kept original rides right after its picture, as it is sent.
+        ...(original
+          ? [
+              {
+                type: "file" as const,
+                id: `${image.id}-original`,
+                name: original.name || image.name,
+                mimeType: original.type || "application/octet-stream",
+                sizeBytes: original.size,
+              },
+            ]
+          : []),
+      ];
+    });
     const shouldAnchorFirstMessage =
       activeThread.latestTurn === null &&
       !timelineMessages.some((message) => message.role === "user");
@@ -8448,7 +8468,6 @@ export default function ChatView(props: ChatViewProps) {
                               focusComposer={focusComposer}
                               scheduleComposerFocus={scheduleComposerFocus}
                               setThreadError={setThreadError}
-                              onExpandImage={onExpandTimelineImage}
                             />
                           )}
                         </div>
