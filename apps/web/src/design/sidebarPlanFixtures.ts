@@ -5,8 +5,9 @@
  * Every production chip state the plan names stands in one of them: Letopis
  * with a change waiting for production, Mate with none, Beviro whose last
  * release failed, Snap healthy, ZIT with only a stage, and Imperial Titan
- * folded, production down, and Lena at work in it. Every word is made up;
- * the hosts are `example.app`.
+ * folded, production down, and Lena at work in it — and, from the plan's
+ * table of chips, Atlas releasing and Experiments stopped on purpose. Every
+ * word is made up; the hosts are `example.app`.
  *
  * Fixtures only: nothing here ships in the app bundle.
  */
@@ -100,6 +101,8 @@ const BEVIRO = group("beviro", "Beviro");
 const SNAP = group("snap", "Snap");
 const ZIT = group("zit", "ZIT");
 const TITAN = group("titan", "Imperial Titan");
+const ATLAS = group("atlas", "Atlas");
+const EXPERIMENTS = group("experiments", "Experiments");
 
 export const PLAN_CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
   mate("letopis-fen", "Fen", LETOPIS),
@@ -129,6 +132,13 @@ export const PLAN_CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
   }),
   mate("titan-lena", "Lena", TITAN),
   stop("titan-prod", "prod", TITAN, { hosts: ["titan.example.app"], status: "CONTAINER_FAILED" }),
+  mate("atlas-oto", "Oto", ATLAS),
+  stop("atlas-prod", "prod", ATLAS, { hosts: ["atlas.example.app"] }),
+  mate("experiments-ida", "Ida", EXPERIMENTS),
+  stop("experiments-prod", "prod", EXPERIMENTS, {
+    hosts: ["lab.example.app"],
+    status: "STOPPED",
+  }),
 ];
 
 function activity(
@@ -222,6 +232,22 @@ export const PLAN_ACTIVITY = new Map<string, ZeropsAgentActivity>([
     }),
   ],
   [
+    "atlas-oto",
+    activity("atlas-oto", {
+      minutes: 50,
+      subject: "Ship the map tiles from the CDN",
+      snippet: "The tiles come from the CDN now; merged as #12.",
+    }),
+  ],
+  [
+    "experiments-ida",
+    activity("experiments-ida", {
+      minutes: 9 * 24 * 60,
+      subject: "Try the new renderer",
+      snippet: "It renders, but the old one is faster for now.",
+    }),
+  ],
+  [
     "titan-lena",
     activity("titan-lena", {
       minutes: 3.5,
@@ -262,6 +288,8 @@ export const PLAN_OWNERS = new Map<string, ZeropsMateOwner>([
   ["snap-nova", VIEWER],
   ["zit-theo", KAREL],
   ["titan-lena", VIEWER],
+  ["atlas-oto", VIEWER],
+  ["experiments-ida", KAREL],
 ]);
 
 function row(
@@ -378,6 +406,26 @@ export const PLAN_FLOWS = new Map<string, SidebarProjectFlow>([
     flow({
       environments: new Map([
         ["titan-prod", row("titan-prod", "production", `${sha("23a7c66")} v2.3.0 petra`)],
+      ]),
+    }),
+  ],
+  [
+    "atlas",
+    flow({
+      environments: new Map([
+        ["atlas-prod", row("atlas-prod", "production", `${sha("12b8d77")} v1.2.0 petra`)],
+      ]),
+      releaseInFlight: "v1.2.1",
+    }),
+  ],
+  [
+    "experiments",
+    flow({
+      environments: new Map([
+        [
+          "experiments-prod",
+          row("experiments-prod", "production", `${sha("31c9e88")} v0.3.1 karel`),
+        ],
       ]),
     }),
   ],
