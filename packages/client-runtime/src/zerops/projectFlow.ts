@@ -78,6 +78,17 @@ export interface FlowPullRequest {
   readonly merged: boolean;
   /** When it landed — the moment a timeline places it. Absent unless `merged`. */
   readonly mergedAt: string | undefined;
+  /**
+   * The commit it landed as on its base — what a release's list of commits names it by. Numbers
+   * are per repository, so this, not `#N`, is what ties a commit to its change.
+   */
+  readonly mergeCommitSha?: string | undefined;
+  /**
+   * `open` or `closed`, as Gitea says. A change read on its own by number may be closed without
+   * ever merging: its review must not offer to merge it. Optional, as every flow built before a
+   * review read it carries none.
+   */
+  readonly state?: string | undefined;
   readonly headSha: string | undefined;
   readonly baseBranch: string;
   /** `appdev #4`, or `appdev #4 · ada` for a person's; `recipe #6` on the group repo. */
@@ -100,8 +111,6 @@ export interface FlowPullRequest {
   readonly mergeBase?: string | undefined;
   /** The base branch's head as read: past {@link mergeBase}, `main` moved on since. */
   readonly baseSha?: string | undefined;
-  /** When it was opened. */
-  readonly createdAt?: string | undefined;
 }
 
 /** The default branch until Gitea says otherwise. */
@@ -140,6 +149,8 @@ export function flowPullRequest(input: {
     mergeability: input.mergeability,
     merged: pull.merged === true,
     mergedAt: pull.merged_at,
+    mergeCommitSha: pull.merge_commit_sha ?? undefined,
+    state: pull.state,
     headSha: pull.head?.sha,
     baseBranch: pull.base?.ref ?? FALLBACK_BASE,
     line,
@@ -151,7 +162,6 @@ export function flowPullRequest(input: {
     changedFiles: pull.changed_files,
     mergeBase: pull.merge_base,
     baseSha: pull.base?.sha,
-    createdAt: pull.created_at,
   };
 }
 

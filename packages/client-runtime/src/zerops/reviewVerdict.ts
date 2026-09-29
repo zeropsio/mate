@@ -56,6 +56,7 @@ export type ReviewState =
   | "merging"
   | "merge-refused"
   | "merged"
+  | "closed"
   | "release-ready"
   | "release-blocked"
   | "releasing"
@@ -65,6 +66,7 @@ export type ReviewState =
   | "rollback-blocked"
   | "rolling-back"
   | "rolled-back"
+  | "rollback-failed"
   | "rollback-refused"
   | "land-ready"
   | "land-now"
@@ -72,6 +74,10 @@ export type ReviewState =
   | "land-check-failed"
   | "land-check-running"
   | "land-waiting"
+  | "land-review"
+  | "land-parked"
+  | "land-discarded"
+  | "land-not-yet"
   | "landing"
   | "land-refused"
   | "landed";
@@ -113,6 +119,11 @@ export interface ReviewPrimary {
   readonly enabled: boolean;
   /** ⌘↵ presses it, and the review opens with the focus on it. */
   readonly safe: boolean;
+  /**
+   * Its keys shown before it takes them: a Merge waiting for its change to be read keeps the
+   * width it will have, so nothing in the foot moves once it can be pressed.
+   */
+  readonly shortcut?: true;
 }
 
 export interface ReviewModel {
@@ -171,11 +182,19 @@ export interface ChangeReviewInput {
     readonly checkRows?: ReadonlyArray<GitCheckRow> | undefined;
     readonly merged: boolean;
     readonly mergedAt: string | undefined;
+    /** `closed` for one Gitea closed — merged, or never. */
+    readonly state?: string | undefined;
     readonly mergeBase?: string | undefined;
     readonly baseSha?: string | undefined;
   };
   /** The Mate that wrote it; `undefined` for a person's own branch. */
   readonly mateName: string | undefined;
+  /**
+   * How far its files were read for the head it is at. Merge takes only a head whose change was
+   * shown: it waits while they are read, and one that could not be read is merged only by a
+   * deliberate press.
+   */
+  readonly readout: "reading" | "read" | "failed";
   /** How many commits it squashes, where they were read. */
   readonly commits?: number | undefined;
   /**
@@ -219,15 +238,17 @@ function squashSentence(
   pull: ChangeReviewInput["pull"],
   commits: number | undefined,
   behindBy: number | undefined,
+  unshown: boolean,
 ): string {
   const what =
     commits === undefined ? "it" : commits === 1 ? "1 commit" : `${String(commits)} commits`;
   const asOne = commits !== undefined && commits > 1 ? " as one" : "";
+  const unseen = unshown ? " without its files shown" : "";
   const onTop =
     behindBy === undefined || behindBy === 0
       ? ""
       : `, on top of ${count(behindBy, "change", "changes")} it wasn't checked with`;
-  return `Squash-merges ${what} into ${pull.baseBranch}${asOne}${onTop}.`;
+  return `Squash-merges ${what} into ${pull.baseBranch}${asOne}${unseen}${onTop}.`;
 }
 
 /** What happens once `main` has it, as far as anything downstream goes. */
@@ -450,12 +471,30 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
     };
   }
 
-  const { verdict, enabled } = changeVerdictOf(input);
+  if (pull.state === "closed") {
+    return {
+      verdict: {
+        state: "closed",
+        tone: "done",
+        title: "Closed without merging",
+        why: "Somebody closed it in Gitea; its branch is still there",
+        fix: undefined,
+      },
+      consequence: `It never reached ${base}; nothing merges from here.`,
+      primary: undefined,
+    };
+  }
+
+  const verdictOf = changeVerdictOf(input);
+  const { verdict } = verdictOf;
+  // A head whose files are still being read was not shown: it waits for them.
+  const enabled = verdictOf.enabled && input.readout !== "reading";
   const squash = sentences(
     squashSentence(
       pull,
       input.commits,
       verdict.state === "behind-clean" ? input.behindBy : undefined,
+      input.readout === "failed",
     ),
     afterMain(input),
   );
@@ -466,6 +505,9 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
     "checks-running": "Merging waits for the checks to finish.",
     checking: "Merging waits until Gitea knows it merges cleanly.",
   };
+  // What holds it back is the change's own trouble; files still being read hold it only briefly,
+  // and the sentence stays what Merge will do.
+  const held = verdictOf.enabled ? squash : (waits[verdict.state] ?? squash);
 
   if (press.kind === "running") {
     return {
@@ -492,14 +534,23 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
         why: press.reason,
         fix: verdict.fix,
       },
-      consequence: enabled ? squash : (waits[verdict.state] ?? squash),
-      primary: { label: "Merge", enabled, safe: enabled },
+      consequence: enabled ? squash : held,
+      // A second try is the person's deliberate press, never ⌘↵'s.
+      primary: { label: "Merge", enabled, safe: false },
     };
   }
+  // Behind main is amber, and a change whose files could not be read was never shown: both
+  // still pressable, never pressed for the person.
+  const safeOnceRead = verdictOf.enabled && verdict.state !== "behind-clean";
   return {
     verdict,
-    consequence: enabled ? squash : (waits[verdict.state] ?? squash),
-    primary: { label: "Merge", enabled, safe: enabled },
+    consequence: enabled ? squash : held,
+    primary: {
+      label: "Merge",
+      enabled,
+      safe: safeOnceRead && input.readout === "read",
+      ...(safeOnceRead && input.readout === "reading" ? { shortcut: true } : {}),
+    },
   };
 }
 
@@ -532,9 +583,6 @@ export interface ReleaseReviewInput {
   /** The release production runs now. */
   readonly live: string | undefined;
   readonly outcome: ReleaseOutcome;
-  /** `about 3 minutes`, where the last release's deploy says how long one takes. */
-  readonly eta?: string | undefined;
-  readonly baseBranch?: string | undefined;
   readonly now: number;
 }
 
@@ -560,7 +608,6 @@ function stageWhy(input: ReleaseReviewInput): string {
 
 export function releaseReview(input: ReleaseReviewInput): ReviewModel {
   const { tag, outcome } = input;
-  const base = input.baseBranch ?? "main";
   const keeps =
     input.live === undefined
       ? "Production keeps running what it runs."
@@ -621,11 +668,9 @@ export function releaseReview(input: ReleaseReviewInput): ReviewModel {
     case "offered":
       break;
   }
-  const primary = {
-    label: `Release ${tag}`,
-    enabled: input.gate.allowed,
-    safe: input.gate.allowed,
-  };
+  // A release reaches people outside the account: it takes a deliberate press — never the
+  // review's first focus, never ⌘↵.
+  const primary = { label: `Release ${tag}`, enabled: input.gate.allowed, safe: false };
   if (!input.gate.allowed) {
     const reason = input.gate.reason;
     const nothing = reason === RELEASE_NOTHING_MERGED || reason === RELEASE_NOTHING_NEW_ON_MAIN;
@@ -656,9 +701,7 @@ export function releaseReview(input: ReleaseReviewInput): ReviewModel {
       why: stageWhy(input),
       fix: undefined,
     },
-    consequence: `Tags ${base} as ${tag}. Production redeploys ${listed(input.services)} from it${
-      input.eta === undefined ? "" : `, ${input.eta}`
-    }.`,
+    consequence: `Tags main as ${tag}. Production redeploys ${listed(input.services)} from it.`,
     primary,
   };
 }
@@ -670,68 +713,91 @@ export function releaseReview(input: ReleaseReviewInput): ReviewModel {
 export interface RollbackReviewInput {
   /** The earlier release it goes back to. */
   readonly tag: string;
-  /** The tag it makes, listing that release's commits. */
+  /** The tag it makes, listing that release's commits — the one made, once it was. */
   readonly nextTag: string;
   readonly live: string | undefined;
   readonly services: ReadonlyArray<string>;
   readonly mayRelease: boolean;
-  readonly outcome: ReviewPress;
-  readonly eta?: string | undefined;
-  readonly baseBranch?: string | undefined;
+  /** The press: tagging, refused, or the tag made. */
+  readonly press: ReviewPress;
+  /**
+   * Where the tag it made stands, as a release's does: the broker's verdict and production's
+   * deploy decide, never the tag existing.
+   */
+  readonly outcome: ReleaseOutcome;
+  readonly now: number;
 }
 
 export function rollbackReview(input: RollbackReviewInput): ReviewModel {
-  const { tag, nextTag, outcome } = input;
-  const base = input.baseBranch ?? "main";
+  const { tag, nextTag, outcome, press } = input;
   const keeps =
     input.live === undefined
       ? "Production keeps running what it runs."
       : `Production keeps running ${input.live}.`;
-  const primary = {
-    label: `Roll back to ${tag}`,
-    enabled: input.mayRelease,
-    safe: input.mayRelease,
-  };
+  // Production moves: a deliberate press, never the review's first focus, never ⌘↵.
+  const primary = { label: `Roll back to ${tag}`, enabled: input.mayRelease, safe: false };
+  const onItsWay = (why: string): ReviewModel => ({
+    verdict: {
+      state: "rolling-back",
+      tone: "busy",
+      title: `Rolling back to ${tag}`,
+      why,
+      fix: undefined,
+    },
+    consequence: RELEASE_FOLLOWS,
+    primary: undefined,
+  });
+  if (press.kind === "running") return onItsWay(`Tagging main as ${nextTag}`);
+  if (press.kind === "refused") {
+    return {
+      verdict: {
+        state: "rollback-refused",
+        tone: "attention",
+        title: "Didn't roll back",
+        why: press.reason,
+        fix: undefined,
+      },
+      consequence: keeps,
+      primary,
+    };
+  }
   switch (outcome.kind) {
-    case "running":
-      return {
-        verdict: {
-          state: "rolling-back",
-          tone: "busy",
-          title: `Rolling back to ${tag}`,
-          why: `Production redeploys from ${nextTag}`,
-          fix: undefined,
-        },
-        consequence: RELEASE_FOLLOWS,
-        primary: undefined,
-      };
-    case "done":
+    case "releasing":
+      return onItsWay(outcome.progress ?? `Production redeploys from ${nextTag}`);
+    case "released": {
+      const age =
+        outcome.at === undefined ? undefined : reviewAge(outcome.at, input.now)?.toLowerCase();
       return {
         verdict: {
           state: "rolled-back",
           tone: "done",
           title: `Rolled back to ${tag}`,
-          why: `Tagged ${nextTag} · production redeploys`,
+          why: `Production runs its commits again, as ${nextTag}${age === undefined ? "" : ` · ${age}`}`,
           fix: undefined,
         },
         consequence: `Production runs ${tag}'s commits again, as ${nextTag}.`,
         primary: undefined,
       };
-    case "refused":
+    }
+    case "failed":
       return {
         verdict: {
-          state: "rollback-refused",
-          tone: "attention",
-          title: "Didn't roll back",
-          why: outcome.reason,
+          state: "rollback-failed",
+          tone: "failed",
+          title: `${nextTag} didn't go out`,
+          why: outcome.detail ?? "Its deploy failed",
           fix: undefined,
         },
-        consequence: keeps,
-        primary,
+        consequence:
+          input.live === undefined
+            ? "Production still runs what it ran before."
+            : `Production still runs ${input.live}.`,
+        primary: undefined,
       };
-    case "idle":
+    case "offered":
       break;
   }
+  if (press.kind === "done") return onItsWay(`Production redeploys from ${nextTag}`);
   if (!input.mayRelease) {
     return {
       verdict: {
@@ -756,9 +822,9 @@ export function rollbackReview(input: RollbackReviewInput): ReviewModel {
           : `Production runs ${input.live} now`,
       fix: undefined,
     },
-    consequence: `Tags ${base} as ${nextTag} with ${tag}'s commits. Production redeploys ${listed(
+    consequence: `Tags main as ${nextTag} with ${tag}'s commits. Production redeploys ${listed(
       input.services,
-    )} from them${input.eta === undefined ? "" : `, ${input.eta}`}.`,
+    )} from them.`,
     primary,
   };
 }
@@ -770,6 +836,7 @@ export function rollbackReview(input: RollbackReviewInput): ReviewModel {
 export interface CrewTaskReviewInput {
   /** The crewmate whose work it is. */
   readonly ownerName: string;
+  /** The task's state as the crew's snapshot has it now — the only word on what happened. */
   readonly state: string;
   readonly check: {
     readonly state: "running" | "passed" | "failed";
@@ -781,7 +848,15 @@ export interface CrewTaskReviewInput {
   /** Your tree's edited paths its landing waits on. */
   readonly waitingOn: ReadonlyArray<string>;
   readonly landedCommit: string | null;
+  /** Why it went to `rework` or `parked`, in the engine's words. */
+  readonly reason?: string | null | undefined;
   readonly press?: ReviewPress | undefined;
+  /**
+   * The task's state when Land was pressed. The engine answering is not the task landing — it
+   * answers too for a landing that waits on the person's edits, or parks — so until the snapshot
+   * moves off this state the landing is on its way.
+   */
+  readonly pressedAt?: string | undefined;
 }
 
 /** The last line a check printed: what failed, in its own words. */
@@ -793,13 +868,23 @@ function lastLine(output: string): string | undefined {
   return lines.at(-1);
 }
 
+/** The states Land now takes: work its crewmate never reported, or work sent back. */
+function landsNow(state: string): boolean {
+  return state === "working" || state === "rework";
+}
+
 export function crewTaskReview(input: CrewTaskReviewInput): ReviewModel {
-  const { ownerName: owner } = input;
+  const { ownerName: owner, state } = input;
   const press = input.press ?? { kind: "idle" };
   const lands = `Lands ${owner}'s work in your tree as one commit. Nothing is pushed until you deliver.`;
-  const landsNow = `Commits what ${owner} has so far and lands it in your tree. Nothing is pushed until you deliver.`;
+  const landsNowSentence = `Commits what ${owner} has so far and lands it in your tree. Nothing is pushed until you deliver.`;
+  const now = landsNow(state);
+  const label = now ? "Land now" : "Land";
+  const consequence = now ? landsNowSentence : lands;
+  const off = { label, enabled: false, safe: false };
 
-  if (input.state === "landed" || press.kind === "done") {
+  // Only the snapshot says a task landed: Land's answer comes for one that waits or parks too.
+  if (state === "landed") {
     const short = input.landedCommit?.slice(0, 7);
     return {
       verdict: {
@@ -813,27 +898,69 @@ export function crewTaskReview(input: CrewTaskReviewInput): ReviewModel {
       primary: undefined,
     };
   }
-
-  const working = input.state !== "ready";
-  const label = working ? "Land now" : "Land";
-  if (press.kind === "running" || input.state === "landing") {
+  const onItsWay =
+    press.kind === "running" ||
+    (press.kind === "done" && input.pressedAt !== undefined && state === input.pressedAt);
+  if (onItsWay || state === "landing" || state === "merging") {
     return {
       verdict: {
         state: "landing",
         tone: "busy",
         title: "Landing",
-        why: `${owner}'s work goes into your tree`,
+        why:
+          state === "merging"
+            ? `${owner}'s copy takes in what landed first`
+            : `${owner}'s work goes into your tree`,
         fix: undefined,
       },
-      consequence: working ? landsNow : lands,
-      primary: { label, enabled: false, safe: false },
+      consequence,
+      primary: off,
+    };
+  }
+  if (press.kind === "refused") {
+    return {
+      verdict: {
+        state: "land-refused",
+        tone: "attention",
+        title: "Not landed",
+        why: press.reason,
+        fix: undefined,
+      },
+      consequence,
+      primary: { label, enabled: true, safe: false },
+    };
+  }
+  if (state === "parked") {
+    return {
+      verdict: {
+        state: "land-parked",
+        tone: "attention",
+        title: "Parked",
+        why: input.reason ?? `${owner}'s task stopped where it was`,
+        fix: undefined,
+      },
+      consequence: "Nothing lands while it is parked.",
+      primary: undefined,
+    };
+  }
+  if (state === "discarded") {
+    return {
+      verdict: {
+        state: "land-discarded",
+        tone: "done",
+        title: "Discarded",
+        why: "Its work never went into your tree",
+        fix: undefined,
+      },
+      consequence: "Nothing lands from a discarded task.",
+      primary: undefined,
     };
   }
 
   const blocked = (verdict: ReviewVerdict): ReviewModel => ({
     verdict,
     consequence: "Landing waits until it is fixed.",
-    primary: { label, enabled: false, safe: false },
+    primary: off,
   });
   if (input.conflicts.length > 0) {
     const where =
@@ -871,7 +998,7 @@ export function crewTaskReview(input: CrewTaskReviewInput): ReviewModel {
       },
     });
   }
-  if (input.check?.state === "running") {
+  if (input.check?.state === "running" || state === "checking") {
     return blocked({
       state: "land-check-running",
       tone: "busy",
@@ -880,51 +1007,72 @@ export function crewTaskReview(input: CrewTaskReviewInput): ReviewModel {
       fix: undefined,
     });
   }
-  if (input.waitingOn.length > 0) {
-    return blocked({
-      state: "land-waiting",
-      tone: "attention",
-      title: `Waits on your edits to ${listed(input.waitingOn.map(baseName))}`,
-      why: "Commit them locally and it lands",
-      fix: undefined,
-    });
-  }
-
-  // Its size is the line under the title's: said once.
-  const why = working
-    ? "It hasn't said it's done"
-    : input.check?.state === "passed"
-      ? "Check passed · nothing waits on your edits"
-      : "No check ran · nothing waits on your edits";
-  if (press.kind === "refused") {
+  if (state === "waiting-on-you" || input.waitingOn.length > 0) {
+    // Land takes it from here once the edits are committed: it merges again first.
     return {
       verdict: {
-        state: "land-refused",
+        state: "land-waiting",
         tone: "attention",
-        title: "Not landed",
-        why: press.reason,
+        title:
+          input.waitingOn.length === 0
+            ? "Waits on your edits"
+            : `Waits on your edits to ${listed(input.waitingOn.map(baseName))}`,
+        why: "Commit them locally, then land it",
         fix: undefined,
       },
-      consequence: working ? landsNow : lands,
-      primary: { label, enabled: true, safe: !working },
+      consequence: lands,
+      primary: { label: "Land", enabled: true, safe: false },
     };
   }
-  if (working) {
+  if (now) {
     return {
       verdict: {
         state: "land-now",
         tone: "quiet",
-        title: `${owner} is still on it`,
-        why,
+        title: state === "rework" ? `${owner} is reworking it` : `${owner} is still on it`,
+        why: state === "rework" ? (input.reason ?? "It was sent back") : "It hasn't said it's done",
         fix: undefined,
       },
-      consequence: landsNow,
+      consequence,
       primary: { label, enabled: input.diffStat !== null, safe: false },
     };
   }
+  const checked = input.check?.state === "passed" ? "check passed" : "no check ran";
+  if (state === "review") {
+    return {
+      verdict: {
+        state: "land-review",
+        tone: input.check?.state === "passed" ? "ok" : "quiet",
+        title: "Reported done",
+        why: `Landing accepts it · ${checked}`,
+        fix: undefined,
+      },
+      consequence: `Accepts ${owner}'s work and lands it in your tree as one commit. Nothing is pushed until you deliver.`,
+      primary: { label: "Land", enabled: true, safe: true },
+    };
+  }
+  if (state === "ready") {
+    // Its size is the line under the title's: said once.
+    const why =
+      input.check?.state === "passed"
+        ? "Check passed · nothing waits on your edits"
+        : "No check ran · nothing waits on your edits";
+    return {
+      verdict: { state: "land-ready", tone: "ok", title: "Ready to land", why, fix: undefined },
+      consequence: lands,
+      primary: { label: "Land", enabled: true, safe: true },
+    };
+  }
+  // Not started, waiting on another task, or asking something: nothing to land yet.
   return {
-    verdict: { state: "land-ready", tone: "ok", title: "Ready to land", why, fix: undefined },
-    consequence: lands,
-    primary: { label, enabled: true, safe: true },
+    verdict: {
+      state: "land-not-yet",
+      tone: "quiet",
+      title: "Nothing to land yet",
+      why: state === "blocked" ? `${owner} asked something first` : `${owner} hasn't started it`,
+      fix: undefined,
+    },
+    consequence: "Nothing lands until it is done.",
+    primary: undefined,
   };
 }

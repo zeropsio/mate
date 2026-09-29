@@ -2,10 +2,13 @@
  * The review's own decisions that are about drawing it, not about the change:
  * its kind line, where it opens from, which key presses it, where Try it goes,
  * which of the Mate's words say what the change does, and how much of a long
- * diff stands before its fold. What the verdict says is `reviewVerdict.ts`'s.
+ * diff stands before its fold and where the rest of it is. What the verdict
+ * says is `reviewVerdict.ts`'s.
  *
  * Pure: no DOM, no clock.
  */
+import { sha1 } from "@noble/hashes/legacy";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
 import type { ReviewPrimary, ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 
 export type ReviewKind = "change" | "release" | "rollback" | "crew-task";
@@ -46,18 +49,53 @@ export function reviewOrigin(
   };
 }
 
-/** ⌘↵ (Ctrl+↵ off a Mac) presses the primary — only while it is safe to. */
+/**
+ * ⌘↵ (Ctrl+↵ off a Mac) presses the primary — only while it is safe to, and once: a key held
+ * down repeats, and Merge would walk on into the release review it hands over to.
+ */
 export function pressesPrimary(
-  event: { readonly key: string; readonly metaKey: boolean; readonly ctrlKey: boolean },
+  event: {
+    readonly key: string;
+    readonly metaKey: boolean;
+    readonly ctrlKey: boolean;
+    readonly repeat: boolean;
+  },
   primary: Pick<ReviewPrimary, "safe" | "enabled"> | undefined,
 ): boolean {
   return (
+    !event.repeat &&
     event.key === "Enter" &&
     (event.metaKey || event.ctrlKey) &&
     primary !== undefined &&
     primary.safe &&
     primary.enabled
   );
+}
+
+/**
+ * A key pressed in the review stays there: the conversation behind listens on the document — a
+ * digit picks an answer, an arrow moves through them, a page key scrolls — and none of it is the
+ * person's intent while the review has them. Escape alone goes on: it closes the review.
+ */
+export function keyStaysInReview(key: string): boolean {
+  return key !== "Escape";
+}
+
+/** How soon after opening a primary that turns safe still takes the focus it would have had. */
+export const REVIEW_LATE_FOCUS_MS = 1_500;
+
+/**
+ * A primary that turns safe once the review has read what it shows — Merge, once the change's
+ * files are in — takes the focus it would have had on opening: only just after it opened, and
+ * only while the focus still rests on the review itself, never taken from where the person
+ * moved it.
+ */
+export function focusesPrimaryLate(input: {
+  readonly safe: boolean;
+  readonly onReview: boolean;
+  readonly sinceOpenMs: number;
+}): boolean {
+  return input.safe && input.onReview && input.sinceOpenMs < REVIEW_LATE_FOCUS_MS;
 }
 
 const DEV_SUFFIX = "dev";
@@ -80,6 +118,25 @@ export function previewRoute(
   return (
     routes.find((route) => route.service === `${name}${STAGE_SUFFIX}`) ??
     routes.find((route) => route.service === repository)
+  );
+}
+
+/**
+ * Whether `text` links the change at `changePath` (`/{org}/{repo}/pulls/{n}`) — its page or one
+ * under it, never a change whose number only starts the same (`/pulls/5` is not `/pulls/53`).
+ */
+export function linksChange(text: string, changePath: string): boolean {
+  const escaped = changePath.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  return new RegExp(`${escaped}(?![0-9])`, "u").test(text);
+}
+
+/** The newest of a Mate's answers that links the change: the run that made it. */
+export function changeRunMessage<M extends { readonly role: string; readonly text: string }>(
+  messages: ReadonlyArray<M>,
+  changePath: string,
+): M | undefined {
+  return messages.findLast(
+    (message) => message.role === "assistant" && linksChange(message.text, changePath),
   );
 }
 
@@ -110,7 +167,7 @@ export function runWords(text: string, changePath: string): string | undefined {
     .map((sentence) => sentence.trim())
     .filter(
       (sentence) =>
-        sentence.length > 0 && !sentence.includes(changePath) && !/https?:\/\//u.test(sentence),
+        sentence.length > 0 && !linksChange(sentence, changePath) && !/https?:\/\//u.test(sentence),
     );
   const kept: Array<string> = [];
   let length = 0;
@@ -126,9 +183,47 @@ export function runWords(text: string, changePath: string): string | undefined {
 
 /** How many lines of one file's diff stand before "Show all N lines" opens the rest. */
 export const REVIEW_DIFF_LINES_SHOWN = 400;
+/** A file's diff longer than this is never drawn whole here: the rest is on Gitea. */
+export const REVIEW_DIFF_LINES_MAX = 2_000;
 
-export function diffLinesShown(total: number, all: boolean): number {
-  return all ? total : Math.min(total, REVIEW_DIFF_LINES_SHOWN);
+/** What follows the lines a file's diff shows: a way to the rest, here or on Gitea. */
+export type DiffRest =
+  | { readonly kind: "show"; readonly label: string }
+  | { readonly kind: "gitea"; readonly words: string };
+
+/**
+ * How much of one file's diff stands (D4): its first lines, all of them once opened — and where
+ * it is too long to show here, or the read stopped inside it (`cut`), what is missing, said,
+ * with the rest one link away on Gitea. Everything stays reachable one way or another.
+ */
+export function diffFold(input: {
+  readonly total: number;
+  readonly all: boolean;
+  readonly cut: boolean;
+}): { readonly shown: number; readonly rest: DiffRest | undefined } {
+  const { total, cut } = input;
+  const tooMany = total > REVIEW_DIFF_LINES_MAX;
+  const shown = input.all && !tooMany ? total : Math.min(total, REVIEW_DIFF_LINES_SHOWN);
+  if (tooMany) {
+    const more = `${String(total - shown)}${cut ? "+" : ""}`;
+    return { shown, rest: { kind: "gitea", words: `${more} more lines, too many to show here.` } };
+  }
+  if (shown < total) {
+    return { shown, rest: { kind: "show", label: `Show all ${String(total)} lines` } };
+  }
+  return {
+    shown,
+    rest: cut ? { kind: "gitea", words: "The rest is too long to read here." } : undefined,
+  };
+}
+
+/**
+ * A file's diff on Gitea: the change's files page, scrolled to the file — Gitea names each file's
+ * box `diff-` and the SHA-1 of its path.
+ */
+export function giteaFileUrl(pullUrl: string | undefined, path: string): string | undefined {
+  if (pullUrl === undefined) return undefined;
+  return `${pullUrl}/files#diff-${bytesToHex(sha1(utf8ToBytes(path)))}`;
 }
 
 /** The status letter in a file row's 16 px box. */
@@ -183,12 +278,14 @@ export interface ReleaseChangeRow {
   readonly stage: ReleaseStageMark;
 }
 
-/** A squash commit on `main` names the pull request it landed: `Title (#54)`. */
+/** A squash commit's subject ends with the number of the change it landed: `Title (#54)`. */
 const LANDED_AS = /\s*\(#(\d+)\)\s*$/u;
 
 /**
- * What a release carries, one row per change: a squash-merged commit is the change it
- * landed, whose Mate wrote it and when; a commit nobody reviewed is its own words.
+ * What a release carries, one row per change: a commit is the change it landed as — matched by
+ * the commit Gitea says the change landed as, never by the `(#54)` in its subject, since numbers
+ * are per repository and the recipe's #54 is not appdev's — whose Mate wrote it and when; a
+ * commit nobody reviewed is its own words.
  */
 export function releaseChangeRows(input: {
   readonly commits: ReadonlyArray<{ readonly sha: string; readonly subject: string }>;
@@ -197,16 +294,20 @@ export function releaseChangeRows(input: {
     readonly title: string;
     readonly mateProjectId: string | undefined;
     readonly mergedAt: string | undefined;
+    readonly mergeCommitSha?: string | undefined;
   }>;
   readonly marks: ReadonlyMap<string, ReleaseStageMark>;
 }): ReadonlyArray<ReleaseChangeRow> {
+  const bySha = new Map(
+    input.merged.flatMap((change) =>
+      change.mergeCommitSha === undefined
+        ? []
+        : [[change.mergeCommitSha.toLowerCase(), change] as const],
+    ),
+  );
   return input.commits.map((commit) => {
     const key = commit.sha.toLowerCase();
-    const number = LANDED_AS.exec(commit.subject)?.[1];
-    const change =
-      number === undefined
-        ? undefined
-        : input.merged.find((entry) => entry.number === Number(number));
+    const change = bySha.get(key);
     return {
       key,
       title:
@@ -235,17 +336,24 @@ export function changeRequestPrefill(pull: {
 /**
  * Which of a change's files `main` moved under it, and the newest commit that did — for a change
  * that no longer merges; `undefined` for one that does, or while either read is out.
+ *
+ * Which end of `main`'s commits is the newest is told by where `main`'s head sits among them
+ * (`head`), as the stage marks tell it (`stageMarks.ts`), never by the order a read happens to
+ * list them in; with the head not among them, no commit is named.
  */
 export function changeConflict(input: {
   readonly mergeability: string;
   readonly files: ReadonlyArray<{ readonly filename: string }> | undefined;
   readonly mainSince:
     | ReadonlyArray<{
+        readonly sha: string;
         readonly subject: string;
         readonly at?: string | undefined;
         readonly files?: ReadonlyArray<string> | undefined;
       }>
     | undefined;
+  /** `main`'s head, as the change was read against it. */
+  readonly head: string | undefined;
 }):
   | {
       readonly files: ReadonlyArray<string>;
@@ -253,12 +361,29 @@ export function changeConflict(input: {
     }
   | undefined {
   if (input.mergeability !== "conflicting" || input.files === undefined) return undefined;
-  if (input.mainSince === undefined) return undefined;
-  const touched = new Set(input.mainSince.flatMap((commit) => commit.files ?? []));
+  const commits = input.mainSince;
+  if (commits === undefined) return undefined;
+  const touched = new Set(commits.flatMap((commit) => commit.files ?? []));
   const overlap = input.files.map((file) => file.filename).filter((path) => touched.has(path));
-  // A comparison lists the oldest first: the newest to touch one of them is the last that did.
-  const by = input.mainSince.findLast((commit) =>
-    (commit.files ?? []).some((path) => overlap.includes(path)),
-  );
+  const moved = (commit: (typeof commits)[number]) =>
+    (commit.files ?? []).some((path) => overlap.includes(path));
+  const head = input.head?.toLowerCase();
+  const at = commits.findIndex((commit) => commit.sha.toLowerCase() === head);
+  const by = at === -1 ? undefined : at === 0 ? commits.find(moved) : commits.findLast(moved);
   return { files: overlap, by: by === undefined ? undefined : { subject: by.subject, at: by.at } };
+}
+
+/**
+ * The command a crew task's Land sends. *Land now* takes only work its crewmate never reported or
+ * that was sent back (the engine refuses it on anything else); *Land* takes the rest — a ready
+ * task, a reported one it accepts first, one that waited on the person's edits.
+ */
+export function crewLandCommand(task: { readonly id: string; readonly state: string }): {
+  readonly _tag: "land" | "landNow";
+  readonly taskId: string;
+} {
+  return {
+    _tag: task.state === "working" || task.state === "rework" ? "landNow" : "land",
+    taskId: task.id,
+  };
 }

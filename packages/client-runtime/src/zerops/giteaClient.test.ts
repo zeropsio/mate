@@ -591,14 +591,51 @@ describe("GiteaClient a change you can read (pass 16 R8)", () => {
   it("reads a pull request's whole diff as git wrote it, as text", async () => {
     const diff = "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
     const { client, calls } = fake([{ text: diff }]);
-    expect(await client.pullRequestDiff("acme", "appdev", 2)).toBe(diff);
+    expect(await client.pullRequestDiff("acme", "appdev", 2, 1024)).toEqual({
+      text: diff,
+      cut: false,
+    });
     expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/repos/acme/appdev/pulls/2.diff`);
     expect(calls[0]?.headers.accept).toBe("text/plain");
   });
 
+  it.each([
+    ["within its bound, whole", "x".repeat(10), 16, { text: "x".repeat(10), cut: false }],
+    ["exactly at its bound, whole", "x".repeat(16), 16, { text: "x".repeat(16), cut: false }],
+    ["past its bound, only so far", "x".repeat(40), 16, { text: "x".repeat(16), cut: true }],
+  ])("reads a diff %s", async (_case, diff, maxBytes, expected) => {
+    const { client } = fake([{ text: diff }]);
+    expect(await client.pullRequestDiff("acme", "appdev", 2, maxBytes)).toEqual(expected);
+  });
+
+  it("stops reading a diff at its bound rather than taking the rest of it", async () => {
+    let pulled = 0;
+    let cancelled = false;
+    const line = new TextEncoder().encode(`+${"a".repeat(9)}\n`);
+    // Never ends by itself: only a read that stops at its bound comes back.
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(line);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const client = createGiteaClient({
+      origin: ORIGIN,
+      token: "t-1",
+      fetch: () => Promise.resolve(new Response(body)),
+    });
+    const answer = await client.pullRequestDiff("acme", "appdev", 2, 25);
+    expect(answer).toEqual({ text: `+${"a".repeat(9)}\n+${"a".repeat(9)}\n+aa`, cut: true });
+    expect(cancelled).toBe(true);
+    expect(pulled).toBeLessThan(6);
+  });
+
   it("says Gitea's refusal of a diff in its own words", async () => {
     const { client } = fake([{ status: 404, body: { message: "pull request does not exist" } }]);
-    await expect(client.pullRequestDiff("acme", "appdev", 9)).rejects.toMatchObject({
+    await expect(client.pullRequestDiff("acme", "appdev", 9, 1024)).rejects.toMatchObject({
       status: 404,
       detail: "pull request does not exist",
     });

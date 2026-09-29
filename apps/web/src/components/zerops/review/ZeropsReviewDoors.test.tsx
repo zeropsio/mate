@@ -3,7 +3,12 @@
  * them merges, releases, rolls back or lands by itself. The review's own surface says what its
  * button does and presses it only while it is safe (R5).
  */
-import { releaseRow, type FlowRelease, type ReviewVerdict } from "@t3tools/client-runtime/zerops";
+import {
+  parseChangeDiff,
+  releaseRow,
+  type FlowRelease,
+  type ReviewVerdict,
+} from "@t3tools/client-runtime/zerops";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -18,8 +23,15 @@ import gitTabSource from "../ZeropsGitTab.tsx?raw";
 import groupDetailSource from "../ZeropsGroupDetail.tsx?raw";
 import projectsPageSource from "../ZeropsProjectsPage.tsx?raw";
 import releaseRowsSource from "../ZeropsReleaseRows.tsx?raw";
+import reviewDialogSource from "./ZeropsReviewDialog.tsx?raw";
 import { ZeropsReleaseRows } from "../ZeropsReleaseRows";
-import { ZeropsReviewSurface, type ZeropsReviewSurfaceProps } from "./ZeropsReviewSurface";
+import {
+  ReviewDiff,
+  ReviewFiles,
+  ZeropsReviewSurface,
+  type ReviewDiffState,
+  type ZeropsReviewSurfaceProps,
+} from "./ZeropsReviewSurface";
 
 /** What acting directly looks like in a door's source: a flow verb or a crew landing. */
 const ACTS = [
@@ -176,6 +188,13 @@ describe("the review's one button (R5)", () => {
       "false",
     ],
     ["running: off while it runs", { enabled: true, safe: true, busy: true }, true, false, "false"],
+    [
+      "waiting for what it acts on to be read: off, its keys kept in place",
+      { enabled: false, safe: false, shortcut: true },
+      true,
+      true,
+      "false",
+    ],
   ] as const)("%s", (_case, state, disabled, keys, safe) => {
     const html = surface({ primary: { label: "Merge", onPress: () => {}, ...state } });
     const button = /<button[^>]*data-review-primary[^>]*>[\s\S]*?<\/button>/u.exec(html)?.[0] ?? "";
@@ -205,5 +224,94 @@ describe("the review's one button (R5)", () => {
   it("closes from its ×, and from Cancel or Close where it offers one", () => {
     expect(surface()).toContain('aria-label="Close"');
     expect(surface({ dismiss: "Cancel" })).toContain(">Cancel</button>");
+  });
+});
+
+const GITEA_FILE = "https://git.example.test/acme/appdev/pulls/2/files#diff-0a1b";
+const STOPPED_INSIDE = parseChangeDiff(
+  ["diff --git a/a.ts b/a.ts", "--- a/a.ts", "+++ b/a.ts", "@@ -1 +1,2 @@", "-x", "+y", "+z"].join(
+    "\n",
+  ),
+  { cut: true },
+).get("a.ts");
+
+describe("a diff too long to read here says so, and where the rest is (D4)", () => {
+  it.each<[string, ReviewDiffState, string, boolean]>([
+    [
+      "a file the read stopped inside",
+      { kind: "read", file: STOPPED_INSIDE, cut: true },
+      "The rest is too long to read here.",
+      true,
+    ],
+    [
+      "a file past where the read stopped",
+      { kind: "read", file: undefined, cut: true },
+      "Too long to read here.",
+      true,
+    ],
+    [
+      "a file with nothing to show in a diff read whole",
+      { kind: "read", file: undefined, cut: false },
+      "Nothing to show for this file.",
+      false,
+    ],
+  ])("%s", (_case, diff, words, linked) => {
+    const html = renderToStaticMarkup(<ReviewDiff diff={diff} gitea={GITEA_FILE} />);
+    expect(html).toContain(words);
+    expect(html.includes(`href="${GITEA_FILE}"`)).toBe(linked);
+  });
+});
+
+describe("a file's diff is read once a file opens, never before (D4)", () => {
+  it("asks for it as a file opens, and not as it closes", async () => {
+    const onOpen = vi.fn();
+    const document = installTestDom();
+    const { act } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const container = document.createElement("div");
+    const root = createRoot(container as unknown as Element);
+    const row = (path: string) => {
+      const found = elementsOf(container, "button").find((button) =>
+        button.textContent.includes(path.slice(path.lastIndexOf("/") + 1)),
+      );
+      if (found === undefined) throw new Error(`no row for ${path}`);
+      return found;
+    };
+    try {
+      await act(async () =>
+        root.render(
+          <ReviewFiles
+            diffOf={() => ({ kind: "reading" })}
+            files={[
+              { path: "src/a.ts", status: "modified", additions: 1, deletions: 1 },
+              { path: "src/b.ts", status: "added", additions: 3, deletions: 0 },
+            ]}
+            onOpen={onOpen}
+            pending={2}
+          />,
+        ),
+      );
+      expect(onOpen).not.toHaveBeenCalled();
+      await act(async () => pressFrom(row("src/a.ts")));
+      await act(async () => pressFrom(row("src/a.ts")));
+      await act(async () => pressFrom(row("src/b.ts")));
+      expect(onOpen.mock.calls).toEqual([["src/a.ts"], ["src/b.ts"]]);
+    } finally {
+      await act(async () => root.unmount());
+    }
+  });
+});
+
+describe("the review is a layer: what is typed in it acts on nothing behind it", () => {
+  it.each([
+    ["keeps its keys from the listeners behind it, Escape aside", "keyStaysInReview(event.key)"],
+    ["stops them there", "event.stopPropagation()"],
+    ["is a dialog to the panel launcher's letters", 'data-slot="dialog-popup"'],
+    [
+      "is a modal to the composer, which takes letters typed outside any field",
+      'aria-modal="true"',
+    ],
+  ])("%s", (_case, words) => {
+    expect(reviewDialogSource).toContain(words);
   });
 });

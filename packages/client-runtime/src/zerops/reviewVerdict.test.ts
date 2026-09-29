@@ -40,6 +40,7 @@ function change(over: Partial<ChangeReviewInput> = {}): ChangeReviewInput {
       baseSha: "mb",
     },
     mateName: "Nova",
+    readout: "read",
     commits: 1,
     downstream: { production: true, stage: true },
     now: NOW,
@@ -265,10 +266,11 @@ describe("changeReview: the button says what will happen (R5)", () => {
       { enabled: false, safe: false },
     ],
     [
+      // Amber: still pressable, never pressed for the person — no focus, no ⌘↵.
       "behind main but clean",
       { pull: pull({ baseSha: "newer" }), behindBy: 2 },
       "Squash-merges 1 commit into main, on top of 2 changes it wasn't checked with. Production isn't touched until you release.",
-      { enabled: true, safe: true },
+      { enabled: true, safe: false },
     ],
   ])("%s", (_name, over, consequence, primary) => {
     const review = changeReview(change(over));
@@ -418,11 +420,12 @@ describe("releaseReview", () => {
   });
 
   it("says what the tag does and what redeploys (R5)", () => {
-    const review = releaseReview(release({ eta: "about 3 minutes" }));
+    const review = releaseReview(release());
     expect(review.consequence).toBe(
-      "Tags main as v0.1.57. Production redeploys app and api from it, about 3 minutes.",
+      "Tags main as v0.1.57. Production redeploys app and api from it.",
     );
-    expect(review.primary).toEqual({ label: "Release v0.1.57", enabled: true, safe: true });
+    // It reaches people outside the account: a deliberate press, never focus or ⌘↵.
+    expect(review.primary).toEqual({ label: "Release v0.1.57", enabled: true, safe: false });
   });
 
   it.each<[string, Partial<ReleaseReviewInput>, string, boolean | undefined]>([
@@ -486,7 +489,9 @@ function rollback(over: Partial<RollbackReviewInput> = {}): RollbackReviewInput 
     live: "v0.1.57",
     services: ["app", "api"],
     mayRelease: true,
-    outcome: { kind: "idle" },
+    press: { kind: "idle" },
+    outcome: { kind: "offered" },
+    now: NOW,
     ...over,
   };
 }
@@ -511,20 +516,59 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
       "Production keeps running v0.1.57.",
     ],
     [
-      "rolling back",
-      { outcome: { kind: "running" } },
-      { state: "rolling-back", tone: "busy", title: "Rolling back to v0.1.55" },
+      "tagging",
+      { press: { kind: "running" } },
+      {
+        state: "rolling-back",
+        tone: "busy",
+        title: "Rolling back to v0.1.55",
+        why: "Tagging main as v0.1.58",
+      },
       "You can close this. Production's chip in the menu follows the release.",
     ],
     [
-      "rolled back",
-      { outcome: { kind: "done" } },
-      { state: "rolled-back", tone: "done", title: "Rolled back to v0.1.55" },
+      // The tag existing is not production running it: the broker and the deploy still decide.
+      "tagged, on its way",
+      {
+        press: { kind: "done" },
+        outcome: { kind: "releasing", progress: "Production redeploys from v0.1.58 · 0:40" },
+      },
+      {
+        state: "rolling-back",
+        tone: "busy",
+        title: "Rolling back to v0.1.55",
+        why: "Production redeploys from v0.1.58 · 0:40",
+      },
+      "You can close this. Production's chip in the menu follows the release.",
+    ],
+    [
+      "rolled back once production runs it",
+      { press: { kind: "done" }, outcome: { kind: "released", at: minutesAgo(3) } },
+      {
+        state: "rolled-back",
+        tone: "done",
+        title: "Rolled back to v0.1.55",
+        why: "Production runs its commits again, as v0.1.58 · 3 minutes ago",
+      },
       "Production runs v0.1.55's commits again, as v0.1.58.",
     ],
     [
+      "the broker refused it, or its deploy failed",
+      {
+        press: { kind: "done" },
+        outcome: { kind: "failed", detail: "The deploy of app failed", service: "app" },
+      },
+      {
+        state: "rollback-failed",
+        tone: "failed",
+        title: "v0.1.58 didn't go out",
+        why: "The deploy of app failed",
+      },
+      "Production still runs v0.1.57.",
+    ],
+    [
       "refused",
-      { outcome: { kind: "refused", reason: "Gitea would not create the tag." } },
+      { press: { kind: "refused", reason: "Gitea would not create the tag." } },
       { state: "rollback-refused", tone: "attention", why: "Gitea would not create the tag." },
       "Production keeps running v0.1.57.",
     ],
@@ -538,7 +582,7 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
     expect(rollbackReview(rollback()).primary).toEqual({
       label: "Roll back to v0.1.55",
       enabled: true,
-      safe: true,
+      safe: false,
     });
   });
 });
@@ -633,5 +677,180 @@ describe("reviewAge", () => {
     ["not a date", undefined],
   ])("%s reads %s", (at, words) => {
     expect(reviewAge(at, NOW)).toBe(words);
+  });
+});
+
+describe("crewTaskReview: only a landed task has landed (Land's answer is not its landing)", () => {
+  it.each<[string, Partial<CrewTaskReviewInput>, Record<string, unknown>]>([
+    [
+      "Land accepted, the snapshot not moved yet: on its way",
+      { state: "ready", press: { kind: "done" }, pressedAt: "ready" },
+      { state: "landing", tone: "busy", title: "Landing" },
+    ],
+    [
+      "Land accepted on a dirty tree: the task waits on the person's edits",
+      {
+        state: "waiting-on-you",
+        waitingOn: ["src/hud.ts"],
+        press: { kind: "done" },
+        pressedAt: "ready",
+      },
+      { state: "land-waiting", tone: "attention", title: "Waits on your edits to hud.ts" },
+    ],
+    [
+      "Land accepted and the task parked (frozen, lane gone, disk full)",
+      {
+        state: "parked",
+        reason: "appdev is redeploying",
+        press: { kind: "done" },
+        pressedAt: "ready",
+      },
+      { state: "land-parked", tone: "attention", title: "Parked", why: "appdev is redeploying" },
+    ],
+    [
+      "Land now whose merge-in or check failed: back to rework",
+      {
+        state: "rework",
+        reason: "Its check failed: tsc exited 2",
+        press: { kind: "done" },
+        pressedAt: "working",
+      },
+      {
+        state: "land-now",
+        tone: "quiet",
+        title: "Juno is reworking it",
+        why: "Its check failed: tsc exited 2",
+      },
+    ],
+    [
+      "landed at last",
+      { state: "landed", landedCommit: "a1b2c3d4e5", press: { kind: "done" }, pressedAt: "ready" },
+      { state: "landed", tone: "done", title: "Landed as a1b2c3d" },
+    ],
+    [
+      "refused, in the engine's own words",
+      {
+        state: "ready",
+        press: {
+          kind: "refused",
+          reason: "A chat of this Mate is working; land between its turns.",
+        },
+      },
+      {
+        state: "land-refused",
+        tone: "attention",
+        title: "Not landed",
+        why: "A chat of this Mate is working; land between its turns.",
+      },
+    ],
+    [
+      "reported and waiting for its review: landing accepts it",
+      { state: "review" },
+      {
+        state: "land-review",
+        tone: "ok",
+        title: "Reported done",
+        why: "Landing accepts it · check passed",
+      },
+    ],
+  ])("%s", (_case, over, verdict) => {
+    expect(crewTaskReview(task(over)).verdict).toMatchObject(verdict);
+  });
+
+  it.each<[string, Partial<CrewTaskReviewInput>, Record<string, unknown> | undefined]>([
+    ["a ready task lands", { state: "ready" }, { label: "Land", enabled: true, safe: true }],
+    [
+      "a reported one lands, accepting it",
+      { state: "review" },
+      { label: "Land", enabled: true, safe: true },
+    ],
+    [
+      "one waiting on the person's edits lands once they are committed",
+      { state: "waiting-on-you", waitingOn: ["src/hud.ts"] },
+      { label: "Land", enabled: true, safe: false },
+    ],
+    [
+      "a working one lands now",
+      { state: "working" },
+      { label: "Land now", enabled: true, safe: false },
+    ],
+    ["a parked one offers nothing", { state: "parked", reason: "disk full" }, undefined],
+  ])("its button: %s", (_case, over, primary) => {
+    const review = crewTaskReview(task(over));
+    if (primary === undefined) expect(review.primary).toBeUndefined();
+    else expect(review.primary).toMatchObject(primary);
+  });
+});
+
+describe("changeReview: a change closed without merging", () => {
+  it("says so, and offers no Merge", () => {
+    const review = changeReview(change({ pull: pull({ state: "closed", merged: false }) }));
+    expect(review.verdict).toMatchObject({
+      state: "closed",
+      tone: "done",
+      title: "Closed without merging",
+    });
+    expect(review.primary).toBeUndefined();
+    expect(review.consequence).toBe("It never reached main; nothing merges from here.");
+  });
+
+  it.each([
+    ["an open one", { state: "open" }, "ready"],
+    ["a landed one", { state: "closed", merged: true, mergedAt: minutesAgo(5) }, "merged"],
+  ] as const)("does not take %s for it", (_case, over, state) => {
+    expect(changeReview(change({ pull: pull(over) })).verdict.state).toBe(state);
+  });
+});
+
+describe("changeReview: Merge takes only a head whose change was shown", () => {
+  it.each<
+    [
+      string,
+      ChangeReviewInput["readout"],
+      { enabled: boolean; safe: boolean; shortcut?: boolean },
+      string,
+    ]
+  >([
+    [
+      "its files for this head still being read: off, its keys kept, its place in the foot kept",
+      "reading",
+      { enabled: false, safe: false, shortcut: true },
+      "Squash-merges 1 commit into main. Production isn't touched until you release.",
+    ],
+    [
+      "its files for this head could not be read",
+      "failed",
+      { enabled: true, safe: false },
+      "Squash-merges 1 commit into main without its files shown. Production isn't touched until you release.",
+    ],
+    [
+      "its files for this head read",
+      "read",
+      { enabled: true, safe: true },
+      "Squash-merges 1 commit into main. Production isn't touched until you release.",
+    ],
+  ])("%s", (_case, readout, primary, consequence) => {
+    const review = changeReview(change({ readout }));
+    expect(review.primary).toEqual({ label: "Merge", ...primary });
+    expect(review.consequence).toBe(consequence);
+  });
+
+  it("keeps no keys for a change behind main while it is read: it never takes them", () => {
+    expect(
+      changeReview(
+        change({
+          pull: pull({ mergeBase: "old", baseSha: "new" }),
+          behindBy: 2,
+          readout: "reading",
+        }),
+      ).primary,
+    ).toEqual({ label: "Merge", enabled: false, safe: false });
+  });
+
+  it("keeps a blocked change's reason while its files are read", () => {
+    expect(
+      changeReview(change({ pull: pull({ mergeability: "conflicting" }), readout: "reading" }))
+        .consequence,
+    ).toBe("Merging waits until the conflict is resolved.");
   });
 });
