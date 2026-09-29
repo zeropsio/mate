@@ -481,8 +481,16 @@ export interface GiteaClient {
     repo: string,
     index: number,
   ): Promise<ReadonlyArray<GiteaChangedFile>>;
-  /** The pull request's whole unified diff, as git writes it (`/pulls/{index}.diff`). */
-  pullRequestDiff(owner: string, repo: string, index: number): Promise<string>;
+  /**
+   * The pull request's unified diff, as git writes it (`/pulls/{index}.diff`), read no further
+   * than `maxBytes`: a change that regenerates a lockfile can run to hundreds of megabytes.
+   */
+  pullRequestDiff(
+    owner: string,
+    repo: string,
+    index: number,
+    maxBytes: number,
+  ): Promise<GiteaDiffText>;
 
   /** What has been said on a change, oldest first — Gitea's own order. */
   listIssueComments(
@@ -864,7 +872,7 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
           deletions: file.deletions ?? 0,
         })),
 
-    pullRequestDiff: (owner, repo, index) =>
+    pullRequestDiff: (owner, repo, index, maxBytes) =>
       send(
         {
           method: "GET",
@@ -876,7 +884,7 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         },
         async (response, arrived) => {
           if (!response.ok) await fail(response, "hand over the pull request's diff");
-          return textOf(response, arrived);
+          return textUpTo(response, arrived, maxBytes);
         },
       ),
 
@@ -1059,6 +1067,46 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         },
       ),
   };
+}
+
+/** A diff as far as it was read: `cut` where it went on past what was read. */
+export interface GiteaDiffText {
+  readonly text: string;
+  readonly cut: boolean;
+}
+
+/**
+ * The body as text, no further than `maxBytes`: past them the read stops, and the rest of the
+ * body is never fetched. The text may end inside a line, or a character, where it was cut.
+ */
+async function textUpTo(
+  response: Response,
+  arrived: () => void,
+  maxBytes: number,
+): Promise<GiteaDiffText> {
+  if (response.body === null) {
+    const text = await response.text();
+    return text.length > maxBytes
+      ? { text: text.slice(0, maxBytes), cut: true }
+      : { text, cut: false };
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let bytes = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return { text: text + decoder.decode(), cut: false };
+    arrived();
+    const room = maxBytes - bytes;
+    if (value.byteLength > room) {
+      text += decoder.decode(value.subarray(0, room));
+      await reader.cancel().catch(() => undefined);
+      return { text, cut: true };
+    }
+    bytes += value.byteLength;
+    text += decoder.decode(value, { stream: true });
+  }
 }
 
 /** The body as text, saying each time more of it arrived. */

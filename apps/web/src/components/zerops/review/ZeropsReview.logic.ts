@@ -2,10 +2,13 @@
  * The review's own decisions that are about drawing it, not about the change:
  * its kind line, where it opens from, which key presses it, where Try it goes,
  * which of the Mate's words say what the change does, and how much of a long
- * diff stands before its fold. What the verdict says is `reviewVerdict.ts`'s.
+ * diff stands before its fold and where the rest of it is. What the verdict
+ * says is `reviewVerdict.ts`'s.
  *
  * Pure: no DOM, no clock.
  */
+import { sha1 } from "@noble/hashes/legacy";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
 import type { ReviewPrimary, ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 
 export type ReviewKind = "change" | "release" | "rollback" | "crew-task";
@@ -171,9 +174,47 @@ export function runWords(text: string, changePath: string): string | undefined {
 
 /** How many lines of one file's diff stand before "Show all N lines" opens the rest. */
 export const REVIEW_DIFF_LINES_SHOWN = 400;
+/** A file's diff longer than this is never drawn whole here: the rest is on Gitea. */
+export const REVIEW_DIFF_LINES_MAX = 2_000;
 
-export function diffLinesShown(total: number, all: boolean): number {
-  return all ? total : Math.min(total, REVIEW_DIFF_LINES_SHOWN);
+/** What follows the lines a file's diff shows: a way to the rest, here or on Gitea. */
+export type DiffRest =
+  | { readonly kind: "show"; readonly label: string }
+  | { readonly kind: "gitea"; readonly words: string };
+
+/**
+ * How much of one file's diff stands (D4): its first lines, all of them once opened — and where
+ * it is too long to show here, or the read stopped inside it (`cut`), what is missing, said,
+ * with the rest one link away on Gitea. Everything stays reachable one way or another.
+ */
+export function diffFold(input: {
+  readonly total: number;
+  readonly all: boolean;
+  readonly cut: boolean;
+}): { readonly shown: number; readonly rest: DiffRest | undefined } {
+  const { total, cut } = input;
+  const tooMany = total > REVIEW_DIFF_LINES_MAX;
+  const shown = input.all && !tooMany ? total : Math.min(total, REVIEW_DIFF_LINES_SHOWN);
+  if (tooMany) {
+    const more = `${String(total - shown)}${cut ? "+" : ""}`;
+    return { shown, rest: { kind: "gitea", words: `${more} more lines, too many to show here.` } };
+  }
+  if (shown < total) {
+    return { shown, rest: { kind: "show", label: `Show all ${String(total)} lines` } };
+  }
+  return {
+    shown,
+    rest: cut ? { kind: "gitea", words: "The rest is too long to read here." } : undefined,
+  };
+}
+
+/**
+ * A file's diff on Gitea: the change's files page, scrolled to the file — Gitea names each file's
+ * box `diff-` and the SHA-1 of its path.
+ */
+export function giteaFileUrl(pullUrl: string | undefined, path: string): string | undefined {
+  if (pullUrl === undefined) return undefined;
+  return `${pullUrl}/files#diff-${bytesToHex(sha1(utf8ToBytes(path)))}`;
 }
 
 /** The status letter in a file row's 16 px box. */

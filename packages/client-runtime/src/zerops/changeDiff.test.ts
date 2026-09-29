@@ -187,6 +187,58 @@ describe("parseChangeDiff", () => {
   });
 });
 
+describe("parseChangeDiff: a diff read only so far (it was too long to read whole)", () => {
+  const TWO_FILES = [
+    "diff --git a/a.ts b/a.ts",
+    "--- a/a.ts",
+    "+++ b/a.ts",
+    "@@ -1,2 +1,2 @@",
+    " one",
+    "-two",
+    "+2",
+    "diff --git a/b.ts b/b.ts",
+    "--- a/b.ts",
+    "+++ b/b.ts",
+    "@@ -1,3 +1,3 @@",
+    "-x",
+    "+y",
+    "+a line the read stopped insi",
+  ].join("\n");
+
+  it.each<
+    [string, string, boolean, Record<string, { readonly cut: boolean; readonly lines: number }>]
+  >([
+    [
+      "the file it stopped in says so, and the line it stopped inside goes",
+      TWO_FILES,
+      true,
+      { "a.ts": { cut: false, lines: 3 }, "b.ts": { cut: true, lines: 2 } },
+    ],
+    [
+      "a diff read whole cuts nothing",
+      TWO_FILES,
+      false,
+      { "a.ts": { cut: false, lines: 3 }, "b.ts": { cut: false, lines: 3 } },
+    ],
+    [
+      "a read that stopped inside the first header holds no file",
+      "diff --git a/a.ts b/a.",
+      true,
+      {},
+    ],
+  ])("%s", (_case, text, cut, expected) => {
+    const parsed = parseChangeDiff(text, { cut });
+    expect(
+      Object.fromEntries(
+        [...parsed.values()].map((file) => [
+          file.path,
+          { cut: file.cut, lines: file.hunks.flatMap((hunk) => hunk.lines).length },
+        ]),
+      ),
+    ).toEqual(expected);
+  });
+});
+
 describe("changeFileParts", () => {
   it.each([
     ["src/server/routes/status.ts", { dir: "src/server/routes/", name: "status.ts" }],

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  REVIEW_DIFF_LINES_MAX,
   REVIEW_DIFF_LINES_SHOWN,
   changeConflict,
   changeFileLetter,
@@ -9,7 +10,8 @@ import {
   crewLandCommand,
   focusesPrimaryLate,
   linksChange,
-  diffLinesShown,
+  diffFold,
+  giteaFileUrl,
   pressesPrimary,
   previewRoute,
   releaseChangeRows,
@@ -111,13 +113,75 @@ describe("runWords: what it does, in the Mate's words (R3)", () => {
   });
 });
 
-describe("diffLinesShown: a long file's diff folds, and the fold opens (D4)", () => {
+describe("diffFold: a long file's diff folds, the fold opens, and past what fits it says where the rest is (D4)", () => {
+  const SHOWN = REVIEW_DIFF_LINES_SHOWN;
+  const MAX = REVIEW_DIFF_LINES_MAX;
+  it.each<[string, { total: number; all: boolean; cut: boolean }, ReturnType<typeof diffFold>]>([
+    ["a short diff, whole", { total: 40, all: false, cut: false }, { shown: 40, rest: undefined }],
+    [
+      "a long one, folded",
+      { total: SHOWN + 1, all: false, cut: false },
+      { shown: SHOWN, rest: { kind: "show", label: `Show all ${String(SHOWN + 1)} lines` } },
+    ],
+    [
+      "a long one, opened",
+      { total: SHOWN + 1, all: true, cut: false },
+      { shown: SHOWN + 1, rest: undefined },
+    ],
+    [
+      "one too long to show here: the rest is on Gitea",
+      { total: MAX + 1, all: false, cut: false },
+      {
+        shown: SHOWN,
+        rest: {
+          kind: "gitea",
+          words: `${String(MAX + 1 - SHOWN)} more lines, too many to show here.`,
+        },
+      },
+    ],
+    [
+      "one the read stopped inside, short",
+      { total: 40, all: false, cut: true },
+      { shown: 40, rest: { kind: "gitea", words: "The rest is too long to read here." } },
+    ],
+    [
+      "one the read stopped inside, opened",
+      { total: SHOWN + 1, all: true, cut: true },
+      { shown: SHOWN + 1, rest: { kind: "gitea", words: "The rest is too long to read here." } },
+    ],
+    [
+      "one too long to show that the read stopped inside",
+      { total: MAX + 1, all: false, cut: true },
+      {
+        shown: SHOWN,
+        rest: {
+          kind: "gitea",
+          words: `${String(MAX + 1 - SHOWN)}+ more lines, too many to show here.`,
+        },
+      },
+    ],
+  ])("%s", (_case, input, fold) => {
+    expect(diffFold(input)).toEqual(fold);
+  });
+});
+
+describe("giteaFileUrl: a file's diff on Gitea, where the review cannot show it all", () => {
   it.each([
-    [40, false, 40],
-    [REVIEW_DIFF_LINES_SHOWN + 1, false, REVIEW_DIFF_LINES_SHOWN],
-    [REVIEW_DIFF_LINES_SHOWN + 1, true, REVIEW_DIFF_LINES_SHOWN + 1],
-  ])("%s lines, all shown: %s → %s", (total, all, shown) => {
-    expect(diffLinesShown(total, all)).toBe(shown);
+    [
+      "the change's files page, at the file",
+      "https://git.example.test/acme/appdev/pulls/2",
+      "src/server/index.ts",
+      "https://git.example.test/acme/appdev/pulls/2/files#diff-408bfb63e4d90c09d55141f33cb31d40842d79c0",
+    ],
+    [
+      "a path with more than ASCII in it",
+      "https://git.example.test/acme/appdev/pulls/2",
+      "docs/café menu.md",
+      "https://git.example.test/acme/appdev/pulls/2/files#diff-703f1bfa43b096a5c1ef12d5a2c86f9c593d2952",
+    ],
+    ["nothing where the change has no page", undefined, "src/server/index.ts", undefined],
+  ])("%s", (_case, pullUrl, path, url) => {
+    expect(giteaFileUrl(pullUrl, path)).toBe(url);
   });
 });
 

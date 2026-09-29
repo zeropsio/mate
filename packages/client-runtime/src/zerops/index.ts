@@ -457,6 +457,7 @@ export {
   type GiteaCommitDetail,
   type GiteaCommitFile,
   type GiteaCommitStatus,
+  type GiteaDiffText,
   type GiteaFile,
   type GiteaFileChange,
   type GiteaIssueComment,

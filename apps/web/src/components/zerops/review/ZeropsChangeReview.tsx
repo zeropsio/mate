@@ -3,8 +3,9 @@
  *
  * The verdict and the button come from the flow the moment it opens — the flow already knows
  * whether the change merges and how its checks went — and what the flow does not carry is read
- * as it opens (`useZeropsChangeReadout`): its files and diff, how many commits it squashes, and
- * what `main` changed under it. The run that made it is its Mate's newest answer linking it.
+ * as it opens (`useZeropsChangeReadout`): its files, how many commits it squashes, and what
+ * `main` changed under it; its diff once a file is opened. The run that made it is its Mate's
+ * newest answer linking it.
  *
  * After Merge the review stays: it says what happened, and where production waits, its button
  * opens the release's review in place.
@@ -20,7 +21,6 @@ import {
   type GiteaCommit,
   type ReviewPress,
   type ZeropsPublicRoute,
-  type ChangeDiffFile,
 } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { MateTintId } from "@t3tools/shared/brand";
@@ -33,7 +33,11 @@ import { useZeropsProjectFlowOptional, type ZeropsProjectFlow } from "~/zerops/p
 import type { ReviewTarget } from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
-import { useZeropsChangeReadout, type ReadoutPart } from "~/zerops/useZeropsChangeReadout";
+import {
+  useZeropsChangeReadout,
+  type ChangeDiffRead,
+  type ReadoutPart,
+} from "~/zerops/useZeropsChangeReadout";
 import { useZeropsChangeRun } from "~/zerops/useZeropsChangeRun";
 import { useZeropsLandedChange } from "~/zerops/useZeropsLandedChange";
 import { useNowMs } from "~/zerops/useNowMs";
@@ -44,6 +48,7 @@ import { MateFace } from "../primitives";
 import {
   changeConflict,
   changeRequestPrefill,
+  giteaFileUrl,
   previewRoute,
   reviewKindLine,
   sizeWords,
@@ -164,6 +169,7 @@ function ChangeReviewData({
   const mates = useZeropsReviewMates(target.groupId);
   const { listing } = useZeropsCandidates();
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
+  const [diffWanted, setDiffWanted] = useState(false);
 
   const mate = pull.mateProjectId === undefined ? undefined : mates.get(pull.mateProjectId);
   // Only the Mate that wrote it can push to its branch: the fix goes to it, if it is the
@@ -183,6 +189,7 @@ function ChangeReviewData({
     baseBranch: pull.baseBranch,
     mergeBase: pull.mergeBase,
     baseSha: pull.baseSha,
+    diff: diffWanted,
   });
   const run = useZeropsChangeRun({
     mateProjectId: pull.mateProjectId,
@@ -249,6 +256,9 @@ function ChangeReviewData({
       onMerge={() => {
         void merge();
       }}
+      onOpenFile={() => {
+        setDiffWanted(true);
+      }}
       onOpenRun={
         runRef === undefined
           ? undefined
@@ -282,7 +292,7 @@ export interface ChangeReviewViewProps {
     | undefined;
   readonly readout: {
     readonly files: ReadoutPart<ReadonlyArray<GiteaChangedFile>>;
-    readonly diff: ReadoutPart<ReadonlyMap<string, ChangeDiffFile>>;
+    readonly diff: ReadoutPart<ChangeDiffRead>;
     readonly commits: ReadoutPart<number>;
     readonly mainSince: ReadoutPart<ReadonlyArray<GiteaCommit>>;
   };
@@ -299,6 +309,8 @@ export interface ChangeReviewViewProps {
   /** Files whose diff stands open from the start — the harness's. */
   readonly initiallyOpen?: ReadonlyArray<string> | undefined;
   readonly onMerge: () => void;
+  /** A file was opened: its diff is wanted. */
+  readonly onOpenFile?: (() => void) | undefined;
   readonly onFix: (problem: FixProblem) => void;
   readonly onAskChanges: () => void;
   readonly onOpenRun: (() => void) | undefined;
@@ -341,7 +353,13 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     deletions: pull.deletions ?? files?.reduce((sum, file) => sum + file.deletions, 0),
   });
   const diffOf = (path: string): ReviewDiffState => {
-    if (readout.diff.kind === "read") return { kind: "read", file: readout.diff.value.get(path) };
+    if (readout.diff.kind === "read") {
+      return {
+        kind: "read",
+        file: readout.diff.value.files.get(path),
+        cut: readout.diff.value.cut,
+      };
+    }
     if (readout.diff.kind === "failed") return { kind: "failed", reason: readout.diff.reason };
     return { kind: "reading" };
   };
@@ -450,6 +468,8 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         ) : (
           <ReviewFiles
             diffOf={diffOf}
+            giteaOf={(path) => giteaFileUrl(pull.url, path)}
+            onOpen={props.onOpenFile}
             files={files?.map((file) => ({
               path: file.filename,
               status: file.status,
