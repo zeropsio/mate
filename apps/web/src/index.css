@@ -3831,7 +3831,8 @@ code {
   padding: 20px 14px 4px 0;
   border-top: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
 }
-.run-now:first-child {
+.run-now:first-child,
+.run-above[data-folding] + .run-now {
   margin-top: 0;
   padding-top: 4px;
   border-top: 0;
@@ -4066,6 +4067,27 @@ button.run-bar:focus-visible {
     currentColor calc(100% - 24px),
     transparent
   );
+}
+
+/* The work over a running line. As the run settles it folds shut into the
+   line (the owner, 2026-09-29: "why didn't this autocollapse at the end?"):
+   its box eases from its height to nothing, the newest lines and the hairline
+   the last to go, while the line keeps its place (`foldAway`). */
+.run-above[data-folding] {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+.run-above[data-folding] > * {
+  flex: none;
+}
+/* The line's hairline and the room under it, while the line already stands
+   as it will once folded. */
+.run-above-rule {
+  height: 17px;
+  margin-top: 16px;
+  border-top: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
 }
 
 /* A run the person comes back to (D3): its worked line alone, "Show work" on

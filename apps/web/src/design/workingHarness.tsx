@@ -35,7 +35,6 @@ import type {
 } from "~/components/chat/MessagesTimeline.logic";
 import { BrowserStrip } from "~/components/chat/BrowserStrip";
 import { RunChat } from "~/components/chat/RunChat";
-import { setRunFold } from "~/components/chat/runCard.logic";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -701,9 +700,6 @@ function Card({
   );
 }
 
-// The long run finished while the person watched: open until they leave.
-setRunFold("harness", "long-run", "watched");
-
 function State({
   label,
   note: caption,
@@ -771,8 +767,8 @@ function Harness() {
           </Card>
         </State>
         <State
-          label="A long run, finished while you watched"
-          note="Open until you leave: the worked line at its foot, the result under it."
+          label="A long run, come back to"
+          note="Closed to its summary line, Show work on its right edge; the result under it."
         >
           <Card
             result={

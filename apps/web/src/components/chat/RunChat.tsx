@@ -2503,17 +2503,35 @@ export function RunLine({ status }: { readonly status: RunStatus }) {
 /**
  * A run's chat in its card: what the Mate said and did, in the order it
  * happened, in one scroll, and under it the Mate's status — the present said
- * once. A run the person comes back to is closed to its summary line; "Show
- * work" opens the scroll under it.
+ * once. As the run settles its work eases shut into the line, the summary
+ * (the owner, 2026-09-29: "why didn't this autocollapse at the end?"), unless
+ * the person is reading the work right then; a run they come back to is
+ * closed to that line, and "Show work" opens the scroll under it.
  */
 export function RunChat({ row }: { readonly row: RecordRow }) {
   const ctx = use(TimelineRowCtx);
   const hold = useHoldReading();
-  const fold = useRunFold(ctx.routeThreadKey, row.turnKey, row.live);
-  // A run the person comes back to (D3): its worked line alone — the
-  // summary — and "Show work" opens the whole run under it (K12).
+  const rootRef = useRef<HTMLDivElement>(null);
+  const aboveRef = useRef<HTMLDivElement>(null);
+  // Whether the person reads the work this moment — scrolled up in it, or
+  // something in it opened: a run settling then stays open.
+  const readingRef = useRef(false);
+  const fold = useRunFold({
+    conversation: ctx.routeThreadKey,
+    run: row.turnKey,
+    live: row.live,
+    readingRef,
+    rootRef,
+    aboveRef,
+  });
+  // A run the person comes back to (D3), or one that just settled: its
+  // worked line alone — the summary — and "Show work" opens the whole run
+  // under it (K12).
   const later = row.status !== null && !row.live && fold !== "watched";
-  const folded = later && fold === "folded";
+  const folded = later && fold !== "shown";
+  // The work stands over the line while the run goes on, while it stays open
+  // for a reader, and while it folds away into the line.
+  const above = !later || fold === "folding";
   // What a later step undid, read once per record, not once per redraw.
   const undone = useMemo(() => recoveredFailures(row.items), [row.items]);
   const feedRef = useRef<HTMLDivElement>(null);
@@ -2527,15 +2545,23 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     if (from === null || feed === null) return;
     easeFeedHeight(feed, from);
   });
-  const lines = folded ? [] : chatLines(row.items, undone);
+  const lines = above || !folded ? chatLines(row.items, undone) : [];
   // The scroll mounts with its first line, so its box is there from its
   // first frame for what keeps it at its foot.
   const scroll =
-    lines.length === 0 ? null : <RunScroll label={`${ctx.speaker.name}'s work`} lines={lines} />;
+    lines.length === 0 ? null : (
+      <RunScroll
+        label={`${ctx.speaker.name}'s work`}
+        lines={lines}
+        {...(above ? { readingRef } : {})}
+      />
+    );
   return (
     // One container for the chat and its now line: the Mate's column keeps
-    // one gap for both. Its words wear its tint (`.run-speech`).
+    // one gap for both. Its words wear its tint (`.run-speech`). Keyed, so the
+    // scroll the person watched is the one that folds away.
     <div
+      ref={rootRef}
       className="@container/chat min-w-0"
       data-run-chat
       data-run-fold={later ? fold : undefined}
@@ -2543,44 +2569,51 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         { "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})` } as CSSProperties
       }
     >
-      {later && row.status !== null ? (
-        <>
-          <NowLine
-            answering={false}
-            outcome={row.outcome}
-            end={
-              // A chat opens from its first thing the Mate did (`chatLines`).
-              row.items.some((item) => item.kind !== "person") ? (
-                <WorkToggle
-                  onToggle={() => {
-                    hold();
-                    fromHeightRef.current = feedRef.current?.getBoundingClientRect().height ?? null;
-                    setRunFold(ctx.routeThreadKey, row.turnKey, folded ? "shown" : "folded");
-                  }}
-                  open={!folded}
-                />
-              ) : null
-            }
-            now={null}
-            status={row.status}
-          />
-          <div ref={feedRef} className="run-later-feed">
-            {scroll}
-          </div>
-        </>
-      ) : (
-        <>
+      {above && scroll !== null ? (
+        <div
+          key="above"
+          ref={aboveRef}
+          className="run-above"
+          data-folding={fold === "folding" ? "" : undefined}
+        >
           {scroll}
-          {row.status === null ? null : (
-            <NowLine
-              answering={row.answering}
-              outcome={row.outcome}
-              now={row.now}
-              status={row.status}
-            />
-          )}
-        </>
+          {/* The hairline over the line, folding away with the work. */}
+          {fold === "folding" ? <div aria-hidden="true" className="run-above-rule" /> : null}
+        </div>
+      ) : null}
+      {row.status === null ? null : later ? (
+        <NowLine
+          key="line"
+          answering={false}
+          outcome={row.outcome}
+          end={
+            // A chat opens from its first thing the Mate did (`chatLines`).
+            row.items.some((item) => item.kind !== "person") ? (
+              <WorkToggle
+                onToggle={() => {
+                  hold();
+                  fromHeightRef.current = feedRef.current?.getBoundingClientRect().height ?? null;
+                  setRunFold(ctx.routeThreadKey, row.turnKey, folded ? "shown" : "folded");
+                }}
+                open={!folded}
+              />
+            ) : null
+          }
+          now={null}
+          status={row.status}
+        />
+      ) : (
+        <NowLine
+          key="line"
+          answering={row.answering}
+          outcome={row.outcome}
+          now={row.now}
+          status={row.status}
+        />
       )}
+      <div key="below" ref={feedRef} className="run-later-feed">
+        {above ? null : scroll}
+      </div>
     </div>
   );
 }
@@ -2605,17 +2638,75 @@ function chatLines(items: ReadonlyArray<RecordItem>, undone: ReadonlySet<string>
 }
 
 /**
- * How a run's card stands in this conversation: a live run is watched, and
- * stays open once it settles until the person leaves (`forgetRunFolds`); a
- * settled run they come back to is folded.
+ * How a run's card stands in this conversation. A live run is watched; as it
+ * settles its work eases shut into its line — unless the person is reading
+ * it right then, when it stays open until they leave (`forgetRunFolds`) or it
+ * is drawn again. A run that settled out of sight is simply folded, and so is
+ * every run under reduced motion.
  */
-function useRunFold(conversation: string, run: string, live: boolean): RunFold {
+function useRunFold({
+  conversation,
+  run,
+  live,
+  readingRef,
+  rootRef,
+  aboveRef,
+}: {
+  readonly conversation: string;
+  readonly run: string;
+  readonly live: boolean;
+  readonly readingRef: { readonly current: boolean };
+  readonly rootRef: { readonly current: HTMLElement | null };
+  readonly aboveRef: { readonly current: HTMLElement | null };
+}): RunFold {
   const read = () => runFoldOf(conversation, run);
-  const fold = useSyncExternalStore(subscribeRunFolds, read, read);
-  useEffect(() => {
-    if (live) setRunFold(conversation, run, "watched");
-  }, [conversation, run, live]);
-  return live ? "watched" : fold;
+  const stored = useSyncExternalStore(subscribeRunFolds, read, read);
+  const fold = live ? "watched" : stored;
+  const wasLiveRef = useRef(live);
+  // Where the line's words stood as the run settled: the fold starts there.
+  const settledAtRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const wasLive = wasLiveRef.current;
+    wasLiveRef.current = live;
+    if (live) {
+      setRunFold(conversation, run, "watched");
+      return;
+    }
+    if (runFoldOf(conversation, run) !== "watched") return;
+    // It settled out of sight, or it is drawn again since: nobody reads it.
+    if (!wasLive) {
+      setRunFold(conversation, run, "folded");
+      return;
+    }
+    if (readingRef.current) return;
+    const words = nowWordsOf(rootRef.current);
+    settledAtRef.current =
+      words === null || prefersReducedMotion() ? null : words.getBoundingClientRect().top;
+    setRunFold(conversation, run, settledAtRef.current === null ? "folded" : "folding");
+  }, [conversation, run, live, readingRef, rootRef]);
+  useLayoutEffect(() => {
+    if (fold !== "folding") return;
+    const from = settledAtRef.current;
+    settledAtRef.current = null;
+    const above = aboveRef.current;
+    const words = nowWordsOf(rootRef.current);
+    const done = () => setRunFold(conversation, run, "folded");
+    if (from === null || above === null || words === null) {
+      done();
+      return;
+    }
+    return foldAway(above, from - words.getBoundingClientRect().top, done);
+  }, [conversation, run, fold, aboveRef, rootRef]);
+  return fold;
+}
+
+/** The now line's words in a run's chat: where the line stands. */
+function nowWordsOf(chat: HTMLElement | null): HTMLElement | null {
+  return chat?.querySelector<HTMLElement>(":scope > .run-now .run-now-words") ?? null;
+}
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 /** How "Show work" and "Hide work" ease the work's room open or shut (K12). */
@@ -2639,6 +2730,41 @@ function easeFeedHeight(feed: HTMLElement, from: number): void {
     ],
     { duration: FOLD_EASE_MS, easing: FOLD_EASING },
   );
+}
+
+/**
+ * How a settled run's work folds into its line: a whole scroll's height that
+ * nobody asked to move, so longer than a toggle's and on the drawer's gentler
+ * start — the strong ease-out threw a fifth of it in the first frame.
+ */
+const SETTLE_FOLD_MS = 360;
+const SETTLE_FOLD_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
+
+/**
+ * Folds the work over a run's line shut: from its height, less `shift` — how
+ * much higher the line stands without its hairline and room, which the fold
+ * starts by keeping — to nothing, its newest lines the last to go, fading as
+ * it closes. The line keeps its place; `done` once it is shut.
+ */
+function foldAway(above: HTMLElement, shift: number, done: () => void): () => void {
+  const from = above.getBoundingClientRect().height + shift;
+  if (from < 1) {
+    done();
+    return () => undefined;
+  }
+  const animation = above.animate(
+    [
+      { height: `${from}px`, opacity: 1 },
+      { opacity: 0, offset: 0.6 },
+      { height: "0px", opacity: 0 },
+    ],
+    { duration: SETTLE_FOLD_MS, easing: SETTLE_FOLD_EASING, fill: "forwards" },
+  );
+  animation.onfinish = done;
+  return () => {
+    animation.onfinish = null;
+    animation.cancel();
+  };
 }
 
 /** "Show work" on a folded run's line, "Hide work" once it is open: its chevron turns over. */
@@ -2665,9 +2791,12 @@ function WorkToggle({ open, onToggle }: { readonly open: boolean; readonly onTog
 function RunScroll({
   label,
   lines,
+  readingRef,
 }: {
   readonly label: string;
   readonly lines: ReadonlyArray<ChatLine>;
+  /** Told whether the person reads the work: scrolled up in it, or something in it opened. */
+  readonly readingRef?: { current: boolean };
 }) {
   // Drawn once: from here on, what arrives arrives while the person watches.
   const shownRef = useRef(false);
@@ -2684,8 +2813,9 @@ function RunScroll({
   const hold = useMemo(
     () => () => {
       followsRef.current = false;
+      if (readingRef !== undefined) readingRef.current = true;
     },
-    [],
+    [readingRef],
   );
   // How far above its foot the scroll stood before earlier lines were drawn
   // over the ones in view.
@@ -2738,6 +2868,7 @@ function RunScroll({
           onScroll={(event) => {
             const position = event.currentTarget;
             followsRef.current = standsAtFoot(position);
+            if (readingRef !== undefined) readingRef.current = !followsRef.current;
             if (scrollRef.current !== null) markEdges(scrollRef.current);
             drawEarlier(position);
           }}
