@@ -1,0 +1,150 @@
+/**
+ * The facts a run's result follows from outside the run: where its Mate's
+ * change stands on the forge, what the platform says of its Mate's services,
+ * and where its crew's tasks are — read from the thread's environment: its
+ * Zerops project, the group that project belongs to.
+ *
+ * Every fact is undefined while unread, so a row stays as the run left it
+ * until its fact is known. Until the forge answers, the changes the left
+ * menu remembers drawing stand in (`menuMemory.ts`): a reload paints the
+ * change it will keep rather than growing it in a second later.
+ */
+import {
+  readZeropsGroupTags,
+  type FlowPullRequest,
+  type ZeropsProject,
+  type ZeropsService,
+} from "@t3tools/client-runtime/zerops";
+import type { EnvironmentId } from "@t3tools/contracts";
+import { useContext, useMemo } from "react";
+
+import { useCrew } from "../../zerops/crew/useCrew";
+import { InventoryContext, type InventoryServiceOutcome } from "../../zerops/inventoryContext";
+import { rememberedChanges } from "../../zerops/menuMemory";
+import { useZeropsProjectFlowOptional } from "../../zerops/projectFlowContext";
+import { useRegistrationRecord } from "../../zerops/registrationRecords";
+import type { OutcomeModel } from "./conversation.logic";
+import { runEffortWords, type ResultChange, type ResultFacts } from "./runResult.logic";
+import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
+
+function resultChange(
+  pull: Pick<FlowPullRequest, "repository" | "number" | "title">,
+): ResultChange {
+  return { repository: pull.repository, number: pull.number, title: pull.title };
+}
+
+export function readRunResultFacts(input: {
+  /** The Zerops project of the thread's environment: the Mate's. */
+  readonly projectId: string | undefined;
+  readonly inventory: {
+    readonly projects: ReadonlyArray<ZeropsProject>;
+    readonly services: ReadonlyMap<string, InventoryServiceOutcome>;
+  } | null;
+  readonly flows:
+    | ReadonlyMap<
+        string,
+        {
+          readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+          readonly merged: ReadonlyArray<FlowPullRequest>;
+          readonly changesKnown: boolean;
+        }
+      >
+    | undefined;
+  /** The open changes the menu remembers drawing for a group. */
+  readonly remembered: (groupId: string) => ReadonlyArray<FlowPullRequest> | undefined;
+  readonly crew: {
+    readonly environmentId: EnvironmentId;
+    readonly tasks: ReadonlyArray<{
+      readonly id: string;
+      readonly number: number;
+      readonly state: string;
+    }>;
+  } | null;
+}): ResultFacts {
+  const { projectId, inventory, flows } = input;
+  if (projectId === undefined) return {};
+  const project = inventory?.projects.find((entry) => entry.id === projectId);
+  const groupId = project === undefined ? undefined : readZeropsGroupTags(project.tagList).groupId;
+  const read = inventory?.services.get(projectId);
+  const flow = groupId === undefined ? undefined : flows?.get(groupId);
+  const changes =
+    groupId === undefined || flows === undefined
+      ? undefined
+      : flow?.changesKnown === true
+        ? {
+            groupId,
+            open: flow.pullRequests.map(resultChange),
+            merged: flow.merged.map(resultChange),
+            known: true,
+          }
+        : {
+            groupId,
+            open: (input.remembered(groupId) ?? []).map(resultChange),
+            merged: [],
+            known: false,
+          };
+  return {
+    ...(changes === undefined ? {} : { changes }),
+    ...(read?.status === "resolved"
+      ? {
+          services: new Map(
+            read.services.map((service: ZeropsService) => [
+              service.name,
+              {
+                status: service.status,
+                since: service.lastUpdate ?? null,
+                versionAt: service.activeAppVersion?.created ?? null,
+              },
+            ]),
+          ),
+        }
+      : {}),
+    ...(input.crew === null
+      ? {}
+      : {
+          crew: {
+            environmentId: input.crew.environmentId,
+            tasks: new Map(
+              input.crew.tasks.map((task) => [task.number, { id: task.id, state: task.state }]),
+            ),
+          },
+        }),
+  };
+}
+
+/**
+ * The facts a run's result follows now, for the conversation it stands in.
+ * Outside a conversation (a harness, a test) and outside a Zerops project it
+ * knows nothing, and the rows stand as the run left them.
+ */
+export function useRunResultFacts(outcome: OutcomeModel | null | undefined): ResultFacts {
+  // The row context is absent where a result is drawn on its own.
+  const row = useContext(TimelineRowCtx) as TimelineRowSharedState | null;
+  const environmentId = row?.threadRef?.environmentId ?? null;
+  const projectId = useRegistrationRecord(environmentId)?.projectRef?.projectId;
+  const inventory = useContext(InventoryContext);
+  const flows = useZeropsProjectFlowOptional()?.flows;
+  // The crew's feed only for a run that worked a crew task.
+  const crew = useCrew((outcome?.crewTask ?? null) === null ? null : environmentId);
+  const tasks = crew.snapshot?.board.tasks;
+  return useMemo(
+    () =>
+      readRunResultFacts({
+        projectId,
+        inventory,
+        flows,
+        remembered: rememberedChanges,
+        crew: environmentId === null || tasks === undefined ? null : { environmentId, tasks },
+      }),
+    [environmentId, flows, inventory, projectId, tasks],
+  );
+}
+
+/**
+ * The run's effort for its worked line, following the forge: "merged as #2 ·
+ * 2 commands · 1 file read" once the person merged the change the run
+ * pushed (`runEffortWords` with the facts its result follows).
+ */
+export function useRunEffortWords(outcome: OutcomeModel | null | undefined): string | null {
+  return runEffortWords(outcome, useRunResultFacts(outcome));
+}
