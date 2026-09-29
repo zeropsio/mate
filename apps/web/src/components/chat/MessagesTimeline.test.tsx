@@ -295,6 +295,42 @@ describe("MessagesTimeline", () => {
     expect(hero).not.toContain("data-mate-face-state");
   });
 
+  // A working Mate's conversation still on its way has no run to draw yet:
+  // a run made up from its status alone was placed and shown, then thrown
+  // 1,480 px when the conversation came (the switch harness, 2026-09-29).
+  it.each([
+    { case: "with no turn known", running: false },
+    { case: "with its running turn known from its status", running: true },
+  ])(
+    "shows a working Mate's pane, not a made-up run, while its conversation is on its way, $case",
+    ({ running }) => {
+      const turnId = TurnId.make("turn-on-its-way");
+      const loading = renderToStaticMarkup(
+        <MessagesTimeline
+          {...buildProps()}
+          isWorking
+          activeTurnStartedAt={MESSAGE_CREATED_AT}
+          {...(running
+            ? {
+                runningTurnId: turnId,
+                latestTurn: {
+                  turnId,
+                  state: "running" as const,
+                  startedAt: MESSAGE_CREATED_AT,
+                  completedAt: null,
+                },
+              }
+            : {})}
+          hideEmptyPlaceholder
+          loading
+          timelineEntries={[]}
+        />,
+      );
+      expect(loading).toContain('data-timeline-loading="true"');
+      expect(loading).not.toContain("data-timeline-row-kind");
+    },
+  );
+
   it("uses the larger leading inset only when the top fade is enabled", () => {
     const timelineEntries = [buildUserTimelineEntry("Hello")];
 

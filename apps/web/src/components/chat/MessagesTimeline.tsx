@@ -879,7 +879,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     crew === null
       ? rows.length === 0
       : rows.every((row) => row.kind === "seam" || row.kind === "crew-seam");
-  const showsList = !empty || isWorking;
+  // A working Mate's conversation still on its way shows its pane, never a
+  // run made up from its status alone: the conversation replaced it a moment
+  // later, 1,480 px away.
+  const onItsWay = loading && timelineEntries.length === 0;
+  const showsList = !onItsWay && (!empty || isWorking);
   if (!showsList && (listReady || listPlaced)) {
     setListReady(false);
     setListPlaced(false);
@@ -1029,7 +1033,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     const frame = requestAnimationFrame(() => timelineSwitch.painted());
     return () => cancelAnimationFrame(frame);
   }, [standsInPlace, timelineSwitch]);
-  if (empty && !isWorking) {
+  if (!showsList) {
     if (hideEmptyPlaceholder) {
       return (
         <TimelineLoadingPane loading={loading} routeThreadKey={routeThreadKey} speaker={speaker} />
