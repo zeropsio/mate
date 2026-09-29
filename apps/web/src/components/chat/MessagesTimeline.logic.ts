@@ -2246,6 +2246,9 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.live === br.live &&
         a.answering === br.answering &&
         Equal.equals(a.now, br.now) &&
+        // Its now line's clock and its worked line's effort.
+        Equal.equals(a.status, br.status) &&
+        Equal.equals(a.outcome, br.outcome) &&
         a.items.length === br.items.length &&
         a.items.every((item, index) => sameRecordItem(item, br.items[index]!))
       );
