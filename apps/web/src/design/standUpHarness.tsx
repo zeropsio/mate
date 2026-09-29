@@ -29,7 +29,11 @@ import { createRoot } from "react-dom/client";
 
 import { Button } from "~/components/ui/button";
 import { ZeropsBirthLine } from "~/components/zerops/ZeropsBirthProgress";
-import { MateEmptyStateView, type MateEmptyComing } from "~/components/zerops/ZeropsMateEmptyState";
+import {
+  MateEmptyStateView,
+  StandUpAuthorize,
+  type MateEmptyComing,
+} from "~/components/zerops/ZeropsMateEmptyState";
 import { ZeropsAgentAuthRows } from "~/components/zerops/ZeropsAgentAuthCard";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
@@ -296,7 +300,10 @@ function Pane({ state, onRetry }: { readonly state: HarnessState; readonly onRet
           mate={state.mate}
           phase={state.phase}
           signIn={
-            state.checking ? null : (
+            state.checking ? null : state.phase === "sign-in" && state.rows ? (
+              // The stand-up's own two buttons, as the conversation draws them.
+              <StandUpAuthorize onAuthorize={() => undefined} snapshot={NOT_SIGNED_IN} />
+            ) : (
               <ZeropsAgentAuthRows
                 onCancel={() => undefined}
                 onSignIn={() => undefined}

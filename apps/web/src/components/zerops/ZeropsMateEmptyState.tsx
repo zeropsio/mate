@@ -200,7 +200,7 @@ export function useMateEmptyState({
  * Mate offers, each opening that agent's authorization. The headline above already says what a
  * sign-in is for, so no row repeats it with a status.
  */
-function StandUpAuthorize({
+export function StandUpAuthorize({
   snapshot,
   onAuthorize,
 }: {
