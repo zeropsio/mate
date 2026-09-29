@@ -29,6 +29,7 @@ import { createRoot } from "react-dom/client";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   deployedVersion,
+  readZeropsGroupTags,
   type EnvironmentRow,
   type FlowPullRequest,
   type ZeropsPublicRoute,
@@ -1096,9 +1097,22 @@ if (new URLSearchParams(location.search).get("palette") === "zerops") {
 // An account is open, as in the app: the order and the mutes are kept under
 // its key. A draft stands in Iris's composer, as the composer would keep it.
 openAccountLifetime("design-harness");
-// The fixture set's folded projects, as a person left them.
-writeCollapsedProjects(new Set(FIXTURES.collapsed));
 const params = new URLSearchParams(location.search);
+// The fixture set's folded projects, as a person left them — or `?fold=all`,
+// every heading folded into a short list of names, as the owner's menu
+// stands; `?fold=a,b` folds those groups.
+const fold = params.get("fold");
+writeCollapsedProjects(
+  new Set(
+    fold === null
+      ? FIXTURES.collapsed
+      : fold === "all"
+        ? FIXTURES.candidates.flatMap(
+            (item) => readZeropsGroupTags(item.project.tagList).groupId ?? [],
+          )
+        : fold.split(","),
+  ),
+);
 const order = params.get("order");
 if (order === "custom" || order === "name" || order === "newest") {
   setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, order, ProjectOrderSchema);

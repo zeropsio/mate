@@ -1160,6 +1160,29 @@ describe("a project collapsed to its heading", () => {
     expect(rows[0]).toEqual(expect.arrayContaining(["pt-0.5", "pb-11"]));
   });
 
+  // Folded names stand a little apart (the owner, 2026-09-29: "increase the
+  // spacing between a little"): 8 px under a folded heading, its own — the
+  // room a fold leaves and an unfold starts from — so no heading moves.
+  it("leaves 8 px under a folded heading, and none under the list's last", () => {
+    const notes = named("notes-dev", "Notes - dev", [
+      "mate",
+      "mate:g:notes",
+      "mate:name:Notes",
+      "mate:role:dev",
+    ]);
+    stored.collapsed = new Set(["links", "notes"]);
+    const html = render([CRM_DEV, LINKS_MATE, notes]);
+    const room = (group: string) => {
+      const at = html.indexOf(`data-zerops-group="${group}"`);
+      const section = html.slice(at, html.indexOf("</section>", at));
+      return /<div[^>]*data-zerops-surface="sidebar-project-room"[^>]*>/u.exec(section)?.[0];
+    };
+    expect(room("links")).toContain('class="h-2 shrink-0"');
+    expect(room("links")).toContain('aria-hidden="true"');
+    expect(room("notes")).toBeUndefined();
+    expect(room("aaa")).toBeUndefined();
+  });
+
   // Folded, a heading shows who is busy in it (M15): the faces of its Mates
   // that need you, work, or finished unseen, a dot for what is not work.
   it("shows its busy Mates' faces while folded, and none while open", () => {
@@ -1350,6 +1373,26 @@ describe("a project collapsed to its heading", () => {
       expect(button).toContain("size-7");
       expect(button).toContain("rounded-md");
     }
+  });
+
+  // The whole heading folds the project, so it lights under the pointer as a
+  // row does (the owner, 2026-09-29: "very slight grey bg on the hover"); the
+  // ungrouped heading folds nothing and stays unlit.
+  it("lights a heading that folds under the pointer, and never the ungrouped one", () => {
+    const classes = (html: string) =>
+      /<div class="([^"]*)"[^>]*data-zerops-surface="sidebar-project"/u.exec(html)?.[1]?.split(" ");
+    expect(
+      classes(
+        renderToStaticMarkup(
+          <ProjectHeader name="Beviro" onBrowseProjects={() => {}} onToggle={() => {}} />,
+        ),
+      ),
+    ).toContain("zerops-project-heading");
+    expect(
+      classes(
+        renderToStaticMarkup(<ProjectHeader muted name="Ungrouped" onBrowseProjects={() => {}} />),
+      ),
+    ).not.toContain("zerops-project-heading");
   });
 
   it("starts the title at the rail's own left edge and hangs the chevron after it", () => {

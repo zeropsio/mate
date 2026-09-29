@@ -15,7 +15,12 @@ describe("projectRoom", () => {
   it.each([
     { name: "an open project, another under it", open: true, last: false, room: 44 },
     { name: "the list's last project, open", open: true, last: true, room: 16 },
-    { name: "a folded project: headings stack back to back", open: false, last: false, room: 0 },
+    {
+      name: "a folded project: its name, then 8 px — folded names stand 40 px apart",
+      open: false,
+      last: false,
+      room: 8,
+    },
     { name: "the list's last project, folded", open: false, last: true, room: 0 },
   ])("$name keeps $room px below its rows", ({ open, last, room }) => {
     expect(projectRoom({ open, last })).toBe(room);

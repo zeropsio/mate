@@ -128,10 +128,15 @@ import { KeyChip, MateFace } from "./primitives";
 import { groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
 import { formatWorkingTime, isQuietMate, sidebarMateKey } from "./SidebarZeropsTree.logic";
 import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
-import { SidebarProjectFold, type ProjectFoldMotion } from "./SidebarProjectFold";
+import {
+  SidebarProjectFold,
+  SidebarProjectFoldedRoom,
+  type ProjectFoldMotion,
+} from "./SidebarProjectFold";
 import {
   headingFaces,
   landingAfterDraw,
+  projectRoom,
   slackAfterScroll,
   slackForFold,
   type HeadingFace,
@@ -1122,8 +1127,16 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // the same rows, which the owner turned down (2026-09-25).
     const fold = folds.get(id);
     // A fragment either way, so the heading keeps its node — and the focus of
-    // the press that folded it — whether its rows are drawn or not.
-    if (group !== undefined && collapsed.has(id) && fold !== "closing") return <>{header}</>;
+    // the press that folded it — whether its rows are drawn or not. Folded, it
+    // keeps its few px of room under it, which its rows unfold from.
+    if (group !== undefined && collapsed.has(id) && fold !== "closing") {
+      return (
+        <>
+          {header}
+          <SidebarProjectFoldedRoom last={last} />
+        </>
+      );
+    }
     const quietOpen = openQuiet.has(id);
     const slots: ReadonlyArray<MateSlot<T>> = [
       ...loud.map(({ item }) => ({ kind: "mate" as const, item })),
@@ -1294,6 +1307,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     });
   };
 
+  // The list's last project keeps less room below it, open or folded.
+  const lastProject = (index: number) => index === groups.length - 1 && !ungroupedMates;
   const groupSections = groups.map(({ group, environments }, index) => (
     <section
       className={cn(
@@ -1339,7 +1354,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                         scrollHeight: scroller.scrollHeight,
                         slack,
                       },
-                      rows.getBoundingClientRect().height,
+                      // Less the room the folded heading keeps under it.
+                      rows.getBoundingClientRect().height -
+                        projectRoom({ open: false, last: lastProject(index) }),
                     ),
                   );
                 }
@@ -1369,7 +1386,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         getFlow?.(group.groupId),
         groupNameIsPlaceholder(group) ? undefined : group.name,
         group,
-        index === groups.length - 1 && !ungroupedMates,
+        lastProject(index),
       )}
     </section>
   ));
@@ -1578,8 +1595,13 @@ export function ProjectHeader({
   return (
     // The title on the menu's mark edge (x = 16: 7 px inside the list's own
     // 9), the heading 32 px tall, and its end 12 px short of the menu's edge.
+    // A heading that folds lights under the pointer, a band fainter than a
+    // Mate row's (`.zerops-project-heading`).
     <div
-      className="group/project relative flex h-8 min-w-0 items-center gap-1 ps-1.75 pe-1"
+      className={cn(
+        "group/project relative flex h-8 min-w-0 items-center gap-1 ps-1.75 pe-1",
+        onToggle !== undefined && "zerops-project-heading",
+      )}
       data-collapsed={collapsed ? "true" : undefined}
       data-zerops-surface="sidebar-project"
     >
