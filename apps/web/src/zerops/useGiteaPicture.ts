@@ -4,11 +4,11 @@
  * A change's description carries its screenshots as attachments of a private repository, which
  * answer nobody without a token — and a page's own `<img>` carries none. So the bytes are read
  * through the person's Gitea session (`GiteaClient.picture`, which reads nothing off its own
- * Gitea) and shown through a blob URL. Where they are read from is handed in
- * ({@link GiteaPictureSource}), so a harness shows a slow picture and a failed one without a
- * Gitea behind it — and so a route of the broker's that reads them for the person can take the
- * Gitea's place: from a browser the Gitea's own read fails today, at its preflight (a 303, no CORS
- * headers), quickly and with no status. A picture that cannot be read says so where it stands.
+ * Gitea) and shown through a blob URL. An attachment is read through the broker the session's
+ * token came from (`GET /person/attachments/{uuid}`): from a browser, Gitea's own read fails at
+ * its preflight (a 303, no CORS headers), quickly and with no status. Where the bytes are read
+ * from is handed in ({@link GiteaPictureSource}), so a harness shows a slow picture and a failed
+ * one without a Gitea behind it. A picture that cannot be read says so where it stands.
  *
  * What was read is kept by address for the tab, so a review opened again shows its pictures at
  * once, and one read in flight is shared by every picture asking for it. The oldest go first past

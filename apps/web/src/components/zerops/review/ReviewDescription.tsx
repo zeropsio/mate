@@ -4,14 +4,16 @@
  * it; and the way back to that run, where it is known (`reviewDescription`).
  *
  * The description's pictures are attachments of a private repository. Each is read as the person
- * from the app's own Gitea (`useGiteaPicture`) and, once read, drawn from its bytes, at most the
- * column's width; a click opens it large, the description's others beside it. Until then, and
- * wherever it cannot be read, it stands as one quiet line — its words, or "Picture", and *Open on
- * Gitea*, where the change's own page shows it — the same line either way, so nothing moves when
- * a read fails. From a browser it cannot be read today: Gitea answers the preflight of
- * `/attachments/{uuid}` with a 303, not its CORS headers (measured on 1.27.2, 2026-09-29), and no
- * API route serves the bytes; a route of the broker's that reads them for the person is planned.
- * A picture anywhere else stays a plain link, never read with the person's token.
+ * through the broker of the app's own Gitea (`useGiteaPicture`, `GiteaClient.picture`): Gitea
+ * answers a browser's preflight of `/attachments/{uuid}` with a 303, not its CORS headers
+ * (measured on 1.27.2, 2026-09-29), and the broker's `/person/attachments/{uuid}` reads it for
+ * the person. Once read it is drawn from its bytes, at most the column's width; a click opens it
+ * large, the description's others beside it. Until then, and wherever it cannot be read, it stands
+ * as one quiet line — its words, or "Picture", and *Open on Gitea*, where the change's own page
+ * shows it. A picture whose description gives its size (zcp writes `<img alt width height src>`)
+ * holds that box from the first paint, its line in it (`reviewPictureBox`), so nothing moves when
+ * it arrives or when a read fails; one without a size stands as the line alone. A picture
+ * anywhere else stays a plain link, never read with the person's token.
  */
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import {
@@ -35,6 +37,7 @@ import {
   descriptionPicture,
   keyStaysInReview,
   reviewDescription,
+  reviewPictureBox,
 } from "./ZeropsReview.logic";
 import { ReviewSection, ReviewSkeleton } from "./ZeropsReviewSurface";
 
@@ -164,9 +167,11 @@ function ReviewPicture({
     <GiteaPicture
       alt={picture.alt}
       giteaPage={giteaPage}
+      height={picture.height}
       onOpen={onOpen}
       source={source}
       url={where.url}
+      width={picture.width}
     />
   );
 }
@@ -174,12 +179,17 @@ function ReviewPicture({
 function GiteaPicture({
   url,
   alt,
+  width,
+  height,
   giteaPage,
   source,
   onOpen,
 }: {
   readonly url: string;
   readonly alt: string;
+  /** Its size as the description gives it, where it does. */
+  readonly width: string | number | undefined;
+  readonly height: string | number | undefined;
   readonly giteaPage: string | undefined;
   readonly source: GiteaPictureSource | undefined;
   readonly onOpen: (view: PictureView) => void;
@@ -187,20 +197,37 @@ function GiteaPicture({
   const state = useGiteaPicture(source, url);
   // Only a picture seen arriving fades in: one already read stands as it was.
   const [arriving] = useState(state.kind === "reading");
-  if (state.kind !== "read") return <PictureLine alt={alt} giteaPage={giteaPage} />;
+  const box = reviewPictureBox(width, height);
+  if (box === null && state.kind !== "read") return <PictureLine alt={alt} giteaPage={giteaPage} />;
   return (
-    <span className="rv-pic" data-fresh={arriving ? "" : undefined}>
-      <button
-        aria-label={alt.length > 0 ? `Open ${alt}` : "Open the picture"}
-        className="rv-pic-open"
-        onClick={(event) => {
-          const view = pictureView(event.currentTarget);
-          if (view !== null) onOpen(view);
-        }}
-        type="button"
-      >
-        <img alt={alt} data-review-picture="" draggable={false} src={state.src} />
-      </button>
+    <span
+      className="rv-pic"
+      data-box={box === null ? undefined : ""}
+      data-fresh={arriving && state.kind === "read" ? "" : undefined}
+      style={box === null ? undefined : { aspectRatio: box.aspectRatio, width: box.width }}
+    >
+      {state.kind === "read" ? (
+        <button
+          aria-label={alt.length > 0 ? `Open ${alt}` : "Open the picture"}
+          className="rv-pic-open"
+          onClick={(event) => {
+            const view = pictureView(event.currentTarget);
+            if (view !== null) onOpen(view);
+          }}
+          type="button"
+        >
+          <img
+            alt={alt}
+            data-review-picture=""
+            draggable={false}
+            height={box === null ? undefined : height}
+            src={state.src}
+            width={box === null ? undefined : width}
+          />
+        </button>
+      ) : (
+        <PictureLine alt={alt} giteaPage={giteaPage} />
+      )}
     </span>
   );
 }

@@ -20,6 +20,7 @@ import {
   releaseChangeRows,
   remarkFold,
   reviewDescription,
+  reviewPictureBox,
   reviewKindLine,
   reviewOrigin,
   runWords,
@@ -150,6 +151,41 @@ describe("descriptionPicture: a picture is read as the person only from the app'
       url: "https://git.example.test/attachments/5f1c2a",
     });
   });
+});
+
+describe("reviewPictureBox: a picture holds its box from the size its description gives", () => {
+  it.each([
+    [
+      "a screenshot at the width a description shows it",
+      "720",
+      "405",
+      { aspectRatio: "720 / 405", width: "min(100%, 720px)" },
+    ],
+    ["its size as numbers", 640, 480, { aspectRatio: "640 / 480", width: "min(100%, 640px)" }],
+    [
+      // No picture stands taller than 560: a tall one is as narrow as that leaves it.
+      "a whole tall page, capped at the height a picture stands",
+      "720",
+      "3000",
+      { aspectRatio: "720 / 3000", width: "min(100%, 134px)" },
+    ],
+  ] as const)("%s", (_case, width, height, box) => {
+    expect(reviewPictureBox(width, height)).toEqual(box);
+  });
+
+  it.each([
+    ["no size", undefined, undefined],
+    ["a width alone", "720", undefined],
+    ["a zero", "0", "405"],
+    ["a negative", "-720", "405"],
+    ["words", "wide", "405"],
+    ["a size no picture has", "90000", "405"],
+  ] as const)(
+    "holds no box for %s: the picture takes its room when it arrives",
+    (_case, width, height) => {
+      expect(reviewPictureBox(width, height)).toBeNull();
+    },
+  );
 });
 
 describe("absoluteDescription: what Gitea wrote without its host points at its Gitea", () => {
