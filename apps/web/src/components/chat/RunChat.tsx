@@ -772,6 +772,22 @@ function ThoughtParagraphs({ messages }: { readonly messages: ReadonlyArray<Chat
   );
 }
 
+/**
+ * A question it asked the person with its question tool: its own words, in
+ * its tint — the person's answer stands under it, in theirs.
+ */
+function QuestionBubble({ questions }: { readonly questions: ReadonlyArray<string> }) {
+  return (
+    <Bubble className={BUBBLE_PAD} kind="question" tone="speech">
+      {questions.map((question, index) => (
+        <p key={`${index}:${question}`} className="whitespace-pre-wrap break-words">
+          {question}
+        </p>
+      ))}
+    </Bubble>
+  );
+}
+
 /** Its words to the person on the way: the chat's bubble in its fullest fill. */
 function NoteBubble({ message }: { readonly message: ChatMessage }) {
   const fold = useFold(foldsLikeAMessage(message.text));
@@ -1884,6 +1900,10 @@ interface ChatLine {
   readonly theirs?: boolean;
   /** A thing it did: a row of the card its run of calls shares. */
   readonly call?: boolean;
+  /** The Mate's question: the person's answer under it pairs with it. */
+  readonly asks?: boolean;
+  /** An answer under its question, 6 px under it — a pair, not two lines (K14). */
+  readonly pairs?: boolean;
 }
 
 /** A thought's mark: a small asterisk, fainter than a call's. */
@@ -1918,10 +1938,11 @@ function gatherCalls(lines: ReadonlyArray<ChatLine>): ReadonlyArray<ChatEntry> {
 }
 
 /**
- * Where the person's words reached the Mate: one line in their bubble, on
- * their side — the words themselves stand on the page above the card (the
- * owner, 2026-09-28: "shown the user message in short inside the working
- * group, printed it in the chat at the same time").
+ * Where the person's words reached the Mate, on their side, in their bubble:
+ * an answer to its question whole — it stands nowhere else; a message they
+ * sent into the run in one line — the message itself stands on the page above
+ * the card (the owner, 2026-09-28: "shown the user message in short inside
+ * the working group, printed it in the chat at the same time").
  */
 function PersonMark({ item }: { readonly item: Extract<RecordItem, { kind: "person" }> }) {
   const words =
@@ -1930,7 +1951,8 @@ function PersonMark({ item }: { readonly item: Extract<RecordItem, { kind: "pers
   return (
     <p
       className={cn(
-        "max-w-4/5 truncate bg-message text-message-foreground",
+        "max-w-4/5 bg-message text-message-foreground",
+        item.words === undefined ? "truncate" : "whitespace-pre-wrap break-words",
         BUBBLE_SHAPE,
         BUBBLE_PAD,
         WORDS,
@@ -1972,6 +1994,13 @@ function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine | nul
         key: item.key,
         bubble: <NoteBubble message={item.message} />,
         mark: <SpeakerMark />,
+      };
+    case "question":
+      return {
+        key: item.key,
+        bubble: <QuestionBubble questions={item.questions} />,
+        mark: <SpeakerMark />,
+        asks: true,
       };
     case "person":
       return { key: item.key, bubble: <PersonMark item={item} />, theirs: true };
@@ -2025,12 +2054,15 @@ function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine | nul
 function ChatRow({
   across,
   theirs,
+  pairs = false,
   mark,
   markLine,
   children,
 }: {
   readonly across: boolean;
   readonly theirs: boolean;
+  /** It answers the question right above it: 6 px under it, not 12. */
+  readonly pairs?: boolean;
   readonly mark?: ReactNode;
   readonly markLine?: MarkLine | undefined;
   readonly children: ReactNode;
@@ -2044,7 +2076,7 @@ function ChatRow({
     );
   }
   return (
-    <li className={cn("flex min-w-0 items-start", MARK_GAP)} data-chat-row>
+    <li className={cn("flex min-w-0 items-start", MARK_GAP, pairs && "-mt-1.5")} data-chat-row>
       {/* The Mate's column, on a phone's card too: it holds the marks that
           tell the bubbles apart, so every bubble keeps one edge. */}
       {mark === undefined ? (
@@ -2426,7 +2458,10 @@ function chatLines(
   // did it marks nothing — their words stand on the page right above the
   // card, and the card opened on a second copy of them.
   while (lines[0]?.theirs === true) lines.shift();
-  return lines;
+  // An answer pairs with the question right above it.
+  return lines.map((line, index) =>
+    line.theirs === true && lines[index - 1]?.asks === true ? { ...line, pairs: true } : line,
+  );
 }
 
 /**
@@ -2530,6 +2565,7 @@ function ChatFeed({
               across={entry.across === true}
               mark={entry.mark}
               markLine={entry.markLine}
+              pairs={entry.pairs === true}
               theirs={entry.theirs === true}
             >
               {entry.bubble}

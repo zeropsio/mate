@@ -1504,7 +1504,6 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "crew-seam" ? <CrewSeamActivity seam={row.seam} words={row.words} /> : null}
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "queued-message" ? <QueuedMessageTimelineRow row={row} /> : null}
-      {row.kind === "answer" ? <AnswerTimelineRow row={row} /> : null}
     </>
   );
 }
@@ -1823,31 +1822,6 @@ function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcom
 function SeamTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "seam" }> }) {
   const ctx = use(TimelineRowCtx);
   return <Seam row={row} timestampFormat={ctx.timestampFormat} />;
-}
-
-/**
- * A question the Mate asked and the person's answer, each in its speaker's
- * place: the question in the Mate's bubble beside its face, the answer in
- * the person's own bubble on their side.
- */
-function AnswerTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "answer" }> }) {
-  return (
-    <div className="grid gap-3" data-person-answer>
-      {row.pairs.map((pair) => (
-        <Fragment key={pair.key}>
-          <div data-mate-question>
-            <MateProseWords at={row.createdAt} streaming={false} text={pair.question} />
-          </div>
-          <div className="flex justify-end">
-            <div className="max-w-4/5 rounded-2xl bg-message px-3.5 py-2.5 text-message-foreground">
-              <MessageAuthorHeading>You</MessageAuthorHeading>
-              <p className="whitespace-pre-wrap text-prose">{pair.answer}</p>
-            </div>
-          </div>
-        </Fragment>
-      ))}
-    </div>
-  );
 }
 
 /**

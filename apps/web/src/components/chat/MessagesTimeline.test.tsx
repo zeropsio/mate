@@ -1430,7 +1430,10 @@ describe("MessagesTimeline — the conversation", () => {
     expect(markup).not.toContain("AskUserQuestion");
   });
 
-  it("keeps the question the Mate asked in its words beside its face, the answer in the person's", () => {
+  // The question stands in the run's card as the Mate asked it, in its tint
+  // with its face beside it, and the person's answer under it in their own
+  // bubble (K14) — kept when the run folds on return (K7).
+  it("keeps the question the Mate asked in its card, the answer in the person's bubble under it", () => {
     const input = (id: string, second: number, extra: Record<string, unknown>) => ({
       ...tool(id, second),
       entry: {
@@ -1468,11 +1471,14 @@ describe("MessagesTimeline — the conversation", () => {
         }
       />,
     );
-    const answer = markup.slice(markup.indexOf("data-person-answer"));
-    // The question in the Mate's prose, as its answers stand: no bubble on the page.
-    expect(answer).toContain("data-mate-question");
-    expect(markup).not.toContain("data-mate-speech");
-    expect(answer.indexOf("Which accent do you prefer?")).toBeLessThan(answer.indexOf("Teal"));
+    const card = markup.slice(markup.indexOf('data-timeline-row-kind="record"'));
+    expect(card).toMatch(
+      /data-chat-bubble="speech" data-chat-kind="question"><p[^>]*>Which accent do you prefer\?</u,
+    );
+    expect(card).toMatch(/<p class="[^"]*bg-message[^"]*" data-chat-kind="person">Teal</u);
+    expect(card.indexOf("Which accent do you prefer?")).toBeLessThan(card.indexOf(">Teal<"));
+    // No row of its own on the page: the question and answer are the card's.
+    expect(markup).not.toContain("data-person-answer");
     // The question's short header was never the person's words.
     expect(markup).not.toContain("Accent colour");
   });

@@ -514,21 +514,6 @@ type MessagesTimelineRowBody =
       state: "working" | "monitoring";
     }
   | {
-      /**
-       * A question the Mate asked with its question tool and the person's
-       * answer: the question in the Mate's words, on its side, and the
-       * answer in theirs, on theirs.
-       */
-      kind: "answer";
-      id: string;
-      createdAt: string;
-      pairs: ReadonlyArray<{
-        readonly key: string;
-        readonly question: string;
-        readonly answer: string;
-      }>;
-    }
-  | {
       /** Work no run owns, drawn as it always was: a line of its own. */
       kind: "work";
       id: string;
@@ -677,6 +662,17 @@ export type RecordItem =
       readonly messages: ReadonlyArray<ChatMessage>;
       readonly durationMs: number | null;
     }
+  /**
+   * A question it asked the person with its question tool, in its own words:
+   * its side of the card, in its tint — the person's answer, their item under
+   * it — asked and waiting, or answered.
+   */
+  | {
+      readonly kind: "question";
+      readonly key: string;
+      readonly at: string;
+      readonly questions: ReadonlyArray<string>;
+    }
   /** Its words to the person on the way, in full. */
   | {
       readonly kind: "note";
@@ -776,11 +772,7 @@ export type MessagesTimelineRow = MessagesTimelineRowBody & {
 };
 
 function isPersonRow(row: MessagesTimelineRow): boolean {
-  return (
-    (row.kind === "message" && row.message.role === "user") ||
-    row.kind === "queued-message" ||
-    row.kind === "answer"
-  );
+  return (row.kind === "message" && row.message.role === "user") || row.kind === "queued-message";
 }
 
 function closesTurn(row: MessagesTimelineRow): boolean {
@@ -823,11 +815,6 @@ export function rowGap(
   if (previous.kind === "seam" || previous.kind === "crew-seam")
     return isMateProse(row) ? "part-words" : "part";
   if (isPersonRow(row)) {
-    // A question's row opens with the Mate asking it, the person's answer
-    // under it: after the person's own words that is a change of speaker,
-    // and it hung 3 px under their bubble as if they had asked it (Nova,
-    // 2026-09-29).
-    if (row.kind === "answer" && isPersonRow(previous)) return "block";
     if (isPersonRow(previous)) return "tight";
     // A message waiting to be sent goes into the run on screen, and what the
     // person said into a run nobody typed is that run's: parts of its turn.
@@ -1331,8 +1318,17 @@ function stretchRecord(input: {
       }
       case "work": {
         const work = entry.entry;
-        // What the Mate asked waits above the composer while it waits.
-        if (work.inputQuestions !== undefined && work.inputAnswers === undefined) break;
+        // What the Mate asked stands in its card, asked and answered, in its
+        // own words; while it waits, the composer asks the person too.
+        if (work.inputQuestions !== undefined && work.inputAnswers === undefined) {
+          const questions = work.inputQuestions
+            .map((question) => (question.question || question.header).trim())
+            .filter((question) => question.length > 0);
+          if (questions.length > 0) {
+            push({ kind: "question", key: `question:${entry.id}`, at: entry.createdAt, questions });
+          }
+          break;
+        }
         if (work.crewSeam !== undefined) {
           push({
             kind: "crew-seam",
@@ -1354,40 +1350,13 @@ function stretchRecord(input: {
             push({ kind: "error", key: `error:${entry.id}`, at: entry.createdAt, entry: work });
           }
         } else if (work.inputAnswers !== undefined) {
-          const asked =
-            stretch.entries
-              .flatMap((candidate) =>
-                candidate.kind === "work" &&
-                candidate.entry.inputQuestions !== undefined &&
-                (work.inputRequestId === undefined ||
-                  candidate.entry.inputRequestId === work.inputRequestId)
-                  ? [candidate.entry.inputQuestions]
-                  : [],
-              )
-              .at(-1) ?? [];
-          // The record marks where the answer reached the Mate; the question
-          // and the answer themselves stand on the page.
+          // The person's answer, in their words, under the question it answers.
           push({
             kind: "person",
             key: `person:${entry.id}`,
             at: entry.createdAt,
             words: work.inputAnswers.map((given) => answerWords(given.answer)).join(" · "),
             imageOnly: false,
-          });
-          rows.push({
-            kind: "answer",
-            id: `answer:${entry.id}`,
-            createdAt: entry.createdAt,
-            pairs: work.inputAnswers.map((answer) => {
-              const question = asked.find(
-                (candidate) => candidate.id === answer.key || candidate.question === answer.key,
-              );
-              return {
-                key: answer.key,
-                question: question?.question ?? question?.header ?? answer.key,
-                answer: answerWords(answer.answer),
-              };
-            }),
           });
         } else if (work.agentSpawn !== undefined) {
           push({ kind: "helpers", key: `helpers:${entry.id}`, at: entry.createdAt, entry: work });
@@ -1875,7 +1844,7 @@ export function deriveMessagesTimelineRows(input: {
         until: turn.live ? null : last.endedAt,
       });
       items.push(...built.items);
-      for (const row of built.rows) (row.kind === "answer" ? exchanges : extras).push(row);
+      extras.push(...built.rows);
     });
     const hasRecord = items.some((item) => item.kind !== "person");
     // A live run with nothing in its record whose answer is known already is

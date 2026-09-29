@@ -426,6 +426,11 @@ describe("foldsOnReturn", () => {
     { name: "a resume", item: { ...base, kind: "event", event: { type: "resumed" } }, folds: true },
     { name: "its words", item: { ...base, kind: "note", message }, folds: false },
     {
+      name: "a question it asked",
+      item: { ...base, kind: "question", questions: ["Public?"] },
+      folds: false,
+    },
+    {
       name: "the person's words",
       item: { ...base, kind: "person", words: "Yes", imageOnly: false },
       folds: false,

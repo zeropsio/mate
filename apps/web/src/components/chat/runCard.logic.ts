@@ -277,12 +277,13 @@ export function formatClock(ms: number): string {
 /**
  * Whether a line of the chat folds when the person comes back to a run (K7,
  * D3): only thoughts and calls do — its work. Everything it said to them
- * stays as it was: its words, what they said into the run, anything it
- * couldn't do, a change that landed, a command they ran.
+ * stays as it was: its words, the questions it asked, what they said into
+ * the run, anything it couldn't do, a change that landed, a command they ran.
  */
 export function foldsOnReturn(item: RecordItem): boolean {
   switch (item.kind) {
     case "note":
+    case "question":
     case "person":
     case "error":
     case "crew-seam":

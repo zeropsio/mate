@@ -428,6 +428,36 @@ describe("RunChat", () => {
     expect(retried).toMatch(/lucide-triangle-alert[^"]*text-muted-foreground/u);
   });
 
+  // A question and the person's answer are a pair (K14): the question in the
+  // Mate's tint with its face, the answer whole in the person's bubble 6 px
+  // under it — not the 12 px between other lines.
+  it("pairs the person's answer with the question above it, 6 px under it", () => {
+    const markup = draw(
+      record([
+        {
+          kind: "question",
+          key: "question:q1",
+          at: at(2),
+          questions: ["Should /status be public?"],
+        },
+        {
+          kind: "person",
+          key: "person:a1",
+          at: at(3),
+          words: "Yes, but show no secrets — and keep /health for the load balancer",
+          imageOnly: false,
+        },
+      ]),
+    );
+    expect(markup).toMatch(
+      /data-chat-bubble="speech" data-chat-kind="question"><p[^>]*>Should \/status be public\?</u,
+    );
+    expect(markup).toMatch(/<li class="[^"]*-mt-1\.5[^"]*" data-chat-row="true">/u);
+    // Its answer stands nowhere else: whole, never cut to a line.
+    expect(markup).toMatch(/<p class="[^"]*whitespace-pre-wrap[^"]*" data-chat-kind="person">/u);
+    expect(markup).not.toMatch(/<p class="[^"]*truncate[^"]*" data-chat-kind="person">/u);
+  });
+
   // Blue means something to click (S3): the run's clock counts in ink, and a
   // call running beside it counts in the calls' quiet ink.
   it("counts the run's time in ink, never in the busy blue", () => {
