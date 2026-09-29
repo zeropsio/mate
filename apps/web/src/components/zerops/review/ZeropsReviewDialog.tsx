@@ -136,6 +136,9 @@ export function ZeropsReviewDialog({
         <DialogPrimitive.Viewport className="rv-viewport">
           <DialogPrimitive.Popup
             aria-labelledby={labelledBy}
+            // Modal, and said so: the composer behind takes letters typed outside any field
+            // unless a modal dialog is open.
+            aria-modal="true"
             className="rv"
             // A dialog to every layer check: the panel launcher's letters stand aside for it.
             data-slot="dialog-popup"

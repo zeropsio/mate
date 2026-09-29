@@ -307,6 +307,10 @@ describe("the review is a layer: what is typed in it acts on nothing behind it",
     ["keeps its keys from the listeners behind it, Escape aside", "keyStaysInReview(event.key)"],
     ["stops them there", "event.stopPropagation()"],
     ["is a dialog to the panel launcher's letters", 'data-slot="dialog-popup"'],
+    [
+      "is a modal to the composer, which takes letters typed outside any field",
+      'aria-modal="true"',
+    ],
   ])("%s", (_case, words) => {
     expect(reviewDialogSource).toContain(words);
   });
