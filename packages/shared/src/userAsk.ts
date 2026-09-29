@@ -10,7 +10,7 @@
  * attachments asks by its attachments, whatever placeholder text the client
  * put in front of them for the agent.
  */
-import { pictureWords } from "./composerPictures.ts";
+import { messagePictures, pictureWords } from "./composerPictures.ts";
 import { messagePreviewText } from "./messagePreview.ts";
 
 /**
@@ -69,7 +69,10 @@ export type UserAsk =
 
 export interface UserAskSource {
   readonly text: string;
-  readonly attachments?: ReadonlyArray<{ readonly type: string }> | undefined;
+  /** A picture's kept original is told apart from a file by its type (`@t3tools/shared/composerPictures`). */
+  readonly attachments?:
+    | ReadonlyArray<{ readonly type: string; readonly mimeType?: string | undefined }>
+    | undefined;
 }
 
 /**
@@ -94,7 +97,15 @@ export function userAskOf(message: UserAskSource): UserAsk | null {
     return { kind: "text", text: words };
   }
   if (attachments.length === 0) return null;
-  return { kind: "attachments", images, files: attachments.length - images };
+  // A picture's kept original goes with its picture: one picture, not a file.
+  const originals = messagePictures(
+    trimmed,
+    attachments.map((attachment) => ({
+      type: attachment.type,
+      mimeType: attachment.mimeType ?? "",
+    })),
+  ).filter((picture) => picture.original !== null).length;
+  return { kind: "attachments", images, files: attachments.length - images - originals };
 }
 
 /** "1 image", "3 images", "2 files", "1 image and 2 files". */

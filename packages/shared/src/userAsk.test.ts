@@ -107,6 +107,28 @@ describe("userAskOf", () => {
       { text: "", attachments: [image, file, image] },
       { kind: "attachments", images: 2, files: 1 },
     ],
+    [
+      "a picture kept with its original asks as one picture",
+      {
+        text: "[Picture 1]",
+        attachments: [
+          { type: "image", mimeType: "image/png" },
+          { type: "file", mimeType: "image/png" },
+        ],
+      },
+      { kind: "attachments", images: 1, files: 0 },
+    ],
+    [
+      "a file after a picture that is no picture of its own counts as a file",
+      {
+        text: "[Picture 1]",
+        attachments: [
+          { type: "image", mimeType: "image/png" },
+          { type: "file", mimeType: "text/plain" },
+        ],
+      },
+      { kind: "attachments", images: 1, files: 1 },
+    ],
   ])("%s asks", (_, message, expected) => {
     expect(userAskOf(message)).toEqual(expected);
   });
