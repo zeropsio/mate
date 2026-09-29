@@ -92,7 +92,7 @@ import type { KnownAffordance, Shown } from "@t3tools/client-runtime/zerops/know
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
-import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
+import type { MateTintId } from "@t3tools/shared/brand";
 import {
   ArrowUpIcon,
   BellOffIcon,
@@ -154,9 +154,8 @@ import {
 import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
 import { SidebarProjectFold, type ProjectFoldMotion } from "./SidebarProjectFold";
 import { changeMarkTone, ownerMark } from "./SidebarMateRow.logic";
-import { MatePeekHost } from "./SidebarMatePeek";
 import { useSidebarJump } from "~/zerops/sidebarJump";
-import { useSidebarPeek, type SidebarRevealTarget } from "~/zerops/sidebarPeek";
+import { useSidebarReveal, type SidebarRevealTarget } from "~/zerops/sidebarReveal";
 import {
   EMPTY_JUMP_INDEX,
   jumpMateOf,
@@ -182,7 +181,6 @@ import {
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
 import { groupAddsOffered } from "./ZeropsProjectRow.logic";
-import { ZeropsMergeDialog } from "./ZeropsMergeDialog";
 import { ZeropsReleaseDialog } from "./ZeropsReleaseDialog";
 import { ZeropsRoutesMenu } from "./ZeropsPublicRoutes";
 import { ZeropsStopMenu } from "./ZeropsStopMenu";
@@ -460,17 +458,10 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
     | ((candidate: T, activity: ZeropsAgentActivity | undefined) => MateRowActions | undefined)
     | undefined;
   /**
-   * A Mate's peek, drawn from what the row knows (`SidebarMatePeekLive`
-   * reads the rest). Absent, rows have no peek.
-   */
-  readonly renderPeek?: ((peek: SidebarPeekRender<T>) => ReactNode) | undefined;
-  /**
    * Whether the menu lists this Mate — the account menu's Mine / Everyone
    * (`shownInScope`). Absent, every Mate.
    */
   readonly shown?: ((candidate: T) => boolean) | undefined;
-  /** The menu is a phone's: a peek rises as a sheet, and More stands in for hover. */
-  readonly phone?: boolean;
 }
 
 /** What the menu remembers drawing (`menuMemory.ts`). */
@@ -510,29 +501,6 @@ const REMEMBERED_CHANGE_ROWS: ChangeRows = {
   remembered: true,
 };
 
-/** What the tree hands its peek: the Mate, as its row draws it. */
-export interface SidebarPeekRender<T> {
-  readonly candidate: T;
-  readonly activity: ZeropsAgentActivity | undefined;
-  readonly name: string;
-  readonly face: MateMarkState;
-  readonly tint: MateTintId;
-  readonly projectName: string | undefined;
-  readonly owner: ZeropsMateOwner | undefined;
-  /** The row's own time slot. */
-  readonly time: ReactNode;
-  /** Each change it has open, a line each — the one a jump asked for first. */
-  readonly changes: ReactNode | undefined;
-  /** How many: its section says "Change" over one, "Changes" over more. */
-  readonly changeCount: number;
-  readonly appUrl: string | undefined;
-  readonly phone: boolean;
-  readonly onOpen: () => void;
-  readonly onClose: () => void;
-  /** A phone's way to the Mate's menu. */
-  readonly onMore: (() => void) | undefined;
-}
-
 export function SidebarZeropsTree<T extends RosterCandidate>({
   candidates,
   onSelect,
@@ -555,9 +523,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   births = NO_BIRTHS,
   timestampFormat = "locale",
   getMateActions,
-  renderPeek,
   shown,
-  phone = false,
 }: SidebarZeropsTreeProps<T>) {
   const emptyReason = mateEnvironmentsEmptyReason(candidates);
   const [openLists, setOpenLists] = useState<ReadonlySet<string>>(() => new Set());
@@ -603,17 +569,12 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   };
   // Option held: each Mate row's time slot shows its number, and ⌥1–9 opens it.
   const [altHeld, setAltHeld] = useState(false);
-  // One Mate's peek at a time (`sidebarPeek.ts`): half a second's hover, or
-  // Space, and it floats beside the menu; on a phone a sheet.
-  const peekState = useSidebarPeek((state) => state.peek);
-  const menuFor = useSidebarPeek((state) => state.menuFor);
-  // A surface's ask to show something (`sidebarPeek.ts`): the header's
+  // A surface's ask to show something (`sidebarReveal.ts`): the header's
   // waiting faces a Mate, the jump box a Mate, a project, a stop or a change.
   // Its project opens — and the quiet Mates or the list of changes it is
-  // folded into — then, once its row is drawn, the row takes the focus: a
-  // Mate's with its peek pinned beside it, on the change asked for where one
-  // was; a project's heading or a stop's row flashes once where it stands.
-  const revealing = useSidebarPeek((state) => state.revealing);
+  // folded into — then, once its row is drawn, the row takes the focus and
+  // flashes once where it stands.
+  const revealing = useSidebarReveal((state) => state.revealing);
   const focusAfterDraw = useRef<SidebarRevealTarget | null>(null);
   // The Mates in the order drawn — collapsed projects included — for the
   // header's "next one that waits", and everything the jump box finds here;
@@ -622,7 +583,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   const jumpIndex = useRef<SidebarJumpIndex>(EMPTY_JUMP_INDEX);
   const drawnForMemory = useRef<SidebarDrawn>(NOTHING_DRAWN);
   useEffect(() => {
-    useSidebarPeek.getState().setMateOrder(mateOrder.current);
+    useSidebarReveal.getState().setMateOrder(mateOrder.current);
     useSidebarJump.getState().publish(jumpIndex.current);
     onDrawn?.(drawnForMemory.current);
   });
@@ -630,7 +591,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   useEffect(() => {
     if (revealing === null || !holdsRevealTarget(candidates, revealing.target)) return;
     const { target, seq } = revealing;
-    useSidebarPeek.getState().answerReveal(seq);
+    useSidebarReveal.getState().answerReveal(seq);
     const groupId =
       target.kind === "mate" ? groupIdOf(candidates, target.projectId) : target.groupId;
     const mateId =
@@ -658,13 +619,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     if (landing === null) return;
     focusAfterDraw.current = null;
     focusOnceFree(landing.focus, () => {
-      if (landing.flash !== null) {
-        landing.flash.scrollIntoView({ block: "nearest" });
-        flashOnce(landing.flash);
-      }
-      if (landing.peek !== undefined) {
-        useSidebarPeek.getState().open(landing.peek.projectId, "pinned", landing.peek.change);
-      }
+      landing.flash.scrollIntoView({ block: "nearest" });
+      flashOnce(landing.flash);
     });
   });
   // The list's keys that belong to no one row: Option shows the numbers and
@@ -698,7 +654,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       if (event.altKey || event.target !== document.body) return;
       if (event.key !== "j" && event.key !== "k") return;
       const rows = mateRows();
-      const cursor = useSidebarPeek.getState().cursor ?? activeProjectId;
+      const cursor = useSidebarReveal.getState().cursor ?? activeProjectId;
       const row =
         rows.find(
           (entry) =>
@@ -725,26 +681,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       window.removeEventListener("blur", onBlur);
     };
   }, [activeProjectId]);
-  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clearTimer = (timer: { current: ReturnType<typeof setTimeout> | null }) => {
-    if (timer.current !== null) clearTimeout(timer.current);
-    timer.current = null;
-  };
-  const leaveSoon = (projectId: string) => {
-    clearTimer(leaveTimer);
-    // Long enough to cross from the row to the peek beside the menu.
-    leaveTimer.current = setTimeout(() => {
-      useSidebarPeek.getState().leave(projectId);
-    }, 220);
-  };
-  useEffect(
-    () => () => {
-      clearTimer(hoverTimer);
-      clearTimer(leaveTimer);
-    },
-    [],
-  );
   // What each stop runs, read once per render and handed to `groupFlow` and
   // to every stop's own row, so the two can never read two different answers
   // for the same project.
@@ -825,69 +761,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     });
   };
 
-  // What the peek will draw, captured while its Mate's row is drawn.
-  let peekTarget: SidebarPeekRender<T> | undefined;
-  const peekFor = (projectId: string): MateRowPeek | undefined =>
-    renderPeek === undefined
-      ? undefined
-      : {
-          peeking: peekState?.projectId === projectId,
-          onHover: (entering) => {
-            const { peek, open } = useSidebarPeek.getState();
-            if (!entering) {
-              clearTimer(hoverTimer);
-              if (peek?.projectId === projectId) leaveSoon(projectId);
-              return;
-            }
-            clearTimer(leaveTimer);
-            if (peek?.projectId === projectId || peek?.mode === "pinned") return;
-            clearTimer(hoverTimer);
-            // Once a peek is open, the next Mate's comes at once, as a hover card does.
-            hoverTimer.current = setTimeout(
-              () => {
-                open(projectId, "hover");
-              },
-              peek === null ? PEEK_REST_MS : PEEK_NEXT_MS,
-            );
-          },
-          onToggle: () => {
-            const { peek, open, close } = useSidebarPeek.getState();
-            clearTimer(hoverTimer);
-            if (peek?.projectId === projectId && peek.mode === "pinned") close();
-            else open(projectId, "pinned");
-          },
-          onPin: () => {
-            useSidebarPeek.getState().open(projectId, "pinned");
-          },
-          menuRequested: menuFor === projectId,
-          onMenuRequestSeen: () => {
-            useSidebarPeek.getState().askForMenu(null);
-          },
-          onFocus: () => {
-            useSidebarPeek.getState().setCursor(projectId);
-          },
-        };
-  const selectMate = (candidate: T) => {
-    useSidebarPeek.getState().close();
-    onSelect(candidate);
-  };
-  // A peek put away while the focus was in it hands the focus back to its
-  // Mate's row, where it came from — never to the page behind.
-  const closePeek = () => {
-    const open = useSidebarPeek.getState().peek;
-    const inside =
-      typeof document !== "undefined" &&
-      document
-        .querySelector('[data-zerops-surface="sidebar-mate-peek-popup"]')
-        ?.contains(document.activeElement) === true;
-    useSidebarPeek.getState().close();
-    if (open === null || !inside) return;
-    document
-      .querySelector<HTMLElement>(
-        `[data-zerops-mate-row="${open.projectId}"] [data-zerops-surface="sidebar-mate"]`,
-      )
-      ?.focus({ preventScroll: true });
-  };
   // Each drawn Mate's number, top to bottom, for the ⌥ chips.
   let numbered = 0;
   const mateKeys: MateRowKeys = {
@@ -897,14 +770,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       if (next === undefined || next === from) return;
       next.focus({ preventScroll: true });
       next.scrollIntoView({ block: "nearest" });
-      // A peek somebody pinned follows the focus down the list.
-      const projectId = next
-        .closest("[data-zerops-mate-row]")
-        ?.getAttribute("data-zerops-mate-row");
-      const { peek, open } = useSidebarPeek.getState();
-      if (peek?.mode === "pinned" && projectId !== null && projectId !== undefined) {
-        open(projectId, "pinned");
-      }
     },
   };
 
@@ -1167,55 +1032,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           (mate) => mate.projectId === item.project.id,
         )?.preview;
         numbered += 1;
-        if (renderPeek !== undefined && peekState?.projectId === item.project.id) {
-          const activity = getActivity?.(item);
-          const live = drawnActivity(item, activity);
-          const tags = readZeropsGroupTags(item.project.tagList);
-          // Every change it has open, as under its row: the one the peek was
-          // asked to show — a jump to it — first, then the rest newest first.
-          const asked = pulls.find((pull) => changeRowKey(pull) === peekState.change);
-          const peekPulls =
-            !changesKnown || flow === undefined
-              ? []
-              : asked === undefined
-                ? pulls
-                : [asked, ...pulls.filter((pull) => pull !== asked)];
-          peekTarget = {
-            candidate: item,
-            activity: live,
-            name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
-            face: mateFaceFor(item.group === "connected", activity),
-            tint: tints.get(item.project.id) ?? "slate",
-            projectName: groupName,
-            owner: getOwner?.(item),
-            time:
-              live === undefined ? null : (
-                <MateTime activity={live} timestampFormat={timestampFormat} />
-              ),
-            changes:
-              peekPulls.length === 0 || flow === undefined ? undefined : (
-                <div className="grid gap-1.5">
-                  {peekPulls.map((pull) => (
-                    <PeekChangeLine key={changeRowKey(pull)} flow={flow} pull={pull} />
-                  ))}
-                </div>
-              ),
-            changeCount: peekPulls.length,
-            appUrl,
-            phone,
-            onOpen: () => {
-              selectMate(item);
-            },
-            onClose: closePeek,
-            onMore:
-              phone && getMateActions !== undefined
-                ? () => {
-                    useSidebarPeek.getState().close();
-                    useSidebarPeek.getState().askForMenu(item.project.id);
-                  }
-                : undefined,
-          };
-        }
         return {
           key: item.key,
           node: (
@@ -1229,8 +1045,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 keys={mateKeys}
                 number={numbered <= 9 ? numbered : undefined}
                 numbers={altHeld}
-                onSelect={selectMate}
-                peek={peekFor(item.project.id)}
+                onSelect={onSelect}
                 owner={getOwner?.(item)}
                 timestampFormat={timestampFormat}
                 tint={tints.get(item.project.id) ?? "slate"}
@@ -1459,32 +1274,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       )}
       {onNewProject === undefined ? null : <NewProjectRow onNewProject={onNewProject} />}
       {reorder.overlay}
-      {renderPeek === undefined ? null : (
-        <MatePeekHost
-          anchor={() =>
-            peekState === null
-              ? null
-              : (treeRef.current?.querySelector(
-                  `[data-zerops-mate-row="${peekState.projectId}"]`,
-                ) ?? null)
-          }
-          onClose={closePeek}
-          onInteract={() => {
-            useSidebarPeek.getState().pin();
-          }}
-          onPointerEnter={() => {
-            clearTimer(leaveTimer);
-          }}
-          onPointerLeave={() => {
-            if (peekState !== null) leaveSoon(peekState.projectId);
-          }}
-          open={peekTarget !== undefined}
-          phone={phone}
-          title={peekTarget === undefined ? "Peek" : `${peekTarget.name}, at a glance`}
-        >
-          {peekTarget === undefined ? null : renderPeek(peekTarget)}
-        </MatePeekHost>
-      )}
     </nav>
   );
 }
@@ -1801,13 +1590,12 @@ function typedIntoField(target: EventTarget | null): boolean {
 
 /**
  * Where a reveal lands: the control a person would have pressed there takes
- * the focus, the row that was asked for flashes once, and a Mate's peek is
- * pinned — on the change asked for, where it was one of its.
+ * the focus, and the row that was asked for flashes once — a Mate's own row,
+ * a project's heading, a stop's row, a change's row with its *Review*.
  */
 interface RevealLanding {
   readonly focus: HTMLElement;
-  readonly flash: HTMLElement | null;
-  readonly peek: { readonly projectId: string; readonly change?: string } | undefined;
+  readonly flash: HTMLElement;
 }
 
 function revealLanding(
@@ -1816,14 +1604,12 @@ function revealLanding(
 ): RevealLanding | null {
   if (root === null) return null;
   const find = (selector: string) => root.querySelector<HTMLElement>(selector);
-  const mateRow = (projectId: string) =>
-    find(`[data-zerops-mate-row="${projectId}"] [data-zerops-surface="sidebar-mate"]`);
   switch (target.kind) {
     case "mate": {
-      const row = mateRow(target.projectId);
-      return row === null
-        ? null
-        : { focus: row, flash: null, peek: { projectId: target.projectId } };
+      const row = find(
+        `[data-zerops-mate-row="${target.projectId}"] [data-zerops-surface="sidebar-mate"]`,
+      );
+      return row === null ? null : { focus: row, flash: row };
     }
     case "project": {
       const heading = find(
@@ -1834,7 +1620,7 @@ function revealLanding(
       );
       return heading === null || heading === undefined
         ? null
-        : { focus: toggle ?? heading, flash: heading, peek: undefined };
+        : { focus: toggle ?? heading, flash: heading };
     }
     case "stop": {
       const row = find(
@@ -1844,29 +1630,18 @@ function revealLanding(
       const open =
         row.querySelector<HTMLElement>('[data-zerops-surface="sidebar-stop-open"]') ??
         row.querySelector<HTMLElement>('button[data-zerops-surface="sidebar-environment-version"]');
-      return { focus: open ?? row, flash: row, peek: undefined };
+      return { focus: open ?? row, flash: row };
     }
     case "change": {
       const row = find(
         `[data-zerops-group="${target.groupId}"] [data-zerops-change="${target.key}"]`,
       );
       if (row === null) return null;
-      // A Mate's change is its Mate's to answer for: the Mate takes the focus,
-      // and its peek shows this change with its checks and *Merge*.
-      if (target.mateProjectId !== undefined) {
-        const mate = mateRow(target.mateProjectId);
-        return mate === null
-          ? null
-          : {
-              focus: mate,
-              flash: row,
-              peek: { projectId: target.mateProjectId, change: target.key },
-            };
-      }
-      const open = row.querySelector<HTMLElement>(
-        '[data-zerops-surface="sidebar-pull-request-open"]',
+      // Its *Review*, the one door to it: Enter opens the review.
+      const review = row.querySelector<HTMLElement>(
+        '[data-zerops-surface="sidebar-pull-request-review"]',
       );
-      return { focus: open ?? row, flash: row, peek: undefined };
+      return { focus: review ?? row, flash: row };
     }
   }
 }
@@ -1946,32 +1721,6 @@ function QuietMatesRow({
   );
 }
 
-/**
- * How long the pointer rests on a Mate's row before its peek opens — a
- * while, and only while the pointer rests: one still moving over the row is
- * on its way somewhere else (the owner, 2026-09-27: "this pop needs to show
- * up with much bigger delay"). Once a peek is open, the next Mate's comes
- * almost at once, as a hover card does.
- */
-const PEEK_REST_MS = 1200;
-const PEEK_NEXT_MS = 120;
-
-/** What a Mate's row needs to open its peek; see the tree's peek host. */
-export interface MateRowPeek {
-  readonly peeking: boolean;
-  /** The pointer came onto the row or moved on it (`true` — the wait starts over), or left it. */
-  readonly onHover: (entering: boolean) => void;
-  /** Space: open the peek and keep it, or close it. */
-  readonly onToggle: () => void;
-  /** Pins its peek open: a finger held on the row, or *Peek* in its menu. */
-  readonly onPin: () => void;
-  /** Its peek asked for its menu (a phone's *More*). */
-  readonly menuRequested: boolean;
-  readonly onMenuRequestSeen: () => void;
-  /** The row took the focus: the eye is on this Mate now. */
-  readonly onFocus: () => void;
-}
-
 /** What a heading needs to move its project; see {@link ProjectHeader}'s `reorder`. */
 export interface ProjectHeaderReorder {
   /** The *Custom* order is on, so the heading wears a grip. */
@@ -2006,7 +1755,6 @@ function MateRow<T extends RosterCandidate>({
   timestampFormat,
   actions,
   appUrl,
-  peek,
   keys,
   number,
   numbers = false,
@@ -2022,8 +1770,6 @@ function MateRow<T extends RosterCandidate>({
   readonly actions?: MateRowActions | undefined;
   /** Its app — its pair's stage route — where it has one. */
   readonly appUrl?: string | undefined;
-  /** Its peek's triggers; absent, the row has no peek (a harness, a test). */
-  readonly peek?: MateRowPeek | undefined;
   /** j and k, handed back to the tree. */
   readonly keys?: MateRowKeys | undefined;
   /** Its place among the drawn Mates, 1–9, for ⌥ and its number. */
@@ -2058,26 +1804,9 @@ function MateRow<T extends RosterCandidate>({
     setMenuOpen(true);
     actions?.onMenuOpen?.();
   };
-  // A phone asked for this Mate's menu from its peek: it has no hover and no
-  // right-click to open it by.
-  const menuRequested = peek?.menuRequested === true;
-  useEffect(() => {
-    if (!menuRequested) return;
-    setMenuAt(undefined);
-    setMenuOpen(true);
-    peek?.onMenuRequestSeen();
-  }, [menuRequested, peek]);
-  // The menu opens where the peek floats: while it stands open, no peek does.
-  const projectId = candidate.project.id;
-  useEffect(() => {
-    if (!menuOpen) return;
-    useSidebarPeek.getState().menuOpened(projectId, true);
-    return () => {
-      useSidebarPeek.getState().menuOpened(projectId, false);
-    };
-  }, [menuOpen, projectId]);
-  // A finger held on the row peeks, as a hover would; the click that ends
-  // the hold is the peek's, not an open.
+  // A finger held on the row opens its menu, as a right-click does: a phone
+  // has neither that nor a hover to show the menu's trigger. The click that
+  // ends the hold is the menu's, not an open.
   const longPress = useRef<{ timer: ReturnType<typeof setTimeout> | null; fired: boolean }>({
     timer: null,
     fired: false,
@@ -2108,28 +1837,17 @@ function MateRow<T extends RosterCandidate>({
       }
       onPointerCancel={cancelLongPress}
       onPointerDown={(event) => {
-        if (peek === undefined || event.pointerType !== "touch") return;
+        if (actions === undefined || event.pointerType !== "touch") return;
         longPress.current.fired = false;
         cancelLongPress();
         longPress.current.timer = setTimeout(() => {
           longPress.current.fired = true;
-          peek.onPin();
+          openMenu();
         }, 480);
       }}
-      onPointerEnter={(event) => {
-        if (event.pointerType !== "touch") peek?.onHover(true);
-      }}
-      onPointerLeave={(event) => {
-        cancelLongPress();
-        if (event.pointerType !== "touch") peek?.onHover(false);
-      }}
+      onPointerLeave={cancelLongPress}
       onPointerMove={(event) => {
-        if (event.pointerType === "touch") {
-          if (event.movementY !== 0) cancelLongPress();
-          return;
-        }
-        // Still moving: the peek waits for the pointer to rest.
-        peek?.onHover(true);
+        if (event.pointerType === "touch" && event.movementY !== 0) cancelLongPress();
       }}
       onPointerUp={cancelLongPress}
     >
@@ -2145,8 +1863,6 @@ function MateRow<T extends RosterCandidate>({
           active
             ? "bg-sidebar-row-active text-sidebar-foreground"
             : "bg-transparent text-sidebar-foreground group-hover/mate:bg-sidebar-row-hover group-has-[[data-popup-open]]/mate:bg-sidebar-row-hover",
-          // Lit while its peek is open, so the eye can tell whose it is.
-          !active && peek?.peeking === true && "bg-sidebar-row-hover",
         )}
         data-zerops-surface="sidebar-mate"
         onClick={() => {
@@ -2157,12 +1873,6 @@ function MateRow<T extends RosterCandidate>({
           onSelect(candidate);
         }}
         onKeyDown={(event) => {
-          // Space peeks, and never presses the row: a peek is not an open.
-          if (event.key === " " && peek !== undefined) {
-            event.preventDefault();
-            peek.onToggle();
-            return;
-          }
           // The list's keys: j and k move, x stops a working Mate, e marks it
           // read or unread.
           const action = sidebarMateKey({
@@ -2192,10 +1902,8 @@ function MateRow<T extends RosterCandidate>({
           }
         }}
         onFocus={() => {
-          peek?.onFocus();
-        }}
-        onKeyUp={(event) => {
-          if (event.key === " " && peek !== undefined) event.preventDefault();
+          // The eye is on this Mate now: "the next one that waits" starts here.
+          useSidebarReveal.getState().setCursor(candidate.project.id);
         }}
         ref={rowButton}
         type="button"
@@ -2338,14 +2046,6 @@ function MateRow<T extends RosterCandidate>({
               setMenuOpen(false);
               onSelect(candidate);
             }}
-            onPeek={
-              peek === undefined
-                ? undefined
-                : () => {
-                    setMenuOpen(false);
-                    peek.onPin();
-                  }
-            }
             onRename={() => {
               setMenuOpen(false);
               setRenaming(true);
@@ -2746,90 +2446,6 @@ function PullRequestRow({
         Review
       </button>
     </li>
-  );
-}
-
-/**
- * A Mate's change in its peek: the checks, the number and title, and *Merge*
- * where Gitea merges it — the same pieces as its row under the Mate, on one
- * line of the peek's own width.
- */
-function PeekChangeLine({
-  pull,
-  flow,
-}: {
-  readonly pull: FlowPullRequest;
-  readonly flow: SidebarProjectFlow;
-}) {
-  const tone = checkDotTone({ checks: pull.checks });
-  const label = sidebarChangeLabel(pull);
-  return (
-    <div
-      className="flex min-w-0 items-center gap-2 text-sm leading-5 text-foreground"
-      data-zerops-surface="sidebar-mate-peek-change"
-    >
-      {tone === undefined || pull.checkWord === undefined ? null : (
-        <StatusDot dotOnly label={pull.checkWord} tone={tone} />
-      )}
-      {flow.onOpenChange === undefined ? (
-        <span className="min-w-0 flex-1 truncate">{label}</span>
-      ) : (
-        <button
-          className="min-w-0 flex-1 cursor-pointer truncate rounded-sm text-left underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
-          onClick={() => {
-            flow.onOpenChange?.(pull);
-          }}
-          type="button"
-        >
-          {label}
-        </button>
-      )}
-      {pull.mergeability === "mergeable" ? (
-        <MergeVerb merging={flow.merging(pull)} onMerge={flow.onMerge} pull={pull} />
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * *Merge*, which asks first.
- *
- * The row this sits on shows as much of the change's title as a 260px column
- * allows — `…lo by Mat…` — and a squash cannot be taken back the way a
- * release can be rolled back to the tag before it. So the verb opens the same
- * kind of confirm *Release* does, with the whole title in it.
- */
-function MergeVerb({
-  pull,
-  merging,
-  onMerge,
-}: {
-  readonly pull: FlowPullRequest;
-  readonly merging: boolean;
-  readonly onMerge: (pull: FlowPullRequest) => void;
-}) {
-  const [confirming, setConfirming] = useState(false);
-  return (
-    <>
-      <ZeropsMateVerb
-        disabled={merging}
-        label={flowVerbLabel("merge", merging)}
-        onClick={() => {
-          setConfirming(true);
-        }}
-      />
-      <ZeropsMergeDialog
-        mateName={undefined}
-        merging={merging}
-        onConfirm={() => {
-          setConfirming(false);
-          onMerge(pull);
-        }}
-        onOpenChange={setConfirming}
-        open={confirming}
-        pull={pull}
-      />
-    </>
   );
 }
 

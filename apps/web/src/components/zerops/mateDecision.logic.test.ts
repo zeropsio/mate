@@ -2,54 +2,7 @@ import type { PendingApproval, PendingUserInput } from "@t3tools/client-runtime/
 import { ApprovalRequestId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { matePeekDecision, matePeekKey, matePeekSteps } from "./SidebarMatePeek.logic";
-
-describe("matePeekSteps — the plan as the peek lists it", () => {
-  it("lists the thread's own plan once it is read, each step with its state", () => {
-    expect(
-      matePeekSteps({
-        plan: {
-          steps: [
-            { step: "Read the routes", status: "completed" },
-            { step: "Run the build", status: "inProgress" },
-            { step: "Deploy to stage", status: "pending" },
-          ],
-        },
-        progress: { step: "Run the build", completedSteps: 1, totalSteps: 3 },
-      }),
-    ).toEqual([
-      { text: "Read the routes", state: "done" },
-      { text: "Run the build", state: "running" },
-      { text: "Deploy to stage", state: "waiting" },
-    ]);
-  });
-
-  it("keeps the list's height from the shell's count until the plan is read", () => {
-    expect(
-      matePeekSteps({
-        plan: undefined,
-        progress: { step: "Run the build", completedSteps: 2, totalSteps: 4 },
-      }),
-    ).toEqual([
-      { text: undefined, state: "done" },
-      { text: undefined, state: "done" },
-      { text: "Run the build", state: "running" },
-      { text: undefined, state: "waiting" },
-    ]);
-  });
-
-  it.each([
-    { case: "no plan and no count", plan: undefined, progress: undefined },
-    { case: "an empty plan and no count", plan: { steps: [] }, progress: null },
-    {
-      case: "a count of nothing",
-      plan: null,
-      progress: { step: "x", completedSteps: 0, totalSteps: 0 },
-    },
-  ])("lists nothing for $case", ({ plan, progress }) => {
-    expect(matePeekSteps({ plan, progress })).toBeUndefined();
-  });
-});
+import { mateDecision } from "./mateDecision.logic";
 
 const request = (id: string) => ApprovalRequestId.make(id);
 const APPROVAL: PendingApproval = {
@@ -86,9 +39,9 @@ const base = {
   failure: undefined,
 };
 
-describe("matePeekDecision — what a Mate waits on, answered in place", () => {
+describe("mateDecision — what a Mate waits on, as a surface answers it", () => {
   it("offers one question's options and words of its own, sending each option's value", () => {
-    expect(matePeekDecision({ ...base, kind: "input", userInputs: [QUESTION()] })).toEqual({
+    expect(mateDecision({ ...base, kind: "input", userInputs: [QUESTION()] })).toEqual({
       kind: "question",
       requestId: "req-2",
       questionId: "discount",
@@ -102,7 +55,7 @@ describe("matePeekDecision — what a Mate waits on, answered in place", () => {
   });
 
   it("offers no words of its own where the question takes none", () => {
-    const decision = matePeekDecision({
+    const decision = mateDecision({
       ...base,
       kind: "input",
       userInputs: [QUESTION({ allowCustomAnswer: false })],
@@ -114,7 +67,7 @@ describe("matePeekDecision — what a Mate waits on, answered in place", () => {
     "leaves $case to the conversation's form",
     ({ overrides }) => {
       expect(
-        matePeekDecision({ ...base, kind: "input", userInputs: [QUESTION(overrides)] })?.kind,
+        mateDecision({ ...base, kind: "input", userInputs: [QUESTION(overrides)] })?.kind,
       ).toBe("questions");
     },
   );
@@ -124,7 +77,7 @@ describe("matePeekDecision — what a Mate waits on, answered in place", () => {
       ...QUESTION(),
       questions: [...QUESTION().questions, { ...QUESTION().questions[0]!, id: "second" }],
     };
-    expect(matePeekDecision({ ...base, kind: "input", userInputs: [two] })).toMatchObject({
+    expect(mateDecision({ ...base, kind: "input", userInputs: [two] })).toMatchObject({
       kind: "questions",
       count: 2,
     });
@@ -132,7 +85,7 @@ describe("matePeekDecision — what a Mate waits on, answered in place", () => {
 
   it("says what it wants to run, word for word, with Approve first", () => {
     expect(
-      matePeekDecision({ ...base, name: "Juno", kind: "approval", approvals: [APPROVAL] }),
+      mateDecision({ ...base, name: "Juno", kind: "approval", approvals: [APPROVAL] }),
     ).toEqual({
       kind: "approval",
       requestId: "req-1",
@@ -146,7 +99,7 @@ describe("matePeekDecision — what a Mate waits on, answered in place", () => {
   });
 
   it("offers the provider's own choices where it names them", () => {
-    const decision = matePeekDecision({
+    const decision = mateDecision({
       ...base,
       kind: "approval",
       approvals: [
@@ -173,7 +126,7 @@ describe("matePeekDecision — what a Mate waits on, answered in place", () => {
   ] as const)(
     "says it is reading what a $kind waits on until the thread is read",
     ({ kind, expected }) => {
-      expect(matePeekDecision({ ...base, read: false, kind })).toEqual(expected);
+      expect(mateDecision({ ...base, read: false, kind })).toEqual(expected);
     },
   );
 
@@ -184,41 +137,6 @@ describe("matePeekDecision — what a Mate waits on, answered in place", () => {
     { kind: "idle", expected: undefined },
     { kind: "done", expected: undefined },
   ] as const)("reads $kind as $expected", ({ kind, expected }) => {
-    expect(matePeekDecision({ ...base, kind, failure: "The deploy timed out." })).toEqual(expected);
-  });
-});
-
-describe("matePeekKey — what a key does while a peek stands", () => {
-  const base = { modified: false, typing: false, choices: 3, canStop: true };
-  it.each([
-    { case: "1 picks the first choice", key: "1", input: {}, action: { kind: "choose", index: 0 } },
-    { case: "3 picks the third", key: "3", input: {}, action: { kind: "choose", index: 2 } },
-    { case: "4 of three picks nothing", key: "4", input: {}, action: undefined },
-    { case: "a number with nothing to pick", key: "1", input: { choices: 0 }, action: undefined },
-    { case: "x stops a working Mate", key: "x", input: {}, action: { kind: "stop" } },
-    { case: "X, shifted, stops it too", key: "X", input: {}, action: { kind: "stop" } },
-    {
-      case: "x on a resting Mate does nothing",
-      key: "x",
-      input: { canStop: false },
-      action: undefined,
-    },
-    {
-      case: "a number typed into a field is text",
-      key: "1",
-      input: { typing: true },
-      action: undefined,
-    },
-    { case: "⌥1 is not the peek's", key: "1", input: { modified: true }, action: undefined },
-    { case: "Escape puts it away", key: "Escape", input: {}, action: { kind: "close" } },
-    {
-      case: "Escape from a field too",
-      key: "Escape",
-      input: { typing: true },
-      action: { kind: "close" },
-    },
-    { case: "any other key is not the peek's", key: "a", input: {}, action: undefined },
-  ])("$case", ({ key, input, action }) => {
-    expect(matePeekKey({ ...base, ...input, key })).toEqual(action);
+    expect(mateDecision({ ...base, kind, failure: "The deploy timed out." })).toEqual(expected);
   });
 });

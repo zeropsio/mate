@@ -56,18 +56,8 @@ import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountC
 import { SidebarZeropsAccount } from "~/components/zerops/SidebarZeropsAccount";
 import { SidebarWaitingStack } from "~/components/zerops/SidebarWaitingStack";
 import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
-import { MatePeekCard, useMatePeekKeys } from "~/components/zerops/SidebarMatePeek";
-import type {
-  MatePeekChoice,
-  MatePeekDecision,
-  MatePeekStep,
-} from "~/components/zerops/SidebarMatePeek.logic";
-import { askedLabelFor } from "~/components/zerops/SidebarMatePeek.logic";
-import {
-  SidebarZeropsTree,
-  type SidebarPeekRender,
-  type SidebarProjectFlow,
-} from "~/components/zerops/SidebarZeropsTree";
+import type { MateDecision } from "~/components/zerops/mateDecision.logic";
+import { SidebarZeropsTree, type SidebarProjectFlow } from "~/components/zerops/SidebarZeropsTree";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
@@ -76,7 +66,6 @@ import { isMacPlatform } from "~/lib/utils";
 import { formatShortTimestamp } from "~/timestampFormat";
 import { slashKeyOpensJumpBox } from "~/zerops/jumpSlash";
 import { useSidebarJump } from "~/zerops/sidebarJump";
-import { useSidebarPeek } from "~/zerops/sidebarPeek";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { PROJECT_ORDER_STORAGE_KEY, ProjectOrderSchema } from "~/zerops/projectOrderPreference";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
@@ -159,8 +148,8 @@ function activity(input: {
 
 const group = (id: string, name: string) => [`mate:g:${id}`, `mate:name:${name}`];
 
-/** What a waiting Mate's thread says it waits on, as a peek reads it. */
-const PEEK_DECISIONS = new Map<string, MatePeekDecision>([
+/** What a waiting Mate's thread says it waits on, as the jump box reads it. */
+const DECISIONS = new Map<string, MateDecision>([
   [
     "links-theo",
     {
@@ -192,28 +181,6 @@ const PEEK_DECISIONS = new Map<string, MatePeekDecision>([
   [
     "todo-fen",
     { kind: "failure", message: "The deploy to stage failed: the build timed out after 120 s." },
-  ],
-]);
-
-/** The plans a peek reads off a working Mate's thread. */
-const PEEK_STEPS = new Map<string, ReadonlyArray<MatePeekStep>>([
-  [
-    "links-enzo",
-    [
-      { text: "Read how the list is rendered", state: "done" },
-      { text: "Add the search box and its filter", state: "done" },
-      { text: "Run the build", state: "running" },
-      { text: "Deploy to stage", state: "waiting" },
-      { text: "Open a change", state: "waiting" },
-    ],
-  ],
-  [
-    "shop-mira",
-    [
-      { text: "Split the checkout into two steps", state: "done" },
-      { text: "Keep the basket across a reload", state: "running" },
-      { text: "Deploy to stage", state: "waiting" },
-    ],
   ],
 ]);
 
@@ -707,59 +674,9 @@ const OWNERS = new Map<string, ZeropsMateOwner>([
 
 const activityOfCandidate = (item: ZeropsCandidate) => ACTIVITY.get(item.project.id);
 
-/** What the peek's keys and buttons did, and which Mate was opened, for the audit browser. */
-const peekActions: string[] = [];
-(window as unknown as { __peekActions?: string[] }).__peekActions = peekActions;
-
-/** A peek drawn from fixtures, with the app's own keys (`useMatePeekKeys`). */
-function HarnessPeek({ peek }: { readonly peek: SidebarPeekRender<ZeropsCandidate> }) {
-  const decision = PEEK_DECISIONS.get(peek.candidate.project.id);
-  const choose = (choice: MatePeekChoice) => {
-    peekActions.push(`${peek.name}: ${choice.label}`);
-  };
-  const stop =
-    peek.face === "working"
-      ? () => {
-          peekActions.push(`${peek.name}: stop`);
-        }
-      : undefined;
-  useMatePeekKeys({
-    choices: decision?.kind === "question" || decision?.kind === "approval" ? decision.choices : [],
-    answerable: true,
-    onChoose: choose,
-    onStop: stop,
-    onClose: peek.onClose,
-  });
-  return (
-    <MatePeekCard
-      appUrl={peek.appUrl ?? "https://example.com"}
-      askedLabel={askedLabelFor(peek.owner)}
-      changeCount={peek.changeCount}
-      changes={peek.changes}
-      decision={decision}
-      face={peek.face}
-      lastWords={peek.activity?.snippet}
-      name={peek.name}
-      onChoose={choose}
-      onMore={peek.onMore}
-      onOpen={peek.onOpen}
-      onStop={stop}
-      onText={(text) => {
-        peekActions.push(`${peek.name}: “${text}”`);
-      }}
-      projectName={peek.projectName}
-      responding={false}
-      steps={PEEK_STEPS.get(peek.candidate.project.id)}
-      stepsLabel={
-        peek.activity?.pausedUntil === undefined ? "Plan" : "Plan, paused at a usage limit"
-      }
-      task={peek.activity?.task}
-      time={peek.time}
-      tint={peek.tint}
-      waitingOn={undefined}
-    />
-  );
-}
+/** Which Mate the menu opened, and what else it was asked to do, for the audit browser. */
+const menuActions: string[] = [];
+(window as unknown as { __menuActions?: string[] }).__menuActions = menuActions;
 
 const ACCOUNT = zeropsAccountDisplay({
   email: "ada@example.com",
@@ -770,19 +687,10 @@ const ORGANIZATION = { id: "org-acme", name: "Acme", membershipId: "m-acme" };
 
 /**
  * One sidebar, as the app lays it out: its header, the listing, its foot —
- * one of it, as in the app. Two trees on one page share the one peek (a
- * module store, as in the app), and each one's peek lands over the other.
- * `?w=` sets its width; the owner runs it near 368, the default is 256.
+ * one of it, as in the app. `?w=` sets its width; the owner runs it near
+ * 435, the default is 256.
  */
-function SidebarFrame({
-  width,
-  phone,
-  onJump,
-}: {
-  readonly width: number;
-  readonly phone: boolean;
-  readonly onJump: () => void;
-}) {
+function SidebarFrame({ width, onJump }: { readonly width: number; readonly onJump: () => void }) {
   // Mine / Everyone, from the account menu, as the app reads it.
   const [scope] = useMateScope();
   const shown = useCallback(
@@ -842,14 +750,12 @@ function SidebarFrame({
           })}
           onBrowseProjects={() => {}}
           onNewProject={() => {
-            peekActions.push("new project");
+            menuActions.push("new project");
           }}
           onSelect={(item) => {
-            peekActions.push(`open ${item.project.id}`);
+            menuActions.push(`open ${item.project.id}`);
           }}
           activeProjectId="links-enzo"
-          phone={phone}
-          renderPeek={(peek) => <HarnessPeek peek={peek} />}
           shown={shown}
           timestampFormat="24-hour"
         />
@@ -940,7 +846,7 @@ function HarnessJumpBox({
               : formatShortTimestamp(target.pausedUntil, "24-hour"),
           started: true,
           readOnly: READ_ONLY_MATES.has(target.projectId),
-          decision: PEEK_DECISIONS.get(target.projectId),
+          decision: DECISIONS.get(target.projectId),
         });
   const enter: Record<string, string | undefined> = {
     send: "Send without opening",
@@ -1045,14 +951,11 @@ function Harness() {
         onJump={() => {
           setJumping(true);
         }}
-        phone={phone}
         width={phone ? window.innerWidth : width}
       />
       {phone ? null : (
         <main className="flex min-w-0 flex-1 items-start justify-center p-10">
-          <p className="max-w-md text-sm text-muted-foreground">
-            The conversation opens here. A Mate&apos;s peek floats over it, beside the menu.
-          </p>
+          <p className="max-w-md text-sm text-muted-foreground">The conversation opens here.</p>
         </main>
       )}
     </div>
@@ -1084,9 +987,6 @@ useComposerDraftStore
 
 // The menu is always on screen here: a find is shown in it, as on a desktop.
 useSidebarJump.getState().setShowable(true);
-
-// A handle for the audit browser: which Mate is peeked, and how.
-(window as unknown as { __sidebarPeek?: typeof useSidebarPeek }).__sidebarPeek = useSidebarPeek;
 
 const host = document.getElementById("design");
 if (host) {

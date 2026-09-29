@@ -238,7 +238,6 @@ import { SidebarJumpButton } from "./zerops/SidebarJumpButton";
 import { useOpenMate } from "../zerops/useOpenMate";
 import { SidebarWaitingStack } from "./zerops/SidebarWaitingStack";
 
-import { SidebarMatePeekLive } from "./zerops/SidebarMatePeekLive";
 import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
 import { placedBirthsIn, useZeropsBirths } from "../zerops/zeropsBirths";
 import {
@@ -4164,8 +4163,6 @@ export default function Sidebar() {
               getFlow={zeropsSidebarFlowWithAsk}
               getOwner={zeropsMateOwner}
               getMateActions={zeropsMateMenus.getMateActions}
-              phone={isMobile}
-              renderPeek={(peek) => <SidebarMatePeekLive peek={peek} />}
               shown={zeropsShown}
               timestampFormat={timestampFormat}
               onOpenGroup={openGroup}

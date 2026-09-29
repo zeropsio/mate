@@ -65,7 +65,7 @@ import {
 } from "./projects/projectsView.logic";
 import { PortalGate } from "../ui/portal-gate";
 import { useSidebarJump } from "~/zerops/sidebarJump";
-import { useSidebarPeek } from "~/zerops/sidebarPeek";
+import { useSidebarReveal } from "~/zerops/sidebarReveal";
 import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
 import {
   ProjectHeader,
@@ -2391,6 +2391,33 @@ describe("a Mate's own menu, in its row", () => {
     expect(row(ACTIONS)).not.toContain("sidebar-mate-muted");
   });
 
+  it("opens the same menu under a finger held on the row, and the lift does not open the Mate", () => {
+    vi.useFakeTimers();
+    const onSelect = vi.fn();
+    const mounted = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getActivity={() => spoken}
+        getMateActions={() => ACTIONS}
+        onBrowseProjects={() => {}}
+        onSelect={onSelect}
+      />,
+    );
+    act(() => {
+      surface(mounted, "sidebar-mate-row").props.onPointerDown({ pointerType: "touch" });
+    });
+    act(() => {
+      vi.advanceTimersByTime(480);
+    });
+    expect(mounted.root.findByType(MateMenu).props.open).toBe(true);
+    act(() => {
+      surface(mounted, "sidebar-mate").props.onClick();
+    });
+    expect(onSelect).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
   it("opens the same menu at the pointer on a right-click", () => {
     const mounted = mount(
       <SidebarZeropsTree
@@ -2413,165 +2440,6 @@ describe("a Mate's own menu, in its row", () => {
     const menu = mounted.root.findByType(MateMenu);
     expect(menu.props.open).toBe(true);
     expect(menu.props.at).toEqual({ x: 120, y: 340 });
-  });
-});
-
-describe("a Mate's peek", () => {
-  const spoken: ZeropsAgentActivity = {
-    threadId: "thread-1" as ZeropsAgentActivity["threadId"],
-    kind: "idle",
-    status: null,
-    face: "idle",
-    subject: "Add a /status page",
-    at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    snippet: "Done. /status answers on stage.",
-    progress: undefined,
-    unread: false,
-    pausedUntil: undefined,
-    threadKey: "env:thread",
-    task: "Add a /status page",
-  };
-  const renderPeek = vi.fn((_peek: unknown) => null);
-  const mounted = () =>
-    mount(
-      <PortalGate closed>
-        <SidebarZeropsTree
-          candidates={[CRM_DEV_CONNECTED]}
-          complete
-          getActivity={() => spoken}
-          onBrowseProjects={() => {}}
-          onSelect={() => {}}
-          renderPeek={renderPeek}
-        />
-      </PortalGate>,
-    );
-  const row = (tree: ReactTestRenderer) => surface(tree, "sidebar-mate-row");
-  const peek = () => useSidebarPeek.getState().peek;
-  afterEach(() => {
-    act(() => {
-      useSidebarPeek.getState().close();
-    });
-    renderPeek.mockClear();
-    vi.useRealTimers();
-  });
-
-  // The owner, 2026-09-27: "this pop needs to show up with much bigger delay".
-  it("opens after the pointer rests on the row a while, and closes once it has left", () => {
-    vi.useFakeTimers();
-    const tree = mounted();
-    act(() => {
-      row(tree).props.onPointerEnter({ pointerType: "mouse" });
-    });
-    act(() => {
-      vi.advanceTimersByTime(1199);
-    });
-    expect(peek()).toBeNull();
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-    expect(peek()).toEqual({ projectId: "crm-dev", mode: "hover" });
-    expect(renderPeek).toHaveBeenLastCalledWith(
-      expect.objectContaining({ name: "crm-dev", projectName: "Beviro CRM" }),
-    );
-    // Lit while its peek is open.
-    expect(surface(tree, "sidebar-mate").props.className).toContain("bg-sidebar-row-hover");
-    act(() => {
-      row(tree).props.onPointerLeave({ pointerType: "mouse" });
-    });
-    act(() => {
-      vi.advanceTimersByTime(220);
-    });
-    expect(peek()).toBeNull();
-  });
-
-  it("never opens for a pointer that only passes over the row", () => {
-    vi.useFakeTimers();
-    const tree = mounted();
-    act(() => {
-      row(tree).props.onPointerEnter({ pointerType: "mouse" });
-      vi.advanceTimersByTime(900);
-      row(tree).props.onPointerLeave({ pointerType: "mouse" });
-      vi.advanceTimersByTime(2000);
-    });
-    expect(peek()).toBeNull();
-  });
-
-  // It waits for the pointer to rest: one still moving across the row is on
-  // its way somewhere else.
-  it("waits while the pointer keeps moving over the row", () => {
-    vi.useFakeTimers();
-    const tree = mounted();
-    act(() => {
-      row(tree).props.onPointerEnter({ pointerType: "mouse" });
-    });
-    for (let moved = 0; moved < 4; moved += 1) {
-      act(() => {
-        vi.advanceTimersByTime(800);
-        row(tree).props.onPointerMove({ pointerType: "mouse", movementY: 2 });
-      });
-    }
-    expect(peek()).toBeNull();
-    act(() => {
-      vi.advanceTimersByTime(1200);
-    });
-    expect(peek()).toEqual({ projectId: "crm-dev", mode: "hover" });
-  });
-
-  it("is offered in the Mate's own menu, which pins it open", () => {
-    const tree = mount(
-      <PortalGate closed>
-        <SidebarZeropsTree
-          candidates={[CRM_DEV_CONNECTED]}
-          complete
-          getActivity={() => spoken}
-          getMateActions={() => ({ muted: false, entries: [] })}
-          onBrowseProjects={() => {}}
-          onSelect={() => {}}
-          renderPeek={renderPeek}
-        />
-      </PortalGate>,
-    );
-    const menu = tree.root.findByType(MateMenu);
-    expect(menu.props.onPeek).toBeTypeOf("function");
-    act(() => {
-      menu.props.onPeek();
-    });
-    expect(peek()).toEqual({ projectId: "crm-dev", mode: "pinned" });
-  });
-
-  it("opens with Space and keeps it, and Space again puts it away — never pressing the row", () => {
-    const tree = mounted();
-    let prevented = 0;
-    const space = { key: " ", preventDefault: () => (prevented += 1) };
-    act(() => {
-      surface(tree, "sidebar-mate").props.onKeyDown(space);
-    });
-    expect(peek()).toEqual({ projectId: "crm-dev", mode: "pinned" });
-    expect(prevented).toBe(1);
-    act(() => {
-      row(tree).props.onPointerLeave({ pointerType: "mouse" });
-    });
-    expect(peek()?.mode).toBe("pinned");
-    act(() => {
-      surface(tree, "sidebar-mate").props.onKeyDown(space);
-    });
-    expect(peek()).toBeNull();
-  });
-
-  it("gives no peek where nobody draws one", () => {
-    const tree = mount(
-      <SidebarZeropsTree
-        candidates={[CRM_DEV_CONNECTED]}
-        complete
-        getActivity={() => spoken}
-        onBrowseProjects={() => {}}
-        onSelect={() => {}}
-      />,
-    );
-    act(() => {
-      surface(tree, "sidebar-mate").props.onKeyDown({ key: " ", preventDefault: () => {} });
-    });
-    expect(peek()).toBeNull();
   });
 });
 
@@ -2737,24 +2605,24 @@ describe("a surface's ask to show a Mate", () => {
       );
     expect(mateRows()).toHaveLength(0);
     act(() => {
-      useSidebarPeek.getState().reveal({ kind: "mate", projectId: "crm-dev" });
+      useSidebarReveal.getState().reveal({ kind: "mate", projectId: "crm-dev" });
     });
     expect(mateRows()).toHaveLength(1);
     // Answered: a menu drawn again later has nothing left to show.
-    expect(useSidebarPeek.getState().revealing).toBeNull();
+    expect(useSidebarReveal.getState().revealing).toBeNull();
   });
 
   it("leaves an ask for a Mate it does not hold standing until one does", () => {
     mount(tree());
     act(() => {
-      useSidebarPeek.getState().reveal({ kind: "mate", projectId: "elsewhere" });
+      useSidebarReveal.getState().reveal({ kind: "mate", projectId: "elsewhere" });
     });
-    expect(useSidebarPeek.getState().revealing?.target).toEqual({
+    expect(useSidebarReveal.getState().revealing?.target).toEqual({
       kind: "mate",
       projectId: "elsewhere",
     });
     act(() => {
-      useSidebarPeek.getState().answerReveal(useSidebarPeek.getState().revealing!.seq);
+      useSidebarReveal.getState().answerReveal(useSidebarReveal.getState().revealing!.seq);
     });
   });
 });
@@ -2855,10 +2723,10 @@ describe("what the jump box finds in the menu", () => {
       );
     expect(mateRows()).toHaveLength(0);
     act_(() => {
-      useSidebarPeek.getState().reveal({ kind: "project", groupId: "links" });
+      useSidebarReveal.getState().reveal({ kind: "project", groupId: "links" });
     });
     expect(mateRows()).toHaveLength(1);
-    expect(useSidebarPeek.getState().revealing).toBeNull();
+    expect(useSidebarReveal.getState().revealing).toBeNull();
   });
 
   it("opens a Mate's folded changes when a jump lands on one of them", () => {
@@ -2873,7 +2741,7 @@ describe("what the jump box finds in the menu", () => {
     const folded = changeRows().length;
     expect(folded).toBeLessThan(4);
     act_(() => {
-      useSidebarPeek.getState().reveal({
+      useSidebarReveal.getState().reveal({
         kind: "change",
         groupId: "links",
         key: "appdev#1",
@@ -2882,45 +2750,6 @@ describe("what the jump box finds in the menu", () => {
     });
     expect(changeRows()).toHaveLength(4);
     expect(changeRows().map((row) => row.props["data-zerops-change"])).toContain("appdev#1");
-  });
-
-  // Every change the Mate has open stands in its peek, as each stands under
-  // its row (the owner, 2026-09-27: "it shows only one of the two merge
-  // requests"): the one a jump asked for first, then the rest newest first.
-  it("shows every open change of its Mate in its peek, the one a jump asked for first", () => {
-    const older = pull(2, { mateProjectId: "links-dev", title: "Older change" });
-    const newer = pull(3, { mateProjectId: "links-dev", title: "Newer change" });
-    const peeks: Array<{ readonly changes: unknown; readonly changeCount: number }> = [];
-    const mounted = mount(
-      <PortalGate closed>
-        {tree({
-          getFlow: () => linksFlow([older, newer]),
-          renderPeek: (peek: { readonly changes: unknown; readonly changeCount: number }) => {
-            peeks.push(peek);
-            return null;
-          },
-        })}
-      </PortalGate>,
-    );
-    const shown = () => {
-      const list = peeks.at(-1)?.changes as
-        | ReactElement<{ children: ReadonlyArray<ReactElement<{ pull: FlowPullRequest }>> }>
-        | undefined;
-      return list?.props.children.map((line) => line.props.pull.number);
-    };
-    act_(() => {
-      useSidebarPeek.getState().open("links-dev", "pinned", "appdev#2");
-    });
-    expect(shown()).toEqual([2, 3]);
-    expect(peeks.at(-1)?.changeCount).toBe(2);
-    act_(() => {
-      useSidebarPeek.getState().open("links-dev", "pinned");
-    });
-    expect(shown()).toEqual([3, 2]);
-    act_(() => {
-      useSidebarPeek.getState().close();
-      mounted.unmount();
-    });
   });
 });
 
