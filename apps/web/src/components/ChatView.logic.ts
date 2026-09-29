@@ -1303,8 +1303,8 @@ export function shouldRefocusComposerOnWindowFocus(
 /**
  * Whether the diff panel, as it opens, shows the working tree. Every generic
  * opening does — a tab's fallback, a thread change; one made for a specific
- * diff (a turn from the timeline, a crewmate's copy from its lane bar) marks
- * itself explicit for that thread and keeps the selection it set.
+ * diff (a turn from the timeline) marks itself explicit for that thread and
+ * keeps the selection it set.
  */
 export function diffOpeningShowsWorkingTree(input: {
   readonly diffOpen: boolean;

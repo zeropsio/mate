@@ -15,24 +15,25 @@ import {
   crewResumeBudgetHint,
   crewResumeTimeHint,
   CREW_IDLE_WORD,
-  CREW_LANE_VERBS,
-  CREW_LEAD_ROLE_LINE,
   CREW_LEAD_WORD,
-  crewAheadWord,
-  crewAppWord,
   crewFaceWord,
   crewLineNeedsWord,
   crewLineReadyWord,
-  crewConflictWord,
   crewDevHostDatabaseWord,
   crewDiffStatWord,
   crewEarlierStintNotice,
-  crewJobVersionWord,
   crewLandedAsWord,
   crewMessagePlaceholder,
   crewPendingNotice,
+  CREW_MENU,
+  CREW_MENU_LINES,
+  CREW_TRY_IT_WORD,
+  crewJobSentence,
+  crewMenuFailureWord,
+  crewmateRoleWords,
+  crewTryWorkLine,
+  mateOwnChatWord,
   crewRunsOnWord,
-  crewStintWord,
   crewTaskSourceWord,
   crewApplyWord,
   crewAskToFixWord,
@@ -647,20 +648,8 @@ describe("the drafts a crew surface hands the Mate", () => {
 });
 
 describe("the chat's words (PRD §4.5, §5.6, §5.7)", () => {
-  it("says how far a copy is ahead of your tree, and its change", () => {
-    expect([0, 1, 3].map(crewAheadWord)).toEqual([
-      null,
-      "1 change ahead of your tree",
-      "3 changes ahead of your tree",
-    ]);
+  it("says a copy's change against your tree", () => {
     expect(crewDiffStatWord({ insertions: 214, deletions: 12 })).toBe("+214 \u221212");
-  });
-
-  it("names the files a merge-in stopped on", () => {
-    expect(crewConflictWord([])).toBe("Conflicts with what landed");
-    expect(crewConflictWord(["src/api/items.ts", "src/api/users.ts"])).toBe(
-      "Conflicts with what landed: src/api/items.ts and 1 more",
-    );
   });
 
   it("names a landing by its task and its commit's short sha", () => {
@@ -672,23 +661,6 @@ describe("the chat's words (PRD §4.5, §5.6, §5.7)", () => {
     ).toBe("Task #11 landed as a1b2c3d");
   });
 
-  it.each([
-    [{ kind: "running", port: 3001 }, "App on :3001"],
-    [{ kind: "stopped" }, "App stopped"],
-    [{ kind: "no-crew-ports", host: "appdev" }, "No crew ports on appdev"],
-    [{ kind: "no-free-port" }, "No free crew port"],
-  ] as const)("says a crewmate's app %o", (app, word) => {
-    expect(crewAppWord(app)).toBe(word);
-  });
-
-  it("names the lane bar's presses", () => {
-    expect(CREW_LANE_VERBS).toEqual({
-      showOnDev: "Show on dev",
-      backToTree: "Back to my tree",
-      addCrewPorts: "Add crew ports",
-    });
-  });
-
   it("says where a task came from", () => {
     expect((["you", "lead", "message", "issue"] as const).map(crewTaskSourceWord)).toEqual([
       "from you",
@@ -698,10 +670,7 @@ describe("the chat's words (PRD §4.5, §5.6, §5.7)", () => {
     ]);
   });
 
-  it("heads a crewmate's chat with its job's version and its conversations", () => {
-    expect(crewJobVersionWord(4)).toBe("Job v4");
-    expect(crewStintWord(2, true)).toBe("Conversation 2 · current");
-    expect(crewStintWord(1, false)).toBe("Conversation 1");
+  it("invites a message to the crewmate in its chat's composer", () => {
     expect(crewMessagePlaceholder("Backend")).toBe("Message Backend…");
   });
 
@@ -736,9 +705,77 @@ describe("crewDevHostDatabaseWord", () => {
 });
 
 describe("the lead's words", () => {
-  it("names the lead and what it does in place of a copy of the code", () => {
+  it("names the lead", () => {
     expect(CREW_LEAD_WORD).toBe("Lead");
-    expect(CREW_LEAD_ROLE_LINE).toBe("Plans and reviews · no copy of the code");
+  });
+});
+
+describe("the conversation's line and a crewmate's menu", () => {
+  it.each([
+    { lead: false, says: ", one of Fen's crew" },
+    { lead: true, says: ", Fen's lead — plans and reviews the crew's work" },
+  ])("says who a face is after its name: $says", ({ lead, says }) => {
+    expect(crewmateRoleWords("Fen", lead)).toBe(says);
+  });
+
+  it("names the Mate's own chat, for its face while another chat is open", () => {
+    expect(mateOwnChatWord("Fen")).toBe("Fen's own chat");
+  });
+
+  it.each([
+    {
+      line: "Owns the world server under server/ and its tests.",
+      says: "Owns the world server under server/ and its tests.",
+    },
+    {
+      line: "How life in the harbour town works. Seasons, weather and trade.",
+      says: "How life in the harbour town works.",
+    },
+    { line: "Is the build green? Then land it.", says: "Is the build green?" },
+    { line: "**Owns** the `server/` tree. Tests first.", says: "Owns the server/ tree." },
+    { line: "## Game rules", says: "Game rules" },
+    {
+      line: "- Keeps the [README](https://docs.example.test/readme) current",
+      says: "Keeps the README current",
+    },
+    { line: "Owns index.ts and the v1.2 router", says: "Owns index.ts and the v1.2 router" },
+    {
+      line: "Keeps snake_case names and _emphasis_ apart.",
+      says: "Keeps snake_case names and emphasis apart.",
+    },
+    { line: "   ", says: "" },
+  ])("reads a job's first sentence in plain words: $line", ({ line, says }) => {
+    expect(crewJobSentence(line)).toBe(says);
+  });
+
+  it("names the menu's presses and what each does", () => {
+    expect(CREW_MENU).toEqual({
+      tryWork: "Try its work",
+      stopApp: "Stop its app",
+      changeJob: "Change its job",
+      changeBrief: "Change the brief",
+      clearConversation: "Clear its conversation",
+    });
+    expect(crewTryWorkLine("Fen", "own")).toBe(
+      "Opens its copy of the app. Nothing is in Fen's code yet.",
+    );
+    expect(crewTryWorkLine("Fen", "dev")).toBe(
+      "Opens it at Fen's dev address. Nothing is in Fen's code yet.",
+    );
+    expect(CREW_MENU_LINES).toEqual({
+      changeJob: "What it's responsible for.",
+      changeBrief: "What the whole crew works toward.",
+      clearConversation: "It keeps its job and its work.",
+    });
+    expect(CREW_TRY_IT_WORD).toBe("Try it");
+  });
+
+  it.each([
+    { press: "try", says: "Couldn't open Bo's work" },
+    { press: "stop", says: "Couldn't stop Bo's app" },
+    { press: "clear", says: "Couldn't clear Bo's conversation" },
+  ] as const)("titles a refused press: $says", ({ press, says }) => {
+    expect(crewMenuFailureWord(press, "Bo")).toBe(says);
   });
 });
 

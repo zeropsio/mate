@@ -14,20 +14,15 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   alsoWorkingLine,
-  chatEntries,
-  chatStatus,
-  crewEntries,
-  entryAccessibleName,
-  entryInk,
-  foldStrip,
-  loneChatNewChatShown,
-  mainChatToPin,
+  crewmateAccessibleName,
+  foldCrew,
+  lineChats,
+  lineCrew,
+  lineMate,
   mateChats,
   replacementChatToPin,
-  stripShown,
-  type ConversationStripEntry,
-  type ConversationStripGroup,
-  type StripRoom,
+  type CrewRoom,
+  type LineCrewmate,
 } from "./ConversationStrip.logic";
 
 const FEN = EnvironmentId.make("env-fen");
@@ -64,23 +59,14 @@ function shell(
   };
 }
 
-/** An entry as the strip draws it, at rest unless told otherwise. */
-function stripEntry(
-  key: string,
-  overrides: Partial<ConversationStripEntry> = {},
-): ConversationStripEntry {
-  return {
-    key,
-    threadId: ThreadId.make(key),
-    label: key,
-    face: { tint: "amber", state: "idle" },
-    status: null,
-    current: false,
-    close: "none",
-    canMakeMain: false,
-    ...overrides,
-  };
-}
+const running = {
+  turnId: TurnId.make("turn-1"),
+  state: "running",
+  requestedAt: "2026-09-05T10:01:00.000Z",
+  startedAt: "2026-09-05T10:01:00.000Z",
+  completedAt: null,
+  assistantMessageId: null,
+} as const;
 
 describe("mateChats", () => {
   it("puts the main chat first and the others in the order they were started", () => {
@@ -103,151 +89,151 @@ describe("mateChats", () => {
   });
 });
 
-describe("chatStatus", () => {
-  const turn = (state: "running" | "completed" | "error") => ({
-    turnId: TurnId.make("turn-1"),
-    state,
-    requestedAt: "2026-09-05T10:01:00.000Z",
-    startedAt: "2026-09-05T10:01:00.000Z",
-    completedAt: state === "running" ? null : "2026-09-05T10:02:00.000Z",
-    assistantMessageId: null,
+describe("lineMate", () => {
+  const MATE = { name: "Fen", tint: "amber", connected: true } as const;
+  const main = shell("main", { pinnedAt: "2026-09-05T09:00:00.000Z" });
+  const logs = shell("logs", {
+    title: "Logs",
+    createdAt: "2026-09-05T11:00:00.000Z",
+    latestTurn: running,
   });
+  const mate = (input: Partial<Parameters<typeof lineMate>[0]> = {}) =>
+    lineMate({
+      mate: MATE,
+      chats: [main, logs],
+      currentThreadId: main.id,
+      crewChatOpen: false,
+      subject: "Build the game server from the spec, tests first.",
+      lastVisitedAtById: {},
+      ...input,
+    });
+
   it.each<{
     readonly name: string;
-    readonly overrides: Partial<EnvironmentThreadShell>;
-    readonly visited: string | undefined;
-    readonly word: string | null;
+    readonly input: Partial<Parameters<typeof lineMate>[0]>;
+    readonly open: boolean;
+    readonly face: string;
+    readonly tooltip: string | null;
   }>([
     {
-      name: "running",
-      overrides: { latestTurn: turn("running") },
-      visited: undefined,
-      word: "Working",
+      name: "on its own chat: on the band, its face there, the chat's subject on hover",
+      input: {},
+      open: true,
+      face: "idle",
+      tooltip: "Build the game server from the spec, tests first.",
     },
     {
-      name: "asking for approval",
-      overrides: { hasPendingApprovals: true },
-      visited: undefined,
-      word: "Approval",
+      name: "on another chat of its own: on the band, in that chat's face",
+      input: { currentThreadId: logs.id, subject: "Logs" },
+      open: true,
+      face: "working",
+      tooltip: "Logs",
     },
     {
-      name: "asking a question",
-      overrides: { hasPendingUserInput: true },
-      visited: undefined,
-      word: "Input",
+      name: "on a chat nobody has spoken into: on the band, nothing on hover",
+      input: { subject: null },
+      open: true,
+      face: "idle",
+      tooltip: null,
     },
     {
-      name: "failed",
-      overrides: { latestTurn: turn("error") },
-      visited: undefined,
-      word: "Failed",
+      name: "on a chat being started: on the band at rest",
+      input: { currentThreadId: null, subject: null },
+      open: true,
+      face: "idle",
+      tooltip: null,
     },
     {
-      name: "done and unseen",
-      overrides: { latestTurn: turn("completed") },
-      visited: "2026-09-05T10:01:30.000Z",
-      word: "Done",
+      name: "on a crewmate's chat: off the band, in its main chat's face, its own chat on hover",
+      input: {
+        chats: [shell("main", { latestTurn: running }), logs],
+        currentThreadId: ThreadId.make("thread-crew-rules-1"),
+        crewChatOpen: true,
+        subject: null,
+      },
+      open: false,
+      face: "working",
+      tooltip: "Fen's own chat",
     },
     {
-      name: "done and seen, with nothing going on",
-      overrides: { latestTurn: turn("completed") },
-      visited: "2026-09-05T10:03:00.000Z",
-      word: null,
+      name: "asleep while its container is not connected",
+      input: { mate: { ...MATE, connected: false } },
+      open: true,
+      face: "sleep",
+      tooltip: "Build the game server from the spec, tests first.",
     },
-  ])(
-    "words a chat that is $name as the one phrase producer does",
-    ({ overrides, visited, word }) => {
-      expect(chatStatus(shell("chat", overrides), visited)).toBe(word);
-    },
-  );
+  ])("$name", ({ input, open, face, tooltip }) => {
+    expect(mate(input)).toEqual({
+      name: "Fen",
+      tint: "amber",
+      face,
+      open,
+      threadId: main.id,
+      tooltip,
+    });
+  });
+
+  it("opens its main chat, and nothing while it has none", () => {
+    expect(mate({ crewChatOpen: true }).threadId).toBe(main.id);
+    expect(mate({ chats: [], currentThreadId: null }).threadId).toBeNull();
+  });
 });
 
-describe("chatEntries", () => {
-  const FEN_MATE = { name: "Fen", tint: "amber", connected: true } as const;
-  const main = shell("main", { latestUserMessageAt: "2026-09-05T12:00:00.000Z" });
-  const logs = shell("logs", { title: "Logs", createdAt: "2026-09-05T11:00:00.000Z" });
-  const running = {
-    turnId: TurnId.make("turn-1"),
-    state: "running",
-    requestedAt: "2026-09-05T10:01:00.000Z",
-    startedAt: "2026-09-05T10:01:00.000Z",
-    completedAt: null,
-    assistantMessageId: null,
-  } as const;
+describe("lineChats", () => {
+  const main = shell("main", { title: "Build the game server" });
+  const logs = shell("logs", { title: "Fix the flaky login test" });
+  const orders = shell("orders", { title: "Rename the orders column" });
 
-  it("names the main chat after the Mate and the others by their titles, each in the Mate's face", () => {
-    const entries = chatEntries({
-      chats: [main, logs],
-      currentThreadId: ThreadId.make("logs"),
-      startingChat: false,
-      mate: FEN_MATE,
-      lastVisitedAtById: {},
-    });
-    expect(entries).toEqual([
-      {
-        key: "main",
-        threadId: "main",
-        label: "Fen",
-        face: { tint: "amber", state: "idle" },
-        status: null,
-        current: false,
-        close: "none",
-        canMakeMain: false,
-      },
-      {
-        key: "logs",
-        threadId: "logs",
-        label: "Logs",
-        face: { tint: "amber", state: "idle" },
-        status: null,
-        current: true,
-        close: "open",
-        canMakeMain: true,
-      },
-    ]);
+  it("has nothing to list for a Mate with one chat", () => {
+    expect(lineChats([main], main.id)).toBeNull();
   });
 
-  it("gives every chat's face that chat's own state: in a second chat, what the Mate does there", () => {
-    const [mainEntry, logsEntry] = chatEntries({
-      chats: [main, shell("logs", { title: "Logs", latestTurn: running })],
-      currentThreadId: ThreadId.make("main"),
-      startingChat: false,
-      mate: FEN_MATE,
-      lastVisitedAtById: {},
-    });
-    expect(mainEntry?.face.state).toBe("idle");
-    expect(logsEntry).toMatchObject({
-      face: { tint: "amber", state: "working" },
-      status: "Working",
-    });
-  });
-
-  it("adds the chat being started as the current one, in the Mate's face at rest, with nothing to close", () => {
-    const entries = chatEntries({
-      chats: [main],
-      currentThreadId: null,
-      startingChat: true,
-      mate: FEN_MATE,
-      lastVisitedAtById: {},
-    });
-    expect(
-      entries.map(({ key, label, current, close }) => ({ key, label, current, close })),
-    ).toEqual([
-      { key: "main", label: "Fen", current: false, close: "none" },
-      { key: "starting", label: "New chat", current: true, close: "none" },
+  it.each<{
+    readonly name: string;
+    readonly current: string | null;
+    readonly checked: ReadonlyArray<boolean>;
+    readonly close: string | null;
+  }>([
+    {
+      name: "on the main chat: it is checked, and it cannot be closed",
+      current: "main",
+      checked: [true, false, false],
+      close: null,
+    },
+    {
+      name: "on another chat: it is checked, and it closes",
+      current: "logs",
+      checked: [false, true, false],
+      close: "logs",
+    },
+    {
+      name: "on a crewmate's chat: none is checked, none closes",
+      current: "thread-crew-rules-1",
+      checked: [false, false, false],
+      close: null,
+    },
+    {
+      name: "on a chat being started: none is checked, none closes",
+      current: null,
+      checked: [false, false, false],
+      close: null,
+    },
+  ])("lists every chat, the main one first and marked — $name", ({ current, checked, close }) => {
+    const listed = lineChats(
+      [main, logs, orders],
+      current === null ? null : ThreadId.make(current),
+    );
+    expect(listed?.chats.map((chat) => [chat.title, chat.main, chat.open])).toEqual([
+      ["Build the game server", true, checked[0]],
+      ["Fix the flaky login test", false, checked[1]],
+      ["Rename the orders column", false, checked[2]],
     ]);
-    expect(entries[1]).toMatchObject({
-      threadId: null,
-      face: { tint: "amber", state: "idle" },
-      status: null,
-      canMakeMain: false,
-    });
+    expect(listed?.close?.threadId ?? null).toBe(close);
   });
 
   it("holds a chat's close while its turn runs, as archiving would refuse it", () => {
-    const busy = shell("logs", {
-      title: "Logs",
-      createdAt: "2026-09-05T11:00:00.000Z",
+    const working = shell("logs", {
+      title: "Fix the flaky login test",
       session: {
         threadId: ThreadId.make("logs"),
         status: "running",
@@ -255,73 +241,28 @@ describe("chatEntries", () => {
         runtimeMode: "full-access",
         activeTurnId: TurnId.make("turn-1"),
         lastError: null,
-        updatedAt: "2026-09-05T11:01:00.000Z",
+        updatedAt: "2026-09-05T10:01:00.000Z",
       },
     });
-    const [, logsEntry] = chatEntries({
-      chats: [main, busy],
-      currentThreadId: null,
-      startingChat: false,
-      mate: FEN_MATE,
-      lastVisitedAtById: {},
+    expect(lineChats([main, working], working.id)?.close).toEqual({
+      threadId: working.id,
+      title: "Fix the flaky login test",
+      busy: true,
     });
-    expect(logsEntry?.close).toBe("busy");
-  });
-
-  it.each([
-    {
-      name: "a Mate's only chat: starting over is the header menu's Archive and start fresh",
-      chats: [main],
-    },
-    {
-      name: "the main chat beside others: Make main on another is the way to close it",
-      chats: [main, logs],
-    },
-  ])("gives $name no close", ({ chats }) => {
-    const [first] = chatEntries({
-      chats,
-      currentThreadId: ThreadId.make("main"),
-      startingChat: false,
-      mate: FEN_MATE,
-      lastVisitedAtById: {},
-    });
-    expect(first).toMatchObject({ current: true, close: "none" });
-  });
-
-  it("draws every chat's face asleep while the Mate's container is not connected", () => {
-    const entries = chatEntries({
-      chats: [main, shell("logs", { title: "Logs", latestTurn: running })],
-      currentThreadId: null,
-      startingChat: true,
-      mate: { ...FEN_MATE, connected: false },
-      lastVisitedAtById: {},
-    });
-    expect(entries.map((entry) => entry.face)).toEqual([
-      { tint: "amber", state: "sleep" },
-      { tint: "amber", state: "sleep" },
-      { tint: "amber", state: "sleep" },
-    ]);
+    expect(lineChats([main, logs], logs.id)?.close?.busy).toBe(false);
   });
 });
 
-describe("crewEntries", () => {
+describe("lineCrew", () => {
   const crewShell = (
     handle: string,
     stint: number,
     overrides: Partial<EnvironmentThreadShell> = {},
   ) =>
     shell(`thread-crew-${handle}-${stint}`, {
-      crew: { crew: "shop", crewmate: handle, stint },
+      crew: { crew: "main", crewmate: handle, stint },
       ...overrides,
     });
-  const running = {
-    turnId: TurnId.make("turn-1"),
-    state: "running",
-    requestedAt: "2026-09-05T10:01:00.000Z",
-    startedAt: "2026-09-05T10:01:00.000Z",
-    completedAt: null,
-    assistantMessageId: null,
-  } as const;
   const shells = [
     crewShell("lead", 1),
     crewShell("backend", 1, { archivedAt: "2026-09-27T09:10:00.000Z" }),
@@ -335,178 +276,258 @@ describe("crewEntries", () => {
       word: null,
       working: false,
     }));
-  const entries = (
-    input: Partial<Parameters<typeof crewEntries>[0]> = {},
-  ): ReadonlyArray<ConversationStripEntry> =>
-    crewEntries({
+  const crew = (input: Partial<Parameters<typeof lineCrew>[0]> = {}) =>
+    lineCrew({
       view: view(),
-      currentThreadId: null,
+      remembered: undefined,
+      crewChat: null,
+      mateName: "Fen",
       connected: true,
       lastVisitedAtById: {},
       ...input,
-    }).entries;
-
-  it("draws an entry per crewmate, the lead first, each by its name in its own tint", () => {
-    expect(
-      entries().map(({ key, threadId, label, face, close, canMakeMain }) => ({
-        key,
-        threadId,
-        label,
-        tint: face.tint,
-        close,
-        canMakeMain,
-      })),
-    ).toEqual(
-      [
-        ["lead", "Lead", "thread-crew-lead-1", "violet"],
-        ["backend", "Backend", "thread-crew-backend-2", "sky"],
-        ["frontend", "Frontend", "thread-crew-frontend-1", "coral"],
-        ["erik", "Erik", "thread-crew-erik-1", "amber"],
-      ].map(([handle, label, threadId, tint]) => ({
-        key: `crew:${handle}`,
-        threadId,
-        label,
-        tint,
-        close: "none",
-        canMakeMain: false,
-      })),
-    );
-  });
-
-  it.each([
-    { name: "Lead", role: undefined },
-    { name: "Team lead", role: undefined },
-    { name: "Ada", role: "Ada, the lead" },
-    { name: "Leader", role: "Leader, the lead" },
-  ])("says the lead's role where its name $name does not", ({ name, role }) => {
-    const snapshot = crewSnapshotFixture();
-    const renamed = view({
-      ...snapshot,
-      crewmates: snapshot.crewmates.map((crewmate) =>
-        crewmate.handle === "lead" ? { ...crewmate, displayName: name } : crewmate,
-      ),
     });
-    expect(entries({ view: renamed }).map((entry) => [entry.key, entry.role])).toEqual([
-      ["crew:lead", role],
-      ["crew:backend", undefined],
-      ["crew:frontend", undefined],
-      ["crew:erik", undefined],
+  const REMEMBERED = {
+    faces: [
+      { handle: "lead", displayName: "Lead", tint: "violet", lead: true },
+      { handle: "backend", displayName: "Backend", tint: "sky", lead: false },
+    ],
+  } as const;
+
+  it("draws a face per crewmate, the lead first, each opening the stint it talks in now", () => {
+    expect(
+      crew()?.map(({ handle, name, tint, threadId, lead, open, known }) => [
+        handle,
+        name,
+        tint,
+        threadId,
+        lead,
+        open,
+        known,
+      ]),
+    ).toEqual([
+      ["lead", "Lead", "violet", "thread-crew-lead-1", true, false, true],
+      ["backend", "Backend", "sky", "thread-crew-backend-2", false, false, true],
+      ["frontend", "Frontend", "coral", "thread-crew-frontend-1", false, false, true],
+      ["erik", "Erik", "amber", "thread-crew-erik-1", false, false, true],
     ]);
   });
 
-  it("wears the working face and the resolver's word while its current stint works", () => {
-    const backend = entries().find((entry) => entry.key === "crew:backend");
-    expect(backend?.face.state).toBe("working");
-    expect(backend?.status).toBe("Working");
+  it("says on hover who each is, and a crewmate's job in its first sentence", () => {
+    expect(crew()?.map(({ name, role, job }) => [`${name}${role}`, job])).toEqual([
+      ["Lead, Fen's lead — plans and reviews the crew's work", null],
+      ["Backend, one of Fen's crew", "Owns the API under src/api and its tests."],
+      ["Frontend, one of Fen's crew", "Owns the game UI: the camera, the HUD and their tests."],
+      ["Erik, one of Fen's crew", "Writes the business plan in docs/business-plan.md."],
+    ]);
   });
 
-  it("is the current entry on any of its stints, a retired one too", () => {
-    for (const threadId of ["thread-crew-backend-2", "thread-crew-backend-1"]) {
-      expect(
-        entries({ currentThreadId: ThreadId.make(threadId) })
-          .filter((entry) => entry.current)
-          .map((entry) => entry.key),
-      ).toEqual(["crew:backend"]);
-    }
+  it("puts the crewmate whose chat is on screen on the band", () => {
+    expect(
+      crew({ crewChat: { handle: "backend", title: "Backend" } })
+        ?.filter((entry) => entry.open)
+        .map((entry) => entry.handle),
+    ).toEqual(["backend"]);
+  });
+
+  it("wears each face's state, and says it only in its accessible name", () => {
+    const backend = crew()?.find((entry) => entry.handle === "backend");
+    expect(backend?.face).toBe("working");
+    expect(backend === undefined ? null : crewmateAccessibleName(backend)).toBe(
+      "Backend, one of Fen's crew, Working",
+    );
+    const lead = crew()?.find((entry) => entry.handle === "lead");
+    expect(lead === undefined ? null : crewmateAccessibleName(lead)).toBe(
+      "Lead, Fen's lead — plans and reviews the crew's work",
+    );
   });
 
   it("sleeps every face while the Mate's container is not connected", () => {
-    expect(new Set(entries({ connected: false }).map((entry) => entry.face.state))).toEqual(
+    expect(new Set(crew({ connected: false })?.map((entry) => entry.face))).toEqual(
       new Set(["sleep"]),
     );
   });
 
   it("opens nothing for a crewmate before its first turn", () => {
     const snapshot = crewSnapshotFixture();
-    const [first] = entries({
-      view: view({
-        ...snapshot,
-        crewmates: snapshot.crewmates.map((crewmate) =>
-          crewmate.handle === "lead"
-            ? { ...crewmate, currentThreadId: null, stints: [] }
-            : crewmate,
-        ),
-      }),
-    });
-    expect(first).toMatchObject({ key: "crew:lead", threadId: null, status: null });
+    const [first] =
+      crew({
+        view: view({
+          ...snapshot,
+          crewmates: snapshot.crewmates.map((crewmate) =>
+            crewmate.handle === "lead"
+              ? { ...crewmate, currentThreadId: null, stints: [] }
+              : crewmate,
+          ),
+        }),
+      }) ?? [];
+    expect(first).toMatchObject({ handle: "lead", threadId: null, status: null });
   });
 
-  it("draws nothing while no crew is applied", () => {
-    expect(entries({ view: null })).toEqual([]);
+  it.each<{
+    readonly name: string;
+    readonly input: Partial<Parameters<typeof lineCrew>[0]>;
+    readonly drawn: ReadonlyArray<readonly [string, string, string | null, boolean]> | null;
+  }>([
+    {
+      name: "a Mate with no crew: no divider and no faces",
+      input: { view: view(crewSnapshotFixture({ status: "none", crew: null, crewmates: [] })) },
+      drawn: null,
+    },
+    {
+      name: "before the feed answers, nothing remembered: nothing yet",
+      input: { view: null },
+      drawn: null,
+    },
+    {
+      name: "before the feed answers: the faces this browser last read",
+      input: { view: null, remembered: REMEMBERED },
+      drawn: [
+        ["lead", "Lead", "violet", false],
+        ["backend", "Backend", "sky", false],
+      ],
+    },
+    {
+      name: "before the feed answers, in a crewmate's chat: it on the band among them",
+      input: {
+        view: null,
+        remembered: REMEMBERED,
+        crewChat: { handle: "backend", title: "Backend" },
+      },
+      drawn: [
+        ["lead", "Lead", "violet", false],
+        ["backend", "Backend", "sky", true],
+      ],
+    },
+    {
+      name: "before the feed answers, in the chat of a crewmate not remembered: added last",
+      input: {
+        view: null,
+        remembered: REMEMBERED,
+        crewChat: { handle: "rules", title: "Game Rules" },
+      },
+      drawn: [
+        ["lead", "Lead", "violet", false],
+        ["backend", "Backend", "sky", false],
+        ["rules", "Game Rules", null, true],
+      ],
+    },
+    {
+      name: "a crewmate's chat with nothing read or remembered: it alone, named as its chat",
+      input: { view: null, crewChat: { handle: "rules", title: "Game Rules" } },
+      drawn: [["rules", "Game Rules", null, true]],
+    },
+    {
+      name: "a crewmate's chat whose crew is gone: it alone",
+      input: {
+        view: view(crewSnapshotFixture({ status: "none", crew: null, crewmates: [] })),
+        remembered: REMEMBERED,
+        crewChat: { handle: "rules", title: "Game Rules" },
+      },
+      drawn: [["rules", "Game Rules", null, true]],
+    },
+  ])("$name", ({ input, drawn }) => {
+    const entries = crew(input);
     expect(
-      entries({ view: view(crewSnapshotFixture({ status: "none", crew: null, crewmates: [] })) }),
-    ).toEqual([]);
+      entries === null
+        ? null
+        : entries.map((entry) => [entry.handle, entry.name, entry.tint, entry.open]),
+    ).toEqual(drawn);
+    for (const entry of entries ?? []) {
+      expect(entry).toMatchObject({
+        face: "idle",
+        known: false,
+        threadId: null,
+        job: null,
+        status: null,
+      });
+    }
   });
 });
 
-describe("stripShown", () => {
-  const entry = (key: string) => stripEntry(key);
-  const crew = { id: "crew", label: "Crew", entries: [entry("backend")] };
-  const cases = [
-    { name: "a Mate's only chat", chats: [entry("main")], extra: [], shown: false },
-    { name: "two chats", chats: [entry("main"), entry("logs")], extra: [], shown: true },
-    { name: "a Mate with no chat yet", chats: [], extra: [], shown: false },
-    { name: "one chat beside a crew", chats: [entry("main")], extra: [crew], shown: true },
-    {
-      name: "one chat beside an empty group",
-      chats: [entry("main")],
-      extra: [{ ...crew, entries: [] }],
-      shown: false,
-    },
-  ];
-  for (const row of cases) {
-    it(`${row.shown ? "shows" : "hides"} the chip row for ${row.name}`, () => {
-      expect(stripShown(row.chats, row.extra)).toBe(row.shown);
-    });
-  }
-});
+describe("foldCrew", () => {
+  const face = (handle: string, open = false): LineCrewmate => ({
+    handle,
+    name: handle,
+    tint: "sky",
+    face: "idle",
+    lead: false,
+    open,
+    known: true,
+    threadId: ThreadId.make(`thread-crew-${handle}-1`),
+    role: ", one of Fen's crew",
+    job: null,
+    status: null,
+  });
+  // Faces are 28 px; the open one's pill 120; 2 px between; *N more* 60 with its gap.
+  const room = (width: number, crew: ReadonlyArray<LineCrewmate>): CrewRoom => ({
+    width,
+    widths: new Map(crew.map((entry) => [entry.handle, entry.open ? 120 : 28])),
+    gap: 2,
+    more: 60,
+  });
+  const handles = (entries: ReadonlyArray<LineCrewmate>) => entries.map((entry) => entry.handle);
+  const crew = [face("lead"), face("a"), face("b"), face("c", true), face("d"), face("e")];
 
-describe("loneChatNewChatShown", () => {
-  const entry = (key: string, threadId: string | null = key) =>
-    stripEntry(key, {
-      threadId: threadId === null ? null : ThreadId.make(threadId),
-      current: true,
-    });
-  const crew = { id: "crew", label: "Crew", entries: [entry("backend")] };
-  const cases = [
-    { name: "a Mate's only chat", chats: [entry("main")], extra: [], shown: true },
+  it.each<{
+    readonly name: string;
+    readonly width: number | null;
+    readonly visible: ReadonlyArray<string>;
+    readonly folded: ReadonlyArray<string>;
+    readonly more: boolean;
+  }>([
     {
-      name: "two chats, where the row has its own",
-      chats: [entry("main"), entry("logs")],
-      extra: [],
-      shown: false,
+      name: "keeps every face while the line holds them",
+      width: 5 * 28 + 120 + 5 * 2,
+      visible: ["lead", "a", "b", "c", "d", "e"],
+      folded: [],
+      more: false,
     },
     {
-      name: "a Mate's first chat not sent yet",
-      chats: [entry("starting", null)],
-      extra: [],
-      shown: false,
+      name: "folds nothing before it is measured",
+      width: null,
+      visible: ["lead", "a", "b", "c", "d", "e"],
+      folded: [],
+      more: false,
     },
     {
-      name: "one chat beside a crew, where the row has its own",
-      chats: [entry("main")],
-      extra: [crew],
-      shown: false,
+      name: "folds the tail into N more, never the crewmate on screen",
+      width: 2 * 28 + 120 + 2 * 2 + 60,
+      visible: ["lead", "a", "c"],
+      folded: ["b", "d", "e"],
+      more: true,
     },
-  ];
-  for (const row of cases) {
-    it(`${row.shown ? "offers" : "does not offer"} the header's New chat for ${row.name}`, () => {
-      expect(loneChatNewChatShown(row.chats, row.extra)).toBe(row.shown);
-    });
-  }
+    {
+      name: "keeps the crewmate on screen alone, with N more, where nothing else fits",
+      width: 120 + 60,
+      visible: ["c"],
+      folded: ["lead", "a", "b", "d", "e"],
+      more: true,
+    },
+    {
+      name: "lets N more give way where even that does not fit beside it",
+      width: 120 + 30,
+      visible: ["c"],
+      folded: ["lead", "a", "b", "d", "e"],
+      more: false,
+    },
+  ])("$name", ({ width, visible, folded, more }) => {
+    const folding = foldCrew(crew, width === null ? null : room(width, crew));
+    expect(handles(folding.visible)).toEqual(visible);
+    expect(handles(folding.folded)).toEqual(folded);
+    expect(folding.more).toBe(more);
+  });
+
+  it("folds from the tail on a Mate's own chat, where no crewmate is on screen", () => {
+    const shut = crew.map((entry) => ({ ...entry, open: false }));
+    const folding = foldCrew(shut, room(3 * 28 + 2 * 2 + 60, shut));
+    expect(handles(folding.visible)).toEqual(["lead", "a", "b"]);
+    expect(handles(folding.folded)).toEqual(["c", "d", "e"]);
+    expect(folding.more).toBe(true);
+  });
 });
 
 describe("alsoWorkingLine", () => {
-  const running = {
-    latestTurn: {
-      turnId: TurnId.make("turn-1"),
-      state: "running" as const,
-      requestedAt: "2026-09-05T10:01:00.000Z",
-      startedAt: "2026-09-05T10:01:00.000Z",
-      completedAt: null,
-      assistantMessageId: null,
-    },
-  };
+  const working = { latestTurn: running };
   const main = shell("main");
   const logs = shell("logs", { title: "Logs", createdAt: "2026-09-05T11:00:00.000Z" });
   const line = (input: {
@@ -521,238 +542,45 @@ describe("alsoWorkingLine", () => {
       typing: input.typing,
     });
 
-  const cases = [
+  it.each([
     {
       name: "names the main chat while you type in another",
-      chats: [shell("main", running), logs],
+      chats: [shell("main", working), logs],
       current: "logs",
       typing: true,
       expected: "Fen is also working in your main chat — both change the same files.",
     },
     {
       name: "names another chat by its title while you type in the main one",
-      chats: [main, shell("logs", { ...running, title: "Logs" })],
+      chats: [main, shell("logs", { ...working, title: "Logs" })],
       current: "main",
       typing: true,
       expected: "Fen is also working in ‘Logs’ — both change the same files.",
     },
     {
       name: "counts every chat as another while you start a new one",
-      chats: [shell("main", running), logs],
+      chats: [shell("main", working), logs],
       current: null,
       typing: true,
       expected: "Fen is also working in your main chat — both change the same files.",
     },
     {
       name: "stays silent until you type",
-      chats: [shell("main", running), logs],
+      chats: [shell("main", working), logs],
       current: "logs",
       typing: false,
       expected: null,
     },
     {
       name: "stays silent when only the chat you are in works",
-      chats: [main, shell("logs", { ...running, title: "Logs" })],
+      chats: [main, shell("logs", { ...working, title: "Logs" })],
       current: "logs",
       typing: true,
       expected: null,
     },
-  ];
-  for (const row of cases) {
-    it(row.name, () => {
-      expect(line(row)).toBe(row.expected);
-    });
-  }
-});
-
-describe("entryInk", () => {
-  it.each<{
-    readonly name: string;
-    readonly current: boolean;
-    readonly state: ConversationStripEntry["face"]["state"];
-    readonly ink: "ink" | "muted";
-  }>([
-    { name: "the conversation on screen", current: true, state: "idle", ink: "ink" },
-    { name: "one that needs you", current: false, state: "needs", ink: "ink" },
-    { name: "a turn you have not seen", current: false, state: "done", ink: "ink" },
-    { name: "one at work: its face says so", current: false, state: "working", ink: "muted" },
-    { name: "one at rest", current: false, state: "idle", ink: "muted" },
-    { name: "one asleep", current: false, state: "sleep", ink: "muted" },
-  ])("names $name in $ink", ({ current, state, ink }) => {
-    expect(entryInk(stripEntry("any", { current, face: { tint: "sky", state } }))).toBe(ink);
+  ])("$name", (row) => {
+    expect(line(row)).toBe(row.expected);
   });
-});
-
-describe("entryAccessibleName", () => {
-  it.each<{
-    readonly name: string;
-    readonly entry: Partial<ConversationStripEntry>;
-    readonly spoken: string;
-  }>([
-    { name: "a name at rest", entry: { label: "Backend" }, spoken: "Backend" },
-    {
-      name: "a name and what it is doing",
-      entry: { label: "Backend", status: "Working" },
-      spoken: "Backend, Working",
-    },
-    {
-      name: "the lead's role in place of its name",
-      entry: { label: "Ada", role: "Ada, the lead", status: "Input" },
-      spoken: "Ada, the lead, Input",
-    },
-  ])("says $name", ({ entry, spoken }) => {
-    expect(entryAccessibleName(stripEntry("any", entry))).toBe(spoken);
-  });
-});
-
-describe("foldStrip", () => {
-  const keys = (groups: ReadonlyArray<ConversationStripGroup>) =>
-    groups.map((group) => group.entries.map((each) => each.key));
-  /** Every entry 100 wide, 2 between neighbours, 16 more before the crew, New chat 30, More 60. */
-  const room = (width: number, widths: Record<string, number> = {}): StripRoom => ({
-    width,
-    widths: new Map(
-      ["main", "logs", "docs", "lead", "backend", "frontend"].map((key) => [
-        key,
-        widths[key] ?? 100,
-      ]),
-    ),
-    gap: 2,
-    groupGap: 16,
-    fixed: 30,
-    more: 60,
-  });
-  const chats = (current?: string): ConversationStripGroup => ({
-    id: "chats",
-    label: "Chats",
-    entries: ["main", "logs", "docs"].map((key) => stripEntry(key, { current: key === current })),
-  });
-  const crew = (current?: string): ConversationStripGroup => ({
-    id: "crew",
-    label: "Crew",
-    entries: ["lead", "backend", "frontend"].map((key) =>
-      stripEntry(key, { current: key === current }),
-    ),
-  });
-
-  it.each<{
-    readonly name: string;
-    readonly groups: ReadonlyArray<ConversationStripGroup>;
-    readonly room: StripRoom | null;
-    readonly visible: ReadonlyArray<ReadonlyArray<string>>;
-    readonly folded: ReadonlyArray<string>;
-  }>([
-    {
-      name: "folds nothing before the row is measured",
-      groups: [chats("main"), crew()],
-      room: null,
-      visible: [
-        ["main", "logs", "docs"],
-        ["lead", "backend", "frontend"],
-      ],
-      folded: [],
-    },
-    {
-      // Six entries, five gaps, the crew's step and New chat: 600 + 10 + 16 + 30.
-      name: "folds nothing when every entry fits at its drawn width",
-      groups: [chats("main"), crew()],
-      room: room(656),
-      visible: [
-        ["main", "logs", "docs"],
-        ["lead", "backend", "frontend"],
-      ],
-      folded: [],
-    },
-    {
-      // Five entries, four gaps, the step, New chat and More: 500 + 8 + 16 + 30 + 60.
-      name: "counts the crew's step: a row a pixel short of everything folds the last",
-      groups: [chats("main"), crew()],
-      room: room(655),
-      visible: [
-        ["main", "logs", "docs"],
-        ["lead", "backend"],
-      ],
-      folded: ["frontend"],
-    },
-    {
-      // Four entries, three gaps, the step, New chat and More: 400 + 6 + 16 + 30 + 60.
-      name: "leaves room for More itself when the tail folds",
-      groups: [chats("main"), crew()],
-      room: room(512),
-      visible: [["main", "logs", "docs"], ["lead"]],
-      folded: ["backend", "frontend"],
-    },
-    {
-      name: "folds by what each entry needs, not by a count: a short name still fits",
-      groups: [chats("main"), crew()],
-      room: room(512, { lead: 60, backend: 38 }),
-      visible: [
-        ["main", "logs", "docs"],
-        ["lead", "backend"],
-      ],
-      folded: ["frontend"],
-    },
-    {
-      name: "keeps the entry you are on, folding the one before it instead",
-      groups: [chats(), crew("frontend")],
-      room: room(512),
-      visible: [["main", "logs", "docs"], ["frontend"]],
-      folded: ["lead", "backend"],
-    },
-    {
-      name: "keeps the entry you are on alone when nothing else fits beside it",
-      groups: [chats(), crew("backend")],
-      room: room(120),
-      visible: [[], ["backend"]],
-      folded: ["main", "logs", "docs", "lead", "frontend"],
-    },
-    {
-      name: "never folds below one entry",
-      groups: [chats(), crew()],
-      room: room(0),
-      visible: [["main"], []],
-      folded: ["logs", "docs", "lead", "backend", "frontend"],
-    },
-  ])("$name", ({ groups, room: measured, visible, folded }) => {
-    const fold = foldStrip(groups, measured);
-    expect(keys(fold.visible)).toEqual(visible);
-    expect(fold.folded.map((entry) => entry.key)).toEqual(folded);
-  });
-});
-
-describe("mainChatToPin", () => {
-  const pinned = { pinnedAt: "2026-09-05T09:00:00.000Z" };
-  const cases = [
-    {
-      name: "pins the Mate's one chat when a second is started",
-      threads: [shell("main")],
-      pin: "main",
-    },
-    {
-      name: "pins the chat the Mate answers from when several were never pinned",
-      threads: [shell("old", { latestUserMessageAt: null }), shell("main")],
-      pin: "main",
-    },
-    {
-      name: "writes nothing when a chat is already main",
-      threads: [shell("main", pinned), shell("logs")],
-      pin: null,
-    },
-    {
-      name: "does not count a pin on an archived chat",
-      threads: [
-        shell("gone", { ...pinned, archivedAt: "2026-09-05T09:30:00.000Z" }),
-        shell("main"),
-      ],
-      pin: "main",
-    },
-    { name: "writes nothing for a Mate with no chat yet", threads: [], pin: null },
-  ];
-  for (const row of cases) {
-    it(row.name, () => {
-      expect(mainChatToPin(row.threads)).toBe(row.pin);
-    });
-  }
 });
 
 describe("replacementChatToPin", () => {

@@ -587,7 +587,7 @@ const STATES: ReadonlyArray<ResultState> = [
     facts: {
       crew: {
         environmentId: EnvironmentId.make("environment-local"),
-        tasks: new Map([[12, { id: "task-12", state: "ready" }]]),
+        tasks: new Map([[12, { id: "task-12", state: "ready", owner: "rules" }]]),
       },
     },
     minutes: 6,

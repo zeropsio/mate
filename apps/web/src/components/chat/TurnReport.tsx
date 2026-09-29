@@ -35,6 +35,7 @@ import { useOpenReview } from "../../zerops/review";
 import { useZeropsSessionOptional } from "../../zerops/sessionContext";
 import { ServiceBrowserLink } from "../ServiceBrowserLink";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { CrewTryIt } from "../zerops/crew/CrewTryIt";
 import type { OutcomeModel } from "./conversation.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
@@ -158,13 +159,16 @@ function FixActionOffer({
 
 function RowEnd({ row, mate }: { readonly row: ResultRow; readonly mate: MateOfRun }) {
   const openReview = useOpenReview();
-  const { action, url } = row;
+  const { action, url, tryIt } = row;
   const review = action?.kind === "review" ? action.target : null;
   const fix = action?.kind === "fix" ? action.problem : null;
   if (action === null && url === null) return <span />;
   return (
     <span className="run-result-end">
       {fix === null ? null : <FixAction mate={mate} problem={fix} />}
+      {tryIt === undefined ? null : (
+        <CrewTryIt environmentId={tryIt.environmentId} handle={tryIt.handle} title={row.title} />
+      )}
       {review === null ? null : (
         <button
           aria-label={`Review ${row.title}`}

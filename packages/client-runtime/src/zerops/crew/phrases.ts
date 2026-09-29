@@ -1,10 +1,10 @@
 /**
  * Crew mode's phrase producer (R5): the board's column titles, task-state
  * words, the section header's crew state, *Waiting on you* sentences and
- * presses, the section's copy, pending and footer words, a crewmate chat's
- * header, lane bar and notices, refusal sentences, and the drafts a crew
- * surface hands the Mate — PRD §4.3, §4.4, §4.5, §4.7, §5.3, §5.6, §5.7,
- * §6.3. A crew surface renders crew
+ * presses, the section's copy, pending and footer words, a crewmate's face
+ * and menu on the conversation's line, its chat's notices, refusal
+ * sentences, and the drafts a crew surface hands the Mate — PRD §4.3, §4.4,
+ * §4.5, §4.7, §5.3, §5.6, §5.7, §6.3. A crew surface renders crew
  * and task words only from here; a thread's own status word still comes only
  * from `resolveThreadStatus` and is passed in where a task shows it.
  *
@@ -572,54 +572,17 @@ export function crewPortsAsk(host: string, ports: ReadonlyArray<number>): string
 export const crewDescribeAsk = (description: string): string =>
   `Set up a crew for this project: ${description.trim()}`;
 
-/** A copy of the code against your tree (PRD §4.5); `null` while level with it. */
-export const crewAheadWord = (ahead: number): string | null =>
-  ahead === 0 ? null : `${ahead} ${ahead === 1 ? "change" : "changes"} ahead of your tree`;
-
 /** `+214 −12`, with a true minus. */
 export const crewDiffStatWord = (stat: {
   readonly insertions: number;
   readonly deletions: number;
 }): string => `+${stat.insertions} \u2212${stat.deletions}`;
 
-/** A merge-in stopped on unmerged paths (PRD §5.2). */
-export const crewConflictWord = (paths: ReadonlyArray<string>): string =>
-  paths.length === 0
-    ? "Conflicts with what landed"
-    : `Conflicts with what landed: ${pathSummary(paths)}`;
-
 /** A task's landing in your tree, by its commit's short sha (PRD §4.5). */
 export const crewLandedAsWord = (task: {
   readonly number: number;
   readonly landedCommit: string;
 }): string => `Task #${task.number} landed as ${task.landedCommit.slice(0, 7)}`;
-
-/** A crewmate's own app on its crew port (PRD §5.7). */
-export function crewAppWord(
-  app:
-    | { readonly kind: "running"; readonly port: number }
-    | { readonly kind: "stopped" }
-    | { readonly kind: "no-crew-ports"; readonly host: string }
-    | { readonly kind: "no-free-port" },
-): string {
-  switch (app.kind) {
-    case "running":
-      return `App on :${app.port}`;
-    case "stopped":
-      return "App stopped";
-    case "no-crew-ports":
-      return `No crew ports on ${app.host}`;
-    case "no-free-port":
-      return "No free crew port";
-  }
-}
-
-/** The lane bar's presses beside the door to its task's review (`REVIEW_LABEL`) and the asks. */
-export const CREW_LANE_VERBS = {
-  showOnDev: "Show on dev",
-  backToTree: "Back to my tree",
-  addCrewPorts: "Add crew ports",
-} as const;
 
 const TASK_SOURCES: Readonly<Record<CrewTaskSource, string>> = {
   you: "from you",
@@ -630,13 +593,6 @@ const TASK_SOURCES: Readonly<Record<CrewTaskSource, string>> = {
 
 /** Where a task came from (PRD §4.4, §4.5). */
 export const crewTaskSourceWord = (source: CrewTaskSource): string => TASK_SOURCES[source];
-
-/** The header's version chip while the crewmate runs on its current job (PRD §4.5). */
-export const crewJobVersionWord = (version: number): string => `Job v${version}`;
-
-/** One of a crewmate's conversations, for *Previous conversations*. */
-export const crewStintWord = (stint: number, current: boolean): string =>
-  current ? `Conversation ${stint} · current` : `Conversation ${stint}`;
 
 /** A crewmate chat's composer. */
 export const crewMessagePlaceholder = (name: string): string => `Message ${name}…`;
@@ -677,7 +633,7 @@ export function crewDevHostDatabaseWord(database: boolean | null): string {
   return database ? "Has a database" : "No database";
 }
 
-/** The lead's mark beside its name (PRD §2.3, §4.6), and its accessible name in the strip. */
+/** The lead's mark beside its name in the crew section (PRD §2.3, §4.6). */
 export const CREW_LEAD_WORD = "Lead";
 
 /**
@@ -702,8 +658,86 @@ export function crewLineReadyWord(count: number): string {
   return `${String(count)} ${count === 1 ? "task" : "tasks"} ready to land`;
 }
 
-/** What the lead does, where a writer's chat shows its copy of the code (PRD §4.6). */
-export const CREW_LEAD_ROLE_LINE = "Plans and reviews · no copy of the code";
+/**
+ * Who a crewmate is on the conversation's line, after its name: one of its
+ * Mate's crew, or the Mate's lead and what the lead does. A face's tooltip
+ * and its accessible name say it; the name stands before it.
+ */
+export function crewmateRoleWords(mateName: string, lead: boolean): string {
+  return lead
+    ? `, ${mateName}'s lead — plans and reviews the crew's work`
+    : `, one of ${mateName}'s crew`;
+}
+
+/** The Mate's own chat, as its face on the line says it while another chat is open. */
+export const mateOwnChatWord = (mateName: string): string => `${mateName}'s own chat`;
+
+/** A line's markdown lead-in: a heading's hashes, a list's bullet or number, a quote. */
+const MARKDOWN_LEAD = /^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+|>\s*)/u;
+
+/**
+ * The first sentence of a job, in plain words: what a crewmate's face says on
+ * hover and its menu says at the top. Markdown's marks go — a heading's
+ * hashes, a list's bullet, emphasis, code ticks, a link's address — and the
+ * sentence ends at its first full stop, question or exclamation mark that a
+ * space or the line's end follows, so `index.ts` or `v1.2` never ends it; a
+ * line with none is whole.
+ */
+export function crewJobSentence(jobFirstLine: string): string {
+  const plain = jobFirstLine
+    .replace(MARKDOWN_LEAD, "")
+    .replace(/\[([^\]]*)\]\([^)]*\)/gu, "$1")
+    .replace(/`([^`]*)`/gu, "$1")
+    .replace(/\*\*([^*]+)\*\*/gu, "$1")
+    .replace(/__([^_]+)__/gu, "$1")
+    .replace(/(^|[^\w*])\*([^*\s][^*]*)\*(?!\w)/gu, "$1$2")
+    .replace(/(^|[^\w])_([^_\s][^_]*)_(?!\w)/gu, "$1$2")
+    .trim();
+  const end = /[.!?](?=\s|$)/u.exec(plain);
+  return end === null ? plain : plain.slice(0, end.index + 1);
+}
+
+/** A crewmate's menu on the conversation's line (its ⌄): each press. */
+export const CREW_MENU = {
+  tryWork: "Try its work",
+  stopApp: "Stop its app",
+  changeJob: "Change its job",
+  changeBrief: "Change the brief",
+  clearConversation: "Clear its conversation",
+} as const;
+
+/** The line under a press in a crewmate's menu, saying what it does. */
+export const CREW_MENU_LINES = {
+  changeJob: "What it's responsible for.",
+  changeBrief: "What the whole crew works toward.",
+  clearConversation: "It keeps its job and its work.",
+} as const;
+
+/**
+ * What *Try its work* opens: the crewmate's own copy of the app on its crew
+ * port, or — for a writer whose app cannot run on its own — its work shown
+ * at the Mate's dev address. Either way nothing of it is in the Mate's code.
+ */
+export function crewTryWorkLine(mateName: string, where: "own" | "dev"): string {
+  return where === "own"
+    ? `Opens its copy of the app. Nothing is in ${mateName}'s code yet.`
+    : `Opens it at ${mateName}'s dev address. Nothing is in ${mateName}'s code yet.`;
+}
+
+/** A finished crew task's result row, beside *Review*: its work tried before it lands. */
+export const CREW_TRY_IT_WORD = "Try it";
+
+/** A refused press of a crewmate's menu, as its toast is titled. */
+export function crewMenuFailureWord(press: "try" | "stop" | "clear", name: string): string {
+  switch (press) {
+    case "try":
+      return `Couldn't open ${name}'s work`;
+    case "stop":
+      return `Couldn't stop ${name}'s app`;
+    case "clear":
+      return `Couldn't clear ${name}'s conversation`;
+  }
+}
 
 /** What a crewmate runs on (PRD §2.3 *Runs on*), its login's defaults left out. */
 export function crewRunsOnWord(runsOn: {

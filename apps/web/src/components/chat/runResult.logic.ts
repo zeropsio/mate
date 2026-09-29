@@ -65,6 +65,8 @@ export interface ResultServiceNow {
 export interface ResultTask {
   readonly id: string;
   readonly state: string;
+  /** The crewmate whose task it is. */
+  readonly owner: string;
 }
 
 /** What is true now outside the run; each undefined while unread. */
@@ -144,6 +146,11 @@ export interface ResultRow {
   /** Where it runs, opened from the row's end. */
   readonly url: string | null;
   readonly action: ResultAction | null;
+  /**
+   * *Try it* beside *Review*: a crew task ready to land, its crewmate's work
+   * tried before it lands (`useCrewTry`). Absent on every other row.
+   */
+  readonly tryIt?: { readonly environmentId: EnvironmentId; readonly handle: string };
 }
 
 /** One page the run checked, with every take of it and how the last of them ended. */
@@ -497,6 +504,9 @@ function taskRow(outcome: OutcomeModel, facts: ResultFacts): ResultRow | null {
       kind: "review",
       target: { kind: "crew-task", environmentId: crew.environmentId, taskId: now.id },
     },
+    ...(now.state === "ready"
+      ? { tryIt: { environmentId: crew.environmentId, handle: now.owner } }
+      : {}),
   };
 }
 

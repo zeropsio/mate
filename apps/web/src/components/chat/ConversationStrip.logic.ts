@@ -1,17 +1,26 @@
 /**
- * The conversation strip: every conversation a Mate's page holds, one line
- * under its header — the Mate's chats, then its crew.
+ * The top of a conversation, one line (the owner, 2026-09-29): the Mate
+ * leads it, then — only for a Mate with a crew — a divider and the crew's
+ * faces. The conversation on screen stands on the menu's selected band: the
+ * Mate while its own chat is open, else the crewmate whose chat it is, as a
+ * pill with its name. Everything else is a face that opens its chat, and
+ * says on hover who it is.
  *
- * A Mate is one agent with several chats over one tree. The main chat is the
- * one `resolvePrimaryConversation` answers — the pinned one once there are
- * two — so the sidebar row, the index landing and every other caller keep
- * opening it. Everything here is read off the thread shells and the one
- * status resolver; nothing decides a status of its own (R5). An entry's face
- * carries its state, as the menu's faces do: there is no status word on the
- * strip, only in an entry's accessible name.
+ * A Mate is one agent with several chats over one tree; new ones are no
+ * longer started, but a Mate may hold more than one from before. The main
+ * chat is the one `resolvePrimaryConversation` answers — the pinned one once
+ * there are two — so the menu's row, the index landing and every other caller
+ * keep opening it. Everything here is read off the thread shells, the crew's
+ * view and the one status resolver; nothing decides a status of its own
+ * (R5). A face carries its state, as the menu's faces do: no status word
+ * stands on the line, only in a face's accessible name.
  */
 import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
-import { crewFaceWord } from "@t3tools/client-runtime/zerops/crew/phrases";
+import {
+  crewJobSentence,
+  crewmateRoleWords,
+  mateOwnChatWord,
+} from "@t3tools/client-runtime/zerops/crew/phrases";
 import { statusLabel } from "@t3tools/client-runtime/zerops/statusPresentation";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
@@ -31,16 +40,11 @@ function resolveChat(thread: ThreadStatusInput, lastVisitedAt: string | undefine
   return resolveThreadStatus(lastVisitedAt === undefined ? thread : { ...thread, lastVisitedAt });
 }
 
-/**
- * What a chat is doing, as the one phrase producer words it: said in its
- * entry's accessible name, while its face shows it. Null for a chat with
- * nothing going on.
- */
-export function chatStatus(
-  thread: ThreadStatusInput,
-  lastVisitedAt: string | undefined,
-): string | null {
-  return statusLabel(resolveChat(thread, lastVisitedAt).kind);
+function lastVisitOf(
+  thread: Pick<EnvironmentThreadShell, "environmentId" | "id">,
+  lastVisitedAtById: Readonly<Record<string, string>>,
+): string | undefined {
+  return lastVisitedAtById[scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))];
 }
 
 function createdAtOf(thread: Pick<EnvironmentThreadShell, "createdAt">): number {
@@ -50,7 +54,7 @@ function createdAtOf(thread: Pick<EnvironmentThreadShell, "createdAt">): number 
 
 /**
  * One Mate's live chats: the main chat first, then the others in the order
- * they were started — a strip that reshuffled on every message would move the
+ * they were started — a list that reshuffled on every message would move the
  * chat under the pointer.
  */
 export function mateChats(
@@ -65,23 +69,10 @@ export function mateChats(
 }
 
 /**
- * The chat to pin as main when a second one is started, or null when nothing
- * needs writing: a chat is pinned already, or there is none. Pinning is what
- * keeps the first chat main — every caller of `resolvePrimaryConversation`
- * keeps opening it rather than whichever chat was spoken in last.
- */
-export function mainChatToPin(threads: ReadonlyArray<EnvironmentThreadShell>): ThreadId | null {
-  const live = threads.filter((thread) => thread.archivedAt === null);
-  if (live.some((thread) => thread.pinnedAt != null)) return null;
-  return resolvePrimaryConversation(live).primary?.id ?? null;
-}
-
-/**
  * The chat to pin when a new one is first sent, or null. *Archive and start
- * fresh* in the main chat archives it and its pin goes with it; the chat that takes its
- * place is the new main one, so its first send takes the pin. That is the one
- * moment other chats are open and none of them is main — a second chat
- * started from the strip pins the main chat before it exists.
+ * fresh* in the main chat archives it and its pin goes with it; the chat that
+ * takes its place is the new main one, so its first send takes the pin. That
+ * is the one moment other chats are open and none of them is main.
  */
 export function replacementChatToPin(
   threads: ReadonlyArray<EnvironmentThreadShell>,
@@ -92,205 +83,282 @@ export function replacementChatToPin(
   return sentThreadId;
 }
 
-/**
- * One entry in the strip. Typed rather than rendered so every group — the
- * Mate's chats, its crew — brings its entries in one shape: a face in its tint
- * wearing its state, a name, and the thread a click opens.
- */
-export interface ConversationStripEntry {
-  readonly key: string;
-  /** The thread a click opens; null for a chat being started, which has no thread yet. */
+/** The Mate, as it leads the line. */
+export interface LineMate {
+  readonly name: string;
+  readonly tint: MateTintId;
+  /** Its face in the chat of its own on screen, else in its main chat. */
+  readonly face: MateMarkState;
+  /** One of its own chats is on screen — or one being started: it stands on the band. */
+  readonly open: boolean;
+  /** The chat a press opens while another is on screen: its main chat; `null` while it has none. */
   readonly threadId: ThreadId | null;
-  /** The name it goes by: the Mate's for its main chat, a chat's title, a crewmate's name. */
-  readonly label: string;
-  readonly face: { readonly tint: MateTintId; readonly state: MateMarkState };
-  /** The resolver's word for what it is doing, for its accessible name; null at rest. */
-  readonly status: string | null;
   /**
-   * The crew's lead, where its name does not say so already: its role, said
-   * on hover and in its accessible name — *Ada, the lead*, as the menu's
-   * crew line says it. Its place, first in the crew, says it too.
+   * On hover: what its chat on screen is about, or — while a crewmate's chat
+   * is on screen — that a press opens its own; `null` for a chat nobody has
+   * spoken into yet.
    */
-  readonly role?: string;
-  readonly current: boolean;
-  /**
-   * `open` closes (archives) it; `busy` is a chat mid-turn, which archiving
-   * refuses, its close held. `none` has no close at all: the main chat — it
-   * is not closed from under the others, and *Make main* on another is the
-   * way to close it — the chat being started, and every crewmate.
-   */
-  readonly close: "open" | "busy" | "none";
-  /** Whether *Make main* applies: every chat but the main one. */
-  readonly canMakeMain: boolean;
+  readonly tooltip: string | null;
 }
 
-/** A labelled run of entries; a further group stands apart from the one before it. */
-export interface ConversationStripGroup {
-  readonly id: string;
-  /** The group's accessible name. */
-  readonly label: string;
-  readonly entries: ReadonlyArray<ConversationStripEntry>;
-}
-
-/**
- * The chats group: every chat wears the Mate's face in its own state — in a
- * second chat, what the Mate does there — the main chat under the Mate's
- * name, every other chat under its title.
- */
-export function chatEntries(input: {
-  readonly chats: ReadonlyArray<EnvironmentThreadShell>;
-  readonly currentThreadId: ThreadId | null;
-  /** The person is on a chat not sent yet — a draft beside the Mate's chats. */
-  readonly startingChat: boolean;
+export function lineMate(input: {
   readonly mate: { readonly name: string; readonly tint: MateTintId; readonly connected: boolean };
+  /** The Mate's chats, main first (`mateChats`). */
+  readonly chats: ReadonlyArray<EnvironmentThreadShell>;
+  /** The chat on screen; `null` for one being started. */
+  readonly currentThreadId: ThreadId | null;
+  /** The chat on screen is a crewmate's. */
+  readonly crewChatOpen: boolean;
+  /** What the chat on screen is about, when it is one of the Mate's own. */
+  readonly subject: string | null;
   readonly lastVisitedAtById: Readonly<Record<string, string>>;
-}): ReadonlyArray<ConversationStripEntry> {
-  const faceOf = (status: ThreadStatus | null) => ({
-    tint: input.mate.tint,
-    state: mateFaceFor(
-      input.mate.connected,
+}): LineMate {
+  const { mate, chats, currentThreadId } = input;
+  const open = !input.crewChatOpen;
+  const shown = open ? chats.find((chat) => chat.id === currentThreadId) : chats[0];
+  const status =
+    shown === undefined ? null : resolveChat(shown, lastVisitOf(shown, input.lastVisitedAtById));
+  return {
+    name: mate.name,
+    tint: mate.tint,
+    face: mateFaceFor(
+      mate.connected,
       status === null ? undefined : { face: mateMarkStateForThreadStatus(status.kind) },
     ),
-  });
-  const chats = input.chats.map((chat, index): ConversationStripEntry => {
-    const resolved = resolveChat(
-      chat,
-      input.lastVisitedAtById[scopedThreadKey(scopeThreadRef(chat.environmentId, chat.id))],
-    );
-    const common = {
-      key: chat.id,
+    open,
+    threadId: chats[0]?.id ?? null,
+    tooltip: open ? input.subject : mateOwnChatWord(mate.name),
+  };
+}
+
+/**
+ * A Mate's chats, for the ⌄ after its name — only while it holds more than
+ * one (new chats are no longer started): the main one first and marked, the
+ * one on screen checked, and *Close this chat* for one on screen that is not
+ * the main one. Closing waits while the chat is mid-turn: archiving refuses it.
+ */
+export interface LineChats {
+  readonly chats: ReadonlyArray<{
+    readonly threadId: ThreadId;
+    readonly title: string;
+    readonly main: boolean;
+    readonly open: boolean;
+  }>;
+  readonly close: {
+    readonly threadId: ThreadId;
+    readonly title: string;
+    readonly busy: boolean;
+  } | null;
+}
+
+export function lineChats(
+  chats: ReadonlyArray<EnvironmentThreadShell>,
+  currentThreadId: ThreadId | null,
+): LineChats | null {
+  if (chats.length < 2) return null;
+  const open = chats.findIndex((chat) => chat.id === currentThreadId);
+  const closing = open > 0 ? chats[open] : undefined;
+  return {
+    chats: chats.map((chat, index) => ({
       threadId: chat.id,
-      face: faceOf(resolved),
-      status: statusLabel(resolved.kind),
-      current: chat.id === input.currentThreadId,
-    };
-    if (index > 0) {
-      const busy = chat.session?.status === "running" && chat.session.activeTurnId != null;
-      return { ...common, label: chat.title, close: busy ? "busy" : "open", canMakeMain: true };
-    }
-    return { ...common, label: input.mate.name, close: "none", canMakeMain: false };
-  });
-  if (!input.startingChat) return chats;
+      title: chat.title,
+      main: index === 0,
+      open: index === open,
+    })),
+    close:
+      closing === undefined
+        ? null
+        : {
+            threadId: closing.id,
+            title: closing.title,
+            busy: closing.session?.status === "running" && closing.session.activeTurnId != null,
+          },
+  };
+}
+
+/** One crewmate on the line: a face that opens its chat, or — its chat on screen — its pill. */
+export interface LineCrewmate {
+  readonly handle: string;
+  readonly name: string;
+  /** Its tint; `null` for the crewmate on screen before its crew is read or remembered. */
+  readonly tint: MateTintId | null;
+  readonly face: MateMarkState;
+  readonly lead: boolean;
+  /** Its chat is the one on screen: a pill with its name and ⌄, on the band. */
+  readonly open: boolean;
+  /**
+   * Read off the crew's feed: its face wears its state and its menu has what
+   * to offer. A face drawn from memory, or from its chat alone, stands at rest.
+   */
+  readonly known: boolean;
+  /** The chat a press opens; `null` before its first stint, or while drawn from memory. */
+  readonly threadId: ThreadId | null;
+  /** On hover, after its name: who it is (`crewmateRoleWords`). */
+  readonly role: string;
+  /** On hover, under that: its job's first sentence; `null` for the lead, or unread. */
+  readonly job: string | null;
+  /** The resolver's word, for its accessible name; `null` at rest. */
+  readonly status: string | null;
+}
+
+/** A crew as this browser last read it (`menuMemory.ts`): its faces, the lead first. */
+export interface RememberedLineCrew {
+  readonly faces: ReadonlyArray<{
+    readonly handle: string;
+    readonly displayName: string;
+    readonly tint: MateTintId;
+    readonly lead: boolean;
+  }>;
+}
+
+/**
+ * The crew on the line, the lead first — or `null` for a Mate with no crew,
+ * which draws no divider and no faces. Read from the crew's feed once it is
+ * applied; until the feed answers, from what this browser last read of it,
+ * each face at rest, so a reload paints the line it keeps; and in a
+ * crewmate's chat with neither, that crewmate alone, named as its chat was
+ * (its title is its name when its stint began). A crewmate is one person
+ * across its conversations: it is on screen in any of its stints, a retired
+ * one too, and a press opens the stint it talks in now.
+ */
+export function lineCrew(input: {
+  readonly view: CrewView<EnvironmentThreadShell> | null;
+  readonly remembered: RememberedLineCrew | undefined;
+  /** The chat on screen, when it is a crewmate's: whose, and its title. */
+  readonly crewChat: { readonly handle: string; readonly title: string } | null;
+  readonly mateName: string;
+  /** The Mate's container is connected; its crew sleeps with it otherwise. */
+  readonly connected: boolean;
+  readonly lastVisitedAtById: Readonly<Record<string, string>>;
+}): ReadonlyArray<LineCrewmate> | null {
+  const { view, crewChat, mateName } = input;
+  const opens = (handle: string) => crewChat?.handle === handle;
+  if (view !== null && view.status === "applied" && view.crewmates.length > 0) {
+    return view.crewmates.map(({ crewmate, shell }): LineCrewmate => {
+      const status =
+        shell === null ? null : resolveChat(shell, lastVisitOf(shell, input.lastVisitedAtById));
+      const lead = crewmate.kind === "lead";
+      return {
+        handle: crewmate.handle,
+        name: crewmate.displayName,
+        tint: crewmate.tint,
+        face: mateFaceFor(
+          input.connected,
+          status === null ? undefined : { face: mateMarkStateForThreadStatus(status.kind) },
+        ),
+        lead,
+        open: opens(crewmate.handle),
+        known: true,
+        threadId: crewmate.currentThreadId,
+        role: crewmateRoleWords(mateName, lead),
+        job: lead ? null : crewJobSentence(crewmate.jobFirstLine) || null,
+        status: status === null ? null : statusLabel(status.kind),
+      };
+    });
+  }
+  // The feed has answered with no crew: none is drawn, save the chat on screen's own.
+  const read = view !== null;
+  const faces = read ? [] : (input.remembered?.faces ?? []);
+  const atRest = mateFaceFor(input.connected, undefined);
+  const drawn = faces.map((face): LineCrewmate => ({
+    handle: face.handle,
+    name: face.displayName,
+    tint: face.tint,
+    face: atRest,
+    lead: face.lead,
+    open: opens(face.handle),
+    known: false,
+    threadId: null,
+    role: crewmateRoleWords(mateName, face.lead),
+    job: null,
+    status: null,
+  }));
+  if (crewChat === null || drawn.some((face) => face.open)) {
+    return drawn.length === 0 ? null : drawn;
+  }
   return [
-    ...chats,
+    ...drawn,
     {
-      key: "starting",
+      handle: crewChat.handle,
+      name: crewChat.title,
+      tint: null,
+      face: atRest,
+      lead: false,
+      open: true,
+      known: false,
       threadId: null,
-      label: "New chat",
-      face: faceOf(null),
+      role: crewmateRoleWords(mateName, false),
+      job: null,
       status: null,
-      current: true,
-      close: "none",
-      canMakeMain: false,
     },
   ];
 }
 
-/** The lead's role, where its name does not carry the word already. */
-function leadRole(name: string): string | undefined {
-  return /\blead\b/iu.test(name) ? undefined : crewFaceWord(name, true);
-}
-
-/**
- * The crew group (PRD §4.2): one entry per crewmate, the lead first — its face
- * in its own tint wearing its current stint's state, and its name, as the
- * menu's crew line and its own header name it; the `@handle` is what the
- * composer types, not what the strip reads. A crewmate is one person across
- * its conversations, so its entry is the current one on any of its stints, a
- * retired one too, and a click opens the stint it talks in now. Crew entries
- * have no close.
- */
-export function crewEntries(input: {
-  readonly view: CrewView<EnvironmentThreadShell> | null;
-  readonly currentThreadId: ThreadId | null;
-  /** The Mate's container is connected; its crew sleeps with it otherwise. */
-  readonly connected: boolean;
-  readonly lastVisitedAtById: Readonly<Record<string, string>>;
-}): ConversationStripGroup {
-  const { view } = input;
-  const onScreen =
-    view === null || input.currentThreadId === null
-      ? undefined
-      : view.stints.get(input.currentThreadId)?.handle;
-  const entries =
-    view === null || view.status !== "applied"
-      ? []
-      : view.crewmates.map(({ crewmate, shell }): ConversationStripEntry => {
-          const resolved =
-            shell === null
-              ? null
-              : resolveChat(
-                  shell,
-                  input.lastVisitedAtById[
-                    scopedThreadKey(scopeThreadRef(shell.environmentId, shell.id))
-                  ],
-                );
-          const role = crewmate.kind === "lead" ? leadRole(crewmate.displayName) : undefined;
-          return {
-            key: `crew:${crewmate.handle}`,
-            threadId: crewmate.currentThreadId,
-            label: crewmate.displayName,
-            ...(role === undefined ? {} : { role }),
-            face: {
-              tint: crewmate.tint,
-              state: mateFaceFor(
-                input.connected,
-                resolved === null
-                  ? undefined
-                  : { face: mateMarkStateForThreadStatus(resolved.kind) },
-              ),
-            },
-            status: resolved === null ? null : statusLabel(resolved.kind),
-            current: onScreen === crewmate.handle,
-            close: "none",
-            canMakeMain: false,
-          };
-        });
-  return { id: "crew", label: "Crew", entries };
-}
-
-/**
- * An entry's name in ink or muted: in ink where it is the conversation on
- * screen, or where it has something for the person — a question or a turn
- * they have not seen, which its face says too. Everything else is muted:
- * working, idle and asleep are the face's alone.
- */
-export function entryInk(entry: Pick<ConversationStripEntry, "current" | "face">): "ink" | "muted" {
-  return entry.current || entry.face.state === "needs" || entry.face.state === "done"
-    ? "ink"
-    : "muted";
-}
-
-/** An entry's accessible name: its name, or the lead's role, then what it is doing. */
-export function entryAccessibleName(
-  entry: Pick<ConversationStripEntry, "label" | "role" | "status">,
+/** A face's accessible name: who it is, then what it is doing. */
+export function crewmateAccessibleName(
+  crewmate: Pick<LineCrewmate, "name" | "role" | "status">,
 ): string {
-  const name = entry.role ?? entry.label;
-  return entry.status === null ? name : `${name}, ${entry.status}`;
+  const who = `${crewmate.name}${crewmate.role}`;
+  return crewmate.status === null ? who : `${who}, ${crewmate.status}`;
+}
+
+/** The room the crew has on the line, measured off the page. */
+export interface CrewRoom {
+  /** What the crew's group may take: the line less the Mate and the divider. */
+  readonly width: number;
+  /** Each crewmate's drawn width, by handle. */
+  readonly widths: ReadonlyMap<string, number>;
+  /** Between two neighbours. */
+  readonly gap: number;
+  /** *N more*, with its gap: room it takes once anything folds. */
+  readonly more: number;
 }
 
 /**
- * Whether the strip is drawn at all. A Mate with one chat and nothing
- * beside it looks exactly as it did before chats existed: the row appears
- * with a second chat, or with a group of its own to show.
+ * Folds the crew's tail into *N more* when the line cannot hold every face
+ * at its drawn width. The crewmate on screen never folds — the face before it
+ * goes instead — so the line always shows where you are; the Mate is not the
+ * crew's and never folds either. Where even the crewmate on screen and
+ * *N more* do not fit side by side — a phone — *N more* gives way and the
+ * crewmate's name narrows; the others are a face away in the menu's crew
+ * line. Unmeasured (`null`), nothing folds.
  */
-export function stripShown(
-  chats: ReadonlyArray<ConversationStripEntry>,
-  extraGroups: ReadonlyArray<ConversationStripGroup>,
-): boolean {
-  return chats.length > 1 || extraGroups.some((group) => group.entries.length > 0);
-}
-
-/**
- * Where the strip is not drawn, the one way to a second chat: a single New
- * chat button in the header, for a Mate whose one chat is on screen. Not for a
- * first chat still being written — that one is the Mate's only conversation.
- */
-export function loneChatNewChatShown(
-  chats: ReadonlyArray<ConversationStripEntry>,
-  extraGroups: ReadonlyArray<ConversationStripGroup>,
-): boolean {
-  return !stripShown(chats, extraGroups) && chats.length === 1 && chats[0]!.threadId !== null;
+export function foldCrew(
+  crew: ReadonlyArray<LineCrewmate>,
+  room: CrewRoom | null,
+): {
+  readonly visible: ReadonlyArray<LineCrewmate>;
+  readonly folded: ReadonlyArray<LineCrewmate>;
+  /** *N more* is drawn: something folded, and it fits. */
+  readonly more: boolean;
+} {
+  const used = (kept: ReadonlyArray<LineCrewmate>, more: boolean): number =>
+    kept.reduce((sum, entry) => sum + (room?.widths.get(entry.handle) ?? 0), 0) +
+    (room?.gap ?? 0) * Math.max(0, kept.length - 1) +
+    (more ? (room?.more ?? 0) : 0);
+  if (room === null || used(crew, false) <= room.width) {
+    return { visible: crew, folded: [], more: false };
+  }
+  const open = crew.find((entry) => entry.open);
+  const keptOf = (count: number): ReadonlyArray<LineCrewmate> => {
+    const head = crew.slice(0, count);
+    if (open === undefined || head.includes(open)) return head;
+    return [...head.slice(0, Math.max(0, count - 1)), open];
+  };
+  let kept = keptOf(open === undefined ? 0 : 1);
+  for (let count = crew.length - 1; count > 0; count -= 1) {
+    const candidate = keptOf(count);
+    if (used(candidate, true) <= room.width) {
+      kept = candidate;
+      break;
+    }
+  }
+  const shown = new Set(kept);
+  return {
+    visible: crew.filter((entry) => shown.has(entry)),
+    folded: crew.filter((entry) => !shown.has(entry)),
+    more: used(kept, true) <= room.width,
+  };
 }
 
 /**
@@ -313,69 +381,4 @@ export function alsoWorkingLine(input: {
   if (index < 0) return null;
   const where = index === 0 ? "your main chat" : `‘${input.chats[index]!.title}’`;
   return `${input.mateName} is also working in ${where} — both change the same files.`;
-}
-
-/** The room the strip's row has, measured off the page. */
-export interface StripRoom {
-  /** The row's own width. */
-  readonly width: number;
-  /** Each entry's drawn width, by key. */
-  readonly widths: ReadonlyMap<string, number>;
-  /** Between two neighbours in the row. */
-  readonly gap: number;
-  /** Before each group after the first, on top of the gap. */
-  readonly groupGap: number;
-  /** What stands in the row whatever folds — New chat — with its gap. */
-  readonly fixed: number;
-  /** The More button, with its gap: room it takes once anything folds. */
-  readonly more: number;
-}
-
-/**
- * Folds the strip's tail into *More* when the row cannot hold every entry at
- * its drawn width — *More* takes room of its own. The entry you are on never
- * folds: the one before it goes instead, so the strip always shows where you
- * are. At least one entry stays. Unmeasured (`null`), nothing folds.
- */
-export function foldStrip(
-  groups: ReadonlyArray<ConversationStripGroup>,
-  room: StripRoom | null,
-): {
-  readonly visible: ReadonlyArray<ConversationStripGroup>;
-  readonly folded: ReadonlyArray<ConversationStripEntry>;
-} {
-  const all = groups.flatMap((group) => group.entries);
-  const used = (kept: ReadonlyArray<ConversationStripEntry>, more: boolean): number => {
-    const drawn = groups.filter((group) => group.entries.some((entry) => kept.includes(entry)));
-    return (
-      kept.reduce((sum, entry) => sum + (room?.widths.get(entry.key) ?? 0), 0) +
-      (room?.gap ?? 0) * Math.max(0, kept.length - 1) +
-      (room?.groupGap ?? 0) * Math.max(0, drawn.length - 1) +
-      (room?.fixed ?? 0) +
-      (more ? (room?.more ?? 0) : 0)
-    );
-  };
-  if (room === null || used(all, false) <= room.width) return { visible: groups, folded: [] };
-  const current = all.find((entry) => entry.current);
-  const keptOf = (count: number): ReadonlyArray<ConversationStripEntry> => {
-    const head = all.slice(0, count);
-    if (current === undefined || head.includes(current)) return head;
-    return [...head.slice(0, count - 1), current];
-  };
-  let kept = keptOf(1);
-  for (let count = all.length - 1; count > 1; count -= 1) {
-    const candidate = keptOf(count);
-    if (used(candidate, true) <= room.width) {
-      kept = candidate;
-      break;
-    }
-  }
-  const shown = new Set(kept);
-  return {
-    visible: groups.map((group) => ({
-      ...group,
-      entries: group.entries.filter((entry) => shown.has(entry)),
-    })),
-    folded: all.filter((entry) => !shown.has(entry)),
-  };
 }

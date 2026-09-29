@@ -139,7 +139,7 @@ function facts(input: {
             tasks: new Map(
               Object.entries(input.tasks).map(([number, state]) => [
                 Number(number),
-                { id: `task-${number}`, state },
+                { id: `task-${number}`, state, owner: "rules" },
               ]),
             ),
           },
@@ -645,6 +645,28 @@ describe("resultRows", () => {
       kind: "review",
       target: { kind: "crew-task", environmentId: CREW_HOME, taskId: "task-12" },
     });
+  });
+
+  // Try it (the owner, 2026-09-29): its crewmate's work, tried before it lands.
+  it.each([
+    { state: "ready", tryIt: { environmentId: CREW_HOME, handle: "rules" } },
+    { state: "waiting-on-you", tryIt: undefined },
+  ])(
+    "offers Try it beside Review only while a crew task is ready to land: $state",
+    ({ state, tryIt }) => {
+      const [task] = resultRows(
+        outcome({ crewTask: { number: 12, title: "Camera rig" } }),
+        facts({ tasks: { 12: state } }),
+      );
+      expect(task?.action?.kind).toBe("review");
+      expect(task?.tryIt).toEqual(tryIt);
+    },
+  );
+
+  it("offers Try it on no other row", () => {
+    expect(
+      resultRows(NOVA, facts({ open: [STATUS_PAGE] })).some((row) => row.tryIt !== undefined),
+    ).toBe(false);
   });
 
   // S6: every problem offers its fix, written for the Mate — what failed,
