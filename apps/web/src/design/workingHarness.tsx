@@ -22,7 +22,7 @@ import * as Stream from "effect/Stream";
 import { ConversationAfterWork, ConversationWorking } from "~/components/chat/ConversationWorking";
 import type { ConversationSpeaker } from "~/components/chat/ConversationRows";
 import {
-  activityPills,
+  activityCounts,
   splitBatchDeploy,
   type OutcomeModel,
 } from "~/components/chat/conversation.logic";
@@ -707,10 +707,10 @@ function State({
   );
 }
 
-// Its edits are the files pill's: the report's own diff counts them.
+// What its calls came to: the worked line's effort, never a row.
 const REPORT_WITH_ACTIVITY: OutcomeModel = {
   ...REPORT,
-  activity: activityPills(
+  activity: activityCounts(
     [
       {
         id: "c1",

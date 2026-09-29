@@ -19,6 +19,7 @@ import {
   browserCheckPage,
   browserCheckUrl,
   browserTakeState,
+  type ActivityKind,
   type OutcomeModel,
   type OutcomeService,
 } from "./conversation.logic";
@@ -306,12 +307,45 @@ export function resultRows(outcome: OutcomeModel): ResultRow[] {
     .map(({ row }) => row);
 }
 
+/** Each kind of call, as the effort counts it: "2 commands", "the workflow checked". */
+const EFFORT_WORDS: Readonly<Record<ActivityKind, (count: number) => string>> = {
+  edit: (count) => (count === 1 ? "1 file edited" : `${count} files edited`),
+  command: (count) => (count === 1 ? "1 command" : `${count} commands`),
+  read: (count) => (count === 1 ? "1 file read" : `${count} files read`),
+  "code-search": (count) => (count === 1 ? "1 code search" : `${count} code searches`),
+  search: (count) => (count === 1 ? "1 web search" : `${count} web searches`),
+  workflow: () => "the workflow checked",
+  guides: () => "the Zerops guides read",
+  tool: (count) => (count === 1 ? "1 tool used" : `${count} tools used`),
+  helpers: (count) => (count === 1 ? "1 helper" : `${count} helpers`),
+};
+
+/** "#2", "#2 and #3", "#2, #3 and #5". */
+function numbersWords(numbers: ReadonlyArray<number>): string {
+  const said = numbers.map((number) => `#${number}`);
+  return said.length <= 1 ? (said[0] ?? "") : `${said.slice(0, -1).join(", ")} and ${said.at(-1)!}`;
+}
+
 /**
  * What a finished run leaves in its card's foot, beside its time: the effort,
  * counting only what its result doesn't already show as a row — "2 commands ·
- * 1 file read". Edits, checks and deploys are result rows, so they aren't
- * counted twice. Null while there is nothing left to count.
+ * 1 file read" (K6). Checks and deploys are result rows and never calls; its
+ * edits are its change's whenever it has one (the files it changed, a change
+ * that landed), and are counted only when nothing else holds them. A change
+ * of its that was merged is said once, first: "merged as #2 · 2 commands".
+ * Null while there is nothing left to count.
  */
-export function runEffortWords(_outcome: OutcomeModel | null | undefined): string | null {
-  return null;
+export function runEffortWords(outcome: OutcomeModel | null | undefined): string | null {
+  if (outcome === null || outcome === undefined) return null;
+  const merged = outcome.landed.map((change) => change.number);
+  const changed = outcome.files !== null || merged.length > 0;
+  const parts = [
+    ...(merged.length > 0 ? [`merged as ${numbersWords(merged)}`] : []),
+    ...outcome.activity.flatMap((activity) =>
+      activity.count <= 0 || (activity.kind === "edit" && changed)
+        ? []
+        : [EFFORT_WORDS[activity.kind](activity.count)],
+    ),
+  ];
+  return parts.length === 0 ? null : parts.join(" · ");
 }

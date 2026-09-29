@@ -59,7 +59,7 @@ const OUTCOME: OutcomeModel = {
   checks: { count: 1, views: 1, failures: 0, takes: [take("op:status")] },
   created: [],
   notDone: [],
-  activity: [{ kind: "command", count: 2, words: "Ran 2 commands", entries: [] }],
+  activity: [{ kind: "command", count: 2 }],
 };
 
 function render(props: Partial<Parameters<typeof TurnReport>[0]> = {}): ReactTestRenderer {

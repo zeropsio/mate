@@ -877,13 +877,25 @@ export function noteLine(text: string): string {
 
 type ActivityAction = "edit" | "command" | "read" | "code-search" | "search" | "other";
 
-const ACTIVITY_ORDER: ReadonlyArray<ActivityAction> = [
+/** What a run's calls did, by kind: the effort its worked line counts. */
+export type ActivityKind =
+  | Exclude<ActivityAction, "other">
+  | "workflow"
+  | "guides"
+  | "tool"
+  | "helpers";
+
+/** One fixed order, so the effort's words never reorder. */
+const ACTIVITY_ORDER: ReadonlyArray<ActivityKind> = [
   "edit",
   "command",
   "read",
   "code-search",
   "search",
-  "other",
+  "workflow",
+  "guides",
+  "tool",
+  "helpers",
 ];
 
 /** A call a runtime names only in its detail, by what it did. */
@@ -925,133 +937,51 @@ function activityAction(entry: WorkLogEntry): ActivityAction {
   return "other";
 }
 
-function times(count: number, one: string, many: string): string {
-  return count === 1 ? one : many.replace("#", String(count));
-}
+/** Zerops tools with no card of their own, counted by what they did. */
+const ZEROPS_TOOL_KIND: Readonly<Record<string, ActivityKind>> = {
+  zerops_workflow: "workflow",
+  zerops_knowledge: "guides",
+};
 
-/** What a run did, counted by kind: a pill of its result each. */
+/** What a run's calls came to, one kind: "2 commands" is `{ kind: "command", count: 2 }`. */
 export interface OutcomeActivity {
-  readonly kind: ActivityAction | "helpers";
+  readonly kind: ActivityKind;
   readonly count: number;
-  /** "Edited 7 files", "Ran 5 commands", "Started 11 helpers". */
-  readonly words: string;
-  /** The calls it counts, in order, for its detail. */
-  readonly entries: ReadonlyArray<WorkLogEntry>;
 }
 
 /**
- * What a run's calls came to, a pill per kind, in one fixed order so a
- * result's pills never reorder: "Edited 2 files", "Ran 3 commands", "Read 4
- * files" — then the helpers it started, a batch or a workflow counted by its
- * helpers.
+ * What a run's calls came to, counted by kind in one fixed order — the files
+ * it edited once each, however often; a Zerops tool by what it did; the
+ * helpers it started, a batch or a workflow by its helpers. The worked line
+ * says it (`runEffortWords`), never a row of the result.
  */
-export function activityPills(
+export function activityCounts(
   calls: ReadonlyArray<WorkLogEntry>,
   launches: ReadonlyArray<WorkLogEntry> = [],
 ): OutcomeActivity[] {
-  const byAction = new Map<ActivityAction, WorkLogEntry[]>();
+  const counts = new Map<ActivityKind, number>();
+  const edited = new Set<string>();
+  let unnamedEdits = 0;
   for (const entry of calls) {
     const action = activityAction(entry);
-    const list = byAction.get(action);
-    if (list) list.push(entry);
-    else byAction.set(action, [entry]);
-  }
-  const pills = ACTIVITY_ORDER.flatMap((action): OutcomeActivity[] => {
-    const list = byAction.get(action);
-    if (!list) return [];
     if (action === "edit") {
-      const files = new Set<string>();
-      let unnamed = 0;
-      for (const entry of list) {
-        if (!entry.changedFiles?.length) unnamed += 1;
-        else for (const file of entry.changedFiles) files.add(file);
-      }
-      const count = files.size + unnamed;
-      return [
-        {
-          kind: action,
-          count,
-          words: times(count, "Edited 1 file", "Edited # files"),
-          entries: list,
-        },
-      ];
+      if (!entry.changedFiles?.length) unnamedEdits += 1;
+      else for (const file of entry.changedFiles) edited.add(file);
+      continue;
     }
-    if (action === "other") return otherToolPills(list);
-    const count = list.length;
-    const words =
-      action === "command"
-        ? times(count, "Ran 1 command", "Ran # commands")
-        : action === "read"
-          ? times(count, "Read 1 file", "Read # files")
-          : action === "code-search"
-            ? times(count, "Searched the code once", "Searched the code # times")
-            : times(count, "Searched the web once", "Searched the web # times");
-    return [{ kind: action, count, words, entries: list }];
-  });
+    const kind = action === "other" ? (ZEROPS_TOOL_KIND[entry.label] ?? "tool") : action;
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  if (edited.size + unnamedEdits > 0) counts.set("edit", edited.size + unnamedEdits);
   const helpers = launches.reduce(
     (sum, entry) => sum + Math.max(1, entry.agentSpawn?.agentTaskIds.length ?? 1),
     0,
   );
-  if (helpers > 0) {
-    pills.push({
-      kind: "helpers",
-      count: helpers,
-      words: times(helpers, "Started 1 helper", "Started # helpers"),
-      entries: launches,
-    });
-  }
-  return pills;
-}
-
-/** Zerops tools with no card of their own, said by what they did. */
-const ZEROPS_TOOL_WORDS: Readonly<Record<string, string>> = {
-  zerops_workflow: "checked the workflow",
-  zerops_knowledge: "read the Zerops guides",
-};
-
-/** A tool call's own name: in its detail for the runtime's calls, its title for a connected tool's. */
-function calledToolName(entry: WorkLogEntry): string | null {
-  const named = namedToolCall(entry);
-  if (named !== null) return named;
-  return entry.itemType === "mcp_tool_call" ? (entry.toolTitle ?? null) : null;
-}
-
-/**
- * Tools no action names, a pill each. A Zerops tool is said by what it did,
- * once however often it ran; the rest in one pill, by name where each call
- * names its tool and at most two tools ran — "Used Workflow", "Used Workflow
- * twice", "Used Workflow and SendMessage" — and counted otherwise.
- */
-function otherToolPills(entries: ReadonlyArray<WorkLogEntry>): OutcomeActivity[] {
-  const byWords = new Map<string, WorkLogEntry[]>();
-  const rest: WorkLogEntry[] = [];
-  for (const entry of entries) {
-    const words = ZEROPS_TOOL_WORDS[entry.label];
-    if (words === undefined) rest.push(entry);
-    else byWords.set(words, [...(byWords.get(words) ?? []), entry]);
-  }
-  if (rest.length > 0) byWords.set(namedToolsClause(rest), rest);
-  return [...byWords].map(([words, list]) => ({
-    kind: "other",
-    count: list.length,
-    words: words.charAt(0).toUpperCase() + words.slice(1),
-    entries: list,
-  }));
-}
-
-function namedToolsClause(entries: ReadonlyArray<WorkLogEntry>): string {
-  const names = entries.map(calledToolName);
-  const distinct = [...new Set(names)];
-  if (names.includes(null) || distinct.length > 2) {
-    return times(entries.length, "used 1 tool", "used # tools");
-  }
-  if (distinct.length === 2) return `used ${distinct[0]} and ${distinct[1]}`;
-  const name = distinct[0]!;
-  return entries.length === 1
-    ? `used ${name}`
-    : entries.length === 2
-      ? `used ${name} twice`
-      : `used ${name} ${entries.length} times`;
+  if (helpers > 0) counts.set("helpers", helpers);
+  return ACTIVITY_ORDER.flatMap((kind) => {
+    const count = counts.get(kind);
+    return count === undefined ? [] : [{ kind, count }];
+  });
 }
 
 /**
@@ -1572,8 +1502,11 @@ export interface OutcomeModel {
   /** The turn it reports on. */
   readonly turnKey: string;
   readonly live: ReadonlyArray<OutcomeService>;
+  /** Changes that landed while it ran: "merged as #54". */
   readonly landed: ReadonlyArray<{
     readonly key: string;
+    readonly repository: string;
+    readonly number: number;
     readonly line: string;
     readonly title: string;
   }>;
@@ -1592,7 +1525,7 @@ export interface OutcomeModel {
   } | null;
   readonly created: ReadonlyArray<string>;
   readonly notDone: ReadonlyArray<OutcomeNotDone>;
-  /** What its calls came to, a pill per kind; its edits are the files pill's where the diff is known. */
+  /** What its calls came to, by kind: the effort its worked line counts (`runEffortWords`). */
   readonly activity: ReadonlyArray<OutcomeActivity>;
 }
 
@@ -1664,7 +1597,7 @@ export function deriveOutcome(input: {
   readonly turn: ConversationTurn;
   readonly landed: ReadonlyArray<ChangeLandedEntry>;
   readonly diff: TurnDiffSummary | null;
-  /** What its calls came to (`activityPills`). */
+  /** What its calls came to (`activityCounts`). */
   readonly activity?: ReadonlyArray<OutcomeActivity>;
 }): OutcomeModel | null {
   const { turn } = input;
@@ -1776,6 +1709,8 @@ export function deriveOutcome(input: {
     live: [...services.values()],
     landed: input.landed.map((entry) => ({
       key: entry.event.key,
+      repository: entry.event.repository,
+      number: entry.event.number,
       line: `${entry.event.repository} #${entry.event.number}`,
       title: entry.event.title,
     })),
@@ -1791,8 +1726,7 @@ export function deriveOutcome(input: {
         : null,
     created,
     notDone,
-    // The files the diff counts are its edits: one pill, not two.
-    activity: (input.activity ?? []).filter((pill) => pill.kind !== "edit" || files === null),
+    activity: input.activity ?? [],
   };
   const empty =
     outcome.activity.length === 0 &&
