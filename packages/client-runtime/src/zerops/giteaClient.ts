@@ -370,6 +370,11 @@ export interface GiteaUser {
 export interface GiteaClientOptions {
   /** Gitea's public origin. */
   readonly origin: string;
+  /**
+   * The origin of this Gitea's broker, where known. A change's pictures are read through it
+   * ({@link GiteaClient.picture}): Gitea itself refuses a browser's preflight of its attachments.
+   */
+  readonly brokerOrigin?: string | undefined;
   /** The access token, or a way to read the current one. */
   readonly token: string | (() => string);
   readonly fetch: typeof globalThis.fetch;
@@ -496,12 +501,14 @@ export interface GiteaClient {
    * A picture this Gitea serves — an attachment of a change, its description's screenshots — read
    * as the person, as bytes a page can show (`URL.createObjectURL`). A private repository's
    * pictures answer nobody without a token, and a page's own `<img>` carries none. Only an address
-   * on this Gitea is read: the token never goes anywhere else.
+   * on this Gitea is read, and the token goes nowhere but there and its broker.
    *
-   * From a browser on another origin this read fails today, as a network error with no status:
-   * the bearer makes it preflight, and Gitea 1.27.2 answers the preflight of `/attachments/{uuid}`
-   * with a 303 to its sign-in, not its CORS headers (the GET itself would carry them); no API
-   * route serves an attachment's bytes (measured 2026-09-29). It reads where no preflight is made.
+   * An attachment (`/attachments/{uuid}`) is read through the broker, where one is known: from a
+   * browser on another origin, Gitea's own read fails as a network error with no status — the
+   * bearer makes it preflight, and Gitea 1.27.2 answers the preflight of `/attachments/{uuid}`
+   * with a 303 to its sign-in, not its CORS headers, and no API route serves an attachment's
+   * bytes (measured 2026-09-29). The broker's `GET /person/attachments/{uuid}` forwards the
+   * person's token to Gitea and answers every origin; it relays raster pictures only.
    */
   picture(url: string): Promise<Blob>;
 
@@ -599,6 +606,25 @@ export const GITEA_REQUEST_DEADLINE_MS = 15_000;
 const PAGE_SIZE = 50;
 /** More pages than any account here has repositories for; a stop, not a target. */
 const MAX_PAGES = 40;
+
+/** An attachment's address on Gitea, as its own editor and its API write it. */
+const ATTACHMENT_PATH =
+  /^\/(?:[^/]+\/[^/]+\/)?attachments\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/u;
+
+/** Where the broker reads an attachment of its Gitea for the person; `undefined` for anything else. */
+function brokeredPicture(url: string, brokerOrigin: string | undefined): string | undefined {
+  if (brokerOrigin === undefined) return undefined;
+  let address: URL;
+  try {
+    address = new URL(url);
+  } catch {
+    return undefined;
+  }
+  const uuid = ATTACHMENT_PATH.exec(address.pathname)?.[1];
+  return uuid === undefined
+    ? undefined
+    : `${brokerOrigin.trim().replace(/\/+$/u, "")}/person/attachments/${uuid}`;
+}
 
 export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
   const base = `${options.origin.trim().replace(/\/+$/u, "")}${API_PREFIX}`;
@@ -909,7 +935,13 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
       }
       return send(
         // A screenshot can run to megabytes: only one that stops arriving ends.
-        { method: "GET", path: "", url, accept: "image/*", deadline: "idle" },
+        {
+          method: "GET",
+          path: "",
+          url: brokeredPicture(url, options.brokerOrigin) ?? url,
+          accept: "image/*",
+          deadline: "idle",
+        },
         async (response, arrived) => {
           if (!response.ok) return fail(response, "hand over the picture");
           return blobOf(response, arrived);

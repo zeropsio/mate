@@ -13,22 +13,36 @@ import type { GiteaPictureSource } from "~/zerops/useGiteaPicture";
 import { ReviewDescription } from "./ReviewDescription";
 
 // The chat's renderer, down to what the description hands it: its text, and its pictures drawn by
-// the review.
+// the review — a Markdown picture, or an <img> with the width and height rehype hands over as
+// words.
 vi.mock("~/components/ChatMarkdown", async () => {
   const React = await import("react");
-  const MarkdownPictureContext = React.createContext<
-    | ((picture: { uri: string; alt: string; width: undefined; height: undefined }) => ReactNode)
-    | null
-  >(null);
+  type Picture = {
+    uri: string;
+    alt: string;
+    width: string | undefined;
+    height: string | undefined;
+  };
+  const MarkdownPictureContext = React.createContext<((picture: Picture) => ReactNode) | null>(
+    null,
+  );
   function ChatMarkdown({ text }: { readonly text: string }) {
     const draw = React.use(MarkdownPictureContext);
-    const pictures = [...text.matchAll(/!\[([^\]]*)\]\(([^)]+)\)/gu)];
+    const pictures: Array<Picture> = [
+      ...[...text.matchAll(/!\[([^\]]*)\]\(([^)]+)\)/gu)].map(([, alt = "", uri = ""]) => ({
+        uri,
+        alt,
+        width: undefined,
+        height: undefined,
+      })),
+      ...[...text.matchAll(/<img alt="([^"]*)" width="(\d+)" height="(\d+)" src="([^"]+)">/gu)].map(
+        ([, alt = "", width, height, uri = ""]) => ({ uri, alt, width, height }),
+      ),
+    ];
     return (
       <div data-markdown={text}>
-        {pictures.map(([, alt = "", uri = ""]) => (
-          <React.Fragment key={uri}>
-            {draw?.({ uri, alt, width: undefined, height: undefined })}
-          </React.Fragment>
+        {pictures.map((picture) => (
+          <React.Fragment key={picture.uri}>{draw?.(picture)}</React.Fragment>
         ))}
       </div>
     );
@@ -112,6 +126,20 @@ describe("its pictures", () => {
     expect(markup).not.toContain("rv-pic");
   });
 
+  it("hold the box their description gives from the first paint, their line in it", () => {
+    const markup = html({
+      description: `<img alt="The count" width="720" height="405" src="${GITEA}/attachments/5f1c2a">`,
+      giteaPage: PAGE,
+    });
+    expect(markup).toContain('data-box=""');
+    expect(markup).toContain("aspect-ratio:720 / 405");
+    expect(markup).toContain("width:min(100%, 720px)");
+    expect(markup).toContain('class="rv-pic-line"');
+    expect(markup).toContain("The count");
+    expect(markup).toContain("Open on Gitea");
+    expect(markup).not.toContain("<img");
+  });
+
   it("say Picture where they give no words, with nothing to read", () => {
     const markup = html({
       description: "![](data:image/png;base64,iVBORw0KGgo=)",
@@ -180,6 +208,69 @@ describe("reading its pictures", () => {
         [`${GITEA}/attachments/5f1c2a`],
         [`${GITEA}/attachments/9e8d7c`],
       ]);
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+    }
+  });
+
+  it("keeps a sized picture's box when it cannot be read, its line in it: nothing moves", async () => {
+    const { container, root } = await mount();
+    const refused: GiteaPictureSource = {
+      ready: true,
+      read: () => Promise.reject(new Error("that token may not read attachments")),
+    };
+    try {
+      await act(async () => {
+        root.render(
+          <ReviewDescription
+            description={`<img alt="The count" width="640" height="480" src="${GITEA}/attachments/5f1c2a">`}
+            giteaOrigin={GITEA}
+            giteaPage={PAGE}
+            onOpenRun={undefined}
+            pictures={refused}
+            run={NO_RUN}
+          />,
+        );
+      });
+      const box = elementsOf(container, "span").find((node) => node.attributes.has("data-box"));
+      expect(box?.style).toMatchObject({ aspectRatio: "640 / 480", width: "min(100%, 640px)" });
+      expect(container.textContent).toContain("Open on Gitea");
+      expect(elementsOf(container, "img")).toEqual([]);
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+    }
+  });
+
+  it("draws a sized picture in the same box once read, at the size its description gave", async () => {
+    const { container, root } = await mount();
+    const read: GiteaPictureSource = {
+      ready: true,
+      read: () =>
+        Promise.resolve(new Blob([new Uint8Array([137, 80, 78, 71])], { type: "image/png" })),
+    };
+    try {
+      await act(async () => {
+        root.render(
+          <ReviewDescription
+            description={`<img alt="The count" width="720" height="405" src="${GITEA}/attachments/7a8b9c">`}
+            giteaOrigin={GITEA}
+            giteaPage={PAGE}
+            onOpenRun={undefined}
+            pictures={read}
+            run={NO_RUN}
+          />,
+        );
+      });
+      const box = elementsOf(container, "span").find((node) => node.attributes.has("data-box"));
+      expect(box?.style).toMatchObject({ aspectRatio: "720 / 405", width: "min(100%, 720px)" });
+      const [picture] = elementsOf(container, "img");
+      expect(picture?.attributes.get("width")).toBe("720");
+      expect(picture?.attributes.get("height")).toBe("405");
+      expect(picture?.attributes.get("alt")).toBe("The count");
     } finally {
       await act(async () => {
         root.unmount();

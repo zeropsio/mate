@@ -5618,6 +5618,20 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
     opacity: 0;
   }
 }
+/* A picture its description sizes holds that box from the first paint (`reviewPictureBox` sets
+   its shape and width): its line fills it while it is read or when it cannot be, and the picture
+   fills it once read, so nothing moves either way. */
+.rv-pic[data-box] > .rv-pic-open,
+.rv-pic[data-box] img {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+}
+.rv-pic[data-box] > .rv-pic-line {
+  height: 100%;
+  margin: 0;
+  border-radius: 0;
+}
 .rv-pic-line {
   display: flex;
   min-height: 40px;

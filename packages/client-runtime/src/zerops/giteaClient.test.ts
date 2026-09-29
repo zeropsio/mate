@@ -599,6 +599,75 @@ describe("GiteaClient a change's pictures, read as the person", () => {
   });
 });
 
+describe("GiteaClient a change's pictures, read through the broker", () => {
+  const BROKER = "https://broker.example.test";
+  const UUID = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
+
+  function brokered(answer: () => Response) {
+    const calls: Array<{ readonly url: string; readonly headers: Record<string, string> }> = [];
+    const client = createGiteaClient({
+      origin: ORIGIN,
+      brokerOrigin: BROKER,
+      token: "t-1",
+      fetch: (input, init) => {
+        calls.push({
+          url: String(input),
+          headers: (init?.headers ?? {}) as Record<string, string>,
+        });
+        return Promise.resolve(answer());
+      },
+    });
+    return { client, calls };
+  }
+
+  it("reads an attachment through the broker with the person's token: Gitea refuses the browser's preflight", async () => {
+    const { client, calls } = brokered(
+      () =>
+        new Response(new Uint8Array([137, 80, 78, 71]), {
+          headers: { "content-type": "image/png" },
+        }),
+    );
+    const picture = await client.picture(`${ORIGIN}/attachments/${UUID}`);
+    expect(calls.map((call) => call.url)).toEqual([`${BROKER}/person/attachments/${UUID}`]);
+    expect(calls[0]?.headers).toMatchObject({ authorization: "Bearer t-1", accept: "image/*" });
+    expect(new Uint8Array(await picture.arrayBuffer())).toEqual(new Uint8Array([137, 80, 78, 71]));
+  });
+
+  it("says the broker's refusal in its words, with its status", async () => {
+    const { client } = brokered(
+      () =>
+        new Response(
+          JSON.stringify({
+            error: "not_a_picture",
+            message: "only a picture is served here: png, jpeg, gif, webp or avif",
+          }),
+          { status: 415, headers: { "content-type": "application/json" } },
+        ),
+    );
+    await expect(client.picture(`${ORIGIN}/attachments/${UUID}`)).rejects.toMatchObject({
+      status: 415,
+      detail: "only a picture is served here: png, jpeg, gif, webp or avif",
+    });
+  });
+
+  it("reads a picture of its Gitea that is no attachment from Gitea itself", async () => {
+    const { client, calls } = brokered(
+      () => new Response(new Uint8Array([1]), { headers: { "content-type": "image/png" } }),
+    );
+    await client.picture(`${ORIGIN}/acme/app/raw/branch/main/shot.png`);
+    expect(calls.map((call) => call.url)).toEqual([`${ORIGIN}/acme/app/raw/branch/main/shot.png`]);
+  });
+
+  it("never reads anything but its own Gitea's pictures, the broker's own address included", async () => {
+    const fetch = vi.fn();
+    const client = createGiteaClient({ origin: ORIGIN, brokerOrigin: BROKER, token: "t-1", fetch });
+    await expect(client.picture(`${BROKER}/person/attachments/${UUID}`)).rejects.toBeInstanceOf(
+      GiteaApiError,
+    );
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
 describe("GiteaClient a change you can read (pass 16 R8)", () => {
   it("lists the files a pull request changes, with each one's +/−, page by page", async () => {
     const full = Array.from({ length: 50 }, (_, index) => ({
