@@ -29,6 +29,7 @@ import { createRoot } from "react-dom/client";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   deployedVersion,
+  readZeropsGroupTags,
   type EnvironmentRow,
   type FlowPullRequest,
   type ZeropsPublicRoute,
@@ -65,7 +66,13 @@ import { SidebarWaitingStack } from "~/components/zerops/SidebarWaitingStack";
 import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
 import type { MateDecision } from "~/components/zerops/mateDecision.logic";
 import type { SidebarCrewRead } from "~/components/zerops/crew/SidebarCrewLine";
-import { SidebarZeropsTree, type SidebarProjectFlow } from "~/components/zerops/SidebarZeropsTree";
+import { newProjectOffered } from "~/components/zerops/SidebarProjects.logic";
+import {
+  SidebarNewProject,
+  SidebarZeropsTree,
+  type SidebarProjectFlow,
+} from "~/components/zerops/SidebarZeropsTree";
+import { SidebarContent } from "~/components/ui/sidebar";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { writeCollapsedProjects } from "~/zerops/collapsedProjects";
@@ -830,51 +837,61 @@ function SidebarFrame({ width, onJump }: { readonly width: number; readonly onJu
           <SidebarJumpButton onJump={onJump} shortcut={JUMP_KEY} />
         </div>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto ps-2.25 pe-2 pb-1">
-        <SidebarZeropsTree
-          candidates={FIXTURES.candidates}
-          className="mb-2"
-          complete
-          getActivity={activityOfCandidate}
-          getFlow={(groupId) => FIXTURES.flows.get(groupId)}
-          getOwner={(item) => FIXTURES.owners.get(item.project.id)}
-          getCrew={(item) => CREWS.get(item.project.id)}
-          getMateActions={(item, live) => ({
-            muted: item.project.id === "notes-iris",
-            toggleMute: () => {},
-            toggleUnread: () => {},
-            copyLink: () => {},
-            rename: {
-              initialValue:
-                item.project.tagList
-                  ?.find((tag) => tag.startsWith("mate:bot:"))
-                  ?.slice("mate:bot:".length) ?? item.project.name,
-              validate: (value) => (value.trim() === "" ? "Give the Mate a name." : undefined),
-              commit: () => {},
-            },
-            ...(live?.face === "working" ? { stop: () => {} } : {}),
-            entries: [
-              { id: "restart", label: "Restart", onSelect: () => {} },
-              { id: "assign", label: "Hand over…", onSelect: () => {} },
-              { id: "move", label: "Move to project…", onSelect: () => {} },
-            ],
-          })}
-          onBrowseProjects={() => {}}
+      {/* The list scrolls as the app's does (`SidebarContent`): fading into
+          the canvas at an edge only while something is scrolled under it. */}
+      <SidebarContent>
+        <div className="ps-2.25 pe-2 pb-1">
+          <SidebarZeropsTree
+            candidates={FIXTURES.candidates}
+            className="mb-2"
+            complete
+            getActivity={activityOfCandidate}
+            getFlow={(groupId) => FIXTURES.flows.get(groupId)}
+            getOwner={(item) => FIXTURES.owners.get(item.project.id)}
+            getCrew={(item) => CREWS.get(item.project.id)}
+            getMateActions={(item, live) => ({
+              muted: item.project.id === "notes-iris",
+              toggleMute: () => {},
+              toggleUnread: () => {},
+              copyLink: () => {},
+              rename: {
+                initialValue:
+                  item.project.tagList
+                    ?.find((tag) => tag.startsWith("mate:bot:"))
+                    ?.slice("mate:bot:".length) ?? item.project.name,
+                validate: (value) => (value.trim() === "" ? "Give the Mate a name." : undefined),
+                commit: () => {},
+              },
+              ...(live?.face === "working" ? { stop: () => {} } : {}),
+              entries: [
+                { id: "restart", label: "Restart", onSelect: () => {} },
+                { id: "assign", label: "Hand over…", onSelect: () => {} },
+                { id: "move", label: "Move to project…", onSelect: () => {} },
+              ],
+            })}
+            onBrowseProjects={() => {}}
+            onAskToFix={(mateProjectId, problem) => {
+              menuActions.push(`ask ${mateProjectId}: ${problem.what}`);
+            }}
+            onSelect={(item) => {
+              menuActions.push(`open ${item.project.id}`);
+              setOpen(item.project.id);
+            }}
+            activeProjectId={open}
+            shown={shown}
+            timestampFormat="24-hour"
+          />
+        </div>
+      </SidebarContent>
+      {/* *New project* pinned above the account's row, as the app's
+          (`Sidebar.tsx`): the list scrolls under it. */}
+      {newProjectOffered({ candidates: FIXTURES.candidates, births: [], complete: true }) ? (
+        <SidebarNewProject
           onNewProject={() => {
             menuActions.push("new project");
           }}
-          onAskToFix={(mateProjectId, problem) => {
-            menuActions.push(`ask ${mateProjectId}: ${problem.what}`);
-          }}
-          onSelect={(item) => {
-            menuActions.push(`open ${item.project.id}`);
-            setOpen(item.project.id);
-          }}
-          activeProjectId={open}
-          shown={shown}
-          timestampFormat="24-hour"
         />
-      </div>
+      ) : null}
       <footer className="flex shrink-0 items-center gap-1 p-2">
         <div className="min-w-0 flex-1">
           <SidebarZeropsAccount
@@ -1096,9 +1113,22 @@ if (new URLSearchParams(location.search).get("palette") === "zerops") {
 // An account is open, as in the app: the order and the mutes are kept under
 // its key. A draft stands in Iris's composer, as the composer would keep it.
 openAccountLifetime("design-harness");
-// The fixture set's folded projects, as a person left them.
-writeCollapsedProjects(new Set(FIXTURES.collapsed));
 const params = new URLSearchParams(location.search);
+// The fixture set's folded projects, as a person left them — or `?fold=all`,
+// every heading folded into a short list of names, as the owner's menu
+// stands; `?fold=a,b` folds those groups.
+const fold = params.get("fold");
+writeCollapsedProjects(
+  new Set(
+    fold === null
+      ? FIXTURES.collapsed
+      : fold === "all"
+        ? FIXTURES.candidates.flatMap(
+            (item) => readZeropsGroupTags(item.project.tagList).groupId ?? [],
+          )
+        : fold.split(","),
+  ),
+);
 const order = params.get("order");
 if (order === "custom" || order === "name" || order === "newest") {
   setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, order, ProjectOrderSchema);

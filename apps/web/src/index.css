@@ -3105,6 +3105,47 @@ code {
   }
 }
 
+/* A heading that folds lights under the pointer, as a Mate's row does: a band
+   on the list's own inset, but fainter than a row's hover — pressing it folds
+   the project, it opens nothing. Its corners run parallel to the production
+   chip's inside it (12 + the 4 px around the chip, S4), and a reveal's ring
+   follows them. Lit while its ⋯ or its chip's menu is open; the chip and the
+   verbs keep their own, stronger hover over it. */
+.zerops-project-heading {
+  border-radius: 16px;
+  transition: background-color 150ms ease;
+}
+
+.zerops-project-heading:has([data-popup-open]) {
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 3.5%, transparent);
+}
+
+@media (hover: hover) {
+  .zerops-project-heading:hover {
+    background-color: color-mix(in oklab, var(--sidebar-foreground) 3.5%, transparent);
+  }
+}
+
+/* New project at the menu's foot, right after the list's scroll: a hairline
+   on the list's inset parts them only while something is scrolled under it —
+   the scroll area just above says so (`data-overflow-y-end`). It takes no
+   room, so nothing moves when it shows. */
+.zerops-new-project-slot::before {
+  position: absolute;
+  top: 0;
+  inset-inline: 9px 8px;
+  height: 1px;
+  background-color: var(--color-sidebar-border);
+  opacity: 0;
+  transition: opacity 150ms ease;
+  content: "";
+  pointer-events: none;
+}
+
+[data-overflow-y-end] + .zerops-new-project-slot::before {
+  opacity: 1;
+}
+
 /* The jump box's way in, in the logo row (M12): a quiet chip with its key
    inside it, a step darker and inked under the pointer. */
 .zerops-jump-button {

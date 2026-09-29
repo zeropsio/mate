@@ -22,7 +22,8 @@
  * door to merging — folded behind a count past three (`pullRequestsFolded`).
  * After the Mates come those being created, the ones untouched for a week
  * folded behind their count, and the pull requests that are nobody's Mate's,
- * a person's own branch. The list ends on *New project*.
+ * a person's own branch. *New project* stands at the menu's foot, under the
+ * list's scroll (`SidebarNewProject`).
  *
  * A project collapses to its heading, the usual sidebar gesture, and the menu
  * remembers it; opening one of its Mates' conversations opens it again. A
@@ -128,10 +129,15 @@ import { KeyChip, MateFace } from "./primitives";
 import { groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
 import { formatWorkingTime, isQuietMate, sidebarMateKey } from "./SidebarZeropsTree.logic";
 import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
-import { SidebarProjectFold, type ProjectFoldMotion } from "./SidebarProjectFold";
+import {
+  SidebarProjectFold,
+  SidebarProjectFoldedRoom,
+  type ProjectFoldMotion,
+} from "./SidebarProjectFold";
 import {
   headingFaces,
   landingAfterDraw,
+  projectRoom,
   slackAfterScroll,
   slackForFold,
   type HeadingFace,
@@ -332,12 +338,6 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly onAddMate?: ((groupId: string) => void) | undefined;
   readonly onBrowseProjects: () => void;
   /**
-   * Starts a new project: the list's last row (D11), where projects are, so
-   * nothing in the logo row reads as the jump box's key's owner. Absent, the
-   * list ends on its last project.
-   */
-  readonly onNewProject?: (() => void) | undefined;
-  /**
    * "Ask <your Mate> to fix it" (S6): writes the problem into the Mate's
    * composer, not sent (`useAskMateToFix`). Absent, the chip's menu offers no
    * fix.
@@ -479,7 +479,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   onSelect,
   onAddMate,
   onBrowseProjects,
-  onNewProject,
   onAskToFix,
   onOpenGroup,
   activeProjectId,
@@ -706,15 +705,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     return <ListingNotice className={className} notice={notice} onAct={onNoticeAct} />;
   }
 
-  // No project at all: nothing to list, and nothing to say but the one thing
-  // to do — the list's own last row, alone.
-  if (nothing === "no-projects") {
-    return onNewProject === undefined ? null : (
-      <nav aria-label="Mates" className={cn("relative flex flex-col pt-1.5", className)}>
-        <NewProjectRow onNewProject={onNewProject} />
-      </nav>
-    );
-  }
+  // No project at all: nothing to list, and nothing to say — the one thing to
+  // do is *New project*, at the menu's foot (`SidebarNewProject`).
+  if (nothing === "no-projects") return null;
 
   // Projects, but none with a Mate: one quiet line on the menu's own left
   // edge, where every other row starts, and the way to the projects screen —
@@ -1122,8 +1115,16 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // the same rows, which the owner turned down (2026-09-25).
     const fold = folds.get(id);
     // A fragment either way, so the heading keeps its node — and the focus of
-    // the press that folded it — whether its rows are drawn or not.
-    if (group !== undefined && collapsed.has(id) && fold !== "closing") return <>{header}</>;
+    // the press that folded it — whether its rows are drawn or not. Folded, it
+    // keeps its few px of room under it, which its rows unfold from.
+    if (group !== undefined && collapsed.has(id) && fold !== "closing") {
+      return (
+        <>
+          {header}
+          <SidebarProjectFoldedRoom last={last} />
+        </>
+      );
+    }
     const quietOpen = openQuiet.has(id);
     const slots: ReadonlyArray<MateSlot<T>> = [
       ...loud.map(({ item }) => ({ kind: "mate" as const, item })),
@@ -1294,6 +1295,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     });
   };
 
+  // The list's last project keeps less room below it, open or folded.
+  const lastProject = (index: number) => index === groups.length - 1 && !ungroupedMates;
   const groupSections = groups.map(({ group, environments }, index) => (
     <section
       className={cn(
@@ -1339,7 +1342,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                         scrollHeight: scroller.scrollHeight,
                         slack,
                       },
-                      rows.getBoundingClientRect().height,
+                      // Less the room the folded heading keeps under it.
+                      rows.getBoundingClientRect().height -
+                        projectRoom({ open: false, last: lastProject(index) }),
                     ),
                   );
                 }
@@ -1369,7 +1374,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         getFlow?.(group.groupId),
         groupNameIsPlaceholder(group) ? undefined : group.name,
         group,
-        index === groups.length - 1 && !ungroupedMates,
+        lastProject(index),
       )}
     </section>
   ));
@@ -1416,7 +1421,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       {notice === null ? null : (
         <ListingNotice className="mt-6" notice={notice} onAct={onNoticeAct} />
       )}
-      {onNewProject === undefined ? null : <NewProjectRow onNewProject={onNewProject} />}
       {slack === 0 ? null : (
         <div
           aria-hidden="true"
@@ -1431,23 +1435,31 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
 }
 
 /**
- * *New project*, the list's last row (D11): a + in the faces' 28 px column and
- * the words on the menu's text edge, 13 px and muted until pointed at — a row
- * like the others, 4 px under the last project.
+ * *New project* at the menu's foot (D11), pinned just above the account's
+ * row: the same place whatever the list's length (the owner, 2026-09-29: "not
+ * sure if this shouldn't be stuck to the bottom somehow"). It stands right
+ * after the list's scroll, outside it, so a long list scrolls under it: the
+ * list fades into the canvas above it and a hairline parts them, only while
+ * something is scrolled under it (`.zerops-new-project-slot`). On the list's
+ * own inset: a + in the faces' 28 px column at 16 px and the words at 56,
+ * 13 px and muted until pointed at — a row like the others. The menu draws it
+ * where `newProjectOffered` says, from the first paint.
  */
-function NewProjectRow({ onNewProject }: { readonly onNewProject: () => void }) {
+export function SidebarNewProject({ onNewProject }: { readonly onNewProject: () => void }) {
   return (
-    <button
-      className="mt-1 flex h-7 w-full min-w-0 cursor-pointer items-center gap-3 rounded-lg ps-1.75 pe-2 text-left text-line text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring"
-      data-zerops-surface="sidebar-new-project"
-      onClick={onNewProject}
-      type="button"
-    >
-      <span className="flex w-7 shrink-0 justify-center">
-        <PlusIcon aria-hidden="true" className="size-3.5" />
-      </span>
-      <span className="min-w-0 truncate">New project</span>
-    </button>
+    <div className="zerops-new-project-slot relative shrink-0 ps-2.25 pe-2 py-1">
+      <button
+        className="flex h-7 w-full min-w-0 cursor-pointer items-center gap-3 rounded-lg ps-1.75 pe-2 text-left text-line text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        data-zerops-surface="sidebar-new-project"
+        onClick={onNewProject}
+        type="button"
+      >
+        <span className="flex w-7 shrink-0 justify-center">
+          <PlusIcon aria-hidden="true" className="size-3.5" />
+        </span>
+        <span className="min-w-0 truncate">New project</span>
+      </button>
+    </div>
   );
 }
 
@@ -1578,8 +1590,13 @@ export function ProjectHeader({
   return (
     // The title on the menu's mark edge (x = 16: 7 px inside the list's own
     // 9), the heading 32 px tall, and its end 12 px short of the menu's edge.
+    // A heading that folds lights under the pointer, a band fainter than a
+    // Mate row's (`.zerops-project-heading`).
     <div
-      className="group/project relative flex h-8 min-w-0 items-center gap-1 ps-1.75 pe-1"
+      className={cn(
+        "group/project relative flex h-8 min-w-0 items-center gap-1 ps-1.75 pe-1",
+        onToggle !== undefined && "zerops-project-heading",
+      )}
       data-collapsed={collapsed ? "true" : undefined}
       data-zerops-surface="sidebar-project"
     >

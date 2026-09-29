@@ -66,6 +66,7 @@ import { useSidebarReveal } from "~/zerops/sidebarReveal";
 import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
 import {
   ProjectHeader,
+  SidebarNewProject,
   SidebarZeropsTree,
   type SidebarDrawn,
   type SidebarProjectFlow,
@@ -1043,16 +1044,26 @@ describe("production is one chip on the project's heading (M2, M1)", () => {
   });
 });
 
-describe("New project at the list's end (D11)", () => {
+describe("New project at the menu's foot (D11)", () => {
   const row = (html: string) =>
     /<button[^>]*data-zerops-surface="sidebar-new-project"[^>]*>(.*?)<\/button>/u.exec(html);
 
-  it("ends the list with New project: the + in the face column, the words on the text edge", () => {
-    const html = render([CRM_DEV, LINKS_MATE], { onNewProject: () => {} });
+  // Pinned above the account's row, the same place whatever the list's
+  // length (the owner, 2026-09-29: "not sure if this shouldn't be stuck to
+  // the bottom somehow"): the list scrolls under it, so it is never one of
+  // the list's rows.
+  it("is never one of the list's rows", () => {
+    expect(row(render([CRM_DEV, LINKS_MATE]))).toBeNull();
+    expect(row(render([]))).toBeNull();
+  });
+
+  it("keeps the row's look: the + in the faces' column, the words on the text edge", () => {
+    const html = renderToStaticMarkup(<SidebarNewProject onNewProject={() => {}} />);
+    // On the list's own inset, so the + stands at 16 px and the words at 56.
+    const slot = /<div class="([^"]*)"/u.exec(html)![1]!.split(" ");
+    expect(slot).toEqual(expect.arrayContaining(["shrink-0", "ps-2.25", "pe-2"]));
     const found = row(html);
     expect(found).not.toBeNull();
-    // After every project, the list's last row.
-    expect(html.indexOf("sidebar-new-project")).toBeGreaterThan(html.lastIndexOf("<section"));
     const classes = /class="([^"]*)"/u.exec(found![0])![1]!.split(" ");
     expect(classes).toEqual(expect.arrayContaining(["h-7", "ps-1.75", "gap-3", "rounded-lg"]));
     expect(found![1]).toContain("lucide-plus");
@@ -1060,31 +1071,17 @@ describe("New project at the list's end (D11)", () => {
     expect(found![1]).toContain(">New project</span>");
   });
 
-  it("offers New project alone to an account with no project yet", () => {
-    const html = render([], { onNewProject: () => {} });
-    expect(row(html)).not.toBeNull();
-    expect(html).not.toContain("sidebar-environments-empty");
-  });
-
   it("starts a new project when pressed", () => {
     let started = 0;
     const mounted = mount(
-      <SidebarZeropsTree
-        candidates={[CRM_DEV]}
-        complete
-        onBrowseProjects={() => {}}
+      <SidebarNewProject
         onNewProject={() => {
           started += 1;
         }}
-        onSelect={() => {}}
       />,
     );
     press(mounted, "sidebar-new-project");
     expect(started).toBe(1);
-  });
-
-  it("draws no New project where nobody said how to make one", () => {
-    expect(row(render([CRM_DEV]))).toBeNull();
   });
 });
 
@@ -1158,6 +1155,29 @@ describe("a project collapsed to its heading", () => {
     ].map(([, classes]) => classes!.split(" "));
     expect(rows).toHaveLength(1);
     expect(rows[0]).toEqual(expect.arrayContaining(["pt-0.5", "pb-11"]));
+  });
+
+  // Folded names stand a little apart (the owner, 2026-09-29: "increase the
+  // spacing between a little"): 8 px under a folded heading, its own — the
+  // room a fold leaves and an unfold starts from — so no heading moves.
+  it("leaves 8 px under a folded heading, and none under the list's last", () => {
+    const notes = named("notes-dev", "Notes - dev", [
+      "mate",
+      "mate:g:notes",
+      "mate:name:Notes",
+      "mate:role:dev",
+    ]);
+    stored.collapsed = new Set(["links", "notes"]);
+    const html = render([CRM_DEV, LINKS_MATE, notes]);
+    const room = (group: string) => {
+      const at = html.indexOf(`data-zerops-group="${group}"`);
+      const section = html.slice(at, html.indexOf("</section>", at));
+      return /<div[^>]*data-zerops-surface="sidebar-project-room"[^>]*>/u.exec(section)?.[0];
+    };
+    expect(room("links")).toContain('class="h-2 shrink-0"');
+    expect(room("links")).toContain('aria-hidden="true"');
+    expect(room("notes")).toBeUndefined();
+    expect(room("aaa")).toBeUndefined();
   });
 
   // Folded, a heading shows who is busy in it (M15): the faces of its Mates
@@ -1350,6 +1370,26 @@ describe("a project collapsed to its heading", () => {
       expect(button).toContain("size-7");
       expect(button).toContain("rounded-md");
     }
+  });
+
+  // The whole heading folds the project, so it lights under the pointer as a
+  // row does (the owner, 2026-09-29: "very slight grey bg on the hover"); the
+  // ungrouped heading folds nothing and stays unlit.
+  it("lights a heading that folds under the pointer, and never the ungrouped one", () => {
+    const classes = (html: string) =>
+      /<div class="([^"]*)"[^>]*data-zerops-surface="sidebar-project"/u.exec(html)?.[1]?.split(" ");
+    expect(
+      classes(
+        renderToStaticMarkup(
+          <ProjectHeader name="Beviro" onBrowseProjects={() => {}} onToggle={() => {}} />,
+        ),
+      ),
+    ).toContain("zerops-project-heading");
+    expect(
+      classes(
+        renderToStaticMarkup(<ProjectHeader muted name="Ungrouped" onBrowseProjects={() => {}} />),
+      ),
+    ).not.toContain("zerops-project-heading");
   });
 
   it("starts the title at the rail's own left edge and hangs the chevron after it", () => {
