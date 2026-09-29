@@ -33,7 +33,7 @@ import {
 } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
-import { ChevronDownIcon, EllipsisIcon } from "lucide-react";
+import { EllipsisIcon } from "lucide-react";
 
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import {
@@ -325,7 +325,7 @@ const STATES: ReadonlyArray<HeadState> = [
   },
   {
     id: "lone",
-    title: "A Mate with no crew",
+    title: "A Mate with no crew: its face and name, what its chat is about on hover",
     chats: [{ title: FEN_TASK, activity: "idle" }],
     crew: [],
     on: 0,
@@ -376,27 +376,6 @@ function HeaderActions() {
         </Button>
       </div>
     </>
-  );
-}
-
-/** The task after a crewless Mate's name, as `ChatHeader`'s title button draws it. */
-function TitleButton({ headline }: { readonly headline: string }) {
-  return (
-    <div
-      className="flex min-w-0 flex-1 items-center text-sm text-muted-foreground transition-colors has-[button:hover]:text-foreground"
-      data-conversation-subject-title
-    >
-      <button
-        className="group/thread-title inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left"
-        type="button"
-      >
-        <h2 className="min-w-0 truncate">{headline}</h2>
-        <ChevronDownIcon
-          aria-hidden
-          className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/thread-title:opacity-100"
-        />
-      </button>
-    </div>
   );
 }
 
@@ -507,11 +486,6 @@ function Frame({ state }: { readonly state: HeadState }) {
               chats={lineChats(chats, current)}
               crew={crew}
               renderCrewmateMenu={menu}
-              lone={
-                seat === undefined ? (
-                  <TitleButton headline={chatShells[state.on as number]!.title} />
-                ) : null
-              }
               mate={lineMate({
                 mate: FEN,
                 chats,

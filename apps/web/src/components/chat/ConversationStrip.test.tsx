@@ -3,7 +3,9 @@ import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing
 import { deriveCrewView, type CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId, TurnId } from "@t3tools/contracts";
 import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
+import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { create, type ReactTestRenderer } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const FEN = EnvironmentId.make("env-fen");
@@ -39,6 +41,33 @@ vi.mock("~/hooks/useThreadActions", async (original) => ({
   ...(await original<typeof import("~/hooks/useThreadActions")>()),
   useThreadActions: () => ({ archiveThread: vi.fn() }),
 }));
+// A tooltip drawn in place, in a template of its own: what a pointer reads is
+// in the markup, and apart from the words standing on the line.
+vi.mock("../ui/tooltip", async () => {
+  const { cloneElement, isValidElement } = await import("react");
+  return {
+    Tooltip: ({ children }: { readonly children: ReactNode }) => <>{children}</>,
+    TooltipTrigger: ({
+      render,
+      children,
+    }: {
+      readonly render: unknown;
+      readonly children?: ReactNode;
+    }) =>
+      isValidElement(render) ? (
+        children === undefined ? (
+          render
+        ) : (
+          cloneElement(render, undefined, children)
+        )
+      ) : (
+        <>{children}</>
+      ),
+    TooltipPopup: ({ children }: { readonly children: ReactNode }) => (
+      <template data-tooltip="">{children}</template>
+    ),
+  };
+});
 vi.mock("../zerops/crew/CrewmateMenu", () => ({
   CrewmateMenu: ({ handle }: { readonly handle: string }) => (
     <span data-crewmate-menu-for={handle} />
@@ -46,7 +75,12 @@ vi.mock("../zerops/crew/CrewmateMenu", () => ({
 }));
 
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
-import { ConversationStrip, useAlsoWorkingBanner } from "./ConversationStrip";
+import {
+  ConversationStrip,
+  ConversationStripView,
+  useAlsoWorkingBanner,
+} from "./ConversationStrip";
+import type { LineCrewmate } from "./ConversationStrip.logic";
 
 function shell(
   id: string,
@@ -123,7 +157,6 @@ function line(input: {
       crewChat={input.crewChat ?? null}
       currentThreadId={input.current === null ? null : ThreadId.make(input.current)}
       environmentId={FEN}
-      lone={<span data-lone-task>Build the game server</span>}
       onEditBrief={() => {}}
       onEditJob={() => {}}
       onRename={() => {}}
@@ -137,6 +170,22 @@ function line(input: {
 function matePill(html: string): string {
   const start = html.indexOf("data-conversation-mate");
   return html.slice(html.lastIndexOf("<div", start), html.indexOf(">Fen</span>", start));
+}
+
+/** The words standing on the line: the markup without what shows only on hover. */
+function onLine(html: string): string {
+  return html.replace(/<template data-tooltip="">[\s\S]*?<\/template>/g, "");
+}
+
+/** What shows on hover, tooltip by tooltip, as read: a line of it to a line. */
+function tooltips(html: string): ReadonlyArray<string> {
+  return [...html.matchAll(/<template data-tooltip="">([\s\S]*?)<\/template>/g)].map((match) =>
+    match[1]!
+      .replaceAll("</span><span", "</span>\n<span")
+      .replace(/<[^>]+>/g, "")
+      .replaceAll("&#x27;", "'")
+      .replaceAll("&amp;", "&"),
+  );
 }
 
 beforeEach(() => {
@@ -153,7 +202,7 @@ describe("ConversationStrip", () => {
     expect(line({ current: "main" })).toBe("");
   });
 
-  it("leads with the Mate, face 24 and name 16/600 in ink, the task after it, and nothing else — for a Mate with no crew", () => {
+  it("draws a Mate with no crew as its face at 24 and its name at 16/600, and nothing else — what its chat is about is its hover", () => {
     state.shells = [shell("main")];
     const html = line({ current: "main" });
     expect(matePill(html)).not.toContain("data-on");
@@ -161,7 +210,8 @@ describe("ConversationStrip", () => {
     expect(html).toContain(
       'class="max-w-48 truncate text-base leading-6 font-semibold text-foreground">Fen</span>',
     );
-    expect(html).toContain("data-lone-task");
+    expect(onLine(html)).not.toContain("Build the game server");
+    expect(tooltips(html)).toEqual(["Build the game server"]);
     expect(html).not.toContain("data-conversation-divider");
     expect(html).not.toContain("data-conversation-crew");
     expect(html).not.toContain("New chat");
@@ -184,8 +234,15 @@ describe("ConversationStrip", () => {
       expect(html).toContain(`aria-label="${who}"`);
     }
     for (const name of ["Lead", "Backend", "Frontend", "Erik"]) {
-      expect(html).not.toContain(`>${name}</span>`);
+      expect(onLine(html)).not.toContain(`>${name}</span>`);
     }
+    expect(tooltips(html)).toEqual([
+      "Build the game server",
+      "Lead, Fen's lead — plans and reviews the crew's work",
+      "Backend, one of Fen's crew\nOwns the API under src/api and its tests.",
+      "Frontend, one of Fen's crew\nOwns the game UI: the camera, the HUD and their tests.",
+      "Erik, one of Fen's crew\nWrites the business plan in docs/business-plan.md.",
+    ]);
     expect(html.match(/class="conversation-crewface /g)).toHaveLength(4);
   });
 
@@ -237,6 +294,71 @@ describe("ConversationStrip", () => {
     expect(line({ current: "main" })).not.toContain(
       'invisible absolute start-0 top-0" data-conversation-crewmate',
     );
+  });
+});
+
+describe("ConversationStripView", () => {
+  const RULES: LineCrewmate = {
+    handle: "rules",
+    name: "Game Rules",
+    tint: "rose",
+    face: "idle",
+    lead: false,
+    open: true,
+    known: true,
+    threadId: ThreadId.make("thread-crew-rules-1"),
+    role: ", one of Fen's crew",
+    job: "Owns the rules engine.",
+    status: null,
+  };
+  function press(input: { readonly crew: boolean }) {
+    const onRename = vi.fn();
+    const onOpen = vi.fn();
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(
+        <ConversationStripView
+          chats={null}
+          crew={input.crew ? [RULES] : null}
+          mate={{
+            name: "Fen",
+            tint: "amber",
+            face: "idle",
+            open: !input.crew,
+            threadId: ThreadId.make("main"),
+            tooltip: input.crew ? "Fen's own chat" : "Build the game server",
+          }}
+          onCloseChat={() => {}}
+          onOpen={onOpen}
+          onRename={onRename}
+          renameField={null}
+          renderCrewmateMenu={() => null}
+        />,
+      );
+    });
+    const mate = renderer.root.find(
+      (node) => node.type === "button" && node.props["data-conversation-mate-press"] === true,
+    );
+    return { mate, onRename, onOpen };
+  }
+  const KEYS = { metaKey: false, ctrlKey: false, shiftKey: false, altKey: false };
+
+  it("renames a crewless Mate's chat on a double-click of its name, as with a crew", () => {
+    const { mate, onRename, onOpen } = press({ crew: false });
+    act(() => mate.props.onDoubleClick(KEYS));
+    expect(onRename).toHaveBeenCalledOnce();
+    act(() => mate.props.onClick());
+    expect(onOpen).not.toHaveBeenCalled();
+    act(() => mate.props.onDoubleClick({ ...KEYS, metaKey: true }));
+    expect(onRename).toHaveBeenCalledOnce();
+  });
+
+  it("opens the Mate's own chat from a crewmate's, and renames nothing there", () => {
+    const { mate, onRename, onOpen } = press({ crew: true });
+    act(() => mate.props.onClick());
+    expect(onOpen).toHaveBeenCalledWith("main");
+    act(() => mate.props.onDoubleClick(KEYS));
+    expect(onRename).not.toHaveBeenCalled();
   });
 });
 
