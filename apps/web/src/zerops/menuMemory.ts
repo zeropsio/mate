@@ -17,6 +17,8 @@ import type { FlowPullRequest, ZeropsOrganizationMember } from "@t3tools/client-
 import { ThreadId } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
+import { mateRowView } from "~/components/zerops/SidebarMateRow.logic";
+
 import { accountLocalStorage, currentAccountId, onAccountLifetimeClose } from "./accountLifetime";
 import type { ZeropsAgentActivity } from "./agentActivity";
 
@@ -25,7 +27,7 @@ export const MENU_MEMORY_STORAGE_KEY = "mate:zerops:menu-memory";
 const RowSchema = Schema.Struct({
   subject: Schema.optionalKey(Schema.String),
   snippet: Schema.optionalKey(Schema.String),
-  /** The row held its last line for words still to come (`MateReplyPending`). */
+  /** The row held its third line with no words to keep (drawn again as `MateReplyPending`). */
   awaitingWords: Schema.optionalKey(Schema.Boolean),
   task: Schema.optionalKey(Schema.String),
   at: Schema.String,
@@ -106,17 +108,16 @@ export type MenuMemory = typeof MenuMemorySchema.Type;
 export const EMPTY_MENU_MEMORY: MenuMemory = { rows: {}, changes: {}, chips: {}, members: {} };
 
 /**
- * A row's words as a Mate's activity last said them — and whether it held its
- * last line for words still to come, which is the row's height: a reload
- * mid-run draws the line again rather than growing it when the socket answers.
+ * A row's words as a Mate's activity last said them — and whether it held a
+ * third line with no words to keep, which is the row's height: a reload draws
+ * the line again rather than growing it when the socket answers.
  */
 export function rememberedRowOf(activity: ZeropsAgentActivity): RememberedRow {
+  // The row's third line stood without words to keep — words still to come,
+  // the step it was on, the question it asked, the error it stopped on before
+  // saying anything: a reload holds the line with the dots (`mateRowView`).
   const awaiting =
-    activity.subject !== undefined &&
-    activity.snippet === undefined &&
-    (activity.awaitingWords === true ||
-      activity.kind === "working" ||
-      activity.kind === "connecting");
+    activity.snippet === undefined && mateRowView(activity, activity.face).reply !== undefined;
   return {
     ...(activity.subject === undefined ? {} : { subject: activity.subject }),
     ...(activity.snippet === undefined ? {} : { snippet: activity.snippet }),

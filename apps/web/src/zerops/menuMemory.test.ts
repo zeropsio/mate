@@ -70,23 +70,74 @@ describe("a remembered row", () => {
     });
   });
 
-  // A row keeping its last line for words still to come draws it from
-  // memory too, so a reload mid-run before the Mate's first words stands the
-  // row at the height it had rather than growing it when the socket answers.
-  it("keeps the line a row held for words still to come, and only that", () => {
-    const waiting = activityFromMemory(rememberedRowOf({ ...WORKING, snippet: undefined }));
-    expect(waiting).toMatchObject({ awaitingWords: true, snippet: undefined });
-    const sent = activityFromMemory(
-      rememberedRowOf({ ...WORKING, kind: "idle", snippet: undefined, awaitingWords: true }),
-    );
-    expect(sent.awaitingWords).toBe(true);
-    for (const row of [
-      WORKING,
-      { ...WORKING, kind: "idle" as const, snippet: undefined },
-      { ...WORKING, subject: undefined, snippet: undefined },
-    ]) {
-      expect(activityFromMemory(rememberedRowOf(row))).not.toHaveProperty("awaitingWords");
-    }
+  // A row whose third line stood without words to remember — words still
+  // to come, the step it was on, the question it asked, the error it stopped
+  // on before saying anything — holds that line from memory, so a reload
+  // stands the row at the height it had rather than growing it when the
+  // socket answers.
+  it.each([
+    {
+      case: "working, before its first words",
+      row: { ...WORKING, snippet: undefined },
+      holds: true,
+    },
+    {
+      case: "sent, its run not started",
+      row: {
+        ...WORKING,
+        kind: "idle" as const,
+        face: "idle" as const,
+        snippet: undefined,
+        awaitingWords: true as const,
+      },
+      holds: true,
+    },
+    {
+      case: "working on a step it relayed",
+      row: {
+        ...WORKING,
+        snippet: undefined,
+        liveStep: { words: "Build the app", code: "pnpm build" },
+      },
+      holds: true,
+    },
+    {
+      case: "stopped on an error before its first words",
+      row: {
+        ...WORKING,
+        kind: "failed" as const,
+        face: "needs" as const,
+        snippet: undefined,
+        errorLine: "The build timed out after 120 s.",
+      },
+      holds: true,
+    },
+    {
+      case: "asking a question before its first words",
+      row: {
+        ...WORKING,
+        kind: "input" as const,
+        face: "needs" as const,
+        snippet: undefined,
+        question: "Pricing in CZK or EUR?",
+      },
+      holds: true,
+    },
+    { case: "with words to remember", row: WORKING, holds: false },
+    {
+      case: "at rest with no words",
+      row: { ...WORKING, kind: "idle" as const, face: "idle" as const, snippet: undefined },
+      holds: false,
+    },
+    {
+      case: "never asked anything",
+      row: { ...WORKING, subject: undefined, task: undefined, snippet: undefined },
+      holds: false,
+    },
+  ])("holds the third line of a row $case: $holds", ({ row, holds }) => {
+    const remembered = activityFromMemory(rememberedRowOf(row));
+    if (holds) expect(remembered).toMatchObject({ awaitingWords: true, snippet: undefined });
+    else expect(remembered).not.toHaveProperty("awaitingWords");
   });
 
   it("keeps no word the row did not say", () => {
