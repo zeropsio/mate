@@ -793,9 +793,10 @@ describe("RunChat", () => {
         { kind: "note", key: "note:a1", at: at(10), message: message("a1", "assistant", "Hi.") },
       ]),
     );
-    // One container holds the chat's scroll and its status line, so both keep one gap.
+    // One container holds the chat's scroll and its status line, so both keep
+    // one gap; the scroll stands in the box it folds away in as the run settles.
     expect(markup).toMatch(
-      /<div class="@container\/chat min-w-0" data-run-chat="true" style="[^"]*"><div [^>]*data-run-scroll=""[^>]*><ol /u,
+      /<div class="@container\/chat min-w-0" data-run-chat="true" style="[^"]*"><div class="run-above"><div [^>]*data-run-scroll=""[^>]*><ol /u,
     );
     const row =
       /<li class="([^"]*)" data-chat-row="true"><span aria-hidden="true" class="([^"]*)"/u.exec(
@@ -1050,26 +1051,17 @@ describe("RunChat, as the person uses it", () => {
       expect(markup).not.toContain("data-run-scroll");
     });
 
-    it("keeps a run the person watched open, its line at the foot, until they leave", () => {
-      setRunFold(CONVERSATION, "turn-1", "watched");
-      const markup = draw(settledRun());
-      expect(markup).not.toContain("data-run-fold");
-      expect(markup).toContain("data-run-scroll");
-      expect(markup).toContain("Run the tests");
-      expect(markup.indexOf("Run the tests")).toBeLessThan(markup.indexOf("Nova worked 1m 20s"));
-      expect(markup).not.toContain("Show work");
-      forgetRunFolds(CONVERSATION);
-      expect(draw(settledRun())).toContain('data-run-fold="folded"');
-    });
-
     // Mounted as the page draws it: a markdown note reads the page's storage.
     const workOnly = (overrides: Partial<RecordRow> = {}) =>
       settledRun({
         items: settledRun().items.filter((item) => item.kind !== "note"),
         ...overrides,
       });
-    it("marks a run watched while it runs, so it stays open once it settles", () => {
-      const renderer = mount(workOnly({ live: true, status: status() }));
+    const scrollsOf = (renderer: ReactTestRenderer) =>
+      renderer.root.findAll(
+        (node) => node.type === "div" && node.props["data-run-scroll"] !== undefined,
+      );
+    const settle = (renderer: ReactTestRenderer) =>
       act(() =>
         renderer.update(
           <Rows>
@@ -1077,8 +1069,39 @@ describe("RunChat, as the person uses it", () => {
           </Rows>,
         ),
       );
-      expect(text(renderer)).toContain("Run the tests");
-      expect(text(renderer)).not.toContain("Show work");
+
+    // The owner, 2026-09-29, on a run they watched to its end: "why didn't
+    // this autocollapse at the end? in this state it looks stupid".
+    it("folds a run the person watched to its summary line as it settles", () => {
+      const renderer = mount(workOnly({ live: true, status: status() }));
+      expect(scrollsOf(renderer)).toHaveLength(1);
+      settle(renderer);
+      expect(scrollsOf(renderer)).toHaveLength(0);
+      expect(text(renderer)).not.toContain("Run the tests");
+      expect(text(renderer)).toContain("Nova worked 1m 20s");
+      expect(button(renderer, "Show work").props["aria-expanded"]).toBe(false);
+    });
+
+    it("keeps a run open as it settles while the person reads its work, its line at the foot", () => {
+      const renderer = mount(workOnly({ live: true, status: status() }));
+      // They scrolled up in it to read.
+      act(() =>
+        scrollsOf(renderer)[0]!.props.onScroll({
+          currentTarget: { scrollTop: 0, scrollHeight: 900, clientHeight: 440 },
+        }),
+      );
+      settle(renderer);
+      expect(scrollsOf(renderer)).toHaveLength(1);
+      const markup = text(renderer);
+      expect(markup.indexOf("Run the tests")).toBeLessThan(markup.indexOf("Nova worked 1m 20s"));
+      expect(markup).not.toContain("Show work");
+    });
+
+    it("folds a run left open once it is drawn again", () => {
+      setRunFold(CONVERSATION, "turn-1", "watched");
+      const renderer = mount(workOnly());
+      expect(scrollsOf(renderer)).toHaveLength(0);
+      expect(button(renderer, "Show work").props["aria-expanded"]).toBe(false);
     });
 
     it("opens the whole run under its line with Show work, and closes it with Hide work", () => {

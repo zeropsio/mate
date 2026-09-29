@@ -11,7 +11,7 @@
  */
 import { MessageId, TurnId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import {
   checksStrip,
@@ -29,6 +29,7 @@ import { setRunFold } from "~/components/chat/runCard.logic";
 import type { ResultFacts } from "~/components/chat/runResult.logic";
 import { RunChat } from "~/components/chat/RunChat";
 import { TurnReport } from "~/components/chat/TurnReport";
+import { Button } from "~/components/ui/button";
 import { foldSteps, stepOf } from "~/components/chat/workSteps.logic";
 import type { WorkLogEntry } from "~/session-logic";
 import type { ChatMessage } from "~/types";
@@ -334,7 +335,7 @@ function Turn({
           <RunChat row={row} />
         </div>
         {result ? (
-          <div className="run-tray run-tray-middle">
+          <div className="run-tray run-tray-middle pt-1">
             <div className="run-band">
               <TurnReport
                 facts={FACTS}
@@ -393,11 +394,49 @@ const THINKING: TurnHeaderActivity = {
   ],
 };
 
-// The run finished while the person watched stays open until they leave;
-// come back to, it is closed to its summary line, and opened once they ask
+// A run come back to is closed to its summary line, and opened once they ask
 // for the work.
-setRunFold(CONVERSATION, "status-watched", "watched");
 setRunFold(CONVERSATION, "status-shown", "shown");
+
+/**
+ * A run the person watches to its end: it writes its answer until End the
+ * run, then its work folds into its line as its result arrives under it.
+ * Run it again starts it over.
+ */
+function WatchedToItsEnd() {
+  const [round, setRound] = useState(0);
+  const [ended, setEnded] = useState(false);
+  const run = `status-watched-${round}`;
+  return (
+    <div className="grid gap-3">
+      <div className="flex gap-2">
+        <Button data-harness-end disabled={ended} onClick={() => setEnded(true)} size="sm">
+          End the run
+        </Button>
+        <Button
+          data-harness-again
+          onClick={() => {
+            setEnded(false);
+            setRound((value) => value + 1);
+          }}
+          size="sm"
+          variant="outline"
+        >
+          Run it again
+        </Button>
+      </div>
+      <Turn
+        answer={ANSWER}
+        result={ended}
+        row={
+          ended
+            ? record(run, { live: false, status: settled, outcome: OUTCOME })
+            : record(run, { answering: true })
+        }
+      />
+    </div>
+  );
+}
 
 /** A command longer than its line: a route written with a heredoc. */
 const ROUTE_SCRIPT = [
@@ -503,13 +542,9 @@ export function CardStates() {
       </CardState>
       <CardState
         label="Finished while you watch"
-        note="The now line became the worked line; the result stands under it, in the tray."
+        note="As the run ends its work folds into the line, which keeps its place; the result stands under it."
       >
-        <Turn
-          answer={ANSWER}
-          result
-          row={record("status-watched", { live: false, status: settled, outcome: OUTCOME })}
-        />
+        <WatchedToItsEnd />
       </CardState>
       <CardState
         label="You come back later"

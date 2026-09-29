@@ -305,12 +305,14 @@ export function formatClock(ms: number): string {
 // ---------------------------------------------------------------------------
 
 /**
- * How a settled run's card stands (K12): open as it was while the person
- * watched it — until they leave the conversation — closed to its summary
- * line when they come back, and open again, the scroll under the line, once
- * they ask for the work.
+ * How a run's card stands (K12): open while it runs; folded to its summary
+ * line as it settles, the work easing shut into the line (the owner,
+ * 2026-09-29: "why didn't this autocollapse at the end?") — unless the person
+ * is reading the work right then, when it stays open as it was until they
+ * leave or it is drawn again — and open again, the scroll under the line,
+ * once they ask for the work.
  */
-export type RunFold = "watched" | "folded" | "shown";
+export type RunFold = "watched" | "folding" | "folded" | "shown";
 
 /** The runs of each conversation the person watched or opened, by the conversation's key. */
 const runFolds = new Map<string, Map<string, Exclude<RunFold, "folded">>>();
@@ -326,7 +328,10 @@ export function subscribeRunFolds(listener: () => void): () => void {
   return () => runFoldListeners.delete(listener);
 }
 
-/** How a settled run stands in a conversation: folded unless the person watched or opened it. */
+/**
+ * How a run stands in a conversation: folded unless it runs, folds this
+ * moment, stayed open while the person read it, or they opened it.
+ */
 export function runFoldOf(conversation: string, run: string): RunFold {
   return runFolds.get(conversation)?.get(run) ?? "folded";
 }
