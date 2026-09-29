@@ -129,6 +129,8 @@ import { SidebarProjectFold, type ProjectFoldMotion } from "./SidebarProjectFold
 import {
   headingFaces,
   landingAfterDraw,
+  slackAfterScroll,
+  slackForFold,
   type HeadingFace,
   type HeadingFaceDot,
   type PendingLanding,
@@ -528,6 +530,31 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // The projects a heading's press set unfolding or folding, until they settle:
   // a folding project keeps its rows drawn until they have folded away.
   const [folds, setFolds] = useState<ReadonlyMap<string, ProjectFoldMotion>>(() => new Map());
+  // The room a fold leaves at the list's end (`slackForFold`): scrolled to
+  // the end, the rows folding away would slide everything down under the
+  // view, the heading just pressed too. It stays until a scroll up no longer
+  // needs it.
+  const [slack, setSlack] = useState(0);
+  const holdingSlack = slack > 0;
+  useEffect(() => {
+    if (!holdingSlack) return;
+    const scroller = scrollingAncestor(treeRef.current);
+    if (scroller === null) return;
+    const onScroll = () => {
+      setSlack((current) =>
+        slackAfterScroll({
+          scrollTop: scroller.scrollTop,
+          clientHeight: scroller.clientHeight,
+          scrollHeight: scroller.scrollHeight,
+          slack: current,
+        }),
+      );
+    };
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      scroller.removeEventListener("scroll", onScroll);
+    };
+  }, [holdingSlack]);
   const settleFold = (groupId: string) => {
     setFolds((current) => {
       if (!current.has(groupId)) return current;
@@ -1294,6 +1321,25 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             onToggle={() => {
               const { groupId } = group;
               const folding = !collapsed.has(groupId);
+              if (folding) {
+                const scroller = scrollingAncestor(treeRef.current);
+                const rows = treeRef.current?.querySelector<HTMLElement>(
+                  `[data-zerops-group="${CSS.escape(groupId)}"] [data-zerops-surface="sidebar-project-rows"]`,
+                );
+                if (scroller !== null && rows !== null && rows !== undefined) {
+                  setSlack(
+                    slackForFold(
+                      {
+                        scrollTop: scroller.scrollTop,
+                        clientHeight: scroller.clientHeight,
+                        scrollHeight: scroller.scrollHeight,
+                        slack,
+                      },
+                      rows.getBoundingClientRect().height,
+                    ),
+                  );
+                }
+              }
               setCollapsed((current) => withCollapsed(current, groupId, folding));
               setFolds((current) => new Map(current).set(groupId, folding ? "closing" : "opening"));
             }}
@@ -1367,6 +1413,14 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         <ListingNotice className="mt-6" notice={notice} onAct={onNoticeAct} />
       )}
       {onNewProject === undefined ? null : <NewProjectRow onNewProject={onNewProject} />}
+      {slack === 0 ? null : (
+        <div
+          aria-hidden="true"
+          className="shrink-0"
+          data-zerops-surface="sidebar-fold-slack"
+          style={{ height: slack }}
+        />
+      )}
       {reorder.overlay}
     </nav>
   );
@@ -1391,6 +1445,20 @@ function NewProjectRow({ onNewProject }: { readonly onNewProject: () => void }) 
       <span className="min-w-0 truncate">New project</span>
     </button>
   );
+}
+
+/**
+ * What scrolls the menu: the sidebar's viewport, or the page where nothing
+ * inside does. Nothing where the menu is not drawn (a test's renderer).
+ */
+function scrollingAncestor(element: HTMLElement | null): HTMLElement | null {
+  if (element === null) return null;
+  for (let node = element.parentElement; node !== null; node = node.parentElement) {
+    const { overflowY } = getComputedStyle(node);
+    if (overflowY === "auto" || overflowY === "scroll") return node;
+  }
+  const page = element.ownerDocument.scrollingElement;
+  return page instanceof HTMLElement ? page : null;
 }
 
 /** The listing's notice (`candidatesNotice`) with its one affordance, at the menu's left edge. */

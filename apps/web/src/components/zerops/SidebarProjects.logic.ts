@@ -108,3 +108,34 @@ export function landingAfterDraw<T>(pending: PendingLanding<T> | null): {
   if (!pending.drawn) return { land: undefined, next: { target: pending.target, drawn: true } };
   return { land: pending.target, next: null };
 }
+
+/** A scrolling list as a fold reads it, with the room at its end it keeps (`slack`). */
+export interface ScrollRoom {
+  readonly scrollTop: number;
+  readonly clientHeight: number;
+  readonly scrollHeight: number;
+  /** The room at the list's end a fold left, counted in `scrollHeight`. */
+  readonly slack: number;
+}
+
+/**
+ * The room a fold leaves at the list's end (M9). Scrolled to the end, the rows
+ * folding away shorten the list under the view, and the view — held at the
+ * list's end — slides everything down, the heading just pressed with it. The
+ * room is what the view would lack once `removed` px are gone, so nothing
+ * above the list's end moves.
+ */
+export function slackForFold(scroll: ScrollRoom, removed: number): number {
+  return roomTheViewNeeds(scroll, scroll.scrollHeight - scroll.slack - removed);
+}
+
+/** The room after a scroll: only as much as still holds the view, never more than it was. */
+export function slackAfterScroll(scroll: ScrollRoom): number {
+  return Math.min(scroll.slack, roomTheViewNeeds(scroll, scroll.scrollHeight - scroll.slack));
+}
+
+/** What a list `natural` px long lacks to hold the view where it is; at the top, nothing. */
+function roomTheViewNeeds(scroll: ScrollRoom, natural: number): number {
+  if (scroll.scrollTop <= 0) return 0;
+  return Math.max(0, scroll.scrollTop + scroll.clientHeight - natural);
+}

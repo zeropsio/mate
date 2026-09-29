@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { headingFaces, landingAfterDraw, projectRoom } from "./SidebarProjects.logic";
+import {
+  headingFaces,
+  landingAfterDraw,
+  projectRoom,
+  slackAfterScroll,
+  slackForFold,
+} from "./SidebarProjects.logic";
 
 describe("projectRoom", () => {
   // The room belongs to the end of an open project, never above a heading:
@@ -84,5 +90,84 @@ describe("landingAfterDraw — a reveal lands on the draw after its ask, or neve
     },
   ])("$name", ({ pending, land, next }) => {
     expect(landingAfterDraw(pending)).toEqual({ land, next });
+  });
+});
+
+// Scrolled to the list's end, a fold shortens the list under the view, and
+// the view — held at the list's end — would slide everything down, the
+// heading pressed with it. The room the view would lack stays at the end
+// until a scroll up no longer needs it (M9).
+describe("slackForFold — the room a fold leaves at the list's end", () => {
+  it.each([
+    {
+      name: "the list's end far below the view: none",
+      scroll: { scrollTop: 0, clientHeight: 500, scrollHeight: 2000, slack: 0 },
+      removed: 300,
+      slack: 0,
+    },
+    {
+      name: "scrolled to the end: all the rows fold out of",
+      scroll: { scrollTop: 1500, clientHeight: 500, scrollHeight: 2000, slack: 0 },
+      removed: 300,
+      slack: 300,
+    },
+    {
+      name: "200 px short of the end: what the view would lack",
+      scroll: { scrollTop: 1300, clientHeight: 500, scrollHeight: 2000, slack: 0 },
+      removed: 300,
+      slack: 100,
+    },
+    {
+      name: "a list shorter than its view, at the top: nothing moves, none",
+      scroll: { scrollTop: 0, clientHeight: 800, scrollHeight: 600, slack: 0 },
+      removed: 200,
+      slack: 0,
+    },
+    {
+      name: "a list only a little longer than its view, scrolled 50 px: all the view lacks",
+      scroll: { scrollTop: 50, clientHeight: 800, scrollHeight: 850, slack: 0 },
+      removed: 200,
+      slack: 200,
+    },
+    {
+      name: "the room a fold before left, counted in",
+      scroll: { scrollTop: 1500, clientHeight: 500, scrollHeight: 2100, slack: 100 },
+      removed: 300,
+      slack: 300,
+    },
+  ])("$name", ({ scroll, removed, slack }) => {
+    expect(slackForFold(scroll, removed)).toBe(slack);
+  });
+});
+
+describe("slackAfterScroll — the room shrinks as a scroll up stops needing it", () => {
+  it.each([
+    {
+      name: "where the fold left it: all of it",
+      scroll: { scrollTop: 1500, clientHeight: 500, scrollHeight: 2000, slack: 300 },
+      slack: 300,
+    },
+    {
+      name: "120 px up: 120 px less",
+      scroll: { scrollTop: 1380, clientHeight: 500, scrollHeight: 2000, slack: 300 },
+      slack: 180,
+    },
+    {
+      name: "far up: none",
+      scroll: { scrollTop: 200, clientHeight: 500, scrollHeight: 2000, slack: 300 },
+      slack: 0,
+    },
+    {
+      name: "back at the top: none",
+      scroll: { scrollTop: 0, clientHeight: 800, scrollHeight: 1000, slack: 200 },
+      slack: 0,
+    },
+    {
+      name: "never more than it was",
+      scroll: { scrollTop: 1500, clientHeight: 600, scrollHeight: 2000, slack: 300 },
+      slack: 300,
+    },
+  ])("$name", ({ scroll, slack }) => {
+    expect(slackAfterScroll(scroll)).toBe(slack);
   });
 });
