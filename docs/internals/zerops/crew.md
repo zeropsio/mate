@@ -69,8 +69,8 @@ for the engine's life.
 | Policy, tools  | `crewSeams.ts`, `CrewThreadPolicy.ts`, `CrewTools.ts`, `CrewRuntime.ts`, `CrewMemory.ts`                                                   | `CrewThreadDirectory` and `CrewToolHost`; the SPI answer for crew threads; the in-process crew tools; the Show-on-dev claim; memory, packet and delta |
 | RPC            | `registerCrewRpc.ts`                                                                                                                       | the four crew RPCs, spread by `ws.ts`                                                                                                                 |
 | Client runtime | `packages/client-runtime/src/zerops/crew/phrases.ts`, `crew/testing/fixtures.ts`, `projections/crew.ts`                                    | every crew word (R5); `crewSnapshotFixture`; `deriveCrewView` — the snapshot joined to the thread shells                                              |
-| Web            | `apps/web/src/zerops/crew/`                                                                                                                | `useCrew`, `useCrewCommand`, `crewCommands`, `useCrewHome`, `crewHome` (the editors' adapter over the format)                                         |
-|                | `apps/web/src/components/zerops/crew/`                                                                                                     | the section, the editors, the board and the crewmate chat — rows `zerops-crew-*` in [`surfaces.json`](surfaces.json)                                  |
+| Web            | `apps/web/src/zerops/crew/`                                                                                                                | `useCrew`, `useCrewCommand`, `crewCommands`, `useCrewHome`, `crewHome` (the editors' adapter over the format), `crewTab`                              |
+|                | `apps/web/src/components/zerops/crew/`                                                                                                     | the Crew tab (the section above the board), the editors and the crewmate chat — rows `zerops-crew-*` in [`surfaces.json`](surfaces.json)              |
 
 ## 4. The crew home and what the engine keeps
 
@@ -148,10 +148,12 @@ Server:
 
 Client:
 
-- **Zerops tab** — `ZeropsPanel.tsx` mounts `CrewSectionHost` after the coding agents' card; the
-  section exists only while the feed's status is `none` or `applied`.
-- **Right panel** — kind `crew` (`rightPanelKinds.ts`, `rightPanelStore.ts`, `RightPanelTabs.tsx`),
-  `hidden` unless the Zerops panel is available and the status is `none` or `applied`.
+- **Crew tab** — right-panel kind `crew` (`rightPanelKinds.ts`, `rightPanelStore.ts`,
+  `RightPanelTabs.tsx`), `hidden` unless the Zerops panel is available and the status is `none` or
+  `applied`, is the crew's one home (`CrewPanel.tsx`): for `none` the empty state and _Set up a
+  crew_, for `applied` the section (`CrewSectionHost`) above the board (`CrewBoardHost`) in one
+  column. Whether the setup sheet is open is kept outside the tab (`crewTab.ts`). The Zerops tab
+  shows nothing of the crew.
 - **Chat** — `ChatView.tsx`: in the lifecycle strip's slot a writer's lane bar or the lead's bar
   ("Plans and reviews · no copy of the code", `CrewLeadBar`), the board in the right panel, the
   lead's plan in the lead's chat (`CrewLeadPlan`), and a crew thread's send as
@@ -170,7 +172,9 @@ Client:
   _Runs on_ line ("Runs on Claude Code · Haiku 4.5 · High") that opens the crewmate's editor
   (`CrewRunsOnControl`, `ChatComposer.tsx`): its Runs on and the crew gate decide those, not the
   message.
-- **Sidebar** — `SidebarZeropsTree.tsx`: the crew's faces on the Mate row. A crew thread is never
+- **Sidebar** — `SidebarZeropsTree.tsx`: the crew's faces on the Mate row, and in a Mate's own
+  menu (`SidebarMateMenu.tsx`) _Set up a crew_ or _Crew_ on the viewer's own Mate with crew mode on
+  (`mateCrewItem`), opening its conversation on the Crew tab (`openCrewTab`). A crew thread is never
   an ordinary row: `Sidebar.tsx`, the command palette, the archived list, thread notifications,
   mobile's thread list and prompt-history recall all leave crew threads or cards out.
 
