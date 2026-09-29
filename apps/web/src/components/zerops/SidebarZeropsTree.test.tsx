@@ -1402,13 +1402,67 @@ describe("a project collapsed to its heading", () => {
       ...html.matchAll(/data-zerops-surface="sidebar-project-rows"><div class="([^"]*)"/g),
     ].map(([, classes]) => classes!.split(" "));
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toEqual(expect.arrayContaining(["pt-0.5", "pb-11"]));
+    expect(rows[0]).toEqual(expect.arrayContaining(["pt-1.5", "pb-9"]));
+  });
+
+  // The owner, 2026-09-29, of the list's rhythm: "slightly decrease the space
+  // between open project and next project", "slightly increase the space
+  // between project title and first mate", "slightly increase the space
+  // between closed projects". From one text's foot to the next text's head:
+  // a heading hands over to its first Mate at 20, as a folded heading to the
+  // next; Mates follow one another at 30; an open project hands over to the
+  // next at 50 — the folded 20 and one Mate's 30. Each group reads as one:
+  // heading to row < row to row < project to project.
+  it("steps 20 from a heading to what follows it, 30 from Mate to Mate, 50 from an open project to the next", () => {
+    const notes = named("notes-dev", "Notes - dev", [
+      "mate",
+      "mate:g:notes",
+      "mate:name:Notes",
+      "mate:role:dev",
+    ]);
+    const two = { ...named("crm-b", "CRM - b", ["mate", "mate:g:aaa", "mate:role:dev"]) };
+    stored.collapsed = new Set(["links", "notes"]);
+    const html = render([CRM_DEV, two, LINKS_MATE, notes]);
+    const PX: Record<string, number> = {
+      "h-8": 32,
+      "leading-6": 24,
+      "pt-1.5": 6,
+      "pb-9": 36,
+      "py-2.5": 10,
+      "mt-2.5": 10,
+      "h-3": 12,
+    };
+    const classesOf = (pattern: RegExp) => pattern.exec(html)?.[1]?.split(" ") ?? [];
+    const px = (classes: ReadonlyArray<string>, pattern: RegExp) =>
+      PX[classes.find((name) => pattern.test(name)) ?? ""] ?? NaN;
+    const heading = classesOf(/<div class="([^"]*)"[^>]*data-zerops-surface="sidebar-project"/u);
+    const title = classesOf(/<span class="([^"]*zerops-project-name[^"]*)"/u);
+    const rows = classesOf(/data-zerops-surface="sidebar-project-rows"><div class="([^"]*)"/u);
+    const mate = classesOf(/<button class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate"/u);
+    const block = classesOf(/<div class="(flex flex-col mt-2\.5)"/u);
+    const folded = classesOf(
+      /<div aria-hidden="true" class="([^"]*)"[^>]*data-zerops-surface="sidebar-project-room"/u,
+    );
+    // The words' inset in their boxes: a heading's title, a Mate row's lines.
+    const titleInset = (px(heading, /^h-8$/u) - px(title, /^leading-6$/u)) / 2;
+    const mateInset = px(mate, /^py-2\.5$/u);
+    const gaps = {
+      headingToMate: titleInset + px(rows, /^pt-/u) + mateInset,
+      mateToMate: mateInset + px(block, /^mt-/u) + mateInset,
+      openToNext: mateInset + px(rows, /^pb-/u) + titleInset,
+      foldedToFolded: titleInset + px(folded, /^h-/u) + titleInset,
+    };
+    expect(gaps).toEqual({ headingToMate: 20, mateToMate: 30, openToNext: 50, foldedToFolded: 20 });
+    expect(gaps.headingToMate).toBeLessThan(gaps.mateToMate);
+    expect(gaps.mateToMate).toBeLessThan(gaps.openToNext);
+    expect(gaps.openToNext).toBe(gaps.foldedToFolded + gaps.mateToMate);
   });
 
   // Folded names stand a little apart (the owner, 2026-09-29: "increase the
-  // spacing between a little"): 8 px under a folded heading, its own — the
-  // room a fold leaves and an unfold starts from — so no heading moves.
-  it("leaves 8 px under a folded heading, and none under the list's last", () => {
+  // spacing between a little", then "slightly increase the space between
+  // closed projects"): 12 px under a folded heading, its own — the room a
+  // fold leaves and an unfold starts from — so no heading moves.
+  it("leaves 12 px under a folded heading, and none under the list's last", () => {
     const notes = named("notes-dev", "Notes - dev", [
       "mate",
       "mate:g:notes",
@@ -1422,7 +1476,7 @@ describe("a project collapsed to its heading", () => {
       const section = html.slice(at, html.indexOf("</section>", at));
       return /<div[^>]*data-zerops-surface="sidebar-project-room"[^>]*>/u.exec(section)?.[0];
     };
-    expect(room("links")).toContain('class="h-2 shrink-0"');
+    expect(room("links")).toContain('class="h-3 shrink-0"');
     expect(room("links")).toContain('aria-hidden="true"');
     expect(room("notes")).toBeUndefined();
     expect(room("aaa")).toBeUndefined();
@@ -1548,7 +1602,7 @@ describe("a project collapsed to its heading", () => {
     const rows = /data-zerops-surface="sidebar-project-rows"><div class="([^"]*)"/u.exec(
       render([CRM_DEV]),
     )?.[1];
-    expect(rows?.split(" ")).toEqual(expect.arrayContaining(["pt-0.5", "pb-4"]));
+    expect(rows?.split(" ")).toEqual(expect.arrayContaining(["pt-1.5", "pb-4"]));
   });
 
   // The faces arrive once the rows have folded away, under a pointer still on
