@@ -1884,7 +1884,7 @@ function QuietMatesRow({
   return (
     <button
       aria-expanded={open}
-      className="menu-line grid h-7 w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-center gap-x-3 ps-1.75 pe-1 text-left text-xs text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      className="menu-line grid h-7 w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-center gap-x-3 ps-1.75 pe-1 text-left text-line leading-4.5 text-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring"
       data-zerops-surface="sidebar-quiet-mates"
       onClick={onToggle}
       type="button"
@@ -2395,7 +2395,7 @@ function MateTime({
   );
 }
 
-const TIME_CLASS = "shrink-0 text-[11px] leading-5 text-sidebar-muted-foreground tabular-nums";
+const TIME_CLASS = "shrink-0 text-line leading-5 text-muted-foreground tabular-nums";
 
 /** The working clock, ticking once a second — a step, never a continuous repaint (R6). */
 function MateWorkingTime({ since }: { readonly since: string }) {
@@ -2410,7 +2410,7 @@ function MateWorkingTime({ since }: { readonly since: string }) {
   }, []);
   return (
     <span
-      className="shrink-0 text-2xs leading-5 font-medium text-status-busy-text tabular-nums"
+      className="shrink-0 text-line leading-5 font-medium text-status-busy-text tabular-nums"
       data-zerops-surface="sidebar-mate-time"
     >
       {formatWorkingTime(nowMs - Date.parse(since))}
@@ -2557,7 +2557,7 @@ function PullRequestList({
       {folded ? (
         <button
           aria-expanded={open}
-          className="flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-[11px] text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+          className="flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-line leading-4.5 text-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
           onClick={onToggle}
           type="button"
         >
@@ -2618,7 +2618,10 @@ function PullRequestRow({
     // it is the rest of the Mates' 14, so the title starts on the menu's one
     // text column, as a Mate's name and a stop's pill do (it stood 4 px right).
     <li
-      className={cn("flex h-8 min-w-0 items-center gap-1.5 px-2.5 text-xs", !underMate && "pe-0.5")}
+      className={cn(
+        "flex h-8 min-w-0 items-center gap-1.5 px-2.5 text-line leading-4.5",
+        !underMate && "pe-0.5",
+      )}
       data-zerops-change={changeRowKey(pull)}
       data-zerops-surface="sidebar-pull-request"
     >

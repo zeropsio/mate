@@ -818,14 +818,6 @@
   {
     "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
     "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-[11px] text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "Literal",
     "fingerprint": "<> text-[11px] in \"flex min-w-0 flex-1 items-center gap-1 text-[11px] leading-4 text-sidebar-muted-foreground\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
@@ -851,14 +843,6 @@
     "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[11px] in \"min-w-0 truncate text-[11px] leading-4 text-sidebar-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"shrink-0 text-[11px] leading-5 text-sidebar-muted-foreground tabular-nums\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
     "expires": "F6"
