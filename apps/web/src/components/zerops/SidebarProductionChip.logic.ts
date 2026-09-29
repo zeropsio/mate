@@ -32,6 +32,9 @@ import {
   type GroupFlowStop,
 } from "@t3tools/client-runtime/zerops";
 
+import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
+
 import type { FixProblem } from "~/zerops/fixRequest";
 
 /** How a stop's services stand on the platform. */
@@ -171,11 +174,11 @@ export interface ProductionChip {
   readonly label: ChipLabel;
   readonly state: ChipState;
   /** What serves now: a release's tag, a hand-made name, a stage's branch. */
-  readonly version?: string | undefined;
+  readonly version?: string;
   /** What is on its way, while releasing. */
-  readonly next?: string | undefined;
+  readonly next?: string;
   /** Changes merged and not live, while they wait. */
-  readonly waiting?: number | undefined;
+  readonly waiting?: number;
 }
 
 export type ChipView =
@@ -269,6 +272,21 @@ export function productionChip(input: {
   if (served === undefined) return chipOf("prod", "empty", { waiting });
   if (waiting !== undefined) return chipOf("prod", "waiting", { version: served, waiting });
   return chipOf("prod", "ok", { version: served });
+}
+
+/**
+ * A deploy running on a stop, as the platform pushed it: what served before it
+ * (`undefined` where nothing did, or nothing says) and what it builds.
+ */
+export function buildingOf(
+  deployment: Shown<Deployment> | undefined,
+): { readonly from: string | undefined; readonly to: string | undefined } | undefined {
+  if (deployment?.state !== "known" || deployment.value.kind !== "deploying") return undefined;
+  const { previous, version } = deployment.value;
+  return {
+    from: previous?.kind === "running" ? previous.version.label : undefined,
+    to: version.label,
+  };
 }
 
 /** A stage's slot on the chip: a deploy's own name, else the branch it follows, else its commit. */
@@ -500,7 +518,8 @@ function mainWord(chip: ProductionChip): string {
   }
 }
 
-const STOP_DOT: Record<GroupFlowStop["state"], ChipDot> = {
+/** A listed stop's dot, by where its last deploy stands. */
+export const STOP_DOT: Record<GroupFlowStop["state"], ChipDot> = {
   deployed: "ok",
   deploying: "spinner",
   failed: "attention",
@@ -647,4 +666,34 @@ export function fixProblemOf(input: {
     error: failure.error,
     ask: `${serving}Find out why, fix it, and release again.`,
   };
+}
+
+/** One part of a fix request's preview: words, or a log's lines in a code box. */
+export type DraftPart =
+  | { readonly kind: "words"; readonly text: string }
+  | { readonly kind: "code"; readonly text: string };
+
+/**
+ * The fix request (`fixRequestPrompt`) as its preview draws it before it is
+ * written into the Mate's composer: its paragraphs, and a fenced log as the
+ * lines it holds.
+ */
+export function draftParts(prompt: string): ReadonlyArray<DraftPart> {
+  const parts: DraftPart[] = [];
+  for (const paragraph of prompt.split(/\n{2,}/u)) {
+    const fence = paragraph.indexOf("```");
+    if (fence === -1) {
+      if (paragraph.trim().length > 0) parts.push({ kind: "words", text: paragraph.trim() });
+      continue;
+    }
+    const head = paragraph.slice(0, fence).trim();
+    if (head.length > 0) parts.push({ kind: "words", text: head });
+    const body = paragraph
+      .slice(fence + 3)
+      .replace(/```\s*$/u, "")
+      .replace(/^\n/u, "")
+      .replace(/\n$/u, "");
+    parts.push({ kind: "code", text: body });
+  }
+  return parts;
 }

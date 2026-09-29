@@ -8,9 +8,11 @@ import type {
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  buildingOf,
   chipFace,
   chipMenu,
   deployedAgo,
+  draftParts,
   drawnChip,
   fixProblemOf,
   productionChip,
@@ -755,5 +757,63 @@ describe("deployedAgo", () => {
     { at: "not a time", words: undefined },
   ])("$at reads $words", ({ at, words }) => {
     expect(deployedAgo(at, NOW)).toBe(words);
+  });
+});
+
+describe("draftParts — the fix request as its preview shows it", () => {
+  it("splits the words into paragraphs and a log's lines into a code box", () => {
+    expect(
+      draftParts(
+        "Production's release v0.1.57 failed at 10:41, 12 minutes ago.\n\nThe error: Build failed\n\nBuild log · v0.1.57:\n```\nERR one\nERR two\n```\n\nFind out why, fix it, and release again.",
+      ),
+    ).toEqual([
+      { kind: "words", text: "Production's release v0.1.57 failed at 10:41, 12 minutes ago." },
+      { kind: "words", text: "The error: Build failed" },
+      { kind: "words", text: "Build log · v0.1.57:" },
+      { kind: "code", text: "ERR one\nERR two" },
+      { kind: "words", text: "Find out why, fix it, and release again." },
+    ]);
+  });
+});
+
+describe("buildingOf — a deploy running on a stop: what served before it, what it builds", () => {
+  const running = (label: string) => ({
+    kind: "running" as const,
+    activatedAt: null,
+    version: version(label),
+  });
+  it.each([
+    {
+      name: "a build with what ran before it",
+      deployment: {
+        state: "known" as const,
+        value: {
+          kind: "deploying" as const,
+          version: version("v0.1.45"),
+          previous: running("v0.1.44"),
+        },
+      },
+      building: { from: "v0.1.44", to: "v0.1.45" },
+    },
+    {
+      name: "a first build, nothing before it",
+      deployment: {
+        state: "known" as const,
+        value: {
+          kind: "deploying" as const,
+          version: version("v0.1.0"),
+          previous: { kind: "none" as const },
+        },
+      },
+      building: { from: undefined, to: "v0.1.0" },
+    },
+    {
+      name: "nothing building",
+      deployment: { state: "known" as const, value: running("v0.1.44") },
+      building: undefined,
+    },
+    { name: "nothing read", deployment: undefined, building: undefined },
+  ])("$name", ({ deployment, building }) => {
+    expect(buildingOf(deployment as Parameters<typeof buildingOf>[0])).toEqual(building);
   });
 });

@@ -58,7 +58,7 @@ import {
   type SidebarJumpIndex,
 } from "./JumpBox.logic";
 import { MateFace, StatusDot } from "./primitives";
-import { StopMark } from "./SidebarZeropsTree";
+import { EnvDot } from "./SidebarProductionChip";
 
 export interface JumpBoxModel {
   readonly value: string;
@@ -569,7 +569,11 @@ function JumpRow({ item, match }: { readonly item: JumpItem; readonly match: str
       break;
     }
     case "stop":
-      lead = <StopMark tone={item.stop.tone} word={item.stop.word} />;
+      lead = (
+        <span aria-label={item.stop.word} className="inline-flex" role="img">
+          <EnvDot dot={item.stop.dot} />
+        </span>
+      );
       title = <Marked match={match} text={item.stop.title} />;
       sub = <Marked match={match} text={item.stop.line} />;
       break;

@@ -6,7 +6,7 @@
  * 2026-09-27). Each piece stands until its own live read replaces it:
  * - a Mate's row: what was asked, its last words, when, and whether unread;
  * - a project's change rows, drawn without their verbs;
- * - a stop's line: what it runs;
+ * - a project's production chip, as it last said it;
  * - an organization's members, whose each Mate is.
  *
  * Kept per account, like the project order, and forgotten when the account
@@ -46,6 +46,24 @@ const ChangeSchema = Schema.Struct({
   updatedAt: Schema.optionalKey(Schema.String),
 });
 
+/** A project's production chip as it was drawn (`SidebarProductionChip.logic.ts`). */
+const ChipSchema = Schema.Struct({
+  label: Schema.Literals(["prod", "stage"]),
+  state: Schema.Literals([
+    "ok",
+    "waiting",
+    "releasing",
+    "failed",
+    "down",
+    "stopped",
+    "creating",
+    "empty",
+  ]),
+  version: Schema.optionalKey(Schema.String),
+  next: Schema.optionalKey(Schema.String),
+  waiting: Schema.optionalKey(Schema.Number),
+});
+
 const MemberSchema = Schema.Struct({
   id: Schema.String,
   userId: Schema.optionalKey(Schema.String),
@@ -75,16 +93,17 @@ const MemberSchema = Schema.Struct({
 const MenuMemorySchema = Schema.Struct({
   rows: Schema.Record(Schema.String, RowSchema),
   changes: Schema.Record(Schema.String, Schema.Array(ChangeSchema)),
-  stops: Schema.Record(Schema.String, Schema.String),
+  chips: Schema.Record(Schema.String, ChipSchema),
   members: Schema.Record(Schema.String, Schema.Array(MemberSchema)),
 });
 
 export type RememberedRow = typeof RowSchema.Type;
 export type RememberedChange = typeof ChangeSchema.Type;
+export type RememberedChip = typeof ChipSchema.Type;
 export type RememberedMember = typeof MemberSchema.Type;
 export type MenuMemory = typeof MenuMemorySchema.Type;
 
-export const EMPTY_MENU_MEMORY: MenuMemory = { rows: {}, changes: {}, stops: {}, members: {} };
+export const EMPTY_MENU_MEMORY: MenuMemory = { rows: {}, changes: {}, chips: {}, members: {} };
 
 /**
  * A row's words as a Mate's activity last said them — and whether it held its
@@ -177,7 +196,7 @@ export function changeFromMemory(change: RememberedChange): FlowPullRequest {
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /** `memory` with each entry of `entries` in `part`, and none `keep` does not hold. */
-function withPart<K extends "rows" | "changes" | "stops" | "members">(
+function withPart<K extends "rows" | "changes" | "members">(
   memory: MenuMemory,
   part: K,
   entries: Readonly<Record<string, MenuMemory[K][string]>>,
@@ -209,13 +228,21 @@ export function withChanges(
   return withPart(memory, "changes", changes, listed);
 }
 
-/** What each stop runs as its settled line says it, and — given the listing — none for a stop gone. */
-export function withStops(
+/**
+ * Each project's production chip as last drawn, `null` forgetting one that no
+ * longer is, and — given the listing — none for a project gone.
+ */
+export function withChips(
   memory: MenuMemory,
-  stops: Readonly<Record<string, string>>,
+  chips: Readonly<Record<string, RememberedChip | null>>,
   listed?: ReadonlySet<string>,
 ): MenuMemory {
-  return withPart(memory, "stops", stops, listed);
+  const next: Record<string, RememberedChip> = {};
+  for (const [key, chip] of Object.entries(memory.chips)) {
+    if ((listed === undefined || listed.has(key)) && chips[key] !== null) next[key] = chip;
+  }
+  for (const [key, chip] of Object.entries(chips)) if (chip !== null) next[key] = chip;
+  return same(next, memory.chips) ? memory : { ...memory, chips: next };
 }
 
 /** An organization's members as last read, what they carry beyond a member's record dropped. */

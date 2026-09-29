@@ -70,6 +70,8 @@ import {
 } from "~/components/zerops/SidebarZeropsTree";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
+import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
+import { writeCollapsedProjects } from "~/zerops/collapsedProjects";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
 import { shownInScope, useMateScope } from "~/zerops/mateScope";
 import { isMacPlatform } from "~/lib/utils";
@@ -82,6 +84,14 @@ import { PROJECT_ORDER_STORAGE_KEY, ProjectOrderSchema } from "~/zerops/projectO
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 
 import "../index.css";
+import {
+  PLAN_ACTIVE,
+  PLAN_ACTIVITY,
+  PLAN_CANDIDATES,
+  PLAN_COLLAPSED,
+  PLAN_FLOWS,
+  PLAN_OWNERS,
+} from "./sidebarPlanFixtures";
 
 const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
 
@@ -118,10 +128,22 @@ function candidate(
     ...(connected && container ? { environmentId: EnvironmentId.make(`env-${id}`) } : {}),
   };
   const withRoutes = theRoutes === undefined ? base : { ...base, routes: theRoutes };
+  // A stop's services, as the platform reads them: up, so its chip settles.
+  const read = container
+    ? withRoutes
+    : {
+        ...withRoutes,
+        services: {
+          hostnames: ["app"],
+          deployedAt: hoursAgo(3),
+          deployable: [],
+          statuses: [{ hostname: "app", status: "ACTIVE" }],
+        },
+      };
   return container
     ? { ...withRoutes, service: { id: "zcp", name: "zcp", status: "ACTIVE" } }
     : {
-        ...withRoutes,
+        ...read,
         group: "unavailable",
         reason: "no Zerops Mate container in this project",
         missingContainer: true,
@@ -481,9 +503,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
         "Cache the link previews",
       ),
       merging: () => false,
-      releasing: false,
       onMerge: () => {},
-      onRelease: () => {},
       // Without this the menu draws no *Ask* at all, so the harness never
       // showed the verb a blocked change wears — which is how it came to wear
       // the same amber as *Release* unnoticed.
@@ -583,9 +603,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
         "Drop the unused coupons table",
       ),
       merging: () => false,
-      releasing: false,
       onMerge: () => {},
-      onRelease: () => {},
       // Without this the menu draws no *Ask* at all, so the harness never
       // showed the verb a blocked change wears — which is how it came to wear
       // the same amber as *Release* unnoticed.
@@ -614,9 +632,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
         { kind: "missing-environment", tier: "stage", name: "Stage", line: "not set up yet" },
       ],
       merging: () => false,
-      releasing: false,
       onMerge: () => {},
-      onRelease: () => {},
       // Without this the menu draws no *Ask* at all, so the harness never
       // showed the verb a blocked change wears — which is how it came to wear
       // the same amber as *Release* unnoticed.
@@ -652,9 +668,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
       ]),
       releaseOffered: false,
       merging: () => false,
-      releasing: false,
       onMerge: () => {},
-      onRelease: () => {},
       // Without this the menu draws no *Ask* at all, so the harness never
       // showed the verb a blocked change wears — which is how it came to wear
       // the same amber as *Release* unnoticed.
@@ -677,9 +691,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
         },
       ],
       merging: () => false,
-      releasing: false,
       onMerge: () => {},
-      onRelease: () => {},
       // Without this the menu draws no *Ask* at all, so the harness never
       // showed the verb a blocked change wears — which is how it came to wear
       // the same amber as *Release* unnoticed.
@@ -705,7 +717,30 @@ const OWNERS = new Map<string, ZeropsMateOwner>([
   ["todo-vera", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: false }],
 ]);
 
-const activityOfCandidate = (item: ZeropsCandidate) => ACTIVITY.get(item.project.id);
+/**
+ * Which fixtures the menu draws: the hostile set, or with `?set=plan` the pass
+ * 16 plan's own six projects (`sidebarPlanFixtures.ts`), to put beside its mock.
+ */
+const FIXTURES =
+  new URLSearchParams(location.search).get("set") === "plan"
+    ? {
+        candidates: PLAN_CANDIDATES,
+        activity: PLAN_ACTIVITY,
+        flows: PLAN_FLOWS,
+        owners: PLAN_OWNERS,
+        active: PLAN_ACTIVE,
+        collapsed: PLAN_COLLAPSED,
+      }
+    : {
+        candidates: CANDIDATES,
+        activity: ACTIVITY,
+        flows: FLOWS,
+        owners: OWNERS,
+        active: "links-enzo",
+        collapsed: [],
+      };
+
+const activityOfCandidate = (item: ZeropsCandidate) => FIXTURES.activity.get(item.project.id);
 
 /** What the peek's keys and buttons did, and which Mate was opened, for the audit browser. */
 const peekActions: string[] = [];
@@ -787,14 +822,18 @@ function SidebarFrame({
   const [scope] = useMateScope();
   const shown = useCallback(
     (item: ZeropsCandidate) =>
-      shownInScope(scope, OWNERS.get(item.project.id), item.project.id === "links-enzo"),
+      shownInScope(
+        scope,
+        FIXTURES.owners.get(item.project.id),
+        item.project.id === FIXTURES.active,
+      ),
     [scope],
   );
   const waiting = useSidebarWaiting({
-    candidates: CANDIDATES,
+    candidates: FIXTURES.candidates,
     activityOf: activityOfCandidate,
     shown,
-    activeProjectId: "links-enzo",
+    activeProjectId: FIXTURES.active,
     enabled: true,
   });
   return (
@@ -814,12 +853,12 @@ function SidebarFrame({
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto ps-2.25 pe-2 pb-1">
         <SidebarZeropsTree
-          candidates={CANDIDATES}
+          candidates={FIXTURES.candidates}
           className="mb-2"
           complete
           getActivity={activityOfCandidate}
-          getFlow={(groupId) => FLOWS.get(groupId)}
-          getOwner={(item) => OWNERS.get(item.project.id)}
+          getFlow={(groupId) => FIXTURES.flows.get(groupId)}
+          getOwner={(item) => FIXTURES.owners.get(item.project.id)}
           getMateActions={(item, live) => ({
             muted: item.project.id === "notes-iris",
             toggleMute: () => {},
@@ -844,10 +883,13 @@ function SidebarFrame({
           onNewProject={() => {
             peekActions.push("new project");
           }}
+          onAskToFix={(mateProjectId, problem) => {
+            peekActions.push(`ask ${mateProjectId}: ${problem.what}`);
+          }}
           onSelect={(item) => {
             peekActions.push(`open ${item.project.id}`);
           }}
-          activeProjectId="links-enzo"
+          activeProjectId={FIXTURES.active}
           phone={phone}
           renderPeek={(peek) => <HarnessPeek peek={peek} />}
           shown={shown}
@@ -893,7 +935,7 @@ function harnessHits(text: string): ReadonlyArray<JumpHit> {
     ["links-theo", "Is the previews table still read by the export job?"],
   ] as const;
   return [
-    ...[...ACTIVITY.entries()].flatMap(([projectId, entry]) =>
+    ...[...FIXTURES.activity.entries()].flatMap(([projectId, entry]) =>
       [entry.snippet, entry.task]
         .filter((said): said is string => said !== undefined)
         .map((said) => [projectId, said] as const),
@@ -903,7 +945,7 @@ function harnessHits(text: string): ReadonlyArray<JumpHit> {
     .filter(([, said]) => said.toLocaleLowerCase().includes(needle))
     .map(([projectId, said]) => ({
       environmentId: `env-${projectId}`,
-      threadId: String(ACTIVITY.get(projectId)?.threadId ?? `thread-${projectId}`),
+      threadId: String(FIXTURES.activity.get(projectId)?.threadId ?? `thread-${projectId}`),
       source: "user" as const,
       snippet: said,
     }));
@@ -1062,14 +1104,16 @@ function Harness() {
 // The app sets the theme on the document element (`themePalette.ts`), so the
 // harness does the same rather than nesting a `.dark` wrapper the tokens never
 // reach — which is exactly how the first pass produced two identical light panels.
-document.documentElement.classList.toggle(
-  "dark",
-  new URLSearchParams(location.search).get("theme") === "dark",
-);
+const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
+document.documentElement.classList.toggle("dark", appearance === "dark");
+// In the Zerops palette a fresh install wears, as the app paints it.
+applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 // An account is open, as in the app: the order and the mutes are kept under
 // its key. A draft stands in Iris's composer, as the composer would keep it.
 openAccountLifetime("design-harness");
+// The fixture set's folded projects, as a person left them.
+writeCollapsedProjects(new Set(FIXTURES.collapsed));
 const params = new URLSearchParams(location.search);
 const order = params.get("order");
 if (order === "custom" || order === "name" || order === "newest") {

@@ -391,21 +391,6 @@ export {
   type GroupNextStepTarget,
 } from "./groupFlow.ts";
 export {
-  productionDistance,
-  stageDistance,
-  stageMarks,
-  stageStandings,
-  stopRowLine,
-  type ServiceChanges,
-  type StageMark,
-  type StageStandings,
-  type StopChange,
-  type StopDistance,
-  type StopRowChange,
-  type StopRowLine,
-  type StopWordKind,
-} from "./stopDistance.ts";
-export {
   changesNotLive,
   PROJECT_ALL_CLEAR,
   projectAttention,

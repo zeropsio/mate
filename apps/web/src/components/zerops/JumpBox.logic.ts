@@ -17,13 +17,13 @@
  *
  * Pure: no React, no clock, no store.
  */
-import type { GroupRowTone } from "@t3tools/client-runtime/zerops";
 import type { MateMarkState, MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
 import { maskSecrets, messageWords } from "@t3tools/shared/messagePreview";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 
+import type { ChipDot } from "./SidebarProductionChip.logic";
 import type { MatePeekDecision } from "./SidebarMatePeek.logic";
 
 /** Where a Mate's conversation stands, for writing to it. */
@@ -86,10 +86,11 @@ export interface JumpStop {
   readonly groupId: string;
   /** Its project and its name: `Shop production`. */
   readonly title: string;
-  /** What it runs, as its row says it. */
+  /** What it runs. */
   readonly line: string;
-  readonly tone: GroupRowTone;
-  /** Its badge's word. */
+  /** The production chip's dot, or the one its chip's menu wears for it. */
+  readonly dot: ChipDot;
+  /** Where it stands, in words: the dot's accessible name. */
   readonly word: string;
 }
 
