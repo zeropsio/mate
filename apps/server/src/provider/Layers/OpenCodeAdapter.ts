@@ -32,6 +32,7 @@ import type { OpencodeClient, Part, PermissionRequest, QuestionRequest } from "@
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
+import { withoutPictureOriginals } from "../../providerPictures.ts";
 import { ServerConfig } from "../../config.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 import {
@@ -2956,7 +2957,7 @@ export function makeOpenCodeAdapter(
       // OpenCode ingests images, text, and PDFs natively; formats its model
       // paths reject ride only as the prompt's file path line.
       const fileParts = toOpenCodeFileParts({
-        attachments: input.attachments,
+        attachments: withoutPictureOriginals(input.input ?? "", input.attachments ?? []),
         resolveAttachmentPath: (attachment) =>
           resolveAttachmentPath({
             attachmentsDir: serverConfig.attachmentsDir,

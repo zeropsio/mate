@@ -7,6 +7,7 @@ import {
   rememberTurnPictures,
   sentPictures,
   turnPictureError,
+  withoutPictureOriginals,
 } from "./providerPictures.ts";
 
 const image = (key: string) => ({ type: "image", source: { type: "base64", data: key } });
@@ -212,5 +213,39 @@ describe("attachmentPathLine", () => {
     expect(
       attachmentPathLine(target, `/attachments/${target.id}.png`, { text: message, attachments }),
     ).toBe(expected);
+  });
+});
+
+describe("withoutPictureOriginals", () => {
+  const attachment = (id: string, type: string, mimeType = "image/png") => ({
+    type,
+    id,
+    name: `${id}.png`,
+    mimeType,
+    sizeBytes: 10,
+  });
+
+  it.each([
+    [
+      "a picture's kept original stays out, its picture in",
+      "[Picture 1]",
+      [attachment("a", "image"), attachment("a-original", "file")],
+      ["a"],
+    ],
+    [
+      "a file that is nobody's original stays in",
+      "Look",
+      [attachment("a", "image"), attachment("notes", "file")],
+      ["a", "notes"],
+    ],
+    [
+      "a text file after a picture stays in",
+      "[Picture 1]",
+      [attachment("a", "image"), attachment("log", "file", "text/plain")],
+      ["a", "log"],
+    ],
+    ["no attachments, none", "Words", [], []],
+  ])("%s", (_label, text, attachments, expected) => {
+    expect(withoutPictureOriginals(text, attachments).map((entry) => entry.id)).toEqual(expected);
   });
 });

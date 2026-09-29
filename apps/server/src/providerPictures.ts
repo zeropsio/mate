@@ -161,3 +161,19 @@ export function attachmentPathLine(
   }
   return `[Attached ${attachment.type} "${attachment.name}" is saved at: ${path}]`;
 }
+
+/**
+ * The attachments a provider takes as the model's own files: all but a
+ * picture's kept original, which is for the agent to use, not to look at, and
+ * which its saved-at line already names.
+ */
+export function withoutPictureOriginals<
+  A extends { readonly type: string; readonly mimeType: string },
+>(text: string, attachments: ReadonlyArray<A>): A[] {
+  const originals = new Set<A>(
+    messagePictures(text, attachments).flatMap((picture) =>
+      picture.original === null ? [] : [picture.original],
+    ),
+  );
+  return attachments.filter((attachment) => !originals.has(attachment));
+}

@@ -18,6 +18,7 @@ import * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/schema";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
+import { withoutPictureOriginals } from "../../providerPictures.ts";
 import {
   makeAntigravityStderrHandler,
   makeAntigravityStdoutTransform,
@@ -261,7 +262,7 @@ export const buildAntigravityPrompt = Effect.fn("buildAntigravityPrompt")(functi
   if (text) blocks.push({ type: "text", text });
   let totalBytes = 0;
 
-  for (const attachment of input.attachments ?? []) {
+  for (const attachment of withoutPictureOriginals(input.input ?? "", input.attachments ?? [])) {
     const isPastedText =
       attachment.type === "file" &&
       "source" in attachment &&

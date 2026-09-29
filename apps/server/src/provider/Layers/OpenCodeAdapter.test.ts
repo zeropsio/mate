@@ -1688,6 +1688,49 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
     }),
   );
 
+  it.effect("keeps a picture's kept original out of the model's files", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId("thread-picture-original");
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const picture = {
+        type: "image" as const,
+        id: "thread-picture-original-12345678-1234-1234-1234-123456789abc",
+        name: "home-page.png",
+        mimeType: "image/png",
+        sizeBytes: 12,
+      };
+      const original = {
+        type: "file" as const,
+        id: "thread-picture-original-22345678-1234-1234-1234-123456789abc",
+        name: "home-page.png",
+        mimeType: "image/png",
+        sizeBytes: 34,
+      };
+      yield* adapter.sendTurn({
+        threadId,
+        input: "[Picture 1]\nUse the original on the site",
+        attachments: [picture, original],
+        modelSelection: createModelSelection(ProviderInstanceId.make("opencode"), "openai/gpt-5"),
+      });
+      const prompt = runtimeMock.state.promptCalls[0] as {
+        parts: ReadonlyArray<{ type: string; filename?: string; url?: string }>;
+      };
+      NodeAssert.deepEqual(
+        prompt.parts.map((part) => [part.type, part.url?.split("/").at(-1) ?? null]),
+        [
+          ["text", null],
+          ["file", `${picture.id}.png`],
+        ],
+      );
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
   it.effect("keeps unknown slash text on the ordinary prompt path", () =>
     Effect.gen(function* () {
       const adapter = yield* OpenCodeAdapter;
