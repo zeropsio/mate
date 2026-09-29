@@ -1806,8 +1806,10 @@ function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcom
     if (panelLeftRecently(turnKey)) return easeHeight(band, 0, band.getBoundingClientRect().height);
   }, [turnKey]);
   return (
-    // The result stands off the chat as the bars do, on the card's own hairline.
-    <div ref={markerRef} className="-mx-4 border-border/60 border-t px-4 pt-2 empty:hidden">
+    // The result stands under the worked line, inside the tray (T5): a
+    // hairline, then its rows in the card's grid; nothing at all when the run
+    // left none.
+    <div ref={markerRef} className="run-band">
       <TurnReport
         onOpenImage={ctx.onImageExpand}
         onOpenTurnDiff={(turnId) => ctx.onOpenTurnDiff(turnId)}

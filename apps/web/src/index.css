@@ -3197,6 +3197,60 @@ code {
   color: var(--color-muted-foreground);
 }
 
+/* What runs alongside while the run goes on, and the result once it is over,
+   stand under the now line inside the tray (T5): a hairline 8 px under the
+   line, 6 px of room, then their rows in the card's grid; nothing at all
+   when they have no row. */
+.run-band {
+  position: relative;
+  padding-top: 15px;
+}
+.run-band::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  inset-inline: 0;
+  height: 1px;
+  background: color-mix(in oklab, var(--color-foreground) 8%, transparent);
+}
+.run-band:empty {
+  display: none;
+}
+
+/* A bar of what runs alongside, in the card's grid (K1): the 28 px column,
+   its name and state one column in, its figure on the card's right edge. */
+.run-bar {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-height: 32px;
+  padding-right: 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: start;
+}
+button.run-bar {
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+button.run-bar:hover {
+  background: color-mix(in oklab, var(--color-foreground) 4%, transparent);
+}
+button.run-bar:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
+  outline-offset: -2px;
+}
+
+/* A tray on its own, not sliced: the Mate at work once its turn is over. */
+.run-tray-whole {
+  border-width: 1px;
+  border-radius: 30px;
+  padding: 11px;
+}
+
 /* A run the person comes back to (K7): its worked line on top, what it said
    under it 8 px down, and "Show work" on the line's right edge — its chevron
    on the edge, turning over as the work opens (K12). */

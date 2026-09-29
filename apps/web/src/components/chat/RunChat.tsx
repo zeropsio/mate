@@ -137,9 +137,6 @@ import { stepOf, type StepKind, type StepPhrase, type WorkStep } from "./workSte
 // Shared with the rest of the card
 // ---------------------------------------------------------------------------
 
-/** The card's time column: the heading's time and every bar's, on one right edge. */
-export const TIME_COLUMN = "w-14 shrink-0 text-end text-line tabular-nums text-muted-foreground";
-
 /** A markdown heading's level under its message's author (for the accessibility tree only). */
 const MESSAGE_HEADING_LEVEL = 3;
 
