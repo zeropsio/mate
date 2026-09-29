@@ -5060,11 +5060,13 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 
 /* ==== Pass 16 · review ==== */
 
-/* Review: the one door to merging, landing, releasing and rolling back (R1–R8, D12). A dialog
-   over the conversation, 720 wide: the kind, the title and its one line of provenance, then the
-   verdict — safe and why, or what blocks it and who fixes it — then what it does, what it
-   changes, how it was checked and where to try it, and a foot that says what the one button
-   does. Its type is 18 (the title, once), 14, 13 and 12; its colour means one thing each. */
+/* Review: the one door to merging, landing, releasing and rolling back (R1–R8, D12). One
+   surface in two frames: a dialog over the conversation, a quick look, and a change's own page.
+   Both are one reading column, the conversation's width — 768, its words 720 between two text
+   edges 24 in. The title and its one line of provenance, then the verdict — safe and why, or
+   what blocks it and who fixes it — then what it does, what it changes, how it was checked, what
+   was said and its commits, and a foot that says what the one button does. Its type is the
+   scale's, 16 · 14 · 13 · 12; its colour means one thing each. */
 .rv-backdrop {
   position: fixed;
   inset: 0;
@@ -5099,7 +5101,7 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   position: relative;
   display: flex;
   flex-direction: column;
-  width: min(720px, 100%);
+  width: min(768px, 100%);
   max-height: calc(100dvh - clamp(16px, 7dvh, 72px) - 16px);
   overflow: hidden;
   border-radius: 20px;
@@ -5154,16 +5156,24 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   }
 }
 
+/* The dialog's own row: what kind of thing this is, its way to its page, and ×. */
+.rv-chrome {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 14px 0 24px;
+}
 .rv-head {
   display: grid;
   flex: none;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px 16px;
-  padding: 18px 16px 16px 24px;
+  gap: 4px;
+  padding: 6px 24px 16px;
 }
 .rv-kind {
-  grid-column: 1;
   display: flex;
+  flex: 1;
+  min-width: 0;
   align-items: center;
   gap: 8px;
   font-size: 13px;
@@ -5176,12 +5186,11 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   height: 15px;
   flex: none;
 }
-.rv-x {
-  grid-column: 2;
-  grid-row: 1;
+.rv-x,
+.rv-open {
   display: flex;
-  width: 28px;
   height: 28px;
+  flex: none;
   align-items: center;
   justify-content: center;
   border-radius: 8px;
@@ -5191,10 +5200,27 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
     background-color 150ms ease,
     color 150ms ease;
 }
-.rv-x:hover {
+.rv-x {
+  width: 28px;
+}
+.rv-open {
+  gap: 6px;
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.rv-open svg {
+  width: 14px;
+  height: 14px;
+}
+.rv-x:hover,
+.rv-open:hover {
   background: color-mix(in oklab, var(--foreground) 6%, transparent);
   color: var(--foreground);
 }
+.rv-open:focus-visible,
 .rv-x:focus-visible,
 .rv-file:focus-visible,
 .rv-textbtn:focus-visible,
@@ -5205,17 +5231,14 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   outline-offset: 2px;
 }
 .rv-title {
-  grid-column: 1;
   margin: 0;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
-  line-height: 26px;
-  letter-spacing: -0.1px;
+  line-height: 24px;
   text-wrap: balance;
   overflow-wrap: anywhere;
 }
 .rv-meta {
-  grid-column: 1;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -5228,6 +5251,45 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 .rv-meta code {
   font-family: var(--font-mono);
   font-size: 12px;
+}
+.rv-meta-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The review as a page: the same column, flush with the page's own edges; the verdict box and
+   the foot's card stand 8 out from the text as in the dialog, and the foot stays in view. */
+.rv-page {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.rv-page .rv-head {
+  padding: 0 0 16px;
+}
+.rv-page .rv-verdict {
+  margin: 0 -8px;
+}
+.rv-page .rv-body {
+  padding: 20px 0 0;
+  overflow: visible;
+}
+.rv-page .rv-verdict + .rv-body {
+  margin-top: 0;
+}
+.rv-page .rv-foot {
+  position: sticky;
+  bottom: 16px;
+  z-index: 1;
+  margin: 28px -8px 0;
+  padding: 8px 8px 8px 16px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--card);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent),
+    0 16px 40px -20px color-mix(in oklab, var(--color-black) 40%, transparent);
 }
 .rv-add {
   color: var(--diff-addition-foreground);
@@ -5365,6 +5427,194 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 }
 .rv-skeleton span:last-child {
   width: 62%;
+}
+
+/* The description: the change's own words, drawn as the Mate's other words are. A picture read
+   stands at most the column's width, its own shape; one not drawn here — being read, or unreadable
+   — is one quiet line, the same either way, so nothing moves when a read fails. */
+/* Its headings keep to the review's scale: 16 for a heading, 14 under it. */
+.rv-desc .chat-markdown :is(h1, h2) {
+  margin: 20px 0 6px;
+  font-size: 16px;
+  line-height: 24px;
+}
+.rv-desc .chat-markdown h3 {
+  margin: 16px 0 4px;
+  font-size: 14px;
+  line-height: 22px;
+}
+.rv-desc .chat-markdown > :first-child {
+  margin-top: 0;
+}
+.rv-pic {
+  position: relative;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 12px 0;
+  overflow: hidden;
+  border-radius: 12px;
+}
+/* The hairline sits over the picture, so a screenshot's white edge still meets the page. */
+.rv-pic::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
+  content: "";
+  pointer-events: none;
+}
+.rv-pic-open {
+  display: block;
+  cursor: zoom-in;
+}
+.rv-pic-open:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.rv-pic img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 560px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .rv-pic[data-fresh] img {
+    animation: rv-pic-in 180ms var(--ease-out-strong) both;
+  }
+}
+@keyframes rv-pic-in {
+  from {
+    opacity: 0;
+  }
+}
+.rv-pic-line {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--foreground) 4%, transparent);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted-foreground);
+}
+.rv-pic-line > svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.rv-pic-alt {
+  min-width: 0;
+  flex: 1;
+}
+.rv-pic-line .rv-link {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  font-weight: 500;
+}
+.rv-pic-line .rv-link svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* A picture opened large, over the review: the picture, its words, a way through the others. */
+.rv-viewer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: color-mix(in oklab, var(--color-black) 78%, transparent);
+  transition: opacity 180ms var(--ease-out-strong);
+}
+.rv-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 72px;
+}
+.rv-viewer-popup {
+  display: flex;
+  max-width: 100%;
+  max-height: 100%;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  outline: none;
+  transition: opacity 180ms var(--ease-out-strong);
+}
+.rv-viewer-backdrop[data-starting-style],
+.rv-viewer-backdrop[data-ending-style],
+.rv-viewer-popup[data-starting-style],
+.rv-viewer-popup[data-ending-style] {
+  opacity: 0;
+}
+.rv-viewer-popup img {
+  min-height: 0;
+  max-width: 100%;
+  max-height: calc(100dvh - 160px);
+  border-radius: 12px;
+  object-fit: contain;
+  box-shadow: 0 30px 80px -30px color-mix(in oklab, var(--color-black) 60%, transparent);
+}
+.rv-viewer-words {
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 18px;
+  color: color-mix(in oklab, var(--color-white) 86%, transparent);
+}
+.rv-viewer-words span {
+  color: color-mix(in oklab, var(--color-white) 56%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+.rv-viewer-x,
+.rv-viewer-step {
+  position: fixed;
+  display: flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  color: color-mix(in oklab, var(--color-white) 86%, transparent);
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+.rv-viewer-x:hover,
+.rv-viewer-step:hover {
+  background: color-mix(in oklab, var(--color-white) 12%, transparent);
+}
+.rv-viewer-x:focus-visible,
+.rv-viewer-step:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.rv-viewer-x {
+  top: 16px;
+  right: 16px;
+}
+.rv-viewer-step {
+  top: 50%;
+  translate: 0 -50%;
+}
+.rv-viewer-step[data-side="before"] {
+  left: 16px;
+}
+.rv-viewer-step[data-side="after"] {
+  right: 16px;
+}
+.rv-viewer-x svg,
+.rv-viewer-step svg {
+  width: 20px;
+  height: 20px;
 }
 
 /* The files, each a 36 px row; a file's diff opens in place under it, its long lines wrapped. */
@@ -5543,29 +5793,250 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   color: var(--muted-foreground);
 }
 
-.rv-try {
+/* What could not be read, where it would have stood, with Try again: amber, it didn't go
+   through; a failure never blanks its section. */
+.rv-failed {
   display: flex;
+  min-height: 36px;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  line-height: 20px;
+  gap: 10px;
+  padding: 7px 0;
+  font-size: 13px;
+  line-height: 18px;
+}
+.rv-failed svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--zerops-status-attention);
+}
+.rv-failed-why {
   color: var(--muted-foreground);
 }
-.rv-try svg {
-  width: 15px;
-  height: 15px;
-  flex: none;
+.rv-failed .rv-textbtn {
+  margin: 0 -8px 0 auto;
 }
-.rv-try .rv-link {
+.rv-files .rv-failed {
+  padding: 7px 14px 7px 12px;
+}
+.rv-diff .rv-failed {
+  padding: 0 6px 0 60px;
+}
+.rv-note {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--muted-foreground);
+}
+/* A fold's way open: its words on the edge of what it opens. */
+.rv-fold {
+  margin: 4px 0 0 -8px;
+}
+.rv-fold[data-fold="remarks"] {
+  margin: 0 0 0 22px;
+}
+
+/* The conversation: marks in a 20 px column, words beside them; then the one box. */
+.rv-remarks {
+  display: grid;
+  gap: 14px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+.rv-remark,
+.rv-remark-skeleton {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: start;
+}
+.rv-remark > :first-child {
+  grid-row: 1 / span 2;
+}
+.rv-remark-avatar {
+  width: 20px;
+  height: 20px;
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
+}
+.rv-remark-who {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+.rv-remark-at {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.rv-remark-body {
+  grid-column: 2;
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* A comment on its way holds a one-line comment's room: its mark, its name, its line. */
+.rv-remark-skeleton {
+  height: 44px;
+}
+.rv-remark-skeleton[data-fold] {
+  height: 24px;
+}
+.rv-remark-skeleton span {
+  height: 10px;
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+.rv-remark-skeleton span:first-child {
+  grid-row: 1 / span 2;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+}
+.rv-remark-skeleton span:nth-child(2) {
+  width: 96px;
+  margin: 5px 0;
+}
+.rv-remark-skeleton span:nth-child(3) {
+  width: 64%;
+  margin: 6px 0;
+}
+
+/* The one box: a quiet line that grows as it is written in, its two verbs at its end. */
+.rv-say {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 5px 5px 5px 12px;
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
+  transition: box-shadow 150ms ease;
+}
+.rv-say:focus-within {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--foreground) 22%, transparent),
+    0 0 0 3px color-mix(in oklab, var(--ring) 22%, transparent);
+}
+.rv-say[data-off] {
+  opacity: 0.6;
+}
+.rv-say-box {
+  flex: 1;
+  min-width: 0;
+  max-height: 200px;
+  /* One line until it is written in, then as tall as what is written, up to its cap. */
+  field-sizing: content;
+  padding: 4px 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  overflow-y: auto;
+  background: transparent;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--foreground);
+}
+.rv-say-box::placeholder {
+  color: var(--muted-foreground);
+}
+.rv-say-comment,
+.rv-say-ask {
   display: inline-flex;
+  height: 30px;
+  flex: none;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--foreground);
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+.rv-say-ask {
+  padding-left: 8px;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
+}
+.rv-say-comment:hover:not([aria-disabled]),
+.rv-say-ask:hover:not([aria-disabled]) {
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+}
+.rv-say-comment[aria-disabled],
+.rv-say-ask[aria-disabled] {
+  color: var(--muted-foreground);
+  cursor: default;
+}
+.rv-say-comment:focus-visible,
+.rv-say-ask:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.rv-say-trouble {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--zerops-status-failed-text);
+}
+
+/* The commits: one line each, what it did, then its age and hash on the column's right edge. */
+.rv-commits {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rv-commit {
+  display: grid;
+  height: 32px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  column-gap: 12px;
+  align-items: center;
+  font-size: 14px;
+  line-height: 20px;
+}
+.rv-commit-t {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rv-commit-at {
+  font-size: 13px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.rv-commit-sha {
   font-family: var(--font-mono);
   font-size: 13px;
+  color: var(--muted-foreground);
 }
-.rv-try .rv-link svg {
-  width: 13px;
-  height: 13px;
+.rv-commit-skeleton {
+  display: grid;
+  height: 32px;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  column-gap: 12px;
+  align-items: center;
+}
+.rv-commit-skeleton span {
+  height: 10px;
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+.rv-commit-skeleton span:first-child {
+  width: 48%;
 }
 
 /* A release: what goes out, one row per change with its Mate's face; where it goes; and the way

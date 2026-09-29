@@ -2,10 +2,11 @@
  * A change's review: a pull request, read before it is merged (R2–R6).
  *
  * The verdict and the button come from the flow the moment it opens — the flow already knows
- * whether the change merges and how its checks went — and what the flow does not carry is read
- * as it opens (`useZeropsChangeReadout`): its files, how many commits it squashes, and what
- * `main` changed under it; its diff once a file is opened. The run that made it is its Mate's
- * newest answer linking it.
+ * whether the change merges and how its checks went, and carries the change's description — and
+ * what the flow does not carry is read as it opens (`useZeropsChangeReadout`): its files, the
+ * commits it squashes, and what `main` changed under it; its diff once a file is opened. The run
+ * that made it is its Mate's newest answer linking it: what it said stands in for a description
+ * nobody wrote.
  *
  * After Merge the review stays: it says what happened, and where production waits, its button
  * opens the release's review in place.
@@ -13,32 +14,43 @@
  * `ChangeReviewView` is the picture with every read handed in, so the harness shows each state.
  */
 import {
-  branchLabel,
+  changeAskPrompt,
+  changeAuthorName,
+  changeRemarks,
   changeReview,
+  historyAge,
   releaseContentsCommits,
+  type ChangeRemark,
   type FlowPullRequest,
   type GiteaChangedFile,
   type GiteaCommit,
   type ReviewPress,
-  type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
-import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { useRouter } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { buildThreadRouteParams } from "~/threadRoutes";
+import { giteaSessionLogin } from "~/zerops/accountGiteaSessions";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
-import { useZeropsProjectFlowOptional, type ZeropsProjectFlow } from "~/zerops/projectFlowContext";
+import {
+  useZeropsProjectFlowOptional,
+  type ZeropsProjectFlow,
+  type ZeropsProjectFlowValue,
+} from "~/zerops/projectFlowContext";
 import type { ReviewTarget } from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
-import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import {
   useZeropsChangeReadout,
   type ChangeDiffRead,
   type ReadoutPart,
 } from "~/zerops/useZeropsChangeReadout";
+import {
+  useZeropsChangeComments,
+  type ZeropsChangeComments,
+} from "~/zerops/useZeropsChangeComments";
 import { useZeropsChangeRun } from "~/zerops/useZeropsChangeRun";
+import { useGiteaPictureSource, type GiteaPictureSource } from "~/zerops/useGiteaPicture";
 import { useZeropsLandedChange } from "~/zerops/useZeropsLandedChange";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useFixMates } from "~/zerops/fixMates";
@@ -47,43 +59,62 @@ import { useZeropsReviewMates } from "~/zerops/useZeropsReviewMates";
 import { MateFace } from "../primitives";
 import {
   changeConflict,
-  changeRequestPrefill,
   giteaFileUrl,
-  previewRoute,
   reviewKindLine,
   sizeWords,
+  type ReviewFrame,
   type ReviewKind,
 } from "./ZeropsReview.logic";
+import { ReviewCommits } from "./ReviewCommits";
+import { ReviewConversation } from "./ReviewConversation";
+import { ReviewDescription } from "./ReviewDescription";
 import {
   ReviewChecks,
   ReviewFiles,
   ReviewSection,
   ReviewSize,
-  ReviewTry,
-  ReviewWords,
   ZeropsReviewSurface,
   type ReviewDiffState,
 } from "./ZeropsReviewSurface";
 
 const KIND: ReviewKind = "change";
-/** How long "What it does" holds its lines for the Mate's conversation to answer. */
+/** How long a change with no description holds the room of its run's words for them. */
 const RUN_WORDS_WAIT_MS = 3_000;
 
 type ChangeTarget = Extract<ReviewTarget, { readonly kind: "change" }>;
 
 export function ZeropsChangeReview({
+  frame = "dialog",
   target,
   titleId,
   onClose,
   onReplace,
 }: {
+  /** In a dialog over the conversation, or as the change's own page. */
+  readonly frame?: ReviewFrame;
   readonly target: ChangeTarget;
   readonly titleId: string;
   readonly onClose: () => void;
   /** Opens another review in this one's place — the release, once this merged. */
   readonly onReplace: (target: ReviewTarget) => void;
 }) {
+  const router = useRouter();
   const flowValue = useZeropsProjectFlowOptional();
+  // The dialog's way to the same review at the change's own address.
+  const onOpenPage =
+    frame === "page"
+      ? undefined
+      : () => {
+          onClose();
+          void router.navigate({
+            to: "/change/$groupId/$repository/$number",
+            params: {
+              groupId: target.groupId,
+              repository: target.repository,
+              number: String(target.number),
+            },
+          });
+        };
   const flow = flowValue?.flows.get(target.groupId);
   const matches = (pull: FlowPullRequest) =>
     pull.repository === target.repository && pull.number === target.number;
@@ -107,13 +138,15 @@ export function ZeropsChangeReview({
   if (current !== undefined && current !== held) setHeld(current);
   const pull = current ?? held;
 
-  if (flow === undefined || pull === undefined) {
+  if (flowValue === null || flow === undefined || pull === undefined) {
     return (
       <ZeropsReviewSurface
         consequence="Nothing is merged from here until the change is read."
+        frame={frame}
         kind={KIND}
         kindLabel={reviewKindLine(KIND)}
         onClose={onClose}
+        onOpenPage={onOpenPage}
         title={`#${String(target.number)}`}
         titleId={titleId}
         verdict={{
@@ -137,6 +170,9 @@ export function ZeropsChangeReview({
   return (
     <ChangeReviewData
       flow={flow}
+      flowValue={flowValue}
+      frame={frame}
+      onOpenPage={onOpenPage}
       onClose={onClose}
       onReplace={onReplace}
       pull={pull}
@@ -148,6 +184,9 @@ export function ZeropsChangeReview({
 
 function ChangeReviewData({
   flow,
+  flowValue,
+  frame,
+  onOpenPage,
   pull,
   target,
   titleId,
@@ -155,21 +194,24 @@ function ChangeReviewData({
   onReplace,
 }: {
   readonly flow: ZeropsProjectFlow;
+  /** The account's flow, which holds this one. */
+  readonly flowValue: ZeropsProjectFlowValue;
+  readonly frame: ReviewFrame;
+  readonly onOpenPage: (() => void) | undefined;
   readonly pull: FlowPullRequest;
   readonly target: ChangeTarget;
   readonly titleId: string;
   readonly onClose: () => void;
   readonly onReplace: (target: ReviewTarget) => void;
 }) {
-  const flowValue = useZeropsProjectFlowOptional();
   const router = useRouter();
   const now = useNowMs();
   const askMate = useAskMate();
   const askMateToFix = useAskMateToFix();
   const mates = useZeropsReviewMates(target.groupId);
-  const { listing } = useZeropsCandidates();
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
   const [diffWanted, setDiffWanted] = useState(false);
+  const pictures = useGiteaPictureSource(flowValue.giteaOrigin);
 
   const mate = pull.mateProjectId === undefined ? undefined : mates.get(pull.mateProjectId);
   // Only the Mate that wrote it can push to its branch: the fix goes to it, if it is the
@@ -181,7 +223,7 @@ function ChangeReviewData({
   );
   const mine = fixers.some((option) => option.mateProjectId === pull.mateProjectId);
   const readout = useZeropsChangeReadout({
-    giteaOrigin: flowValue?.giteaOrigin,
+    giteaOrigin: flowValue.giteaOrigin,
     owner: flow.slug,
     repository: pull.repository,
     number: pull.number,
@@ -197,6 +239,25 @@ function ChangeReviewData({
     repository: pull.repository,
     number: pull.number,
   });
+  const comments = useZeropsChangeComments({
+    giteaOrigin: flowValue.giteaOrigin,
+    owner: flow.slug,
+    repo: pull.repository,
+    number: pull.number,
+  });
+  const giteaOrigin = flowValue.giteaOrigin;
+  const mateNames = flowValue.mateNames;
+  const remarks = useMemo(
+    () =>
+      comments.state.kind === "read"
+        ? changeRemarks({
+            comments: comments.state.comments,
+            mateNames,
+            me: giteaOrigin === undefined ? undefined : giteaSessionLogin(giteaOrigin),
+          })
+        : NO_REMARKS,
+    [comments.state, giteaOrigin, mateNames],
+  );
   // A conversation that never answers is not waited on for ever: its lines give way.
   const [runGaveUp, setRunGaveUp] = useState(false);
   useEffect(() => {
@@ -208,14 +269,7 @@ function ChangeReviewData({
       clearTimeout(timer);
     };
   }, [run.reading]);
-  const routes = useMemo(() => {
-    const id = pull.mateProjectId;
-    if (id === undefined) return [];
-    return heldCandidates(listing).rows.find((row) => row.project.id === id)?.routes ?? [];
-  }, [listing, pull.mateProjectId]);
-
   const merge = async () => {
-    if (flowValue === null) return;
     setPress({ kind: "running" });
     // The head whose change was shown: one pushed since is Gitea's to refuse, never merged unseen.
     const outcome = await flowValue.mergePullRequest(flow.slug, { ...pull, headSha: readout.head });
@@ -229,25 +283,41 @@ function ChangeReviewData({
         production: flow.environmentInputs.some((entry) => entry.tier === "production"),
         stage: flow.environmentInputs.some((entry) => entry.tier === "stage"),
       }}
+      frame={frame}
+      giteaOrigin={flowValue.giteaOrigin}
+      onOpenPage={onOpenPage}
       live={flow.releases.find((entry) => entry.standing === "live")?.tag}
       mate={
         mate === undefined
           ? pull.mateProjectId === undefined
             ? undefined
             : {
-                name: flowValue?.mateNames.get(pull.mateProjectId) ?? "the Mate",
+                name: flowValue.mateNames.get(pull.mateProjectId) ?? "the Mate",
                 tint: undefined,
                 mine,
               }
           : { name: mate.name, tint: mate.tint, mine }
       }
       now={now}
-      onAskChanges={() => {
+      comments={comments}
+      remarks={remarks}
+      onAsk={async (said) => {
+        // The change keeps the record of what was asked; the Mate gets the words to act on.
+        const refusal = await comments.say(said);
         if (pull.mateProjectId === undefined) return;
-        askMate(pull.mateProjectId, changeRequestPrefill(pull), { send: false });
-        onClose();
+        askMate(
+          pull.mateProjectId,
+          changeAskPrompt({
+            number: pull.number,
+            repository: pull.repository,
+            title: pull.title,
+            said,
+          }),
+        );
+        if (refusal === null) onClose();
       }}
       onClose={onClose}
+      onRetry={readout.retry}
       onFix={(problem) => {
         if (pull.mateProjectId === undefined) return;
         askMateToFix(pull.mateProjectId, problem);
@@ -273,10 +343,10 @@ function ChangeReviewData({
       onReviewRelease={() => {
         onReplace({ kind: "release", groupId: target.groupId });
       }}
+      pictures={pictures}
       press={press}
       pull={pull}
       readout={readout}
-      route={pull.merged ? undefined : previewRoute(pull.repository, routes)}
       run={{ words: run.words, reading: run.reading && !runGaveUp }}
       titleId={titleId}
       waitingForProduction={releaseContentsCommits(flow.release.contents).length}
@@ -284,7 +354,12 @@ function ChangeReviewData({
   );
 }
 
+/** Nothing said: the state before the conversation is read. */
+const NO_REMARKS: ReadonlyArray<ChangeRemark> = [];
+
 export interface ChangeReviewViewProps {
+  /** A dialog over the conversation, or the change's own page. */
+  readonly frame?: ReviewFrame | undefined;
   readonly pull: FlowPullRequest;
   /** The Mate that wrote it — its name, its colour, and whether it is the person's own. */
   readonly mate:
@@ -293,11 +368,17 @@ export interface ChangeReviewViewProps {
   readonly readout: {
     readonly files: ReadoutPart<ReadonlyArray<GiteaChangedFile>>;
     readonly diff: ReadoutPart<ChangeDiffRead>;
-    readonly commits: ReadoutPart<number>;
+    readonly commits: ReadoutPart<ReadonlyArray<GiteaCommit>>;
     readonly mainSince: ReadoutPart<ReadonlyArray<GiteaCommit>>;
   };
+  /** What was said on it, and the way to say something back. */
+  readonly comments: ZeropsChangeComments;
+  readonly remarks: ReadonlyArray<ChangeRemark>;
   readonly run: { readonly words: string | undefined; readonly reading: boolean };
-  readonly route: ZeropsPublicRoute | undefined;
+  /** The account's Gitea, which its description's pictures and links are on. */
+  readonly giteaOrigin: string | undefined;
+  /** Where its description's pictures are read from, as the person. */
+  readonly pictures: GiteaPictureSource | undefined;
   readonly downstream: { readonly production: boolean; readonly stage: boolean };
   /** How many changes wait for production, as the flow last read it. */
   readonly waitingForProduction: number;
@@ -312,9 +393,14 @@ export interface ChangeReviewViewProps {
   /** A file was opened: its diff is wanted. */
   readonly onOpenFile?: (() => void) | undefined;
   readonly onFix: (problem: FixProblem) => void;
-  readonly onAskChanges: () => void;
+  /** Keeps the words on the change and hands them to its Mate, who changes the code. */
+  readonly onAsk: (said: string) => Promise<void>;
+  /** Reads again what could not be read. */
+  readonly onRetry?: (() => void) | undefined;
   readonly onOpenRun: (() => void) | undefined;
   readonly onReviewRelease: () => void;
+  /** The dialog's way to this review as the change's own page. */
+  readonly onOpenPage?: (() => void) | undefined;
   readonly onClose: () => void;
 }
 
@@ -331,7 +417,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         : readout.files.kind === "failed"
           ? "failed"
           : "reading",
-    commits: readout.commits.kind === "read" ? readout.commits.value : undefined,
+    commits: readout.commits.kind === "read" ? readout.commits.value.length : undefined,
     conflict: changeConflict({
       mergeability: pull.mergeability,
       files,
@@ -369,8 +455,6 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     return { kind: "reading" };
   };
   const checkRows = pull.checkRows ?? [];
-  const branch =
-    pull.headBranch === undefined ? undefined : branchLabel(pull.headBranch, mate?.name);
   const mine = mate?.mine === true ? mate : undefined;
   const fix = model.verdict.fix;
   const next = model.primary?.label === "Review release";
@@ -380,6 +464,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     <ZeropsReviewSurface
       consequence={model.consequence}
       dismiss={over ? "Close" : undefined}
+      frame={props.frame}
       fix={
         fix === undefined || mine === undefined
           ? undefined
@@ -393,41 +478,16 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       kind={KIND}
       kindLabel={reviewKindLine(KIND, pull.kind)}
       meta={
-        <>
-          <span>#{pull.number}</span>
-          {mate === undefined ? (
-            pull.author === undefined ? null : (
-              <>
-                <span aria-hidden="true">·</span>
-                <span>{pull.author}</span>
-              </>
-            )
-          ) : (
-            <>
-              <span aria-hidden="true">·</span>
-              <span className="inline-flex items-center gap-1.5">
-                {mate.tint === undefined ? null : (
-                  <MateFace className="size-4" size="dot" state="idle" tint={mate.tint} />
-                )}
-                {mate.name}
-              </span>
-            </>
-          )}
-          {size === undefined ? null : (
-            <>
-              <span aria-hidden="true">·</span>
-              <span>{size.files}</span>
-              <ReviewSize additions={size.additions} deletions={size.deletions} />
-            </>
-          )}
-          {branch === undefined ? null : (
-            <>
-              <span aria-hidden="true">·</span>
-              <span>from {branch === pull.headBranch ? <code>{branch}</code> : branch}</span>
-            </>
-          )}
-        </>
+        <ChangeMeta
+          age={historyAge(pull.updatedAt, props.now)}
+          base={pull.baseBranch}
+          face={mate?.tint}
+          number={pull.number}
+          repository={pull.repository}
+          who={changeAuthorName(pull, mate?.name)}
+        />
       }
+      onOpenPage={props.onOpenPage}
       onClose={props.onClose}
       primary={
         model.primary === undefined
@@ -440,23 +500,17 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
               onPress: next ? props.onReviewRelease : props.onMerge,
             }
       }
-      secondary={
-        mine === undefined || over
-          ? undefined
-          : {
-              label: `Ask ${mine.name} for changes`,
-              ...(mine.tint === undefined ? {} : { face: { tint: mine.tint } }),
-              onPress: props.onAskChanges,
-            }
-      }
       title={pull.title}
       titleId={props.titleId}
       verdict={model.verdict}
     >
-      <ReviewWords
+      <ReviewDescription
+        description={pull.description}
+        giteaOrigin={props.giteaOrigin}
+        giteaPage={pull.url}
         onOpenRun={props.onOpenRun}
-        reading={props.run.reading}
-        words={props.run.words}
+        pictures={props.pictures}
+        run={props.run}
       />
       <ReviewSection
         aside={
@@ -468,35 +522,87 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         }
         title="Changes"
       >
-        {readout.files.kind === "failed" ? (
-          <p className="rv-words">{readout.files.reason}</p>
-        ) : (
-          <ReviewFiles
-            diffOf={diffOf}
-            giteaOf={(path) => giteaFileUrl(pull.url, path)}
-            onOpen={props.onOpenFile}
-            files={files?.map((file) => ({
-              path: file.filename,
-              status: file.status,
-              additions: file.additions,
-              deletions: file.deletions,
-              previousPath: file.previousFilename,
-            }))}
-            initiallyOpen={props.initiallyOpen}
-            pending={pull.changedFiles ?? 1}
-          />
-        )}
+        <ReviewFiles
+          diffOf={diffOf}
+          failed={readout.files.kind === "failed" ? readout.files.reason : undefined}
+          files={files?.map((file) => ({
+            path: file.filename,
+            status: file.status,
+            additions: file.additions,
+            deletions: file.deletions,
+            previousPath: file.previousFilename,
+          }))}
+          giteaOf={(path) => giteaFileUrl(pull.url, path)}
+          initiallyOpen={props.initiallyOpen}
+          onOpen={props.onOpenFile}
+          onRetry={props.onRetry}
+          pending={pull.changedFiles ?? 1}
+        />
       </ReviewSection>
       {checkRows.length === 0 ? null : (
         <ReviewSection title="Checks">
           <ReviewChecks rows={checkRows} />
         </ReviewSection>
       )}
-      {props.route === undefined ? null : (
-        <ReviewSection title="Try it">
-          <ReviewTry route={props.route} />
-        </ReviewSection>
-      )}
+      <ReviewConversation
+        asker={mine === undefined ? undefined : { name: mine.name, tint: mine.tint }}
+        comments={props.comments}
+        count={pull.commentCount}
+        draftKey={`${pull.url ?? pull.repository}#${String(pull.number)}`}
+        frame={props.frame ?? "dialog"}
+        now={props.now}
+        onAsk={props.onAsk}
+        remarks={props.remarks}
+      />
+      <ReviewCommits commits={readout.commits} now={props.now} onRetry={props.onRetry} />
     </ZeropsReviewSurface>
+  );
+}
+
+/**
+ * The one line under a change's title: whose it is, where it goes, which it is and when it last
+ * moved — `(face) Nova · appdev → main · #2 · 1d`. Its size is the Changes heading's.
+ */
+function ChangeMeta({
+  who,
+  face,
+  repository,
+  base,
+  number,
+  age,
+}: {
+  readonly who: string | undefined;
+  readonly face: MateTintId | undefined;
+  readonly repository: string;
+  readonly base: string;
+  readonly number: number;
+  readonly age: string | undefined;
+}) {
+  const parts: Array<{ readonly key: string; readonly node: ReactNode }> = [];
+  if (who !== undefined) {
+    parts.push({
+      key: "who",
+      node: (
+        <span className="rv-meta-who">
+          {face === undefined ? null : (
+            <MateFace className="size-4" size="dot" state="idle" tint={face} />
+          )}
+          {who}
+        </span>
+      ),
+    });
+  }
+  parts.push({ key: "where", node: <span>{`${repository} → ${base}`}</span> });
+  parts.push({ key: "number", node: <span>#{number}</span> });
+  if (age !== undefined) parts.push({ key: "age", node: <span>{age}</span> });
+  return (
+    <>
+      {parts.map((part, index) => (
+        <Fragment key={part.key}>
+          {index === 0 ? null : <span aria-hidden="true">·</span>}
+          {part.node}
+        </Fragment>
+      ))}
+    </>
   );
 }

@@ -580,6 +580,17 @@ describe("GiteaClient a change's pictures, read as the person", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("fails at once, with no status, where a browser's preflight is refused", async () => {
+    // Gitea 1.27.2 answers the preflight of /attachments/{uuid} with a 303, no CORS headers:
+    // the browser's fetch rejects before any answer is read.
+    const client = createGiteaClient({
+      origin: ORIGIN,
+      token: "t-1",
+      fetch: () => Promise.reject(new TypeError("Failed to fetch")),
+    });
+    await expect(client.picture(`${ORIGIN}/attachments/5f1c2a`)).rejects.toBeInstanceOf(TypeError);
+  });
+
   it("says Gitea's refusal of a picture with its status", async () => {
     const { client } = fake([{ status: 404, text: "Not Found" }]);
     await expect(client.picture(`${ORIGIN}/attachments/gone`)).rejects.toMatchObject({

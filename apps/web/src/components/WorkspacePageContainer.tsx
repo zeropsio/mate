@@ -2,9 +2,11 @@ import type { ComponentPropsWithoutRef } from "react";
 
 import { cn } from "../lib/utils";
 
-export type WorkspacePageWidth = "readable" | "wide" | "expanded";
+export type WorkspacePageWidth = "column" | "readable" | "wide" | "expanded";
 
 const WIDTH_CLASS: Record<WorkspacePageWidth, string> = {
+  /** The conversation's own width: a page that is read like one. */
+  column: "max-w-3xl",
   readable: "max-w-4xl",
   wide: "max-w-5xl",
   expanded: "max-w-6xl",

@@ -497,6 +497,11 @@ export interface GiteaClient {
    * as the person, as bytes a page can show (`URL.createObjectURL`). A private repository's
    * pictures answer nobody without a token, and a page's own `<img>` carries none. Only an address
    * on this Gitea is read: the token never goes anywhere else.
+   *
+   * From a browser on another origin this read fails today, as a network error with no status:
+   * the bearer makes it preflight, and Gitea 1.27.2 answers the preflight of `/attachments/{uuid}`
+   * with a 303 to its sign-in, not its CORS headers (the GET itself would carry them); no API
+   * route serves an attachment's bytes (measured 2026-09-29). It reads where no preflight is made.
    */
   picture(url: string): Promise<Blob>;
 

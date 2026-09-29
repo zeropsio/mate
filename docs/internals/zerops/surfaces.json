@@ -318,6 +318,9 @@
       "id": "zerops-review",
       "title": "Zerops review",
       "components": [
+        "apps/web/src/components/zerops/review/ReviewCommits.tsx",
+        "apps/web/src/components/zerops/review/ReviewConversation.tsx",
+        "apps/web/src/components/zerops/review/ReviewDescription.tsx",
         "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
         "apps/web/src/components/zerops/review/ZeropsCrewTaskReview.tsx",
         "apps/web/src/components/zerops/review/ZeropsReleaseReview.tsx",
@@ -326,6 +329,7 @@
         "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx",
         "apps/web/src/zerops/ZeropsReviewProvider.tsx",
         "apps/web/src/zerops/review.ts",
+        "apps/web/src/zerops/useGiteaPicture.ts",
         "apps/web/src/zerops/useZeropsChangeReadout.ts",
         "apps/web/src/zerops/useZeropsChangeRun.ts",
         "apps/web/src/zerops/useZeropsReviewMates.ts",
@@ -376,7 +380,12 @@
         "none": "No docs/user page documents the review yet."
       },
       "tests": [
+        "apps/web/src/components/zerops/review/ReviewCommits.test.tsx",
+        "apps/web/src/components/zerops/review/ReviewConversation.test.tsx",
+        "apps/web/src/components/zerops/review/ReviewDescription.test.tsx",
         "apps/web/src/components/zerops/review/ZeropsReview.logic.test.ts",
+        "apps/web/src/zerops/useZeropsChangeComments.test.ts",
+        "apps/web/src/zerops/useZeropsChangeReadout.test.ts",
         "packages/client-runtime/src/zerops/changeDiff.test.ts",
         "packages/client-runtime/src/zerops/reviewVerdict.test.ts"
       ],
@@ -810,7 +819,6 @@
         "apps/web/src/components/zerops/projects/ProjectsView.tsx",
         "apps/web/src/components/zerops/projects/projectsView.logic.ts",
         "apps/web/src/components/zerops/ZeropsAskDialog.tsx",
-        "apps/web/src/components/zerops/ZeropsChangeConversation.tsx",
         "apps/web/src/components/zerops/ZeropsDeployRun.tsx",
         "apps/web/src/components/zerops/ZeropsChangeLinkChip.tsx",
         "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",

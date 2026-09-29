@@ -1151,6 +1151,23 @@ const MarkdownImageOpenerContext = React.createContext<
   ((preview: ExpandedImagePreview) => void) | null
 >(null);
 
+/** A text's picture from an address of its own, as the text's host is handed it. */
+export interface MarkdownPicture {
+  readonly uri: string;
+  readonly alt: string;
+  readonly width: string | number | undefined;
+  readonly height: string | number | undefined;
+}
+
+/**
+ * Draws a text's pictures that come from an address of their own, where the text's host reads
+ * them its own way: a change's description reads its Gitea's pictures as the person, sized to its
+ * column. Absent, they load as any page's pictures do.
+ */
+export const MarkdownPictureContext = React.createContext<
+  ((picture: MarkdownPicture) => ReactNode) | null
+>(null);
+
 /** The picture clicked, among every picture of the text it stands in. */
 function openMarkdownImage(button: HTMLElement, open: (preview: ExpandedImagePreview) => void) {
   const clicked = button.querySelector("img");
@@ -2258,11 +2275,21 @@ const CHAT_MARKDOWN_COMPONENTS = {
   },
   img: function MarkdownImage({ node: _node, title: _title, src, alt, ...props }) {
     const { cwd, threadRef } = use(ChatMarkdownRendererContext);
+    const drawPicture = use(MarkdownPictureContext);
     const srcString = typeof src === "string" ? normalizeMarkdownLinkDestination(src) : "";
     const altText = alt ?? "";
     const imageSource = classifyMarkdownImageSource(srcString, cwd);
     if (imageSource._tag === "Direct") {
-      return <DirectMarkdownImage {...props} alt={altText} uri={imageSource.uri} />;
+      return drawPicture === null ? (
+        <DirectMarkdownImage {...props} alt={altText} uri={imageSource.uri} />
+      ) : (
+        drawPicture({
+          uri: imageSource.uri,
+          alt: altText,
+          width: props.width,
+          height: props.height,
+        })
+      );
     }
     if (imageSource._tag === "WorkspaceFile" && threadRef) {
       return (

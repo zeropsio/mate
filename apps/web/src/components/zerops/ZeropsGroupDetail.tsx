@@ -20,19 +20,11 @@ import {
   botDisplayName,
   buildZeropsGroupTree,
   hasMate,
-  changeAskLabel,
-  changeAuthorName,
-  changeConversationCount,
-  changeRemarks,
   changeState,
-  changeSubtitle,
-  changeVerdict,
-  historyAge,
   deployWord,
   environmentNameUnderGroup,
   flowVerbKey,
   flowVerbLabel,
-  preferredMateTint,
   readZeropsGroupTags,
   PROJECT_ALL_CLEAR,
   projectAttention,
@@ -44,8 +36,6 @@ import {
   resolvePrimaryConversation,
   shortCommit,
   sidebarChangeLabel,
-  type ChangeRemark,
-  type ChangeVerdict,
   type ProjectAttentionItem,
   type ZeropsPublicRoute,
   type ProjectAttentionKind,
@@ -87,7 +77,7 @@ import {
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronRightIcon, ExternalLinkIcon, PlusIcon } from "lucide-react";
-import { Fragment, useCallback, useMemo, useState } from "react";
+import { Fragment, useCallback, useId, useMemo, useState } from "react";
 
 import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -98,27 +88,18 @@ import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { mateFaceFor } from "~/zerops/agentActivity";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
-import { useAskMate } from "~/zerops/useAskMate";
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus, type MateUpdateStatus } from "~/zerops/mateUpdate";
 import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
-import {
-  useZeropsLandedChange,
-  type ZeropsLandedChangeState,
-} from "~/zerops/useZeropsLandedChange";
-import { giteaSessionLogin } from "~/zerops/accountGiteaSessions";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
-import { useZeropsChangeComments } from "~/zerops/useZeropsChangeComments";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
-import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
-import type { ZeropsChangeComments } from "~/zerops/useZeropsChangeComments";
+import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import type { ZeropsCommitDetailResult } from "~/zerops/useZeropsCommitDetail";
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 import { useZeropsCommitDetailReader } from "~/zerops/useZeropsCommitDetail";
 import type { ZeropsDeployRun, ZeropsDeployRunRequest } from "~/zerops/useZeropsDeployRun";
 import { useZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
 import {
-  useZeropsChangeCommits,
   useZeropsRepositoriesCommits,
   useZeropsRepositoryCommits,
 } from "~/zerops/useZeropsRepositoryCommits";
@@ -131,8 +112,6 @@ import {
 } from "../WorkspaceBreadcrumb";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
-import { ZeropsAskDialog } from "./ZeropsAskDialog";
-import { ZeropsChangeConversation } from "./ZeropsChangeConversation";
 import { failedJob, runAgainLabel, ZeropsDeployRunView } from "./ZeropsDeployRun";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryNames } from "./ZeropsHistoryView";
@@ -149,6 +128,7 @@ import { MateUpdateStatusText } from "./MateUpdateLine";
 import { ZeropsProjectMenu } from "./ZeropsProjectMenu";
 import type { ZeropsMenuAction } from "./ZeropsProjectMenu";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
+import { ZeropsChangeReview } from "./review/ZeropsChangeReview";
 import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 import { ZeropsStopMenu } from "./ZeropsStopMenu";
 import { useRenameGroup } from "~/zerops/useRenameGroup";
@@ -1614,14 +1594,16 @@ function ServiceBuildView({ run }: { readonly run: ZeropsDeployRun }) {
 }
 
 /**
- * One change's own page: what it carries, what is stopping it, and the verb
- * that moves it.
+ * A change's own page: its review, at its own address (pass 17).
  *
- * `#4` used to be a link into Gitea, which is a sign-in page for everybody:
- * the app holds the only Gitea token. The commits come from `compareCommits`,
- * which is the right read for a change and the wrong one for a history — it
- * reports what one ref has that another does not, which is what a pull
- * request is.
+ * The page and the dialog that opens over the conversation are one surface in two frames — the
+ * same sections, in the same words, in a column the conversation's width. The page is the review:
+ * nothing opens over it, its one button is pinned in view, and after a merge its *Review release*
+ * opens the release's review, which has no page of its own.
+ *
+ * `#4` used to be a link into Gitea, which is a sign-in page for everybody: the app holds the only
+ * Gitea token, so everything a change is — its description, files, checks, conversation and
+ * commits — is read here as the person.
  */
 export function ZeropsChangeDetailPage({
   groupId,
@@ -1632,242 +1614,29 @@ export function ZeropsChangeDetailPage({
   readonly repository: string;
   readonly number: number;
 }) {
-  const flowValue = useZeropsProjectFlowOptional();
-  const flow = flowValue?.flows.get(groupId);
-  const open = flow?.pullRequests.find(
-    (entry) => entry.repository === repository && entry.number === number,
-  );
-  /**
-   * A change that has landed is not in the flow, which holds the open ones —
-   * and it is exactly the change somebody links to. Read it from the forge,
-   * for this number only.
-   */
-  const landed = useZeropsLandedChange(
-    flow === undefined || open !== undefined
-      ? null
-      : {
-          giteaOrigin: flowValue?.giteaOrigin,
-          owner: flow.slug,
-          repository,
-          number,
-        },
-  );
-  const pull = open ?? (landed.kind === "read" ? landed.pull : undefined);
-  const commits = useZeropsChangeCommits(
-    flow === undefined || pull === undefined
-      ? null
-      : {
-          giteaOrigin: flowValue?.giteaOrigin,
-          owner: flow.slug,
-          repo: pull.repository,
-          base: pull.baseBranch,
-          head: pull.headSha,
-        },
-  );
-  const readDetail = useZeropsCommitDetailReader({
-    giteaOrigin: flowValue?.giteaOrigin,
-    owner: flow?.slug,
-    repo: pull?.repository,
-  });
-  const comments = useZeropsChangeComments(
-    flow === undefined || pull === undefined
-      ? null
-      : {
-          giteaOrigin: flowValue?.giteaOrigin,
-          owner: flow.slug,
-          repo: pull.repository,
-          number: pull.number,
-        },
-  );
-  const askMate = useAskMate();
-  const me =
-    flowValue?.giteaOrigin === undefined ? undefined : giteaSessionLogin(flowValue.giteaOrigin);
-  const mateNames = flowValue?.mateNames;
-  const remarks = useMemo(
-    () =>
-      comments.state.kind === "read"
-        ? changeRemarks({
-            comments: comments.state.comments,
-            mateNames: mateNames ?? EMPTY_MATE_NAMES,
-            me,
-          })
-        : EMPTY_REMARKS,
-    [comments.state, mateNames, me],
-  );
   const groupName = useGroupName(groupId);
   const crumbs = useCrumbs({ groupId, name: groupName ?? groupId });
-  const names = useHistoryNames(groupName);
-  const now = useNowMs();
   const openReview = useOpenReview();
-  const review = useCallback(
-    (from: HTMLElement) => {
-      openReview({ kind: "change", groupId, repository, number }, { from });
-    },
-    [groupId, number, openReview, repository],
-  );
-
-  if (flow === undefined || pull === undefined) {
-    return (
-      <DetailShell crumbs={crumbs} title={`#${String(number)}`}>
-        <Note>{landedNote(landed, repository, number)}</Note>
-      </DetailShell>
-    );
-  }
-
+  const titleId = useId();
   return (
-    <ZeropsChangePane
-      age={historyAge(pull.updatedAt, now)}
-      comments={comments}
-      commits={commits}
-      mateName={
-        pull.mateProjectId === undefined ? undefined : flowValue?.mateNames.get(pull.mateProjectId)
-      }
-      names={names}
-      onAsk={askMate}
-      crumbs={crumbs}
-
-      onReview={review}
-      pull={pull}
-      readDetail={readDetail}
-      remarks={remarks}
-      trouble={flowValue?.trouble ?? null}
-    />
+    <ZeropsHostedFrame breadcrumb={<Crumbs crumbs={crumbs} />} width="column">
+      <ZeropsChangeReview
+        frame="page"
+        onClose={STAYS}
+        onReplace={(next) => {
+          openReview(next);
+        }}
+        target={{ kind: "change", groupId, repository, number }}
+        titleId={titleId}
+      />
+    </ZeropsHostedFrame>
   );
 }
 
-/**
- * One change, drawn — every read already done and handed in.
- *
- * The page above holds the hooks; this holds the picture, so a harness and a
- * test can look at a change that is failing its checks, or twelve commits
- * behind, or merged, without an account behind it. Same split as the release
- * confirm's.
- */
-/** What to say while a landed change is being fetched, and when it is not there. */
-function landedNote(state: ZeropsLandedChangeState, repository: string, number: number): string {
-  switch (state.kind) {
-    case "reading":
-      return "Reading this change…";
-    case "gone":
-      return `${repository} has no change #${String(number)}.`;
-    case "failed":
-      return state.reason;
-    case "idle":
-    case "read":
-      return "This project has not been read yet.";
-  }
-}
+/** The page has nothing to close: what would close a dialog leaves it where it is. */
+const STAYS = () => {};
 
-export function ZeropsChangePane({
-  age,
-  comments,
-  commits,
-  mateName,
-  names,
-  onAsk,
-  crumbs,
-  onReview,
-  pull,
-  readDetail,
-  remarks,
-  trouble,
-}: {
-  /** How long since it last moved, as `historyAge` says it. */
-  readonly age: string | undefined;
-  readonly comments: ZeropsChangeComments;
-  readonly commits: ZeropsCommitsState;
-  readonly mateName: string | undefined;
-  readonly onAsk: (mateProjectId: string | undefined, ask: string) => void;
-  readonly crumbs: ReadonlyArray<Crumb>;
-  /** Opens the change's review, where it merges: nothing merges from this page (R1). */
-  readonly onReview: (from: HTMLElement) => void;
-  readonly pull: FlowPullRequest;
-  readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
-  readonly remarks: ReadonlyArray<ChangeRemark>;
-  readonly names: HistoryNames;
-  /** What the last verb's refusal said, where one refused. */
-  readonly trouble: string | null;
-}) {
-  const [asking, setAsking] = useState(false);
-  const verdict = changeVerdict(pull);
-  const author = changeAuthorName(pull, mateName);
-  return (
-    <DetailShell
-      crumbs={crumbs}
-
-      // Every fact the definition list held, as the one line of provenance it
-      // always was. The org used to lead it — `shop · appdev · main` — which is
-      // the project's name again with a typo's worth of difference.
-      subtitle={changeSubtitle({
-        number: pull.number,
-        repository: pull.repository,
-        baseBranch: pull.baseBranch,
-        author,
-        age,
-      })}
-      title={pull.title}
-    >
-      <ChangeVerdictPanel
-        onAsk={() => {
-          setAsking(true);
-        }}
-        onReview={onReview}
-        askLabel={changeAskLabel(mateName)}
-        trouble={trouble}
-        verdict={verdict}
-      />
-      {/* The confirm lives outside the panel so it does not reopen when the
-          verdict changes under it mid-flight. */}
-      <ZeropsAskDialog
-        ask={verdict.ask ?? ""}
-        mateName={mateName}
-        onConfirm={() => {
-          setAsking(false);
-          onAsk(pull.mateProjectId, verdict.ask ?? "");
-        }}
-        onOpenChange={setAsking}
-        open={asking}
-        sending={false}
-        tint={mateName === undefined ? undefined : preferredMateTint(mateName)}
-        what={verdict.text}
-      />
-
-      <Section title={`Conversation · ${changeConversationCount(remarks)}`}>
-        <ZeropsChangeConversation
-          change={{
-            mateProjectId: pull.mateProjectId,
-            number: pull.number,
-            repository: pull.repository,
-            title: pull.title,
-          }}
-          comments={comments}
-          mateName={mateName}
-          onAsk={onAsk}
-          remarks={remarks}
-        />
-      </Section>
-
-      {/* Was `What it carries · appdev`: the repository is on the line under
-          the title already, and what a change carries is its commits. */}
-      <Section
-        title={commits.kind === "read" ? `Commits · ${String(commits.commits.length)}` : "Commits"}
-      >
-        <ZeropsHistoryView
-          commits={commits}
-          names={names}
-          readDetail={readDetail}
-          request={{ repo: pull.repository, deployed: EMPTY_DEPLOYED }}
-        />
-      </Section>
-    </DetailShell>
-  );
-}
-
-/** Nothing in an unmerged change is running anywhere yet. */
-const EMPTY_DEPLOYED: ReadonlyMap<string, string> = new Map();
-
-/** Nothing said, and nobody to name: the states before the reads land. */
-const EMPTY_REMARKS: ReadonlyArray<ChangeRemark> = [];
+/** Nobody to name, before the flow is read. */
 const EMPTY_MATE_NAMES: ReadonlyMap<string, string> = new Map();
 const EMPTY_PULLS: ReadonlyArray<FlowPullRequest> = [];
 const EMPTY_STOPS: ReadonlyArray<EnvironmentRow> = [];
@@ -2082,59 +1851,6 @@ function AttentionPanel({
         </li>
       ))}
     </ul>
-  );
-}
-
-/**
- * A change's opening answer: can it land, and what moves it if it cannot.
- *
- * The page used to open on a four-row definition list and a greyed-out
- * *Merge* whose reason was two lines below it. Here the sentence and the
- * buttons that act on it are one element, for the reason a count and its cure
- * became one on the menu: "why are `1 waiting` and `Release` two different
- * elements?" (the owner, 2026-09-19). Its verb is *Review*, the one door to
- * merging (pass 16, R1): the review reads the change, says whether it is safe,
- * and carries *Merge* — so the verb is always there, a landed change included,
- * whose review is where its diff is read.
- */
-function ChangeVerdictPanel({
-  askLabel,
-  onAsk,
-  onReview,
-  trouble,
-  verdict,
-}: {
-  /** What the remedy verb is called: `Ask Theo`, or `Ask the Mate`. */
-  readonly askLabel: string;
-  readonly onAsk: () => void;
-  readonly onReview: (from: HTMLElement) => void;
-  readonly trouble: string | null;
-  readonly verdict: ChangeVerdict;
-}) {
-  return (
-    <div data-zerops-surface="change-verdict">
-      <VerdictPanel text={verdict.text} tone={verdict.tone}>
-        {verdict.ask === undefined ? null : (
-          <Button data-zerops-primary-action="Ask" onClick={onAsk} size="sm" variant="outline">
-            {askLabel}
-          </Button>
-        )}
-        <Button
-          data-zerops-primary-action={REVIEW_LABEL}
-          onClick={(event) => {
-            onReview(event.currentTarget);
-          }}
-          size="sm"
-        >
-          {REVIEW_LABEL}
-        </Button>
-      </VerdictPanel>
-      {/* A verb that refused says so under the verb that refused, not in a
-          toast somewhere off the page. */}
-      {trouble === null ? null : (
-        <p className="mt-2 text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>
-      )}
-    </div>
   );
 }
 
@@ -2382,26 +2098,7 @@ function DetailShell({
       // The trail is a way out, not the page's business: it sits in the bar,
       // where /zerops keeps its own, rather than competing with the verbs
       // beside the name.
-      breadcrumb={
-        crumbs.length === 0 ? undefined : (
-          <WorkspaceBreadcrumb ariaLabel="Zerops breadcrumb" className="min-w-0">
-            {crumbs.map((crumb, index) => (
-              <Fragment key={crumb.label}>
-                {index === 0 ? null : <WorkspaceBreadcrumbSeparator />}
-                <WorkspaceBreadcrumbItem className="min-w-0 shrink">
-                  <button
-                    className="min-w-0 cursor-pointer truncate hover:text-foreground"
-                    onClick={crumb.onClick}
-                    type="button"
-                  >
-                    {crumb.label}
-                  </button>
-                </WorkspaceBreadcrumbItem>
-              </Fragment>
-            ))}
-          </WorkspaceBreadcrumb>
-        )
-      }
+      breadcrumb={crumbs.length === 0 ? undefined : <Crumbs crumbs={crumbs} />}
       width="expanded"
     >
       {/* The frame's page gap spaces the header and every block after it, as on /zerops. */}
@@ -2425,6 +2122,28 @@ function DetailShell({
       </header>
       {children}
     </ZeropsHostedFrame>
+  );
+}
+
+/** Where a page sits, outermost first, each step the page of what contains it. */
+function Crumbs({ crumbs }: { readonly crumbs: ReadonlyArray<Crumb> }) {
+  return (
+    <WorkspaceBreadcrumb ariaLabel="Zerops breadcrumb" className="min-w-0">
+      {crumbs.map((crumb, index) => (
+        <Fragment key={crumb.label}>
+          {index === 0 ? null : <WorkspaceBreadcrumbSeparator />}
+          <WorkspaceBreadcrumbItem className="min-w-0 shrink">
+            <button
+              className="min-w-0 cursor-pointer truncate hover:text-foreground"
+              onClick={crumb.onClick}
+              type="button"
+            >
+              {crumb.label}
+            </button>
+          </WorkspaceBreadcrumbItem>
+        </Fragment>
+      ))}
+    </WorkspaceBreadcrumb>
   );
 }
 
