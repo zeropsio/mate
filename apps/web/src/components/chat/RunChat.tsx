@@ -1368,8 +1368,12 @@ export function StepBubble({ step }: { readonly step: WorkStep }) {
   const time = stepTime(step);
   const timeWords = failed && time !== null ? <>Failed · {time}</> : failed ? "Failed" : time;
   const script = step.kind === "command" ? (step.script ?? step.code) : null;
+  // A command that said nothing of itself is its own title (K4): its first
+  // line, in mono, and the rest of it opens under it.
+  const bare = script !== null && step.words === null;
   const [taller, watchCode] = useTallerThan(CODE_CAP_PX, step.codeLines > CODE_CAP_LINES);
-  const cut = script !== null && taller;
+  const cut = script !== null && (bare ? step.codeLines > 1 : taller);
+  const showsCode = script !== null && (!bare || disclosure.open);
   const opens = outputs.length > 0 || cut;
   const title = step.words ?? step.code ?? "A command";
   const headline = (
@@ -1381,9 +1385,15 @@ export function StepBubble({ step }: { readonly step: WorkStep }) {
       timeTone={failed ? "failed" : "muted"}
     >
       {step.kind === "command" ? (
-        <span className={failed ? "text-status-failed-text" : "text-foreground/75"}>
-          {step.words ?? <span className="text-muted-foreground">Ran a command</span>}
-        </span>
+        step.words === null ? (
+          <span className={cn("font-mono", failed ? "text-status-failed-text" : "text-foreground")}>
+            {step.code}
+          </span>
+        ) : (
+          <span className={failed ? "text-status-failed-text" : "text-foreground/75"}>
+            {step.words}
+          </span>
+        )
       ) : step.phrase !== null ? (
         <PhraseWords phrase={step.phrase} />
       ) : (
@@ -1394,7 +1404,7 @@ export function StepBubble({ step }: { readonly step: WorkStep }) {
       ) : null}
     </Headline>
   );
-  const pad = script !== null ? "px-3 pt-1.75 pb-0.5" : CALL_PAD;
+  const pad = showsCode || cut ? "px-3 pt-1.75 pb-0.5" : CALL_PAD;
   return (
     <CallRow
       failed={failed}
@@ -1415,9 +1425,13 @@ export function StepBubble({ step }: { readonly step: WorkStep }) {
       ) : (
         <div className={pad}>{headline}</div>
       )}
-      {script !== null ? (
+      {showsCode ? (
         <div className={cn("px-3", cut ? "pb-0.5" : "pb-1.75")}>
-          <CommandCode folded={cut ? !disclosure.open : null} script={script} watch={watchCode} />
+          <CommandCode
+            folded={cut && !bare ? !disclosure.open : null}
+            script={script}
+            watch={watchCode}
+          />
         </div>
       ) : null}
       <StepPictures paths={step.images} />
@@ -1438,7 +1452,7 @@ export function StepBubble({ step }: { readonly step: WorkStep }) {
           <MoreToggle onToggle={disclosure.toggle} open={disclosure.open}>
             {disclosure.open
               ? "Show less"
-              : step.codeLines > CODE_CAP_LINES
+              : bare || step.codeLines > CODE_CAP_LINES
                 ? `Show all ${step.codeLines} lines`
                 : "Show the whole command"}
           </MoreToggle>

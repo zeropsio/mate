@@ -371,6 +371,31 @@ describe("RunChat", () => {
     expect(draw(record([thought("r1", "One.")]))).not.toContain("data-mate-face-state");
   });
 
+  // A command's title says what it does (K4): with no description from the
+  // agent — Codex never gives one — it is the command itself, in mono, out of
+  // the shell the runtime ran it in; a script's other lines a click away.
+  it("titles a command that said nothing of itself with the command, out of its shell", () => {
+    const one = draw(
+      record([
+        step(
+          command("w1", "cd /var/www/app && npm run build", {
+            rawCommand: '/usr/bin/zsh -lc "cd /var/www/app && npm run build"',
+          }),
+        ),
+      ]),
+    );
+    expect(one).not.toContain("Ran a command");
+    expect(one).not.toContain("zsh");
+    expect(one).toMatch(/<span class="font-mono text-foreground">npm run build<\/span>/u);
+    expect(one.match(/npm run build/g)).toHaveLength(1);
+    const script = draw(record([step(command("w2", SCRIPT))]));
+    expect(script).toMatch(
+      /<span class="font-mono text-foreground">cat &gt; status.ts &lt;&lt;&#x27;EOF&#x27;<\/span>/u,
+    );
+    expect(script).toContain(">Show all 16 lines<");
+    expect(script).not.toContain("line 13");
+  });
+
   // Blue means something to click (S3): the run's clock counts in ink, and a
   // call running beside it counts in the calls' quiet ink.
   it("counts the run's time in ink, never in the busy blue", () => {
@@ -463,6 +488,7 @@ describe("RunChat", () => {
           kind: "step",
           step: stepOf(
             command("w9", SCRIPT, {
+              callInput: { description: "Write the status route" },
               toolLifecycleStatus: "inProgress",
               sourceActivityKind: "tool.started",
             }),
