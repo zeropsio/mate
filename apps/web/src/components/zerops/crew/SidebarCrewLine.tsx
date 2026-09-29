@@ -96,11 +96,28 @@ export function SidebarCrewLine({
           );
         })}
       </span>
-      <span className="menu-ink-2 min-w-0 truncate" data-zerops-surface="sidebar-crew-fact">
-        {fact?.words}
-      </span>
+      {/* The faces come first: in a narrow menu the fact gives way, and is
+          still there on hover and in its Review's name. */}
+      {fact === null ? (
+        <span data-zerops-surface="sidebar-crew-fact" />
+      ) : (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span
+                className="menu-ink-2 min-w-0 truncate"
+                data-zerops-surface="sidebar-crew-fact"
+              />
+            }
+          >
+            {fact.words}
+          </TooltipTrigger>
+          <TooltipPopup side="right">{fact.words}</TooltipPopup>
+        </Tooltip>
+      )}
       {fact?.kind === "land" ? (
         <button
+          aria-label={`Review: ${fact.words}`}
           className="menu-textbtn outline-none focus-visible:ring-2 focus-visible:ring-ring"
           data-zerops-surface="sidebar-crew-review"
           onClick={(event) => {
