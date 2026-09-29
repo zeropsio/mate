@@ -4133,12 +4133,6 @@ button.run-bar:focus-visible {
   align-items: center;
   gap: 6px;
 }
-/* The fix and the menu that picks another Mate for it, one action. */
-.run-result-fix {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
 /* Blue is something to click (S3): a text action, never a filled button. */
 .run-result-action {
   padding: 3px 8px;

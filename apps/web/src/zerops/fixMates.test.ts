@@ -2,7 +2,7 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { fixMatesOf } from "./fixMates";
+import { fixMatesOf, runFixMate } from "./fixMates";
 
 const GROUP = "group-snap";
 
@@ -112,5 +112,44 @@ describe("fixMatesOf", () => {
       visitedAt: () => undefined,
     });
     expect(options).toEqual([{ mateProjectId: "p-nova", mine: true, name: "Nova" }]);
+  });
+});
+
+describe("runFixMate", () => {
+  // The owner, 2026-09-29: "'ask lena to fix' when im at iris". A run's
+  // problem was found in its Mate's conversation, in that Mate's services:
+  // the fix goes to that Mate, and only while it is the person's (D6) —
+  // another of theirs would be pointed at a service that is not its own.
+  it.each([
+    {
+      name: "the run's own Mate, though another of theirs was used later",
+      mine: { "p-iris": true, "p-lena": true },
+      visits: { "env-lena": "2026-09-29T21:00:00.000Z", "env-iris": "2026-09-29T20:00:00.000Z" },
+      fixer: "Iris",
+    },
+    {
+      name: "a colleague's run: nobody, though the person has a Mate in the project",
+      mine: { "p-iris": false, "p-lena": true },
+      visits: {},
+      fixer: undefined,
+    },
+    {
+      name: "a run nobody can say is someone else's: its own Mate",
+      mine: {},
+      visits: {},
+      fixer: "Iris",
+    },
+  ])("$name", ({ mine, visits, fixer }) => {
+    const options = fixMatesOf({
+      projectId: "p-iris",
+      groupId: GROUP,
+      candidates: [
+        mate("p-iris", "Iris", { environment: "env-iris" }),
+        mate("p-lena", "Lena", { environment: "env-lena" }),
+      ],
+      isMine: (candidate) => (mine as Record<string, boolean>)[candidate.project.id],
+      visitedAt: (environmentId) => (visits as Record<string, string>)[environmentId],
+    });
+    expect(runFixMate(options, "p-iris")?.name).toBe(fixer);
   });
 });

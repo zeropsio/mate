@@ -14,22 +14,15 @@
  * finished while the person watched (T5); read later, they are simply there.
  */
 import type { TurnId } from "@t3tools/contracts";
-import {
-  ArrowUpRightIcon,
-  ChevronDownIcon,
-  GitPullRequestIcon,
-  TriangleAlertIcon,
-  UsersIcon,
-} from "lucide-react";
+import { ArrowUpRightIcon, GitPullRequestIcon, TriangleAlertIcon, UsersIcon } from "lucide-react";
 import { useCallback, useContext, useMemo, useState, type CSSProperties } from "react";
 
 import { formatDayAwareTimestamp } from "../../timestampFormat";
-import { useFixMates } from "../../zerops/fixMates";
+import { runFixMate, useFixMates } from "../../zerops/fixMates";
 import { useAskMateToFix, type FixProblem } from "../../zerops/fixRequest";
 import { useOpenReview } from "../../zerops/review";
 import { useZeropsSessionOptional } from "../../zerops/sessionContext";
 import { ServiceBrowserLink } from "../ServiceBrowserLink";
-import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { browserCheckCaption, type OutcomeModel } from "./conversation.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { resultRows, type ResultFacts, type ResultRow } from "./runResult.logic";
@@ -108,9 +101,11 @@ function RowSub({
 type MateOfRun = ResultFacts["mate"];
 
 /**
- * "Ask Nova to fix it" (S6): the person's own Mate, the one they used last in
- * the project, with the problem written into its composer — not sent; a menu
- * picks another of theirs. Outside a Zerops session there is no Mate to ask.
+ * "Ask Nova to fix it" (S6): the run's own Mate, with the problem written into
+ * its composer — not sent. Only while it is the person's: a colleague's Mate is
+ * theirs to ask (D6), and another of the person's would be pointed at a service
+ * that is not its own (`runFixMate`). Outside a Zerops session there is no Mate
+ * to ask.
  */
 function FixAction({ problem, mate }: { readonly problem: FixProblem; readonly mate: MateOfRun }) {
   const session = useZeropsSessionOptional();
@@ -125,45 +120,17 @@ function FixActionOffer({
   readonly problem: FixProblem;
   readonly mate: NonNullable<MateOfRun>;
 }) {
-  const mates = useFixMates(mate);
+  const fixer = runFixMate(useFixMates(mate), mate.projectId);
   const askToFix = useAskMateToFix();
-  const [first, ...others] = mates;
-  if (first === undefined) return null;
+  if (fixer === undefined) return null;
   return (
-    <span className="run-result-fix">
-      <button
-        className="run-result-action"
-        onClick={() => askToFix(first.mateProjectId, problem)}
-        type="button"
-      >
-        Ask {first.name} to fix it
-      </button>
-      {others.length === 0 ? null : (
-        <Menu>
-          <MenuTrigger
-            render={
-              <button
-                aria-label="Ask another Mate to fix it"
-                className="run-result-open"
-                type="button"
-              />
-            }
-          >
-            <ChevronDownIcon aria-hidden="true" className="size-3.5" />
-          </MenuTrigger>
-          <MenuPopup align="end">
-            {others.map((other) => (
-              <MenuItem
-                key={other.mateProjectId}
-                onClick={() => askToFix(other.mateProjectId, problem)}
-              >
-                Ask {other.name}
-              </MenuItem>
-            ))}
-          </MenuPopup>
-        </Menu>
-      )}
-    </span>
+    <button
+      className="run-result-action"
+      onClick={() => askToFix(fixer.mateProjectId, problem)}
+      type="button"
+    >
+      Ask {fixer.name} to fix it
+    </button>
   );
 }
 
