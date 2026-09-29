@@ -3151,15 +3151,6 @@ code {
   pointer-events: none;
 }
 
-/* In the Custom order the grip stands in the gutter before the name
-   (`ProjectGrip`), and it belongs to the heading (the owner, 2026-09-29:
-   "handle out of hover bg"): the band reaches the grip's own start, 8 px
-   toward the menu's edge, and the name keeps its edge. The grip shows
-   whenever the band does. */
-.zerops-project-heading:has([data-zerops-grip])::before {
-  inset-inline-start: -8px;
-}
-
 .zerops-project-heading:has([data-popup-open])::before {
   background-color: color-mix(in oklab, var(--sidebar-foreground) 3.5%, transparent);
 }

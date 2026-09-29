@@ -1986,7 +1986,7 @@ describe("arranging the projects by hand", () => {
     },
   );
 
-  it("gives a heading a grip only in the Custom order, in the gutter, named for its project", () => {
+  it("gives a heading a grip only in the Custom order, named for its project", () => {
     setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "name", ProjectOrderSchema);
     expect(render([LINKS_MATE, SHOP_MATE])).not.toContain("sidebar-project-grip");
     setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "custom", ProjectOrderSchema);
@@ -1994,71 +1994,42 @@ describe("arranging the projects by hand", () => {
     const grip =
       /<button[^>]*data-zerops-surface="sidebar-project-grip"[^>]*>/u.exec(html)?.[0] ?? "";
     expect(grip).toContain('aria-label="Move Links: drag, or use the arrow keys"');
-    // In the gutter and invisible at rest, so the name never moves for it.
-    expect(grip).toContain("absolute");
-    expect(grip).toContain("opacity-0");
-    expect(grip).toContain("group-hover/project:opacity-100");
   });
 
   // The grip belongs to its heading (the owner, 2026-09-29: "handle out of
-  // hover bg"): the heading's band takes it in, reaching the grip's own start
-  // 8 px toward the menu's edge in a heading that has one, and the grip shows
-  // whenever the band does, so the band never reaches out for nothing. The
-  // name keeps its edge in either order: nothing moves when the grip shows.
-  it("stands the grip inside its heading's band, the name on its edge", () => {
-    const px = (classes: ReadonlyArray<string>, pattern: RegExp) =>
-      Number(classes.map((name) => pattern.exec(name)?.[1]).find(Boolean)) * 4;
-    const band = (selector: string) => {
-      const at = STYLESHEET.indexOf(`${selector} {`);
-      if (at === -1) return new Map<string, string>();
-      const body = STYLESHEET.slice(STYLESHEET.indexOf("{", at) + 1, STYLESHEET.indexOf("}", at));
-      return new Map(
-        body
-          .split(";")
-          .map((declaration) => declaration.split(":").map((part) => part.trim()))
-          .filter(([property]) => property !== undefined && property !== "")
-          .map(([property, ...value]) => [property!, value.join(":")]),
-      );
-    };
+  // hover bg"), and it has room there (the owner, of the grip squeezed into
+  // the band's rounded start: "it's too squeezed on left"): it stands among
+  // the heading's verbs, a 28 px verb before + and ⋯, shown whenever they
+  // are — nowhere near the band's corners, and the name keeps the mark edge
+  // in either order, so nothing moves when it shows.
+  it("stands the grip among the heading's verbs, clear of the band's corners, the name on its edge", () => {
+    const band = (selector: string) => STYLESHEET.indexOf(`${selector} {`);
     setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "custom", ProjectOrderSchema);
     const html = render([LINKS_MATE, SHOP_MATE]);
+    const heading = html.slice(
+      html.indexOf('data-zerops-surface="sidebar-project"'),
+      html.indexOf('data-zerops-surface="sidebar-project-add-mate"'),
+    );
+    const at = (needle: string) => html.indexOf(needle);
     const grip =
       /<button[^>]*class="([^"]*)"[^>]*data-zerops-surface="sidebar-project-grip"/u
         .exec(html)?.[1]
         ?.split(" ") ?? [];
-    const heading =
-      /<div class="([^"]*)"[^>]*data-zerops-surface="sidebar-project"/u
-        .exec(html)?.[1]
-        ?.split(" ") ?? [];
-    // The grip, from the heading's start: 8 px before it, 16 wide, 4 to 28 down.
-    const gripStart = -px(grip, /^-start-([\d.]+)$/u);
-    const gripEnd = gripStart + px(grip, /^w-([\d.]+)$/u);
-    const gripTop = px(grip, /^top-([\d.]+)$/u);
-    const gripBottom = gripTop + px(grip, /^h-([\d.]+)$/u);
-    // The band: the heading's own box, its start reaching further only where a grip is.
-    const plain = band(".zerops-project-heading::before");
-    const gripped = band(".zerops-project-heading:has([data-zerops-grip])::before");
-    expect(plain.get("inset")).toBe("0");
-    expect(plain.get("border-radius")).toBe("16px");
-    const bandStart = Number.parseFloat(gripped.get("inset-inline-start") ?? "0");
-    const bandBottom = px(heading, /^h-([\d.]+)$/u);
-    expect(bandStart).toBeLessThanOrEqual(gripStart);
-    expect(gripEnd).toBeGreaterThan(bandStart);
-    expect(gripTop).toBeGreaterThanOrEqual(0);
-    expect(gripBottom).toBeLessThanOrEqual(bandBottom);
-    // The name stands 6 px inside the heading, on the mark edge (x = 16), grip or none.
-    expect(heading).toContain("ps-1.5");
-    // Lit under the pointer and while a menu of its is open; the grip shows then too.
-    expect(band(".zerops-project-heading:hover::before").get("background-color")).toBeDefined();
-    expect(
-      band(".zerops-project-heading:has([data-popup-open])::before").get("background-color"),
-    ).toBeDefined();
-    expect(grip).toEqual(
-      expect.arrayContaining([
-        "group-hover/project:opacity-100",
-        "group-has-[[data-popup-open]]/project:opacity-100",
-      ]),
+    // After the title and the room the title leaves, first of the verbs.
+    expect(at("sidebar-project-grip")).toBeGreaterThan(at("sidebar-project-toggle"));
+    expect(at("sidebar-project-grip")).toBeGreaterThan(
+      at('<span aria-hidden="true" class="min-w-0 flex-1"></span>'),
     );
+    expect(at("sidebar-project-add-mate")).toBeGreaterThan(at("sidebar-project-grip"));
+    expect(heading).toContain("sidebar-project-grip");
+    // A verb's size and corners, in the flow: no gutter, no reach of the band.
+    expect(grip).toEqual(expect.arrayContaining(["size-7", "rounded-md", "cursor-grab"]));
+    expect(grip.some((name) => /^(absolute|-?start-)/u.test(name))).toBe(false);
+    expect(band(".zerops-project-heading:has([data-zerops-grip])::before")).toBe(-1);
+    // The name on the mark edge, 6 px inside the band, grip or none.
+    expect(
+      /<div class="([^"]*)"[^>]*data-zerops-surface="sidebar-project"/u.exec(html)?.[1],
+    ).toContain("ps-1.5");
   });
 
   // The heading's toggle covers the whole heading (`after:inset-0`): every

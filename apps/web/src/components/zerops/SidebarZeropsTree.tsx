@@ -1652,8 +1652,9 @@ export function ProjectHeader({
   readonly onToggle?: (() => void) | undefined;
   /**
    * Moving the project among the others: *Move up* and *Move down* in its
-   * menu from any order, and in *Custom* a grip to drag it by. Absent for the
-   * ungrouped heading, which always stands last.
+   * menu from any order, and in *Custom* a grip to drag it by, first of the
+   * heading's verbs. Absent for the ungrouped heading, which always stands
+   * last.
    */
   readonly reorder?: ProjectHeaderReorder | undefined;
   /**
@@ -1689,16 +1690,6 @@ export function ProjectHeader({
       data-collapsed={collapsed ? "true" : undefined}
       data-zerops-surface="sidebar-project"
     >
-      {reorder?.custom === true && group !== undefined ? (
-        <ProjectGrip
-          groupId={group.groupId}
-          name={title}
-          onMove={(direction) => {
-            reorder.onMove(direction, true);
-          }}
-          onPointerDown={reorder.onGripPointerDown}
-        />
-      ) : null}
       {/* A name, not a label: no uppercase and no `MicroLabel`. The weight
           comes from size and room instead — at 13px it was *smaller* than the
           Mate names beneath it, which is a heading losing to its own contents
@@ -1751,6 +1742,18 @@ export function ProjectHeader({
           always there: nothing moves when they show. */}
       {muted ? null : (
         <span className="relative z-1 flex shrink-0 items-center opacity-0 transition-opacity group-focus-within/project:opacity-100 group-hover/project:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100">
+          {/* In the Custom order the grip leads the verbs: inside the band,
+              clear of its rounded ends, and the name keeps the mark edge. */}
+          {reorder?.custom === true && group !== undefined ? (
+            <ProjectGrip
+              groupId={group.groupId}
+              name={title}
+              onMove={(direction) => {
+                reorder.onMove(direction, true);
+              }}
+              onPointerDown={reorder.onGripPointerDown}
+            />
+          ) : null}
           <Tooltip>
             <TooltipTrigger
               render={

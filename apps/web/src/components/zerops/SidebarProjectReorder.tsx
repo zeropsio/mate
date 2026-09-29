@@ -1,8 +1,9 @@
 /**
  * Arranging the left menu's projects by hand, in the *Custom* order.
  *
- * A project heading wears a grip, on hover, where nothing else lives: the
- * gutter left of its name, so the name never moves to make room. Dragging it
+ * A project heading wears a grip, on hover, first of its verbs: inside its
+ * band and clear of the band's rounded ends, so the name never moves to make
+ * room and the grip is never squeezed into a corner. Dragging it
  * draws one line in the gap the project would land in — never a gap opening
  * up, which would push every project under it about while the pointer is
  * still deciding — and a small copy of the name follows the pointer. The drop
@@ -243,11 +244,10 @@ export function useProjectReorder(treeRef: RefObject<HTMLElement | null>): Proje
 }
 
 /**
- * The grip on a heading in the *Custom* order: in the gutter, so the name
- * never moves for it, and inside the heading's band, which reaches its start
- * (`.zerops-project-heading`). Shown whenever that band is — under the
- * pointer, and while a menu of the heading's is open — and on focus (and
- * always to a finger).
+ * The grip on a heading in the *Custom* order: a 28 px verb before + and ⋯,
+ * in their slot, so it shows whenever they do — under the pointer, while a
+ * menu of the heading's is open, on focus, and always to a finger — and the
+ * name never moves for it.
  */
 export function ProjectGrip({
   name,
@@ -263,7 +263,7 @@ export function ProjectGrip({
   return (
     <button
       aria-label={`Move ${name}: drag, or use the arrow keys`}
-      className="absolute -start-2 top-1 z-1 flex h-6 w-4 cursor-grab touch-none items-center justify-center rounded-sm text-sidebar-muted-foreground opacity-0 outline-none transition-opacity group-hover/project:opacity-100 group-has-[[data-popup-open]]/project:opacity-100 hover:text-sidebar-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing pointer-coarse:opacity-100"
+      className="inline-flex size-7 cursor-grab touch-none items-center justify-center rounded-md text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
       data-zerops-grip={groupId}
       data-zerops-surface="sidebar-project-grip"
       onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
