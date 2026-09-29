@@ -16,6 +16,7 @@
  */
 import type { ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
+import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -32,6 +33,7 @@ const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const FEN: ZeropsMateIdentity = {
   name: "Fen",
   tint: "olive",
+  shape: MATE_SHAPE_OF_TINT.olive,
   project: "Acme Docs",
   projectUrl: "https://app.zerops.io/project/harness",
   connected: true,

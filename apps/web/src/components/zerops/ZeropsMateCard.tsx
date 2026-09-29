@@ -18,7 +18,12 @@
  *
  * Structural: every word on the line and every verb is the caller's (R5).
  */
-import type { MateMarkState, MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
+import type {
+  MateMarkState,
+  MateShapeId,
+  MateTintId,
+  ServiceStatusToneId,
+} from "@t3tools/shared/brand";
 import { ExternalLinkIcon } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
 
@@ -195,6 +200,8 @@ export interface ZeropsMateCardProps {
   readonly preview?: string | undefined;
   readonly name: string;
   readonly tint: MateTintId;
+  /** The shape its person picked, else its tint's own (`mateShapeOf`). */
+  readonly shape?: MateShapeId | undefined;
   readonly face: MateMarkState;
   /**
    * The line under the name: what the Mate is on or was last on, a
@@ -241,6 +248,7 @@ export function ZeropsMateCard({
   preview,
   name,
   tint,
+  shape,
   face,
   line,
   time,
@@ -263,7 +271,7 @@ export function ZeropsMateCard({
       )}
       data-zerops-mate-card={onSelect ? "opens" : "still"}
     >
-      <MateFace size="md" state={face} tint={tint} />
+      <MateFace shape={shape} size="md" state={face} tint={tint} />
       <div className="flex min-w-0 flex-1 flex-col">
         <div className={cn("flex min-w-0 items-center gap-2", LAYOUT[layout].lineOne)}>
           {onSelect ? (

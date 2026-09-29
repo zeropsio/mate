@@ -9,6 +9,7 @@ import { ReviewContext, type ReviewTarget } from "~/zerops/review";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { EnvironmentId } from "@t3tools/contracts";
+import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
 
 import { ChipMenu, SidebarProductionChip, type ChipMate } from "./SidebarProductionChip";
 import {
@@ -44,7 +45,13 @@ function mate(
     environmentId: EnvironmentId.make(`env-${id}`),
     service: { id: "zcp", name: "zcp", status: "ACTIVE" },
   };
-  return { candidate, tint, mine, threadKey: `env-${id}:thread-${id}` };
+  return {
+    candidate,
+    tint,
+    shape: MATE_SHAPE_OF_TINT[tint],
+    mine,
+    threadKey: `env-${id}:thread-${id}`,
+  };
 }
 
 const ORSA = mate("shop-orsa", "Orsa", "sky", true);
@@ -345,6 +352,13 @@ describe("production's menu", () => {
     const html = renderToStaticMarkup(menu(model, { mates }));
     if (ask === undefined) expect(html).not.toContain("to fix it");
     else expect(html).toContain(`>Ask ${ask} to fix it</button>`);
+  });
+
+  it("draws the Mate the fix goes to in the face its person picked", () => {
+    const html = renderToStaticMarkup(menu(FAILED, { mates: [{ ...ORSA, shape: "clover" }] }));
+    expect(html).toContain('data-mate-face-tint="sky" data-zerops-primitive="mate-face"');
+    expect(html).toContain('data-mate-face-shape="clover"');
+    expect(html).not.toContain('data-mate-face-shape="pick"');
   });
 
   it("offers the fix to the Mate used last first, and another from a small list", () => {

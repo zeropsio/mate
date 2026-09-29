@@ -87,11 +87,34 @@ const cases: ReadonlyArray<{ readonly name: string; readonly render: () => strin
         <ZeropsEnvironmentCreationForm
           defaultBotName="Otto"
           defaultName="Acme Docs - stage"
+          defaultTintFor={() => "violet"}
           defaultWithAgent
           groupName="Acme Docs"
           onCancel={noop}
           onCreate={noop}
+          proposeName={() => "Acme Docs - stage"}
           role="stage"
+          takenBotNames={{ names: [], complete: true }}
+          tier={undefined}
+          tierLoading={false}
+          tierServices={[]}
+        />,
+      ),
+  },
+  {
+    name: "ZeropsEnvironmentCreationDialog, for a Mate",
+    render: () =>
+      renderInDialog(
+        <ZeropsEnvironmentCreationForm
+          defaultBotName="Otto"
+          defaultName="Acme Docs - Otto"
+          defaultTintFor={() => "violet"}
+          defaultWithAgent
+          groupName="Acme Docs"
+          onCancel={noop}
+          onCreate={noop}
+          proposeName={() => "Acme Docs - Otto"}
+          role="dev"
           takenBotNames={{ names: [], complete: true }}
           tier={undefined}
           tierLoading={false}

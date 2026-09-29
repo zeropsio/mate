@@ -20,7 +20,7 @@ import {
   preferredMateTint,
   type ChangeRemark,
 } from "@t3tools/client-runtime/zerops";
-import type { MateTintId } from "@t3tools/shared/brand";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useState, type KeyboardEvent, type ReactElement } from "react";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
@@ -32,6 +32,40 @@ import { ReviewFailed, ReviewSection } from "./ZeropsReviewSurface";
 
 /** What was being written on each change, kept while the tab is open. */
 const drafts = new Map<string, string>();
+
+/** A Mate's face as a review draws it: its tint, and the shape its person picked. */
+export interface MateFaceOf {
+  readonly tint: MateTintId;
+  readonly shape: MateShapeId;
+}
+
+/** The person's own Mate that Ask hands the words to, in its face where it is known. */
+interface Asker {
+  readonly name: string;
+  readonly tint: MateTintId | undefined;
+  readonly shape?: MateShapeId | undefined;
+}
+
+/**
+ * A remark a Mate made, in that Mate's face — the project's own record of it — and, for a
+ * Mate the project no longer lists, the tint its name asks for.
+ */
+function RemarkFace({
+  face,
+  speaker,
+}: {
+  readonly face: MateFaceOf | undefined;
+  readonly speaker: string;
+}) {
+  return (
+    <MateFace
+      shape={face?.shape}
+      size="sm"
+      state="idle"
+      tint={face?.tint ?? preferredMateTint(speaker)}
+    />
+  );
+}
 
 /** A person's mark: the first letter they are known by, which a 20 px disc holds at 12 px. */
 function initialOf(name: string): string {
@@ -45,6 +79,7 @@ export function ReviewConversation({
   remarks,
   count,
   asker,
+  mateFaces,
   now,
   onAsk,
 }: {
@@ -56,7 +91,9 @@ export function ReviewConversation({
   /** How many comments the change has, as the flow read it: the room its conversation holds. */
   readonly count: number | undefined;
   /** The person's own Mate that wrote the change: the one Ask hands the words to. */
-  readonly asker: { readonly name: string; readonly tint: MateTintId | undefined } | undefined;
+  readonly asker: Asker | undefined;
+  /** The project's Mates by project: a remark one of them made wears its face. */
+  readonly mateFaces?: ReadonlyMap<string, MateFaceOf> | undefined;
   readonly now: number;
   /** Keeps the words on the change and hands them to the Mate. */
   readonly onAsk: (said: string) => Promise<void>;
@@ -78,7 +115,7 @@ export function ReviewConversation({
       ) : state.kind === "no-gitea" ? (
         <p className="rv-note">Sign in to Gitea to read what was said here.</p>
       ) : (
-        <Remarks frame={frame} now={now} remarks={remarks} />
+        <Remarks frame={frame} mateFaces={mateFaces} now={now} remarks={remarks} />
       )}
       <SayBox asker={asker} comments={comments} draftKey={draftKey} onAsk={onAsk} />
     </ReviewSection>
@@ -88,10 +125,12 @@ export function ReviewConversation({
 function Remarks({
   frame,
   remarks,
+  mateFaces,
   now,
 }: {
   readonly frame: ReviewFrame;
   readonly remarks: ReadonlyArray<ChangeRemark>;
+  readonly mateFaces: ReadonlyMap<string, MateFaceOf> | undefined;
   readonly now: number;
 }) {
   const [all, setAll] = useState(false);
@@ -118,7 +157,7 @@ function Remarks({
           {remark.mateProjectId === undefined ? (
             <Avatar className="rv-remark-avatar" initials={initialOf(remark.speaker)} size="sm" />
           ) : (
-            <MateFace size="sm" state="idle" tint={preferredMateTint(remark.speaker)} />
+            <RemarkFace face={mateFaces?.get(remark.mateProjectId)} speaker={remark.speaker} />
           )}
           <span className="rv-remark-who">
             {remark.speaker}
@@ -165,7 +204,7 @@ function SayBox({
 }: {
   readonly draftKey: string;
   readonly comments: ZeropsChangeComments;
-  readonly asker: { readonly name: string; readonly tint: MateTintId | undefined } | undefined;
+  readonly asker: Asker | undefined;
   readonly onAsk: (said: string) => Promise<void>;
 }) {
   const [said, setSaid] = useState(() => drafts.get(draftKey) ?? "");
@@ -240,7 +279,13 @@ function SayBox({
             verb={<button className="rv-say-ask" type="button" />}
           >
             {asker.tint === undefined ? null : (
-              <MateFace className="size-4" size="dot" state="idle" tint={asker.tint} />
+              <MateFace
+                className="size-4"
+                shape={asker.shape}
+                size="dot"
+                state="idle"
+                tint={asker.tint}
+              />
             )}
             {changeAskLabel(asker.name)}
           </SayVerb>

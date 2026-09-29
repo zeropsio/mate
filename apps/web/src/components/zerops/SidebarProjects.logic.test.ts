@@ -44,6 +44,7 @@ describe("headingFaces — who a folded project's heading shows (M15)", () => {
     projectId,
     name: projectId,
     tint: "slate" as const,
+    shape: "gem" as const,
     state,
     ...ROW[state],
     known: true,
@@ -76,7 +77,15 @@ describe("headingFaces — who a folded project's heading shows (M15)", () => {
 
   it("wears the row's face: still where it stopped on an error", () => {
     expect(headingFaces([mate("a", "failed")])).toEqual([
-      { projectId: "a", name: "a", tint: "slate", face: "idle", dot: "failed", known: true },
+      {
+        projectId: "a",
+        name: "a",
+        tint: "slate",
+        shape: "gem",
+        face: "idle",
+        dot: "failed",
+        known: true,
+      },
     ]);
   });
 });

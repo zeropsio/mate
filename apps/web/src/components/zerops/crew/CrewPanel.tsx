@@ -18,7 +18,7 @@
  */
 import { crewRefusalSentence } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import type { MateTintId } from "@t3tools/shared/brand";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useRef } from "react";
 
 import { ScrollArea } from "~/components/ui/scroll-area";
@@ -41,7 +41,11 @@ export function CrewPanel({ threadRef }: { readonly threadRef: ScopedThreadRef }
   const treeCwd = useServerConfigs().get(environmentId)?.cwd ?? null;
   const mate =
     whoLivesHere.kind === "mate"
-      ? { name: whoLivesHere.mate.name, tint: whoLivesHere.mate.tint }
+      ? {
+          name: whoLivesHere.mate.name,
+          tint: whoLivesHere.mate.tint,
+          shape: whoLivesHere.mate.shape,
+        }
       : undefined;
   return (
     <CrewPanelBody
@@ -61,7 +65,9 @@ export interface CrewPanelBodyProps {
   /** The crew as its feed reads it (`useCrew`). */
   readonly crew: CrewRead;
   /** The Mate who lives here, named where the engine says "your Mate". */
-  readonly mate: { readonly name: string; readonly tint: MateTintId } | undefined;
+  readonly mate:
+    | { readonly name: string; readonly tint: MateTintId; readonly shape?: MateShapeId }
+    | undefined;
   /** Your tree, where *Tell the crew*'s `@` finds files; `null` while unread. */
   readonly treeCwd: string | null;
   /** Hands the Mate a draft, confirmed first by the section. */

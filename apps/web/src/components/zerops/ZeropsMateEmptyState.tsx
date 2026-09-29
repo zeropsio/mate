@@ -177,6 +177,7 @@ export function MateEmptyStateView({
         <MateFace
           className="size-16 sm:size-18"
           size="lg"
+          shape={mate.shape}
           state={mateFaceFor(mate.connected, undefined)}
           tint={mate.tint}
         />

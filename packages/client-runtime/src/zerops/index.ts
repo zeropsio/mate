@@ -82,12 +82,14 @@ export {
   MATE_TAG_NAMESPACE,
   ZEROPS_GROUP_ID_LENGTH,
   deriveZeropsGroups,
+  formatFaceTag,
   formatGroupTag,
   formatRoleTag,
   generateZeropsGroupId,
   readZeropsGroupTags,
   withZeropsBotTag,
   ZEROPS_BOT_NAME_MAX_LENGTH,
+  withZeropsFaceTag,
   withZeropsGroupTags,
   withZeropsMateTag,
   type DeriveZeropsGroupsOptions,
@@ -97,6 +99,8 @@ export {
   type ZeropsGroupPendingMember,
   type ZeropsGroupTags,
   type ZeropsGroupTree,
+  type ZeropsMateFace,
+  type ZeropsMateFaceTag,
   type ZeropsPlacedBirth,
   type ZeropsProjectOrder,
 } from "./groups.ts";
@@ -128,7 +132,13 @@ export {
   summarizeEnvironmentServices,
   type ZeropsEnvironmentServices,
 } from "./environmentSummary.ts";
-export { assignCandidateMateTints, assignMateTints, preferredMateTint } from "./mateTints.ts";
+export {
+  assignCandidateMateTints,
+  assignMateTints,
+  mateShapeOf,
+  newMateTint,
+  preferredMateTint,
+} from "./mateTints.ts";
 export {
   selectAutoConnectTargets,
   ZEROPS_AUTO_CONNECT_LIMIT,

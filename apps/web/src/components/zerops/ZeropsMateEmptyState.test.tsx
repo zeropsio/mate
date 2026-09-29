@@ -65,6 +65,7 @@ const ADA = "u-ada";
 const MATE: ZeropsMateIdentity = {
   name: "Fen",
   tint: "olive",
+  shape: "seal",
   project: "Acme Docs",
   projectUrl: "https://app.zerops.io/project/p1",
   connected: true,
@@ -173,6 +174,12 @@ describe("ZeropsMateEmptyState", () => {
       shell("thread-main", "2026-09-29T10:00:00.000Z"),
       shell("thread-second", "2026-09-29T09:00:00.000Z"),
     ];
+  });
+
+  it("wears the face its person picked", () => {
+    const html = render();
+    expect(html).toContain('data-mate-face-tint="olive"');
+    expect(html).toContain('data-mate-face-shape="seal"');
   });
 
   it("an unread agent-auth feed never renders as nothing to sign in: it says it is checking", () => {

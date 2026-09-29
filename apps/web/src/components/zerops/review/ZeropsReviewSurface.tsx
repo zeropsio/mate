@@ -20,7 +20,7 @@ import type {
   ReviewVerdict,
 } from "@t3tools/client-runtime/zerops";
 import { changeFileParts } from "@t3tools/client-runtime/zerops";
-import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
+import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -78,6 +78,8 @@ function verdictIcon(verdict: ReviewVerdict): ReactNode {
 
 export interface ReviewFaceProps {
   readonly tint: MateTintId;
+  /** The shape its person picked; its tint's own when absent. */
+  readonly shape?: MateShapeId | undefined;
   readonly state?: MateMarkState;
 }
 
@@ -651,7 +653,12 @@ export function ReviewReleaseRows({
             {row.face === undefined ? (
               <span />
             ) : (
-              <MateFace size="sm" state={row.face.state ?? "idle"} tint={row.face.tint} />
+              <MateFace
+                shape={row.face.shape}
+                size="sm"
+                state={row.face.state ?? "idle"}
+                tint={row.face.tint}
+              />
             )}
             <span className="min-w-0">
               <span className="rv-relrow-t">{row.title}</span>

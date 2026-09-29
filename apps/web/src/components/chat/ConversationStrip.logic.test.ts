@@ -173,6 +173,13 @@ describe("lineMate", () => {
     });
   });
 
+  it.each([
+    { name: "the shape its person picked", shape: "seal" as const },
+    { name: "its tint's own when nobody picked one", shape: undefined },
+  ])("leads the line wearing $name", ({ shape }) => {
+    expect(mate({ mate: { ...MATE, shape } }).shape).toBe(shape);
+  });
+
   it("opens its main chat, and nothing while it has none", () => {
     expect(mate({ crewChatOpen: true }).threadId).toBe(main.id);
     expect(mate({ chats: [], currentThreadId: null }).threadId).toBeNull();

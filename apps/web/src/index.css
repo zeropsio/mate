@@ -2893,6 +2893,95 @@ code {
   }
 }
 
+/* ==== Pass 18 · the New Mate dialog ==== */
+
+/* The face being made. A change crossfades in one cell: the face before fades
+   out under the new one, which settles from 92 %, so a colour or a shape
+   picked, or a name typed, turns the same somebody into someone else rather
+   than swapping a picture. The first paint is still; reduced motion keeps
+   only the fade. The face that leaves rests invisible, so one whose fade
+   never ran is gone all the same. */
+.new-mate-face {
+  display: grid;
+  flex-shrink: 0;
+}
+
+.new-mate-face > * {
+  grid-area: 1 / 1;
+}
+
+[data-new-mate-face="out"] {
+  opacity: 0;
+  animation: new-mate-face-out 160ms var(--ease-out-strong);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-new-mate-face="in"] {
+    animation: new-mate-face-in 220ms var(--ease-out-strong);
+  }
+}
+
+@keyframes new-mate-face-out {
+  from {
+    opacity: 1;
+  }
+}
+
+@keyframes new-mate-face-in {
+  from {
+    scale: 0.92;
+  }
+}
+
+/* A colour or a shape to pick: a 36 px button holding its mark in the tint it
+   is given (`--new-mate-tint`). The one picked wears a ring of that tint, its
+   mark's own outline a gap out, so picking never changes a size; the pointer
+   over another shows the ring faintly. Pressed, it gives a little. */
+.new-mate-option {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  outline: none;
+  cursor: pointer;
+}
+
+.new-mate-mark {
+  fill: var(--new-mate-tint);
+}
+
+.new-mate-ring {
+  fill: none;
+  stroke: var(--new-mate-tint);
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.new-mate-option[data-checked] .new-mate-ring {
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .new-mate-option:not([data-checked]):hover .new-mate-ring {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .new-mate-option {
+    transition: scale 150ms var(--ease-out-strong);
+  }
+
+  .new-mate-option:active {
+    scale: 0.92;
+  }
+}
+
+/* ==== end of the New Mate dialog ==== */
+
 /* ==== Pass 16 · the menu's rows ==== */
 
 @layer components {

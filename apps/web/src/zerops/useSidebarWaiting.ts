@@ -10,6 +10,7 @@ import {
   assignCandidateMateTints,
   botDisplayName,
   hasMate,
+  mateShapeOf,
   readZeropsGroupTags,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -40,11 +41,13 @@ export function waitingMatesOf<T extends ZeropsCandidate>(input: {
       const activity = input.activityOf(candidate);
       if (activity?.face !== "needs") return [];
       const tags = readZeropsGroupTags(candidate.project.tagList);
+      const tint = input.tints.get(candidate.project.id) ?? "slate";
       return [
         {
           projectId: candidate.project.id,
           name: botDisplayName({ bot: tags.bot, projectName: candidate.project.name }),
-          tint: input.tints.get(candidate.project.id) ?? "slate",
+          tint,
+          shape: mateShapeOf(candidate.project.tagList, tint),
           face: activity.face,
         },
       ];

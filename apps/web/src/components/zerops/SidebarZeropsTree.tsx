@@ -55,6 +55,7 @@ import {
   groupFlow,
   hasMate,
   mateEnvironmentsEmptyReason,
+  mateShapeOf,
   pullRequestsByMate,
   pullRequestsFolded,
   rankZeropsCandidateForListing,
@@ -82,7 +83,7 @@ import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
-import type { MateTintId } from "@t3tools/shared/brand";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
   BellOffIcon,
   ChevronRightIcon,
@@ -790,6 +791,11 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   const onScreen = view.groups.map(({ group }) => group.groupId);
   rememberProjectsOnScreen(onScreen);
   const tints = assignCandidateMateTints(candidates);
+  /** A Mate's face: its tint, and the shape its person picked or that tint's own. */
+  const faceOf = (project: ZeropsCandidate["project"]) => {
+    const tint = tints.get(project.id) ?? "slate";
+    return { tint, shape: mateShapeOf(project.tagList, tint) };
+  };
 
   const toggle = (key: string) => {
     setOpenLists((current) => {
@@ -850,7 +856,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         jumpMateOf({
           projectId: item.project.id,
           name,
-          tint: tints.get(item.project.id) ?? "slate",
+          ...faceOf(item.project),
           projectName: groupName,
           environmentId: item.environmentId,
           owner: getOwner?.(item),
@@ -1015,7 +1021,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     };
     const chipMates = mateEntries.map(({ item }) => ({
       candidate: item,
-      tint: tints.get(item.project.id) ?? "slate",
+      ...faceOf(item.project),
       mine: getOwner?.(item)?.isViewer,
       threadKey: getActivity?.(item)?.threadKey,
     }));
@@ -1131,7 +1137,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 bot: readZeropsGroupTags(item.project.tagList).bot,
                 projectName: item.project.name,
               }),
-              tint: tints.get(item.project.id) ?? "slate",
+              ...faceOf(item.project),
               state: view.state,
               face: view.face,
               dot: view.dot,
@@ -1266,7 +1272,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   onSelect={onSelect}
                   owner={getOwner?.(item)}
                   timestampFormat={timestampFormat}
-                  tint={tints.get(item.project.id) ?? "slate"}
+                  {...faceOf(item.project)}
                 />
                 {/* Its crew, one line right under it, before its changes — read
                     once its Mate is connected, and until then where this
@@ -1888,6 +1894,7 @@ function HeadingFaceMark({ face }: { readonly face: HeadingFace }) {
         className="size-4.5"
         greets
         known={face.known}
+        shape={face.shape}
         size="sm"
         state={face.face}
         tint={face.tint}
@@ -2115,6 +2122,7 @@ function MateUnit({
 function MateRow<T extends RosterCandidate>({
   candidate,
   tint,
+  shape,
   active,
   activity,
   onSelect,
@@ -2130,6 +2138,8 @@ function MateRow<T extends RosterCandidate>({
 }: {
   readonly candidate: T;
   readonly tint: MateTintId;
+  /** The shape its person picked, else its tint's own (`mateShapeOf`). */
+  readonly shape: MateShapeId;
   readonly active: boolean;
   readonly activity: ZeropsAgentActivity | undefined;
   readonly onSelect: (candidate: T) => void;
@@ -2306,6 +2316,7 @@ function MateRow<T extends RosterCandidate>({
                 activity !== undefined &&
                 activity.remembered !== true
               }
+              shape={shape}
               size="md"
               state={view.face}
               tint={tint}

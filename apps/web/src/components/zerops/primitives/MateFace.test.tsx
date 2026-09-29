@@ -5,6 +5,8 @@ import {
   MATE_TINT_IDS,
   mateFaceParts,
   type MateMarkState,
+  type MateShapeId,
+  type MateTintId,
 } from "@t3tools/shared/brand";
 import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -46,6 +48,32 @@ describe("MateFace", () => {
     // The eyes are ink from the palette, never a literal.
     expect(html).toContain("fill-[var(--zerops-mate-face-ink)]");
     expect(html).not.toMatch(/#[0-9a-f]{6}/iu);
+  });
+
+  // A Mate picks its shape and its colour apart (`mate:face:`): any shape in
+  // any colour, turning by that shape's own symmetry.
+  it.each<[MateTintId, MateShapeId]>([
+    ["coral", "gem"],
+    ["sky", "seal"],
+    ["olive", "squircle"],
+  ])("wears %s as a %s when its Mate chose so", (tint, shape) => {
+    const html = renderToStaticMarkup(<MateFace shape={shape} state="idle" tint={tint} />);
+    expect(html).toContain(`data-mate-face-tint="${tint}"`);
+    expect(html).toContain(`data-mate-face-shape="${shape}"`);
+    expect(html).toContain(`fill-[var(--zerops-mate-tint-${tint})]`);
+    expect(html).toContain(`d="${MATE_SHAPES[shape].d}"`);
+    expect(html).toContain(`--mate-face-step:${MATE_SHAPES[shape].step}deg`);
+    expect(html).toContain(
+      `--mate-face-origin:${MATE_SHAPES[shape].origin[0]}px ${MATE_SHAPES[shape].origin[1]}px`,
+    );
+  });
+
+  it.each(MATE_TINT_IDS)("draws %s with no shape given exactly as its tint's own", (tint) => {
+    expect(renderToStaticMarkup(<MateFace state="working" tint={tint} />)).toBe(
+      renderToStaticMarkup(
+        <MateFace shape={MATE_SHAPE_OF_TINT[tint]} state="working" tint={tint} />,
+      ),
+    );
   });
 
   it("is decorative: the name and the word beside it carry the meaning", () => {

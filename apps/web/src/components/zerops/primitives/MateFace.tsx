@@ -6,6 +6,7 @@ import {
   MATE_TINT_IDS,
   mateFaceParts,
   type MateMarkState,
+  type MateShapeId,
   type MateTintId,
 } from "@t3tools/shared/brand";
 import { useState, type CSSProperties } from "react";
@@ -52,6 +53,8 @@ type MateFaceGaze = "up" | "down";
 
 type MateFaceProps = Omit<React.ComponentProps<"svg">, "children" | "viewBox"> & {
   readonly tint: MateTintId;
+  /** The silhouette its Mate chose (`mate:face:`); the tint's own (`MATE_SHAPE_OF_TINT`) when absent. */
+  readonly shape?: MateShapeId | undefined;
   readonly state: MateMarkState;
   readonly size?: MateFaceSize;
   readonly gaze?: MateFaceGaze | undefined;
@@ -111,8 +114,8 @@ function useArrived(state: MateMarkState, known: boolean): MateMarkState | undef
 }
 
 /**
- * A Mate's face: its eyes on its shape, in its colour (`MATE_SHAPE_OF_TINT`),
- * wearing the state the live mark would — open when idle, narrowed and
+ * A Mate's face: its eyes on its shape, in its colour — the shape it chose,
+ * else its colour's own (`MATE_SHAPE_OF_TINT`) — wearing the state the live mark would — open when idle, narrowed and
  * dropped when working, wide with an "o" when it needs you, happy when done,
  * shut when asleep.
  *
@@ -131,6 +134,7 @@ function MateFace({
   size = "md",
   state,
   tint,
+  shape: chosenShape,
   gaze,
   greets = false,
   known = true,
@@ -139,7 +143,7 @@ function MateFace({
 }: MateFaceProps) {
   const parts = mateFaceParts(state);
   const arrived = useArrived(state, greets && known);
-  const shapeId = MATE_SHAPE_OF_TINT[tint];
+  const shapeId = chosenShape ?? MATE_SHAPE_OF_TINT[tint];
   const shape = MATE_SHAPES[shapeId];
   const strokeWidth = STROKE_PX[size];
   const shut = parts.eyes.length > 0 && parts.eyes[0]!.height < SHUT_EYE_HEIGHT;

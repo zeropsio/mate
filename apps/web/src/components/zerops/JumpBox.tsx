@@ -448,7 +448,7 @@ function JumpWriteView({
             }}
             type="button"
           >
-            <MateFace size="sm" state={target.face} tint={target.tint} />
+            <MateFace shape={target.shape} size="sm" state={target.face} tint={target.tint} />
             <span className="min-w-0 truncate">{target.name}</span>
           </button>
           <input
@@ -548,7 +548,7 @@ function JumpRow({ item, match }: { readonly item: JumpItem; readonly match: str
     case "mate":
     case "write": {
       const { mate } = item;
-      lead = <MateFace size="sm" state={mate.face} tint={mate.tint} />;
+      lead = <MateFace shape={mate.shape} size="sm" state={mate.face} tint={mate.tint} />;
       title = <Marked match={match} text={mate.name} />;
       sub = [mate.projectName, mate.subject].filter((part) => part !== undefined).join(" · ");
       break;
@@ -578,7 +578,9 @@ function JumpRow({ item, match }: { readonly item: JumpItem; readonly match: str
       sub = <Marked match={match} text={item.stop.line} />;
       break;
     case "text":
-      lead = <MateFace size="sm" state={item.mate.face} tint={item.mate.tint} />;
+      lead = (
+        <MateFace shape={item.mate.shape} size="sm" state={item.mate.face} tint={item.mate.tint} />
+      );
       title = <Marked match={match} text={item.snippet} />;
       sub = `${item.mate.name} · in the conversation`;
       break;

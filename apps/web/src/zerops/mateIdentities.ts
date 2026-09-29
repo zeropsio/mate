@@ -1,10 +1,11 @@
 /**
  * Who lives in each environment, for the surfaces that show one conversation
- * rather than the account: the Mate's name, its colour, and the project it
- * belongs to, keyed by the environment the conversation runs in.
+ * rather than the account: the Mate's name, its face (a colour and a shape),
+ * and the project it belongs to, keyed by the environment the conversation
+ * runs in.
  *
- * Read off the candidate list — the one source for names, tags and colours
- * (`hasMate`, `botDisplayName`, `assignCandidateMateTints`) — by the derived
+ * Read off the candidate list — the one source for names, tags and faces
+ * (`hasMate`, `botDisplayName`, `assignCandidateMateTints`, `mateShapeOf`) — by the derived
  * `zeropsMatesAtom` (`useZeropsMates.ts`), so the chat header, an empty
  * conversation and a draft's headline never load anything themselves and can
  * never disagree with the left menu about who a Mate is.
@@ -18,13 +19,14 @@ import {
   assignCandidateMateTints,
   botDisplayName,
   hasMate,
+  mateShapeOf,
   readZeropsGroupTags,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { EnvironmentId } from "@t3tools/contracts";
-import type { MateTintId } from "@t3tools/shared/brand";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 
 import type { ZeropsEnvironmentEntry } from "../state/zerops";
 import { rowEnvironment } from "./environmentOrigins";
@@ -34,6 +36,8 @@ export interface ZeropsMateIdentity {
   readonly serviceId?: string | undefined;
   readonly name: string;
   readonly tint: MateTintId;
+  /** The shape its person picked (`mate:face:`), else its tint's own — `mateShapeOf`. */
+  readonly shape: MateShapeId;
   /** The project the Mate belongs to, as its label tag reads; absent for one in no project. */
   readonly project: string | undefined;
   /** The Mate's project on the Zerops dashboard: where a conversation's "Open in Zerops" goes. */
@@ -64,10 +68,12 @@ export function zeropsMateIdentities(
     const environmentId = rowEnvironment(candidate, registeredOrigins);
     if (environmentId === undefined || mates.has(environmentId) || !hasMate(candidate)) continue;
     const tags = readZeropsGroupTags(candidate.project.tagList);
+    const tint = tints.get(candidate.project.id) ?? "slate";
     mates.set(environmentId, {
       serviceId: candidate.service?.id,
       name: botDisplayName({ bot: tags.bot, projectName: candidate.project.name }),
-      tint: tints.get(candidate.project.id) ?? "slate",
+      tint,
+      shape: mateShapeOf(candidate.project.tagList, tint),
       project: tags.label,
       projectUrl: zeropsProjectUrl(candidate.project.id),
       connected: candidate.group === "connected",

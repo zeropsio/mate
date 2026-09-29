@@ -749,7 +749,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             tint: crewmate.profile?.tint ?? "slate",
           }
         : mate.kind === "mate"
-          ? { name: mate.mate.name, tint: mate.mate.tint }
+          ? { name: mate.mate.name, tint: mate.mate.tint, shape: mate.mate.shape }
           : { name: "Assistant", tint: "slate" },
     [crewmate, mate],
   );
@@ -1166,7 +1166,7 @@ function TimelineLoadingPane({
           className="flex animate-held-appear"
           role="status"
         >
-          <MateFace size="lg" state="working" tint={speaker.tint} />
+          <MateFace shape={speaker.shape} size="lg" state="working" tint={speaker.tint} />
         </span>
       ) : null}
     </div>
