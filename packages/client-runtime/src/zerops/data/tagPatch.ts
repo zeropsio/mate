@@ -19,6 +19,7 @@ import {
   withZeropsBotTag,
   withZeropsGroupTags,
   withZeropsMateTag,
+  withoutZeropsStandUpTag,
   type ZeropsEnvironmentRole,
 } from "../groups.ts";
 import { withMateSignerTag } from "../mateAccess.ts";
@@ -37,6 +38,8 @@ export type ProjectTagPatch =
   | { readonly kind: "agent-name"; readonly name: string }
   /** Records who signed an agent in (D6). */
   | { readonly kind: "agent-signer"; readonly agentId: string; readonly userId: string }
+  /** The Mate was asked to stand the project's development up: the ask (`mate:standup:`) goes. */
+  | { readonly kind: "stand-up-done" }
   /** A group in the account's registry, on its Gitea project; its slug is derived here. */
   | { readonly kind: "registry-group"; readonly groupId: string; readonly name: string }
   /** A project in a registered group as a Mate, a stage or the production. */
@@ -83,6 +86,8 @@ export function applyProjectTagPatch(
     }
     case "agent-signer":
       return changed(withMateSignerTag(tags, patch.agentId, patch.userId));
+    case "stand-up-done":
+      return changed(withoutZeropsStandUpTag(tags));
     case "registry-group": {
       const registry = parseZeropsRegistry(tags);
       // The group is there: our own earlier write, read back.

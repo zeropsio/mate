@@ -943,6 +943,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     organizationStatus,
     selectOrganization,
     status,
+    user,
   } = useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const inventory = useZeropsInventory();
@@ -2025,6 +2026,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         recipe: choice.recipe,
         withAgent: choice.withAgent,
         ...(choice.botName === undefined ? {} : { botName: choice.botName }),
+        ...(user?.id ? { standUpBy: user.id } : {}),
       });
       if (!isCurrent()) return;
       if (!plan.ok) {
@@ -2219,6 +2221,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       client,
       giteaOrigin,
       giteaProjectId,
+      user?.id,
     ],
   );
 
