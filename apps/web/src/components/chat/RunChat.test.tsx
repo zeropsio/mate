@@ -47,6 +47,7 @@ const SHARED: TimelineRowSharedState = {
   onRemoveQueuedMessage: () => undefined,
   arrivedAfter: null,
   syncing: false,
+  onHoldReading: () => undefined,
 };
 
 const ACTIVITY: TimelineRowActivityState = {
@@ -285,19 +286,24 @@ describe("RunChat", () => {
   // Ten reads in a row are one stretch of work (the owner, 2026-09-28: "there
   // is no spacing between items"): a run of calls shares one card, a hairline
   // between them; a thought or its words between two calls start a new one.
-  // A wheel over a long run's chat moves the chat, and past its ends the
-  // page: contained, the page stood still under the pointer until it left
-  // the card (2026-09-29). Its fades are always drawn, eased in and out.
-  it("lets the page scroll on past its chat's ends, and eases its fades", () => {
-    const markup = draw(record([step(command("w1", "ls"))]));
-    expect(markup).toContain("overflow-y-auto");
-    expect(markup).not.toContain("overscroll-contain");
-    expect(markup).toMatch(
-      /class="[^"]*transition-opacity[^"]*opacity-0[^"]*" data-chat-fade="above"/,
+  // Two scrollbars in one view is where the last passes' scroll bugs lived
+  // (K8): the card has no scroll of its own — the conversation is the one
+  // scroll, and nothing in the card scrolls inside it.
+  it("has no scroll of its own, and nothing in it scrolls", () => {
+    const markup = draw(
+      record([
+        step(
+          command("w1", "npm run build", {
+            callInput: { description: "Build" },
+            detail: Array.from({ length: 30 }, (_, index) => `line ${index}`).join("\n"),
+          }),
+        ),
+        thought("r1", LONG),
+      ]),
     );
-    expect(markup).toMatch(
-      /class="[^"]*transition-opacity[^"]*opacity-0[^"]*" data-chat-fade="below"/,
-    );
+    expect(markup).not.toMatch(/overflow-(?:y-)?auto/u);
+    expect(markup).not.toContain("max-h-110");
+    expect(markup).not.toContain("data-chat-fade");
   });
 
   it("gathers each run of calls into one card, and breaks it where anything else stands", () => {
@@ -621,13 +627,12 @@ describe("RunChat", () => {
   // first thing seen after every message: the face as far from the card's
   // top as from its foot, where the empty list's room stood it 31 px down
   // and 22 px up (Nova, 2026-09-28).
-  it("keeps an empty chat's room to the card's own, so the face stands in its middle", () => {
-    const list = (markup: string) => /<ol[^>]*class="([^"]*)"/u.exec(markup)?.[1]?.split(" ") ?? [];
-    const empty = list(draw(record([], { live: true, status: status() })));
-    expect(empty).toContain("pt-1");
-    expect(empty).not.toContain("pb-4");
-    const said = list(draw(record([thought("r1", "The route and the check disagree.")])));
-    expect(said).toEqual(expect.arrayContaining(["pt-px", "pb-4"]));
+  it("draws no list before anything is in the chat, so its status line stands alone", () => {
+    expect(draw(record([], { live: true, status: status() }))).not.toContain("<ol");
+    const said = draw(record([thought("r1", "The route and the check disagree.")]));
+    expect(said).toContain(
+      '<ol aria-label="Nova&#x27;s work" class="flex min-w-0 flex-col gap-3">',
+    );
   });
 
   // The Mate's column lines its bubbles up over the face at the chat's foot,
@@ -641,7 +646,7 @@ describe("RunChat", () => {
     );
     // One container holds the chat and its status line, so both keep one gap.
     expect(markup).toMatch(
-      /<div class="@container\/chat min-w-0" style="[^"]*"><div class="[^"]*" data-run-chat="true">/u,
+      /<div class="@container\/chat min-w-0" data-run-chat="true" style="[^"]*"><ol /u,
     );
     const row =
       /<li class="([^"]*)" data-chat-row="true"><span aria-hidden="true" class="([^"]*)"/u.exec(
@@ -820,9 +825,7 @@ describe("RunChat, as the person uses it", () => {
       }),
     );
     expect(button(renderer, "Run the production build").props["aria-expanded"]).toBe(true);
-    expect(
-      JSON.stringify(details()[0]?.findAll((node) => node.type === "pre")[0]?.children),
-    ).toContain("48.2 kB");
+    expect(JSON.stringify(renderer.toJSON())).toContain("48.2 kB");
     act(() =>
       button(renderer, "Run the production build").props.onClick({
         currentTarget: { closest: () => null },
@@ -831,50 +834,23 @@ describe("RunChat, as the person uses it", () => {
     expect(details()).toHaveLength(0);
   });
 
-  // The timeline moves its rows' nodes as it lays them out, and the browser
-  // forgets a moved node's scroll with no event to say so: a chat at its
-  // newest opened at its first bubble after a reload (2026-09-28).
-  it("takes its newest bubble back when its end leaves sight while it follows", () => {
-    const savedObserver = globalThis.IntersectionObserver;
-    let report: ((entries: ReadonlyArray<{ readonly isIntersecting: boolean }>) => void) | null =
-      null;
-    globalThis.IntersectionObserver = class {
-      constructor(callback: typeof report) {
-        report = callback;
-      }
-      observe() {}
-      disconnect() {}
-    } as unknown as typeof IntersectionObserver;
-    const scroller = {
-      scrollTop: 0,
-      scrollHeight: 900,
-      clientHeight: 440,
-      getBoundingClientRect: () => ({ top: 0, bottom: 440, height: 440 }),
-    };
-    try {
-      act(() => {
-        create(
-          <Rows>
-            <RunChat row={record([step(command("w1", "git status"))])} />
-          </Rows>,
-          {
-            // The chat's scroll is the one element that listens to its scrolling.
-            createNodeMock: (element) =>
-              element.type === "div" &&
-              (element.props as { readonly onScroll?: unknown }).onScroll !== undefined
-                ? scroller
-                : {},
-          },
-        );
-      });
-      expect(scroller.scrollTop).toBe(900);
-      // The row's node moved: the browser put the chat back at its top.
-      scroller.scrollTop = 0;
-      act(() => report?.([{ isIntersecting: false }]));
-      expect(scroller.scrollTop).toBe(900);
-    } finally {
-      globalThis.IntersectionObserver = savedObserver;
-    }
+  // D4: what a call printed never scrolls inside the card — past twelve lines
+  // it folds, and "Show all N lines" opens every line of it in place.
+  it("folds a long output past its twelfth line, every line of it a click away", () => {
+    const printed = Array.from({ length: 30 }, (_, index) => `line ${index + 1}`).join("\n");
+    const renderer = mount(
+      record([
+        step(command("w1", "npm test", { callInput: { description: "Test" }, detail: printed })),
+      ]),
+    );
+    act(() => button(renderer, "Test").props.onClick());
+    const more = button(renderer, "Show all 30 lines");
+    expect(more.props["aria-expanded"]).toBe(false);
+    act(() => more.props.onClick());
+    expect(button(renderer, "Show less").props["aria-expanded"]).toBe(true);
+    const pre = renderer.root.find((node) => node.type === "pre");
+    expect(pre.props["data-chat-folded"]).toBe("false");
+    expect(JSON.stringify(renderer.toJSON())).toContain("line 30");
   });
 
   it("draws the earlier bubbles when the person asks for them", () => {

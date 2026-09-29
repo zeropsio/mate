@@ -667,6 +667,7 @@ const SHARED: TimelineRowSharedState = {
   onRemoveQueuedMessage: () => undefined,
   arrivedAfter: null,
   syncing: false,
+  onHoldReading: () => undefined,
 };
 
 const WORKING: TimelineRowActivityState = {

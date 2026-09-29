@@ -869,6 +869,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onRemoveQueuedMessage,
       arrivedAfter,
       syncing,
+      onHoldReading: onManualNavigation,
     }),
     [
       timestampFormat,
@@ -894,6 +895,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onRemoveQueuedMessage,
       arrivedAfter,
       syncing,
+      onManualNavigation,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(

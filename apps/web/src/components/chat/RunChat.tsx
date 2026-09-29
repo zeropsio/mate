@@ -64,7 +64,6 @@ import {
   useState,
   type CSSProperties,
   type ReactNode,
-  type UIEvent,
 } from "react";
 
 import { cn } from "~/lib/utils";
@@ -106,7 +105,12 @@ import {
   type RunStatus,
   type TurnHeaderActivity,
 } from "./MessagesTimeline.logic";
-import { TimelineRowActivityCtx, TimelineRowCtx } from "./timelineContext";
+import { chatOpensAt, earlierShown } from "./runCard.logic";
+import {
+  TimelineRowActivityCtx,
+  TimelineRowCtx,
+  type TimelineRowSharedState,
+} from "./timelineContext";
 import { stepOf, type StepKind, type StepPhrase, type WorkStep } from "./workSteps.logic";
 
 // ---------------------------------------------------------------------------
@@ -222,233 +226,34 @@ const THOUGHT_FILL = "bg-foreground/3";
 const CALL_SURFACE = "ring-1 ring-foreground/9";
 
 // ---------------------------------------------------------------------------
-// The chat's scroll
+// The chat, drawn once
 // ---------------------------------------------------------------------------
 
-interface ChatScrollApi {
-  /** The scroll, for a bubble to watch whether it is still in sight. */
-  readonly scroller: () => HTMLElement | null;
-  /**
-   * Keeps `element` where it stands on screen while the bubble it sits in
-   * opens, closes or folds — `reveal`, for what the person opened: show its
-   * end too, as far as its top can stay in sight.
-   */
-  readonly hold: (element: Element, reveal: boolean) => void;
-  /** Whether the chat has been drawn once: a bubble mounting after it arrived live. */
-  readonly shown: { readonly current: boolean };
-}
-
-const ChatScrollContext = createContext<ChatScrollApi | null>(null);
+/**
+ * Whether the chat has been drawn once: a bubble mounting after that arrived
+ * while the person watched. The chat has no scroll of its own (K8, D4): the
+ * conversation is the one scroll, and what the chat does not draw folds
+ * behind a control that draws it.
+ */
+const ChatShownContext = createContext<{ readonly current: boolean } | null>(null);
 
 /** Whether this bubble arrived while the person watched: what the chat opened onto is simply there. */
 function useArrivedLive(): boolean {
-  const api = use(ChatScrollContext);
-  const [arrived] = useState(() => api?.shown.current ?? false);
+  const shown = use(ChatShownContext);
+  const [arrived] = useState(() => shown?.current ?? false);
   return arrived;
 }
 
-/** The chat's height at most: a long newest bubble fits whole (it was 22 rem as a list of lines). */
-const CHAT_MAX_HEIGHT = "max-h-110";
+const HOLD_NOTHING = () => {};
 
 /**
- * The chat's scroll: at its newest when it opens, following its end as it
- * grows, and holding still while the person reads back — only a wheel, a
- * touch or a key leaves the end, and so does opening a bubble above the
- * newest. While the run goes on it never grows shorter, so a long bubble
- * giving way to a one-line step never pulls the conversation down; it scrolls
- * up and down, never sideways.
+ * What the person opened or closed is theirs to read (K12): the conversation
+ * stops following its end, so the line they clicked stays where it is and
+ * only what is under it moves. Drawn outside a conversation, it holds nothing.
  */
-function ChatScroll({
-  live,
-  label,
-  empty,
-  children,
-}: {
-  readonly live: boolean;
-  readonly label: string;
-  /**
-   * Nothing in it yet: the card is its status line alone, the face as far
-   * from the card's top as from its foot — the list's own room stood it
-   * 31 px down and 22 px up (Nova, 2026-09-28).
-   */
-  readonly empty: boolean;
-  readonly children: ReactNode;
-}) {
-  const scrollerRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLOListElement>(null);
-  const followingRef = useRef(true);
-  const gestureAtRef = useRef(Number.NEGATIVE_INFINITY);
-  const tallestRef = useRef(0);
-  const heldRef = useRef<{
-    readonly element: Element;
-    readonly top: number;
-    readonly reveal: boolean;
-  } | null>(null);
-  const shownRef = useRef(false);
-  const [minHeight, setMinHeight] = useState<number | undefined>(undefined);
-  const [above, setAbove] = useState(false);
-  const [below, setBelow] = useState(false);
-
-  const settleRef = useRef<() => void>(() => {});
-  useLayoutEffect(() => {
-    const scroller = scrollerRef.current;
-    const content = contentRef.current;
-    if (scroller === null || content === null) return;
-    tallestRef.current = 0;
-    const settle = () => {
-      const held = heldRef.current;
-      heldRef.current = null;
-      if (held !== null && held.element.isConnected) {
-        const box = scroller.getBoundingClientRect();
-        const top = held.element.getBoundingClientRect().top - box.top;
-        scroller.scrollTop += top - held.top;
-        if (held.reveal) {
-          // Its end in sight too, as far as its top can stay there.
-          const shown = held.element.getBoundingClientRect();
-          const past = shown.bottom - box.bottom;
-          const room = shown.top - box.top;
-          if (past > 0 && room > 0) scroller.scrollTop += Math.min(past, room);
-        }
-      } else if (followingRef.current) {
-        scroller.scrollTop = scroller.scrollHeight;
-      }
-      setAbove(scroller.scrollTop > 1);
-      setBelow(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > 1);
-      if (live) {
-        const height = scroller.getBoundingClientRect().height;
-        if (height > tallestRef.current) {
-          tallestRef.current = height;
-          setMinHeight(height);
-        }
-      }
-    };
-    settleRef.current = settle;
-    settle();
-    const observer = new ResizeObserver(settle);
-    observer.observe(content);
-    // Its own box too: a chat drawn before the page laid it out — the page
-    // opening where the person last read, the card still below — had nothing
-    // to follow yet, and its content never changed size once it had.
-    observer.observe(scroller);
-    return () => observer.disconnect();
-  }, [live]);
-
-  useEffect(() => {
-    shownRef.current = true;
-  }, []);
-
-  // The list the chat stands in moves its rows' nodes as it lays them out,
-  // and the browser forgets a moved node's scroll without a scroll event: a
-  // chat that was at its newest opened at its first bubble (2026-09-28, a
-  // reload into a run three hours back). Its end leaving sight while it
-  // follows is the one sign of that, so the end is watched and taken back.
-  const endRef = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    const scroller = scrollerRef.current;
-    const end = endRef.current;
-    if (scroller === null || end === null || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry === undefined || entry.isIntersecting) return;
-        if (followingRef.current && heldRef.current === null) settleRef.current();
-      },
-      { root: scroller },
-    );
-    observer.observe(end);
-    return () => observer.disconnect();
-  }, []);
-
-  const [api] = useState<ChatScrollApi>(() => ({
-    scroller: () => scrollerRef.current,
-    hold: (element, reveal) => {
-      const scroller = scrollerRef.current;
-      if (scroller === null) return;
-      const top = element.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-      heldRef.current = { element, top, reveal };
-      // What the person opened is theirs to read: the chat stops following
-      // its end unless opening it brings the end back into sight.
-      if (reveal) followingRef.current = false;
-      // Nothing may have changed size: the hold must not wait for a resize.
-      requestAnimationFrame(() => {
-        if (heldRef.current?.element === element) settleRef.current();
-      });
-    },
-    shown: shownRef,
-  }));
-
-  const markGesture = () => {
-    gestureAtRef.current = performance.now();
-  };
-  const onScroll = (event: UIEvent<HTMLDivElement>) => {
-    const scroller = event.currentTarget;
-    setAbove(scroller.scrollTop > 1);
-    setBelow(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > 1);
-    const atEnd = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 2;
-    if (atEnd) followingRef.current = true;
-    else if (performance.now() - gestureAtRef.current < 400) followingRef.current = false;
-    else if (followingRef.current && heldRef.current === null) {
-      scroller.scrollTop = scroller.scrollHeight;
-    }
-  };
-
-  return (
-    <ChatScrollContext value={api}>
-      <div className="relative min-w-0" data-run-chat>
-        <div
-          ref={scrollerRef}
-          className={cn(
-            CHAT_MAX_HEIGHT,
-            // A column, so the bubbles stand at its foot beside the face when
-            // the room it keeps is taller than they are. The page scrolls on
-            // past its ends: contained, a wheel over a long run stopped dead
-            // at the chat's top, and the page stood still under the pointer
-            // until it left the card. A gesture begun inside stays inside
-            // (the browser latches it), so a flick never throws the page.
-            "-mx-1.5 flex flex-col overflow-x-hidden overflow-y-auto px-1.5 scrollbar-none",
-          )}
-          onKeyDown={markGesture}
-          onScroll={onScroll}
-          onTouchMove={markGesture}
-          onWheel={markGesture}
-          // The chat keeps its own place when a bubble above folds or opens;
-          // the browser's anchoring would move it a second time.
-          style={{
-            overflowAnchor: "none",
-            ...(live && minHeight !== undefined ? { minHeight } : {}),
-          }}
-        >
-          <ol
-            ref={contentRef}
-            aria-label={label}
-            className={cn("mt-auto flex min-w-0 flex-col gap-3", empty ? "pt-1" : "pt-px pb-4")}
-          >
-            {children}
-          </ol>
-          <span ref={endRef} aria-hidden="true" className="-mt-px block h-px shrink-0" />
-        </div>
-        {/* The fades ease in and out with the scroll rather than snapping on
-            at its first pixel. */}
-        <div
-          aria-hidden="true"
-          className={cn(
-            "pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-run-tray to-transparent transition-opacity duration-200 ease-out",
-            above ? "opacity-100" : "opacity-0",
-          )}
-          data-chat-fade="above"
-        />
-        {/* Read back, the chat fades into the status line under it rather
-            than being cut off against it. */}
-        <div
-          aria-hidden="true"
-          className={cn(
-            "pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-run-tray to-transparent transition-opacity duration-200 ease-out",
-            below ? "opacity-100" : "opacity-0",
-          )}
-          data-chat-fade="below"
-        />
-      </div>
-    </ChatScrollContext>
-  );
+function useHoldReading(): () => void {
+  const ctx = use(TimelineRowCtx) as TimelineRowSharedState | null;
+  return ctx?.onHoldReading ?? HOLD_NOTHING;
 }
 
 // ---------------------------------------------------------------------------
@@ -535,87 +340,50 @@ interface Fold {
   readonly folded: boolean;
   /**
    * Whether its switch shows: folded, the way to the rest; opened by the
-   * person, the way back. A bubble that simply stands whole — the newest,
-   * one still in sight — offers nothing, so none appears under it later.
+   * person, the way back. A bubble that simply stands whole — one that
+   * arrived while the person watched — offers nothing, so none appears
+   * under it later.
    */
   readonly offered: boolean;
   readonly toggle: () => void;
 }
 
-/** Where a fold watches its bubble from: the element it folds. */
-type FoldWatch = (element: HTMLElement | null) => void;
-
 /**
  * Whether a bubble is folded. Past the fold's limits it opens folded when the
- * chat opens onto it; one that arrived while the person watched stays whole
- * until it has scrolled out of sight, and the newest never folds. Once the
- * person opened or closed it, it stays as they left it.
+ * chat opens onto it; one that arrived while the person watched stays whole —
+ * nothing folds while the person is looking (K12). Once the person opened or
+ * closed it, it stays as they left it.
  */
-function useFold(eligible: boolean, newest: boolean): readonly [Fold, FoldWatch] {
-  const api = use(ChatScrollContext);
+function useFold(eligible: boolean): Fold {
   const arrived = useArrivedLive();
-  const [folded, setFolded] = useState(() => eligible && !arrived && !newest);
+  const hold = useHoldReading();
+  const [folded, setFolded] = useState(() => eligible && !arrived);
   const [opened, setOpened] = useState(false);
-  const touchedRef = useRef(false);
-  const [element, setElement] = useState<HTMLElement | null>(null);
-  const [watch] = useState(() => {
-    const follow: FoldWatch = (node) => {
-      setElement(node);
-    };
-    return follow;
-  });
-
-  useEffect(() => {
-    const root = api?.scroller() ?? null;
-    if (!eligible || folded || newest || touchedRef.current || element === null || root === null)
-      return;
-    if (typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry === undefined || entry.isIntersecting || entry.rootBounds === null) return;
-        // Wholly above what the person sees: folding it moves nothing in sight.
-        if (entry.boundingClientRect.bottom > entry.rootBounds.top) return;
-        const below = element.closest("[data-chat-row]")?.nextElementSibling ?? null;
-        if (below !== null) api?.hold(below, false);
-        setFolded(true);
-      },
-      { root },
-    );
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [api, eligible, element, folded, newest]);
-
-  const fold: Fold = {
+  return {
     eligible,
     folded: eligible && folded,
     offered: eligible && (folded || opened),
     toggle: () => {
-      touchedRef.current = true;
-      const row = element?.closest<HTMLElement>("[data-chat-row]");
-      if (row) api?.hold(row, true);
+      hold();
       setOpened(folded);
       setFolded(!folded);
     },
   };
-  return [fold, watch];
 }
 
 /** What folds: its top only while folded, fading into the bubble. */
 function FoldBody({
   fold,
-  watch,
   height,
   children,
 }: {
   readonly fold: Fold;
-  readonly watch: FoldWatch;
   /** How tall it stands folded: eight of its lines. */
   readonly height: "max-h-44" | "max-h-40";
   readonly children: ReactNode;
 }) {
   return (
     <div
-      ref={watch}
       className={cn("min-w-0", fold.folded && cn(height, "overflow-hidden"))}
       data-chat-folded={fold.eligible ? String(fold.folded) : undefined}
       style={
@@ -638,7 +406,7 @@ function MoreToggle({
   children,
 }: {
   readonly open: boolean;
-  readonly onToggle: (event: { readonly currentTarget: HTMLElement }) => void;
+  readonly onToggle: () => void;
   readonly children: ReactNode;
 }) {
   return (
@@ -677,15 +445,14 @@ function FoldToggle({
 // What a bubble holds, opened in place
 // ---------------------------------------------------------------------------
 
-/** A bubble's detail: open or not, and the switch that keeps it where the person opened it. */
+/** A bubble's detail: open or not, and its switch — the person's reading held while it opens. */
 function useDisclosure() {
-  const api = use(ChatScrollContext);
+  const hold = useHoldReading();
   const [open, setOpen] = useState(false);
   return {
     open,
-    toggle: (event: { readonly currentTarget: HTMLElement }) => {
-      const row = event.currentTarget.closest<HTMLElement>("[data-chat-row]");
-      if (row) api?.hold(row, true);
+    toggle: () => {
+      hold();
       setOpen((value) => !value);
     },
   };
@@ -707,7 +474,7 @@ function DisclosureButton({
   children,
 }: {
   readonly open: boolean;
-  readonly onToggle: (event: { readonly currentTarget: HTMLElement }) => void;
+  readonly onToggle: () => void;
   readonly label: string;
   readonly className?: string;
   readonly children: ReactNode;
@@ -748,28 +515,58 @@ function OpensMark() {
 function OutputBlock({
   label = null,
   mono = true,
-  children,
+  text,
 }: {
   readonly label?: string | null;
   readonly mono?: boolean;
-  readonly children: ReactNode;
+  readonly text: string;
 }) {
+  const hold = useHoldReading();
+  const lines = text.split("\n").length;
+  const [taller, watch] = useTallerThan(OUTPUT_CAP_PX, lines > OUTPUT_CAP_LINES);
+  const [open, setOpen] = useState(false);
+  // No scroll inside the card (K8): past twelve lines it folds, and the way
+  // to the rest opens it in place (D4).
+  const folded = taller && !open;
   return (
     <section aria-label={label ?? undefined} className="grid min-w-0 gap-1">
       {label === null ? null : <h4 className={cn(META, "text-muted-foreground")}>{label}</h4>}
       <pre
         className={cn(
-          // Past its ends the page scrolls on, as it does past the chat's.
-          "max-h-64 min-w-0 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-foreground/4 px-3 py-2 text-foreground/80 select-text",
+          "min-w-0 whitespace-pre-wrap break-words rounded-xl bg-foreground/4 px-3 py-2 text-foreground/80 select-text",
           META,
           mono ? "font-mono" : "font-sans",
+          folded && "max-h-64 overflow-hidden",
         )}
+        data-chat-folded={taller ? String(folded) : undefined}
+        style={folded ? { WebkitMaskImage: FOLD_FADE_MASK, maskImage: FOLD_FADE_MASK } : undefined}
       >
-        {children}
+        <span ref={watch} className="block">
+          {text}
+        </span>
       </pre>
+      {taller ? (
+        <MoreToggle
+          onToggle={() => {
+            hold();
+            setOpen((value) => !value);
+          }}
+          open={open}
+        >
+          {open
+            ? "Show less"
+            : lines > OUTPUT_CAP_LINES
+              ? `Show all ${lines} lines`
+              : "Show the rest"}
+        </MoreToggle>
+      ) : null}
     </section>
   );
 }
+
+/** Twelve of an output's 20 px lines: past them it folds. */
+const OUTPUT_CAP_PX = 240;
+const OUTPUT_CAP_LINES = 12;
 
 /**
  * A bubble's first line: its words, and at the right edge its time and the
@@ -950,10 +747,10 @@ function ThoughtParagraphs({ messages }: { readonly messages: ReadonlyArray<Chat
 
 /** Its words to the person on the way: the chat's bubble in its fullest fill. */
 function NoteBubble({ message }: { readonly message: ChatMessage }) {
-  const [fold, watch] = useFold(foldsLikeAMessage(message.text), false);
+  const fold = useFold(foldsLikeAMessage(message.text));
   return (
     <Bubble className={BUBBLE_PAD} kind="note" tone="speech">
-      <FoldBody fold={fold} height="max-h-44" watch={watch}>
+      <FoldBody fold={fold} height="max-h-44">
         <NoteWords message={message} />
       </FoldBody>
       <FoldToggle fold={fold} />
@@ -1018,6 +815,7 @@ function useRunsPast(guess: boolean): readonly [boolean, (element: HTMLElement |
 function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMessage> }) {
   const text = messages.map((message) => message.text).join("\n\n");
   const run = thoughtRunText(text);
+  const hold = useHoldReading();
   const [open, setOpen] = useState(false);
   const [past, watch] = useRunsPast(run.length > THOUGHT_GUESS_CHARS);
   if (text.trim().length === 0) return null;
@@ -1031,7 +829,13 @@ function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMess
       {open ? (
         <>
           <ThoughtParagraphs messages={messages} />
-          <MoreToggle onToggle={() => setOpen(false)} open>
+          <MoreToggle
+            onToggle={() => {
+              hold();
+              setOpen(false);
+            }}
+            open
+          >
             Show less
           </MoreToggle>
         </>
@@ -1042,7 +846,10 @@ function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMess
           className="block w-full min-w-0 cursor-pointer rounded-sm text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
           data-chat-disclose
           data-scroll-anchor-ignore
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            hold();
+            setOpen(true);
+          }}
           type="button"
         >
           {clamped}
@@ -1441,9 +1248,7 @@ export function StepBubble({ step }: { readonly step: WorkStep }) {
           data-chat-detail
         >
           {outputs.map((output) => (
-            <OutputBlock key={output.key} label={output.label}>
-              {output.text}
-            </OutputBlock>
+            <OutputBlock key={output.key} label={output.label} text={output.text} />
           ))}
         </div>
       ) : null}
@@ -1746,7 +1551,7 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
       ) : (
         <div className="px-1.5 py-1">{line}</div>
       )}
-      {open && said ? <OutputBlock mono={false}>{said}</OutputBlock> : null}
+      {open && said ? <OutputBlock mono={false} text={said} /> : null}
     </li>
   );
 }
@@ -1843,7 +1648,7 @@ export function taskTitle(entry: WorkLogEntry): string {
 function TaskReport({ entry }: { readonly entry: WorkLogEntry }) {
   const report = entry.detail?.trim();
   if (!report) return null;
-  return <OutputBlock mono={entry.agentRole === undefined}>{report}</OutputBlock>;
+  return <OutputBlock mono={entry.agentRole === undefined} text={report} />;
 }
 
 /** A background task or a helper reporting back, where its result reached the run; its report under it. */
@@ -1956,7 +1761,7 @@ function ErrorBubble({ entry }: { readonly entry: WorkLogEntry }) {
       )}
       {disclosure.open && more !== null ? (
         <div className="animate-detail-in px-3 pb-2 motion-reduce:animate-none" data-chat-detail>
-          <OutputBlock>{more}</OutputBlock>
+          <OutputBlock text={more} />
         </div>
       ) : null}
     </Bubble>
@@ -2350,19 +2155,18 @@ function StatusLine({
 }
 
 /**
- * How many of a long run's bubbles its chat draws when it opens: the newest,
- * where the chat opens. The ones before them wait above, a click away — a
- * two-hour run drew nine hundred bubbles at once and froze the page for
- * 0.7 s as it opened (Juno, 2026-09-27).
- */
-const CHAT_OPENS_WITH = 40;
-
-/**
- * A run's chat in its card: every bubble in one scroll, and under it the
- * Mate's status — the present said once.
+ * A run's chat in its card: what the Mate said and did, in the order it
+ * happened, and under it the Mate's status — the present said once. The
+ * card has no scroll of its own (K8): the conversation is the one scroll,
+ * and a long run's earlier lines fold behind "Show N earlier" at its top.
  */
 export function RunChat({ row }: { readonly row: RecordRow }) {
   const ctx = use(TimelineRowCtx);
+  // Drawn once: from here on, what arrives arrives while the person watches.
+  const shownRef = useRef(false);
+  useEffect(() => {
+    shownRef.current = true;
+  }, []);
   const lines: ChatLine[] = row.items.flatMap((item) => {
     const line = itemLine(item);
     return line === null ? [] : [line];
@@ -2377,60 +2181,65 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   }
   // Where the chat starts, fixed when it opens: what arrives after it only
   // ever joins at the end, so the window grows and never slides.
-  const [from, setFrom] = useState(() => Math.max(0, lines.length - CHAT_OPENS_WITH));
+  const [from, setFrom] = useState(() => chatOpensAt(lines.length));
   const shown = gatherCalls(from > 0 ? lines.slice(from) : lines);
   return (
-    // One container for the chat and its status line: the Mate's column keeps
-    // one gap for both, the narrower on a phone's card. Its words wear its
-    // tint (`.run-speech`).
-    <div
-      className="@container/chat min-w-0"
-      style={
-        { "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})` } as CSSProperties
-      }
-    >
-      <ChatScroll
-        empty={shown.length === 0 && from === 0}
-        label={`${ctx.speaker.name}'s work`}
-        live={row.live}
+    <ChatShownContext value={shownRef}>
+      {/* One container for the chat and its status line: the Mate's column
+          keeps one gap for both. Its words wear its tint (`.run-speech`). */}
+      <div
+        className="@container/chat min-w-0"
+        data-run-chat
+        style={
+          { "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})` } as CSSProperties
+        }
       >
-        {from > 0 ? <EarlierLine count={from} onShow={() => setFrom(0)} /> : null}
-        {shown.map((entry) =>
-          "calls" in entry ? (
-            <ChatRow key={entry.key} across={false} theirs={false}>
-              <CallGroup>
-                {entry.calls.map((line) => (
-                  <Fragment key={line.key}>{line.bubble}</Fragment>
-                ))}
-              </CallGroup>
-            </ChatRow>
-          ) : (
-            <ChatRow
-              key={entry.key}
-              across={entry.across === true}
-              mark={entry.mark}
-              markLine={entry.markLine}
-              theirs={entry.theirs === true}
-            >
-              {entry.bubble}
-            </ChatRow>
-          ),
+        {shown.length > 0 || from > 0 ? (
+          <ol aria-label={`${ctx.speaker.name}'s work`} className="flex min-w-0 flex-col gap-3">
+            {from > 0 ? (
+              <EarlierLine
+                count={earlierShown(from).shows}
+                onShow={() => setFrom((start) => earlierShown(start).next)}
+              />
+            ) : null}
+            {shown.map((entry) =>
+              "calls" in entry ? (
+                <ChatRow key={entry.key} across={false} theirs={false}>
+                  <CallGroup>
+                    {entry.calls.map((line) => (
+                      <Fragment key={line.key}>{line.bubble}</Fragment>
+                    ))}
+                  </CallGroup>
+                </ChatRow>
+              ) : (
+                <ChatRow
+                  key={entry.key}
+                  across={entry.across === true}
+                  mark={entry.mark}
+                  markLine={entry.markLine}
+                  theirs={entry.theirs === true}
+                >
+                  {entry.bubble}
+                </ChatRow>
+              ),
+            )}
+          </ol>
+        ) : null}
+        {row.status === null ? null : (
+          <StatusLine answering={row.answering} now={row.now} status={row.status} />
         )}
-      </ChatScroll>
-      {row.status === null ? null : (
-        <StatusLine answering={row.answering} now={row.now} status={row.status} />
-      )}
-    </div>
+      </div>
+    </ChatShownContext>
   );
 }
 
 /**
- * The bubbles a long chat has not drawn yet, above the ones it opened with:
- * a caption between hairlines that draws them, keeping in place what the
- * person was reading.
+ * The lines a long chat has not drawn yet, above the ones it opened with: a
+ * caption between hairlines that draws the chunk just before them — the
+ * button stays where it was clicked, and what it draws opens under it.
  */
 function EarlierLine({ count, onShow }: { readonly count: number; readonly onShow: () => void }) {
-  const api = use(ChatScrollContext);
+  const hold = useHoldReading();
   return (
     <li className={cn("flex min-w-0 items-center gap-3", META)} data-chat-row>
       <span aria-hidden="true" className="h-px min-w-4 flex-1 bg-border/70" />
@@ -2438,9 +2247,8 @@ function EarlierLine({ count, onShow }: { readonly count: number; readonly onSho
         className="shrink-0 cursor-pointer rounded-md px-1.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
         data-chat-earlier
         data-scroll-anchor-ignore
-        onClick={(event) => {
-          const below = event.currentTarget.closest("li")?.nextElementSibling ?? null;
-          if (below !== null) api?.hold(below, false);
+        onClick={() => {
+          hold();
           onShow();
         }}
         type="button"
