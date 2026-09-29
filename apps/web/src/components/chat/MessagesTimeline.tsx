@@ -81,11 +81,8 @@ import {
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
-import {
-  MessagePictureBody,
-  placeMessagePictures,
-  useMessagePictureDimensions,
-} from "./MessagePictures";
+import { MessagePictureBody, useMessagePictureDimensions } from "./MessagePictures";
+import { placeMessagePictures, terminalContextsBySegment } from "./messagePictures.logic";
 import { useAssetUrls } from "../../assets/assetUrls";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import {
@@ -2090,6 +2087,11 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       placeMessagePictures(displayedUserMessage.visibleText, messageWithPreviews.attachments ?? []),
     [displayedUserMessage.visibleText, messageWithPreviews.attachments],
   );
+  const pictureContexts = useMemo(
+    () =>
+      placedPictures ? terminalContextsBySegment(placedPictures.segments, terminalContexts) : null,
+    [placedPictures, terminalContexts],
+  );
   const pictureDimensions = useMessagePictureDimensions(ctx.activeThreadEnvironmentId, resources);
   const imagesAbove = placedPictures?.unplaced ?? userImages;
   const expandImage = (image: ChatImageAttachment) => {
@@ -2144,14 +2146,10 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             segments={placedPictures.segments}
             dimensions={pictureDimensions}
             onOpen={expandImage}
-            renderText={(text) => (
+            renderText={(segment) => (
               <CollapsibleUserMessageBody
-                text={text}
-                terminalContexts={
-                  text === placedPictures.segments.findLast((part) => part.kind === "text")?.text
-                    ? terminalContexts
-                    : []
-                }
+                text={segment.text}
+                terminalContexts={[...(pictureContexts?.get(segment.after) ?? [])]}
                 skills={ctx.skills}
                 markdownCwd={ctx.markdownCwd}
               />

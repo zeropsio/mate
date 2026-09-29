@@ -29,7 +29,8 @@ import {
   pictureDims,
   pictureTypeName,
 } from "~/components/chat/ComposerPictureView";
-import { MessagePictureBody, placeMessagePictures } from "~/components/chat/MessagePictures";
+import { MessagePictureBody } from "~/components/chat/MessagePictures";
+import { placeMessagePictures } from "~/components/chat/messagePictures.logic";
 import {
   INLINE_PICTURE_PLACEHOLDER as P,
   fullPictureCrop,
@@ -441,7 +442,7 @@ function Harness() {
                   segments={placed.segments}
                   dimensions={new Map()}
                   onOpen={() => setOpen(true)}
-                  renderText={(words) => <p className="whitespace-pre-wrap">{words}</p>}
+                  renderText={(words) => <p className="whitespace-pre-wrap">{words.text}</p>}
                 />
               ) : null}
             </div>

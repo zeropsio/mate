@@ -10,74 +10,13 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import type { AssetResource, EnvironmentId } from "@t3tools/contracts";
-import { messagePictures, splitPictureText } from "@t3tools/shared/composerPictures";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { Fragment, useMemo, type ReactNode } from "react";
 
 import { assetEnvironment } from "~/state/assets";
-import { isImageAttachment, type ChatAttachment, type ChatImageAttachment } from "~/types";
+import type { ChatImageAttachment } from "~/types";
 import { formatPictureBytes } from "./ComposerPictureView";
-
-export type MessagePictureSegment =
-  | {
-      readonly kind: "text";
-      /** The picture the words follow (0 before the first): what tells them apart. */
-      readonly after: number;
-      readonly text: string;
-    }
-  | {
-      readonly kind: "picture";
-      readonly n: number;
-      readonly notes: ReadonlyArray<{ readonly number: number; readonly text: string }>;
-      readonly image: ChatImageAttachment;
-      readonly original: ChatAttachment | null;
-    };
-
-export interface PlacedMessagePictures {
-  readonly segments: ReadonlyArray<MessagePictureSegment>;
-  /** Images the text holds no label for: they stay above the words. */
-  readonly unplaced: ReadonlyArray<ChatImageAttachment>;
-}
-
-/** The message's words and pictures in their order, or null when it places none. */
-export function placeMessagePictures(
-  text: string,
-  attachments: ReadonlyArray<ChatAttachment>,
-): PlacedMessagePictures | null {
-  const pictures = messagePictures(text, attachments);
-  if (pictures.length === 0) return null;
-  const segments = splitPictureText(
-    text,
-    attachments.filter((attachment) => attachment.type === "image").length,
-  ).flatMap((segment, index, all): MessagePictureSegment[] => {
-    if (segment.kind === "text") {
-      const before = all.slice(0, index).findLast((part) => part.kind === "picture");
-      return [
-        { kind: "text", after: before?.kind === "picture" ? before.n : 0, text: segment.text },
-      ];
-    }
-    const picture = pictures[segment.n - 1];
-    return picture && isImageAttachment(picture.image)
-      ? [
-          {
-            kind: "picture",
-            n: segment.n,
-            notes: segment.notes.map((text, noteIndex) => ({ number: noteIndex + 1, text })),
-            image: picture.image,
-            original: picture.original,
-          },
-        ]
-      : [];
-  });
-  const placed = new Set(pictures.map((picture) => picture.image.id));
-  return {
-    segments,
-    unplaced: attachments.filter(
-      (attachment): attachment is ChatImageAttachment =>
-        isImageAttachment(attachment) && !placed.has(attachment.id),
-    ),
-  };
-}
+import type { MessagePictureSegment } from "./messagePictures.logic";
 
 type Dimensions = { readonly width: number; readonly height: number };
 
@@ -121,13 +60,13 @@ export function MessagePictureBody(props: {
   readonly segments: ReadonlyArray<MessagePictureSegment>;
   readonly dimensions: ReadonlyMap<string, Dimensions>;
   readonly onOpen: (image: ChatImageAttachment) => void;
-  readonly renderText: (text: string) => ReactNode;
+  readonly renderText: (segment: Extract<MessagePictureSegment, { kind: "text" }>) => ReactNode;
 }) {
   return (
     <div className="message-pictures">
       {props.segments.map((segment) =>
         segment.kind === "text" ? (
-          <Fragment key={`words-after-${segment.after}`}>{props.renderText(segment.text)}</Fragment>
+          <Fragment key={`words-after-${segment.after}`}>{props.renderText(segment)}</Fragment>
         ) : (
           <MessagePicture
             key={`picture:${segment.n}`}
