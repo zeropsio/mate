@@ -72,6 +72,15 @@ export function pressesPrimary(
   );
 }
 
+/**
+ * A key pressed in the review stays there: the conversation behind listens on the document — a
+ * digit picks an answer, an arrow moves through them, a page key scrolls — and none of it is the
+ * person's intent while the review has them. Escape alone goes on: it closes the review.
+ */
+export function keyStaysInReview(key: string): boolean {
+  return key !== "Escape";
+}
+
 /** How soon after opening a primary that turns safe still takes the focus it would have had. */
 export const REVIEW_LATE_FOCUS_MS = 1_500;
 

@@ -12,6 +12,7 @@ import {
   linksChange,
   diffFold,
   giteaFileUrl,
+  keyStaysInReview,
   pressesPrimary,
   previewRoute,
   releaseChangeRows,
@@ -389,5 +390,18 @@ describe("focusesPrimaryLate: focus reaches the button once it turns safe, soon 
     ["not safe", { safe: false, onReview: true, sinceOpenMs: 300 }, false],
   ])("%s", (_case, input, focuses) => {
     expect(focusesPrimaryLate(input)).toBe(focuses);
+  });
+});
+
+describe("keyStaysInReview: what is typed in the review acts on nothing behind it", () => {
+  it.each([
+    ["a digit, which picks an answer in the conversation behind", "1", true],
+    ["an arrow, which moves through those answers", "ArrowDown", true],
+    ["Enter, which sends one", "Enter", true],
+    ["a letter, which opens a panel behind", "d", true],
+    ["Page Down, which scrolls the conversation", "PageDown", true],
+    ["Escape, which closes the review", "Escape", false],
+  ])("%s", (_case, key, stays) => {
+    expect(keyStaysInReview(key)).toBe(stays);
   });
 });

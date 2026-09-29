@@ -23,6 +23,7 @@ import gitTabSource from "../ZeropsGitTab.tsx?raw";
 import groupDetailSource from "../ZeropsGroupDetail.tsx?raw";
 import projectsPageSource from "../ZeropsProjectsPage.tsx?raw";
 import releaseRowsSource from "../ZeropsReleaseRows.tsx?raw";
+import reviewDialogSource from "./ZeropsReviewDialog.tsx?raw";
 import { ZeropsReleaseRows } from "../ZeropsReleaseRows";
 import {
   ReviewDiff,
@@ -291,5 +292,15 @@ describe("a file's diff is read once a file opens, never before (D4)", () => {
     } finally {
       await act(async () => root.unmount());
     }
+  });
+});
+
+describe("the review is a layer: what is typed in it acts on nothing behind it", () => {
+  it.each([
+    ["keeps its keys from the listeners behind it, Escape aside", "keyStaysInReview(event.key)"],
+    ["stops them there", "event.stopPropagation()"],
+    ["is a dialog to the panel launcher's letters", 'data-slot="dialog-popup"'],
+  ])("%s", (_case, words) => {
+    expect(reviewDialogSource).toContain(words);
   });
 });

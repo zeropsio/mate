@@ -9,14 +9,20 @@
  * opened it. ⌘↵ presses the button while it is safe. Reduced motion keeps only the fade.
  *
  * Base UI's dialog does the modal work — the focus trap, Esc, the scroll lock, what is inert
- * behind it; the look is the review's own (`index.css`, "Pass 16 · review").
+ * behind it; the look is the review's own (`index.css`, "Pass 16 · review"). What is typed in
+ * it stays in it: nothing the conversation behind listens for acts while the review is open.
  */
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { useCallback, useRef, type KeyboardEvent, type ReactNode } from "react";
 
 import { gatedPortal } from "~/components/ui/portal-gate";
 
-import { focusesPrimaryLate, pressesPrimary, reviewOrigin } from "./ZeropsReview.logic";
+import {
+  focusesPrimaryLate,
+  keyStaysInReview,
+  pressesPrimary,
+  reviewOrigin,
+} from "./ZeropsReview.logic";
 
 const ReviewPortal = gatedPortal(DialogPrimitive.Portal);
 
@@ -99,6 +105,8 @@ export function ZeropsReviewDialog({
   );
 
   const onKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
+    // What is typed here acts on nothing behind: the conversation listens on the document.
+    if (keyStaysInReview(event.key)) event.stopPropagation();
     const primary = primaryOf(popup.current);
     if (primary === null) return;
     if (
@@ -129,6 +137,8 @@ export function ZeropsReviewDialog({
           <DialogPrimitive.Popup
             aria-labelledby={labelledBy}
             className="rv"
+            // A dialog to every layer check: the panel launcher's letters stand aside for it.
+            data-slot="dialog-popup"
             data-zerops-surface="review"
             finalFocus={() => (from?.isConnected === true ? from : true)}
             initialFocus={() => {
