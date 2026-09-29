@@ -10,6 +10,7 @@ import {
   type EnvironmentId,
   type UploadChatImageAttachment,
 } from "@t3tools/contracts";
+import { PICTURE_MAX_EDGE } from "@t3tools/shared/composerPictures";
 import type { DocumentPickerResult } from "expo-document-picker";
 import { estimateBase64ByteSize } from "./base64";
 import {
@@ -265,10 +266,10 @@ export async function pickComposerFiles(input: {
 }
 
 /**
- * Longest edge kept when a photo has to be re-encoded. Matches the web composer's
- * MAX_DIMENSION so every client hands providers the same resolution.
+ * Longest edge kept when a photo has to be re-encoded: the most every provider
+ * reads, as the web composer fits its pictures, so the server never has to.
  */
-const PHOTO_MAX_EDGE = 2048;
+const PHOTO_MAX_EDGE = PICTURE_MAX_EDGE;
 const PHOTO_JPEG_QUALITY = 0.85;
 
 /**
