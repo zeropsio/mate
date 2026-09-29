@@ -61,7 +61,6 @@ import {
   productionAddable,
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
-import { PortalGate } from "../ui/portal-gate";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarReveal } from "~/zerops/sidebarReveal";
 import { MateMenu, type MateRowActions } from "./SidebarMateMenu";

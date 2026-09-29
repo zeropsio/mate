@@ -47,7 +47,6 @@ import {
   checkDotTone,
   assignCandidateMateTints,
   botDisplayName,
-  flowVerbLabel,
   buildZeropsGroupTree,
   environmentNameUnderGroup,
   groupFlow,
@@ -124,9 +123,8 @@ import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { SidebarCrewLine, type SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { SidebarSelectedBand } from "./SidebarSelectedBand";
-import { KeyChip, MateFace, PlanRing, StatusDot } from "./primitives";
+import { KeyChip, MateFace, PlanRing } from "./primitives";
 import { groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
-import { ZeropsMateVerb } from "./ZeropsMateCard";
 import { formatWorkingTime, isQuietMate, sidebarMateKey } from "./SidebarZeropsTree.logic";
 import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
 import { SidebarProjectFold, type ProjectFoldMotion } from "./SidebarProjectFold";
