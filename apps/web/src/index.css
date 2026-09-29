@@ -2609,7 +2609,11 @@ code {
    paints past its box — its row keeps layout and style containment, not
    paint — and lays a strip of its ground and its sides across the joint, so
    no edge falls in the joint's pixel. (An outer shadow is clipped at the very
-   edge it had to cover; a strip beneath went under the pane's own ground.) */
+   edge it had to cover; a strip beneath went under the pane's own ground.)
+   The strip hangs off the slice's row, whose box is the tray's border box: hung
+   off the bordered tray a pixel outside its padding box, it snapped to another
+   device pixel than the tray's own sides at a fractional pixel ratio, and the
+   side jogged at every joint (the owner's 1.58×, 2026-09-29). */
 .timeline-legend-list
   .legend-list-content-container
   > div
@@ -2617,14 +2621,14 @@ code {
   contain: layout style !important;
 }
 
-:is([data-card-slice="top"], [data-card-slice="middle"]) > div {
+:is([data-card-slice="top"], [data-card-slice="middle"]) {
   position: relative;
 }
 
-:is([data-card-slice="top"], [data-card-slice="middle"]) > div::after {
+:is([data-card-slice="top"], [data-card-slice="middle"])::after {
   content: "";
   position: absolute;
-  inset-inline: -1px;
+  inset-inline: 0;
   bottom: -1.5px;
   height: 3px;
   border-inline: 1px solid var(--run-tray-ring);
@@ -3753,6 +3757,7 @@ code {
    (the plan's K11 and S5). */
 :root {
   --run-tray: oklch(0.968 0.004 255.5);
+  --run-tray-ring: color-mix(in oklab, var(--foreground) 7%, transparent);
   @variant dark {
     --run-tray: oklch(0.19 0.007 180);
   }
@@ -3763,7 +3768,6 @@ code {
 }
 
 .run-tray {
-  --run-tray-ring: color-mix(in oklab, var(--foreground) 7%, transparent);
   background: var(--run-tray);
   border-color: var(--run-tray-ring);
   border-style: solid;
@@ -3796,7 +3800,7 @@ code {
    itself in the card's geometry, and opening its work draws the card around
    it — the line never moves. */
 .run-tray-alone,
-[data-card-slice] > .run-tray-alone::after {
+[data-card-slice]:has(> .run-tray-alone)::after {
   background: transparent;
   border-color: transparent;
 }
