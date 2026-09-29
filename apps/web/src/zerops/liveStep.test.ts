@@ -1,7 +1,13 @@
 import type { ThreadLiveCall, ThreadLiveStep } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { liveStepWords, type LiveStepWords } from "./liveStep";
+import {
+  LIVE_STEP_HOLD_MS,
+  liveStepWords,
+  paceLiveStep,
+  type LiveStepWords,
+  type ShownLiveStep,
+} from "./liveStep";
 
 const since = "2026-09-29T08:00:05.000Z";
 
@@ -255,5 +261,65 @@ describe("liveStepWords", () => {
     { name: "no call relayed it can read", step: calls(), words: { words: "Thinking" } },
   ])("$name", ({ step, words }) => {
     expect(liveStepWords(step)).toEqual(words);
+  });
+});
+
+describe("paceLiveStep", () => {
+  const building = { words: "Build the app", code: "pnpm build" };
+  const testing = { words: "Build the app", code: "pnpm test" };
+  const reading = { words: "Reading index.ts" };
+  const shownAt = (step: LiveStepWords, since: number): ShownLiveStep => ({ step, since });
+
+  it.each<{
+    readonly name: string;
+    readonly shown: ShownLiveStep | undefined;
+    readonly next: LiveStepWords | undefined;
+    readonly nowMs: number;
+    readonly paced: ReturnType<typeof paceLiveStep>;
+  }>([
+    {
+      name: "the first step shows at once",
+      shown: undefined,
+      next: building,
+      nowMs: 1_000,
+      paced: { shown: shownAt(building, 1_000), recheckAt: null },
+    },
+    {
+      name: "the same step again changes nothing",
+      shown: shownAt(building, 1_000),
+      next: { ...building },
+      nowMs: 1_100,
+      paced: { shown: shownAt(building, 1_000), recheckAt: null },
+    },
+    {
+      name: "a new step once the shown one has stood its hold takes its place at once",
+      shown: shownAt(building, 1_000),
+      next: reading,
+      nowMs: 1_000 + LIVE_STEP_HOLD_MS,
+      paced: { shown: shownAt(reading, 1_000 + LIVE_STEP_HOLD_MS), recheckAt: null },
+    },
+    {
+      name: "a new step before then waits for the hold's end",
+      shown: shownAt(building, 1_000),
+      next: reading,
+      nowMs: 1_120,
+      paced: { shown: shownAt(building, 1_000), recheckAt: 1_000 + LIVE_STEP_HOLD_MS },
+    },
+    {
+      name: "the same words running another command are another step",
+      shown: shownAt(building, 1_000),
+      next: testing,
+      nowMs: 1_200,
+      paced: { shown: shownAt(building, 1_000), recheckAt: 1_000 + LIVE_STEP_HOLD_MS },
+    },
+    {
+      name: "a row that stops working holds nothing",
+      shown: shownAt(building, 1_000),
+      next: undefined,
+      nowMs: 1_050,
+      paced: { shown: undefined, recheckAt: null },
+    },
+  ])("$name", ({ shown, next, nowMs, paced }) => {
+    expect(paceLiveStep(shown, next, nowMs)).toEqual(paced);
   });
 });

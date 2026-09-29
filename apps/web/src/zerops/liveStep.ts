@@ -138,3 +138,93 @@ export function liveStepWords(step: ThreadLiveStep): LiveStepWords {
     }
   }
 }
+
+/**
+ * How long a step a row shows stands before the next may take its place: a
+ * burst of quick steps — three files read in a breath — reads as one calm
+ * line, and the latest always shows within this.
+ */
+export const LIVE_STEP_HOLD_MS = 500;
+
+/** A step a row shows, and since when it has shown it. */
+export interface ShownLiveStep {
+  readonly step: LiveStepWords;
+  readonly since: number;
+}
+
+/** The same words and the same command: the same step, as a row reads it. */
+export function sameLiveStep(left: LiveStepWords, right: LiveStepWords): boolean {
+  return left.words === right.words && left.code === right.code;
+}
+
+/**
+ * The step a working row shows, paced: a new step takes the place of the one
+ * shown at once if that one has stood `LIVE_STEP_HOLD_MS`, else when it has
+ * (`recheckAt`), and then the latest takes it, not the ones in between. A row
+ * starting to work shows its step at once, and one that stops holds nothing:
+ * only a step giving way to another step waits.
+ */
+export function paceLiveStep(
+  shown: ShownLiveStep | undefined,
+  next: LiveStepWords | undefined,
+  nowMs: number,
+): { readonly shown: ShownLiveStep | undefined; readonly recheckAt: number | null } {
+  if (next === undefined) return { shown: undefined, recheckAt: null };
+  if (shown === undefined) return { shown: { step: next, since: nowMs }, recheckAt: null };
+  if (sameLiveStep(shown.step, next)) return { shown, recheckAt: null };
+  const due = shown.since + LIVE_STEP_HOLD_MS;
+  return nowMs >= due
+    ? { shown: { step: next, since: nowMs }, recheckAt: null }
+    : { shown, recheckAt: due };
+}
+
+/** What each row shows of its Mate's live step, paced, by the environment it belongs to. */
+export type ShownLiveSteps<Key> = ReadonlyMap<Key, ShownLiveStep>;
+
+export interface LiveStepPacer<Key> {
+  /** Every row's latest step, absent for a row that is not working. */
+  readonly update: (steps: ReadonlyMap<Key, LiveStepWords | undefined>) => void;
+  /** Cancels the pending hold's end. */
+  readonly dispose: () => void;
+}
+
+/**
+ * Paces every row's live step (`paceLiveStep`), telling `onChange` what the
+ * rows show whenever that changes — at once, or when a held step's hold ends.
+ */
+export function createLiveStepPacer<Key>(
+  onChange: (shown: ShownLiveSteps<Key>) => void,
+): LiveStepPacer<Key> {
+  let shown: ShownLiveSteps<Key> = new Map();
+  let latest: ReadonlyMap<Key, LiveStepWords | undefined> = new Map();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const settle = () => {
+    clearTimeout(timer);
+    timer = undefined;
+    const nowMs = Date.now();
+    const next = new Map<Key, ShownLiveStep>();
+    let changed = false;
+    let recheckAt: number | null = null;
+    for (const [key, step] of latest) {
+      const before = shown.get(key);
+      const paced = paceLiveStep(before, step, nowMs);
+      if (paced.shown !== undefined) next.set(key, paced.shown);
+      if (paced.shown !== before) changed = true;
+      if (paced.recheckAt !== null) recheckAt = Math.min(recheckAt ?? Infinity, paced.recheckAt);
+    }
+    if (changed || next.size !== shown.size) {
+      shown = next;
+      onChange(shown);
+    }
+    if (recheckAt !== null) timer = setTimeout(settle, recheckAt - nowMs);
+  };
+
+  return {
+    update: (steps) => {
+      latest = steps;
+      settle();
+    },
+    dispose: () => clearTimeout(timer),
+  };
+}
