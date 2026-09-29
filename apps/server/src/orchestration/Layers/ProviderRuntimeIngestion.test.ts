@@ -5065,7 +5065,7 @@ describe("ProviderRuntimeIngestion", () => {
     expect(thread.session?.lastError).toBe("runtime still processed");
   });
 
-  describe("the live step on the thread's shell", () => {
+  describe("the live step and the pending question on the thread's shell", () => {
     const liveAt = (second: number) => `2026-09-29T08:00:${String(second).padStart(2, "0")}.000Z`;
     const live = (
       second: number,
@@ -5245,6 +5245,57 @@ describe("ProviderRuntimeIngestion", () => {
       const harness = await createHarness();
       await harness.emitAndDrain(events);
       expect((await harness.readThreadShell()).liveStep).toEqual(liveStep);
+    });
+
+    const question = live(20, "user-input.requested", {
+      requestId: ApprovalRequestId.make("req-merge"),
+      payload: {
+        questions: [
+          {
+            id: "merge",
+            header: "Merge",
+            question: "Ship the status page now, or after the review?",
+            options: [{ label: "Now", description: "Merge it now." }],
+          },
+        ],
+      },
+    });
+    const answer = live(30, "user-input.resolved", {
+      requestId: ApprovalRequestId.make("req-merge"),
+      payload: { answers: { merge: "Now" } },
+    });
+
+    it.each<{
+      readonly name: string;
+      readonly events: ReadonlyArray<LegacyProviderRuntimeEvent>;
+      readonly pendingQuestion: string | undefined;
+    }>([
+      { name: "nothing asked", events: [turnStarted], pendingQuestion: undefined },
+      {
+        name: "a question waiting is on the shell",
+        events: [turnStarted, question],
+        pendingQuestion: "Ship the status page now, or after the review?",
+      },
+      {
+        name: "answered, it is gone",
+        events: [turnStarted, question, answer],
+        pendingQuestion: undefined,
+      },
+      {
+        name: "a turn ending on it unanswered dismisses it",
+        events: [
+          turnStarted,
+          question,
+          live(40, "turn.completed", { payload: { state: "completed" } }),
+        ],
+        pendingQuestion: undefined,
+      },
+    ])("$name", async ({ events, pendingQuestion }) => {
+      const harness = await createHarness();
+      await harness.emitAndDrain(events);
+      const shell = await harness.readThreadShell();
+      expect(shell.pendingQuestion).toBe(pendingQuestion);
+      expect(shell.hasPendingUserInput).toBe(pendingQuestion !== undefined);
     });
 
     it("the step is on the shell the call's own event refreshes", async () => {
