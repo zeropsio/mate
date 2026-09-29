@@ -29,7 +29,8 @@ import {
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo, useState } from "react";
 
-import { fixMateChoice, useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
+import { useFixMates } from "~/zerops/fixMates";
+import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import { useZeropsProjectFlowOptional, type ZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import type { ReviewTarget } from "~/zerops/review";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
@@ -206,7 +207,12 @@ function ReleaseData({
   });
   const production = flow.environmentInputs.find((entry) => entry.tier === "production");
   const moving = flow.release.comparison.filter((row) => row.changed).map((row) => row.service);
-  const fixer = fixMateChoice([...mates.values()])[0];
+  // A failed release is anybody's to fix: the person's own Mate in the project, the one they
+  // used last (S6, `fixMates.ts`).
+  const [fixer] = useFixMates({
+    projectId: production?.projectId ?? flow.groupId,
+    groupId: flow.groupId,
+  });
 
   const release = async () => {
     if (flowValue === null) return;

@@ -37,6 +37,7 @@ import { useZeropsChangeReadout, type ReadoutPart } from "~/zerops/useZeropsChan
 import { useZeropsChangeRun } from "~/zerops/useZeropsChangeRun";
 import { useZeropsLandedChange } from "~/zerops/useZeropsLandedChange";
 import { useNowMs } from "~/zerops/useNowMs";
+import { useFixMates } from "~/zerops/fixMates";
 import { useZeropsReviewMates } from "~/zerops/useZeropsReviewMates";
 
 import { MateFace } from "../primitives";
@@ -163,6 +164,14 @@ function ChangeReviewData({
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
 
   const mate = pull.mateProjectId === undefined ? undefined : mates.get(pull.mateProjectId);
+  // Only the Mate that wrote it can push to its branch: the fix goes to it, if it is the
+  // person's own (S6, the one rule `fixMates.ts` keeps for every surface).
+  const fixers = useFixMates(
+    pull.mateProjectId === undefined
+      ? undefined
+      : { projectId: pull.mateProjectId, groupId: target.groupId },
+  );
+  const mine = fixers.some((option) => option.mateProjectId === pull.mateProjectId);
   const readout = useZeropsChangeReadout({
     giteaOrigin: flowValue?.giteaOrigin,
     owner: flow.slug,
@@ -207,9 +216,9 @@ function ChangeReviewData({
             : {
                 name: flowValue?.mateNames.get(pull.mateProjectId) ?? "the Mate",
                 tint: undefined,
-                mine: false,
+                mine,
               }
-          : { name: mate.name, tint: mate.tint, mine: mate.mine }
+          : { name: mate.name, tint: mate.tint, mine }
       }
       now={now}
       onAskChanges={() => {
