@@ -19,7 +19,6 @@ import {
   keyStaysInReview,
   pictureFrame,
   pressesPrimary,
-  previewRoute,
   releaseChangeRows,
   remarkFold,
   reviewDescription,
@@ -223,33 +222,6 @@ describe("remarkFold: the dialog, a quick look, shows the newest of a long conve
     ["a long one, opened", "dialog", 9, true, { hidden: 0 }],
   ] as const)("%s", (_case, frame, total, all, fold) => {
     expect(remarkFold({ frame, total, all })).toEqual(fold);
-  });
-});
-
-describe("previewRoute: Try it opens where the change runs", () => {
-  const route = (service: string, port = 3000) => ({
-    service,
-    port,
-    url: `https://${service}-1a2b-${String(port)}.example.app`,
-    host: `${service}-1a2b-${String(port)}.example.app`,
-  });
-  it.each([
-    [
-      "the preview beside a dev service",
-      "appdev",
-      [route("appdev"), route("appstage")],
-      "appstage",
-    ],
-    [
-      "the preview of a pair grown from one service",
-      "api",
-      [route("api"), route("apistage")],
-      "apistage",
-    ],
-    ["the dev service where there is no preview", "appdev", [route("appdev")], "appdev"],
-    ["nothing where neither serves", "appdev", [route("db", 5432)], undefined],
-  ])("%s", (_name, repository, routes, service) => {
-    expect(previewRoute(repository, routes)?.service).toBe(service);
   });
 });
 

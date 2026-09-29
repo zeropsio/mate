@@ -4,20 +4,18 @@
  * `ZeropsReviewDialog`'s; the reads and the verbs are the per-kind reviews'.
  *
  * One reading order, top to bottom (R2–R5): what kind of thing this is and its title with one
- * line of provenance, the verdict, what it does in the Mate's words, what it changes, how it was
- * checked, where to try it — and a foot that says what the one button does, beside it.
+ * line of provenance, the verdict, what it does in the Mate's words, what it changes and how it
+ * was checked — and a foot that says what the one button does, beside it.
  */
 import type {
   ChangeDiffFile,
   GitCheckRow,
   ReviewTone,
   ReviewVerdict,
-  ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
 import { changeFileParts } from "@t3tools/client-runtime/zerops";
 import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
 import {
-  ArrowUpRightIcon,
   CheckIcon,
   ChevronDownIcon,
   CircleCheckIcon,
@@ -25,7 +23,6 @@ import {
   CircleIcon,
   CircleXIcon,
   GitPullRequestArrowIcon,
-  GlobeIcon,
   RotateCcwIcon,
   TagIcon,
   TriangleAlertIcon,
@@ -564,19 +561,6 @@ export function ReviewChecks({ rows }: { readonly rows: ReadonlyArray<GitCheckRo
           )}
         </div>
       ))}
-    </div>
-  );
-}
-
-/** Try it: where the change runs, one click away. */
-export function ReviewTry({ route }: { readonly route: ZeropsPublicRoute }) {
-  return (
-    <div className="rv-try">
-      <GlobeIcon aria-hidden="true" />
-      <a className="rv-link" href={route.url} rel="noopener noreferrer" target="_blank">
-        {route.host}
-        <ArrowUpRightIcon aria-hidden="true" />
-      </a>
     </div>
   );
 }

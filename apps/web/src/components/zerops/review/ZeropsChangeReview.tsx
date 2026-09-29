@@ -20,19 +20,16 @@ import {
   type GiteaChangedFile,
   type GiteaCommit,
   type ReviewPress,
-  type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
-import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { useRouter } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import { useZeropsProjectFlowOptional, type ZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import type { ReviewTarget } from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
-import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import {
   useZeropsChangeReadout,
   type ChangeDiffRead,
@@ -49,7 +46,6 @@ import {
   changeConflict,
   changeRequestPrefill,
   giteaFileUrl,
-  previewRoute,
   reviewKindLine,
   sizeWords,
   type ReviewKind,
@@ -59,7 +55,6 @@ import {
   ReviewFiles,
   ReviewSection,
   ReviewSize,
-  ReviewTry,
   ReviewWords,
   ZeropsReviewSurface,
   type ReviewDiffState,
@@ -167,7 +162,6 @@ function ChangeReviewData({
   const askMate = useAskMate();
   const askMateToFix = useAskMateToFix();
   const mates = useZeropsReviewMates(target.groupId);
-  const { listing } = useZeropsCandidates();
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
   const [diffWanted, setDiffWanted] = useState(false);
 
@@ -208,12 +202,6 @@ function ChangeReviewData({
       clearTimeout(timer);
     };
   }, [run.reading]);
-  const routes = useMemo(() => {
-    const id = pull.mateProjectId;
-    if (id === undefined) return [];
-    return heldCandidates(listing).rows.find((row) => row.project.id === id)?.routes ?? [];
-  }, [listing, pull.mateProjectId]);
-
   const merge = async () => {
     if (flowValue === null) return;
     setPress({ kind: "running" });
@@ -276,7 +264,6 @@ function ChangeReviewData({
       press={press}
       pull={pull}
       readout={readout}
-      route={pull.merged ? undefined : previewRoute(pull.repository, routes)}
       run={{ words: run.words, reading: run.reading && !runGaveUp }}
       titleId={titleId}
       waitingForProduction={releaseContentsCommits(flow.release.contents).length}
@@ -297,7 +284,6 @@ export interface ChangeReviewViewProps {
     readonly mainSince: ReadoutPart<ReadonlyArray<GiteaCommit>>;
   };
   readonly run: { readonly words: string | undefined; readonly reading: boolean };
-  readonly route: ZeropsPublicRoute | undefined;
   readonly downstream: { readonly production: boolean; readonly stage: boolean };
   /** How many changes wait for production, as the flow last read it. */
   readonly waitingForProduction: number;
@@ -490,11 +476,6 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       {checkRows.length === 0 ? null : (
         <ReviewSection title="Checks">
           <ReviewChecks rows={checkRows} />
-        </ReviewSection>
-      )}
-      {props.route === undefined ? null : (
-        <ReviewSection title="Try it">
-          <ReviewTry route={props.route} />
         </ReviewSection>
       )}
     </ZeropsReviewSurface>

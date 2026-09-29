@@ -10,7 +10,7 @@
  */
 import { sha1 } from "@noble/hashes/legacy";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
-import type { ReviewPrimary, ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
+import type { ReviewPrimary } from "@t3tools/client-runtime/zerops";
 
 export type ReviewKind = "change" | "release" | "rollback" | "crew-task";
 
@@ -245,29 +245,6 @@ export function remarkFold(input: {
 }): { readonly hidden: number } {
   const folds = input.frame === "dialog" && !input.all && input.total > DIALOG_REMARKS_SHOWN + 1;
   return { hidden: folds ? input.total - DIALOG_REMARKS_SHOWN : 0 };
-}
-
-const DEV_SUFFIX = "dev";
-const STAGE_SUFFIX = "stage";
-
-/**
- * Where a change runs: the preview — the stage half of its repository's dev/stage pair
- * (`appstage` beside `appdev`, or beside `app`), which runs the change as it was deployed
- * before its pull request opened — and failing that the dev service itself, where the Mate
- * works on it. Nothing where neither serves on a public route.
- */
-export function previewRoute(
-  repository: string,
-  routes: ReadonlyArray<ZeropsPublicRoute>,
-): ZeropsPublicRoute | undefined {
-  const name =
-    repository.endsWith(DEV_SUFFIX) && repository.length > DEV_SUFFIX.length
-      ? repository.slice(0, -DEV_SUFFIX.length)
-      : repository;
-  return (
-    routes.find((route) => route.service === `${name}${STAGE_SUFFIX}`) ??
-    routes.find((route) => route.service === repository)
-  );
 }
 
 /**

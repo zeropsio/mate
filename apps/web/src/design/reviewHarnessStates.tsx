@@ -129,12 +129,6 @@ const READ = {
 } as const;
 
 const NOVA = { name: "Nova", tint: "slate", mine: true } as const;
-const ROUTE = {
-  service: "appstage",
-  port: 3000,
-  url: "https://appstage-1a2b-3000.example.app/status",
-  host: "appstage-1a2b-3000.example.app/status",
-};
 
 const IDLE: ReviewPress = { kind: "idle" };
 const NONE_OPEN: ReadonlyArray<string> = [];
@@ -272,7 +266,6 @@ function Change({
         ...readout,
         mainSince: mainSince === undefined ? READ.mainSince : { kind: "read", value: mainSince },
       }}
-      route={value.merged ? undefined : ROUTE}
       run={run}
       waitingForProduction={0}
     />
@@ -656,7 +649,6 @@ export function ReviewDialogTry() {
           press={IDLE}
           pull={pull()}
           readout={read ? READ : { ...READ, ...FILES_UNREAD.reading }}
-          route={ROUTE}
           run={RUN}
           titleId="review-try-title"
           waitingForProduction={0}

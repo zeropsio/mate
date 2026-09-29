@@ -4968,8 +4968,8 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 /* Review: the one door to merging, landing, releasing and rolling back (R1–R8, D12). A dialog
    over the conversation, 720 wide: the kind, the title and its one line of provenance, then the
    verdict — safe and why, or what blocks it and who fixes it — then what it does, what it
-   changes, how it was checked and where to try it, and a foot that says what the one button
-   does. Its type is 18 (the title, once), 14, 13 and 12; its colour means one thing each. */
+   changes and how it was checked, and a foot that says what the one button does. Its type is
+   18 (the title, once), 14, 13 and 12; its colour means one thing each. */
 .rv-backdrop {
   position: fixed;
   inset: 0;
@@ -5446,31 +5446,6 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 .rv-check-d {
   font-size: 13px;
   color: var(--muted-foreground);
-}
-
-.rv-try {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  line-height: 20px;
-  color: var(--muted-foreground);
-}
-.rv-try svg {
-  width: 15px;
-  height: 15px;
-  flex: none;
-}
-.rv-try .rv-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font-mono);
-  font-size: 13px;
-}
-.rv-try .rv-link svg {
-  width: 13px;
-  height: 13px;
 }
 
 /* A release: what goes out, one row per change with its Mate's face; where it goes; and the way
