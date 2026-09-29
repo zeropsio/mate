@@ -11,6 +11,7 @@
  */
 import type { ZeropsService } from "./api.ts";
 import { isZcpService } from "./candidates.ts";
+import { isRuntimeService } from "./topology.ts";
 
 export interface ZeropsEnvironmentServices {
   /** The developer's services by hostname, in name order. Empty for a project holding only the platform's. */
@@ -25,10 +26,16 @@ export interface ZeropsEnvironmentServices {
   readonly deployable: ReadonlyArray<{ readonly serviceId: string; readonly hostname: string }>;
   /**
    * How each stands, as the platform says it (`ACTIVE`, `STOPPED`,
-   * `CONTAINER_FAILED`…): whether the environment is serving, stopped on
-   * purpose or down. Same order as {@link ZeropsEnvironmentServices.hostnames}.
+   * `CONTAINER_FAILED`…), and whether it runs the developer's code
+   * (`isRuntimeService`): a runtime that failed takes a page down, a database
+   * whose upgrade failed does not. Same order as
+   * {@link ZeropsEnvironmentServices.hostnames}.
    */
-  readonly statuses: ReadonlyArray<{ readonly hostname: string; readonly status: string }>;
+  readonly statuses: ReadonlyArray<{
+    readonly hostname: string;
+    readonly status: string;
+    readonly runtime: boolean;
+  }>;
 }
 
 function byName(left: string, right: string): number {
@@ -56,6 +63,10 @@ export function summarizeEnvironmentServices(
     hostnames: ordered.map((service) => service.name),
     deployedAt,
     deployable: ordered.map((service) => ({ serviceId: service.id, hostname: service.name })),
-    statuses: ordered.map((service) => ({ hostname: service.name, status: service.status })),
+    statuses: ordered.map((service) => ({
+      hostname: service.name,
+      status: service.status,
+      runtime: isRuntimeService(service),
+    })),
   };
 }

@@ -32,7 +32,7 @@ import {
   UsersIcon,
   XIcon,
 } from "lucide-react";
-import { useState, type ReactNode, type Ref } from "react";
+import { useState, type ReactNode } from "react";
 
 import { Spinner } from "~/components/ui/spinner";
 import { isMacPlatform } from "~/lib/utils";
@@ -40,7 +40,7 @@ import { isMacPlatform } from "~/lib/utils";
 import { MateFace } from "../primitives";
 import {
   changeFileLetter,
-  diffLinesShown,
+  diffFold,
   type ReleaseChangeRow,
   type ReviewKind,
 } from "./ZeropsReview.logic";
@@ -83,6 +83,8 @@ export interface ReviewButton {
 export interface ReviewPrimaryButton extends ReviewButton {
   readonly enabled: boolean;
   readonly safe: boolean;
+  /** Its keys shown before it takes them (`ReviewPrimary.shortcut`). */
+  readonly shortcut?: true | undefined;
   /** Pressed and running: the label says so, and it takes no second press. */
   readonly busy?: boolean;
   readonly icon?: "tag" | "rollback" | undefined;
@@ -106,7 +108,6 @@ export interface ZeropsReviewSurfaceProps {
   /** "Cancel" before anything was pressed, "Close" after. */
   readonly dismiss?: string | undefined;
   readonly primary?: ReviewPrimaryButton | undefined;
-  readonly primaryRef?: Ref<HTMLButtonElement> | undefined;
   readonly onClose: () => void;
 }
 
@@ -123,7 +124,6 @@ export function ZeropsReviewSurface({
   secondary,
   dismiss,
   primary,
-  primaryRef,
   onClose,
 }: ZeropsReviewSurfaceProps) {
   return (
@@ -189,13 +189,12 @@ export function ZeropsReviewSurface({
             data-zerops-primary-action={primary.label}
             disabled={!primary.enabled || primary.busy === true}
             onClick={primary.onPress}
-            ref={primaryRef}
             type="button"
           >
             {primary.icon === "tag" ? <TagIcon aria-hidden="true" /> : null}
             {primary.icon === "rollback" ? <RotateCcwIcon aria-hidden="true" /> : null}
             {primary.busy === true ? `${primary.label}…` : primary.label}
-            {primary.safe && primary.busy !== true ? (
+            {(primary.safe || primary.shortcut === true) && primary.busy !== true ? (
               <kbd aria-hidden="true">{PRESS_KEYS}</kbd>
             ) : null}
           </button>
@@ -292,25 +291,34 @@ export interface ReviewFileRow {
   readonly previousPath?: string | undefined;
 }
 
-/** A file's diff: read, still reading, or why it could not be. */
+/**
+ * A file's diff: read, still reading, or why it could not be. `cut` where the diff was too long
+ * to read whole — a file missing from it lies past where the read stopped.
+ */
 export type ReviewDiffState =
   | { readonly kind: "reading" }
   | { readonly kind: "failed"; readonly reason: string }
-  | { readonly kind: "read"; readonly file: ChangeDiffFile | undefined };
+  | { readonly kind: "read"; readonly file: ChangeDiffFile | undefined; readonly cut: boolean };
 
 /**
  * The files it changes, 36 px each with a status letter, the folder dimmed and the +/−; a file
- * opens its diff in place (R4). `pending` rows hold the list's height while it is read.
+ * opens its diff in place (R4), and the diff is asked for only then (`onOpen`). `pending` rows
+ * hold the list's height while it is read.
  */
 export function ReviewFiles({
   files,
   pending,
   diffOf,
+  giteaOf,
+  onOpen,
   initiallyOpen,
 }: {
   readonly files: ReadonlyArray<ReviewFileRow> | undefined;
   readonly pending: number;
   readonly diffOf: (path: string) => ReviewDiffState;
+  /** Where the file's diff is on Gitea, for what is too long to show here. */
+  readonly giteaOf?: ((path: string) => string | undefined) | undefined;
+  readonly onOpen?: ((path: string) => void) | undefined;
   readonly initiallyOpen?: ReadonlyArray<string> | undefined;
 }) {
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(initiallyOpen ?? []));
@@ -337,10 +345,12 @@ export function ReviewFiles({
             dir={dir}
             expanded={expanded}
             file={file}
+            gitea={expanded ? giteaOf?.(file.path) : undefined}
             key={file.path}
             letter={letter}
             name={name}
             onToggle={() => {
+              if (!expanded) onOpen?.(file.path);
               setOpen((current) => {
                 const next = new Set(current);
                 if (next.has(file.path)) next.delete(file.path);
@@ -362,6 +372,7 @@ function FileRow({
   letter,
   expanded,
   diff,
+  gitea,
   onToggle,
 }: {
   readonly file: ReviewFileRow;
@@ -370,6 +381,7 @@ function FileRow({
   readonly letter: string;
   readonly expanded: boolean;
   readonly diff: ReviewDiffState | undefined;
+  readonly gitea: string | undefined;
   readonly onToggle: () => void;
 }) {
   return (
@@ -391,17 +403,47 @@ function FileRow({
           <ChevronDownIcon aria-hidden="true" />
         </span>
       </button>
-      {diff === undefined ? null : <ReviewDiff diff={diff} previousPath={file.previousPath} />}
+      {diff === undefined ? null : (
+        <ReviewDiff diff={diff} gitea={gitea} previousPath={file.previousPath} />
+      )}
     </>
   );
 }
 
-/** One file's diff: hunk headers, numbers, + green and − red; it scrolls sideways alone. */
+/** What is missing from a file's diff here, said, with the way to it on Gitea. */
+function DiffElsewhere({
+  words,
+  gitea,
+}: {
+  readonly words: string;
+  readonly gitea: string | undefined;
+}) {
+  return (
+    <p className="rv-diff-note">
+      {words}
+      {gitea === undefined ? null : (
+        <>
+          {" "}
+          <a className="rv-link" href={gitea} rel="noopener noreferrer" target="_blank">
+            Open it on Gitea
+          </a>
+        </>
+      )}
+    </p>
+  );
+}
+
+/**
+ * One file's diff: hunk headers, numbers, + green and − red; it scrolls sideways alone. What is
+ * too long to show here says so, and links the file's diff on Gitea (`gitea`).
+ */
 export function ReviewDiff({
   diff,
+  gitea,
   previousPath,
 }: {
   readonly diff: ReviewDiffState;
+  readonly gitea?: string | undefined;
   readonly previousPath?: string | undefined;
 }) {
   const [all, setAll] = useState(false);
@@ -420,6 +462,13 @@ export function ReviewDiff({
     );
   }
   const file = diff.file;
+  if (file === undefined && diff.cut) {
+    return (
+      <div className="rv-diff">
+        <DiffElsewhere gitea={gitea} words="Too long to read here." />
+      </div>
+    );
+  }
   if (file === undefined || file.binary || file.hunks.length === 0) {
     const note =
       file?.binary === true
@@ -450,7 +499,7 @@ export function ReviewDiff({
       });
     });
   });
-  const shown = diffLinesShown(rows.length, all);
+  const { shown, rest } = diffFold({ total: rows.length, all, cut: file.cut });
   return (
     <div className="rv-diff">
       <div className="rv-diff-lines">
@@ -462,7 +511,7 @@ export function ReviewDiff({
           </div>
         ))}
       </div>
-      {shown < rows.length ? (
+      {rest?.kind === "show" ? (
         <button
           className="rv-textbtn rv-diff-more"
           onClick={() => {
@@ -470,9 +519,10 @@ export function ReviewDiff({
           }}
           type="button"
         >
-          Show all {rows.length} lines
+          {rest.label}
         </button>
       ) : null}
+      {rest?.kind === "gitea" ? <DiffElsewhere gitea={gitea} words={rest.words} /> : null}
     </div>
   );
 }

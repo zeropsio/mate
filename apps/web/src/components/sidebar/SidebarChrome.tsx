@@ -57,10 +57,13 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
       <SidebarTrigger className="md:hidden" />
       <SidebarBrand />
       {waiting === undefined && jump === undefined ? null : (
-        <div className="ms-auto flex shrink-0 items-center gap-2 md:pe-3">
+        // The room the mark leaves: ⌘K on the end edge, whole, and the
+        // waiting faces before it in a slot of at most 96 px that gives way
+        // first — fewer faces where the row is narrow (`waitingFacesThatFit`).
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-2 md:pe-3">
           {waiting === undefined ? null : (
             <div
-              className="flex w-24 shrink-0 items-center justify-end"
+              className="flex min-w-0 max-w-24 flex-1 items-center justify-end"
               data-zerops-surface="sidebar-waiting-slot"
             >
               {waiting}

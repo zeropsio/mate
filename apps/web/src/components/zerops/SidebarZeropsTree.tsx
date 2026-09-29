@@ -128,7 +128,15 @@ import { groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
 import { formatWorkingTime, isQuietMate, sidebarMateKey } from "./SidebarZeropsTree.logic";
 import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
 import { SidebarProjectFold, type ProjectFoldMotion } from "./SidebarProjectFold";
-import { headingFaces, type HeadingFace, type HeadingFaceDot } from "./SidebarProjects.logic";
+import {
+  headingFaces,
+  landingAfterDraw,
+  slackAfterScroll,
+  slackForFold,
+  type HeadingFace,
+  type HeadingFaceDot,
+  type PendingLanding,
+} from "./SidebarProjects.logic";
 import { SidebarProductionChip } from "./SidebarProductionChip";
 import {
   buildingOf,
@@ -525,6 +533,31 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // The projects a heading's press set unfolding or folding, until they settle:
   // a folding project keeps its rows drawn until they have folded away.
   const [folds, setFolds] = useState<ReadonlyMap<string, ProjectFoldMotion>>(() => new Map());
+  // The room a fold leaves at the list's end (`slackForFold`): scrolled to
+  // the end, the rows folding away would slide everything down under the
+  // view, the heading just pressed too. It stays until a scroll up no longer
+  // needs it.
+  const [slack, setSlack] = useState(0);
+  const holdingSlack = slack > 0;
+  useEffect(() => {
+    if (!holdingSlack) return;
+    const scroller = scrollingAncestor(treeRef.current);
+    if (scroller === null) return;
+    const onScroll = () => {
+      setSlack((current) =>
+        slackAfterScroll({
+          scrollTop: scroller.scrollTop,
+          clientHeight: scroller.clientHeight,
+          scrollHeight: scroller.scrollHeight,
+          slack: current,
+        }),
+      );
+    };
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      scroller.removeEventListener("scroll", onScroll);
+    };
+  }, [holdingSlack]);
   const settleFold = (groupId: string) => {
     setFolds((current) => {
       if (!current.has(groupId)) return current;
@@ -538,10 +571,11 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // A surface's ask to show something (`sidebarReveal.ts`): the header's
   // waiting faces a Mate, the jump box a Mate, a project, a stop or a change.
   // Its project opens — and the quiet Mates or the list of changes it is
-  // folded into — then, once its row is drawn, the row takes the focus and
-  // flashes once where it stands.
+  // folded into — then, on the draw that sets off, the row takes the focus
+  // and flashes once where it stands (`landingAfterDraw`). A stop is its
+  // chip, on the heading folded or not: its project stays as it is.
   const revealing = useSidebarReveal((state) => state.revealing);
-  const focusAfterDraw = useRef<SidebarRevealTarget | null>(null);
+  const focusAfterDraw = useRef<PendingLanding<SidebarRevealTarget> | null>(null);
   // The Mates in the order drawn — collapsed projects included — for the
   // header's "next one that waits", and everything the jump box finds here;
   // written after each render, not during it.
@@ -566,7 +600,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         : target.kind === "change"
           ? target.mateProjectId
           : undefined;
-    if (groupId !== undefined) {
+    if (groupId !== undefined && target.kind !== "stop") {
       setCollapsed((current) => withCollapsed(current, groupId, false));
       // A Mate may be folded among its project's quiet ones.
       if (mateId !== undefined) setOpenQuiet((current) => withCollapsed(current, groupId, true));
@@ -575,15 +609,15 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         setOpenLists((current) => (current.has(listKey) ? current : new Set(current).add(listKey)));
       }
     }
-    focusAfterDraw.current = target;
+    focusAfterDraw.current = { target, drawn: false };
     setRevealDraw((draws) => draws + 1);
   }, [candidates, revealing]);
   useEffect(() => {
-    const target = focusAfterDraw.current;
-    if (target === null) return;
-    const landing = revealLanding(treeRef.current, target);
+    const { land, next } = landingAfterDraw(focusAfterDraw.current);
+    focusAfterDraw.current = next;
+    if (land === undefined) return;
+    const landing = revealLanding(treeRef.current, land);
     if (landing === null) return;
-    focusAfterDraw.current = null;
     focusOnceFree(landing.focus, () => {
       landing.flash.scrollIntoView({ block: "nearest" });
       flashOnce(landing.flash);
@@ -850,8 +884,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // hangs under a Mate, the recipe changes it leaves out and the production
     // chip can never disagree with what the page says about the same project.
     //
-    // Read whether or not Gitea is: what each stop runs is the platform's
-    // answer either way.
+    // Read whether or not Gitea is: what a stop runs, and whether it serves,
+    // is the platform's answer, and the chip says that much either way
+    // (`productionChip`).
     const projectFlow: GroupFlow = groupFlow(
       groupFlowInputOf({
         groupId: id,
@@ -888,7 +923,11 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     const servingOf = (item: T | undefined): StopServing =>
       item === undefined
         ? { kind: "unknown" }
-        : stopServing({ projectStatus: item.project.status, services: item.services?.statuses });
+        : stopServing({
+            projectStatus: item.project.status,
+            services: item.services?.statuses,
+            routes: item.routes ?? [],
+          });
     const gitea: GiteaAnswer =
       flow !== undefined && flow.changesKnown !== false
         ? { kind: "answered", failure: flow.releaseFailure }
@@ -938,18 +977,20 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             mine: getOwner?.(item)?.isViewer,
             threadKey: getActivity?.(item)?.threadKey,
           }))}
-          menu={chipMenu({
-            chip,
-            failure,
-            down,
-            stages: projectFlow.stages.map((stop) => ({
-              name: stopName(stop),
-              stop,
-              deployedAt: stopDeployedAt(stop.projectId),
-            })),
-            waiting: projectFlow.main.notLive,
-            nowMs,
-          })}
+          menu={(openedAt) =>
+            chipMenu({
+              chip,
+              failure,
+              down,
+              stages: projectFlow.stages.map((stop) => ({
+                name: stopName(stop),
+                stop,
+                deployedAt: stopDeployedAt(stop.projectId),
+              })),
+              waiting: projectFlow.main.notLive,
+              nowMs: openedAt,
+            })
+          }
           onAskToFix={onAskToFix}
           onOpenStop={
             chipDeclared === undefined || flow?.onOpenStop === undefined
@@ -963,51 +1004,57 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           stopProjectId={chipItem?.project.id}
         />
       );
-    // The jump box finds each of them, and shows the chip where one is found.
+    // The jump box finds each of them, and shows the chip where one is found
+    // — only where the heading draws one: a find lands on the chip.
     const title = (name: string) => (groupName === undefined ? name : `${groupName} ${name}`);
     const chipFaceOf = chip === undefined ? undefined : chipFace(chip);
-    const jumpStopsHere: ReadonlyArray<JumpStop> = [
-      ...projectFlow.stages.map((stop) => ({
-        projectId: stop.projectId,
-        groupId: id,
-        title: title(stopName(stop)),
-        line: stop.version?.label ?? "",
-        dot:
-          chip?.label === "stage" && chipItem?.project.id === stop.projectId && chipFaceOf
-            ? chipFaceOf.dot
-            : STOP_DOT[stop.state],
-        word:
-          chip?.label === "stage" && chipItem?.project.id === stop.projectId && chipFaceOf
-            ? chipFaceOf.words
-            : `Stage ${stop.version?.label ?? ""}`.trim(),
-      })),
-      ...(productionStop === undefined
+    const jumpStopsHere: ReadonlyArray<JumpStop> =
+      chip === undefined
         ? []
         : [
-            {
-              projectId: productionStop.projectId,
+            ...projectFlow.stages.map((stop) => ({
+              projectId: stop.projectId,
               groupId: id,
-              title: title(stopName(productionStop)),
-              line: productionStop.version?.label ?? "",
+              title: title(stopName(stop)),
+              line: stop.version?.label ?? "",
               dot:
-                chip?.label === "prod" && chipFaceOf !== undefined
+                chip?.label === "stage" && chipItem?.project.id === stop.projectId && chipFaceOf
                   ? chipFaceOf.dot
-                  : STOP_DOT[productionStop.state],
+                  : STOP_DOT[stop.state],
               word:
-                chip?.label === "prod" && chipFaceOf !== undefined
+                chip?.label === "stage" && chipItem?.project.id === stop.projectId && chipFaceOf
                   ? chipFaceOf.words
-                  : `Production ${productionStop.version?.label ?? ""}`.trim(),
-            },
-          ]),
-    ];
+                  : `Stage ${stop.version?.label ?? ""}`.trim(),
+            })),
+            ...(productionStop === undefined
+              ? []
+              : [
+                  {
+                    projectId: productionStop.projectId,
+                    groupId: id,
+                    title: title(stopName(productionStop)),
+                    line: productionStop.version?.label ?? "",
+                    dot:
+                      chip?.label === "prod" && chipFaceOf !== undefined
+                        ? chipFaceOf.dot
+                        : STOP_DOT[productionStop.state],
+                    word:
+                      chip?.label === "prod" && chipFaceOf !== undefined
+                        ? chipFaceOf.words
+                        : `Production ${productionStop.version?.label ?? ""}`.trim(),
+                  },
+                ]),
+          ];
     // Folded, the heading shows who is busy in it (M15): its Mates that need
-    // you, work, or finished unseen — once its rows have folded away.
+    // you, work, stopped on an error or finished unseen, each as its row draws
+    // it (`mateRowView`) — once its rows have folded away.
     const folded = collapsed.has(id) && folds.get(id) !== "closing";
     const busy = folded
       ? headingFaces(
           mateEntries.map(({ item }) => {
             const activity = getActivity?.(item);
             const live = drawnActivity(item, activity);
+            const view = mateRowView(live, mateFaceFor(item.group === "connected", activity));
             return {
               projectId: item.project.id,
               name: botDisplayName({
@@ -1015,9 +1062,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 projectName: item.project.name,
               }),
               tint: tints.get(item.project.id) ?? "slate",
-              face: mateFaceFor(item.group === "connected", activity),
-              failed: live?.kind === "failed",
-              unread: live?.unread === true,
+              state: view.state,
+              face: view.face,
+              dot: view.dot,
+              known: live !== undefined && live.remembered !== true,
             };
           }),
         )
@@ -1280,6 +1328,25 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             onToggle={() => {
               const { groupId } = group;
               const folding = !collapsed.has(groupId);
+              if (folding) {
+                const scroller = scrollingAncestor(treeRef.current);
+                const rows = treeRef.current?.querySelector<HTMLElement>(
+                  `[data-zerops-group="${CSS.escape(groupId)}"] [data-zerops-surface="sidebar-project-rows"]`,
+                );
+                if (scroller !== null && rows !== null && rows !== undefined) {
+                  setSlack(
+                    slackForFold(
+                      {
+                        scrollTop: scroller.scrollTop,
+                        clientHeight: scroller.clientHeight,
+                        scrollHeight: scroller.scrollHeight,
+                        slack,
+                      },
+                      rows.getBoundingClientRect().height,
+                    ),
+                  );
+                }
+              }
               setCollapsed((current) => withCollapsed(current, groupId, folding));
               setFolds((current) => new Map(current).set(groupId, folding ? "closing" : "opening"));
             }}
@@ -1353,6 +1420,14 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         <ListingNotice className="mt-6" notice={notice} onAct={onNoticeAct} />
       )}
       {onNewProject === undefined ? null : <NewProjectRow onNewProject={onNewProject} />}
+      {slack === 0 ? null : (
+        <div
+          aria-hidden="true"
+          className="shrink-0"
+          data-zerops-surface="sidebar-fold-slack"
+          style={{ height: slack }}
+        />
+      )}
       {reorder.overlay}
     </nav>
   );
@@ -1377,6 +1452,20 @@ function NewProjectRow({ onNewProject }: { readonly onNewProject: () => void }) 
       <span className="min-w-0 truncate">New project</span>
     </button>
   );
+}
+
+/**
+ * What scrolls the menu: the sidebar's viewport, or the page where nothing
+ * inside does. Nothing where the menu is not drawn (a test's renderer).
+ */
+function scrollingAncestor(element: HTMLElement | null): HTMLElement | null {
+  if (element === null) return null;
+  for (let node = element.parentElement; node !== null; node = node.parentElement) {
+    const { overflowY } = getComputedStyle(node);
+    if (overflowY === "auto" || overflowY === "scroll") return node;
+  }
+  const page = element.ownerDocument.scrollingElement;
+  return page instanceof HTMLElement ? page : null;
 }
 
 /** The listing's notice (`candidatesNotice`) with its one affordance, at the menu's left edge. */
@@ -1549,6 +1638,11 @@ export function ProjectHeader({
           {faces}
         </button>
       )}
+      {/* The room between the title and the heading's end takes what the
+          title leaves — the faces too, which arrive once the rows have folded
+          away, under a pointer still on the heading: + and ⋯ stand past it,
+          so they never move. */}
+      <span aria-hidden="true" className="min-w-0 flex-1" />
       {/* Hidden until hover keeps a list of five projects calm, but a finger
           never hovers — so a coarse pointer gets them at rest. A slot that is
           always there: nothing moves when they show. */}
@@ -1629,7 +1723,6 @@ export function ProjectHeader({
           </Menu>
         </span>
       )}
-      <span aria-hidden="true" className="min-w-0 flex-1" />
       {production}
     </div>
   );
@@ -1647,9 +1740,10 @@ const HEADING_FACE_WORDS: Record<HeadingFaceDot | "working", string> = {
 
 /**
  * The faces of a folded project's busy Mates (M15), after its title: 18 px,
- * each in its own pose — turning while it works, hopping when it needs you —
- * with a 7 px dot at its corner for what is not work, cut out of the menu's
- * ground: amber needs you, blue finished unseen, red stopped on an error.
+ * each its row's face in its row's pose — turning while it works, hopping when
+ * it needs you, still where it stopped on an error — with a 7 px dot at its
+ * corner for what is not work, cut out of the menu's ground: amber needs you,
+ * blue finished unseen, red stopped on an error.
  */
 function HeadingFaces({ faces }: { readonly faces: ReadonlyArray<HeadingFace> }) {
   return (
@@ -1658,18 +1752,44 @@ function HeadingFaces({ faces }: { readonly faces: ReadonlyArray<HeadingFace> })
       data-zerops-surface="sidebar-project-faces"
     >
       {faces.map((face) => (
-        <span className="relative flex" key={face.projectId}>
-          <MateFace className="size-4.5" greets size="sm" state={face.face} tint={face.tint} />
-          {face.dot === undefined ? null : (
-            <span aria-hidden="true" className="zerops-heading-dot" data-dot={face.dot} />
-          )}
-        </span>
+        <HeadingFaceMark face={face} key={face.projectId} />
       ))}
       <span className="sr-only">
         {faces
           .map((face) => `${face.name} ${HEADING_FACE_WORDS[face.dot ?? "working"]}`)
           .join(", ")}
       </span>
+    </span>
+  );
+}
+
+/**
+ * One face on a folded heading. Like its row's, it greets only an arrival it
+ * watches, and its dot scales in only when it arrives while watched (T6) —
+ * what a reload or a fold opened onto, or what this browser remembered, is
+ * simply there.
+ */
+function HeadingFaceMark({ face }: { readonly face: HeadingFace }) {
+  const arrived = useChangedSinceShown(face.dot, face.known);
+  return (
+    <span className="relative flex">
+      <MateFace
+        className="size-4.5"
+        greets
+        known={face.known}
+        size="sm"
+        state={face.face}
+        tint={face.tint}
+      />
+      {face.dot === undefined ? null : (
+        <span
+          aria-hidden="true"
+          className="zerops-heading-dot"
+          data-arrived={arrived ? "" : undefined}
+          data-dot={face.dot}
+          key={face.dot}
+        />
+      )}
     </span>
   );
 }
@@ -1694,7 +1814,7 @@ function typedIntoField(target: EventTarget | null): boolean {
 /**
  * Where a reveal lands: the control a person would have pressed there takes
  * the focus, and the row that was asked for flashes once — a Mate's own row,
- * a project's heading, a stop's row, a change's row with its *Review*.
+ * a project's heading, a stop's chip, a change's row with its *Review*.
  */
 interface RevealLanding {
   readonly focus: HTMLElement;

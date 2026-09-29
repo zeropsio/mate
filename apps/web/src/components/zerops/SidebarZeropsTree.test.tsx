@@ -151,7 +151,7 @@ function up<T extends ZeropsCandidate>(
       hostnames: ["app"],
       deployedAt: undefined,
       deployable: [],
-      statuses: [{ hostname: "app", status }],
+      statuses: [{ hostname: "app", status, runtime: true }],
     },
   };
 }
@@ -853,6 +853,31 @@ describe("the project's flow under it", () => {
   });
 });
 
+// Signed in, so Gitea is coming — but none of its reads has answered.
+const SIGNED_IN = {
+  deployments: new Map([
+    [
+      "crm-prod",
+      {
+        state: "known",
+        value: {
+          kind: "running",
+          activatedAt: null,
+          version: {
+            name: "v2.4.0",
+            commit: "3f9c1b2",
+            sha: undefined,
+            taggedBy: undefined,
+            label: "v2.4.0",
+          },
+        },
+      },
+    ],
+  ]),
+  flows: new Map(),
+  signedIn: true,
+} as unknown as ZeropsProjectFlowValue;
+
 describe("production is one chip on the project's heading (M2, M1)", () => {
   const released = (label: string): EnvironmentRow => ({
     ...productionRow,
@@ -973,6 +998,27 @@ describe("production is one chip on the project's heading (M2, M1)", () => {
     expect(render([CRM_DEV, CRM_PROD], { getFlow: () => flow() })).not.toContain(
       "sidebar-production-chip",
     );
+  });
+
+  it("draws what the platform alone says while Gitea keeps not answering, and never keeps it", () => {
+    const drawn: SidebarDrawn[] = [];
+    const tree = mount(
+      <ZeropsProjectFlowContext.Provider value={SIGNED_IN}>
+        <SidebarZeropsTree
+          candidates={[CRM_DEV, up(CRM_PROD)]}
+          complete
+          onBrowseProjects={() => {}}
+          onDrawn={(next: SidebarDrawn) => drawn.push(next)}
+          onSelect={() => {}}
+        />
+      </ZeropsProjectFlowContext.Provider>,
+    );
+    const chips = tree.root.findAll(
+      (node) =>
+        node.type === "button" && node.props["data-zerops-surface"] === "sidebar-production-chip",
+    );
+    expect(chips.map((chip) => chip.props["aria-label"])).toEqual(["Production v2.4.0, healthy"]);
+    expect(drawn.at(-1)?.chips).toEqual({});
   });
 
   it("lets the jump box find production and each stage, with the chip's dot", () => {
@@ -1151,11 +1197,112 @@ describe("a project collapsed to its heading", () => {
     ).not.toContain("sidebar-project-faces");
   });
 
+  // A folded heading's face is its row's (`mateRowView`): a Mate stopped on
+  // an error stands still with a red dot, as it does in the list — and what
+  // the heading opened onto is simply there: no dot scales in on a paint.
+  it("wears each Mate's row face — still where it stopped on an error — and scales no dot in on a paint", () => {
+    stored.collapsed = new Set(["aaa"]);
+    const failed: ZeropsAgentActivity = {
+      threadId: "thread-crm" as ZeropsAgentActivity["threadId"],
+      kind: "failed",
+      status: null,
+      face: "needs",
+      subject: "Something",
+      at: new Date().toISOString(),
+      snippet: undefined,
+      errorLine: "The type check stopped at 2 errors",
+      unread: false,
+      pausedUntil: undefined,
+      threadKey: "env-crm-dev:thread-crm",
+      task: undefined,
+    };
+    const html = render([CRM_DEV_CONNECTED], { getActivity: () => failed });
+    const shown = /data-zerops-surface="sidebar-project-faces">(.*?)<span class="sr-only">/u.exec(
+      html,
+    )?.[1];
+    expect(shown).toContain('data-mate-face-state="idle"');
+    expect(shown).toContain('data-dot="failed"');
+    expect(shown).not.toContain("data-arrived");
+  });
+
+  it("greets nothing its folded heading only stood in for until the Mate's state was read", () => {
+    stored.collapsed = new Set(["aaa"]);
+    const { remembered: _stoodIn, ...read } = activityFromMemory({
+      subject: "Something",
+      at: "2026-09-27T10:00:00.000Z",
+      unread: true,
+      threadId: "thread-1",
+      threadKey: "env-crm-dev:thread-1",
+    });
+    const tree = (item: ZeropsCandidate, activity: ZeropsAgentActivity) => (
+      <SidebarZeropsTree
+        candidates={[item]}
+        complete
+        getActivity={() => activity}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />
+    );
+    const mounted = mount(
+      tree(
+        CRM_DEV,
+        activityFromMemory({
+          subject: "Something",
+          at: "2026-09-27T10:00:00.000Z",
+          unread: true,
+          threadId: "thread-1",
+          threadKey: "env-crm-dev:thread-1",
+        }),
+      ),
+    );
+    act(() => {
+      mounted.update(tree(CRM_DEV_CONNECTED, { ...read, kind: "input", face: "needs" }));
+    });
+    const faces = mounted.root.find(
+      (node) =>
+        typeof node.type === "string" &&
+        node.props["data-zerops-surface"] === "sidebar-project-faces",
+    );
+    const face = faces.find(
+      (node) =>
+        typeof node.type === "string" && node.props["data-zerops-primitive"] === "mate-face",
+    );
+    expect(face.props["data-mate-face-state"]).toBe("needs");
+    expect(face.props["data-mate-face-arrived"]).toBeUndefined();
+    const dot = faces.find(
+      (node) => typeof node.type === "string" && node.props.className === "zerops-heading-dot",
+    );
+    expect(dot.props["data-dot"]).toBe("attention");
+    expect(dot.props["data-arrived"]).toBeUndefined();
+  });
+
   it("keeps less room under the list's last project", () => {
     const rows = /data-zerops-surface="sidebar-project-rows"><div class="([^"]*)"/u.exec(
       render([CRM_DEV]),
     )?.[1];
     expect(rows?.split(" ")).toEqual(expect.arrayContaining(["pt-0.5", "pb-4"]));
+  });
+
+  // The faces arrive once the rows have folded away, under a pointer still on
+  // the heading: + and ⋯ stand after the room that takes them up, never after
+  // the faces, so nothing a person is about to press moves.
+  it("keeps + and ⋯ at the heading's end, past the room the faces take", () => {
+    const html = renderToStaticMarkup(
+      <ProjectHeader
+        collapsed
+        faces={<span data-zerops-surface="sidebar-project-faces" />}
+        name="Links"
+        onBrowseProjects={() => {}}
+        onToggle={() => {}}
+        production={<span data-zerops-surface="sidebar-production-chip" />}
+      />,
+    );
+    const at = (needle: string) => html.indexOf(needle);
+    const room = at('<span aria-hidden="true" class="min-w-0 flex-1"></span>');
+    expect(room).toBeGreaterThan(at("sidebar-project-faces"));
+    expect(at("sidebar-project-add-mate")).toBeGreaterThan(room);
+    expect(at("sidebar-project-more")).toBeGreaterThan(at("sidebar-project-add-mate"));
+    expect(at("sidebar-production-chip")).toBeGreaterThan(at("sidebar-project-more"));
   });
 
   it("wears one chevron that turns, the heading saying whether it is folded", () => {
@@ -1500,6 +1647,25 @@ describe("arranging the projects by hand", () => {
     expect(grip).toContain("opacity-0");
     expect(grip).toContain("group-hover/project:opacity-100");
   });
+
+  // The heading's toggle covers the whole heading (`after:inset-0`): every
+  // control on it stands above that, the grip too, or its right half folds
+  // the project instead of dragging it.
+  it.each(["sidebar-project-grip", "sidebar-project-add-mate", "sidebar-project-more"])(
+    "stands %s above the heading's own press",
+    (surface) => {
+      setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "custom", ProjectOrderSchema);
+      const html = render([LINKS_MATE, SHOP_MATE]);
+      const control =
+        new RegExp(`<button[^>]*data-zerops-surface="${surface}"[^>]*>`, "u").exec(html)?.[0] ?? "";
+      const layer = /class="([^"]*)"/u.exec(control)?.[1]?.split(" ") ?? [];
+      // Its own layer, or the verbs' slot it stands in.
+      const slot = html.slice(0, html.indexOf(control)).lastIndexOf("relative z-1");
+      expect(layer.includes("z-1") || slot > html.lastIndexOf("<div", html.indexOf(control))).toBe(
+        true,
+      );
+    },
+  );
 
   it("moves a project with the grip's arrow keys, writing the order on screen with it moved", () => {
     setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "custom", ProjectOrderSchema);
@@ -2153,9 +2319,10 @@ describe("what the jump box finds in the menu", () => {
   });
   const OWN = pull(4, { mateProjectId: "links-dev", title: "Add a search box" });
   const ADAS = pull(6, { mateProjectId: undefined, author: "ada", title: "Bump the linter" });
+  // Its stops' services read, so the heading draws its chip.
   const tree = (props: Record<string, unknown> = {}) => (
     <SidebarZeropsTree
-      candidates={[LINKS_MATE, LINKS_STAGE, LINKS_PROD]}
+      candidates={[LINKS_MATE, up(LINKS_STAGE), up(LINKS_PROD)]}
       complete
       getFlow={() => linksFlow([OWN, ADAS])}
       onBrowseProjects={() => {}}
@@ -2213,13 +2380,37 @@ describe("what the jump box finds in the menu", () => {
     const theirs = pull(9, { mateProjectId: "links-theo", title: "Theirs" });
     mount(
       tree({
-        candidates: [LINKS_MATE, THEO, LINKS_STAGE, LINKS_PROD],
+        candidates: [LINKS_MATE, THEO, up(LINKS_STAGE), up(LINKS_PROD)],
         getFlow: () => linksFlow([OWN, theirs]),
         shown: (item: ZeropsCandidate) => item.project.id !== "links-theo",
       }),
     );
     expect(index()?.mates.map((mate) => mate.projectId)).toEqual(["links-dev"]);
     expect(index()?.changes.map((change) => change.key)).toEqual(["appdev#4"]);
+  });
+
+  // A stop is found as its chip — and where the heading draws none, a find
+  // would land on nothing, and the focus would jump there once one appears.
+  it("finds no stop where the heading draws no chip", () => {
+    mount(tree({ candidates: [LINKS_MATE, LINKS_STAGE, LINKS_PROD] }));
+    expect(index()?.stops).toEqual([]);
+  });
+
+  it("leaves a folded project folded when a jump lands on its chip, and answers the ask", () => {
+    stored.collapsed = new Set(["links"]);
+    const mounted = mount(tree());
+    const mateRows = () =>
+      mounted.root.findAll(
+        (node) =>
+          typeof node.type === "string" && node.props["data-zerops-surface"] === "sidebar-mate",
+      );
+    act_(() => {
+      useSidebarReveal
+        .getState()
+        .reveal({ kind: "stop", groupId: "links", projectId: "links-prod" });
+    });
+    expect(mateRows()).toHaveLength(0);
+    expect(useSidebarReveal.getState().revealing).toBeNull();
   });
 
   it("opens a collapsed project a jump shows, and answers the ask once", () => {

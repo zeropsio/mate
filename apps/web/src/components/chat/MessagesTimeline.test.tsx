@@ -295,6 +295,42 @@ describe("MessagesTimeline", () => {
     expect(hero).not.toContain("data-mate-face-state");
   });
 
+  // A working Mate's conversation still on its way has no run to draw yet:
+  // a run made up from its status alone was placed and shown, then thrown
+  // 1,480 px when the conversation came (the switch harness, 2026-09-29).
+  it.each([
+    { case: "with no turn known", running: false },
+    { case: "with its running turn known from its status", running: true },
+  ])(
+    "shows a working Mate's pane, not a made-up run, while its conversation is on its way, $case",
+    ({ running }) => {
+      const turnId = TurnId.make("turn-on-its-way");
+      const loading = renderToStaticMarkup(
+        <MessagesTimeline
+          {...buildProps()}
+          isWorking
+          activeTurnStartedAt={MESSAGE_CREATED_AT}
+          {...(running
+            ? {
+                runningTurnId: turnId,
+                latestTurn: {
+                  turnId,
+                  state: "running" as const,
+                  startedAt: MESSAGE_CREATED_AT,
+                  completedAt: null,
+                },
+              }
+            : {})}
+          hideEmptyPlaceholder
+          loading
+          timelineEntries={[]}
+        />,
+      );
+      expect(loading).toContain('data-timeline-loading="true"');
+      expect(loading).not.toContain("data-timeline-row-kind");
+    },
+  );
+
   it("uses the larger leading inset only when the top fade is enabled", () => {
     const timelineEntries = [buildUserTimelineEntry("Hello")];
 
@@ -1413,7 +1449,11 @@ describe("MessagesTimeline — the conversation", () => {
     expect(markup).not.toContain('data-chat-kind="step:web"');
     expect(markup).toContain('data-run-now="step"');
     expect(markup).toContain('data-mate-face-state="working"');
-    expect(markup.match(/docs\.example\.dev\/guides/g)).toHaveLength(1);
+    // Once on the line, and once more for a screen reader, in its words alone.
+    expect(markup.match(/docs\.example\.dev\/guides/g)).toHaveLength(2);
+    expect(markup).toContain(
+      '<span class="sr-only" role="status">Reading docs.example.dev/guides</span>',
+    );
     expect(markup).toMatch(
       />Reading(?:<!-- -->)? <span class="run-now-mono">docs\.example\.dev\/guides</u,
     );
@@ -1810,6 +1850,10 @@ describe("MessagesTimeline — standing in place across a switch", () => {
     return renderer!;
   };
 
+  const settleFrames = async (count: number) => {
+    for (let frame = 0; frame < count; frame += 1) await act(() => runFrames());
+  };
+
   it("says so once its list has put the rows in place", async () => {
     const { LegendList } = await import("@legendapp/list/react");
     const switchLayer = layer();
@@ -1817,12 +1861,148 @@ describe("MessagesTimeline — standing in place across a switch", () => {
       timelineEntries: [buildUserTimelineEntry("Where were we?")],
     });
     try {
+      await settleFrames(4);
       expect(switchLayer.painted).not.toHaveBeenCalled();
       await act(() => renderer.root.findByType(LegendList).props.onLoad({ elapsedTimeInMs: 4 }));
-      runFrames();
+      await settleFrames(6);
       expect(switchLayer.painted).toHaveBeenCalledTimes(1);
     } finally {
       await act(() => renderer.unmount());
+    }
+  });
+
+  // A Mate streaming its answer changes the rows every frame: the list's end
+  // never stands still, and the conversation still shows, after a while.
+  it("says so after a while, even while its rows never stand still", async () => {
+    const { LegendList } = await import("@legendapp/list/react");
+    const { TIMELINE_PLACING_AT_MOST_MS } = await import("./timelineScrollAnchoring");
+    let now = 0;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    let height = 2000;
+    const streaming = {
+      scrollTop: 0,
+      clientHeight: 800,
+      get scrollHeight() {
+        height += 40;
+        return height;
+      },
+    };
+    const streamingList = {
+      current: {
+        getState: () => ({ data: [], isWithinMaintainScrollAtEndThreshold: true }),
+        getScrollableNode: () => streaming,
+        scrollToEnd: vi.fn(() => Promise.resolve()),
+      } as unknown as LegendListRef,
+    };
+    const switchLayer = layer();
+    const { TimelineSwitchContext } = await import("./TimelineSwitch");
+    let renderer: ReactTestRenderer | undefined;
+    try {
+      await act(() => {
+        renderer = create(
+          <TimelineSwitchContext value={switchLayer}>
+            <MessagesTimeline
+              {...buildProps()}
+              listRef={streamingList}
+              routeThreadKey="environment-local:thread-streaming-end"
+              timelineEntries={[buildUserTimelineEntry("Keep going.")]}
+            />
+          </TimelineSwitchContext>,
+        );
+      });
+      await act(() => renderer!.root.findByType(LegendList).props.onLoad({ elapsedTimeInMs: 4 }));
+      for (; now < TIMELINE_PLACING_AT_MOST_MS - 16; now += 16) await settleFrames(1);
+      expect(switchLayer.painted).not.toHaveBeenCalled();
+      now = TIMELINE_PLACING_AT_MOST_MS;
+      await settleFrames(3);
+      expect(switchLayer.painted).toHaveBeenCalledTimes(1);
+    } finally {
+      clock.mockRestore();
+      await act(() => renderer?.unmount());
+    }
+  });
+
+  // Coming back mid-read to a Mate still streaming: the place is put back by
+  // one loop that reads the rows as they come, not restarted by each of them.
+  it("puts a reading position back once, however often its rows change", async () => {
+    const { LegendList } = await import("@legendapp/list/react");
+    const { rememberTimelinePosition, readTimelinePosition } =
+      await import("./timelineScrollAnchoring");
+    const threadKey = "environment-local:thread-streaming-mid";
+    rememberTimelinePosition(threadKey, {
+      rowId: "entry-1",
+      offsetWithinRow: 30,
+      rowHeight: 200,
+      cardTopId: null,
+      previousRowId: null,
+      atEnd: false,
+    });
+    const document = { addEventListener: vi.fn(), removeEventListener: vi.fn() };
+    const reading = {
+      scrollTop: 0,
+      scrollHeight: 4000,
+      clientHeight: 800,
+      getBoundingClientRect: () => ({ top: 0 }),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      ownerDocument: document,
+    };
+    // The remembered row stands 900 px into the conversation.
+    const row = { getBoundingClientRect: () => ({ top: 900 - reading.scrollTop, height: 200 }) };
+    const readingList = {
+      current: {
+        getState: () => ({
+          data: [],
+          indexByKey: () => 0,
+          elementAtIndex: () => row,
+          isWithinMaintainScrollAtEndThreshold: false,
+        }),
+        getScrollableNode: () => reading,
+      } as unknown as LegendListRef,
+    };
+    const onManualNavigation = vi.fn();
+    const switchLayer = layer();
+    const { TimelineSwitchContext } = await import("./TimelineSwitch");
+    const streamed = (words: number) => (
+      <TimelineSwitchContext value={switchLayer}>
+        <MessagesTimeline
+          {...buildProps()}
+          listRef={readingList}
+          onManualNavigation={onManualNavigation}
+          routeThreadKey={threadKey}
+          timelineEntries={[
+            buildUserTimelineEntry("Where were we?"),
+            {
+              ...buildAssistantTimelineEntry("word ".repeat(words)),
+              id: "entry-2",
+              message: {
+                ...buildAssistantTimelineEntry("").message,
+                id: MessageId.make("message-2"),
+                text: "word ".repeat(words),
+                streaming: true,
+              },
+            },
+          ]}
+        />
+      </TimelineSwitchContext>
+    );
+    let renderer: ReactTestRenderer | undefined;
+    try {
+      await act(() => {
+        renderer = create(streamed(1));
+      });
+      await act(() => renderer!.root.findByType(LegendList).props.onLoad({ elapsedTimeInMs: 4 }));
+      for (let words = 2; words < 8; words += 1) {
+        await act(() => renderer!.update(streamed(words)));
+        await settleFrames(1);
+      }
+      await settleFrames(3);
+      expect(reading.scrollTop).toBe(930);
+      expect(switchLayer.painted).toHaveBeenCalledTimes(1);
+      expect(onManualNavigation).toHaveBeenCalledTimes(1);
+      expect(readTimelinePosition(threadKey)?.rowId).toBe("entry-1");
+    } finally {
+      await act(() => renderer?.unmount());
     }
   });
 

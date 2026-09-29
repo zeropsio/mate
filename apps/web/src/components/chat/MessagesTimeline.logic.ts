@@ -387,8 +387,8 @@ export type TurnHeaderActivity =
     }
   /** It writes words that cannot be placed yet: a note or its answer. */
   | { readonly kind: "writing" }
-  /** It asked the person something and waits for the answer. */
-  | { readonly kind: "waiting" }
+  /** It asked the person something — a question, an approval — and waits. */
+  | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
   /**
    * A call it is making, as the step it is — the newest, and any others it
    * runs at the same time, oldest first.
@@ -681,9 +681,10 @@ export type RecordItem =
       readonly message: ChatMessage;
     }
   /**
-   * Where the person spoke into the run — a message, their answer to its
-   * question: their words stand on the page above the card, and the chat
-   * marks here, in short, where they reached the Mate.
+   * Where the person spoke into the run: a message sent into it stands on
+   * the page above the card, and the chat marks here, in one line, where it
+   * reached the Mate; their answer to its question stands here whole, under
+   * the question, and nowhere else.
    */
   | {
       readonly kind: "person";
@@ -952,6 +953,20 @@ function pendingQuestion(stretch: Stretch): Extract<TimelineEntry, { kind: "work
 }
 
 /**
+ * Whether an approval the Mate asked for still waits on the person: one asked
+ * for and not given yet, the clock standing still meanwhile (`waitedOnPerson`).
+ */
+function approvalPending(stretch: Stretch): boolean {
+  let open = 0;
+  for (const entry of stretch.entries) {
+    if (entry.kind !== "work") continue;
+    if (entry.entry.sourceActivityKind === "approval.requested") open += 1;
+    else if (entry.entry.sourceActivityKind === "approval.resolved") open = Math.max(0, open - 1);
+  }
+  return open > 0;
+}
+
+/**
  * How long a run waited on the person: from each question or approval it
  * asked to the person's answer. Live, a wait still open is where the clock
  * stands still; settled, it lasted to the run's end.
@@ -986,7 +1001,8 @@ function liveActivity(
   writing: MessageEntry | null,
   tracked: TrackedCommands,
 ): TurnHeaderActivity {
-  if (pendingQuestion(stretch) !== null) return { kind: "waiting" };
+  if (pendingQuestion(stretch) !== null) return { kind: "waiting", on: "answer" };
+  if (approvalPending(stretch)) return { kind: "waiting", on: "approval" };
   if (writing !== null && stretch.entries.includes(writing)) return { kind: "writing" };
   let passed = false;
   for (let index = stretch.entries.length - 1; index >= 0; index -= 1) {
@@ -999,7 +1015,7 @@ function liveActivity(
       entry.entry.toolLifecycleStatus === "inProgress" &&
       isActivityWork(entry.entry)
     ) {
-      if (isQuestionToolCall(entry.entry)) return { kind: "waiting" };
+      if (isQuestionToolCall(entry.entry)) return { kind: "waiting", on: "answer" };
       const step = stepOf(entry.entry, tracked, true);
       // What it runs at the same time is the now line's too: none of it is
       // in the record until it returns.
@@ -1096,15 +1112,15 @@ export function thoughtPreview(messages: ReadonlyArray<Pick<ChatMessage, "text">
 }
 
 /**
- * A stretch's part of its run's record, each thing at the moment it happened,
- * and the rows it hands elsewhere: the person's answers to a question stand
- * on the page (`answer`); a plan to approve and a usage limit's pause stand
- * in the card after the record.
+ * A stretch's part of its run's record, each thing at the moment it happened
+ * — the question the Mate asked, and the person's answer under it, among
+ * them — and the rows it hands elsewhere: a plan to approve and a usage
+ * limit's pause stand in the card after the record.
  *
  * Live, the thought the Mate is thinking and the call it is making are not in
- * it: they stand beside its face at the record's end and join it once they
- * end, so nothing is ever drawn twice. A browser check is its row from its
- * start, its take filling in when it ends. A service's trouble is the working
+ * it: they are the now line's, beside its face at the card's foot, and join
+ * the record once they end, so nothing is ever drawn twice — a browser check
+ * too, a row of takes once it is taken. A service's trouble is the working
  * row's status bar while the stretch runs, and the record's once it is over.
  */
 function stretchRecord(input: {
@@ -1250,8 +1266,9 @@ function stretchRecord(input: {
       flushReasoning(entry.createdAt);
       continue;
     }
-    // The Mate's question tool: its question and the person's answer stand
-    // on the page, so the call itself is never a line of its own.
+    // The Mate's question tool: the question it asked and the person's answer
+    // are lines of the chat, from its request to the person (below), so the
+    // call itself is never a line of its own.
     if ((entry.kind === "work" || entry.kind === "generic-call") && isQuestionToolCall(entry.entry))
       continue;
     if (entry.kind === "message") {
@@ -1812,13 +1829,12 @@ export function deriveMessagesTimelineRows(input: {
     const pause = pauseByTurnKey.get(turn.key)?.row ?? null;
     const pausedHere = pause !== null || turn.limitOnly;
 
-    // What the person said while the run went on — a message sent into it,
-    // an answer to its question — stands on the page, in the order it was
-    // said, and the run's card stays whole under it, as a typing indicator
-    // stays under the last message; the card's chat marks where each reached
-    // the Mate (the owner, 2026-09-28, of the card breaking around them:
-    // "these split working groups have no chance to stay like this when the
-    // work is done").
+    // What the person sent into the run while it went on stands on the page,
+    // in the order it was sent, and the run's card stays whole under it, as a
+    // typing indicator stays under the last message; the card's chat marks
+    // where each reached the Mate (the owner, 2026-09-28, of the card
+    // breaking around them: "these split working groups have no chance to
+    // stay like this when the work is done").
     const exchanges: MessagesTimelineRow[] = [];
     // What the card holds besides its record: a plan to approve, a pause.
     const extras: MessagesTimelineRow[] = [];
@@ -1971,8 +1987,9 @@ export function deriveMessagesTimelineRows(input: {
           incidents: stretchIncidents(wholeRun),
         });
       }
-      // Settled, what runs alongside becomes the run's result — the same
-      // pills, where it was — easing from its height, and the answer follows.
+      // Settled, what runs alongside becomes the run's result, where it was —
+      // its rows under the now line — easing from its height, and the answer
+      // follows.
       if (outcome !== null) {
         rows.push({
           kind: "outcome",
@@ -2231,6 +2248,9 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.live === br.live &&
         a.answering === br.answering &&
         Equal.equals(a.now, br.now) &&
+        // Its now line's clock and its worked line's effort.
+        Equal.equals(a.status, br.status) &&
+        Equal.equals(a.outcome, br.outcome) &&
         a.items.length === br.items.length &&
         a.items.every((item, index) => sameRecordItem(item, br.items[index]!))
       );

@@ -13,6 +13,7 @@ import {
   gitVerdict,
   type GitBlockEvidence,
   type GitCheckoutState,
+  type GitCheckTone,
   type GitForgePullRequest,
   type GitForgeState,
 } from "./gitTab.ts";
@@ -1012,4 +1013,46 @@ describe("one MergeState on every surface (DESIGN §4.7, A7, A11)", () => {
       if (rebase.page) expect(state).toBe("conflicting");
     },
   );
+});
+
+describe("a check says what its newest status says (Gitea keeps every status, newest first)", () => {
+  it.each<
+    [string, ReadonlyArray<GiteaCommitStatus>, GitCheckTone, ReadonlyArray<[string, string]>]
+  >([
+    [
+      "a check that was pending and then passed",
+      [status("ci/build", "success"), status("ci/build", "pending")],
+      "passing",
+      [["ci/build", "Passed"]],
+    ],
+    [
+      "a check that failed and passed on a rerun",
+      [status("ci/build", "success"), status("ci/build", "failure")],
+      "passing",
+      [["ci/build", "Passed"]],
+    ],
+    [
+      "a check that passed and then failed",
+      [status("ci/build", "failure"), status("ci/build", "success")],
+      "failing",
+      [["ci/build", "Failed"]],
+    ],
+    [
+      "two checks, each read by its own newest status",
+      [
+        status("ci/lint", "success"),
+        status("ci/build", "pending"),
+        status("ci/lint", "failure"),
+        status("ci/build", "success"),
+      ],
+      "pending",
+      [
+        ["ci/lint", "Passed"],
+        ["ci/build", "Running"],
+      ],
+    ],
+  ])("%s", (_case, statuses, tone, rows) => {
+    expect(checkTone(statuses)).toBe(tone);
+    expect(gitChecks(statuses).map((row) => [row.name, row.word])).toEqual(rows);
+  });
 });

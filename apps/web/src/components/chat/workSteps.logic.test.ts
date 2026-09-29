@@ -56,7 +56,7 @@ describe("unwrapShell", () => {
     ['/usr/bin/zsh -lc "cd /var/www && ls -la"', "cd /var/www && ls -la"],
     ["/bin/bash -lc 'npm run build'", "npm run build"],
     ["bash -c 'pnpm test'", "pnpm test"],
-    ["sh -c npm test", "npm test"],
+    ["sh -c ls", "ls"],
     ["dash -c 'ls'", "ls"],
     ['bash -l -c "git status"', "git status"],
     ['/usr/bin/zsh -lc "echo \\"hi\\" > note.txt"', 'echo "hi" > note.txt'],
@@ -69,6 +69,20 @@ describe("unwrapShell", () => {
     ["bash scripts/deploy.sh", "bash scripts/deploy.sh"],
     ["zsh -lc", "zsh -lc"],
     ['ssh appdev "bash -lc ls"', 'ssh appdev "bash -lc ls"'],
+    // Only a command that is the shell's whole argument is taken out of it:
+    // what follows the argument is the command too, and cutting it hid what
+    // the command really did — a pipe, a fallback, a second command.
+    [
+      'bash -c "cd app && npm test" 2>&1 | tail -20',
+      'bash -c "cd app && npm test" 2>&1 | tail -20',
+    ],
+    ["sh -c 'npm run build' || echo FAILED", "sh -c 'npm run build' || echo FAILED"],
+    [
+      "bash -c 'curl -s https://example.test/install' | sh",
+      "bash -c 'curl -s https://example.test/install' | sh",
+    ],
+    ["sh -c npm test", "sh -c npm test"],
+    ["bash -lc 'pnpm build'   ", "pnpm build"],
   ])("%j reads %j", (input, expected) => {
     expect(unwrapShell(input)).toBe(expected);
   });

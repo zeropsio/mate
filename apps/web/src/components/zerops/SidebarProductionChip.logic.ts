@@ -17,7 +17,8 @@
  * Every fact comes from what the menu already reads — `groupFlow`'s stops, the
  * platform's services, Gitea's releases — and a chip is drawn only once what
  * decides it is read: until then it is unknown, and the menu draws the chip it
- * remembers, or nothing (`menuMemory.ts`). A reload never paints a chip it
+ * remembers (`menuMemory.ts`) — else, where only Gitea's answer is missing,
+ * what the platform alone says; else nothing. A reload never paints a chip it
  * then takes back.
  *
  * Pure: no React, no clock, no store.
@@ -37,47 +38,61 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
 import type { FixProblem } from "~/zerops/fixRequest";
 
-/** How a stop's services stand on the platform. */
+/** How a stop stands on the platform, by what serves it. */
 export type StopServing =
+  /** Nothing on the platform says it does not serve. */
   | { readonly kind: "serving" }
-  /** Somebody stopped it: the project, or one of its services. */
+  /** Somebody stopped it: the project, or every service that serves it. */
   | { readonly kind: "stopped" }
-  /** The platform marks these services failed: nothing is served through them. */
+  /** The platform marks these serving services failed: nothing is served through them. */
   | { readonly kind: "down"; readonly services: ReadonlyArray<string> }
   /** Not read, or in a state that says neither. */
   | { readonly kind: "unknown" };
 
 const SERVICE_STATUS_PREFIX = "SERVICE_";
 
+const statusWord = (status: string) =>
+  status.startsWith(SERVICE_STATUS_PREFIX) ? status.slice(SERVICE_STATUS_PREFIX.length) : status;
+
 /**
- * How a stop stands, from its project's status and its own services' — the
- * developer's services, the platform's core and the Mate's container left
- * out. A status with FAIL in it is bad news whatever the platform calls it
- * next (as `serviceStatusTone` reads it).
+ * How a stop stands, read off what serves it: the runtimes behind its public
+ * routes, or every runtime where no route is public. A database whose upgrade
+ * failed, or a worker no route reaches, takes no page down; a serving runtime
+ * with FAIL in its status does, whatever the platform calls it next (as
+ * `serviceStatusTone` reads it). Stopped is the project stopped, or every
+ * serving runtime stopped — one stopped beside another that serves still
+ * serves.
  */
 export function stopServing(input: {
   readonly projectStatus: string | undefined;
+  /** Its services as the platform lists them (`summarizeEnvironmentServices`). */
   readonly services:
-    | ReadonlyArray<{ readonly hostname: string; readonly status: string }>
+    | ReadonlyArray<{
+        readonly hostname: string;
+        readonly status: string;
+        readonly runtime: boolean;
+      }>
     | undefined;
+  /** Its public routes, each by the service it reaches. */
+  readonly routes: ReadonlyArray<{ readonly service: string }>;
 }): StopServing {
   if (input.projectStatus === "STOPPED") return { kind: "stopped" };
   if (input.projectStatus !== undefined && input.projectStatus !== "ACTIVE") {
     return { kind: "unknown" };
   }
-  const { services } = input;
-  if (services === undefined || services.length === 0) return { kind: "unknown" };
-  const failed = services
+  if (input.services === undefined) return { kind: "unknown" };
+  const runtimes = input.services.filter((service) => service.runtime);
+  const routed = new Set(input.routes.map((route) => route.service));
+  const behindRoutes = runtimes.filter((service) => routed.has(service.hostname));
+  const serving = behindRoutes.length > 0 ? behindRoutes : runtimes;
+  if (serving.length === 0) return { kind: "serving" };
+  const failed = serving
     .filter((service) => /FAIL/u.test(service.status))
     .map((service) => service.hostname);
   if (failed.length > 0) return { kind: "down", services: failed };
-  const stopped = services.some(
-    (service) =>
-      (service.status.startsWith(SERVICE_STATUS_PREFIX)
-        ? service.status.slice(SERVICE_STATUS_PREFIX.length)
-        : service.status) === "STOPPED",
-  );
-  return stopped ? { kind: "stopped" } : { kind: "serving" };
+  return serving.every((service) => statusWord(service.status) === "STOPPED")
+    ? { kind: "stopped" }
+    : { kind: "serving" };
 }
 
 /** A release that did not go through, newer than what production serves. */
@@ -175,15 +190,20 @@ export interface ProductionChip {
   readonly state: ChipState;
   /** What serves now: a release's tag, a hand-made name, a stage's branch. */
   readonly version?: string;
-  /** What is on its way, while releasing. */
+  /** What is on its way, while releasing — and while down or stopped, where one is. */
   readonly next?: string;
-  /** Changes merged and not live, while they wait. */
+  /** Changes merged and not live, while they wait — and while down or stopped. */
   readonly waiting?: number;
 }
 
 export type ChipView =
   | { readonly kind: "none" }
-  | { readonly kind: "unknown" }
+  /**
+   * Not all of it read. `partial` is what the platform alone says while
+   * Gitea has not answered — drawn where nothing is remembered, and never
+   * remembered itself.
+   */
+  | { readonly kind: "unknown"; readonly partial?: ProductionChip }
   | { readonly kind: "chip"; readonly chip: ProductionChip };
 
 /** What Gitea said of the group: answered (with the failed release it read), not yet, or never. */
@@ -194,6 +214,15 @@ export type GiteaAnswer =
 
 const NONE: ChipView = { kind: "none" };
 const UNKNOWN: ChipView = { kind: "unknown" };
+
+/**
+ * Gitea has not answered — or keeps failing while the person is signed in:
+ * the chip the platform's facts alone make, as where Gitea is not coming.
+ */
+function untilGitea(input: Parameters<typeof productionChip>[0]): ChipView {
+  const alone = productionChip({ ...input, gitea: { kind: "absent" } });
+  return alone.kind === "chip" ? { kind: "unknown", partial: alone.chip } : UNKNOWN;
+}
 
 const chipView = (chip: ProductionChip): ChipView => ({ kind: "chip", chip });
 
@@ -218,10 +247,12 @@ function chipOf(
 
 /**
  * The chip, worst first: production being set up; down or stopped, from the
- * platform alone and at once; unknown while what runs, how its services stand
- * or — where it is coming — Gitea's answer is unread; a release on its way; a
- * release that failed (amber: the old one still serves); nothing released yet;
- * changes waiting (still green: nothing is wrong); healthy. With no
+ * platform alone and at once — with a release on its way, or changes waiting,
+ * beside it, since those are true as well; unknown while what runs or how its
+ * services stand is unread, and while Gitea's answer is, where it is coming —
+ * with what the platform alone says as its `partial`; a release on its way; a
+ * release that failed (amber: the old one still serves); nothing released
+ * yet; changes waiting (still green: nothing is wrong); healthy. With no
  * production, the first stage in the same words; with neither, no chip.
  */
 export function productionChip(input: {
@@ -242,16 +273,19 @@ export function productionChip(input: {
   if (production.kind === "absent") return stageChip(input);
   const served =
     input.building === undefined ? production.stop.version?.label : input.building.from;
+  const waiting = input.waiting > 0 ? input.waiting : undefined;
   const serving = input.serving.production;
-  if (serving.kind === "down") return chipOf("prod", "down", { version: served });
-  if (serving.kind === "stopped") return chipOf("prod", "stopped", { version: served });
-  if (
-    production.kind === "checking" ||
-    serving.kind === "unknown" ||
-    input.gitea.kind === "waiting"
-  ) {
-    return UNKNOWN;
+  if (serving.kind === "down" || serving.kind === "stopped") {
+    // A release tagged for production, or a deploy the platform runs on it.
+    const next = production.kind === "releasing" ? production.tag : input.building?.to;
+    return chipOf("prod", serving.kind, {
+      version: served,
+      next: next === served ? undefined : next,
+      waiting,
+    });
   }
+  if (production.kind === "checking" || serving.kind === "unknown") return UNKNOWN;
+  if (input.gitea.kind === "waiting") return untilGitea(input);
   if (production.kind === "releasing") {
     return chipOf("prod", "releasing", { version: served, next: production.tag });
   }
@@ -268,7 +302,6 @@ export function productionChip(input: {
   ) {
     return chipOf("prod", "failed", { version: served });
   }
-  const waiting = input.waiting > 0 ? input.waiting : undefined;
   if (served === undefined) return chipOf("prod", "empty", { waiting });
   if (waiting !== undefined) return chipOf("prod", "waiting", { version: served, waiting });
   return chipOf("prod", "ok", { version: served });
@@ -302,9 +335,8 @@ function stageChip(input: Parameters<typeof productionChip>[0]): ChipView {
   const serving = input.serving.stage;
   if (serving.kind === "down") return chipOf("stage", "down", { version });
   if (serving.kind === "stopped") return chipOf("stage", "stopped", { version });
-  if (stage.state === "checking" || serving.kind === "unknown" || input.gitea.kind === "waiting") {
-    return UNKNOWN;
-  }
+  if (stage.state === "checking" || serving.kind === "unknown") return UNKNOWN;
+  if (input.gitea.kind === "waiting") return untilGitea(input);
   switch (stage.state) {
     case "deploying":
       return chipOf("stage", "releasing", { version });
@@ -317,13 +349,16 @@ function stageChip(input: Parameters<typeof productionChip>[0]): ChipView {
   }
 }
 
-/** The chip a menu draws: the one read, or — while unknown — the one it remembers. */
+/**
+ * The chip a menu draws: the one read, or — while unknown — the one it
+ * remembers, else what the platform alone says.
+ */
 export function drawnChip(
   view: ChipView,
   remembered: ProductionChip | undefined,
 ): ProductionChip | undefined {
   if (view.kind === "chip") return view.chip;
-  return view.kind === "unknown" ? remembered : undefined;
+  return view.kind === "unknown" ? (remembered ?? view.partial) : undefined;
 }
 
 /**
@@ -356,6 +391,22 @@ const TIER_WORD: Record<ChipLabel, string> = { prod: "Production", stage: "Stage
 
 const plural = (count: number, one: string, many: string) =>
   `${String(count)} ${count === 1 ? one : many}`;
+
+/** What else is true of a stop down or stopped: a release on its way, else changes waiting. */
+function alongside(
+  chip: ProductionChip,
+): { readonly extra: string; readonly words: string } | undefined {
+  if (chip.next !== undefined) {
+    return { extra: `· releasing ${chip.next}`, words: `releasing ${chip.next}` };
+  }
+  if (chip.waiting !== undefined) {
+    return {
+      extra: `· ${String(chip.waiting)} waiting`,
+      words: `${plural(chip.waiting, "change", "changes")} waiting`,
+    };
+  }
+  return undefined;
+}
 
 export function chipFace(chip: ProductionChip): ChipFace {
   const tier = TIER_WORD[chip.label];
@@ -399,22 +450,17 @@ export function chipFace(chip: ProductionChip): ChipFace {
         words: named(chip.label === "prod" ? "the last release failed" : "the last deploy failed"),
       });
     case "down":
+    case "stopped": {
+      const also = alongside(chip);
+      const state = chip.state === "down" ? "down" : "stopped";
       return face({
-        tone: "red",
-        dot: "failed",
-        label: `${chip.label} down`,
+        ...(chip.state === "down" ? { tone: "red", dot: "failed" } : { dot: "hollow" }),
+        label: `${chip.label} ${state}`,
         version: undefined,
-        extra: undefined,
-        words: `${tier} is down`,
+        extra: also?.extra,
+        words: also === undefined ? `${tier} is ${state}` : `${tier} is ${state}, ${also.words}`,
       });
-    case "stopped":
-      return face({
-        dot: "hollow",
-        label: `${chip.label} stopped`,
-        version: undefined,
-        extra: undefined,
-        words: `${tier} is stopped`,
-      });
+    }
     case "creating":
       return face({
         dot: "spinner",
@@ -544,6 +590,20 @@ function stopWord(stop: GroupFlowStop, deployedAt: string | undefined, nowMs: nu
   }
 }
 
+/** "Release v0.1.57 failed 12 min ago: <the broker's words>." */
+function failureSentence(failure: ReleaseFailure, nowMs: number): string {
+  const ago = failure.at === undefined ? undefined : deployedAgo(failure.at, nowMs);
+  const verb = failure.kind === "refused" ? "was refused" : "failed";
+  const when = ago === undefined ? "" : ` ${ago}`;
+  const why = failure.error === undefined ? "" : `: ${failure.error.replace(/\.$/u, "")}`;
+  return `Release ${failure.tag} ${verb}${when}${why}.`;
+}
+
+/**
+ * What went wrong, in sentences — every one that is true: production down or
+ * stopped says as well that its last release failed, or that one is on its
+ * way.
+ */
 function troubleNote(input: {
   readonly chip: ProductionChip;
   readonly failure: ReleaseFailure | undefined;
@@ -551,24 +611,24 @@ function troubleNote(input: {
   readonly nowMs: number;
 }): string | undefined {
   const { chip, failure } = input;
-  if (chip.state === "down") {
-    const which = input.down.length === 0 ? "its services" : joined(input.down);
-    const last =
-      chip.label === "prod" && chip.version !== undefined
-        ? ` ${chip.version} was the last release.`
-        : "";
-    return `Down: ${which} failed on the platform.${last}`;
+  const production = chip.label === "prod";
+  const failed =
+    production && failure !== undefined ? failureSentence(failure, input.nowMs) : undefined;
+  const coming = chip.next === undefined ? undefined : `Releasing ${chip.next}.`;
+  if (chip.state === "down" || chip.state === "stopped") {
+    const down =
+      chip.state === "down"
+        ? `Down: ${input.down.length === 0 ? "its services" : joined(input.down)} failed on the platform.${
+            production && chip.version !== undefined ? ` ${chip.version} was the last release.` : ""
+          }`
+        : undefined;
+    const said = [down, failed, coming].filter((part) => part !== undefined);
+    return said.length === 0 ? undefined : said.join(" ");
   }
   if (chip.state !== "failed") return undefined;
   const serving =
     chip.version === undefined ? " Nothing is serving yet." : ` ${chip.version} is still serving.`;
-  if (chip.label === "stage") return `The last deploy failed.${serving}`;
-  if (failure === undefined) return `The last deploy failed.${serving}`;
-  const ago = failure.at === undefined ? undefined : deployedAgo(failure.at, input.nowMs);
-  const verb = failure.kind === "refused" ? "was refused" : "failed";
-  const when = ago === undefined ? "" : ` ${ago}`;
-  const why = failure.error === undefined ? "" : `: ${failure.error.replace(/\.$/u, "")}`;
-  return `Release ${failure.tag} ${verb}${when}${why}.${serving}`;
+  return failed === undefined ? `The last deploy failed.${serving}` : `${failed}${serving}`;
 }
 
 /** What the chip's menu says, per state (`SidebarProductionChip`'s menu). */
@@ -598,7 +658,7 @@ export function chipMenu(input: {
       tone: chip.state === "failed" ? "amber" : chip.state === "down" ? "red" : "muted",
     },
     note: troubleNote(input),
-    trouble: chip.state === "failed" || chip.state === "down",
+    trouble: fixProblemOf(input) !== undefined,
     stages: production
       ? input.stages.map(({ name, stop, deployedAt }) => ({
           name,
@@ -611,29 +671,54 @@ export function chipMenu(input: {
   };
 }
 
+/** How a release did not go through: "failed deploying app", "was refused". */
+function failedHow(failure: ReleaseFailure): string {
+  if (failure.kind === "refused") return "was refused";
+  return failure.service === undefined ? "failed" : `failed deploying ${failure.service}`;
+}
+
 /**
  * What "Ask <your Mate> to fix it" writes into the Mate's composer (S6):
  * what failed, when, the broker's words, and the ask — for a release that
- * did not go through and for production down. Nothing to fix otherwise.
+ * did not go through and for production down, both at once where both are
+ * true. Nothing to fix otherwise: a production stopped on purpose is fine.
  */
 export function fixProblemOf(input: {
   readonly chip: ProductionChip;
   readonly failure: ReleaseFailure | undefined;
   readonly down: ReadonlyArray<string>;
 }): FixProblem | undefined {
-  const { chip, failure } = input;
+  const { chip } = input;
   const tier = chip.label === "prod" ? "Production" : "The stage";
+  const failure = chip.label === "prod" ? input.failure : undefined;
   if (chip.state === "down") {
     const which = input.down.length === 0 ? "its services" : joined(input.down);
     const last =
       chip.label === "prod" && chip.version !== undefined
         ? `${chip.version} was the last release. `
         : "";
+    if (failure !== undefined) {
+      return {
+        what: `${tier} is down: ${which} failed on the platform, and its release ${failure.tag} ${failedHow(failure)}`,
+        at: failure.at,
+        error: failure.error,
+        ask: `${last}Find out why, bring it back, and release again.`,
+      };
+    }
     return {
       what: `${tier} is down: ${which} failed on the platform`,
       at: undefined,
       error: undefined,
       ask: `${last}Find out why and bring it back.`,
+    };
+  }
+  if (chip.state === "stopped") {
+    if (failure === undefined) return undefined;
+    return {
+      what: `Production's release ${failure.tag} ${failedHow(failure)}`,
+      at: failure.at,
+      error: failure.error,
+      ask: "Production is stopped. Find out why, fix it, and release again.",
     };
   }
   if (chip.state !== "failed") return undefined;
@@ -654,14 +739,8 @@ export function fixProblemOf(input: {
       ask: `${serving}Find out why, fix it, and release again.`,
     };
   }
-  const how =
-    failure.kind === "refused"
-      ? "was refused"
-      : failure.service === undefined
-        ? "failed"
-        : `failed deploying ${failure.service}`;
   return {
-    what: `Production's release ${failure.tag} ${how}`,
+    what: `Production's release ${failure.tag} ${failedHow(failure)}`,
     at: failure.at,
     error: failure.error,
     ask: `${serving}Find out why, fix it, and release again.`,

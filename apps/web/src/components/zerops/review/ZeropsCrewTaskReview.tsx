@@ -18,7 +18,7 @@ import type { ReviewTarget } from "~/zerops/review";
 
 import { crewBoardFace } from "../crew/CrewBoardPanel.logic";
 import { MateFace, StatusDot } from "../primitives";
-import { reviewKindLine } from "./ZeropsReview.logic";
+import { crewLandCommand, reviewKindLine } from "./ZeropsReview.logic";
 import { ReviewSection, ReviewSize, ZeropsReviewSurface } from "./ZeropsReviewSurface";
 
 const KIND = "crew-task" as const;
@@ -76,36 +76,47 @@ export function ZeropsCrewTaskReview({
   );
 }
 
+/** Where the review's own presses are placed, so their refusal reads back here. */
+const REVIEW_ORIGIN = "review";
+
 function CrewTaskData({
   environmentId,
   ...props
-}: Omit<CrewTaskReviewViewProps, "press" | "onLand" | "onAsk"> & {
+}: Omit<CrewTaskReviewViewProps, "press" | "pressedAt" | "onLand" | "onAsk"> & {
   readonly environmentId: EnvironmentId;
 }) {
   const crewCommand = useCrewCommand(environmentId);
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
+  // The task's state when Land was pressed: the engine answers before the snapshot moves.
+  const [pressedAt, setPressedAt] = useState<string | undefined>(undefined);
+  // A refusal's sentence is the engine's own, and shows once its answer has been read.
+  const refusal = crewCommand.errorAt(REVIEW_ORIGIN);
+  if (press.kind === "refused" && press.reason.length === 0 && refusal !== null) {
+    setPress({ kind: "refused", reason: refusal });
+  }
   const land = async () => {
+    setPressedAt(props.task.state);
     setPress({ kind: "running" });
-    const result = await crewCommand.send({
-      _tag: props.task.state === "ready" ? "land" : "landNow",
-      taskId: props.task.id,
-    });
-    setPress(
-      result === null ? { kind: "refused", reason: "The crew did not land it." } : { kind: "done" },
-    );
+    const result = await crewCommand.send(crewLandCommand(props.task), REVIEW_ORIGIN);
+    setPress(result === null ? { kind: "refused", reason: "" } : { kind: "done" });
   };
   return (
     <CrewTaskReviewView
       {...props}
       onAsk={(command) => {
-        void crewCommand.send(command).then((result) => {
+        void crewCommand.send(command, REVIEW_ORIGIN).then((result) => {
           if (result !== null) props.onClose();
         });
       }}
       onLand={() => {
         void land();
       }}
-      press={press}
+      press={
+        press.kind === "refused" && press.reason.length === 0
+          ? { kind: "refused", reason: "The crew did not land it." }
+          : press
+      }
+      pressedAt={pressedAt}
     />
   );
 }
@@ -123,6 +134,8 @@ export interface CrewTaskReviewViewProps {
   /** Its copy's branch, `crew/<handle>`. */
   readonly branch: string | undefined;
   readonly press: ReviewPress;
+  /** The task's state when Land was pressed. */
+  readonly pressedAt?: string | undefined;
   readonly titleId?: string | undefined;
   readonly onLand: () => void;
   /** Hands the conflict or the failed check back to the crewmate. */
@@ -140,7 +153,9 @@ export function CrewTaskReviewView(props: CrewTaskReviewViewProps) {
     conflicts: props.conflicts,
     waitingOn: task.waitingOn,
     landedCommit: task.landedCommit,
+    reason: task.reason,
     press,
+    pressedAt: props.pressedAt,
   });
   const fix = model.verdict.fix;
   const ask: CrewCommand | undefined =

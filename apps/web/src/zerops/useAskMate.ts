@@ -3,17 +3,21 @@
  *
  * Every change to a project goes through the agent's own tools, so a surface
  * that finds work to be done hands it over rather than doing it itself: it
- * opens the Mate's conversation with the request written, and sends it.
+ * opens the Mate's conversation with the request written, and sends it — or
+ * leaves it there for the person to finish.
  *
- * It used to stop at composing and wait for a keystroke (spec §5.4). Every
- * caller now asks first — a confirm naming the Mate and quoting the request,
- * the same shape *Release* and *Merge* ask in — so the decision has already
- * been made by the time this runs, and a second press would be asking twice
- * (the owner, 2026-09-19: "it should open dialog which would then not only put
- * the text into an agent, but actually send it").
+ * Sent where the person has already decided: the caller asked first (a change
+ * page's Ask, a crew's delivery), or the request follows a press whose next
+ * step is the Mate's (words said on a change, ports just opened). A second
+ * press would be asking twice (the owner, 2026-09-19: "not only put the text
+ * into an agent, but actually send it").
  *
- * The left menu grew this first and kept it to itself; a change's own page
- * needs the same seam, so it lives here and both call it.
+ * Left unsent (`send: false`) where the person still writes: a review's "Ask
+ * Nova to fix it" and "Ask Nova for changes" put the request in the composer,
+ * after whatever the person had typed there, never over it (`askedDraft`).
+ *
+ * One seam for every surface that hands work over — a change's page, the
+ * crew, the review — so each asks the same way.
  *
  * No Mate we can reach, or no conversation started yet: the projects screen
  * owns connecting and starting one, exactly as selecting the row does.
@@ -36,14 +40,27 @@ import { useZeropsCandidates } from "./useZeropsCandidates";
 /**
  * Writes `ask` into the Mate's composer and goes there: its main chat, or the
  * person chat `options.threadId` names (*Deliver* asks in the chat you are in).
- * Sent at once, unless `options.send` is false: then it waits in the composer
- * for the person to read and send ("Ask <your Mate> to fix it").
+ * Sent at once, unless `options.send` is false: then it waits in the composer,
+ * after anything the person had typed, for them to read and send ("Ask <your
+ * Mate> to fix it").
  */
 export type AskMate = (
   mateProjectId: string | undefined,
   ask: string,
   options?: { readonly threadId?: string | undefined; readonly send?: boolean | undefined },
 ) => void;
+
+/**
+ * What the composer holds once a request is left in it unsent: the request alone in an empty box;
+ * after what the person had typed, a blank line apart, where they go on writing. Their words are
+ * never replaced, and the same request asked again is not written twice.
+ */
+export function askedDraft(draft: string | undefined, ask: string): string {
+  const kept = draft?.trimEnd() ?? "";
+  if (kept.length === 0) return ask;
+  if (kept.endsWith(ask.trimEnd())) return draft ?? ask;
+  return `${kept}\n\n${ask}`;
+}
 
 /**
  * The chat an ask goes to among a Mate's threads: the one named when it is a
@@ -107,12 +124,13 @@ export function useAskMate(
         return;
       }
       const threadRef = scopeThreadRef(target.environmentId, chat.id);
-      // Sent, not left in the box: every caller that sends confirms first, so
-      // the person has already read the exact request and pressed Send (spec
-      // §5.4 retired for these surfaces by the owner, 2026-09-19). A fix
-      // request is written, not sent: the composer is where it is read.
-      if (options?.send === false) useComposerDraftStore.getState().setPrompt(threadRef, ask);
-      else useComposerDraftStore.getState().requestSend(threadRef, ask);
+      // Sent where the person already decided (spec §5.4 retired for those
+      // surfaces by the owner, 2026-09-19); a request left to be read joins
+      // what they had typed.
+      const drafts = useComposerDraftStore.getState();
+      if (options?.send === false) {
+        drafts.setPrompt(threadRef, askedDraft(drafts.getComposerDraft(threadRef)?.prompt, ask));
+      } else drafts.requestSend(threadRef, ask);
       onNavigate?.();
       void router.navigate({
         to: "/$environmentId/$threadId",
