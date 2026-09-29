@@ -39,7 +39,7 @@ import { formatWorkDuration, isGitPushOnly, type IncidentModel } from "./convers
 import { StatusBar, type BarTone } from "./ConversationPills";
 import type { DockBackgroundTask, DockModel } from "./conversationDock.logic";
 import { ElapsedSince, type ConversationSpeaker } from "./ConversationRows";
-import { OperationDetail, PlanSteps, TIME_COLUMN } from "./RunChat";
+import { OperationDetail, PlanSteps } from "./RunChat";
 
 // ---------------------------------------------------------------------------
 // Arriving live
@@ -103,11 +103,11 @@ const TONE_DOT: Record<ServiceStatusToneId, string> = {
 };
 
 /**
- * One status bar: its name, the bar, where it is now in words, and a figure
- * in the card's time column — a time, a count. No mark at rest: its name says
- * what it is ("no unnecessary icons, make the use obvious from the
- * component"). Given `onToggle`, it opens its detail under it, and a chevron
- * says so on hover and while it is open.
+ * One status bar, in the card's grid (K1): its name one column in, the bar,
+ * where it is now in words, and a figure on the card's right edge — a time, a
+ * count. No mark at rest: its name says what it is ("no unnecessary icons,
+ * make the use obvious from the component"). Given `onToggle`, it opens its
+ * detail under it, and a chevron after its figure says so, as a call's does.
  */
 function Instrument({
   subject,
@@ -130,31 +130,35 @@ function Instrument({
 }) {
   const body = (
     <>
-      <span className="w-24 shrink-0 truncate text-start font-medium text-foreground">
-        {subject}
+      <span aria-hidden="true" />
+      <span className="flex min-w-0 items-center gap-3">
+        <span className="w-24 shrink-0 truncate text-start font-medium text-foreground">
+          {subject}
+        </span>
+        <StatusBar className="w-14 shrink-0 @md/panel:w-28" segments={bar} />
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate text-start",
+            failed ? "text-status-failed-text" : "text-muted-foreground",
+          )}
+        >
+          {words}
+        </span>
       </span>
-      <StatusBar className="w-14 shrink-0 @md/panel:w-28" segments={bar} />
-      <span
-        className={cn(
-          "min-w-0 flex-1 truncate text-start",
-          failed ? "text-status-failed-text" : "text-muted-foreground",
+      <span className="flex items-center gap-1.5 text-muted-foreground tabular-nums">
+        {figure}
+        {onToggle === null ? null : (
+          <ChevronDownIcon
+            aria-hidden="true"
+            className="size-3.5 shrink-0 text-muted-foreground/55 transition-[color,rotate] duration-150 group-hover/bar:text-foreground group-aria-expanded/bar:rotate-180"
+          />
         )}
-      >
-        {words}
       </span>
-      {onToggle === null ? null : (
-        <ChevronDownIcon
-          aria-hidden="true"
-          className="size-3 shrink-0 text-muted-foreground/70 opacity-0 transition-[opacity,rotate] duration-150 group-hover/bar:opacity-100 group-aria-expanded/bar:rotate-180 group-aria-expanded/bar:opacity-100"
-        />
-      )}
-      <span className={TIME_COLUMN}>{figure}</span>
     </>
   );
-  const className = "flex h-8 w-full min-w-0 items-center gap-3 text-line";
   if (onToggle === null) {
     return (
-      <div aria-label={label} className={className} role="group">
+      <div aria-label={label} className="run-bar" role="group">
         {body}
       </div>
     );
@@ -163,10 +167,7 @@ function Instrument({
     <button
       aria-expanded={open}
       aria-label={label}
-      className={cn(
-        className,
-        "group/bar -mx-1.5 w-[calc(100%+0.75rem)] cursor-pointer rounded-md px-1.5 transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset",
-      )}
+      className="run-bar group/bar"
       data-scroll-anchor-ignore
       onClick={onToggle}
       type="button"
@@ -181,7 +182,7 @@ function InstrumentDetail({ children }: { readonly children: ReactNode }) {
   return (
     <div className="grid animate-room-open motion-reduce:animate-none" data-working-detail>
       <div className="min-h-0 overflow-hidden">
-        <div className="pt-1 pb-3">{children}</div>
+        <div className="ps-9 pe-3.5 pt-1 pb-3">{children}</div>
       </div>
     </div>
   );
@@ -372,13 +373,15 @@ function DetailRow({
   readonly time: ReactNode;
 }) {
   return (
-    <li className="flex min-h-8 min-w-0 items-center gap-2.5 text-line">
-      <span className="flex w-5 shrink-0 justify-center">
+    <li className="run-bar">
+      <span className="flex justify-center">
         <span className={cn("size-1.5 rounded-full", TONE_DOT[tone])} />
       </span>
-      <span className="min-w-0 flex-1 truncate text-foreground">{title}</span>
-      <span className="shrink-0 text-muted-foreground text-xs">{word}</span>
-      <span className={TIME_COLUMN}>{time}</span>
+      <span className="flex min-w-0 items-baseline gap-2">
+        <span className="min-w-0 truncate text-foreground">{title}</span>
+        <span className="shrink-0 text-muted-foreground">{word}</span>
+      </span>
+      <span className="text-muted-foreground tabular-nums">{time}</span>
     </li>
   );
 }
@@ -439,7 +442,7 @@ function Instruments({
           .filter(Boolean)
           .join(" · ");
   return (
-    <ul className="-mx-4 grid border-border/60 border-t px-4 pt-1.5" data-working-instruments>
+    <ul className="run-band grid" data-working-instruments>
       {operations.map((operation) => (
         <Arriving key={operation.key}>
           <DeployInstrument
@@ -523,7 +526,7 @@ function Instruments({
                 ))}
               </ul>
               <button
-                className="mt-2 cursor-pointer text-info-foreground text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+                className="mt-2 ms-9 cursor-pointer text-info-foreground text-line hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
                 onClick={onOpenAgents}
                 type="button"
               >
@@ -658,13 +661,15 @@ export function ConversationAfterWork({
   return (
     <section
       aria-label={`${speaker.name} at work in the background`}
-      className="@container/panel animate-panel-in rounded-3xl border border-border/70 bg-card px-4 pb-2 text-card-foreground motion-reduce:animate-none"
+      className="run-tray run-tray-whole @container/panel animate-panel-in text-card-foreground motion-reduce:animate-none"
       data-conversation-after-work={state}
     >
-      <div className="flex min-h-12 min-w-0 items-center gap-2.5 py-2">
+      <div className="run-now">
         <MateFace size="md" state="working" tint={speaker.tint} />
-        <span className="min-w-0 flex-1 truncate text-line text-foreground">
-          {watching ? "Watching in the background" : "Still working in the background"}
+        <span className="run-now-words run-now-head">
+          <span className="run-now-verb">
+            {watching ? "Watching in the background" : "Still working in the background"}
+          </span>
         </span>
         <Button disabled={stopping} onClick={onStop} size="xs" variant="ghost">
           {stopping ? "Stopping…" : "Stop"}

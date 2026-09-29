@@ -112,6 +112,8 @@ const said = (item: RecordItem): string => {
       return `~ ${thoughtPreview(item.messages)}`;
     case "note":
       return item.message.text;
+    case "question":
+      return `? ${item.questions.join(" / ")}`;
     case "person":
       return `> ${item.words ?? item.message?.text ?? ""}`;
     case "operation":
@@ -149,9 +151,7 @@ const lines = (list: MessagesTimelineRow[]) => {
         ? row.items.map(said)
         : row.kind === "message" && row.message.role === "user"
           ? [`> ${row.imageOnly ? "" : row.message.text}`]
-          : row.kind === "answer"
-            ? [`> ${row.pairs.map((pair) => pair.answer).join(" · ")}`]
-            : [],
+          : [],
     );
 };
 
@@ -558,9 +558,9 @@ describe("deriveMessagesTimelineRows", () => {
     });
   });
 
-  // Answered, the person's answer stands on the page above the card, and the
-  // chat marks where it reached the Mate and goes on from there.
-  it("keeps the card whole under the person's answer, its chat marking where it arrived", () => {
+  // The question stands in the run's card as the Mate asked it, and the
+  // person's answer under it (K14); the card only grows at its end.
+  it("keeps the question and the person's answer in the run's card, where they happened", () => {
     const before = [user("m0", 0), assistant("a1", "t1", 1, "One question first."), asked("q1", 2)];
     const waiting = framed({ entries: before, live: "t1" });
     const after = framed({
@@ -572,20 +572,26 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       live: "t1",
     });
-    expect(shape(after).slice(-4)).toEqual([
-      "answer:answer:rs",
+    expect(shape(after).slice(-3)).toEqual([
       "record:record:msg:m0",
       "working:working:msg:m0",
       "card-end:card-end:msg:m0",
     ]);
-    expect(lines(after)).toEqual(["One question first.", "> Green", "Green it is.", "· pnpm test"]);
-    // Everything above the live card is drawn as it was: the answer lands
-    // above the card, and the card moves down with it.
+    // Asked, it waits in the card; answered, the answer stands under it.
+    expect(lines(waiting)).toEqual(["One question first.", "? Which accent colour do you prefer?"]);
+    expect(lines(after)).toEqual([
+      "One question first.",
+      "? Which accent colour do you prefer?",
+      "> Green",
+      "Green it is.",
+      "· pnpm test",
+    ]);
+    // Everything above the live card is drawn as it was.
     const cardAt = liveCardAt(waiting);
-    expect(frame(after).slice(0, cardAt)).toEqual(frame(waiting).slice(0, cardAt));
+    expect(frame(after).slice(0, cardAt + 1)).toEqual(frame(waiting).slice(0, cardAt + 1));
   });
 
-  it("sets no earlier words between a question's answer and the person's next message", () => {
+  it("keeps the person's next message above the card, the answer in it", () => {
     const list = rows({
       entries: [
         user("m0", 0),
@@ -597,8 +603,14 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       live: "t1",
     });
-    const answerAt = list.findIndex((row) => row.id === "answer:rs");
-    expect(shape(list).slice(answerAt, answerAt + 2)).toEqual(["answer:answer:rs", "message:m1"]);
+    expect(list.some((row) => row.id === "answer:rs")).toBe(false);
+    expect(lines(list)).toEqual([
+      "One question first.",
+      "? Which accent colour do you prefer?",
+      "> Green",
+      "> and make it bold",
+      "· pnpm test",
+    ]);
   });
 
   it("draws a run a finished background task woke, before its first words", () => {
@@ -1133,9 +1145,35 @@ describe("deriveMessagesTimelineRows", () => {
     expect(lines(settled)).toEqual(drawn);
   });
 
+  // Several calls at once are all the now line's (K10): "Running 3 commands",
+  // one line each under it — none of them left out until it returns.
+  it("carries every call it runs at once to the now line, oldest first", () => {
+    const running = (id: string, minute: number, command: string) =>
+      tool(id, "t1", minute, {
+        command,
+        toolLifecycleStatus: "inProgress",
+        sourceActivityKind: "tool.started",
+      });
+    const live = rows({
+      entries: [
+        user("m0", 0),
+        running("w1", 1, "pnpm build"),
+        running("w2", 1, "pnpm test"),
+        running("w3", 2, "pnpm lint"),
+      ],
+      live: "t1",
+    });
+    const now = recordOf(live)?.now;
+    expect(now?.kind).toBe("step");
+    if (now?.kind !== "step") return;
+    expect(now.step.code).toBe("pnpm lint");
+    expect(now.others?.map((step) => step.code)).toEqual(["pnpm build", "pnpm test"]);
+    expect(recordOf(live)?.items).toEqual([]);
+  });
+
   // A page checked on a desktop and then a phone is one row of takes; a check
   // after other work starts a row of its own, so no row above the newest
-  // grows. The one being taken is in its row already, never a line of its own.
+  // grows. The one being taken is the now line's until it ends (K10).
   it("gathers checks one after another into one row, and starts another after other work", () => {
     const entries = [
       user("m0", 0),
@@ -1153,12 +1191,20 @@ describe("deriveMessagesTimelineRows", () => {
       }),
     ];
     const live = rows({ entries, live: "t1" });
-    expect(lines(live)).toEqual(["strip op:b1 op:b2", "· pnpm test", "strip op:b3"]);
-    expect(recordOf(live)?.items.map((item) => item.key)).toEqual([
-      "operation:op:b1",
-      "step:w1",
-      "operation:op:b3",
-    ]);
+    expect(lines(live)).toEqual(["strip op:b1 op:b2", "· pnpm test"]);
+    expect(recordOf(live)?.items.map((item) => item.key)).toEqual(["operation:op:b1", "step:w1"]);
+    const now = recordOf(live)?.now;
+    expect(now?.kind === "operation" ? now.operation.key : null).toBe("op:b3");
+    // Once taken, it lands at the record's end, after what came before it.
+    const taken = rows({
+      entries: entries.map((entry) =>
+        entry.kind === "operation" && entry.operation.key === "op:b3"
+          ? operation("b3", "t1", 4, { kind: "browser", subject: "https://shop.dev/cart" })
+          : entry,
+      ),
+      live: "t1",
+    });
+    expect(lines(taken)).toEqual(["strip op:b1 op:b2", "· pnpm test", "strip op:b3"]);
   });
 
   it("records a settled run: thinking, notes in full, each call a step", () => {
@@ -1373,7 +1419,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(statusOf(list)).toMatchObject({ face: "produced" });
   });
 
-  it("draws the person's answer to the Mate's question as their own words on the page", () => {
+  it("draws the Mate's question and the person's answer in the card, in their own hands", () => {
     const list = rows({
       entries: [
         user("m0", 0),
@@ -1395,19 +1441,13 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       settled: "t1",
     });
-    expect(list.filter((row) => row.kind === "answer")).toEqual([
-      expect.objectContaining({
-        id: "answer:rs",
-        pairs: [{ key: "accent", question: "Which accent colour?", answer: "Green" }],
-      }),
-    ]);
     // The request and the submission are no rows of their own.
-    expect(shape(list).filter((id) => id.includes(":rq") || id === "work:rs")).toEqual([]);
-    // Asked before it did anything, the question and answer stand before the card.
-    expect(shape(list).indexOf("answer:answer:rs")).toBeLessThan(
-      shape(list).indexOf("record:record:msg:m0"),
-    );
-    expect(lines(list)).toEqual(["> Green", "· pnpm test"]);
+    expect(shape(list).filter((id) => id.includes(":rq") || id.includes(":rs"))).toEqual([]);
+    expect(recordOf(list)?.items.slice(0, 2)).toEqual([
+      expect.objectContaining({ kind: "question", questions: ["Which accent colour?"] }),
+      expect.objectContaining({ kind: "person", words: "Green" }),
+    ]);
+    expect(lines(list)).toEqual(["? Which accent colour?", "> Green", "· pnpm test"]);
   });
 
   it("says a pick the Mate recommended in the person's words, without its mark", () => {
@@ -1421,9 +1461,7 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       settled: "t1",
     });
-    const answer = list.find((row) => row.kind === "answer");
-    expect(answer?.kind === "answer" ? answer.pairs[0]?.answer : null).toBe("Use the green accent");
-    expect(lines(list)?.[0]).toBe("> Use the green accent");
+    expect(lines(list)?.[1]).toBe("> Use the green accent");
   });
 
   it("draws a settled stretch's browser checks in the record, where they happened", () => {
@@ -1937,7 +1975,7 @@ describe("deriveMessagesTimelineRows", () => {
   // An answer to the Mate's question is marked where it reached the Mate, as
   // a message sent into the run is: the thinking it split stood as two lines
   // side by side with nothing between them (Nova, 2026-09-27).
-  it("marks where the person's answer reached the Mate in its record", () => {
+  it("keeps the question and where the person's answer reached the Mate in its record", () => {
     const list = rows({
       entries: [
         user("m0", 0),
@@ -1952,6 +1990,7 @@ describe("deriveMessagesTimelineRows", () => {
     });
     expect(lines(list)).toEqual([
       "~ thinking about it",
+      "? Which accent colour do you prefer?",
       "> Teal",
       "~ thinking about it",
       "· pnpm test",
@@ -2436,7 +2475,6 @@ describe("rowGap: a turn is one group, 24 px inside and 64 px between turns", ()
   const as = (row: object) => row as unknown as MessagesTimelineRow;
   const person = as({ kind: "message", message: { role: "user" } });
   const mate = as({ kind: "message", message: { role: "assistant" } });
-  const answer = as({ kind: "answer" });
   const queued = as({ kind: "queued-message" });
   const record = as({ kind: "record" });
   const workLine = as({ kind: "work-line" });
@@ -2454,7 +2492,6 @@ describe("rowGap: a turn is one group, 24 px inside and 64 px between turns", ()
     // A turn's parts: the person's words, the card of the work, the answer.
     ["the card under the person's words", person, record, "part"],
     ["a run's line under the person's words", person, workLine, "part"],
-    ["the card under an answered question", answer, record, "part"],
     ["the card under what woke the Mate", woke, record, "part"],
     ["the card under the person's command", command, record, "part"],
     ["a crewmate's card under its task", crewCard, record, "part"],
@@ -2463,7 +2500,6 @@ describe("rowGap: a turn is one group, 24 px inside and 64 px between turns", ()
     ["the answer under a card of chat alone", record, mate, "part-words"],
     ["the answer straight under the person's words", person, mate, "part-words"],
     ["a message waiting for the card at work", working, queued, "part"],
-    ["the person's answer in a run nobody typed", woke, answer, "part"],
     // A new turn.
     ["the person's words after the Mate's answer", mate, person, "turn-after-words"],
     ["the person's words after a card with no answer", outcome, person, "turn"],
@@ -2472,7 +2508,6 @@ describe("rowGap: a turn is one group, 24 px inside and 64 px between turns", ()
     ["a run nobody typed after the answer", mate, record, "turn-after-words"],
     ["a run nobody typed after a card", outcome, record, "turn"],
     ["what woke the Mate after the answer", mate, woke, "turn-after-words"],
-    ["a question after the Mate's words", mate, answer, "turn-after-words"],
     ["a crewmate's next task after its answer", mate, crewCard, "turn-after-words"],
     // A seam opens the turn under it.
     ["a seam after the answer", mate, seam, "turn-after-words"],
@@ -2483,7 +2518,6 @@ describe("rowGap: a turn is one group, 24 px inside and 64 px between turns", ()
     // Close, by kind.
     ["the first row", undefined, person, "none"],
     ["two messages of the person's", person, person, "tight"],
-    ["the Mate's question under the person's words", person, answer, "block"],
     ["what runs alongside under the record", record, working, "tight"],
     ["the result under the record", record, outcome, "tight"],
     ["the result under what ran alongside", working, outcome, "line"],
