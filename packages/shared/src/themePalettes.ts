@@ -130,7 +130,7 @@ export const ZEROPS_THEME: ThemeDefinition = {
     updateSurface: "oklch(0.959725 0.027239 191.09)", // 12.9% #00ccbb over #ffffff surface.
     accentSurface: "oklch(0.962441 0.004188 236.498)",
     accentSurfaceForeground: "oklch(0.217787 0 0)",
-    messageSurface: "oklch(0.957835 0.023324 235.969)",
+    messageSurface: "oklch(0.918 0.006 255.5)", // Neutral, one step darker than the canvas.
     messageForeground: "oklch(0.217787 0 0)",
     messageAction: "oklch(0.560114 0.15773 249.804)",
     messageActionForeground: "oklch(1 0 0)",
@@ -190,7 +190,7 @@ export const ZEROPS_THEME: ThemeDefinition = {
       updateSurface: "oklch(0.304264 0.043442 180.881)", // 14% #00e5c0 over #141918 surface.
       accentSurface: "oklch(0.280612 0.011784 178.616)",
       accentSurfaceForeground: "oklch(0.944756 0.005952 170.443)",
-      messageSurface: "oklch(0.293094 0.031993 243.676)", // 15% #58a6ff over #141918 surface.
+      messageSurface: "oklch(0.26 0.009 178)", // Neutral, one step lighter than the canvas.
       messageForeground: "oklch(0.944756 0.005952 170.443)",
       messageAction: "oklch(0.560114 0.15773 249.804)",
       messageActionForeground: "oklch(1 0 0)",
