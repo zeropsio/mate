@@ -4207,8 +4207,10 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 
 /* C4: the one control's menu — the models, and beside them the model's
    effort, its other choices and the access. Both columns share one height,
-   tall enough for a Claude model's six efforts, two context windows and the
-   four accesses without a scroll; a narrow screen stacks them. */
+   capped by the room above the composer; the choices scroll on their own
+   when a model has more of them (Opus 5.5's seven efforts, two context
+   windows and fast mode with the four accesses run 642px in the 448px menu);
+   a narrow screen stacks them. */
 .composer-model-menu {
   display: flex;
   height: min(28rem, var(--available-height, 100vh));
