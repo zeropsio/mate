@@ -14,10 +14,11 @@
  * `ChangeReviewView` is the picture with every read handed in, so the harness shows each state.
  */
 import {
-  branchLabel,
   changeAskPrompt,
+  changeAuthorName,
   changeRemarks,
   changeReview,
+  historyAge,
   releaseContentsCommits,
   type ChangeRemark,
   type FlowPullRequest,
@@ -27,7 +28,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { useRouter } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { giteaSessionLogin } from "~/zerops/accountGiteaSessions";
@@ -83,18 +84,37 @@ const RUN_WORDS_WAIT_MS = 3_000;
 type ChangeTarget = Extract<ReviewTarget, { readonly kind: "change" }>;
 
 export function ZeropsChangeReview({
+  frame = "dialog",
   target,
   titleId,
   onClose,
   onReplace,
 }: {
+  /** In a dialog over the conversation, or as the change's own page. */
+  readonly frame?: ReviewFrame;
   readonly target: ChangeTarget;
   readonly titleId: string;
   readonly onClose: () => void;
   /** Opens another review in this one's place — the release, once this merged. */
   readonly onReplace: (target: ReviewTarget) => void;
 }) {
+  const router = useRouter();
   const flowValue = useZeropsProjectFlowOptional();
+  // The dialog's way to the same review at the change's own address.
+  const onOpenPage =
+    frame === "page"
+      ? undefined
+      : () => {
+          onClose();
+          void router.navigate({
+            to: "/change/$groupId/$repository/$number",
+            params: {
+              groupId: target.groupId,
+              repository: target.repository,
+              number: String(target.number),
+            },
+          });
+        };
   const flow = flowValue?.flows.get(target.groupId);
   const matches = (pull: FlowPullRequest) =>
     pull.repository === target.repository && pull.number === target.number;
@@ -122,9 +142,11 @@ export function ZeropsChangeReview({
     return (
       <ZeropsReviewSurface
         consequence="Nothing is merged from here until the change is read."
+        frame={frame}
         kind={KIND}
         kindLabel={reviewKindLine(KIND)}
         onClose={onClose}
+        onOpenPage={onOpenPage}
         title={`#${String(target.number)}`}
         titleId={titleId}
         verdict={{
@@ -149,6 +171,8 @@ export function ZeropsChangeReview({
     <ChangeReviewData
       flow={flow}
       flowValue={flowValue}
+      frame={frame}
+      onOpenPage={onOpenPage}
       onClose={onClose}
       onReplace={onReplace}
       pull={pull}
@@ -161,6 +185,8 @@ export function ZeropsChangeReview({
 function ChangeReviewData({
   flow,
   flowValue,
+  frame,
+  onOpenPage,
   pull,
   target,
   titleId,
@@ -170,6 +196,8 @@ function ChangeReviewData({
   readonly flow: ZeropsProjectFlow;
   /** The account's flow, which holds this one. */
   readonly flowValue: ZeropsProjectFlowValue;
+  readonly frame: ReviewFrame;
+  readonly onOpenPage: (() => void) | undefined;
   readonly pull: FlowPullRequest;
   readonly target: ChangeTarget;
   readonly titleId: string;
@@ -255,7 +283,9 @@ function ChangeReviewData({
         production: flow.environmentInputs.some((entry) => entry.tier === "production"),
         stage: flow.environmentInputs.some((entry) => entry.tier === "stage"),
       }}
+      frame={frame}
       giteaOrigin={flowValue.giteaOrigin}
+      onOpenPage={onOpenPage}
       live={flow.releases.find((entry) => entry.standing === "live")?.tag}
       mate={
         mate === undefined
@@ -369,6 +399,8 @@ export interface ChangeReviewViewProps {
   readonly onRetry?: (() => void) | undefined;
   readonly onOpenRun: (() => void) | undefined;
   readonly onReviewRelease: () => void;
+  /** The dialog's way to this review as the change's own page. */
+  readonly onOpenPage?: (() => void) | undefined;
   readonly onClose: () => void;
 }
 
@@ -423,8 +455,6 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     return { kind: "reading" };
   };
   const checkRows = pull.checkRows ?? [];
-  const branch =
-    pull.headBranch === undefined ? undefined : branchLabel(pull.headBranch, mate?.name);
   const mine = mate?.mine === true ? mate : undefined;
   const fix = model.verdict.fix;
   const next = model.primary?.label === "Review release";
@@ -434,6 +464,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     <ZeropsReviewSurface
       consequence={model.consequence}
       dismiss={over ? "Close" : undefined}
+      frame={props.frame}
       fix={
         fix === undefined || mine === undefined
           ? undefined
@@ -447,41 +478,16 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       kind={KIND}
       kindLabel={reviewKindLine(KIND, pull.kind)}
       meta={
-        <>
-          <span>#{pull.number}</span>
-          {mate === undefined ? (
-            pull.author === undefined ? null : (
-              <>
-                <span aria-hidden="true">·</span>
-                <span>{pull.author}</span>
-              </>
-            )
-          ) : (
-            <>
-              <span aria-hidden="true">·</span>
-              <span className="inline-flex items-center gap-1.5">
-                {mate.tint === undefined ? null : (
-                  <MateFace className="size-4" size="dot" state="idle" tint={mate.tint} />
-                )}
-                {mate.name}
-              </span>
-            </>
-          )}
-          {size === undefined ? null : (
-            <>
-              <span aria-hidden="true">·</span>
-              <span>{size.files}</span>
-              <ReviewSize additions={size.additions} deletions={size.deletions} />
-            </>
-          )}
-          {branch === undefined ? null : (
-            <>
-              <span aria-hidden="true">·</span>
-              <span>from {branch === pull.headBranch ? <code>{branch}</code> : branch}</span>
-            </>
-          )}
-        </>
+        <ChangeMeta
+          age={historyAge(pull.updatedAt, props.now)}
+          base={pull.baseBranch}
+          face={mate?.tint}
+          number={pull.number}
+          repository={pull.repository}
+          who={changeAuthorName(pull, mate?.name)}
+        />
       }
+      onOpenPage={props.onOpenPage}
       onClose={props.onClose}
       primary={
         model.primary === undefined
@@ -549,5 +555,53 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       />
       <ReviewCommits commits={readout.commits} now={props.now} onRetry={props.onRetry} />
     </ZeropsReviewSurface>
+  );
+}
+
+/**
+ * The one line under a change's title: whose it is, where it goes, which it is and when it last
+ * moved — `(face) Nova · appdev → main · #2 · 1d`. Its size is the Changes heading's.
+ */
+function ChangeMeta({
+  who,
+  face,
+  repository,
+  base,
+  number,
+  age,
+}: {
+  readonly who: string | undefined;
+  readonly face: MateTintId | undefined;
+  readonly repository: string;
+  readonly base: string;
+  readonly number: number;
+  readonly age: string | undefined;
+}) {
+  const parts: Array<{ readonly key: string; readonly node: ReactNode }> = [];
+  if (who !== undefined) {
+    parts.push({
+      key: "who",
+      node: (
+        <span className="rv-meta-who">
+          {face === undefined ? null : (
+            <MateFace className="size-4" size="dot" state="idle" tint={face} />
+          )}
+          {who}
+        </span>
+      ),
+    });
+  }
+  parts.push({ key: "where", node: <span>{`${repository} → ${base}`}</span> });
+  parts.push({ key: "number", node: <span>#{number}</span> });
+  if (age !== undefined) parts.push({ key: "age", node: <span>{age}</span> });
+  return (
+    <>
+      {parts.map((part, index) => (
+        <Fragment key={part.key}>
+          {index === 0 ? null : <span aria-hidden="true">·</span>}
+          {part.node}
+        </Fragment>
+      ))}
+    </>
   );
 }

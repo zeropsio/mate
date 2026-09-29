@@ -24,6 +24,12 @@ import {
   RollbackReviewView,
 } from "~/components/zerops/review/ZeropsReleaseReview";
 import { ZeropsReviewDialog } from "~/components/zerops/review/ZeropsReviewDialog";
+import { ZeropsHostedFrame } from "~/components/zerops/landing/ZeropsHostedFrame";
+import {
+  WorkspaceBreadcrumb,
+  WorkspaceBreadcrumbItem,
+  WorkspaceBreadcrumbSeparator,
+} from "~/components/WorkspaceBreadcrumb";
 import type {
   ZeropsChangeComments,
   ZeropsChangeCommentsState,
@@ -348,6 +354,7 @@ function Change({
       now={NOW}
       onAsk={async () => {}}
       onClose={noop}
+      onOpenPage={frame === "page" ? undefined : noop}
       onRetry={noop}
       remarks={remarksOf(conversation)}
       onFix={noop}
@@ -472,11 +479,83 @@ function Crew({
   );
 }
 
+/**
+ * A change whose reads land `after` ms after it opens — its files, commits, comments and its
+ * description's pictures — so the first frame can be set against the settled one.
+ */
+function Settling({
+  frame,
+  after,
+}: {
+  readonly frame: ChangeReviewViewProps["frame"];
+  readonly after: number;
+}) {
+  const [read, setRead] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setRead(true);
+    }, after);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [after]);
+  return (
+    <Change
+      conversation={read ? TALKING : comments({ kind: "reading" })}
+      frame={frame}
+      over={{ description: harnessDescription({ after }), commentCount: TALK.length }}
+      readout={read ? { commits: { kind: "read", value: commits(19) } } : ALL_READING}
+    />
+  );
+}
+
+/** How long a settling review's reads take, as a slow Gitea answers. */
+const SETTLE_MS = 1_500;
+
 export const REVIEW_STATES: ReadonlyArray<{
   readonly id: string;
   readonly label: string;
   readonly node: ReactNode;
+  /** Drawn as the change's page rather than on the dialog's stage. */
+  readonly page?: true;
 }> = [
+  {
+    id: "page",
+    label: "The change's page",
+    page: true,
+    node: (
+      <Change
+        frame="page"
+        over={{ description: harnessDescription({ after: 0 }) }}
+        readout={{ commits: { kind: "read", value: commits(19) } }}
+      />
+    ),
+  },
+  {
+    id: "page-settle",
+    label: "The change's page, its reads landing after 1.5 s",
+    page: true,
+    node: <Settling after={SETTLE_MS} frame="page" />,
+  },
+  {
+    id: "page-reading",
+    label: "The change's page, everything Gitea answers still being read",
+    page: true,
+    node: (
+      <Change
+        conversation={comments({ kind: "reading" })}
+        frame="page"
+        over={{ commentCount: 2 }}
+        readout={ALL_READING}
+        run={{ words: undefined, reading: true }}
+      />
+    ),
+  },
+  {
+    id: "settle",
+    label: "Its reads landing after 1.5 s",
+    node: <Settling after={SETTLE_MS} frame="dialog" />,
+  },
   { id: "ready", label: "A change, ready", node: <Change open={["src/server/index.ts"]} /> },
   {
     id: "description",
@@ -715,6 +794,35 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
 ];
 
+/** One state as the change's own page: its bar and its column, a window's height. */
+export function ReviewPageStage({
+  label,
+  children,
+}: {
+  readonly label: string;
+  readonly children: ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-2" data-review-harness-state={label}>
+      <span className="px-2 text-xs font-medium text-muted-foreground">{label}</span>
+      <div className="h-dvh overflow-hidden rounded-xl border border-border">
+        <ZeropsHostedFrame
+          breadcrumb={
+            <WorkspaceBreadcrumb ariaLabel="Zerops breadcrumb" className="min-w-0">
+              <WorkspaceBreadcrumbItem>Projects</WorkspaceBreadcrumbItem>
+              <WorkspaceBreadcrumbSeparator />
+              <WorkspaceBreadcrumbItem>Snap</WorkspaceBreadcrumbItem>
+            </WorkspaceBreadcrumb>
+          }
+          width="column"
+        >
+          {children}
+        </ZeropsHostedFrame>
+      </div>
+    </section>
+  );
+}
+
 /** One state on the plan's dimmed stage, the review as it stands in the dialog. */
 export function ReviewStage({
   label,
@@ -787,6 +895,9 @@ export function ReviewDialogTry() {
           mate={NOVA}
           now={NOW}
           onAsk={async () => {}}
+          onOpenPage={() => {
+            setOpen(false);
+          }}
           remarks={read ? remarksOf(TALKING) : []}
           onClose={() => {
             setOpen(false);

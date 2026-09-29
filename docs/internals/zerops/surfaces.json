@@ -819,7 +819,6 @@
         "apps/web/src/components/zerops/projects/ProjectsView.tsx",
         "apps/web/src/components/zerops/projects/projectsView.logic.ts",
         "apps/web/src/components/zerops/ZeropsAskDialog.tsx",
-        "apps/web/src/components/zerops/ZeropsChangeConversation.tsx",
         "apps/web/src/components/zerops/ZeropsDeployRun.tsx",
         "apps/web/src/components/zerops/ZeropsChangeLinkChip.tsx",
         "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",

@@ -71,27 +71,23 @@ export function changeConversationCount(remarks: ReadonlyArray<ChangeRemark>): s
 }
 
 /**
- * The sentence a Mate is handed when somebody passes it something from a
- * change's page.
+ * The sentence a Mate is handed when somebody asks it for something on a
+ * change's review.
  *
  * It names the change the way the forge does, because the Mate's tools address
  * it by number, and it quotes the person's own words rather than paraphrasing
- * them. It stops at composing — the person presses send, as everywhere a
- * prompt is prefilled (spec §5.4).
+ * them. Asking takes words: an empty box once handed "the whole change" over,
+ * which took a line of explanation under the box to be understood.
  */
 export function changeAskPrompt(input: {
   readonly repository: string;
   readonly number: number;
   readonly title: string;
-  /** What the person wrote; blank asks the Mate to take the change forward. */
+  /** What the person wrote. */
   readonly said: string;
 }): string {
   const change = `#${String(input.number)} "${input.title}" on ${input.repository}`;
-  const said = input.said.trim();
-  if (said.length === 0) {
-    return `Take ${change} forward: read it, do what it still needs, and push.`;
-  }
-  return `On ${change}:\n\n${said}\n\nDo that, then push.`;
+  return `On ${change}:\n\n${input.said.trim()}\n\nDo that, then push.`;
 }
 
 /** What the *Ask* button says, named after the Mate where there is one. */

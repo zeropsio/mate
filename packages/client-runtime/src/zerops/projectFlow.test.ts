@@ -23,7 +23,6 @@ import {
   pullRequestsByMate,
   pullRequestsFolded,
   sidebarChangeLabel,
-  changeSubtitle,
   type FlowPullRequest,
   changeLandedEvents,
   agentTurnNotes,
@@ -599,32 +598,6 @@ describe("releaseWaitingLabel", () => {
         ]),
       ),
     ).toBe("2 waiting");
-  });
-});
-
-describe("changeSubtitle", () => {
-  it("reads as one line of provenance, not three nouns and a definition list", () => {
-    expect(
-      changeSubtitle({
-        number: 4,
-        repository: "appdev",
-        baseBranch: "main",
-        author: "Theo",
-        age: "2h",
-      }),
-    ).toBe("#4 · appdev → main · Theo · 2h");
-  });
-
-  it("leaves out what it does not know rather than drawing a gap", () => {
-    expect(
-      changeSubtitle({
-        number: 12,
-        repository: "appdev",
-        baseBranch: "release",
-        author: undefined,
-        age: undefined,
-      }),
-    ).toBe("#12 · appdev → release");
   });
 });
 

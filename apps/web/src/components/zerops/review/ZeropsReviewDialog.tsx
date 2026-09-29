@@ -23,6 +23,7 @@ import {
   pressesPrimary,
   reviewOrigin,
 } from "./ZeropsReview.logic";
+import { isField } from "./ZeropsReviewSurface";
 
 const ReviewPortal = gatedPortal(DialogPrimitive.Portal);
 
@@ -35,16 +36,6 @@ function primaryOf(popup: HTMLElement | null): HTMLButtonElement | null {
 
 function isSafe(primary: HTMLButtonElement): boolean {
   return primary.dataset.safe === "true" && !primary.disabled;
-}
-
-/** A field somebody types into: its keys are its own, ⌘↵ included. */
-export function isField(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return (
-    target.isContentEditable ||
-    target instanceof HTMLTextAreaElement ||
-    target instanceof HTMLInputElement
-  );
 }
 
 export function ZeropsReviewDialog({

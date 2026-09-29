@@ -50,9 +50,9 @@ describe("every door opens the review and never acts itself (R1)", () => {
       ["openReview(", 'kind: "change"', 'kind: "rollback"'],
     ],
     [
-      "a change's, a project's and a stop's pages",
+      "a project's and a stop's pages, and a change's, which is its review",
       groupDetailSource,
-      ["openReview(", 'kind: "change"', 'kind: "release"', 'kind: "rollback"'],
+      ["openReview(", 'kind: "release"', 'kind: "rollback"', "<ZeropsChangeReview", 'frame="page"'],
     ],
     ["the Git tab", gitTabSource, ["onReviewPullRequest"]],
     ["the Git tab's surface", gitSurfaceSource, ["openReview(", 'kind: "change"']],
@@ -224,6 +224,98 @@ describe("the review's one button (R5)", () => {
   it("closes from its ×, and from Cancel or Close where it offers one", () => {
     expect(surface()).toContain('aria-label="Close"');
     expect(surface({ dismiss: "Cancel" })).toContain(">Cancel</button>");
+  });
+});
+
+describe("one review, two frames", () => {
+  it.each([
+    [
+      "a dialog: its kind, its way to its page, its × and its Close",
+      "dialog",
+      ["Review · change", "Open as page", 'aria-label="Close"', ">Close</button>", "<h2"],
+      [],
+    ],
+    [
+      "a page: the review itself, nothing to close, its title the page's",
+      "page",
+      ["<h1", 'class="rv-page"'],
+      ["Review · change", "Open as page", 'aria-label="Close"', ">Close</button>"],
+    ],
+  ] as const)("is drawn in %s", (_case, frame, has, hasNot) => {
+    const html = surface({ frame, dismiss: "Close", onOpenPage: () => {} });
+    for (const words of has) expect(html).toContain(words);
+    for (const words of hasNot) expect(html).not.toContain(words);
+  });
+
+  it("offers its page only where it has one", () => {
+    expect(surface({ onOpenPage: undefined })).not.toContain("Open as page");
+  });
+
+  it("says what its one button does, beside it, in both", () => {
+    for (const frame of ["dialog", "page"] as const) {
+      const html = surface({ frame });
+      expect(html).toContain("Squash-merges 1 commit into main.");
+      expect(html).toContain('data-review-primary=""');
+    }
+  });
+});
+
+describe("the page presses its button on ⌘↵ while it is safe, never from a field", () => {
+  class Field extends TestNode {}
+
+  it.each([
+    ["from the page", false, true, true],
+    ["from the comment box", true, true, false],
+    ["while it is not safe", false, false, false],
+  ])("%s", async (_case, inField, safe, pressed) => {
+    const document = installTestDom();
+    vi.stubGlobal("HTMLTextAreaElement", Field);
+    vi.stubGlobal("HTMLInputElement", Field);
+    const { act } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const container = document.createElement("div");
+    const root = createRoot(container as unknown as Element);
+    const onPress = vi.fn();
+    try {
+      await act(async () =>
+        root.render(
+          <ZeropsReviewSurface
+            consequence="Squash-merges 1 commit into main."
+            frame="page"
+            kind="change"
+            kindLabel="Review · change"
+            onClose={() => {}}
+            primary={{ label: "Merge", enabled: true, safe, onPress }}
+            title="Add a /status page"
+            verdict={VERDICT}
+          />,
+        ),
+      );
+      const page = elementsOf(container, "div").find((node) =>
+        (node as unknown as { attributes: Map<string, string> }).attributes
+          .get("class")
+          ?.includes("rv-page"),
+      );
+      if (page === undefined) throw new Error("no page");
+      const propsKey = Object.keys(page).find((key) => key.startsWith("__reactProps$"));
+      const props = (propsKey === undefined ? {} : (page as never)[propsKey]) as {
+        readonly onKeyDown?: (event: unknown) => void;
+      };
+      const target = inField ? new Field("textarea", document) : new TestNode("div", document);
+      await act(async () =>
+        props.onKeyDown?.({
+          key: "Enter",
+          metaKey: true,
+          ctrlKey: false,
+          repeat: false,
+          target,
+          preventDefault() {},
+        }),
+      );
+      expect(onPress).toHaveBeenCalledTimes(pressed ? 1 : 0);
+    } finally {
+      await act(async () => root.unmount());
+    }
   });
 });
 

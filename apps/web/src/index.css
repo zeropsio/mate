@@ -4965,11 +4965,13 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 
 /* ==== Pass 16 · review ==== */
 
-/* Review: the one door to merging, landing, releasing and rolling back (R1–R8, D12). A dialog
-   over the conversation, 720 wide: the kind, the title and its one line of provenance, then the
-   verdict — safe and why, or what blocks it and who fixes it — then what it does, what it
-   changes and how it was checked, and a foot that says what the one button does. Its type is
-   18 (the title, once), 14, 13 and 12; its colour means one thing each. */
+/* Review: the one door to merging, landing, releasing and rolling back (R1–R8, D12). One
+   surface in two frames: a dialog over the conversation, a quick look, and a change's own page.
+   Both are one reading column, the conversation's width — 768, its words 720 between two text
+   edges 24 in. The title and its one line of provenance, then the verdict — safe and why, or
+   what blocks it and who fixes it — then what it does, what it changes, how it was checked, what
+   was said and its commits, and a foot that says what the one button does. Its type is the
+   scale's, 16 · 14 · 13 · 12; its colour means one thing each. */
 .rv-backdrop {
   position: fixed;
   inset: 0;
@@ -5004,7 +5006,7 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   position: relative;
   display: flex;
   flex-direction: column;
-  width: min(720px, 100%);
+  width: min(768px, 100%);
   max-height: calc(100dvh - clamp(16px, 7dvh, 72px) - 16px);
   overflow: hidden;
   border-radius: 20px;
@@ -5059,16 +5061,24 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   }
 }
 
+/* The dialog's own row: what kind of thing this is, its way to its page, and ×. */
+.rv-chrome {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 14px 0 24px;
+}
 .rv-head {
   display: grid;
   flex: none;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px 16px;
-  padding: 18px 16px 16px 24px;
+  gap: 4px;
+  padding: 6px 24px 16px;
 }
 .rv-kind {
-  grid-column: 1;
   display: flex;
+  flex: 1;
+  min-width: 0;
   align-items: center;
   gap: 8px;
   font-size: 13px;
@@ -5081,12 +5091,11 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   height: 15px;
   flex: none;
 }
-.rv-x {
-  grid-column: 2;
-  grid-row: 1;
+.rv-x,
+.rv-open {
   display: flex;
-  width: 28px;
   height: 28px;
+  flex: none;
   align-items: center;
   justify-content: center;
   border-radius: 8px;
@@ -5096,10 +5105,27 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
     background-color 150ms ease,
     color 150ms ease;
 }
-.rv-x:hover {
+.rv-x {
+  width: 28px;
+}
+.rv-open {
+  gap: 6px;
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.rv-open svg {
+  width: 14px;
+  height: 14px;
+}
+.rv-x:hover,
+.rv-open:hover {
   background: color-mix(in oklab, var(--foreground) 6%, transparent);
   color: var(--foreground);
 }
+.rv-open:focus-visible,
 .rv-x:focus-visible,
 .rv-file:focus-visible,
 .rv-textbtn:focus-visible,
@@ -5110,17 +5136,14 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   outline-offset: 2px;
 }
 .rv-title {
-  grid-column: 1;
   margin: 0;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
-  line-height: 26px;
-  letter-spacing: -0.1px;
+  line-height: 24px;
   text-wrap: balance;
   overflow-wrap: anywhere;
 }
 .rv-meta {
-  grid-column: 1;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -5133,6 +5156,45 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 .rv-meta code {
   font-family: var(--font-mono);
   font-size: 12px;
+}
+.rv-meta-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The review as a page: the same column, flush with the page's own edges; the verdict box and
+   the foot's card stand 8 out from the text as in the dialog, and the foot stays in view. */
+.rv-page {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.rv-page .rv-head {
+  padding: 0 0 16px;
+}
+.rv-page .rv-verdict {
+  margin: 0 -8px;
+}
+.rv-page .rv-body {
+  padding: 20px 0 0;
+  overflow: visible;
+}
+.rv-page .rv-verdict + .rv-body {
+  margin-top: 0;
+}
+.rv-page .rv-foot {
+  position: sticky;
+  bottom: 16px;
+  z-index: 1;
+  margin: 28px -8px 0;
+  padding: 8px 8px 8px 16px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--card);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent),
+    0 16px 40px -20px color-mix(in oklab, var(--color-black) 40%, transparent);
 }
 .rv-add {
   color: var(--diff-addition-foreground);

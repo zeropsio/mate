@@ -1,11 +1,17 @@
 /**
  * The review, drawn: every read already done and handed in, so a harness and a test can show
- * every state of it without a forge or a crew behind it. The dialog around it is
- * `ZeropsReviewDialog`'s; the reads and the verbs are the per-kind reviews'.
+ * every state of it without a forge or a crew behind it. The reads and the verbs are the per-kind
+ * reviews'.
  *
- * One reading order, top to bottom (R2–R5): what kind of thing this is and its title with one
- * line of provenance, the verdict, what it does in the Mate's words, what it changes and how it
- * was checked — and a foot that says what the one button does, beside it.
+ * One surface in two frames (`ReviewFrame`), the same sections in the same words in each. In a
+ * dialog over the conversation — `ZeropsReviewDialog`'s, a quick look — a row above the title says
+ * what kind of thing it is and offers its own page where it has one, and × closes it. As a page,
+ * at its own address, the page's bar says where it sits, and the review is the page: its one
+ * button pinned in view, and ⌘↵ pressing it while it is safe, as the dialog's does.
+ *
+ * One reading order, top to bottom (R2–R5): its title with one line of provenance, the verdict,
+ * what it does, what it changes, how it was checked, what was said and its commits — and a foot
+ * that says what the one button does, beside it.
  */
 import type {
   ChangeDiffFile,
@@ -23,13 +29,14 @@ import {
   CircleIcon,
   CircleXIcon,
   GitPullRequestArrowIcon,
+  Maximize2Icon,
   RotateCcwIcon,
   TagIcon,
   TriangleAlertIcon,
   UsersIcon,
   XIcon,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { Spinner } from "~/components/ui/spinner";
 import { isMacPlatform } from "~/lib/utils";
@@ -38,7 +45,9 @@ import { MateFace } from "../primitives";
 import {
   changeFileLetter,
   diffFold,
+  pressesPrimary,
   type ReleaseChangeRow,
+  type ReviewFrame,
   type ReviewKind,
 } from "./ZeropsReview.logic";
 
@@ -88,6 +97,8 @@ export interface ReviewPrimaryButton extends ReviewButton {
 }
 
 export interface ZeropsReviewSurfaceProps {
+  /** A dialog over the conversation (the default), or a page of its own. */
+  readonly frame?: ReviewFrame | undefined;
   readonly kind: ReviewKind;
   readonly kindLabel: string;
   readonly title: string;
@@ -103,10 +114,13 @@ export interface ZeropsReviewSurfaceProps {
   /** "Cancel" before anything was pressed, "Close" after. */
   readonly dismiss?: string | undefined;
   readonly primary?: ReviewPrimaryButton | undefined;
+  /** The dialog's way to the same review as a page, where it has one. */
+  readonly onOpenPage?: (() => void) | undefined;
   readonly onClose: () => void;
 }
 
 export function ZeropsReviewSurface({
+  frame = "dialog",
   kind,
   kindLabel,
   title,
@@ -118,21 +132,33 @@ export function ZeropsReviewSurface({
   consequence,
   dismiss,
   primary,
+  onOpenPage,
   onClose,
 }: ZeropsReviewSurfaceProps) {
-  return (
+  const Title = frame === "page" ? "h1" : "h2";
+  const content = (
     <>
+      {frame === "page" ? null : (
+        <div className="rv-chrome">
+          <span className="rv-kind">
+            {KIND_ICON[kind]}
+            {kindLabel}
+          </span>
+          {onOpenPage === undefined ? null : (
+            <button className="rv-open" onClick={onOpenPage} type="button">
+              <Maximize2Icon aria-hidden="true" />
+              Open as page
+            </button>
+          )}
+          <button aria-label="Close" className="rv-x" onClick={onClose} type="button">
+            <XIcon aria-hidden="true" size={16} />
+          </button>
+        </div>
+      )}
       <header className="rv-head">
-        <span className="rv-kind">
-          {KIND_ICON[kind]}
-          {kindLabel}
-        </span>
-        <button aria-label="Close" className="rv-x" onClick={onClose} type="button">
-          <XIcon aria-hidden="true" size={16} />
-        </button>
-        <h2 className="rv-title" id={titleId}>
+        <Title className="rv-title" id={titleId}>
           {title}
-        </h2>
+        </Title>
         {meta === undefined ? null : <div className="rv-meta">{meta}</div>}
       </header>
       <div
@@ -157,7 +183,7 @@ export function ZeropsReviewSurface({
       <div className="rv-body">{children}</div>
       <footer className="rv-foot">
         <span className="rv-conseq">{consequence}</span>
-        {dismiss === undefined ? null : (
+        {dismiss === undefined || frame === "page" ? null : (
           <button className="rv-btn2" onClick={onClose} type="button">
             {dismiss}
           </button>
@@ -182,6 +208,42 @@ export function ZeropsReviewSurface({
         )}
       </footer>
     </>
+  );
+  if (frame !== "page") return content;
+  // ⌘↵ anywhere on the page presses the one button while it is safe, as in the dialog.
+  const pressFromKeys = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (primary === undefined || primary.busy === true) return;
+    if (
+      !pressesPrimary(
+        {
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          repeat: event.repeat,
+          inField: isField(event.target),
+        },
+        { safe: primary.safe, enabled: primary.enabled },
+      )
+    ) {
+      return;
+    }
+    event.preventDefault();
+    primary.onPress();
+  };
+  return (
+    <div className="rv-page" data-zerops-surface="review" onKeyDown={pressFromKeys}>
+      {content}
+    </div>
+  );
+}
+
+/** A field somebody types into: its keys are its own, ⌘↵ included. */
+export function isField(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.isContentEditable ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLInputElement
   );
 }
 
