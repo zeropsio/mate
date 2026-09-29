@@ -14,6 +14,11 @@
  * `then` is told which conversation opened — its thread, or the one a Mate
  * with none starts — for what the caller opens beside it (its menu's *Crew*,
  * the Crew tab). Nothing is told where the projects screen takes over.
+ *
+ * A Mate still in its first minutes (`mateComing`) opens its own view, where
+ * it comes up and hands over to its conversation once it is up — not the
+ * projects screen, where its row pressed from there did nothing at all (the
+ * owner, 2026-09-29).
  */
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
@@ -26,6 +31,9 @@ import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { readThreadShells, useProjects, useThreadShells } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
+import { mateComing } from "./mateComing";
+import { newMateView, useNewMate } from "./newMate";
+import { useZeropsBirths } from "./zeropsBirths";
 
 export function useOpenMate(): (
   candidate: ZeropsCandidate,
@@ -36,8 +44,19 @@ export function useOpenMate(): (
   const threads = useThreadShells();
   const projects = useProjects();
   const handleNewThread = useNewThreadHandler();
+  const { births } = useZeropsBirths();
+  const creations = useNewMate((state) => state.creations);
   return useCallback(
     (candidate: ZeropsCandidate, then?: (conversation: ScopedThreadRef) => void) => {
+      const coming = mateComing({
+        birth: births.find((birth) => birth.projectId === candidate.project.id),
+        candidate,
+        setUpFailed: creations[candidate.project.id]?.failed,
+      });
+      if (coming !== undefined) {
+        void router.navigate(newMateView(candidate.project.id));
+        return;
+      }
       const environmentId = linkTarget(candidate);
       if (environmentId === undefined) {
         void router.navigate({ to: "/zerops" });
@@ -71,6 +90,6 @@ export function useOpenMate(): (
       }
       void router.navigate({ to: "/" });
     },
-    [handleNewThread, linkTarget, projects, router, threads],
+    [births, creations, handleNewThread, linkTarget, projects, router, threads],
   );
 }

@@ -4,6 +4,12 @@
  * (and the person who added the Mate saw before the stand-up), the stand-up
  * before the sign-in, while the sign-in is read, on its way, and not through.
  *
+ * Before it: the Mate's own view while it comes up (`ZeropsMateComingPage`) —
+ * where Add lands — with the projects page's progress under its headline, a
+ * step past its cap, a creation the platform refused; and `handing`, the frame
+ * its view hands over to the conversation with (`coming → handing` is the
+ * hand-over the view plays in place).
+ *
  * The pane is the real `MateEmptyStateView` over the real sign-in rows
  * (`ZeropsAgentAuthRows`, a fixture snapshot); the header and the composer
  * around it are stand-ins at their real heights, as in `design-switch.html`.
@@ -15,12 +21,15 @@
  * imports this module.
  */
 import type { ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
+import { deriveBirthProgress, type BirthFacts } from "@t3tools/client-runtime/zerops/birthProgress";
 import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import { MateEmptyStateView } from "~/components/zerops/ZeropsMateEmptyState";
+import { Button } from "~/components/ui/button";
+import { ZeropsBirthLine } from "~/components/zerops/ZeropsBirthProgress";
+import { MateEmptyStateView, type MateEmptyComing } from "~/components/zerops/ZeropsMateEmptyState";
 import { ZeropsAgentAuthRows } from "~/components/zerops/ZeropsAgentAuthCard";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
@@ -81,9 +90,108 @@ interface HarnessState {
   readonly phase: MateStandUpPhase | null;
   readonly rows: boolean;
   readonly checking: boolean;
+  /** The Mate's own view while it comes up, or the frame it hands over with. */
+  readonly coming?: "coming" | "almost" | "slow" | "not-created" | "handing";
 }
 
+const AGO = (seconds: number) => new Date(Date.now() - seconds * 1000).toISOString();
+
+/** A birth 72 s in: the project made, the container being created. */
+const CREATING: BirthFacts = {
+  project: { status: "ACTIVE", createdAt: AGO(72) },
+  container: { serviceId: "zcp", status: "CREATING", hasOrigin: false },
+  processes: [
+    {
+      actionName: "project.create",
+      status: "FINISHED",
+      createdAt: AGO(72),
+      startedAt: AGO(72),
+      finishedAt: AGO(47),
+      serviceIds: [],
+    },
+    {
+      actionName: "stack.create",
+      status: "RUNNING",
+      createdAt: AGO(44),
+      startedAt: AGO(44),
+      finishedAt: null,
+      serviceIds: ["zcp"],
+    },
+  ],
+  health: undefined,
+  provisioningPhase: "awaiting-settled",
+  connection: "none",
+};
+
+/** Three minutes in: everything up but Mate itself, which is waited on. */
+const ANSWERING: BirthFacts = {
+  ...CREATING,
+  project: { status: "ACTIVE", createdAt: AGO(188) },
+  container: { serviceId: "zcp", status: "ACTIVE", hasOrigin: true },
+  processes: CREATING.processes.map((process) =>
+    process.status === "RUNNING"
+      ? { ...process, status: "FINISHED", finishedAt: AGO(90) }
+      : process,
+  ),
+  provisioningPhase: "awaiting-health",
+};
+
+const QUINN: ZeropsMateIdentity = {
+  name: "Quinn",
+  tint: "coral",
+  shape: "gem",
+  project: "Acme Docs",
+  projectUrl: "https://app.zerops.io/project/harness",
+  connected: false,
+  standUp: { by: "u-ada" },
+};
+
 const STATES: ReadonlyArray<HarnessState> = [
+  {
+    id: "coming",
+    label: "Coming up · where Add lands",
+    mate: QUINN,
+    phase: "sign-in",
+    rows: false,
+    checking: false,
+    coming: "coming",
+  },
+  {
+    id: "almost",
+    label: "Coming up · Mate being waited on",
+    mate: QUINN,
+    phase: "sign-in",
+    rows: false,
+    checking: false,
+    coming: "almost",
+  },
+  {
+    id: "slow",
+    label: "Coming up · a step past its cap",
+    mate: QUINN,
+    phase: "sign-in",
+    rows: false,
+    checking: false,
+    coming: "slow",
+  },
+  {
+    id: "not-created",
+    label: "Coming up · the platform refused it",
+    mate: QUINN,
+    phase: "sign-in",
+    rows: false,
+    checking: false,
+    coming: "not-created",
+  },
+  {
+    id: "handing",
+    label: "Up · handed over in place",
+    mate: { ...QUINN, connected: true },
+    phase: "sign-in",
+    rows: true,
+    checking: false,
+    coming: "handing",
+  },
   {
     id: "question",
     label: "Question · a colleague (before: everyone)",
@@ -136,11 +244,55 @@ const STATES: ReadonlyArray<HarnessState> = [
 
 const COMPOSER_HEIGHT = 132;
 
+/** What hangs under a coming headline: the projects page's own birth line, or its verb. */
+function ComingBelowFixture({ coming }: { readonly coming: NonNullable<HarnessState["coming"]> }) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  if (coming === "slow" || coming === "not-created") {
+    const failed = coming === "not-created";
+    return (
+      <div className="flex w-full max-w-sm flex-col items-center gap-3">
+        <p
+          className={
+            failed
+              ? "text-center text-sm text-status-failed-text"
+              : "text-center text-sm text-muted-foreground"
+          }
+        >
+          {failed ? "Could not be created." : "Taking longer than usual."}
+        </p>
+        <Button size="compact" variant="pill">
+          {failed ? "Remove" : "Keep waiting"}
+        </Button>
+      </div>
+    );
+  }
+  const facts = coming === "coming" ? CREATING : ANSWERING;
+  return (
+    <div className="flex w-full max-w-xs">
+      <ZeropsBirthLine nowMs={nowMs} progress={deriveBirthProgress(facts, nowMs)} />
+    </div>
+  );
+}
+
+function comingOf(state: HarnessState): MateEmptyComing | null {
+  if (state.coming === undefined) return null;
+  return {
+    kind: state.coming === "not-created" ? "failed" : "coming",
+    over: state.coming === "handing",
+    below: <ComingBelowFixture coming={state.coming === "handing" ? "almost" : state.coming} />,
+  };
+}
+
 function Pane({ state, onRetry }: { readonly state: HarnessState; readonly onRetry: () => void }) {
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="relative flex min-h-0 flex-1 flex-col" data-harness-pane>
         <MateEmptyStateView
+          coming={comingOf(state)}
           mate={state.mate}
           phase={state.phase}
           signIn={
@@ -158,8 +310,11 @@ function Pane({ state, onRetry }: { readonly state: HarnessState; readonly onRet
           onRetry={onRetry}
         />
       </div>
+      {/* The Mate's own view has no composer; the conversation it hands over to holds its own
+          back while the stand-up waits on its person. */}
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-5 pt-2"
+        hidden={state.coming !== undefined}
         style={{ height: COMPOSER_HEIGHT }}
       >
         <div
@@ -175,7 +330,7 @@ function Pane({ state, onRetry }: { readonly state: HarnessState; readonly onRet
 
 function Harness() {
   const [current, setCurrent] = useState(
-    () => STATES.find((state) => state.id === params.get("state"))?.id ?? STATES[1]!.id,
+    () => STATES.find((state) => state.id === params.get("state"))?.id ?? "sign-in",
   );
   useEffect(() => {
     (window as unknown as { __standUpHarness: unknown }).__standUpHarness = {
@@ -183,7 +338,9 @@ function Harness() {
       states: STATES.map((state) => state.id),
     };
   }, []);
-  const state = STATES.find((candidate) => candidate.id === current) ?? STATES[1]!;
+  const state =
+    STATES.find((candidate) => candidate.id === current) ??
+    STATES.find((candidate) => candidate.id === "sign-in")!;
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       <aside

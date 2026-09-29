@@ -73,7 +73,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
-import { useParams, useRouter } from "@tanstack/react-router";
+import { useMatch, useParams, useRouter } from "@tanstack/react-router";
 
 import {
   isAtomCommandInterrupted,
@@ -217,7 +217,8 @@ import {
 } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { useAddMateIntent } from "../zerops/addMateIntent";
-import { useMateRowActivity } from "../zerops/useMenuMateReadings";
+import { newMateView } from "../zerops/newMate";
+import { useMateComingOf, useMateRowActivity } from "../zerops/useMenuMateReadings";
 import { useAskMateToFix } from "../zerops/fixRequest";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
@@ -2268,6 +2269,14 @@ export default function Sidebar() {
   // The left menu's add button asks for a Mate on a named project; the dialog
   // that answers lives on the projects screen, so the ask goes with it.
   const requestAddMate = useAddMateIntent((state) => state.request);
+  // A Mate still coming up opens its own view, where it comes up.
+  const openComingMate = useCallback(
+    (projectId: string) => {
+      if (isMobile) setOpenMobile(false);
+      void router.navigate(newMateView(projectId));
+    },
+    [isMobile, router, setOpenMobile],
+  );
 
   const navigateToZeropsProjects = useCallback(() => {
     if (isMobile) {
@@ -2287,6 +2296,8 @@ export default function Sidebar() {
   // (`menuMemory.ts`) — a reload paints whole rows, not names that grow as
   // each Mate connects, and a Mate at work never falls asleep for a blink.
   const zeropsRowActivity = useMateRowActivity(zeropsAgentActivity);
+  // Whether a Mate is still in its first minutes, as the projects page says it.
+  const zeropsComing = useMateComingOf(zeropsCandidates);
   // Remember each connected Mate's row as its conversation says it, and
   // forget whatever the listing no longer holds.
   useEffect(() => {
@@ -2346,10 +2357,13 @@ export default function Sidebar() {
     [zeropsAgentActivity],
   );
 
+  // A Mate still coming up is open in its own view (`/mate/$projectId`).
+  const comingMateRoute = useMatch({ from: "/_chat/mate/$projectId", shouldThrow: false });
   // The row for the environment whose conversation is open. A fresh draft
   // has no thread yet, but it knows its environment — and that is the one
   // the user is about to talk to.
   const activeZeropsProjectId = useMemo(() => {
+    if (comingMateRoute !== undefined) return comingMateRoute.params.projectId;
     const environmentId = routeThreadRef?.environmentId ?? routeDraftThread?.environmentId;
     if (environmentId === undefined) return null;
     const open = findCandidate(
@@ -2357,7 +2371,12 @@ export default function Sidebar() {
       (candidate) => candidate.environmentId === environmentId,
     );
     return open.kind === "found" ? open.row.project.id : null;
-  }, [routeDraftThread?.environmentId, routeThreadRef?.environmentId, zeropsListing]);
+  }, [
+    comingMateRoute,
+    routeDraftThread?.environmentId,
+    routeThreadRef?.environmentId,
+    zeropsListing,
+  ]);
   // Whose Mates the menu lists (the account menu's Mine / Everyone): the
   // tree and the waiting faces read the same answer.
   const [zeropsMateScope] = useMateScope();
@@ -4122,6 +4141,8 @@ export default function Sidebar() {
                 else refreshZeropsCandidates();
               }}
               onAddMate={requestAddMate}
+              getComing={zeropsComing}
+              onOpenComing={openComingMate}
               onBrowseProjects={navigateToZeropsProjects}
               onAskToFix={(mateProjectId, problem) => {
                 if (isMobile) setOpenMobile(false);

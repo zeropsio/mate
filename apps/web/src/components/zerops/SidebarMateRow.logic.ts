@@ -9,6 +9,7 @@ import type { CrewStatus } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import type { MateComing } from "~/zerops/mateComing";
 
 /** Whose Mate it is, as the mark before its name draws it. */
 export interface OwnerMark {
@@ -198,6 +199,8 @@ export interface MateRowView {
   /** The second line: the person's last ask, whatever step the Mate is on. */
   readonly ask: string | undefined;
   readonly reply: MateRowReply;
+  /** Still coming up, or never came (`mateComing`): its one line says so, in its place. */
+  readonly coming?: MateComing;
 }
 
 /**
@@ -336,6 +339,26 @@ export function mateRowReading(input: {
   const { activity } = input;
   const live = activity !== undefined && activity.remembered !== true ? activity : undefined;
   return mateRowView(activity, mateFaceFor(input.connected || live !== undefined, live));
+}
+
+/**
+ * A Mate still coming up, or one that never came (`mateComing`), in its row: its face in the
+ * coming pose — asleep, in the colours its person picked — its one line the projects page's words
+ * for where it has got, and none of what only a Mate that is up has: no time, no ask, no words.
+ * One that did not come wears the red dot of something broken (S3).
+ */
+export function mateComingRowView(view: MateRowView, coming: MateComing): MateRowView {
+  return {
+    ...view,
+    state: coming.kind === "failed" ? "failed" : "idle",
+    face: "sleep",
+    slot: { kind: "none" },
+    dot: coming.kind === "failed" ? "failed" : undefined,
+    strongName: false,
+    ask: undefined,
+    reply: undefined,
+    coming,
+  };
 }
 
 /** Which of the table's states a row is in: what waits on the person first. */

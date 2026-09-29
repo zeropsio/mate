@@ -707,17 +707,64 @@ describe("a creation under way in the menu", () => {
   const comingRows = (html: string) =>
     html.match(/data-zerops-surface="sidebar-mate-coming"/gu) ?? [];
 
-  it("draws a Mate being created after the listed ones: asleep, named, how far it has got, still", () => {
+  it("draws a Mate being created after the listed ones: asleep, named, how far it has got", () => {
     const html = render([CRM_DEV], { births: [birth()] });
     expect(comingRows(html)).toHaveLength(1);
     const at = html.indexOf('data-zerops-surface="sidebar-mate-coming"');
     expect(html.indexOf('data-zerops-surface="sidebar-mate"')).toBeLessThan(at);
     const row = html.slice(html.lastIndexOf("<div", at));
-    expect(row).toContain('aria-busy="true"');
     expect(row).toContain('data-mate-face-state="sleep"');
     expect(row).toContain(">Vera<");
     expect(row).toContain(">Coming up. A few minutes.<");
-    expect(row.slice(0, row.indexOf("</div>"))).not.toContain("<button");
+  });
+
+  // The owner, 2026-09-29: "on the left it looks like its ready to be opened, but it's not" — and
+  // a press on it did nothing. It opens its own view, where it comes up; it is one of the menu's
+  // Mates, lit when that view is open.
+  it("opens its own view where it comes up, and is lit while that view is open", () => {
+    const opened: Array<string> = [];
+    const tree = mount(
+      <SidebarZeropsTree
+        activeProjectId="vera-dev"
+        births={[birth()]}
+        candidates={[CRM_DEV]}
+        complete
+        onBrowseProjects={() => {}}
+        onOpenComing={(projectId: string) => {
+          opened.push(projectId);
+        }}
+        onSelect={() => {}}
+      />,
+    );
+    const row = surface(tree, "sidebar-mate-coming");
+    expect(row.type).toBe("button");
+    expect(row.props["aria-current"]).toBe("true");
+    act(() => {
+      row.props.onClick();
+    });
+    expect(opened).toEqual(["vera-dev"]);
+    const unit = tree.root.find(
+      (node) => typeof node.type === "string" && node.props["data-zerops-mate-unit"] === "vera-dev",
+    );
+    expect(unit).toBeDefined();
+  });
+
+  // Picked in the New Mate dialog: the Mate wears it from its first moment, asleep.
+  it.each([
+    {
+      case: "the face its person picked",
+      face: { tint: "coral", shape: "gem" },
+      tint: "coral",
+      shape: "gem",
+    },
+    { case: "no face given: the coming slate", face: undefined, tint: "slate", shape: "squircle" },
+  ] as const)("wears $case while it comes up", ({ face, tint, shape }) => {
+    const html = render([CRM_DEV], { births: [birth(face === undefined ? {} : { face })] });
+    const at = html.indexOf('data-zerops-surface="sidebar-mate-coming"');
+    const row = html.slice(at, html.indexOf("</button>", at));
+    expect(row).toContain(`data-mate-face-tint="${tint}"`);
+    expect(row).toContain(`data-mate-face-shape="${shape}"`);
+    expect(row).toContain('data-mate-face-state="sleep"');
   });
 
   it("stands the listed Mate in its place once the listing holds it, never both", () => {
@@ -743,6 +790,43 @@ describe("a creation under way in the menu", () => {
     expect(html).toContain('data-zerops-group="new"');
     expect(comingRows(html)).toHaveLength(1);
     expect(html).not.toContain("No environment has Mate yet");
+  });
+});
+
+// A listed Mate still coming up (its birth held here, or its project on the way up) says so in
+// its row, in the projects page's words — never "Nobody has signed in yet" beside the page's
+// "Almost there." — and a press opens its own view, which the menu's caller routes.
+describe("a listed Mate still coming up", () => {
+  const COMING = { kind: "coming", line: "Almost there.", verb: undefined } as const;
+  const FAILED = { kind: "failed", line: "Could not be created.", verb: "remove" } as const;
+  const rowOf = (html: string) => {
+    const at = html.indexOf('data-zerops-surface="sidebar-mate"');
+    return html.slice(html.lastIndexOf("<div", at), html.indexOf("</button>", at));
+  };
+
+  it.each([
+    { case: "coming up", coming: COMING, tone: "muted" },
+    { case: "not created", coming: FAILED, tone: "failed" },
+  ] as const)("says it is $case in its line, asleep, with no sign-in line", ({ coming, tone }) => {
+    const html = render([CRM_DEV], { getComing: () => coming });
+    const row = rowOf(html);
+    expect(row).toContain('data-mate-face-state="sleep"');
+    expect(row).toContain(`>${coming.line}<`);
+    expect(row).toContain(`data-zerops-coming-tone="${tone}"`);
+    expect(row).not.toContain("Nobody has signed in yet");
+  });
+
+  it("offers no menu while it comes up: nothing on it is about a Mate still being made", () => {
+    const html = render([CRM_DEV], {
+      getComing: () => COMING,
+      getMateActions: () => ({ onMenuOpen: () => {} }),
+    });
+    expect(html).not.toContain('data-zerops-surface="sidebar-mate-actions"');
+  });
+
+  it("is an ordinary row once it is up", () => {
+    const html = render([CRM_DEV], { getComing: () => undefined });
+    expect(rowOf(html)).toContain("Nobody has signed in yet");
   });
 });
 

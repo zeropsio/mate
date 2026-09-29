@@ -95,6 +95,7 @@ import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import type { AppRouter } from "~/router";
 
 import "../index.css";
+import { COMING_PHASES, comingMenu, type ComingPhase } from "./comingMenuFixtures";
 import {
   PLAN_ACTIVE,
   PLAN_ACTIVITY,
@@ -720,11 +721,31 @@ const OWNERS = new Map<string, ZeropsMateOwner>([
 ]);
 
 /**
+ * `?set=coming`: one project while its new Mate comes up (`comingMenuFixtures.ts`), its phase
+ * from `&phase=` and `window.__comingMenu.go(phase)`.
+ */
+const COMING_SET = new URLSearchParams(location.search).get("set") === "coming";
+const COMING_PHASE: ComingPhase =
+  COMING_PHASES.find((phase) => phase === new URLSearchParams(location.search).get("phase")) ??
+  "coming";
+
+/**
  * Which fixtures the menu draws: the hostile set, or with `?set=plan` the pass
  * 16 plan's own six projects (`sidebarPlanFixtures.ts`), to put beside its mock.
  */
-const FIXTURES =
-  new URLSearchParams(location.search).get("set") === "plan"
+const FIXTURES = COMING_SET
+  ? {
+      candidates: comingMenu(COMING_PHASE).candidates,
+      activity: new Map<string, ZeropsAgentActivity>(),
+      flows: new Map<string, SidebarProjectFlow>(),
+      owners: new Map<string, ZeropsMateOwner>([
+        ["acme-fen", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: true }],
+        ["acme-ada", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
+      ]),
+      active: "acme-quinn",
+      collapsed: [] as ReadonlyArray<string>,
+    }
+  : new URLSearchParams(location.search).get("set") === "plan"
     ? {
         candidates: PLAN_CANDIDATES,
         activity: PLAN_ACTIVITY,
@@ -826,6 +847,17 @@ function SidebarFrame({ width, onJump }: { readonly width: number; readonly onJu
   // The Mate whose conversation is open: a row pressed opens it, as in the
   // app, and the selected band slides to it.
   const [open, setOpen] = useState(FIXTURES.active);
+  // `?set=coming`: Quinn's phase, moved on from a script.
+  const [phase, setPhase] = useState<ComingPhase>(COMING_PHASE);
+  useEffect(() => {
+    if (!COMING_SET) return;
+    (window as unknown as { __comingMenu?: unknown }).__comingMenu = {
+      go: (next: ComingPhase) => setPhase(next),
+      phases: COMING_PHASES,
+    };
+  }, []);
+  const coming = COMING_SET ? comingMenu(phase) : null;
+  const candidates = coming?.candidates ?? FIXTURES.candidates;
   const shown = useCallback(
     (item: ZeropsCandidate) =>
       shownInScope(scope, FIXTURES.owners.get(item.project.id), item.project.id === open),
@@ -860,10 +892,16 @@ function SidebarFrame({ width, onJump }: { readonly width: number; readonly onJu
       <SidebarContent>
         <div className="ps-2.25 pe-2 pb-1">
           <SidebarZeropsTree
-            candidates={FIXTURES.candidates}
+            births={coming?.births}
+            candidates={candidates}
             className="mb-2"
             complete
-            getActivity={activityOfCandidate}
+            getActivity={coming?.activity ?? activityOfCandidate}
+            getComing={coming?.coming}
+            onOpenComing={(projectId) => {
+              menuActions.push(`coming ${projectId}`);
+              setOpen(projectId);
+            }}
             getFlow={(groupId) => FIXTURES.flows.get(groupId)}
             getOwner={(item) => FIXTURES.owners.get(item.project.id)}
             getCrew={(item) => CREWS.get(item.project.id)}

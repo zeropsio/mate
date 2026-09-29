@@ -808,6 +808,8 @@
         "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.logic.ts",
         "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx",
         "apps/web/src/components/zerops/ZeropsNewMateForm.tsx",
+        "apps/web/src/components/zerops/ZeropsNewMateHost.tsx",
+        "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
         "apps/web/src/components/zerops/ZeropsEnvironmentRow.tsx",
         "apps/web/src/components/zerops/ZeropsMateCard.tsx",
         "apps/web/src/components/zerops/ZeropsBirthProgress.tsx",
@@ -867,6 +869,10 @@
         {
           "kind": "route",
           "value": "/group/$groupId/$projectId"
+        },
+        {
+          "kind": "route",
+          "value": "/mate/$projectId"
         },
         {
           "kind": "inline",
@@ -961,6 +967,8 @@
         "apps/web/src/components/zerops/ZeropsMateCard.test.tsx",
         "apps/web/src/components/zerops/ZeropsNextStepBanner.test.tsx",
         "apps/web/src/components/zerops/ZeropsNewMateForm.test.tsx",
+        "apps/web/src/zerops/newMate.test.ts",
+        "apps/web/src/zerops/mateComing.test.ts",
         "apps/web/src/components/zerops/ZeropsGroupTree.logic.test.ts",
         "apps/web/src/components/zerops/SidebarZeropsTree.logic.test.ts",
         "apps/web/src/components/zerops/SidebarMateRow.logic.test.ts",

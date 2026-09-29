@@ -28,6 +28,7 @@ import { ProjectCloneToastCoordinator } from "../components/ProjectCloneToastCoo
 import { SlowRpcRequestToastCoordinator } from "../components/SlowRpcRequestToastCoordinator";
 import { ThemeEditorHost } from "../components/settings/ThemeEditorHost";
 import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
+import { ZeropsNewMateHost } from "../components/zerops/ZeropsNewMateHost";
 import { Button } from "../components/ui/button";
 import {
   AnchoredToastProvider,
@@ -184,6 +185,8 @@ function SignedInRootRouteView() {
             <Outlet />
           </RouteGateView>
         </AppSidebarLayout>
+        {/* What a new Mate needs above every view: its hand-over to its conversation. */}
+        <ZeropsNewMateHost />
       </CommandPalette>
     </ZeropsReviewProvider>
   );

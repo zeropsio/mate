@@ -293,12 +293,18 @@ export function MateChip({
 }
 
 /**
- * A Mate being created has no colour of its own yet — the tints are dealt to
- * the listed Mates — and its face is asleep, as every Mate's is while it comes
- * up: the face is where that is read.
+ * A Mate being created wears the face its person picked in the New Mate
+ * dialog — slate where it was given none — asleep, as every Mate's is while it
+ * comes up: the face is where that is read.
  */
-export function ComingMateFace({ size }: { readonly size: "sm" | "md" }) {
-  return <MateFace size={size} state="sleep" tint="slate" />;
+export function ComingMateFace({
+  size,
+  face,
+}: {
+  readonly size: "sm" | "md";
+  readonly face?: GroupFlowComing["face"];
+}) {
+  return <MateFace shape={face?.shape} size={size} state="sleep" tint={face?.tint ?? "slate"} />;
 }
 
 /**
@@ -321,13 +327,14 @@ export function ComingMateCard({
       busy
       face="sleep"
       layout={layout}
+      shape={coming.face?.shape}
       line={
         <span className="min-w-0 truncate" data-zerops-surface="mate-coming">
           {comingMateLine(coming)}
         </span>
       }
       name={name}
-      tint="slate"
+      tint={coming.face?.tint ?? "slate"}
     />
   );
 }

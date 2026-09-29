@@ -55,7 +55,8 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { ThreadId } from "@t3tools/contracts";
 
 import type { ZeropsMateIdentity } from "../../zerops/mateIdentities";
-import { ZeropsMateEmptyState } from "./ZeropsMateEmptyState";
+import { markMateHandedOver } from "../../zerops/mateHandOver";
+import { MateEmptyStateView, ZeropsMateEmptyState } from "./ZeropsMateEmptyState";
 
 const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
 const MAIN = scopeThreadRef(ENVIRONMENT_ID, ThreadId.make("thread-main"));
@@ -357,6 +358,89 @@ describe("ZeropsMateEmptyState", () => {
 
     expect(html).toContain(
       '<span class="inline-block">Fen will stand up development on Acme\u00a0Docs\u00a0Portal</span> <span class="inline-block">after you authorize your agent.</span>',
+    );
+  });
+});
+
+// A new Mate's own view while it comes up is its empty conversation before the conversation
+// exists (`ZeropsMateComingPage`): the same face in the same place, its headline saying it is
+// coming up in the box the stand-up's phases share, and its progress where the sign-in will hang.
+// When it is up, the words hand over in place — the phase it moves into was waiting after them.
+describe("MateEmptyStateView — a Mate coming up", () => {
+  const COMING_UP: ZeropsMateIdentity = { ...ASKED, connected: false };
+  const view = (props: Partial<Parameters<typeof MateEmptyStateView>[0]> = {}) =>
+    renderToStaticMarkup(
+      <MateEmptyStateView
+        mate={COMING_UP}
+        onRetry={() => {}}
+        phase="sign-in"
+        signIn={null}
+        signInRequired={false}
+        unknown={null}
+        {...props}
+      />,
+    );
+  const progress = <span data-coming-progress>Starting the container</span>;
+
+  it("says it is coming up as its heading, asleep, the phases it moves into waiting after it", () => {
+    const html = view({ coming: { kind: "coming", below: progress } });
+    expect(headline(html)).toBe("Fen is coming up on Acme Docs.");
+    expect(phrases(html).map(({ place, readable }) => [place, readable])).toEqual([
+      ["shown", true],
+      ["next", false],
+      ["next", false],
+      ["next", false],
+    ]);
+    expect(html).toContain('data-mate-face-state="sleep"');
+    // Its progress stands under its words, in its own phrase: it leaves with them.
+    expect(html).toMatch(
+      /data-standup-phrase="shown"[^>]*>.*data-mate-coming-below.*data-coming-progress/u,
+    );
+  });
+
+  it("says a Mate that did not come could not be added, with what its view offers under it", () => {
+    const html = view({ coming: { kind: "failed", below: progress } });
+    expect(headline(html)).toBe("Fen could not be added to Acme Docs.");
+  });
+
+  it("waits with the question after it for anybody the stand-up is not theirs", () => {
+    const html = view({ phase: null, coming: { kind: "coming", below: progress } });
+    expect(phrases(html).map(({ place, words }) => [place, words])).toEqual([
+      ["shown", "Fen is coming up on Acme Docs."],
+      ["next", "What should Fen do on Acme Docs?"],
+    ]);
+  });
+
+  it("handed over, keeps its coming words' room in the box, faded, and reads the phase", () => {
+    const html = view({ mate: ASKED, coming: "past" });
+    expect(headline(html)).toBe(
+      "Fen will stand up development on Acme Docs after you authorize your agent.",
+    );
+    expect(phrases(html)[0]).toMatchObject({
+      readable: false,
+      place: "past",
+      words: "Fen is coming up on Acme Docs.",
+    });
+    // The progress's room is kept, empty: the box is as tall as the view it came from.
+    expect(html).toContain("data-mate-coming-below");
+    expect(html).not.toContain("data-coming-progress");
+  });
+
+  it("keeps a question's heading as it always was where nothing came up", () => {
+    const html = view({ mate: MATE, phase: null });
+    expect(html).not.toContain("data-standup-headline");
+    expect(headline(html)).toBe("What should Fen do on Acme Docs?");
+  });
+
+  it("paints the conversation it hands over to with the coming words' room kept", () => {
+    feedState.agentAuth = known(NOT_SIGNED_IN);
+    feedState.viewer = ADA;
+    feedState.threads = [shell("thread-main", "2026-09-29T20:00:00.000Z")];
+    markMateHandedOver(ENVIRONMENT_ID);
+    const html = render(ASKED);
+    expect(phrases(html)[0]?.place).toBe("past");
+    expect(headline(html)).toBe(
+      "Fen will stand up development on Acme Docs after you authorize your agent.",
     );
   });
 });

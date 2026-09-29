@@ -5,6 +5,7 @@ import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 
 import {
   changeMarkTone,
+  mateComingRowView,
   mateCrewItem,
   mateOwnerView,
   mateRowActivity,
@@ -537,6 +538,40 @@ describe("mateRowReading — the face follows the work, and the words never outr
         if (view.face === "sleep") expect(view.reply?.kind).not.toBe("pending");
       }
     }
+  });
+});
+
+// A Mate still coming up is no ordinary row (the owner, 2026-09-29: "on the left it looks like
+// its ready to be opened, but it's not"): its face in the coming pose, the projects page's words
+// in its line, nothing that only a Mate that is up has.
+describe("mateComingRowView — a Mate coming up, or one that did not come", () => {
+  const view = mateRowView(undefined, "sleep");
+  it.each([
+    {
+      case: "coming up: asleep, no time, no dot",
+      coming: { kind: "coming", line: "Coming up. A few minutes.", verb: undefined },
+      dot: undefined,
+    },
+    {
+      case: "slow: asleep, no time, no dot — its line says it",
+      coming: { kind: "coming", line: "Taking longer than usual.", verb: "keep-waiting" },
+      dot: undefined,
+    },
+    {
+      case: "not created: asleep, the red dot of something broken",
+      coming: { kind: "failed", line: "Could not be created.", verb: "remove" },
+      dot: "failed",
+    },
+  ] as const)("$case", ({ coming, dot }) => {
+    expect(mateComingRowView(view, coming)).toMatchObject({
+      face: "sleep",
+      slot: { kind: "none" },
+      dot,
+      strongName: false,
+      ask: undefined,
+      reply: undefined,
+      coming,
+    });
   });
 });
 

@@ -1,17 +1,26 @@
 /**
  * How the left menu reads each Mate it draws: what its row says (`mateRowActivity` — its
- * conversation while its socket stands, blinking included, this browser's memory otherwise). The
- * menu's rows and its folded headings read the same answer.
+ * conversation while its socket stands, blinking included, this browser's memory otherwise) and
+ * whether it is still in its first minutes (`mateComing` — its birth, its project on the way up,
+ * the platform's verdict on its creation, this tab's creation). The menu, the folded headings and
+ * the waiting faces read the same answers; the projects page reads the same words.
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import {
+  applyProjectCreationVerdict,
+  type ZeropsCandidate,
+} from "@t3tools/client-runtime/zerops/candidates";
 import { useCallback, useMemo } from "react";
 
 import { mateRowActivity } from "../components/zerops/SidebarMateRow.logic";
 import { zeropsEnvironmentsAtom } from "../state/zerops";
 import type { ZeropsAgentActivity } from "./agentActivity";
+import { mateComing, type MateComing } from "./mateComing";
 import { rememberedActivity } from "./menuMemory";
+import { useNewMate } from "./newMate";
+import { useZeropsCreationVerdicts } from "./useZeropsCreationVerdicts";
+import { useZeropsBirths } from "./zeropsBirths";
 
 /**
  * What a Mate's row says: its conversation's reading while its socket is up or only blinking,
@@ -51,5 +60,30 @@ export function useMateRowActivity(
       });
     },
     [activity, sockets],
+  );
+}
+
+/**
+ * Whether a Mate the menu lists is still in its first minutes, as its row says it: its birth held
+ * in this browser, its project on the way up, the platform's verdict on its creation (read as the
+ * projects page reads it), or a step of this tab's creation that failed.
+ */
+export function useMateComingOf(
+  candidates: ReadonlyArray<ZeropsCandidate>,
+): (candidate: ZeropsCandidate) => MateComing | undefined {
+  const { births } = useZeropsBirths();
+  const creations = useNewMate((state) => state.creations);
+  const verdicts = useZeropsCreationVerdicts(
+    candidates,
+    births.find((birth) => birth.container && birth.step !== "health")?.projectId ?? null,
+  );
+  return useCallback(
+    (candidate: ZeropsCandidate) =>
+      mateComing({
+        birth: births.find((birth) => birth.projectId === candidate.project.id),
+        candidate: applyProjectCreationVerdict(candidate, verdicts.get(candidate.project.id)),
+        setUpFailed: creations[candidate.project.id]?.failed,
+      }),
+    [births, creations, verdicts],
   );
 }
