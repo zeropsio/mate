@@ -144,7 +144,7 @@ describe("ThreadLiveStep", () => {
     expect(relay.getThreadLiveStep("thread-2")).toBeNull();
   });
 
-  it("the calls it carries are the newest eight", () => {
+  it("the calls it carries are the newest four", () => {
     const relay = ThreadLiveStepModule.make();
     relay.observe("thread-1", started);
     for (let index = 0; index < 11; index += 1) {
@@ -152,10 +152,6 @@ describe("ThreadLiveStep", () => {
     }
     const step = relay.getThreadLiveStep("thread-1");
     expect(step?.kind === "calls" ? step.calls.map((entry) => entry.id) : null).toEqual([
-      "c3",
-      "c4",
-      "c5",
-      "c6",
       "c7",
       "c8",
       "c9",
@@ -180,6 +176,8 @@ describe("ThreadLiveStep", () => {
     expect(relay.getThreadLiveStep("thread-1")).toBe(before);
   });
 });
+
+const longCommand = `cat > import.yaml <<'EOF'\n${"services: [ app ]\n".repeat(300)}EOF`;
 
 describe("liveCallOf", () => {
   // The activity ingestion appends for a call, as `runtimeEventToActivities` makes it.
@@ -395,6 +393,45 @@ describe("liveCallOf", () => {
         toolName: "Read",
         input: { file_path: "/var/www/shot.png" },
         imagePath: "/var/www/shot.png",
+        startedAt: at(5),
+      },
+    },
+    {
+      name: "a long command rides cut: its first line is what a row reads",
+      input: item({
+        itemType: "command_execution",
+        status: "inProgress",
+        title: "Command run",
+        data: { toolName: "Bash", input: { command: longCommand } },
+      }),
+      call: {
+        id: "call-1",
+        activityKind: "tool.updated",
+        itemType: "command_execution",
+        title: "Command run",
+        toolName: "Bash",
+        command: `${longCommand.slice(0, 1999).trimEnd()}…`,
+        startedAt: at(5),
+      },
+    },
+    {
+      name: "at most eight plain arguments ride along",
+      input: item({
+        itemType: "mcp_tool_call",
+        status: "inProgress",
+        title: "MCP tool call",
+        data: {
+          toolName: "mcp__zerops__zerops_import",
+          input: Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`arg${index}`, "v"])),
+        },
+      }),
+      call: {
+        id: "call-1",
+        activityKind: "tool.updated",
+        itemType: "mcp_tool_call",
+        title: "MCP tool call",
+        toolName: "mcp__zerops__zerops_import",
+        input: Object.fromEntries(Array.from({ length: 8 }, (_, index) => [`arg${index}`, "v"])),
         startedAt: at(5),
       },
     },

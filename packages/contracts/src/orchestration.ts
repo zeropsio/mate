@@ -748,13 +748,16 @@ export const ThreadLiveCall = Schema.Struct({
   detail: Schema.optional(TrimmedNonEmptyString),
   /** The tool's own name ("Bash", "Read", "mcp__zerops__zerops_deploy"). */
   toolName: Schema.optional(TrimmedNonEmptyString),
-  /** The command it runs, as the runtime gave it: any shell wrapper is the reader's to drop. */
+  /**
+   * The command it runs, as the runtime gave it — cut at 2,000 characters;
+   * any shell wrapper is the reader's to drop.
+   */
   command: Schema.optional(TrimmedNonEmptyString),
   /**
    * What the call says of itself and names as its target, under its own
    * keys — `description`, `file_path`, `path`, `pattern`, `glob`, `url`,
    * `query` — and a Zerops tool's other plain arguments (the service it
-   * deploys, the page it checks). Each cut to a few hundred characters.
+   * deploys, the page it checks). At most eight, each cut to 300 characters.
    */
   input: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   /** The picture it looks at. */
@@ -770,7 +773,7 @@ export type ThreadLiveCall = typeof ThreadLiveCall.Type;
  * What a thread's running turn is on this moment
  * (`OrchestrationThreadShell.liveStep`): thinking between steps, its words
  * streaming, or the calls it made since it last thought or spoke that still
- * run — oldest first, the newest last. `since` is when it began what it is
+ * run — the newest four, oldest first. `since` is when it began what it is
  * on: the newest call's start while calls run.
  */
 export const ThreadLiveStep = Schema.Union([

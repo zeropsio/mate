@@ -47,12 +47,16 @@ export type LiveStepObservation =
   /** Its words are out. */
   | { readonly type: "words-ended"; readonly at: string };
 
+// The step rides on every shell refresh of a working thread, so what it
+// carries is bounded; a realistic step is a few hundred bytes.
 /** How many running calls a step carries at most: the newest. */
-const MAX_LIVE_CALLS = 8;
+const MAX_LIVE_CALLS = 4;
 /** A plain argument is cut to this many characters, as a projected input field is. */
 const MAX_INPUT_VALUE_LENGTH = 300;
 /** How many plain arguments of a call ride along at most. */
-const MAX_INPUT_FIELDS = 16;
+const MAX_INPUT_FIELDS = 8;
+/** A command is cut to this many characters: a row reads its first line. */
+const MAX_COMMAND_LENGTH = 2_000;
 
 interface LiveState {
   /** Calls made since it last thought or spoke that still run, by start. */
@@ -173,6 +177,11 @@ function asText(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+/** A text cut at `max` characters, an ellipsis where it goes on; the cut owns its characters. */
+function cut(text: string, max: number): string {
+  return text.length <= max ? text : Array.from(`${text.slice(0, max - 1).trimEnd()}…`).join("");
+}
+
 /** A call's plain arguments, each cut short: what it says of itself and what it names. */
 function plainArguments(source: Record<string, unknown> | undefined): Record<string, string> {
   const kept: Record<string, string> = {};
@@ -183,10 +192,7 @@ function plainArguments(source: Record<string, unknown> | undefined): Record<str
     if (key === "command") continue;
     const text = asText(value);
     if (text === undefined) continue;
-    kept[key] =
-      text.length <= MAX_INPUT_VALUE_LENGTH
-        ? text
-        : Array.from(`${text.slice(0, MAX_INPUT_VALUE_LENGTH - 1).trimEnd()}…`).join("");
+    kept[key] = cut(text, MAX_INPUT_VALUE_LENGTH);
   }
   return kept;
 }
@@ -208,11 +214,12 @@ export function liveCallOf(activity: OrchestrationThreadActivity): ThreadLiveCal
   const item = asRecord(data?.item);
   const toolName = asText(data?.toolName) ?? asText(item?.tool);
   // The command where a client looks for it, in the order it looks.
-  const command =
+  const whole =
     asText(item?.command) ??
     asText(asRecord(item?.input)?.command) ??
     asText(asRecord(item?.result)?.command) ??
     asText(data?.command);
+  const command = whole === undefined ? undefined : cut(whole, MAX_COMMAND_LENGTH);
   const input = plainArguments(asRecord(data?.input) ?? asRecord(item?.arguments));
   const imagePath = asText(data?.imagePath);
   const files = Array.isArray(data?.files)
