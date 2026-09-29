@@ -124,6 +124,39 @@ describe("one pull request in the flow", () => {
     });
   });
 
+  it.each([
+    [
+      "its description as it was written",
+      { body: "Adds a /status page.\n\n![The page](x)" },
+      "Adds a /status page.\n\n![The page](x)",
+    ],
+    ["no description where the body is empty", { body: "" }, undefined],
+    ["no description where the body is only blank lines", { body: "\n  \n" }, undefined],
+    ["no description where Gitea sent none", {}, undefined],
+  ] as const)("carries %s", (_case, over, description) => {
+    const row = flowPullRequest({
+      mergeability: "mergeable",
+      repository: "appdev",
+      pull: pull(over),
+      checks: [],
+    });
+    expect(row.description).toBe(description);
+  });
+
+  it.each([
+    ["how many comments it has, which a review holds the room of", { comments: 3 }, 3],
+    ["none said", { comments: 0 }, 0],
+    ["no count where Gitea sent none", {}, undefined],
+  ] as const)("carries %s", (_case, over, count) => {
+    const row = flowPullRequest({
+      mergeability: "mergeable",
+      repository: "appdev",
+      pull: pull(over),
+      checks: [],
+    });
+    expect(row.commentCount).toBe(count);
+  });
+
   it("carries the commit it landed as, which a release names it by", () => {
     const row = flowPullRequest({
       mergeability: "mergeable",
@@ -357,7 +390,9 @@ describe("types", () => {
         "checkRows",
         "checkWord",
         "checks",
+        "commentCount",
         "deletions",
+        "description",
         "headBranch",
         "headSha",
         "kind",
