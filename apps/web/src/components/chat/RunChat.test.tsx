@@ -1258,6 +1258,63 @@ describe("RunChat, as the person uses it", () => {
     }
   });
 
+  // A live run's chat starts empty: its scroll must follow its foot from the
+  // first line on, once the lines outgrow it (Nova, 2026-09-29: a run
+  // mounted with nothing drew no box, the watch on its foot was never set,
+  // and the scroll stood still as the run went on).
+  it("follows its foot from the first line of a run that started empty", () => {
+    const saved = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+    const list = { lines: true };
+    // What each observer watches: the scroll's is the one on its list.
+    const heard: Array<() => void> = [];
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
+      readonly callback: () => void;
+      constructor(callback: () => void) {
+        this.callback = callback;
+      }
+      observe(target: unknown) {
+        if (target === list) heard.push(this.callback);
+      }
+      disconnect() {}
+    };
+    try {
+      const box = {
+        scrollTop: 0,
+        scrollHeight: 60,
+        clientHeight: 60,
+        toggleAttribute: () => undefined,
+      };
+      const node = (element: { type: unknown }) =>
+        element.type === "ol" ? list : element.type === "div" ? box : {};
+      let renderer!: ReactTestRenderer;
+      act(() => {
+        renderer = create(
+          <Rows>
+            <RunChat row={record([], { live: true, status: status() })} />
+          </Rows>,
+          { createNodeMock: node },
+        );
+      });
+      expect(heard).toHaveLength(0);
+      act(() =>
+        renderer.update(
+          <Rows>
+            <RunChat
+              row={record([step(command("w1", "echo one"))], { live: true, status: status() })}
+            />
+          </Rows>,
+        ),
+      );
+      expect(heard).toHaveLength(1);
+      box.scrollHeight = 900;
+      box.clientHeight = 440;
+      heard[0]!();
+      expect(box.scrollTop).toBe(900);
+    } finally {
+      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = saved;
+    }
+  });
+
   // A long run opens on its newest lines (a two-hour run froze the page as
   // nine hundred bubbles drew at once); scrolling up draws the earlier ones
   // before the person reaches the top.

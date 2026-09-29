@@ -2526,9 +2526,11 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     if (from === null || feed === null) return;
     easeFeedHeight(feed, from);
   });
-  const scroll = folded ? null : (
-    <RunScroll label={`${ctx.speaker.name}'s work`} lines={chatLines(row.items, undone)} />
-  );
+  const lines = folded ? [] : chatLines(row.items, undone);
+  // The scroll mounts with its first line, so its box is there from its
+  // first frame for what keeps it at its foot.
+  const scroll =
+    lines.length === 0 ? null : <RunScroll label={`${ctx.speaker.name}'s work`} lines={lines} />;
   return (
     // One container for the chat and its now line: the Mate's column keeps
     // one gap for both. Its words wear its tint (`.run-speech`).
@@ -2657,7 +2659,7 @@ function WorkToggle({ open, onToggle }: { readonly open: boolean; readonly onTog
  * newest lines and draws the earlier ones as the person scrolls up to them,
  * the lines in view kept where they stand. A fade at an edge says there is
  * more past it. What arrives after it was first drawn arrived while the
- * person watched, and rises in.
+ * person watched, and rises in. It mounts with its first line (`RunChat`).
  */
 function RunScroll({
   label,
@@ -2724,7 +2726,6 @@ function RunScroll({
     return () => observer.disconnect();
   }, []);
   const shown = gatherCalls(from > 0 ? lines.slice(from) : lines);
-  if (shown.length === 0 && from === 0) return null;
   return (
     <RunScrollHoldContext value={hold}>
       <ChatShownContext value={shownRef}>
