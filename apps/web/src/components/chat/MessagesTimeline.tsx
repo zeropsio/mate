@@ -1802,7 +1802,7 @@ function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcom
   }, [turnKey]);
   return (
     // The result stands off the chat as the bars do, on the card's own hairline.
-    <div ref={markerRef} className="-mx-4 border-border/60 border-t px-4 pt-2">
+    <div ref={markerRef} className="-mx-4 border-border/60 border-t px-4 pt-2 empty:hidden">
       <TurnReport
         onOpenImage={ctx.onImageExpand}
         onOpenTurnDiff={(turnId) => ctx.onOpenTurnDiff(turnId)}

@@ -1308,7 +1308,8 @@ export function stretchFace(input: {
 // Browser checks and incidents
 // ---------------------------------------------------------------------------
 
-function browserCheckUrl(operation: ZeropsOperation): URL | null {
+/** The address a check looked at, when its subject is one. */
+export function browserCheckUrl(operation: ZeropsOperation): URL | null {
   const subject = operation.subject.trim();
   return URL.canParse(subject)
     ? new URL(subject)
@@ -1335,7 +1336,7 @@ export function browserCheckCaption(operation: ZeropsOperation): string {
 }
 
 /** Which page a check looked at, for counting pages: its host and its path. */
-function browserCheckPage(operation: ZeropsOperation): string {
+export function browserCheckPage(operation: ZeropsOperation): string {
   const url = browserCheckUrl(operation);
   return url === null
     ? browserCheckCaption(operation)
@@ -1536,13 +1537,34 @@ function dedupeAdjacent(phases: ReadonlyArray<string>): string[] {
 
 export interface OutcomeService {
   readonly hostname: string;
-  readonly tone: "ok" | "failed" | "attention" | "busy";
-  /** "Healthy", "Deployed", "Dev server on :8000". */
+  /** As the run left it: running, not running, or still broken. */
+  readonly tone: "ok" | "attention" | "failed";
+  /** "Dev server running", "Deployed", "Healthy", "Build failing". */
   readonly word: string;
   readonly version: string | null;
   readonly url: string | null;
-  /** A setback on the way that it came back from, kept as history. */
-  readonly recovered: string | null;
+  /** Still broken as the run left it: why, when, and what its log said last. */
+  readonly failure: OutcomeFailure | null;
+}
+
+/** Why something is still broken: what its row says and a fix request carries (S6). */
+export interface OutcomeFailure {
+  /** The failure's own words: "3 type errors in session.ts". */
+  readonly reason: string;
+  readonly at: string;
+  /** The last lines of the log it left, oldest first. */
+  readonly logLines: ReadonlyArray<string>;
+}
+
+/** Something the run set out to do and did not: a push, a service it could not create. */
+export interface OutcomeNotDone {
+  readonly key: string;
+  /** What it was about: "gitea", "appdev". */
+  readonly subject: string;
+  /** "Import failed", "Push failed". */
+  readonly word: string;
+  readonly reason: string | null;
+  readonly at: string;
 }
 
 export interface OutcomeModel {
@@ -1565,12 +1587,11 @@ export interface OutcomeModel {
     readonly count: number;
     readonly views: number;
     readonly failures: number;
-    /** Every check, in order: the report shows each take in its device's shape. */
+    /** Every check, in order: the result finds each page's pictures and verdict in them. */
     readonly takes: ReadonlyArray<ZeropsOperation>;
   } | null;
   readonly created: ReadonlyArray<string>;
-  readonly removed: ReadonlyArray<string>;
-  readonly notDone: ReadonlyArray<string>;
+  readonly notDone: ReadonlyArray<OutcomeNotDone>;
   /** What its calls came to, a pill per kind; its edits are the files pill's where the diff is known. */
   readonly activity: ReadonlyArray<OutcomeActivity>;
 }
@@ -1585,6 +1606,37 @@ function failureWords(operation: ZeropsOperation): string {
   const reason = operation.explanation?.reason ?? operation.closing ?? operation.statusWord;
   return reason.replace(/\.$/, "");
 }
+
+/** The pipeline's build steps: a deploy that failed in one of them has a build that fails. */
+const BUILD_STEP_IDS: ReadonlySet<string> = new Set(["INIT_BUILD_CONTAINER", "RUN_BUILD_COMMANDS"]);
+
+/** A service a failure left broken, in a few words: where it broke, not the call's status word. */
+function brokenWord(operation: ZeropsOperation): string {
+  if (operation.kind === "verify") return "Not healthy";
+  if (operation.kind === "devServer") return "Dev server not running";
+  const failed = operation.steps.find((step) => step.state === "failed");
+  return failed !== undefined && BUILD_STEP_IDS.has(failed.id) ? "Build failing" : "Deploy failed";
+}
+
+function failureOf(operation: ZeropsOperation): OutcomeFailure {
+  return {
+    reason: failureWords(operation),
+    at: operation.settledAt ?? operation.anchorAt,
+    logLines: operation.explanation?.logTail ?? [],
+  };
+}
+
+/** What did not go through, by what it set out to do. */
+const NOT_DONE_WORD: Partial<Record<ZeropsOperation["kind"], string>> = {
+  deploy: "Push failed",
+  import: "Import failed",
+  delete: "Removal failed",
+  subdomain: "Subdomain failed",
+  mount: "Mount failed",
+  scale: "Scaling failed",
+  env: "Settings change failed",
+  bootstrap: "Setup failed",
+};
 
 /**
  * A deploy call that only pushed to git, or found nothing to push: its one
@@ -1601,11 +1653,12 @@ export function isGitPushOnly(operation: ZeropsOperation): boolean {
 }
 
 /**
- * What a settled turn produced, each fact once and in its own register: the
- * services it left live, the changes that landed and the files it changed,
- * the checks, what it created and removed, what it could not do, and what its
- * calls came to. Built only from what the turn already carries — null when it
- * did nothing.
+ * What a settled turn left, each fact once: the services it left running or
+ * broken — as the run left them, never a failure it came back from (the
+ * owner, 2026-09-29: "it doesn't make sense to keep log of things that were
+ * fixed later") — the changes that landed and the files it changed, the
+ * checks, what it created, what it could not do, and what its calls came to.
+ * Built only from what the turn already carries — null when it did nothing.
  */
 export function deriveOutcome(input: {
   readonly turn: ConversationTurn;
@@ -1620,7 +1673,6 @@ export function deriveOutcome(input: {
   const settled = operations.filter((operation) => operation.phase !== "running");
 
   const services = new Map<string, OutcomeService>();
-  const failedFirst = new Map<string, ZeropsOperation>();
   for (const operation of settled) {
     if (
       operation.kind !== "deploy" &&
@@ -1633,35 +1685,39 @@ export function deriveOutcome(input: {
     const host = operationTargetKey(operation);
     const known = services.get(host);
     if (operation.phase === "failed") {
-      if (!failedFirst.has(host)) failedFirst.set(host, operation);
       services.set(host, {
         hostname: host,
         tone: "failed",
-        word: operation.kind === "verify" ? "Checks failed" : operation.statusWord,
+        word: brokenWord(operation),
         version: known?.version ?? null,
         url: known?.url ?? null,
-        recovered: null,
+        failure: failureOf(operation),
       });
       continue;
     }
     if (operation.phase !== "done") continue;
     const url = operation.links[0]?.url ?? known?.url ?? null;
     if (operation.kind === "devServer") {
+      // Stopped on purpose, it no longer runs because of the run.
+      if (devServerAction(operation) === "stop") {
+        if (known?.word.startsWith("Dev server") === true) services.delete(host);
+        continue;
+      }
       if (
         known?.tone === "ok" &&
         operation.statusWord === "Running" &&
-        known.word !== "Dev server"
+        !known.word.startsWith("Dev server")
       ) {
         continue;
       }
+      const running = operation.statusWord !== "Not running";
       services.set(host, {
         hostname: host,
-        tone: operation.statusWord === "Not running" ? "attention" : "ok",
-        word:
-          operation.statusWord === "Not running" ? "Dev server not running" : "Dev server running",
+        tone: running ? "ok" : "attention",
+        word: running ? "Dev server running" : "Dev server not running",
         version: known?.version ?? null,
         url,
-        recovered: null,
+        failure: null,
       });
       continue;
     }
@@ -1671,25 +1727,13 @@ export function deriveOutcome(input: {
       word: operation.kind === "verify" ? "Healthy" : "Deployed",
       version: operation.kind === "deploy" ? shortVersion(operation) : (known?.version ?? null),
       url,
-      recovered: null,
+      failure: null,
     });
-  }
-  for (const [host, failure] of failedFirst) {
-    const service = services.get(host);
-    if (service && service.tone === "ok") {
-      services.set(host, {
-        ...service,
-        recovered: `First ${failure.kind === "verify" ? "check" : failure.kind === "deploy" ? "deploy" : "try"} failed: ${failureWords(failure)}. It came back after that.`,
-      });
-    }
   }
 
   const checks = settled.filter((operation) => operation.kind === "browser");
   const created = settled.flatMap((operation) =>
     operation.kind === "import" && operation.phase === "done" ? [operation.subject] : [],
-  );
-  const removed = settled.flatMap((operation) =>
-    operation.kind === "delete" && operation.phase === "done" ? [operation.subject] : [],
   );
   // What the turn set out to do and did not: a push, a service it could not
   // create, remove or change. A call that failed on the way (the "error"
@@ -1705,7 +1749,16 @@ export function deriveOutcome(input: {
         operation.kind !== "error" &&
         !isReadOperationKind(operation.kind),
     )
-    .map((operation) => `${operation.voice.replace(/\.$/, "")}: ${failureWords(operation)}`);
+    .map((operation): OutcomeNotDone => ({
+      key: operation.key,
+      subject: operation.subject,
+      word: NOT_DONE_WORD[operation.kind] ?? operation.statusWord,
+      reason:
+        operation.explanation?.reason.replace(/\.$/, "") ??
+        operation.closing?.replace(/\.$/, "") ??
+        null,
+      at: operation.settledAt ?? operation.anchorAt,
+    }));
 
   const files =
     input.diff && input.diff.files.length > 0 && input.diff.turnId
@@ -1727,8 +1780,6 @@ export function deriveOutcome(input: {
       title: entry.event.title,
     })),
     files,
-    // The report is where a settled turn's checks are seen: every take, as
-    // the thumbnail of the device it was taken on.
     checks:
       checks.length > 0
         ? {
@@ -1739,7 +1790,6 @@ export function deriveOutcome(input: {
           }
         : null,
     created,
-    removed,
     notDone,
     // The files the diff counts are its edits: one pill, not two.
     activity: (input.activity ?? []).filter((pill) => pill.kind !== "edit" || files === null),
@@ -1751,7 +1801,6 @@ export function deriveOutcome(input: {
     outcome.files === null &&
     outcome.checks === null &&
     outcome.created.length === 0 &&
-    outcome.removed.length === 0 &&
     outcome.notDone.length === 0;
   return empty ? null : outcome;
 }
