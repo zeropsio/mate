@@ -4193,6 +4193,7 @@ button.run-bar:focus-visible {
    the 18 px between a tile and the tray's edge — 6 px here, the tray's 12
    under it. */
 .run-result-pictures {
+  container: result-pictures / inline-size;
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
   column-gap: 8px;
@@ -4206,6 +4207,14 @@ button.run-bar:focus-visible {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 128px));
   gap: 8px;
+}
+/* A narrow column — the preview open beside a laptop's conversation —
+   stands the strip in two rows of three rather than six tiles too small to
+   read, from its width alone: nothing moves once it is drawn. */
+@container result-pictures (max-width: 665px) {
+  .run-result-strip {
+    grid-template-columns: repeat(3, minmax(0, 128px));
+  }
 }
 /* While its file is read, the tile is quiet and already its size: nothing
    moves when the picture comes, or when it never does. */
