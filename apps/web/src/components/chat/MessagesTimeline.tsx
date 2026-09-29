@@ -808,6 +808,28 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           : { name: "Assistant", tint: "slate" },
     [crewmate, mate],
   );
+  // What the conversation held when it opened, on the server's clock: a
+  // message newer than that arrived while the person watched. Measured per
+  // conversation, from the rows themselves, so a client clock that runs
+  // behind the server's never makes the history rise in as it opens.
+  const newestMessageAt = useMemo(() => {
+    let newest = Number.NEGATIVE_INFINITY;
+    for (const row of rows) {
+      if (row.kind !== "message") continue;
+      const at = Date.parse(row.createdAt);
+      if (at > newest) newest = at;
+    }
+    return newest;
+  }, [rows]);
+  const [openedWith, setOpenedWith] = useState<{
+    readonly key: string;
+    readonly at: number;
+  } | null>(null);
+  if (openedWith?.key !== routeThreadKey && newestMessageAt > Number.NEGATIVE_INFINITY) {
+    setOpenedWith({ key: routeThreadKey, at: newestMessageAt });
+  }
+  const arrivedAfter = openedWith?.key === routeThreadKey ? openedWith.at : null;
+
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
       timestampFormat,
@@ -832,6 +854,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onSteerQueuedMessage,
       steerQueuedMessageShortcutLabel,
       onRemoveQueuedMessage,
+      arrivedAfter,
     }),
     [
       timestampFormat,
@@ -855,6 +878,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onSteerQueuedMessage,
       steerQueuedMessageShortcutLabel,
       onRemoveQueuedMessage,
+      arrivedAfter,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(
@@ -1358,16 +1382,45 @@ const CARD_SLICE: Record<CardSlice, string> = {
 // page showed through as a hairline (2026-09-29): a slice with another under
 // it lays its ground across the joint (`[data-card-slice]` in index.css).
 
+/**
+ * The messages that have risen into place once: the list draws a row again
+ * whenever it recycles it, and a message scrolled back into sight stays put.
+ */
+const enteredMessages = new Set<string>();
+
+/**
+ * Whether a row is a message that arrived while the person watched, and has
+ * not risen in yet: the person's words from their side, the Mate's up from
+ * just below. What the conversation opened onto is simply there.
+ */
+export function messageEnters(row: TimelineRow, arrivedAfter: number | null): boolean {
+  if (arrivedAfter === null || row.kind !== "message") return false;
+  if (enteredMessages.has(row.id)) return false;
+  return Date.parse(row.createdAt) > arrivedAfter;
+}
+
 const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: TimelineRow }) {
   const gap = GAP_CLASS[row.gap ?? "none"];
   const card = row.card;
   const content = <TimelineRowBody row={row} />;
+  const { arrivedAfter } = use(TimelineRowCtx);
+  const [entering] = useState(() => messageEnters(row, arrivedAfter));
+  useEffect(() => {
+    if (!entering) return;
+    if (enteredMessages.size > 500) enteredMessages.clear();
+    enteredMessages.add(row.id);
+  }, [entering, row.id]);
+  const person = row.kind === "message" && row.message.role === "user";
   return (
     <div
       className={cn(
         card === undefined || card === "top" ? gap : null,
         card === undefined ? rowInset(row) : null,
         row.kind === "message" && row.message.role === "assistant" ? "group/assistant" : null,
+        entering &&
+          (person
+            ? "origin-bottom-right animate-bubble-in motion-reduce:animate-none"
+            : "animate-rise-in motion-reduce:animate-none"),
       )}
       data-card-slice={card}
       data-timeline-row-id={row.id}

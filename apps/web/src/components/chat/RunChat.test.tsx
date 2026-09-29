@@ -45,6 +45,7 @@ const SHARED: TimelineRowSharedState = {
   onSteerQueuedMessage: () => undefined,
   steerQueuedMessageShortcutLabel: null,
   onRemoveQueuedMessage: () => undefined,
+  arrivedAfter: null,
 };
 
 const ACTIVITY: TimelineRowActivityState = {
