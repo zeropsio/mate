@@ -7,8 +7,9 @@
  * waiting for production, Tiller with no production, Beviro whose last release
  * failed, Brightfold healthy, Ferrow with only a stage, Imperial Titan folded
  * with production down and Maren at work in it, Corvel releasing and
- * Lanternfield stopped on purpose. Every name but Beviro's and Imperial
- * Titan's, and every word, is made up; the hosts are `example.app`.
+ * Lanternfield stopped on purpose. Hollin holds a Mate in each state of its
+ * owner's seat. Every name but Beviro's and Imperial Titan's, and every word,
+ * is made up; the hosts are `example.app`.
  *
  * Fixtures only: nothing here ships in the app bundle.
  */
@@ -35,18 +36,39 @@ function routes(...hosts: ReadonlyArray<string>): ReadonlyArray<ZeropsPublicRout
   return hosts.map((host) => ({ service: "app", port: 80, host, url: `https://${host}` }));
 }
 
-/** A Mate's container, connected. */
-function mate(id: string, bot: string, groupTags: ReadonlyArray<string>): ZeropsCandidate {
+/**
+ * A Mate's container, connected, its agent signed in (D6's tag) — or, with
+ * `signer: null`, nobody signed in yet; `owner` is its project's `OWNER`
+ * entry, and `connected: false` a Mate whose socket is not open yet.
+ */
+function mate(
+  id: string,
+  bot: string,
+  groupTags: ReadonlyArray<string>,
+  options: {
+    readonly signer?: string | null;
+    readonly owner?: string;
+    readonly connected?: boolean;
+  } = {},
+): ZeropsCandidate {
+  const { signer = "u-plan", owner, connected = true } = options;
   return {
     key: `${id}:zcp`,
     project: {
       id,
       name: `${bot} - dev`,
       status: "ACTIVE",
-      tagList: ["mate", ...groupTags, "mate:role:dev", `mate:bot:${bot}`],
+      tagList: [
+        "mate",
+        ...groupTags,
+        "mate:role:dev",
+        `mate:bot:${bot}`,
+        ...(signer === null ? [] : [`mate:signer:claude-code:${signer}`]),
+      ],
+      ...(owner === undefined ? {} : { userRoles: [{ clientUserId: owner, roleCode: "OWNER" }] }),
     },
-    group: "connected",
-    environmentId: EnvironmentId.make(`env-${id}`),
+    group: connected ? "connected" : "ready",
+    ...(connected ? { environmentId: EnvironmentId.make(`env-${id}`) } : {}),
     service: { id: "zcp", name: "zcp", status: "ACTIVE" },
   };
 }
@@ -105,6 +127,7 @@ const FERROW = group("ferrow", "Ferrow");
 const TITAN = group("titan", "Imperial Titan");
 const CORVEL = group("corvel", "Corvel");
 const LANTERNFIELD = group("lanternfield", "Lanternfield");
+const HOLLIN = group("hollin", "Hollin");
 
 export const PLAN_CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
   mate("quillmark-orla", "Orla", QUILLMARK),
@@ -146,6 +169,15 @@ export const PLAN_CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
     hosts: ["lanternfield.example.app"],
     status: "STOPPED",
   }),
+  // Whose each Mate is, in every state its seat has (the owner, 2026-09-29):
+  // nobody's and nobody signed in, open here and not yet; the viewer's own
+  // and a colleague's, nobody signed in; and one signed in by somebody the
+  // member list does not name.
+  mate("hollin-sable", "Sable", HOLLIN, { signer: null }),
+  mate("hollin-pell", "Pell", HOLLIN, { signer: null, connected: false }),
+  mate("hollin-idris", "Idris", HOLLIN, { signer: null, owner: "cu-petra" }),
+  mate("hollin-tamar", "Tamar", HOLLIN, { signer: null, owner: "cu-karel" }),
+  mate("hollin-noor", "Noor", HOLLIN, { signer: "u-gone" }),
 ];
 
 function activity(
@@ -254,6 +286,14 @@ export const PLAN_ACTIVITY = new Map<string, ZeropsAgentActivity>([
     }),
   ],
   [
+    "hollin-noor",
+    activity("hollin-noor", {
+      minutes: 2 * 60,
+      subject: "Move the booking form's date picker to the top",
+      snippet: "It sits above the name field now, and opens on today.",
+    }),
+  ],
+  [
     "titan-maren",
     activity("titan-maren", {
       minutes: 3.5,
@@ -296,6 +336,8 @@ export const PLAN_OWNERS = new Map<string, ZeropsMateOwner>([
   ["titan-maren", VIEWER],
   ["corvel-sef", VIEWER],
   ["lanternfield-tove", KAREL],
+  ["hollin-idris", VIEWER],
+  ["hollin-tamar", KAREL],
 ]);
 
 function row(
@@ -429,6 +471,8 @@ export const PLAN_FLOWS = new Map<string, SidebarProjectFlow>([
       ]),
     }),
   ],
+  // No stop yet: its Mates' seats are what it shows.
+  ["hollin", flow({})],
 ]);
 
 /** Folded as the plan's mock draws it. */

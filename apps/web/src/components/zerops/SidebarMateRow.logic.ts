@@ -41,6 +41,89 @@ export function ownerMark(owner: {
 }
 
 /**
+ * Whose Mate it is, as the seat before its name draws it:
+ * - `person` — its owner, named by the member list: their picture or initial;
+ * - `unnamed` — its records name somebody the member list has not named: not
+ *   read yet, the read failed, or they are not in it. A neutral disc keeps
+ *   the place, so nothing moves when they are read, and nothing is worth an
+ *   error;
+ * - `nobody` — its records name nobody: no `OWNER` entry, and nobody has
+ *   signed its agent in. An empty seat, the "no assignee" convention, with
+ *   the state in words: it is nobody's until somebody signs it in.
+ */
+export type OwnerSeat =
+  | { readonly kind: "person"; readonly mark: OwnerMark }
+  | { readonly kind: "unnamed" }
+  | { readonly kind: "nobody"; readonly label: string };
+
+/** The row's second line where it says nothing else: nobody has signed its agent in. */
+export interface MateSignIn {
+  readonly words: string;
+  /**
+   * *Sign in*, in blue (S3): the viewer's to do — the Mate is nobody's, and
+   * the first to sign in owns it, or it is their own — and a press lands on
+   * it, the conversation open to them now with its sign-in in it.
+   */
+  readonly verb: boolean;
+}
+
+export interface MateOwnerView {
+  readonly seat: OwnerSeat;
+  readonly signIn: MateSignIn | undefined;
+}
+
+const NOBODY_SIGNED_IN = "Nobody has signed in yet";
+const NOBODY_OWNS = "No owner yet. Whoever signs in its coding agent owns it.";
+
+/**
+ * Whose seat a Mate's row draws, and whether it says that nobody has signed
+ * its agent in (the owner, 2026-09-29: "mate without auth / owner should have
+ * the state specially handled"):
+ *
+ * | its records                   | the member list | seat           | never asked                       |
+ * | ----------------------------- | --------------- | -------------- | --------------------------------- |
+ * | name nobody                   | —               | the empty seat | the line, *Sign in* once open     |
+ * | an `OWNER`, nobody signed in  | the viewer      | their picture  | the line, *Sign in* once open     |
+ * | an `OWNER`, nobody signed in  | a colleague     | their picture  | the line — theirs to sign in      |
+ * | an `OWNER`, nobody signed in  | not named yet   | a neutral disc | the line, no verb until named     |
+ * | somebody signed in            | named           | their picture  | nothing: a row as tall as it says |
+ * | somebody signed in            | not named       | a neutral disc | nothing                           |
+ *
+ * The line takes the row's second line only where nothing was asked: a Mate
+ * somebody has talked to says what was asked, and the seat alone says it is
+ * nobody's. *Sign in* opens the Mate — its conversation holds the sign-in —
+ * so it is offered only where that press lands there: connected, which this
+ * viewer's role allowed.
+ */
+export function mateOwnerView(input: {
+  readonly owner:
+    | {
+        readonly name: string;
+        readonly initials: string;
+        readonly avatarUrl: string | null;
+        readonly isViewer: boolean;
+      }
+    | undefined;
+  /** What its records say (`mateOwnerRecords`). */
+  readonly records: { readonly named: boolean; readonly signedIn: boolean };
+  /** The row already says what was asked under the name. */
+  readonly asked: boolean;
+  /** Its conversation is open to this viewer now: a press lands on its sign-in. */
+  readonly connected: boolean;
+}): MateOwnerView {
+  const { owner, records } = input;
+  const seat: OwnerSeat =
+    owner !== undefined
+      ? { kind: "person", mark: ownerMark(owner) }
+      : records.named
+        ? { kind: "unnamed" }
+        : { kind: "nobody", label: NOBODY_OWNS };
+  if (records.signedIn || input.asked) return { seat, signIn: undefined };
+  const theirs = seat.kind === "nobody" || owner?.isViewer === true;
+  return { seat, signIn: { words: NOBODY_SIGNED_IN, verb: input.connected && theirs } };
+}
+
+/**
  * The one colour a change row's pull-request mark may wear (S3): red where
  * its checks fail — broken — and amber where it has fallen behind `main` and
  * no longer merges — it didn't go through. Everything else is the mark's own

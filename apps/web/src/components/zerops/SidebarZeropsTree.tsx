@@ -74,6 +74,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import { deployActivatedAt } from "@t3tools/client-runtime/zerops/flow";
 import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
@@ -162,10 +163,12 @@ import {
 } from "./SidebarProductionChip.logic";
 import {
   changeMarkTone,
+  mateOwnerView,
   mateRowView,
-  ownerMark,
   type MateRowReply,
   type MateRowSlot,
+  type MateSignIn,
+  type OwnerSeat,
 } from "./SidebarMateRow.logic";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarReveal, type SidebarRevealTarget } from "~/zerops/sidebarReveal";
@@ -354,9 +357,12 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    */
   readonly getActivity?: (candidate: T) => ZeropsAgentActivity | undefined;
   /**
-   * Whose this Mate is — the person its project names as `OWNER`, once the
-   * org's member list has been read. Absent, the mark before the name is a
-   * plain disc, so the name still starts where every other does.
+   * Whose this Mate is — the person its project names as `OWNER`, or who
+   * signed its agent in, once the org's member list has been read. Absent,
+   * the seat before the name is what the Mate's own records say
+   * (`mateOwnerView`): a plain disc where they name somebody not named yet,
+   * an empty seat where they name nobody — the name starts on one edge either
+   * way.
    */
   readonly getOwner?: ((candidate: T) => ZeropsMateOwner | undefined) | undefined;
   /**
@@ -2024,6 +2030,14 @@ function MateRow<T extends RosterCandidate>({
   // What the row says in its state (`mateRowView`, M7): the face, the right
   // of the name, what was asked and the third line.
   const view = mateRowView(live, mateFaceFor(candidate.group === "connected", activity));
+  // Whose seat it is, and whether anybody has signed its agent in — read off
+  // its own records, so from the first paint (`mateOwnerView`).
+  const seated = mateOwnerView({
+    owner,
+    records: mateOwnerRecords(candidate.project),
+    asked: view.ask !== undefined,
+    connected: candidate.group === "connected",
+  });
   const known = live !== undefined && live.remembered !== true;
   // A new ask rises into the row's second line as the person sets it; the
   // ask this browser remembered gives way to the one read without a rise.
@@ -2173,7 +2187,7 @@ function MateRow<T extends RosterCandidate>({
             <span
               className={cn("flex min-w-0 flex-1 items-center gap-1.5", renaming && "invisible")}
             >
-              <MateOwnerMark owner={owner} />
+              <MateOwnerMark seat={seated.seat} />
               <span
                 className={cn(
                   "min-w-0 truncate text-sm leading-5",
@@ -2229,6 +2243,7 @@ function MateRow<T extends RosterCandidate>({
               {view.ask}
             </span>
           )}
+          {seated.signIn === undefined ? null : <MateSignInLine signIn={seated.signIn} />}
           {view.reply === undefined ? null : (
             <MateReply known={known} reply={view.reply} threadKey={live?.threadKey} />
           )}
@@ -2295,20 +2310,23 @@ function MateRow<T extends RosterCandidate>({
 }
 
 /**
- * Whose Mate it is, before its name: the person's picture, 16 px round, or
- * their initial on a colour of their own (`ownerMark`) — on every row, so a
- * face you recognise answers "whose" before the name is read, and every name
- * starts on one edge. Off the face, which it used to cover a quarter of with
- * 7 px initials. A Mate whose owner nobody could name keeps the mark's place
- * as a plain disc, so its name starts where every other does and nothing
- * moves when the owner is read.
+ * Whose Mate it is, before its name (`OwnerSeat`): the person's picture, 16 px
+ * round, or their initial on a colour of their own (`ownerMark`) — on every
+ * row, so a face you recognise answers "whose" before the name is read, and
+ * every name starts on one edge. Off the face, which it used to cover a
+ * quarter of with 7 px initials. A Mate whose records name somebody the
+ * member list has not named keeps the mark's place as a plain disc, so its
+ * name starts where every other does and nothing moves when the owner is
+ * read. A Mate whose records name nobody sits on an empty seat: a dashed ring
+ * in the muted ink, the "no assignee" convention — never a person without a
+ * picture, never a spinner — said in words on hover.
  *
  * The initial is part of a mark, not text: 9 px inside a 16 px disc, the one
  * size under the menu's scale (S1), as a picture would be.
  */
-function MateOwnerMark({ owner }: { readonly owner: ZeropsMateOwner | undefined }) {
+function MateOwnerMark({ seat }: { readonly seat: OwnerSeat }) {
   const [failed, setFailed] = useState(false);
-  if (owner === undefined) {
+  if (seat.kind === "unnamed") {
     return (
       <span
         aria-hidden="true"
@@ -2318,7 +2336,39 @@ function MateOwnerMark({ owner }: { readonly owner: ZeropsMateOwner | undefined 
       />
     );
   }
-  const mark = ownerMark(owner);
+  if (seat.kind === "nobody") {
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <span
+              className="menu-owner"
+              data-zerops-avatar="nobody"
+              data-zerops-surface="sidebar-mate-owner"
+            />
+          }
+        >
+          {/* Twelve even dashes: `pathLength` makes the ring's length 24, so
+              the pattern closes on itself with no short dash at the seam. */}
+          <svg aria-hidden="true" className="size-full" viewBox="0 0 16 16">
+            <circle
+              cx="8"
+              cy="8"
+              fill="none"
+              pathLength="24"
+              r="7.25"
+              stroke="currentColor"
+              strokeDasharray="1.25 0.75"
+              strokeWidth="1.25"
+            />
+          </svg>
+          <span className="sr-only">{seat.label}</span>
+        </TooltipTrigger>
+        <TooltipPopup side="right">{seat.label}</TooltipPopup>
+      </Tooltip>
+    );
+  }
+  const { mark } = seat;
   const picture = failed ? null : mark.picture;
   return (
     <Tooltip>
@@ -2571,6 +2621,36 @@ function MateReplyPending() {
       <span aria-hidden="true" className="size-1 rounded-full bg-sidebar-muted-foreground/45" />
       <span aria-hidden="true" className="size-1 rounded-full bg-sidebar-muted-foreground/45" />
       <span className="sr-only">Working on a reply</span>
+    </span>
+  );
+}
+
+/**
+ * The row's second line where nobody has signed its agent in and nothing was
+ * asked (`mateOwnerView`): the fact in the muted ink, and — where it is the
+ * viewer's to do and a press lands on it — *Sign in* in blue on the row's
+ * right edge (S3), as *Review* stands on a change. The word is the row's own
+ * press said as the next step: the Mate's conversation holds the sign-in.
+ * Its pill hangs outside the line's 18 px, so the row is as tall as with any
+ * second line; a word that arrives while watched — the Mate connecting —
+ * fades in.
+ */
+function MateSignInLine({ signIn }: { readonly signIn: MateSignIn }) {
+  const arrived = useChangedSinceShown(signIn.verb);
+  return (
+    <span
+      className="flex h-4.5 min-w-0 items-center gap-2 text-line leading-4.5"
+      data-zerops-surface="sidebar-mate-sign-in"
+    >
+      <span className="min-w-0 flex-1 truncate text-muted-foreground">{signIn.words}</span>
+      {signIn.verb ? (
+        <span
+          className={cn("menu-textbtn -my-0.75 -me-2", arrived && "animate-zerops-appear")}
+          data-zerops-surface="sidebar-mate-sign-in-verb"
+        >
+          Sign in
+        </span>
+      ) : null}
     </span>
   );
 }

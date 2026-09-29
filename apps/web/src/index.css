@@ -2951,6 +2951,14 @@ code {
     background: color-mix(in oklab, var(--contrast-sidebar-foreground) 10%, transparent);
   }
 
+  /* Nobody's: an empty seat — a dashed ring in the muted ink, no fill and no
+     hairline, so it never reads as a person without a picture. */
+  .menu-owner[data-zerops-avatar="nobody"] {
+    color: color-mix(in oklab, var(--sidebar-muted-foreground) 75%, transparent);
+    background: none;
+    box-shadow: none;
+  }
+
   /* A verb in a row, as a blue word — *Review* on a change, on the crew's
      line: blue is what clicks (S3), and no outlined pill repeats down the
      list. Its hover is its own blue, faint. */

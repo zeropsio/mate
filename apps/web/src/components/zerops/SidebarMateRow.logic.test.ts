@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 
-import { changeMarkTone, mateRowView, ownerMark } from "./SidebarMateRow.logic";
+import { changeMarkTone, mateOwnerView, mateRowView, ownerMark } from "./SidebarMateRow.logic";
 
 describe("ownerMark — whose Mate it is, as a 16 px mark before its name", () => {
   it.each([
@@ -49,6 +49,110 @@ describe("ownerMark — whose Mate it is, as a 16 px mark before its name", () =
       ),
     );
     expect(hues.size).toBeGreaterThanOrEqual(4);
+  });
+});
+
+// A Mate with no owner, or nobody signed in (the owner, 2026-09-29: "mate
+// without auth / owner should have the state specially handled"). Three
+// seats — a person, somebody the member list has not named, nobody — and the
+// row's own line where nobody has signed its agent in.
+describe("mateOwnerView — whose seat, and whether anybody signed its agent in", () => {
+  const PETRA = { name: "Petra Malá", initials: "PM", avatarUrl: null, isViewer: true };
+  const KAREL = { name: "Karel Novák", initials: "KN", avatarUrl: null, isViewer: false };
+  const NOBODY = { named: false, signedIn: false };
+  const OWNED_UNSIGNED = { named: true, signedIn: false };
+  const SIGNED = { named: true, signedIn: true };
+  const LINE = "Nobody has signed in yet";
+
+  it.each([
+    {
+      case: "a named owner, signed in: the person, no line",
+      owner: KAREL,
+      records: SIGNED,
+      asked: false,
+      connected: true,
+      seat: "person",
+      line: undefined,
+    },
+    {
+      case: "recorded, the member list not read, failed, or without them: a neutral seat",
+      owner: undefined,
+      records: SIGNED,
+      asked: false,
+      connected: true,
+      seat: "unnamed",
+      line: undefined,
+    },
+    {
+      case: "nobody's and never asked, open here: the empty seat, the line and Sign in",
+      owner: undefined,
+      records: NOBODY,
+      asked: false,
+      connected: true,
+      seat: "nobody",
+      line: { words: LINE, verb: true },
+    },
+    {
+      case: "nobody's, not open here yet: the line, and no verb a press would not reach",
+      owner: undefined,
+      records: NOBODY,
+      asked: false,
+      connected: false,
+      seat: "nobody",
+      line: { words: LINE, verb: false },
+    },
+    {
+      case: "nobody's, but asked already (a project token): the empty seat and its own lines",
+      owner: undefined,
+      records: NOBODY,
+      asked: true,
+      connected: true,
+      seat: "nobody",
+      line: undefined,
+    },
+    {
+      case: "the viewer's own, nobody signed in: their picture, the line and Sign in",
+      owner: PETRA,
+      records: OWNED_UNSIGNED,
+      asked: false,
+      connected: true,
+      seat: "person",
+      line: { words: LINE, verb: true },
+    },
+    {
+      case: "a colleague's, nobody signed in: the line, theirs to sign in",
+      owner: KAREL,
+      records: OWNED_UNSIGNED,
+      asked: false,
+      connected: true,
+      seat: "person",
+      line: { words: LINE, verb: false },
+    },
+    {
+      case: "an owner not named yet, nobody signed in: the line, no verb until they are",
+      owner: undefined,
+      records: OWNED_UNSIGNED,
+      asked: false,
+      connected: true,
+      seat: "unnamed",
+      line: { words: LINE, verb: false },
+    },
+  ])("$case", ({ owner, records, asked, connected, seat, line }) => {
+    const view = mateOwnerView({ owner, records, asked, connected });
+    expect(view.seat.kind).toBe(seat);
+    expect(view.signIn).toEqual(line);
+  });
+
+  it("says the empty seat in words, and draws a person as their mark", () => {
+    expect(
+      mateOwnerView({ owner: undefined, records: NOBODY, asked: true, connected: false }).seat,
+    ).toEqual({
+      kind: "nobody",
+      label: "No owner yet. Whoever signs in its coding agent owns it.",
+    });
+    expect(
+      mateOwnerView({ owner: KAREL, records: SIGNED, asked: true, connected: true }).seat,
+    ).toEqual({ kind: "person", mark: ownerMark(KAREL) });
   });
 });
 
