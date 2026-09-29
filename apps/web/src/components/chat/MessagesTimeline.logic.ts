@@ -1487,8 +1487,11 @@ function crewSeamRow(
   return { kind: "crew-seam", id, createdAt: work.createdAt, seam, words: work.label };
 }
 
-/** A quiet stretch of the conversation this long draws its own seam. */
-const IDLE_SEAM_MS = 30 * 60 * 1000;
+/**
+ * A quiet stretch of the conversation this long draws a time line: minutes
+ * apart are one conversation, and a line between them split it in pieces.
+ */
+const IDLE_SEAM_MS = 60 * 60 * 1000;
 
 export function deriveMessagesTimelineRows(input: {
   timelineEntries: ReadonlyArray<TimelineEntry>;
@@ -1618,14 +1621,17 @@ export function deriveMessagesTimelineRows(input: {
   const seamBefore = (at: string, id: string) => {
     const day = localDayKey(at);
     const atMs = Date.parse(at);
-    if (day !== null && day !== lastDay) {
+    const endMs = lastEnd === null ? NaN : Date.parse(lastEnd);
+    // The conversation is dated at its top; after that a line stands only
+    // where an hour or a day passed — the day where a new one began, else the
+    // time. Midnight between two messages minutes apart is no reason for one.
+    const quiet =
+      !Number.isFinite(endMs) || (Number.isFinite(atMs) && atMs - endMs >= IDLE_SEAM_MS);
+    if (quiet && day !== null && day !== lastDay) {
       rows.push({ kind: "seam", id: `seam:day:${day}`, createdAt: at, seam: "day" });
       lastDay = day;
-    } else {
-      const endMs = lastEnd === null ? NaN : Date.parse(lastEnd);
-      if (Number.isFinite(endMs) && Number.isFinite(atMs) && atMs - endMs > IDLE_SEAM_MS) {
-        rows.push({ kind: "seam", id: `seam:gap:${id}`, createdAt: at, seam: "gap" });
-      }
+    } else if (quiet && Number.isFinite(endMs)) {
+      rows.push({ kind: "seam", id: `seam:gap:${id}`, createdAt: at, seam: "gap" });
     }
     if (!newSinceDrawn && Number.isFinite(atMs) && atMs > newSinceMs) {
       rows.push({ kind: "seam", id: "seam:new", createdAt: input.newSince!, seam: "new" });
