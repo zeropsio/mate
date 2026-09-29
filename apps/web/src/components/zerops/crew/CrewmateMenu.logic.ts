@@ -32,13 +32,13 @@ export interface CrewmateMenuItem {
 }
 
 export interface CrewmateMenuModel {
-  /** The job's first sentence, at the top. */
+  /** The job's first sentence, as the person reads it (`crewJobSentence`), at the top. */
   readonly heading: string;
   readonly items: ReadonlyArray<CrewmateMenuItem>;
 }
 
 export function crewmateMenuModel(input: {
-  readonly crewmate: Pick<Crewmate, "kind" | "jobFirstLine">;
+  readonly crewmate: Pick<Crewmate, "kind" | "jobFirstLine" | "displayName">;
   readonly mateName: string;
   /**
    * *Try its work* for a writer: where it opens, whether a press does
@@ -60,7 +60,7 @@ export function crewmateMenuModel(input: {
     line: CREW_MENU_LINES.clearConversation,
     enabled: !busy,
   };
-  const heading = crewJobSentence(crewmate.jobFirstLine);
+  const heading = crewJobSentence(crewmate.jobFirstLine, crewmate.displayName);
   if (crewmate.kind === "lead") {
     return {
       heading,

@@ -675,15 +675,36 @@ export const mateOwnChatWord = (mateName: string): string => `${mateName}'s own 
 /** A line's markdown lead-in: a heading's hashes, a list's bullet or number, a quote. */
 const MARKDOWN_LEAD = /^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+|>\s*)/u;
 
+/** How a job is written to its crewmate: "You own Game Rules: …". */
+const YOU_OWN = "You own ";
+
 /**
- * The first sentence of a job, in plain words: what a crewmate's face says on
- * hover and its menu says at the top. Markdown's marks go — a heading's
- * hashes, a list's bullet, emphasis, code ticks, a link's address — and the
- * sentence ends at its first full stop, question or exclamation mark that a
- * space or the line's end follows, so `index.ts` or `v1.2` never ends it; a
- * line with none is whole.
+ * A job's words to its crewmate, as the person's line: "You own Game Rules:
+ * turns and scoring" or "You own Game Rules — turns and scoring" is "Turns and
+ * scoring"; "You own the rules engine: …" is "The rules engine: …"; anything
+ * else, as it is. Its name is matched as written, never as a pattern, and in
+ * any case; a line that would be left empty stays whole.
  */
-export function crewJobSentence(jobFirstLine: string): string {
+function personsLine(plain: string, name: string): string {
+  if (!plain.startsWith(YOU_OWN)) return plain;
+  const owned = plain.slice(YOU_OWN.length);
+  const lead = [`${name}:`, `${name} —`].find((prefix) =>
+    owned.toLowerCase().startsWith(prefix.toLowerCase()),
+  );
+  const rest = (lead === undefined ? owned : owned.slice(lead.length)).trimStart();
+  return rest.length === 0 ? plain : `${rest.charAt(0).toUpperCase()}${rest.slice(1)}`;
+}
+
+/**
+ * The first sentence of a job, in plain words and the person's: what a
+ * crewmate's face says on hover and its menu says at the top. Markdown's marks
+ * go — a heading's hashes, a list's bullet, emphasis, code ticks, a link's
+ * address — the words the job says to its crewmate become the person's line
+ * (`personsLine`), and the sentence ends at its first full stop, question or
+ * exclamation mark that a space or the line's end follows, so `index.ts` or
+ * `v1.2` never ends it; a line with none is whole.
+ */
+export function crewJobSentence(jobFirstLine: string, name: string): string {
   const plain = jobFirstLine
     .replace(MARKDOWN_LEAD, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/gu, "$1")
@@ -693,8 +714,9 @@ export function crewJobSentence(jobFirstLine: string): string {
     .replace(/(^|[^\w*])\*([^*\s][^*]*)\*(?!\w)/gu, "$1$2")
     .replace(/(^|[^\w])_([^_\s][^_]*)_(?!\w)/gu, "$1$2")
     .trim();
-  const end = /[.!?](?=\s|$)/u.exec(plain);
-  return end === null ? plain : plain.slice(0, end.index + 1);
+  const line = personsLine(plain, name);
+  const end = /[.!?](?=\s|$)/u.exec(line);
+  return end === null ? line : line.slice(0, end.index + 1);
 }
 
 /** A crewmate's menu on the conversation's line (its ⌄): each press. */

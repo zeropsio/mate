@@ -745,8 +745,68 @@ describe("the conversation's line and a crewmate's menu", () => {
     },
     { line: "   ", says: "" },
   ])("reads a job's first sentence in plain words: $line", ({ line, says }) => {
-    expect(crewJobSentence(line)).toBe(says);
+    expect(crewJobSentence(line, "World Server")).toBe(says);
   });
+
+  // A job is written to the crewmate ("You own Game Rules: …"); the person
+  // reads the line it gives them, not an instruction.
+  it.each([
+    {
+      name: "Game Rules",
+      line: "You own Game Rules: turns, scoring and their tests. Write the tests first.",
+      says: "Turns, scoring and their tests.",
+    },
+    {
+      name: "Game Rules",
+      line: "You own Game Rules — turns, scoring and their tests.",
+      says: "Turns, scoring and their tests.",
+    },
+    {
+      name: "Game Rules",
+      line: "You own game rules: turns, scoring and their tests.",
+      says: "Turns, scoring and their tests.",
+    },
+    {
+      name: "Game Rules",
+      line: "You own the rules engine: turns, scoring and their tests.",
+      says: "The rules engine: turns, scoring and their tests.",
+    },
+    {
+      name: "C++ (core) [v2]*",
+      line: "You own C++ (core) [v2]*: the engine's hot loop. Profile it first.",
+      says: "The engine's hot loop.",
+    },
+    {
+      name: "C++ (core) [v2]*",
+      line: "You own C++ (core) [v2]* — the engine's hot loop.",
+      says: "The engine's hot loop.",
+    },
+    {
+      name: "Game Rules",
+      line: "**You own Game Rules:** turns and scoring.",
+      says: "Turns and scoring.",
+    },
+    {
+      name: "Game Rules",
+      line: "You own Game Rules:",
+      says: "You own Game Rules:",
+    },
+    {
+      name: "Game Rules",
+      line: "You owned the rules engine once.",
+      says: "You owned the rules engine once.",
+    },
+    {
+      name: "Game Rules",
+      line: "Owns the rules engine: turns, scoring and their tests.",
+      says: "Owns the rules engine: turns, scoring and their tests.",
+    },
+  ])(
+    "gives the person the line a job was written to its crewmate: $line",
+    ({ name, line, says }) => {
+      expect(crewJobSentence(line, name)).toBe(says);
+    },
+  );
 
   it("names the menu's presses and what each does", () => {
     expect(CREW_MENU).toEqual({

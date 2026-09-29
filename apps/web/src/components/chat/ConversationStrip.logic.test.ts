@@ -321,6 +321,26 @@ describe("lineCrew", () => {
     ]);
   });
 
+  it("says a job written to its crewmate as the person's line", () => {
+    const snapshot = crewSnapshotFixture();
+    const told = view({
+      ...snapshot,
+      crewmates: snapshot.crewmates.map((crewmate) =>
+        crewmate.handle === "backend"
+          ? { ...crewmate, jobFirstLine: "You own Backend: the API under src/api. Test it." }
+          : crewmate.handle === "frontend"
+            ? { ...crewmate, jobFirstLine: "You own the game UI — the camera and the HUD." }
+            : crewmate,
+      ),
+    });
+    expect(crew({ view: told })?.map((entry) => entry.job)).toEqual([
+      null,
+      "The API under src/api.",
+      "The game UI — the camera and the HUD.",
+      "Writes the business plan in docs/business-plan.md.",
+    ]);
+  });
+
   it("puts the crewmate whose chat is on screen on the band", () => {
     expect(
       crew({ crewChat: { handle: "backend", title: "Backend" } })
