@@ -21,6 +21,19 @@ export function credentialMissingError(connectionId: string): ConnectionBlockedE
   });
 }
 
+/**
+ * A session at the end of its life — past its own deadline, or so its server said. Its door
+ * mints the next, so nothing about it is a fault.
+ */
+export function sessionExpiredError(traceId?: string): ConnectionBlockedError {
+  return new ConnectionBlockedError({
+    reason: "authentication",
+    detail: "The environment session expired.",
+    ...(traceId === undefined ? {} : { traceId }),
+    expired: true,
+  });
+}
+
 export function environmentMismatchError(input: {
   readonly expected: EnvironmentId;
   readonly actual: EnvironmentId;
