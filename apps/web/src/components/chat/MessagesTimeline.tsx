@@ -93,6 +93,7 @@ import {
   resolveTimelineScrollAnchor,
   shouldRepinTimelineEndAfterRowResize,
 } from "./timelineScrollAnchoring";
+import { useTimelineSwitch } from "./TimelineSwitch";
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeStableMessagesTimelineRows,
@@ -678,6 +679,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(
     null,
   );
+  const timelineSwitch = useTimelineSwitch();
+  const [listReady, setListReady] = useState(false);
+  const onListLoad = useCallback(() => setListReady(true), []);
   const [minimapHasPersistentGutter, setMinimapHasPersistentGutter] = useState(false);
   const [minimapHitStripWidth, setMinimapHitStripWidth] = useState(0);
   const [minimapCurrentIndex, setMinimapCurrentIndex] = useState<number | null>(null);
@@ -978,30 +982,24 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     crew === null
       ? rows.length === 0
       : rows.every((row) => row.kind === "seam" || row.kind === "crew-seam");
+  // The conversation says when it stands on screen where it stays (T1): the
+  // list has put its rows in place and a reading position is back — an
+  // empty conversation at once, one still on its way never. Until then the
+  // pane holds what it showed last over it.
+  const showsList = !empty || isWorking;
+  if (!showsList && listReady) setListReady(false);
+  const placed = showsList
+    ? listReady && !restoringReadingPosition
+    : !(hideEmptyPlaceholder && loading);
+  useEffect(() => {
+    if (!placed || timelineSwitch === null) return;
+    const frame = requestAnimationFrame(() => timelineSwitch.painted());
+    return () => cancelAnimationFrame(frame);
+  }, [placed, timelineSwitch]);
   if (empty && !isWorking) {
     if (hideEmptyPlaceholder) {
-      // Occupy the pane with the theme surface so a thread switch cannot
-      // punch a hole through to the window chrome (white in light mode). A
-      // conversation slow to come — a Mate opened for the first time, over
-      // the network — was a blank second: its Mate works in the middle of the
-      // pane instead, shown only once the wait passes 400 ms.
       return (
-        <div
-          className="flex h-full min-h-0 items-center justify-center bg-background"
-          data-timeline-loading="true"
-        >
-          {loading ? (
-            <span
-              aria-label={`Opening ${speaker.name}'s conversation`}
-              // Opacity alone, so it keeps its 400 ms hold under reduced
-              // motion too: without the hold a quick load flashed it.
-              className="flex animate-held-appear"
-              role="status"
-            >
-              <MateFace size="lg" state="working" tint={speaker.tint} />
-            </span>
-          ) : null}
-        </div>
+        <TimelineLoadingPane loading={loading} routeThreadKey={routeThreadKey} speaker={speaker} />
       );
     }
     return crew === null ? (
@@ -1042,6 +1040,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 restoringReadingPosition ? false : MAINTAIN_VISIBLE_CONTENT_POSITION
               }
               onScroll={handleScroll}
+              onLoad={onListLoad}
               className={cn(
                 "timeline-legend-list scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
                 topFadeEnabled && "topbar-scroll-fade",
@@ -1082,6 +1081,59 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     </TimelineRowCtx>
   );
 });
+
+/** When a conversation slow to come shows its Mate at work: `--animate-held-appear`'s delay. */
+const MATE_AT_WORK_AFTER_MS = 400;
+
+/**
+ * The pane of a conversation on its way. It occupies the pane with the theme
+ * surface so a thread switch cannot punch a hole through to the window chrome
+ * (white in light mode). A conversation slow to come — a Mate opened for the
+ * first time, over the network — was a blank second: its Mate works in the
+ * middle of the pane instead, shown only once the wait passes 400 ms. From
+ * then the pane is something on screen: the switch keeps it there while the
+ * rows that replace it are placed, as it keeps a conversation left (T1).
+ */
+function TimelineLoadingPane({
+  loading,
+  routeThreadKey,
+  speaker,
+}: {
+  readonly loading: boolean;
+  readonly routeThreadKey: string;
+  readonly speaker: ConversationSpeaker;
+}) {
+  const timelineSwitch = useTimelineSwitch();
+  useEffect(() => {
+    if (!loading || timelineSwitch === null) return;
+    const shown = setTimeout(timelineSwitch.waiting, MATE_AT_WORK_AFTER_MS);
+    return () => clearTimeout(shown);
+  }, [loading, timelineSwitch]);
+  // As it goes, while it still stands on the page.
+  useLayoutEffect(() => {
+    if (timelineSwitch === null) return;
+    return () => timelineSwitch.placing();
+  }, [timelineSwitch]);
+  return (
+    <div
+      className="flex h-full min-h-0 items-center justify-center bg-background"
+      data-timeline-loading="true"
+      data-timeline-thread={routeThreadKey}
+    >
+      {loading ? (
+        <span
+          aria-label={`Opening ${speaker.name}'s conversation`}
+          // Opacity alone, so it keeps its 400 ms hold under reduced
+          // motion too: without the hold a quick load flashed it.
+          className="flex animate-held-appear"
+          role="status"
+        >
+          <MateFace size="lg" state="working" tint={speaker.tint} />
+        </span>
+      ) : null}
+    </div>
+  );
+}
 
 function keyExtractor(item: MessagesTimelineRow) {
   return item.id;

@@ -2974,6 +2974,24 @@ code {
 
 /* ==== Pass 16 · motion across switches ==== */
 
+/* Switching Mates (T1): the conversation left stays on screen as a still
+   picture (`data-timeline-freeze`) until the next one stands where it stays.
+   While it holds, the pane is a stacking context of its own, so the picture
+   covers everything the next conversation draws (its minimap too) and stays
+   under the composer; and the next conversation shows whole the frame it is
+   in place, since the picture's fade is the only one. */
+[data-timeline-switch="holding"] {
+  isolation: isolate;
+}
+
+[data-timeline-switch="holding"]
+  .timeline-legend-list
+  .legend-list-content-container
+  > div[style*="opacity"],
+[data-timeline-switch="holding"] [data-timeline-thread] {
+  transition: none;
+}
+
 /* A conversation put back where the person left it is out of sight until it
    stands there: the list places a row from estimates first, and the frame
    after corrected it by 96 px. Out of a switch, it then eases in as the list

@@ -340,6 +340,7 @@ import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog"
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
+import { TimelineSwitch } from "./chat/TimelineSwitch";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
 import {
@@ -8143,66 +8144,69 @@ export default function ChatView(props: ChatViewProps) {
             />
             {/* Messages Wrapper */}
             <div className="relative flex min-h-0 flex-1 flex-col">
-              {/* Messages — LegendList handles virtualization and scrolling internally */}
-              <CrewTimelineContext value={crewTimeline}>
-                <MessagesTimeline
-                  agentPanelModel={agentPanelModel}
-                  onOpenAgents={addAgentsSurface}
-                  working={dockModel}
-                  afterTurnWork={activeBackgroundLiveness}
-                  onStopBackgroundWork={stopBackgroundWork}
-                  stoppingBackgroundWork={isStoppingBackgroundWork}
-                  key={activeThread.id}
-                  isWorking={isWorking}
-                  workingStepLabel={workingStepLabel}
-                  isCompacting={isCompacting}
-                  activeTurnStartedAt={activeWorkStartedAt}
-                  listRef={legendListRef}
-                  timelineEntries={displayedTimeline.entries}
-                  latestTurn={activeLatestTurn}
-                  runningTurnId={activeRunningTurnId}
-                  turnDiffSummaries={activeThread.checkpoints}
-                  activeThreadEnvironmentId={activeThread.environmentId}
-                  routeThreadKey={routeThreadKey}
-                  onOpenTurnDiff={onOpenTurnDiff}
-                  supportsConversationRollback={supportsConversationRollback}
-                  onRevertToTurnCount={onRevertTimelineTurn}
-                  {...(activeProject ? { onRunShellCommand: runShellCommand } : {})}
-                  isRevertingCheckpoint={isRevertingCheckpoint}
-                  onImageExpand={onExpandTimelineImage}
-                  markdownCwd={gitCwd ?? undefined}
-                  resolvedTheme={resolvedTheme}
-                  timestampFormat={timestampFormat}
-                  workspaceRoot={activeWorkspaceRoot}
-                  skills={
-                    activeProviderStatus
-                      ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
-                      : EMPTY_PROVIDER_SKILLS
-                  }
-                  anchorMessageId={timelineAnchorMessageId}
-                  onAnchorReady={onTimelineAnchorReady}
-                  contentInsetEndAdjustment={composerOverlayHeight}
-                  liveFollowEnabled={timelineLiveFollowEnabled}
-                  onIsAtEndChange={onIsAtEndChange}
-                  onManualNavigation={cancelTimelineLiveFollowForUserNavigation}
-                  cancelPositionRestoreRef={cancelPositionRestoreRef}
-                  hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
-                  loading={threadDetailLoading && !isDraftHeroState}
-                  syncing={threadSyncPhase !== null || threadDetailLoading}
-                  queuedMessages={queuedMessages}
-                  usagePause={activeThreadShell?.usagePause ?? null}
-                  onUsageAutoResumeChange={onUsageAutoResumeChange}
-                  onSteerQueuedMessage={onSteerQueuedMessage}
-                  steerQueuedMessageShortcutLabel={shortcutLabelForCommand(
-                    keybindings,
-                    "thread.steerQueuedMessage",
-                    { context: { terminalFocus: false } },
-                  )}
-                  onRemoveQueuedMessage={onRemoveQueuedMessage}
-                  topFadeEnabled={!hasTimelineTopBanner}
-                  loadEarlier={loadEarlierTurns}
-                />
-              </CrewTimelineContext>
+              {/* Messages — LegendList handles virtualization and scrolling
+                  internally; the switch keeps a conversation on screen while
+                  the next one is placed. */}
+              <TimelineSwitch switchKey={routeThreadKey}>
+                <CrewTimelineContext value={crewTimeline}>
+                  <MessagesTimeline
+                    agentPanelModel={agentPanelModel}
+                    onOpenAgents={addAgentsSurface}
+                    working={dockModel}
+                    afterTurnWork={activeBackgroundLiveness}
+                    onStopBackgroundWork={stopBackgroundWork}
+                    stoppingBackgroundWork={isStoppingBackgroundWork}
+                    isWorking={isWorking}
+                    workingStepLabel={workingStepLabel}
+                    isCompacting={isCompacting}
+                    activeTurnStartedAt={activeWorkStartedAt}
+                    listRef={legendListRef}
+                    timelineEntries={displayedTimeline.entries}
+                    latestTurn={activeLatestTurn}
+                    runningTurnId={activeRunningTurnId}
+                    turnDiffSummaries={activeThread.checkpoints}
+                    activeThreadEnvironmentId={activeThread.environmentId}
+                    routeThreadKey={routeThreadKey}
+                    onOpenTurnDiff={onOpenTurnDiff}
+                    supportsConversationRollback={supportsConversationRollback}
+                    onRevertToTurnCount={onRevertTimelineTurn}
+                    {...(activeProject ? { onRunShellCommand: runShellCommand } : {})}
+                    isRevertingCheckpoint={isRevertingCheckpoint}
+                    onImageExpand={onExpandTimelineImage}
+                    markdownCwd={gitCwd ?? undefined}
+                    resolvedTheme={resolvedTheme}
+                    timestampFormat={timestampFormat}
+                    workspaceRoot={activeWorkspaceRoot}
+                    skills={
+                      activeProviderStatus
+                        ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
+                        : EMPTY_PROVIDER_SKILLS
+                    }
+                    anchorMessageId={timelineAnchorMessageId}
+                    onAnchorReady={onTimelineAnchorReady}
+                    contentInsetEndAdjustment={composerOverlayHeight}
+                    liveFollowEnabled={timelineLiveFollowEnabled}
+                    onIsAtEndChange={onIsAtEndChange}
+                    onManualNavigation={cancelTimelineLiveFollowForUserNavigation}
+                    cancelPositionRestoreRef={cancelPositionRestoreRef}
+                    hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
+                    loading={threadDetailLoading && !isDraftHeroState}
+                    syncing={threadSyncPhase !== null || threadDetailLoading}
+                    queuedMessages={queuedMessages}
+                    usagePause={activeThreadShell?.usagePause ?? null}
+                    onUsageAutoResumeChange={onUsageAutoResumeChange}
+                    onSteerQueuedMessage={onSteerQueuedMessage}
+                    steerQueuedMessageShortcutLabel={shortcutLabelForCommand(
+                      keybindings,
+                      "thread.steerQueuedMessage",
+                      { context: { terminalFocus: false } },
+                    )}
+                    onRemoveQueuedMessage={onRemoveQueuedMessage}
+                    topFadeEnabled={!hasTimelineTopBanner}
+                    loadEarlier={loadEarlierTurns}
+                  />
+                </CrewTimelineContext>
+              </TimelineSwitch>
 
               {/* The way back to the end, once the person has scrolled away from
                   it: a round button floating over the timeline, always drawn and
