@@ -24,7 +24,7 @@ import { useCallback } from "react";
 
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
-import { useProjects, useThreadShells } from "../state/entities";
+import { readThreadShells, useProjects, useThreadShells } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
 
 export function useOpenMate(): (
@@ -59,7 +59,13 @@ export function useOpenMate(): (
       const project = projects.find((entry) => entry.environmentId === environmentId);
       if (project !== undefined) {
         void handleNewThread(scopeProjectRef(project.environmentId, project.id)).then((opened) => {
-          if (opened !== null) then?.(scopeThreadRef(project.environmentId, opened.threadId));
+          // No new chat where a conversation appeared meanwhile: that one opened instead.
+          const threadId =
+            opened?.threadId ??
+            resolvePrimaryConversation(
+              readThreadShells().filter((thread) => thread.environmentId === environmentId),
+            ).primary?.id;
+          if (threadId !== undefined) then?.(scopeThreadRef(project.environmentId, threadId));
         });
         return;
       }
