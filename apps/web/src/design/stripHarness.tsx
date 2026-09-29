@@ -274,7 +274,14 @@ interface HeadState {
   readonly on: number | string;
   /** The crew this browser remembers, turning to the feed's a moment later. */
   readonly reload?: true;
+  /** What the chat on screen is about, where not its title; `null` for a chat nobody spoke into. */
+  readonly subject?: string | null;
+  /** The subject arrives a moment after the line is painted, as the first words sent. */
+  readonly lateSubject?: true;
 }
+
+const LONG_SUBJECT =
+  "Move the checkout's payment calls into one batched request per basket, keep the old path behind a flag for a day, and write down what to watch in the logs before we remove it for good.";
 
 const STATES: ReadonlyArray<HeadState> = [
   {
@@ -325,10 +332,40 @@ const STATES: ReadonlyArray<HeadState> = [
   },
   {
     id: "lone",
-    title: "A Mate with no crew: its face and name, what its chat is about on hover",
+    title: "A Mate with no crew: its face and name, then what its chat is about",
     chats: [{ title: FEN_TASK, activity: "idle" }],
     crew: [],
     on: 0,
+  },
+  {
+    id: "lone-short",
+    title: "A Mate with no crew, a short subject",
+    chats: [{ title: "Fix the login redirect", activity: "idle" }],
+    crew: [],
+    on: 0,
+  },
+  {
+    id: "lone-long",
+    title: "A Mate with no crew, a subject longer than the line: cut off, whole on hover",
+    chats: [{ title: LONG_SUBJECT, activity: "working" }],
+    crew: [],
+    on: 0,
+  },
+  {
+    id: "lone-none",
+    title: "A Mate with no crew in a chat nobody has spoken into: its name alone",
+    chats: [{ title: "New chat", activity: "idle" }],
+    crew: [],
+    on: 0,
+    subject: null,
+  },
+  {
+    id: "lone-late",
+    title: "A Mate with no crew whose subject arrives after the line is painted: it fades in",
+    chats: [{ title: FEN_TASK, activity: "idle" }],
+    crew: [],
+    on: 0,
+    lateSubject: true,
   },
   {
     id: "reload",
@@ -387,6 +424,13 @@ function Frame({ state }: { readonly state: HeadState }) {
     const timer = setTimeout(() => setLive(true), 1500);
     return () => clearTimeout(timer);
   }, [live]);
+  // A subject arriving late: none on the first paint, the first words a moment later.
+  const [spoken, setSpoken] = useState(state.lateSubject !== true);
+  useEffect(() => {
+    if (spoken) return;
+    const timer = setTimeout(() => setSpoken(true), 1500);
+    return () => clearTimeout(timer);
+  }, [spoken]);
   // The menu asked for opens as a press opens it, once the frame stands.
   useEffect(() => {
     if (OPEN !== state.id) return;
@@ -491,7 +535,12 @@ function Frame({ state }: { readonly state: HeadState }) {
                 chats,
                 currentThreadId: current,
                 crewChatOpen: seat !== undefined,
-                subject: seat === undefined ? chatShells[state.on as number]!.title : null,
+                subject:
+                  seat !== undefined || !spoken
+                    ? null
+                    : state.subject === undefined
+                      ? chatShells[state.on as number]!.title
+                      : state.subject,
                 lastVisitedAtById,
               })}
               onCloseChat={() => {}}

@@ -20,9 +20,11 @@ import {
   lineCrew,
   lineMate,
   mateChats,
+  mateWords,
   replacementChatToPin,
   type CrewRoom,
   type LineCrewmate,
+  type LineMate,
 } from "./ConversationStrip.logic";
 
 const FEN = EnvironmentId.make("env-fen");
@@ -176,6 +178,66 @@ describe("lineMate", () => {
   it("opens its main chat, and nothing while it has none", () => {
     expect(mate({ crewChatOpen: true }).threadId).toBe(main.id);
     expect(mate({ chats: [], currentThreadId: null }).threadId).toBeNull();
+  });
+});
+
+describe("mateWords", () => {
+  const MATE: LineMate = {
+    name: "Fen",
+    tint: "amber",
+    face: "idle",
+    open: true,
+    threadId: ThreadId.make("main"),
+    tooltip: "Build the game server from the spec, tests first.",
+  };
+
+  it.each<{
+    readonly name: string;
+    readonly mate: Partial<LineMate>;
+    readonly crew: boolean;
+    readonly cut: boolean;
+    readonly words: ReturnType<typeof mateWords>;
+  }>([
+    {
+      name: "a Mate with no crew writes its chat's subject on the line, no hover while it fits",
+      mate: {},
+      crew: false,
+      cut: false,
+      words: { subject: "Build the game server from the spec, tests first.", hover: null },
+    },
+    {
+      name: "and the subject whole on hover once the line cuts it off",
+      mate: {},
+      crew: false,
+      cut: true,
+      words: {
+        subject: "Build the game server from the spec, tests first.",
+        hover: "Build the game server from the spec, tests first.",
+      },
+    },
+    {
+      name: "a chat nobody has spoken into has nothing to write, nor to hover",
+      mate: { tooltip: null },
+      crew: false,
+      cut: false,
+      words: { subject: null, hover: null },
+    },
+    {
+      name: "with a crew the faces need the room: the subject is the name's hover",
+      mate: {},
+      crew: true,
+      cut: false,
+      words: { subject: null, hover: "Build the game server from the spec, tests first." },
+    },
+    {
+      name: "on a crewmate's chat the Mate's hover says a press opens its own",
+      mate: { open: false, tooltip: "Fen's own chat" },
+      crew: true,
+      cut: false,
+      words: { subject: null, hover: "Fen's own chat" },
+    },
+  ])("$name", ({ mate, crew, cut, words }) => {
+    expect(mateWords({ ...MATE, ...mate }, { crew, cut })).toEqual(words);
   });
 });
 

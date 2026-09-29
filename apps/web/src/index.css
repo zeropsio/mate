@@ -6419,3 +6419,19 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 }
 
 /* ==== end of motion across switches ==== */
+
+/* ==== Pass 18 · motion ==== */
+
+/* A crewless Mate's subject arriving after its line stands — the first
+   words sent — fades in where it stays: the name before it never moves. */
+.conversation-subject[data-arrived] {
+  animation: conversation-subject-in 180ms var(--ease-out-strong) both;
+}
+
+@keyframes conversation-subject-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ==== end of motion ==== */

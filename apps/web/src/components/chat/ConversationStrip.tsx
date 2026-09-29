@@ -46,6 +46,7 @@ import {
   lineCrew,
   lineMate,
   mateChats,
+  mateWords,
   type CrewRoom,
   type LineChats,
   type LineCrewmate,
@@ -150,13 +151,47 @@ function MateChatsMenu({
 }
 
 /**
- * The Mate, leading the line: its face at 24 and its name at 16/600 in ink,
- * and nothing else — what its chat is about is its hover, never words on the
- * line (the owner: descriptions live in tooltips). While its own chat is open
- * a double-click renames that chat, and — with a crew — it stands on the
- * menu's selected band; with a crewmate's chat on screen it is the same
- * without the band, and a press opens its own chat. A Mate with no crew is
- * drawn the same, never on the band.
+ * Whether the text in the element it is given ends in an ellipsis: measured
+ * before paint after every draw — its words may change while its box keeps
+ * its size — and whenever its box changes size.
+ */
+function useCut(): readonly [(node: HTMLElement | null) => void, boolean] {
+  const [node, setNode] = useState<HTMLElement | null>(null);
+  const [cut, setCut] = useState(false);
+  useLayoutEffect(() => {
+    const measure = () => setCut(node !== null && node.scrollWidth > node.clientWidth);
+    measure();
+  });
+  useLayoutEffect(() => {
+    if (node === null) return;
+    const observer = new ResizeObserver(() => setCut(node.scrollWidth > node.clientWidth));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [node]);
+  return [setNode, node !== null && cut];
+}
+
+/**
+ * Whether something drawn now came after the first paint: a subject the
+ * line was first painted without — the first words sent — arrives; one
+ * there from the start is simply there.
+ */
+function useArrival(present: boolean): boolean {
+  const [seen, setSeen] = useState({ present, arrived: false });
+  if (seen.present === present) return seen.arrived;
+  setSeen({ present, arrived: present });
+  return present;
+}
+
+/**
+ * The Mate, leading the line: its face at 24 and its name at 16/600 in ink.
+ * A Mate with no crew writes what its chat is about after it, 14/400 muted
+ * past a divider — cut off before the name ever is, and whole on hover once
+ * it is (`mateWords`); with a crew the faces need the room, and the subject
+ * is the name's hover. While its own chat is open a double-click renames that
+ * chat, and — with a crew — it stands on the menu's selected band; with a
+ * crewmate's chat on screen it is the same without the band, and a press
+ * opens its own chat. A Mate with no crew is never on the band.
  */
 function MatePill({
   mate,
@@ -176,10 +211,13 @@ function MatePill({
 }) {
   const band = crew && mate.open;
   const opens = crew && !mate.open && mate.threadId !== null;
+  const [subjectRef, cut] = useCut();
+  const { subject, hover } = mateWords(mate, { crew, cut });
+  const arrived = useArrival(subject !== null);
   // The header's face is reused from one Mate to the next: it greets no arrival.
   const face = <MateFace className="size-6" size="sm" state={mate.face} tint={mate.tint} />;
   const name = (
-    <span className="max-w-48 truncate text-base leading-6 font-semibold text-foreground">
+    <span className="max-w-48 shrink-0 truncate text-base leading-6 font-semibold text-foreground">
       {mate.name}
     </span>
   );
@@ -205,25 +243,42 @@ function MatePill({
     >
       {face}
       {name}
+      {subject === null ? null : (
+        // Arriving after the line stands, it fades in where it stays: the
+        // name before it never moves.
+        <span
+          className="conversation-subject flex min-w-0 items-center gap-2.5"
+          data-arrived={arrived ? "" : undefined}
+          data-conversation-subject=""
+        >
+          <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
+          <span className="min-w-0 truncate text-sm text-muted-foreground" ref={subjectRef}>
+            {subject}
+          </span>
+        </span>
+      )}
     </button>
   );
   return (
     <div
-      className="conversation-mate flex h-8 min-w-0 shrink-0 items-center"
+      className={cn(
+        "conversation-mate flex h-8 min-w-0 items-center",
+        // Only a subject gives way to the line's end; the name never does.
+        subject === null && "shrink-0",
+      )}
       data-conversation-mate
       data-on={band ? "" : undefined}
       data-opens={opens ? "" : undefined}
     >
-      {mate.tooltip !== null ? (
-        <Tooltip>
-          <TooltipTrigger render={press} />
+      {/* One tree with or without a hover, so the press never remounts as one comes or goes. */}
+      <Tooltip disabled={hover === null}>
+        <TooltipTrigger render={press} />
+        {hover === null ? null : (
           <TooltipPopup align="start" side="bottom">
-            {mate.tooltip}
+            {hover}
           </TooltipPopup>
-        </Tooltip>
-      ) : (
-        press
-      )}
+        )}
+      </Tooltip>
       {chats === null ? null : (
         <MateChatsMenu chats={chats} mateName={mate.name} onClose={onCloseChat} onOpen={onOpen} />
       )}

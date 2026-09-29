@@ -202,20 +202,42 @@ describe("ConversationStrip", () => {
     expect(line({ current: "main" })).toBe("");
   });
 
-  it("draws a Mate with no crew as its face at 24 and its name at 16/600, and nothing else — what its chat is about is its hover", () => {
+  it("draws a Mate with no crew as its face at 24, its name at 16/600 and what its chat is about on the line, 14/400 muted after a divider", () => {
     state.shells = [shell("main")];
     const html = line({ current: "main" });
     expect(matePill(html)).not.toContain("data-on");
     expect(html).toMatch(/class="[^"]*\bsize-6\b[^"]*"[^>]*data-mate-face-size="sm"/);
     expect(html).toContain(
-      'class="max-w-48 truncate text-base leading-6 font-semibold text-foreground">Fen</span>',
+      'class="max-w-48 shrink-0 truncate text-base leading-6 font-semibold text-foreground">Fen</span>',
     );
-    expect(onLine(html)).not.toContain("Build the game server");
-    expect(tooltips(html)).toEqual(["Build the game server"]);
+    expect(onLine(html)).toContain(
+      '<span class="conversation-subject flex min-w-0 items-center gap-2.5" data-conversation-subject=""><span aria-hidden="true" class="h-4 w-px shrink-0 bg-border"></span><span class="min-w-0 truncate text-sm text-muted-foreground">Build the game server</span></span>',
+    );
+    // Written whole on the line, it has no hover to repeat it.
+    expect(tooltips(html)).toEqual([]);
     expect(html).not.toContain("data-conversation-divider");
     expect(html).not.toContain("data-conversation-crew");
     expect(html).not.toContain("New chat");
     expect(html).not.toContain("Close ");
+  });
+
+  it("writes nothing after a crewless Mate's name in a chat nobody has spoken into", () => {
+    state.shells = [shell("main")];
+    const html = renderToStaticMarkup(
+      <ConversationStrip
+        crewChat={null}
+        currentThreadId={ThreadId.make("main")}
+        environmentId={FEN}
+        onEditBrief={() => {}}
+        onEditJob={() => {}}
+        onRename={() => {}}
+        renameField={null}
+        subject={null}
+      />,
+    );
+    expect(html).not.toContain("data-conversation-subject");
+    expect(html).not.toContain("bg-border");
+    expect(tooltips(html)).toEqual([]);
   });
 
   it("stands the Mate on the band on its own chat, then a divider and a face per crewmate, their names unwritten", () => {

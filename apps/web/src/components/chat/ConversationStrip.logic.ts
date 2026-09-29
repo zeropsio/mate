@@ -132,6 +132,27 @@ export function lineMate(input: {
 }
 
 /**
+ * What the Mate's press says after its name, and on hover (the owner,
+ * 2026-09-29: "with a single mate it doesnt have to be in tooltip"). A Mate
+ * with no crew has the line to itself: its chat's subject stands on it, and
+ * is its hover only where the line cuts it off. With a crew the faces need
+ * the room, and the subject — or, on a crewmate's chat, that a press opens
+ * the Mate's own — stays the name's hover.
+ */
+export function mateWords(
+  mate: Pick<LineMate, "open" | "tooltip">,
+  line: {
+    /** A crew stands on the line. */
+    readonly crew: boolean;
+    /** The subject, written on the line, ends in an ellipsis. */
+    readonly cut: boolean;
+  },
+): { readonly subject: string | null; readonly hover: string | null } {
+  if (line.crew || !mate.open) return { subject: null, hover: mate.tooltip };
+  return { subject: mate.tooltip, hover: line.cut ? mate.tooltip : null };
+}
+
+/**
  * A Mate's chats, for the ⌄ after its name — only while it holds more than
  * one (new chats are no longer started): the main one first and marked, the
  * one on screen checked, and *Close this chat* for one on screen that is not
