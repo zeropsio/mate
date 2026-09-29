@@ -542,3 +542,119 @@ describe("GiteaClient pull request shas (DESIGN A7)", () => {
     ]);
   });
 });
+
+describe("GiteaClient a change you can read (pass 16 R8)", () => {
+  it("lists the files a pull request changes, with each one's +/−, page by page", async () => {
+    const full = Array.from({ length: 50 }, (_, index) => ({
+      filename: `src/file-${index}.ts`,
+      status: "modified",
+      additions: 1,
+      deletions: 0,
+    }));
+    const { client, calls } = fake([
+      { body: full },
+      {
+        body: [
+          {
+            filename: "src/server/routes/status.ts",
+            status: "added",
+            additions: 38,
+            deletions: 0,
+            changes: 38,
+          },
+          {
+            filename: "src/next.ts",
+            previous_filename: "src/old.ts",
+            status: "renamed",
+            additions: 2,
+            deletions: 1,
+          },
+        ],
+      },
+    ]);
+    const files = await client.pullRequestFiles("acme", "appdev", 2);
+    expect(calls.map((call) => call.url.slice(ORIGIN.length))).toEqual([
+      "/api/v1/repos/acme/appdev/pulls/2/files?limit=50&page=1",
+      "/api/v1/repos/acme/appdev/pulls/2/files?limit=50&page=2",
+    ]);
+    expect(files).toHaveLength(52);
+    expect(files[50]).toEqual({
+      filename: "src/server/routes/status.ts",
+      previousFilename: undefined,
+      status: "added",
+      additions: 38,
+      deletions: 0,
+    });
+    expect(files[51]).toMatchObject({ previousFilename: "src/old.ts", status: "renamed" });
+  });
+
+  it("reads a pull request's whole diff as git wrote it, as text", async () => {
+    const diff = "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
+    const { client, calls } = fake([{ text: diff }]);
+    expect(await client.pullRequestDiff("acme", "appdev", 2)).toBe(diff);
+    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/repos/acme/appdev/pulls/2.diff`);
+    expect(calls[0]?.headers.accept).toBe("text/plain");
+  });
+
+  it("says Gitea's refusal of a diff in its own words", async () => {
+    const { client } = fake([{ status: 404, body: { message: "pull request does not exist" } }]);
+    await expect(client.pullRequestDiff("acme", "appdev", 9)).rejects.toMatchObject({
+      status: 404,
+      detail: "pull request does not exist",
+    });
+  });
+
+  it("keeps what each compared commit touched and when it was written", async () => {
+    const { client } = fake([
+      {
+        body: {
+          commits: [
+            {
+              sha: "c1",
+              commit: {
+                message: "Add routes (#5)\n\nbody",
+                author: { name: "mate-p1", date: "2026-09-29T08:00:00Z" },
+              },
+              files: [{ filename: "src/server/index.ts", status: "modified" }],
+            },
+          ],
+        },
+      },
+    ]);
+    expect(await client.compareCommits("acme", "appdev", "base", "main")).toEqual([
+      {
+        sha: "c1",
+        subject: "Add routes (#5)",
+        at: "2026-09-29T08:00:00Z",
+        files: ["src/server/index.ts"],
+      },
+    ]);
+  });
+
+  it("a pull request carries its size, its merge base and when it was opened, where Gitea says", async () => {
+    const { client } = fake([
+      {
+        body: {
+          number: 2,
+          title: "Add a /status page",
+          state: "open",
+          additions: 42,
+          deletions: 3,
+          changed_files: 3,
+          merge_base: "mb-sha",
+          created_at: "2026-09-29T07:00:00Z",
+          head: { ref: "mate/mate-p1", sha: "head-sha" },
+          base: { ref: "main", sha: "base-sha" },
+        },
+      },
+    ]);
+    const pull = await client.getPullRequest("acme", "appdev", 2);
+    expect(pull).toMatchObject({
+      additions: 42,
+      deletions: 3,
+      changed_files: 3,
+      merge_base: "mb-sha",
+      created_at: "2026-09-29T07:00:00Z",
+    });
+  });
+});

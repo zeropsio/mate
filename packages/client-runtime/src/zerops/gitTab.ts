@@ -248,6 +248,10 @@ export interface GitCheckRow {
   readonly name: string;
   readonly tone: ServiceStatusToneId;
   readonly word: string;
+  /** What the check said about itself — `pnpm build · 34s`; absent where it said nothing. */
+  readonly description?: string | undefined;
+  /** Where the check keeps its own page — its run, its log; absent where it keeps none. */
+  readonly url?: string | undefined;
 }
 
 const CHECK_STATE: Record<string, { readonly tone: ServiceStatusToneId; readonly word: string }> = {
@@ -269,11 +273,17 @@ const CHECK_STATE: Record<string, { readonly tone: ServiceStatusToneId; readonly
 export function gitChecks(statuses: ReadonlyArray<GiteaCommitStatus>): ReadonlyArray<GitCheckRow> {
   return statuses
     .filter((status) => !status.context.startsWith("mate/"))
-    .map((status) => ({
-      name: status.context,
-      tone: CHECK_STATE[status.state]?.tone ?? "off",
-      word: CHECK_STATE[status.state]?.word ?? "Unknown",
-    }));
+    .map((status) => {
+      const description = status.description?.trim();
+      const url = status.target_url?.trim();
+      return {
+        name: status.context,
+        tone: CHECK_STATE[status.state]?.tone ?? "off",
+        word: CHECK_STATE[status.state]?.word ?? "Unknown",
+        ...(description === undefined || description.length === 0 ? {} : { description }),
+        ...(url === undefined || url.length === 0 ? {} : { url }),
+      };
+    });
 }
 
 /** The one word beside the checks' dot (R5). */

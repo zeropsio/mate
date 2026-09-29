@@ -96,6 +96,48 @@ describe("one pull request in the flow", () => {
     });
   });
 
+  it("carries what a review reads: the branch, each check by name, its size and its base", () => {
+    const row = flowPullRequest({
+      mergeability: "mergeable",
+      repository: "appdev",
+      pull: pull({
+        head: { ref: `mate/mate-${VERA}`, sha: "head-sha" },
+        base: { ref: "main", sha: "main-sha" },
+        additions: 42,
+        deletions: 3,
+        changed_files: 3,
+        merge_base: "mb-sha",
+        created_at: "2026-09-17T17:00:00Z",
+      }),
+      checks: [
+        { context: "build", state: "success", description: "pnpm build · 34s" },
+        { context: "mate/deploy/stage/app", state: "failure" },
+      ],
+    });
+    expect(row).toMatchObject({
+      headBranch: `mate/mate-${VERA}`,
+      checkRows: [{ name: "build", tone: "ok", word: "Passed", description: "pnpm build · 34s" }],
+      additions: 42,
+      deletions: 3,
+      changedFiles: 3,
+      mergeBase: "mb-sha",
+      baseSha: "main-sha",
+      createdAt: "2026-09-17T17:00:00Z",
+    });
+  });
+
+  it("leaves a review's reads unknown where Gitea did not send them, never zero", () => {
+    const row = flowPullRequest({
+      mergeability: "mergeable",
+      repository: "appdev",
+      pull: pull(),
+      checks: [],
+    });
+    expect(row.additions).toBeUndefined();
+    expect(row.changedFiles).toBeUndefined();
+    expect(row.checkRows).toEqual([]);
+  });
+
   it("belongs to the Mate whose bot opened it when a person renamed the branch", () => {
     const row = flowPullRequest({
       mergeability: "mergeable",
@@ -289,14 +331,22 @@ describe("types", () => {
     });
     expect(Object.keys(row).sort()).toEqual(
       [
+        "additions",
         "author",
         "baseBranch",
+        "baseSha",
+        "changedFiles",
+        "checkRows",
         "checkWord",
         "checks",
+        "createdAt",
+        "deletions",
+        "headBranch",
         "headSha",
         "kind",
         "line",
         "mateProjectId",
+        "mergeBase",
         "mergeability",
         "merged",
         "mergedAt",

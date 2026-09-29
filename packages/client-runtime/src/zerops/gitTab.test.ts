@@ -792,6 +792,19 @@ describe("the checks, by name", () => {
     expect(gitChecks([status("mate/deploy/stage/api", "failure")])).toEqual([]);
   });
 
+  it.each([
+    [
+      "what the check said about itself, and where its own page is",
+      { description: " pnpm build · 34s ", target_url: "https://ci.example/runs/7" },
+      { description: "pnpm build · 34s", url: "https://ci.example/runs/7" },
+    ],
+    ["nothing where it said nothing", { description: "  ", target_url: "" }, {}],
+  ])("keeps %s", (_name, said, kept) => {
+    expect(gitChecks([{ ...status("ci/build", "success"), ...said }])).toEqual([
+      { name: "ci/build", tone: "ok", word: "Passed", ...kept },
+    ]);
+  });
+
   it("says a state it does not know rather than guessing a colour for it", () => {
     expect(gitChecks([status("ci/test", "warning" as never)])).toEqual([
       { name: "ci/test", tone: "off", word: "Unknown" },
