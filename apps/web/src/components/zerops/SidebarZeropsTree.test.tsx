@@ -2153,6 +2153,49 @@ describe("a Mate's row says more without words", () => {
     expect(html).not.toContain("sidebar-mate-snippet");
   });
 
+  // A row is as tall as what it has to say, on one leading: the name's 20 px
+  // line, 18 px for each line under it, 10 px of air above and below. The
+  // face stands on the name's line, so a shorter row still starts the same
+  // way (M6); while words are coming, their line is held by the dots.
+  it.each([
+    {
+      case: "asked and answered",
+      activity: live(),
+      lines: ["sidebar-mate-name", "sidebar-mate-subject", "sidebar-mate-snippet"],
+      height: 76,
+    },
+    {
+      case: "asked, with no answer",
+      activity: live({ snippet: undefined }),
+      lines: ["sidebar-mate-name", "sidebar-mate-subject"],
+      height: 58,
+    },
+    {
+      case: "asked, its answer on its way",
+      activity: live({ snippet: undefined, awaitingWords: true }),
+      lines: ["sidebar-mate-name", "sidebar-mate-subject", "sidebar-mate-pending"],
+      height: 76,
+    },
+    {
+      case: "never asked anything",
+      activity: live({ subject: undefined, snippet: undefined }),
+      lines: ["sidebar-mate-name"],
+      height: 48,
+    },
+  ])("draws as many lines as it has to say: $case", ({ activity, lines, height }) => {
+    const html = row(activity);
+    const drawn = [
+      "sidebar-mate-name",
+      "sidebar-mate-subject",
+      "sidebar-mate-snippet",
+      "sidebar-mate-pending",
+    ].filter((name) => html.includes(`data-zerops-surface="${name}"`));
+    expect(drawn).toEqual(lines);
+    // The face (28 px) is taller than one line, so a one-line row is the face's.
+    const tall = Math.max(28, 20 + 18 * (drawn.length - 1));
+    expect(tall + 20).toBe(height);
+  });
+
   it.each([
     { case: "a working Mate with words back already", activity: working() },
     { case: "a resting Mate with no last words", activity: live({ snippet: undefined }) },
