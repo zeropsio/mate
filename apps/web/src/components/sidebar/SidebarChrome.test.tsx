@@ -84,14 +84,14 @@ vi.mock("~/zerops/ZeropsSessionProvider", () => ({
 import { SidebarChromeHeader, SidebarUtilityMenu } from "./SidebarChrome";
 
 describe("SidebarChromeHeader", () => {
-  it("renders the shared Mate lockup and sourced product name without T3 branding", () => {
+  it("renders the live mark alone, the product named once, without T3 branding", () => {
     const markup = renderToStaticMarkup(<SidebarChromeHeader isElectron={false} />);
 
-    // The lockup: the live mark and the wordmark, two boxes that are one; the
-    // name set once by geometry.
-    expect(markup).toContain(`viewBox="${MATE_LOCKUP.word.viewBox}"`);
-    expect(markup).toContain('data-mate-lockup="live"');
+    // The mark alone, as wide as the Mates' faces under it: no wordmark.
     expect(markup).toContain('data-mate-mark="live"');
+    expect(markup).toMatch(/class="mate-mark h-8\.25 w-7"/u);
+    expect(markup).not.toContain(`viewBox="${MATE_LOCKUP.word.viewBox}"`);
+    expect(markup).not.toContain("data-mate-lockup");
     expect(markup).toContain(`aria-hidden="true"`);
     // The link names the product once; the lockup inside it stays decorative.
     expect(markup).toContain(`aria-label="${APP_BASE_NAME}"`);
@@ -111,7 +111,7 @@ describe("SidebarChromeHeader", () => {
     expect(markup.indexOf('data-zerops-surface="sidebar-jump"')).toBeGreaterThan(
       markup.indexOf("sidebar-waiting-slot"),
     );
-    // Without either, the row is the lockup alone.
+    // Without either, the row is the mark alone.
     expect(renderToStaticMarkup(<SidebarChromeHeader isElectron={false} />)).not.toContain(
       "sidebar-jump",
     );

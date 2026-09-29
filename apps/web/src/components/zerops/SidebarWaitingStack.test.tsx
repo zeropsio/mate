@@ -52,14 +52,15 @@ describe("SidebarWaitingStack — the Mates waiting on you, in the header", () =
   });
 });
 
-// The logo row keeps the lockup and ⌘K whole; the waiting faces give way
+// The logo row keeps the mark and ⌘K whole; the waiting faces give way
 // first. The room the row leaves them, as measured in the harness: the
 // menu's width less its 1 px edge, the mark's inset (90 px beside macOS's
-// traffic lights, 16 on the web), the lockup (62.6), the gap before ⌘K (8),
-// ⌘K (49.5) and the row's end padding (12) — never more than the slot's 96.
-describe("waitingFacesThatFit — the faces give way before the lockup and ⌘K", () => {
+// traffic lights, 16 on the web), the mark (28, as wide as a Mate's face),
+// the gap before ⌘K (8), ⌘K (49.5) and the row's end padding (12) — never
+// more than the slot's 96.
+describe("waitingFacesThatFit — the faces give way before the mark and ⌘K", () => {
   const room = (width: number, inset: number) =>
-    Math.min(96, width - 1 - inset - 62.6 - 8 - 49.5 - 12);
+    Math.min(96, width - 1 - inset - 28 - 8 - 49.5 - 12);
   it.each([
     { name: "the web at 304: four", room: room(304, 16), count: 4, fit: { shown: 4, more: 0 } },
     {
@@ -70,22 +71,29 @@ describe("waitingFacesThatFit — the faces give way before the lockup and ⌘K"
     },
     { name: "the desktop at 304: four", room: room(304, 90), count: 4, fit: { shown: 4, more: 0 } },
     {
-      name: "the desktop at 304, six waiting: three and how many more",
+      name: "the desktop at 304, six waiting: four and how many more",
       room: room(304, 90),
       count: 6,
-      fit: { shown: 3, more: 3 },
+      fit: { shown: 4, more: 2 },
     },
     {
-      name: "the desktop at 256: one face, its count giving way too",
+      name: "the desktop at 256: both faces",
       room: room(256, 90),
       count: 2,
-      fit: { shown: 1, more: 0 },
+      fit: { shown: 2, more: 0 },
     },
     {
-      name: "the web at its narrowest, 208: one and how many more",
+      name: "the web at its narrowest, 208: all three",
       room: room(208, 16),
       count: 3,
-      fit: { shown: 1, more: 2 },
+      fit: { shown: 3, more: 0 },
+    },
+    { name: "a 50 px slot: one and how many more", room: 50, count: 3, fit: { shown: 1, more: 2 } },
+    {
+      name: "a 40 px slot: one face, its count giving way too",
+      room: 40,
+      count: 2,
+      fit: { shown: 1, more: 0 },
     },
     { name: "no room for a face: none", room: 30, count: 2, fit: { shown: 0, more: 0 } },
     { name: "nobody waiting", room: 96, count: 0, fit: { shown: 0, more: 0 } },
