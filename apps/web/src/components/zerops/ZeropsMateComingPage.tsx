@@ -8,15 +8,14 @@
  * creation (`newProjectBirth.ts`).
  *
  * A new Mate comes up here. It is the Mate's empty conversation before the conversation exists —
- * the same header line, the same face a third of the way down, the headline in the box the
- * stand-up's phases share (`MateEmptyStateView`) — saying it is coming up, with the projects
- * page's own progress under it (`ZeropsBirthLine`: the birth's steps, the step's words, how long).
- * A Mate that did not come says so, with the page's *Remove*; a step past its cap, with its
- * *Keep waiting*. Once it is up — connected, its main conversation and the agents' sign-in read —
- * the words hand over in place: the face wakes, the headline turns into the stand-up's ("Quinn
- * will stand up development on Acme Docs after you authorize your agent.") and its Authorize
- * buttons fade in where the progress stood. Then the conversation takes the route, painting that
- * same frame (`mateHandOver.ts`), so the person never sees a page change.
+ * the same header line, the same face a third of the way down, the same stage
+ * (`MateEmptyStateView`, the "Arrival" board's Direction A) — saying it is coming up, how long is
+ * left, and the Mate's own steps in the slot with their times (`arrivalSteps`). A Mate that did
+ * not come says so, with the page's *Remove*; a step past its cap, with its *Keep waiting*. Once
+ * it is up — connected, its main conversation and the agents' sign-in read — the words hand over
+ * in place: the face wakes, "Sign Quinn in to start." takes the headline's place and the sign-in
+ * takes the steps' (`ZeropsAgentSignIn`). Then the conversation takes the route, painting that
+ * same frame at once, so the person never sees a page change.
  *
  * Any other Mate waits here for its link: its name under its face, and under it what its machine
  * waits for, in the route gate's words — "Reconnecting…", "This Mate isn't answering. Trying again
@@ -44,7 +43,6 @@ import { useEnvironmentLinks } from "~/routes/-environmentTargets";
 import { useProjects, useThreadShells, useThreadStatus } from "~/state/entities";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
-import { markMateHandedOver } from "~/zerops/mateHandOver";
 import {
   mateComing,
   mateComingPage,
@@ -53,6 +51,7 @@ import {
 } from "~/zerops/mateComing";
 import { zeropsMateIdentityOf, type ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { takeMateConversation } from "~/zerops/mateOpening";
+import { arrivalSteps, comingSentence } from "~/zerops/mateArrival";
 import { MATE_STAND_UP_RETRY_LABEL, mateStandUpPhase } from "~/zerops/mateStandUp";
 import { useNewMate } from "~/zerops/newMate";
 import {
@@ -62,6 +61,7 @@ import {
 } from "~/zerops/newProjectBirth";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useOpenMate } from "~/zerops/useOpenMate";
+import { useUsualAgent } from "~/zerops/useUsualAgent";
 import { useZeropsBirthProgress } from "~/zerops/useZeropsBirthProgress";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
@@ -71,12 +71,13 @@ import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { ConversationStripView } from "../chat/ConversationStrip";
+import { zeropsAccountDisplay } from "./landing/ZeropsAccountControl.logic";
 import { ZeropsProjectLink } from "../chat/ChatHeader";
 import { Button } from "../ui/button";
 import { SidebarInset } from "../ui/sidebar";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
-import { ZeropsBirthLine } from "./ZeropsBirthProgress";
 import type { BirthLineProgress } from "./ZeropsBirthProgress.logic";
+import { ZeropsArrivalSteps, type ArrivalYou } from "./ZeropsArrivalSteps";
 import { ALMOST_THERE_LINE } from "./ZeropsProjectRow.logic";
 import {
   MateEmptyStateView,
@@ -91,8 +92,8 @@ const UP_AND_OPENING: MateComing = { kind: "coming", line: ALMOST_THERE_LINE, ve
 /** The slate face a Mate wears where nobody picked one. */
 const NO_FACE: ZeropsMateFace = { tint: "slate", shape: "squircle" };
 
-/** The hand-over's own length: the headline's cross-fade (`[data-standup-phrase]`), then the route. */
-const HAND_OVER_MS = 220;
+/** The hand-over's own length: the stage's words and slot handing over (`ArrivalSwap`), then the route. */
+const HAND_OVER_MS = 280;
 
 /** How long a connected Mate's conversation may take to be read live before it hands over anyway. */
 const LIVE_GRACE_MS = 3_000;
@@ -102,6 +103,10 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const openMate = useOpenMate();
   const { activeOrganization, user } = useZeropsSession();
   const viewer = user?.id;
+  // The person's own step wears their picture.
+  const you = useMemo(() => personOf(user), [user]);
+  // Which agent this project's other Mates use, read while it comes up: its sign-in is ready in it.
+  useUsualAgent(projectId);
   const { organizationRef, runtime } = useZeropsData();
   const { listing } = useZeropsCandidates();
   const held = useMemo(() => heldCandidates(listing), [listing]);
@@ -221,7 +226,6 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     if (cameUp) handingOver(threadRef);
     const timer = setTimeout(
       () => {
-        if (cameUp) markMateHandedOver(environmentId);
         takeMateConversation(projectId)?.(threadRef);
         void navigate({
           to: "/$environmentId/$threadId",
@@ -379,9 +383,16 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           : {
               kind: shown.kind,
               over: handing,
+              sentence: comingSentenceOf({
+                coming: shown,
+                trouble,
+                progress: lineProgress,
+                nowMs: progress?.nowMs,
+              }),
               below: (
                 <ComingBelow
                   coming={shown}
+                  mate={mate}
                   nowMs={progress?.nowMs}
                   onKeepWaiting={() => {
                     retryBirth(projectId);
@@ -389,7 +400,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                   onRemove={remove}
                   progress={lineProgress}
                   removing={removing}
-                  trouble={trouble}
+                  you={you}
                 />
               ),
             }
@@ -427,7 +438,6 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           unknown={handing && cameUp ? empty.unknown : null}
         />
       )}
-      {empty.dialog}
     </MateComingFrame>
   );
 }
@@ -563,19 +573,48 @@ export function MateOpeningLine({
   );
 }
 
+/** The person, as their own step wears them: their picture, else their initials. */
+export function personOf(
+  user: Parameters<typeof zeropsAccountDisplay>[0] | undefined,
+): ArrivalYou | null {
+  if (user === undefined || user === null) return null;
+  const display = zeropsAccountDisplay(user);
+  return { initials: display.initials, avatarUrl: display.avatarUrl };
+}
+
 /**
- * Under the headline while it comes up: the projects page's own line for a birth — its steps,
- * the step's words and how long — or, past a step's cap, "Taking longer than usual." with *Keep
- * waiting*; one that did not come says why, with its verb: *Remove*, *Try again* where a New
- * project's step stopped before anything was made, or *Go to projects* where the platform may have
- * made it anyway.
+ * The sentence under the headline while it comes up: how long is left, measured from the press;
+ * past a step's cap, that it is taking longer; one that did not come, why.
+ */
+export function comingSentenceOf(input: {
+  readonly coming: MateComing | undefined;
+  readonly trouble?: string | null;
+  readonly progress: BirthLineProgress | undefined;
+  readonly nowMs: number | undefined;
+}): string | undefined {
+  const { coming, progress, nowMs } = input;
+  if (coming === undefined) return undefined;
+  if (coming.kind === "failed") return input.trouble ?? coming.line;
+  if (coming.verb === "keep-waiting") return coming.line;
+  const startedAt = progress?.startedAt === undefined ? Number.NaN : Date.parse(progress.startedAt);
+  return comingSentence(
+    nowMs === undefined || Number.isNaN(startedAt) ? undefined : nowMs - startedAt,
+  );
+}
+
+/**
+ * In the slot while it comes up: the Mate's own steps (`arrivalSteps`), with their times — and
+ * over them, where it waits on the person, the view's one verb: *Keep waiting* past a step's cap;
+ * for one that did not come, *Remove*, *Try again* where a New project's step stopped before
+ * anything was made, or *Go to projects* where the platform may have made it anyway.
  */
 export function ComingBelow({
   coming,
   progress,
   nowMs,
+  mate,
+  you,
   removing = false,
-  trouble = null,
   onKeepWaiting,
   onRemove,
   onTryAgain,
@@ -584,55 +623,53 @@ export function ComingBelow({
   readonly coming: MateComing | undefined;
   readonly progress: BirthLineProgress | undefined;
   readonly nowMs: number | undefined;
+  readonly mate: Pick<ZeropsMateIdentity, "name" | "project">;
+  readonly you: ArrivalYou | null;
   readonly removing?: boolean;
-  /** Why *Remove* did not; null while it has not failed. */
-  readonly trouble?: string | null;
   readonly onKeepWaiting?: () => void;
   readonly onRemove?: () => void;
   readonly onTryAgain?: () => void;
   /** What *Go to projects* is: the router's link to the projects screen. */
   readonly projects?: ReactElement;
 }): ReactNode {
-  if (coming?.kind === "failed") {
-    return (
-      <div
-        className="flex w-full max-w-sm flex-col items-center gap-3"
-        data-zerops-surface="mate-coming-failed"
-      >
-        <p className="text-center text-sm text-status-failed-text">{trouble ?? coming.line}</p>
-        {coming.verb === "remove" && onRemove !== undefined ? (
-          <Button disabled={removing} onClick={onRemove} size="compact" variant="pill">
-            Remove
-          </Button>
-        ) : coming.verb === "try-again" && onTryAgain !== undefined ? (
-          <Button onClick={onTryAgain} size="compact" variant="pill">
-            {MATE_STAND_UP_RETRY_LABEL}
-          </Button>
-        ) : coming.verb === "go-to-projects" && projects !== undefined ? (
-          <Button render={projects} size="compact" variant="pill">
-            Go to projects
-          </Button>
-        ) : null}
-      </div>
+  // A creation that stopped says why in the sentence over its steps: the steps only mark where.
+  const steps =
+    progress === undefined || nowMs === undefined ? null : (
+      <ZeropsArrivalSteps
+        steps={arrivalSteps(progress, mate, nowMs).map((step) => {
+          if (coming?.kind !== "failed") return step;
+          const { why: _said, ...marked } = step;
+          return marked;
+        })}
+        you={you}
+      />
     );
-  }
-  if (coming?.verb === "keep-waiting" && onKeepWaiting !== undefined) {
-    return (
-      <div
-        className="flex w-full max-w-sm flex-col items-center gap-3"
-        data-zerops-surface="mate-coming-slow"
-      >
-        <p className="text-center text-sm text-muted-foreground">{coming.line}</p>
-        <Button onClick={onKeepWaiting} size="compact" variant="pill">
-          Keep waiting
+  const verb =
+    coming?.kind === "failed" ? (
+      coming.verb === "remove" && onRemove !== undefined ? (
+        <Button disabled={removing} onClick={onRemove}>
+          Remove
         </Button>
-      </div>
-    );
+      ) : coming.verb === "try-again" && onTryAgain !== undefined ? (
+        <Button onClick={onTryAgain}>{MATE_STAND_UP_RETRY_LABEL}</Button>
+      ) : coming.verb === "go-to-projects" && projects !== undefined ? (
+        <Button render={projects}>Go to projects</Button>
+      ) : null
+    ) : coming?.verb === "keep-waiting" && onKeepWaiting !== undefined ? (
+      <Button onClick={onKeepWaiting} variant="outline">
+        Keep waiting
+      </Button>
+    ) : null;
+  if (verb === null) {
+    return steps === null ? null : <div data-zerops-surface="mate-coming-progress">{steps}</div>;
   }
-  if (progress === undefined || nowMs === undefined) return null;
   return (
-    <div className="flex w-full max-w-xs" data-zerops-surface="mate-coming-progress">
-      <ZeropsBirthLine nowMs={nowMs} progress={progress} />
+    <div
+      className="flex flex-col gap-5.5"
+      data-zerops-surface={coming?.kind === "failed" ? "mate-coming-failed" : "mate-coming-slow"}
+    >
+      <div className="arrival-acts">{verb}</div>
+      {steps}
     </div>
   );
 }

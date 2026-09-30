@@ -6616,60 +6616,650 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 
 /* ==== end of motion across switches ==== */
 
-/* ==== Pass 18 · the stand-up ==== */
+/* ==== Pass 23 · the arrival ==== */
 
-/* A new Mate's empty conversation while its stand-up is its person's to start
-   (`ZeropsMateEmptyState`). Its phases share one box, the tallest's, each
-   from its top — 24 px under the face, as the question — so a new phase fades
-   its words in where the last ones began and nothing around them moves:
-   180 ms, a phase left behind leaving upward and the next arriving from below,
-   4 px; under reduced motion, a fade alone. A failure carries its Try again
-   12 px under its words. What hangs below the box — the sign-in rows, the
-   sign-in still being read — fades in layers of its own, where it stands. A
-   first paint shows its phase at once: only a change of state moves. */
-[data-standup-headline] {
+/* A Mate's arrival and its empty conversation (`MateEmptyStateView`), the "Arrival" board's
+   Direction A: the face, one headline, one sentence and one slot, each place handing over in
+   place (`ArrivalSwap`) — what leaves fades where it stood (140 ms), what comes arrives over it
+   (180–200 ms, 40–60 ms late), words travelling 6 px up, the slot only fading; the height follows
+   in 240 ms. A first paint shows its state at once: only a change of state moves. */
+.arrival-swap {
+  position: relative;
   display: grid;
 }
 
-[data-standup-phrase] {
+.arrival-swap > [data-swap-layer] {
   grid-area: 1 / 1;
-  align-self: start;
-  transition:
-    opacity 180ms var(--ease-out-strong),
-    translate 180ms var(--ease-out-strong);
+  min-width: 0;
 }
 
-[data-standup-phrase="past"] {
-  opacity: 0;
-  translate: 0 -4px;
-}
-
-[data-standup-phrase="next"] {
-  opacity: 0;
-  translate: 0 4px;
-}
-
-[data-standup-layer] {
-  grid-area: 1 / 1;
-  transition: opacity 180ms var(--ease-out-strong);
-}
-
-[data-standup-layer="hidden"] {
-  opacity: 0;
+.arrival-swap > [data-swap-layer="leaving"] {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
   pointer-events: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  [data-standup-phrase],
-  [data-standup-phrase="past"],
-  [data-standup-phrase="next"] {
-    translate: none;
+.arrival-swap[data-arrival-swap="words"] > [data-swap-layer="entering"] {
+  animation: arrival-words-in 180ms var(--ease-out-strong) 40ms both;
+}
+
+.arrival-swap[data-arrival-swap="words"] > [data-swap-layer="leaving"] {
+  animation: arrival-words-out 140ms var(--ease-out-strong) both;
+}
+
+.arrival-swap[data-arrival-swap="slot"] > [data-swap-layer="entering"] {
+  animation: arrival-fade-in 200ms var(--ease-out-strong) 60ms both;
+}
+
+.arrival-swap[data-arrival-swap="slot"] > [data-swap-layer="leaving"] {
+  animation: arrival-fade-out 140ms var(--ease-out-strong) both;
+}
+
+@keyframes arrival-words-in {
+  from {
+    opacity: 0;
+    translate: 0 6px;
   }
 }
 
-/* The composer while a new Mate's stand-up waits on its person (`ChatView`): kept in its place,
-   since it is what sends the stand-up, but unseen; once the stand-up has gone it fades back in
-   180 ms, and nothing around it moves. */
+@keyframes arrival-words-out {
+  to {
+    opacity: 0;
+    translate: 0 -6px;
+  }
+}
+
+@keyframes arrival-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes arrival-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* The one sentence under the headline: 15 px, muted, one line where it fits. */
+.arrival-sentence {
+  color: var(--muted-foreground);
+  font-size: 15px;
+  line-height: 22px;
+  text-align: center;
+  text-wrap: balance;
+}
+
+/* A stop's one way on, and a stage's press: centred under the sentence. */
+.arrival-acts {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* ---- the Mate's steps while it comes up (`ZeropsArrivalSteps`) ---- */
+.arrival-steps {
+  display: flex;
+  flex-direction: column;
+}
+
+.arrival-step {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  min-height: 32px;
+}
+
+.arrival-step-mark {
+  display: flex;
+  justify-content: center;
+}
+
+.arrival-step-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 20px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.arrival-step:is([data-state="active"], [data-state="you"]) .arrival-step-label {
+  font-weight: 500;
+}
+
+.arrival-step[data-state="waiting"] .arrival-step-label {
+  color: var(--muted-foreground);
+}
+
+.arrival-step-why {
+  color: var(--zerops-status-failed-text);
+  font-weight: 400;
+}
+
+.arrival-step-time {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.arrival-step-note {
+  color: color-mix(in oklab, var(--muted-foreground) 72%, transparent);
+}
+
+.arrival-step-sub {
+  grid-column: 2 / -1;
+  padding: 2px 0 8px;
+}
+
+/* The copy's services, one name and one dot each, quieter than the steps. */
+.arrival-services {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.arrival-service {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.arrival-service[data-state="empty"] {
+  color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+}
+
+.arrival-service-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+}
+
+.arrival-service[data-state="ok"] .arrival-service-dot {
+  background: var(--zerops-status-ok);
+}
+
+.arrival-service[data-state="busy"] .arrival-service-dot {
+  background: radial-gradient(circle, var(--zerops-status-busy) 0 1.4px, transparent 1.9px);
+  box-shadow: inset 0 0 0 1.5px var(--zerops-status-busy);
+}
+
+.arrival-service[data-state="waiting"] .arrival-service-dot {
+  box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--foreground) 26%, transparent);
+}
+
+.arrival-service[data-state="empty"] .arrival-service-dot {
+  box-sizing: border-box;
+  border: 1px dashed color-mix(in oklab, var(--foreground) 30%, transparent);
+}
+
+.arrival-service[data-state="failed"] .arrival-service-dot {
+  background: var(--zerops-status-failed);
+}
+
+/* A step's mark: a soft check, an arc turning a notch at a time (R6), an empty ring, a cross,
+   the person's picture ringed in the focus colour. */
+.arrival-glyph {
+  display: block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.arrival-glyph-ok-bg {
+  fill: color-mix(in oklab, var(--zerops-status-ok) 24%, transparent);
+}
+
+.arrival-glyph-ok-ink {
+  fill: none;
+  stroke: var(--zerops-status-ok-text);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.arrival-glyph-track {
+  fill: none;
+  stroke: color-mix(in oklab, var(--foreground) 12%, transparent);
+  stroke-width: 1.75;
+}
+
+.arrival-glyph-arc {
+  fill: none;
+  stroke: var(--zerops-status-busy);
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  transform-origin: 8px 8px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .arrival-glyph-arc {
+    animation: arrival-spin 1s steps(8) infinite;
+  }
+}
+
+@keyframes arrival-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+.arrival-glyph-wait {
+  fill: none;
+  stroke: color-mix(in oklab, var(--foreground) 24%, transparent);
+  stroke-width: 1.5;
+}
+
+.arrival-glyph-fail-bg {
+  fill: color-mix(in oklab, var(--zerops-status-failed) 20%, transparent);
+}
+
+.arrival-glyph-fail-ink {
+  fill: none;
+  stroke: var(--zerops-status-failed-text);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.arrival-glyph-you {
+  display: flex;
+  width: 18px;
+  height: 18px;
+  overflow: hidden;
+  border-radius: 9999px;
+  box-shadow:
+    0 0 0 1.5px var(--background),
+    0 0 0 2.5px color-mix(in oklab, var(--ring) 70%, transparent);
+}
+
+.arrival-spin {
+  display: block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+/* ---- the sign-in (`ZeropsAgentSignIn`), S1: two cards, one opens ---- */
+.arrival-sign-in {
+  position: relative;
+  container-type: inline-size;
+}
+
+.arrival-sign-in[data-arrives] {
+  animation: arrival-fade-in 200ms var(--ease-out-strong) both;
+}
+
+.arrival-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.arrival-cards:has(> :only-child) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Too narrow for two cards to say whose account each needs (a panel, a phone): one over the
+   other. */
+@container (max-width: 460px) {
+  .arrival-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.arrival-cards[data-leaving] {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  pointer-events: none;
+  animation: arrival-fade-out 140ms var(--ease-out-strong) both;
+}
+
+.arrival-card,
+.arrival-open {
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 1px 2px color-mix(in oklab, var(--foreground) 5%, transparent);
+}
+
+.arrival-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  color: var(--foreground);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    box-shadow 150ms var(--ease-out-strong),
+    scale 150ms var(--ease-out-strong);
+}
+
+@media (hover: hover) {
+  .arrival-card:hover {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--foreground) 16%, transparent),
+      0 2px 6px color-mix(in oklab, var(--foreground) 7%, transparent);
+  }
+}
+
+.arrival-card:active {
+  scale: 0.985;
+}
+
+.arrival-card:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.arrival-logo {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--muted);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border) 75%, transparent);
+}
+
+.arrival-logo[data-small] {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+
+.arrival-card-words {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.arrival-card-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+}
+
+.arrival-open-head .arrival-card-name {
+  font-size: 14px;
+}
+
+.arrival-card-account {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.arrival-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+  line-height: 1;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.arrival-open {
+  overflow: hidden;
+}
+
+.arrival-open-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.arrival-open-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 14px 16px;
+}
+
+.arrival-open-step {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 6px;
+}
+
+.arrival-open-step-words {
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.arrival-open-step-words[data-quiet] {
+  color: var(--muted-foreground);
+}
+
+.arrival-open-step-field {
+  grid-column: 2 / -1;
+}
+
+.arrival-open-step-hint {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+  line-height: 16px;
+}
+
+.arrival-open-step-hint[data-failed] {
+  color: var(--zerops-status-failed-text);
+}
+
+.arrival-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  background: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 500;
+}
+
+.arrival-num[data-done] {
+  background: color-mix(in oklab, var(--zerops-status-ok) 24%, transparent);
+  box-shadow: none;
+  color: var(--zerops-status-ok-text);
+}
+
+.arrival-num[data-failed] {
+  background: color-mix(in oklab, var(--zerops-status-failed) 20%, transparent);
+  box-shadow: none;
+  color: var(--zerops-status-failed-text);
+}
+
+/* A quiet press inside the sign-in: muted, underlined, 13 px. */
+.arrival-link {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 18px;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--muted-foreground) 40%, transparent);
+  text-underline-offset: 3px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color 150ms var(--ease-out-strong),
+    text-decoration-color 150ms var(--ease-out-strong);
+}
+
+.arrival-link:hover {
+  color: var(--foreground);
+  text-decoration-color: currentColor;
+}
+
+.arrival-link:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Claude's code: pasted here, sent on paste. */
+.arrival-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--input);
+  color: var(--foreground);
+  font-size: 14px;
+  outline: none;
+  transition: box-shadow 150ms var(--ease-out-strong);
+}
+
+.arrival-input::placeholder {
+  color: var(--placeholder);
+}
+
+.arrival-input:focus {
+  box-shadow:
+    inset 0 0 0 1px var(--ring),
+    0 0 0 3px color-mix(in oklab, var(--ring) 20%, transparent);
+}
+
+/* Claude's code while it is checked: the field's own box, the code's ends and the check. */
+.arrival-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--input);
+  color: var(--muted-foreground);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.arrival-field-value {
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+/* Codex's code, to type on OpenAI's page. */
+.arrival-code {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 1.5px;
+  user-select: all;
+}
+
+/* What the login prints, behind *Show what's happening*: unfolding under the steps in 240 ms,
+   in the theme's own colours. */
+.arrival-terminal-fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 240ms var(--ease-out-strong);
+}
+
+.arrival-terminal-fold[data-open] {
+  grid-template-rows: 1fr;
+}
+
+.arrival-terminal-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.arrival-terminal {
+  --terminal-background: var(--muted);
+  --terminal-foreground: var(--foreground);
+  --terminal-cursor: var(--foreground);
+  --terminal-selection-background: color-mix(in oklab, var(--foreground) 20%, transparent);
+  height: 128px;
+  margin: 0 14px 14px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--foreground);
+}
+
+.arrival-open-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arrival-swap[data-arrival-swap="words"] > [data-swap-layer="entering"] {
+    animation-name: arrival-fade-in;
+  }
+
+  .arrival-swap[data-arrival-swap="words"] > [data-swap-layer="leaving"] {
+    animation-name: arrival-fade-out;
+  }
+
+  .arrival-terminal-fold {
+    transition: none;
+  }
+
+  .arrival-card {
+    transition: none;
+  }
+}
+
+/* The composer while a Mate's arrival waits on its person (`ChatView`): kept in its place, since
+   it is what sends the stand-up, but unseen; once the stand-up has gone it fades back in 180 ms,
+   and nothing around it moves. */
 [data-slot="composer-shell"] {
   transition: opacity 180ms var(--ease-out-strong);
 }
@@ -6678,7 +7268,7 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   opacity: 0;
 }
 
-/* ==== end of the stand-up ==== */
+/* ==== end of the arrival ==== */
 
 /* ==== Pass 18 · motion ==== */
 

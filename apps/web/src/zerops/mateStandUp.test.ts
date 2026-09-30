@@ -7,8 +7,6 @@ import {
   mateStandUpCleared,
   mateStandUpDecision,
   mateStandUpHoldsComposer,
-  mateStandUpHeadline,
-  mateStandUpHeadlineClauses,
   mateStandUpPhase,
   mateStandUpSendIds,
   mateStandUpSignedIn,
@@ -31,45 +29,6 @@ const DUE: MateStandUpInput = {
 describe("the stand-up's words", () => {
   it("are the owner's, word for word", () => {
     expect(MATE_STAND_UP_MESSAGE).toBe("Stand up development of the project.");
-  });
-
-  it.each([
-    {
-      phase: "sign-in" as const,
-      project: "Acme Docs",
-      words: "Fen will stand up development on Acme Docs after you authorize your agent.",
-    },
-    {
-      phase: "standing-up" as const,
-      project: "Acme Docs",
-      words: "Fen is standing up development on Acme Docs…",
-    },
-    {
-      phase: "failed" as const,
-      project: "Acme Docs",
-      words: "The message to Fen didn't go through.",
-    },
-    {
-      phase: "sign-in" as const,
-      project: undefined,
-      words: "Fen will stand up development on the project after you authorize your agent.",
-    },
-    {
-      phase: "standing-up" as const,
-      project: undefined,
-      words: "Fen is standing up development on the project…",
-    },
-  ])("say, $phase in $project: $words", ({ phase, project, words }) => {
-    expect(mateStandUpHeadline({ name: "Fen", project }, phase)).toBe(words);
-  });
-
-  it("break, when they must, between their clauses, never inside a name", () => {
-    expect(
-      mateStandUpHeadlineClauses({ name: "Fen", project: "Acme Docs Portal" }, "sign-in"),
-    ).toEqual([
-      "Fen will stand up development on Acme\u00a0Docs\u00a0Portal",
-      "after you authorize your agent.",
-    ]);
   });
 });
 

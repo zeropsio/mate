@@ -4,11 +4,11 @@
  * Adding a Mate to a project deploys the project's recipe with its services
  * empty (`startWithoutCode`) and writes `mate:standup:<userId>` on the Mate's
  * project, naming the person who pressed Add. Their empty conversation with
- * the Mate says what will happen — "Fen will stand up development on Acme Docs
- * after you authorize your agent." — and the moment they have signed an agent
- * in, their own client sends "Stand up development of the project." as them,
- * through the composer's own send, and clears the tag once the conversation
- * holds it (the owner, 2026-09-29).
+ * the Mate says what will happen — "Sign Fen in to start. Once it's signed in,
+ * Fen stands up development on Acme Docs." (`mateArrival.ts`) — and the moment
+ * they have signed an agent in, their own client sends "Stand up development
+ * of the project." as them, through the composer's own send, and clears the tag
+ * once the conversation holds it (the owner, 2026-09-29).
  *
  * Why the client and not the server: the message is the person's, and only
  * their session may start a turn on the agent they signed in (D6); the tag is
@@ -33,7 +33,6 @@ import type { ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import { classifyZeropsAgentAuth } from "@t3tools/shared/zeropsAgentAuth";
 
 import type { ComposerSendIds } from "../composerDraftStore";
-import type { ZeropsMateIdentity } from "./mateIdentities";
 import { resolveAgentAuthorizer, type LocalAgentSigners } from "./useZeropsAgentSigner";
 
 /** The ask, word for word (the owner, 2026-09-29). */
@@ -159,36 +158,4 @@ export function mateStandUpPhase(input: {
   if (input.attempt === "failed") return "failed";
   if (input.attempt === "sending" || input.signIn === "signed-in") return "standing-up";
   return "sign-in";
-}
-
-/** A name the headline never breaks inside. */
-const keptWhole = (name: string) => name.replaceAll(" ", "\u00a0");
-
-/**
- * The empty conversation's headline in each phase, the owner's words for the first, in the
- * clauses it breaks between when it takes two lines — "Fen will stand up development on Acme
- * Docs / after you authorize your agent." — and with no name torn in two.
- */
-export function mateStandUpHeadlineClauses(
-  mate: Pick<ZeropsMateIdentity, "name" | "project">,
-  phase: MateStandUpPhase,
-): ReadonlyArray<string> {
-  const name = keptWhole(mate.name);
-  const project = mate.project === undefined ? "the project" : keptWhole(mate.project);
-  switch (phase) {
-    case "sign-in":
-      return [`${name} will stand up development on ${project}`, "after you authorize your agent."];
-    case "standing-up":
-      return [`${name} is standing up development on ${project}…`];
-    case "failed":
-      return [`The message to ${name} didn't go through.`];
-  }
-}
-
-/** The headline as one sentence, as a person reads it. */
-export function mateStandUpHeadline(
-  mate: Pick<ZeropsMateIdentity, "name" | "project">,
-  phase: MateStandUpPhase,
-): string {
-  return mateStandUpHeadlineClauses(mate, phase).join(" ").replaceAll("\u00a0", " ");
 }
