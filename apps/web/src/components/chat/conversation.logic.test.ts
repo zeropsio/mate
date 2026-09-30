@@ -2329,6 +2329,59 @@ describe("operationLineWords", () => {
   ] as const)("$kind $phase: $words", ({ words, ...fields }) => {
     expect(operationLineWords(op({ subject: "app", ...fields }))).toBe(words);
   });
+
+  // "all services is healthy" (the owner, 2026-09-30): a check of every
+  // service says how many, in English.
+  const check = (id: string, state: "done" | "failed") => ({
+    id,
+    label: id,
+    state,
+    stateLabel: state,
+  });
+  it.each([
+    {
+      name: "every service healthy",
+      phase: "done",
+      steps: [
+        check("api", "done"),
+        check("web", "done"),
+        check("db", "done"),
+        check("cache", "done"),
+      ],
+      words: "4 services healthy",
+    },
+    {
+      name: "one service, healthy",
+      phase: "done",
+      steps: [check("api", "done")],
+      words: "1 service healthy",
+    },
+    {
+      name: "one of four unhealthy",
+      phase: "failed",
+      steps: [
+        check("api", "failed"),
+        check("web", "done"),
+        check("db", "done"),
+        check("cache", "done"),
+      ],
+      words: "1 of 4 services unhealthy",
+    },
+    { name: "no checks reported", phase: "done", steps: [], words: "All services healthy" },
+  ] as const)("a check of all services: $name", ({ phase, steps, words }) => {
+    expect(
+      operationLineWords(
+        op({
+          kind: "verify",
+          subject: "all services",
+          voice: "Checking all services.",
+          statusWord: phase === "done" ? "Healthy" : "Checks failed",
+          phase,
+          steps,
+        }),
+      ),
+    ).toBe(words);
+  });
 });
 
 describe("operationLineWords — a stand-up call, by what its report said", () => {

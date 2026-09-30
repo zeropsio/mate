@@ -1164,8 +1164,19 @@ export function operationLineWords(operation: ZeropsOperation): string {
   if (operation.kind === "error" || operation.phase === "running") return voice;
   const failed = operation.phase === "failed";
   switch (operation.kind) {
-    case "verify":
+    case "verify": {
+      // A check of every service (zcp's `all services`) says how many.
+      if (subject === "all services") {
+        const total = operation.steps.length;
+        const unhealthy = operation.steps.filter((step) => step.state === "failed").length;
+        if (total === 0) return failed ? "Checks failed" : "All services healthy";
+        const services = total === 1 ? "service" : "services";
+        return unhealthy > 0
+          ? `${unhealthy} of ${total} ${services} unhealthy`
+          : `${total} ${services} healthy`;
+      }
       return failed ? `${subject}: ${statusWord.toLowerCase()}` : `${subject} is healthy`;
+    }
     case "deploy":
       return failed && !isGitPushOnly(operation)
         ? `Deploy to ${subject} failed`
