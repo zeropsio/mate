@@ -1167,13 +1167,16 @@ export function operationLineWords(operation: ZeropsOperation): string {
     case "verify": {
       // A check of every service (zcp's `all services`) says how many.
       if (subject === "all services") {
+        // Only a check that passed is healthy.
         const total = operation.steps.length;
+        const healthy = operation.steps.filter((step) => step.state === "done").length;
         const unhealthy = operation.steps.filter((step) => step.state === "failed").length;
         if (total === 0) return failed ? "Checks failed" : "All services healthy";
         const services = total === 1 ? "service" : "services";
-        return unhealthy > 0
-          ? `${unhealthy} of ${total} ${services} unhealthy`
-          : `${total} ${services} healthy`;
+        if (unhealthy > 0) return `${unhealthy} of ${total} ${services} unhealthy`;
+        return healthy === total && !failed
+          ? `${total} ${services} healthy`
+          : `${healthy} of ${total} ${services} healthy`;
       }
       return failed ? `${subject}: ${statusWord.toLowerCase()}` : `${subject} is healthy`;
     }
@@ -1460,6 +1463,15 @@ export function browserCheckShape(check: ZeropsOperation): number {
   return TAKE_ASPECT[browserCheckDevice(check)];
 }
 
+/**
+ * A page as one device saw it — "host/path on iPhone 16", "host/path on a
+ * desktop": what a picture is of, so a later look on another device takes
+ * none of this one's.
+ */
+export function pageView(page: string, device: string | null): string {
+  return `${page} on ${device ?? "a desktop"}`;
+}
+
 /** Which page a check looked at, for counting pages: its host and its path. */
 export function browserCheckPage(operation: ZeropsOperation): string {
   const url = browserCheckUrl(operation);
@@ -1614,10 +1626,18 @@ const ACTING_KINDS: ReadonlySet<ZeropsOperation["kind"]> = new Set([
   "standup",
 ]);
 
-/** The services an operation acts on: its target, or each a stand-up or an import names. */
+/**
+ * The services an operation acts on: its target, or each a stand-up, an
+ * import or a batch deploy names — a batch stays one call in the run's
+ * entries, and every service it deploys is acted on.
+ */
 function actedOn(operation: ZeropsOperation): ReadonlyArray<string> {
   if (!ACTING_KINDS.has(operation.kind)) return [];
-  if (operation.kind === "standup" || operation.kind === "import") {
+  if (
+    operation.kind === "standup" ||
+    operation.kind === "import" ||
+    (operation.kind === "deploy" && operation.batch === true)
+  ) {
     return operation.steps.map((step) => step.label);
   }
   return [operationTargetKey(operation)];
@@ -1795,6 +1815,8 @@ export interface OutcomeLater {
   readonly tasks: ReadonlyArray<number>;
   /** Pages a later run checked, by host and path. */
   readonly pages: ReadonlyArray<string>;
+  /** The same pages by the device each was seen on (`pageView`): what takes a picture over. */
+  readonly views: ReadonlyArray<string>;
   /** Pictures a later run looked at, by path: the file shows what that run saw now. */
   readonly files: ReadonlyArray<string>;
   readonly answered: boolean;
@@ -1960,6 +1982,7 @@ const NOTHING_LATER: OutcomeLater = {
   changes: [],
   tasks: [],
   pages: [],
+  views: [],
   files: [],
   answered: false,
 };
@@ -1999,6 +2022,7 @@ interface TurnClaims {
   readonly services: ReadonlyArray<string>;
   readonly changes: ReadonlyArray<string>;
   readonly pages: ReadonlyArray<string>;
+  readonly views: ReadonlyArray<string>;
   readonly files: ReadonlyArray<string>;
   readonly task: number | null;
   /** The person wrote it: not a command, not the server resuming after a limit. */
@@ -2013,13 +2037,17 @@ function turnClaims(turn: ConversationTurn): TurnClaims {
   const services: string[] = [];
   const changes: string[] = [];
   const pages: string[] = [];
+  const views: string[] = [];
   for (const operation of turn.stretches.flatMap(stretchOperations).flatMap(splitBatchDeploy)) {
     if (operation.phase === "running") continue;
     services.push(...takenServices(operation));
     if (operation.pullRequest !== undefined) {
       changes.push(`${operation.pullRequest.repository}#${operation.pullRequest.number}`);
     }
-    if (operation.kind === "browser") pages.push(browserCheckPage(operation));
+    if (operation.kind === "browser") {
+      pages.push(browserCheckPage(operation));
+      views.push(pageView(browserCheckPage(operation), operation.deviceName ?? null));
+    }
   }
   const files = turn.stretches
     .flatMap((stretch) => stretch.entries)
@@ -2033,6 +2061,7 @@ function turnClaims(turn: ConversationTurn): TurnClaims {
     services,
     changes,
     pages,
+    views,
     files,
     task: crewTaskOf(turn)?.number ?? null,
     answers: opener !== null && !isResumePrompt(opener.message.text) && !isCommandMessage(opener),
@@ -2048,6 +2077,7 @@ function laterClaims(turns: ReadonlyArray<ConversationTurn>): OutcomeLater {
   const changes = new Set<string>();
   const tasks = new Set<number>();
   const pages = new Set<string>();
+  const views = new Set<string>();
   const files = new Set<string>();
   let answered = false;
   for (const turn of turns) {
@@ -2055,6 +2085,7 @@ function laterClaims(turns: ReadonlyArray<ConversationTurn>): OutcomeLater {
     for (const host of claims.services) services.add(host);
     for (const change of claims.changes) changes.add(change);
     for (const page of claims.pages) pages.add(page);
+    for (const view of claims.views) views.add(view);
     for (const file of claims.files) files.add(file);
     if (claims.task !== null) tasks.add(claims.task);
     answered ||= claims.answers;
@@ -2064,6 +2095,7 @@ function laterClaims(turns: ReadonlyArray<ConversationTurn>): OutcomeLater {
     changes: [...changes],
     tasks: [...tasks],
     pages: [...pages],
+    views: [...views],
     files: [...files],
     answered,
   };
@@ -2105,7 +2137,7 @@ function turnPictures(
   const lastByPage = new Map<string, ZeropsOperation>();
   for (const check of checks) {
     if (check.screenshot === undefined) continue;
-    lastByPage.set(`${browserCheckPage(check)} ${check.deviceName ?? ""}`, check);
+    lastByPage.set(pageView(browserCheckPage(check), check.deviceName ?? null), check);
   }
   for (const check of lastByPage.values()) {
     const src = check.screenshot!.src;

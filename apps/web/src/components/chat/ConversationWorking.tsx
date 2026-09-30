@@ -50,6 +50,7 @@ import {
   settledOperationWords,
 } from "./operationBar.logic";
 import { StatusBar, type BarTone } from "./StatusBar";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { DockBackgroundTask, DockModel } from "./conversationDock.logic";
 import { ElapsedSince, type ConversationSpeaker } from "./ConversationRows";
 import { DetailRow, spanOf } from "./DetailRow";
@@ -139,11 +140,20 @@ function Instrument({
   const body = (
     <>
       <span aria-hidden="true" />
-      <span className="flex min-w-0 items-center gap-3">
-        {/* It names the operation, whole: the words give way, never the name. */}
-        <span className="min-w-24 shrink-0 whitespace-nowrap text-start font-medium text-foreground">
-          {subject}
-        </span>
+      {/* Narrow, the name takes its own line over the bar and the words, so
+          the words stay readable; either way a name past its room gives way,
+          whole on hover, and nothing runs over the figure. */}
+      <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 @md/panel:flex-nowrap">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="min-w-0 basis-full truncate text-start font-medium text-foreground @md/panel:min-w-24 @md/panel:max-w-1/2 @md/panel:shrink-0 @md/panel:basis-auto" />
+            }
+          >
+            {subject}
+          </TooltipTrigger>
+          <TooltipPopup side="top">{subject}</TooltipPopup>
+        </Tooltip>
         <StatusBar className="w-14 shrink-0 @md/panel:w-28" segments={bar} />
         <span
           className={cn(

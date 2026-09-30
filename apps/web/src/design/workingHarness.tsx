@@ -431,7 +431,7 @@ const REPORT: OutcomeModel = {
   change: null,
   crewTask: null,
   activity: [],
-  later: { services: [], changes: [], tasks: [], pages: [], files: [], answered: false },
+  later: { services: [], changes: [], tasks: [], pages: [], views: [], files: [], answered: false },
 };
 
 const TURN = TurnId.make("turn-1");
@@ -1131,6 +1131,15 @@ function Harness() {
         {[
           { label: "An import, one failed", operation: IMPORT_ONE_FAILED },
           { label: "A deploy, done", operation: DEPLOY_DONE },
+          {
+            label: "A deploy of a long name",
+            operation: deploy({
+              key: "op:deploy-long",
+              subject: "storefrontpreviewdevhost",
+              target: { hostname: "storefrontpreviewdevhost" },
+              statusWord: "Deploying",
+            }),
+          },
         ].map(({ label, operation }) => (
           <State
             key={label}

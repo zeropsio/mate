@@ -34,6 +34,16 @@ describe("versionLabel — what a settled card names as the version it shipped",
     },
     { name: "a stage's branch and sha", version: { name: "main 7e2d4c1" }, label: "main 7e2d4c1" },
     {
+      name: "a Mate's push of uncommitted changes: its sha, never its branch's machine name",
+      version: { name: "mate/mate-Pq7Zr0TestProject0000A 227b804-dirty" },
+      label: "227b804 · uncommitted",
+    },
+    {
+      name: "a branch's push of uncommitted changes",
+      version: { name: "main 7e2d4c1-dirty" },
+      label: "main 7e2d4c1 · uncommitted",
+    },
+    {
       name: "a release's tag and sha",
       version: { name: "v0.1.0 7e2d4c1" },
       label: "v0.1.0 7e2d4c1",

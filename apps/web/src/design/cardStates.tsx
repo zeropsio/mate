@@ -269,6 +269,7 @@ const NOTHING_LATER: OutcomeLater = {
   changes: [],
   tasks: [],
   pages: [],
+  views: [],
   files: [],
   answered: false,
 };

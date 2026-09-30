@@ -32,6 +32,7 @@ import {
   browserCheckFailed,
   browserCheckFailure,
   browserCheckPage,
+  pageView,
   browserCheckUrl,
   browserTakeState,
   type ActivityKind,
@@ -699,7 +700,7 @@ export function resultPictures(outcome: OutcomeModel): ReadonlyArray<ResultPictu
   return outcome.pictures.flatMap((picture) =>
     (
       picture.kind === "check"
-        ? later.pages.includes(picture.page)
+        ? later.views.includes(pageView(picture.page, picture.device))
         : later.files.includes(picture.path)
     )
       ? []
