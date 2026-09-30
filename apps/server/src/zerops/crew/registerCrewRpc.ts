@@ -5,10 +5,11 @@
  *
  * Every handler answers from the `CrewEngine` the server was built with —
  * its inert form where crew mode is off (the feed says `off` once, every
- * request is `unavailable`), the live engine otherwise. A command runs as the
- * connecting session: its subject comes from the authenticated session in
- * `ws.ts`, never from RPC input, and any turn the command starts is admitted
- * as that person.
+ * request is `unavailable`), the live engine otherwise. A command and a write
+ * to the crew home run as the connecting session: its subject comes from the
+ * authenticated session in `ws.ts`, never from RPC input; a press that runs or
+ * changes the crew is judged as that person on the logins it reaches, and any
+ * turn the command starts is admitted as them.
  */
 import { WS_METHODS, type WsRpcGroup } from "@t3tools/contracts";
 import type * as Rpc from "effect/unstable/rpc/Rpc";
@@ -51,7 +52,11 @@ export const registerCrewRpc = ({
     [WS_METHODS.zeropsCrewFilesGet]: (_input) =>
       observeRpcEffect(WS_METHODS.zeropsCrewFilesGet, crew.readFiles, traceAttributes),
     [WS_METHODS.zeropsCrewFilesPut]: (input) =>
-      observeRpcEffect(WS_METHODS.zeropsCrewFilesPut, crew.writeFiles(input), traceAttributes),
+      observeRpcEffect(
+        WS_METHODS.zeropsCrewFilesPut,
+        crew.writeFiles(input, { kind: "session", subject }),
+        traceAttributes,
+      ),
     [WS_METHODS.zeropsCrewCommand]: (input) =>
       observeRpcEffect(
         WS_METHODS.zeropsCrewCommand,

@@ -39,7 +39,7 @@ import { savedSeamWords, type PromptChange } from "./crewCards.ts";
 import {
   asRefusal,
   currentStint,
-  DEFAULT_CREW_LOGIN,
+  defaultCrewLogin,
   isWorking,
   memberOf,
   principalUser,
@@ -75,16 +75,6 @@ const loadHome = (core: CrewCore) =>
     }
     return parsed.definition;
   });
-
-/** The login a crewmate runs on when its `crew.yaml` names none: the project's default. */
-const defaultLogin = (core: CrewCore) =>
-  core.projection.getActiveProjectByWorkspaceRoot(core.config.cwd).pipe(
-    Effect.map(
-      (project) =>
-        Option.getOrUndefined(project)?.defaultModelSelection?.instanceId ?? DEFAULT_CREW_LOGIN,
-    ),
-    Effect.orElseSucceed(() => DEFAULT_CREW_LOGIN),
-  );
 
 /** Tints for crewmates without one: the first a crewmate of this crew does not wear. */
 const assignTints = (
@@ -377,7 +367,7 @@ export const apply = (core: CrewCore, principal: TurnPrincipal, activate: Activa
     );
     const topology = validateCrewTopology(definition, { devHosts, databaseHosts });
     if (topology.length > 0) return yield* refusalOf(topology);
-    const login = yield* defaultLogin(core);
+    const login = yield* defaultCrewLogin(core);
     const lead = definition.members.find((member) => member.kind === "lead");
     if (lead !== undefined && (yield* core.agentOf(lead.login ?? login)) === "codex") {
       return yield* refuse(
@@ -570,7 +560,7 @@ export const saveJob = (
     if (next.kind !== member.spec.kind || next.host !== member.spec.host) {
       return yield* refuse("wrong-state", "a new kind or service applies with Apply");
     }
-    const login = next.login ?? (yield* defaultLogin(core));
+    const login = next.login ?? (yield* defaultCrewLogin(core));
     const loginChanged = login !== member.row.login;
     if (loginChanged && choice !== "fresh") return yield* refuse("login-needs-fresh");
     const jobChanged = next.job !== member.spec.job;
