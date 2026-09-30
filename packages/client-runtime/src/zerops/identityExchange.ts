@@ -270,11 +270,15 @@ export interface DoorExchangeDeps<C, E> {
   readonly throwaway: ZeropsDoorThrowaway | null;
   /** `/.well-known/t3/environment` at the Mate's base URL. */
   readonly readDescriptor: (httpBaseUrl: string) => Promise<ExecutionEnvironmentDescriptor>;
-  /** The door and the token exchange: a credential for the Mate, not yet installed anywhere. */
+  /**
+   * The door and the token exchange: a credential for the Mate, not yet installed anywhere. It is
+   * handed the descriptor the exchange judged the Mate on, so the door does not read it again.
+   */
   readonly prepare: (input: {
     readonly httpBaseUrl: string;
     readonly doorToken: string;
     readonly expectedProjectId: string;
+    readonly descriptor: ExecutionEnvironmentDescriptor;
   }) => Promise<AtomCommandResult<C, E>>;
   readonly environmentOf: (credential: C) => EnvironmentId;
   readonly onOrphanedThrowaway?: ((cause: unknown) => void) | undefined;
@@ -313,10 +317,11 @@ export async function exchangeAtDoor<C, E>(
   if (!throwaway) return fail(SESSION_ENDED, null, { code: "signed-out" });
   const httpBaseUrl = zeropsMateBaseUrl(containerOrigin, options.servedApp);
 
+  let read: ExecutionEnvironmentDescriptor;
   let descriptor: DescriptorFacts;
   let projectId: string | undefined;
   try {
-    const read = await deps.readDescriptor(httpBaseUrl);
+    read = await deps.readDescriptor(httpBaseUrl);
     descriptor = descriptorFacts(read);
     projectId = read.zerops?.projectId;
   } catch (cause) {
@@ -349,7 +354,12 @@ export async function exchangeAtDoor<C, E>(
       nonce: throwaway.nonce,
       ...(deps.onOrphanedThrowaway === undefined ? {} : { onOrphaned: deps.onOrphanedThrowaway }),
       connect: (doorToken) =>
-        deps.prepare({ httpBaseUrl, doorToken, expectedProjectId: options.expectedProjectId }),
+        deps.prepare({
+          httpBaseUrl,
+          doorToken,
+          expectedProjectId: options.expectedProjectId,
+          descriptor: read,
+        }),
     });
   } catch (cause) {
     return fail(exchangeFailureOf(cause), descriptor, diagnosticFailure(cause));

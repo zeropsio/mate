@@ -572,6 +572,29 @@ describe("exchangeAtDoor: every answer read into the machine's failure classes (
     expect(mate.doorCalls().length > 0).toBe(row.minted && row.platform === undefined);
     expect(recording.minted.length > 0).toBe(row.minted && row.platform === undefined);
   });
+  it("hands the door the descriptor it judged the Mate on, so the door reads it once", async () => {
+    const mate = makeFakeMate({
+      origin: CONTAINER_ORIGIN,
+      projectId: PROJECT_ID,
+      environmentId: ENV,
+    });
+    const read = await mate.readDescriptor(`${CONTAINER_ORIGIN}/mate`);
+    const handed: Array<unknown> = [];
+    await exchangeAtDoor(
+      {
+        throwaway: throwaway(recordingPlatform().platform),
+        readDescriptor: async () => read,
+        prepare: (input) => {
+          handed.push(input.descriptor);
+          return mate.prepare(input);
+        },
+        environmentOf: (credential) => credential.environmentId,
+      },
+      CONTAINER_ORIGIN,
+      { reason: "restore", expectedProjectId: PROJECT_ID },
+    );
+    expect(handed).toEqual([read]);
+  });
 });
 
 describe("installDoorRegistration", () => {

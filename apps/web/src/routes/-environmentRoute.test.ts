@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { draftIdFromPathname, environmentIdFromPathname } from "./-environmentRoute";
+import {
+  draftIdFromPathname,
+  environmentIdFromAddress,
+  environmentIdFromPathname,
+} from "./-environmentRoute";
 
 describe("environmentIdFromPathname", () => {
   it.each<[string, string | null]>([
@@ -16,6 +20,20 @@ describe("environmentIdFromPathname", () => {
     ["/env-1/thread-1/extra", null],
   ])("%s → %s", (pathname, expected) => {
     expect(environmentIdFromPathname(pathname)).toBe(expected);
+  });
+});
+
+// The address bar as a reload finds it, before the router strips the bundle's prefix.
+describe("environmentIdFromAddress", () => {
+  it.each<[string, string, string | null]>([
+    ["/env-1/thread-1", "", "env-1"],
+    ["/mate/env-1/thread-1", "/mate", "env-1"],
+    ["/mate/p-quinn", "", null],
+    ["/mate", "/mate", null],
+    ["/mate/", "/mate", null],
+    ["/other/env-1/thread-1", "/mate", null],
+  ])("%s under %s → %s", (pathname, basePath, expected) => {
+    expect(environmentIdFromAddress(pathname, basePath)).toBe(expected);
   });
 });
 

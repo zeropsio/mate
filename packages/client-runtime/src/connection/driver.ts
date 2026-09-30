@@ -1,8 +1,10 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import type * as Scope from "effect/Scope";
 
+import { ConnectionAdmissionRef } from "./admission.ts";
 import type { ConnectionCatalogEntry } from "./catalog.ts";
 import type {
   ConnectionAttemptError,
@@ -51,12 +53,23 @@ export const make = Effect.gen(function* () {
       "connection.target.kind": target._tag,
     });
     yield* reportProgress({ stage: "preparing" });
-    const prepared = yield* resolver.prepare(entry);
-    yield* reportProgress({ stage: "opening", prepared });
-    const session = yield* sessions.connect(prepared);
-    yield* reportProgress({ stage: "synchronizing", prepared });
-    yield* session.ready;
-    return { prepared, session } satisfies EnvironmentConnectionLease;
+    // The route's socket opens first (`admission.ts`): the ticket is asked for once admitted.
+    const admission = yield* ConnectionAdmissionRef;
+    yield* Effect.promise((signal) => admission.admit(target.environmentId, signal));
+    const lease = yield* Effect.gen(function* () {
+      const prepared = yield* resolver.prepare(entry);
+      yield* reportProgress({ stage: "opening", prepared });
+      const session = yield* sessions.connect(prepared);
+      yield* reportProgress({ stage: "synchronizing", prepared });
+      yield* session.ready;
+      return { prepared, session } satisfies EnvironmentConnectionLease;
+    }).pipe(
+      Effect.onExit((exit) =>
+        Effect.sync(() => admission.settle(target.environmentId, Exit.isSuccess(exit))),
+      ),
+    );
+    yield* Effect.addFinalizer(() => Effect.sync(() => admission.close(target.environmentId)));
+    return lease;
   });
 
   return ConnectionDriver.of({ connect });
