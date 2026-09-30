@@ -57,7 +57,7 @@ describe("resolveAgentOwnership", () => {
       authorizedBy: undefined,
       viewerSubject: "user-a",
       signerUnknown: true,
-      expected: "unknown",
+      expected: "unsettled",
     },
     {
       name: "the viewer's own record wins over a not-known one",
@@ -166,8 +166,8 @@ describe("the composer notice and the gate (D6)", () => {
     ["someone-else", false],
     ["unrecorded", false],
     ["record-failed", false],
-    // Whose it is is not known: the viewer may be its signer, and the server decides.
-    ["unknown", true],
+    // Recorded for two people: the server refuses everyone until it is signed in again.
+    ["unsettled", false],
   ] as const)("%s may start a turn: %s", (ownership, allowed) => {
     expect(agentOwnershipAllowsTurns(ownership)).toBe(allowed);
   });
@@ -185,11 +185,18 @@ describe("the composer notice and the gate (D6)", () => {
     );
   });
 
-  it("says nothing at all about the viewer's own agent, nor about one whose signer is not known", () => {
+  it("says nothing at all about the viewer's own agent", () => {
     expect(agentOwnershipComposerNotice("mine", "Jan")).toBeUndefined();
     expect(agentOwnershipComposerNotice("none")).toBeUndefined();
-    expect(agentOwnershipComposerNotice("unknown", "Jan")).toBeUndefined();
-    expect(agentOwnershipNotice("unknown")).toBeUndefined();
+  });
+
+  // Never a name that may be the wrong one: that it is recorded for more than one person, and
+  // the one way out.
+  it("says a login recorded for two people is nobody's until signed in again", () => {
+    const words =
+      "This Mate's sign-in is recorded for more than one person. Sign it in again to make it yours.";
+    expect(agentOwnershipComposerNotice("unsettled", "Jan")).toBe(words);
+    expect(agentOwnershipNotice("unsettled")).toBe(words);
   });
 
   it("offers one recovery, and it is the person's own sign-in", () => {
@@ -212,7 +219,7 @@ describe("agentOwnershipNeedsAttention", () => {
     { ownership: "mine", expected: false },
     { ownership: "none", expected: false },
     { ownership: "record-failed", expected: true },
-    { ownership: "unknown", expected: false },
+    { ownership: "unsettled", expected: true },
   ] satisfies ReadonlyArray<{ ownership: ZeropsAgentOwnership; expected: boolean }>)(
     "$ownership → $expected",
     ({ ownership, expected }) => {

@@ -338,7 +338,9 @@ export const crewSendToWord = (name: string | null): string =>
  * held to the word before it, so no line starts with it. Why nobody runs it,
  * or why the viewer's own record failed, reads as the conversation says it.
  */
-export function crewLockWords(ownership: "someone-else" | "unrecorded" | "record-failed"): string {
+export function crewLockWords(
+  ownership: "someone-else" | "unrecorded" | "record-failed" | "unsettled",
+): string {
   switch (ownership) {
     case "someone-else":
       return "Signed in by another project member\u00a0— only they can run this crew.";
@@ -346,6 +348,8 @@ export function crewLockWords(ownership: "someone-else" | "unrecorded" | "record
       return "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.";
     case "record-failed":
       return "Your sign-in could not be recorded.";
+    case "unsettled":
+      return "This Mate's sign-in is recorded for more than one person. Sign it in again to make it yours.";
   }
 }
 

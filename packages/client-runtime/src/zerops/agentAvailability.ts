@@ -83,6 +83,8 @@ export type ZeropsAgentAvailability =
   | { readonly kind: "someone-else"; readonly signerId: string | undefined }
   /** Signed in on the project, but no signer was recorded for it (or this browser's own record write failed, H13). */
   | { readonly kind: "unrecorded" }
+  /** The project records its sign-in for two or more people: nobody's until signed in again. */
+  | { readonly kind: "unsettled" }
   /** The agent's row is not known yet, or its read failed: the read says which. */
   | { readonly kind: "unknown"; readonly read: ZeropsAgentAuthUnknown };
 
@@ -235,7 +237,7 @@ function resolveZeropsAgentOwnership(
   const runnable: ZeropsAgentAvailability =
     auth === "authorized" ? { kind: "ready" } : { kind: "registering" };
   if (signer === undefined || signer.length === 0) {
-    return input.signerUnknown === true ? runnable : { kind: "unrecorded" };
+    return input.signerUnknown === true ? { kind: "unsettled" } : { kind: "unrecorded" };
   }
   if (input.viewerSubject !== signer) return { kind: "someone-else", signerId: signer };
   return runnable;

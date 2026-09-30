@@ -221,15 +221,15 @@ describe("resolveZeropsAgentAvailability — client-only states", () => {
     ).toEqual({ kind: "unrecorded" });
   });
 
-  // Two signer records: whose it is is not known, so it reads as runnable and says nothing; the
-  // server, which knows the session, decides the turn.
-  it("a login recorded for two people is runnable, never an accusation", () => {
-    expect(
-      resolveZeropsAgentAvailability({
-        agent: known({ ...signedIn, authorizedBy: undefined, signerUnknown: true }),
-        viewerSubject: JAN,
-      }),
-    ).toEqual({ kind: "ready" });
+  // Two signer records: nobody's until somebody signs it in again — the server refuses every
+  // turn on it, so it is never offered as runnable, and never named as somebody's.
+  it("a login recorded for two people is unsettled, not runnable", () => {
+    const availability = resolveZeropsAgentAvailability({
+      agent: known({ ...signedIn, authorizedBy: undefined, signerUnknown: true }),
+      viewerSubject: JAN,
+    });
+    expect(availability).toEqual({ kind: "unsettled" });
+    expect(zeropsAgentAvailabilityIsRunnable(availability)).toBe(false);
   });
 
   it("a login in progress does not override an agent this viewer can already run (5a)", () => {
