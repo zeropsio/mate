@@ -613,6 +613,25 @@ describe("serviceRows", () => {
     expect(row?.line).toBe(line);
   });
 
+  it.each([
+    { name: "before main's head is read", mainHead: undefined },
+    { name: "at main's head", mainHead: SHA_WEB },
+  ])("keys a stage service's commit by its name's own spelling $name", ({ mainHead }) => {
+    const [row] = serviceRows({
+      environment: "stage",
+      services: [
+        { hostname: "web", repository: "web", appVersionName: `main ${SHA_WEB.slice(0, 7)}` },
+      ],
+      platform: { state: "unread", waitingFor: null },
+      mainHead,
+      routes: [],
+      offers: [],
+      nowMs: 100_000,
+      age: (iso) => iso,
+    });
+    expect(row?.sha).toBe(SHA_WEB.slice(0, 7));
+  });
+
   it("says no state for a service that runs nothing, whose commit's place already says so", () => {
     const [row] = serviceRows({
       environment: "stage",

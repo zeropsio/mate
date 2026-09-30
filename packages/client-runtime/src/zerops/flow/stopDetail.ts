@@ -20,7 +20,7 @@ import {
 import type { Shown } from "../knowledge/known.ts";
 import { changesNotLive } from "../projectAttention.ts";
 import type { ZeropsPublicRoute, ZeropsRouteOffer } from "../publicRoutes.ts";
-import { resolveCommit, sameCommit } from "../versionName.ts";
+import { sameCommit } from "../versionName.ts";
 import {
   releaseInFlightReason,
   RELEASE_NOTHING_NEW_ON_MAIN,
@@ -342,11 +342,9 @@ export function serviceRows(input: {
     return {
       hostname,
       repository: state.repository,
-      // Whole where main's head gives it; else as the name spells it, which Gitea resolves.
-      sha:
-        version.sha === undefined
-          ? undefined
-          : (resolveCommit(version.sha, [input.mainHead]) ?? version.sha),
+      // As the name spells it: it keys the deploy-run read, which must not move as main's head
+      // arrives, and the run is matched with `sameCommit`.
+      sha: version.sha,
       commit: version.commit,
       line: commitLine(version, input.mainHead),
       tone,
