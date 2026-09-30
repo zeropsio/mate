@@ -179,15 +179,24 @@ export function resolveSpentLogin(
 }
 
 /**
- * Whether the login `instanceId` spends is signed in and still being registered: runnable
- * (`ZeropsTurnAdmission` admits it), seconds from authorized, and nothing the person does —
- * so no surface warns about it.
+ * Whether a provider status on the login it names is behind the Mate's own sign-in record, and
+ * so says nothing: a status short of ready while the record has that login runnable — signed in
+ * and still being registered (`ZeropsTurnAdmission` admits it, and nothing is the person's to
+ * do), or registered already. The server's provider status and its sign-in record are two
+ * streams, and either may be ahead: past the registration the record says authorized while the
+ * status still says "being registered", and that word flashed over a conversation that had
+ * nothing to wait for.
  */
-export function spentLoginRegistering(
-  instanceId: string | undefined,
+export function spentLoginStatusStale(
+  status: { readonly instanceId: string; readonly status: string } | null | undefined,
   snapshot: ZeropsAgentAuthSnapshot | null | undefined,
   providers: ReadonlyArray<{ readonly instanceId: string; readonly driver: string }>,
 ): boolean {
-  const spent = resolveSpentLogin(instanceId, snapshot, providers);
-  return spent !== undefined && classifyZeropsAgentAuth(spent.agent).kind === "registering";
+  if (status == null || status.status === "ready") return false;
+  const spent = resolveSpentLogin(status.instanceId, snapshot, providers);
+  if (spent === undefined) return false;
+  // On a login Mate signs people in to, a warning is only ever the server's "being registered".
+  if (status.status === "warning") return true;
+  const kind = classifyZeropsAgentAuth(spent.agent).kind;
+  return kind === "registering" || kind === "authorized";
 }

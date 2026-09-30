@@ -211,7 +211,7 @@ import {
   agentOwnershipComposerNotice,
   resolveAgentOwnership,
 } from "@t3tools/client-runtime/zerops/agentOwnership";
-import { resolveSpentLogin, spentLoginRegistering } from "@t3tools/client-runtime/zerops/logins";
+import { resolveSpentLogin, spentLoginStatusStale } from "@t3tools/client-runtime/zerops/logins";
 import { useProjectTopology } from "../zerops/useProjectTopology";
 import {
   deriveAgentPanelModel,
@@ -3057,14 +3057,11 @@ export default function ChatView(props: ChatViewProps) {
       setDismissedProviderStatusBannerKey(null);
     }
   }, [dismissedProviderStatusBannerKey, providerStatusBannerKey]);
-  // A Zerops login signed in and still being registered runs already: nothing to warn about.
+  // A Zerops login signed in, being registered or registered, runs: a status saying otherwise
+  // is behind the Mate's sign-in record and says nothing.
   const visibleProviderStatus =
     shouldShowProviderStatusBanner(activeProviderStatus, dismissedProviderStatusBannerKey) &&
-    !spentLoginRegistering(
-      activeProviderStatus?.instanceId,
-      zeropsAgentAuth.snapshot,
-      providerStatuses,
-    )
+    !spentLoginStatusStale(activeProviderStatus, zeropsAgentAuth.snapshot, providerStatuses)
       ? activeProviderStatus
       : null;
   const hasTimelineTopBanner = Boolean(visibleThreadError) || visibleProviderStatus !== null;

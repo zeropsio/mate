@@ -10,7 +10,7 @@ import {
   mateLoginRows,
   mateLoginSignerLine,
   resolveSpentLogin,
-  spentLoginRegistering,
+  spentLoginStatusStale,
 } from "./logins.ts";
 
 const EVA = "u-eva";
@@ -214,40 +214,64 @@ describe("resolveSpentLogin", () => {
   });
 });
 
-describe("spentLoginRegistering", () => {
+// The server's provider status and the Mate's sign-in record are two streams. Past the
+// registration the record says authorized while the status still says "being registered":
+// the record wins, and the stale status says nothing (the owner, 2026-09-30: "there still
+// flashes …, which layout shifts").
+describe("spentLoginStatusStale", () => {
   const providers = [
     { instanceId: "claudeAgent", driver: "claudeAgent" },
     { instanceId: "claudeAgent-work", driver: "claudeAgent" },
+    { instanceId: "opencode", driver: "opencode" },
   ];
   const agentRow = (
-    state: "local-only" | "authorized",
-    providerAuth: "unknown" | "authenticated",
+    state: "local-only" | "authorized" | "not-authorized",
+    providerAuth: "unknown" | "authenticated" | "unauthenticated",
   ) =>
     ({
       agentId: "claude-code",
-      credPresent: true,
+      credPresent: state !== "not-authorized",
       flagOAuth: state === "authorized",
       flagToken: false,
       providerAuth,
       state,
     }) as const;
+  const registeringWord = { instanceId: "claudeAgent", status: "warning" } as const;
 
   it.each([
     {
       name: "the default login signed in and its flag not written yet",
-      instanceId: "claudeAgent",
+      status: registeringWord,
       feed: { available: true, agents: [agentRow("local-only", "unknown")] },
       expected: true,
     },
     {
-      name: "the default login authorized",
-      instanceId: "claudeAgent",
+      name: "the default login registered while its status still says it is being registered",
+      status: registeringWord,
+      feed: { available: true, agents: [agentRow("authorized", "authenticated")] },
+      expected: true,
+    },
+    {
+      name: "a ready status (a version advisory) on a registered login",
+      status: { instanceId: "claudeAgent", status: "ready" },
       feed: { available: true, agents: [agentRow("authorized", "authenticated")] },
       expected: false,
     },
     {
+      name: "the record not caught up yet while the status already says it is being registered",
+      status: registeringWord,
+      feed: { available: true, agents: [agentRow("not-authorized", "unauthenticated")] },
+      expected: true,
+    },
+    {
+      name: "the default login not signed in",
+      status: { instanceId: "claudeAgent", status: "error" },
+      feed: { available: true, agents: [agentRow("not-authorized", "unauthenticated")] },
+      expected: false,
+    },
+    {
       name: "a login beyond the defaults still answering its own check",
-      instanceId: "claudeAgent-work",
+      status: { instanceId: "claudeAgent-work", status: "warning" },
       feed: {
         available: true,
         agents: [agentRow("authorized", "authenticated")],
@@ -256,14 +280,26 @@ describe("spentLoginRegistering", () => {
       expected: true,
     },
     {
+      name: "a provider Mate signs nobody in to",
+      status: { instanceId: "opencode", status: "warning" },
+      feed: { available: true, agents: [agentRow("authorized", "authenticated")] },
+      expected: false,
+    },
+    {
       name: "no feed",
-      instanceId: "claudeAgent",
+      status: registeringWord,
       feed: null,
       expected: false,
     },
-  ])("is $expected for $name", ({ instanceId, feed, expected }) => {
-    expect(
-      spentLoginRegistering(instanceId, feed as ZeropsAgentAuthSnapshot | null, providers),
-    ).toBe(expected);
+    {
+      name: "no status",
+      status: null,
+      feed: { available: true, agents: [agentRow("authorized", "authenticated")] },
+      expected: false,
+    },
+  ])("is $expected for $name", ({ status, feed, expected }) => {
+    expect(spentLoginStatusStale(status, feed as ZeropsAgentAuthSnapshot | null, providers)).toBe(
+      expected,
+    );
   });
 });
