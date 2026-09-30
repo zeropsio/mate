@@ -158,8 +158,12 @@ const said = () =>
     .flatMap((node) => node.children.filter((child) => typeof child === "string"))
     .join(" ");
 
+/** The verbs the view offers: what can be pressed. */
 const buttons = () =>
-  tree?.root.findAllByType("button").map((node) => node.children.join("")) ?? [];
+  tree?.root
+    .findAllByType("button")
+    .filter((node) => node.props.disabled !== true)
+    .map((node) => node.children.join("")) ?? [];
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -217,7 +221,12 @@ describe("a Mate's own view while its link is made", () => {
     expect(said()).toContain("This Mate isn't answering. Trying again in 5 s.");
     expect(buttons()).toEqual(["Try now"]);
     app.connect.mockClear();
-    act(() => tree?.root.findByType("button").props.onClick());
+    act(() =>
+      tree?.root
+        .findAllByType("button")
+        .find((node) => node.children.join("") === "Try now")
+        ?.props.onClick(),
+    );
     expect(app.connect).toHaveBeenCalledExactlyOnceWith({ key: KEY });
   });
 
@@ -284,5 +293,62 @@ describe("a Mate's own view while its link is made", () => {
     });
     // An existing Mate's hand-over is not a new Mate's stand-up.
     expect(app.handingOver).not.toHaveBeenCalled();
+  });
+});
+
+// The owner, 2026-09-30: "sometimes the text area still flashed because old one is gone sooner
+// than new one is in". A switch from a conversation to a Mate whose link is still being made
+// lands here: its composer stands in its place, as the conversation that takes over draws it,
+// never nothing until the conversation opens. A Mate coming up for the first time holds its
+// composer back for its stand-up, and one that cannot be opened has nothing to write to.
+describe("the composer in a Mate's own view", () => {
+  const composer = () =>
+    tree?.root.findAll((node) => typeof node.type === "string" && node.props.role === "textbox") ??
+    [];
+
+  it.each([
+    {
+      case: "an existing Mate while its link is made",
+      link: { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } },
+      candidate: QUINN,
+      shown: true,
+    },
+    {
+      case: "an existing Mate no machine names yet",
+      link: { key: KEY, environmentId: undefined, reachability: null },
+      candidate: QUINN,
+      shown: true,
+    },
+    {
+      case: "a Mate that cannot be opened",
+      link: {
+        key: KEY,
+        environmentId: undefined,
+        reachability: { kind: "gone", because: "direct-not-found" },
+      },
+      candidate: QUINN,
+      shown: false,
+    },
+    {
+      case: "a new Mate coming up",
+      link: { key: KEY, environmentId: undefined, reachability: null },
+      candidate: { ...QUINN, group: "provisioning" } as ZeropsCandidate,
+      shown: false,
+    },
+  ] satisfies ReadonlyArray<{
+    case: string;
+    link: MateLink;
+    candidate: ZeropsCandidate;
+    shown: boolean;
+  }>)("$case: shown $shown", ({ link, candidate, shown }) => {
+    app.link = link;
+    app.listing = listingOf([candidate]);
+    openView();
+
+    expect(composer().length).toBe(shown ? 1 : 0);
+    if (shown) {
+      expect(composer()[0]?.props["aria-disabled"]).toBe("true");
+      expect(said()).toContain("Describe what you want to build or change…");
+    }
   });
 });
