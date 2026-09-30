@@ -416,6 +416,8 @@ export interface ReleaseChangeRow {
   readonly key: string;
   /** `#54 Performance tuning…` — the change it landed as, or the commit's own words. */
   readonly title: string;
+  /** The change it landed as, whose review the row opens; none for a commit nobody reviewed. */
+  readonly change: { readonly repository: string; readonly number: number } | undefined;
   readonly mateProjectId: string | undefined;
   readonly mergedAt: string | undefined;
   readonly stage: ReleaseStageMark;
@@ -433,6 +435,7 @@ const LANDED_AS = /\s*\(#(\d+)\)\s*$/u;
 export function releaseChangeRows(input: {
   readonly commits: ReadonlyArray<{ readonly sha: string; readonly subject: string }>;
   readonly merged: ReadonlyArray<{
+    readonly repository: string;
     readonly number: number;
     readonly title: string;
     readonly mateProjectId: string | undefined;
@@ -457,6 +460,8 @@ export function releaseChangeRows(input: {
         change === undefined
           ? commit.subject
           : `#${String(change.number)} ${change.title.replace(LANDED_AS, "")}`,
+      change:
+        change === undefined ? undefined : { repository: change.repository, number: change.number },
       mateProjectId: change?.mateProjectId,
       mergedAt: change?.mergedAt,
       stage: input.marks.get(key) ?? "none",
