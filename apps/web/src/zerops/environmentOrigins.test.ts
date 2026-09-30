@@ -49,6 +49,18 @@ describe("rowEnvironment — where a candidate row meets a registered environmen
     expect(rowEnvironment(input, registered)).toBe(expected);
   });
 
+  // Two environments on one project (a redeploy registered a new one): the row meets the newest,
+  // by its project as by its origin, so a restarting row never maps to the superseded one.
+  it("both keys pick the newest registered environment", () => {
+    const NEWER = EnvironmentId.make("env-wren-2");
+    const both = registeredZeropsOrigins([
+      { environmentId: ENV, displayUrl: ORIGIN, zeropsProjectId: "proj-wren" },
+      { environmentId: NEWER, displayUrl: ORIGIN, zeropsProjectId: "proj-wren" },
+    ]);
+    expect(rowEnvironment(row({ containerOrigin: ORIGIN }), both)).toBe(NEWER);
+    expect(rowEnvironment(row({ group: "unavailable" }), both)).toBe(NEWER);
+  });
+
   it("a server that has not answered names no project", () => {
     const unanswered = registeredZeropsOrigins([
       { environmentId: OTHER, displayUrl: null, zeropsProjectId: undefined },

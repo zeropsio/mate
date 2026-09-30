@@ -23,9 +23,9 @@ export function registeredZeropsOrigins(
 ): ReadonlyMap<string, EnvironmentId> {
   const byOrigin = new Map<string, EnvironmentId>();
   for (const environment of environments) {
+    // The newest registration wins both keys: a redeploy's environment replaces the one before.
     if (typeof environment.zeropsProjectId === "string") {
-      const key = projectKey(environment.zeropsProjectId);
-      if (!byOrigin.has(key)) byOrigin.set(key, environment.environmentId);
+      byOrigin.set(projectKey(environment.zeropsProjectId), environment.environmentId);
     }
     if (!environment.displayUrl) continue;
     const origin = normalizeOrigin(environment.displayUrl);
