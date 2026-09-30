@@ -206,7 +206,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     [environmentId, primaryId],
   );
   const status = useThreadStatus(threadRef);
-  const empty = useMateEmptyState({ environmentId, mate, threadRef });
+  const empty = useMateEmptyState({ environmentId, mate, threadRef, projectId });
   // Its conversation read live and its agents' sign-in are what the conversation paints first; a
   // few seconds without them and the view hands over anyway.
   const [graceOver, setGraceOver] = useState(false);
@@ -466,6 +466,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           onRetry={empty.onRetry}
           phase={handing && cameUp ? empty.phase : phaseAhead}
           signIn={handing && cameUp ? empty.signIn : null}
+          runtimes={empty.runtimes}
           signInRequired={empty.signInRequired}
           unknown={handing && cameUp ? empty.unknown : null}
         />

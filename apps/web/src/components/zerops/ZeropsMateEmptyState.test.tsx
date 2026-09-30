@@ -361,6 +361,55 @@ describe("MateEmptyStateView — a Mate coming up", () => {
     expect(html).not.toContain("data-coming-progress");
   });
 
+  // The dev halves' first deploys and a utility's build run minutes past the sign-in (measured
+  // 2026-09-30: until +264 s and +316 s, the sign-in at +170 s): the person sees them come up.
+  const RUNTIMES = [
+    { hostname: "appdev", role: "dev" as const, service: { id: "s-1", status: "CREATING" } },
+    { hostname: "appstage", role: "stage" as const, service: { id: "s-2", status: "ACTIVE" } },
+  ];
+  const runtimesLine = (html: string) =>
+    /data-zerops-surface="arrival-runtimes"[^>]*>(.*?)<\/div>/u
+      .exec(html)?.[1]
+      ?.replace(/<[^>]+>/gu, " ")
+      .replace(/\s+/gu, " ")
+      .trim();
+
+  it("names the runtimes still coming up under the sign-in", () => {
+    const html = view({
+      mate: ASKED,
+      coming: { kind: "coming", over: true, below: progress },
+      signIn: <div data-sign-in-module />,
+      signInRequired: true,
+      runtimes: RUNTIMES,
+    });
+    expect(runtimesLine(html)).toBe("appdev appstage coming up");
+  });
+
+  it.each([
+    {
+      case: "once signed in: the stand-up's run card carries the builds",
+      phase: "standing-up" as const,
+      runtimes: RUNTIMES,
+    },
+    {
+      case: "for runtimes already up",
+      phase: "sign-in" as const,
+      runtimes: RUNTIMES.map((runtime) => ({
+        ...runtime,
+        service: { ...runtime.service, status: "ACTIVE" },
+      })),
+    },
+  ])("names none $case", ({ phase, runtimes }) => {
+    const html = view({
+      mate: ASKED,
+      phase,
+      signIn: <div data-sign-in-module />,
+      signInRequired: phase === "sign-in",
+      runtimes,
+    });
+    expect(runtimesLine(html)).toBeUndefined();
+  });
+
   it("names any other Mate on its way to its conversation, its line under it", () => {
     const html = view({
       mate: MATE,

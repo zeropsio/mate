@@ -117,7 +117,7 @@ export interface BirthRuntimesFacts {
    * it did not.
    */
   readonly import: "waiting" | "importing" | "imported" | { readonly failed: string };
-  /** In the tier's order. */
+  /** By hostname. */
   readonly runtimes: ReadonlyArray<BirthRuntimeFact>;
 }
 
@@ -621,7 +621,10 @@ export function birthRuntimesFacts(input: {
         planned.failed === undefined
           ? IMPORT_BY_STEP[input.birth.step]
           : { failed: planned.failed },
-      runtimes: planned.services.map((runtime) => ({ ...runtime, ...serviceOf(runtime.hostname) })),
+      // By hostname, as its project's own read gives them after it: one order on every surface.
+      runtimes: [...planned.services]
+        .sort((left, right) => left.hostname.localeCompare(right.hostname))
+        .map((runtime) => ({ ...runtime, ...serviceOf(runtime.hostname) })),
     };
   }
   // The listing's order is its own and changes between reads: by hostname, it reads the same.

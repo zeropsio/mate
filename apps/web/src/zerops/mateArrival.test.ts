@@ -8,6 +8,8 @@ import {
   arrivalSteps,
   comingSentence,
   inFirstSeenOrder,
+  nextRuntimesLine,
+  runtimesComing,
   type ArrivalKind,
 } from "./mateArrival";
 
@@ -210,6 +212,83 @@ describe("inFirstSeenOrder", () => {
     },
   ])("orders $case", ({ seen, names, order, remembered }) => {
     expect(inFirstSeenOrder(seen, names)).toEqual({ order, seen: remembered });
+  });
+});
+
+describe("runtimesComing", () => {
+  const runtime = (hostname: string, status: string | undefined) => ({
+    hostname,
+    role: hostname.endsWith("stage") ? ("stage" as const) : ("dev" as const),
+    ...(status === undefined ? {} : { service: { id: `svc-${hostname}`, status } }),
+  });
+
+  it.each([
+    { case: "an import not listed yet", status: undefined, state: "waiting", coming: true },
+    { case: "a service made", status: "NEW", state: "busy", coming: true },
+    { case: "a service being created", status: "CREATING", state: "busy", coming: true },
+    {
+      case: "a dev half waiting for its build",
+      status: "READY_TO_DEPLOY",
+      state: "busy",
+      coming: true,
+    },
+    { case: "a running one", status: "ACTIVE", state: "ok", coming: false },
+    { case: "a failed one", status: "ACTION_FAILED", state: "failed", coming: false },
+    // A Mate opened later whose app someone stopped is not coming up.
+    { case: "a stopped one", status: "STOPPED", state: "waiting", coming: false },
+  ] as const)("reads $case as $state, coming up: $coming", ({ status, state, coming }) => {
+    expect(runtimesComing([runtime("appdev", status)])).toEqual({
+      services: [{ name: "appdev", state }],
+      coming,
+    });
+  });
+
+  it("reads a stage half waiting for its first deploy as up", () => {
+    expect(runtimesComing([runtime("appstage", "READY_TO_DEPLOY")])).toEqual({
+      services: [{ name: "appstage", state: "ok" }],
+      coming: false,
+    });
+  });
+
+  it("is coming up while any one is, in the order given", () => {
+    expect(runtimesComing([runtime("appdev", "ACTIVE"), runtime("mailpit", "CREATING")])).toEqual({
+      services: [
+        { name: "appdev", state: "ok" },
+        { name: "mailpit", state: "busy" },
+      ],
+      coming: true,
+    });
+  });
+
+  it.each([{ runtimes: undefined }, { runtimes: [] }])(
+    "has no line with no runtimes",
+    ({ runtimes }) => {
+      expect(runtimesComing(runtimes)).toBeUndefined();
+    },
+  );
+});
+
+describe("nextRuntimesLine", () => {
+  it.each([
+    { case: "never shows for runtimes already up", from: "none", coming: false, to: "none" },
+    { case: "shows while they come up", from: "none", coming: true, to: "coming" },
+    { case: "stays while they do", from: "coming", coming: true, to: "coming" },
+    // Its words fade, its place stays: the page is centred, and a line that went would move it.
+    {
+      case: "settles, keeping its place, once all are up",
+      from: "coming",
+      coming: false,
+      to: "settled",
+    },
+    { case: "stays settled", from: "settled", coming: false, to: "settled" },
+    {
+      case: "comes back for one that goes down again",
+      from: "settled",
+      coming: true,
+      to: "coming",
+    },
+  ] as const)("$case", ({ from, coming, to }) => {
+    expect(nextRuntimesLine(from, coming)).toBe(to);
   });
 });
 
