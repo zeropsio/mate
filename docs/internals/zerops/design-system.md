@@ -491,7 +491,12 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     (R6). It grows from what was pressed (200 ms: scale .98, 6 px of lift, a fade) and closes in
     about 150 ms; Esc or a press outside closes it and gives the focus back; the focus lands on the
     button, and ⌘↵ presses it, only while it is safe — never for _Release_ or _Roll back_; reduced
-    motion keeps only the fade; what is typed in it reaches nothing behind it (R7)
+    motion keeps only the fade; what is typed in it reaches nothing behind it (R7); a release's change rows press through to that
+    change's review inside the dialog — the whole row presses, a › at its end, none on a commit no
+    review carried — shown merged ("✓ Merged" where the button stands, "← Release" in the kind line),
+    sliding in from the right in 220 ms as the release moves 30 % left and fades and the height
+    eases; the first Esc steps back to the release where it was, the focus on the pressed row, the
+    second closes, and ⌘↵ never reaches the release underneath (`ZeropsReleaseSteps.logic.ts`)
   - _States:_ a change: ready · not checked · checks running or Gitea checking · checks failing ·
     behind main (amber, still merges) · conflicts with main · its files still read · closed without
     merging · merging · merged · refused; a release: ready · blocked · releasing · released ·
@@ -554,7 +559,11 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     until pointed at, in a slot that is always there (at rest on a coarse pointer), the grip before
     them in the _Custom_ order — under a 300 px heading the + gives its room to the name, and _Add a
     Mate_ is in ⋯ too; at its end its chips, `stage` then `prod` (D1), before which a long name
-    truncates. ⋯ holds _Open project_, _Add a Mate_, _Move up_ and _Move down_, _Set up …_ for a
+    truncates. An open heading's second line (D′) sits 13/18 under the name, 13 px letter to
+    letter and 33 px above its first Mate, the band growing over it (32 → 56 px): the fact in ink, the
+    rest muted, its door in the change rows' blue; a release's line leads with the tag the folded
+    heading's badge wears, and the badge's tooltip says the line's words ("3 changes not released ·
+    since v1.4.0"). ⋯ holds _Open project_, _Add a Mate_, _Move up_ and _Move down_, _Set up …_ for a
     tier it lacks, _All projects_. A heading never moves when pressed (M9, T3): the project's rows
     and the room after them — 36 px, 16 at the list's end; 6 px from the heading to its first row —
     unfold below it over 220 ms as they fade in and fold into it in 160 ms, turning round from
@@ -607,15 +616,18 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     and nothing on its corner. The name's line: the owner's mark before the name (`MateOwnerMark`,
     16 px round — their picture, or their initial on a hue of their own read off their name; a plain
     disc where nobody can name them, so every name starts on one edge), the name 14/20, 600 while
-    something it finished is unread, and on the right edge an 8 px dot — amber needs you, blue
-    finished unseen, red stopped on an error; no word, and no `StatusDot` — with when it last did
+    something it finished is unread, and on the right edge an 8 px dot — amber needs you (only on the viewer's own Mate, the one whose signer tag names
+    them: `mateIsViewers`; another's waiting Mate rests, its question muted, its change keeping its
+    _Review_), blue finished unseen, red stopped on an error; no word, and no `StatusDot` — with when it last did
     something, or the run's clock counting up in ink, or a pause glyph and when a usage limit lets
     it go on. Under it the person's last ask, 13/18 in the second ink, then the third line (M7): its
     last words muted — in the second ink while unread; the question itself in ink while it needs you
     (D6); the error's first line in red where it stopped on one; while it works, the step it is on,
-    its command in mono under a sweep of light (D5), or three still dots while words are to come; an
-    unsent draft led by _Draft:_ stands in for muted words or the dots. One even leading, no gaps
-    (M5): 76 px with three lines, 58 with an ask and no answer, 48 never asked (M6); 30 px from one
+    its command in mono under a sweep of light (D5), or three still dots while words are to come; the
+    second line is the person's — the sign-in, else _Draft:_ and the unsent words over the ask, else
+    the ask, else "Nothing asked yet" once its conversations are read; a draft never covers the
+    Mate's line. One even leading, no gaps (M5): every row three lines, 76 px, its third blank while
+    nothing is said (M6); 30 px from one
     Mate's words to the next's (M16). A new ask or new words rise into their line, never on a first
     paint. On hover _Stop_ while it works, and ⋯; a right-click or a finger held opens its menu; ⌥
     held puts each row's number in its time slot, and ⌥1–9 opens that Mate; j and k move between

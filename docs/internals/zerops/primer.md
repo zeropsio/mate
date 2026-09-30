@@ -746,7 +746,8 @@ ledger row or a test.
   - _Proven by:_ `MessagesTimeline.test.tsx`, `RunChat.test.tsx`; the harnesses
     `/design-working.html` and `/design-switch.html`
 - **—** — Pass 25: the add-Mate run's findings, the one voice, the switch, the stand-up's pace
-  - _State:_ built, 2026-09-30, on `pass-25`, not released: every item of the run's findings board,
+  - _State:_ released 2026-09-30 (mate 0.11.73, zcp v9.186.0, the broker's version names): every
+    item of the run's findings board,
     and the stage and production heading (D′: the release under the project's name); a Mate's link speaks with one voice and a
     reload never shows an empty pane; a return to a conversation shows it as it stood; the composer
     never leaves the screen; the stand-up's card shows its builds; zcp stands development up as a
@@ -757,6 +758,21 @@ ledger row or a test.
   - _Proven by:_ ledger 2026-09-30 _Pass 25 as measured_; `mateVoice.test.ts`,
     `keptTimelines.logic.test.ts`, `standupBar.logic.test.ts`, `versionName.test.ts`, zcp
     `TestStandupAfter_EveryDevHalfStartsAtOnce`, `TestStandup_ReturnsOnceDevelopmentIsUp`
+- **—** — Pass 26: the owner's and a colleague's evening on mate.zerops.io
+  - _State:_ built 2026-09-30 on `pass-26`, released as mate 0.11.74: the Mate being opened is
+    never kept waiting by another; a project someone else makes is read at once (no endless name
+    check, no stray "Still reading…"); a stalled read never covers the product; the arrival names
+    the subscription; the first ask waits for its signer record; a colleague's Mate waits on its
+    owner; rows keep their height and show drafts; the run card keeps one radius, a calm live line,
+    the whole environment in its stand-up bar, a dock that says one true thing and a result with
+    every picture; the release line and its folded tag; a release's changes open in its dialog.
+    **Open**: a Mate's hand-run git has no token (zcp); zcp to fold a process's `error` into its
+    import result and to relay a dev server's state live; dev artefacts' 2–4 min uploads
+  - _Built in:_ `pass-26` (mate)
+  - _Proven by:_ ledger 2026-09-30 _Pass 26 as measured_; `admission.test.ts`,
+    `nowLineCalm.logic.test.ts`, `standupReading.test.ts`, `operationBar.logic.test.ts`,
+    `inventoryTrouble.logic.test.ts`, `ZeropsReleaseSteps.logic.test.ts`,
+    `SidebarMateRow.logic.test.ts`
 - **6** — Adopting an existing app
   - _State:_ **open** — nothing built; _New project_ has no _I have code_
 - **7** — The raw-token door and the client's re-mint

@@ -3163,3 +3163,119 @@ no-cache`.
   production's first build is its first release; "all on stage" means the stage runs main's head.
   - _Why:_ a row after the Mates read as the last Mate's, and Heron's stage pill sat plain for the
     two minutes it took to come up
+- **2026-09-30** — **An empty conversation keeps its row, and a draft shows on the person's line**
+  (the owner: "empty conversation not showing draft and has weird position of the name without the
+  questions and response under it"). Every Mate row is three lines tall; the second line is the
+  person's — the sign-in, else _Draft:_ and the unsent words, else the ask, else "Nothing asked
+  yet" once the conversations are read; a draft never covers the Mate's line.
+  - _Why:_ a lone name floated mid-row, and the row grew 48 → 76 px when the first message landed
+- **2026-09-30** — **A colleague's Mate waits on its owner, not on the viewer** (the owner: "sana
+  doesn't wait for me, it waits for karlos" / "but I can merge that's true"). The needs face, the
+  amber dot, the stack, folded headings, the jump box, the crew line and the projects pages count
+  only the viewer's own Mates — those whose signer tag names the viewer (`mateIsViewers`); another's
+  waiting Mate rests with its question muted, and its change keeps its _Review_, since anyone with
+  write can merge.
+  - _Why:_ a colleague's Mate waited on the owner too
+- **2026-09-30** — **The run card keeps one radius** (the owner: "I'd just keep one constant border
+  raidus, the 'expansion' doesn't work with the stuff on bottom"). Every state wears
+  `--composer-radius` (20 px), the background-work card too, and nothing eases between radii; the
+  16 px edge slice takes corners 20 across by 16 down.
+  - _Why:_ 34 px pill tops sat over 16 px bottoms once rows stood in the card, animated between
+- **2026-09-30** — **A live line stands a second** (the owner: "stuff sometimes switches extremely
+  fast, makes it look jittery"). The card's now line, the folded heading, the menu row and the
+  header hold each step 1 s: the latest of a burst wins, the same words coming back drop what
+  waited, a change after idle and the run's end show at once, and the clock never counts back. A
+  change crossfades — out 140 ms, in 180 ms, 3 px, strong ease-out; a cut under reduced motion.
+  - _Why:_ a burst every 150 ms changed the line about 40 times in 6 s; now 6
+- **2026-09-30** — **A docked operation names itself and says its state once** (the owner: "this is
+  pretty poorly designed"). Stand-up, import and deploy share one model: the label names the
+  operation and never truncates ("Development", "Import · 2 services", "Deploy · appdev"); one
+  segment per service, a single deploy keeping its pipeline's steps; the words say the state once
+  ("2 building", "1 of 2 failed", "Imported"); opened, one plain line per service — mark, host,
+  state or reason. A failed service's reason is the tool's note, else the platform process's own
+  (`failReason`, else `error.code: message`).
+  - _Why:_ "Import failed" stood as a bare word over tiles that never said why
+- **2026-09-30** — **The dock shows a dev server only while it is down and the Mate has moved on**
+  (the owner: "when does it actually make sense, if its up to date"). A service stands in the dock
+  only while the latest thing done to it is a dev-server call that found it down — amber "not
+  running" or "stopped answering (502)", red "start failed" — and a later row has followed; a later
+  deploy, dev-server call, stand-up or restart, a call finding it running, or the platform working
+  on it takes it down, and its bar never contradicts its words. Versions read `main 7e2d4c1`,
+  `v0.1.0 7e2d4c1`, and a Mate's branch as its short sha alone; health reads "4 services healthy"
+  or "1 of 4 services unhealthy".
+  - _Why:_ "appdev · not running" stood long after the dev server ran again — the client learns a
+    dev server's state only from zcp's dev-server call
+- **2026-09-30** — **A result row carries its service's pictures** (the owner: "the final result is
+  strange as well, showing only one of the images"). Pictures are kept per page and device; a
+  service's row carries all of them in the order taken, 80 px like the open card's; a row is one
+  line ("Deployed 227b804 · both checks passed"), the home page unnamed; "not running" followed by
+  "running" goes quiet.
+  - _Why:_ pictures were keyed per page, so the phone's take dropped the desktop's, and the strip
+    stood under the last row
+- **2026-09-30** — **A run watched to its end can be hidden** (the owner: "why is this uncloseable?
+  because I saw it finish live?"). It stays open when it ends under the person's eyes and carries
+  _Hide work_, folding as a settling run does; _Show work_ reopens it.
+  - _Why:_ the toggle drew only for runs that ended unwatched
+- **2026-09-30** — **The person's step names what they sign in with** (the owner: "should convey you
+  sign in with your agent subscription … logos for brand recognition", "the 'next' is sloppy").
+  "You sign Wren in with your Claude or ChatGPT subscription", each brand wearing its app's logo
+  inline, wrapping at a phone's width; no "next" note; the subtitle drops "Then you sign it in." A
+  coming-up Mate's header is its face and name; _Open in Zerops_ returns with the conversation.
+  - _Why:_ the step read as signing a person in, and _Open in Zerops_ stood as a stray link on the
+    arrival
+- **2026-09-30** — **A project someone else makes is read at once** (a colleague's "Checking which names
+  are taken…" without end; the owner's "Still reading…" for no reason, and Sana missing until a
+  reload). The organization's project list hands a project the grant doesn't hold to the grant,
+  which verifies it at once and reads it once the platform has answered for it; a Mate's name is
+  judged from the project list alone, since names live on project tags; "Still reading…" speaks
+  only of a list known in part, after 1.5 s, and over existing rows for 20 s at most.
+  - _Why:_ a project created by someone else stayed out of the grant until its renewal, up to about
+    12 minutes
+- **2026-09-30** — **The release line has room and presence, and the folded tag says it** (the
+  owner: "the release is too squeezed here and too blending with background", "there is no visual
+  conneciton or tooltip here to connect it with the line below"). The line is 13/18 like the rows,
+  13 px under the name and 33 px above the first Mate; the fact in ink, the rest muted, _Review_ in
+  the change rows' blue. A release's line leads with the tag the folded heading's badge wears, and
+  the badge's tooltip says the line's words.
+  - _Why:_ at 12/16 in the muted ink, 10 px under the name, the line read as the heading's shadow,
+    and the folded count had nothing tying it to the line
+- **2026-09-30** — **A release's changes open inside its dialog** (the owner: "you should be able to
+  clickthrough to those prs inside the dialog"). The whole row presses, a › at its end; the change's
+  review shows merged — "✓ Merged" where the button stands, "← Release" in the kind line — and
+  slides in over the release in 220 ms as the height eases; the first Esc steps back to the release
+  where it was, the second closes, and ⌘↵ never reaches the release underneath.
+  - _Why:_ the rows were plain text, so checking what a release carries meant leaving it
+- **2026-09-30** — **A stand-up's bar is the whole environment** (the owner: "why doesnt this show
+  dbs etc?"). Data services first, as the platform says, then utilities (development only), then
+  the half's runtimes filling from their builds; the figure counts "5 of 7 up", and opened each
+  says Up, its step, Queued, Failed or the platform's reason. A settled call keeps its list as it
+  ended — all up when it succeeded; when it failed, the runtimes as its report says and the rest
+  "not checked", counted only where known — never today's statuses, and nothing made after it.
+  - _Why:_ the bar showed only the runtimes the call builds, so the databases looked forgotten
+- **2026-09-30** — **The Mate being opened is never kept waiting by another** (supersedes the same
+  day's "connects first"; the owner's Sana took 50 s to open, and Juno stuck while other Mates
+  restarted). Whether an attempt is the route's is judged when it starts: a waiting Mate that
+  becomes the route starts at once, and every other attempt still connecting gives way, the
+  previous route's included; others connect one at a time, 8 s each; a socket's turn covers only
+  its opening, and its wait in line never counts against its setup; with no route named, nothing
+  waits. The route's Mate never waits out the five-minute cap — it stays on the ladder (≤ ~36 s),
+  a capped Mate that becomes the route is tried at once, and a route that doesn't answer has its
+  container read every 2 s and is tried the moment it answers.
+  - _Why:_ Chrome connects one socket at a time per address, every Mate sits behind one address,
+    and the balancer holds a restarting Mate's upgrade 3–5 s — so a Mate restarting elsewhere held
+    the open Mate's socket, and a Mate back up waited out its ladder
+- **2026-09-30** — **The sign-in's end says nothing** (the owner: "there still flashes the 'saving
+  the auth to zerops' which layout shifts"). The server's own "being registered" status is hidden
+  once the login is spent; every other provider status — an error, a disabled provider, a warning
+  that can't verify the sign-in — still shows.
+  - _Why:_ the status and the auth snapshot raced at the end of registration, so the banner came
+    and went above the timeline
+- **2026-09-30** — **The first ask waits for its signer record** (Ada's first ask was refused as
+  unrecorded a second before its tag landed). When this server's own login succeeded, was started
+  by the same person and is under 30 minutes old, the turn gate re-reads the signer tags every 1 s
+  for up to 15 s — over no record, another person's, or one that names two people — before it
+  refuses; the earlier signer is refused on the new person's credential. Every browser of one
+  person sends the same command id per attempt, so one runs. A refused send's error stands until
+  the person's own next turn.
+  - _Why:_ the stand-up sends on the local signer the moment the sign-in succeeds, while the client
+    writes the tag after it
