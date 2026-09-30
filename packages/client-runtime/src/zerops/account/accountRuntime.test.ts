@@ -233,6 +233,8 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
   let recordReads = 0;
   /** What the stage hears when another tab writes the records. */
   let recordsChanged: (() => void) | null = null;
+  /** The tab's writes of the records do not land: a full or refusing storage, which the port swallows. */
+  let writesLand = true;
   let catalog: CatalogListener | null = null;
   let unhardened: ReadonlySet<string> = new Set();
   const ports: AccountEnvironmentPorts = {
@@ -254,7 +256,9 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
         recordReads += 1;
         return storage.get(key) ?? null;
       },
-      setItem: (key, value) => void storage.set(key, value),
+      setItem: (key, value) => {
+        if (writesLand) storage.set(key, value);
+      },
       listen: (changed) => {
         recordsChanged = changed;
         listening.records += 1;
@@ -299,6 +303,10 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
     },
     /** The connection catalog as the stage hears it. */
     catalog: () => catalog!,
+    /** Whether this tab's writes of the records land from now on. */
+    landWrites: (land: boolean) => {
+      writesLand = land;
+    },
     setUnhardened: (next: ReadonlySet<string>) => {
       unhardened = next;
     },
@@ -1224,6 +1232,42 @@ describe("the post-grant stage's Mate environments", () => {
         if (row.install !== null) finish(row.install.ok);
         yield* settle;
         expect([...new Set(rig.removed)]).toEqual(row.removed);
+      }),
+    ),
+  );
+
+  // A registration a machine holds is the Mate's live link. Records are personal context: a write
+  // that does not land — a full storage, which the web's port swallows — or another tab's write
+  // made without it says nothing about the link, and releasing it left a Mate this tab still held
+  // unregistered, so no door could open it, with nothing to exchange it again.
+  it.effect.each([
+    { name: "its record's write did not land", lands: false, elsewhere: null },
+    { name: "another tab stored the records without it", lands: true, elsewhere: [] },
+  ])("a registration its machine holds is kept though the records lack it: $name", (row) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { rig, environments } = yield* granted([]);
+        rig.landWrites(row.lands);
+        void environments.connect(MATE, "user");
+        yield* settle;
+        rig.exchanges[0]!.answer(
+          admitted(ENV_A, async () => {
+            // The registry takes it: the catalog publishes it before the record is written.
+            rig.catalog().environments([{ environmentId: ENV_A, origin: MATE_ORIGIN }]);
+            return { ok: true };
+          }),
+        );
+        yield* settle;
+        if (row.elsewhere !== null) rig.storeElsewhere(row.elsewhere, true);
+        yield* settle;
+
+        expect(environments.machines().get(MATE)?.credential).toMatchObject({
+          kind: "held",
+          environmentId: ENV_A,
+          installed: true,
+        });
+        expect(rig.records()).toEqual([]);
+        expect(rig.removed).toEqual([]);
       }),
     ),
   );
