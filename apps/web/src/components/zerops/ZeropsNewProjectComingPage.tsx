@@ -30,9 +30,11 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import {
   ComingBelow,
+  comingSentenceOf,
   MateComingFrame,
   MateComingHeader,
   MateOpeningLine,
+  personOf,
 } from "./ZeropsMateComingPage";
 import { MateEmptyStateView, type MateEmptyComing } from "./ZeropsMateEmptyState";
 
@@ -48,6 +50,8 @@ const NOBODY = {
 export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: string }) {
   const navigate = useNavigate();
   const { user } = useZeropsSession();
+  // The person's own step wears their picture.
+  const you = useMemo(() => personOf(user), [user]);
   const birth = useNewProjectBirths((state) => state.births[birthId]);
 
   // The platform took its Mate's project: that Mate's view takes the route, in place of this one.
@@ -106,15 +110,18 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
         }
       : {
           kind: coming.kind,
+          sentence: comingSentenceOf({ coming, progress, nowMs }),
           below: (
             <ComingBelow
               coming={coming}
+              mate={mate}
               nowMs={nowMs}
               onTryAgain={() => {
                 retryNewProjectBirth(birthId);
               }}
               progress={progress}
               projects={projects}
+              you={you}
             />
           ),
         };

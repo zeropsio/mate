@@ -4,11 +4,12 @@
  * Adding a Mate to a project deploys the project's recipe with its services
  * empty (`startWithoutCode`) and writes `mate:standup:<userId>` on the Mate's
  * project, naming the person who pressed Add. Their empty conversation with
- * the Mate says what will happen — "Fen will stand up development on Acme Docs
- * after you authorize your agent." — and the moment they have signed an agent
- * in, their own client sends "Stand up development of the project." as them,
- * through the composer's own send, and clears the tag once the conversation
- * holds it (the owner, 2026-09-29).
+ * the Mate says what will happen — "Sign Fen in to start. Once it's signed in,
+ * Fen stands up development on Acme Docs." (`mateArrival.ts`) — and the moment
+ * they have signed an agent in, their own client sends "Stand up development
+ * of the project." as them, through the composer's own send, and clears the tag
+ * once the conversation holds it (the owner, 2026-09-29). The conversation
+ * draws that ask as a quiet line, not as their bubble (`mateStandUpAskLine`).
  *
  * Why the client and not the server: the message is the person's, and only
  * their session may start a turn on the agent they signed in (D6); the tag is
@@ -83,6 +84,22 @@ export function mateStandUpHoldsComposer(input: {
   readonly failed: boolean;
 }): boolean {
   return askedOf(input.marker, input.viewer) && input.conversation !== "started" && !input.failed;
+}
+
+/**
+ * Whether an empty conversation with a Mate holds its composer back: while the stand-up waits on
+ * its person, and wherever no agent is signed in at all — nothing typed there could be acted on,
+ * and the stage's sign-in is the one thing to do (the owner, of a composer under an unsigned
+ * Mate: "this state shouldn't exist").
+ */
+export function mateArrivalHoldsComposer(input: {
+  readonly standUpHolds: boolean;
+  /** No agent of the Mate is signed in (`zeropsAgentSignInRequired`). */
+  readonly signInRequired: boolean;
+  /** The conversation holds no message yet. */
+  readonly empty: boolean;
+}): boolean {
+  return input.standUpHolds || (input.signInRequired && input.empty);
 }
 
 /**
@@ -161,34 +178,20 @@ export function mateStandUpPhase(input: {
   return "sign-in";
 }
 
-/** A name the headline never breaks inside. */
-const keptWhole = (name: string) => name.replaceAll(" ", "\u00a0");
-
 /**
- * The empty conversation's headline in each phase, the owner's words for the first, in the
- * clauses it breaks between when it takes two lines — "Fen will stand up development on Acme
- * Docs / after you authorize your agent." — and with no name torn in two.
+ * The stand-up's ask as its conversation draws it: a quiet line in nobody's voice, never a bubble
+ * in the person's words — the ask is the product's, sent for them by their sign-in. Its person
+ * reads it as theirs; anybody else reading the conversation, as asked.
  */
-export function mateStandUpHeadlineClauses(
+export function mateStandUpAskLine(
   mate: Pick<ZeropsMateIdentity, "name" | "project">,
-  phase: MateStandUpPhase,
-): ReadonlyArray<string> {
-  const name = keptWhole(mate.name);
-  const project = mate.project === undefined ? "the project" : keptWhole(mate.project);
-  switch (phase) {
-    case "sign-in":
-      return [`${name} will stand up development on ${project}`, "after you authorize your agent."];
-    case "standing-up":
-      return [`${name} is standing up development on ${project}…`];
-    case "failed":
-      return [`The message to ${name} didn't go through.`];
-  }
+  asker: "you" | "someone",
+): string {
+  const of = mate.project === undefined ? "the project" : mate.project;
+  return asker === "you"
+    ? `You asked ${mate.name} to stand up development of ${of}`
+    : `${mate.name} was asked to stand up development of ${of}`;
 }
 
-/** The headline as one sentence, as a person reads it. */
-export function mateStandUpHeadline(
-  mate: Pick<ZeropsMateIdentity, "name" | "project">,
-  phase: MateStandUpPhase,
-): string {
-  return mateStandUpHeadlineClauses(mate, phase).join(" ").replaceAll("\u00a0", " ");
-}
+/** Whether a message of the Mate's main conversation is the stand-up's ask: its exact words. */
+export const isMateStandUpAsk = (text: string): boolean => text.trim() === MATE_STAND_UP_MESSAGE;

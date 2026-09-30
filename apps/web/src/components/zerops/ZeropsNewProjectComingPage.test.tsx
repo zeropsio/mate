@@ -1,4 +1,3 @@
-import type { BirthLineProgress } from "./ZeropsBirthProgress.logic";
 import { act, createElement as h, type ReactNode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -23,13 +22,18 @@ vi.mock("./ZeropsMateEmptyState", () => ({
     coming,
     mate,
   }: {
-    readonly coming: { readonly kind: string; readonly below: ReactNode };
+    readonly coming: {
+      readonly kind: string;
+      readonly sentence?: string;
+      readonly below: ReactNode;
+    };
     readonly mate: { readonly name: string; readonly project: string | undefined };
   }) =>
     h(
       "section",
       { "data-kind": coming.kind },
       mate.project === undefined ? mate.name : `${mate.name} on ${mate.project}`,
+      h("p", null, coming.sentence ?? ""),
       coming.below,
     ),
 }));
@@ -42,15 +46,6 @@ vi.mock("./ZeropsMateComingPage", async () => {
     MateComingHeader: () => null,
   };
 });
-vi.mock("./ZeropsBirthProgress", () => ({
-  // Each step as the line draws it, in order.
-  ZeropsBirthLine: ({ progress }: { readonly progress: BirthLineProgress }) =>
-    h(
-      "ol",
-      null,
-      progress.steps.map((step) => h("li", { key: step.id, "data-state": step.state }, step.label)),
-    ),
-}));
 vi.mock("../ui/button", () => ({
   Button: ({
     children,
@@ -99,10 +94,13 @@ const said = () =>
     .flatMap((node) => node.children.filter((child) => typeof child === "string"))
     .join(" ");
 
+/** Each step as the arrival draws it, in order: which, and where it stands. */
 const steps = () =>
   tree?.root
-    .findAllByType("li")
-    .map((node) => `${node.children.join("")}:${String(node.props["data-state"])}`) ?? [];
+    .findAll((node) => node.props["data-arrival-step"] !== undefined)
+    .map(
+      (node) => `${String(node.props["data-arrival-step"])}:${String(node.props["data-state"])}`,
+    ) ?? [];
 
 const kind = () => tree?.root.findByType("section").props["data-kind"];
 
@@ -128,16 +126,16 @@ describe("a New project's first Mate, before its project exists", () => {
     openView();
     expect(kind()).toBe("coming");
     expect(said()).toContain("Vera on Acme CRM");
+    // The project's own steps, then its first Mate's workspace, then the person's own sign-in.
     expect(steps()).toEqual([
-      "Git hosting:active",
-      "Acme CRM:waiting",
-      "Project:waiting",
-      "Container:waiting",
-      "Public access:waiting",
-      "Closing off:waiting",
-      "Zerops Mate:waiting",
-      "Opening:waiting",
+      "git-hosting:active",
+      "registry:waiting",
+      "workspace:waiting",
+      "you:you",
     ]);
+    expect(said()).toContain("Git hosting");
+    expect(said()).toContain("Vera's workspace");
+    expect(said()).toContain("You sign Vera in");
     expect(app.navigate).not.toHaveBeenCalled();
   });
 

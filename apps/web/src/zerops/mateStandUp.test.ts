@@ -3,12 +3,13 @@ import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  isMateStandUpAsk,
   MATE_STAND_UP_MESSAGE,
+  mateArrivalHoldsComposer,
+  mateStandUpAskLine,
   mateStandUpCleared,
   mateStandUpDecision,
   mateStandUpHoldsComposer,
-  mateStandUpHeadline,
-  mateStandUpHeadlineClauses,
   mateStandUpPhase,
   mateStandUpSendIds,
   mateStandUpSignedIn,
@@ -33,44 +34,50 @@ describe("the stand-up's words", () => {
     expect(MATE_STAND_UP_MESSAGE).toBe("Stand up development of the project.");
   });
 
+  // The ask is drawn as a quiet line, never a bubble in the person's words.
   it.each([
     {
-      phase: "sign-in" as const,
+      asker: "you" as const,
       project: "Acme Docs",
-      words: "Fen will stand up development on Acme Docs after you authorize your agent.",
+      line: "You asked Fen to stand up development of Acme Docs",
     },
     {
-      phase: "standing-up" as const,
+      asker: "someone" as const,
       project: "Acme Docs",
-      words: "Fen is standing up development on Acme Docs…",
+      line: "Fen was asked to stand up development of Acme Docs",
     },
     {
-      phase: "failed" as const,
-      project: "Acme Docs",
-      words: "The message to Fen didn't go through.",
-    },
-    {
-      phase: "sign-in" as const,
+      asker: "you" as const,
       project: undefined,
-      words: "Fen will stand up development on the project after you authorize your agent.",
+      line: "You asked Fen to stand up development of the project",
     },
-    {
-      phase: "standing-up" as const,
-      project: undefined,
-      words: "Fen is standing up development on the project…",
-    },
-  ])("say, $phase in $project: $words", ({ phase, project, words }) => {
-    expect(mateStandUpHeadline({ name: "Fen", project }, phase)).toBe(words);
+  ])("draw the ask, for $asker in $project: $line", ({ asker, project, line }) => {
+    expect(mateStandUpAskLine({ name: "Fen", project }, asker)).toBe(line);
   });
 
-  it("break, when they must, between their clauses, never inside a name", () => {
-    expect(
-      mateStandUpHeadlineClauses({ name: "Fen", project: "Acme Docs Portal" }, "sign-in"),
-    ).toEqual([
-      "Fen will stand up development on Acme\u00a0Docs\u00a0Portal",
-      "after you authorize your agent.",
-    ]);
+  it.each([
+    [MATE_STAND_UP_MESSAGE, true],
+    [`  ${MATE_STAND_UP_MESSAGE}\n`, true],
+    ["Stand up development of the project, then add a blog.", false],
+    ["stand up development of the project.", false],
+  ])("know the ask by its exact words: %j is %s", (text, ask) => {
+    expect(isMateStandUpAsk(text)).toBe(ask);
   });
+});
+
+describe("mateArrivalHoldsComposer", () => {
+  it.each([
+    { standUpHolds: true, signInRequired: false, empty: false, holds: true },
+    { standUpHolds: false, signInRequired: true, empty: true, holds: true },
+    // A conversation under way keeps its composer, whatever its sign-in says: it is read.
+    { standUpHolds: false, signInRequired: true, empty: false, holds: false },
+    { standUpHolds: false, signInRequired: false, empty: true, holds: false },
+  ])(
+    "stand-up $standUpHolds, no agent $signInRequired, empty $empty: holds $holds",
+    ({ holds, ...input }) => {
+      expect(mateArrivalHoldsComposer(input)).toBe(holds);
+    },
+  );
 });
 
 describe("mateStandUpDecision", () => {

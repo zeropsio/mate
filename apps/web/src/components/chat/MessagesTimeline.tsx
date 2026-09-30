@@ -133,6 +133,8 @@ import {
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
+import { isMateStandUpAsk } from "~/zerops/mateStandUp";
+import { useMateStandUpAskLine } from "~/zerops/useMateStandUp";
 import { ZeropsMateEmptyState } from "../zerops/ZeropsMateEmptyState";
 import { MateFace } from "../zerops/primitives";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
@@ -164,6 +166,7 @@ import {
   MessageReceipt,
   PauseBlock,
   Seam,
+  StandUpAskLine,
   type ConversationSpeaker,
   type ServerUsagePause,
 } from "./ConversationRows";
@@ -785,6 +788,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     setOpenedWith({ key: routeThreadKey, at: newestMessageAt });
   }
   const arrivedAfter = openedWith?.key === routeThreadKey ? openedWith.at : null;
+  // The stand-up's ask, in a Mate's main conversation: a quiet line, not the person's bubble.
+  const standUpAsk = useMateStandUpAskLine(
+    crewmate === null ? parseScopedThreadKey(routeThreadKey) : null,
+  );
   // A run the person watched stays open while they are here; once they leave
   // the conversation every run in it folds, so coming back it is folded from
   // the first frame and nothing moves (K7). It folds as the timeline goes,
@@ -811,6 +818,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onImageExpand,
       onOpenTurnDiff,
       speaker,
+      standUpAsk,
       livePauseId,
       usagePause,
       onUsageAutoResumeChange,
@@ -837,6 +845,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onImageExpand,
       onOpenTurnDiff,
       speaker,
+      standUpAsk,
       livePauseId,
       usagePause,
       onUsageAutoResumeChange,
@@ -1583,7 +1592,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
   const gap = GAP_CLASS[row.gap ?? "none"];
   const card = row.card;
   const content = <TimelineRowBody row={row} />;
-  const { arrivedAfter } = use(TimelineRowCtx);
+  const { arrivedAfter, standUpAsk } = use(TimelineRowCtx);
   const [entering] = useState(() => messageEnters(row, arrivedAfter));
   useEffect(() => {
     if (!entering) return;
@@ -1595,7 +1604,8 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
     }
     enteredMessages.add(row.id);
   }, [entering, row.id]);
-  const person = row.kind === "message" && row.message.role === "user";
+  const person =
+    row.kind === "message" && row.message.role === "user" && !isStandUpAskRow(row, standUpAsk);
   return (
     <div
       className={cn(
@@ -1623,10 +1633,31 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
   );
 });
 
+/** A message that is a Mate's stand-up ask, where the conversation draws it as its quiet line. */
+function isStandUpAskRow(row: TimelineRow, standUpAsk: string | null): boolean {
+  return (
+    standUpAsk !== null &&
+    row.kind === "message" &&
+    row.message.role === "user" &&
+    isMateStandUpAsk(row.message.text)
+  );
+}
+
 function TimelineRowBody({ row }: { row: TimelineRow }) {
+  const ctx = use(TimelineRowCtx);
+  const askLine = isStandUpAskRow(row, ctx.standUpAsk);
   return (
     <>
-      {row.kind === "message" && row.message.role === "user" ? <UserTimelineRow row={row} /> : null}
+      {askLine && row.kind === "message" && ctx.standUpAsk !== null ? (
+        <StandUpAskLine
+          at={row.message.createdAt}
+          timestampFormat={ctx.timestampFormat}
+          words={ctx.standUpAsk}
+        />
+      ) : null}
+      {row.kind === "message" && row.message.role === "user" && !askLine ? (
+        <UserTimelineRow row={row} />
+      ) : null}
       {row.kind === "message" && row.message.role === "assistant" ? (
         <AssistantTimelineRow row={row} />
       ) : null}

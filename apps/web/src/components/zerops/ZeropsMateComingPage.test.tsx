@@ -98,6 +98,9 @@ vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({ activeOrganization: null, user: { id: "u-ada" } }),
 }));
 vi.mock("~/zerops/useZeropsBirthProgress", () => ({ useZeropsBirthProgress: () => null }));
+vi.mock("~/zerops/useUsualAgent", () => ({
+  useUsualAgent: () => ({ usual: null, settled: true }),
+}));
 vi.mock("~/zerops/useNowMs", () => ({ useSecondsNowMs: () => 0 }));
 vi.mock("./ZeropsMateEmptyState", () => ({
   useMateEmptyState: () => ({
@@ -135,7 +138,6 @@ vi.mock("../ui/button", () => ({
     readonly onClick?: () => void;
   }) => h("button", { onClick }, children),
 }));
-vi.mock("./ZeropsBirthProgress", () => ({ ZeropsBirthLine: () => null }));
 vi.mock("./ZeropsProjectsPage", () => ({ removeFailedZeropsProject: async () => ({ ok: true }) }));
 
 let tree: ReactTestRenderer | undefined;

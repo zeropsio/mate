@@ -331,13 +331,18 @@ import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { isTimelineScrollTarget } from "./chat/timelineScrollTarget";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
-import { agentAuthAction, zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
+import {
+  agentAuthAction,
+  zeropsAgentAuthView,
+  zeropsAgentSignInRequired,
+} from "@t3tools/client-runtime/zerops/agentLogin";
 import {
   resolveAgentAuthorizer,
   useLocalAgentSigners,
   useZeropsAgentSignerRecord,
   useZeropsEnvironmentProject,
 } from "~/zerops/useZeropsAgentSigner";
+import { mateArrivalHoldsComposer } from "~/zerops/mateStandUp";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
@@ -2368,21 +2373,12 @@ export default function ChatView(props: ChatViewProps) {
   // The environment, not the thread: a draft has one before it has the other,
   // and the header names the project either way. This host demands the
   // project's topology (`useProjectTopology`) — the panel demands the same
-  // ref-counted interest, so opening it costs nothing extra. Hoisted here
-  // (rather than beside `zeropsChrome` below, which also reads it) so the
-  // sign-in dialog's project-name chip is available from its very first call.
+  // ref-counted interest, so opening it costs nothing extra.
   const zeropsTopology = useProjectTopology(activeThreadEnvironmentId).view;
-  const zeropsProjectName = zeropsTopology?.project.name.trim() || null;
-  // The one sign-in dialog, shared with the Zerops empty state and the
-  // model picker's per-agent panels — see `useZeropsAgentSignInDialog`. Its
-  // `recordFailed` set (H13) also feeds the availability map below.
-  const zeropsSignInDialog = useZeropsAgentSignInDialog(
-    activeThreadEnvironmentId,
-    activeThreadRef,
-    {
-      projectName: zeropsProjectName,
-    },
-  );
+  // The one sign-in dialog, shared with the model picker's per-agent panels
+  // and the Crew tab — see `useZeropsAgentSignInDialog`. Its `recordFailed`
+  // set (H13) also feeds the availability map below.
+  const zeropsSignInDialog = useZeropsAgentSignInDialog(activeThreadEnvironmentId, activeThreadRef);
   const zeropsAgentAvailabilityByInstanceId = useMemo(
     () =>
       resolveZeropsProviderAvailability({
@@ -3890,6 +3886,14 @@ export default function ChatView(props: ChatViewProps) {
       selectedProviderEntry !== undefined &&
       zeropsSendBlockReason === undefined,
     sendBusy: isSendBusy,
+  });
+  // A Mate's empty conversation with no agent signed in is its arrival's sign-in: nothing typed
+  // there could be acted on, so the composer waits with the stand-up's.
+  const zeropsArrivalHoldsComposer = mateArrivalHoldsComposer({
+    standUpHolds: mateStandUp.holdsComposer,
+    signInRequired:
+      zeropsAgentAuth.snapshot !== null && zeropsAgentSignInRequired(zeropsAgentAuth.snapshot),
+    empty: isServerThread && (activeThread?.messages.length ?? 0) === 0,
   });
   const activeProjectDisplayName = zeropsChrome.projectName ?? activeProject?.title;
   const chromeLogicalProjectEnvironments = useMemo(
@@ -8269,10 +8273,10 @@ export default function ChatView(props: ChatViewProps) {
                     // While a new Mate's stand-up waits on this person, the conversation's one
                     // message is its headline: the composer keeps its place (it is what sends the
                     // stand-up) but is neither seen nor reached, and fades back once it has gone.
-                    aria-hidden={mateStandUp.holdsComposer ? true : undefined}
+                    aria-hidden={zeropsArrivalHoldsComposer ? true : undefined}
                     className="relative"
-                    data-standup-holds-composer={mateStandUp.holdsComposer ? "" : undefined}
-                    inert={mateStandUp.holdsComposer}
+                    data-standup-holds-composer={zeropsArrivalHoldsComposer ? "" : undefined}
+                    inert={zeropsArrivalHoldsComposer}
                     style={
                       forceExpandedMobileComposer
                         ? { viewTransitionName: MOBILE_COMPOSER_VIEW_TRANSITION_NAME }
@@ -8392,7 +8396,6 @@ export default function ChatView(props: ChatViewProps) {
                               zeropsAgentAvailabilityByInstanceId={
                                 zeropsAgentAvailabilityByInstanceId
                               }
-                              zeropsProjectName={zeropsProjectName}
                               activeContextWindow={activeContextWindow}
                               compactThreadUnavailable={compactThreadUnavailable}
                               compactDisabled={compactDisabled}

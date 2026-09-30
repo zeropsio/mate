@@ -8,23 +8,11 @@ const feedState = vi.hoisted(() => ({
   viewer: undefined as string | undefined,
   attempt: "none" as "none" | "sending" | "failed",
   threads: [] as ReadonlyArray<Record<string, unknown>>,
+  names: new Map<string, string>(),
 }));
 
 vi.mock("../../zerops/useZeropsFeeds", () => ({
   useZeropsAgentAuth: () => feedState.agentAuth,
-}));
-
-vi.mock("../../zerops/useZeropsAgentSignInDialog", () => ({
-  useZeropsAgentSignInDialog: () => ({
-    openFor: () => {},
-    dialog: null,
-    recordFailed: new Set(),
-    retryRecord: () => {},
-  }),
-}));
-
-vi.mock("../../zerops/useAgentLoginCancel", () => ({
-  useAgentLoginCancel: () => () => {},
 }));
 
 vi.mock("../../zerops/ZeropsSessionProvider", () => ({
@@ -41,21 +29,25 @@ vi.mock("../../state/entities", () => ({
   useThreadShells: () => feedState.threads,
 }));
 
-vi.mock("./ZeropsAgentAuthCard", () => ({
-  ZeropsAgentAuthRows: ({ snapshot }: { readonly snapshot: ZeropsAgentAuthSnapshot }) => (
-    <ul data-zerops-agent-auth-rows>
-      {snapshot.agents.map((agent) => (
-        <li key={agent.agentId}>{agent.agentId}</li>
-      ))}
-    </ul>
-  ),
+vi.mock("../../zerops/useZeropsAgentSigner", async (importActual) => ({
+  ...(await importActual<typeof import("../../zerops/useZeropsAgentSigner")>()),
+  useLocalAgentSigners: () => new Map(),
+  useZeropsEnvironmentProject: () => ({ projectId: "p-fen", orgId: "org-acme" }),
+}));
+
+vi.mock("../../zerops/useZeropsMateOwners", () => ({
+  useZeropsMemberNames: () => (userId: string) => feedState.names.get(userId),
+}));
+
+// The sign-in module is its own (`ZeropsAgentSignIn.test.tsx`): here only where it stands.
+vi.mock("./ZeropsAgentSignIn", () => ({
+  ZeropsAgentSignIn: () => <div data-sign-in-module />,
 }));
 
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { ThreadId } from "@t3tools/contracts";
 
 import type { ZeropsMateIdentity } from "../../zerops/mateIdentities";
-import { markMateHandedOver } from "../../zerops/mateHandOver";
 import { MateEmptyStateView, ZeropsMateEmptyState } from "./ZeropsMateEmptyState";
 
 const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
@@ -68,23 +60,21 @@ const MATE: ZeropsMateIdentity = {
   tint: "olive",
   shape: "seal",
   project: "Acme Docs",
-  projectUrl: "https://app.zerops.io/project/p1",
+  projectUrl: "https://app.zerops.example/project/p1",
   connected: true,
 };
 const ASKED: ZeropsMateIdentity = { ...MATE, standUp: { by: ADA } };
 
 const NOT_SIGNED_IN: ZeropsAgentAuthSnapshot = {
   available: true,
-  agents: [
-    {
-      agentId: "codex",
-      credPresent: false,
-      flagOAuth: false,
-      flagToken: false,
-      providerAuth: "unknown",
-      state: "not-authorized",
-    },
-  ],
+  agents: (["claude-code", "codex"] as const).map((agentId) => ({
+    agentId,
+    credPresent: false,
+    flagOAuth: false,
+    flagToken: false,
+    providerAuth: "unknown" as const,
+    state: "not-authorized" as const,
+  })),
 };
 
 const SIGNED_IN_BY_ADA: ZeropsAgentAuthSnapshot = {
@@ -132,50 +122,23 @@ const readable = (markup: string) =>
     .replaceAll("<!-- -->", "")
     .replace(/<[^>]+>/gu, "")
     .replaceAll("&#x27;", "'")
-    .replaceAll("\u00a0", " ");
+    .replaceAll(" ", " ");
 
-/**
- * Whether a person can read and press the sign-in rows: under the question whenever drawn; under
- * a stand-up only in the layer shown — a sign-in landing fades them where they stand.
- */
-const rowsReadable = (html: string) => {
-  if (
-    !html.includes("data-zerops-agent-auth-rows") &&
-    !html.includes('data-zerops-surface="mate-standup-authorize"')
-  ) {
-    return false;
-  }
-  const layer =
-    /data-standup-layer="(\w+)"[^>]*><section[^>]*data-zerops-surface="mate-sign-in"/u.exec(
-      html,
-    )?.[1];
-  return layer === undefined || layer === "shown";
-};
-
-/** The heading a person reads: the question, or the stand-up's phase in view. */
-const headline = (html: string) => {
-  const heading = /<h1[^>]*>(.*?)<\/h1>/u.exec(html)?.[1];
-  return heading === undefined ? undefined : readable(heading);
-};
-
-/** The stand-up's phases, in order: where each stands, whether a person can read it, its words. */
-const phrases = (html: string) =>
-  [
-    ...html.matchAll(
-      /<div( aria-hidden="true")? class="[^"]*" data-standup-phrase="(\w+)"( inert="")?>(.*?)<\/div>/gu,
-    ),
-  ].map(([, hidden, place, inert, markup]) => ({
-    readable: hidden === undefined && inert === undefined,
-    place,
-    words: readable(/<(?:h1|p)[^>]*>(.*?)<\/(?:h1|p)>/u.exec(markup ?? "")?.[1] ?? ""),
-    retry: (markup ?? "").includes("data-mate-standup-retry"),
-  }));
+/** The stage as a person reads it: its headline, its sentence, its face, and what its slot holds. */
+const stage = (html: string) => ({
+  headline: readable(/<h1[^>]*>(.*?)<\/h1>/u.exec(html)?.[1] ?? ""),
+  sentence: readable(/<p class="arrival-sentence">(.*?)<\/p>/u.exec(html)?.[1] ?? ""),
+  face: /data-mate-face-state="(\w+)"/u.exec(html)?.[1],
+  signIn: html.includes("data-sign-in-module"),
+  tryAgain: html.includes("data-mate-standup-retry"),
+});
 
 describe("ZeropsMateEmptyState", () => {
   beforeEach(() => {
     feedState.agentAuth = undefined;
     feedState.viewer = ADA;
     feedState.attempt = "none";
+    feedState.names = new Map();
     feedState.threads = [
       shell("thread-main", "2026-09-29T10:00:00.000Z"),
       shell("thread-second", "2026-09-29T09:00:00.000Z"),
@@ -183,6 +146,7 @@ describe("ZeropsMateEmptyState", () => {
   });
 
   it("wears the face its person picked", () => {
+    feedState.agentAuth = known(NOT_SIGNED_IN);
     const html = render();
     expect(html).toContain('data-mate-face-tint="olive"');
     expect(html).toContain('data-mate-face-shape="seal"');
@@ -190,11 +154,11 @@ describe("ZeropsMateEmptyState", () => {
 
   it("an unread agent-auth feed never renders as nothing to sign in: it says it is checking", () => {
     feedState.agentAuth = READING;
-    const html = render();
+    const html = render(ASKED);
 
     expect(html).toContain("Checking which coding agents are signed in…");
     expect(html).toContain("animation-delay:400ms");
-    expect(html).not.toContain('data-zerops-surface="mate-sign-in"');
+    expect(stage(html).signIn).toBe(false);
   });
 
   it("a failed agent-auth read says why", () => {
@@ -206,27 +170,7 @@ describe("ZeropsMateEmptyState", () => {
       retryAtMs: null,
     };
 
-    expect(render()).toContain("This Mate is too old for this. Updating it adds it.");
-  });
-
-  it("a known snapshot with no agent signed in asks for a sign-in, stale or not", () => {
-    const read: Known<ZeropsAgentAuthSnapshot> = {
-      state: "known",
-      value: NOT_SIGNED_IN,
-      asOf: { ordinal: 1, atMs: 0 },
-      coverage: "complete",
-      freshness: {
-        kind: "stale",
-        reason: { kind: "source-recovering", retryAtMs: null },
-        sinceMs: 0,
-      },
-    };
-    feedState.agentAuth = read;
-    const html = render();
-
-    expect(html).toContain('data-zerops-surface="mate-sign-in"');
-    expect(html).toContain("data-zerops-agent-auth-rows");
-    expect(html).not.toContain("Checking which coding agents are signed in…");
+    expect(render(ASKED)).toContain("This Mate is too old for this. Updating it adds it.");
   });
 
   it.each([
@@ -234,138 +178,130 @@ describe("ZeropsMateEmptyState", () => {
       name: "a Mate just added, to the person who added it, before the sign-in",
       mate: ASKED,
       auth: known(NOT_SIGNED_IN),
-      says: "Fen will stand up development on Acme Docs after you authorize your agent.",
-      rows: true,
+      headline: "Sign Fen in to start.",
+      sentence: "Once it's signed in, Fen stands up development on Acme Docs.",
+      face: "idle",
+      signIn: true,
     },
     {
-      name: "the same, while the sign-in is still being read",
-      mate: ASKED,
-      auth: READING,
-      says: "Fen will stand up development on Acme Docs after you authorize your agent.",
-      rows: false,
-    },
-    {
-      name: "signed in, the message on its way",
+      name: "signed in, the ask on its way",
       mate: ASKED,
       auth: known(SIGNED_IN_BY_ADA),
-      says: "Fen is standing up development on Acme Docs…",
-      rows: false,
+      headline: "Fen is standing up development on Acme Docs.",
+      sentence: "Signed in. It starts in a moment.",
+      face: "working",
+      signIn: false,
     },
     {
       name: "the send asked of the composer",
       mate: ASKED,
       auth: known(SIGNED_IN_BY_ADA),
       attempt: "sending" as const,
-      says: "Fen is standing up development on Acme Docs…",
-      rows: false,
+      headline: "Fen is standing up development on Acme Docs.",
+      sentence: "Signed in. It starts in a moment.",
+      face: "working",
+      signIn: false,
     },
     {
       name: "the send did not go through",
       mate: ASKED,
       auth: known(SIGNED_IN_BY_ADA),
       attempt: "failed" as const,
-      says: "The message to Fen didn't go through.",
-      rows: false,
+      headline: "The message to Fen didn't go through.",
+      sentence: "Fen is signed in, but your ask to stand up development didn't reach it.",
+      face: "needs",
+      signIn: false,
     },
     {
-      name: "a Mate in no project",
-      mate: { ...ASKED, project: undefined },
-      auth: known(NOT_SIGNED_IN),
-      says: "Fen will stand up development on the project after you authorize your agent.",
-      rows: true,
-    },
-    {
-      name: "a colleague looking: the ask is its person's",
+      name: "a colleague opening a Mate its person has not signed in",
       mate: ASKED,
-      viewer: "u-fen",
+      viewer: "u-mira",
+      names: [[ADA, "Ada"]] as const,
       auth: known(NOT_SIGNED_IN),
-      says: "What should Fen do on Acme Docs?",
-      rows: true,
+      headline: "Sign Fen in to start.",
+      sentence:
+        "Ada added Fen but hasn't signed it in. Sign it in with your own account and it's yours.",
+      face: "idle",
+      signIn: true,
     },
     {
-      name: "another of the Mate's chats",
+      name: "the same, its person's name not read",
+      mate: ASKED,
+      viewer: "u-mira",
+      auth: known(NOT_SIGNED_IN),
+      headline: "Sign Fen in to start.",
+      sentence: "Nobody has signed Fen in yet. Sign it in with your own account and it's yours.",
+      face: "idle",
+      signIn: true,
+    },
+    {
+      name: "another of the Mate's chats, nobody signed in",
       mate: ASKED,
       thread: SECOND,
       auth: known(NOT_SIGNED_IN),
-      says: "What should Fen do on Acme Docs?",
-      rows: true,
+      headline: "Sign Fen in to start.",
+      sentence: "Once it's signed in, Fen writes and runs code on its own copy of Acme Docs.",
+      face: "idle",
+      signIn: true,
     },
     {
-      name: "a Mate nobody asked it of",
+      name: "a Mate nobody asked it of, nobody signed in",
       mate: MATE,
       auth: known(NOT_SIGNED_IN),
-      says: "What should Fen do on Acme Docs?",
-      rows: true,
+      headline: "Sign Fen in to start.",
+      sentence: "Once it's signed in, Fen writes and runs code on its own copy of Acme Docs.",
+      face: "idle",
+      signIn: true,
     },
-  ])("says, for $name: $says", ({ mate, auth, attempt, viewer, thread, says, rows }) => {
-    feedState.agentAuth = auth;
-    if (attempt !== undefined) feedState.attempt = attempt;
-    if (viewer !== undefined) feedState.viewer = viewer;
-    const html = render(mate, thread);
+    {
+      name: "a Mate signed in, ready",
+      mate: MATE,
+      auth: known(SIGNED_IN_BY_ADA),
+      headline: "What should Fen do on Acme Docs?",
+      sentence: "",
+      face: "idle",
+      signIn: false,
+    },
+  ])("says, for $name: $headline", (row) => {
+    feedState.agentAuth = row.auth;
+    if (row.attempt !== undefined) feedState.attempt = row.attempt;
+    if (row.viewer !== undefined) feedState.viewer = row.viewer;
+    if (row.names !== undefined) feedState.names = new Map(row.names);
+    const html = render(row.mate, row.thread);
 
-    expect(headline(html)).toBe(says);
-    expect(rowsReadable(html)).toBe(rows);
-    // The stand-up's headline already says why an agent is needed.
-    expect(html.includes("works through a coding agent")).toBe(
-      rows && says.startsWith("What should"),
-    );
-    // Try again is there to press only when the send did not go through.
-    expect(phrases(html).some((phrase) => phrase.readable && phrase.retry)).toBe(
-      attempt === "failed",
-    );
-    // While the stand-up waits on the sign-in, its one message stands over the two buttons (the
-    // owner: "the only message here"): no row repeats it with a status.
-    const waitsOnSignIn = rows && !says.startsWith("What should");
-    expect(html.includes('data-zerops-surface="mate-standup-authorize"')).toBe(waitsOnSignIn);
-    if (waitsOnSignIn) {
-      expect(html.includes("Authorize Codex")).toBe(true);
-      expect(html.includes("data-zerops-agent-auth-rows")).toBe(false);
-    }
+    expect(stage(html)).toEqual({
+      headline: row.headline,
+      sentence: row.sentence,
+      face: row.face,
+      signIn: row.signIn,
+      // Try again is there to press only when the send did not go through.
+      tryAgain: row.attempt === "failed",
+    });
+    // One heading, and no second voice: no status rows under a sign-in (the owner: "this state
+    // shouldn't exist").
+    expect(html.match(/<h1/gu)).toHaveLength(1);
+    expect(html).not.toContain("Not signed in");
   });
 
-  it("keeps every stand-up phase in the headline's one box, only the one in view read", () => {
-    feedState.agentAuth = known(SIGNED_IN_BY_ADA);
-    feedState.attempt = "failed";
-    const html = render(ASKED);
-
-    expect(phrases(html)).toEqual([
-      {
-        readable: false,
-        place: "past",
-        words: "Fen will stand up development on Acme Docs after you authorize your agent.",
-        retry: false,
-      },
-      {
-        readable: false,
-        place: "past",
-        words: "Fen is standing up development on Acme Docs…",
-        retry: false,
-      },
-      {
-        readable: true,
-        place: "shown",
-        words: "The message to Fen didn't go through.",
-        retry: true,
-      },
-    ]);
-    // One heading, the phase in view's.
-    expect(html.match(/<h1/gu)).toHaveLength(1);
+  it("waits on the sign-in's read with the sign-in's own headline", () => {
+    feedState.agentAuth = READING;
+    expect(stage(render(ASKED)).headline).toBe("Sign Fen in to start.");
   });
 
   it("breaks the headline between its clauses, never inside the project's name", () => {
-    feedState.agentAuth = known(NOT_SIGNED_IN);
+    feedState.agentAuth = known(SIGNED_IN_BY_ADA);
     const html = render({ ...ASKED, project: "Acme Docs Portal" });
 
     expect(html).toContain(
-      '<span class="inline-block">Fen will stand up development on Acme\u00a0Docs\u00a0Portal</span> <span class="inline-block">after you authorize your agent.</span>',
+      '<span class="inline-block">Fen is standing up development on Acme Docs Portal.</span>',
     );
   });
 });
 
-// A new Mate's own view while it comes up is its empty conversation before the conversation
-// exists (`ZeropsMateComingPage`): the same face in the same place, its headline saying it is
-// coming up in the box the stand-up's phases share, and its progress where the sign-in will hang.
-// When it is up, the words hand over in place — the phase it moves into was waiting after them.
+// A new Mate's own view while it comes up is the same stage before the conversation exists
+// (`ZeropsMateComingPage`): the same face in the same place, its headline saying it is coming up,
+// the view's own sentence under it and its steps in the slot. When it is up the words hand over
+// to the state it moves into.
 describe("MateEmptyStateView — a Mate coming up", () => {
   const COMING_UP: ZeropsMateIdentity = { ...ASKED, connected: false };
   const view = (props: Partial<Parameters<typeof MateEmptyStateView>[0]> = {}) =>
@@ -380,67 +316,58 @@ describe("MateEmptyStateView — a Mate coming up", () => {
         {...props}
       />,
     );
-  const progress = <span data-coming-progress>Starting the container</span>;
+  const progress = <ol data-coming-progress />;
 
-  it("says it is coming up as its heading, asleep, the phases it moves into waiting after it", () => {
-    const html = view({ coming: { kind: "coming", below: progress } });
-    expect(headline(html)).toBe("Fen is coming up on Acme Docs.");
-    expect(phrases(html).map(({ place, readable }) => [place, readable])).toEqual([
-      ["shown", true],
-      ["next", false],
-      ["next", false],
-      ["next", false],
-    ]);
-    expect(html).toContain('data-mate-face-state="sleep"');
-    // Its progress stands under its words, in its own phrase: it leaves with them.
-    expect(html).toMatch(
-      /data-standup-phrase="shown"[^>]*>.*data-mate-coming-below.*data-coming-progress/u,
-    );
-  });
-
-  it("says a Mate that did not come could not be added, with what its view offers under it", () => {
-    const html = view({ coming: { kind: "failed", below: progress } });
-    expect(headline(html)).toBe("Fen could not be added to Acme Docs.");
-  });
-
-  it("waits with the question after it for anybody the stand-up is not theirs", () => {
-    const html = view({ phase: null, coming: { kind: "coming", below: progress } });
-    expect(phrases(html).map(({ place, words }) => [place, words])).toEqual([
-      ["shown", "Fen is coming up on Acme Docs."],
-      ["next", "What should Fen do on Acme Docs?"],
-    ]);
-  });
-
-  it("handed over, keeps its coming words' room in the box, faded, and reads the phase", () => {
-    const html = view({ mate: ASKED, coming: "past" });
-    expect(headline(html)).toBe(
-      "Fen will stand up development on Acme Docs after you authorize your agent.",
-    );
-    expect(phrases(html)[0]).toMatchObject({
-      readable: false,
-      place: "past",
-      words: "Fen is coming up on Acme Docs.",
+  it("says it is coming up, asleep, how long is left, its steps in the slot", () => {
+    const html = view({
+      coming: {
+        kind: "coming",
+        sentence: "About two minutes. Then you sign it in.",
+        below: progress,
+      },
     });
-    // The progress's room is kept, empty: the box is as tall as the view it came from.
-    expect(html).toContain("data-mate-coming-below");
+    expect(stage(html)).toMatchObject({
+      headline: "Fen is coming up on Acme Docs.",
+      sentence: "About two minutes. Then you sign it in.",
+      face: "sleep",
+      signIn: false,
+    });
+    expect(html).toMatch(/data-arrival-slot="coming".*data-coming-progress/u);
+  });
+
+  it("says a Mate that did not come could not be added, asking for the person", () => {
+    const html = view({
+      coming: { kind: "failed", sentence: "Could not be created.", below: progress },
+    });
+    expect(stage(html)).toMatchObject({
+      headline: "Fen could not be added to Acme Docs.",
+      sentence: "Could not be created.",
+      face: "needs",
+    });
+  });
+
+  it("once up, hands its words over to the sign-in, the sign-in in the slot where the steps stood", () => {
+    const html = view({
+      mate: ASKED,
+      coming: { kind: "coming", over: true, below: progress },
+      signIn: <div data-sign-in-module />,
+      signInRequired: true,
+    });
+    expect(stage(html)).toMatchObject({
+      headline: "Sign Fen in to start.",
+      face: "idle",
+      signIn: true,
+    });
     expect(html).not.toContain("data-coming-progress");
   });
 
-  it("keeps a question's heading as it always was where nothing came up", () => {
-    const html = view({ mate: MATE, phase: null });
-    expect(html).not.toContain("data-standup-headline");
-    expect(headline(html)).toBe("What should Fen do on Acme Docs?");
-  });
-
-  it("paints the conversation it hands over to with the coming words' room kept", () => {
-    feedState.agentAuth = known(NOT_SIGNED_IN);
-    feedState.viewer = ADA;
-    feedState.threads = [shell("thread-main", "2026-09-29T20:00:00.000Z")];
-    markMateHandedOver(ENVIRONMENT_ID);
-    const html = render(ASKED);
-    expect(phrases(html)[0]?.place).toBe("past");
-    expect(headline(html)).toBe(
-      "Fen will stand up development on Acme Docs after you authorize your agent.",
-    );
+  it("names any other Mate on its way to its conversation, its line under it", () => {
+    const html = view({
+      mate: MATE,
+      phase: null,
+      coming: { kind: "reaching", below: <p data-opening>Reconnecting…</p> },
+    });
+    expect(stage(html)).toMatchObject({ headline: "Fen", sentence: "", face: "sleep" });
+    expect(html).toContain("data-opening");
   });
 });
