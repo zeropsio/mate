@@ -99,6 +99,18 @@ describe("standupBar — the docked bar of a stand-up call, from its reading", (
       figure: "3 of 3 up",
       tones: ["done", "done", "done"],
     },
+    {
+      name: "a failed call, settled: what it did not check stands quiet and uncounted",
+      rows: [
+        { hostname: "db", state: "unchecked" },
+        { hostname: "mailer", state: "unchecked" },
+        { hostname: "apidev", state: "failed" },
+        { hostname: "webdev", state: "up" },
+      ] as const,
+      words: "apidev failed",
+      figure: "1 of 2 up",
+      tones: ["waiting", "waiting", "failed", "done"],
+    },
   ])("$name", ({ rows, words, figure, tones }) => {
     const bar = standupBar(reading(rows));
     expect(bar.words).toBe(words);
@@ -152,6 +164,7 @@ describe("standupRow — a service under the opened bar", () => {
       word: "Build failed",
     },
     { row: { hostname: "cache", state: "failed" } as const, tone: "failed", word: "Failed" },
+    { row: { hostname: "db", state: "unchecked" } as const, tone: "off", word: "Not checked" },
     {
       row: {
         hostname: "webdev",

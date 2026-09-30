@@ -19,6 +19,8 @@ const SEGMENT: Record<StandupServiceRow["state"], BarTone> = {
   building: "running",
   up: "done",
   failed: "failed",
+  // Neither a colour nor a word: a settled call that failed did not check it.
+  unchecked: "waiting",
 };
 
 export interface StandupBarModel {
@@ -54,12 +56,13 @@ export function standupBar(reading: StandupReading | null): StandupBarModel {
       failed: false,
     };
   }
-  const total = reading.rows.length;
+  // The count is of what is known: a service its call did not check is none of it.
+  const total = reading.rows.length - reading.unchecked;
   return {
     words: words(reading),
     figure: total === 0 ? null : `${reading.up} of ${total} up`,
     segments:
-      total === 0
+      reading.rows.length === 0
         ? [{ key: "whole", tone: "running" }]
         : reading.rows.map((row) => ({ key: row.hostname, tone: SEGMENT[row.state] })),
     failed: reading.failed > 0,
@@ -74,6 +77,7 @@ const ROW: Record<
   building: { tone: "busy", word: "Building" },
   up: { tone: "ok", word: "Up" },
   failed: { tone: "failed", word: "Failed" },
+  unchecked: { tone: "off", word: "Not checked" },
 };
 
 /**
