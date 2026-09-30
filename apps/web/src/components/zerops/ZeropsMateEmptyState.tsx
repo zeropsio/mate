@@ -106,7 +106,7 @@ export interface MateEmptyState {
    */
   readonly addedBy: string | null | undefined;
   readonly onRetry: () => void;
-  /** Its project's runtimes, as its project's read lists them; undefined while unread, or none. */
+  /** Its project's runtimes, as its project's read lists them; undefined while it is unread. */
   readonly runtimes: ReadonlyArray<BirthRuntimeFact> | undefined;
 }
 
@@ -170,10 +170,9 @@ export function useMateEmptyState({
   const listed = inventory?.services.get(projectId ?? project?.projectId ?? "");
   const runtimes = useMemo(
     () =>
-      birthRuntimesFacts({
-        birth: undefined,
-        services: listed?.status === "resolved" ? listed.services : undefined,
-      })?.runtimes,
+      listed?.status === "resolved"
+        ? (birthRuntimesFacts({ birth: undefined, services: listed.services })?.runtimes ?? [])
+        : undefined,
     [listed],
   );
   const nameOf = useZeropsMemberNames({ clientId: project?.orgId, enabled: colleague });
@@ -282,7 +281,7 @@ export function MateEmptyStateView({
   readonly coming?: MateEmptyComing | null;
   /** A colleague's view of a Mate nobody has signed in (`MateEmptyState.addedBy`). */
   readonly addedBy?: string | null | undefined;
-  /** Its project's runtimes: under the sign-in, the ones still coming up. */
+  /** Its project's runtimes: under the sign-in, the ones still coming up; undefined while unread. */
   readonly runtimes?: ReadonlyArray<BirthRuntimeFact> | undefined;
 }) {
   const kind = mateArrivalKind({ coming, phase, signInRequired, addedBy });

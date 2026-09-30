@@ -287,6 +287,25 @@ describe("nextRuntimesLine", () => {
       coming: true,
       to: "coming",
     },
+    // The listing blinks between reads: an unread one says nothing about the runtimes.
+    {
+      case: "stays coming while the listing is unread",
+      from: "coming",
+      coming: undefined,
+      to: "coming",
+    },
+    {
+      case: "stays settled while the listing is unread",
+      from: "settled",
+      coming: undefined,
+      to: "settled",
+    },
+    {
+      case: "never shows while the listing is unread",
+      from: "none",
+      coming: undefined,
+      to: "none",
+    },
   ] as const)("$case", ({ from, coming, to }) => {
     expect(nextRuntimesLine(from, coming)).toBe(to);
   });
