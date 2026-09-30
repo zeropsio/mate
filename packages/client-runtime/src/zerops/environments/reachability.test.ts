@@ -484,6 +484,37 @@ describe("reachability over the machine's own transitions", () => {
     });
   });
 
+  // A first link blocked before it ever connected is still a first connect: nothing was lost, so
+  // it never says Reconnecting while a refusal is on its way (review, 2026-09-30).
+  it.each([
+    {
+      reason: "permission",
+      from: "held, never connected",
+      connected: false,
+      verdict: "connecting",
+    },
+    {
+      reason: "authentication",
+      from: "held, never connected",
+      connected: false,
+      verdict: "connecting",
+    },
+    { reason: "permission", from: "a live link", connected: true, verdict: "reconnecting" },
+  ] as const)("blocked($reason) on $from → $verdict", ({ reason, connected, verdict }) => {
+    const opened = drive(initialEnvironment({ record: ENV_A }), OPENING).machine;
+    const held = drive(opened, [
+      {
+        type: "EXCHANGE_SUCCEEDED",
+        attempt: attemptOf(opened),
+        environmentId: ENV_A,
+        descriptor: descriptor(),
+      },
+      ...(connected ? [{ type: "LINK", link: { phase: "connected" } } as const] : []),
+    ]).machine;
+    const blocked = drive(held, [{ type: "LINK", link: { phase: "blocked", reason } }]).machine;
+    expect(selectReachability(blocked, ENV_A).kind).toBe(verdict);
+  });
+
   it("blocked(configuration mismatch) → replaced (T-L22)", () => {
     const blocked = drive(connectedMachine(), [
       { type: "LINK", link: { phase: "blocked", reason: "configuration" } },
