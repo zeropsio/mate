@@ -910,6 +910,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           owner: getOwner?.(item),
           connected: item.group === "connected",
           activity: getActivity?.(item),
+          reviewWaits: mateReviewWaits(input.flow, item.project.id),
         }),
       );
     }
