@@ -1167,13 +1167,16 @@ export function operationLineWords(operation: ZeropsOperation): string {
     case "verify": {
       // A check of every service (zcp's `all services`) says how many.
       if (subject === "all services") {
+        // Only a check that passed is healthy.
         const total = operation.steps.length;
+        const healthy = operation.steps.filter((step) => step.state === "done").length;
         const unhealthy = operation.steps.filter((step) => step.state === "failed").length;
         if (total === 0) return failed ? "Checks failed" : "All services healthy";
         const services = total === 1 ? "service" : "services";
-        return unhealthy > 0
-          ? `${unhealthy} of ${total} ${services} unhealthy`
-          : `${total} ${services} healthy`;
+        if (unhealthy > 0) return `${unhealthy} of ${total} ${services} unhealthy`;
+        return healthy === total && !failed
+          ? `${total} ${services} healthy`
+          : `${healthy} of ${total} ${services} healthy`;
       }
       return failed ? `${subject}: ${statusWord.toLowerCase()}` : `${subject} is healthy`;
     }

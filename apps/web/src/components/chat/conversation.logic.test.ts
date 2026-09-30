@@ -2542,7 +2542,7 @@ describe("operationLineWords", () => {
 
   // "all services is healthy" (the owner, 2026-09-30): a check of every
   // service says how many, in English.
-  const check = (id: string, state: "done" | "failed") => ({
+  const check = (id: string, state: "done" | "failed" | "queued") => ({
     id,
     label: id,
     state,
@@ -2578,6 +2578,14 @@ describe("operationLineWords", () => {
       words: "1 of 4 services unhealthy",
     },
     { name: "no checks reported", phase: "done", steps: [], words: "All services healthy" },
+    // Only a check that passed is healthy: a call that failed with no check
+    // failed, or checks still unanswered, count none of theirs.
+    {
+      name: "a call that failed with no failed check",
+      phase: "failed",
+      steps: [check("api", "done"), check("web", "queued")],
+      words: "1 of 2 services healthy",
+    },
   ] as const)("a check of all services: $name", ({ phase, steps, words }) => {
     expect(
       operationLineWords(
