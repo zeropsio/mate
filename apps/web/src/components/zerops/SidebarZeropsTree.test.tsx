@@ -56,6 +56,13 @@ vi.mock("@tanstack/react-router", async (original) => ({
   ...(await original<typeof import("@tanstack/react-router")>()),
   useNavigate: () => () => undefined,
 }));
+// Who is looking: nobody signed in to Zerops unless a test says whom.
+const session = vi.hoisted(() => ({ viewer: undefined as string | undefined }));
+vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
+  ...(await original<typeof import("~/zerops/ZeropsSessionProvider")>()),
+  useZeropsSessionOptional: () =>
+    session.viewer === undefined ? null : { user: { id: session.viewer } },
+}));
 afterEach(() => {
   // A tree left mounted would answer the next test's asks of the one menu.
   for (const tree of mountedTrees.splice(0)) {
@@ -65,6 +72,7 @@ afterEach(() => {
   }
   stored.collapsed = new Set();
   stored.written = undefined;
+  session.viewer = undefined;
   vi.unstubAllGlobals();
 });
 import {
@@ -618,6 +626,26 @@ describe("a Mate with no owner, or nobody signed in", () => {
   const PETRA = { name: "Petra Malá", initials: "PM", avatarUrl: null, isViewer: true };
   const KAREL = { name: "Karel Novák", initials: "KN", avatarUrl: null, isViewer: false };
 
+  // Board D1, 2026-09-30: the person who added a Mate reads that it waits on them, with the amber
+  // dot of what needs them; anybody else the fact, and no dot — it is not waiting on them.
+  it.each([
+    { case: "the viewer added it", viewer: "u-petra", says: "Waiting for your sign-in", dot: true },
+    {
+      case: "somebody else added it",
+      viewer: "u-karel",
+      says: "Nobody has signed in yet",
+      dot: false,
+    },
+  ])("says whose sign-in it waits for: $case", ({ viewer, says, dot }) => {
+    session.viewer = viewer;
+    const html = render([mate(["mate:standup:u-petra"], { group: "connected" })], {
+      getOwner: () => undefined,
+    });
+    expect(line(html)?.[1]).toBe(says);
+    expect(html.includes('data-zerops-surface="sidebar-mate-dot"')).toBe(dot);
+    expect(html.includes('data-tone="attention"')).toBe(dot);
+  });
+
   it("seats nobody's Mate on a dashed ring, and says so in words, never as a person", () => {
     const html = render([mate([], { group: "connected" })], { getOwner: () => undefined });
     expect(seat(html)).toBe("nobody");
@@ -731,7 +759,16 @@ describe("a creation under way in the menu", () => {
     const row = html.slice(html.lastIndexOf("<div", at));
     expect(row).toContain('data-mate-face-state="sleep"');
     expect(row).toContain(">Vera<");
-    expect(row).toContain(">Coming up. A few minutes.<");
+    // On the clock from when the platform took it (board D1, 2026-09-30).
+    expect(row).toMatch(/>Coming up · \d+(:\d\d|h \d\dm)</u);
+  });
+
+  it("says a creation that stopped in its line, in red", () => {
+    const html = render([CRM_DEV], { births: [{ ...birth(), failed: true }] });
+    const at = html.indexOf('data-zerops-surface="sidebar-mate-coming"');
+    const row = html.slice(at, html.indexOf("</button>", at));
+    expect(row).toContain(">Setting up stopped<");
+    expect(row).toContain('data-zerops-coming-tone="failed"');
   });
 
   // The owner, 2026-09-29: "on the left it looks like its ready to be opened, but it's not" — and
@@ -810,8 +847,8 @@ describe("a creation under way in the menu", () => {
 });
 
 // A listed Mate still coming up (its birth held here, or its project on the way up) says so in
-// its row, in the projects page's words — never "Nobody has signed in yet" beside the page's
-// "Almost there." — and a press opens its own view, which the menu's caller routes.
+// its row — never "Nobody has signed in yet" beside it — and a press opens its own view, which
+// the menu's caller routes.
 describe("a listed Mate still coming up", () => {
   const COMING = { kind: "coming", line: "Almost there.", verb: undefined } as const;
   const FAILED = { kind: "failed", line: "Could not be created.", verb: "remove" } as const;
@@ -821,15 +858,24 @@ describe("a listed Mate still coming up", () => {
   };
 
   it.each([
-    { case: "coming up", coming: COMING, tone: "muted" },
-    { case: "not created", coming: FAILED, tone: "failed" },
-  ] as const)("says it is $case in its line, asleep, with no sign-in line", ({ coming, tone }) => {
-    const html = render([CRM_DEV], { getComing: () => coming });
-    const row = rowOf(html);
-    expect(row).toContain('data-mate-face-state="sleep"');
-    expect(row).toContain(`>${coming.line}<`);
-    expect(row).toContain(`data-zerops-coming-tone="${tone}"`);
-    expect(row).not.toContain("Nobody has signed in yet");
+    { case: "coming up", coming: COMING, says: "Coming up", tone: "muted" },
+    { case: "not created", coming: FAILED, says: "Setting up stopped", tone: "failed" },
+  ] as const)(
+    "says it is $case in its line, asleep, with no sign-in line",
+    ({ coming, says, tone }) => {
+      const html = render([CRM_DEV], { getComing: () => coming });
+      const row = rowOf(html);
+      expect(row).toContain('data-mate-face-state="sleep"');
+      expect(row).toContain(`>${says}<`);
+      expect(row).toContain(`data-zerops-coming-tone="${tone}"`);
+      expect(row).not.toContain("Nobody has signed in yet");
+    },
+  );
+
+  it("counts its clock from when the platform took it, where its birth is held here", () => {
+    const since = Date.now() - 42_000;
+    const html = render([CRM_DEV], { getComing: () => ({ ...COMING, since }) });
+    expect(rowOf(html)).toMatch(/>Coming up · 0:4[1-3]</u);
   });
 
   it("offers no menu while it comes up: nothing on it is about a Mate still being made", () => {
@@ -854,14 +900,14 @@ describe("a Mate's face follows its work in the menu", () => {
     kind: "working",
     status: null,
     face: "working",
-    subject: "Stand up development of the project.",
+    subject: "Add a size guide to the product page",
     at: "2026-09-29T20:10:00.000Z",
     snippet: undefined,
     awaitingWords: true,
     unread: false,
     pausedUntil: undefined,
     threadKey: "env:thread-1",
-    task: "Stand up development of the project.",
+    task: "Add a size guide to the product page",
   };
   const faceOf = (html: string) =>
     /<svg[^>]*data-mate-face-state="([a-z]+)"/u.exec(
@@ -887,8 +933,8 @@ describe("a Mate's face follows its work in the menu", () => {
       case: "remembered from before a reload, its socket not open yet",
       group: "ready",
       activity: activityFromMemory({
-        subject: "Stand up development of the project.",
-        task: "Stand up development of the project.",
+        subject: "Add a size guide to the product page",
+        task: "Add a size guide to the product page",
         awaitingWords: true,
         at: working.at,
         unread: false,
@@ -904,6 +950,24 @@ describe("a Mate's face follows its work in the menu", () => {
     });
     expect(faceOf(html)).toBe(face);
     expect(html.includes("Working on a reply")).toBe(dots);
+  });
+
+  // Board D1, 2026-09-30: a new Mate's first run is the stand-up its person's sign-in sent; the
+  // row says what it is doing, under the face at work, instead of the command sent for them.
+  it("says a new Mate is setting up development while its stand-up runs", () => {
+    const standingUp: ZeropsAgentActivity = {
+      ...working,
+      subject: "Stand up development of the project.",
+      task: "Stand up development of the project.",
+    };
+    const html = render(
+      [{ ...CRM_DEV, group: "connected", environmentId: EnvironmentId.make("env-1") }],
+      { getActivity: () => standingUp },
+    );
+    expect(faceOf(html)).toBe("working");
+    expect(html).toContain("Setting up development");
+    expect(html).not.toContain("Stand up development of the project.");
+    expect(html).not.toContain("Working on a reply");
   });
 });
 

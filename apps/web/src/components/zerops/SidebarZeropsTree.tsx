@@ -172,12 +172,16 @@ import {
 } from "./SidebarProductionChip.logic";
 import {
   changeMarkTone,
+  mateBornLine,
+  mateBornLineText,
   mateComingRowView,
   mateCrewItem,
   mateDeletingView,
   mateNotYours,
   mateOwnerView,
   mateRowReading,
+  pendingBornLine,
+  type MateBornLine,
   type MateRowReply,
   type MateRowSlot,
   ownerBadge,
@@ -203,7 +207,6 @@ import {
   useProjectReorder,
 } from "./SidebarProjectReorder";
 import {
-  comingMateLine,
   groupFlowInputOf,
   groupMemberFactsOf,
   productionAddable,
@@ -2223,10 +2226,20 @@ function MateRow<T extends RosterCandidate>({
   // Whose seat it is, and whether anybody has signed its agent in — read off
   // its own records, so from the first paint (`mateOwnerView`).
   const records = mateOwnerRecords(candidate.project);
-  const seated = mateOwnerView({ owner, records, asked: view.ask !== undefined });
+  const viewer = useZeropsSessionOptional()?.user?.id;
+  const seated = mateOwnerView({
+    owner,
+    records,
+    asked: view.ask !== undefined,
+    standUpBy: tags.standUp?.by,
+    viewer,
+  });
+  // The sign-in line stands where nothing else is said of a Mate that is up: to the person who
+  // added it, that it waits on them — with the amber dot of what needs them.
+  const signIn = deleting || view.coming !== undefined ? undefined : seated.signInLine;
+  const dot = view.dot ?? (signIn !== undefined && seated.waitsOnViewer ? "attention" : undefined);
   // What its face's corner wears (`ownerBadge`), and whether its face is paler: not the viewer's.
   const badge = ownerBadge(seated.seat, owner?.isViewer === true);
-  const viewer = useZeropsSessionOptional()?.user?.id;
   const notYours = mateNotYours({
     seat: seated.seat,
     isViewer: owner?.isViewer === true,
@@ -2434,7 +2447,7 @@ function MateRow<T extends RosterCandidate>({
                   numbers && number !== undefined && "opacity-0",
                 )}
               >
-                <MateDot known={known} tone={view.dot} />
+                <MateDot known={known} tone={dot} />
                 <MateSlot at={activity?.at} slot={view.slot} timestampFormat={timestampFormat} />
               </span>
               {numbers && number !== undefined ? (
@@ -2457,9 +2470,9 @@ function MateRow<T extends RosterCandidate>({
             </span>
           )}
           {view.coming !== undefined ? (
-            <MateComingLine coming={view.coming} />
-          ) : deleting || seated.signInLine === undefined ? null : (
-            <MateSignInLine words={seated.signInLine} />
+            <MateComingLine line={mateBornLine(view.coming)} />
+          ) : signIn === undefined ? null : (
+            <MateSignInLine waitsOnViewer={seated.waitsOnViewer} words={signIn} />
           )}
           {view.reply === undefined ? null : (
             <MateReply known={known} reply={view.reply} threadKey={activity?.threadKey} />
@@ -2851,13 +2864,24 @@ function MateReplyPending() {
 /**
  * The row's second line where nobody has signed its agent in and nothing was
  * asked (`mateOwnerView`): the fact, in the muted ink, as one line of the
- * row's leading on the words' edge. Nothing on it to press: the row's own
- * press opens the Mate, whose conversation holds the sign-in.
+ * row's leading on the words' edge — in ink where the sign-in is the viewer's
+ * to make, as a question waiting on them is. Nothing on it to press: the
+ * row's own press opens the Mate, whose conversation holds the sign-in.
  */
-function MateSignInLine({ words }: { readonly words: string }) {
+function MateSignInLine({
+  words,
+  waitsOnViewer,
+}: {
+  readonly words: string;
+  readonly waitsOnViewer: boolean;
+}) {
   return (
     <span
-      className="truncate text-line leading-4.5 text-muted-foreground"
+      className={cn(
+        "truncate text-line leading-4.5",
+        waitsOnViewer ? "text-sidebar-foreground" : "text-muted-foreground",
+      )}
+      data-zerops-sign-in={waitsOnViewer ? "yours" : "nobody"}
       data-zerops-surface="sidebar-mate-sign-in"
     >
       {words}
@@ -2881,27 +2905,44 @@ function MateDeletingLine() {
 }
 
 /**
- * The row's one line while its Mate is still coming up, or never came
- * (`mateComing`): the projects page's words for where it has got — muted — or
- * why it did not come, in red. It stands where the sign-in line would, and a
- * new step's words rise into it as the person watches.
+ * The row's one line while its Mate is being born (`mateBornLine`): "Coming
+ * up" on a clock counting from the press — muted, in tabular figures so its
+ * ticks move nothing — or that setting it up stopped, in red. It stands where
+ * the sign-in line will, and new words rise into it as the person watches;
+ * the clock's ticks never do.
  */
-function MateComingLine({ coming }: { readonly coming: Pick<MateComing, "kind" | "line"> }) {
-  const risen = useChangedSinceShown(coming.line, true);
+function MateComingLine({ line }: { readonly line: MateBornLine }) {
+  const risen = useChangedSinceShown(line.words, true);
+  const nowMs = useSecondTick(line.since !== undefined);
   return (
     <span
       className={cn(
-        "truncate text-line leading-4.5",
-        coming.kind === "failed" ? "text-status-failed-text" : "text-muted-foreground",
+        "truncate text-line leading-4.5 tabular-nums",
+        line.tone === "failed" ? "text-status-failed-text" : "text-muted-foreground",
         risen && "animate-words-in motion-reduce:animate-none",
       )}
-      data-zerops-coming-tone={coming.kind === "failed" ? "failed" : "muted"}
+      data-zerops-coming-tone={line.tone}
       data-zerops-surface="sidebar-mate-coming-line"
-      key={coming.line}
+      key={line.words}
     >
-      {coming.line}
+      {mateBornLineText(line, nowMs)}
     </span>
   );
+}
+
+/** Now, stepping once a second while `ticking`: a step, never a continuous repaint (R6). */
+function useSecondTick(ticking: boolean): number {
+  const [nowMs, setNowMs] = useState(Date.now);
+  useEffect(() => {
+    if (!ticking) return;
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [ticking]);
+  return nowMs;
 }
 
 /**
@@ -2951,12 +2992,7 @@ function ComingMateRow({
         <span className="flex h-5 min-w-0 items-center gap-1.5">
           <span className="min-w-0 truncate text-sm leading-5 font-medium">{name}</span>
         </span>
-        <MateComingLine
-          coming={{
-            kind: coming.failed === true ? "failed" : "coming",
-            line: comingMateLine(coming),
-          }}
-        />
+        <MateComingLine line={pendingBornLine(coming)} />
       </span>
     </button>
   );

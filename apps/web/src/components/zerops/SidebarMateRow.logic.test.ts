@@ -2,10 +2,14 @@ import { ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
 
 import {
   changeMarkTone,
+  mateBornLine,
+  mateBornLineText,
   mateComingRowView,
+  pendingBornLine,
   mateCrewItem,
   mateDeletingView,
   mateOwnerView,
@@ -140,6 +144,56 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
     const view = mateOwnerView({ owner, records, asked });
     expect(view.seat.kind).toBe(seat);
     expect(view.signInLine).toBe(line);
+  });
+
+  // Whose sign-in a new Mate waits for (board D1, 2026-09-30): the person who added it — the
+  // stand-up's `mate:standup:` tag names them until their sign-in sends it — reads that it waits
+  // on them, with the amber dot of what needs them; anybody else reads the fact, quietly.
+  it.each([
+    {
+      case: "nobody signed in, the viewer added it: it waits on them",
+      records: NOBODY,
+      standUpBy: "user-petra",
+      viewer: "user-petra",
+      line: "Waiting for your sign-in",
+      waits: true,
+    },
+    {
+      case: "nobody signed in, somebody else added it: the fact",
+      records: NOBODY,
+      standUpBy: "user-karel",
+      viewer: "user-petra",
+      line: LINE,
+      waits: false,
+    },
+    {
+      case: "nobody signed in, nobody named as adding it: the fact",
+      records: OWNED_UNSIGNED,
+      standUpBy: undefined,
+      viewer: "user-petra",
+      line: LINE,
+      waits: false,
+    },
+    {
+      case: "nobody signed in, the viewer not known yet: the fact",
+      records: NOBODY,
+      standUpBy: "user-petra",
+      viewer: undefined,
+      line: LINE,
+      waits: false,
+    },
+    {
+      case: "signed in: no line, whoever added it",
+      records: SIGNED,
+      standUpBy: "user-petra",
+      viewer: "user-petra",
+      line: undefined,
+      waits: false,
+    },
+  ])("$case", ({ records, standUpBy, viewer, line, waits }) => {
+    const view = mateOwnerView({ owner: undefined, records, asked: false, standUpBy, viewer });
+    expect(view.signInLine).toBe(line);
+    expect(view.waitsOnViewer).toBe(waits);
   });
 
   it("says the empty seat in words, and draws a person as their mark", () => {
@@ -463,6 +517,89 @@ describe("mateRowView — a row's state lives in its right slot and its third li
     expect(working.reply).toBeDefined();
     expect(face({ kind: "working", face: "working" })).toBe("working");
   });
+
+  // A new Mate's first run is the stand-up its person's sign-in sent (board D1, 2026-09-30):
+  // while it works the row says what it is doing in the person's words, not the command sent on
+  // their behalf; a run that stops says the setting up stopped; and from then on it is any Mate.
+  it.each([
+    {
+      case: "the stand-up working: setting up development, on the run's clock",
+      input: activity({
+        kind: "working",
+        face: "working",
+        task: MATE_STAND_UP_MESSAGE,
+        subject: "Clone the code into appdev",
+        snippet: undefined,
+        liveStep: { words: "Deploying appdev", code: undefined },
+      }),
+      slot: { kind: "clock", since: AT },
+      dot: undefined,
+      ask: undefined,
+      reply: { kind: "live", words: "Setting up development", code: undefined },
+    },
+    {
+      case: "the stand-up starting: setting up development already",
+      input: activity({
+        kind: "connecting",
+        face: "working",
+        task: MATE_STAND_UP_MESSAGE,
+        snippet: undefined,
+        awaitingWords: true,
+      }),
+      slot: { kind: "clock", since: AT },
+      dot: undefined,
+      ask: undefined,
+      reply: { kind: "live", words: "Setting up development", code: undefined },
+    },
+    {
+      case: "the stand-up stopped on an error: setting up stopped, red",
+      input: activity({
+        kind: "failed",
+        face: "idle",
+        task: MATE_STAND_UP_MESSAGE,
+        snippet: undefined,
+        errorLine: "Build of appdev failed.",
+      }),
+      slot: { kind: "age" },
+      dot: "failed",
+      ask: undefined,
+      reply: { kind: "words", text: "Setting up stopped", tone: "failed" },
+    },
+    {
+      case: "the stand-up asking the person: any Mate's question",
+      input: activity({
+        kind: "input",
+        face: "needs",
+        task: MATE_STAND_UP_MESSAGE,
+        question: "Which database should appdev use?",
+      }),
+      slot: { kind: "age" },
+      dot: "attention",
+      ask: MATE_STAND_UP_MESSAGE,
+      reply: { kind: "words", text: "Which database should appdev use?", tone: "ink" },
+    },
+    {
+      case: "the stand-up done: any Mate, what was asked and its answer",
+      input: activity({
+        task: MATE_STAND_UP_MESSAGE,
+        snippet: "Development is up: appdev answers on its subdomain.",
+      }),
+      slot: { kind: "age" },
+      dot: undefined,
+      ask: MATE_STAND_UP_MESSAGE,
+      reply: {
+        kind: "words",
+        text: "Development is up: appdev answers on its subdomain.",
+        tone: "muted",
+      },
+    },
+  ] as const)("$case", ({ input, slot, dot, ask, reply }) => {
+    const view = mateRowView(input, input.face);
+    expect(view.slot).toEqual(slot);
+    expect(view.dot).toBe(dot);
+    expect(view.ask).toBe(ask);
+    expect(view.reply).toEqual(reply);
+  });
 });
 
 describe("mateDeletingView — a Mate on its way off Zerops", () => {
@@ -550,18 +687,18 @@ describe("mateRowReading — the face follows the work, and the words never outr
 
   it.each([
     {
-      case: "connected, at work: the face works and the dots hold the line",
+      case: "connected, at its stand-up: the face works, and the line says it sets up",
       connected: true,
       activity: reading(),
       face: "working",
-      reply: { kind: "pending" },
+      reply: { kind: "live", words: "Setting up development", code: undefined },
     },
     {
       case: "its socket blinking (reconnecting): still read live, the face still works",
       connected: false,
       activity: reading(),
       face: "working",
-      reply: { kind: "pending" },
+      reply: { kind: "live", words: "Setting up development", code: undefined },
     },
     {
       case: "remembered, not connected: asleep, and its line held without claiming a reply",
@@ -638,6 +775,122 @@ describe("mateComingRowView — a Mate coming up, or one that did not come", () 
       reply: undefined,
       coming,
     });
+  });
+});
+
+// A Mate being born, in its row's one line (board D1, 2026-09-30): coming up on a clock that
+// counts from the press — "Almost there." included, the clock running on — a step past its cap
+// saying so on the same clock, and any step that stopped the one fact, red. The Mate's own view
+// says where it stands and why; the row only that it is on its way, or stopped.
+describe("mateBornLine — a Mate being born, as its row's one line", () => {
+  const SINCE = Date.parse("2026-09-30T10:00:00.000Z");
+  it.each([
+    {
+      case: "coming up: the clock from the press",
+      coming: { kind: "coming", line: "Coming up. A few minutes.", verb: undefined, since: SINCE },
+      nowMs: SINCE + 42_000,
+      text: "Coming up · 0:42",
+      tone: "muted",
+    },
+    {
+      case: "its Mate waited on: still coming up, the clock running on",
+      coming: { kind: "coming", line: "Almost there.", verb: undefined, since: SINCE },
+      nowMs: SINCE + 92_000,
+      text: "Coming up · 1:32",
+      tone: "muted",
+    },
+    {
+      case: "a step past its cap: says so, on the same clock",
+      coming: {
+        kind: "coming",
+        line: "Taking longer than usual.",
+        verb: "keep-waiting",
+        since: SINCE,
+      },
+      nowMs: SINCE + 372_000,
+      text: "Taking longer than usual · 6:12",
+      tone: "muted",
+    },
+    {
+      case: "a clock not started yet reads 0:00, never a negative",
+      coming: { kind: "coming", line: "Coming up. A few minutes.", verb: undefined, since: SINCE },
+      nowMs: SINCE - 800,
+      text: "Coming up · 0:00",
+      tone: "muted",
+    },
+    {
+      case: "coming up with no birth held in this browser: no clock to count",
+      coming: { kind: "coming", line: "Coming up. A few minutes.", verb: undefined },
+      nowMs: SINCE,
+      text: "Coming up",
+      tone: "muted",
+    },
+    {
+      case: "a step after the platform took it stopped",
+      coming: {
+        kind: "failed",
+        line: "Could not be set up. The agent container could not be imported.",
+        verb: "remove",
+      },
+      nowMs: SINCE,
+      text: "Setting up stopped",
+      tone: "failed",
+    },
+    {
+      case: "the platform refused it",
+      coming: { kind: "failed", line: "Could not be created.", verb: "remove" },
+      nowMs: SINCE,
+      text: "Setting up stopped",
+      tone: "failed",
+    },
+    {
+      case: "a New project's step stopped before the platform took anything",
+      coming: { kind: "failed", line: "Git hosting could not be set up.", verb: "try-again" },
+      nowMs: SINCE,
+      text: "Setting up stopped",
+      tone: "failed",
+    },
+  ] as const)("$case", ({ coming, nowMs, text, tone }) => {
+    const line = mateBornLine(coming);
+    expect(mateBornLineText(line, nowMs)).toBe(text);
+    expect(line.tone).toBe(tone);
+  });
+
+  it("keeps its words while its clock ticks, so only a new step's words rise", () => {
+    const coming = {
+      kind: "coming",
+      line: "Almost there.",
+      verb: undefined,
+      since: SINCE,
+    } as const;
+    expect(mateBornLine(coming).words).toBe("Coming up");
+    expect(mateBornLine({ ...coming, line: "Coming up. A few minutes." }).words).toBe("Coming up");
+  });
+});
+
+// A creation the listing does not hold yet, drawn from its birth (`ZeropsGroupPendingMember`),
+// reads as a listed Mate coming up does: on the clock from when the platform took it — a New
+// project's from its press — or stopped.
+describe("pendingBornLine — a Mate the listing does not hold yet", () => {
+  const MEMBER = { startedAt: 1_000, overdue: false } as const;
+  it.each([
+    { case: "on its way", member: MEMBER, text: "Coming up · 0:42", tone: "muted" },
+    {
+      case: "past its step's cap",
+      member: { ...MEMBER, overdue: true },
+      text: "Taking longer than usual · 0:42",
+      tone: "muted",
+    },
+    {
+      case: "stopped",
+      member: { ...MEMBER, failed: true },
+      text: "Setting up stopped",
+      tone: "failed",
+    },
+  ] as const)("$case", ({ member, text, tone }) => {
+    const line = pendingBornLine(member);
+    expect(mateBornLineText(line, 43_000)).toBe(text);
+    expect(line.tone).toBe(tone);
   });
 });
 
