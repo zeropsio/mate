@@ -5642,7 +5642,9 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   display: flex;
   flex-direction: column;
   width: min(768px, 100%);
-  max-height: calc(100dvh - clamp(16px, 7dvh, 72px) - 16px);
+  /* The steps of a release (p26/release) are held to it too. */
+  --rv-max: calc(100dvh - clamp(16px, 7dvh, 72px) - 16px);
+  max-height: var(--rv-max);
   overflow: hidden;
   border-radius: 20px;
   background: var(--card);
@@ -6647,6 +6649,153 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 }
 .rv-on[data-mark="failed-on-stage"] {
   color: var(--zerops-status-failed);
+}
+
+/* p26/release */
+/* A change row opens its review in place: the whole row presses, the menu's way — a wash under
+   the pointer, a deeper one pressed, its Mate's face looking up — with a › at its end. */
+.rv-rel[data-opens] .rv-relrow {
+  grid-template-columns: 20px minmax(0, 1fr) auto 14px;
+}
+button.rv-relrow {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 150ms ease;
+}
+button.rv-relrow:hover {
+  background: color-mix(in oklab, var(--foreground) 4%, transparent);
+}
+button.rv-relrow:active {
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+button.rv-relrow:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--ring);
+}
+.rv-relrow-go {
+  width: 14px;
+  height: 14px;
+  color: var(--muted-foreground);
+  opacity: 0.7;
+  transition:
+    opacity 150ms ease,
+    color 150ms ease,
+    translate 200ms var(--ease-out-strong);
+}
+button.rv-relrow:hover .rv-relrow-go {
+  color: var(--foreground);
+  opacity: 1;
+  translate: 2px 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  button.rv-relrow:hover [data-mate-face-look] {
+    translate: 0 -5px;
+  }
+  button.rv-relrow [data-mate-face-hop] {
+    transition: scale 220ms var(--ease-spring);
+  }
+  button.rv-relrow:active [data-mate-face-hop] {
+    scale: 0.92;
+    transition-duration: 90ms;
+  }
+}
+
+/* The dialog's two steps: the release, and a change it carries. The step shown holds the room;
+   the other stands aside, out of the flow — the change comes in over the release from the right,
+   the release giving way to the left, and back undoes it from wherever the slide stood. */
+.rv-steps {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  max-height: var(--rv-max);
+}
+.rv-step {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  max-height: var(--rv-max);
+  background: var(--card);
+  transition:
+    translate 220ms var(--ease-out-strong),
+    opacity 220ms var(--ease-out-strong);
+}
+.rv-step-over {
+  z-index: 1;
+}
+.rv-step:not([data-at="here"]) {
+  position: absolute;
+  inset: 0 0 auto;
+  pointer-events: none;
+}
+.rv-step[data-at="before"] {
+  translate: -30% 0;
+  opacity: 0;
+}
+.rv-step[data-at="after"] {
+  translate: 100% 0;
+}
+@starting-style {
+  .rv-step-over[data-at="here"] {
+    translate: 100% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-step {
+    transition: none;
+  }
+}
+/* "← Release", where a review says what kind of thing it is: its arrow on the text's edge. */
+.rv-back {
+  display: inline-flex;
+  height: 28px;
+  align-items: center;
+  gap: 6px;
+  margin-left: -8px;
+  padding: 0 10px 0 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+.rv-back svg {
+  width: 15px;
+  height: 15px;
+}
+.rv-back:hover {
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+  color: var(--foreground);
+}
+.rv-back:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+/* What was already done, where the button would stand: "Merged". */
+.rv-settled {
+  display: inline-flex;
+  height: 34px;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--muted-foreground);
+}
+.rv-settled svg {
+  width: 15px;
+  height: 15px;
+  color: var(--zerops-status-ok);
 }
 .rv-where {
   display: grid;

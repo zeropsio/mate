@@ -82,6 +82,8 @@ import {
 } from "./ZeropsReviewSurface";
 
 const KIND: ReviewKind = "change";
+/** The way back from a change read in its release. */
+const RELEASE_BACK = "Release";
 /** How long a change with no description holds the room of its run's words for them. */
 const RUN_WORDS_WAIT_MS = 3_000;
 
@@ -93,12 +95,18 @@ export function ZeropsChangeReview({
   titleId,
   onClose,
   onReplace,
+  onBack,
 }: {
   /** In a dialog over the conversation, or as the change's own page. */
   readonly frame?: ReviewFrame;
   readonly target: ChangeTarget;
-  readonly titleId: string;
+  readonly titleId: string | undefined;
   readonly onClose: () => void;
+  /**
+   * Read from the release that carries it: already merged, it offers no button, and "← Release"
+   * goes back.
+   */
+  readonly onBack?: (() => void) | undefined;
   /** Opens another review in this one's place — the release, once this merged. */
   readonly onReplace: (target: ReviewTarget) => void;
 }) {
@@ -145,6 +153,7 @@ export function ZeropsChangeReview({
   if (flowValue === null || flow === undefined || pull === undefined) {
     return (
       <ZeropsReviewSurface
+        back={onBack === undefined ? undefined : { label: RELEASE_BACK, onPress: onBack }}
         consequence="Nothing is merged from here until the change is read."
         frame={frame}
         kind={KIND}
@@ -176,6 +185,7 @@ export function ZeropsChangeReview({
       flow={flow}
       flowValue={flowValue}
       frame={frame}
+      onBack={onBack}
       onOpenPage={onOpenPage}
       onClose={onClose}
       onReplace={onReplace}
@@ -191,6 +201,7 @@ function ChangeReviewData({
   flowValue,
   frame,
   onOpenPage,
+  onBack,
   pull,
   target,
   titleId,
@@ -202,9 +213,10 @@ function ChangeReviewData({
   readonly flowValue: ZeropsProjectFlowValue;
   readonly frame: ReviewFrame;
   readonly onOpenPage: (() => void) | undefined;
+  readonly onBack: (() => void) | undefined;
   readonly pull: FlowPullRequest;
   readonly target: ChangeTarget;
-  readonly titleId: string;
+  readonly titleId: string | undefined;
   readonly onClose: () => void;
   readonly onReplace: (target: ReviewTarget) => void;
 }) {
@@ -286,6 +298,7 @@ function ChangeReviewData({
       environments={flow.environmentInputs}
       frame={frame}
       giteaOrigin={flowValue.giteaOrigin}
+      onBack={onBack}
       onOpenPage={onOpenPage}
       live={flow.releases.find((entry) => entry.standing === "live")?.tag}
       mate={
@@ -414,6 +427,8 @@ export interface ChangeReviewViewProps {
   readonly onReviewRelease: () => void;
   /** The dialog's way to this review as the change's own page. */
   readonly onOpenPage?: (() => void) | undefined;
+  /** Read from the release that carries it: "Merged" in the button's place, and the way back. */
+  readonly onBack?: (() => void) | undefined;
   readonly onClose: () => void;
 }
 
@@ -481,10 +496,14 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   const next = model.primary?.label === REVIEW_RELEASE_LABEL;
   // Merged or closed: nothing more to ask of it here.
   const over = model.verdict.state === "merged" || model.verdict.state === "closed";
+  // Read from its release: merged already, and the release is the next review.
+  const fromRelease = props.onBack !== undefined;
+  const primary = fromRelease ? undefined : model.primary;
   return (
     <ZeropsReviewSurface
+      back={props.onBack === undefined ? undefined : { label: RELEASE_BACK, onPress: props.onBack }}
       consequence={model.consequence}
-      dismiss={over ? "Close" : undefined}
+      dismiss={over && !fromRelease ? "Close" : undefined}
       frame={props.frame}
       fix={
         fix === undefined || mine === undefined
@@ -512,16 +531,17 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       onOpenPage={props.onOpenPage}
       onClose={props.onClose}
       primary={
-        model.primary === undefined
+        primary === undefined
           ? undefined
           : {
-              ...model.primary,
+              ...primary,
               busy: press.kind === "running",
-              label: press.kind === "running" ? "Merging" : model.primary.label,
+              label: press.kind === "running" ? "Merging" : primary.label,
               icon: next ? "tag" : undefined,
               onPress: next ? props.onReviewRelease : props.onMerge,
             }
       }
+      settled={fromRelease ? "Merged" : undefined}
       title={pull.title}
       titleId={props.titleId}
       verdict={model.verdict}

@@ -22,8 +22,10 @@ import type {
 import { changeFileParts } from "@t3tools/client-runtime/zerops";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
+  ArrowLeftIcon,
   CheckIcon,
   ChevronDownIcon,
+  ChevronRightIcon,
   CircleCheckIcon,
   CircleDashedIcon,
   CircleIcon,
@@ -116,6 +118,13 @@ export interface ZeropsReviewSurfaceProps {
   /** "Cancel" before anything was pressed, "Close" after. */
   readonly dismiss?: string | undefined;
   readonly primary?: ReviewPrimaryButton | undefined;
+  /** What was already done, said where the button would stand: "Merged". */
+  readonly settled?: string | undefined;
+  /**
+   * The dialog's way back to the review this one was stepped into from — "← Release" — in the
+   * place of what kind of thing it is.
+   */
+  readonly back?: ReviewButton | undefined;
   /** The dialog's way to the same review as a page, where it has one. */
   readonly onOpenPage?: (() => void) | undefined;
   readonly onClose: () => void;
@@ -134,6 +143,8 @@ export function ZeropsReviewSurface({
   consequence,
   dismiss,
   primary,
+  settled,
+  back,
   onOpenPage,
   onClose,
 }: ZeropsReviewSurfaceProps) {
@@ -142,10 +153,19 @@ export function ZeropsReviewSurface({
     <>
       {frame === "page" ? null : (
         <div className="rv-chrome">
-          <span className="rv-kind">
-            {KIND_ICON[kind]}
-            {kindLabel}
-          </span>
+          {back === undefined ? (
+            <span className="rv-kind">
+              {KIND_ICON[kind]}
+              {kindLabel}
+            </span>
+          ) : (
+            <span className="rv-kind">
+              <button className="rv-back" data-review-back="" onClick={back.onPress} type="button">
+                <ArrowLeftIcon aria-hidden="true" />
+                {back.label}
+              </button>
+            </span>
+          )}
           {onOpenPage === undefined ? null : (
             <button className="rv-open" onClick={onOpenPage} type="button">
               <Maximize2Icon aria-hidden="true" />
@@ -189,6 +209,12 @@ export function ZeropsReviewSurface({
           <button className="rv-btn2" onClick={onClose} type="button">
             {dismiss}
           </button>
+        )}
+        {settled === undefined ? null : (
+          <span className="rv-settled">
+            <CheckIcon aria-hidden="true" />
+            {settled}
+          </span>
         )}
         {primary === undefined ? null : (
           <button
@@ -636,20 +662,29 @@ const STAGE_WORDS: Record<ReleaseChangeRow["stage"], string | undefined> = {
   none: undefined,
 };
 
-/** What goes out: one row per change, its Mate's face, and whether stage ran it. */
+export type ReviewReleaseRow = ReleaseChangeRow & {
+  readonly face?: ReviewFaceProps;
+  readonly sub: string;
+};
+
+/**
+ * What goes out: one row per change, its Mate's face, and whether stage ran it. A row that is a
+ * change opens its review (`onOpen`), the whole row, with a › at its end; a commit nobody
+ * reviewed has no review to open.
+ */
 export function ReviewReleaseRows({
   rows,
+  onOpen,
 }: {
-  readonly rows: ReadonlyArray<
-    ReleaseChangeRow & { readonly face?: ReviewFaceProps; readonly sub: string }
-  >;
+  readonly rows: ReadonlyArray<ReviewReleaseRow>;
+  readonly onOpen?: ((row: ReviewReleaseRow) => void) | undefined;
 }) {
   return (
-    <div className="rv-rel">
+    <div className="rv-rel" data-opens={onOpen === undefined ? undefined : ""}>
       {rows.map((row) => {
         const mark = STAGE_WORDS[row.stage];
-        return (
-          <div className="rv-relrow" key={row.key}>
+        const cells = (
+          <>
             {row.face === undefined ? (
               <span />
             ) : (
@@ -672,7 +707,36 @@ export function ReviewReleaseRows({
                 {mark}
               </span>
             )}
-          </div>
+          </>
+        );
+        if (onOpen === undefined) {
+          return (
+            <div className="rv-relrow" key={row.key}>
+              {cells}
+            </div>
+          );
+        }
+        if (row.change === undefined) {
+          return (
+            <div className="rv-relrow" key={row.key}>
+              {cells}
+              <span />
+            </div>
+          );
+        }
+        return (
+          <button
+            className="rv-relrow"
+            data-release-row={row.key}
+            key={row.key}
+            onClick={() => {
+              onOpen(row);
+            }}
+            type="button"
+          >
+            {cells}
+            <ChevronRightIcon aria-hidden="true" className="rv-relrow-go" />
+          </button>
         );
       })}
     </div>
