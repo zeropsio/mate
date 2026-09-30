@@ -716,6 +716,17 @@ describe("deriveZeropsGroups — creations under way", () => {
     ]);
   });
 
+  it.each([
+    { case: "on its way", failed: undefined, expected: undefined },
+    { case: "stopped before the platform took it", failed: true, expected: true },
+  ])("says whether a pending member is $case", ({ failed, expected }) => {
+    const [group] = deriveZeropsGroups([], {
+      order: "name",
+      births: [{ ...birth("g-new", "aaa", 1), ...(failed === undefined ? {} : { failed }) }],
+    }).groups;
+    expect(group?.pending.map((entry) => entry.failed)).toEqual([expected]);
+  });
+
   it("names a pending Mate as the Mate it will be, and anything else as its environment", () => {
     const [group] = deriveZeropsGroups([], {
       order: "name",

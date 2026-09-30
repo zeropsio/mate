@@ -757,6 +757,18 @@ describe("groupFlow — creations under way", () => {
     });
   });
 
+  it("draws a Mate whose creation stopped before the platform took it as stopped", () => {
+    const flow = groupFlow({
+      ...SM_BIRTH_1,
+      pending: [{ ...creating(), failed: true }],
+    });
+    expect(flow.mates.find((mate) => mate.projectId === "p-new")?.coming).toEqual({
+      step: "tags",
+      overdue: false,
+      failed: true,
+    });
+  });
+
   it("draws a listed Mate once, whatever creation still names it", () => {
     const flow = groupFlow({ ...SM_BIRTH_1, pending: [creating({ projectId: "p-uma" })] });
     expect(flow.mates.map((mate) => mate.projectId)).toEqual(["p-uma"]);
