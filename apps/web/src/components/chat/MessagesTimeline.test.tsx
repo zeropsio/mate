@@ -1973,6 +1973,43 @@ describe("MessagesTimeline — placing its rows", () => {
     }
   });
 
+  // Handed over from its Mate's own view (a reload's stage), its Mate stays at
+  // work in the pane while the rows are placed out of sight: a face on screen
+  // the whole way, never an empty pane.
+  it.each([
+    { case: "handed over from its Mate's own view", handedOver: true, face: true },
+    { case: "opened from another conversation", handedOver: false, face: false },
+  ])("while its rows are placed, $case: its Mate at work $face", async ({ handedOver, face }) => {
+    const { LegendList } = await import("@legendapp/list/react");
+    const { standInForConversation } = await import("../../zerops/mateHandOver");
+    const key = `environment-local:thread-handed-${String(handedOver)}`;
+    const standing = handedOver ? standInForConversation(key) : null;
+    let renderer: ReactTestRenderer | undefined;
+    await act(() => {
+      renderer = create(
+        <MessagesTimeline
+          {...buildProps()}
+          listRef={listRef}
+          routeThreadKey={key}
+          timelineEntries={[buildUserTimelineEntry("Where were we?")]}
+        />,
+      );
+    });
+    standing?.release(Date.now());
+    const atWork = () => renderer!.root.findAll((node) => node.props.role === "status").length > 0;
+    try {
+      await settleFrames(2);
+      expect(outOfSight(renderer!)).toBe(true);
+      expect(atWork()).toBe(face);
+      await act(() => renderer!.root.findByType(LegendList).props.onLoad({ elapsedTimeInMs: 4 }));
+      await settleFrames(6);
+      expect(outOfSight(renderer!)).toBe(false);
+      expect(atWork()).toBe(false);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
   // A Mate streaming its answer changes the rows every frame: the list's end
   // never stands still, and the conversation still shows, after a while.
   it("shows after a while, even while its rows never stand still", async () => {
