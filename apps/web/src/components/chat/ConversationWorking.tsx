@@ -37,6 +37,12 @@ import { useStandupReading } from "../../zerops/activity/useStandupReading";
 import { Button } from "../ui/button";
 import { MateFace } from "../zerops/primitives";
 import { formatWorkDuration, isGitPushOnly, type IncidentModel } from "./conversation.logic";
+import {
+  importLines,
+  lineSegments,
+  operationSubject,
+  settledOperationWords,
+} from "./operationBar.logic";
 import { StatusBar, type BarTone } from "./StatusBar";
 import type { DockBackgroundTask, DockModel } from "./conversationDock.logic";
 import { ElapsedSince, type ConversationSpeaker } from "./ConversationRows";
@@ -128,7 +134,8 @@ function Instrument({
     <>
       <span aria-hidden="true" />
       <span className="flex min-w-0 items-center gap-3">
-        <span className="w-24 shrink-0 truncate text-start font-medium text-foreground">
+        {/* It names the operation, whole: the words give way, never the name. */}
+        <span className="min-w-24 shrink-0 whitespace-nowrap text-start font-medium text-foreground">
           {subject}
         </span>
         <StatusBar className="w-14 shrink-0 @md/panel:w-28" segments={bar} />
@@ -249,7 +256,14 @@ function DeployInstrument({
   readonly open: boolean;
   readonly onToggle: () => void;
 }) {
-  const { words, bar, running, failed } = useDeployReading(operation, environmentId);
+  const reading = useDeployReading(operation, environmentId);
+  const { running } = reading;
+  // An import is its services: a segment each, and settled, how many failed.
+  const lines = operation.kind === "import" ? importLines(operation) : null;
+  const bar = lines === null ? reading.bar : lineSegments(lines);
+  const words = (lines === null ? null : settledOperationWords(operation, lines)) ?? reading.words;
+  const failed = lines === null ? reading.failed : lines.some((line) => line.state === "failed");
+  const subject = operationSubject(operation);
   const settledMs =
     operation.settledAt === undefined
       ? null
@@ -265,10 +279,10 @@ function DeployInstrument({
           formatWorkDuration(settledMs)
         ) : null
       }
-      label={`${operation.subject}: ${words}. ${open ? "Hide" : "Show"} the pipeline`}
+      label={`${subject}: ${words}. ${open ? "Hide" : "Show"} ${lines === null ? "the pipeline" : "each service"}`}
       onToggle={onToggle}
       open={open}
-      subject={operation.subject}
+      subject={subject}
       words={words}
     />
   );
@@ -293,7 +307,7 @@ function StandupInstrument({
 }) {
   const reading = useStandupReading(operation, environmentId);
   const { words, figure, segments, failed } = standupBar(reading);
-  const subject = operation.subject === "stage" ? "Stage" : "Development";
+  const subject = operationSubject(operation);
   return (
     <Instrument
       bar={segments}

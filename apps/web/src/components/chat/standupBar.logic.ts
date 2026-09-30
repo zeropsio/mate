@@ -78,7 +78,8 @@ const ROW: Record<
 
 /**
  * A service under the opened bar: its state's dot and word — a build that
- * runs, its step; one held back, what it waits on; a build that failed, so.
+ * runs, its step; one held back, what it waits on; one that failed, why —
+ * the platform's reason — else that its build failed.
  */
 export function standupRow(row: StandupServiceRow): {
   readonly tone: ServiceStatusToneId;
@@ -87,6 +88,8 @@ export function standupRow(row: StandupServiceRow): {
   const { tone, word } = ROW[row.state];
   if (row.state === "building") return { tone, word: row.sentence ?? word };
   if (row.state === "waits" && row.note !== undefined) return { tone, word: `Waits: ${row.note}` };
-  if (row.state === "failed" && row.startedAt !== undefined) return { tone, word: "Build failed" };
+  if (row.state === "failed") {
+    return { tone, word: row.reason ?? (row.startedAt === undefined ? word : "Build failed") };
+  }
   return { tone, word };
 }

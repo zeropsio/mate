@@ -178,6 +178,41 @@ const BATCH = splitBatchDeploy(
   }),
 );
 
+/** An import of a pair whose dev half the platform refused, with its reason. */
+const IMPORT_ONE_FAILED: ZeropsOperation = {
+  ...deploy({}),
+  key: "op:import",
+  kind: "import",
+  phase: "failed",
+  anchorAt: ago(70),
+  settledAt: ago(9),
+  subject: "appdev, appstage",
+  kicker: "Import · appdev, appstage",
+  voice: "Importing appdev and appstage.",
+  statusWord: "Import failed",
+  closing: "Failed.",
+  target: { hostname: "appdev" },
+  steps: [
+    {
+      id: "appdev",
+      label: "appdev",
+      state: "failed",
+      stateLabel: "Failed",
+      note: "serviceStackCreateFailed: the project's disk quota is used up",
+    },
+    { id: "appstage", label: "appstage", state: "done", stateLabel: "Done" },
+  ],
+};
+
+/** A deploy that landed. */
+const DEPLOY_DONE = deploy({
+  key: "op:deploy-done",
+  phase: "done",
+  statusWord: "Deployed",
+  settledAt: ago(2),
+  closing: "appdev is live.",
+});
+
 const EMPTY_DOCK: DockModel = {
   operations: [],
   helpers: null,
@@ -951,6 +986,29 @@ function Harness() {
             />
           </Card>
         </State>
+        {[
+          { label: "An import, one failed", operation: IMPORT_ONE_FAILED },
+          { label: "A deploy, done", operation: DEPLOY_DONE },
+        ].map(({ label, operation }) => (
+          <State
+            key={label}
+            label={label}
+            note="Its name, a segment per service, its state once; opened, a line per service."
+          >
+            <Card>
+              <RunChat
+                row={record({ turnKey: `dock-${operation.key}`, items: [], now: RUNNING_STEP })}
+              />
+              <ConversationWorking
+                dock={{ ...EMPTY_DOCK, operations: [operation] }}
+                environmentId={null}
+                incidents={[]}
+                onOpenAgents={() => undefined}
+                threadRef={null}
+              />
+            </Card>
+          </State>
+        ))}
         <State
           label="Settled bars"
           note="A deploy that landed and a batch that failed, as the bars say it."

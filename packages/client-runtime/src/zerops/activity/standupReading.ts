@@ -62,6 +62,8 @@ export interface StandupServiceRow {
   readonly sentence?: string;
   /** One held back: what it waits on that did not stand up; one stopped, "stopped". */
   readonly note?: string;
+  /** A build that failed: why, as the platform says it, when it says. */
+  readonly reason?: string;
 }
 
 export interface StandupReading {
@@ -265,6 +267,9 @@ export function readStandup(input: {
         ? {}
         : { endedAt: latest.finished }),
       ...(sentence === undefined ? {} : { sentence }),
+      ...(state === "failed" && latest.failReason !== undefined
+        ? { reason: latest.failReason }
+        : {}),
     });
   }
   // Told which it builds, the call's runtimes are those alone: a half the

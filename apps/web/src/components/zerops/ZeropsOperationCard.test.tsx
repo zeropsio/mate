@@ -368,6 +368,29 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
     expect(rowsOf(html)).toHaveLength(3);
   });
 
+  // The line above a headless card says how it went: its closing would say it
+  // a second time, and a bare "Failed." carries nothing (the owner,
+  // 2026-09-30). Why it failed stays, in its explanation.
+  it.each([
+    { name: "landed", closing: "weatherdash is live.", phase: "done" as const },
+    { name: "failed", closing: "Failed.", phase: "failed" as const },
+  ])("under its line, a card that $name draws no closing", ({ closing, phase }) => {
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard
+        headless
+        now={NOW_MS}
+        operation={{
+          ...running,
+          phase,
+          closing,
+          explanation: { reason: "Build commands exited 1" },
+        }}
+      />,
+    );
+    expect(html).not.toContain("data-zerops-card-outcome");
+    expect(html).toContain(phase === "failed" ? "Build commands exited 1" : "");
+  });
+
   it.each([
     { name: "nothing observed yet", observed: undefined },
     {

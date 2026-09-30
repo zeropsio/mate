@@ -113,6 +113,7 @@ import {
 import { useRunEffortWords } from "./runResultFacts";
 import { drawerEase, LIST_LAYS_OUT_FRAMES, stepHeight } from "./stepHeight";
 import { StatusBar, type BarTone } from "./StatusBar";
+import { ImportDetail } from "./ImportDetail";
 import { StandupDetail } from "./StandupDetail";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
@@ -1391,6 +1392,9 @@ export function OperationDetail({
 }) {
   if (operation.kind === "standup") {
     return <StandupDetail environmentId={environmentId} operation={operation} />;
+  }
+  if (operation.kind === "import") {
+    return <ImportDetail environmentId={environmentId} operation={operation} />;
   }
   return (
     <ZeropsOperationDetail
