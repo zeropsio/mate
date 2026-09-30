@@ -17,6 +17,7 @@ import {
   CREW_TRY_IT_WORD,
   CREW_WORKING_WITH_YOU,
   CREW_WORKS_WHEN_ASKED,
+  CREWMATE_EMPTY_WORDS,
   crewAfterWord,
   crewBackToMateWord,
   crewBriefPlainText,
@@ -28,13 +29,16 @@ import {
   crewDiffStatWord,
   crewEarlierStintNotice,
   crewFaceWord,
+  crewJobLine,
   crewJobSentence,
   crewLandingWords,
   crewLineNeedsWord,
   crewLineReadyWord,
   crewLoginRunsWord,
   crewMenuFailureWord,
+  crewmateDoesWords,
   crewmateRoleWords,
+  crewmateWhoseLine,
   crewMessagePlaceholder,
   crewMoreSummary,
   crewNamingTheMate,
@@ -813,6 +817,76 @@ describe("the conversation's line and a crewmate's menu", () => {
     { press: "clear", says: "Couldn't clear Bo's conversation" },
   ] as const)("titles a refused press: $says", ({ press, says }) => {
     expect(crewMenuFailureWord(press, "Bo")).toBe(says);
+  });
+});
+
+describe("a crewmate's empty conversation", () => {
+  it("heads its job as the job view does, and the work it finished beside it", () => {
+    expect(CREWMATE_EMPTY_WORDS).toEqual({ job: "Its job", work: "Its work" });
+  });
+
+  it.each([
+    { kind: "lead", says: "Fen's lead · plans and reviews the crew's work" },
+    {
+      kind: "writer",
+      says: "One of Fen's crew · builds its part in its own copy of Fen's code",
+    },
+    { kind: "reader", says: "One of Fen's crew · checks the others' work and changes nothing" },
+  ] as const)("says whose it is and what it does, under its name: $says", ({ kind, says }) => {
+    expect(crewmateWhoseLine(kind, "Fen")).toBe(says);
+  });
+
+  it("says whose it is in a Mate's possessive", () => {
+    expect(crewmateWhoseLine("lead", "Atlas")).toBe(
+      "Atlas' lead · plans and reviews the crew's work",
+    );
+    expect(crewmateWhoseLine("writer", "Atlas")).toBe(
+      "One of Atlas' crew · builds its part in its own copy of Atlas' code",
+    );
+  });
+
+  // The lead's face on the conversation's line says what the lead does in the same words.
+  it("says what a crewmate does as the line says the lead's", () => {
+    expect(crewmateRoleWords("Fen", true)).toBe(
+      `, Fen's lead — ${crewmateDoesWords("lead", "Fen")}`,
+    );
+  });
+
+  it.each([
+    {
+      name: "Game Rules",
+      line: "You own Game Rules: turns, scoring and their tests. Write the tests first.",
+      says: "Turns, scoring and their tests. Write the tests first.",
+    },
+    {
+      name: "Lead",
+      line: "You lead the Letopis crew: Server and world, Game systems, Clients and creation.",
+      says: "Leads the Letopis crew: Server and world, Game systems, Clients and creation.",
+    },
+    {
+      name: "Referee",
+      line: "You review every change: nothing may break a saved world. Ask before you block.",
+      says: "Reviews every change: nothing may break a saved world. Ask before you block.",
+    },
+    {
+      name: "World Server",
+      line: "How life in the harbour town works. Seasons, weather and trade.",
+      says: "How life in the harbour town works. Seasons, weather and trade.",
+    },
+    {
+      name: "World Server",
+      line: "**Owns** the `server/` tree. Tests first.",
+      says: "Owns the server/ tree. Tests first.",
+    },
+    {
+      name: "World Server",
+      line: "- Keeps the [README](https://docs.example.test/readme) current. Always.",
+      says: "Keeps the README current. Always.",
+    },
+    { name: "World Server", line: "## Game rules", says: "Game rules" },
+    { name: "World Server", line: "   ", says: "" },
+  ])("reads a job's whole first line in plain words, never cut: $line", ({ name, line, says }) => {
+    expect(crewJobLine(line, name)).toBe(says);
   });
 });
 

@@ -903,6 +903,16 @@ export const crewDiffStatWord = (stat: {
 /** A crewmate chat's composer. */
 export const crewMessagePlaceholder = (name: string): string => `Message ${name}…`;
 
+/**
+ * A crewmate's empty conversation: its job, headed as the job view heads it,
+ * and the work it finished — each line of that said as its chat's seam says
+ * it (`crewWentInWord`, `crewClosedWord`).
+ */
+export const CREWMATE_EMPTY_WORDS = {
+  job: CREW_JOB_WORDS.job,
+  work: "Its work",
+} as const;
+
 const FRESH_NEXT = "Its next message starts a fresh conversation.";
 
 /**
@@ -977,14 +987,40 @@ export function crewLoginRunsWord(names: ReadonlyArray<string>, lead: string | n
 /* ------------------------------------------------------------ the conversation's line */
 
 /**
+ * What each kind of crewmate does, as a clause: the lead plans and reviews,
+ * a builder works in its own copy of the Mate's code (the job view's
+ * _Builds_), a reviewer changes nothing (its _Reviews_).
+ */
+export function crewmateDoesWords(kind: Crewmate["kind"], mateName: string): string {
+  switch (kind) {
+    case "lead":
+      return "plans and reviews the crew's work";
+    case "writer":
+      return `builds its part in its own copy of ${crewPossessive(mateName)} code`;
+    case "reader":
+      return "checks the others' work and changes nothing";
+  }
+}
+
+/**
  * Who a crewmate is on the conversation's line, after its name: one of its
  * Mate's crew, or the Mate's lead and what the lead does. A face's tooltip
  * and its accessible name say it; the name stands before it.
  */
 export function crewmateRoleWords(mateName: string, lead: boolean): string {
   return lead
-    ? `, ${mateName}'s lead — plans and reviews the crew's work`
+    ? `, ${mateName}'s lead — ${crewmateDoesWords("lead", mateName)}`
     : `, one of ${mateName}'s crew`;
+}
+
+/**
+ * Whose a crewmate is and what it does, the one line under its name in its
+ * empty conversation, after its Mate's small face: "Fen's lead · plans and
+ * reviews the crew's work", "One of Fen's crew · builds its part in its own
+ * copy of Fen's code".
+ */
+export function crewmateWhoseLine(kind: Crewmate["kind"], mateName: string): string {
+  return `${crewOneOfWord(mateName, kind === "lead")} · ${crewmateDoesWords(kind, mateName)}`;
 }
 
 /** The Mate's own chat, as its face on the line says it while another chat is open. */
@@ -1031,16 +1067,13 @@ function personsLine(plain: string, name: string): string {
 }
 
 /**
- * The first sentence of a job, in plain words and the person's: what a
- * crewmate's row says while it is on nothing, its face says on hover and its
- * menu says at the top. Markdown's marks go — a heading's hashes, a list's
- * bullet, emphasis, code ticks, a link's address — the words the job says to
- * its crewmate become the person's line (`personsLine`), and the sentence
- * ends at its first full stop, question or exclamation mark that a space or
- * the line's end follows, so `index.ts` or `v1.2` never ends it; a line with
- * none is whole.
+ * A job's first line, whole, in plain words and the person's: what its
+ * crewmate's empty conversation says under _Its job_. Markdown's marks go — a
+ * heading's hashes, a list's bullet, emphasis, code ticks, a link's address —
+ * and the words the job says to its crewmate become the person's line
+ * (`personsLine`).
  */
-export function crewJobSentence(jobFirstLine: string, name: string): string {
+export function crewJobLine(jobFirstLine: string, name: string): string {
   const plain = jobFirstLine
     .replace(MARKDOWN_LEAD, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/gu, "$1")
@@ -1050,7 +1083,19 @@ export function crewJobSentence(jobFirstLine: string, name: string): string {
     .replace(/(^|[^\w*])\*([^*\s][^*]*)\*(?!\w)/gu, "$1$2")
     .replace(/(^|[^\w])_([^_\s][^_]*)_(?!\w)/gu, "$1$2")
     .trim();
-  const line = personsLine(plain, name);
+  return personsLine(plain, name);
+}
+
+/**
+ * The first sentence of a job, in plain words and the person's
+ * (`crewJobLine`): what a crewmate's row says while it is on nothing, its
+ * face says on hover and its menu says at the top. The sentence ends at its
+ * first full stop, question or exclamation mark that a space or the line's
+ * end follows, so `index.ts` or `v1.2` never ends it; a line with none is
+ * whole.
+ */
+export function crewJobSentence(jobFirstLine: string, name: string): string {
+  const line = crewJobLine(jobFirstLine, name);
   const end = /[.!?](?=\s|$)/u.exec(line);
   return end === null ? line : line.slice(0, end.index + 1);
 }
