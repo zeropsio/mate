@@ -83,6 +83,7 @@ import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsAgentFlagModule from "./ZeropsAgentFlag.ts";
 import { ZeropsAgentFlag, type ZeropsAgentFlagError } from "./ZeropsAgentFlag.ts";
 import { watchWithFallback, type WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
+import { knownSigner } from "@t3tools/shared/zeropsAgentAuth";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 import { turnAuthFailureAgent } from "./zeropsTurnAuthFailure.ts";
 import {
@@ -507,7 +508,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       const authorizers: Partial<Record<ZeropsAgentId, ZeropsAgentAuthorizer>> = {};
       const unknownSigners = new Set<ZeropsAgentId>();
       for (const [agentId, record] of Object.entries(signers)) {
-        const subject = ZeropsProjectSignersModule.knownSigner(record);
+        const subject = knownSigner(record);
         if (subject !== undefined) authorizers[agentId as ZeropsAgentId] = { subject };
         else if (typeof record === "object") unknownSigners.add(agentId as ZeropsAgentId);
       }
