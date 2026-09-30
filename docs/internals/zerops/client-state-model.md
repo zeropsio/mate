@@ -367,6 +367,18 @@ Once content exists for the route's environment, only a terminal verdict replace
 access lapse is not a gate input. A thread reads "no longer available" only when the shell is live
 and lacks it, or its detail is `gone`.
 
+Every door into a Mate — its menu row, the jump box and its toast, a project's page, an ask — opens
+its conversation when that can be opened, and otherwise the Mate's own view (`/mate/$projectId`),
+never the projects screen. What opens it is read off its machine
+(`cr/zerops/environments/mateLink.ts`), not its listing row: a row that stands for its project
+while the project's services are unread names its Mate through the project's machines, then its
+record. The view shows the verdict's phrase and verbs as the gate's wait does, makes the user's
+Connect by the Mate's target once a machine names it, and hands over to the conversation the moment
+it can be opened, telling the door what it asked for (its Crew tab, an ask). A terminal verdict, or
+a complete listing without the Mate, is said in the view with the way to the projects; nothing
+navigates away on its own. A registration a machine holds is never released for a record the
+storage lacks.
+
 ### Project flow per group
 
 The flow is a projection over per-key cells, never a pass. Its halves are independent: pull request

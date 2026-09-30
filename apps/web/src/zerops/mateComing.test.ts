@@ -4,6 +4,7 @@ import {
   mateComing,
   mateComingHeadlineClauses,
   mateComingPage,
+  mateOpeningPhrase,
   type MateComingInput,
 } from "./mateComing";
 
@@ -111,7 +112,7 @@ describe("mateComingHeadlineClauses — its own view's words", () => {
   it.each<{
     readonly case: string;
     readonly mate: { readonly name: string; readonly project: string | undefined };
-    readonly kind: "coming" | "failed";
+    readonly kind: "coming" | "failed" | "reaching" | "unreachable";
     readonly clauses: ReadonlyArray<string>;
   }>([
     {
@@ -144,16 +145,49 @@ describe("mateComingHeadlineClauses — its own view's words", () => {
       kind: "coming",
       clauses: ["Ada Lin is coming up on Acme Docs."],
     },
+    {
+      case: "on its way to its conversation: its name, the line under it says the rest",
+      mate: QUINN,
+      kind: "reaching",
+      clauses: ["Quinn"],
+    },
+    {
+      case: "not to be opened: its name kept whole, the line under it says why",
+      mate: { name: "Ada Lin", project: "Acme Docs" },
+      kind: "unreachable",
+      clauses: ["Ada Lin"],
+    },
   ])("$case", ({ mate, kind, clauses }) => {
     expect(mateComingHeadlineClauses(mate, kind)).toEqual(clauses);
   });
 });
 
-// A new Mate's own view (`/mate/$projectId`): it waits there for the Mate to be up, then hands
-// over to its conversation. Anything it has nothing to wait for goes to the projects screen,
-// which owns its verbs; a listing still being read is waited on.
+// A Mate's own view (`/mate/$projectId`): where every door opens a Mate whose conversation cannot
+// be opened yet. A new Mate comes up there; any other waits there for its link, saying what it
+// waits for as its machine says it, then hands over to its conversation. It never hands the
+// person to another screen on its own (the owner, 2026-09-30: "it just throws me at /zerops
+// page"): a Mate that cannot be opened says why where it stands.
 describe("mateComingPage — what a Mate's own view shows", () => {
   const COMING = { kind: "coming", line: "Coming up. A few minutes.", verb: undefined } as const;
+  const RECONNECTING = { kind: "reconnecting" } as const;
+  const GONE = { kind: "gone", because: "complete-scope-omits-verified" } as const;
+  const STOPPED = {
+    kind: "container",
+    container: { level: "inactive", status: "STOPPED" },
+  } as const;
+  const RETRYING = {
+    kind: "retrying",
+    retryAtMs: 5_000,
+    last: { kind: "network" },
+    restart: false,
+  } as const;
+  const BASE = {
+    coming: undefined,
+    candidate: { group: "ready" },
+    complete: true,
+    linked: false,
+    reachability: null,
+  } as const;
   it.each<{
     readonly case: string;
     readonly input: Parameters<typeof mateComingPage>[0];
@@ -161,71 +195,127 @@ describe("mateComingPage — what a Mate's own view shows", () => {
   }>([
     {
       case: "coming up: its progress",
-      input: { coming: COMING, candidate: undefined, health: undefined, complete: false },
+      input: { ...BASE, coming: COMING, candidate: undefined, complete: false },
       expected: { kind: "coming", coming: COMING },
     },
     {
       case: "connected: it is up, and hands over",
-      input: {
-        coming: undefined,
-        candidate: { group: "connected" },
-        health: "ready",
-        complete: true,
-      },
+      input: { ...BASE, candidate: { group: "connected" } },
       expected: { kind: "up" },
     },
     {
-      case: "listed and answering, its socket not open yet: almost there",
-      input: { coming: undefined, candidate: { group: "ready" }, health: "ready", complete: true },
-      expected: {
-        kind: "coming",
-        coming: { kind: "coming", line: "Almost there.", verb: undefined },
-      },
+      case: "its environment registered, its socket reconnecting: it hands over",
+      input: { ...BASE, linked: true, reachability: RECONNECTING },
+      expected: { kind: "up" },
     },
     {
-      case: "listed, its Mate still starting: almost there",
-      input: {
-        coming: undefined,
-        candidate: { group: "ready" },
-        health: "initializing",
-        complete: true,
-      },
-      expected: {
-        kind: "coming",
-        coming: { kind: "coming", line: "Almost there.", verb: undefined },
-      },
+      case: "listed and answering, its socket not open yet: what its machine waits for",
+      input: { ...BASE, reachability: { kind: "connecting", waitingOn: "exchange" } },
+      expected: { kind: "reaching", reachability: { kind: "connecting", waitingOn: "exchange" } },
     },
     {
-      case: "listed and not answering: the projects screen's Try again",
-      input: {
-        coming: undefined,
-        candidate: { group: "ready" },
-        health: "unreachable",
-        complete: true,
-      },
-      expected: { kind: "elsewhere" },
+      case: "listed and not answering: its machine's retry, never the projects screen",
+      input: { ...BASE, reachability: RETRYING },
+      expected: { kind: "reaching", reachability: RETRYING },
     },
     {
-      case: "stopped: the projects screen's Start",
-      input: {
-        coming: undefined,
-        candidate: { group: "unavailable" },
-        health: undefined,
-        complete: true,
-      },
-      expected: { kind: "elsewhere" },
+      case: "stopped: says so, with its Start, where it stands",
+      input: { ...BASE, candidate: { group: "unavailable" }, reachability: STOPPED },
+      expected: { kind: "reaching", reachability: STOPPED },
+    },
+    {
+      case: "its row standing for its project, no machine named yet: looked for",
+      input: { ...BASE, candidate: { group: "unavailable" } },
+      expected: { kind: "reaching", reachability: null },
+    },
+    {
+      case: "found gone: says why, never leaves on its own",
+      input: { ...BASE, reachability: GONE },
+      expected: { kind: "unreachable", reachability: GONE },
     },
     {
       case: "not on the account, the listing whole",
-      input: { coming: undefined, candidate: undefined, health: undefined, complete: true },
-      expected: { kind: "elsewhere" },
+      input: { ...BASE, candidate: undefined },
+      expected: { kind: "unreachable", reachability: null },
     },
     {
-      case: "not listed yet, the listing still read",
-      input: { coming: undefined, candidate: undefined, health: undefined, complete: false },
+      case: "not listed yet, the listing still read, its machine reconnecting: what it waits for",
+      input: { ...BASE, candidate: undefined, complete: false, reachability: RECONNECTING },
+      expected: { kind: "reaching", reachability: RECONNECTING },
+    },
+    {
+      case: "not listed yet, the listing still read, nothing known of it",
+      input: { ...BASE, candidate: undefined, complete: false },
       expected: undefined,
     },
   ])("$case", ({ input, expected }) => {
     expect(mateComingPage(input)).toEqual(expected);
+  });
+});
+
+// The line under a Mate's name in its own view: the route gate's words for the same verdict (§4.8,
+// R5), so its own view and its conversation say one thing — what its link waits for while it is on
+// its way, and why when it cannot be opened, each with its verbs.
+describe("mateOpeningPhrase — what a Mate's own view says under its name", () => {
+  const CONTEXT = { nowMs: 1_000, mateName: "Quinn" };
+  it.each<{
+    readonly case: string;
+    readonly page: Parameters<typeof mateOpeningPhrase>[0];
+    readonly phrase: ReturnType<typeof mateOpeningPhrase>;
+  }>([
+    {
+      case: "reconnecting",
+      page: { kind: "reaching", reachability: { kind: "reconnecting" } },
+      phrase: { text: "Reconnecting…", actions: [] },
+    },
+    {
+      case: "nothing known of it yet",
+      page: { kind: "reaching", reachability: null },
+      phrase: { text: "Opening this conversation…", actions: [] },
+    },
+    {
+      case: "its machine ready, with nothing to say",
+      page: { kind: "reaching", reachability: { kind: "ready", notice: null } },
+      phrase: { text: "Opening this conversation…", actions: [] },
+    },
+    {
+      case: "not answering: its retry and Try now",
+      page: {
+        kind: "reaching",
+        reachability: {
+          kind: "retrying",
+          retryAtMs: 6_000,
+          last: { kind: "network" },
+          restart: false,
+        },
+      },
+      phrase: { text: "This Mate isn't answering. Trying again in 5 s.", actions: ["try-now"] },
+    },
+    {
+      case: "stopped: its Start",
+      page: {
+        kind: "reaching",
+        reachability: { kind: "container", container: { level: "inactive", status: "STOPPED" } },
+      },
+      phrase: { text: "This Mate isn't running.", actions: ["start"] },
+    },
+    {
+      case: "gone: why, and the projects",
+      page: { kind: "unreachable", reachability: { kind: "gone", because: "direct-not-found" } },
+      phrase: {
+        text: "This project is no longer available. It was deleted, or you no longer have access.",
+        actions: ["go-to-projects"],
+      },
+    },
+    {
+      case: "not on the account",
+      page: { kind: "unreachable", reachability: null },
+      phrase: {
+        text: "This conversation isn't in your Zerops projects.",
+        actions: ["go-to-projects"],
+      },
+    },
+  ])("$case", ({ page, phrase }) => {
+    expect(mateOpeningPhrase(page, CONTEXT)).toEqual(phrase);
   });
 });

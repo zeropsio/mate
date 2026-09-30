@@ -11,12 +11,14 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import type { Instant } from "@t3tools/client-runtime/zerops/data";
 import {
   environmentLinkable,
+  mateLink,
   resolveEnvironment,
   selectConversation,
   type ConversationAccess,
   type ConversationView,
   type DescriptorIndex,
   type EnvironmentMachine,
+  type MateLink,
   type RouteContent,
   type RouteTarget,
   type TargetKey,
@@ -236,17 +238,29 @@ export function useRouteConversation(environmentId: EnvironmentId | null): Conve
   );
 }
 
+/** A Mate's row as a door names it: its key, and its project. */
+export type MateRow = Pick<ZeropsCandidate, "key"> & {
+  readonly project: Pick<ZeropsCandidate["project"], "id">;
+};
+
 export interface EnvironmentLinks {
   /** Whether a link into the environment is worth offering: everything but gone and replaced. */
   readonly linkable: (environmentId: EnvironmentId) => boolean;
-  /** The registered environment a candidate's Mate opens in, when a link into it is worth offering. */
-  readonly linkTarget: (candidate: ZeropsCandidate) => EnvironmentId | undefined;
+  /** The registered environment a Mate's row opens in, when a link into it is worth offering. */
+  readonly linkTarget: (row: MateRow) => EnvironmentId | undefined;
+  /**
+   * What a door and the Mate's own view read of it (`mateLink`): its target — found by its project
+   * while its row stands for the project —, the environment its conversation opens in, and its
+   * machine's verdict.
+   */
+  readonly mateLink: (row: MateRow) => MateLink;
 }
 
 /** The shared `environmentLinkable` rule for every producer of a link into an environment. */
 export function useEnvironmentLinks(): EnvironmentLinks {
   const machines = useEnvironmentMachines();
   const index = useDescriptorIndex();
+  const records = useRegistrationRecords();
   const { environments } = useEnvironments();
   const linkable = useCallback(
     (environmentId: EnvironmentId) => {
@@ -259,18 +273,21 @@ export function useEnvironmentLinks(): EnvironmentLinks {
     () => new Set(environments.map((entry) => entry.environmentId)),
     [environments],
   );
-  const linkTarget = useCallback(
-    (candidate: ZeropsCandidate) => {
-      const machine = machines.get(candidate.key);
-      if (machine === undefined) return undefined;
-      // A restarting Mate has no origin in the inventory; its target key still finds it.
-      const environmentId =
-        machine.credential.kind === "held" ? machine.credential.environmentId : machine.record;
-      return environmentId !== null && registered.has(environmentId) && linkable(environmentId)
-        ? environmentId
-        : undefined;
-    },
-    [linkable, machines, registered],
+  const linkOf = useCallback(
+    (row: MateRow) =>
+      mateLink({
+        key: row.key,
+        projectId: row.project.id,
+        machines,
+        index,
+        records,
+        registered,
+      }),
+    [index, machines, records, registered],
   );
-  return useMemo(() => ({ linkable, linkTarget }), [linkable, linkTarget]);
+  const linkTarget = useCallback((row: MateRow) => linkOf(row).environmentId, [linkOf]);
+  return useMemo(
+    () => ({ linkable, linkTarget, mateLink: linkOf }),
+    [linkable, linkOf, linkTarget],
+  );
 }

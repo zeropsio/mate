@@ -18,15 +18,23 @@
  * or when this tab's creation stopped after the platform took the project: both say so, with the
  * page's *Remove*. Connected, it is up, and nothing here speaks for it any more.
  *
+ * Its own view (`mateComingPage`) is where every door opens a Mate whose conversation cannot be
+ * opened yet, new or not: past its first minutes it says what its link waits for, in its machine's
+ * words, until its conversation takes the route.
+ *
  * Pure: the reading and the words; the menu, the view and the page draw them.
  */
 import type { BirthStep } from "@t3tools/client-runtime/zerops/birth";
 import type { ZeropsCandidateGroup } from "@t3tools/client-runtime/zerops/candidates";
-import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
+import {
+  isTerminalReachability,
+  routeGatePhrase,
+  type Reachability,
+  type RouteGatePhrase,
+} from "@t3tools/client-runtime/zerops/environments";
 
 import { comingMateLine } from "../components/zerops/projects/projectsView.logic";
 import {
-  ALMOST_THERE_LINE,
   COMING_UP_LINE,
   creationFailedLine,
   RESTARTING_SERVICE_STATUSES,
@@ -127,55 +135,97 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
 const keptWhole = (name: string) => name.replaceAll(" ", " ");
 
 /**
+ * What a Mate's own view says in its headline: coming up, or not come (`MateComing`); on its way
+ * to its conversation (`reaching`); or not to be opened (`unreachable`).
+ */
+export type MateViewKind = MateComing["kind"] | "reaching" | "unreachable";
+
+/**
  * Its own view's headline, in the empty conversation's voice — "Quinn is coming up on Acme
  * Docs." while it comes, "Quinn could not be added to Acme Docs." if it did not: the words of the
- * button that made it — with no name torn in two.
+ * button that made it — with no name torn in two. Any other Mate is its name alone: the line under
+ * it says what it waits for, or why it cannot be opened, in its machine's words.
  */
 export function mateComingHeadlineClauses(
   mate: { readonly name: string; readonly project: string | undefined },
-  kind: MateComing["kind"],
+  kind: MateViewKind,
 ): ReadonlyArray<string> {
   const name = keptWhole(mate.name);
   const on = mate.project === undefined ? "" : ` on ${keptWhole(mate.project)}`;
   const to = mate.project === undefined ? "" : ` to ${keptWhole(mate.project)}`;
-  return kind === "coming" ? [`${name} is coming up${on}.`] : [`${name} could not be added${to}.`];
+  switch (kind) {
+    case "coming":
+      return [`${name} is coming up${on}.`];
+    case "failed":
+      return [`${name} could not be added${to}.`];
+    case "reaching":
+    case "unreachable":
+      return [name];
+  }
 }
 
 /** What a Mate's own view shows (`ZeropsMateComingPage`). */
 export type MateComingPage =
   | { readonly kind: "coming"; readonly coming: MateComing }
-  /** Connected: its conversation takes over. */
+  /** Its conversation can be opened: the view hands over to it. */
   | { readonly kind: "up" }
-  /** Nothing to wait for here — stopped, not answering, gone: the projects screen owns its verbs. */
-  | { readonly kind: "elsewhere" };
-
-/** A container answering, or starting to: a socket to it is the next thing, and a short one. */
-const ANSWERING: ReadonlySet<ZeropsContainerHealth | undefined> = new Set([
-  "ready",
-  "initializing",
-  undefined,
-]);
+  /**
+   * On its way to its conversation: what it waits for, as its machine says it (null while no
+   * machine names it yet); the view connects it where the person's session allows.
+   */
+  | { readonly kind: "reaching"; readonly reachability: Reachability | null }
+  /**
+   * Not to be opened — gone, replaced, refused, or not on the account (null): the view says why
+   * where it stands, and never hands the person to another screen on its own.
+   */
+  | { readonly kind: "unreachable"; readonly reachability: Reachability | null };
 
 /**
- * What a new Mate's own view shows: how far it has got while it comes up — including the moment
- * between its container answering and its socket opening, "Almost there." — its conversation once
- * it is connected, and the projects screen for anything with nothing to wait for. `undefined` while
- * the listing, still being read, may yet name it.
+ * What a Mate's own view shows — where every door opens a Mate whose conversation cannot be
+ * opened yet: how far a new one has got while it comes up (`mateComing`), its conversation once
+ * that can be opened — its environment registered and worth a link (`mateLink`), or its row
+ * connected — and until then what its machine waits for. Only a terminal verdict, or a whole
+ * listing that lacks it, is `unreachable`. `undefined` while the listing, still being read, may
+ * yet name it and no machine speaks for it.
  */
 export function mateComingPage(input: {
   readonly coming: MateComing | undefined;
   readonly candidate: { readonly group: ZeropsCandidateGroup } | undefined;
-  /** Its container's health probe, once it answered. */
-  readonly health: ZeropsContainerHealth | undefined;
   /** The listing is whole: a project it lacks is not on the account. */
   readonly complete: boolean;
+  /** Its conversation's environment is registered and worth a link (`mateLink`). */
+  readonly linked: boolean;
+  /** What its machine says of it (`mateLink`); null while no machine names it. */
+  readonly reachability: Reachability | null;
 }): MateComingPage | undefined {
   if (input.coming !== undefined) return { kind: "coming", coming: input.coming };
-  const { candidate } = input;
-  if (candidate === undefined) return input.complete ? { kind: "elsewhere" } : undefined;
-  if (candidate.group === "connected") return { kind: "up" };
-  if (candidate.group === "ready" && ANSWERING.has(input.health)) {
-    return { kind: "coming", coming: { kind: "coming", line: ALMOST_THERE_LINE, verb: undefined } };
+  const { candidate, reachability } = input;
+  if (input.linked || candidate?.group === "connected") return { kind: "up" };
+  if (reachability !== null && isTerminalReachability(reachability)) {
+    return { kind: "unreachable", reachability };
   }
-  return { kind: "elsewhere" };
+  if (candidate === undefined) {
+    if (input.complete) return { kind: "unreachable", reachability: null };
+    return reachability === null ? undefined : { kind: "reaching", reachability };
+  }
+  return { kind: "reaching", reachability };
+}
+
+/**
+ * The line under a Mate's name in its own view, in the route gate's words for the same verdict
+ * (§4.8, one phrase producer): what its link waits for while it is on its way — "Opening this
+ * conversation…" while its machine has nothing more to say — and why it cannot be opened, each
+ * with its verbs.
+ */
+export function mateOpeningPhrase(
+  page: Extract<MateComingPage, { readonly kind: "reaching" | "unreachable" }>,
+  context: { readonly nowMs: number; readonly mateName: string },
+): RouteGatePhrase {
+  if (page.kind === "unreachable") {
+    return routeGatePhrase({ kind: "unavailable", reachability: page.reachability }, context);
+  }
+  const waiting = routeGatePhrase({ kind: "wait", reachability: page.reachability }, context);
+  return waiting.text === null
+    ? routeGatePhrase({ kind: "wait", reachability: null }, context)
+    : waiting;
 }

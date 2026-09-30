@@ -339,12 +339,24 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     );
   };
 
-  /** A registration nothing remembers, and that no install is writing, is released. */
+  /**
+   * A registration nothing remembers, that no install is writing and that no machine holds, is
+   * released. A held one is the Mate's live link: a record write that did not land, or another
+   * tab's records stored without it, says nothing about it — once its machine lets it go, it is
+   * released like any other.
+   */
   const release = () => {
     if (stores === null || closed) return;
     const remembered = new Set(stores.records.list().map((record) => record.environmentId));
+    const held = new Set(
+      [...stores.driver.machines().values()].flatMap(({ credential }) =>
+        credential.kind === "held" ? [credential.environmentId] : [],
+      ),
+    );
     for (const environment of registered) {
-      if (remembered.has(environment.environmentId)) continue;
+      if (remembered.has(environment.environmentId) || held.has(environment.environmentId)) {
+        continue;
+      }
       if (environment.origin !== null && installing.has(environment.origin)) continue;
       ports.door.remove(environment.environmentId);
     }
@@ -620,6 +632,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       }),
       driver.subscribe(() => {
         updateRoute();
+        // A credential its machine let go — an install that failed, a retirement — is released.
+        release();
         notify();
       }),
       ports.records.listen(registrationsChanged),
