@@ -230,7 +230,9 @@ const timeOf = (startedAt: string | undefined, endedAt: string | undefined, nowM
  * services its import brings on a quiet line under it — then its workspace (the container, its
  * address, closing it off, Mate answering, the first connect: one step to the person), then the
  * person's own sign-in, next. A New project's first Mate is the project, so its copy folds into
- * its workspace. A step's time is what its own facts measure; a step with none says none.
+ * its workspace. A step's time is what its own facts measure; a step with none says none, and a
+ * running one counts from the earliest start its facts hold, so a start read later never moves
+ * its clock back.
  */
 export function arrivalSteps(
   progress: {
@@ -287,10 +289,12 @@ export function arrivalSteps(
           : parts.some((step) => step.state === "active" || step.state === "done")
             ? "active"
             : "waiting";
-    // From the first of its parts with a measured start, else from its project's end.
-    const startedAt =
-      parts.find((step) => step.startedAt !== undefined)?.startedAt ??
-      (project?.state === "done" ? project.endedAt : undefined);
+    // From the earliest start its facts hold: its project's end, or a part's own start. Never
+    // the first one read, which a start read later can precede (0:12, then 0:08, measured).
+    const startedAt = earliest([
+      ...parts.map((step) => step.startedAt),
+      project?.state === "done" && !foldsCopy ? project.endedAt : undefined,
+    ]);
     const time =
       state === "active" || state === "failed" ? timeOf(startedAt, undefined, nowMs) : undefined;
     steps.push({
@@ -311,6 +315,18 @@ function optional<Key extends string, Value>(
   value: Value | undefined,
 ): { readonly [K in Key]?: Value } {
   return (value === undefined ? {} : { [key]: value }) as { readonly [K in Key]?: Value };
+}
+
+/** The earliest of the times given, as given; undefined where none reads as a time. */
+function earliest(times: ReadonlyArray<string | undefined>): string | undefined {
+  let found: { readonly at: string; readonly ms: number } | undefined;
+  for (const at of times) {
+    if (at === undefined) continue;
+    const ms = Date.parse(at);
+    if (Number.isNaN(ms) || (found !== undefined && found.ms <= ms)) continue;
+    found = { at, ms };
+  }
+  return found?.at;
 }
 
 /** How a runtime's own step reads on the copy's quiet line. */
