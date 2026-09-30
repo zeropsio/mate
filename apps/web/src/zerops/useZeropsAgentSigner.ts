@@ -42,6 +42,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -332,8 +333,9 @@ export function useZeropsAgentSignerRecord(input: {
     previous: ZeropsAgentAuthSnapshot | null;
   } | null>(null);
   // Also renewed for another person or project: a retry scheduled for the
-  // one before must never write their record under this session.
-  useEffect(() => {
+  // one before must never write their record under this session. Both run before paint, so a
+  // sign-in that just succeeded counts as its record being written from its first frame.
+  useLayoutEffect(() => {
     const current = {
       owner: lifetimeOwner,
       controller: new AbortController(),
@@ -349,7 +351,7 @@ export function useZeropsAgentSignerRecord(input: {
     };
   }, [lifetimeOwner]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const owner = lifetime.current;
     if (
       owner === null ||
