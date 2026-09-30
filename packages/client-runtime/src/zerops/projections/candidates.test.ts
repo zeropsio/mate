@@ -395,6 +395,7 @@ describe("candidatesNotice", () => {
   it.each<{
     readonly name: string;
     readonly listing: Known<ReadonlyArray<CandidateRow>>;
+    readonly patient?: boolean;
     readonly notice: object | null;
   }>([
     {
@@ -435,26 +436,47 @@ describe("candidatesNotice", () => {
       },
     },
     {
-      name: "partial: still reading over the rows read",
+      name: "partial: still reading over the rows read, once it has held the one voice's 1.5 s",
       listing: known([row("a")], "partial"),
       notice: {
         region: "value",
-        message: { text: "Still reading…", afterMs: 0, tone: "quiet" },
+        message: { text: "Still reading…", afterMs: 1_500, tone: "quiet" },
         affordance: null,
       },
     },
     {
-      name: "complete with a presence unread: still reading",
-      listing: known([row("a", "unknown")]),
+      name: "partial, with no row read: still reading in place of a none it may not say",
+      listing: known([], "partial"),
       notice: {
         region: "value",
-        message: { text: "Still reading…", afterMs: 0, tone: "quiet" },
+        message: { text: "Still reading…", afterMs: 1_500, tone: "quiet" },
         affordance: null,
       },
     },
+    {
+      name: "partial past its patience: the rows hold what they have, and say nothing",
+      listing: known([row("a")], "partial"),
+      patient: false,
+      notice: null,
+    },
+    {
+      name: "partial past its patience with no row read: still says it, for there is nothing else",
+      listing: known([], "partial"),
+      patient: false,
+      notice: {
+        region: "value",
+        message: { text: "Still reading…", afterMs: 1_500, tone: "quiet" },
+        affordance: null,
+      },
+    },
+    {
+      name: "complete with a presence unread: the row says it is checking, the list nothing",
+      listing: known([row("a", "unknown")]),
+      notice: null,
+    },
     { name: "complete: nothing to say", listing: known([row("a")]), notice: null },
-  ])("$name", ({ listing, notice }) => {
-    expect(candidatesNotice(listing, surface, 0)).toEqual(notice);
+  ])("$name", ({ listing, patient = true, notice }) => {
+    expect(candidatesNotice(listing, surface, 0, { patient })).toEqual(notice);
   });
 });
 
