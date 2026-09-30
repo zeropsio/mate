@@ -26,6 +26,7 @@ import { fixMatesOf } from "~/zerops/fixMates";
 import { fixRequestPrompt, type FixProblem } from "~/zerops/fixRequest";
 
 import { gatedPortal } from "../ui/portal-gate";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ZeropsMark } from "../ZeropsMark";
 import { MateFace } from "./primitives";
 import { routeMenuEntries } from "./ZeropsPublicRoutes";
@@ -85,22 +86,30 @@ export function SidebarProductionChip({
   const face = chipFace(chip);
   return (
     <PopoverPrimitive.Root onOpenChange={setOpen} open={open}>
-      <PopoverPrimitive.Trigger
-        render={
-          <button
-            aria-label={face.words}
-            className="zerops-envchip relative z-1"
-            data-tone={face.tone}
-            data-zerops-chip={chip.label}
-            data-zerops-stops={stops.join(" ")}
-            data-zerops-surface="sidebar-production-chip"
-            ref={trigger}
-            type="button"
-          />
-        }
-      >
-        {face.label}
-      </PopoverPrimitive.Trigger>
+      {/* Its state in words before a press (D): the pill's word alone says only which place. */}
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <PopoverPrimitive.Trigger
+              render={
+                <button
+                  aria-label={face.words}
+                  className="zerops-envchip relative z-1"
+                  data-tone={face.tone}
+                  data-zerops-chip={chip.label}
+                  data-zerops-stops={stops.join(" ")}
+                  data-zerops-surface="sidebar-production-chip"
+                  ref={trigger}
+                  type="button"
+                />
+              }
+            />
+          }
+        >
+          {face.label}
+        </TooltipTrigger>
+        {open ? null : <TooltipPopup side="bottom">{face.words}</TooltipPopup>}
+      </Tooltip>
       <ChipPortal>
         <PopoverPrimitive.Positioner align="end" className="z-130" side="bottom" sideOffset={6}>
           <PopoverPrimitive.Popup
