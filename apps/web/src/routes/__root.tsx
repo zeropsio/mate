@@ -91,7 +91,9 @@ import { RouteGateView } from "./-routeGate";
 import { installMateDiagnostics } from "~/zerops/diagnostics";
 import { useHeldPast } from "~/zerops/useHeldPast";
 import { useNowMs } from "~/zerops/useNowMs";
+import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { rememberedMateIdentity, rememberMateIdentities } from "~/zerops/mateIdentityMemory";
+import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsMate, useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import { ZeropsReviewProvider } from "~/zerops/ZeropsReviewProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -141,7 +143,7 @@ function RootRouteView() {
 function SignedInRootRouteView() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
-  const { environments } = useEnvironments();
+  const { environments, isReady: environmentsReady } = useEnvironments();
   const door = resolveDoor(authGateState, {
     pathname,
     environmentCount: countDoorEnvironments(environments),
@@ -175,9 +177,13 @@ function SignedInRootRouteView() {
   const routeMate = useZeropsMate(routeEnvironment ?? NO_ENVIRONMENT);
   // Who lives where, remembered for the next reload's first frame (`mateIdentityMemory`).
   const mateDirectory = useZeropsMateDirectory();
+  // Whole only once the listing is complete and every environment is registered: a Mate the
+  // directory then lacks has left, and is forgotten.
+  const { listing: mateListing } = useZeropsCandidates();
+  const directoryWhole = heldCandidates(mateListing).complete && environmentsReady;
   useEffect(() => {
-    rememberMateIdentities(mateDirectory);
-  }, [mateDirectory]);
+    rememberMateIdentities(mateDirectory, { complete: directoryWhole });
+  }, [directoryWhole, mateDirectory]);
   const routeMateName =
     routeMate.kind === "mate"
       ? routeMate.mate.name
