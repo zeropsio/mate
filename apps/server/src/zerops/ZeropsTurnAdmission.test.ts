@@ -13,6 +13,7 @@ import {
   type ZeropsAgentId,
   type ZeropsLoginState,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -23,6 +24,7 @@ import { ProviderInstances } from "../spi/providerInstances.ts";
 import { ThreadToolPolicyRegistry, type ThreadToolProfile } from "../spi/threadToolPolicy.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ZeropsAgentAuthModule from "./ZeropsAgentAuth.ts";
+import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
@@ -95,6 +97,10 @@ interface World {
   };
   /** Logins beyond the defaults (`ZeropsLogins`), by id → their state. */
   readonly logins?: Readonly<Record<string, ZeropsLoginState>>;
+  /** The server-driven logins this server holds (`ZeropsAgentLogin`), by agent. */
+  readonly agentLogins?: ZeropsAgentLoginModule.ZeropsAgentLoginByAgent;
+  /** Every question the gate was asked, as it was asked. */
+  readonly gateCalls?: Array<{ readonly agentId: string; readonly login: unknown }>;
 }
 
 const DEFAULT_DRIVERS: Readonly<Record<string, string>> = {
@@ -169,14 +175,19 @@ const admission = (world: World) =>
         Layer.mock(ZeropsAgentAuthModule.ZeropsAgentAuth)({
           latest: Effect.succeed({ available: true, agents: world.agents ?? [] }),
         }),
+        Layer.mock(ZeropsAgentLoginModule.ZeropsAgentLogin)({
+          latest: Effect.succeed(world.agentLogins ?? {}),
+        }),
         Layer.mock(ZeropsProjectSignersModule.ZeropsProjectSigners)({
-          turnRefusal: ({ agentId, agent, subject }) =>
-            Effect.succeed(
-              ZeropsProjectSignersModule.turnRefusal({
-                agent,
-                signer: world.signers?.[agentId],
-                subject,
-              }),
+          turnRefusal: ({ agentId, agent, subject, login }) =>
+            Effect.sync(() => world.gateCalls?.push({ agentId, login })).pipe(
+              Effect.as(
+                ZeropsProjectSignersModule.turnRefusal({
+                  agent,
+                  signer: world.signers?.[agentId],
+                  subject,
+                }),
+              ),
             ),
           loginRefusal: ({ key, state, token, subject }) =>
             Effect.succeed(
@@ -265,6 +276,33 @@ const evaSignedWork: World = {
   drivers: { ...DEFAULT_DRIVERS, "claudeAgent-work": "claudeAgent" },
   logins: { "claudeAgent-work": "authorized" },
 };
+
+// The stand-up leaves as its person's sign-in succeeds, a second before their record lands: the
+// gate waits for a record on its way only if it is told of the login, which this server holds
+// itself (`ZeropsAgentLogin`), not on the agent-auth feed's rows.
+describe("ZeropsTurnAdmission — the login the gate is told of", () => {
+  it.effect("hands the gate the agent's login this server holds", () =>
+    Effect.gen(function* () {
+      const login = {
+        phase: "succeeded",
+        terminalId: "t",
+        startedAt: DateTime.makeUnsafe(CREATED_AT),
+        startedBy: JAN,
+      } as const;
+      const gateCalls: Array<{ readonly agentId: string; readonly login: unknown }> = [];
+      yield* admitted(
+        {
+          agents: [{ ...signedIn("claude-code"), state: "local-only", providerAuth: "unknown" }],
+          agentLogins: { "claude-code": login },
+          gateCalls,
+        },
+        turnStart("claudeAgent"),
+        session(JAN),
+      );
+      assert.deepStrictEqual(gateCalls, [{ agentId: "claude-code", login }]);
+    }),
+  );
+});
 
 describe("ZeropsTurnAdmission", () => {
   for (const [name, world, command, principal, expected] of [

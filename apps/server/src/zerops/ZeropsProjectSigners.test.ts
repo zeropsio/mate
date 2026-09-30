@@ -700,9 +700,7 @@ describe("the turn gate", () => {
     Effect.gen(function* () {
       const now = yield* DateTime.now;
       return {
-        ...signedIn,
-        state: "local-only",
-        providerAuth: "unknown",
+        agent: { ...signedIn, state: "local-only", providerAuth: "unknown" },
         login: { phase: "succeeded", terminalId: "t", startedAt: now, startedBy },
       } as const;
     });
@@ -710,9 +708,9 @@ describe("the turn gate", () => {
   it.effect("a turn on its own person's sign-in just made waits for the record on its way", () =>
     Effect.gen(function* () {
       const { signers, setTags } = yield* gate([]);
-      const agent = yield* justSignedIn(JAN);
+      const { agent, login } = yield* justSignedIn(JAN);
       const fiber = yield* signers
-        .turnRefusal({ agentId: "claude-code", agent, subject: JAN })
+        .turnRefusal({ agentId: "claude-code", agent, subject: JAN, login })
         .pipe(Effect.forkChild);
       yield* TestClock.adjust(Duration.seconds(2));
       setTags([signerTag("claude-code", JAN)]);
@@ -725,9 +723,9 @@ describe("the turn gate", () => {
   it.effect("a record that never lands refuses once the wait is over", () =>
     Effect.gen(function* () {
       const { signers } = yield* gate([]);
-      const agent = yield* justSignedIn(JAN);
+      const { agent, login } = yield* justSignedIn(JAN);
       const fiber = yield* signers
-        .turnRefusal({ agentId: "claude-code", agent, subject: JAN })
+        .turnRefusal({ agentId: "claude-code", agent, subject: JAN, login })
         .pipe(Effect.forkChild);
       yield* TestClock.adjust(SIGNER_RECORD_WAIT);
       yield* TestClock.adjust(Duration.seconds(1));
@@ -739,10 +737,15 @@ describe("the turn gate", () => {
   it.effect("somebody else's sign-in is nothing this turn waits for", () =>
     Effect.gen(function* () {
       const { signers, reads } = yield* gate([]);
-      const agent = yield* justSignedIn(EVA);
+      const { agent, login } = yield* justSignedIn(EVA);
       const before = reads();
 
-      const refusal = yield* signers.turnRefusal({ agentId: "claude-code", agent, subject: JAN });
+      const refusal = yield* signers.turnRefusal({
+        agentId: "claude-code",
+        agent,
+        subject: JAN,
+        login,
+      });
       assert.deepStrictEqual(refusal, { kind: "unrecorded" });
       assert.strictEqual(reads() - before, 1, "one re-read, no wait");
     }).pipe(Effect.scoped),

@@ -271,10 +271,10 @@ export class ZeropsProjectSigners extends Context.Service<
      */
     readonly turnRefusal: (input: {
       readonly agentId: ZeropsAgentId;
-      readonly agent: ZeropsAgentAuthFields &
-        Pick<ZeropsAgentAuth, "flagToken"> &
-        Partial<Pick<ZeropsAgentAuth, "login">>;
+      readonly agent: ZeropsAgentAuthFields & Pick<ZeropsAgentAuth, "flagToken">;
       readonly subject: string | undefined;
+      /** The agent's server-driven login as this server holds it (`ZeropsAgentLogin`). */
+      readonly login?: ZeropsAgentLoginState | undefined;
     }) => Effect.Effect<TurnRefusal | undefined>;
     /**
      * {@link loginTurnRefusal} for this session on the login whose signer tag
@@ -501,13 +501,14 @@ export const make = Effect.gen(function* () {
       return refusal;
     });
 
-  const gateTurn: ZeropsProjectSigners["Service"]["turnRefusal"] = ({ agentId, agent, subject }) =>
+  const gateTurn: ZeropsProjectSigners["Service"]["turnRefusal"] = ({
+    agentId,
+    agent,
+    subject,
+    login,
+  }) =>
     Effect.gen(function* () {
-      const awaitRecord = signerRecordOnItsWay(
-        agent.login,
-        subject,
-        yield* Clock.currentTimeMillis,
-      );
+      const awaitRecord = signerRecordOnItsWay(login, subject, yield* Clock.currentTimeMillis);
       return yield* gate(agentId, (signer) => turnRefusal({ agent, signer, subject }), awaitRecord);
     });
 
