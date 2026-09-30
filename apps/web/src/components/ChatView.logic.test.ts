@@ -73,6 +73,7 @@ import {
   shouldReleaseTimelineAnchorForToolActivity,
   shouldShowBranchMismatchBanner,
   shouldWriteThreadErrorToCurrentServerThread,
+  conversationContentPending,
 } from "./ChatView.logic";
 
 const environmentId = EnvironmentId.make("environment-local");
@@ -2269,5 +2270,57 @@ describe("restoreQueuedToComposer", () => {
         messages,
       }),
     ).toEqual({ prompt: `${held}\n\nOne${P}\n\nTwo`, images: ["a"], overflow: ["b"] });
+  });
+});
+
+// A load never paints something it takes back: an empty conversation's opening ("What should
+// Quinn do…") waits until the conversation is known to be empty, not merely not read yet.
+describe("conversationContentPending", () => {
+  it.each([
+    {
+      case: "its messages are here",
+      messages: 3,
+      userAt: "2026-09-30T10:00:00Z",
+      turn: true,
+      expected: false,
+    },
+    {
+      case: "nothing read yet, the shell says it was talked to",
+      messages: 0,
+      userAt: "2026-09-30T10:00:00Z",
+      turn: false,
+      expected: true,
+    },
+    {
+      case: "nothing read yet, the shell says a turn ran",
+      messages: 0,
+      userAt: null,
+      turn: true,
+      expected: true,
+    },
+    {
+      case: "never talked to: it is empty",
+      messages: 0,
+      userAt: null,
+      turn: false,
+      expected: false,
+    },
+    {
+      case: "no shell: nothing says it has content",
+      messages: 0,
+      userAt: undefined,
+      turn: undefined,
+      expected: false,
+    },
+  ])("$case → $expected", ({ messages, userAt, turn, expected }) => {
+    expect(
+      conversationContentPending({
+        messageCount: messages,
+        shell:
+          userAt === undefined
+            ? null
+            : { latestUserMessageAt: userAt, latestTurn: turn === true ? {} : null },
+      }),
+    ).toBe(expected);
   });
 });

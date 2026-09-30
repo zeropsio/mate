@@ -441,6 +441,7 @@ import {
   resolveComposerProviderSelection,
   resolveDraftHeroState,
   resolveZeropsConversationReadOnly,
+  conversationContentPending,
   resolveZeropsOwnedAgentSendBlockReason,
   resolveZeropsProviderAvailability,
   peekRememberedThreadTimeline,
@@ -8191,7 +8192,14 @@ export default function ChatView(props: ChatViewProps) {
                   onIsAtEndChange={onIsAtEndChange}
                   onManualNavigation={cancelTimelineLiveFollowForUserNavigation}
                   cancelPositionRestoreRef={cancelPositionRestoreRef}
-                  hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
+                  hideEmptyPlaceholder={
+                    isDraftHeroState ||
+                    threadDetailLoading ||
+                    conversationContentPending({
+                      messageCount: activeThread?.messages.length ?? 0,
+                      shell: activeThreadShell ?? null,
+                    })
+                  }
                   loading={threadDetailLoading && !isDraftHeroState}
                   syncing={threadSyncPhase !== null || threadDetailLoading}
                   queuedMessages={queuedMessages}
