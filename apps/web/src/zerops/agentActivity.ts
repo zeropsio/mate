@@ -133,6 +133,17 @@ export function mateFaceFor(
   return activity?.face ?? "idle";
 }
 
+/**
+ * The face of a Mate whose own change waits on the person's review
+ * (`mateNextStep`, the composer's top): it needs them, so it wears the
+ * needs-you face wherever it is not at work — a row, a folded heading — the
+ * one the composer's top wears for the same fact. At work, the work shows;
+ * the review still waits under it.
+ */
+export function mateFaceAwaitingReview(face: MateMarkState, reviewWaits: boolean): MateMarkState {
+  return reviewWaits && face !== "working" ? "needs" : face;
+}
+
 export function agentActivitySnippet(
   thread: Pick<EnvironmentThreadShell, "latestMessagePreview">,
 ): string | undefined {

@@ -55,6 +55,7 @@ import {
   groupFlow,
   hasMate,
   mateEnvironmentsEmptyReason,
+  mateNextStep,
   mateShapeOf,
   pullRequestsByMate,
   pullRequestsFolded,
@@ -1152,6 +1153,17 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             },
           ]),
     ];
+    // Whether a Mate's own change waits on the person's review — the
+    // composer's top's own rule (`mateNextStep`), on the flow Gitea answered:
+    // its row and its face on the folded heading wear needs-you for it.
+    const reviewWaits = (item: T) =>
+      flow !== undefined &&
+      flow.changesKnown !== false &&
+      mateNextStep({
+        pullRequests: flow.pullRequests,
+        mateProjectId: item.project.id,
+        mateName: undefined,
+      }).kind === "review";
     // Folded, the heading shows who is busy in it (M15): its Mates that need
     // you, work, stopped on an error or finished unseen, each as its row draws
     // it (`mateRowView`) — once its rows have folded away.
@@ -1161,7 +1173,11 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           mateEntries.map(({ item }) => {
             const live = getActivity?.(item);
             const coming = getComing?.(item);
-            const read = mateRowReading({ connected: item.group === "connected", activity: live });
+            const read = mateRowReading({
+              connected: item.group === "connected",
+              activity: live,
+              reviewWaits: reviewWaits(item),
+            });
             const view = coming === undefined ? read : mateComingRowView(read, coming);
             return {
               projectId: item.project.id,
@@ -1311,6 +1327,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   numbers={altHeld}
                   onSelect={onSelect}
                   owner={getOwner?.(item)}
+                  reviewWaits={reviewWaits(item)}
                   timestampFormat={timestampFormat}
                   {...faceOf(item.project)}
                 />
@@ -2175,6 +2192,7 @@ function MateRow<T extends RosterCandidate>({
   keys,
   number,
   numbers = false,
+  reviewWaits = false,
 }: {
   readonly candidate: T;
   readonly tint: MateTintId;
@@ -2201,6 +2219,8 @@ function MateRow<T extends RosterCandidate>({
   readonly number?: number | undefined;
   /** Option is held: the time slot shows the number instead. */
   readonly numbers?: boolean;
+  /** Its own change waits on the person's review (`mateNextStep`): it wears needs-you. */
+  readonly reviewWaits?: boolean;
 }) {
   const tags = readZeropsGroupTags(candidate.project.tagList);
   const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
@@ -2214,7 +2234,11 @@ function MateRow<T extends RosterCandidate>({
   // read through its socket, or until the socket opens what this browser
   // remembers the row saying. A Mate still coming up says only that
   // (`mateComingRowView`).
-  const read = mateRowReading({ connected: candidate.group === "connected", activity });
+  const read = mateRowReading({
+    connected: candidate.group === "connected",
+    activity,
+    reviewWaits,
+  });
   const view = deleting
     ? mateDeletingView(read)
     : coming === undefined

@@ -734,6 +734,62 @@ describe("mateRowReading — the face follows the work, and the words never outr
     expect(view.reply).toEqual(reply);
   });
 
+  // Its own change waiting on the person's review (`mateNextStep`, the composer's top) is the
+  // same fact on the row: the needs-you face and the amber dot, wherever the Mate is not at work.
+  it.each([
+    {
+      case: "at rest, its change waits: needs you",
+      connected: true,
+      activity: reading({ kind: "idle", face: "idle" }),
+      state: "needs",
+      face: "needs",
+      dot: "attention",
+    },
+    {
+      case: "finished unseen, its change waits: needs you before unread",
+      connected: true,
+      activity: reading({ kind: "idle", face: "done", unread: true }),
+      state: "needs",
+      face: "needs",
+      dot: "attention",
+    },
+    {
+      case: "at work, its change waits: the work shows",
+      connected: true,
+      activity: reading(),
+      state: "working",
+      face: "working",
+      dot: undefined,
+    },
+    {
+      case: "nothing read yet, its change waits: needs you",
+      connected: true,
+      activity: undefined,
+      state: "needs",
+      face: "needs",
+      dot: "attention",
+    },
+    {
+      case: "not connected, its change waits: the review still waits on you",
+      connected: false,
+      activity: remembered,
+      state: "needs",
+      face: "needs",
+      dot: "attention",
+    },
+    {
+      case: "stopped on an error, its change waits: the error shows",
+      connected: true,
+      activity: reading({ kind: "failed", face: "idle" }),
+      state: "failed",
+      face: "idle",
+      dot: "failed",
+    },
+  ] as const)("$case", ({ connected, activity, state, face, dot }) => {
+    const view = mateRowReading({ connected, activity, reviewWaits: true });
+    expect({ state: view.state, face: view.face, dot: view.dot }).toEqual({ state, face, dot });
+  });
+
   it("never draws the working dots under an asleep face", () => {
     for (const connected of [true, false]) {
       for (const activity of [reading(), remembered, undefined]) {

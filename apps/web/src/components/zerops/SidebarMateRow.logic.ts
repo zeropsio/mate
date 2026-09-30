@@ -12,7 +12,11 @@ import { CREW_SET_UP_WORD } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewStatus } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
-import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import {
+  mateFaceAwaitingReview,
+  mateFaceFor,
+  type ZeropsAgentActivity,
+} from "~/zerops/agentActivity";
 import type { MateComing } from "~/zerops/mateComing";
 import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
 
@@ -296,11 +300,12 @@ export function mateRowView(
   face: MateMarkState,
 ): MateRowView {
   if (activity === undefined) {
+    const needs = face === "needs";
     return {
-      state: "idle",
+      state: needs ? "needs" : "idle",
       face,
       slot: { kind: "none" },
-      dot: undefined,
+      dot: needs ? "attention" : undefined,
       strongName: false,
       ask: undefined,
       reply: undefined,
@@ -431,6 +436,9 @@ export function mateRowActivity(input: {
  * | remembered (`menuMemory.ts`)          | asleep, idle if connected | held, empty             |
  * | none                                  | asleep, idle if connected | —                       |
  *
+ * Its own change waiting on the person's review lifts every face but work's to needs-you
+ * (`mateFaceAwaitingReview`), as the composer's top wears it for the same fact.
+ *
  * A live reading stands while the socket blinks — reconnecting, a listing re-read — because the
  * conversation it was read from still stands; memory is only ever at rest.
  */
@@ -438,10 +446,18 @@ export function mateRowReading(input: {
   /** Its container is connected right now. */
   readonly connected: boolean;
   readonly activity: ZeropsAgentActivity | undefined;
+  /** Its own change waits on the person's review (`mateNextStep`): it needs them. */
+  readonly reviewWaits?: boolean;
 }): MateRowView {
   const { activity } = input;
   const live = activity !== undefined && activity.remembered !== true ? activity : undefined;
-  return mateRowView(activity, mateFaceFor(input.connected || live !== undefined, live));
+  return mateRowView(
+    activity,
+    mateFaceAwaitingReview(
+      mateFaceFor(input.connected || live !== undefined, live),
+      input.reviewWaits === true,
+    ),
+  );
 }
 
 /** A new Mate's first run working: what it is doing, in the person's words. */
