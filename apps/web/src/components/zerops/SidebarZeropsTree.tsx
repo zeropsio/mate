@@ -46,6 +46,7 @@
  * Everything else about the account lives on the projects screen. This is
  * where you work; that is where you manage.
  */
+import { useWarmIntent } from "../chat/warmTimeline";
 import {
   checkDotTone,
   assignCandidateMateTints,
@@ -2283,6 +2284,7 @@ function MateRow<T extends RosterCandidate>({
     viewer,
   });
   const known = activity !== undefined && activity.remembered !== true;
+  const warmIntent = useWarmIntent(activity?.threadKey);
   // Its menu's door to its crew (`mateCrewItem`): whether crew mode is on and
   // a crew applied — a fixture's, or its feed's once it is connected.
   const liveCrewStatus = useCrewStatus(
@@ -2376,6 +2378,9 @@ function MateRow<T extends RosterCandidate>({
         aria-disabled={deleting || undefined}
         className="menu-row grid w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default"
         data-zerops-surface="sidebar-mate"
+        // Resting on it, focusing or touching it warms its conversation, so
+        // a press finds its rows already placed (`KeptTimelines`).
+        {...warmIntent}
         onClick={() => {
           if (longPress.current.fired) {
             longPress.current.fired = false;

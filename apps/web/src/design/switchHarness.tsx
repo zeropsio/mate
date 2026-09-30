@@ -44,7 +44,7 @@ import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRunt
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import { deriveDock } from "~/components/chat/conversationDock.logic";
 import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
-import { MessagesTimeline } from "~/components/chat/MessagesTimeline";
+import { KeptTimelines } from "~/components/chat/KeptTimelines";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { readTimelinePosition } from "~/components/chat/timelineScrollAnchoring";
 import type { TimelineEntry } from "~/session-logic";
@@ -528,6 +528,9 @@ function useHarnessThread(key: string) {
 
 const COMPOSER_HEIGHT = 132;
 
+/** The harness's Mates are never removed. */
+const keptForever = () => true;
+
 function Pane({ threadKey }: { readonly threadKey: string }) {
   const { thread, live, ended, phase, entries } = useHarnessThread(threadKey);
   const listRef = useRef<LegendListRef | null>(null);
@@ -580,37 +583,41 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
           if (event.deltaY < 0) onManualNavigation();
         }}
       >
-        <MessagesTimeline
-          key={routeThreadKey}
-          isWorking={live}
-          activeTurnStartedAt={live ? latestTurn.startedAt : null}
-          listRef={listRef}
-          timelineEntries={entries}
-          latestTurn={latestTurn}
-          runningTurnId={live ? latestTurn.turnId : null}
-          turnDiffSummaries={[]}
-          working={dock}
-          routeThreadKey={routeThreadKey}
-          onOpenTurnDiff={() => undefined}
-          supportsConversationRollback={false}
-          onRevertToTurnCount={() => undefined}
-          isRevertingCheckpoint={false}
-          onImageExpand={() => undefined}
-          activeThreadEnvironmentId={ENVIRONMENT}
-          markdownCwd={undefined}
-          resolvedTheme={appearance}
-          timestampFormat="locale"
-          workspaceRoot={undefined}
-          anchorMessageId={null}
-          onAnchorReady={() => undefined}
-          contentInsetEndAdjustment={COMPOSER_HEIGHT}
-          liveFollowEnabled={liveFollowEnabled}
-          onIsAtEndChange={onIsAtEndChange}
-          onManualNavigation={onManualNavigation}
-          hideEmptyPlaceholder={loading}
-          loading={loading}
-          syncing={phase !== null}
-          topFadeEnabled
+        <KeptTimelines
+          open={routeThreadKey}
+          alive={keptForever}
+          crewTimeline={null}
+          timeline={{
+            isWorking: live,
+            activeTurnStartedAt: live ? latestTurn.startedAt : null,
+            listRef,
+            timelineEntries: entries,
+            latestTurn,
+            runningTurnId: live ? latestTurn.turnId : null,
+            turnDiffSummaries: [],
+            working: dock,
+            routeThreadKey,
+            onOpenTurnDiff: () => undefined,
+            supportsConversationRollback: false,
+            onRevertToTurnCount: () => undefined,
+            isRevertingCheckpoint: false,
+            onImageExpand: () => undefined,
+            activeThreadEnvironmentId: ENVIRONMENT,
+            markdownCwd: undefined,
+            resolvedTheme: appearance,
+            timestampFormat: "locale",
+            workspaceRoot: undefined,
+            anchorMessageId: null,
+            onAnchorReady: () => undefined,
+            contentInsetEndAdjustment: COMPOSER_HEIGHT,
+            liveFollowEnabled,
+            onIsAtEndChange,
+            onManualNavigation,
+            hideEmptyPlaceholder: loading,
+            loading,
+            syncing: phase !== null,
+            topFadeEnabled: true,
+          }}
         />
       </div>
       <div
