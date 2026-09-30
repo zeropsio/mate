@@ -2149,7 +2149,7 @@ export function deriveOutcome(input: {
 /**
  * Whether a run's outcome draws anything under its line. What its calls came
  * to is said on the line itself (`runEffortWords`), so an outcome of that
- * alone draws nothing, and its card is its line (`cardAlone`).
+ * alone draws nothing, and its card holds its line alone.
  */
 export function outcomeDraws(outcome: OutcomeModel): boolean {
   return (

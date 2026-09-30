@@ -9,9 +9,9 @@
  * pipeline and build log, the list, each helper, each task (the owner,
  * 2026-09-27: "so much better expandable inline").
  *
- * It is the card's bottom, so it may change shape; while live it only grows,
- * so a bar that leaves never pulls the conversation down. Settling turns it
- * into the run's result. Work that outlives the turn keeps the same bars at
+ * It is the card's bottom, so it may change shape: a bar that arrives opens
+ * its room, and one that leaves gives it back, easing shut as a run's work
+ * folds into its line. Settling turns it into the run's result. Work that outlives the turn keeps the same bars at
  * the conversation's bottom, with the Mate's face and a way to stop it,
  * until the work ends.
  */
@@ -40,6 +40,7 @@ import { StatusBar, type BarTone } from "./StatusBar";
 import type { DockBackgroundTask, DockModel } from "./conversationDock.logic";
 import { ElapsedSince, type ConversationSpeaker } from "./ConversationRows";
 import { OperationDetail, PlanSteps, useHoldReading } from "./RunChat";
+import { drawerEase, stepHeight, type CarriedRow } from "./stepHeight";
 
 // ---------------------------------------------------------------------------
 // Arriving live
@@ -302,36 +303,95 @@ function Arriving({ children }: { readonly children: ReactNode }) {
 // The panel
 // ---------------------------------------------------------------------------
 
+/** How long the room of a bar that left takes to close: a run's fold's. */
+const ROOM_CLOSE_MS = 360;
+
+/** The panel's room: in a card, its slice of the card; alone, its own. */
+function roomOf(panel: HTMLElement): HTMLElement {
+  return panel.closest<HTMLElement>(".run-tray-middle") ?? panel;
+}
+
 /**
- * The reserved height of what runs alongside: it follows the content up and
- * never back down while live, so a finished bar leaves room at the very
- * bottom instead of pulling the conversation down.
+ * The room of what runs alongside, in its card: it follows its bars up at
+ * once — an arriving bar opens its own (`Arriving`) — and gives back the room
+ * of one that leaves, or of one the person closed, easing shut as a run's work
+ * folds into its line (the owner, 2026-09-30, of a finished deploy's room
+ * kept under a live line: "what's up with the big space … at the bottom").
+ * Measured after each draw: the room it stood at is held for the frame it
+ * would have jumped, then stepped down to what it holds now (`stepHeight`),
+ * carrying the rows of its card the list moves (`carry`); `onRoom` hears the
+ * room it holds while it closes, and null once it holds none.
  */
-function useGrowOnlyHeight() {
-  const contentRef = useRef<HTMLDivElement>(null);
-  const tallestRef = useRef(0);
-  const [minHeight, setMinHeight] = useState<number | undefined>(undefined);
-  useLayoutEffect(() => {
-    const content = contentRef.current;
-    if (content === null) return;
-    const measure = () => {
-      const height = content.getBoundingClientRect().height;
-      if (height > tallestRef.current) {
-        tallestRef.current = height;
-        setMinHeight(height);
-      }
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(content);
-    return () => observer.disconnect();
-  }, []);
-  // The person closed what they opened: the room follows them down, once.
-  const release = () => {
-    tallestRef.current = 0;
-    setMinHeight(undefined);
+function usePanelRoom({
+  carry,
+  onRoom,
+}: {
+  readonly carry?: (() => ReadonlyArray<CarriedRow> | null) | undefined;
+  readonly onRoom?: ((room: number | null) => void) | undefined;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  // The room it stood at: its height once drawn, as it last settled.
+  const stoodRef = useRef(0);
+  const closingRef = useRef<{ readonly stop: () => void; readonly to: number } | null>(null);
+  const settle = () => {
+    const panel = panelRef.current;
+    if (panel === null) return;
+    const room = roomOf(panel);
+    const closing = closingRef.current;
+    const stood = closing === null ? stoodRef.current : room.getBoundingClientRect().height;
+    if (closing !== null) room.style.height = "";
+    const holds = room.getBoundingClientRect().height;
+    if (closing !== null && Math.abs(holds - closing.to) < 0.5) {
+      // Drawn again, closing to where it was already going: it goes on.
+      room.style.height = `${stood}px`;
+      return;
+    }
+    closing?.stop();
+    closingRef.current = null;
+    if (holds >= stood - 0.5) {
+      // It grew, or holds the same: the room follows at once.
+      stoodRef.current = holds;
+      if (closing !== null) onRoom?.(null);
+      return;
+    }
+    const carried = carry?.() ?? null;
+    const stop = stepHeight({
+      element: room,
+      from: stood,
+      to: holds,
+      duration: ROOM_CLOSE_MS,
+      ease: drawerEase,
+      carried,
+      each: (_eased, height) => onRoom?.(height),
+      done: () => {
+        room.style.height = "";
+        closingRef.current = null;
+        stoodRef.current = holds;
+        onRoom?.(null);
+      },
+    });
+    closingRef.current = { stop, to: holds };
+    onRoom?.(stood);
   };
-  return { contentRef, minHeight, release };
+  useLayoutEffect(settle);
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (panel === null) return;
+    const room = roomOf(panel);
+    // What grows it without a draw of its own — a bar opening its room over
+    // 420 ms — moves where it stands.
+    const observer = new ResizeObserver(() => {
+      if (closingRef.current === null) stoodRef.current = room.getBoundingClientRect().height;
+    });
+    observer.observe(room);
+    return () => {
+      observer.disconnect();
+      closingRef.current?.stop();
+      closingRef.current = null;
+      room.style.height = "";
+    };
+  }, []);
+  return { panelRef, settle };
 }
 
 const TASK_BAR: Record<DockBackgroundTask["state"], BarTone> = {
@@ -385,11 +445,22 @@ function DetailRow({
   );
 }
 
+/** Whether anything in the dock runs alongside the Mate: a bar of its own under the live line. */
+export function dockDraws(dock: DockModel | null): boolean {
+  return (
+    dock !== null &&
+    (dock.operations.length > 0 ||
+      dock.tasks !== null ||
+      dock.helpers !== null ||
+      dock.background !== null)
+  );
+}
+
 /**
  * A status bar for each thing that runs — the deploys, a service in trouble,
  * the task list, the helpers, the background tasks — each opening what it
- * holds under it. `onToggle` hears the person open or close one: the room the
- * bars keep may shrink for that, and nothing else.
+ * holds under it. `onDrawn` hears every draw of its own, so the room of a bar
+ * the person closed is given back too.
  */
 function Instruments({
   dock,
@@ -397,36 +468,28 @@ function Instruments({
   environmentId,
   threadRef,
   onOpenAgents,
-  onToggle = null,
+  onDrawn,
 }: {
   readonly dock: DockModel | null;
   readonly incidents: ReadonlyArray<IncidentModel>;
   readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | null;
   readonly onOpenAgents: () => void;
-  readonly onToggle?: (() => void) | null;
+  readonly onDrawn?: (() => void) | undefined;
 }) {
   const hold = useHoldReading();
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
+  useLayoutEffect(() => onDrawn?.());
   const operations = dock?.operations ?? [];
   const helpers = dock?.helpers ?? null;
   const tasks = dock?.tasks ?? null;
   const background = dock?.background ?? null;
-  if (
-    operations.length === 0 &&
-    incidents.length === 0 &&
-    tasks === null &&
-    helpers === null &&
-    background === null
-  ) {
-    return null;
-  }
+  if (!dockDraws(dock) && incidents.length === 0) return null;
   const runningTask = background?.tasks.findLast((task) => task.state === "running");
   const toggle = (key: string) => {
     // What the person opened is theirs to read: the conversation stops
     // following its end, so the bar they pressed stays where it is (K12).
     hold();
-    onToggle?.();
     setOpen((current) => {
       const next = new Set(current);
       if (next.has(key)) next.delete(key);
@@ -595,14 +658,20 @@ export function ConversationWorking({
   environmentId,
   threadRef,
   onOpenAgents,
+  carry,
+  onRoom,
 }: {
   readonly incidents: ReadonlyArray<IncidentModel>;
   readonly dock: DockModel | null;
   readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | null;
   readonly onOpenAgents: () => void;
+  /** The rows the list moves as its room closes (`usePanelRoom`); none outside a list. */
+  readonly carry?: () => ReadonlyArray<CarriedRow> | null;
+  /** The room it holds while it closes, and null once it holds none. */
+  readonly onRoom?: (room: number | null) => void;
 }) {
-  const { contentRef, minHeight, release } = useGrowOnlyHeight();
+  const { panelRef, settle } = usePanelRoom({ carry, onRoom });
   // Drawn once: from here on, what arrives arrives live.
   const shownRef = useRef(false);
   useEffect(() => {
@@ -611,21 +680,15 @@ export function ConversationWorking({
 
   return (
     <PanelShownContext value={shownRef}>
-      <div
-        className="@container/panel"
-        data-conversation-working
-        style={minHeight === undefined ? undefined : { minHeight }}
-      >
-        <div ref={contentRef}>
-          <Instruments
-            dock={dock}
-            environmentId={environmentId}
-            incidents={incidents}
-            onOpenAgents={onOpenAgents}
-            onToggle={release}
-            threadRef={threadRef}
-          />
-        </div>
+      <div ref={panelRef} className="@container/panel" data-conversation-working>
+        <Instruments
+          dock={dock}
+          environmentId={environmentId}
+          incidents={incidents}
+          onDrawn={settle}
+          onOpenAgents={onOpenAgents}
+          threadRef={threadRef}
+        />
       </div>
     </PanelShownContext>
   );

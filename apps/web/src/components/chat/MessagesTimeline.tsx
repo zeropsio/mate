@@ -29,7 +29,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
@@ -147,9 +146,10 @@ import {
 import { SkillInlineText } from "./SkillInlineText";
 import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic";
 import { TurnReport } from "./TurnReport";
-import { ConversationAfterWork, ConversationWorking } from "./ConversationWorking";
+import { ConversationAfterWork, ConversationWorking, dockDraws } from "./ConversationWorking";
 import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat, RunLine } from "./RunChat";
-import { forgetRunFolds, runFoldOf, subscribeRunFolds } from "./runCard.logic";
+import { forgetRunFolds } from "./runCard.logic";
+import type { CarriedRow } from "./stepHeight";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -425,6 +425,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     () => helperFinishesOf(agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL),
     [agentPanelModel],
   );
+  // Whether something runs alongside the live run: its card is then drawn a
+  // slice a row, its panel one of them.
+  const alongside = dockDraws(working);
   const rawRows = useMemo(
     () =>
       deriveMessagesTimelineRows({
@@ -440,6 +443,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         queuedMessages,
         afterTurnWork,
         helperFinishes,
+        alongside,
       }),
     [
       nowMs,
@@ -454,6 +458,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       queuedMessages,
       afterTurnWork,
       helperFinishes,
+      alongside,
     ],
   );
   const rows = useStableRows(rawRows);
@@ -1574,22 +1579,11 @@ export function messageEnters(row: TimelineRow, arrivedAfter: number | null): bo
   return Date.parse(row.createdAt) > arrivedAfter;
 }
 
-/**
- * Whether a card that holds its line alone is closed (`cardAlone`): then its
- * line stands by itself, the card's box drawn only once the work is open.
- */
-function useCardClosedAlone(run: string | undefined): boolean {
-  const { routeThreadKey } = use(TimelineRowCtx);
-  const read = () => run !== undefined && runFoldOf(routeThreadKey, run) === "folded";
-  return useSyncExternalStore(subscribeRunFolds, read, read);
-}
-
 const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: TimelineRow }) {
   const gap = GAP_CLASS[row.gap ?? "none"];
   const card = row.card;
   const content = <TimelineRowBody row={row} />;
   const { arrivedAfter } = use(TimelineRowCtx);
-  const closedAlone = useCardClosedAlone(row.cardAlone);
   const [entering] = useState(() => messageEnters(row, arrivedAfter));
   useEffect(() => {
     if (!entering) return;
@@ -1614,6 +1608,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
             : "animate-rise-in motion-reduce:animate-none"),
       )}
       data-card-slice={card}
+      data-card-whole={row.cardWhole ? "" : undefined}
       data-timeline-row-id={row.id}
       data-timeline-row-kind={row.kind}
       data-message-id={row.kind === "message" ? row.message.id : undefined}
@@ -1622,15 +1617,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {card === undefined ? (
         content
       ) : (
-        <div
-          className={cn(
-            CARD_SLICE[card],
-            card === "middle" ? gap : null,
-            closedAlone ? "run-tray-alone" : null,
-          )}
-        >
-          {content}
-        </div>
+        <div className={cn(CARD_SLICE[card], card === "middle" ? gap : null)}>{content}</div>
       )}
     </div>
   );
@@ -1845,9 +1832,17 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
     watchedTurnKeys.add(row.turnKey);
   }, [row.turnKey]);
   const standRef = usePanelStand(row.turnKey, row.cardKey);
+  const { cardKey } = row;
+  const carry = useCallback(() => cardRowsCarried(standRef.current, cardKey), [standRef, cardKey]);
+  const onRoom = useCallback(
+    (room: number | null) => holdCardRoom(standRef.current, cardKey, room),
+    [standRef, cardKey],
+  );
   return (
     <div ref={standRef} className="contents">
       <ConversationWorking
+        carry={carry}
+        onRoom={onRoom}
         dock={dock}
         environmentId={ctx.activeThreadEnvironmentId}
         incidents={row.incidents}
@@ -1856,6 +1851,56 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
       />
     </div>
   );
+}
+
+/**
+ * The room a live card's panel holds while it closes (`ConversationWorking`),
+ * on the card's line: drawn whole by that row (`[data-card-whole]`), the card
+ * reaches over it (`--card-room`), and is no longer the line alone while it
+ * holds any (`data-card-room`).
+ */
+function holdCardRoom(from: HTMLElement | null, cardKey: string, room: number | null) {
+  const list = from?.closest<HTMLElement>(".timeline-legend-list") ?? null;
+  const line = list?.querySelector<HTMLElement>(
+    `[data-timeline-row-id="${CSS.escape(`record:${cardKey}`)}"] > .run-tray`,
+  );
+  if (line === null || line === undefined) return;
+  if (room === null || room < 0.5) {
+    line.style.removeProperty("--card-room");
+    line.removeAttribute("data-card-room");
+    return;
+  }
+  line.style.setProperty("--card-room", `${room}px`);
+  line.setAttribute("data-card-room", "");
+}
+
+/**
+ * The rows of a live card the list moves as what runs alongside gives its
+ * room back (`ConversationWorking`), from inside that card's working row.
+ * Following its end, the list re-pins to it, and what stands above the room
+ * goes down with it — the card's line and the room's own row — while the
+ * card's edge stands still. Else the list keeps its place, and the card's
+ * edge comes up.
+ */
+function cardRowsCarried(
+  from: HTMLElement | null,
+  cardKey: string,
+): ReadonlyArray<CarriedRow> | null {
+  const own = from?.closest<HTMLElement>("[data-card-slice]") ?? null;
+  const list = own?.closest<HTMLElement>(".timeline-legend-list") ?? null;
+  if (own === null || list === null) return null;
+  const find = (id: string) =>
+    list.querySelector<HTMLElement>(`[data-timeline-row-id="${CSS.escape(id)}"]`);
+  const line = find(`record:${cardKey}`);
+  const edge = find(`card-end:${cardKey}`);
+  if (own.closest("[data-timeline-follows-end]") !== null) {
+    return [
+      ...(line === null ? [] : [{ row: line, direction: 1 as const }]),
+      { row: own, direction: 1 },
+      ...(edge === null ? [] : [{ row: edge, direction: 0 as const }]),
+    ];
+  }
+  return edge === null ? [] : [{ row: edge, direction: -1 }];
 }
 
 /** Work that outlived the turn: the Mate at work, smaller, until it ends. */

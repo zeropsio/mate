@@ -41,6 +41,8 @@ type Scene = {
   startedAt?: number;
   /** When each helper finished, as the helpers panel knows it. */
   helperFinishes?: ReadonlyArray<HelperFinish>;
+  /** Something runs alongside the live run: its panel draws a bar. */
+  alongside?: boolean;
 };
 
 /** A day, in the fixtures' minutes. */
@@ -65,6 +67,7 @@ function framed(scene: Scene): MessagesTimelineRow[] {
     turnDiffSummaries: [],
     supportsConversationRollback: false,
     ...(scene.helperFinishes === undefined ? {} : { helperFinishes: scene.helperFinishes }),
+    ...(scene.alongside === undefined ? {} : { alongside: scene.alongside }),
   });
 }
 
@@ -2293,30 +2296,31 @@ describe("a run's card", () => {
     expect(recordOf(list)).toMatchObject({ answering: true, now: null });
   });
 
-  // A line with nothing under it is no card (the owner, 2026-09-29: "shape of
-  // this with no items below is pretty weird"): a settled run with nothing
-  // under its line marks its card alone, by the run whose fold draws the box
-  // — closed, the line stands by itself; open, the card is drawn around it.
+  // A card with nothing in it but its line's row is drawn whole by that row,
+  // its corners its own (the owner, 2026-09-30, of a live card holding only
+  // "Thinking": "the state of border radiuses in the initial thinking with no
+  // other content around sucks"): settled with nothing to report, or live
+  // with nothing running alongside it.
   it.each([
     {
-      case: "settled, nothing under its line: alone",
+      case: "settled, nothing under its line",
       scene: {
         entries: [user("m0", 0), reasoning("r1", "t1", 1), assistant("a1", "t1", 2, "Done.")],
         settled: "t1",
       } satisfies Scene,
-      alone: ["record", "card-end"],
+      whole: ["record", "card-end"],
     },
     {
       // "Cleo worked 13s · 1 command": what it ran is said on the line.
-      case: "settled, a command counted on its line: alone",
+      case: "settled, a command counted on its line",
       scene: {
         entries: [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, "Done.")],
         settled: "t1",
       } satisfies Scene,
-      alone: ["record", "card-end"],
+      whole: ["record", "card-end"],
     },
     {
-      case: "settled, its result under its line: a card",
+      case: "settled, its result under its line",
       scene: {
         entries: [
           user("m0", 0),
@@ -2325,49 +2329,45 @@ describe("a run's card", () => {
         ],
         settled: "t1",
       } satisfies Scene,
-      alone: [],
+      whole: [],
     },
     {
-      // A screenshot of its own app it looked at is its result: the strip.
-      case: "settled, a picture it looked at under its line: a card",
+      case: "settled, its pause under its line",
       scene: {
         entries: [
           user("m0", 0),
-          {
-            id: "v1",
-            kind: "work",
-            createdAt: at(1),
-            entry: {
-              id: "v1",
-              createdAt: at(1),
-              turnId: turn("t1"),
-              label: "Image view",
-              tone: "tool",
-              itemType: "image_view",
-              viewedImagePath: "/var/www/app/.shots/home-mobile.png",
-              toolLifecycleStatus: "completed",
-              sourceActivityKind: "tool.completed",
-            },
-          },
-          assistant("a1", "t1", 2, "Done."),
+          tool("w1", "t1", 1),
+          assistant("a1", "t1", 48, "You've hit your session limit · resets 9:20pm (UTC)"),
         ],
         settled: "t1",
       } satisfies Scene,
-      alone: [],
+      whole: [],
     },
     {
-      case: "live: a card",
+      case: "live, nothing running alongside",
       scene: {
-        entries: [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, "Looking.")],
+        entries: [user("m0", 0), tool("w1", "t1", 1)],
         live: "t1",
       } satisfies Scene,
-      alone: [],
+      whole: ["record", "working", "card-end"],
     },
-  ])("marks a card alone: $case", ({ scene, alone }) => {
+    {
+      case: "live, nothing done yet",
+      scene: { entries: [user("m0", 0)], live: "t1" } satisfies Scene,
+      whole: ["record", "working", "card-end"],
+    },
+    {
+      case: "live, something running alongside",
+      scene: {
+        entries: [user("m0", 0), tool("w1", "t1", 1)],
+        live: "t1",
+        alongside: true,
+      } satisfies Scene,
+      whole: [],
+    },
+  ])("draws a card whole by its line's row: $case", ({ scene, whole }) => {
     const list = framed(scene);
-    const marked = list.filter((row) => row.cardAlone !== undefined);
-    expect(marked.map((row) => row.kind)).toEqual(alone);
-    expect(marked.map((row) => row.cardAlone)).toEqual(alone.map(() => "msg:m0"));
+    expect(list.filter((row) => row.cardWhole === true).map((row) => row.kind)).toEqual(whole);
   });
 
   // A run with nothing to report settles into its heading and record: the

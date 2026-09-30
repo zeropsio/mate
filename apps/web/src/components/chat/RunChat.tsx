@@ -104,6 +104,7 @@ import {
   type OutcomeModel,
 } from "./conversation.logic";
 import { useRunEffortWords } from "./runResultFacts";
+import { drawerEase, LIST_LAYS_OUT_FRAMES, stepHeight } from "./stepHeight";
 import { StatusBar, type BarTone } from "./StatusBar";
 import { DOCKED_KINDS } from "./conversationDock.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
@@ -2738,8 +2739,6 @@ function easeFeedHeight(feed: HTMLElement, from: number): void {
  * start — the strong ease-out threw a fifth of it in the first frame.
  */
 const SETTLE_FOLD_MS = 360;
-/** Frames a fold waits for the list to lay out what the settle brought (`foldAway`). */
-const SETTLE_FOLD_WAIT_FRAMES = 3;
 
 /**
  * Folds the work over a run's line shut: from its height, less `shift` — how
@@ -2762,59 +2761,21 @@ function foldAway(above: HTMLElement, shift: number, done: () => void): () => vo
     return () => undefined;
   }
   const row = rowFollowingTheEnd(above);
-  let start: number | null = null;
-  let frame = 0;
-  let height = from;
-  let over = false;
-  // The settle's own rows (the answer done, the result) land in the list
-  // first: it lays those out at once, and would this fold's first steps too.
-  let settling = row === null ? 0 : SETTLE_FOLD_WAIT_FRAMES;
-  const stop = () => {
-    over = true;
-    cancelAnimationFrame(frame);
-    observer?.disconnect();
-    if (row !== null) row.style.translate = "";
-  };
-  const step = (now: number) => {
-    frame = 0;
-    if (over) return;
-    if (settling > 0) {
-      settling -= 1;
-      frame = requestAnimationFrame(step);
-      return;
-    }
-    start ??= now;
-    const t = Math.min(1, (now - start) / SETTLE_FOLD_MS);
-    const shut = settleFoldEase(t);
-    const next = from * (1 - shut);
-    // What this step takes, which the list will move the rows for a frame
-    // from now: the card's row is carried that far until it does.
-    const taken = height - next;
-    height = next;
-    above.style.height = `${next}px`;
-    above.style.opacity = String(Math.max(0, 1 - shut / 0.6));
-    if (row !== null) row.style.translate = taken >= 1 / 64 ? `0 ${taken}px` : "";
-    if (t < 1 || taken >= 1 / 64) {
-      // The next step waits on the list's hearing this one (`observer`); a
-      // step too small to change the height has nothing to wait on.
-      if (observer === null || taken < 1 / 64) frame = requestAnimationFrame(step);
-      return;
-    }
-    stop();
-    done();
-  };
-  // Made after the list's own, it hears the row after the list does: the
-  // step it asks for runs once the list has moved the rows for the last one.
-  const observer =
-    row === null
-      ? null
-      : new ResizeObserver(() => {
-          if (frame === 0 && !over) frame = requestAnimationFrame(step);
-        });
-  observer?.observe(above);
-  above.style.height = `${from}px`;
-  frame = requestAnimationFrame(step);
-  return stop;
+  return stepHeight({
+    element: above,
+    from,
+    to: 0,
+    duration: SETTLE_FOLD_MS,
+    ease: drawerEase,
+    // The settle's own rows (the answer done, the result) land in the list
+    // first: it lays those out at once, and would this fold's first steps too.
+    wait: row === null ? 0 : LIST_LAYS_OUT_FRAMES,
+    carried: row === null ? null : [{ row, direction: 1 }],
+    each: (shut) => {
+      above.style.opacity = String(Math.max(0, 1 - shut / 0.6));
+    },
+    done,
+  });
 }
 
 /**
@@ -2826,30 +2787,6 @@ function foldAway(above: HTMLElement, shift: number, done: () => void): () => vo
 function rowFollowingTheEnd(above: HTMLElement): HTMLElement | null {
   const row = above.closest<HTMLElement>("[data-card-slice]");
   return row?.closest("[data-timeline-follows-end]") ? row : null;
-}
-
-/** The drawer's curve, gentler at the start than the strong ease-out, stepped by hand. */
-const settleFoldEase = cubicBezier(0.32, 0.72, 0, 1);
-
-/** A CSS cubic-bezier timing function, by bisection. */
-function cubicBezier(x1: number, y1: number, x2: number, y2: number): (x: number) => number {
-  const at = (p1: number, p2: number, t: number) =>
-    3 * p1 * (1 - t) * (1 - t) * t + 3 * p2 * (1 - t) * t * t + t * t * t;
-  return (x) => {
-    if (x <= 0) return 0;
-    if (x >= 1) return 1;
-    let low = 0;
-    let high = 1;
-    let t = x;
-    for (let round = 0; round < 30; round += 1) {
-      const reached = at(x1, x2, t);
-      if (Math.abs(reached - x) < 1e-6) break;
-      if (reached < x) low = t;
-      else high = t;
-      t = (low + high) / 2;
-    }
-    return at(y1, y2, t);
-  };
 }
 
 /** "Show work" on a folded run's line, "Hide work" once it is open: its chevron turns over. */
