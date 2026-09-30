@@ -164,6 +164,14 @@ describe("the capabilities the client reads", () => {
     assert.strictEqual(capabilities.worktreesAllowed, false);
   });
 
+  it("name the thread snapshot's parameters before any socket exists", () => {
+    for (const policy of [ZEROPS_POLICY, UPSTREAM_POLICY]) {
+      const capabilities = makeServerEnvironmentCapabilities(policy);
+      assert.strictEqual(capabilities.threadSnapshotPagination, true);
+      assert.strictEqual(capabilities.reasoningMessages, true);
+    }
+  });
+
   it("stay on upstream everywhere else", () => {
     const capabilities = makeServerEnvironmentCapabilities(UPSTREAM_POLICY);
     assert.strictEqual(capabilities.vcsStackedActions, true);

@@ -92,6 +92,8 @@ export const makeServerEnvironmentCapabilities = (
     accountLifecycleVersion: 1,
     repositoryIdentity: true,
     connectionProbe: true,
+    threadSnapshotPagination: true,
+    reasoningMessages: true,
     attachmentUploads: true,
     questionAttachments: true,
     fileAttachments: { maxUploadBytes: PROVIDER_SEND_TURN_MAX_FILE_BYTES },
