@@ -2789,6 +2789,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         environments,
         (item) => (item.environmentId === undefined ? undefined : activity.get(item.environmentId)),
         (item) => item.environmentId !== undefined && withConversations.has(item.environmentId),
+        user?.id,
       );
       const isStop = (role: ZeropsEnvironmentRole | undefined) =>
         role === "stage" || role === "prod";

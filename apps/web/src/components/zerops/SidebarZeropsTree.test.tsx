@@ -2454,6 +2454,7 @@ describe("the sidebar and the projects page read one group the same way", () => 
           group.environments,
           () => undefined,
           () => false,
+          undefined,
         ),
         flow: groupReads,
         deployments: new Map(),

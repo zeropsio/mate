@@ -1002,6 +1002,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           entries,
           (item) => getActivity?.(item),
           () => false,
+          viewer,
         ),
         flow: flow === undefined ? undefined : groupFlowReadsOf(flow),
         deployments,
