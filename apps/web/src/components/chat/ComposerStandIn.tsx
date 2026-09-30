@@ -1,0 +1,93 @@
+/**
+ * The composer as it stands where no conversation is open yet: a Mate's own
+ * view while its link is made (`ZeropsMateComingPage`). A switch from a
+ * conversation to a Mate not reachable yet left the pane without a composer
+ * for as long as the link took — 2.5 s and more — and its conversation's
+ * composer came back once it opened: the one thing the person writes in
+ * blinked out and in. This one stands in its place in the meantime, drawn
+ * as `ChatView` draws the composer's dock and `ChatComposer` its card, so the
+ * conversation's own takes over in the same frame, in the same place.
+ *
+ * Nothing can be written or sent yet: it is the card, its placeholder and
+ * its send, at rest. The toolbar's model and meter come with the
+ * conversation.
+ */
+import { ZEROPS_CONNECTED_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
+import { COMPOSER_PROMPT_TYPE_CLASS_NAME } from "../ComposerPromptEditor";
+import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
+import { ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
+
+const nothing = () => undefined;
+
+export function ComposerStandIn() {
+  return (
+    <div
+      className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 sm:pt-2"
+      data-composer-stand-in=""
+      inert
+    >
+      <div className="w-full ps-(--workspace-gutter-start) pe-(--workspace-gutter-end)">
+        <div className="relative z-10">
+          <div className="relative">
+            <div
+              data-slot="composer-shell"
+              className="chat-composer-glass-shell relative mx-auto w-full max-w-3xl"
+            >
+              <div className="chat-composer-glass-host relative z-10 w-full">
+                <div className="relative z-10">
+                  <div className="mx-auto w-full min-w-0 max-w-3xl">
+                    <div className="relative">
+                      <div className="group relative z-10 p-px">
+                        <div>
+                          <div className="relative px-3 pt-3.5 pb-2 sm:px-4 sm:pt-4">
+                            <div className={COMPOSER_PROMPT_TYPE_CLASS_NAME}>
+                              <div
+                                aria-disabled="true"
+                                aria-placeholder={ZEROPS_CONNECTED_COMPOSER_PLACEHOLDER}
+                                className="block min-h-17.5 w-full leading-relaxed"
+                                role="textbox"
+                              />
+                              <div className="pointer-events-none absolute inset-0 leading-relaxed text-placeholder">
+                                {ZEROPS_CONNECTED_COMPOSER_PLACEHOLDER}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible pt-1.5 pe-3 pb-3 ps-3.5">
+                            <div className="flex min-w-0 flex-1" />
+                            <div className="flex shrink-0 flex-nowrap items-center justify-end gap-2">
+                              <ContextWindowMeterPlaceholder />
+                              <ComposerPrimaryActions
+                                compact={false}
+                                pendingAction={null}
+                                isRunning={false}
+                                showPlanFollowUpPrompt={false}
+                                promptHasText={false}
+                                isSendBusy={false}
+                                sendDisabledReason={null}
+                                isConnecting={false}
+                                isEnvironmentUnavailable={false}
+                                isPreparingWorktree={false}
+                                hasSendableContent={false}
+                                onPreviousPendingQuestion={nothing}
+                                onInterrupt={nothing}
+                                onImplementPlanInNewThread={nothing}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div
+              aria-hidden
+              className="h-[calc(env(safe-area-inset-bottom)+1rem)] sm:h-[calc(env(safe-area-inset-bottom)+1.25rem)]"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

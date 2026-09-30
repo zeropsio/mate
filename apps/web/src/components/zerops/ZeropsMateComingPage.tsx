@@ -79,6 +79,7 @@ import { ZeropsProjectLink } from "../chat/ChatHeader";
 import { Button } from "../ui/button";
 import { SidebarInset } from "../ui/sidebar";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
+import { ComposerStandIn } from "../chat/ComposerStandIn";
 import type { BirthLineProgress } from "./ZeropsBirthProgress.logic";
 import { ZeropsArrivalSteps, type ArrivalYou } from "./ZeropsArrivalSteps";
 import { ALMOST_THERE_LINE } from "./ZeropsProjectRow.logic";
@@ -431,8 +432,14 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
               ),
             };
 
+  // An existing Mate's composer stands in its place while its link is made, as its conversation
+  // will draw it: a switch here from a conversation keeps it on screen. A new Mate holds it back
+  // for its stand-up; one that cannot be opened has nothing to write to.
+  const standsInComposer = shown === undefined && page?.kind !== "unreachable";
+
   return (
     <MateComingFrame
+      composer={standsInComposer ? <ComposerStandIn /> : null}
       header={<MateComingHeader mate={{ ...mate, connected: environmentId !== null }} />}
     >
       {view === null ? null : (
@@ -457,9 +464,12 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
  */
 export function MateComingFrame({
   header,
+  composer = null,
   children,
 }: {
   readonly header: ReactNode;
+  /** The composer standing where its conversation's will (`ComposerStandIn`). */
+  readonly composer?: ReactNode;
   readonly children: ReactNode;
 }) {
   return (
@@ -471,7 +481,10 @@ export function MateComingFrame({
         <WorkspacePageHeader className="relative bg-background" data-chat-header>
           {header}
         </WorkspacePageHeader>
-        <div className="relative flex min-h-0 flex-1 flex-col">{children}</div>
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          {children}
+          {composer}
+        </div>
       </div>
     </SidebarInset>
   );
