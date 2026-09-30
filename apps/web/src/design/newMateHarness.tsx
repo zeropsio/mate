@@ -43,7 +43,6 @@ const TIER = {
   kind: "tier" as const,
   tier: "mate" as const,
   yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
-  sources: { app: { repository: "https://gitea.test/acme/app", setup: "app" } },
 };
 const SERVICES = ["db", "redis", "storage", "search", "mailpit", "appdev"];
 

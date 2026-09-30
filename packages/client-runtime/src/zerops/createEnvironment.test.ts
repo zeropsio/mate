@@ -8,12 +8,11 @@ import {
 } from "./createEnvironment.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 
-/** A tier as `importReadyTier` hands it over: services, and where their code is. */
+/** A tier as the group repo's `main` holds it. */
 const TIER = {
   kind: "tier" as const,
   tier: "production" as const,
   yaml: "services:\n  - hostname: api\n    startWithoutCode: true\n",
-  sources: { api: { repository: "https://gitea.test/acme/api", setup: "api" } },
 };
 
 const BASE = {
@@ -360,14 +359,19 @@ describe("the Mate's face", () => {
 });
 
 describe("the recipe choice", () => {
-  it("imports the tier it is handed, and keeps its source map", () => {
-    const plan = planEnvironmentCreation(BASE);
+  it("imports the tier it is handed, each build taken out for an empty start", () => {
+    const plan = planEnvironmentCreation({
+      ...BASE,
+      recipe: {
+        ...TIER,
+        yaml: "services:\n  - hostname: api\n    buildFromGit: https://gitea.test/acme/api\n    zeropsSetup: api\n",
+      },
+    });
     if (!plan.ok) throw new Error(plan.reason);
     const step = plan.steps.find((entry) => entry.kind === "import-recipe");
-    expect(step?.kind === "import-recipe" && step.yaml).toContain("startWithoutCode: true");
-    // The only record of which repository a service's code comes from; the
-    // party that adopts the environment afterwards has no other way to know.
-    expect(step?.kind === "import-recipe" && step.sources).toEqual(TIER.sources);
+    expect(step?.kind === "import-recipe" && step.yaml).toBe(
+      "services:\n  - hostname: api\n    startWithoutCode: true\n",
+    );
   });
 
   it("skips the application entirely when the agent is to set it up", () => {
@@ -410,7 +414,7 @@ services:
       groupId: "g1",
       role: "prod",
       name: "Aurora - production",
-      recipe: { kind: "tier" as const, tier: "production" as const, yaml: recipe, sources: {} },
+      recipe: { kind: "tier" as const, tier: "production" as const, yaml: recipe },
       withAgent: false,
       ...extra,
     });
@@ -455,10 +459,17 @@ services:
   it("keeps create-then-import when the caller chose a region", () => {
     // The project block has no location; ignoring one would put the
     // environment somewhere the user did not ask for.
-    expect(plan(WHOLE, { location: "eu-central" }).map((step) => step.kind)).toEqual([
+    const steps = plan(WHOLE, { location: "eu-central" });
+    expect(steps.map((step) => step.kind)).toEqual([
       "create-project",
       "import-recipe",
       "await-ready",
     ]);
+    // Into a project that exists, services only: the platform refuses a
+    // project block there (`projectImportProjectIncluded`).
+    const [, services] = steps;
+    expect(services?.kind === "import-recipe" && services.yaml).toBe(
+      "#zeropsPreprocessor=on\nservices:\n  - hostname: app\n",
+    );
   });
 });

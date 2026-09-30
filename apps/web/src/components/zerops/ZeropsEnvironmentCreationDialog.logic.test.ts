@@ -32,7 +32,6 @@ const TIER = {
   kind: "tier" as const,
   tier: "stage" as const,
   yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
-  sources: { app: { repository: "https://gitea.test/acme/app", setup: "app" } },
 };
 
 describe("recipeOptions", () => {
@@ -48,8 +47,8 @@ describe("recipeOptions", () => {
 
   /**
    * Every service arrives empty whatever the tier said: the platform cannot
-   * clone a private repository, so `importReadyTier` turned each build into
-   * `startWithoutCode` and the first deploy is what fills them. Measured on the
+   * clone a private repository, so the plan takes each build out
+   * (`recipeTier.ts`) and the first deploy is what fills them. Measured on the
    * demo where a stage came up `READY_TO_DEPLOY` and nothing said so.
    */
   it("says the services arrive without code", () => {

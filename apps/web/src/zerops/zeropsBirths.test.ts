@@ -223,7 +223,7 @@ function matePlan(yaml: string): ReadonlyArray<EnvironmentCreationStep> {
     role: "dev",
     name: "Todo - Vera",
     botName: "Vera",
-    recipe: { kind: "tier", tier: "mate", yaml, sources: {} },
+    recipe: { kind: "tier", tier: "mate", yaml },
   });
   if (!plan.ok) throw new Error(plan.reason);
   return plan.steps;

@@ -21,7 +21,6 @@ function plan(role: ZeropsEnvironmentRole): ReadonlyArray<EnvironmentCreationSte
       kind: "tier",
       tier: role === "prod" ? "production" : "mate",
       yaml: TIER_YAML,
-      sources: {},
     },
     role,
     agents: ["claude-code"],

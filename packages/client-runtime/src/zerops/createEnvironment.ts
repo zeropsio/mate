@@ -35,9 +35,10 @@ import {
   type ZeropsMateFace,
 } from "./groups.ts";
 import {
+  deployTargetTier,
   hasProjectBlock,
   recipeProjectImportYaml,
-  type RecipeServiceSource,
+  recipeServicesYaml,
   type RecipeTier,
 } from "./recipeTier.ts";
 
@@ -60,10 +61,8 @@ export function defaultAgentForRole(role: ZeropsEnvironmentRole): boolean {
 /**
  * Where the new environment's application comes from.
  *
- * - `tier`: a tier of the group repo, already converted to import-ready form
- *   (`importReadyTier`). Its `sources` say which repository each service's code
- *   comes from — the map zcp adopts an environment with (guide 2.4) — and is
- *   carried through rather than reconstructed later.
+ * - `tier`: a tier of the group repo, as `main` holds it. The plan converts it
+ *   for the platform (`recipeTier.ts`).
  * - `none`: no application yet. The agent is the first thing in the
  *   environment and sets the rest up — which is the whole point of having one.
  *
@@ -73,12 +72,7 @@ export function defaultAgentForRole(role: ZeropsEnvironmentRole): boolean {
  * looked created and could not build.
  */
 export type EnvironmentRecipeChoice =
-  | {
-      readonly kind: "tier";
-      readonly tier: RecipeTier;
-      readonly yaml: string;
-      readonly sources: Readonly<Record<string, RecipeServiceSource>>;
-    }
+  | { readonly kind: "tier"; readonly tier: RecipeTier; readonly yaml: string }
   | { readonly kind: "none" };
 
 export interface EnvironmentCreationInput {
@@ -172,17 +166,12 @@ export type EnvironmentCreationStep =
    */
   /**
    * `POST /project/{id}/service-stack/import` with the group's tier for this
-   * role, converted to `startWithoutCode` (`recipeTier.ts`).
-   *
-   * `sources` rides along: it is the only record of which repository each
-   * service's code comes from, and the party that adopts the environment
-   * afterwards has no other way to find out.
+   * role, services only, converted for the platform (`recipeTier.ts`).
    */
   | {
       readonly kind: "import-recipe";
       readonly role: ZeropsEnvironmentRole;
       readonly yaml: string;
-      readonly sources: Readonly<Record<string, RecipeServiceSource>>;
     }
   /**
    * `POST /client/{clientId}/project/import` — the project *and* its services
@@ -231,14 +220,13 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
   const recipe = input.recipe ?? { kind: "none" };
 
   let yaml: string | null;
-  let sources: Readonly<Record<string, RecipeServiceSource>> = {};
   switch (recipe.kind) {
     case "tier": {
-      if (recipe.yaml.trim().length === 0) {
+      const converted = deployTargetTier(recipe.yaml);
+      if (converted === undefined) {
         return { ok: false, reason: "This project has no recipe merged yet." };
       }
-      yaml = recipe.yaml;
-      sources = recipe.sources;
+      yaml = converted;
       break;
     }
     case "none":
@@ -289,7 +277,8 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
     // done (`ZeropsProjectsPage`).
   }
   if (yaml !== null && !wholeProject) {
-    steps.push({ kind: "import-recipe", role: input.role, yaml, sources });
+    // Into a project that exists: the platform refuses a project block here.
+    steps.push({ kind: "import-recipe", role: input.role, yaml: recipeServicesYaml(yaml) });
   }
   // Last. A Mate's Gitea access is no step of its creation: the broker's
   // rights loop writes it onto every registered Mate's `zcp` service with the

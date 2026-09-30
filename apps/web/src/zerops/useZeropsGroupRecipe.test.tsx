@@ -112,10 +112,11 @@ describe("useZeropsGroupRecipe", () => {
     expect(seen()?.tier === undefined).toBe(state !== "present");
   });
 
-  it("hands over the recipe's tier, ready to import, and its services", async () => {
+  it("hands over the recipe's tier as main holds it, and its services", async () => {
+    // The creation's plan converts it: what goes in when depends on whether there is a Mate.
     mount(<Probe />);
     await answer("recipe");
-    expect(seen()?.tier).toMatchObject({ kind: "tier", tier: "mate" });
+    expect(seen()?.tier).toEqual({ kind: "tier", tier: "mate", yaml: RECIPE });
     expect(seen()?.services).toEqual(["db"]);
   });
 
