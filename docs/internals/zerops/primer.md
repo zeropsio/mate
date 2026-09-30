@@ -745,6 +745,18 @@ ledger row or a test.
   - _Built in:_ mate 0.11.69 (PR #39): `240c770ef` `8385fc6bf` `40a435519`
   - _Proven by:_ `MessagesTimeline.test.tsx`, `RunChat.test.tsx`; the harnesses
     `/design-working.html` and `/design-switch.html`
+- **—** — Pass 25: the add-Mate run's findings, the one voice, the switch, the stand-up's pace
+  - _State:_ built, 2026-09-30, on `pass-25`, not released: every item of the run's findings board
+    but the stage and production heading (D′, building); a Mate's link speaks with one voice and a
+    reload never shows an empty pane; a return to a conversation shows it as it stood; the composer
+    never leaves the screen; the stand-up's card shows its builds; zcp stands development up as a
+    graph and answers once it is up (`p25/standup`); versions are named for people (with the
+    broker's `p25/version-names`); the Mate being opened connects first and paints before its
+    socket, once Mates run a server that names the snapshot's parameters
+  - _Built in:_ `pass-25` (mate), zcp `p25/standup`, gitea-mate `p25/version-names`
+  - _Proven by:_ ledger 2026-09-30 _Pass 25 as measured_; `mateVoice.test.ts`,
+    `keptTimelines.logic.test.ts`, `standupBar.logic.test.ts`, `versionName.test.ts`, zcp
+    `TestStandupAfter_EveryDevHalfStartsAtOnce`, `TestStandup_ReturnsOnceDevelopmentIsUp`
 - **6** — Adopting an existing app
   - _State:_ **open** — nothing built; _New project_ has no _I have code_
 - **7** — The raw-token door and the client's re-mint
