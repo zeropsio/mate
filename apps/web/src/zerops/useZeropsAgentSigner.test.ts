@@ -39,7 +39,11 @@ const snapshot = (
     Partial<
       Record<
         "claude-code" | "codex",
-        { readonly phase: "succeeded" | "starting" | "failed"; readonly startedBy: string }
+        {
+          readonly phase: "succeeded" | "starting" | "failed" | "cancelled";
+          readonly startedBy: string;
+          readonly succeededBy?: string;
+        }
       >
     >
   >,
@@ -64,6 +68,14 @@ const snapshot = (
               terminalId: "t",
               startedAt: DateTime.makeUnsafe("2026-09-16T10:00:00.000Z"),
               startedBy: login.startedBy,
+              ...(login.succeededBy === undefined
+                ? {}
+                : {
+                    lastSucceeded: {
+                      startedAt: DateTime.makeUnsafe("2026-09-16T09:59:00.000Z"),
+                      startedBy: login.succeededBy,
+                    },
+                  }),
             },
           }),
       ...(signer === undefined ? {} : { authorizedBy: { subject: signer } }),
@@ -111,6 +123,18 @@ describe("agentSignersToRecord", () => {
       logins: { codex: { phase: "succeeded", startedBy: "user-a" } },
       authorizedBy: { codex: "user-b" },
       expected: ["codex"],
+    },
+    {
+      name: "a sign-in of this person's, then another person's attempt cancelled before the record landed",
+      logins: { codex: { phase: "cancelled", startedBy: "user-b", succeededBy: "user-a" } },
+      authorizedBy: {},
+      expected: ["codex"],
+    },
+    {
+      name: "another person's attempt under way over nobody's success",
+      logins: { codex: { phase: "starting", startedBy: "user-b" } },
+      authorizedBy: {},
+      expected: [],
     },
     {
       name: "both agents at once",

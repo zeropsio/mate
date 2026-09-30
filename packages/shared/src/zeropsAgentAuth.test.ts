@@ -5,6 +5,7 @@ import {
   zeropsAgentUnavailableReason,
   zeropsLoginTitle,
   zeropsLoginUnavailableReason,
+  latestSucceededSignIn,
 } from "./zeropsAgentAuth.ts";
 
 // The platform flag decides, as everywhere in Zerops; the agent CLI's own
@@ -116,5 +117,37 @@ describe("zeropsLoginUnavailableReason", () => {
     ],
   ] as const)("another login, %s, names the login", (kind, login, expected) => {
     expect(zeropsLoginUnavailableReason(login, kind)).toBe(expected);
+  });
+});
+
+// The latest sign-in that succeeded, whatever was started after it: an attempt started and
+// cancelled, or failed, before its record landed changes nothing (Eva signs in, Jan starts and
+// cancels a sign-in before her tag lands).
+describe("latestSucceededSignIn", () => {
+  const at = "2026-09-30T21:38:00.000Z";
+  it.each([
+    { name: "no login", login: undefined, expected: undefined },
+    {
+      name: "a login that succeeded",
+      login: { phase: "succeeded", startedAt: at, startedBy: "eva" },
+      expected: { startedAt: at, startedBy: "eva" },
+    },
+    {
+      name: "one under way, nothing succeeded before it",
+      login: { phase: "menu", startedAt: at, startedBy: "jan" },
+      expected: undefined,
+    },
+    {
+      name: "one cancelled after a success",
+      login: {
+        phase: "cancelled",
+        startedAt: "2026-09-30T21:38:20.000Z",
+        startedBy: "jan",
+        lastSucceeded: { startedAt: at, startedBy: "eva" },
+      },
+      expected: { startedAt: at, startedBy: "eva" },
+    },
+  ] as const)("$name", ({ login, expected }) => {
+    expect(latestSucceededSignIn(login)).toEqual(expected);
   });
 });
