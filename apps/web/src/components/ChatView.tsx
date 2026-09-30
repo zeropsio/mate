@@ -331,13 +331,18 @@ import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { isTimelineScrollTarget } from "./chat/timelineScrollTarget";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
-import { agentAuthAction, zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
+import {
+  agentAuthAction,
+  zeropsAgentAuthView,
+  zeropsAgentSignInRequired,
+} from "@t3tools/client-runtime/zerops/agentLogin";
 import {
   resolveAgentAuthorizer,
   useLocalAgentSigners,
   useZeropsAgentSignerRecord,
   useZeropsEnvironmentProject,
 } from "~/zerops/useZeropsAgentSigner";
+import { mateArrivalHoldsComposer } from "~/zerops/mateStandUp";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
@@ -3881,6 +3886,14 @@ export default function ChatView(props: ChatViewProps) {
       selectedProviderEntry !== undefined &&
       zeropsSendBlockReason === undefined,
     sendBusy: isSendBusy,
+  });
+  // A Mate's empty conversation with no agent signed in is its arrival's sign-in: nothing typed
+  // there could be acted on, so the composer waits with the stand-up's.
+  const zeropsArrivalHoldsComposer = mateArrivalHoldsComposer({
+    standUpHolds: mateStandUp.holdsComposer,
+    signInRequired:
+      zeropsAgentAuth.snapshot !== null && zeropsAgentSignInRequired(zeropsAgentAuth.snapshot),
+    empty: isServerThread && (activeThread?.messages.length ?? 0) === 0,
   });
   const activeProjectDisplayName = zeropsChrome.projectName ?? activeProject?.title;
   const chromeLogicalProjectEnvironments = useMemo(
@@ -8260,10 +8273,10 @@ export default function ChatView(props: ChatViewProps) {
                     // While a new Mate's stand-up waits on this person, the conversation's one
                     // message is its headline: the composer keeps its place (it is what sends the
                     // stand-up) but is neither seen nor reached, and fades back once it has gone.
-                    aria-hidden={mateStandUp.holdsComposer ? true : undefined}
+                    aria-hidden={zeropsArrivalHoldsComposer ? true : undefined}
                     className="relative"
-                    data-standup-holds-composer={mateStandUp.holdsComposer ? "" : undefined}
-                    inert={mateStandUp.holdsComposer}
+                    data-standup-holds-composer={zeropsArrivalHoldsComposer ? "" : undefined}
+                    inert={zeropsArrivalHoldsComposer}
                     style={
                       forceExpandedMobileComposer
                         ? { viewTransitionName: MOBILE_COMPOSER_VIEW_TRANSITION_NAME }

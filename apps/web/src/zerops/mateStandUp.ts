@@ -85,6 +85,22 @@ export function mateStandUpHoldsComposer(input: {
 }
 
 /**
+ * Whether an empty conversation with a Mate holds its composer back: while the stand-up waits on
+ * its person, and wherever no agent is signed in at all — nothing typed there could be acted on,
+ * and the stage's sign-in is the one thing to do (the owner, of a composer under an unsigned
+ * Mate: "this state shouldn't exist").
+ */
+export function mateArrivalHoldsComposer(input: {
+  readonly standUpHolds: boolean;
+  /** No agent of the Mate is signed in (`zeropsAgentSignInRequired`). */
+  readonly signInRequired: boolean;
+  /** The conversation holds no message yet. */
+  readonly empty: boolean;
+}): boolean {
+  return input.standUpHolds || (input.signInRequired && input.empty);
+}
+
+/**
  * Whether to send the stand-up now, wait for it, or do nothing: only for the person who asked it,
  * into their Mate's main conversation still empty, once they can send, once.
  */

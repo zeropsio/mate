@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   MATE_STAND_UP_MESSAGE,
+  mateArrivalHoldsComposer,
   mateStandUpCleared,
   mateStandUpDecision,
   mateStandUpHoldsComposer,
@@ -30,6 +31,21 @@ describe("the stand-up's words", () => {
   it("are the owner's, word for word", () => {
     expect(MATE_STAND_UP_MESSAGE).toBe("Stand up development of the project.");
   });
+});
+
+describe("mateArrivalHoldsComposer", () => {
+  it.each([
+    { standUpHolds: true, signInRequired: false, empty: false, holds: true },
+    { standUpHolds: false, signInRequired: true, empty: true, holds: true },
+    // A conversation under way keeps its composer, whatever its sign-in says: it is read.
+    { standUpHolds: false, signInRequired: true, empty: false, holds: false },
+    { standUpHolds: false, signInRequired: false, empty: true, holds: false },
+  ])(
+    "stand-up $standUpHolds, no agent $signInRequired, empty $empty: holds $holds",
+    ({ holds, ...input }) => {
+      expect(mateArrivalHoldsComposer(input)).toBe(holds);
+    },
+  );
 });
 
 describe("mateStandUpDecision", () => {
