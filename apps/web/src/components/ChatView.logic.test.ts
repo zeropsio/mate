@@ -75,7 +75,7 @@ import {
   shouldWriteThreadErrorToCurrentServerThread,
   conversationContentPending,
   localThreadErrorStanding,
-  personTurns,
+  newestPersonTurn,
   threadErrorEntryUnchanged,
 } from "./ChatView.logic";
 
@@ -2329,70 +2329,92 @@ describe("conversationContentPending", () => {
 });
 
 // A refusal this view was told of stands until the person sends again, or its cause is gone: a
-// turn of theirs that ran since — the ask another of their browsers sent through a moment later
-// (a live run, 2026-09-30). The Mate's own messages during a run move nothing.
+// turn of theirs newer than it — the ask another of their browsers sent through a moment later
+// (a live run, 2026-09-30). The Mate's own messages, older history loaded into the window, and a
+// window a reconnect shrank move nothing.
 describe("the view's own thread error", () => {
-  const said = (role: "user" | "assistant" | "system") => ({ role });
+  const T1 = "2026-09-30T21:38:00.000Z";
+  const T2 = "2026-09-30T21:39:12.000Z";
+  const T0 = "2026-09-30T20:00:00.000Z";
+  const said = (role: "user" | "assistant" | "system", createdAt: string) => ({ role, createdAt });
   it.each([
     { name: "no conversation read", messages: undefined, expected: undefined },
-    { name: "an empty conversation", messages: [], expected: 0 },
+    { name: "an empty conversation", messages: [], expected: null },
     {
-      name: "the person's turns, never the Mate's",
-      messages: [said("user"), said("assistant"), said("system"), said("assistant"), said("user")],
-      expected: 2,
+      name: "the person's newest, never the Mate's",
+      messages: [said("user", T0), said("user", T1), said("assistant", T2)],
+      expected: T1,
     },
-  ])("counts $name", ({ messages, expected }) => {
-    expect(personTurns(messages)).toBe(expected);
+  ])("the newest turn of $name", ({ messages, expected }) => {
+    expect(newestPersonTurn(messages)).toBe(expected);
   });
 
   it.each([
-    { name: "nothing written", entry: undefined, turns: 0, expected: null },
+    { name: "nothing written", entry: undefined, newest: null, expected: null },
     {
       name: "an error, nothing since",
-      entry: { message: "Refused.", turns: 0 },
-      turns: 0,
+      entry: { message: "Refused.", after: T1 },
+      newest: T1,
       expected: "Refused.",
     },
     {
-      name: "a turn of the person's ran since",
-      entry: { message: "Refused.", turns: 0 },
-      turns: 1,
+      name: "a turn of the person's newer than it",
+      entry: { message: "Refused.", after: T1 },
+      newest: T2,
       expected: null,
     },
     {
-      name: "an error with no count (a draft's)",
+      name: "the first turn, on an empty conversation",
+      entry: { message: "Refused.", after: null },
+      newest: T2,
+      expected: null,
+    },
+    {
+      name: "older history loaded, the newest unchanged",
+      entry: { message: "Refused.", after: T1 },
+      newest: T1,
+      expected: "Refused.",
+    },
+    {
+      name: "a window a reconnect shrank to nothing of the person's",
+      entry: { message: "Refused.", after: T1 },
+      newest: null,
+      expected: "Refused.",
+    },
+    {
+      name: "an error with nothing known of its turns (a draft's)",
       entry: { message: "Refused." },
-      turns: 3,
+      newest: T2,
       expected: "Refused.",
     },
     {
       name: "a conversation not read",
-      entry: { message: "Refused.", turns: 0 },
-      turns: undefined,
+      entry: { message: "Refused.", after: T1 },
+      newest: undefined,
       expected: "Refused.",
     },
-    { name: "an error cleared", entry: { message: null, turns: 0 }, turns: 0, expected: null },
-  ])("$name", ({ entry, turns, expected }) => {
-    expect(localThreadErrorStanding(entry, turns)).toBe(expected);
+    { name: "an error cleared", entry: { message: null, after: T1 }, newest: T1, expected: null },
+  ])("$name", ({ entry, newest, expected }) => {
+    expect(localThreadErrorStanding(entry, newest)).toBe(expected);
   });
 
   it.each([
     {
-      name: "the same words again, after a turn of the person's: written anew, with the new count",
-      existing: { message: "Refused.", at: 1, turns: 0 },
-      next: { message: "Refused.", at: 2, turns: 1 },
+      name: "the same words again, after a turn of the person's: written anew",
+      existing: { message: "Refused.", at: 1, after: T1 },
+      next: { message: "Refused.", at: 2, after: T2 },
       kept: false,
     },
     {
       name: "the same words, nothing since: the one written stays",
-      existing: { message: "Refused.", at: 1, turns: 1 },
-      next: { message: "Refused.", at: 2, turns: 1 },
+      existing: { message: "Refused.", at: 1, after: T1 },
+      next: { message: "Refused.", at: 2, after: T1 },
       kept: true,
     },
     {
       name: "other words",
-      existing: { message: "Refused.", at: 1, turns: 1 },
-      next: { message: "Upload failed.", at: 2, turns: 1 },
+      existing: { message: "Refused.", at: 1, after: T1 },
+      next: { message: "Upload failed.", at: 2, after: T1 },
       kept: false,
     },
   ])("$name", ({ existing, next, kept }) => {
