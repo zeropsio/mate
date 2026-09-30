@@ -40,7 +40,11 @@ import {
   ZeropsAgentSignInDialogPopup,
   type SignInAgent,
 } from "~/components/zerops/ZeropsAgentSignIn";
-import { ComingBelow, comingSentenceOf } from "~/components/zerops/ZeropsMateComingPage";
+import {
+  ComingBelow,
+  comingSentenceOf,
+  MateOpeningLine,
+} from "~/components/zerops/ZeropsMateComingPage";
 import { MateEmptyStateView, type MateEmptyComing } from "~/components/zerops/ZeropsMateEmptyState";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { ArrivalService, ArrivalStepInput } from "~/zerops/mateArrival";
@@ -179,7 +183,7 @@ interface HarnessState {
   readonly label: string;
   readonly mate: ZeropsMateIdentity;
   readonly phase: MateStandUpPhase | null;
-  readonly coming?: "coming" | "coming-new" | "slow" | "not-created";
+  readonly coming?: "coming" | "coming-new" | "slow" | "not-created" | "reaching";
   readonly logins?: Logins;
   readonly addedBy?: string | null;
   readonly unknown?: KnownMessage;
@@ -210,6 +214,13 @@ const STATES: ReadonlyArray<HarnessState> = [
     mate: { ...WREN, connected: false },
     phase: "sign-in",
     coming: "slow",
+  },
+  {
+    id: "connecting",
+    label: "0 Connecting · a Mate that is up, its link being made",
+    mate: WREN,
+    phase: null,
+    coming: "reaching",
   },
   { id: "signin", label: "2 Sign-in · the choice", mate: WREN, phase: "sign-in", logins: {} },
   {
@@ -448,6 +459,19 @@ function FixtureSignIn({
 
 function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
   if (state.coming === undefined) return null;
+  if (state.coming === "reaching") {
+    return {
+      kind: "reaching",
+      below: (
+        <MateOpeningLine
+          onTryNow={undefined}
+          phrase={{ text: "Connecting…", actions: [] }}
+          projects={<a href="#projects" />}
+          projectUrl={undefined}
+        />
+      ),
+    };
+  }
   const coming: MateComing =
     state.coming === "slow"
       ? { kind: "coming", line: "Taking longer than usual.", verb: "keep-waiting" }

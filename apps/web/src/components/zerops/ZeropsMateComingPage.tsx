@@ -548,7 +548,7 @@ export function MateOpeningLine({
   );
   return (
     <div
-      className="flex w-full max-w-sm flex-col items-center gap-3"
+      className="mx-auto flex w-full max-w-sm flex-col items-center gap-3"
       data-zerops-surface="mate-opening"
     >
       <p className="text-center text-sm text-muted-foreground" role="status">
