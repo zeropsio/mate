@@ -45,3 +45,29 @@ export function inventoryTroubleVoice(input: InventoryTroubleInput): InventoryTr
   if (!input.mounted || input.lapsed || input.sessionEnded || input.trouble === null) return null;
   return input.troubledForMs >= INVENTORY_TROUBLE_HOLD_MS ? UNANSWERED : null;
 }
+
+/** What the account's one line does: a grant round and the troubled reads now, or sign out. */
+export type AccountFootAction = "try-now" | "sign-out";
+
+export interface AccountFootLine {
+  readonly sentence: string;
+  readonly actions: ReadonlyArray<AccountFootAction>;
+}
+
+/**
+ * The account's one line at the menu's foot: a lapse of the grant the product runs on first, with
+ * Try now once a renewal failed and always the way out of the account (A9), since nothing the
+ * account holds can be read meanwhile; else the inventory's lasting trouble, with Try now only.
+ */
+export function accountFootLine(input: {
+  readonly lapse: { readonly sentence: string; readonly retry: boolean } | null;
+  readonly trouble: InventoryTroubleVoice | null;
+}): AccountFootLine | null {
+  if (input.lapse !== null) {
+    return {
+      sentence: input.lapse.sentence,
+      actions: input.lapse.retry ? ["try-now", "sign-out"] : ["sign-out"],
+    };
+  }
+  return input.trouble === null ? null : { sentence: input.trouble.sentence, actions: ["try-now"] };
+}

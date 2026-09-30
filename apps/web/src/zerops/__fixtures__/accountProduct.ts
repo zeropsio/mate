@@ -19,8 +19,9 @@ import { candidatesNotice, heldCandidates } from "@t3tools/client-runtime/zerops
 import type { FakeDatastream } from "@t3tools/client-runtime/zerops/testing";
 import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/unstable/reactivity";
-import { createElement, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, createElement, useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { AccountVoiceLine } from "../../components/zerops/AccountVoiceLine";
 import { SidebarZeropsTree } from "../../components/zerops/SidebarZeropsTree";
 import { useConversationView } from "../../routes/-environmentTargets";
 import { RouteGateView } from "../../routes/-routeGate";
@@ -48,7 +49,10 @@ export function AccountProduct({
     value: registry,
     children: createElement(ZeropsDataProvider, {
       makeRuntime,
-      children: createElement(ZeropsInventoryProvider, { children }),
+      // The product and the account's one line at the menu's foot, as the sidebar places it.
+      children: createElement(ZeropsInventoryProvider, {
+        children: createElement(Fragment, null, children, createElement(AccountVoiceLine)),
+      }),
     }),
   });
 }

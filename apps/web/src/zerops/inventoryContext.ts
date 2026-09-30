@@ -190,11 +190,21 @@ export function useProjectDialog<T>(
 }
 
 /**
- * "Try now" for the inventory's own trouble (`inventoryTroubleVoice`): a grant round and each
- * troubled organization's reads at once. Null outside the account's product.
+ * What the account says at the menu's foot (`accountFootLine`) — its lapse, or its inventory's
+ * lasting trouble — with each action bound. Null while it has nothing to say, and outside the
+ * account's product.
  */
-export const InventoryRetryContext = createContext<(() => void) | null>(null);
+export interface AccountVoice {
+  readonly sentence: string;
+  readonly actions: ReadonlyArray<{
+    readonly kind: "try-now" | "sign-out";
+    readonly label: "Try now" | "Sign out";
+    readonly run: () => void;
+  }>;
+}
 
-export function useInventoryRetry(): (() => void) | null {
-  return useContext(InventoryRetryContext);
+export const AccountVoiceContext = createContext<AccountVoice | null>(null);
+
+export function useAccountVoice(): AccountVoice | null {
+  return useContext(AccountVoiceContext);
 }
