@@ -3398,6 +3398,33 @@ code {
   font-weight: 500;
 }
 
+/* p25/menu — D: a folded heading's release mark after its faces, 12 · 500 muted, tabular. */
+.zerops-heading-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.zerops-heading-mark[data-tone="ok"] {
+  color: var(--zerops-status-ok-text);
+}
+
+.zerops-heading-mark[data-tone="amber"] {
+  color: var(--zerops-status-attention-text);
+}
+
+.zerops-heading-mark > .zerops-envdot {
+  display: inline-block;
+  margin-right: 2px;
+}
+
 /* The door: a 20 px tint inside the heading's rounded band, its word in the column of the
    Review below it. */
 .zerops-heading-line-door {

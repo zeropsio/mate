@@ -4,6 +4,7 @@ import {
   COMING_UP_WINDOW_MS,
   headingLanding,
   headingLine,
+  headingMark,
   stopComing,
   type HeadingLineInput,
   type StopComing,
@@ -344,5 +345,61 @@ describe("headingLanding — what this tab watched land", () => {
     { case: "healthy to healthy", before: live, after: live, landing: undefined },
   ])("$case", ({ before, after, landing }) => {
     expect(headingLanding(before, after)).toEqual(landing);
+  });
+});
+
+describe("headingMark — a folded heading's release mark", () => {
+  it.each([
+    { case: "healthy, nothing waits", over: {}, landing: undefined, mark: undefined },
+    {
+      case: "changes waiting",
+      over: { waiting: 3 },
+      landing: undefined,
+      mark: { kind: "waiting", count: 3 },
+    },
+    {
+      case: "nothing released yet, changes waiting",
+      over: { ...prod({ chip: chip("empty") }), waiting: 3 },
+      landing: undefined,
+      mark: { kind: "waiting", count: 3 },
+    },
+    {
+      case: "releasing",
+      over: prod({ chip: chip("releasing", { next: "v2.4.0" }) }),
+      landing: undefined,
+      mark: { kind: "releasing", version: "v2.4.0" },
+    },
+    {
+      case: "just live",
+      over: {},
+      landing: { kind: "live" as const, version: "v2.4.0" },
+      mark: { kind: "live" },
+    },
+    {
+      case: "a release that didn't go out",
+      over: prod({ chip: chip("failed") }),
+      landing: undefined,
+      mark: { kind: "failed" },
+    },
+    {
+      case: "down: the pill's",
+      over: prod({ chip: chip("down") }),
+      landing: undefined,
+      mark: undefined,
+    },
+    {
+      case: "a stage coming up while changes wait: the mark stays the release's",
+      over: { waiting: 3, stages: [stage({ kind: "coming", step: "build" })] },
+      landing: undefined,
+      mark: { kind: "waiting", count: 3 },
+    },
+    {
+      case: "no production",
+      over: { production: undefined, waiting: 3 },
+      landing: undefined,
+      mark: undefined,
+    },
+  ])("$case", ({ over, landing, mark }) => {
+    expect(headingMark(input(over), landing)).toEqual(mark);
   });
 });

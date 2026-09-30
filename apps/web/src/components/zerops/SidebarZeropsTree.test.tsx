@@ -1451,6 +1451,23 @@ describe("production and the stages are two chips on the project's heading (M2, 
     stored.collapsed = new Set();
   });
 
+  it("marks a folded heading with what waits for a release, after its faces", () => {
+    stored.collapsed = new Set(["aaa"]);
+    const html = render([CRM_DEV, up(CRM_PROD)], {
+      getFlow: () =>
+        flow({
+          releaseOffered: true,
+          releaseContents: [{ commits: [{ sha: "a", subject: "x" }] }],
+        }),
+    });
+    stored.collapsed = new Set();
+    expect(
+      /data-zerops-surface="sidebar-project-release-mark"[^>]*>.*?<span class="sr-only">([^<]*)</u.exec(
+        html,
+      )?.[1],
+    ).toBe("1 change not released");
+  });
+
   it("keeps production neutral when the newest release did not go through: the old one serves", () => {
     const html = render([CRM_DEV, up(CRM_PROD)], {
       getFlow: () =>

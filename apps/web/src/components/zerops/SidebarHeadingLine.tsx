@@ -6,11 +6,13 @@
  * It opens and folds as a height reveal the Mates ride on (220 ms, a strong ease-out), never a
  * jump cut; its words stay while it folds. What it says is `SidebarHeadingLine.logic.ts`'s.
  */
+import { TagIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import {
   headingLanding,
   headingLine,
+  type HeadingMark,
   LANDING_MS,
   type HeadingLanding,
   type HeadingLine,
@@ -137,5 +139,49 @@ export function HeadingSubLine({
         )}
       </div>
     </div>
+  );
+}
+
+/** A folded heading's release mark, in words: what a screen reader hears after the faces. */
+function markWords(mark: HeadingMark): string {
+  switch (mark.kind) {
+    case "waiting":
+      return mark.count === 1
+        ? "1 change not released"
+        : `${String(mark.count)} changes not released`;
+    case "releasing":
+      return mark.version === undefined ? "Releasing" : `Releasing ${mark.version}`;
+    case "live":
+      return "The release is live";
+    case "failed":
+      return "The release didn’t go out";
+  }
+}
+
+/**
+ * A folded heading's release mark after its faces (D): a 14 px tag and how many changes wait,
+ * the stepped spinner and the version on its way, the tag in ok as it lands, in amber where it
+ * did not go out.
+ */
+export function HeadingReleaseMark({ mark }: { readonly mark: HeadingMark | undefined }) {
+  if (mark === undefined) return null;
+  return (
+    <span
+      className="zerops-heading-mark"
+      data-tone={mark.kind === "live" ? "ok" : mark.kind === "failed" ? "amber" : undefined}
+      data-zerops-surface="sidebar-project-release-mark"
+    >
+      {mark.kind === "releasing" ? (
+        <span aria-hidden="true" className="zerops-envdot" data-dot="spinner" />
+      ) : (
+        <TagIcon aria-hidden="true" className="size-3.5" />
+      )}
+      {mark.kind === "waiting" ? (
+        <span aria-hidden="true">{mark.count}</span>
+      ) : mark.kind === "releasing" && mark.version !== undefined ? (
+        <span aria-hidden="true">{mark.version}</span>
+      ) : null}
+      <span className="sr-only">{markWords(mark)}</span>
+    </span>
   );
 }

@@ -300,3 +300,28 @@ export function headingLanding(
   }
   return undefined;
 }
+
+/** A folded heading's release mark, after its faces (D): the release, and nothing else. */
+export type HeadingMark =
+  | { readonly kind: "waiting"; readonly count: number }
+  | { readonly kind: "releasing"; readonly version: string | undefined }
+  | { readonly kind: "live" }
+  | { readonly kind: "failed" };
+
+/**
+ * What a folded heading's tag mark says: a release that did not go out (amber), one this tab
+ * watched land (ok), one on its way (the spinner and its version), or how many changes wait for
+ * one. An environment coming up is its pill's spinner, folded or open.
+ */
+export function headingMark(
+  input: HeadingLineInput,
+  landing: HeadingLanding | undefined,
+): HeadingMark | undefined {
+  const chip = input.production?.chip;
+  if (chip === undefined) return undefined;
+  if (chip.state === "failed") return { kind: "failed" };
+  if (landing?.kind === "live") return { kind: "live" };
+  if (chip.state === "releasing") return { kind: "releasing", version: chip.next };
+  if (chip.state === "creating" || input.waiting <= 0) return undefined;
+  return { kind: "waiting", count: input.waiting };
+}

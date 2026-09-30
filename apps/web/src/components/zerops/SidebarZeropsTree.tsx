@@ -215,8 +215,18 @@ import {
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
 import { groupAddsOffered } from "./ZeropsProjectRow.logic";
-import { HeadingSubLine, headingPillMotion, useHeadingLine } from "./SidebarHeadingLine";
-import { stopComing, type HeadingLineInput, type StopComing } from "./SidebarHeadingLine.logic";
+import {
+  HeadingReleaseMark,
+  HeadingSubLine,
+  headingPillMotion,
+  useHeadingLine,
+} from "./SidebarHeadingLine";
+import {
+  headingMark,
+  stopComing,
+  type HeadingLineInput,
+  type StopComing,
+} from "./SidebarHeadingLine.logic";
 
 /** What the client holds per environment, when it holds anything. */
 type RosterCandidate = ZeropsCandidate & {
@@ -1870,6 +1880,11 @@ export function ProjectHeader({
               it. */}
             <DisclosureGlyph />
             {faces}
+            {collapsed ? (
+              <HeadingReleaseMark
+                mark={line === undefined ? undefined : headingMark(line, landing)}
+              />
+            ) : null}
           </button>
         )}
         {/* The room between the title and the heading's end takes what the
