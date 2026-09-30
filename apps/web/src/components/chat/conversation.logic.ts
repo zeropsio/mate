@@ -1581,7 +1581,8 @@ export interface IncidentModel {
   readonly appearedAt: string;
 }
 
-function devServerRunning(operation: ZeropsOperation): boolean | null {
+/** What a dev-server call found: running, not running, or nothing (still running, another kind). */
+export function devServerRunning(operation: ZeropsOperation): boolean | null {
   if (operation.kind !== "devServer" || operation.phase === "running") return null;
   if (operation.phase === "failed") return false;
   if (operation.statusWord === "Not running") return false;
@@ -2086,7 +2087,7 @@ function fileName(path: string): string {
 /**
  * The pictures a turn took and looked at, in the order they were taken — a
  * check's when it came back, a look's when the Mate saw it: each page's last
- * take with a picture, and each file the Mate looked at. A picture taken
+ * take with a picture on each device, and each file the Mate looked at. A picture taken
  * again — the same file, the same pixels — stands once, where it was taken
  * last.
  */
@@ -2099,9 +2100,12 @@ function turnPictures(
     readonly at: number;
     readonly picture: OutcomePicture;
   }> = [];
+  // Each page's last take on each device: a page seen on a desktop and on a
+  // phone is two pictures.
   const lastByPage = new Map<string, ZeropsOperation>();
   for (const check of checks) {
-    if (check.screenshot !== undefined) lastByPage.set(browserCheckPage(check), check);
+    if (check.screenshot === undefined) continue;
+    lastByPage.set(`${browserCheckPage(check)} ${check.deviceName ?? ""}`, check);
   }
   for (const check of lastByPage.values()) {
     const src = check.screenshot!.src;

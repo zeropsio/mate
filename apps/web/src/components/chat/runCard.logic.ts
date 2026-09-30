@@ -12,6 +12,7 @@ import type { MateMarkState } from "@t3tools/shared/brand";
 
 import {
   browserCheckCaption,
+  devServerRunning,
   formatWorkDuration,
   operationLineWords,
   unrecoveredFailures,
@@ -392,8 +393,8 @@ function stepSignatures(step: WorkStep): ReadonlyArray<string> {
 /**
  * The failures a later step undid (K9): a command or a call that failed and
  * passed when the Mate ran it again — the same command, or the same words —
- * and a platform operation that failed and then went through on the same
- * service. Red always means still broken, so these turn quiet; the rest stay
+ * a platform operation that failed and then went through on the same
+ * service, and a dev server found down and then found running. Red always means still broken, so these turn quiet; the rest stay
  * red. One walk back from the run's end, whatever its length: a two-hour
  * run's card redraws on every word of a thought.
  */
@@ -417,6 +418,17 @@ export function recoveredFailures(items: ReadonlyArray<RecordItem>): ReadonlySet
   const standing = new Set(unrecoveredFailures(operations.map((item) => item.operation)));
   for (const item of operations) {
     if (item.operation.phase === "failed" && !standing.has(item.operation)) undone.add(item.key);
+  }
+  // A dev server found down, then found running on the same service: the
+  // finding stands no more.
+  const runningLater = new Set<string>();
+  for (let index = operations.length - 1; index >= 0; index -= 1) {
+    const { operation, key } = operations[index]!;
+    const found = devServerRunning(operation);
+    const host = operation.target?.hostname ?? operation.subject;
+    if (found === true) runningLater.add(host);
+    else if (found === false && operation.phase !== "failed" && runningLater.has(host))
+      undone.add(key);
   }
   // In the run's order.
   return new Set(items.flatMap((item) => (undone.has(item.key) ? [item.key] : [])));

@@ -489,7 +489,47 @@ describe("recoveredFailures", () => {
       operation: entry.kind === "operation" ? entry.operation : (null as never),
     };
   };
+  const devServer = (id: string, service: string, running: boolean): RecordItem => {
+    const entry = operationEntry(id, "t1", 1, {
+      kind: "devServer",
+      phase: "done",
+      subject: service,
+      target: { hostname: service },
+      statusWord: running ? "Running" : "Not running",
+      steps: [
+        {
+          id: "dev-server",
+          label: running ? "Start" : "Status",
+          state: running ? "done" : "failed",
+          stateLabel: running ? "Done" : "Failed",
+        },
+      ],
+    });
+    return {
+      kind: "operation",
+      key: `operation:op:${id}`,
+      at: at(1),
+      operation: entry.kind === "operation" ? entry.operation : (null as never),
+    };
+  };
   it.each([
+    // One story (the owner, 2026-09-30): a dev server found down and then
+    // running again is quiet where it was found down; the current state wins.
+    {
+      name: "a dev server found not running, then running",
+      items: [devServer("s1", "appdev", false), devServer("s2", "appdev", true)],
+      recovered: ["operation:op:s1"],
+    },
+    {
+      name: "a dev server found not running, and still",
+      items: [devServer("s1", "appdev", false), devServer("s2", "appdev", false)],
+      recovered: [],
+    },
+    {
+      name: "another service's dev server running",
+      items: [devServer("s1", "appdev", false), devServer("s2", "apidev", true)],
+      recovered: [],
+    },
     {
       name: "a command that passed on a retry",
       items: [ran("w1", "npm test", true), ran("w2", "npm test", false)],

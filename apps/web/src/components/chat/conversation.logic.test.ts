@@ -2095,12 +2095,22 @@ describe("deriveOutcome", () => {
         : `file ${picture.name} ${picture.path}`,
     );
   it.each([
+    // "showing only one of the images" (the owner, 2026-09-30): a page taken
+    // on a desktop and on a phone is two pictures.
     {
-      name: "each page's last picture: a page checked again stands in its latest",
+      name: "each page's picture on each device, in the order taken",
       pictures: [
         check("b1", 1, "https://a.dev/", "A"),
         check("b2", 2, "https://a.dev/", "B", { deviceName: "iPhone 16" }),
         check("b3", 3, "https://a.dev/status", null),
+      ],
+      read: ["check / A", "check / on iPhone 16 B"],
+    },
+    {
+      name: "a page checked again on the same device stands in its latest",
+      pictures: [
+        check("b1", 1, "https://a.dev/", "A", { deviceName: "iPhone 16" }),
+        check("b2", 2, "https://a.dev/", "B", { deviceName: "iPhone 16" }),
       ],
       read: ["check / on iPhone 16 B"],
     },

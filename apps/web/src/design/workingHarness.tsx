@@ -991,6 +991,73 @@ function State({
   );
 }
 
+/** A made-up screenshot: a page's shape, drawn, in place of a real take. */
+function shot(width: number, height: number, label: string): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#f4f1ea"/><rect x="6%" y="6%" width="88%" height="10%" rx="8" fill="#d9d2c3"/><text x="50%" y="55%" font-family="sans-serif" font-size="${Math.round(width / 12)}" text-anchor="middle" fill="#6b6456">${label}</text></svg>`;
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
+}
+
+const STAGE_URL = "https://appstage-2b7d.prg1.example.app";
+
+/** The guestbook's stage checked on a desktop and on a phone. */
+const STAGE_TAKES = [
+  { key: "op:gb-desktop", device: undefined, width: 1440, height: 900, label: "Guestbook" },
+  { key: "op:gb-phone", device: "iPhone 16", width: 393, height: 852, label: "Guestbook" },
+].map(({ key, device, width, height, label }) =>
+  deploy({
+    key,
+    kind: "browser",
+    subject: `${STAGE_URL}/`,
+    target: { hostname: "appstage" },
+    phase: "done",
+    statusWord: "Checked",
+    anchorAt: ago(40),
+    settledAt: ago(30),
+    screenshot: { src: shot(width, height, label), width, height },
+    ...(device === undefined ? {} : { deviceName: device }),
+  }),
+);
+
+/** What the guestbook run left: its stage deployed and checked twice, its dev server running. */
+const GUESTBOOK_RESULT: OutcomeModel = {
+  ...REPORT,
+  key: "outcome:guestbook",
+  turnKey: "guestbook",
+  live: [
+    {
+      hostname: "appstage",
+      tone: "ok",
+      word: "Deployed",
+      version: "227b804",
+      url: STAGE_URL,
+      at: ago(90),
+      failure: null,
+    },
+    {
+      hostname: "appdev",
+      tone: "ok",
+      word: "Dev server running",
+      version: null,
+      url: null,
+      at: ago(20),
+      failure: null,
+    },
+  ],
+  files: null,
+  change: null,
+  checks: { count: 2, views: 2, failures: 0, takes: STAGE_TAKES },
+  pictures: STAGE_TAKES.map((take) => ({
+    kind: "check" as const,
+    key: take.key,
+    src: take.screenshot!.src,
+    caption: "/",
+    page: "appstage-2b7d.prg1.example.app/",
+    device: take.deviceName ?? null,
+    failed: false,
+    ratio: take.screenshot!.width! / take.screenshot!.height!,
+  })),
+};
+
 // What its calls came to: the worked line's effort, never a row.
 const REPORT_WITH_ACTIVITY: OutcomeModel = {
   ...REPORT,
@@ -1096,6 +1163,31 @@ function Harness() {
               incidents={[]}
               onOpenAgents={() => undefined}
               threadRef={null}
+            />
+          </Card>
+        </State>
+        <State
+          label="The guestbook result"
+          note="Its stage deployed from the Mate's branch and checked on a desktop and a phone; its dev server running."
+        >
+          <Card
+            result={
+              <TurnReport
+                facts={{}}
+                onOpenImage={() => undefined}
+                onOpenTurnDiff={() => undefined}
+                outcome={GUESTBOOK_RESULT}
+              />
+            }
+          >
+            <RunChat
+              row={record({
+                turnKey: "guestbook-settled",
+                items: GUESTBOOK,
+                live: false,
+                status: status({ live: false, face: "produced", endedAt: ago(2) }),
+                outcome: GUESTBOOK_RESULT,
+              })}
             />
           </Card>
         </State>

@@ -141,8 +141,14 @@ export interface ResultRow {
   readonly words: string | null;
   /** The version it runs, short. */
   readonly version: string | null;
-  /** The line under it: why it is broken, since when, the pages checked on it, what changed. */
+  /** The line under it: why it is broken, since when, what changed. */
   readonly sub: ResultSub | null;
+  /**
+   * What its checks found, on its one line after its state and version:
+   * "Deployed 227b804 · both checks passed" — never a line of its own that
+   * starts with a "/" (the owner, 2026-09-30).
+   */
+  readonly checked?: string;
   /** Where it runs, opened from the row's end. */
   readonly url: string | null;
   readonly action: ResultAction | null;
@@ -202,15 +208,20 @@ function serviceOfPage(
   page: CheckedPage,
   services: ReadonlyArray<OutcomeService>,
 ): OutcomeService | undefined {
-  if (page.host === null) return undefined;
+  return page.host === null ? undefined : serviceAtHost(page.host, services);
+}
+
+/** The service at a page's host: at its address, else the one its subdomain is named after. */
+function serviceAtHost(
+  host: string,
+  services: ReadonlyArray<OutcomeService>,
+): OutcomeService | undefined {
   const atAddress = services.find(
     (candidate) =>
-      candidate.url !== null &&
-      URL.canParse(candidate.url) &&
-      new URL(candidate.url).host === page.host,
+      candidate.url !== null && URL.canParse(candidate.url) && new URL(candidate.url).host === host,
   );
   if (atAddress !== undefined) return atAddress;
-  const label = page.host.split(".")[0]!.toLowerCase();
+  const label = host.split(".")[0]!.toLowerCase();
   return services
     .filter((candidate) => {
       const name = candidate.hostname.toLowerCase();
@@ -227,15 +238,24 @@ function checksWord(count: number): string {
   return count === 2 ? "both checks passed" : `all ${count} checks passed`;
 }
 
-/** "/status checked ✓", or "2 pages checked, all 5 checks passed": only what passed. */
+/**
+ * "/status checked ✓", "both checks passed", or "2 pages checked, all 5
+ * checks passed": only what passed. The home page is the service itself, so
+ * its checks need no page named.
+ */
 function checkedLine(pages: ReadonlyArray<CheckedPage>): string | null {
   const count = pages.reduce((sum, page) => sum + page.takes.filter(passed).length, 0);
   if (pages.length === 0 || count === 0) return null;
   if (pages.length === 1) {
     const caption = pages[0]!.caption;
+    if (caption === "/") return count === 1 ? "checked ✓" : checksWord(count);
     return count === 1 ? `${caption} checked ✓` : `${caption} checked, ${checksWord(count)}`;
   }
   return `${pages.length} pages checked, ${checksWord(count)}`;
+}
+
+function checkedOf(line: string | null): { readonly checked?: string } {
+  return line === null ? {} : { checked: line };
 }
 
 function textSub(text: string | null): ResultSub | null {
@@ -372,7 +392,8 @@ function serviceRow(
     mark: "dot",
     tone: service.tone,
     words: service.word,
-    sub: ok ? textSub(checkedLine(pages)) : null,
+    sub: null,
+    ...checkedOf(ok ? checkedLine(pages) : null),
     action: null,
   };
 }
@@ -420,7 +441,8 @@ function pagesRow(host: string, pages: ReadonlyArray<CheckedPage>): ResultRow {
     title: host,
     words: null,
     version: null,
-    sub: textSub(checkedLine(pages)),
+    sub: null,
+    ...checkedOf(checkedLine(pages)),
     url: pages.length === 1 ? pages[0]!.url : null,
     action: null,
   };
@@ -683,6 +705,43 @@ export function resultPictures(outcome: OutcomeModel): ReadonlyArray<ResultPictu
       ? []
       : [{ ...picture, label: pictureLabel(picture) }],
   );
+}
+
+/**
+ * The run's pictures by the row they stand under (the owner, 2026-09-30:
+ * "showing only one of the images", under another service's row): each
+ * page's pictures under the row of the service the page is at, in the order
+ * they were taken; the rest — a file the Mate looked at, a page of no service
+ * the result shows — in the strip under the rows.
+ */
+export function rowPictures(
+  outcome: OutcomeModel,
+  rows: ReadonlyArray<ResultRow>,
+  pictures: ReadonlyArray<ResultPicture>,
+): {
+  readonly byRow: ReadonlyMap<string, ReadonlyArray<ResultPicture>>;
+  readonly rest: ReadonlyArray<ResultPicture>;
+} {
+  const shown = new Set(rows.map((row) => row.key));
+  const byRow = new Map<string, ResultPicture[]>();
+  const rest: ResultPicture[] = [];
+  for (const picture of pictures) {
+    const host = picture.kind === "check" ? pageHost(picture.page) : null;
+    const service = host === null ? undefined : serviceAtHost(host, outcome.live);
+    const key = service === undefined ? null : `service:${service.hostname}`;
+    if (key === null || !shown.has(key)) {
+      rest.push(picture);
+      continue;
+    }
+    byRow.set(key, [...(byRow.get(key) ?? []), picture]);
+  }
+  return { byRow, rest };
+}
+
+/** A page's host, where its page names one: `host/path`; null for "the page". */
+function pageHost(page: string): string | null {
+  const host = page.split("/")[0] ?? "";
+  return host.includes(".") ? host : null;
 }
 
 // ---------------------------------------------------------------------------
