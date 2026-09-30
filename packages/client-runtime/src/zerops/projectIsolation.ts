@@ -24,10 +24,12 @@
  *
  * `envIsolation` to `service`, the key moved onto the one service that needs
  * it as a sensitive **service** variable, the project-level entry deleted, and
- * then every OTHER service restarted — never the container. The restart is
- * not housekeeping: the store is rewritten within seconds of the flip, but a
- * running process keeps the sibling variables it captured at start until it
- * restarts (measured), and the app's own containers are the ones that matter.
+ * then every service that runs the project's code restarted — never the
+ * container, never a managed service. The restart is not housekeeping: the
+ * store is rewritten within seconds of the flip, but a running process keeps
+ * the sibling variables it captured at start until it restarts (measured), and
+ * the app's own containers are the ones that matter. A database, a cache or a
+ * storage runs none of that code, and a storage's restart fails outright.
  * The Mate itself is left running: it reads its own key live from the
  * platform store, with a retry on 401/403, and zcp's tools already read the
  * store live too (server commit 7d544119b) — restarting it would only be
@@ -99,6 +101,12 @@ export interface ProjectIsolationService {
    * instead of moved.
    */
   readonly isControlPlane: boolean;
+  /**
+   * A managed service — a database, a cache, a storage — decided by its
+   * type's category, as the service map sorts it (`topology.ts`). It runs none
+   * of the project's code, so no process in it captured the key.
+   */
+  readonly managed: boolean;
 }
 
 export type ProjectIsolationStep =
@@ -191,14 +199,21 @@ export function planProjectIsolation(input: ProjectIsolationInput): ProjectIsola
 
   if (steps.length === 0) return { ok: true, steps: [] };
 
-  // Every OTHER service, never the container: the app's own containers
-  // captured their siblings' variables at start and only a restart clears
-  // that, but the Mate itself no longer needs one (server commit
-  // 7d544119b) — it reads its own key live from the platform store, with a
-  // retry on 401/403, and zcp's tools already read the store live too. A
-  // Mate on an older release keeps its boot snapshot until its own next
-  // restart; that is the release's job, not this plan's.
-  for (const service of input.services.filter((candidate) => !candidate.isControlPlane)) {
+  // Every service that runs the project's code, never the container: the
+  // app's own containers captured their siblings' variables at start and
+  // only a restart clears that, but the Mate itself no longer needs one
+  // (server commit 7d544119b) — it reads its own key live from the platform
+  // store, with a retry on 401/403, and zcp's tools already read the store
+  // live too. A Mate on an older release keeps its boot snapshot until its
+  // own next restart; that is the release's job, not this plan's.
+  //
+  // Never a managed service either: it runs none of the project's code, and
+  // a storage's restart fails outright — every closing-off of the add
+  // measured 2026-09-30 failed on it. A Mate born today closes its project
+  // before its runtimes exist (`createEnvironment.ts`), so its closing-off
+  // restarts nothing at all.
+  for (const service of input.services) {
+    if (service.isControlPlane || service.managed) continue;
     steps.push({ kind: "restart-service", serviceName: service.name });
   }
 
