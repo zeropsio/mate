@@ -5,6 +5,7 @@ import {
   makeConnectionAdmission,
   OTHER_ATTEMPT_MS,
   ROUTE_FIRST_HOLD_MS,
+  UNCLAIMED_TICKET_MS,
   type AdmissionTicket,
   type AdmissionTimers,
 } from "./admission.ts";
@@ -267,11 +268,77 @@ describe("connection admission", () => {
     expect(other.ticket).not.toBeNull();
   });
 
-  it("with no route named, nothing waits", async () => {
-    const admission = makeConnectionAdmission(manualTimers());
+  it("with no route named, others still go one at a time, each given its time", async () => {
+    const timers = manualTimers();
+    const admission = makeConnectionAdmission(timers);
     const other = ask(admission, OTHER);
     const third = ask(admission, THIRD);
     await flush();
-    expect([other.ticket !== null, third.ticket !== null]).toEqual([true, true]);
+    expect([other.ticket !== null, third.ticket !== null]).toEqual([true, false]);
+    other.ticket!.claim();
+    timers.advance(OTHER_ATTEMPT_MS);
+    await flush();
+    expect(other.ticket!.signal.aborted).toBe(true);
+    expect(third.ticket).not.toBeNull();
+  });
+
+  it("naming a route later leaves an attempt in flight its own time", async () => {
+    const timers = manualTimers();
+    const admission = makeConnectionAdmission(timers);
+    const other = ask(admission, OTHER);
+    await flush();
+    other.ticket!.claim();
+    timers.advance(OTHER_ATTEMPT_MS - 2_000);
+    admission.prefer(ROUTE);
+    timers.advance(2_000);
+    await flush();
+    // Its 8 s ran from its own start, not from the naming.
+    expect(other.ticket!.signal.aborted).toBe(true);
+  });
+
+  it("a replacement of the route's open socket makes nobody give way", async () => {
+    const admission = makeConnectionAdmission(manualTimers());
+    admission.prefer(ROUTE);
+    const route = ask(admission, ROUTE);
+    await flush();
+    route.ticket!.claim();
+    route.ticket!.settle(true);
+    const other = ask(admission, OTHER);
+    await flush();
+    other.ticket!.claim();
+    const replacement = ask(admission, ROUTE);
+    await flush();
+    expect(replacement.ticket).not.toBeNull();
+    expect(other.ticket!.signal.aborted).toBe(false);
+  });
+
+  it("a ticket let go unclaimed can no longer open a socket", async () => {
+    const timers = manualTimers();
+    const admission = makeConnectionAdmission(timers);
+    const other = ask(admission, OTHER);
+    await flush();
+    timers.advance(UNCLAIMED_TICKET_MS);
+    await flush();
+    expect(other.ticket!.signal.aborted).toBe(true);
+  });
+
+  it("a stale attempt settling does not end the new route's first hold (A, B, A)", async () => {
+    const admission = makeConnectionAdmission(manualTimers());
+    admission.prefer(ROUTE);
+    const stale = ask(admission, ROUTE);
+    await flush();
+    stale.ticket!.claim();
+    // The person opens B, whose attempt makes A's give way, then comes back to A.
+    admission.prefer(OTHER);
+    const b = ask(admission, OTHER);
+    await flush();
+    b.ticket!.claim();
+    expect(stale.ticket!.signal.aborted).toBe(true);
+    admission.prefer(ROUTE);
+    // The attempt told to give way ends only now; A's new exchange is still running.
+    stale.ticket!.settle(false);
+    const third = ask(admission, THIRD);
+    await flush();
+    expect(third.ticket).toBeNull();
   });
 });
