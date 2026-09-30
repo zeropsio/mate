@@ -129,6 +129,8 @@ const organizationListingAtom = Atom.make(
   ): {
     readonly listing: Shown<ReadonlyArray<CandidateRow>>;
     readonly admits: (row: CandidateRow) => boolean;
+    /** Its project list held a member this account may not read: a name on it, unread. */
+    readonly withheldMembers: boolean;
   } => {
     const session = get(zeropsSessionAtom);
     const runtime = get(zeropsDataRuntimeAtom);
@@ -141,11 +143,15 @@ const organizationListingAtom = Atom.make(
       session.organizationStatus !== "selected" ||
       session.activeOrganization === null
     ) {
-      return { listing: UNREAD, admits: NONE };
+      return { listing: UNREAD, admits: NONE, withheldMembers: false };
     }
     if (inventory.account.kind === "withheld") {
       const { reason, cause } = inventory.account;
-      return { listing: { state: "withheld", reason, cause }, admits: NONE };
+      return {
+        listing: { state: "withheld", reason, cause },
+        admits: NONE,
+        withheldMembers: false,
+      };
     }
     const organization = session.activeOrganization;
     const listed = get(candidateListingsAtom(runtime)).find(
@@ -153,6 +159,9 @@ const organizationListingAtom = Atom.make(
     );
     return {
       listing: listed?.listing ?? UNREAD,
+      withheldMembers: get(runtime.reads.projectsOf(organization)).value.some(
+        (member) => member.knowledge === "unavailable" && member.reason === "forbidden",
+      ),
       admits: (row) => {
         const key = projectKeyOf({
           kind: "project",
@@ -185,12 +194,14 @@ export const candidateRowsAtom = Atom.make((get): Shown<ReadonlyArray<CandidateR
  * The names the active organization's Mates go by (`takenBotNames`), read off its project list:
  * a name lives on its project's tags, so it is known the moment the list is — a project the grant
  * has not verified yet, or that this account may not open, still holds its name, and no project's
- * services need reading. Complete only as the list is, so a name missing from a list still read
- * in part is never called free; nothing while the account's access lapses.
+ * services need reading. Complete only as the list is, with every project's tags read and no
+ * member withheld (`takenBotNames`), so a name missing from it is never called free while it may
+ * still be there; nothing while the account's access lapses.
  */
-export const takenBotNamesAtom = Atom.make((get): TakenBotNames =>
-  takenBotNames(get(organizationListingAtom).listing),
-).pipe(Atom.withLabel("zerops:taken-bot-names"));
+export const takenBotNamesAtom = Atom.make((get): TakenBotNames => {
+  const { listing, withheldMembers } = get(organizationListingAtom);
+  return takenBotNames(listing, { withheldMembers });
+}).pipe(Atom.withLabel("zerops:taken-bot-names"));
 
 /**
  * The derived half of the environment → project index (DESIGN §2.C C3): the project each
