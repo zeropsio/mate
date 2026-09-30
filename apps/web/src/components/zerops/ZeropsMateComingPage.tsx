@@ -33,6 +33,8 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { applyProjectCreationVerdict } from "@t3tools/client-runtime/zerops/candidates";
 import type { RouteGatePhrase } from "@t3tools/client-runtime/zerops/environments";
+import { birthRuntimesFacts } from "@t3tools/client-runtime/zerops/birthProgress";
+import type { ZeropsService } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -65,6 +67,7 @@ import { useUsualAgent } from "~/zerops/useUsualAgent";
 import { useZeropsBirthProgress } from "~/zerops/useZeropsBirthProgress";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
+import { useZeropsInventory, type InventoryServiceOutcome } from "~/zerops/inventoryContext";
 import { forgetBirth, retryBirth, useZeropsBirths } from "~/zerops/zeropsBirths";
 import { useZeropsContainers } from "~/zerops/zeropsContainers";
 import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
@@ -112,6 +115,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const held = useMemo(() => heldCandidates(listing), [listing]);
   const listed = held.rows.find((candidate) => candidate.project.id === projectId);
   const { births, waits } = useZeropsBirths();
+  const inventory = useZeropsInventory();
   const birth = useMemo(
     () => births.find((entry) => entry.projectId === projectId),
     [births, projectId],
@@ -316,6 +320,10 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           provisioningPhase: wait?.phase ?? null,
           hardenError: wait?.phase === "hardening" ? (wait.detail ?? undefined) : undefined,
           connecting: candidate?.connection?.phase === "connecting",
+          runtimes: birthRuntimesFacts({
+            birth,
+            services: resolvedServices(inventory.services.get(projectId)),
+          }),
         },
   );
   // A New project's first Mate: the project's own steps stay before the Mate's, done, as its view
@@ -672,4 +680,11 @@ export function ComingBelow({
       {steps}
     </div>
   );
+}
+
+/** A project's services once the inventory has read them; nothing while it hasn't, or failed. */
+function resolvedServices(
+  outcome: InventoryServiceOutcome | undefined,
+): ReadonlyArray<ZeropsService> | undefined {
+  return outcome?.status === "resolved" ? outcome.services : undefined;
 }

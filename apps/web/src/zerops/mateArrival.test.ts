@@ -96,6 +96,25 @@ describe("arrivalSteps", () => {
     expect(arrivalSteps(progress, WREN, NOW)[0]).not.toHaveProperty("services");
   });
 
+  it.each([
+    { state: "done" as const, drawn: "ok" as const },
+    { state: "active" as const, drawn: "busy" as const },
+    { state: "waiting" as const, drawn: "waiting" as const },
+    { state: "failed" as const, drawn: "failed" as const },
+  ])(
+    "draws a runtime the birth imports after closing off, $state, as $drawn",
+    ({ state, drawn }) => {
+      const progress = deriveBirthProgress(CREATING, NOW);
+      const withRuntimes = {
+        ...progress,
+        runtimes: { runtimes: [{ hostname: "medusadev", state }] },
+      };
+      expect(arrivalSteps(withRuntimes, WREN, NOW)[0]?.services).toEqual([
+        { name: "medusadev", state: drawn },
+      ]);
+    },
+  );
+
   it("says where its workspace stopped, in its own words", () => {
     const steps = arrivalSteps(
       deriveBirthProgress(

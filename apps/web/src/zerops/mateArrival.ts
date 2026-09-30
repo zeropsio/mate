@@ -233,7 +233,16 @@ const timeOf = (startedAt: string | undefined, endedAt: string | undefined, nowM
  * its workspace. A step's time is what its own facts measure; a step with none says none.
  */
 export function arrivalSteps(
-  progress: { readonly steps: ReadonlyArray<ArrivalStepInput> },
+  progress: {
+    readonly steps: ReadonlyArray<ArrivalStepInput>;
+    /** The tier's runtimes, imported once the project is closed off (`birthRuntimesFacts`). */
+    readonly runtimes?: {
+      readonly runtimes: ReadonlyArray<{
+        readonly hostname: string;
+        readonly state: "waiting" | "active" | "done" | "failed";
+      }>;
+    };
+  },
   mate: Named,
   nowMs: number,
 ): ReadonlyArray<ArrivalStep> {
@@ -264,12 +273,7 @@ export function arrivalSteps(
         project.state === "waiting" ? undefined : timeOf(project.startedAt, project.endedAt, nowMs),
       ),
       ...optional("why", project.state === "failed" ? project.detail : undefined),
-      ...optional(
-        "services",
-        project.services !== undefined && project.services.length > 0
-          ? project.services
-          : undefined,
-      ),
+      ...optional("services", copyServices(project.services, progress.runtimes?.runtimes)),
     });
   }
   const parts = foldsCopy && project !== undefined ? [project, ...workspace] : workspace;
@@ -307,4 +311,30 @@ function optional<Key extends string, Value>(
   value: Value | undefined,
 ): { readonly [K in Key]?: Value } {
   return (value === undefined ? {} : { [key]: value }) as { readonly [K in Key]?: Value };
+}
+
+/** How a runtime's own step reads on the copy's quiet line. */
+const RUNTIME_SERVICE_STATE: Readonly<
+  Record<"waiting" | "active" | "done" | "failed", ArrivalService["state"]>
+> = { waiting: "waiting", active: "busy", done: "ok", failed: "failed" };
+
+/**
+ * The services the copy's quiet line names: what the step carries itself, else the runtimes the
+ * birth imports after closing off, each as far as it has come; nothing when neither has any.
+ */
+function copyServices(
+  own: ReadonlyArray<ArrivalService> | undefined,
+  runtimes:
+    | ReadonlyArray<{
+        readonly hostname: string;
+        readonly state: "waiting" | "active" | "done" | "failed";
+      }>
+    | undefined,
+): ReadonlyArray<ArrivalService> | undefined {
+  if (own !== undefined && own.length > 0) return own;
+  if (runtimes === undefined || runtimes.length === 0) return undefined;
+  return runtimes.map((runtime) => ({
+    name: runtime.hostname,
+    state: RUNTIME_SERVICE_STATE[runtime.state],
+  }));
 }
