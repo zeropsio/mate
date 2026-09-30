@@ -357,6 +357,7 @@ describe("takenBotNames", () => {
   it.each<{
     readonly name: string;
     readonly listing: Known<ReadonlyArray<CandidateRow>>;
+    readonly withheldMembers?: boolean;
     readonly taken: object;
   }>([
     {
@@ -373,13 +374,28 @@ describe("takenBotNames", () => {
       listing: known([row("a", "known", ["mate:bot:Fen"])], "partial"),
       taken: { names: ["Fen"], complete: false },
     },
+    {
+      // A colleague's new Mate, pushed before any read that carries its project's tags.
+      name: "a complete listing holding a project whose tags are unread is not all of them",
+      listing: known([
+        row("a", "known", ["mate:bot:Fen"]),
+        { ...row("b"), project: { id: "b", name: "b", status: "ACTIVE" } },
+      ]),
+      taken: { names: ["Fen"], complete: false },
+    },
+    {
+      name: "a complete listing whose list held a member it may not read is not all of them",
+      listing: known([row("a", "known", ["mate:bot:Fen"])]),
+      withheldMembers: true,
+      taken: { names: ["Fen"], complete: false },
+    },
     ...notHeldRows.map(({ name, listing }) => ({
       name: `a listing that is ${name} names none, and never as all of them`,
       listing,
       taken: { names: [], complete: false },
     })),
-  ])("$name", ({ listing, taken }) => {
-    expect(takenBotNames(listing)).toEqual(taken);
+  ])("$name", ({ listing, withheldMembers = false, taken }) => {
+    expect(takenBotNames(listing, { withheldMembers })).toEqual(taken);
   });
 });
 

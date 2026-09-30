@@ -1,0 +1,70 @@
+import { describe, expect, it } from "vite-plus/test";
+
+import {
+  INVENTORY_TROUBLE_HOLD_MS,
+  inventoryTroubleVoice,
+  type InventoryTroubleInput,
+} from "./inventoryTrouble.logic";
+
+const SAYS = { sentence: "Zerops isn't answering. Trying again…", tryNow: true } as const;
+
+/** A mounted product on a grant still held, its session alive, and nothing wrong. */
+const calm: InventoryTroubleInput = {
+  mounted: true,
+  lapsed: false,
+  sessionEnded: false,
+  trouble: null,
+  troubledForMs: 0,
+};
+
+describe("when the inventory's trouble speaks", () => {
+  it.each<{
+    readonly name: string;
+    readonly input: Partial<InventoryTroubleInput>;
+    readonly voice: typeof SAYS | null;
+  }>([
+    { name: "nothing wrong: silence", input: {}, voice: null },
+    {
+      name: "a round that failed a moment ago: silence, the retry runs on its own",
+      input: { trouble: "grant", troubledForMs: 3_000 },
+      voice: null,
+    },
+    {
+      name: "a failure that cleared: silence",
+      input: { trouble: null, troubledForMs: 0 },
+      voice: null,
+    },
+    {
+      name: "an organization's data refused a moment ago: silence",
+      input: { trouble: "organization", troubledForMs: 3_000 },
+      voice: null,
+    },
+    {
+      name: "a round failing past the hold: says so, and offers Try now",
+      input: { trouble: "grant", troubledForMs: INVENTORY_TROUBLE_HOLD_MS },
+      voice: SAYS,
+    },
+    {
+      name: "an organization's data blocked past the hold: the same words",
+      input: { trouble: "organization", troubledForMs: INVENTORY_TROUBLE_HOLD_MS },
+      voice: SAYS,
+    },
+    {
+      name: "the grant it runs on has lapsed: the lapse's one banner speaks, not this",
+      input: { trouble: "grant", troubledForMs: INVENTORY_TROUBLE_HOLD_MS, lapsed: true },
+      voice: null,
+    },
+    {
+      name: "the sign-in ended: the sign-in screen speaks, and nothing here offers Sign out",
+      input: { trouble: "grant", troubledForMs: INVENTORY_TROUBLE_HOLD_MS, sessionEnded: true },
+      voice: null,
+    },
+    {
+      name: "before the product mounts: the gate's own wait speaks",
+      input: { trouble: "grant", troubledForMs: INVENTORY_TROUBLE_HOLD_MS, mounted: false },
+      voice: null,
+    },
+  ])("$name", ({ input, voice }) => {
+    expect(inventoryTroubleVoice({ ...calm, ...input })).toEqual(voice);
+  });
+});

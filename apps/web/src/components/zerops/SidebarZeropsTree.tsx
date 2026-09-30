@@ -1699,6 +1699,36 @@ export function SidebarNewProject({ onNewProject }: { readonly onNewProject: () 
 }
 
 /**
+ * The account's inventory trouble once it has lasted (`inventoryTroubleVoice`): one quiet line
+ * pinned at the menu's foot, what is true and what happens, with Try now. The rows above keep what
+ * they have; nothing is covered or frozen.
+ */
+export function SidebarTroubleLine({
+  sentence,
+  onTryNow,
+}: {
+  readonly sentence: string;
+  readonly onTryNow: () => void;
+}) {
+  return (
+    <div
+      className="animate-zerops-appear flex shrink-0 items-center gap-2 ps-4 pe-2 py-1.5 text-xs text-sidebar-muted-foreground"
+      data-zerops-surface="sidebar-trouble"
+      role="status"
+    >
+      <span className="min-w-0 truncate">{sentence}</span>
+      <button
+        className="shrink-0 cursor-pointer rounded-md px-1.5 py-0.5 font-medium text-sidebar-foreground outline-none transition-colors hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={onTryNow}
+        type="button"
+      >
+        Try now
+      </button>
+    </div>
+  );
+}
+
+/**
  * What scrolls the menu: the sidebar's viewport, or the page where nothing
  * inside does. Nothing where the menu is not drawn (a test's renderer).
  */

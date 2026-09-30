@@ -229,12 +229,14 @@ import { useAskMateToFix } from "../zerops/fixRequest";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
+import { useInventoryRetry } from "../zerops/inventoryContext";
 import { useListingPatience } from "../zerops/useListingPatience";
 import { useNowMs } from "../zerops/useNowMs";
 import { useZeropsContainers } from "../zerops/zeropsContainers";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
 import {
   SidebarNewProject,
+  SidebarTroubleLine,
   SidebarZeropsTree,
   type SidebarDrawn,
   type SidebarProjectFlow,
@@ -1803,7 +1805,12 @@ export default function Sidebar() {
     zeropsSession.activeOrganization === null
       ? false
       : canCreateProjectsInOrganization(zeropsSession.activeOrganization);
-  const { listing: zeropsListing, refresh: refreshZeropsCandidates } = useZeropsCandidates();
+  const {
+    listing: zeropsListing,
+    refresh: refreshZeropsCandidates,
+    error: zeropsTrouble,
+  } = useZeropsCandidates();
+  const retryZeropsInventory = useInventoryRetry();
   const zeropsHeld = useMemo(() => heldCandidates(zeropsListing), [zeropsListing]);
   const zeropsCandidates = zeropsHeld.rows;
   // The creations under way in the organization in view, drawn in their
@@ -4729,6 +4736,14 @@ export default function Sidebar() {
         complete: zeropsHeld.complete,
       }) ? (
         <SidebarNewProject onNewProject={openNewZeropsProject} />
+      ) : null}
+      {/* The inventory's own trouble once it has lasted (`inventoryTroubleVoice`): pinned with
+          the menu's foot, where it is seen whatever the list's length, and never over the app. */}
+      {zeropsSignedIn && zeropsTrouble !== null ? (
+        <SidebarTroubleLine
+          sentence={zeropsTrouble}
+          onTryNow={retryZeropsInventory ?? refreshZeropsCandidates}
+        />
       ) : null}
       <SidebarChromeFooter />
     </>

@@ -43,7 +43,8 @@ export const heldEvidence = (grant: GrantMachine): Evidence | null =>
 /**
  * The projects admitted evidence names: verified ones, those whose latest
  * read failed, and those a denial withholds until a confirming read (G6).
- * A confirmed denial is the only way a project leaves.
+ * A confirmed denial is the only way a project leaves. One only an
+ * organization's list has named joins once its own read has answered.
  */
 export function evidenceProjectRefs(evidence: Evidence | null): ReadonlyArray<ProjectRef> {
   if (evidence === null) return [];
@@ -51,7 +52,10 @@ export function evidenceProjectRefs(evidence: Evidence | null): ReadonlyArray<Pr
   for (const { access } of evidence.projects.values()) {
     if (access.role !== "NO_ACCESS") refs.set(projectKeyOf(access.project), access.project);
   }
-  for (const { project } of evidence.unverified.values()) {
+  for (const { project, failure } of evidence.unverified.values()) {
+    // A project only a list has named waits for its own read: one still being created or
+    // deleted is never registered for before the platform has answered for it.
+    if (failure === null) continue;
     if (!evidence.projects.has(project.projectId)) refs.set(projectKeyOf(project), project);
   }
   for (const { project, confirmation } of evidence.closedProjects.values()) {
@@ -223,12 +227,15 @@ export const holdListedProjects = (input: {
     const { data, atomRegistry } = input;
     const unheld = Atom.make((get) => {
       const evidence = heldEvidence(get(data.access.view).machine);
-      return unheldListedProjects(
+      return {
         evidence,
-        (evidence?.account.organizations ?? []).map(({ organization }) =>
-          get(data.reads.projectsOf(organization)),
+        projects: unheldListedProjects(
+          evidence,
+          (evidence?.account.organizations ?? []).map(({ organization }) =>
+            get(data.reads.projectsOf(organization)),
+          ),
         ),
-      );
+      };
     });
     const listed = yield* Queue.sliding<ReadonlyArray<ProjectRef>>(1);
     yield* Queue.take(listed).pipe(
@@ -236,13 +243,16 @@ export const holdListedProjects = (input: {
       Effect.forever,
       Effect.forkScoped,
     );
-    let last = "";
+    // One offer per set of projects and evidence: a grant that took it names them, and one that
+    // let it go (lapsed, or its evidence run out) keeps its evidence as it was, so it is offered
+    // them again only once its evidence moves — never again and again as its view republishes.
+    let offered: { readonly evidence: Evidence | null; readonly key: string } | null = null;
     const unsubscribe = atomRegistry.subscribe(
       unheld,
-      (projects) => {
+      ({ evidence, projects }) => {
         const key = projects.map(projectKeyOf).join(",");
-        if (key === last) return;
-        last = key;
+        if (offered?.evidence === evidence && offered.key === key) return;
+        offered = { evidence, key };
         if (projects.length > 0) Queue.offerUnsafe(listed, projects);
       },
       { immediate: true },
