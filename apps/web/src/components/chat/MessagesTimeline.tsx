@@ -935,6 +935,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // changes. Overdue after a while, it lands on the best anchor it has and
   // shows; the list's own placing at the end, which starts over on each
   // change, is ended the same way.
+  // The keeper hears when the open list stands where it stays, a conversation
+  // on its way included: nothing warms while the pane is still switching.
+  const standing = showsList ? listPlaced : !(hideEmptyPlaceholder && loading);
+  const onStanding = kept?.onStanding;
+  useEffect(() => {
+    onStanding?.(routeThreadKey, standing);
+  }, [onStanding, routeThreadKey, standing]);
   const rowsRef = useRef(rows);
   const listReadyRef = useRef(listReady);
   useLayoutEffect(() => {

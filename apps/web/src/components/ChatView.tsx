@@ -350,6 +350,8 @@ import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { KeptTimelines, useKeptTimelineAlive } from "./chat/KeptTimelines";
+import { useWarmTimelineAsk } from "./chat/warmTimeline";
+import { rememberTimelineInset, rememberedTimelineInset } from "./chat/timelineInsets";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
 import { useAlsoWorkingBanner } from "./chat/ConversationStrip";
@@ -1596,12 +1598,9 @@ export default function ChatView(props: ChatViewProps) {
   const [composerBannerStackElement, setComposerBannerStackElement] =
     useState<HTMLDivElement | null>(null);
   const [composerBannerStackHeight, setComposerBannerStackHeight] = useState(0);
-  // What the composer covers of the list, as each conversation last had it.
-  // The banners over the composer are the conversation's own and are
-  // measured only once they are drawn, a draw after the switch: a list kept
-  // from before (`KeptTimelines`) shows in the press frame and took the
+  // What the composer covers of the list, as each conversation last had it
+  // (`timelineInsets.ts`): a list shown in the press frame took the
   // conversation left's inset for that frame, and moved.
-  const composerOverlayHeightByThreadRef = useRef(new Map<string, number>());
   const [composerOverlaySettledFor, setComposerOverlaySettledFor] = useState(routeThreadKey);
   const composerOverlayHeight = resolveComposerOverlayHeight({
     composerHeight: composerElementHeight,
@@ -1611,10 +1610,14 @@ export default function ChatView(props: ChatViewProps) {
     bannerStackHeight: composerBannerStackElement ? composerBannerStackHeight : 0,
   });
   const keptTimelineAlive = useKeptTimelineAlive();
+  const warmTimelineAsk = useWarmTimelineAsk();
+  const rememberedInset = rememberedTimelineInset(routeThreadKey);
+  const timelineInsetSettled =
+    composerOverlaySettledFor === routeThreadKey || rememberedInset !== undefined;
   const timelineInsetEnd =
     composerOverlaySettledFor === routeThreadKey
       ? composerOverlayHeight
-      : (composerOverlayHeightByThreadRef.current.get(routeThreadKey) ?? composerOverlayHeight);
+      : (rememberedInset ?? composerOverlayHeight);
   // Its own is measured by the next frame.
   useLayoutEffect(() => {
     if (composerOverlaySettledFor === routeThreadKey) return;
@@ -1623,7 +1626,7 @@ export default function ChatView(props: ChatViewProps) {
   }, [composerOverlaySettledFor, routeThreadKey]);
   useLayoutEffect(() => {
     if (composerOverlaySettledFor !== routeThreadKey) return;
-    composerOverlayHeightByThreadRef.current.set(routeThreadKey, composerOverlayHeight);
+    rememberTimelineInset(routeThreadKey, composerOverlayHeight);
   }, [composerOverlayHeight, composerOverlaySettledFor, routeThreadKey]);
   const isAtEndRef = useRef(true);
   const attachmentPreviewHandoffByMessageIdRef = useRef<Record<string, string[]>>({});
@@ -8155,6 +8158,8 @@ export default function ChatView(props: ChatViewProps) {
               <KeptTimelines
                 open={routeThreadKey}
                 alive={keptTimelineAlive}
+                warm={warmTimelineAsk}
+                insetSettled={timelineInsetSettled}
                 crewTimeline={crewTimeline}
                 timeline={{
                   agentPanelModel,
