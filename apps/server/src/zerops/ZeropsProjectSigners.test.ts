@@ -808,6 +808,32 @@ describe("the turn gate", () => {
       }).pipe(Effect.scoped),
   );
 
+  // Eva signs in; Jan starts and cancels a sign-in before her record lands. The credential is
+  // still Eva's: the record from before (Jan's) runs nothing on it, and Eva waits for hers.
+  it.effect("an attempt cancelled after a sign-in leaves that sign-in standing", () =>
+    Effect.gen(function* () {
+      const { signers, setTags } = yield* gate([signerTag("claude-code", JAN)]);
+      const { agent, login: evas } = yield* justSignedIn(EVA);
+      const now = yield* DateTime.now;
+      const login = {
+        phase: "cancelled",
+        terminalId: "t",
+        startedAt: now,
+        startedBy: JAN,
+        lastSucceeded: { startedAt: evas.startedAt, startedBy: EVA },
+      } as const;
+      const on = (subject: string) =>
+        signers.turnRefusal({ agentId: "claude-code", agent, subject, login });
+
+      assert.deepStrictEqual(yield* on(JAN), { kind: "someone-else" });
+      const fiber = yield* on(EVA).pipe(Effect.forkChild);
+      yield* TestClock.adjust(Duration.seconds(2));
+      setTags([signerTag("claude-code", EVA)]);
+      yield* TestClock.adjust(Duration.seconds(2));
+      assert.isUndefined(yield* Fiber.join(fiber));
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("somebody else's sign-in is nothing this turn waits for", () =>
     Effect.gen(function* () {
       const { signers, reads } = yield* gate([]);

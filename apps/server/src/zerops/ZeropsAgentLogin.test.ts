@@ -929,3 +929,37 @@ it.effect("combines the agent rows, every login, and each login's own walker sta
     );
   }),
 );
+
+// Every attempt carries the latest one that succeeded before it, so a later attempt cancelled or
+// failed before the first one's record landed leaves who signed in known.
+it("an attempt after a success carries it; a success carries none", () => {
+  const at = (iso: string) => DateTime.makeUnsafe(iso);
+  const eva = {
+    phase: "succeeded",
+    terminalId: "t",
+    startedAt: at("2026-09-30T21:38:00.000Z"),
+    startedBy: "eva",
+  } as const;
+  const jan = {
+    phase: "starting",
+    terminalId: "t",
+    startedAt: at("2026-09-30T21:38:20.000Z"),
+    startedBy: "jan",
+  } as const;
+  const started = ZeropsAgentLoginModule.withLatestSuccess(eva, jan);
+  assert.deepStrictEqual(started.lastSucceeded, {
+    startedAt: eva.startedAt,
+    startedBy: "eva",
+  });
+  const cancelled = ZeropsAgentLoginModule.withLatestSuccess(started, {
+    ...jan,
+    phase: "cancelled",
+  });
+  assert.deepStrictEqual(cancelled.lastSucceeded, started.lastSucceeded);
+  const janSucceeded = ZeropsAgentLoginModule.withLatestSuccess(cancelled, {
+    ...jan,
+    phase: "succeeded",
+  });
+  assert.isUndefined(janSucceeded.lastSucceeded);
+  assert.isUndefined(ZeropsAgentLoginModule.withLatestSuccess(undefined, jan).lastSucceeded);
+});

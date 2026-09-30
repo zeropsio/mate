@@ -49,6 +49,7 @@ import type {
 import {
   classifyZeropsAgentAuth,
   knownSigner,
+  latestSucceededSignIn,
   readSignerTags,
   type SignerRecord,
   type ZeropsAgentAuthFields,
@@ -241,18 +242,21 @@ const SIGNER_RECORD_POLL = Duration.seconds(1);
 const RECORD_ON_ITS_WAY_WITHIN = Duration.minutes(30);
 
 /**
- * Who has just signed this agent in, by the login this server walked: it succeeded, not long ago,
- * and names who started it. Their app writes their record once it sees the success, so until it
+ * Who has just signed this agent in, by the login this server walked: its latest attempt that
+ * succeeded — an attempt started, cancelled or failed after it changes nothing — not long ago,
+ * naming who started it. Their app writes their record once it sees the success, so until it
  * lands the credential is theirs, whatever the record from before says.
  */
 export function recentSignInBy(
-  login: Pick<ZeropsAgentLoginState, "phase" | "startedAt" | "startedBy"> | undefined,
+  login:
+    | Pick<ZeropsAgentLoginState, "phase" | "startedAt" | "startedBy" | "lastSucceeded">
+    | undefined,
   nowMs: number,
 ): string | undefined {
-  if (login === undefined || login.phase !== "succeeded") return undefined;
-  const by = login.startedBy;
-  if (by === undefined || by.length === 0) return undefined;
-  const age = nowMs - DateTime.toEpochMillis(login.startedAt);
+  const success = latestSucceededSignIn(login);
+  const by = success?.startedBy;
+  if (success === undefined || by === undefined || by.length === 0) return undefined;
+  const age = nowMs - DateTime.toEpochMillis(success.startedAt);
   return age < Duration.toMillis(RECORD_ON_ITS_WAY_WITHIN) ? by : undefined;
 }
 

@@ -49,6 +49,8 @@ import {
   useSyncExternalStore,
 } from "react";
 
+import { latestSucceededSignIn } from "@t3tools/shared/zeropsAgentAuth";
+
 import { useRegistrationRecord } from "./registrationRecords";
 import { runZeropsCommand, ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -197,10 +199,10 @@ export function agentSignersToRecord(
   if (!viewerId) return [];
   const agents = snapshot.agents
     .filter((agent) => {
-      if (agent.login?.phase !== "succeeded" || agent.authorizedBy?.subject === viewerId) {
-        return false;
-      }
-      if (agent.login.startedBy !== undefined) return agent.login.startedBy === viewerId;
+      // The latest success: an attempt started, cancelled or failed after it changes nothing.
+      const success = latestSucceededSignIn(agent.login);
+      if (success === undefined || agent.authorizedBy?.subject === viewerId) return false;
+      if (success.startedBy !== undefined) return success.startedBy === viewerId;
       const before = previous?.agents.find((entry) => entry.agentId === agent.agentId);
       return before?.login?.phase !== "succeeded";
     })
@@ -209,8 +211,7 @@ export function agentSignersToRecord(
     .filter(
       (login) =>
         !login.default &&
-        login.login?.phase === "succeeded" &&
-        login.login.startedBy === viewerId &&
+        latestSucceededSignIn(login.login)?.startedBy === viewerId &&
         login.signedInBy !== viewerId,
     )
     .map((login) => login.id);
@@ -363,10 +364,11 @@ export function useZeropsAgentSignerRecord(input: {
     }
     const previous = owner.previous;
     owner.previous = snapshot;
+    // One write per sign-in that succeeded, whatever was started after it.
     const startedAtOf = (key: string) =>
-      (
+      latestSucceededSignIn(
         snapshot.agents.find((agent) => agent.agentId === key)?.login ??
-        snapshot.logins?.find((login) => !login.default && login.id === key)?.login
+          snapshot.logins?.find((login) => !login.default && login.id === key)?.login,
       )?.startedAt;
     const due = agentSignersToRecord(snapshot, userId, previous).filter((key) => {
       const startedAt = startedAtOf(key);
