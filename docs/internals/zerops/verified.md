@@ -7034,3 +7034,78 @@ token, and then in a real headless Chrome on another origin. Lab only: no org's 
   scope (`planMateAccess`); after a rotation each dev service keeps the old token as `GIT_TOKEN`
   (written once by `git-push-setup`), revoked 10 minutes later, and nothing re-wired it. Both are
   changed on `feat/attachments` and zcp's `feat/change-pictures`.
+
+## Pass 25 as measured — 2026-09-30
+
+Measured on the test org `Mate` after the day's live runs: the platform's app-version builds and build
+logs read through the API, the lead's dev server on `pass-25` signed in as the test owner in an audit
+browser at 1786 × 1000 (in-page samplers every 40–200 ms), local production builds against the live
+Mates, and the parts' own harnesses where a state could not be made live. The Mac routes through a VPN
+(see the first row), so absolute times are this network's.
+
+- **This Mac's VPN drops full-size packets** — `utun4` reports MTU 1420; `ping -D` to the API host
+  passes up to 1392-byte packets and drops 1420. From Node, an X25519MLKEM768 TLS handshake took
+  1.1–1.6 s against Zerops, google.com and github.com, X25519 alone 0.15–0.2 s. A post-quantum
+  hello's first full-size segment is lost and waits out a retransmit.
+- **One WebSocket connects at a time per address** — Chrome holds one socket CONNECTING per IP, and
+  every Mate sits behind one L7 address, so a load's ~10 Mate sockets queue. The L7 does not speak
+  WebSocket over HTTP/2: each socket is a fresh TLS connection.
+- **Opening a Mate, before** — mate.zerops.io 0.11.72, n = 9: time to the conversation p50 9.8 s,
+  p90 and max 15.3 s; the route's socket was 4th–6th in the queue and its exchange started 0.6–2.6 s
+  after the grant (`setRoute` one React turn late, three remembered Mates holding the three exchange
+  slots).
+- **Opening a Mate, after** — local production builds against the live Mates, alternating, n = 10
+  each, twice: p50 4.9 → 3.2 s and 5.9 → 2.7 s, max 12.1 → 4.5 s and 10.9 → 3.5 s, with the
+  conversation painted from the HTTP snapshot before its socket opened in 10 of 10 and no painted row
+  taken back. The released Mates do not name the snapshot's parameters yet; the measured build assumed
+  them.
+- **A first load said "Reconnecting…" for 3.4 s** — Quinn, before the fix: the top pill read it from
+  1.6 s to 5.0 s of a load of a healthy Mate.
+- **A restart stacked four surfaces** — Quinn, 200 ms sampler: the top pill "Reconnecting…" at the
+  drop, "Zerops is restarting this Mate." at +0.4 s with the header's face and name gone (the listing
+  row of a RESTARTING service carries no origin), the composer's "Reconnecting… It isn't answering." at
+  +2.2 s, and after recovery the empty-conversation prompt for 200 ms. On `pass-25` (19:33:36Z): one
+  banner, "Reconnecting to Quinn… Try now" at the drop, "Quinn is restarting." 5 s later, gone at
+  +42 s; header, composer and rows held.
+- **A reload's pane, frame by frame** — Quinn's conversation URL on `pass-25`: before, "Checking your
+  Zerops projects…" to ~1.0 s, then no `main` or an empty one until the conversation at ~3.5–4.9 s
+  (a `/_chat` guard with no pending view, a lazily loaded stage that rendered an empty element, a
+  route that rendered `null` while its thread loaded). After: checking → the Mate's stage (face and
+  name from the browser's memory) at 0.9–1.8 s → the working face while rows are placed → rows; the
+  pane is never empty.
+- **The switch, per frame** — dev build, click to frame: a return blanked the list until 316–416 ms
+  and was fully shown at ~470–550 ms before; after, the rows stand in the press frame (68–216 ms) and
+  nothing moves for the next second. A warmed first open shows at 275–288 ms, a cold one at ~520 ms.
+  Production answered a press in 40–66 ms; the dev build adds ~150 ms.
+- **The projects page claimed empty for 11–28 s** — on a reload, "None yet" / "Nothing merged" per
+  project while only the deploys half of its flow had answered.
+- **The stand-up's 26 minutes** — Enzo on Beviro, from the sign-in: medusadev +31 → 352 s (yarn 88 s,
+  a 700 MiB artefact up in 37 s, deploy step 159 s), medusastage 355 → 809 (yarn 116 s, build 79 s,
+  production install 39 s, deploy 175 s), nextstoredev 813 → 1135 (yarn ~120 s, 626 MiB, deploy
+  140 s), nextstorestage 1139 → 1555 (yarn ~180 s, `next build` 161 s including 314 pages pre-rendered
+  from medusastage, deploy 67 s); strictly one after another, 3–4 s apart; 38 s before the first
+  build. Read with `POST /app-version/search` and the project log (`serviceStackId` of the build
+  stack, `facility=16`, `tags=zbuilder@<appVersionId>`); CLI-pushed versions carry no `ZEROPS_YAML`.
+- **Every dev setup zcp knows installs only** — all 47 recipes: no dev build reads another service;
+  the storefront's stage build reads its API's stage.
+- **project.create takes 29–45 s whatever it holds** — n = 12 in the test org: 0 services 32.9 s,
+  1: 36.0 / 43.7, 2: 41.6 / 31.7 / 34.2, 5: 34.2 / 31.2 / 40.3 / 44.5, 10: 29.3 / 34.5; queue 0–1 s.
+- **zcli push always waits for its pipeline** — no upload-only flag; its archiver ends with
+  `git read-tree HEAD` and `git prune`, so two pushes from one checkout cannot overlap; zcp's
+  foreground SSH is capped at 5 min.
+- **An update restarted a Mate twice** — the mate unit starts at boot on the old bundle, then
+  `zcp init` updates it and restarts the unit (~10 s down each time).
+- **MCP progress never reaches the card** — Claude CLI 2.1.278 sends a `progressToken` and turns
+  `notifications/progress` into an internal `mcp_progress` that only its terminal draws; the headless
+  stream carries `tool_progress` with elapsed seconds only. Codex's `item/mcpToolCall/progress`
+  reaches the adapter and ingestion drops it unless a subagent owns it.
+- **A runtime started without code reads `NONE`** — in `GET /project/{id}/service-stack` its
+  `activeAppVersion.source` is `NONE` with no `build`; the org-wide search trims `activeAppVersion`.
+- **A cross-site frame's cached page cannot be refreshed in place** — against a request-counting
+  server sending `Last-Modified` and no `Cache-Control`: remounting, re-setting `src`, a fragment,
+  setting or replacing its location and a parent `fetch(…, {cache: "reload"})` all got the cached copy;
+  `contentWindow.location.reload()` throws cross-origin.
+- **zcp's verify of a dev half ran on its stage** — the result's `hostname` named the checked service,
+  so Heron's never-deployed appstage (READY_TO_DEPLOY, no subdomain) read as "appdev not healthy, 2 of 4".
+- **A failed entity read was retried three times, then never** — until a foreground return or socket
+  recovery, and every event from a watched project reset every failure budget.
