@@ -3006,3 +3006,24 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   _Close_.
   - _Why:_ a merged recipe offered _Review release_ and said "the environments change to match" of
     a change no environment is made from
+- **2026-09-30** — **A project whose Mates haven't written its recipe takes no other Mate** (the
+  owner: "we need to deal with states where you are trying to add a second mate but the first
+  haven't created the group's imports yet - shouldn't be possible with explanation"). A new Mate is
+  made from `0 — AI Agent/import.yaml` on the group repo's `main`. A project with Mates and no
+  recipe opens the New Mate dialog on the reason instead of the form (`newMateDoor`):
+  - the recipe waiting in a change: _Review the change_;
+  - none yet: _Open Cleo_, the Mate that writes it, or no action when several could;
+  - unreadable: _Try again_, with Add off.
+
+  A project with no Mates still takes its first. A failed read is never taken for "no recipe", so
+  a quick Add no longer makes an empty Mate.
+  - _Why:_ Add quietly made an empty Mate beside one that had set the project up
+
+- **2026-09-30** — **New project lands on its first Mate** (the owner: "you should add the project
+  and the first mate in the same step, then you should go to the mate detail and the only diff
+  would be the progress, which would include the project creation as well"). Create goes straight
+  to the first Mate's own view (`/mate/new/$birthId`, then `/mate/$projectId` once the platform
+  takes the project). Its progress starts with the project's own steps: "Git hosting" only when the
+  account has none, then the project. The Mate's six steps follow, and the menu draws both from the
+  press.
+  - _Why:_ Git hosting blocked the page and Create landed on the projects list, not the Mate
