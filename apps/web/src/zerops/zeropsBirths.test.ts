@@ -8,6 +8,7 @@ import {
   type ZeropsIntegrationToken,
 } from "@t3tools/client-runtime/zerops";
 import type { BirthRecord } from "@t3tools/client-runtime/zerops/birth";
+import type { NewProjectBirth } from "./newProjectBirth";
 import {
   applyProjectTagPatch,
   sameProjectTags,
@@ -342,6 +343,33 @@ describe("placedBirthsIn", () => {
     },
   ])("$name", ({ births, organizationId, want }) => {
     expect(placedBirthsIn(births, organizationId)).toEqual(want);
+  });
+
+  it("draws the New projects this tab is still making after them, from the press", () => {
+    const made: NewProjectBirth = {
+      organizationId: "org-1",
+      groupId: "g-acme",
+      name: "Acme CRM",
+      botName: "Ada",
+      face: { tint: "rose", shape: "seal" },
+      locationId: null,
+      agents: [],
+      startedAt: 9,
+      withGitea: false,
+      giteaProjectId: "gitea-1",
+      step: "registry",
+      failed: null,
+      projectId: null,
+    };
+    expect(
+      placedBirthsIn([birth({})], "org-1", [made]).map((placed) => [
+        placed.projectId,
+        placed.placement.groupName,
+      ]),
+    ).toEqual([
+      ["project-1", "Todo"],
+      ["g-acme", "Acme CRM"],
+    ]);
   });
 });
 

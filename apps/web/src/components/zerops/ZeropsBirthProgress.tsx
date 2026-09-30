@@ -8,7 +8,6 @@
  * clock `useZeropsBirthProgress` ticks once a second — nothing here derives
  * anything on its own (R5).
  */
-import type { BirthProgress, BirthStep } from "@t3tools/client-runtime/zerops/birthProgress";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import { cn } from "~/lib/utils";
@@ -23,6 +22,8 @@ import {
   birthLineDetailStep,
   birthStepToProcessStep,
   formatBirthElapsed,
+  type BirthLineProgress,
+  type BirthLineStep,
 } from "./ZeropsBirthProgress.logic";
 import { ProcessSteps } from "./primitives";
 
@@ -35,7 +36,7 @@ const SEGMENT_TONE_CLASS: Readonly<Record<ServiceStatusToneId, string>> = {
 };
 
 export interface ZeropsBirthLineProps {
-  readonly progress: BirthProgress;
+  readonly progress: BirthLineProgress;
   readonly nowMs: number;
   readonly className?: string;
 }
@@ -109,11 +110,11 @@ export function ZeropsBirthLine({ progress, nowMs, className }: ZeropsBirthLineP
 }
 
 export interface ZeropsBirthChecklistProps {
-  readonly progress: BirthProgress;
+  readonly progress: BirthLineProgress;
   readonly nowMs: number;
 }
 
-function hasSubsteps(step: BirthStep): boolean {
+function hasSubsteps(step: BirthLineStep): boolean {
   return step.substeps !== undefined && step.substeps.length > 0;
 }
 
