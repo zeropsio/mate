@@ -6941,6 +6941,11 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 
 .arrival-step-label[data-spans-time] {
   grid-column: 2 / -1;
+  /* Where the stage is narrow (a phone) it wraps rather than cut what the person signs in
+     with; each brand keeps its logo on its line. */
+  overflow: visible;
+  white-space: normal;
+  text-wrap: pretty;
 }
 
 .arrival-step-sub {
