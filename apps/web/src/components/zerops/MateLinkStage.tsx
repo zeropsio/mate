@@ -4,11 +4,13 @@
  */
 import { MATE_VOICE_QUIET_MS } from "@t3tools/client-runtime/zerops/environments";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { useState } from "react";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
+import { standInForConversation } from "~/zerops/mateHandOver";
 import { mateOpeningStage } from "~/zerops/mateOpeningStage";
 import { useMateVoice } from "~/zerops/mateVoiceContext";
 import { useHeldPast } from "~/zerops/useHeldPast";
@@ -115,6 +117,18 @@ export function MateOpeningView({ threadRef }: { readonly threadRef: ScopedThrea
   const environmentId = threadRef.environmentId;
   const draft = useComposerDraftStore((state) => state.getComposerDraft(threadRef)?.prompt ?? "");
   const [caret, setCaret] = useState(0);
+  // Standing in for its conversation: the conversation takes over with its Mate at work at once
+  // and the caret where it was typed (`mateHandOver`).
+  const threadKey = scopedThreadKey(threadRef);
+  const standIn = useRef<ReturnType<typeof standInForConversation> | null>(null);
+  useLayoutEffect(() => {
+    const standing = standInForConversation(threadKey);
+    standIn.current = standing;
+    return () => {
+      standIn.current = null;
+      standing.release(Date.now());
+    };
+  }, [threadKey]);
   const voice = useMateVoice();
   const pastQuiet = useHeldPast(`opening:${environmentId}`, MATE_VOICE_QUIET_MS);
   const at = useZeropsMate(environmentId);
@@ -130,6 +144,7 @@ export function MateOpeningView({ threadRef }: { readonly threadRef: ScopedThrea
           onType={(next) => {
             useComposerDraftStore.getState().setPrompt(threadRef, next.text);
             setCaret(next.caret);
+            standIn.current?.caret(next.caret);
           }}
         />
       }

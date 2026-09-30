@@ -6584,6 +6584,12 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   transition-duration: 0ms;
 }
 
+/* p25/switch */
+/* Rows handed over from a Mate's own view take its at-work face's place as they stand. */
+[data-timeline-thread][data-timeline-arrives="at-once"] {
+  transition-duration: 0ms;
+}
+
 @media (prefers-reduced-motion: reduce) {
   [data-timeline-thread] {
     transition: none;

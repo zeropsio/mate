@@ -566,6 +566,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // The list stands where it stays: a reading position put back, or the end
   // reached. Until then it is out of sight (`data-timeline-placing`).
   const [listPlaced, setListPlaced] = useState(false);
+  // Handed over from its Mate's own view (`mateHandOver`): its Mate stays at
+  // work in the pane until the rows stand, and they take its place at once.
+  const [handedOver] = useState(() => handedOverRecently(routeThreadKey, Date.now()));
   const [minimapHasPersistentGutter, setMinimapHasPersistentGutter] = useState(false);
   const [minimapHitStripWidth, setMinimapHitStripWidth] = useState(0);
   const [minimapCurrentIndex, setMinimapCurrentIndex] = useState<number | null>(null);
@@ -1072,7 +1075,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   if (!showsList) {
     if (hideEmptyPlaceholder) {
       return (
-        <TimelineLoadingPane loading={loading} routeThreadKey={routeThreadKey} speaker={speaker} />
+        <TimelineLoadingPane
+          handedOver={handedOver}
+          loading={loading}
+          routeThreadKey={routeThreadKey}
+          speaker={speaker}
+        />
       );
     }
     return crew === null ? (
@@ -1099,6 +1107,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             // line in place while the list catches up (`foldAway`).
             data-timeline-follows-end={followingEnd ? "" : undefined}
             data-timeline-placing={listPlaced ? undefined : ""}
+            // Handed over from its Mate's own view, the rows take the place of
+            // its Mate at work as they stand, with no fade.
+            data-timeline-arrives={handedOver ? "at-once" : undefined}
             data-timeline-thread={routeThreadKey}
           >
             <LegendList<MessagesTimelineRow>
@@ -1155,6 +1166,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               }}
             />
           </div>
+          {handedOver && !listPlaced ? (
+            // Its Mate at work, where the pane on its way showed it, until the
+            // rows stand where they stay.
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <MateAtWork speaker={speaker} held={false} />
+            </div>
+          ) : null}
         </TimelineWorkingCtx>
       </TimelineRowActivityCtx>
     </TimelineRowCtx>
@@ -1169,35 +1187,49 @@ export const MessagesTimeline = memo(function MessagesTimeline({
  * middle of the pane instead, shown only once the wait passes 400 ms.
  */
 function TimelineLoadingPane({
+  handedOver,
   loading,
   routeThreadKey,
   speaker,
 }: {
+  /** Handed over from its Mate's own view: its Mate was on screen the whole wait. */
+  readonly handedOver: boolean;
   readonly loading: boolean;
   readonly routeThreadKey: string;
   readonly speaker: ConversationSpeaker;
 }) {
-  // Handed over from its Mate's own view, its Mate was on screen the whole
-  // wait: it stays at work without the hold.
-  const [handedOver] = useState(() => handedOverRecently(routeThreadKey, Date.now()));
   return (
     <div
       className="flex h-full min-h-0 items-center justify-center bg-background"
       data-timeline-loading="true"
       data-timeline-thread={routeThreadKey}
     >
-      {loading ? (
-        <span
-          aria-label={`Opening ${speaker.name}'s conversation`}
-          // Opacity alone, so it keeps its 400 ms hold under reduced
-          // motion too: without the hold a quick load flashed it.
-          className={handedOver ? "flex" : "flex animate-held-appear"}
-          role="status"
-        >
-          <MateFace shape={speaker.shape} size="lg" state="working" tint={speaker.tint} />
-        </span>
-      ) : null}
+      {loading ? <MateAtWork speaker={speaker} held={!handedOver} /> : null}
     </div>
+  );
+}
+
+/**
+ * Its Mate at work in the middle of the pane. Held 400 ms before it shows —
+ * opacity alone, so it keeps its hold under reduced motion too: without it a
+ * quick load flashed it — except after a hand-over from the Mate's own view,
+ * where it was on screen the whole wait.
+ */
+function MateAtWork({
+  speaker,
+  held,
+}: {
+  readonly speaker: ConversationSpeaker;
+  readonly held: boolean;
+}) {
+  return (
+    <span
+      aria-label={`Opening ${speaker.name}'s conversation`}
+      className={held ? "flex animate-held-appear" : "flex"}
+      role="status"
+    >
+      <MateFace shape={speaker.shape} size="lg" state="working" tint={speaker.tint} />
+    </span>
   );
 }
 
