@@ -3080,10 +3080,53 @@ describe("a Mate's own menu, in its row", () => {
     key("x");
     expect(stop).not.toHaveBeenCalled();
     expect(surface(tree, "sidebar-mate-stop").props["aria-label"]).toBe("Confirm stop crm-dev");
-    key("Escape");
+    // Esc bubbles from the row's button to the row, which lets the stop go.
+    act(() => {
+      tree.root
+        .find(
+          (node) =>
+            typeof node.type === "string" && node.props["data-zerops-mate-row"] !== undefined,
+        )
+        .props.onKeyDown({ key: "Escape", preventDefault: () => {} });
+    });
     expect(surface(tree, "sidebar-mate-stop").props["aria-label"]).toBe("Stop crm-dev");
     key("x");
     key("x");
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  // A tap fires pointerleave before its click: the second tap on "Stop?" must still stop, and
+  // Esc lets an armed stop go wherever in the row the focus stands.
+  it("stops on a second tap, and lets go on Esc from the Stop? itself", () => {
+    const stop = vi.fn();
+    const tree = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getActivity={() => spoken}
+        getMateActions={() => ({ ...ACTIONS, stop })}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    const container = () =>
+      tree.root.find(
+        (node) => typeof node.type === "string" && node.props["data-zerops-mate-row"] !== undefined,
+      );
+    const tap = () => {
+      act(() => {
+        container().props.onPointerLeave({ pointerType: "touch" });
+      });
+      press(tree, "sidebar-mate-stop");
+    };
+    tap();
+    expect(surface(tree, "sidebar-mate-stop").props["aria-label"]).toBe("Confirm stop crm-dev");
+    act(() => {
+      container().props.onKeyDown({ key: "Escape", preventDefault: () => {} });
+    });
+    expect(surface(tree, "sidebar-mate-stop").props["aria-label"]).toBe("Stop crm-dev");
+    tap();
+    tap();
     expect(stop).toHaveBeenCalledTimes(1);
   });
 
