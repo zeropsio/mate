@@ -492,7 +492,6 @@ export {
   changeLandedEvents,
   type ChangeLandedEvent,
   changeState,
-  mergeConsequence,
   pullRequestMergeLine,
   pullRequestsFolded,
   releaseContentsSentence,
