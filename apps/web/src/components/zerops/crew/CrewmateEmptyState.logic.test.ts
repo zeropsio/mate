@@ -51,10 +51,10 @@ describe("crewmateEmptyModel", () => {
       job: "Owns the API under src/api and its tests.",
     },
     {
-      name: "a reviewer, its whole first line past its first sentence",
+      name: "a reviewer, without the words its job says to it",
       crewmate: REVIEWER,
       whose: "One of Fen's crew · checks the others' work and changes nothing",
-      job: "Reviews every change: nothing may break a saved world. Ask before you block.",
+      job: "Reviews every change: nothing may break a saved world.",
     },
     {
       name: "a job with no words",

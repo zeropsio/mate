@@ -1073,14 +1073,31 @@ function personsLine(plain: string, name: string): string {
 }
 
 /**
- * A job's first line, whole, in plain words and the person's: what its
- * crewmate's empty conversation says under _Its job_. Markdown's marks go — a
- * heading's hashes, a list's bullet, emphasis, code ticks, a link's address —
- * and the words the job says to its crewmate become the person's line
- * (`personsLine`).
+ * A job's first line in plain words and the person's: what its crewmate's
+ * empty conversation says under _Its job_. Markdown's marks go — a heading's
+ * hashes, a list's bullet, emphasis, code ticks, a link's address — and the
+ * words the job says to its crewmate become the person's line
+ * (`personsLine`). Its first sentence always stays; a later one stays only
+ * while it speaks about the crewmate, never to it: "You read, plan and
+ * review; you never change files." is the crewmate's instruction, not the
+ * person's line.
  */
 export function crewJobLine(jobFirstLine: string, name: string): string {
-  const plain = jobFirstLine
+  const [first = "", ...rest] = jobSentences(personsLine(plainJobLine(jobFirstLine), name));
+  return [first, ...rest.filter((sentence) => !SPEAKS_TO_IT.test(sentence))].join(" ");
+}
+
+/** A later sentence that addresses the crewmate rather than describing it. */
+const SPEAKS_TO_IT = /\byou(?:r|rs|rself)?\b/iu;
+
+/** A line's sentences: each ends at a full stop, question or exclamation mark a space or the end follows. */
+function jobSentences(line: string): ReadonlyArray<string> {
+  return line.split(/(?<=[.!?])\s+/u).filter((sentence) => sentence.length > 0);
+}
+
+/** A job line without markdown's marks. */
+function plainJobLine(jobFirstLine: string): string {
+  return jobFirstLine
     .replace(MARKDOWN_LEAD, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/gu, "$1")
     .replace(/`([^`]*)`/gu, "$1")
@@ -1089,7 +1106,6 @@ export function crewJobLine(jobFirstLine: string, name: string): string {
     .replace(/(^|[^\w*])\*([^*\s][^*]*)\*(?!\w)/gu, "$1$2")
     .replace(/(^|[^\w])_([^_\s][^_]*)_(?!\w)/gu, "$1$2")
     .trim();
-  return personsLine(plain, name);
 }
 
 /**

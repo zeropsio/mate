@@ -875,7 +875,17 @@ describe("a crewmate's empty conversation", () => {
     {
       name: "Referee",
       line: "You review every change: nothing may break a saved world. Ask before you block.",
-      says: "Reviews every change: nothing may break a saved world. Ask before you block.",
+      says: "Reviews every change: nothing may break a saved world.",
+    },
+    {
+      name: "Lead",
+      line: "You lead the Letopis crew: Server and world, Game systems. You read, plan and review; you never change files.",
+      says: "Leads the Letopis crew: Server and world, Game systems.",
+    },
+    {
+      name: "Game systems",
+      line: "How life in the world works: seasons and growth. Its code is src/systems, with its tests. Keep your changes small.",
+      says: "How life in the world works: seasons and growth. Its code is src/systems, with its tests.",
     },
     {
       name: "World Server",
@@ -894,9 +904,12 @@ describe("a crewmate's empty conversation", () => {
     },
     { name: "World Server", line: "## Game rules", says: "Game rules" },
     { name: "World Server", line: "   ", says: "" },
-  ])("reads a job's whole first line in plain words, never cut: $line", ({ name, line, says }) => {
-    expect(crewJobLine(line, name)).toBe(says);
-  });
+  ])(
+    "reads a job's first line in plain words, leaving out what it says to its crewmate: $line",
+    ({ name, line, says }) => {
+      expect(crewJobLine(line, name)).toBe(says);
+    },
+  );
 });
 
 describe("crewRunsOnWord", () => {

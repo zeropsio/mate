@@ -127,12 +127,11 @@ describe("CrewmateEmptyState", () => {
     expect(whose).not.toContain("data-mate-face-tint");
   });
 
-  it("shows its job's whole first line in the person's words, headed as the job view heads it", () => {
+  it("shows its job's first line in the person's words, headed as the job view heads it", () => {
     const card = between(render(timeline(REVIEWER)), "data-crewmate-card", "");
     expect(card).toContain(">Its job<");
-    expect(card).toContain(
-      "Reviews every change: nothing may break a saved world. Ask before you block.",
-    );
+    expect(card).toContain("Reviews every change: nothing may break a saved world.");
+    expect(card).not.toContain("Ask before you block");
   });
 
   it("offers Change its job only to a viewer who may change the crew", () => {
