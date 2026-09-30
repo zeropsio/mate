@@ -43,26 +43,50 @@ Three questions stay separate. No expression may answer two of them.
 
 ## Vocabulary
 
-| Term                | Meaning                                                                                                                                                                                                                                                                          |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Account epoch       | One verified Zerops principal in one renderer (`currentAccountEpoch()`). Opens when the session verifies a principal; closes on sign-out, principal change or an unrefreshable 401. A result from a closed epoch is dropped by the store that receives it.                       |
-| Pre-grant stage     | Built when the principal is verified: session, grant, data runtime.                                                                                                                                                                                                              |
-| Post-grant stage    | Built on the epoch's first `granted`: T3 connection runtime, environment, container, birth and probe stores, Gitea sessions, forge and deployment stores, reconcilers. Nothing in it runs before the platform has confirmed organizations, projects and roles.                   |
-| Owner record        | `zerops-mate.zerops-session-owner.v1 = {userId, loginGeneration}` beside the unchanged session key. Written only by a tab that verified the principal; a refresh never changes it. It is the cross-tab epoch.                                                                    |
-| Target key          | A Mate's identity: `projectId:serviceId`. `environmentId` is an attribute learned from the descriptor; names, URLs and origins are addresses, never identities.                                                                                                                  |
-| Source              | A system that answers with authority, reached through one adapter: Zerops REST, the Zerops datastream, a Mate's descriptor and `/healthz`, a Mate's WebSocket RPC, Gitea REST as the person, the Gitea broker. Storage, visibility, locks and clocks are signals, never sources. |
-| Observation         | One arrival of evidence (a frame, a response, a descriptor, a close code, a storage event), stamped with a local ordinal and receipt time, admitted or rejected by its owner. Never rendered directly.                                                                           |
-| Fact                | A typed statement one owner holds about one entity, keyed by its natural identity. A key never contains a generation counter, a set of unrelated ids, or the active organization.                                                                                                |
-| Store (owner)       | The one module allowed to change a family of facts: a serialized event queue feeding a pure `transition(state, event, now) → {state, effects}`, publishing one atom per key.                                                                                                     |
-| Machine             | The statechart of one entity inside a store: a discriminated union with a total transition function. No boolean, ref, attempted-set or epoch counter stands in for a state.                                                                                                      |
-| Command, attempt    | An intent to change a source. A command never writes a fact: its response is an observation plus invalidations, and it is never replayed after a write may have been accepted.                                                                                                   |
-| Capability          | A derived answer to "may this class of command run now": `allowed`, or `no` with a typed reason and a `waitable` flag.                                                                                                                                                           |
-| Grant               | The client's verified authority: account evidence (user, organizations, round stamp) and per-project evidence (effective role and mutation flags, each with its own stamp). Authority for a project ends 15 minutes after its own stamp.                                         |
-| Demand (lease)      | A view's declaration that it shows a key. Drives priority and may start a subscription or a backstop. Releasing it never blanks a mounted neighbour.                                                                                                                             |
-| Invalidation        | A typed message that facts under a key may have changed at the source. Carries no data.                                                                                                                                                                                          |
-| Intent              | A local, time-boxed expectation from our own command ("we asked this Mate to restart at T"). It changes how observations are interpreted, survives a reload of its tab, and past its budget becomes `overdue`, never another state.                                              |
-| Projection, verdict | A pure function from knowledge, capabilities and `now` to a view model; a verdict is a render-ready projection. Neither holds state.                                                                                                                                             |
-| Personal context    | Account-scoped, non-secret records in browser storage: registrations, births, intents, drafts, UI preferences. Never authority for existence or access; always revalidated against facts.                                                                                        |
+- **Account epoch** — One verified Zerops principal in one renderer (`currentAccountEpoch()`). Opens
+  when the session verifies a principal; closes on sign-out, principal change or an
+  unrefreshable 401. A result from a closed epoch is dropped by the store that receives it.
+- **Pre-grant stage** — Built when the principal is verified: session, grant, data runtime.
+- **Post-grant stage** — Built on the epoch's first `granted`: T3 connection runtime, environment,
+  container, birth and probe stores, Gitea sessions, forge and deployment stores, reconcilers.
+  Nothing in it runs before the platform has confirmed organizations, projects and roles.
+- **Owner record** — `zerops-mate.zerops-session-owner.v1 = {userId, loginGeneration}` beside the
+  unchanged session key. Written only by a tab that verified the principal; a refresh never changes
+  it. It is the cross-tab epoch.
+- **Target key** — A Mate's identity: `projectId:serviceId`. `environmentId` is an attribute learned
+  from the descriptor; names, URLs and origins are addresses, never identities.
+- **Source** — A system that answers with authority, reached through one adapter: Zerops REST, the
+  Zerops datastream, a Mate's descriptor and `/healthz`, a Mate's WebSocket RPC, Gitea REST as the
+  person, the Gitea broker. Storage, visibility, locks and clocks are signals, never sources.
+- **Observation** — One arrival of evidence (a frame, a response, a descriptor, a close code, a
+  storage event), stamped with a local ordinal and receipt time, admitted or rejected by its owner.
+  Never rendered directly.
+- **Fact** — A typed statement one owner holds about one entity, keyed by its natural identity. A
+  key never contains a generation counter, a set of unrelated ids, or the active organization.
+- **Store (owner)** — The one module allowed to change a family of facts: a serialized event queue
+  feeding a pure `transition(state, event, now) → {state, effects}`, publishing one atom per key.
+- **Machine** — The statechart of one entity inside a store: a discriminated union with a total
+  transition function. No boolean, ref, attempted-set or epoch counter stands in for a state.
+- **Command, attempt** — An intent to change a source. A command never writes a fact: its response
+  is an observation plus invalidations, and it is never replayed after a write may have been
+  accepted.
+- **Capability** — A derived answer to "may this class of command run now": `allowed`, or `no` with
+  a typed reason and a `waitable` flag.
+- **Grant** — The client's verified authority: account evidence (user, organizations, round stamp)
+  and per-project evidence (effective role and mutation flags, each with its own stamp). Authority
+  for a project ends 15 minutes after its own stamp.
+- **Demand (lease)** — A view's declaration that it shows a key. Drives priority and may start a
+  subscription or a backstop. Releasing it never blanks a mounted neighbour.
+- **Invalidation** — A typed message that facts under a key may have changed at the source. Carries
+  no data.
+- **Intent** — A local, time-boxed expectation from our own command ("we asked this Mate to restart
+  at T"). It changes how observations are interpreted, survives a reload of its tab, and past its
+  budget becomes `overdue`, never another state.
+- **Projection, verdict** — A pure function from knowledge, capabilities and `now` to a view model;
+  a verdict is a render-ready projection. Neither holds state.
+- **Personal context** — Account-scoped, non-secret records in browser storage: registrations,
+  births, intents, drafts, UI preferences. Never authority for existence or access; always
+  revalidated against facts.
 
 ## The knowledge type
 
@@ -191,14 +215,22 @@ an attempt starts and never consumes its deadline.
 
 ### Zerops account session
 
-| State                      | Meaning                                                                                                        | Leaves on                                                                                                                                                                   |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `booting`                  | Reading the stored session                                                                                     | None stored → `signed-out`; stored → `verifying`                                                                                                                            |
-| `verifying`                | `user/info` in flight                                                                                          | Principal verified → `signed-in` (epoch opens); a 401 whose refresh failed and cleared the stored session → `signed-out`; network or 5xx → `unavailable`                    |
-| `unavailable(retryAt)`     | Zerops did not answer                                                                                          | Tick, online, visible, user retry, a stored session from another tab → `verifying`                                                                                          |
-| `signed-out`               | Landing                                                                                                        | Sign-in, 2FA or hand-over here, or a session stored by another tab → `verifying`                                                                                            |
-| `signed-in(p, epoch, gen)` | Epoch open; token `current ⇄ refreshing` under Web Lock `mate:zerops-refresh`, storage re-read inside the lock | Session key changed → `adopting`; key cleared, sign-out or a refresh that failed as expired → `signed-out`                                                                  |
-| `adopting(retryAt?)`       | One `user/info` with the new token; new requests wait up to 10 s                                               | Same principal and generation (or no record yet) → `signed-in`, no epoch change; 5xx or network → retry; other principal, new generation or 401 → epoch closes, `verifying` |
+- **`booting`** — Reading the stored session
+  - _Leaves on:_ None stored → `signed-out`; stored → `verifying`
+- **`verifying`** — `user/info` in flight
+  - _Leaves on:_ Principal verified → `signed-in` (epoch opens); a 401 whose refresh failed and
+    cleared the stored session → `signed-out`; network or 5xx → `unavailable`
+- **`unavailable(retryAt)`** — Zerops did not answer
+  - _Leaves on:_ Tick, online, visible, user retry, a stored session from another tab → `verifying`
+- **`signed-out`** — Landing
+  - _Leaves on:_ Sign-in, 2FA or hand-over here, or a session stored by another tab → `verifying`
+- **`signed-in(p, epoch, gen)`** — Epoch open; token `current ⇄ refreshing` under Web Lock
+  `mate:zerops-refresh`, storage re-read inside the lock
+  - _Leaves on:_ Session key changed → `adopting`; key cleared, sign-out or a refresh that failed as
+    expired → `signed-out`
+- **`adopting(retryAt?)`** — One `user/info` with the new token; new requests wait up to 10 s
+  - _Leaves on:_ Same principal and generation (or no record yet) → `signed-in`, no epoch change;
+    5xx or network → retry; other principal, new generation or 401 → epoch closes, `verifying`
 
 A tab without a generation creates the owner record once, inside the refresh lock, only if it is
 still missing, so two tabs holding a session stored before the record existed converge.
@@ -225,14 +257,24 @@ cell gets `withheld(access-lapsed)` and the broker erases its values but keeps d
 
 ### Capabilities
 
-| Capability               | Allowed when                                                                                                                                                                                     | Waitable when                                    |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
-| `platformWrite(project)` | Account evidence not expired, the project's evidence present and not expired, role permits, not closed                                                                                           | Account lapsed or unverified; project unverified |
-| `platformRead(project)`  | Account evidence not expired, the project's evidence present and not expired, not closed                                                                                                         | — (withheld at the read)                         |
-| `identityMint`           | A live session and the epoch's first grant; the rights-less mint is an account write, so a lapse does not hold it up. No organization or project role is checked: the door and the broker decide | Before the epoch's first grant                   |
-| `throwawayCleanup`       | Always, within the minting epoch (carrying the minting token) or under the same principal (the sweep)                                                                                            | Never waits, never touches the session           |
-| `mate(env)`              | Post-grant stage running, credential held, link connected, and until 2.5 `platformRead` of the Mate's project                                                                                    | Link reconnecting                                |
-| `forge(origin)`          | Gitea session signed in                                                                                                                                                                          | Acquiring, pending                               |
+- **`platformWrite(project)`** — Account evidence not expired, the project's evidence present and
+  not expired, role permits, not closed
+  - _Waitable when:_ Account lapsed or unverified; project unverified
+- **`platformRead(project)`** — Account evidence not expired, the project's evidence present and not
+  expired, not closed
+  - _Waitable when:_ — (withheld at the read)
+- **`identityMint`** — A live session and the epoch's first grant; the rights-less mint is an
+  account write, so a lapse does not hold it up. No organization or project role is checked: the
+  door and the broker decide
+  - _Waitable when:_ Before the epoch's first grant
+- **`throwawayCleanup`** — Always, within the minting epoch (carrying the minting token) or under
+  the same principal (the sweep)
+  - _Waitable when:_ Never waits, never touches the session
+- **`mate(env)`** — Post-grant stage running, credential held, link connected, and until 2.5
+  `platformRead` of the Mate's project
+  - _Waitable when:_ Link reconnecting
+- **`forge(origin)`** — Gitea session signed in
+  - _Waitable when:_ Acquiring, pending
 
 Commands await a waitable capability for up to 30 s before their attempt deadline starts, then fail
 with a typed, retryable reason. A refusal is a value the caller shows, never a silent interrupt.
@@ -242,12 +284,22 @@ with a typed, retryable reason. A refusal is a value the caller shows, never a s
 Four parallel regions; it lives in the post-grant stage and walks identity → grant → presence →
 descriptor → exchange → thread state.
 
-| Region        | States                                                                                                                      | Notes                                                                                                                                                                                                                                                                                                                                                                                    |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P, presence   | `unknown`, `present(origin)`, `transitioning(status)`, `inactive(status)`, `no-origin(reason)`, `gone(evidence)`            | A pure function of the listings, the records and the absences a direct read is confirming; holds its last value while the inventory is stale. `gone` needs evidence: the project missing from its organization's complete listing, or the service missing from a complete observing query of its project and then from a direct read of that project's services finished after it (C19). |
-| K, credential | `none`, `waiting(on)`, `exchanging(attempt)`, `backoff(retryAt, n, last)`, `refused(reason)`, `held(envId, gen)`, `retired` | `waiting` on presence, container, access, zerops, visible or budget. A socket auth rejection of the installed generation → re-exchange; three in two minutes → backoff. A redeployed Mate (new `environmentId`) → `replaced`.                                                                                                                                                            |
-| L, link       | `idle`, `connecting`, `connected(since)`, `backoff(retryAt)`, `blocked(reason)`, `offline`                                  | A read-only mirror of the T3 supervisor. Each connect is stamped.                                                                                                                                                                                                                                                                                                                        |
-| C, container  | A reference to the container machine for the same key                                                                       | —                                                                                                                                                                                                                                                                                                                                                                                        |
+- **P, presence** — `unknown`, `present(origin)`, `transitioning(status)`, `inactive(status)`,
+  `no-origin(reason)`, `gone(evidence)`
+  - _Notes:_ A pure function of the listings, the records and the absences a direct read is
+    confirming; holds its last value while the inventory is stale. `gone` needs evidence: the
+    project missing from its organization's complete listing, or the service missing from a complete
+    observing query of its project and then from a direct read of that project's services finished
+    after it (C19).
+- **K, credential** — `none`, `waiting(on)`, `exchanging(attempt)`, `backoff(retryAt, n, last)`,
+  `refused(reason)`, `held(envId, gen)`, `retired`
+  - _Notes:_ `waiting` on presence, container, access, zerops, visible or budget. A socket auth
+    rejection of the installed generation → re-exchange; three in two minutes → backoff. A
+    redeployed Mate (new `environmentId`) → `replaced`.
+- **L, link** — `idle`, `connecting`, `connected(since)`, `backoff(retryAt)`, `blocked(reason)`,
+  `offline`
+  - _Notes:_ A read-only mirror of the T3 supervisor. Each connect is stamped.
+- **C, container** — A reference to the container machine for the same key
 
 An exchange runs when the key is wanted (the route targets it, a registration record exists, the
 user pressed Connect, a live intent of ours, auto-connect for ready Mates in the active org, or a
@@ -395,15 +447,27 @@ group repository's tags; open a pull request the repository's pulls; add a stage
 
 ## Lifetimes
 
-| Scope                           | Owns                                                                                                                                                       | Ended only by                                 | May unmount                                  |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | -------------------------------------------- |
-| Renderer                        | Session machine, ports                                                                                                                                     | Unload                                        | —                                            |
-| Account epoch, pre-grant stage  | Grant, data runtime, tag writer, invalidation bus, personal-context handles                                                                                | Sign-out, principal change, unrefreshable 401 | The product tree                             |
-| Account epoch, post-grant stage | T3 connection runtime (kept alive for the epoch), environment, container, birth and probe stores, Gitea sessions, forge and deployment stores, reconcilers | Epoch close, never a lapse                    | —                                            |
-| Organization                    | Receivers, Gitea discovery, registry                                                                                                                       | Membership loss in an admitted round          | Nothing; its rows go `gone`                  |
-| Project                         | Services, tags, deployments, group membership, access evidence                                                                                             | `gone` with evidence                          | Nothing                                      |
-| Mate target                     | Credential, T3 service scope, probe, container machine, intents                                                                                            | P `gone`, user removal, replacement           | Its route outlet, only by a terminal verdict |
-| View                            | Demand leases, ephemeral UI state                                                                                                                          | Unmount                                       | —                                            |
+- **Renderer** — Session machine, ports
+  - _Ended only by:_ Unload
+- **Account epoch, pre-grant stage** — Grant, data runtime, tag writer, invalidation bus,
+  personal-context handles
+  - _Ended only by:_ Sign-out, principal change, unrefreshable 401
+  - _May unmount:_ The product tree
+- **Account epoch, post-grant stage** — T3 connection runtime (kept alive for the epoch),
+  environment, container, birth and probe stores, Gitea sessions, forge and deployment stores,
+  reconcilers
+  - _Ended only by:_ Epoch close, never a lapse
+- **Organization** — Receivers, Gitea discovery, registry
+  - _Ended only by:_ Membership loss in an admitted round
+  - _May unmount:_ Nothing; its rows go `gone`
+- **Project** — Services, tags, deployments, group membership, access evidence
+  - _Ended only by:_ `gone` with evidence
+  - _May unmount:_ Nothing
+- **Mate target** — Credential, T3 service scope, probe, container machine, intents
+  - _Ended only by:_ P `gone`, user removal, replacement
+  - _May unmount:_ Its route outlet, only by a terminal verdict
+- **View** — Demand leases, ephemeral UI state
+  - _Ended only by:_ Unmount
 
 - A lifetime ends only through its owner's authoritative event; timers, data liveness and
   capabilities are never such events.

@@ -4,15 +4,86 @@ One row per port: the ported upstream SHA against the CLI/SDK/Effect versions an
 SPI was proven against at that point. A new row lands with every port (`spi.md` §8, porting
 checklist step 5) — never edited in place; a later row supersedes an earlier one.
 
-| #   | Date       | Ported upstream SHA                                                                                                                                                                                                  | Claude CLI              | Claude Agent SDK     | Codex CLI                                                                                   | Effect                                           | Fixture set                                                                                                                                                                                                                                                                                             | Goldens/driver                                                            | Notes     |
-| --- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | -------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | --------- |
-| 0   | 2026-08-29 | `f94a0d646` (`upstream-base-2026-08-28`, freeze SHA — `imported.lock`)                                                                                                                                               | `2.1.251` (Claude Code) | `0.3.250`            | `0.150.1` on the rig, **not logged in**                                                     | `4.0.0-beta.103` (`pnpm-workspace.yaml` catalog) | claude: `plain-text-turn`, `turn-abort-error`, `user-input-requested`, `zerops-workflow-envelope`; codex: `multi-agent-wire`; cursor/grok/opencode: `hello-baseline`                                                                                                                                    | claude 4, codex 1, cursor 1, grok 1, opencode 1 (8 total)                 | See below |
-| 1   | 2026-09-02 | `827345a07` (`upstream/main`; imported zone re-imported, `imported.lock` regenerated) — 28 ports, see `intake.md`                                                                                                    | `2.1.251` (Claude Code) | `0.3.250`            | `0.150.1` on the rig, **not logged in**                                                     | `4.0.0-beta.103` (`pnpm-workspace.yaml` catalog) | unchanged from row 0: claude `plain-text-turn`, `turn-abort-error`, `user-input-requested`, `zerops-workflow-envelope`; codex `multi-agent-wire`; cursor/grok/opencode `hello-baseline`                                                                                                                 | claude 4, codex 1, cursor 1, grok 1, opencode 1 (8 total)                 | See below |
-| 2   | 2026-09-05 | `c8f77e0d4` (`upstream/main`; imported zone re-imported, `imported.lock` regenerated) — 47 ports + 8 recovered from row 1's window, see `intake.md`                                                                  | `2.1.251` (Claude Code) | `0.3.260`            | `0.150.1` on the rig, **not logged in**                                                     | `4.0.0-beta.103` (`pnpm-workspace.yaml` catalog) | claude `plain-text-turn`, `turn-abort-error`, `user-input-requested`, `zerops-workflow-envelope` (goldens regenerated, see notes); codex `multi-agent-wire`; cursor/grok `hello-baseline` (goldens regenerated, additive); opencode `hello-baseline`; **antigravity `hello-baseline` (new, synthetic)** | claude 4, codex 1, cursor 1, grok 1, opencode 1, antigravity 1 (9 total)  | See below |
-| 3   | 2026-09-18 | `9ea9c3d5d` (`upstream/main`; imported zone re-imported in `2a26e8e76`) — provider slice: 75 ports, 12 skipped, see the intake report                                                                                | `2.1.251` (Claude Code) | `0.3.260`            | `0.150.1` on the rig, **not logged in**                                                     | `4.0.0-rc.115` (`pnpm-workspace.yaml` catalog)   | unchanged from row 2; cursor `hello-baseline` golden regenerated (order only, see notes)                                                                                                                                                                                                                | claude 4, codex 1, cursor 1, grok 1, opencode 1, antigravity 1 (9 total)  | See below |
-| 4   | 2026-09-25 | `7a12aff47` (`upstream/main`; imported zone re-imported in `f5c49952c`) — provider slice: 19 ports + the import (which also carries `de6a230db` and `567783ecd`), 1 blocked on the core slice, see the intake report | `2.1.251` (Claude Code) | `0.3.276`            | `0.155.1` measured against the new protocol (a local build, not the rig); fixture `0.145.0` | `4.0.0-rc.115` (`pnpm-workspace.yaml` catalog)   | unchanged from row 3; codex `multi-agent-wire` gains `projectId: null` on its one thread, its golden moves by that field                                                                                                                                                                                | claude 4, codex 1, cursor 1, grok 1, opencode 1, antigravity 1 (9 total)  | See below |
-| 5   | 2026-09-27 | none — no import or port; a fork-side ported-zone edit for the crew policy seam (`ClaudeAdapter.ts`, `providerRuntime.ts`), see the notes                                                                            | `2.1.251` (Claude Code) | `0.3.276`            | unchanged from row 4                                                                        | `4.0.0-rc.115` (`pnpm-workspace.yaml` catalog)   | row 4 + claude `crew-hooks` (new, synthetic); the four Claude goldens gain `terminalReason`                                                                                                                                                                                                             | claude 5, codex 1, cursor 1, grok 1, opencode 1, antigravity 1 (10 total) | See below |
-| 6   | 2026-09-27 | none — no import or port; a fork-side ported-zone edit for the Codex crew seam (`CodexAdapter.ts`, `CodexSessionRuntime.ts`), see the notes                                                                          | unchanged from row 5    | unchanged from row 5 | unchanged from row 4                                                                        | unchanged from row 5                             | row 5; no replay golden moved                                                                                                                                                                                                                                                                           | unchanged from row 5                                                      | See below |
+- **0** — 2026-08-29
+  - _Ported upstream SHA:_ `f94a0d646` (`upstream-base-2026-08-28`, freeze SHA — `imported.lock`)
+  - _Claude CLI:_ `2.1.251` (Claude Code)
+  - _Claude Agent SDK:_ `0.3.250`
+  - _Codex CLI:_ `0.150.1` on the rig, **not logged in**
+  - _Effect:_ `4.0.0-beta.103` (`pnpm-workspace.yaml` catalog)
+  - _Fixture set:_ claude: `plain-text-turn`, `turn-abort-error`, `user-input-requested`,
+    `zerops-workflow-envelope`; codex: `multi-agent-wire`; cursor/grok/opencode: `hello-baseline`
+  - _Goldens/driver:_ claude 4, codex 1, cursor 1, grok 1, opencode 1 (8 total)
+  - _Notes:_ See below
+- **1** — 2026-09-02
+  - _Ported upstream SHA:_ `827345a07` (`upstream/main`; imported zone re-imported, `imported.lock`
+    regenerated) — 28 ports, see `intake.md`
+  - _Claude CLI:_ `2.1.251` (Claude Code)
+  - _Claude Agent SDK:_ `0.3.250`
+  - _Codex CLI:_ `0.150.1` on the rig, **not logged in**
+  - _Effect:_ `4.0.0-beta.103` (`pnpm-workspace.yaml` catalog)
+  - _Fixture set:_ unchanged from row 0: claude `plain-text-turn`, `turn-abort-error`,
+    `user-input-requested`, `zerops-workflow-envelope`; codex `multi-agent-wire`;
+    cursor/grok/opencode `hello-baseline`
+  - _Goldens/driver:_ claude 4, codex 1, cursor 1, grok 1, opencode 1 (8 total)
+  - _Notes:_ See below
+- **2** — 2026-09-05
+  - _Ported upstream SHA:_ `c8f77e0d4` (`upstream/main`; imported zone re-imported, `imported.lock`
+    regenerated) — 47 ports + 8 recovered from row 1's window, see `intake.md`
+  - _Claude CLI:_ `2.1.251` (Claude Code)
+  - _Claude Agent SDK:_ `0.3.260`
+  - _Codex CLI:_ `0.150.1` on the rig, **not logged in**
+  - _Effect:_ `4.0.0-beta.103` (`pnpm-workspace.yaml` catalog)
+  - _Fixture set:_ claude `plain-text-turn`, `turn-abort-error`, `user-input-requested`,
+    `zerops-workflow-envelope` (goldens regenerated, see notes); codex `multi-agent-wire`;
+    cursor/grok `hello-baseline` (goldens regenerated, additive); opencode `hello-baseline`;
+    **antigravity `hello-baseline` (new, synthetic)**
+  - _Goldens/driver:_ claude 4, codex 1, cursor 1, grok 1, opencode 1, antigravity 1 (9 total)
+  - _Notes:_ See below
+- **3** — 2026-09-18
+  - _Ported upstream SHA:_ `9ea9c3d5d` (`upstream/main`; imported zone re-imported in `2a26e8e76`) —
+    provider slice: 75 ports, 12 skipped, see the intake report
+  - _Claude CLI:_ `2.1.251` (Claude Code)
+  - _Claude Agent SDK:_ `0.3.260`
+  - _Codex CLI:_ `0.150.1` on the rig, **not logged in**
+  - _Effect:_ `4.0.0-rc.115` (`pnpm-workspace.yaml` catalog)
+  - _Fixture set:_ unchanged from row 2; cursor `hello-baseline` golden regenerated (order only, see
+    notes)
+  - _Goldens/driver:_ claude 4, codex 1, cursor 1, grok 1, opencode 1, antigravity 1 (9 total)
+  - _Notes:_ See below
+- **4** — 2026-09-25
+  - _Ported upstream SHA:_ `7a12aff47` (`upstream/main`; imported zone re-imported in `f5c49952c`) —
+    provider slice: 19 ports + the import (which also carries `de6a230db` and `567783ecd`), 1
+    blocked on the core slice, see the intake report
+  - _Claude CLI:_ `2.1.251` (Claude Code)
+  - _Claude Agent SDK:_ `0.3.276`
+  - _Codex CLI:_ `0.155.1` measured against the new protocol (a local build, not the rig); fixture
+    `0.145.0`
+  - _Effect:_ `4.0.0-rc.115` (`pnpm-workspace.yaml` catalog)
+  - _Fixture set:_ unchanged from row 3; codex `multi-agent-wire` gains `projectId: null` on its one
+    thread, its golden moves by that field
+  - _Goldens/driver:_ claude 4, codex 1, cursor 1, grok 1, opencode 1, antigravity 1 (9 total)
+  - _Notes:_ See below
+- **5** — 2026-09-27
+  - _Ported upstream SHA:_ none — no import or port; a fork-side ported-zone edit for the crew
+    policy seam (`ClaudeAdapter.ts`, `providerRuntime.ts`), see the notes
+  - _Claude CLI:_ `2.1.251` (Claude Code)
+  - _Claude Agent SDK:_ `0.3.276`
+  - _Codex CLI:_ unchanged from row 4
+  - _Effect:_ `4.0.0-rc.115` (`pnpm-workspace.yaml` catalog)
+  - _Fixture set:_ row 4 + claude `crew-hooks` (new, synthetic); the four Claude goldens gain
+    `terminalReason`
+  - _Goldens/driver:_ claude 5, codex 1, cursor 1, grok 1, opencode 1, antigravity 1 (10 total)
+  - _Notes:_ See below
+- **6** — 2026-09-27
+  - _Ported upstream SHA:_ none — no import or port; a fork-side ported-zone edit for the Codex crew
+    seam (`CodexAdapter.ts`, `CodexSessionRuntime.ts`), see the notes
+  - _Claude CLI:_ unchanged from row 5
+  - _Claude Agent SDK:_ unchanged from row 5
+  - _Codex CLI:_ unchanged from row 4
+  - _Effect:_ unchanged from row 5
+  - _Fixture set:_ row 5; no replay golden moved
+  - _Goldens/driver:_ unchanged from row 5
+  - _Notes:_ See below
 
 ## Row 0 notes
 

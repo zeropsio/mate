@@ -34,31 +34,71 @@ finding; the path is where the S-stream doing that work will land again.
 
 ### Web (`apps/web`)
 
-| Seam                                                                  | Change                                                                                            | Why there                                                                                                                                                                                                                                                                      |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `src/AppRoot.tsx`                                                     | wrap `RouterProvider` (+ preview hosts, Electron host, quit overlay) in a `ZeropsSessionProvider` | The Zerops session (account token) is independent of T3's _environment_ auth gate, and Zerops routes (`/zerops`, `/settings/zerops`) are reachable through more than one branch of that gate — so the provider sits **outside the router**, not in the root route.             |
-| `src/routes/_chat.index.tsx` — `HostedStaticOnboardingState`          | replace the "Connect an environment to get started" empty state with the Zerops hosted landing    | This component is the hosted/static client's "no environment yet" state — the natural entry for sign-in → project. The POC kept upstream's manual-connect flow reachable behind it (`ManualConnectFallback`) so a non-Zerops user is never locked out; **keep that property**. |
-| `src/routeTree.gen.ts` + new route files                              | `/zerops` (projects page) and `/settings/zerops`                                                  | Generated route tree — new routes are new files under `src/routes/`, the tree regenerates.                                                                                                                                                                                     |
-| `src/components/sidebar/SidebarChrome.tsx`                            | a "Zerops" utility item + active-state branch for `/zerops`                                       | The sidebar utility menu is a hard-coded list with a `location.pathname` switch; a new page needs both the item and the active-state case.                                                                                                                                     |
-| `src/components/settings/settingsSearch.ts`, `SettingsSidebarNav.tsx` | `/settings/zerops` in `SettingsPath`, labels, icons, search items                                 | Settings navigation is a closed union type + three parallel records; a new settings page touches all of them.                                                                                                                                                                  |
-| `src/connection/platform.ts` — `clientMetadata()`                     | client label                                                                                      | Only the presentation label of the connecting client (shows in T3's session list). Cosmetic, but this is where the hosted client's identity string lives.                                                                                                                      |
+- `src/AppRoot.tsx`
+  - _Change:_ wrap `RouterProvider` (+ preview hosts, Electron host, quit overlay) in a
+    `ZeropsSessionProvider`
+  - _Why there:_ The Zerops session (account token) is independent of T3's _environment_ auth gate,
+    and Zerops routes (`/zerops`, `/settings/zerops`) are reachable through more than one branch of
+    that gate — so the provider sits **outside the router**, not in the root route.
+- `src/routes/_chat.index.tsx` — `HostedStaticOnboardingState`
+  - _Change:_ replace the "Connect an environment to get started" empty state with the Zerops hosted
+    landing
+  - _Why there:_ This component is the hosted/static client's "no environment yet" state — the
+    natural entry for sign-in → project. The POC kept upstream's manual-connect flow reachable
+    behind it (`ManualConnectFallback`) so a non-Zerops user is never locked out; **keep that
+    property**.
+- `src/routeTree.gen.ts` + new route files
+  - _Change:_ `/zerops` (projects page) and `/settings/zerops`
+  - _Why there:_ Generated route tree — new routes are new files under `src/routes/`, the tree
+    regenerates.
+- `src/components/sidebar/SidebarChrome.tsx`
+  - _Change:_ a "Zerops" utility item + active-state branch for `/zerops`
+  - _Why there:_ The sidebar utility menu is a hard-coded list with a `location.pathname` switch; a
+    new page needs both the item and the active-state case.
+- `src/components/settings/settingsSearch.ts`, `SettingsSidebarNav.tsx`
+  - _Change:_ `/settings/zerops` in `SettingsPath`, labels, icons, search items
+  - _Why there:_ Settings navigation is a closed union type + three parallel records; a new settings
+    page touches all of them.
+- `src/connection/platform.ts` — `clientMetadata()`
+  - _Change:_ client label
+  - _Why there:_ Only the presentation label of the connecting client (shows in T3's session list).
+    Cosmetic, but this is where the hosted client's identity string lives.
 
 ### Shared client runtime (`packages/client-runtime`)
 
-| Seam                     | Change                                               | Why there                                                                                                                                                                                                      |
-| ------------------------ | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `package.json` `exports` | add `"./zerops"`                                     | The package has an explicit exports map; a new module is invisible to web/mobile until it is listed.                                                                                                           |
-| `src/zerops/` (new)      | Zerops API client + credential/selection persistence | Shared by web and mobile so both clients use **one** Zerops auth model (the POC first had two — `hacks.md` H-04). Plain `async/await`, no Effect runtime: it talks to the Zerops REST API, not to a z3 server. |
+- **`package.json` `exports`** — add `"./zerops"`
+  - _Why there:_ The package has an explicit exports map; a new module is invisible to web/mobile
+    until it is listed.
+- **`src/zerops/` (new)** — Zerops API client + credential/selection persistence
+  - _Why there:_ Shared by web and mobile so both clients use **one** Zerops auth model (the POC
+    first had two — `hacks.md` H-04). Plain `async/await`, no Effect runtime: it talks to the Zerops
+    REST API, not to a z3 server.
 
 ### Mobile (`apps/mobile`)
 
-| Seam                                                                          | Change                                                                                                                                                          | Why there                                                                                                                                                                                                                                                                                            |
-| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/App.tsx`                                                                 | `ZeropsAuthProvider` wrapped **around** `CloudAuthProvider`                                                                                                     | Same reason as web's AppRoot: Zerops identity is independent of T3's cloud auth; it has to be available to the cloud/link layer, so it sits outside it.                                                                                                                                              |
-| `src/Stack.tsx` + `features/settings/components/settings-sheet-targets.ts`    | two settings screens (`zerops/account`, `zerops/projects`)                                                                                                      | Native stack routes are declared in one navigator with `linking` paths; the settings sheet has a closed target union — both must list a new screen.                                                                                                                                                  |
-| `features/settings/SettingsRouteScreen.tsx`                                   | a "Zerops" section (account + projects rows) in both the local and the configured variants                                                                      | The settings screen renders two independent trees (local vs configured); a section must be added to each.                                                                                                                                                                                            |
-| `app.config.ts`                                                               | personal-team iOS builds: `T3CODE_IOS_PERSONAL_TEAM_ID`, `updates.enabled=false` for personal-team builds, the capability-stripping plugin registered **first** | Functional, not branding: without a paid team you cannot sign app groups / Sign in with Apple / push entitlements; Expo config plugins run entitlement mods in reverse registration order, so the stripper must be registered first. Full recipe: `git show poc-2026-08-28:docs/ios-build-brief.md`. |
-| `lib/authClientMetadata.ts`, `features/agent-awareness/remoteRegistration.ts` | client label / Live Activity title                                                                                                                              | Presentation strings only.                                                                                                                                                                                                                                                                           |
+- `src/App.tsx`
+  - _Change:_ `ZeropsAuthProvider` wrapped **around** `CloudAuthProvider`
+  - _Why there:_ Same reason as web's AppRoot: Zerops identity is independent of T3's cloud auth; it
+    has to be available to the cloud/link layer, so it sits outside it.
+- `src/Stack.tsx` + `features/settings/components/settings-sheet-targets.ts`
+  - _Change:_ two settings screens (`zerops/account`, `zerops/projects`)
+  - _Why there:_ Native stack routes are declared in one navigator with `linking` paths; the
+    settings sheet has a closed target union — both must list a new screen.
+- `features/settings/SettingsRouteScreen.tsx`
+  - _Change:_ a "Zerops" section (account + projects rows) in both the local and the configured
+    variants
+  - _Why there:_ The settings screen renders two independent trees (local vs configured); a section
+    must be added to each.
+- `app.config.ts`
+  - _Change:_ personal-team iOS builds: `T3CODE_IOS_PERSONAL_TEAM_ID`, `updates.enabled=false` for
+    personal-team builds, the capability-stripping plugin registered **first**
+  - _Why there:_ Functional, not branding: without a paid team you cannot sign app groups / Sign in
+    with Apple / push entitlements; Expo config plugins run entitlement mods in reverse registration
+    order, so the stripper must be registered first. Full recipe: `git show
+poc-2026-08-28:docs/ios-build-brief.md`.
+- `lib/authClientMetadata.ts`, `features/agent-awareness/remoteRegistration.ts`
+  - _Change:_ client label / Live Activity title
+  - _Why there:_ Presentation strings only.
 
 ### Desktop (`apps/desktop`)
 

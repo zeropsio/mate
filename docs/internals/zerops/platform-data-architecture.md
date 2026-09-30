@@ -149,18 +149,26 @@ Personal navigation and form drafts are another source. Application views join
 these sources through stable identities; they do not copy Mate facts into platform
 records. A Mate workspace project and a Zerops platform project use distinct types.
 
-| Representation    | Meaning                                                                                                                                                              |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Entity table      | One record per typed, scoped source ID for Project, ServiceStack and Process. Domain reducers own the records. Normalize these shared entities from the first slice. |
-| Relationship      | Stable references such as service → project and process → affected services. Names and URLs locate entities; they do not identify them.                              |
-| Query membership  | Ordered IDs plus filter/sort/window and completeness. Query results reference shared records rather than own copies.                                                 |
-| Detail facet      | Separately loaded/observed fields with explicit ownership and access, such as configuration. Summary rows cannot erase richer detail by arriving later.              |
-| Current telemetry | Latest values keyed by entity and metric dimensions, separate from inventory records.                                                                                |
-| Historical window | Time buckets keyed by dimensions, interval, range and timezone; explicit bucket correction and window replacement semantics.                                         |
-| Log session       | Bounded lines/pages, source cursor, gaps and follow state, with its own transport and grant lifetime.                                                                |
-| Command attempt   | What this client requested, acceptance/uncertainty and explicit process references. This is not the platform process itself.                                         |
-| Derived view      | Pure composition for navigation, topology, activity or settings; owns no source facts.                                                                               |
-| Form draft        | Base observation, current platform observation and local edits. Live updates and unsaved edits remain distinct.                                                      |
+- **Entity table** — One record per typed, scoped source ID for Project, ServiceStack and Process.
+  Domain reducers own the records. Normalize these shared entities from the first slice.
+- **Relationship** — Stable references such as service → project and process → affected services.
+  Names and URLs locate entities; they do not identify them.
+- **Query membership** — Ordered IDs plus filter/sort/window and completeness. Query results
+  reference shared records rather than own copies.
+- **Detail facet** — Separately loaded/observed fields with explicit ownership and access, such as
+  configuration. Summary rows cannot erase richer detail by arriving later.
+- **Current telemetry** — Latest values keyed by entity and metric dimensions, separate from
+  inventory records.
+- **Historical window** — Time buckets keyed by dimensions, interval, range and timezone; explicit
+  bucket correction and window replacement semantics.
+- **Log session** — Bounded lines/pages, source cursor, gaps and follow state, with its own
+  transport and grant lifetime.
+- **Command attempt** — What this client requested, acceptance/uncertainty and explicit process
+  references. This is not the platform process itself.
+- **Derived view** — Pure composition for navigation, topology, activity or settings; owns no source
+  facts.
+- **Form draft** — Base observation, current platform observation and local edits. Live updates and
+  unsaved edits remain distinct.
 
 Normalize shared objects, not every nested value. Ports can remain an owned value
 inside a service facet; another independently changing service is a reference.
@@ -369,13 +377,18 @@ evidence and deadline. Transport changes must preserve that gate.
 
 ## Alternatives and engine choice
 
-| Choice                                                    | Assessment                                                                                                                                                  |
-| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Per-query cache with invalidation                         | Rejected as the center. Shared identity and independently initiated asynchronous activity require central live observations.                                |
-| Normalized reactive domain read model                     | Recommended concept. Matches the source streams, repeated entities, many observers and many initiating actors.                                              |
-| Reactive client database / collection engine              | Credible engine beneath the same concept, particularly for substantial indexed joins. Does not replace platform protocol/access/operation semantics.        |
-| Browser event sourcing / writable local-first replication | Adds durable log/replay/conflict obligations that the external platform does not provide. Keep the client projection disposable and platform-authoritative. |
-| Server BFF owning platform data                           | Unnecessary for client centralization and contrary to the existing client-token ownership contract.                                                         |
+- **Per-query cache with invalidation** — Rejected as the center. Shared identity and independently
+  initiated asynchronous activity require central live observations.
+- **Normalized reactive domain read model** — Recommended concept. Matches the source streams,
+  repeated entities, many observers and many initiating actors.
+- **Reactive client database / collection engine** — Credible engine beneath the same concept,
+  particularly for substantial indexed joins. Does not replace platform protocol/access/operation
+  semantics.
+- **Browser event sourcing / writable local-first replication** — Adds durable log/replay/conflict
+  obligations that the external platform does not provide. Keep the client projection disposable and
+  platform-authoritative.
+- **Server BFF owning platform data** — Unnecessary for client centralization and contrary to the
+  existing client-token ownership contract.
 
 Prefer existing Effect execution and Atom projections with explicit record tables
 first. This is an engineering choice for this codebase, not a claim that Effect
@@ -430,15 +443,30 @@ model instead of independently implementing data access.
 
 ## Source evidence and review limits
 
-| Evidence                              | Source                                                                                                                                                                                                                                                                                                                                      |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Shared receiver and registration      | [`websocket.api.ts`](../../../../frontend-legacy/libs/zef/src/websocket/websocket.api.ts), `:19`, `:57`; [`entity-manager-entity.service.ts`](../../../../frontend-legacy/libs/zef/src/entities/entity-manager-entity.service.ts), `:150`, `:177`.                                                                                          |
-| Entity tables and membership reducers | [`entity-manager.model.ts`](../../../../frontend-legacy/libs/zef/src/entities/entity-manager.model.ts), `:6`; [`utils.ts`](../../../../frontend-legacy/libs/zef/src/entities/utils.ts), `:343`, `:383`.                                                                                                                                     |
-| Native service/process updates        | [`service-stack-base.effect.ts`](../../../../frontend-legacy/apps/zerops/src/modules/core/service-stack-base/service-stack-base.effect.ts), `:153`, `:257`; [`process-base.effect.ts`](../../../../frontend-legacy/apps/zerops/src/modules/core/process-base/process-base.effect.ts), `:29`, `:61`, `:85`.                                  |
-| Measured updateStream fields/statuses | [`verified.md`](verified.md), `:659`, dated 2026-09-04; captured observations do not establish universal ordering/replay.                                                                                                                                                                                                                   |
-| Metric subscriptions and consumption  | [`resource-statistics-base.api.ts`](../../../../frontend-legacy/apps/zerops/src/modules/core/resource-statistics-base/resource-statistics-base.api.ts), `:59`, `:88`; [`resource-statistics-base.effect.ts`](../../../../frontend-legacy/apps/zerops/src/modules/core/resource-statistics-base/resource-statistics-base.effect.ts), `:115`. |
-| Separate logs                         | [`trlog.store.ts`](../../../../frontend-legacy/apps/zerops/src/modules/feature/trlog/trlog.store.ts), `:215`, `:271`.                                                                                                                                                                                                                       |
-| Whole-environment replacement         | [`verified.md`](verified.md), `:747`.                                                                                                                                                                                                                                                                                                       |
+- **Shared receiver and registration** —
+  [`websocket.api.ts`](../../../../frontend-legacy/libs/zef/src/websocket/websocket.api.ts), `:19`,
+  `:57`;
+  [`entity-manager-entity.service.ts`](../../../../frontend-legacy/libs/zef/src/entities/entity-manager-entity.service.ts),
+  `:150`, `:177`.
+- **Entity tables and membership reducers** —
+  [`entity-manager.model.ts`](../../../../frontend-legacy/libs/zef/src/entities/entity-manager.model.ts),
+  `:6`; [`utils.ts`](../../../../frontend-legacy/libs/zef/src/entities/utils.ts), `:343`, `:383`.
+- **Native service/process updates** —
+  [`service-stack-base.effect.ts`](../../../../frontend-legacy/apps/zerops/src/modules/core/service-stack-base/service-stack-base.effect.ts),
+  `:153`, `:257`;
+  [`process-base.effect.ts`](../../../../frontend-legacy/apps/zerops/src/modules/core/process-base/process-base.effect.ts),
+  `:29`, `:61`, `:85`.
+- **Measured updateStream fields/statuses** — [`verified.md`](verified.md), `:659`, dated
+  2026-09-04; captured observations do not establish universal ordering/replay.
+- **Metric subscriptions and consumption** —
+  [`resource-statistics-base.api.ts`](../../../../frontend-legacy/apps/zerops/src/modules/core/resource-statistics-base/resource-statistics-base.api.ts),
+  `:59`, `:88`;
+  [`resource-statistics-base.effect.ts`](../../../../frontend-legacy/apps/zerops/src/modules/core/resource-statistics-base/resource-statistics-base.effect.ts),
+  `:115`.
+- **Separate logs** —
+  [`trlog.store.ts`](../../../../frontend-legacy/apps/zerops/src/modules/feature/trlog/trlog.store.ts),
+  `:215`, `:271`.
+- **Whole-environment replacement** — [`verified.md`](verified.md), `:747`.
 
 Fable 5.1 independently read source and, after a second discussion incorporating
 the maintainer's clarification, recommended the live normalized model.

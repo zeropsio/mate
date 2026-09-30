@@ -12,21 +12,46 @@ no plan of their own.
 
 ## The files
 
-| File                                             | Holds                                                                                                                                                                    | Lifecycle                                                                                                   |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| [`primer.md`](primer.md)                         | Where the whole stands: the parts and their homes, who holds what, the run as measured, every slice's state against the plan, what is open                               | Changes in the commit that changes the fact                                                                 |
-| [`map.md`](map.md)                               | The systems and every channel between them                                                                                                                               | Changes when a channel is added or removed                                                                  |
-| [`verified.md`](verified.md)                     | Facts measured against real systems                                                                                                                                      | Each entry decays; re-verify before trusting                                                                |
-| [`hacks.md`](hacks.md)                           | Shortcuts (POC and dev-loop) and what the real fix is                                                                                                                    | Entries die when paid back                                                                                  |
-| [`questions.md`](questions.md)                   | Unknowns that block real implementation                                                                                                                                  | Entries die when answered — move the answer to `verified.md`                                                |
-| [`poc-findings.md`](poc-findings.md)             | What the POC taught: the T3 seam map + functional facts, and where its code sits                                                                                         | Frozen with the tag; a seam that moves upstream gets a note                                                 |
-| [`fork.md`](fork.md)                             | The fork rules: hard-fork decision, freeze, zones, keep/delete, work loop, intake ritual                                                                                 | Changes when a rule changes; the freeze checklist status moves as items land                                |
-| [`intake.md`](intake.md)                         | Last-reviewed upstream SHA, the decisions taken, open security candidates                                                                                                | One row per intake cycle                                                                                    |
-| [`spi.md`](spi.md)                               | The provider runtime SPI contract: boundary, version/changelog, event kinds, delivery guarantee, enrichment, typed capabilities, fixtures, porting checklist             | Changes when the SPI version bumps or a capability/fixture/porting step changes                             |
-| [`crew.md`](crew.md)                             | Crew mode as built: the three levels, where its code lives, the switch, the crew home files, the RPCs, the seams, phase B and C                                          | Changes when a crew module, seam or phase lands                                                             |
-| [`compat.md`](compat.md)                         | Per-port compatibility matrix: ported upstream SHA × CLI/SDK/Effect versions × fixture set                                                                               | One row per port, never edited in place                                                                     |
-| [`design-system.md`](design-system.md)           | The client design system's working spec: component vocabulary, copy glossary, icon map, rules R1–R8 with their tests, exception ledgers, in-programme decisions          | Rows fill as slices land; decisions promote to `spec-mate.md`; ledger sizes move at every wave              |
-| [`client-state-model.md`](client-state-model.md) | The client state model: three axes, seven laws, the knowledge type, fact owners, machines, lifetimes, data flow, module boundaries, and which slice makes each part true | A status row changes in the commit that changes the fact; a model change lands here with or before its code |
+- **[`primer.md`](primer.md)** — Where the whole stands: the parts and their homes, who holds what,
+  the run as measured, every slice's state against the plan, what is open
+  - _Lifecycle:_ Changes in the commit that changes the fact
+- **[`map.md`](map.md)** — The systems and every channel between them
+  - _Lifecycle:_ Changes when a channel is added or removed
+- **[`verified.md`](verified.md)** — Facts measured against real systems
+  - _Lifecycle:_ Each entry decays; re-verify before trusting
+- **[`hacks.md`](hacks.md)** — Shortcuts (POC and dev-loop) and what the real fix is
+  - _Lifecycle:_ Entries die when paid back
+- **[`questions.md`](questions.md)** — Unknowns that block real implementation
+  - _Lifecycle:_ Entries die when answered — move the answer to `verified.md`
+- **[`poc-findings.md`](poc-findings.md)** — What the POC taught: the T3 seam map + functional
+  facts, and where its code sits
+  - _Lifecycle:_ Frozen with the tag; a seam that moves upstream gets a note
+- **[`fork.md`](fork.md)** — The fork rules: hard-fork decision, freeze, zones, keep/delete, work
+  loop, intake ritual
+  - _Lifecycle:_ Changes when a rule changes; the freeze checklist status moves as items land
+- **[`intake.md`](intake.md)** — Last-reviewed upstream SHA, the decisions taken, open security
+  candidates
+  - _Lifecycle:_ One row per intake cycle
+- **[`spi.md`](spi.md)** — The provider runtime SPI contract: boundary, version/changelog, event
+  kinds, delivery guarantee, enrichment, typed capabilities, fixtures, porting checklist
+  - _Lifecycle:_ Changes when the SPI version bumps or a capability/fixture/porting step changes
+- **[`crew.md`](crew.md)** — Crew mode as built: the three levels, where its code lives, the switch,
+  the crew home files, the RPCs, the seams, phase B and C
+  - _Lifecycle:_ Changes when a crew module, seam or phase lands
+- **[`compat.md`](compat.md)** — Per-port compatibility matrix: ported upstream SHA × CLI/SDK/Effect
+  versions × fixture set
+  - _Lifecycle:_ One row per port, never edited in place
+- **[`design-system.md`](design-system.md)** — The client design system's working spec: component
+  vocabulary, copy glossary, icon map, rules R1–R11 with their tests, exception ledgers
+  - _Lifecycle:_ Entries fill as slices land; ledger sizes move at every wave
+- **[`design-decisions.md`](design-decisions.md)** — The design decisions taken inside the
+  programme, dated, one entry each; grepped, never read whole
+  - _Lifecycle:_ Append-only; a decision promotes to `spec-mate.md`
+- **[`client-state-model.md`](client-state-model.md)** — The client state model: three axes, seven
+  laws, the knowledge type, fact owners, machines, lifetimes, data flow, module boundaries, and
+  which slice makes each part true
+  - _Lifecycle:_ A status row changes in the commit that changes the fact; a model change lands here
+    with or before its code
 
 ## Rules for adding to this
 
