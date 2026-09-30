@@ -5,6 +5,7 @@ import * as Layer from "effect/Layer";
 
 import { remoteHttpClientLayer } from "../rpc/http.ts";
 import { ClientPresentation } from "../platform/capabilities.ts";
+import { fetchRemoteEnvironmentDescriptor } from "../environment/descriptor.ts";
 import { prepareZeropsIdentityRegistration } from "./onboarding.ts";
 
 /** The container's mate, which lives under a path prefix beside code-server. */
@@ -216,6 +217,29 @@ describe("Zerops identity onboarding", () => {
       // The exchange carries the minted grant, not the throwaway.
       const exchange = calls.at(-1);
       expect(exchange ? bodyText(exchange.init) : "").toContain("a-pairing-credential");
+    }),
+  );
+
+  it.effect("a door handed the descriptor it was judged on does not read it again", () =>
+    Effect.gen(function* () {
+      const calls: Array<Call> = [];
+      const layer = Layer.mergeAll(CLIENT_PRESENTATION_LAYER, zeropsHttpLayer(calls));
+      const descriptor = yield* fetchRemoteEnvironmentDescriptor({ httpBaseUrl: BASE_URL }).pipe(
+        Effect.provide(layer),
+      );
+      calls.length = 0;
+
+      const registration = yield* prepareZeropsIdentityRegistration({
+        httpBaseUrl: BASE_URL,
+        doorToken: DOOR_TOKEN,
+        descriptor,
+      }).pipe(Effect.provide(layer));
+
+      expect(calls.map((call) => call.url)).toEqual([
+        `${BASE_URL}/api/auth/zerops-throwaway`,
+        `${BASE_URL}/oauth/token`,
+      ]);
+      expect(registration.target.environmentId).toBe("environment-zerops");
     }),
   );
 
