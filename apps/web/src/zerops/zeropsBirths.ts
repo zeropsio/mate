@@ -301,6 +301,16 @@ export function webBirthPorts(
         return birthStepFailure(cause);
       }
     },
+    importRuntimes: async (birth, yaml) => {
+      const inputs = read();
+      if (inputs === null) return NOT_BOUND;
+      try {
+        await runZeropsCommand(inputs.runtime.commands.importServices(refOf(inputs, birth), yaml));
+        return DONE;
+      } catch (cause) {
+        return birthStepFailure(cause);
+      }
+    },
     // Through the tab's one probe pool (DESIGN §4.5), never a probe of its own.
     probeHealth: async (origin) => (await nextContainerReading(origin)).kind,
     readMateFlag: async (birth, serviceId) => {

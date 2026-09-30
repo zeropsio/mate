@@ -1,6 +1,6 @@
 /**
  * The birth worker (DESIGN §4.5, §2.C C9): one per account, driving every birth the store holds
- * through `tags → registry → harden → health`, whatever view is mounted and whichever
+ * through `tags → registry → harden → runtimes → health`, whatever view is mounted and whichever
  * organization a tab has open. The record carries everything a step needs; the worker reads the
  * birth's own project directly, so a missed inventory push never stalls it.
  *
@@ -14,6 +14,11 @@
  *   "not yet" is tried on the retry ladder; one that fails waits for "Try again". A cap past its
  *   budget sets `overdue` on the step and changes nothing else (MC-13) but the wait's cadence:
  *   every 2 s, and once overdue 10 s rising to 60 s.
+ * - `runtimes` imports the tier's runtimes its creation left for after the project is closed off
+ *   (`createEnvironment.ts`) — only those the project does not have yet, so an import a reload cut
+ *   short is never asked for twice. One the platform refuses, or that is still not through at the
+ *   top of the retry ladder, is said on the record and the Mate comes up without them: it is the
+ *   one that can put them right. A birth with none goes from `harden` straight to `health`.
  * - A birth ends without a Mate when its project was removed or its creation failed — read while
  *   the container is waited on, and every 30 s while the Mate is — or when its container import
  *   failed (`container` false).
@@ -42,6 +47,7 @@ import {
   type ProvisioningState,
   type ZeropsContainerHealth,
 } from "../provisioning.ts";
+import { recipeServicesWithout } from "../recipeTier.ts";
 import type { BirthRecord, BirthStep, BirthStore } from "./birthStore.ts";
 
 /** How often a birth's wait reads what it waits on. */
@@ -92,6 +98,8 @@ export interface BirthWorkerPorts {
   readonly processRunning: (birth: BirthRecord, serviceId: string | null) => boolean | null;
   /** Closes the birth's project off (`projectIsolation.ts`); safe to run again. */
   readonly harden: (birth: BirthRecord) => Promise<BirthStepOutcome>;
+  /** `POST /project/{id}/service-stack/import` of these runtimes into the birth's project. */
+  readonly importRuntimes: (birth: BirthRecord, yaml: string) => Promise<BirthStepOutcome>;
   readonly probeHealth: (origin: string) => Promise<ZeropsContainerHealth>;
   /** `ZCP_MATE_ENABLED` on the Mate's service. */
   readonly readMateFlag: (birth: BirthRecord, serviceId: string) => Promise<boolean | "unknown">;
@@ -194,6 +202,15 @@ export function makeBirthWorker(ports: BirthWorkerPorts): BirthWorker {
     return { after: retry.retryAtMs - nowMs() };
   };
 
+  /** The next rung of a write the birth can go on without; null once the ladder is climbed. */
+  const climb = (driver: Driver): Next | null => {
+    const backoff = driver.backoff ?? { rung: 0 };
+    if (backoff.rung >= RETRY_RUNGS_MS.length) return null;
+    const retry = scheduleRetry(backoff, nowMs(), clock.random);
+    driver.backoff = { rung: backoff.rung + 1 };
+    return { after: retry.retryAtMs - nowMs() };
+  };
+
   /** The wait moved: published, and its `overdue` carried onto the record. */
   const commit = (birth: BirthRecord, driver: Driver, state: ProvisioningState) => {
     driver.state = state;
@@ -219,12 +236,8 @@ export function makeBirthWorker(ports: BirthWorkerPorts): BirthWorker {
         reason: String(cause),
       }));
       if (outcome.kind === "not-yet") {
-        const backoff = driver.backoff ?? { rung: 0 };
-        if (backoff.rung < RETRY_RUNGS_MS.length) {
-          const retry = scheduleRetry(backoff, nowMs(), clock.random);
-          driver.backoff = { rung: backoff.rung + 1 };
-          return { after: retry.retryAtMs - nowMs() };
-        }
+        const next = climb(driver);
+        if (next !== null) return next;
       }
       if (outcome.kind !== "done") ports.outstanding(birth, outcome.reason);
     }
@@ -244,13 +257,15 @@ export function makeBirthWorker(ports: BirthWorkerPorts): BirthWorker {
         .catch((cause: unknown): BirthStepOutcome => ({ kind: "not-yet", reason: String(cause) }));
       if (outcome.kind === "done") {
         state = advanceProvisioning(state, { kind: "hardened" }, nowMs());
+        // Closed off: now, and only now, the runtimes its creation left for this moment.
+        const next: BirthStep = birth.runtimes === undefined ? "health" : "runtimes";
         store.update(birth.projectId, {
-          step: "health",
+          step: next,
           overdue: false,
           serviceId: state.containerServiceId,
           origin: state.containerOrigin,
         });
-        driver.step = "health";
+        driver.step = next;
         driver.state = state;
         driver.projectReadAtMs = nowMs();
         publish();
@@ -289,6 +304,55 @@ export function makeBirthWorker(ports: BirthWorkerPorts): BirthWorker {
     state = advanceProvisioning(state, { kind: "tick" }, nowMs());
     commit(birth, driver, state);
     return state.phase === "hardening" ? AGAIN : poll(driver, state);
+  };
+
+  /**
+   * The tier's runtimes, into a project already closed off — which is what makes a dev half that
+   * starts at once and a utility the platform builds safe: neither ever boots holding the Mate's
+   * key, and closing off has nothing of theirs to restart.
+   */
+  const runtimes = async (birth: BirthRecord, driver: Driver): Promise<Next> => {
+    // Past the harden: the wait stands where it left it, so the project reads as closed off.
+    if (driver.state === null && birth.origin !== null) {
+      driver.state = startProvisioningForContainer({
+        projectId: birth.projectId,
+        serviceId: birth.serviceId,
+        containerOrigin: birth.origin,
+        nowMs: nowMs(),
+      });
+      publish();
+    }
+    const planned = birth.runtimes;
+    let failed: string | undefined;
+    if (planned !== undefined && planned.failed === undefined) {
+      const reading = await ports.readProject(birth);
+      if (reading === "gone" || reading === "creation-failed") return end(birth);
+      const missing = recipeServicesWithout(
+        planned.yaml,
+        reading.services.map((service) => service.name),
+      );
+      if (missing !== undefined) {
+        const outcome = await ports
+          .importRuntimes(birth, missing)
+          .catch((cause: unknown): BirthStepOutcome => ({
+            kind: "not-yet",
+            reason: String(cause),
+          }));
+        if (outcome.kind === "not-yet") {
+          const next = climb(driver);
+          if (next !== null) return next;
+        }
+        if (outcome.kind !== "done") failed = outcome.reason;
+      }
+    }
+    driver.backoff = null;
+    store.update(birth.projectId, {
+      step: "health",
+      ...(failed === undefined || planned === undefined
+        ? {}
+        : { runtimes: { ...planned, failed } }),
+    });
+    return AGAIN;
   };
 
   const health = async (birth: BirthRecord, driver: Driver): Promise<Next> => {
@@ -352,6 +416,8 @@ export function makeBirthWorker(ports: BirthWorkerPorts): BirthWorker {
         return groupStep(birth, driver, ports.writeRegistry, birth.container ? "harden" : null);
       case "harden":
         return birth.container ? harden(birth, driver) : end(birth);
+      case "runtimes":
+        return birth.container ? runtimes(birth, driver) : end(birth);
       case "health":
         return birth.container ? health(birth, driver) : end(birth);
     }

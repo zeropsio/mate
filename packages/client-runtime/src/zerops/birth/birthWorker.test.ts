@@ -7,6 +7,7 @@ import { makeHarnessBrowser, type HarnessTab } from "../testing/browserTabs.ts";
 import {
   makeBirthStore,
   type BeginBirth,
+  type BirthRuntimes,
   type BirthStore,
   type BirthsStorage,
 } from "./birthStore.ts";
@@ -123,6 +124,8 @@ interface Rig {
   registry: BirthStepOutcome;
   /** What closing the project off answers. */
   hardened: BirthStepOutcome;
+  /** What importing the tier's runtimes answers. */
+  imported: BirthStepOutcome;
   /** The platform no longer has the project, or failed to create it. */
   ended: "gone" | "creation-failed" | null;
 }
@@ -140,6 +143,8 @@ function rig(
     readonly clock?: ReturnType<typeof manualClock>;
     readonly storage?: BirthsStorage;
     readonly locks?: BirthLocks;
+    /** What the platform answers from the start, before the worker takes up the stored births. */
+    readonly setUp?: (r: Rig) => void;
   } = {},
 ): Rig {
   const clock = options.clock ?? manualClock();
@@ -160,9 +165,11 @@ function rig(
     tags: DONE,
     registry: DONE,
     hardened: DONE,
+    imported: DONE,
     ended: null,
     worker: undefined as unknown as BirthWorker,
   };
+  options.setUp?.(result);
   result.worker = makeBirthWorker({
     store,
     clock,
@@ -183,6 +190,11 @@ function rig(
     harden: async (birth) => {
       calls.push(`harden ${birth.projectId}`);
       return result.hardened;
+    },
+    importRuntimes: async (birth, yaml) => {
+      const hostnames = [...yaml.matchAll(/hostname: (\S+)/gu)].map((match) => match[1]);
+      calls.push(`runtimes ${birth.projectId}: ${hostnames.join(",")}`);
+      return result.imported;
     },
     probeHealth: async (origin) => {
       calls.push(`probe ${origin}`);
@@ -459,5 +471,112 @@ describe("the birth worker", () => {
     r.health = "ready";
     await r.clock.advance(2_000);
     expect(r.worker.waits().get("project-1")?.phase).toBe("ready");
+  });
+});
+
+/**
+ * A Mate's runtimes go in after its project is closed off (`createEnvironment.ts`): nothing that
+ * runs code ever starts holding the Mate's key, and closing off has nothing of theirs to restart.
+ */
+describe("a Mate's runtimes", () => {
+  const RUNTIMES: BirthRuntimes = {
+    yaml: "services:\n  - hostname: appdev\n    startWithoutCode: true\n  - hostname: appstage\n    type: nodejs@22\n",
+    services: [
+      { hostname: "appdev", role: "dev" },
+      { hostname: "appstage", role: "stage" },
+    ],
+  };
+  const withRuntimes: BeginBirth = { ...mate, registration: null, runtimes: RUNTIMES };
+  const runtime = (name: string): ZeropsService => ({ id: `id-${name}`, name, status: "ACTIVE" });
+  const imports = (r: Rig) => r.calls.filter((call) => call.startsWith("runtimes"));
+
+  /** A tab that takes the birth up after a reload: its project closed off, its runtimes owed. */
+  const resumed = (setUp: (r: Rig) => void): Rig => {
+    const storage = memoryStorage();
+    const clock = manualClock();
+    const before = rig({ clock, storage });
+    before.store.begin(withRuntimes);
+    before.store.update("project-1", { step: "runtimes", serviceId: "service-1", origin: ORIGIN });
+    before.worker.dispose();
+    return rig({ clock, storage, setUp });
+  };
+
+  it("are imported once the project is closed off, and then the Mate is waited on", async () => {
+    const r = rig();
+    r.services = [CONTAINER];
+    r.running = false;
+    r.health = "ready";
+    r.store.begin(withRuntimes);
+    await r.clock.advance(6_000);
+    const harden = r.calls.indexOf("harden project-1");
+    const imported = r.calls.indexOf("runtimes project-1: appdev,appstage");
+    expect(harden).toBeGreaterThanOrEqual(0);
+    expect(imported).toBeGreaterThan(harden);
+    expect(r.calls.indexOf(`probe ${ORIGIN}`)).toBeGreaterThan(imported);
+    expect(imports(r)).toHaveLength(1);
+    expect(r.store.birth("project-1")).toMatchObject({ step: "health", runtimes: RUNTIMES });
+    expect(r.worker.waits().get("project-1")?.phase).toBe("ready");
+  });
+
+  it.each([
+    { case: "the ones the project does not have yet", has: ["appdev"], imported: ["appstage"] },
+    { case: "nothing once it has them all", has: ["appdev", "appstage"], imported: [] },
+  ])("a reload between the import and its record imports $case", async ({ has, imported }) => {
+    const r = resumed((r) => {
+      r.services = [CONTAINER, ...has.map(runtime)];
+    });
+    await r.clock.advance(0);
+    expect(imports(r)).toEqual(
+      imported.length === 0 ? [] : [`runtimes project-1: ${imported.join(",")}`],
+    );
+    expect(r.store.birth("project-1")?.step).toBe("health");
+  });
+
+  it("the platform refusing them is said on the birth, and its Mate still comes up", async () => {
+    const r = rig();
+    r.services = [CONTAINER];
+    r.running = false;
+    r.health = "ready";
+    r.imported = { kind: "failed", reason: "The hostname appdev is taken." };
+    r.store.begin(withRuntimes);
+    await r.clock.advance(6_000);
+    expect(imports(r)).toHaveLength(1);
+    expect(r.store.birth("project-1")).toMatchObject({
+      step: "health",
+      runtimes: { ...RUNTIMES, failed: "The hostname appdev is taken." },
+    });
+    expect(r.worker.waits().get("project-1")?.phase).toBe("ready");
+  });
+
+  it("an import not through yet is tried on the retry ladder, then said", async () => {
+    const r = resumed((r) => {
+      r.services = [CONTAINER];
+      r.imported = { kind: "not-yet", reason: "The account is being verified." };
+    });
+    await r.clock.advance(2_000 + 4_000 + 8_000 + 15_000 + 30_000 + 60_000);
+    expect(imports(r)).toHaveLength(7);
+    expect(r.store.birth("project-1")).toMatchObject({
+      step: "health",
+      runtimes: { failed: "The account is being verified." },
+    });
+  });
+
+  it("while they are asked for, the project reads as closed off", async () => {
+    const r = resumed((r) => {
+      r.services = [CONTAINER];
+      r.imported = { kind: "not-yet", reason: "The account is being verified." };
+    });
+    await r.clock.advance(0);
+    expect(r.store.birth("project-1")?.step).toBe("runtimes");
+    expect(r.worker.waits().get("project-1")?.phase).toBe("awaiting-health");
+  });
+
+  it("a birth whose project went away ends there", async () => {
+    const r = resumed((r) => {
+      r.ended = "gone";
+    });
+    await r.clock.advance(0);
+    expect(imports(r)).toEqual([]);
+    expect(r.store.birth("project-1")).toBeUndefined();
   });
 });

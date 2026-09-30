@@ -457,6 +457,47 @@ describe("the birth's project read", () => {
   });
 });
 
+describe("the birth's runtimes import", () => {
+  const RUNTIMES = "services:\n  - hostname: appdev\n    startWithoutCode: true\n";
+
+  it.each([
+    { name: "one the platform took", failure: undefined, want: "done" },
+    {
+      name: "one it refused",
+      failure: new ZeropsApiError("The hostname appdev is taken.", "invalid-input"),
+      want: "failed",
+    },
+    {
+      name: "one the network lost",
+      failure: new ZeropsApiError("Could not reach Zerops.", "network"),
+      want: "not-yet",
+    },
+  ])("imports into the birth's own project as its person: $name", async ({ failure, want }) => {
+    const calls: Array<string> = [];
+    const runtime = {
+      commands: {
+        importServices: (project: ProjectRef, yaml: string) =>
+          failure === undefined
+            ? Effect.sync(() => {
+                calls.push(
+                  `import into ${project.organization.organizationId}/${project.projectId}`,
+                );
+                expect(yaml).toBe(RUNTIMES);
+                return { attempt: null, value: undefined };
+              })
+            : Effect.fail(failure),
+      },
+    };
+    const ports = webBirthPorts(
+      () => ({ client: fakeClient(calls), runtime, projectRef }) as unknown as BirthInputs,
+      () => true,
+    );
+
+    expect((await ports.importRuntimes(birth, RUNTIMES)).kind).toBe(want);
+    expect(calls).toEqual(failure === undefined ? ["import into org-1/project-1"] : []);
+  });
+});
+
 describe("birthStepFailure", () => {
   const admission = (reason: string) => ({
     _tag: "ZeropsCommandAdmissionError",
