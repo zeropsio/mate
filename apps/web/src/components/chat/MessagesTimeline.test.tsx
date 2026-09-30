@@ -1,7 +1,14 @@
 import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
 import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
-import { act, createRef, type ReactNode, type Ref } from "react";
+import {
+  act,
+  createRef,
+  useLayoutEffect,
+  useSyncExternalStore,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -2161,18 +2168,55 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
   };
   const KEY_A = "environment-local:thread-a";
   const KEY_B = "environment-local:thread-b";
-  const pane = async (open: string, alive: (key: string) => boolean = () => true) => {
+  // What a kept list reads of its conversation while out of sight, as a
+  // store it subscribes to.
+  const read = new Map<
+    string,
+    { readonly timelineEntries: ReadonlyArray<unknown>; readonly latestTurn?: unknown }
+  >();
+  const readers = new Set<() => void>();
+  const tell = (key: string, props: NonNullable<ReturnType<typeof read.get>>) => {
+    read.set(key, props);
+    for (const reader of readers) reader();
+  };
+  const Reader = ({
+    threadKey,
+    onRead,
+  }: {
+    readonly threadKey: string;
+    readonly onRead: (props: never) => void;
+  }) => {
+    const props = useSyncExternalStore(
+      (listener) => {
+        readers.add(listener);
+        return () => readers.delete(listener);
+      },
+      () => read.get(threadKey) ?? null,
+    );
+    useLayoutEffect(() => onRead(props as never), [onRead, props]);
+    return null;
+  };
+  beforeEach(() => read.clear());
+  const pane = async (
+    open: string,
+    alive: (key: string) => boolean = () => true,
+    extra: Partial<Parameters<typeof MessagesTimeline>[0]> = {},
+    inset: { readonly insetMeasured?: boolean; readonly insetRemembered?: boolean } = {},
+  ) => {
     const { KeptTimelines } = await import("./KeptTimelines");
     return (
       <KeptTimelines
         open={open}
         alive={alive}
+        {...inset}
+        Reader={Reader}
         crewTimeline={null}
         timeline={{
           ...buildProps(),
           listRef,
           routeThreadKey: open,
           timelineEntries: [buildUserTimelineEntry(`Where were we in ${open}?`)],
+          ...extra,
         }}
       />
     );
@@ -2210,6 +2254,137 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
       await act(() => renderer!.update(a));
       // A list mounted anew starts out of sight until it is placed.
       expect(placing(renderer!, KEY_A)).toBe(false);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
+  it("takes its conversation's rows while out of sight, so a return finds them placed", async () => {
+    const place = await settle();
+    let renderer: ReactTestRenderer | undefined;
+    await act(async () => {
+      renderer = create(await pane(KEY_A));
+    });
+    try {
+      await place(renderer!);
+      const b = await pane(KEY_B);
+      await act(() => renderer!.update(b));
+      // An answer comes in A while the person reads B.
+      await act(() =>
+        tell(KEY_A, {
+          timelineEntries: [
+            buildUserTimelineEntry(`Where were we in ${KEY_A}?`),
+            { ...buildAssistantTimelineEntry("Here is where."), id: "entry-answer" },
+          ],
+        }),
+      );
+      const { LegendList } = await import("@legendapp/list/react");
+      const rowsOfA = listOf(renderer!, KEY_A).findByType(LegendList).props.data;
+      expect(JSON.stringify(rowsOfA)).toContain("Here is where.");
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
+  // The line over what is new is read as the person comes back, not only as
+  // the list first opened: an answer that came while they were away is
+  // marked, and a line from an earlier visit goes.
+  it("marks what came while the person was away when it shows again", async () => {
+    const { useUiStateStore } = await import("../../uiStateStore");
+    const place = await settle();
+    const turn = (completedAt: string) => ({
+      turnId: TurnId.make("turn-a"),
+      state: "completed" as const,
+      startedAt: "2026-09-30T09:00:00.000Z",
+      completedAt,
+    });
+    useUiStateStore.setState((state) => ({
+      threadLastVisitedAtById: {
+        ...state.threadLastVisitedAtById,
+        [KEY_A]: "2026-09-30T09:10:00.000Z",
+      },
+    }));
+    const seamNew = (renderer: ReactTestRenderer) =>
+      JSON.stringify(listOf(renderer, KEY_A).findByType(LegendListType).props.data).includes(
+        '"seam:new"',
+      );
+    const { LegendList: LegendListType } = await import("@legendapp/list/react");
+    let renderer: ReactTestRenderer | undefined;
+    await act(async () => {
+      renderer = create(
+        await pane(KEY_A, undefined, { latestTurn: turn("2026-09-30T09:05:00.000Z") }),
+      );
+    });
+    try {
+      await place(renderer!);
+      expect(seamNew(renderer!)).toBe(false);
+      const b = await pane(KEY_B);
+      await act(() => renderer!.update(b));
+      const answered = await pane(KEY_A, undefined, {
+        latestTurn: turn("2026-09-30T09:30:00.000Z"),
+        timelineEntries: [
+          buildUserTimelineEntry(`Where were we in ${KEY_A}?`),
+          {
+            ...buildAssistantTimelineEntry("It is done."),
+            id: "entry-answer",
+            createdAt: "2026-09-30T09:30:00.000Z",
+            message: {
+              ...buildAssistantTimelineEntry("It is done.").message,
+              id: MessageId.make("message-answer"),
+              createdAt: "2026-09-30T09:30:00.000Z",
+              updatedAt: "2026-09-30T09:30:00.000Z",
+            },
+          },
+        ],
+      });
+      await act(() => renderer!.update(answered));
+      expect(seamNew(renderer!)).toBe(true);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
+  // A return shows a kept list in the press frame with the inset remembered
+  // for it; one whose conversation changed while away — its banners may have
+  // too — waits out of sight until its own inset is measured.
+  it.each([
+    { case: "unchanged while away", changed: false },
+    { case: "changed while away", changed: true },
+  ])("shows at once on a return, $case: out of sight $changed", async ({ changed }) => {
+    const place = await settle();
+    const turn = (completedAt: string) => ({
+      turnId: TurnId.make("turn-a"),
+      state: "completed" as const,
+      startedAt: "2026-09-30T09:00:00.000Z",
+      completedAt,
+    });
+    const before = { latestTurn: turn("2026-09-30T09:05:00.000Z") };
+    let renderer: ReactTestRenderer | undefined;
+    await act(async () => {
+      renderer = create(await pane(KEY_A, undefined, before));
+    });
+    try {
+      await place(renderer!);
+      const b = await pane(KEY_B);
+      await act(() => renderer!.update(b));
+      await act(() =>
+        tell(KEY_A, {
+          timelineEntries: [buildUserTimelineEntry(`Where were we in ${KEY_A}?`)],
+          latestTurn: changed ? turn("2026-09-30T09:30:00.000Z") : before.latestTurn,
+        }),
+      );
+      const back = await pane(KEY_A, undefined, before, {
+        insetMeasured: false,
+        insetRemembered: true,
+      });
+      await act(() => renderer!.update(back));
+      const outOfSightNow =
+        renderer!.root.findAll(
+          (node) =>
+            node.props["data-kept-timeline"] !== undefined &&
+            node.findAll((inner) => inner.props["data-timeline-thread"] === KEY_A).length > 0,
+        ).length > 0;
+      expect(outOfSightNow).toBe(changed);
     } finally {
       await act(() => renderer?.unmount());
     }

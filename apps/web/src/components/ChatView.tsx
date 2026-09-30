@@ -351,8 +351,9 @@ import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog"
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
-import { KeptTimelines, useKeptTimelineAlive } from "./chat/KeptTimelines";
+import { KeptTimelines } from "./chat/KeptTimelines";
 import { useWarmTimelineAsk } from "./chat/warmTimeline";
+import { shouldTypeToFocusComposer } from "./chat/typeToFocus";
 import { rememberTimelineInset, rememberedTimelineInset } from "./chat/timelineInsets";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
@@ -569,73 +570,10 @@ function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
 const DiffPanel = lazy(() => import("./DiffPanel"));
 const FilePreviewPanel = lazy(() => import("./files/FilePreviewPanel"));
 const EMPTY_PENDING_FILE_SURFACE_IDS: ReadonlySet<string> = new Set();
-const TYPE_TO_FOCUS_EDITABLE_SELECTOR = [
-  "input",
-  "textarea",
-  "select",
-  '[contenteditable="true"]',
-  '[contenteditable="plaintext-only"]',
-  '[role="textbox"]',
-].join(",");
-const TYPE_TO_FOCUS_INTERACTIVE_SELECTOR = [
-  "button",
-  "a[href]",
-  "summary",
-  '[role="button"]',
-  '[role="checkbox"]',
-  '[role="menuitem"]',
-  '[role="option"]',
-  '[role="radio"]',
-  '[role="switch"]',
-  '[role="tab"]',
-].join(",");
-// Popups match only while open or closing: some stay mounted when closed,
-// such as the chat header actions menu.
-const TYPE_TO_FOCUS_FLOATING_LAYER_SELECTOR = [
-  '[role="dialog"][aria-modal="true"]',
-  '[data-slot="dialog"]',
-  '[data-slot="menu-popup"]:is([data-open],[data-ending-style])',
-  '[data-slot="select-popup"]:is([data-open],[data-ending-style])',
-  '[data-slot="popover-popup"]:is([data-open],[data-ending-style])',
-  '[data-slot="combobox-popup"]:is([data-open],[data-ending-style])',
-  '[data-slot="autocomplete-popup"]:is([data-open],[data-ending-style])',
-].join(",");
-
 type EnvironmentUnavailableState = {
   readonly environmentId: EnvironmentId;
   readonly connection: EnvironmentConnectionPresentation;
 };
-
-function eventPathContainsSelector(event: Event, selector: string): boolean {
-  const path = event.composedPath();
-  if (path.length === 0 && event.target) {
-    path.push(event.target);
-  }
-  return path.some((target) => target instanceof Element && target.closest(selector));
-}
-
-function shouldTypeToFocusComposer(event: KeyboardEvent): boolean {
-  if (event.defaultPrevented || event.isComposing) return false;
-  if (event.metaKey || event.ctrlKey || event.altKey) return false;
-  if (event.key.length !== 1) return false;
-  // "/" with nothing focused opens the jump box (`jumpSlash.ts`); a slash
-  // command starts in the composer once it has the focus.
-  if (event.key === "/") return false;
-
-  if (eventPathContainsSelector(event, TYPE_TO_FOCUS_EDITABLE_SELECTOR)) return false;
-  if (eventPathContainsSelector(event, TYPE_TO_FOCUS_INTERACTIVE_SELECTOR)) return false;
-  if (document.querySelector(TYPE_TO_FOCUS_FLOATING_LAYER_SELECTOR)) return false;
-
-  // The right-panel surface launcher claims its shortcut letters while it is
-  // visible (data attribute set in RightPanelTabs); those keys open surfaces
-  // instead of typing into the composer.
-  const launcherKeys = document
-    .querySelector("[data-surface-launcher-keys]")
-    ?.getAttribute("data-surface-launcher-keys");
-  if (launcherKeys && launcherKeys.toLowerCase().includes(event.key.toLowerCase())) return false;
-
-  return true;
-}
 
 function formatOutgoingPrompt(params: {
   provider: ProviderDriverKind;
@@ -1613,11 +1551,9 @@ export default function ChatView(props: ChatViewProps) {
     // dismissed, before a resize would ever fire to report 0.
     bannerStackHeight: composerBannerStackElement ? composerBannerStackHeight : 0,
   });
-  const keptTimelineAlive = useKeptTimelineAlive();
   const warmTimelineAsk = useWarmTimelineAsk();
   const rememberedInset = rememberedTimelineInset(routeThreadKey);
-  const timelineInsetSettled =
-    composerOverlaySettledFor === routeThreadKey || rememberedInset !== undefined;
+  const timelineInsetMeasured = composerOverlaySettledFor === routeThreadKey;
   const timelineInsetEnd =
     composerOverlaySettledFor === routeThreadKey
       ? composerOverlayHeight
@@ -8186,9 +8122,9 @@ export default function ChatView(props: ChatViewProps) {
                   another's come in as they are placed. */}
               <KeptTimelines
                 open={routeThreadKey}
-                alive={keptTimelineAlive}
                 warm={warmTimelineAsk}
-                insetSettled={timelineInsetSettled}
+                insetMeasured={timelineInsetMeasured}
+                insetRemembered={rememberedInset !== undefined}
                 crewTimeline={crewTimeline}
                 timeline={{
                   agentPanelModel,
