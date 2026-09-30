@@ -843,6 +843,89 @@ describe("makeZeropsDataRuntime", () => {
   );
 
   it.effect(
+    "an entity whose reads keep failing is read again on a backoff, and never given up on while its interest is held",
+    () =>
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        let processReads = 0;
+        const adapter: ZeropsDataAdapter = {
+          openReceiver: (_scope, organization, identity) =>
+            Effect.succeed({
+              identity,
+              organization,
+              delivery: "hot-single-consumer-buffered-before-open-resolves",
+              events: Stream.never,
+            }),
+          register: (_receiver, request) => {
+            const baseline = unresolvedProcessBaseline(request);
+            return Effect.succeed({ responseObservations: baseline === null ? [] : [baseline] });
+          },
+          read: (ticket) => {
+            if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
+            processReads += 1;
+            return Effect.fail({
+              _tag: "ZeropsDataAdapterError",
+              kind: "network",
+              message: "hydration read fails",
+              retryable: true,
+              accountRevocationEvidence: false,
+            } satisfies AdapterError);
+          },
+          execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+          closeReceiver: () => Effect.void,
+        };
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter,
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+          policy: makeZeropsDataPolicy({
+            hydrationRetryLimit: 2,
+            recoveryBackoffStartMs: 100,
+            recoveryBackoffMaxMs: 1_000,
+          }),
+        });
+        const states = yield* Queue.unbounded<ZeropsDataState>();
+        const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+          Queue.offerUnsafe(states, state);
+        });
+        const leaseScope = yield* Scope.make();
+        const lease = yield* runtime.acquire(topologyDescriptor).pipe(Scope.provide(leaseScope));
+        yield* waitForState(
+          states,
+          (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+        );
+        const settle = Effect.gen(function* () {
+          for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+        });
+        yield* settle;
+        const observed = processReads;
+        expect(observed).toBeGreaterThan(0);
+
+        // The next read waits out the backoff rather than following the failure at once.
+        yield* TestClock.adjust("99 millis");
+        yield* settle;
+        expect(processReads).toBe(observed);
+        yield* TestClock.adjust("1 millis");
+        yield* settle;
+        expect(processReads).toBe(observed + 1);
+
+        // The budget is spent: nothing for the backoff's cap, then the entity is read again.
+        yield* TestClock.adjust("999 millis");
+        yield* settle;
+        expect(processReads).toBe(observed + 1);
+        yield* TestClock.adjust("1 millis");
+        yield* settle;
+        expect(processReads).toBe(observed + 2);
+
+        unsubscribe();
+        yield* runtime.shutdown("application-close");
+        yield* Scope.close(leaseScope, Exit.void);
+        registry.dispose();
+      }),
+  );
+
+  it.effect(
     "resets the hydration-failure budget for an organization once it recovers observing",
     () =>
       Effect.gen(function* () {

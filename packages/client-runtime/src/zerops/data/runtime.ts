@@ -919,7 +919,11 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   // the new failure's own due time; one that needs the receiver replaced also says so.
   const recoveryCycles = new Map<string, RecoveryCycle>();
   const hydrations = new Map<string, RuntimeHydration>();
-  const hydrationFailures = new Map<string, { readonly organizationKey: string; count: number }>();
+  /** Each entity's failed hydrations, and when the next may start (`retryHydration`). */
+  const hydrationFailures = new Map<
+    string,
+    { readonly organizationKey: string; count: number; retryAtMs: number }
+  >();
   let receiptOrdinal = 0;
   let readStartOrdinal = 0;
   let dispatchOrdinal = 0;
@@ -1102,10 +1106,16 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               owner.recoveryAttempts = 0;
               // A successful recovery clears the hydration-failure budget for its
               // organization: the transport is healthy again, so unresolved entities
-              // deserve a fresh set of hydration attempts rather than staying stuck.
-              const organizationKey = organizationKeyOf(organizationOfInterest(owner.descriptor));
-              for (const [entityKey, record] of hydrationFailures) {
-                if (record.organizationKey === organizationKey) hydrationFailures.delete(entityKey);
+              // deserve a fresh set of hydration attempts rather than staying stuck. Only the
+              // recovery itself: every later event would otherwise lift each failed entity's
+              // backoff (`retryHydration`) and read it again at once.
+              const before = current.interests.get(input.interest.key)?.interest;
+              if (before?.status !== "observing" || before.identity !== desired.identity) {
+                const organizationKey = organizationKeyOf(organizationOfInterest(owner.descriptor));
+                for (const [entityKey, record] of hydrationFailures) {
+                  if (record.organizationKey === organizationKey)
+                    hydrationFailures.delete(entityKey);
+                }
               }
             }
           }
@@ -1557,9 +1567,12 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           }
           continue;
         }
+        const failed = hydrationFailures.get(key);
         if (
           hydrations.size >= policy.activeSharedReadsPerAccount ||
-          (hydrationFailures.get(key)?.count ?? 0) >= policy.hydrationRetryLimit
+          (failed !== undefined &&
+            (failed.count >= policy.hydrationRetryLimit ||
+              (yield* Clock.currentTimeMillis) < failed.retryAtMs))
         )
           continue;
         const owner = {
@@ -1621,6 +1634,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
                     hydrationFailures.set(key, {
                       organizationKey: organizationKeyOf(organizationOfEntityRef(target)),
                       count: (hydrationFailures.get(key)?.count ?? 0) + 1,
+                      retryAtMs: Number.POSITIVE_INFINITY,
                     });
                 }),
               ),
@@ -1637,11 +1651,38 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           ),
         );
         const fiber = yield* work.pipe(
-          Effect.flatMap((succeeded) => (succeeded ? Effect.void : scheduleHydration(query))),
+          Effect.flatMap((succeeded) => (succeeded ? Effect.void : retryHydration(key, query))),
           forkOwned,
         );
         hydration.fiber = fiber;
       }
+    });
+
+  /**
+   * A failed hydration is read again on the recovery backoff, not at once: a refusal that lasts
+   * a moment (a service the platform lists before it serves it) would spend the budget in a few
+   * milliseconds. A spent budget waits out the backoff's cap and starts over, so an entity is
+   * never left unresolved for good while an interest holds it — its listing would stay partial.
+   */
+  const retryHydration = (key: string, query: QueryKey): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      const failed = hydrationFailures.get(key);
+      if (failed === undefined) return yield* scheduleHydration(query);
+      const spent = failed.count >= policy.hydrationRetryLimit;
+      const delayMs = spent
+        ? policy.recoveryBackoffMaxMs
+        : Math.min(
+            policy.recoveryBackoffStartMs * 2 ** Math.max(0, failed.count - 1),
+            policy.recoveryBackoffMaxMs,
+          );
+      // Until then no other trigger starts it: a reset (a recovery, a return to the foreground)
+      // drops the record, and with it the wait.
+      failed.retryAtMs = (yield* Clock.currentTimeMillis) + delayMs;
+      yield* Effect.sleep(Duration.millis(delayMs));
+      // A reset, or an attempt it let start, owns the entity's next read now.
+      if (hydrationFailures.get(key) !== failed) return;
+      if (spent) hydrationFailures.delete(key);
+      yield* scheduleHydration(query);
     });
 
   // Cancels one in-flight hydration outright (not a partial dependent removal, unlike
