@@ -89,7 +89,7 @@ import type { SidebarCrewRead } from "~/components/zerops/crew/SidebarCrewLine";
 import { newProjectOffered } from "~/components/zerops/SidebarProjects.logic";
 import {
   SidebarNewProject,
-  SidebarTroubleLine,
+  SidebarAccountLine,
   SidebarZeropsTree,
   type SidebarProjectFlow,
 } from "~/components/zerops/SidebarZeropsTree";
@@ -797,8 +797,18 @@ const FIXTURES = COMING_SET
 
 const activityOfCandidate = (item: ZeropsCandidate) => FIXTURES.activity.get(item.project.id);
 
-/** `?notice=trouble`: the inventory's lasting trouble, pinned at the menu's foot. */
-const TROUBLE = new URLSearchParams(location.search).get("notice") === "trouble";
+/**
+ * `?notice=trouble` or `?notice=lapse`: the account's one line at the menu's foot — the
+ * inventory's lasting trouble, or a lapse whose renewal failed.
+ */
+const FOOT_LINES: Record<
+  string,
+  { readonly sentence: string; readonly actions: ReadonlyArray<string> }
+> = {
+  trouble: { sentence: "Zerops isn't answering. Trying again…", actions: ["Try now"] },
+  lapse: { sentence: "Zerops isn't answering.", actions: ["Try now", "Sign out"] },
+};
+const FOOT_LINE = FOOT_LINES[new URLSearchParams(location.search).get("notice") ?? ""] ?? null;
 
 /**
  * A crew of four under a Mate — the lead first — built from the crew's own
@@ -997,12 +1007,15 @@ function SidebarFrame({
           }}
         />
       ) : null}
-      {TROUBLE ? (
-        <SidebarTroubleLine
-          sentence="Zerops isn't answering. Trying again…"
-          onTryNow={() => menuActions.push("try now")}
+      {FOOT_LINE === null ? null : (
+        <SidebarAccountLine
+          sentence={FOOT_LINE.sentence}
+          actions={FOOT_LINE.actions.map((label) => ({
+            label,
+            run: () => menuActions.push(label),
+          }))}
         />
-      ) : null}
+      )}
       <footer className="flex shrink-0 items-center gap-1 p-2">
         <div className="min-w-0 flex-1">
           <SidebarZeropsAccount

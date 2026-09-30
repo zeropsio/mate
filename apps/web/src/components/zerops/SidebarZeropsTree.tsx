@@ -1685,31 +1685,34 @@ export function SidebarNewProject({ onNewProject }: { readonly onNewProject: () 
 }
 
 /**
- * The account's inventory trouble once it has lasted (`inventoryTroubleVoice`): one quiet line
- * pinned at the menu's foot, what is true and what happens, with Try now. The rows above keep what
- * they have; nothing is covered or frozen.
+ * What the account says (`accountFootLine`) — its lapse, or its inventory's lasting trouble — as
+ * one quiet line pinned at the menu's foot: what is true and what happens, with its actions. The
+ * rows above keep what they have; nothing is covered or frozen.
  */
-export function SidebarTroubleLine({
+export function SidebarAccountLine({
   sentence,
-  onTryNow,
+  actions,
 }: {
   readonly sentence: string;
-  readonly onTryNow: () => void;
+  readonly actions: ReadonlyArray<{ readonly label: string; readonly run: () => void }>;
 }) {
   return (
     <div
-      className="animate-zerops-appear flex shrink-0 items-center gap-2 ps-4 pe-2 py-1.5 text-xs text-sidebar-muted-foreground"
-      data-zerops-surface="sidebar-trouble"
+      className="animate-zerops-appear flex shrink-0 items-center gap-1 ps-4 pe-2 py-1.5 text-xs text-sidebar-muted-foreground"
+      data-zerops-surface="sidebar-account-line"
       role="status"
     >
-      <span className="min-w-0 truncate">{sentence}</span>
-      <button
-        className="shrink-0 cursor-pointer rounded-md px-1.5 py-0.5 font-medium text-sidebar-foreground outline-none transition-colors hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring"
-        onClick={onTryNow}
-        type="button"
-      >
-        Try now
-      </button>
+      <span className="me-1 min-w-0 truncate">{sentence}</span>
+      {actions.map(({ label, run }) => (
+        <button
+          className="shrink-0 cursor-pointer rounded-md px-1.5 py-0.5 font-medium text-sidebar-foreground outline-none transition-colors hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring"
+          key={label}
+          onClick={run}
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }

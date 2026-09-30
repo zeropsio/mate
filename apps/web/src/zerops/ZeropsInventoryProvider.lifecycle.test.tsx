@@ -38,11 +38,12 @@ import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { ZeropsDataProvider } from "./ZeropsDataProvider";
 import {
   inventoryProjectRefKey,
-  useInventoryRetry,
+  useAccountVoice,
   useZeropsInventory,
   type Inventory,
 } from "./inventoryContext";
 import { ZeropsInventoryProvider } from "./ZeropsInventoryProvider";
+import { AccountVoiceLine } from "../components/zerops/AccountVoiceLine";
 
 const session = vi.hoisted(() => ({ current: undefined as unknown }));
 vi.mock("./ZeropsSessionProvider", () => ({ useZeropsSession: () => session.current }));
@@ -341,10 +342,10 @@ const mountInventory = Effect.fn(function* (
   let retryNow: (() => void) | null = null;
   function Consumer() {
     const value = useZeropsInventory();
-    const retry = useInventoryRetry();
+    const voice = useAccountVoice();
     useEffect(() => {
-      retryNow = retry;
-    }, [retry]);
+      retryNow = voice?.actions.find(({ kind }) => kind === "try-now")?.run ?? null;
+    }, [voice]);
     useEffect(() => {
       grantsWhenChildMounted ??= grants.length;
       mounted.resolve();
@@ -375,6 +376,7 @@ const mountInventory = Effect.fn(function* (
       <ZeropsDataProvider makeRuntime={makeRuntime}>
         <ZeropsInventoryProvider>
           <Consumer />
+          <AccountVoiceLine />
         </ZeropsInventoryProvider>
       </ZeropsDataProvider>
     </RegistryContext>
@@ -407,7 +409,7 @@ const mountInventory = Effect.fn(function* (
     organization,
     projectRef,
     inventory: () => inventory,
-    /** The product's "Try now" for its inventory's trouble (`useInventoryRetry`). */
+    /** The account line's "Try now" (`useAccountVoice`), while it says anything. */
     retry: () => retryNow,
     unmount: () => Effect.promise(async () => act(async () => root.unmount())),
     /** The held first round's reads answer; resolves once a grant reached the runtime. */
@@ -873,10 +875,11 @@ it.live(
         for (let second = 0; second < 600 && harness.inventory()?.error == null; second++) {
           yield* harness.advance(1_000);
           // Nothing covers the product, freezes it or offers to sign out meanwhile.
-          expect(harness.container.textContent).toBe("");
+          if (harness.inventory()?.error == null) expect(harness.container.textContent).toBe("");
         }
         expect(harness.inventory()?.error).toBe("Zerops isn't answering. Trying again…");
-        expect(harness.container.textContent).toBe("");
+        // Said once, at the menu's foot, with Try now and no Sign out.
+        expect(harness.container.textContent).toBe("Zerops isn't answering. Trying again…Try now");
         heard.length = 0;
         const reread = harness.refreshed().length;
 

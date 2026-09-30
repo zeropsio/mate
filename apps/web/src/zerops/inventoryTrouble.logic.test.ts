@@ -2,8 +2,10 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   INVENTORY_TROUBLE_HOLD_MS,
+  accountFootLine,
   inventoryTroubleVoice,
   type InventoryTroubleInput,
+  type InventoryTroubleVoice,
 } from "./inventoryTrouble.logic";
 
 const SAYS = { sentence: "Zerops isn't answering. Trying again…", tryNow: true } as const;
@@ -66,5 +68,36 @@ describe("when the inventory's trouble speaks", () => {
     },
   ])("$name", ({ input, voice }) => {
     expect(inventoryTroubleVoice({ ...calm, ...input })).toEqual(voice);
+  });
+});
+
+describe("what the account says at the menu's foot", () => {
+  it.each<{
+    readonly name: string;
+    readonly lapse: { readonly sentence: string; readonly retry: boolean } | null;
+    readonly trouble: InventoryTroubleVoice | null;
+    readonly said: { readonly sentence: string; readonly actions: ReadonlyArray<string> } | null;
+  }>([
+    { name: "nothing wrong: nothing", lapse: null, trouble: null, said: null },
+    {
+      name: "a lapse still checking: its words, and the way out of the account (A9)",
+      lapse: { sentence: "Checking your Zerops access…", retry: false },
+      trouble: null,
+      said: { sentence: "Checking your Zerops access…", actions: ["sign-out"] },
+    },
+    {
+      name: "a lapse whose renewal failed: Try now, and the way out",
+      lapse: { sentence: "Zerops isn't answering.", retry: true },
+      trouble: null,
+      said: { sentence: "Zerops isn't answering.", actions: ["try-now", "sign-out"] },
+    },
+    {
+      name: "the inventory's lasting trouble: Try now only",
+      lapse: null,
+      trouble: SAYS,
+      said: { sentence: "Zerops isn't answering. Trying again…", actions: ["try-now"] },
+    },
+  ])("$name", ({ lapse, trouble, said }) => {
+    expect(accountFootLine({ lapse, trouble })).toEqual(said);
   });
 });
