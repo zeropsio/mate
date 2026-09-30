@@ -642,6 +642,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
 
     let failureCount = 0;
     for (;;) {
+      yield* SubscriptionRef.set(queued, false);
       const candidate = yield* forkScopedTracedConnection(
         failureCount + 1,
         generation,
@@ -656,9 +657,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         waitForAuthorizationDeadline(active.lease.prepared, 0).pipe(
           Effect.as<ReplacementPreparationEvent>({ _tag: "AuthorizationExpired" }),
         ),
-        Effect.sleep(CONNECTION_ESTABLISHMENT_TIMEOUT).pipe(
-          Effect.as<ReplacementPreparationEvent>({ _tag: "TimedOut" }),
-        ),
+        setupTimeout.pipe(Effect.as<ReplacementPreparationEvent>({ _tag: "TimedOut" })),
       ]);
 
       if (replacement._tag !== "Completed") {

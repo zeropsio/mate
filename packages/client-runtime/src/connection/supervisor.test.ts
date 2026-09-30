@@ -129,8 +129,8 @@ const makeHarness = Effect.fn("TestConnectionHarness.make")(function* (options?:
   ) => Effect.Effect<PreparedConnection, ConnectionAttemptError>;
   readonly ready?: (attempt: number) => Effect.Effect<void, ConnectionAttemptError>;
   readonly probe?: (attempt: number) => Effect.Effect<void, ConnectionAttemptError>;
-  /** How long each attempt waits in the socket admission's queue before its socket. */
-  readonly queued?: Duration.Input;
+  /** How long each attempt (or the attempts named) waits in the socket admission's queue. */
+  readonly queued?: Duration.Input | ((attempt: number) => Duration.Input | undefined);
 }) {
   const networkStatus = yield* SubscriptionRef.make<NetworkStatus>(
     options?.networkStatus ?? "online",
@@ -171,9 +171,13 @@ const makeHarness = Effect.fn("TestConnectionHarness.make")(function* (options?:
     yield* reportProgress({ stage: "preparing" });
     const prepared = yield* prepare(target);
     yield* reportProgress({ stage: "opening", prepared });
-    if (options?.queued !== undefined) {
+    const queuedFor =
+      typeof options?.queued === "function"
+        ? options.queued(yield* Ref.get(prepareCount))
+        : options?.queued;
+    if (queuedFor !== undefined) {
       yield* queue?.(true) ?? Effect.void;
-      yield* Effect.sleep(options.queued);
+      yield* Effect.sleep(queuedFor);
       yield* queue?.(false) ?? Effect.void;
     }
 
@@ -1265,6 +1269,38 @@ describe("EnvironmentSupervisor", () => {
       expect(
         Option.getOrThrow(yield* SubscriptionRef.get(supervisor.prepared)).httpAuthorization,
       ).toMatchObject({ accessToken: "access-token-3" });
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("a replacement's wait for the socket queue does not time it out", () =>
+    Effect.gen(function* () {
+      const tokenLifetimeMs = DPOP_ACCESS_TOKEN_REFRESH_SKEW_MS * 20;
+      const harness = yield* makeHarness({
+        prepare: (attempt) =>
+          Effect.succeed({
+            ...PREPARED_CONNECTION,
+            target: RELAY_TARGET,
+            httpAuthorization: {
+              _tag: "Dpop",
+              accessToken: `access-token-${attempt}`,
+              expiresAtEpochMs: tokenLifetimeMs * attempt,
+            },
+          }),
+        queued: (attempt) => (attempt === 2 ? "20 seconds" : undefined),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(RELAY_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+
+      yield* TestClock.adjust(tokenLifetimeMs - DPOP_ACCESS_TOKEN_REFRESH_SKEW_MS);
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("20 seconds");
+      yield* awaitState(
+        supervisor.state,
+        (state) => state.phase === "connected" && state.generation === 2,
+      );
+      expect(yield* Ref.get(harness.prepareCount)).toBe(2);
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
