@@ -47,7 +47,7 @@ import {
   selectLocationChoice,
   type OrganizationLocationsResourceRequest,
 } from "@t3tools/client-runtime/zerops/data";
-import { heldCandidates, takenBotNames } from "@t3tools/client-runtime/zerops/projections";
+import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -68,7 +68,7 @@ import {
   type NewProjectAsk,
 } from "~/zerops/newProjectBirth";
 import { useNewProjectAsk } from "~/zerops/newProjectAsk";
-import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
+import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { creationAccepted } from "~/zerops/zeropsBirths";
 import { runZeropsCommand, useKnown, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { ZeropsOrganizationStatus } from "~/zerops/ZeropsSessionProvider";
@@ -107,7 +107,7 @@ function NewProjectDialog() {
   // The account's Mates: the names a new one may not take, and the tints its face walks past.
   const { listing } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
-  const taken = useMemo(() => takenBotNames(listing), [listing]);
+  const taken = useTakenBotNames();
   // Proposed once, free among the names read by then; a clash read later is refused by name.
   const [defaultBotName] = useState(() =>
     generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),

@@ -44,11 +44,7 @@ import {
   type ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
-import {
-  candidatesComplete,
-  heldCandidates,
-  takenBotNames,
-} from "@t3tools/client-runtime/zerops/projections";
+import { candidatesComplete, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
   resolveMateOwner,
@@ -100,7 +96,11 @@ import { captureAccountLifetime } from "./accountLifetime";
 import { rememberMenu, withoutMate } from "./menuMemory";
 import { useOpenMate } from "./useOpenMate";
 import { useProjectOrderOptions } from "./projectOrderPreference";
-import { useZeropsCandidates, type ZeropsCandidatePresentation } from "./useZeropsCandidates";
+import {
+  useTakenBotNames,
+  useZeropsCandidates,
+  type ZeropsCandidatePresentation,
+} from "./useZeropsCandidates";
 import { useZeropsOrganizationMembers, zeropsMateOwner } from "./useZeropsMateOwners";
 import { forgetBirth } from "./zeropsBirths";
 import { intendContainer } from "./zeropsContainers";
@@ -231,7 +231,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       }),
     [candidates, projectOrder],
   );
-  const taken = useMemo(() => takenBotNames(listing), [listing]);
+  const taken = useTakenBotNames();
   // Every Mate's tint as every surface draws it: the face a Change face dialog opens on.
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   const viewer = useMemo(

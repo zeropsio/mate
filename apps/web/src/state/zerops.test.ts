@@ -25,6 +25,7 @@ import {
 } from "../zerops/__fixtures__/platformData";
 import {
   candidateRowsAtom,
+  takenBotNamesAtom,
   zeropsDataRuntimeAtom,
   zeropsInventoryAtom,
   zeropsSessionAtom,
@@ -52,7 +53,10 @@ const ZCP: ZeropsService = {
  * A runtime that has read the organization's one project and its zcp container, under a grant
  * that names the organization.
  */
-function readRuntime(): ManagedZeropsDataRuntime {
+function readRuntime(
+  listed: ReadonlyArray<ZeropsProject> = [PROJECT],
+  totalCount: number = listed.length,
+): ManagedZeropsDataRuntime {
   const id = identity();
   let state = reduceZeropsDataState(
     makeInitialZeropsDataState(scope()),
@@ -82,7 +86,7 @@ function readRuntime(): ManagedZeropsDataRuntime {
     decodeEntityQueryResponse(
       projects,
       directTicket({ kind: "query", descriptor: projects }, id, 2, 2),
-      { list: [PROJECT], totalCount: 1 },
+      { list: [...listed], totalCount },
       "direct-read",
     ),
   );
@@ -135,5 +139,60 @@ describe("the candidate rows", () => {
 
     expect(heldCandidates(rows).rows.map(({ key }) => key)).toEqual([`${PROJECT.id}:${ZCP.id}`]);
     expect(rows).toBe(listed?.listing);
+  });
+});
+
+describe("the names the organization's Mates go by", () => {
+  /** Uma's project, created by someone else a moment ago: listed, not yet in the inventory. */
+  const UMA: ZeropsProject = {
+    id: "project-uma",
+    clientId: owner.organization.organizationId,
+    name: "heron uma",
+    status: "ACTIVE",
+    tagList: ["mate", "mate:bot:Uma"],
+  };
+  const named = { ...PROJECT, tagList: ["mate", "mate:bot:Ada"] };
+
+  it.each([
+    {
+      label: "a list read whole, with a project the inventory does not hold yet",
+      listed: [named, UMA],
+      totalCount: 2,
+      account: { kind: "authorized" as const },
+      expected: { names: ["Ada", "Uma"], complete: true },
+    },
+    {
+      label: "a list still partial: a name missing from it may yet be taken",
+      listed: [named],
+      totalCount: 2,
+      account: { kind: "authorized" as const },
+      expected: { names: ["Ada"], complete: false },
+    },
+    {
+      label: "an account whose access lapsed",
+      listed: [named, UMA],
+      totalCount: 2,
+      account: { kind: "withheld" as const, reason: "access-lapsed" as const, cause: null },
+      expected: { names: [], complete: false },
+    },
+  ])("$label", ({ listed, totalCount, account, expected }) => {
+    const registry = AtomRegistry.make();
+    registry.set(zeropsDataRuntimeAtom, readRuntime(listed, totalCount));
+    registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: organization,
+    });
+    // The inventory holds only the project the last round verified.
+    registry.set(zeropsInventoryAtom, {
+      projects: [named],
+      services: new Map([[PROJECT.id, { status: "resolved" as const, services: [ZCP] }]]),
+      projectRefs: new Map([[projectKeyOf(owner), owner]]),
+      authority: new Map(),
+      account,
+    });
+
+    const taken = registry.get(takenBotNamesAtom);
+    expect({ names: [...taken.names].toSorted(), complete: taken.complete }).toEqual(expected);
   });
 });

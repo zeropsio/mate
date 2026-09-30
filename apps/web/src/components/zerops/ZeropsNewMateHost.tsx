@@ -18,7 +18,7 @@
  */
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { buildZeropsGroupTree, generateBotName, newMateTint } from "@t3tools/client-runtime/zerops";
-import { heldCandidates, takenBotNames } from "@t3tools/client-runtime/zerops/projections";
+import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
@@ -32,7 +32,7 @@ import {
   type EnvironmentCreationRun,
 } from "~/zerops/useEnvironmentCreation";
 import { useOpenMate } from "~/zerops/useOpenMate";
-import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
+import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsAgentAuth } from "~/zerops/useZeropsFeeds";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
@@ -103,7 +103,7 @@ function NewMateDialog({
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   // A Mate's name must be new on the account, not just in the project: it is what the left menu
   // calls the row, and two Adas is two of nothing.
-  const taken = useMemo(() => takenBotNames(listing), [listing]);
+  const taken = useTakenBotNames();
   const { births } = useZeropsBirths();
   // The project as the menu draws it: a project being created counts, members listed or not.
   const entry = useMemo(
