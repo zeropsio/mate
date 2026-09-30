@@ -247,8 +247,23 @@ describe("CrewSection — for a viewer who may not run the crew (D6)", () => {
       expect(text).toContain(words);
     }
     expect(text).not.toMatch(
-      /Stop\b|Let it|Not now|Answer|Try again|Drop it|Ask Fen to|Keep going|Let it work/u,
+      /Let it|Not now|Answer|Try again|Drop it|Ask Fen to|Keep going|Let it work/u,
     );
+  });
+
+  it("offers Stop alone on a running crew: a colleague stops what they may not start", () => {
+    const html = closed();
+    const head = html.slice(0, html.indexOf("data-crew-locked"));
+    expect(head).toContain(">Stop</button>");
+    expect(html.match(/<button[^>]*>Stop<\/button>/gu)).toHaveLength(1);
+  });
+
+  it.each([
+    ["stopped at its money", { ...RUN, state: "paused", reason: "budget", spentUsd: 20 }],
+    ["stopped by a refusal", { ...RUN, state: "paused", reason: "refused", reasonDetail: "x" }],
+  ] as const)("offers nothing to keep a crew %s going", (_state, run) => {
+    const html = closed({ ...FIXTURE, run });
+    expect(html).not.toMatch(/>(?:Keep going…|Try again)<\/button>/u);
   });
 
   it("offers no menu and no goal to change, the goal's title only read", () => {
@@ -274,7 +289,7 @@ describe("CrewSection — for a viewer who may not run the crew (D6)", () => {
     expect(text).toContain("Wants to show its work at Fen's dev address.");
     expect(text).not.toMatch(/Let it|Not now/u);
     expect(text).toContain("Pricing in CZK or EUR? Answer");
-    // A run reaches Backend too.
-    expect(html).not.toContain(">Stop</button>");
+    // Stopping the run is every member's.
+    expect(html).toContain(">Stop</button>");
   });
 });

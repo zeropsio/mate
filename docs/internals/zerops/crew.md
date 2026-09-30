@@ -143,12 +143,15 @@ Server:
   memory, app, Show on dev, removal or an adopted branch; the crewmate's and the one the crew home
   now names for `jobSave`; each task's crewmate's for the task presses and the plan; the claiming
   crewmate's for a claim; the lead's, or each mentioned crewmate's without one, for `tell`; every
-  crewmate's for a run and the goal; every crewmate's and every login the crew home names for
-  Apply; none for `deliverDraft`, `orphanScan` and `addCrewPorts`, which only read. A write to the
-  crew home reaches the crewmates it changes, before and after, and every crewmate's when it
-  changes the goal or the crew's name. `ZeropsTurnAdmission.admitOperator` judges each login by
-  whose it is, as a turn on it once signed in: held here by somebody else, or by nobody on record,
-  refuses; one no credential holds, a project token's and a driver Mate signs nobody in to pass.
+  crewmate's for a run's start, resume or finish and the goal; every crewmate's and every login the
+  crew home names for Apply; none for `stop` and `pause`, which any member may press — a colleague
+  stops what they may not start, and the turns they interrupt ask admission nothing, as any turn's
+  interrupt passes it; none for `deliverDraft`, `orphanScan` and `addCrewPorts`, which only read. A
+  write to the crew home reaches the crewmates it changes, before and after, and every crewmate's
+  when it changes the goal or the crew's name. `ZeropsTurnAdmission.admitOperator` judges each login
+  by whose it is, as a turn on it once signed in: held here by somebody else, or by nobody on
+  record, refuses; one no credential holds, a project token's and a driver Mate signs nobody in to
+  pass.
 - **Crew origin on threads** — `ThreadCrewOrigin {crew, crewmate, stint}` on the thread, its shell
   and `ThreadCreatedPayload`, set once by the internal command `thread.crew.create`
   (`packages/contracts/src/orchestration.ts`, decider, projector, `ProjectionPipeline.ts`,
@@ -193,13 +196,14 @@ Client:
   everything that reads stays (`crewAccess.ts` in the client-runtime, the server's door's answer
   from the snapshot; `useCrewAccess.ts` reads each login as `ChatView` reads its own agent). In the
   composer's place the Crew tab says why and offers the conversation's one way out, _Sign in with
-  your own account_, on a quiet 48 px pill — the composer's own height (`CrewTellLocked`); the
-  empty state says it in place of _Set up a crew_. The head's goal only reads, with no ··· and no
-  mode-line press; a row offers no press that reaches such a login and no ··· that would offer
-  nothing; the plan reads without its presses; _Try its work_ only opens what already runs; a view
-  that changes the crew does not open. The crewmate's menu on the conversation's line says why under
-  its job, a crew task's review drops _Add to Fen's code_ and its ask, and the left menu drops _Set
-  up a crew_. `design-crew.html?viewer=other` draws every state so.
+  your own account_, on a quiet 48 px pill — the composer's own height (`CrewTellLocked`); the empty
+  state says it in place of _Set up a crew_. The head's goal only reads, with no ··· and, of the
+  mode line's presses, only _Stop_ on a running crew; a row offers no press that reaches such a
+  login and no ··· that would offer nothing; the plan reads without its presses; _Try its work_ only
+  opens what already runs; a view that changes the crew does not open. The crewmate's menu on the
+  conversation's line says why under its job, a crew task's review drops _Add to Fen's code_ and its
+  ask, and the left menu drops _Set up a crew_. `design-crew.html?viewer=other` draws every state
+  so.
 - **Chat** — `ChatHeader.tsx` and `ConversationStrip.tsx`: the conversation's line — the Mate, then
   the crew's faces, the crewmate on screen a pill whose menu (`CrewmateMenu`) offers _Try its work_
   (`useCrewTry`, `crewTry.ts`: its own app, run first while stopped, or its work shown at the Mate's

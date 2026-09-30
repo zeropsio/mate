@@ -8,7 +8,10 @@
  * first, as the person who pressed it, on every login it reaches
  * (`crewCommandReach`, `crewReachLogins`: the same answer a client reads off
  * its snapshot), and refused as `not-allowed` in admission's own words
- * (`ZeropsTurnAdmission.admitOperator`) before anything moves.
+ * (`ZeropsTurnAdmission.admitOperator`) before anything moves. Stopping or
+ * pausing a running crew is every member's (D6: a colleague stops what they
+ * may not start): it reaches no login, and the turns it interrupts are
+ * interrupted as any member's own interrupt is, asking admission nothing.
  *
  * A write to the crew home reaches the crewmates it changes — their login
  * before and after — and every crewmate's when it changes what they share,
@@ -122,7 +125,7 @@ const admitOperator = (core: CrewCore, logins: ReadonlyArray<string>, principal:
 export const guardCommand = (core: CrewCore, command: CrewCommand, principal: TurnPrincipal) =>
   Effect.gen(function* () {
     const reach = crewCommandReach(command);
-    if (reach.kind === "reads") return;
+    if (reach.kind === "reads" || reach.kind === "stops") return;
     const roster = yield* rosterFor(core, reach);
     yield* admitOperator(core, crewReachLogins(reach, roster), principal);
   });
