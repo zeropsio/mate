@@ -6,7 +6,6 @@ import {
   nextHeldVersion,
   PREVIEW_COOKIE_NOTE_KEY,
   previewKey,
-  previewSrc,
   ServiceBrowserPanels,
 } from "./ServiceBrowserPanel";
 import { removeLocalStorageItem, setLocalStorageItem } from "../hooks/useLocalStorage";
@@ -78,60 +77,6 @@ describe("the cookie note", () => {
     expect(render("https://gitea.example/pulls/4", services)).not.toContain("sign-ins and carts");
   });
 });
-describe("previewSrc", () => {
-  it.each([
-    [
-      "no query",
-      "https://web.prg1.zerops.app",
-      "k1",
-      "https://web.prg1.zerops.app/?_mate_preview=k1",
-    ],
-    [
-      "trailing slash",
-      "https://web.prg1.zerops.app/",
-      "k1",
-      "https://web.prg1.zerops.app/?_mate_preview=k1",
-    ],
-    [
-      "path",
-      "https://web.prg1.zerops.app/a/b",
-      "k1",
-      "https://web.prg1.zerops.app/a/b?_mate_preview=k1",
-    ],
-    [
-      "existing query",
-      "https://web.prg1.zerops.app/?a=1&b=2",
-      "k1",
-      "https://web.prg1.zerops.app/?a=1&b=2&_mate_preview=k1",
-    ],
-    [
-      "query as written",
-      "https://web.prg1.zerops.app/?flag&q=a%20b",
-      "k1",
-      "https://web.prg1.zerops.app/?flag&q=a%20b&_mate_preview=k1",
-    ],
-    [
-      "fragment",
-      "https://web.prg1.zerops.app/p#top",
-      "k1",
-      "https://web.prg1.zerops.app/p?_mate_preview=k1#top",
-    ],
-    [
-      "query and fragment",
-      "https://web.prg1.zerops.app/p?a=1#top",
-      "k1",
-      "https://web.prg1.zerops.app/p?a=1&_mate_preview=k1#top",
-    ],
-    [
-      "key needing encoding",
-      "https://web.prg1.zerops.app/",
-      "2026-09-25T11:11:41Z.0",
-      "https://web.prg1.zerops.app/?_mate_preview=2026-09-25T11%3A11%3A41Z.0",
-    ],
-  ])("%s", (_, url, key, expected) => {
-    expect(previewSrc(url, key)).toBe(expected);
-  });
-});
 describe("deployedVersionKey", () => {
   const at = "2026-09-25T11:11:41Z";
   it.each<[string, ZeropsTopologyService["deploy"], string | undefined]>([
@@ -189,14 +134,19 @@ describe("the preview's addresses", () => {
     ...service,
     deploy: { source: "CLI", activatedAt: at },
   }));
+  // A page may route on its exact address (`req.url === "/"` answers `/`
+  // and 404s `/?x=1`), so the frame loads the URL as it is shown.
   it.each([
     ["root", origin],
     ["path and fragment", `${origin}/pulls/4#top`],
-  ])("the frame loads the keyed URL, the bar and the new-tab link show it clean: %s", (_, url) => {
+    ["a page's own query", `${origin}/?flag&q=a%20b`],
+  ])("the frame, the bar and the new-tab link all hold the same address: %s", (_, url) => {
     const html = render(url, deployed);
-    expect(html).toContain(`src="${previewSrc(url, previewKey(at, 0))}"`);
-    expect(html.match(/href="([^"]*)"/gu)).toEqual([`href="${url}"`, `href="${url}"`]);
-    expect(html).toContain(`>${url}</a>`);
-    expect(html.match(/_mate_preview/gu)).toHaveLength(1);
+    const attribute = (name: string) =>
+      [...html.matchAll(new RegExp(`${name}="([^"]*)"`, "gu"))].map((match) =>
+        match[1]!.replaceAll("&amp;", "&"),
+      );
+    expect(attribute("src")).toEqual([url]);
+    expect(attribute("href")).toEqual([url, url]);
   });
 });
