@@ -3197,6 +3197,78 @@ code {
   }
 }
 
+/* p26/row — a working Mate's clock reads as a live clock, not a timestamp (the owner,
+   2026-09-30): 600 in its Mate's hue — the tint mixed into the ink, so it holds its contrast on
+   the menu, on the selected row's grey and in dark — after a 6 px dot of the same hue that
+   breathes slowly. The dot hangs in the gap before the clock: nothing beside it moves. */
+.menu-clock {
+  position: relative;
+  color: color-mix(in oklab, var(--menu-clock-tint) 45%, var(--sidebar-foreground));
+  font-weight: 600;
+}
+
+.dark .menu-clock {
+  color: color-mix(in oklab, var(--menu-clock-tint) 62%, var(--sidebar-foreground));
+}
+
+.menu-clock[data-tint="coral"] {
+  --menu-clock-tint: var(--zerops-mate-tint-coral);
+}
+
+.menu-clock[data-tint="amber"] {
+  --menu-clock-tint: var(--zerops-mate-tint-amber);
+}
+
+.menu-clock[data-tint="olive"] {
+  --menu-clock-tint: var(--zerops-mate-tint-olive);
+}
+
+.menu-clock[data-tint="sky"] {
+  --menu-clock-tint: var(--zerops-mate-tint-sky);
+}
+
+.menu-clock[data-tint="violet"] {
+  --menu-clock-tint: var(--zerops-mate-tint-violet);
+}
+
+.menu-clock[data-tint="rose"] {
+  --menu-clock-tint: var(--zerops-mate-tint-rose);
+}
+
+.menu-clock[data-tint="sand"] {
+  --menu-clock-tint: var(--zerops-mate-tint-sand);
+}
+
+.menu-clock[data-tint="slate"] {
+  --menu-clock-tint: var(--zerops-mate-tint-slate);
+}
+
+.menu-clock-mark {
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 5px);
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background-color: currentColor;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .menu-clock-mark {
+    animation: menu-clock-breathe 2.4s steps(8, jump-none) infinite alternate;
+  }
+}
+
+@keyframes menu-clock-breathe {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.3;
+  }
+}
+
 @keyframes menu-dot-in {
   from {
     scale: 0;

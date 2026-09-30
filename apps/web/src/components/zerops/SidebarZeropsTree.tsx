@@ -2670,7 +2670,12 @@ function MateRow<T extends RosterCandidate>({
                 )}
               >
                 <MateDot known={known} tone={dot} />
-                <MateSlot at={activity?.at} slot={view.slot} timestampFormat={timestampFormat} />
+                <MateSlot
+                  at={activity?.at}
+                  slot={view.slot}
+                  timestampFormat={timestampFormat}
+                  tint={tint}
+                />
               </span>
               {numbers && number !== undefined ? (
                 <KeyChip className="absolute end-0 top-0" data-zerops-surface="sidebar-mate-number">
@@ -2852,17 +2857,31 @@ function MateSlot({
   slot,
   at,
   timestampFormat,
+  tint,
 }: {
   readonly slot: MateRowSlot;
   /** When it last did something, for the age. */
   readonly at: string | undefined;
   readonly timestampFormat: TimestampFormat;
+  /** Its Mate's colour: the working clock wears it. */
+  readonly tint: MateTintId;
 }) {
+  // A run ending hands its clock over to the age in place, and a run starting the age to its
+  // clock: the newcomer fades in (220 ms). What the row opened onto is simply there.
+  const [shown, setShown] = useState(slot.kind);
+  const [handedOver, setHandedOver] = useState(false);
+  if (shown !== slot.kind) {
+    setShown(slot.kind);
+    setHandedOver(
+      (shown === "clock" && slot.kind === "age") || (shown === "age" && slot.kind === "clock"),
+    );
+  }
+  const fadeIn = handedOver ? "animate-zerops-appear motion-reduce:animate-none" : undefined;
   switch (slot.kind) {
     case "none":
       return null;
     case "clock":
-      return <MateWorkingTime since={slot.since} />;
+      return <MateWorkingTime className={fadeIn} since={slot.since} tint={tint} />;
     case "paused": {
       const upcoming = formatUpcomingTimestamp(slot.until, timestampFormat);
       return (
@@ -2886,7 +2905,7 @@ function MateSlot({
     case "age": {
       const when = at === undefined ? "" : compactSidebarTimeLabel(formatRelativeTimeLabel(at));
       return when.length === 0 ? null : (
-        <span className={TIME_CLASS} data-zerops-surface="sidebar-mate-time">
+        <span className={cn(TIME_CLASS, fadeIn)} data-zerops-surface="sidebar-mate-time">
           {when}
         </span>
       );
@@ -2896,8 +2915,21 @@ function MateSlot({
 
 const TIME_CLASS = "shrink-0 text-line leading-5 text-muted-foreground tabular-nums";
 
-/** The working clock, ticking once a second — a step, never a continuous repaint (R6). */
-function MateWorkingTime({ since }: { readonly since: string }) {
+/**
+ * The working clock, ticking once a second — a step, never a continuous repaint (R6) — read as a
+ * live clock, not a timestamp (the owner, 2026-09-30): 600 and tabular in its Mate's own hue,
+ * after a small dot of the same hue breathing slowly. The dot stands outside the clock's box, in
+ * the gap before it, so nothing beside it moves; reduced motion holds it still.
+ */
+function MateWorkingTime({
+  since,
+  tint,
+  className,
+}: {
+  readonly since: string;
+  readonly tint: MateTintId;
+  readonly className?: string | undefined;
+}) {
   const [nowMs, setNowMs] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => {
@@ -2909,9 +2941,11 @@ function MateWorkingTime({ since }: { readonly since: string }) {
   }, []);
   return (
     <span
-      className="shrink-0 text-line leading-5 text-sidebar-foreground tabular-nums"
+      className={cn("menu-clock shrink-0 text-line leading-5 tabular-nums", className)}
+      data-tint={tint}
       data-zerops-surface="sidebar-mate-time"
     >
+      <span aria-hidden="true" className="menu-clock-mark" />
       {formatWorkingTime(nowMs - Date.parse(since))}
     </span>
   );
