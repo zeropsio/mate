@@ -4,7 +4,8 @@
  * crewmate — on the stage of the Mate's own opening (`ZeropsMateEmptyState`):
  * its face a third of the way down at the Mate's size, in its tint and shape,
  * and its name in the Mate's headline, so a switch between the Mate's empty
- * chat and a crewmate's keeps the face where it stood. Under the name, whose
+ * chat and a crewmate's keeps the face where it stood — both held, empty,
+ * until the crew is read, never a handle standing in. Under the name, whose
  * it is, led by its Mate's small face — "Fen's lead · plans and reviews the
  * crew's work". Then one quiet card, the run's tray: _Its job_, the job's
  * first line whole in the person's words, with _Change its job_ for a viewer
@@ -65,8 +66,7 @@ export function CrewmateEmptyState({
   /** The composer's height over the pane's foot: what scrolls past it stops above it. */
   readonly bottomInset: number;
 }) {
-  const { handle, profile } = crew.crewmate;
-  const name = profile?.displayName ?? handle;
+  const { profile } = crew.crewmate;
   const model = profile === null ? null : crewmateEmptyModel(profile, crew.tasks, crew.mateName);
   // The crew lives in its Mate's container, and sleeps with it.
   const atRest = mateFaceFor(mateFace?.connected ?? true, undefined);
@@ -99,18 +99,31 @@ export function CrewmateEmptyState({
         )}
       </div>
       <div className="flex w-full shrink-0 flex-col items-center" data-crewmate-empty-lead>
+        {/* Until the crew is read, its face's box and its name's line are held,
+            empty — no handle stands in for the name — and it paints into them:
+            a reload paints nothing it takes back. */}
         {profile === null ? (
-          // Its face's box, kept while the crew is read: the name never moves.
-          <div aria-hidden="true" className={MATE_EMPTY_FACE_CLASS} />
+          <>
+            <div aria-hidden="true" className={MATE_EMPTY_FACE_CLASS} />
+            <div
+              aria-hidden="true"
+              className={cn(MATE_EMPTY_HEADLINE_CLASS, "mt-6")}
+              data-crewmate-name-held
+            >
+              {"\u00a0"}
+            </div>
+          </>
         ) : (
-          <MateFace
-            className={MATE_EMPTY_FACE_CLASS}
-            size="lg"
-            state={atRest}
-            tint={profile.tint}
-          />
+          <>
+            <MateFace
+              className={MATE_EMPTY_FACE_CLASS}
+              size="lg"
+              state={atRest}
+              tint={profile.tint}
+            />
+            <h1 className={cn(MATE_EMPTY_HEADLINE_CLASS, "mt-6")}>{profile.displayName}</h1>
+          </>
         )}
-        <h1 className={cn(MATE_EMPTY_HEADLINE_CLASS, "mt-6")}>{name}</h1>
         {model === null ? null : (
           <>
             <p

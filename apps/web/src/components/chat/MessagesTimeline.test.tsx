@@ -790,7 +790,9 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain('data-zerops-surface="crewmate-empty-state"');
     expect(markup).toContain("You cleared its conversation");
-    expect(markup).toContain(">backend</h1>");
+    // Its name's line is held, empty, until the crew is read: the handle never stands in.
+    expect(markup).toContain("data-crewmate-name-held");
+    expect(markup).not.toContain(">backend<");
     expect(markup).not.toContain("Message backend");
     expect(markup).not.toContain("@backend");
     expect(markup).not.toContain('data-timeline-row-kind="crew-seam"');

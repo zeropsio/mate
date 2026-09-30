@@ -4,6 +4,7 @@ import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
+import { MATE_EMPTY_FACE_CLASS, MATE_EMPTY_HEADLINE_CLASS } from "../ZeropsMateEmptyState";
 import { CrewTimelineContext, type CrewTimeline } from "./CrewTaskCard";
 import { CrewmateEmptyState } from "./CrewmateEmptyState";
 
@@ -197,11 +198,20 @@ describe("CrewmateEmptyState", () => {
     expect(html).toContain("previous conversation ↗");
   });
 
-  it("names the crewmate as the engine does, never with an @, while the crew is not read yet", () => {
+  // A reload paints nothing it takes back: no handle stands in for the name, and no stand-in
+  // face — both places are held, empty, until the crewmate is read, and it paints into them.
+  it("holds its face's and its name's places, empty, while the crew is not read yet", () => {
     const html = render(timeline(null, {}, "backend"));
-    expect(html).toContain(">backend</h1>");
-    // Its face's place is kept, so the name never moves once the crewmate is read.
-    expect(between(html, "data-crewmate-empty-lead", "<h1")).toContain("size-16 sm:size-18");
+    expect(html).not.toContain("backend");
+    expect(html).not.toContain("<h1");
+    const lead = between(html, "data-crewmate-empty-lead", "");
+    expect(lead).toContain(`class="${MATE_EMPTY_FACE_CLASS}"`);
+    expect(lead).toMatch(
+      new RegExp(
+        `aria-hidden="true" class="${MATE_EMPTY_HEADLINE_CLASS} mt-6" data-crewmate-name-held`,
+        "u",
+      ),
+    );
     expect(html).not.toContain("data-mate-face-tint");
     expect(html).not.toContain("data-crewmate-whose");
     expect(html).not.toContain("data-crewmate-card");
