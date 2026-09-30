@@ -292,6 +292,10 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
     removedThreads,
     wakeups,
     loaderWindows,
+    /** A new connection is prepared (a retry, a replacement), with a new ticket. */
+    prepareAgain: SubscriptionRef.update(prepared, (current) =>
+      Option.map(current, (value) => ({ ...value, socketUrl: `${value.socketUrl}?again` })),
+    ),
     openSession: SubscriptionRef.set(
       supervisorSession,
       Option.some(
@@ -852,6 +856,29 @@ describe("EnvironmentThreads", () => {
         ),
       ).toBe(true);
       expect(yield* Ref.get(harness.lastSubscribeAfterSequence)).toBe(3);
+    }),
+  );
+
+  it.effect.each([
+    { name: "the same prepared connection is not read again", prepareAgain: false, reads: 1 },
+    { name: "a newly prepared connection is read", prepareAgain: true, reads: 2 },
+  ])("an early read that found nothing: $name", ({ prepareAgain, reads }) =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        sessionLater: true,
+        threadSnapshot: { pagination: false, reasoningMessages: false },
+        httpSnapshot: Option.none(),
+      });
+      for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+      expect(yield* Ref.get(harness.loaderCalls)).toBe(1);
+      if (prepareAgain) yield* harness.prepareAgain;
+
+      yield* harness.openSession;
+      yield* Queue.offer(harness.inputs, snapshot(BASE_THREAD));
+      yield* awaitThreadState(harness.observed, (value) => Option.isSome(value.data));
+      expect(yield* Ref.get(harness.loaderCalls)).toBe(reads);
+      // With nothing to resume from, the socket sends the snapshot itself.
+      expect(yield* Ref.get(harness.lastSubscribeAfterSequence)).toBeUndefined();
     }),
   );
 

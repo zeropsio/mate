@@ -20,7 +20,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import { Atom } from "effect/unstable/reactivity";
 
 import { EnvironmentRegistry } from "../connection/registry.ts";
-import { connectionProjectionPhase } from "../connection/model.ts";
+import { connectionProjectionPhase, type PreparedConnection } from "../connection/model.ts";
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
 import * as ConnectionWakeups from "../connection/wakeups.ts";
 import { EnvironmentCacheStore } from "../platform/persistence.ts";
@@ -768,6 +768,12 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
   // subscription waits for this read before it decides to read the snapshot itself, so a
   // thread is never read twice, and one this read painted is only ever resumed.
   const earlyRead = yield* Deferred.make<void>();
+  /**
+   * The connection the early read ran against. A read that found nothing (a thread not there
+   * yet, a timeout, a refusal) is not repeated against the same one: the socket's own snapshot
+   * serves instead, rather than a second wait and a second refusal.
+   */
+  const earlyReadAgainst = yield* Ref.make<PreparedConnection | null>(null);
   if (Option.isNone(initialState.data)) {
     yield* SubscriptionRef.changes(supervisor.prepared).pipe(
       Stream.filter(Option.isSome),
@@ -777,27 +783,31 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
         const prepared = Option.getOrNull(first);
         const capabilities = prepared?.threadSnapshot;
         if (prepared === null || capabilities === undefined) return Effect.void;
-        return snapshotLoader
-          .load(
-            prepared,
-            threadId,
-            capabilities.pagination ? { turnLimit: INITIAL_THREAD_USER_TURN_LIMIT } : undefined,
-            capabilities.reasoningMessages,
-          )
-          .pipe(
-            Effect.flatMap((response) =>
-              Option.isNone(response)
-                ? Effect.void
-                : applyLock.withPermits(1)(
-                    Effect.gen(function* () {
-                      const current = yield* SubscriptionRef.get(state);
-                      if (Option.isSome(current.data) || current.status === "deleted") return;
-                      yield* setSnapshot(response.value, true);
-                      yield* remember;
-                    }),
-                  ),
-            ),
-          );
+        return Ref.set(earlyReadAgainst, prepared).pipe(
+          Effect.andThen(
+            snapshotLoader
+              .load(
+                prepared,
+                threadId,
+                capabilities.pagination ? { turnLimit: INITIAL_THREAD_USER_TURN_LIMIT } : undefined,
+                capabilities.reasoningMessages,
+              )
+              .pipe(
+                Effect.flatMap((response) =>
+                  Option.isNone(response)
+                    ? Effect.void
+                    : applyLock.withPermits(1)(
+                        Effect.gen(function* () {
+                          const current = yield* SubscriptionRef.get(state);
+                          if (Option.isSome(current.data) || current.status === "deleted") return;
+                          yield* setSnapshot(response.value, true);
+                          yield* remember;
+                        }),
+                      ),
+                ),
+              ),
+          ),
+        );
       }),
       Effect.ensuring(Deferred.succeed(earlyRead, undefined)),
       Effect.forkScoped,
@@ -870,12 +880,15 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
               }),
             ),
           );
-          const httpSnapshot = yield* snapshotLoader.load(
-            prepared,
-            threadId,
-            supportsPagination ? { turnLimit: INITIAL_THREAD_USER_TURN_LIMIT } : undefined,
-            supportsReasoningMessages,
-          );
+          const httpSnapshot =
+            (yield* Ref.get(earlyReadAgainst)) === prepared
+              ? Option.none<OrchestrationThreadDetailSnapshot>()
+              : yield* snapshotLoader.load(
+                  prepared,
+                  threadId,
+                  supportsPagination ? { turnLimit: INITIAL_THREAD_USER_TURN_LIMIT } : undefined,
+                  supportsReasoningMessages,
+                );
           if (Option.isSome(httpSnapshot)) {
             yield* applyItem({ kind: "snapshot", snapshot: httpSnapshot.value });
             current = yield* SubscriptionRef.get(state);
