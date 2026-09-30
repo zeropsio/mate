@@ -1,10 +1,13 @@
 /**
  * What a Mate's slow first connect lists under its line (`mateVoice`'s `processes`): the Mate's
  * own container first while the platform works on it — a restart, an update — then each of the
- * project's services as the platform has it, one name and one dot each, as the arrival draws
- * them (`ArrivalServices`). Pure.
+ * project's own services as the platform has it — its runtimes and its data, never the platform's
+ * build containers, its core or another tool's container — one name and one dot each, as the
+ * arrival draws them (`ArrivalServices`). Pure.
  */
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
+import type { ZeropsService } from "@t3tools/client-runtime/zerops";
+import { isManagedDataService, isRuntimeService } from "@t3tools/client-runtime/zerops/topology";
 
 import type { ArrivalService } from "./mateArrival";
 
@@ -25,9 +28,7 @@ function serviceState(status: string): ArrivalService["state"] {
 }
 
 export function mateLinkProcesses(input: {
-  readonly services:
-    | ReadonlyArray<{ readonly id: string; readonly name: string; readonly status: string }>
-    | undefined;
+  readonly services: ReadonlyArray<ZeropsService> | undefined;
   /** Its project's processes; undefined while not read, when no service reads as busy for one. */
   readonly processes: ReadonlyArray<ActivityProcess> | undefined;
   /** The Mate's own container (its `zcp` service). */
@@ -45,7 +46,11 @@ export function mateLinkProcesses(input: {
   return [
     ...lead,
     ...services
-      .filter((service) => service.id !== input.mateServiceId)
+      .filter(
+        (service) =>
+          service.id !== input.mateServiceId &&
+          (isRuntimeService(service) || isManagedDataService(service)),
+      )
       .map((service) => ({
         name: service.name,
         state: working.has(service.id) ? "busy" : serviceState(service.status),
