@@ -64,6 +64,7 @@ import {
 } from "@t3tools/client-runtime/zerops/projections";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { useAddMate } from "~/zerops/newMate";
+import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
@@ -184,6 +185,7 @@ import {
   type ProjectsFlowGroup,
 } from "./projects/ZeropsProjectsFlow";
 import {
+  flowStepsAwaiting,
   groupFlowInputOf,
   groupMemberFactsOf,
   lastMergedCode,
@@ -1992,6 +1994,15 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     },
     [addMate, creationRunning, taken],
   );
+  // A stage or a production asked for from the left menu (`setUpEnvironment.ts`): its form opens
+  // here, as this page's own ⋯ opens it — taken once, so a later visit opens nothing.
+  const setUpAsked = useSetUpEnvironment((state) => state.asked);
+  const takeSetUp = useSetUpEnvironment((state) => state.take);
+  useEffect(() => {
+    if (setUpAsked === null) return;
+    const ask = takeSetUp();
+    if (ask !== null) requestEnvironment(ask.groupId, ask.role);
+  }, [requestEnvironment, setUpAsked, takeSetUp]);
 
   // The creation itself is the account's (`useEnvironmentCreation`), shared with the New Mate
   // dialog; this page shows its checklist and what it came to.
@@ -2753,6 +2764,15 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const flowGroups = groupTree.groups.map(
     ({ group, environments }): ProjectsFlowGroup<ZeropsCandidatePresentation> => {
       const reads = groupDeploys.get(group.groupId);
+      const awaiting = flowStepsAwaiting({
+        read: reads !== undefined,
+        changesKnown: reads?.changesKnown === true,
+        // Out and expected back: a Gitea session is held or coming, and the
+        // group has an org to read (or the registry has not answered yet).
+        readOut:
+          projectFlow.signInTrouble === null &&
+          (projectFlow.slugs.size === 0 || projectFlow.slugs.has(group.groupId)),
+      });
       const members = groupMemberFactsOf(
         environments,
         (item) => (item.environmentId === undefined ? undefined : activity.get(item.environmentId)),
@@ -2780,12 +2800,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         read: reads !== undefined,
         talkSettled: talkSettled(members),
         placed: lastGroupPlacement(group.groupId),
-        // Out and expected back: a Gitea session is held or coming, and the
-        // group has an org to read (or the registry has not answered yet).
-        awaiting:
-          reads === undefined &&
-          projectFlow.signInTrouble === null &&
-          (projectFlow.slugs.size === 0 || projectFlow.slugs.has(group.groupId)),
+        awaiting: awaiting.steps,
+        changesAwaiting: awaiting.changes,
         mates: new Map(
           environments
             .filter(({ item }) => hasMate(item))

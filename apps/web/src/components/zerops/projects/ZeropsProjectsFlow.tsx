@@ -52,6 +52,11 @@ export interface ProjectsFlowGroup<T> {
    * org, no session), whose steps say what is known.
    */
   readonly awaiting: boolean;
+  /**
+   * Its changes are unread and their read is out (`flowStepsAwaiting`): its pull requests and
+   * `main` hold a skeleton, whatever its deploys already say.
+   */
+  readonly changesAwaiting: boolean;
   /** The Mates' environments by project id, in the tree's order (`matesOf` pairs them). */
   readonly mates: ReadonlyMap<string, T>;
   /** Its stages and its production, by project id. */

@@ -1744,6 +1744,57 @@ describe("a project collapsed to its heading", () => {
     ).not.toContain("sidebar-project-faces");
   });
 
+  // A Mate whose own change waits for the person's review needs them, as the
+  // composer's top says (`mateNextStep`): folded, its heading shows its face
+  // (the owner, 2026-09-30: a folded project read only its name while its
+  // Mate's #2 waited for Review); open, its row wears the same face.
+  it("shows a Mate whose change waits for review on its folded heading, and its row wears the same face", () => {
+    const resting: ZeropsAgentActivity = {
+      threadId: "thread-crm" as ZeropsAgentActivity["threadId"],
+      kind: "idle",
+      status: null,
+      face: "idle",
+      subject: "Something",
+      at: new Date().toISOString(),
+      snippet: undefined,
+      unread: false,
+      pausedUntil: undefined,
+      threadKey: "env-crm-dev:thread-crm",
+      task: undefined,
+    };
+    const props = {
+      getActivity: () => resting,
+      getFlow: (): SidebarProjectFlow => ({
+        pullRequests: [pull(2)],
+        environments: new Map(),
+        releaseOffered: false,
+      }),
+    };
+    stored.collapsed = new Set(["aaa"]);
+    const folded = render([CRM_DEV_CONNECTED], props);
+    const shown =
+      /data-zerops-surface="sidebar-project-faces">(.*?)<span class="sr-only">([^<]*)</u.exec(
+        folded,
+      );
+    expect(shown?.[2]).toMatch(/needs you$/u);
+    expect(shown?.[1]).toContain('data-mate-face-state="needs"');
+    expect(shown?.[1]).toContain('data-dot="attention"');
+    stored.collapsed = new Set();
+    const open = render([CRM_DEV_CONNECTED], props);
+    expect(open).not.toContain("sidebar-project-faces");
+    expect(open).toContain('data-mate-face-state="needs"');
+    // Still being checked, it waits on Gitea, not on the person: at rest.
+    const checking = render([CRM_DEV_CONNECTED], {
+      ...props,
+      getFlow: (): SidebarProjectFlow => ({
+        pullRequests: [pull(2, { mergeability: "checking" })],
+        environments: new Map(),
+        releaseOffered: false,
+      }),
+    });
+    expect(checking).not.toContain('data-mate-face-state="needs"');
+  });
+
   // A folded heading's face is its row's (`mateRowView`): a Mate stopped on
   // an error stands still with a red dot, as it does in the list — and what
   // the heading opened onto is simply there: no dot scales in on a paint.

@@ -296,6 +296,25 @@ export function foldUngrouped<E extends { readonly action: ZeropsRowAction["kind
   };
 }
 
+/**
+ * Which of a project's steps wait on a read that is out, and so hold a skeleton rather than an
+ * empty word. The pull requests and `main` are Gitea's changes half: "None yet" and "Nothing
+ * merged" from a flow whose deploy half alone answered are claims the page then takes back —
+ * 11–28 s on a reload, and for as long as a project's changes are being read again (the owner,
+ * 2026-09-30).
+ */
+export function flowStepsAwaiting(input: {
+  /** Either half of its flow answered. */
+  readonly read: boolean;
+  /** Its changes half answered (`ZeropsProjectFlow.changesKnown`). */
+  readonly changesKnown: boolean;
+  /** Its read is out: a Gitea session is held or coming, and it has an org to read. */
+  readonly readOut: boolean;
+}): { readonly steps: boolean; readonly changes: boolean } {
+  const { read, changesKnown, readOut } = input;
+  return { steps: readOut && !read, changes: readOut && !(read && changesKnown) };
+}
+
 /** The pull requests' step with none open: "yet" until something has landed. */
 export function pullRequestsLine(flow: GroupFlow): string {
   return flow.main.hasCode === true ? "None open" : "None yet";

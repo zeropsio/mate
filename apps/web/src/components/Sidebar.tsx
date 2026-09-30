@@ -217,6 +217,7 @@ import {
 } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { newMateView, useAddMate } from "../zerops/newMate";
+import { useSetUpEnvironment } from "../zerops/setUpEnvironment";
 import { useAskNewProject } from "../zerops/newProjectAsk";
 import { newProjectView, useNewProjectBirths } from "../zerops/newProjectBirth";
 import { useMateComingOf, useMateRowActivity } from "../zerops/useMenuMateReadings";
@@ -2277,6 +2278,8 @@ export default function Sidebar() {
   // The left menu's add button asks for a Mate on a named project: the New Mate
   // dialog opens over whatever is on screen (`ZeropsNewMateHost`).
   const addMate = useAddMate();
+  // "Set up stage" / "Set up production": the projects page's own form, opened there.
+  const askSetUp = useSetUpEnvironment((state) => state.ask);
   // A Mate still coming up opens its own view, where it comes up — a New
   // project's first Mate, before the platform has made its project, by the
   // creation's own id.
@@ -4163,6 +4166,10 @@ export default function Sidebar() {
                 else refreshZeropsCandidates();
               }}
               onAddMate={addMate}
+              onSetUp={(groupId, tier) => {
+                askSetUp(groupId, tier);
+                navigateToZeropsProjects();
+              }}
               getComing={zeropsComing}
               onOpenComing={openComingMate}
               onBrowseProjects={navigateToZeropsProjects}

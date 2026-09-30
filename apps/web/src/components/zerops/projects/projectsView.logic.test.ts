@@ -16,6 +16,7 @@ import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import {
   comingMateLine,
   containersSummary,
+  flowStepsAwaiting,
   groupFlowInputOf,
   groupMemberFactsOf,
   groupMetaLine,
@@ -112,6 +113,56 @@ const FLOWS = {
     missing: [{ tier: "production" }],
   }),
 } as const;
+
+// A project's pull requests and main are Gitea's changes half: until it answers they claim
+// nothing, whatever the deploy half says (the owner, 2026-09-30: three projects read "None yet" /
+// "Nothing merged" beside their deploys while their changes were being read again).
+describe("flowStepsAwaiting — which steps hold a skeleton while a read is out", () => {
+  it.each([
+    {
+      case: "nothing answered",
+      read: false,
+      changesKnown: false,
+      readOut: true,
+      steps: true,
+      changes: true,
+    },
+    {
+      case: "the deploy half alone",
+      read: true,
+      changesKnown: false,
+      readOut: true,
+      steps: false,
+      changes: true,
+    },
+    {
+      case: "both halves",
+      read: true,
+      changesKnown: true,
+      readOut: true,
+      steps: false,
+      changes: false,
+    },
+    {
+      case: "no read out: what is known is said",
+      read: true,
+      changesKnown: false,
+      readOut: false,
+      steps: false,
+      changes: false,
+    },
+    {
+      case: "nothing read and none out",
+      read: false,
+      changesKnown: false,
+      readOut: false,
+      steps: false,
+      changes: false,
+    },
+  ])("$case", ({ read, changesKnown, readOut, steps, changes }) => {
+    expect(flowStepsAwaiting({ read, changesKnown, readOut })).toEqual({ steps, changes });
+  });
+});
 
 describe("parseProjectsSearch", () => {
   const cases: ReadonlyArray<
