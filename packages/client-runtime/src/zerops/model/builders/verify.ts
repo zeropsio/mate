@@ -25,7 +25,10 @@ export function buildVerifyFields(call: ZeropsCall): BuiltCardFields {
   // one service.
   const inputHostname = readInputString(call.input, "serviceHostname");
   const isAllServices = inputHostname === undefined;
-  const subject = inputHostname ?? "all services";
+  // zcp verifies a pair's stage when asked for its dev half (a push source,
+  // `tools/verify.go`), so a settled card names the service its result
+  // does: the checks were that service's, and so is the verdict.
+  const subject = isAllServices ? "all services" : (card?.hostname ?? inputHostname);
   const { voice, voiceSource } = mateVoiceFor("verify", subject);
 
   const steps = (card?.checks ?? []).map((check) => {
