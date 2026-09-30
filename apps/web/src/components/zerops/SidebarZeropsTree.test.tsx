@@ -1365,7 +1365,7 @@ describe("production and the stages are two chips on the project's heading (M2, 
     expect(heading(html)).not.toContain("zerops-envdot");
   });
 
-  it("says what waits for production in words, and stays neutral: nothing is wrong", () => {
+  it("says what waits for production nowhere on the pill: it is healthy, and neutral", () => {
     const html = render([CRM_DEV, up(CRM_PROD)], {
       getFlow: () =>
         flow({
@@ -1381,7 +1381,7 @@ describe("production and the stages are two chips on the project's heading (M2, 
         }),
     });
     expect(chipsOf(html)).toEqual([
-      { word: "prod", tone: "neutral", words: "Production v2.4.0, 2 changes waiting" },
+      { word: "prod", tone: "neutral", words: "Production v2.4.0, healthy" },
     ]);
   });
 
@@ -1451,7 +1451,7 @@ describe("production and the stages are two chips on the project's heading (M2, 
     stored.collapsed = new Set();
   });
 
-  it("turns production amber when the newest release did not go through, the old one serving", () => {
+  it("keeps production neutral when the newest release did not go through: the old one serves", () => {
     const html = render([CRM_DEV, up(CRM_PROD)], {
       getFlow: () =>
         flow({
@@ -1465,7 +1465,7 @@ describe("production and the stages are two chips on the project's heading (M2, 
         }),
     });
     expect(chipsOf(html)).toEqual([
-      { word: "prod", tone: "amber", words: "Production v2.4.0, the last release failed" },
+      { word: "prod", tone: "neutral", words: "Production v2.4.0, healthy" },
     ]);
   });
 
@@ -1510,7 +1510,7 @@ describe("production and the stages are two chips on the project's heading (M2, 
     const remembering = {
       changes: () => undefined,
       chips: () => ({
-        prod: { label: "prod", state: "failed", version: "v2.3.0" },
+        prod: { label: "prod", state: "stopped", version: "v2.3.0" },
         stage: { label: "stage", state: "ok", version: "main" },
       }),
     };
@@ -1521,7 +1521,7 @@ describe("production and the stages are two chips on the project's heading (M2, 
     });
     expect(chipsOf(unread).map((chip) => [chip.word, chip.tone])).toEqual([
       ["stage", "neutral"],
-      ["prod", "amber"],
+      ["prod", "off"],
     ]);
     expect(render([CRM_DEV, CRM_STAGE, CRM_PROD], { getFlow: () => flow() })).not.toContain(
       "sidebar-production-chip",

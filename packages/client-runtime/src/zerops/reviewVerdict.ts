@@ -676,7 +676,7 @@ export interface ReleaseReviewInput {
   readonly now: number;
 }
 
-const RELEASE_FOLLOWS = "You can close this. Production's chip in the menu follows the release.";
+const RELEASE_FOLLOWS = "You can close this. The project's line in the menu follows the release.";
 
 function stageWhy(input: ReleaseReviewInput): string {
   const since = input.live === undefined ? "since the last release" : `since ${input.live}`;

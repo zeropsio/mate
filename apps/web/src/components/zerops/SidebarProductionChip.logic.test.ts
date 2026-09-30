@@ -137,7 +137,7 @@ describe("productionChip — production's chip: the word, its tone, its state in
       given: input({ waiting: 1 }),
       chip: { label: "prod", state: "waiting", version: "v0.1.44", waiting: 1 },
       tone: "neutral",
-      words: "Production v0.1.44, 1 change waiting",
+      words: "Production v0.1.44, healthy",
     },
     {
       state: "releasing",
@@ -183,8 +183,8 @@ describe("productionChip — production's chip: the word, its tone, its state in
         gitea: { kind: "answered", failure: FAILED_RELEASE },
       }),
       chip: { label: "prod", state: "failed", version: "v0.1.56" },
-      tone: "amber",
-      words: "Production v0.1.56, the last release failed",
+      tone: "neutral",
+      words: "Production v0.1.56, healthy",
     },
     {
       state: "its own running commit's deploy failed",
@@ -197,8 +197,8 @@ describe("productionChip — production's chip: the word, its tone, its state in
         },
       }),
       chip: { label: "prod", state: "failed", version: "v0.1.44" },
-      tone: "amber",
-      words: "Production v0.1.44, the last release failed",
+      tone: "neutral",
+      words: "Production v0.1.44, healthy",
     },
     {
       state: "down: production isn't serving",
@@ -243,7 +243,7 @@ describe("productionChip — production's chip: the word, its tone, its state in
         },
       }),
       chip: { label: "prod", state: "empty" },
-      tone: "neutral",
+      tone: "dash",
       words: "Production, nothing released yet",
     },
     {
@@ -258,8 +258,8 @@ describe("productionChip — production's chip: the word, its tone, its state in
         waiting: 3,
       }),
       chip: { label: "prod", state: "empty", waiting: 3 },
-      tone: "neutral",
-      words: "Production, nothing released yet, 3 changes waiting",
+      tone: "dash",
+      words: "Production, nothing released yet",
     },
   ])("$state", ({ given, chip: expected, tone, words }) => {
     const drawn = chip(productionChip(given));
@@ -447,7 +447,7 @@ describe("stageChip — one chip for the project's stage or stages", () => {
       name: "nothing deployed yet",
       stages: [staged("stage", { state: "empty", version: undefined, source: undefined })],
       chip: { label: "stage", state: "empty" },
-      tone: "neutral",
+      tone: "dash",
       words: "Stage, nothing deployed yet",
     },
     {
@@ -526,7 +526,7 @@ describe("stageChip — one chip for the project's stage or stages", () => {
         staged("qa", { state: "empty", version: undefined }),
       ],
       state: "empty",
-      tone: "neutral",
+      tone: "dash",
       words: "Stages: nothing is deployed to stage yet, nothing is deployed to qa yet",
     },
   ])("several stages: $name", ({ stages, state, tone, words }) => {
@@ -884,7 +884,6 @@ describe("productionMenu — what production's menu says, per state", () => {
       failure: undefined,
       down: [],
       routes: ROUTES,
-      waiting: 0,
       nowMs: NOW,
       ...over,
     });
@@ -1020,10 +1019,6 @@ describe("productionMenu — what production's menu says, per state", () => {
   it("says nothing more where nothing is wrong", () => {
     expect(menu({}).stops[0]?.note).toBeUndefined();
   });
-
-  it("counts what waits for production", () => {
-    expect(menu({ waiting: 2 }).waiting).toBe(2);
-  });
 });
 
 describe("stageMenu — each stage, as production's menu says production", () => {
@@ -1043,7 +1038,7 @@ describe("stageMenu — each stage, as production's menu says production", () =>
     ...over,
   });
   const menu = (over: Partial<Parameters<typeof stageMenu>[0]>) =>
-    stageMenu({ stages: [entry("stage")], creating: [], waiting: 0, nowMs: NOW, ...over });
+    stageMenu({ stages: [entry("stage")], creating: [], nowMs: NOW, ...over });
 
   it("says one stage's state in words, its version, when it was deployed, and its links", () => {
     expect(menu({}).stops).toEqual([
@@ -1159,13 +1154,6 @@ describe("stageMenu — each stage, as production's menu says production", () =>
         routes: [],
       },
     ]);
-  });
-
-  // What a release would carry from here to production: known only where
-  // there is a production to carry it to.
-  it("counts what waits to go to production, as given", () => {
-    expect(menu({ waiting: 2 }).waiting).toBe(2);
-    expect(menu({}).waiting).toBe(0);
   });
 });
 

@@ -215,7 +215,7 @@ import {
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
 import { groupAddsOffered } from "./ZeropsProjectRow.logic";
-import { HeadingSubLine, useHeadingLine } from "./SidebarHeadingLine";
+import { HeadingSubLine, headingPillMotion, useHeadingLine } from "./SidebarHeadingLine";
 import { stopComing, type HeadingLineInput, type StopComing } from "./SidebarHeadingLine.logic";
 
 /** What the client holds per environment, when it holds anything. */
@@ -1068,9 +1068,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       threadKey: getActivity?.(item)?.threadKey,
     }));
     const projectName = groupName ?? group?.name ?? "";
-    // What waits to go out, said on the stages' menu too — where there is a
-    // production for it to go to.
-    const waitingForProduction = prodChip === undefined ? 0 : projectFlow.main.notLive;
     const chips =
       group === undefined || (prodChip === undefined && stageChipDrawn === undefined) ? null : (
         // The stage first, production on the heading's end edge: the order a
@@ -1096,7 +1093,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                     projectId: creation.projectId,
                     name: creation.name,
                   })),
-                  waiting: waitingForProduction,
                   nowMs: openedAt,
                 })
               }
@@ -1118,7 +1114,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   failure: gitea.kind === "answered" ? gitea.failure : undefined,
                   down: downOf(productionServing),
                   routes: productionItem?.routes ?? [],
-                  waiting: projectFlow.main.notLive,
                   nowMs: openedAt,
                 })
               }
@@ -1807,7 +1802,8 @@ export function ProjectHeader({
   readonly openStop?: ((projectId: string) => (() => void) | undefined) | undefined;
 }) {
   const placeholder = group !== undefined && groupNameIsPlaceholder(group);
-  const secondLine = useHeadingLine(line);
+  const { line: secondLine, landing } = useHeadingLine(line);
+  const pillMotion = headingPillMotion(line, landing);
   const openReview = useOpenReview();
   const title = group?.name ?? name ?? "";
   // The New Mate dialog opens over whatever is on screen: the person stays where they were (the
@@ -1984,7 +1980,13 @@ export function ProjectHeader({
           </span>
         )}
         {chips === undefined || chips === null ? null : (
-          <span className="flex shrink-0 items-center gap-1">{chips}</span>
+          <span
+            className="flex shrink-0 items-center gap-1"
+            data-coming={pillMotion.coming}
+            data-landed={pillMotion.landed}
+          >
+            {chips}
+          </span>
         )}
       </div>
       {group === undefined ? null : (

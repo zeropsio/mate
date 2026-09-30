@@ -3517,6 +3517,59 @@ code {
   background-color: color-mix(in oklab, var(--zerops-status-failed) 34%, transparent);
 }
 
+/* p25/menu — D′: before a place serves anything its pill is dashed; while it comes up it turns
+   the stepped spinner inside, and for the 4 s its landing stands it wears ok, then plain. */
+.zerops-envchip[data-tone="dash"] {
+  padding: 0 7px;
+  border: 1px dashed color-mix(in oklab, var(--sidebar-foreground) 32%, transparent);
+  background-color: transparent;
+}
+
+.zerops-envchip[data-tone="dash"]:is(:hover, [data-popup-open]) {
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 5.5%, transparent);
+}
+
+:is(
+  [data-coming~="prod"] .zerops-envchip[data-zerops-chip="prod"],
+  [data-coming~="stage"] .zerops-envchip[data-zerops-chip="stage"]
+) {
+  gap: 5px;
+  padding: 0 8px 0 6px;
+  border: 0;
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 5.5%, transparent);
+}
+
+:is(
+  [data-coming~="prod"] .zerops-envchip[data-zerops-chip="prod"],
+  [data-coming~="stage"] .zerops-envchip[data-zerops-chip="stage"]
+)::before {
+  box-sizing: border-box;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid color-mix(in oklab, var(--muted-foreground) 35%, transparent);
+  border-top-color: var(--muted-foreground);
+  border-radius: 9999px;
+  content: "";
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :is(
+    [data-coming~="prod"] .zerops-envchip[data-zerops-chip="prod"],
+    [data-coming~="stage"] .zerops-envchip[data-zerops-chip="stage"]
+  )::before {
+    animation: zerops-env-spin 1s steps(8) infinite;
+  }
+}
+
+:is(
+  [data-landed="prod"] .zerops-envchip[data-zerops-chip="prod"],
+  [data-landed="stage"] .zerops-envchip[data-zerops-chip="stage"]
+) {
+  border: 0;
+  background-color: color-mix(in oklab, var(--zerops-status-ok) 26%, transparent);
+  color: color-mix(in oklab, var(--zerops-status-ok-text) 80%, var(--foreground));
+}
+
 /* The heading's end edge measures its room: a narrow menu drops the + first. */
 [data-zerops-surface="sidebar-project"] {
   container-type: inline-size;

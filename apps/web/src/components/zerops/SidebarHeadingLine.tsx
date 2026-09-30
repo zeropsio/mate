@@ -25,7 +25,11 @@ const FOLD_MS = 220;
  * Read whether the heading is open or folded, so a release that lands while folded is still
  * watched.
  */
-export function useHeadingLine(input: HeadingLineInput | undefined): HeadingLine | undefined {
+export function useHeadingLine(input: HeadingLineInput | undefined): {
+  readonly line: HeadingLine | undefined;
+  /** What this tab watched land, while it stands: its pill wears ok. */
+  readonly landing: HeadingLanding | undefined;
+} {
   const [landing, setLanding] = useState<HeadingLanding | undefined>(undefined);
   const [before, setBefore] = useState<HeadingLineInput | undefined>(input);
   if (before !== input) {
@@ -42,7 +46,25 @@ export function useHeadingLine(input: HeadingLineInput | undefined): HeadingLine
       clearTimeout(timer);
     };
   }, [landing]);
-  return input === undefined ? undefined : headingLine(input, landing);
+  return { line: input === undefined ? undefined : headingLine(input, landing), landing };
+}
+
+/**
+ * Which pills turn their stepped spinner while their place comes up, and which wear ok for the
+ * landing: "prod", "stage", both or none, as a token list the pills' rules read.
+ */
+export function headingPillMotion(
+  input: HeadingLineInput | undefined,
+  landing: HeadingLanding | undefined,
+): { readonly coming: string | undefined; readonly landed: string | undefined } {
+  const coming = [
+    ...(input?.stages.some((stage) => stage.coming?.kind === "coming") === true ? ["stage"] : []),
+    ...(input?.production?.coming?.kind === "coming" ? ["prod"] : []),
+  ];
+  return {
+    coming: coming.length === 0 ? undefined : coming.join(" "),
+    landed: landing === undefined ? undefined : landing.kind === "live" ? "prod" : "stage",
+  };
 }
 
 /** The line shown, kept through its fold so its words leave with it. */
