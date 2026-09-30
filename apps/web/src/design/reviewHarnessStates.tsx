@@ -311,6 +311,12 @@ const WIDE = {
   },
 } as const;
 
+/** A project with a stage and a production, as `environments.yaml` declares them. */
+const STAGE_AND_PRODUCTION: ChangeReviewViewProps["environments"] = [
+  { tier: "stage" },
+  { tier: "production" },
+];
+
 /** Everything Gitea answers, still on its way: what the flow knew paints, the rest holds its room. */
 const ALL_READING = {
   files: { kind: "reading" },
@@ -345,7 +351,7 @@ function Change({
   return (
     <ChangeReviewView
       comments={conversation}
-      downstream={{ production: true, stage: true }}
+      environments={STAGE_AND_PRODUCTION}
       frame={frame}
       giteaOrigin={HARNESS_GITEA}
       initiallyOpen={open}
@@ -912,7 +918,7 @@ export function ReviewDialogTry() {
       >
         <ChangeReviewView
           comments={read ? TALKING : comments({ kind: "reading" })}
-          downstream={{ production: true, stage: true }}
+          environments={STAGE_AND_PRODUCTION}
           giteaOrigin={HARNESS_GITEA}
           live="v0.1.0"
           mate={NOVA}
