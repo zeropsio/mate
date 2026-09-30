@@ -158,7 +158,11 @@ function errorFrom(cause: unknown, fallback: AdapterError["kind"]): AdapterError
       kind === "rejected" ? refusedMessage(cause.detail) : fixedApiErrorMessage(kind),
       !["forbidden", "not-found", "rejected"].includes(kind),
     );
-    return cause.status === null ? error : { ...error, status: cause.status };
+    return {
+      ...error,
+      ...(cause.status === null ? {} : { status: cause.status }),
+      ...(cause.retryAfterMs === null ? {} : { retryAfterMs: cause.retryAfterMs }),
+    };
   }
   return adapterError(fallback, "Zerops adapter failed.");
 }

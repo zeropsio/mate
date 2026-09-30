@@ -28,6 +28,7 @@ import {
   bornOnAccept,
   importedContainer,
   placedBirthsIn,
+  managedLeftToBirth,
   runtimesLeftToBirth,
   webBirthPorts,
   type BirthInputs,
@@ -318,6 +319,25 @@ describe("a creation's birth", () => {
     { name: "none for a Mate with no recipe", steps: () => mateWithoutRecipe(), want: undefined },
   ])("leaves its birth $name", ({ steps, want }) => {
     expect(runtimesLeftToBirth(steps())).toEqual(want);
+  });
+
+  const MANAGED =
+    "  - hostname: db\n    type: postgresql@17\n  - hostname: cache\n    type: valkey@7.2\n";
+  it.each([
+    {
+      name: "a created project's managed services, in the tier's order",
+      steps: () => matePlan(`${SERVICES}${MANAGED}`),
+      want: ["db", "cache"],
+    },
+    {
+      name: "a project imported whole's managed services",
+      steps: () => matePlan(`project:\n  name: Todo\n${SERVICES}${MANAGED}`),
+      want: ["db", "cache"],
+    },
+    { name: "none for a tier of runtimes alone", steps: () => matePlan(SERVICES), want: [] },
+    { name: "none for a Mate with no recipe", steps: () => mateWithoutRecipe(), want: [] },
+  ])("names to its birth $name", ({ steps, want }) => {
+    expect(managedLeftToBirth(steps())).toEqual(want);
   });
 });
 

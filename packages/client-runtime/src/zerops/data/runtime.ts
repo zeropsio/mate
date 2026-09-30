@@ -823,6 +823,30 @@ function observationReadTicket(observation: PlatformObservation): ReadTicket | n
   return null;
 }
 
+/**
+ * How a failed hydration is retried: an entity the platform says is not there for this account
+ * (403, 404, 410) is `gone` until a recovery or a grant change; a 429 is `throttled` and waits
+ * its Retry-After; anything else (a 5xx, the network) backs off.
+ */
+export type HydrationRefusal =
+  | { readonly kind: "gone" }
+  | { readonly kind: "throttled"; readonly retryAfterMs: number | undefined }
+  | { readonly kind: "transient" };
+
+export function hydrationRefusal(error: AdapterError | null): HydrationRefusal {
+  if (error === null) return { kind: "transient" };
+  if (
+    error.status === 403 ||
+    error.status === 404 ||
+    error.status === 410 ||
+    error.kind === "forbidden" ||
+    error.kind === "not-found"
+  )
+    return { kind: "gone" };
+  if (error.status === 429) return { kind: "throttled", retryAfterMs: error.retryAfterMs };
+  return { kind: "transient" };
+}
+
 function failureKind(error: AdapterError): ReadFailureKind {
   switch (error.kind) {
     case "cancelled":
@@ -919,7 +943,18 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   // the new failure's own due time; one that needs the receiver replaced also says so.
   const recoveryCycles = new Map<string, RecoveryCycle>();
   const hydrations = new Map<string, RuntimeHydration>();
-  const hydrationFailures = new Map<string, { readonly organizationKey: string; count: number }>();
+  /** Each entity's failed hydrations, and when the next may start (`retryHydration`). */
+  const hydrationFailures = new Map<
+    string,
+    {
+      readonly organizationKey: string;
+      readonly query: QueryKey;
+      count: number;
+      retryAtMs: number;
+      /** How the last read failed (`hydrationRefusal`): what its retry waits for. */
+      refusal: HydrationRefusal;
+    }
+  >();
   let receiptOrdinal = 0;
   let readStartOrdinal = 0;
   let dispatchOrdinal = 0;
@@ -1102,10 +1137,16 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               owner.recoveryAttempts = 0;
               // A successful recovery clears the hydration-failure budget for its
               // organization: the transport is healthy again, so unresolved entities
-              // deserve a fresh set of hydration attempts rather than staying stuck.
-              const organizationKey = organizationKeyOf(organizationOfInterest(owner.descriptor));
-              for (const [entityKey, record] of hydrationFailures) {
-                if (record.organizationKey === organizationKey) hydrationFailures.delete(entityKey);
+              // deserve a fresh set of hydration attempts rather than staying stuck. Only the
+              // recovery itself: every later event would otherwise lift each failed entity's
+              // backoff (`retryHydration`) and read it again at once.
+              const before = current.interests.get(input.interest.key)?.interest;
+              if (before?.status !== "observing" || before.identity !== desired.identity) {
+                const organizationKey = organizationKeyOf(organizationOfInterest(owner.descriptor));
+                for (const [entityKey, record] of hydrationFailures) {
+                  if (record.organizationKey === organizationKey)
+                    hydrationFailures.delete(entityKey);
+                }
               }
             }
           }
@@ -1432,6 +1473,13 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     );
 
   const runRead = (ticket: ReadTicket, identity: InterestIdentity | null): Effect.Effect<boolean> =>
+    runReadOutcome(ticket, identity).pipe(Effect.map((outcome) => outcome.succeeded));
+
+  /** A read, and the adapter's error when it failed: a hydration's retry depends on its kind. */
+  const runReadOutcome = (
+    ticket: ReadTicket,
+    identity: InterestIdentity | null,
+  ): Effect.Effect<{ readonly succeeded: boolean; readonly error: AdapterError | null }> =>
     Effect.suspend(() => {
       const owner = identity === null ? null : interests.get(identity.key);
       if (identity !== null && (owner?.identity !== identity || owner.leases.size === 0))
@@ -1452,7 +1500,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
                   interest: identity,
                 }),
               ),
-              Effect.as(true),
+              Effect.as({ succeeded: true, error: null }),
             ),
           ),
           Effect.catch((error) =>
@@ -1460,7 +1508,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               kind: "read-completion",
               completion: { kind: "read-failed", ticket, failure: failureKind(error) },
               interest: identity,
-            }).pipe(Effect.as(false)),
+            }).pipe(Effect.as({ succeeded: false, error })),
           ),
         ),
       );
@@ -1468,12 +1516,14 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       // Cancellation also removes work waiting for a read-concurrency slot.
       return Effect.raceFirst(
         read,
-        Effect.callback<boolean>((resume) => {
-          const abort = () => resume(Effect.succeed(false));
-          if (parentSignal.aborted) abort();
-          else parentSignal.addEventListener("abort", abort, { once: true });
-          return Effect.sync(() => parentSignal.removeEventListener("abort", abort));
-        }),
+        Effect.callback<{ readonly succeeded: boolean; readonly error: AdapterError | null }>(
+          (resume) => {
+            const abort = () => resume(Effect.succeed({ succeeded: false, error: null }));
+            if (parentSignal.aborted) abort();
+            else parentSignal.addEventListener("abort", abort, { once: true });
+            return Effect.sync(() => parentSignal.removeEventListener("abort", abort));
+          },
+        ),
       );
     });
 
@@ -1557,9 +1607,12 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           }
           continue;
         }
+        const failed = hydrationFailures.get(key);
         if (
           hydrations.size >= policy.activeSharedReadsPerAccount ||
-          (hydrationFailures.get(key)?.count ?? 0) >= policy.hydrationRetryLimit
+          (failed !== undefined &&
+            (failed.count >= policy.hydrationRetryLimit ||
+              (yield* Clock.currentTimeMillis) < failed.retryAtMs))
         )
           continue;
         const owner = {
@@ -1611,8 +1664,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           );
           continue;
         }
-        const work = hydrationSemaphore.withPermit(runRead(ticket, null)).pipe(
-          Effect.flatMap((succeeded) =>
+        const work = hydrationSemaphore.withPermit(runReadOutcome(ticket, null)).pipe(
+          Effect.flatMap(({ succeeded, error }) =>
             awaitIngress.pipe(
               Effect.andThen(
                 Effect.sync(() => {
@@ -1620,7 +1673,10 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
                   else
                     hydrationFailures.set(key, {
                       organizationKey: organizationKeyOf(organizationOfEntityRef(target)),
+                      query,
                       count: (hydrationFailures.get(key)?.count ?? 0) + 1,
+                      retryAtMs: Number.POSITIVE_INFINITY,
+                      refusal: hydrationRefusal(error),
                     });
                 }),
               ),
@@ -1637,11 +1693,46 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           ),
         );
         const fiber = yield* work.pipe(
-          Effect.flatMap((succeeded) => (succeeded ? Effect.void : scheduleHydration(query))),
+          Effect.flatMap((succeeded) => (succeeded ? Effect.void : retryHydration(key, query))),
           forkOwned,
         );
         hydration.fiber = fiber;
       }
+    });
+
+  /**
+   * A failed hydration is read again on the recovery backoff, not at once: a refusal that lasts
+   * a moment (a service the platform lists before it serves it) would spend the budget in a few
+   * milliseconds. A spent budget waits out the backoff's cap and starts over, so an entity is
+   * never left unresolved for good while an interest holds it — its listing would stay partial.
+   */
+  const retryHydration = (key: string, query: QueryKey): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      const failed = hydrationFailures.get(key);
+      if (failed === undefined) return yield* scheduleHydration(query);
+      // The platform said the entity is not there for this account: reading it again changes
+      // nothing until a recovery or a grant change drops the record (`observeAccess`).
+      if (failed.refusal.kind === "gone") return;
+      const spent = failed.count >= policy.hydrationRetryLimit;
+      const backoffMs = spent
+        ? policy.recoveryBackoffMaxMs
+        : Math.min(
+            policy.recoveryBackoffStartMs * 2 ** Math.max(0, failed.count - 1),
+            policy.recoveryBackoffMaxMs,
+          );
+      // A 429 waits at least as long as the platform asked.
+      const delayMs =
+        failed.refusal.kind === "throttled"
+          ? Math.max(backoffMs, failed.refusal.retryAfterMs ?? 0)
+          : backoffMs;
+      // Until then no other trigger starts it: a reset (a recovery, a return to the foreground)
+      // drops the record, and with it the wait.
+      failed.retryAtMs = (yield* Clock.currentTimeMillis) + delayMs;
+      yield* Effect.sleep(Duration.millis(delayMs));
+      // A reset, or an attempt it let start, owns the entity's next read now.
+      if (hydrationFailures.get(key) !== failed) return;
+      if (spent) hydrationFailures.delete(key);
+      yield* scheduleHydration(query);
     });
 
   // Cancels one in-flight hydration outright (not a partial dependent removal, unlike
@@ -3443,7 +3534,23 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const observeAccess = (observation: AccessObservation): Effect.Effect<void> =>
     enqueue({ kind: "access-observation", observation, interest: null }).pipe(
       Effect.andThen(awaitIngress),
+      Effect.andThen(
+        observation.kind === "access-verified" || observation.kind === "project-access-established"
+          ? retryRefusedHydrations
+          : Effect.void,
+      ),
     );
+
+  /** A grant changed: every entity the platform refused is read once more under it. */
+  const retryRefusedHydrations = Effect.suspend(() => {
+    const queries = new Set<QueryKey>();
+    for (const [key, record] of hydrationFailures) {
+      if (record.refusal.kind !== "gone") continue;
+      hydrationFailures.delete(key);
+      queries.add(record.query);
+    }
+    return Effect.forEach(queries, (query) => scheduleHydration(query), { discard: true });
+  });
 
   const grant = yield* makeGrantDriver({
     scope: options.scope,

@@ -66,6 +66,7 @@ import {
   type FlowReleaseRow,
   type ReleaseGate,
 } from "../release.ts";
+import { isWholeSha } from "../versionName.ts";
 import type { Deployment, StopService } from "./deployment.ts";
 import { CHECKING_RELEASE } from "./release.ts";
 
@@ -405,11 +406,16 @@ function rowVersionOf(deployment: Deployment): DeployedVersion | undefined {
 }
 
 /**
- * The name a version was read from, as `environmentRow` reads one back (`deployedVersion`): the
- * sha, then the name and who tagged it; a hand-made name whole.
+ * The name a version was read from, as `environmentRow` reads one back (`deployedVersion`): a
+ * short sha after its tag or branch, a whole one before the name and who tagged it; a hand-made
+ * name whole.
  */
 function versionName(version: DeployedVersion): string | undefined {
   if (version.sha === undefined) return version.name;
+  if (!isWholeSha(version.sha)) {
+    const label = version.name ?? version.branch;
+    return label === undefined ? undefined : `${label} ${version.sha}`;
+  }
   return [version.sha, version.name, version.taggedBy]
     .filter((token) => token !== undefined)
     .join(" ");
@@ -431,6 +437,9 @@ function declaredVersions(
     if (services === undefined || !isKnown(services)) continue;
     for (const { hostname, deployment } of services.value) {
       if (!isKnown(deployment)) continue;
+      // Read under the name's own spelling, whole or short: a key that moved as other reads
+      // arrived would read the same statuses twice and unpaint the row between. Gitea resolves a
+      // short sha itself (`commits/{ref}/statuses`).
       const sha = rowVersionOf(deployment.value)?.sha;
       const repository = tiers.value.repositories.get(hostname);
       if (sha !== undefined && repository !== undefined) versions.push({ repository, sha });
@@ -464,8 +473,9 @@ function environmentOf(
     const repository = tiers.value.repositories.get(hostname);
     const appVersionName = version === undefined ? undefined : versionName(version);
     let statuses: ReadonlyArray<GiteaCommitStatus> | undefined;
-    if (version?.sha !== undefined && repository !== undefined) {
-      const read = inputs.statuses.get(statusKey(repository, version.sha)) ?? UNREAD;
+    const sha = version?.sha;
+    if (sha !== undefined && repository !== undefined) {
+      const read = inputs.statuses.get(statusKey(repository, sha)) ?? UNREAD;
       parts.push({ shown: read, source: "gitea" });
       if (isKnown(read)) statuses = read.value;
     }
@@ -728,6 +738,8 @@ function releaseSides(inputs: GroupFlowInputs): ReleaseSides {
         parts.push({ shown: UNREAD, source: "zerops" });
         unstated.add(hostname);
       }
+      // The name's own spelling: it keys the compare read (`releaseContentKey`), and every
+      // comparison with a release's whole commits goes through `sameCommit`.
       if (runs?.version.sha !== undefined) production.set(hostname, runs.version.sha);
       if (repository !== undefined && head !== null && isKnown(head)) {
         candidate.set(hostname, head.value);

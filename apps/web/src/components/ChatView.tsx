@@ -83,7 +83,7 @@ import {
   useState,
 } from "react";
 import { flushSync } from "react-dom";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useShallow } from "zustand/react/shallow";
 import {
   isAtomCommandInterrupted,
@@ -176,12 +176,14 @@ import { useCrewAccess } from "../zerops/crew/useCrewAccess";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useZeropsNextStepStrip } from "./zerops/ZeropsNextStepBanner";
 import { zeropsMateAt } from "../zerops/mateIdentities";
+import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
+import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
 import { CrewLeadPlan } from "./zerops/crew/CrewLeadPlan";
-import { CrewTimelineContext, type CrewTimeline } from "./zerops/crew/CrewTaskCard";
+import { type CrewTimeline } from "./zerops/crew/CrewTaskCard";
 import { crewCardOrigin } from "./zerops/crew/CrewTaskCard.logic";
 import { crewRunsOn } from "./zerops/crew/CrewEditors.logic";
 import { crewChatNotices } from "./zerops/crew/crewChatNotices";
@@ -209,7 +211,7 @@ import {
   agentOwnershipComposerNotice,
   resolveAgentOwnership,
 } from "@t3tools/client-runtime/zerops/agentOwnership";
-import { resolveSpentLogin } from "@t3tools/client-runtime/zerops/logins";
+import { resolveSpentLogin, spentLoginRegistering } from "@t3tools/client-runtime/zerops/logins";
 import { useProjectTopology } from "../zerops/useProjectTopology";
 import {
   deriveAgentPanelModel,
@@ -344,11 +346,15 @@ import {
 } from "~/zerops/useZeropsAgentSigner";
 import { mateArrivalHoldsComposer } from "~/zerops/mateStandUp";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
+import { takeHandedOverCaret } from "~/zerops/mateHandOver";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
-import { TimelineSwitch } from "./chat/TimelineSwitch";
+import { KeptTimelines } from "./chat/KeptTimelines";
+import { useWarmTimelineAsk } from "./chat/warmTimeline";
+import { shouldTypeToFocusComposer } from "./chat/typeToFocus";
+import { rememberTimelineInset, rememberedTimelineInset } from "./chat/timelineInsets";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
 import { useAlsoWorkingBanner } from "./chat/ConversationStrip";
@@ -383,6 +389,7 @@ import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/Compos
 import { deriveDock, foldBackgroundTasks, latestUsagePause } from "./chat/conversationDock.logic";
 import {
   environmentConnectionBannerItem,
+  mateVoiceBannerItem,
   environmentRetryFailureToast,
 } from "./chat/EnvironmentConnectionBanner";
 import {
@@ -440,6 +447,7 @@ import {
   resolveComposerProviderSelection,
   resolveDraftHeroState,
   resolveZeropsConversationReadOnly,
+  conversationContentPending,
   resolveZeropsOwnedAgentSendBlockReason,
   resolveZeropsProviderAvailability,
   peekRememberedThreadTimeline,
@@ -562,73 +570,10 @@ function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
 const DiffPanel = lazy(() => import("./DiffPanel"));
 const FilePreviewPanel = lazy(() => import("./files/FilePreviewPanel"));
 const EMPTY_PENDING_FILE_SURFACE_IDS: ReadonlySet<string> = new Set();
-const TYPE_TO_FOCUS_EDITABLE_SELECTOR = [
-  "input",
-  "textarea",
-  "select",
-  '[contenteditable="true"]',
-  '[contenteditable="plaintext-only"]',
-  '[role="textbox"]',
-].join(",");
-const TYPE_TO_FOCUS_INTERACTIVE_SELECTOR = [
-  "button",
-  "a[href]",
-  "summary",
-  '[role="button"]',
-  '[role="checkbox"]',
-  '[role="menuitem"]',
-  '[role="option"]',
-  '[role="radio"]',
-  '[role="switch"]',
-  '[role="tab"]',
-].join(",");
-// Popups match only while open or closing: some stay mounted when closed,
-// such as the chat header actions menu.
-const TYPE_TO_FOCUS_FLOATING_LAYER_SELECTOR = [
-  '[role="dialog"][aria-modal="true"]',
-  '[data-slot="dialog"]',
-  '[data-slot="menu-popup"]:is([data-open],[data-ending-style])',
-  '[data-slot="select-popup"]:is([data-open],[data-ending-style])',
-  '[data-slot="popover-popup"]:is([data-open],[data-ending-style])',
-  '[data-slot="combobox-popup"]:is([data-open],[data-ending-style])',
-  '[data-slot="autocomplete-popup"]:is([data-open],[data-ending-style])',
-].join(",");
-
 type EnvironmentUnavailableState = {
   readonly environmentId: EnvironmentId;
   readonly connection: EnvironmentConnectionPresentation;
 };
-
-function eventPathContainsSelector(event: Event, selector: string): boolean {
-  const path = event.composedPath();
-  if (path.length === 0 && event.target) {
-    path.push(event.target);
-  }
-  return path.some((target) => target instanceof Element && target.closest(selector));
-}
-
-function shouldTypeToFocusComposer(event: KeyboardEvent): boolean {
-  if (event.defaultPrevented || event.isComposing) return false;
-  if (event.metaKey || event.ctrlKey || event.altKey) return false;
-  if (event.key.length !== 1) return false;
-  // "/" with nothing focused opens the jump box (`jumpSlash.ts`); a slash
-  // command starts in the composer once it has the focus.
-  if (event.key === "/") return false;
-
-  if (eventPathContainsSelector(event, TYPE_TO_FOCUS_EDITABLE_SELECTOR)) return false;
-  if (eventPathContainsSelector(event, TYPE_TO_FOCUS_INTERACTIVE_SELECTOR)) return false;
-  if (document.querySelector(TYPE_TO_FOCUS_FLOATING_LAYER_SELECTOR)) return false;
-
-  // The right-panel surface launcher claims its shortcut letters while it is
-  // visible (data attribute set in RightPanelTabs); those keys open surfaces
-  // instead of typing into the composer.
-  const launcherKeys = document
-    .querySelector("[data-surface-launcher-keys]")
-    ?.getAttribute("data-surface-launcher-keys");
-  if (launcherKeys && launcherKeys.toLowerCase().includes(event.key.toLowerCase())) return false;
-
-  return true;
-}
 
 function formatOutgoingPrompt(params: {
   provider: ProviderDriverKind;
@@ -1595,6 +1540,10 @@ export default function ChatView(props: ChatViewProps) {
   const [composerBannerStackElement, setComposerBannerStackElement] =
     useState<HTMLDivElement | null>(null);
   const [composerBannerStackHeight, setComposerBannerStackHeight] = useState(0);
+  // What the composer covers of the list, as each conversation last had it
+  // (`timelineInsets.ts`): a list shown in the press frame took the
+  // conversation left's inset for that frame, and moved.
+  const [composerOverlaySettledFor, setComposerOverlaySettledFor] = useState(routeThreadKey);
   const composerOverlayHeight = resolveComposerOverlayHeight({
     composerHeight: composerElementHeight,
     // Masked at read time rather than reset from the observer effect below:
@@ -1602,6 +1551,23 @@ export default function ChatView(props: ChatViewProps) {
     // dismissed, before a resize would ever fire to report 0.
     bannerStackHeight: composerBannerStackElement ? composerBannerStackHeight : 0,
   });
+  const warmTimelineAsk = useWarmTimelineAsk();
+  const rememberedInset = rememberedTimelineInset(routeThreadKey);
+  const timelineInsetMeasured = composerOverlaySettledFor === routeThreadKey;
+  const timelineInsetEnd =
+    composerOverlaySettledFor === routeThreadKey
+      ? composerOverlayHeight
+      : (rememberedInset ?? composerOverlayHeight);
+  // Its own is measured by the next frame.
+  useLayoutEffect(() => {
+    if (composerOverlaySettledFor === routeThreadKey) return;
+    const frame = requestAnimationFrame(() => setComposerOverlaySettledFor(routeThreadKey));
+    return () => cancelAnimationFrame(frame);
+  }, [composerOverlaySettledFor, routeThreadKey]);
+  useLayoutEffect(() => {
+    if (composerOverlaySettledFor !== routeThreadKey) return;
+    rememberTimelineInset(routeThreadKey, composerOverlayHeight);
+  }, [composerOverlayHeight, composerOverlaySettledFor, routeThreadKey]);
   const isAtEndRef = useRef(true);
   const attachmentPreviewHandoffByMessageIdRef = useRef<Record<string, string[]>>({});
   const attachmentPreviewPromotionInFlightByMessageIdRef = useRef<Record<string, true>>({});
@@ -2324,6 +2290,7 @@ export default function ChatView(props: ChatViewProps) {
   // The banner names the Mate, never the environment's label: on a Mate that
   // is the container's internal host.
   const zeropsMates = useZeropsMateDirectory();
+  const mateLinkVoice = useMateVoice();
   const systemComposerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     const items: ComposerBannerStackItem[] = [];
     const unavailableConnection = activeEnvironmentUnavailableState?.connection ?? null;
@@ -2332,6 +2299,19 @@ export default function ChatView(props: ChatViewProps) {
       (unavailableConnection.phase === "connecting" ||
         unavailableConnection.phase === "reconnecting");
     const suppressUnavailableBanner = environmentReconnecting && !reconnectWarningGraceElapsed;
+    // A Mate's link speaks with one voice, the route's (`mateVoice`): its banner, not the
+    // connection's.
+    const routeMateAt = zeropsMateAt(zeropsMates, environmentId);
+    if (routeMateAt.kind === "mate") {
+      const banner = mateVoiceBannerItem({
+        environmentId,
+        voice: mateLinkVoice,
+        onRetry: () => void handleReconnectActiveEnvironment(environmentId),
+        projects: <Link to="/zerops" />,
+      });
+      if (banner !== null) items.push(banner);
+      return items;
+    }
     if (activeEnvironmentUnavailableState && unavailableConnection && !suppressUnavailableBanner) {
       const { environmentId } = activeEnvironmentUnavailableState;
       const mateAt = zeropsMateAt(zeropsMates, environmentId);
@@ -2346,6 +2326,8 @@ export default function ChatView(props: ChatViewProps) {
     return items;
   }, [
     activeEnvironmentUnavailableState,
+    environmentId,
+    mateLinkVoice,
     reconnectWarningGraceElapsed,
     handleReconnectActiveEnvironment,
     zeropsMates,
@@ -3075,12 +3057,16 @@ export default function ChatView(props: ChatViewProps) {
       setDismissedProviderStatusBannerKey(null);
     }
   }, [dismissedProviderStatusBannerKey, providerStatusBannerKey]);
-  const visibleProviderStatus = shouldShowProviderStatusBanner(
-    activeProviderStatus,
-    dismissedProviderStatusBannerKey,
-  )
-    ? activeProviderStatus
-    : null;
+  // A Zerops login signed in and still being registered runs already: nothing to warn about.
+  const visibleProviderStatus =
+    shouldShowProviderStatusBanner(activeProviderStatus, dismissedProviderStatusBannerKey) &&
+    !spentLoginRegistering(
+      activeProviderStatus?.instanceId,
+      zeropsAgentAuth.snapshot,
+      providerStatuses,
+    )
+      ? activeProviderStatus
+      : null;
   const hasTimelineTopBanner = Boolean(visibleThreadError) || visibleProviderStatus !== null;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
@@ -3849,12 +3835,14 @@ export default function ChatView(props: ChatViewProps) {
         ? undefined
         : resolveAgentAuthorizer(
             zeropsSpentLogin.key,
-            zeropsSpentLogin.agent.authorizedBy,
+            zeropsSpentLogin.agent,
             zeropsLocalSigners,
+            zeropsViewerSubject,
           ),
     viewerSubject: zeropsViewerSubject,
     recordFailed:
       zeropsSpentLogin !== undefined && zeropsSignInDialog.recordFailed.has(zeropsSpentLogin.key),
+    signerUnknown: zeropsOwnedAgent?.signerUnknown,
   });
   // Someone else's agent: the conversation is read, not run — the composer
   // gives way to `ZeropsReadOnlyConversationFooter`.
@@ -4643,12 +4631,16 @@ export default function ChatView(props: ChatViewProps) {
   useEffect(() => {
     if (!activeThread?.id || terminalUiState.terminalOpen) return;
     const frame = window.requestAnimationFrame(() => {
-      focusComposer();
+      // Handed over from its Mate's own view, what was typed there is the
+      // draft: the caret stays where the person left it.
+      const caret = takeHandedOverCaret(routeThreadKey, Date.now());
+      if (caret === null) focusComposer();
+      else composerRef.current?.focusAt(caret);
     });
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [activeThread?.id, focusComposer, terminalUiState.terminalOpen]);
+  }, [activeThread?.id, composerRef, focusComposer, routeThreadKey, terminalUiState.terminalOpen]);
 
   // Tabbing back into the app lands focus wherever it last was, often the right panel or the
   // body. Put it in the composer unless something that takes typing already holds it. The
@@ -6264,6 +6256,9 @@ export default function ChatView(props: ChatViewProps) {
       return;
     }
     if (activeEnvironmentUnavailable) {
+      // A Mate's banner already says where its link is (`mateVoice`): no second voice. Where the
+      // banner has no words yet, the refused send says so itself.
+      if (mateVoiceSpeaks(mateLinkVoice)) return;
       toastManager.add(
         stackedThreadToast({
           type: "warning",
@@ -8121,68 +8116,77 @@ export default function ChatView(props: ChatViewProps) {
             {/* Messages Wrapper */}
             <div className="relative flex min-h-0 flex-1 flex-col">
               {/* Messages — LegendList handles virtualization and scrolling
-                  internally; the switch keeps a conversation on screen while
-                  the next one is placed. */}
-              <TimelineSwitch switchKey={routeThreadKey}>
-                <CrewTimelineContext value={crewTimeline}>
-                  <MessagesTimeline
-                    agentPanelModel={agentPanelModel}
-                    onOpenAgents={addAgentsSurface}
-                    working={dockModel}
-                    afterTurnWork={activeBackgroundLiveness}
-                    onStopBackgroundWork={stopBackgroundWork}
-                    stoppingBackgroundWork={isStoppingBackgroundWork}
-                    isWorking={isWorking}
-                    workingStepLabel={workingStepLabel}
-                    isCompacting={isCompacting}
-                    activeTurnStartedAt={activeWorkStartedAt}
-                    listRef={legendListRef}
-                    timelineEntries={conversationEntries}
-                    latestTurn={activeLatestTurn}
-                    runningTurnId={activeRunningTurnId}
-                    turnDiffSummaries={activeThread.checkpoints}
-                    activeThreadEnvironmentId={activeThread.environmentId}
-                    routeThreadKey={routeThreadKey}
-                    onOpenTurnDiff={onOpenTurnDiff}
-                    supportsConversationRollback={supportsConversationRollback}
-                    onRevertToTurnCount={onRevertTimelineTurn}
-                    {...(activeProject ? { onRunShellCommand: runShellCommand } : {})}
-                    isRevertingCheckpoint={isRevertingCheckpoint}
-                    onImageExpand={onExpandTimelineImage}
-                    markdownCwd={gitCwd ?? undefined}
-                    resolvedTheme={resolvedTheme}
-                    timestampFormat={timestampFormat}
-                    workspaceRoot={activeWorkspaceRoot}
-                    skills={
-                      activeProviderStatus
-                        ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
-                        : EMPTY_PROVIDER_SKILLS
-                    }
-                    anchorMessageId={timelineAnchorMessageId}
-                    onAnchorReady={onTimelineAnchorReady}
-                    contentInsetEndAdjustment={composerOverlayHeight}
-                    liveFollowEnabled={timelineLiveFollowEnabled}
-                    onIsAtEndChange={onIsAtEndChange}
-                    onManualNavigation={cancelTimelineLiveFollowForUserNavigation}
-                    cancelPositionRestoreRef={cancelPositionRestoreRef}
-                    hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
-                    loading={threadDetailLoading && !isDraftHeroState}
-                    syncing={threadSyncPhase !== null || threadDetailLoading}
-                    queuedMessages={queuedMessages}
-                    usagePause={activeThreadShell?.usagePause ?? null}
-                    onUsageAutoResumeChange={onUsageAutoResumeChange}
-                    onSteerQueuedMessage={onSteerQueuedMessage}
-                    steerQueuedMessageShortcutLabel={shortcutLabelForCommand(
-                      keybindings,
-                      "thread.steerQueuedMessage",
-                      { context: { terminalFocus: false } },
-                    )}
-                    onRemoveQueuedMessage={onRemoveQueuedMessage}
-                    topFadeEnabled={!hasTimelineTopBanner}
-                    loadEarlier={loadEarlierTurns}
-                  />
-                </CrewTimelineContext>
-              </TimelineSwitch>
+                  internally. A switch between Mates is at once: the list is
+                  the next conversation's own from the press. One seen a
+                  moment ago is kept, hidden, and shows its rows in place;
+                  another's come in as they are placed. */}
+              <KeptTimelines
+                open={routeThreadKey}
+                warm={warmTimelineAsk}
+                insetMeasured={timelineInsetMeasured}
+                insetRemembered={rememberedInset !== undefined}
+                crewTimeline={crewTimeline}
+                timeline={{
+                  agentPanelModel,
+                  onOpenAgents: addAgentsSurface,
+                  working: dockModel,
+                  afterTurnWork: activeBackgroundLiveness,
+                  onStopBackgroundWork: stopBackgroundWork,
+                  stoppingBackgroundWork: isStoppingBackgroundWork,
+                  isWorking,
+                  workingStepLabel,
+                  isCompacting,
+                  activeTurnStartedAt: activeWorkStartedAt,
+                  listRef: legendListRef,
+                  timelineEntries: conversationEntries,
+                  latestTurn: activeLatestTurn,
+                  runningTurnId: activeRunningTurnId,
+                  turnDiffSummaries: activeThread.checkpoints,
+                  activeThreadEnvironmentId: activeThread.environmentId,
+                  routeThreadKey,
+                  onOpenTurnDiff,
+                  supportsConversationRollback,
+                  onRevertToTurnCount: onRevertTimelineTurn,
+                  ...(activeProject ? { onRunShellCommand: runShellCommand } : {}),
+                  isRevertingCheckpoint,
+                  onImageExpand: onExpandTimelineImage,
+                  markdownCwd: gitCwd ?? undefined,
+                  resolvedTheme,
+                  timestampFormat,
+                  workspaceRoot: activeWorkspaceRoot,
+                  skills: activeProviderStatus
+                    ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
+                    : EMPTY_PROVIDER_SKILLS,
+                  anchorMessageId: timelineAnchorMessageId,
+                  onAnchorReady: onTimelineAnchorReady,
+                  contentInsetEndAdjustment: timelineInsetEnd,
+                  liveFollowEnabled: timelineLiveFollowEnabled,
+                  onIsAtEndChange,
+                  onManualNavigation: cancelTimelineLiveFollowForUserNavigation,
+                  cancelPositionRestoreRef,
+                  hideEmptyPlaceholder:
+                    isDraftHeroState ||
+                    threadDetailLoading ||
+                    conversationContentPending({
+                      messageCount: activeThread?.messages.length ?? 0,
+                      shell: activeThreadShell ?? null,
+                    }),
+                  loading: threadDetailLoading && !isDraftHeroState,
+                  syncing: threadSyncPhase !== null || threadDetailLoading,
+                  queuedMessages,
+                  usagePause: activeThreadShell?.usagePause ?? null,
+                  onUsageAutoResumeChange,
+                  onSteerQueuedMessage,
+                  steerQueuedMessageShortcutLabel: shortcutLabelForCommand(
+                    keybindings,
+                    "thread.steerQueuedMessage",
+                    { context: { terminalFocus: false } },
+                  ),
+                  onRemoveQueuedMessage,
+                  topFadeEnabled: !hasTimelineTopBanner,
+                  loadEarlier: loadEarlierTurns,
+                }}
+              />
 
               {/* The way back to the end, once the person has scrolled away from
                   it: a round button floating over the timeline, always drawn and

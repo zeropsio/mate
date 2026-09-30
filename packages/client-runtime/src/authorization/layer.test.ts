@@ -190,6 +190,45 @@ describe("RemoteEnvironmentAuthorization", () => {
     }),
   );
 
+  it.effect.each([
+    {
+      name: "names both",
+      capabilities: { threadSnapshotPagination: true, reasoningMessages: false },
+      expected: { pagination: true, reasoningMessages: false },
+    },
+    { name: "is silent", capabilities: {}, expected: undefined },
+    {
+      name: "names only one",
+      capabilities: { threadSnapshotPagination: true },
+      expected: undefined,
+    },
+  ])(
+    "carries the thread snapshot's parameters when the descriptor $name",
+    ({ capabilities, expected }) =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({
+          responses: [
+            Response.json({
+              ...DESCRIPTOR,
+              capabilities: { ...DESCRIPTOR.capabilities, ...capabilities },
+            }),
+            websocketTicket("ticket"),
+          ],
+        });
+        const authorized = yield* Effect.gen(function* () {
+          const remote = yield* RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization;
+          return yield* remote.authorizeBearer({
+            expectedEnvironmentId: ENVIRONMENT_ID,
+            httpBaseUrl: ENDPOINT.httpBaseUrl,
+            wsBaseUrl: ENDPOINT.wsBaseUrl,
+            bearerToken: "bearer-token",
+            connectionMethod: "direct",
+          });
+        }).pipe(Effect.provide(harness.layer));
+        expect(authorized.threadSnapshot).toEqual(expected);
+      }),
+  );
+
   it.effect("revalidates a bearer descriptor after the cache expires", () =>
     Effect.gen(function* () {
       const reassignedEnvironmentId = EnvironmentId.make("environment-2");

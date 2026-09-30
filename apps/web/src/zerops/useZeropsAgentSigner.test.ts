@@ -8,6 +8,7 @@ import {
   localSignersSettledBy,
   readLocalAgentSigners,
   rememberLocalAgentSigner,
+  forgetLocalAgentSigner,
   resolveAgentAuthorizer,
   subscribeLocalAgentSigners,
 } from "./useZeropsAgentSigner";
@@ -261,6 +262,15 @@ describe("local agent signers", () => {
     expect(readLocalAgentSigners()).toEqual({});
   });
 
+  it("forgets a record whose write failed, and keeps the others", () => {
+    rememberLocalAgentSigner("claude-code", "user-a");
+    rememberLocalAgentSigner("codex", "user-a");
+    forgetLocalAgentSigner("claude-code");
+    expect(readLocalAgentSigners()).toEqual({ codex: "user-a" });
+    forgetLocalAgentSigner("codex");
+    expect(readLocalAgentSigners()).toEqual({});
+  });
+
   it("keeps the store's identity when a snapshot settles nothing", () => {
     rememberLocalAgentSigner("codex", "user-a");
     const before = readLocalAgentSigners();
@@ -269,27 +279,72 @@ describe("local agent signers", () => {
     localSignersSettledBy(authorized({ codex: "user-a" }));
   });
 
+  const login = (phase: "verifying-code" | "succeeded" | "failed" | "cancelled", by?: string) => ({
+    phase,
+    terminalId: "term-1",
+    startedAt: DateTime.makeUnsafe("2026-09-30T10:00:00.000Z"),
+    ...(by === undefined ? {} : { startedBy: by }),
+  });
+
   it.each([
     {
       name: "the snapshot's authorizer wins",
-      authorizedBy: { subject: "user-b" },
+      agent: { authorizedBy: { subject: "user-b" }, login: login("verifying-code", "user-a") },
       local: { "claude-code": "user-a" },
       expected: { subject: "user-b" },
     },
     {
       name: "the local record fills in while the server catches up",
-      authorizedBy: undefined,
+      agent: {},
       local: { "claude-code": "user-a" },
       expected: { subject: "user-a" },
     },
     {
-      name: "neither means nobody",
-      authorizedBy: undefined,
+      name: "the viewer's own login being checked is theirs before any record",
+      agent: { login: login("verifying-code", "user-a") },
+      local: {},
+      expected: { subject: "user-a" },
+    },
+    {
+      // The server keeps a finished login's state until it restarts: after a failed record
+      // write and a reload it vouches for nothing, and the composer must not say "you".
+      name: "the viewer's own finished login vouches for nobody by itself",
+      agent: { login: login("succeeded", "user-a") },
       local: {},
       expected: undefined,
     },
-  ])("$name", ({ authorizedBy, local, expected }) => {
-    expect(resolveAgentAuthorizer("claude-code", authorizedBy, local)).toEqual(expected);
+    {
+      name: "the viewer's own finished login with its record being written is theirs",
+      agent: { login: login("succeeded", "user-a") },
+      local: { "claude-code": "user-a" },
+      expected: { subject: "user-a" },
+    },
+    {
+      name: "a colleague's login in flight is not the viewer's",
+      agent: { login: login("verifying-code", "user-b") },
+      local: {},
+      expected: undefined,
+    },
+    {
+      name: "a login that failed vouches for nobody",
+      agent: { login: login("failed", "user-a") },
+      local: {},
+      expected: undefined,
+    },
+    {
+      name: "a login that names no starter vouches for nobody",
+      agent: { login: login("verifying-code") },
+      local: {},
+      expected: undefined,
+    },
+    {
+      name: "neither means nobody",
+      agent: {},
+      local: {},
+      expected: undefined,
+    },
+  ])("$name", ({ agent, local, expected }) => {
+    expect(resolveAgentAuthorizer("claude-code", agent, local, "user-a")).toEqual(expected);
   });
 });
 

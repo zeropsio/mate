@@ -44,6 +44,7 @@ import {
   bornOnAccept,
   creationAccepted,
   importedContainer,
+  managedLeftToBirth,
   runtimesLeftToBirth,
 } from "./zeropsBirths";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
@@ -157,6 +158,8 @@ export function useEnvironmentCreation(): (
       const withAgent = plan.steps.some((step) => step.kind === "import-container");
       // What the birth imports once it has closed the project off, not this run.
       const runtimes = runtimesLeftToBirth(plan.steps);
+      // What its first import brings: the arrival's first step names them from the press.
+      const managed = managedLeftToBirth(plan.steps);
       // The listing is read again at once, so the group catches up with its birth.
       const accepted = (projectId: string) => {
         if (!isCurrent()) return;
@@ -176,6 +179,7 @@ export function useEnvironmentCreation(): (
                 : null,
             container: withAgent,
             ...(runtimes === undefined ? {} : { runtimes }),
+            ...(managed.length === 0 ? {} : { managed }),
             placement: {
               groupId: group.groupId,
               groupName: group.name,

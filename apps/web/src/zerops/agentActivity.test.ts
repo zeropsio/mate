@@ -1,4 +1,5 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import {
   EnvironmentId,
   ProjectId,
@@ -18,6 +19,8 @@ import {
   agentActivitySubject,
   deriveZeropsAgentActivity,
   mateFaceFor,
+  mateFaceOf,
+  mateReviewWaits,
   threadAgentActivity,
 } from "./agentActivity";
 
@@ -59,6 +62,100 @@ const RUNNING = shell({
     completedAt: null,
     assistantMessageId: null,
   },
+});
+
+// One rule for "its change waits for your review" wherever a Mate's face is drawn: the composer's
+// top's (`mateNextStep`), on a flow Gitea answered.
+describe("mateReviewWaits — a Mate's own change waits for the person's review", () => {
+  const pull = (overrides: Partial<FlowPullRequest> = {}): FlowPullRequest =>
+    ({
+      repository: "appdev",
+      number: 2,
+      title: "Add a page",
+      kind: "code",
+      mateProjectId: "nova",
+      mergeability: "mergeable",
+      merged: false,
+      ...overrides,
+    }) as FlowPullRequest;
+  it.each([
+    { case: "its change merges", flow: { pullRequests: [pull()] }, waits: true },
+    { case: "the flow unread", flow: undefined, waits: false },
+    {
+      case: "Gitea not answered yet",
+      flow: { pullRequests: [pull()], changesKnown: false },
+      waits: false,
+    },
+    {
+      case: "another Mate's change",
+      flow: { pullRequests: [pull({ mateProjectId: "kai" })] },
+      waits: false,
+    },
+    {
+      case: "still being checked: it waits on Gitea",
+      flow: { pullRequests: [pull({ mergeability: "checking" })] },
+      waits: false,
+    },
+    {
+      case: "a recipe change is the project's",
+      flow: { pullRequests: [pull({ kind: "recipe" })] },
+      waits: false,
+    },
+  ])("$case", ({ flow, waits }) => {
+    expect(mateReviewWaits(flow, "nova")).toBe(waits);
+  });
+});
+
+describe("mateFaceOf — the face a Mate wears wherever it is drawn", () => {
+  it.each([
+    { case: "asking, no review", connected: true, face: "needs", review: false, shown: "needs" },
+    {
+      case: "at rest, its review waits",
+      connected: true,
+      face: "idle",
+      review: true,
+      shown: "needs",
+    },
+    {
+      case: "at work, its review waits: the work shows",
+      connected: true,
+      face: "working",
+      review: true,
+      shown: "working",
+    },
+    {
+      case: "not connected, its review waits",
+      connected: false,
+      face: undefined,
+      review: true,
+      shown: "needs",
+    },
+    {
+      case: "not connected, nothing waits",
+      connected: false,
+      face: undefined,
+      review: false,
+      shown: "sleep",
+    },
+  ] as const)("$case", ({ connected, face, review, shown }) => {
+    expect(
+      mateFaceOf({
+        connected,
+        activity: face === undefined ? undefined : { face },
+        reviewWaits: review,
+      }),
+    ).toBe(shown);
+  });
+
+  it("keeps a Mate paused at its usage limit asleep, its review waiting or not", () => {
+    expect(
+      mateFaceOf({
+        connected: true,
+        activity: { face: "sleep", pausedUntil: "2026-09-29T23:00:00.000Z" },
+        reviewWaits: true,
+      }),
+    ).toBe("sleep");
+  });
 });
 
 describe("deriveZeropsAgentActivity", () => {

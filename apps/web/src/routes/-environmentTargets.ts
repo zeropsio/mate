@@ -19,6 +19,7 @@ import {
   type DescriptorIndex,
   type EnvironmentMachine,
   type MateLink,
+  type Reachability,
   type RouteContent,
   type RouteTarget,
   type TargetKey,
@@ -290,4 +291,18 @@ export function useEnvironmentLinks(): EnvironmentLinks {
     () => ({ linkable, linkTarget, mateLink: linkOf }),
     [linkable, linkOf, linkTarget],
   );
+}
+
+/**
+ * The link's verdict for an environment the route does not name — a draft's, whose route carries
+ * only the draft — for the one voice over its conversation (`mateVoice`); null while no target
+ * names it. It demands nothing: the draft's own view connects its environment.
+ */
+export function useEnvironmentReachability(
+  environmentId: EnvironmentId | null,
+): Reachability | null {
+  const machines = useEnvironmentMachines();
+  const index = useDescriptorIndex();
+  if (environmentId === null) return null;
+  return resolveEnvironment(machines, index, environmentId)?.reachability ?? null;
 }

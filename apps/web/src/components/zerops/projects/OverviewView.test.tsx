@@ -228,7 +228,9 @@ describe("the Overview", () => {
     expect(strip).toContain('aria-busy="true"');
     expect(strip).toContain(">Next steps<");
     expect(strip).toContain('data-slot="skeleton"');
-    const nobody = render({ groups: [{ ...entry([UMA], {}, false), awaiting: false }] });
+    const nobody = render({
+      groups: [{ ...entry([UMA], {}, false), awaiting: false, changesAwaiting: false }],
+    });
     expect(nobody).not.toContain('data-zerops-surface="next-steps"');
   });
 
@@ -443,9 +445,24 @@ describe("the Overview", () => {
     expect(row).not.toMatch(/data-zerops-step="mates"[^>]*data-zerops-step-pending/u);
   });
 
+  // Its deploys read and its changes not yet (a reload, or its changes read again): the pull
+  // requests and main claim nothing, and production says what the deploys say.
+  it("holds the pull requests and main pending while only the deploy half has answered", () => {
+    const row = section(
+      render({ groups: [{ ...entry([UMA], {}, false), awaiting: false, changesAwaiting: true }] }),
+      'data-zerops-group="bbb"',
+    );
+    for (const step of ["pull-requests", "main"])
+      expect(row).toMatch(
+        new RegExp(`data-zerops-step="${step}"[^>]*data-zerops-step-pending="true"`, "u"),
+      );
+    expect(row).not.toMatch(/data-zerops-step="production"[^>]*data-zerops-step-pending/u);
+    for (const word of ["None yet", "None open", "Nothing merged"]) expect(row).not.toContain(word);
+  });
+
   it("draws an unread group nobody is reading with its words: a skeleton would wait forever", () => {
     const row = section(
-      render({ groups: [{ ...entry([UMA], {}, false), awaiting: false }] }),
+      render({ groups: [{ ...entry([UMA], {}, false), awaiting: false, changesAwaiting: false }] }),
       'data-zerops-group="bbb"',
     );
     expect(row).not.toContain("data-zerops-step-pending");

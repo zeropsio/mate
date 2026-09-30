@@ -73,7 +73,13 @@ export type ZeropsAgentOwnership =
    * `unrecorded`, which says nothing about whose fault it is: this one
    * knows, because it is the write this browser just tried and watched fail.
    */
-  | "record-failed";
+  | "record-failed"
+  /**
+   * A credential the project records for two or more people: whose it is is not known, and the
+   * server refuses every turn on it until somebody signs it in again — which writes the one
+   * record. Never a name that may be the wrong one.
+   */
+  | "unsettled";
 
 export interface ZeropsAgentOwnershipInput {
   /** Whether a credential artifact exists at all (`ZeropsAgentAuth.credPresent`). */
@@ -88,6 +94,8 @@ export interface ZeropsAgentOwnershipInput {
    * failed attempt is what happened here, whatever the tag currently says.
    */
   readonly recordFailed?: boolean | undefined;
+  /** The project records the sign-in for two or more people (`ZeropsAgentAuth.signerUnknown`). */
+  readonly signerUnknown?: boolean | undefined;
 }
 
 /**
@@ -110,7 +118,9 @@ export function resolveAgentOwnership(input: ZeropsAgentOwnershipInput): ZeropsA
   if (input.recordFailed === true) return "record-failed";
 
   const recorded = input.authorizedBy?.subject;
-  if (recorded === undefined || recorded.length === 0) return "unrecorded";
+  if (recorded === undefined || recorded.length === 0) {
+    return input.signerUnknown === true ? "unsettled" : "unrecorded";
+  }
 
   // A viewer we cannot identify is not evidence that the agent belongs to
   // someone else — say nothing rather than the wrong thing.
@@ -135,6 +145,8 @@ export function agentOwnershipNotice(ownership: ZeropsAgentOwnership): string | 
       return "Your sign-in could not be recorded.";
     case "mine":
       return "Signed in by you.";
+    case "unsettled":
+      return UNSETTLED_WORDS;
     case "none":
       return undefined;
   }
@@ -142,7 +154,7 @@ export function agentOwnershipNotice(ownership: ZeropsAgentOwnership): string | 
 
 /** Whether the notice deserves attention rather than a quiet aside. */
 export function agentOwnershipNeedsAttention(ownership: ZeropsAgentOwnership): boolean {
-  return ownership === "someone-else" || ownership === "record-failed";
+  return ownership === "someone-else" || ownership === "record-failed" || ownership === "unsettled";
 }
 
 /**
@@ -176,11 +188,17 @@ export function agentOwnershipComposerNotice(
       return "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.";
     case "record-failed":
       return "Your sign-in could not be recorded.";
+    case "unsettled":
+      return UNSETTLED_WORDS;
     case "mine":
     case "none":
       return undefined;
   }
 }
+
+/** A login recorded for two people, in the words its person reads, and the one way out. */
+const UNSETTLED_WORDS =
+  "This Mate's sign-in is recorded for more than one person. Sign it in again to make it yours.";
 
 /** The one action the notice offers. */
 export const AGENT_OWNERSHIP_RECOVERY_LABEL = "Sign in with your own account";

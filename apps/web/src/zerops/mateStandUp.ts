@@ -146,7 +146,9 @@ export function mateStandUpSignedIn(
     const kind = classifyZeropsAgentAuth(agent).kind;
     if (kind !== "authorized" && kind !== "registering") return false;
     if (agent.flagToken) return true;
-    const signer = resolveAgentAuthorizer(agent.agentId, agent.authorizedBy, localSigners)?.subject;
+    // Recorded, or written here: the login's own check still counts only once it succeeded, so
+    // the ask never leaves while the code is being checked.
+    const signer = resolveAgentAuthorizer(agent.agentId, agent, localSigners, undefined)?.subject;
     if (signer !== undefined) return signer === viewer;
     return agent.login?.phase === "succeeded" && agent.login.startedBy === viewer;
   });

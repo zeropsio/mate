@@ -16,6 +16,7 @@ import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import {
   comingMateLine,
   containersSummary,
+  flowStepsAwaiting,
   groupFlowInputOf,
   groupMemberFactsOf,
   groupMetaLine,
@@ -112,6 +113,75 @@ const FLOWS = {
     missing: [{ tier: "production" }],
   }),
 } as const;
+
+// A project's pull requests and main are Gitea's changes half: until it answers they claim
+// nothing, whatever the deploy half says (the owner, 2026-09-30: three projects read "None yet" /
+// "Nothing merged" beside their deploys while their changes were being read again).
+describe("flowStepsAwaiting — which steps hold a skeleton while a read is out", () => {
+  it.each([
+    {
+      case: "nothing answered",
+      read: false,
+      changesKnown: false,
+      changesFailed: false,
+      readOut: true,
+      steps: true,
+      changes: true,
+    },
+    {
+      case: "the deploy half alone",
+      read: true,
+      changesKnown: false,
+      changesFailed: false,
+      readOut: true,
+      steps: false,
+      changes: true,
+    },
+    {
+      case: "both halves",
+      read: true,
+      changesKnown: true,
+      changesFailed: false,
+      readOut: true,
+      steps: false,
+      changes: false,
+    },
+    // A Gitea read that never answered (a 403 on the org, the broker down at load) is no read
+    // out: the steps say it failed rather than wait forever.
+    {
+      case: "the changes' read failed",
+      read: true,
+      changesKnown: false,
+      changesFailed: true,
+      readOut: true,
+      steps: false,
+      changes: false,
+    },
+    {
+      case: "no read out: what is known is said",
+      read: true,
+      changesKnown: false,
+      changesFailed: false,
+      readOut: false,
+      steps: false,
+      changes: false,
+    },
+    {
+      case: "nothing read and none out",
+      read: false,
+      changesKnown: false,
+      changesFailed: false,
+      readOut: false,
+      steps: false,
+      changes: false,
+    },
+  ])("$case", ({ read, changesKnown, changesFailed, readOut, steps, changes }) => {
+    expect(flowStepsAwaiting({ read, changesKnown, changesFailed, readOut })).toEqual({
+      steps,
+      changes,
+    });
+  });
+});
 
 describe("parseProjectsSearch", () => {
   const cases: ReadonlyArray<
@@ -365,6 +435,11 @@ describe("the pull requests' cell with none open", () => {
   ] as const)("reads %s", (line, flow) => {
     expect(pullRequestsLine(flow)).toBe(line);
   });
+
+  // Gitea never answered for it: that, never "None yet" — it would claim what nobody read.
+  it("says Gitea did not answer where its read failed", () => {
+    expect(pullRequestsLine(flowOf(), true)).toBe("Gitea didn’t answer");
+  });
 });
 
 describe("lastMergedCode", () => {
@@ -430,6 +505,15 @@ describe("main's cell", () => {
       expect(mainCell(flow, merged)).toEqual(expected);
     });
   }
+
+  it("says Gitea did not answer where its changes' read failed, never Nothing merged", () => {
+    expect(mainCell(flowOf(), undefined, true)).toEqual({
+      empty: true,
+      head: undefined,
+      title: undefined,
+      state: "Gitea didn’t answer",
+    });
+  });
 });
 
 describe("a Mate being created", () => {

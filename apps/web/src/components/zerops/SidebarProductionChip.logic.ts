@@ -27,6 +27,7 @@
 import {
   deployedCommit,
   deployStatusContext,
+  sameCommit,
   type FlowReleaseRow,
   type GiteaCommitStatus,
   type GroupEnvironmentRowInput,
@@ -162,10 +163,9 @@ function failedDeployStatus(
   const production = environments.find((environment) => environment.tier === "production");
   if (production === undefined) return undefined;
   const context = deployStatusContext(production.environment, entry.service);
-  const commit = entry.commit.toLowerCase();
   for (const environment of environments) {
     for (const service of environment.services) {
-      if (deployedCommit(service.appVersionName) !== commit) continue;
+      if (!sameCommit(deployedCommit(service.appVersionName), entry.commit)) continue;
       // Newest first: only the newest of a context says how that deploy went.
       const status = (service.statuses ?? []).find((each) => each.context === context);
       if (status?.state === "failure" || status?.state === "error") return status;
@@ -487,7 +487,7 @@ export type ChipDot = "ok" | "attention" | "failed" | "off" | "hollow" | "spinne
  * the old one still serves, red while it is down (S3) — and hollow while it
  * is stopped on purpose, which is off rather than wrong.
  */
-export type ChipTone = "neutral" | "off" | "amber" | "red";
+export type ChipTone = "neutral" | "off" | "dash" | "amber" | "red";
 
 /** The chip as it is drawn: its word, and its tone — its menu says the rest. */
 export interface ChipFace {
@@ -503,7 +503,7 @@ const TONE: Record<ChipState, ChipTone> = {
   waiting: "neutral",
   releasing: "neutral",
   creating: "neutral",
-  empty: "neutral",
+  empty: "dash",
   failed: "amber",
   down: "red",
   stopped: "off",
@@ -555,12 +555,14 @@ function chipWords(chip: ProductionChip): string {
   switch (chip.state) {
     case "ok":
       return named("healthy");
+    // What waits is the release's, said once on the heading's line: the place is healthy.
     case "waiting":
-      return named(`${plural(chip.waiting ?? 0, "change", "changes")} waiting`);
+      return named("healthy");
     case "releasing":
       return named(chip.next === undefined ? "deploying" : `releasing ${chip.next}`);
+    // The release that did not go out is the line's; production still serves the one before.
     case "failed":
-      return named(chip.label === "prod" ? "the last release failed" : "the last deploy failed");
+      return named(chip.label === "prod" ? "healthy" : "the last deploy failed");
     case "down":
     case "stopped": {
       const also = alongside(chip);
@@ -569,16 +571,20 @@ function chipWords(chip: ProductionChip): string {
     case "creating":
       return `${tier} is being set up`;
     case "empty": {
-      const nothing = `${tier}, nothing ${chip.label === "prod" ? "released" : "deployed"} yet`;
-      return chip.waiting === undefined
-        ? nothing
-        : `${nothing}, ${plural(chip.waiting, "change", "changes")} waiting`;
+      return `${tier}, nothing ${chip.label === "prod" ? "released" : "deployed"} yet`;
     }
   }
 }
 
+/**
+ * The pill as D draws it: whether the place serves. A release that did not go out leaves
+ * production serving the one before it, so production's pill stays neutral and the amber is the
+ * release's own, on the heading's line (`headingLine`); a stage's failed deploy has no line and
+ * keeps its amber.
+ */
 export function chipFace(chip: ProductionChip): ChipFace {
-  return { tone: TONE[chip.state], label: chip.label, words: chipWords(chip) };
+  const tone = chip.label === "prod" && chip.state === "failed" ? "neutral" : TONE[chip.state];
+  return { tone, label: chip.label, words: chipWords(chip) };
 }
 
 /** "40 min ago", "3 h ago": how long ago, as the chip's menu says a deploy's age. */
@@ -622,8 +628,6 @@ export interface ChipMenuStop {
 export interface ChipMenuModel {
   /** Production alone on production's menu; each stage on the stages'. */
   readonly stops: ReadonlyArray<ChipMenuStop>;
-  /** Changes merged and not live on production, with Review; 0 where none, or no production. */
-  readonly waiting: number;
 }
 
 const MAIN_DOT: Record<ChipState, ChipDot> = {
@@ -742,7 +746,7 @@ function troubleNote(input: {
   return failed === undefined ? `The last deploy failed.${still}` : `${failed}${still}`;
 }
 
-/** Production's menu: production's row, what went wrong and the fix, its links, what waits. */
+/** Production's menu: production's row, what went wrong and the fix, its links. What waits is the heading line's (D′). */
 export function productionMenu(input: {
   readonly chip: ProductionChip;
   /** Production's Zerops project; none while it is being set up. */
@@ -751,8 +755,6 @@ export function productionMenu(input: {
   /** The services the platform marks failed, while down. */
   readonly down: ReadonlyArray<string>;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
-  /** Changes merged and not live. */
-  readonly waiting: number;
   readonly nowMs: number;
 }): ChipMenuModel {
   const { chip } = input;
@@ -770,14 +772,13 @@ export function productionMenu(input: {
         routes: input.routes,
       },
     ],
-    waiting: input.waiting,
   };
 }
 
 /**
  * The stages' menu: each stage as production's menu says production — its
  * row with what it runs and when it was deployed, what went wrong and the
- * fix, its links — then what waits to go to production, where one is.
+ * fix, its links. What waits to go to production is the heading line's (D′).
  */
 export function stageMenu(input: {
   readonly stages: ReadonlyArray<{
@@ -794,8 +795,6 @@ export function stageMenu(input: {
   }>;
   /** Stages being created that the listing does not hold yet. */
   readonly creating: ReadonlyArray<{ readonly projectId: string; readonly name: string }>;
-  /** Changes merged and not live on production; 0 where there is no production. */
-  readonly waiting: number;
   readonly nowMs: number;
 }): ChipMenuModel {
   const listed = input.stages.map((stage): ChipMenuStop => {
@@ -838,7 +837,7 @@ export function stageMenu(input: {
     fix: undefined,
     routes: [],
   }));
-  return { stops: [...listed, ...coming], waiting: input.waiting };
+  return { stops: [...listed, ...coming] };
 }
 
 /** How a release did not go through: "failed deploying app", "was refused". */

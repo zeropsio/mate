@@ -583,6 +583,25 @@ describe("the link's drop (C1b)", () => {
     expect(back.machine.linkLostAt).toBeNull();
   });
 
+  // A drop is a question for the platform (the owner, 2026-09-30: Quinn's banner said
+  // Reconnecting through a whole restart): the inventory is read again at once, so a restart
+  // the platform reports reads as one within a read's time, not whenever a push arrives.
+  it.each([
+    { case: "a live link that drops asks the platform", from: "connected", asks: 1 },
+    { case: "a link still down asks nothing more", from: "dropped", asks: 0 },
+  ])("$case", ({ from, asks }) => {
+    const live = connected();
+    const start =
+      from === "connected"
+        ? live
+        : drive(live, [{ type: "LINK", link: { phase: "backoff", retryAtMs: null } }]).machine;
+    const next = drive(start, [{ type: "LINK", link: { phase: "connecting" } }]);
+    const refreshes = next.effects.filter(
+      (effect) => effect.kind === "run" && effect.op.kind === "refresh-presence",
+    );
+    expect(refreshes).toHaveLength(asks);
+  });
+
   it("a link that never connected has no drop", () => {
     const never = drive(initialEnvironment({ record: ENV_A }), [
       { type: "LINK", link: { phase: "connecting" } },

@@ -43,6 +43,14 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   accountLifecycleVersion: Schema.optionalKey(Schema.Literal(1)),
   repositoryIdentity: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   connectionProbe: Schema.optionalKey(Schema.Boolean),
+  /** The HTTP thread snapshot takes a turn window (the socket config's
+      `threadSnapshotPagination`), told before any socket exists so a client
+      reads the snapshot while its socket still connects. Absent on older
+      servers, whose clients wait for the socket's config. */
+  threadSnapshotPagination: Schema.optionalKey(Schema.Boolean),
+  /** The HTTP thread snapshot can carry reasoning messages (the socket
+      config's `reasoningMessages`); same contract as threadSnapshotPagination. */
+  reasoningMessages: Schema.optionalKey(Schema.Boolean),
   /** Missing on older servers, which still accept inline image attachments. */
   attachmentUploads: Schema.optionalKey(Schema.Boolean),
   /** Uploaded files may accompany question answers. */

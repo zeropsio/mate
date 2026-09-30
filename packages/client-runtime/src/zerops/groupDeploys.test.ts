@@ -90,6 +90,20 @@ describe("planning the reads", () => {
       versions: [{ hostname: "api", appVersionName: "hotfix" }],
       expected: [],
     },
+    {
+      // Gitea's `commits/{ref}/statuses` resolves a sha of seven or more characters itself.
+      name: "versions named by branch or tag and a short sha, asked about by it",
+      versions: [
+        { hostname: "api", appVersionName: "main 3f9c1b2" },
+        { hostname: "web", appVersionName: "v1.2.0 77ab0e1" },
+      ],
+      expected: ["acme/api@3f9c1b2", "acme/web@77ab0e1"],
+    },
+    {
+      name: "a push of a dirty working tree, which is no commit",
+      versions: [{ hostname: "api", appVersionName: "main 3f9c1b2-dirty" }],
+      expected: [],
+    },
   ])("plans status reads for $name", ({ versions, expected }) => {
     expect(planDeployStatusReads({ owner: "acme", versions }).map(deployStatusKey)).toEqual(
       expected,
@@ -159,6 +173,21 @@ describe("the join — a declaration, a version and a status", () => {
       statuses: new Map([
         [`acme/api@${API}`, [status("mate/deploy/stage/api", "success")]],
         [`acme/web@${WEB}`, [status("mate/deploy/stage/web", "success")]],
+      ]),
+      expected: [
+        { name: "Acme CRM - stage", line: "main · 3f9c1b2", commit: "3f9c1b2", tone: "good" },
+        { name: "Acme CRM - production", line: "release", commit: undefined, tone: "neutral" },
+      ],
+    },
+    {
+      name: "a stage the broker deployed under short names",
+      versions: new Map([
+        ["s1", "main 3f9c1b2"],
+        ["s2", "main 77ab0e1"],
+      ]),
+      statuses: new Map([
+        ["acme/api@3f9c1b2", [status("mate/deploy/stage/api", "success")]],
+        ["acme/web@77ab0e1", [status("mate/deploy/stage/web", "success")]],
       ]),
       expected: [
         { name: "Acme CRM - stage", line: "main · 3f9c1b2", commit: "3f9c1b2", tone: "good" },

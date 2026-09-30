@@ -29,6 +29,7 @@ import { environmentNameUnderGroup } from "./groupRows.ts";
 import { shortCommit } from "./release.ts";
 import { mateProjectOfLogin } from "./mateIdentity.ts";
 import { isReleaseTag, readReleaseMessage, readSemver } from "./release.ts";
+import { resolveCommit } from "./versionName.ts";
 
 /** One commit on the branch, and what reached it. */
 export interface HistoryEntry {
@@ -52,19 +53,24 @@ export interface HistoryEntry {
  * The branch's commits with every deploy and tag folded onto the one they
  * name.
  *
- * Only a full sha matches. A short sha never compares equal to a long one, and
- * a version somebody deployed by hand is named whatever they typed — neither
- * is a commit this branch can be said to carry, so neither annotates a row.
+ * A version's name spells its commit whole or, since 2026-09-30, short: it
+ * annotates the one commit of the branch it begins (`resolveCommit`), and none
+ * where it begins two. A version somebody deployed by hand is named whatever
+ * they typed — not a commit this branch can be said to carry, so it annotates
+ * no row.
  */
 export function groupHistory(input: {
   readonly commits: ReadonlyArray<GiteaCommit>;
-  /** `environment name → the full sha it runs`. */
+  /** `environment name → the sha it runs`, whole or short as its version name spells it. */
   readonly deployed: ReadonlyMap<string, string>;
   /** `full sha → the release that shipped it` ({@link releaseTagsByCommit}). */
   readonly tags: ReadonlyMap<string, string>;
 }): ReadonlyArray<HistoryEntry> {
   const deployedBySha = new Map<string, Array<string>>();
-  for (const [environment, sha] of input.deployed) {
+  const branch = input.commits.map((commit) => commit.sha);
+  for (const [environment, named] of input.deployed) {
+    const sha = resolveCommit(named, branch);
+    if (sha === undefined) continue;
     const at = deployedBySha.get(sha);
     if (at === undefined) deployedBySha.set(sha, [environment]);
     else at.push(environment);
@@ -75,7 +81,7 @@ export function groupHistory(input: {
     subject: commit.subject,
     author: commit.author,
     at: commit.at,
-    deployedTo: deployedBySha.get(commit.sha) ?? [],
+    deployedTo: deployedBySha.get(commit.sha.toLowerCase()) ?? [],
     tags: (() => {
       const tag = input.tags.get(commit.sha);
       return tag === undefined ? [] : [tag];

@@ -15,7 +15,12 @@
  * `window.__arrivalHarness.go(id)` moves to a state from a script. Fixtures only: nothing here
  * ships, and no route imports this module.
  */
-import { deriveBirthProgress, type BirthFacts } from "@t3tools/client-runtime/zerops/birthProgress";
+import {
+  deriveBirthProgress,
+  type BirthCopyService,
+  type BirthFacts,
+  type BirthRuntimeFact,
+} from "@t3tools/client-runtime/zerops/birthProgress";
 import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import { EnvironmentId, type ZeropsAgentId, type ZeropsAgentLoginState } from "@t3tools/contracts";
@@ -40,10 +45,16 @@ import {
   ZeropsAgentSignInDialogPopup,
   type SignInAgent,
 } from "~/components/zerops/ZeropsAgentSignIn";
-import { ComingBelow, comingSentenceOf } from "~/components/zerops/ZeropsMateComingPage";
+import {
+  ComingBelow,
+  comingSentenceOf,
+  type ArrivalProgress,
+} from "~/components/zerops/ZeropsMateComingPage";
+import { MateLinkLineView, MateLinkProcessesView } from "~/components/zerops/MateLinkLine";
 import { MateEmptyStateView, type MateEmptyComing } from "~/components/zerops/ZeropsMateEmptyState";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { ArrivalService, ArrivalStepInput } from "~/zerops/mateArrival";
+import type { MateVoice } from "@t3tools/client-runtime/zerops/environments";
 import type { MateComing } from "~/zerops/mateComing";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { mateStandUpAskLine, type MateStandUpPhase } from "~/zerops/mateStandUp";
@@ -103,20 +114,35 @@ function creatingFacts(): BirthFacts {
   };
 }
 
-/** The services the copy's import brings, as the birth may carry them (the runtimes' import). */
-const SERVICES: ReadonlyArray<ArrivalService> = [
-  { name: "db", state: "ok" },
-  { name: "cache", state: "ok" },
-  { name: "storage", state: "ok" },
-  { name: "search", state: "ok" },
-  { name: "mailpit", state: "busy" },
-  { name: "appdev", state: "waiting" },
-  { name: "webdev", state: "waiting" },
-  { name: "appstage", state: "empty" },
-  { name: "webstage", state: "empty" },
+/**
+ * The copy's managed services, what its first step waits on — shaped like a live add (2026-09-30:
+ * the project made at +40 s, its data services up by +87 s).
+ */
+const MANAGED: ReadonlyArray<BirthCopyService> = [
+  { hostname: "db", state: "done" },
+  { hostname: "cache", state: "done" },
+  { hostname: "storage", state: "done" },
+  { hostname: "search", state: "active" },
 ];
 
-function comingProgress(kind: "coming" | "coming-new" | "slow" | "not-created", nowMs: number) {
+/**
+ * The runtimes its workspace imports once the project is closed off, in the recipe's order: the
+ * utility's build and the dev halves under way, the stage halves waiting for a first deploy.
+ */
+const RUNTIMES = {
+  runtimes: [
+    { hostname: "mailpit", role: "utility", state: "active" },
+    { hostname: "appdev", role: "dev", state: "active" },
+    { hostname: "webdev", role: "dev", state: "waiting" },
+    { hostname: "appstage", role: "stage", state: "waiting" },
+    { hostname: "webstage", role: "stage", state: "waiting" },
+  ],
+} as const;
+
+function comingProgress(
+  kind: "coming" | "coming-new" | "slow" | "not-created",
+  nowMs: number,
+): ArrivalProgress {
   const mate = deriveBirthProgress(creatingFacts(), nowMs);
   if (kind === "coming-new") {
     const steps: ReadonlyArray<ArrivalStepInput> = [
@@ -130,26 +156,13 @@ function comingProgress(kind: "coming" | "coming-new" | "slow" | "not-created", 
     const steps = mate.steps.map((step): ArrivalStepInput =>
       step.id === "container"
         ? { ...step, state: "failed", detail: "It could not be created." }
-        : step.id === "project"
-          ? {
-              ...step,
-              services: SERVICES.map((service) => ({
-                ...service,
-                state: service.state === "empty" ? "empty" : "ok",
-              })),
-            }
-          : step.state === "active"
-            ? { ...step, state: "waiting" }
-            : step,
+        : step.state === "active"
+          ? { ...step, state: "waiting" }
+          : step,
     );
-    return { ...mate, steps };
+    return { ...mate, steps, managed: MANAGED.map((service) => ({ ...service, state: "done" })) };
   }
-  return {
-    ...mate,
-    steps: mate.steps.map((step): ArrivalStepInput =>
-      step.id === "project" ? { ...step, services: SERVICES } : step,
-    ),
-  };
+  return { ...mate, managed: MANAGED, runtimes: { ...RUNTIMES, state: "active", up: 0, total: 5 } };
 }
 
 const CLAUDE_URL = "https://claude.example/oauth/authorize?code=true";
@@ -179,7 +192,9 @@ interface HarnessState {
   readonly label: string;
   readonly mate: ZeropsMateIdentity;
   readonly phase: MateStandUpPhase | null;
-  readonly coming?: "coming" | "coming-new" | "slow" | "not-created";
+  readonly coming?: "coming" | "coming-new" | "slow" | "not-created" | "reaching";
+  /** A Mate that is up, as its link's one voice says it (`mateVoice`). */
+  readonly voice?: MateVoice;
   readonly logins?: Logins;
   readonly addedBy?: string | null;
   readonly unknown?: KnownMessage;
@@ -210,6 +225,43 @@ const STATES: ReadonlyArray<HarnessState> = [
     mate: { ...WREN, connected: false },
     phase: "sign-in",
     coming: "slow",
+  },
+  {
+    id: "connecting",
+    label: "0 Opening · the first 1.5 s: the face and the name, nothing said",
+    mate: { ...WREN, connected: false },
+    phase: null,
+    coming: "reaching",
+    voice: { surface: "stage", text: null, actions: [], processes: false },
+  },
+  {
+    id: "opening",
+    label: "0 Opening · past 1.5 s: its line and the platform's processes",
+    mate: { ...WREN, connected: false },
+    phase: null,
+    coming: "reaching",
+    voice: { surface: "stage", text: "Opening Wren…", actions: [], processes: true },
+  },
+  {
+    id: "restarting",
+    label: "0 Restarting · a reload while Zerops restarts it",
+    mate: { ...WREN, connected: false },
+    phase: null,
+    coming: "reaching",
+    voice: { surface: "stage", text: "Wren is restarting.", actions: [], processes: false },
+  },
+  {
+    id: "reconnecting",
+    label: "0 Reconnecting · its link lost past 1.5 s, no conversation shown",
+    mate: { ...WREN, connected: false },
+    phase: null,
+    coming: "reaching",
+    voice: {
+      surface: "stage",
+      text: "Reconnecting to Wren…",
+      actions: ["try-now"],
+      processes: false,
+    },
   },
   { id: "signin", label: "2 Sign-in · the choice", mate: WREN, phase: "sign-in", logins: {} },
   {
@@ -446,8 +498,33 @@ function FixtureSignIn({
   );
 }
 
+const SILENT = { surface: "stage", text: null, actions: [], processes: false } as const;
+
+/** Beviro as a slow first connect finds it: the Mate's container restarting, a stage waiting. */
+const PROCESSES: ReadonlyArray<ArrivalService> = [
+  { name: "zcp", state: "busy" },
+  { name: "appdev", state: "ok" },
+  { name: "appstage", state: "waiting" },
+  { name: "db", state: "ok" },
+];
+
 function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
   if (state.coming === undefined) return null;
+  if (state.coming === "reaching") {
+    const voice = state.voice?.surface === "stage" ? state.voice : SILENT;
+    return {
+      kind: "reaching",
+      below: (
+        <MateLinkLineView
+          onTryNow={voice.actions.includes("try-now") ? () => undefined : undefined}
+          processes={voice.processes ? <MateLinkProcessesView services={PROCESSES} /> : null}
+          projects={<a href="#projects" />}
+          projectUrl={undefined}
+          voice={voice}
+        />
+      ),
+    };
+  }
   const coming: MateComing =
     state.coming === "slow"
       ? { kind: "coming", line: "Taking longer than usual.", verb: "keep-waiting" }
@@ -508,7 +585,31 @@ function Conversation() {
   );
 }
 
+/**
+ * The runtimes under the sign-in, as its project's read lists them: the stage halves up, the dev
+ * halves and the utility still coming — appdev up 6 s after the pane opens, the rest by 12 s, so
+ * the line's words fade in its place.
+ */
+function signInRuntimes(sinceMs: number): ReadonlyArray<BirthRuntimeFact> {
+  const upAfter: ReadonlyArray<readonly [string, BirthRuntimeFact["role"], number]> = [
+    ["appdev", "dev", 6_000],
+    ["appstage", "stage", 0],
+    ["mailpit", "utility", 12_000],
+    ["webdev", "dev", 12_000],
+    ["webstage", "stage", 0],
+  ];
+  return upAfter.map(([hostname, role, after]) => ({
+    hostname,
+    role,
+    service: {
+      id: `svc-${hostname}`,
+      status: role === "stage" ? "READY_TO_DEPLOY" : sinceMs >= after ? "ACTIVE" : "CREATING",
+    },
+  }));
+}
+
 function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: string) => void }) {
+  const [openedAt] = useState(() => Date.now());
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
@@ -526,6 +627,7 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
       mate={state.mate}
       onRetry={() => go("standing-up")}
       phase={state.phase}
+      runtimes={signInRuntimes(nowMs - openedAt)}
       signIn={
         signingIn ? (
           // A state that opens on a login shows it from its first frame.

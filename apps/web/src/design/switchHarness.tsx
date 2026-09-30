@@ -1,6 +1,6 @@
 /**
- * Switching between Mates' conversations, as the conversation pane does it
- * (T1): five Mates with conversations of their own, two of them at work —
+ * Switching between Mates' conversations, as the conversation pane does it:
+ * at once, the next conversation's own list from the press. Five Mates with conversations of their own, two of them at work —
  * Iris on a run the person started the day after a message whose own run
  * never came; a first open that waits on the server; a Mate opened before
  * that paints from what the app remembers; and a run the person opened
@@ -44,8 +44,7 @@ import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRunt
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import { deriveDock } from "~/components/chat/conversationDock.logic";
 import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
-import { MessagesTimeline } from "~/components/chat/MessagesTimeline";
-import { TimelineSwitch } from "~/components/chat/TimelineSwitch";
+import { KeptTimelines } from "~/components/chat/KeptTimelines";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { readTimelinePosition } from "~/components/chat/timelineScrollAnchoring";
 import type { TimelineEntry } from "~/session-logic";
@@ -529,6 +528,11 @@ function useHarnessThread(key: string) {
 
 const COMPOSER_HEIGHT = 132;
 
+/** The harness's Mates are never removed. */
+const keptForever = () => true;
+/** Its kept lists are drawn as last shown: the harness has no store to read them from. */
+const readsNothing = () => null;
+
 function Pane({ threadKey }: { readonly threadKey: string }) {
   const { thread, live, ended, phase, entries } = useHarnessThread(threadKey);
   const listRef = useRef<LegendListRef | null>(null);
@@ -581,39 +585,43 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
           if (event.deltaY < 0) onManualNavigation();
         }}
       >
-        <TimelineSwitch switchKey={routeThreadKey}>
-          <MessagesTimeline
-            isWorking={live}
-            activeTurnStartedAt={live ? latestTurn.startedAt : null}
-            listRef={listRef}
-            timelineEntries={entries}
-            latestTurn={latestTurn}
-            runningTurnId={live ? latestTurn.turnId : null}
-            turnDiffSummaries={[]}
-            working={dock}
-            routeThreadKey={routeThreadKey}
-            onOpenTurnDiff={() => undefined}
-            supportsConversationRollback={false}
-            onRevertToTurnCount={() => undefined}
-            isRevertingCheckpoint={false}
-            onImageExpand={() => undefined}
-            activeThreadEnvironmentId={ENVIRONMENT}
-            markdownCwd={undefined}
-            resolvedTheme={appearance}
-            timestampFormat="locale"
-            workspaceRoot={undefined}
-            anchorMessageId={null}
-            onAnchorReady={() => undefined}
-            contentInsetEndAdjustment={COMPOSER_HEIGHT}
-            liveFollowEnabled={liveFollowEnabled}
-            onIsAtEndChange={onIsAtEndChange}
-            onManualNavigation={onManualNavigation}
-            hideEmptyPlaceholder={loading}
-            loading={loading}
-            syncing={phase !== null}
-            topFadeEnabled
-          />
-        </TimelineSwitch>
+        <KeptTimelines
+          open={routeThreadKey}
+          alive={keptForever}
+          Reader={readsNothing}
+          crewTimeline={null}
+          timeline={{
+            isWorking: live,
+            activeTurnStartedAt: live ? latestTurn.startedAt : null,
+            listRef,
+            timelineEntries: entries,
+            latestTurn,
+            runningTurnId: live ? latestTurn.turnId : null,
+            turnDiffSummaries: [],
+            working: dock,
+            routeThreadKey,
+            onOpenTurnDiff: () => undefined,
+            supportsConversationRollback: false,
+            onRevertToTurnCount: () => undefined,
+            isRevertingCheckpoint: false,
+            onImageExpand: () => undefined,
+            activeThreadEnvironmentId: ENVIRONMENT,
+            markdownCwd: undefined,
+            resolvedTheme: appearance,
+            timestampFormat: "locale",
+            workspaceRoot: undefined,
+            anchorMessageId: null,
+            onAnchorReady: () => undefined,
+            contentInsetEndAdjustment: COMPOSER_HEIGHT,
+            liveFollowEnabled,
+            onIsAtEndChange,
+            onManualNavigation,
+            hideEmptyPlaceholder: loading,
+            loading,
+            syncing: phase !== null,
+            topFadeEnabled: true,
+          }}
+        />
       </div>
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-5 pt-2"

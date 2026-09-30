@@ -13,7 +13,11 @@
  * Pure: no React, no clock except the `nowMs` a caller passes.
  */
 import type { TurnId } from "@t3tools/contracts";
-import { isReadOperationKind, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import {
+  isReadOperationKind,
+  standupStepRole,
+  type ZeropsOperation,
+} from "@t3tools/client-runtime/zerops/model";
 
 import { workLogEntryIsToolLike, type TimelineEntry, type WorkLogEntry } from "../../session-logic";
 import type { ChatMessage, TurnDiffSummary } from "../../types";
@@ -1175,6 +1179,26 @@ export function operationLineWords(operation: ZeropsOperation): string {
       return `Read the events of ${subject}`;
     case "discover":
       return `Looked at ${subject}`;
+    case "standup": {
+      // A stage the call queued is the next call's, one it held back waits on
+      // what did not stand up: named as coming, never counted as failed.
+      const own = operation.steps.filter((step) => standupStepRole(step) === "own");
+      const broke = own.find((step) => step.state === "failed");
+      if (failed) {
+        if (broke === undefined) return `Standing ${subject} up failed`;
+        const up = own.filter((step) => step.state === "done").length;
+        return `Stood up ${up} of ${own.length} · ${broke.label} failed`;
+      }
+      const building = own.filter((step) => step.state === "running").map((step) => step.label);
+      const next = operation.steps
+        .filter((step) => standupStepRole(step) === "next")
+        .map((step) => step.label);
+      return [
+        `Stood ${subject} up`,
+        ...(building.length === 0 ? [] : [`${namesInWords(building)} still building`]),
+        ...(next.length === 0 ? [] : [`${namesInWords(next)} next`]),
+      ].join(" · ");
+    }
     case "devServer":
       // What it came to, as its pill says it: "Running app" read as work
       // still going on, under a finished bar.
@@ -1185,6 +1209,12 @@ export function operationLineWords(operation: ZeropsOperation): string {
     default:
       return failed ? `${subject}: ${statusWord.toLowerCase()}` : `${statusWord} ${subject}`;
   }
+}
+
+/** "a", "a and b", "a, b and c". */
+function namesInWords(names: ReadonlyArray<string>): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 
 /** A setback the turn did not come back from, on the operation's own target. */
@@ -1263,6 +1293,42 @@ export function splitBatchDeploy(operation: ZeropsOperation): ZeropsOperation[] 
       ...(phase === "failed" && reason !== undefined ? { explanation: { reason } } : {}),
     };
   });
+}
+
+/**
+ * A settled stand-up as the deploys it made, one per service: each stands at
+ * its address, or broken with its build's reason — the result reads them as
+ * it reads any deploy. A running one is its bar's, not the result's.
+ */
+export function splitStandup(operation: ZeropsOperation): ZeropsOperation[] {
+  if (operation.kind !== "standup" || operation.phase === "running") return [operation];
+  const { explanation: _explanation, closing: _closing, ...shared } = operation;
+  // A stage the call queued or held back runs nothing yet; a build the call
+  // stopped waiting for still runs — no address, no verdict.
+  const parts = operation.steps
+    .filter((step) => standupStepRole(step) === "own")
+    .map((step): ZeropsOperation => {
+      const phase: ZeropsOperation["phase"] =
+        step.state === "failed" ? "failed" : step.state === "running" ? "running" : "done";
+      const link = operation.links.find((candidate) => candidate.label === step.label);
+      return {
+        ...shared,
+        key: `${operation.key}:${step.label}`,
+        kind: "deploy",
+        subject: step.label,
+        kicker: `Deploy · ${step.label}`,
+        target: { hostname: step.label },
+        phase,
+        statusWord: phase === "done" ? "Deployed" : phase === "failed" ? "Failed" : "Deploying",
+        steps: [step],
+        links: link === undefined || phase !== "done" ? [] : [{ label: "Open", url: link.url }],
+        ...(phase === "failed" && step.note !== undefined
+          ? { explanation: { reason: step.note } }
+          : {}),
+      };
+    });
+  // Nothing to split — a refusal before any service — stays the failure it is.
+  return parts.length === 0 ? [operation] : parts;
 }
 
 export function stretchOperations(stretch: Stretch): ZeropsOperation[] {
@@ -2007,7 +2073,10 @@ export function deriveOutcome(input: {
 }): OutcomeModel | null {
   const { turn } = input;
   if (turn.live || turn.limitOnly) return null;
-  const operations = turn.stretches.flatMap(stretchOperations).flatMap(splitBatchDeploy);
+  const operations = turn.stretches
+    .flatMap(stretchOperations)
+    .flatMap(splitBatchDeploy)
+    .flatMap(splitStandup);
   const settled = operations.filter((operation) => operation.phase !== "running");
 
   const services = new Map<string, OutcomeService>();

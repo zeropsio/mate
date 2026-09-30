@@ -164,7 +164,11 @@ describe("mateLink — what a door opens of a Mate, and what its own view waits 
       key: KEY,
       machines: [[KEY, machine({ credential: { ...HELD, installed: false } })]],
       registered: [],
-      link: { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } },
+      link: {
+        key: KEY,
+        environmentId: undefined,
+        reachability: { kind: "connecting", waitingOn: "exchange" },
+      },
     },
     {
       case: "never exchanged in this tab: its own view connects it",

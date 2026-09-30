@@ -142,9 +142,6 @@ export type NowLine =
   /** Over: who, what it did and for how long, and what the effort came to. */
   | { readonly kind: "worked"; readonly words: string; readonly effort: string | null };
 
-/** A step the now line carries long enough says for how long: after 30 s, in words on the same line. */
-export const LONG_STEP_MS = 30_000;
-
 /** How long a run took of the Mate's own time: its span, less what it waited on the person. */
 function workedMs(status: RunStatus): number {
   const start = Date.parse(status.startedAt);

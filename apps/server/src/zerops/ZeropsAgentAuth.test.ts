@@ -159,6 +159,22 @@ describe("buildSnapshot provenance", () => {
     );
   });
 
+  it.each([
+    { name: "a credential recorded for two people: not known", cred: true, unknown: true },
+    { name: "no credential: nothing to say", cred: false, unknown: undefined },
+  ])("says whose it is is not known — $name", ({ cred, unknown }) => {
+    const snapshot = buildSnapshot(
+      undefined,
+      { "claude-code": cred, codex: false },
+      providerAuth,
+      {},
+      new Set(["claude-code"] as const),
+    );
+    const claude = snapshot.agents.find((agent) => agent.agentId === "claude-code");
+    expect(claude?.signerUnknown).toBe(unknown);
+    expect(claude?.authorizedBy).toBe(undefined);
+  });
+
   it("omits it when nothing was ever recorded, which is the pre-existing behaviour", () => {
     const snapshot = buildSnapshot(undefined, { "claude-code": true, codex: true }, providerAuth);
 

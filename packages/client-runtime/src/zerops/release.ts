@@ -54,6 +54,7 @@
 
 import type { GiteaCommitStatus } from "./giteaClient.ts";
 import type { EnvironmentRow } from "./groupRows.ts";
+import { sameCommit } from "./versionName.ts";
 
 /** The group repo, whose pull requests are recipe changes and whose tags are the releases. */
 export const GROUP_REPOSITORY = "group";
@@ -70,7 +71,8 @@ export interface ReleaseEntry {
   readonly commit: string;
 }
 
-const FULL_SHA = /^[0-9a-f]{40}$/iu;
+/** A whole commit sha: 40 hex, or 64 in a SHA-256 repository (`versionName.ts`). */
+const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/iu;
 
 /** What a release tag is called. */
 export function releaseTagName(version: string): string {
@@ -197,7 +199,7 @@ export interface ReleaseComparison {
 export function compareForRelease(input: {
   /** `{service: full sha}` each repository's default branch holds. */
   readonly candidate: ReadonlyMap<string, string>;
-  /** `{service: full sha}` from production's version names. */
+  /** `{service: sha}` from production's version names, whole or short (`deployedCommit`). */
   readonly production: ReadonlyMap<string, string>;
 }): ReadonlyArray<ReleaseComparison> {
   const services = [...new Set([...input.candidate.keys(), ...input.production.keys()])].sort(
@@ -210,7 +212,7 @@ export function compareForRelease(input: {
       service,
       candidate: candidate === undefined ? undefined : candidate.slice(0, 7),
       production: production === undefined ? undefined : production.slice(0, 7),
-      changed: candidate !== undefined && candidate !== production,
+      changed: candidate !== undefined && !sameCommit(production, candidate),
     };
   });
 }
@@ -287,7 +289,7 @@ export function releaseOffer(input: {
   readonly mayRelease: boolean;
   /** `{service: full sha}` each repository's default branch holds. */
   readonly candidate: ReadonlyMap<string, string>;
-  /** `{service: full sha}` production runs. */
+  /** `{service: sha}` production runs, whole or short (`deployedCommit`). */
   readonly production: ReadonlyMap<string, string>;
   /** The release tag on its way to production (`releaseInFlight`). */
   readonly inFlight?: string | undefined;
@@ -392,9 +394,9 @@ export const RELEASE_IN_FLIGHT_MS = 30 * 60_000;
  */
 export function releaseInFlight(input: {
   readonly newest: ReleaseAttempt | undefined;
-  /** `{service: full sha}` production runs. */
+  /** `{service: sha}` production runs, whole or short (`deployedCommit`). */
   readonly production: ReadonlyMap<string, string>;
-  /** `{service}@{full sha}` → when its production deploy failed (`ReleaseDeploys.failed`). */
+  /** `{service}@{sha}` → when its production deploy failed (`ReleaseDeploys.failed`). */
   readonly failed: ReadonlyMap<string, string | undefined>;
   readonly nowMs: number;
 }): string | undefined {
@@ -404,12 +406,13 @@ export function releaseInFlight(input: {
   const taggedMs = Date.parse(newest.taggedAt);
   if (Number.isNaN(taggedMs) || input.nowMs - taggedMs >= RELEASE_IN_FLIGHT_MS) return undefined;
   const failedAfterTag = newest.entries.some((entry) => {
-    const failedAt = input.failed.get(`${entry.service}@${entry.commit}`);
+    const key = failedKeyOf(input.failed, entry.service, entry.commit);
+    const failedAt = key === undefined ? undefined : input.failed.get(key);
     return failedAt !== undefined && Date.parse(failedAt) >= taggedMs;
   });
   if (failedAfterTag) return undefined;
-  const running = newest.entries.every(
-    (entry) => input.production.get(entry.service) === entry.commit,
+  const running = newest.entries.every((entry) =>
+    sameCommit(input.production.get(entry.service), entry.commit),
   );
   return running ? undefined : newest.tag;
 }
@@ -463,9 +466,9 @@ export interface FlowReleaseRow extends FlowRelease {
 type ReleaseListing = Pick<FlowRelease, "tag" | "entries" | "verdict">;
 
 /**
- * The release `running` runs: the newest every commit of which it runs, full commit to full
- * commit, or `undefined`. A refused release never deployed, and one that lists nothing names
- * nothing it could run. `running` is `{hostname: full sha}` (`deployedCommit`).
+ * The release `running` runs: the newest every commit of which it runs, commit to commit
+ * (`sameCommit`), or `undefined`. A refused release never deployed, and one that lists nothing
+ * names nothing it could run. `running` is `{hostname: sha}`, whole or short (`deployedCommit`).
  *
  * Over production, it is the release that reads Live. The newest, because a roll-back re-tags an
  * earlier message verbatim ({@link rollbackTo}) and two tags then list the same commits; only the
@@ -488,7 +491,7 @@ export function releaseRunBy(
 function runsAll(release: Pick<FlowRelease, "entries">, running: ReadonlyMap<string, string>) {
   return (
     release.entries.length > 0 &&
-    release.entries.every((entry) => running.get(entry.service) === entry.commit)
+    release.entries.every((entry) => sameCommit(running.get(entry.service), entry.commit))
   );
 }
 
@@ -511,6 +514,24 @@ export function nameStopByRelease(row: EnvironmentRow, tag: string): Environment
 }
 
 /**
+ * The key `failed` (`ReleaseDeploys.failed`) holds a service's failure of `commit` under: the
+ * version name spelled the commit whole or short, and either is the same commit.
+ */
+function failedKeyOf(
+  failed: ReadonlyMap<string, string | undefined>,
+  service: string,
+  commit: string,
+): string | undefined {
+  const exact = `${service}@${commit}`;
+  if (failed.has(exact)) return exact;
+  for (const key of failed.keys()) {
+    const at = key.lastIndexOf("@");
+    if (key.slice(0, at) === service && sameCommit(key.slice(at + 1), commit)) return key;
+  }
+  return undefined;
+}
+
+/**
  * The commit the release lists, and production does not run, that failed its production deploy
  * after the release was tagged; `undefined` for none. A failure whose time is not read, or posted before the tag,
  * belongs to an earlier release of the same commit — as {@link releaseInFlight} reads it. With no
@@ -525,9 +546,9 @@ function deployFailed(
 ): ReleaseEntry | undefined {
   const taggedMs = release.taggedAt === undefined ? Number.NaN : Date.parse(release.taggedAt);
   return release.entries.find((entry) => {
-    if (production.get(entry.service) === entry.commit) return false;
-    const key = `${entry.service}@${entry.commit}`;
-    if (!failed.has(key)) return false;
+    if (sameCommit(production.get(entry.service), entry.commit)) return false;
+    const key = failedKeyOf(failed, entry.service, entry.commit);
+    if (key === undefined) return false;
     if (Number.isNaN(taggedMs)) return index === 0;
     const failedAt = failed.get(key);
     return failedAt !== undefined && Date.parse(failedAt) >= taggedMs;
@@ -549,9 +570,9 @@ export function releaseRow(
   release: FlowRelease,
   index: number,
   deploys: {
-    /** `{service: full sha}` production runs. */
+    /** `{service: sha}` production runs, whole or short (`deployedCommit`). */
     readonly production: ReadonlyMap<string, string>;
-    /** `{service}@{full sha}` → when its production deploy failed (`ReleaseDeploys.failed`). */
+    /** `{service}@{sha}` → when its production deploy failed (`ReleaseDeploys.failed`). */
     readonly failed: ReadonlyMap<string, string | undefined>;
     readonly live: boolean;
   },
@@ -620,7 +641,7 @@ export function planReleaseReads(
   const reads: Array<ReleaseRead> = [];
   for (const [service, head] of mainHeads) {
     const from = running.get(service);
-    if (from === head) continue;
+    if (from !== undefined && (from === head || sameCommit(from, head))) continue;
     reads.push({ service, head, from });
   }
   return reads;

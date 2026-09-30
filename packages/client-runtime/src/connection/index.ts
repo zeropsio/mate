@@ -1,3 +1,4 @@
+export { type ConnectionAdmission, connectionAdmission } from "./admission.ts";
 export * from "./catalog.ts";
 export * as Connectivity from "./connectivity.ts";
 export * as CredentialRenewal from "./credentialRenewal.ts";

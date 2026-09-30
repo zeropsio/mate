@@ -26,7 +26,11 @@ import type {
   ZeropsLogin,
   ZeropsLoginState,
 } from "@t3tools/contracts";
-import { zeropsLoginTitle, zeropsLoginUnavailableReason } from "@t3tools/shared/zeropsAgentAuth";
+import {
+  classifyZeropsAgentAuth,
+  zeropsLoginTitle,
+  zeropsLoginUnavailableReason,
+} from "@t3tools/shared/zeropsAgentAuth";
 
 import { resolveOwnedAgentId } from "./agentOwnership.ts";
 
@@ -143,6 +147,7 @@ export function mateLoginAsAgentRow(login: ZeropsLogin): ZeropsAgentAuth {
     flagOAuth: row.state === "authorized",
     flagToken: login.token,
     ...(login.signedInBy === undefined ? {} : { authorizedBy: { subject: login.signedInBy } }),
+    ...(login.signerUnknown === true ? { signerUnknown: true } : {}),
     ...(login.login === undefined ? {} : { login: login.login }),
   };
 }
@@ -171,4 +176,18 @@ export function resolveSpentLogin(
   const agentId = resolveOwnedAgentId(instanceId, providers);
   const agent = snapshot.agents.find((entry) => entry.agentId === agentId);
   return agent === undefined ? undefined : { key: agent.agentId, agent };
+}
+
+/**
+ * Whether the login `instanceId` spends is signed in and still being registered: runnable
+ * (`ZeropsTurnAdmission` admits it), seconds from authorized, and nothing the person does —
+ * so no surface warns about it.
+ */
+export function spentLoginRegistering(
+  instanceId: string | undefined,
+  snapshot: ZeropsAgentAuthSnapshot | null | undefined,
+  providers: ReadonlyArray<{ readonly instanceId: string; readonly driver: string }>,
+): boolean {
+  const spent = resolveSpentLogin(instanceId, snapshot, providers);
+  return spent !== undefined && classifyZeropsAgentAuth(spent.agent).kind === "registering";
 }

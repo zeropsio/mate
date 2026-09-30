@@ -96,7 +96,6 @@ import {
   resolveTimelineScrollAnchor,
   shouldRepinTimelineEndAfterRowResize,
 } from "./timelineScrollAnchoring";
-import { useTimelineSwitch } from "./TimelineSwitch";
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeStableMessagesTimelineRows,
@@ -151,6 +150,8 @@ import { TurnReport } from "./TurnReport";
 import { ConversationAfterWork, ConversationWorking, dockDraws } from "./ConversationWorking";
 import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat, RunLine } from "./RunChat";
 import { forgetRunFolds } from "./runCard.logic";
+import { KeptTimelineContext } from "./keptTimelineContext";
+import { handedOverRecently } from "../../zerops/mateHandOver";
 import type { CarriedRow } from "./stepHeight";
 import {
   TimelineRowActivityCtx,
@@ -392,16 +393,35 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     };
   }, []);
 
+  // A list the pane keeps (`KeptTimelines`): out of sight while the person
+  // is elsewhere, shown again when they come back.
+  const kept = use(KeptTimelineContext);
   // Where the person left off: the last visit this conversation remembers,
-  // read once as it opens — only when something came since — so the line
-  // marks what is new and never follows the reader around.
-  const [newSince] = useState(() => {
+  // read as it opens — and as a kept list shows again — only when something
+  // came since, so the line marks what is new and never follows the reader
+  // around.
+  const readNewSince = () => {
     const visitedAt = useUiStateStore.getState().threadLastVisitedAtById[routeThreadKey];
     const completedAt = latestTurn?.completedAt;
     return visitedAt && completedAt && Date.parse(completedAt) > Date.parse(visitedAt)
       ? visitedAt
       : null;
+  };
+  const [newSince, setNewSince] = useState(readNewSince);
+  const readNewSinceRef = useRef(readNewSince);
+  useLayoutEffect(() => {
+    readNewSinceRef.current = readNewSince;
   });
+  const shownAgain = kept?.shown ?? true;
+  const firstShownRef = useRef(true);
+  useLayoutEffect(() => {
+    if (!shownAgain) return;
+    if (firstShownRef.current) {
+      firstShownRef.current = false;
+      return;
+    }
+    setNewSince(readNewSinceRef.current());
+  }, [shownAgain]);
   // A running turn's last words wait a moment once finished: the rows are
   // derived again when the newest wait runs out.
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -560,12 +580,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(
     null,
   );
-  const timelineSwitch = useTimelineSwitch();
   const [listReady, setListReady] = useState(false);
   const onListLoad = useCallback(() => setListReady(true), []);
   // The list stands where it stays: a reading position put back, or the end
   // reached. Until then it is out of sight (`data-timeline-placing`).
   const [listPlaced, setListPlaced] = useState(false);
+  // Handed over from its Mate's own view (`mateHandOver`): its Mate stays at
+  // work in the pane until the rows stand, and they take its place at once.
+  const [handedOver] = useState(() => handedOverRecently(routeThreadKey, Date.now()));
   const [minimapHasPersistentGutter, setMinimapHasPersistentGutter] = useState(false);
   const [minimapHitStripWidth, setMinimapHitStripWidth] = useState(0);
   const [minimapCurrentIndex, setMinimapCurrentIndex] = useState<number | null>(null);
@@ -795,13 +817,35 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // A run the person watched stays open while they are here; once they leave
   // the conversation every run in it folds, so coming back it is folded from
   // the first frame and nothing moves (K7). It folds as the timeline goes,
-  // never while it is still on screen: the switch has taken its picture by
-  // then.
+  // never while it is still on screen.
+  // A list the pane keeps (`KeptTimelines`) hides as the person leaves and
+  // shows again as they come back, its runs as they stood: the keeper folds
+  // them once it lets the list go.
   const foldsOfRef = useRef(routeThreadKey);
   useLayoutEffect(() => {
     foldsOfRef.current = routeThreadKey;
   }, [routeThreadKey]);
-  useEffect(() => () => forgetRunFolds(foldsOfRef.current), []);
+  const keptBy = kept !== null;
+  useEffect(() => {
+    if (keptBy) return;
+    return () => forgetRunFolds(foldsOfRef.current);
+  }, [keptBy]);
+  // Shown after it was kept out of sight: what came meanwhile is history,
+  // not a message arriving while the person watched.
+  const newestMessageAtRef = useRef(newestMessageAt);
+  useLayoutEffect(() => {
+    newestMessageAtRef.current = newestMessageAt;
+  });
+  const shown = kept?.shown ?? true;
+  useLayoutEffect(() => {
+    if (!shown) return;
+    const at = newestMessageAtRef.current;
+    setOpenedWith((opened) =>
+      opened === null || opened.key !== foldsOfRef.current || opened.at >= at
+        ? opened
+        : { key: opened.key, at },
+    );
+  }, [shown]);
 
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
@@ -903,7 +947,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     setListReady(false);
     setListPlaced(false);
   }
-  // Placing (T1): from the list's mount until it stands where it stays — a
+  // Placing: from the list's mount until it stands where it stays — a
   // reading position put back, or the end reached — out of sight, then shown.
   // One loop, however often the rows change: a Mate streaming its answer
   // changes them every frame, and a restore restarted on each change never
@@ -912,6 +956,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // changes. Overdue after a while, it lands on the best anchor it has and
   // shows; the list's own placing at the end, which starts over on each
   // change, is ended the same way.
+  // The keeper hears when the open list stands where it stays, a conversation
+  // on its way included: nothing warms while the pane is still switching.
+  const standing = showsList ? listPlaced : !(hideEmptyPlaceholder && loading);
+  const onStanding = kept?.onStanding;
+  useEffect(() => {
+    onStanding?.(routeThreadKey, standing);
+  }, [onStanding, routeThreadKey, standing]);
   const rowsRef = useRef(rows);
   const listReadyRef = useRef(listReady);
   useLayoutEffect(() => {
@@ -1039,19 +1090,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     restoringReadingPosition,
     showsList,
   ]);
-  // The conversation says when it stands on screen where it stays (T1): its
-  // list placed — an empty conversation at once, one still on its way never.
-  // Until then the pane holds what it showed last over it.
-  const standsInPlace = showsList ? listPlaced : !(hideEmptyPlaceholder && loading);
-  useEffect(() => {
-    if (!standsInPlace || timelineSwitch === null) return;
-    const frame = requestAnimationFrame(() => timelineSwitch.painted());
-    return () => cancelAnimationFrame(frame);
-  }, [standsInPlace, timelineSwitch]);
   if (!showsList) {
     if (hideEmptyPlaceholder) {
       return (
-        <TimelineLoadingPane loading={loading} routeThreadKey={routeThreadKey} speaker={speaker} />
+        <TimelineLoadingPane
+          handedOver={handedOver}
+          loading={loading}
+          routeThreadKey={routeThreadKey}
+          speaker={speaker}
+        />
       );
     }
     return crew === null ? (
@@ -1078,6 +1125,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             // line in place while the list catches up (`foldAway`).
             data-timeline-follows-end={followingEnd ? "" : undefined}
             data-timeline-placing={listPlaced ? undefined : ""}
+            // Handed over from its Mate's own view, the rows take the place of
+            // its Mate at work as they stand, with no fade.
+            data-timeline-arrives={handedOver ? "at-once" : undefined}
             data-timeline-thread={routeThreadKey}
           >
             <LegendList<MessagesTimelineRow>
@@ -1134,62 +1184,70 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               }}
             />
           </div>
+          {handedOver && !listPlaced ? (
+            // Its Mate at work, where the pane on its way showed it, until the
+            // rows stand where they stay.
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <MateAtWork speaker={speaker} held={false} />
+            </div>
+          ) : null}
         </TimelineWorkingCtx>
       </TimelineRowActivityCtx>
     </TimelineRowCtx>
   );
 });
 
-/** When a conversation slow to come shows its Mate at work: `--animate-held-appear`'s delay. */
-const MATE_AT_WORK_AFTER_MS = 400;
-
 /**
  * The pane of a conversation on its way. It occupies the pane with the theme
  * surface so a thread switch cannot punch a hole through to the window chrome
  * (white in light mode). A conversation slow to come — a Mate opened for the
  * first time, over the network — was a blank second: its Mate works in the
- * middle of the pane instead, shown only once the wait passes 400 ms. From
- * then the pane is something on screen: the switch keeps it there while the
- * rows that replace it are placed, as it keeps a conversation left (T1).
+ * middle of the pane instead, shown only once the wait passes 400 ms.
  */
 function TimelineLoadingPane({
+  handedOver,
   loading,
   routeThreadKey,
   speaker,
 }: {
+  /** Handed over from its Mate's own view: its Mate was on screen the whole wait. */
+  readonly handedOver: boolean;
   readonly loading: boolean;
   readonly routeThreadKey: string;
   readonly speaker: ConversationSpeaker;
 }) {
-  const timelineSwitch = useTimelineSwitch();
-  useEffect(() => {
-    if (!loading || timelineSwitch === null) return;
-    const shown = setTimeout(timelineSwitch.waiting, MATE_AT_WORK_AFTER_MS);
-    return () => clearTimeout(shown);
-  }, [loading, timelineSwitch]);
-  // As it goes, while it still stands on the page.
-  useLayoutEffect(() => {
-    if (timelineSwitch === null) return;
-    return () => timelineSwitch.placing();
-  }, [timelineSwitch]);
   return (
     <div
       className="flex h-full min-h-0 items-center justify-center bg-background"
       data-timeline-loading="true"
       data-timeline-thread={routeThreadKey}
     >
-      {loading ? (
-        <span
-          aria-label={`Opening ${speaker.name}'s conversation`}
-          // Opacity alone, so it keeps its 400 ms hold under reduced
-          // motion too: without the hold a quick load flashed it.
-          className="flex animate-held-appear"
-          role="status"
-        >
-          <MateFace shape={speaker.shape} size="lg" state="working" tint={speaker.tint} />
-        </span>
-      ) : null}
+      {loading ? <MateAtWork speaker={speaker} held={!handedOver} /> : null}
     </div>
+  );
+}
+
+/**
+ * Its Mate at work in the middle of the pane. Held 400 ms before it shows —
+ * opacity alone, so it keeps its hold under reduced motion too: without it a
+ * quick load flashed it — except after a hand-over from the Mate's own view,
+ * where it was on screen the whole wait.
+ */
+function MateAtWork({
+  speaker,
+  held,
+}: {
+  readonly speaker: ConversationSpeaker;
+  readonly held: boolean;
+}) {
+  return (
+    <span
+      aria-label={`Opening ${speaker.name}'s conversation`}
+      className={held ? "flex animate-held-appear" : "flex"}
+      role="status"
+    >
+      <MateFace shape={speaker.shape} size="lg" state="working" tint={speaker.tint} />
+    </span>
   );
 }
 

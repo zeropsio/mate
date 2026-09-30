@@ -3,7 +3,10 @@
  * connection runtime, the connection catalog and its links, the probe over `fetch`, and this
  * account's storage. Adapters only: every decision is the runtime's.
  */
-import type { BearerConnectionRegistration } from "@t3tools/client-runtime/connection";
+import {
+  connectionAdmission,
+  type BearerConnectionRegistration,
+} from "@t3tools/client-runtime/connection";
 import {
   ConnectionBlockedError,
   EnvironmentRegistry,
@@ -37,7 +40,7 @@ import {
   runAtomCommand,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import type { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -47,6 +50,7 @@ import { appBasePath } from "~/basePath";
 import { environmentCatalog } from "~/connection/catalog";
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { randomUUID } from "~/lib/utils";
+import { environmentIdFromAddress } from "~/routes/-environmentRoute";
 
 import { accountLocalStorage, accountStorageKey } from "./accountLifetime";
 import { birthsForEnvironments } from "./zeropsBirths";
@@ -290,5 +294,10 @@ export function webEnvironmentPorts(input: {
     records: recordsStorage,
     catalog: catalogPort(registry),
     births: birthsForEnvironments,
+    route: () => {
+      const environmentId = environmentIdFromAddress(window.location.pathname, appBasePath());
+      return environmentId === null ? null : EnvironmentId.make(environmentId);
+    },
+    admission: connectionAdmission,
   };
 }

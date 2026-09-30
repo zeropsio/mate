@@ -733,6 +733,24 @@ describe("ZeropsDataAdapter receiver", () => {
     }),
   );
 
+  it.effect("a read answered 429 carries the status and the wait the platform asked for", () =>
+    Effect.gen(function* () {
+      const client = clientFor(
+        () => new Response("{}", { status: 429, headers: { "Retry-After": "9" } }),
+      );
+      const adapter = makeZeropsDataAdapter({
+        client,
+        makeSocket: () => new FakeSocket(),
+        timers,
+      });
+      const read = yield* adapter.read(directServiceTicket(), context()).pipe(Effect.flip);
+      expect({ status: read.status, retryAfterMs: read.retryAfterMs }).toEqual({
+        status: 429,
+        retryAfterMs: 9_000,
+      });
+    }),
+  );
+
   it.effect("returns the accepted restart Process ref and command-response observations", () =>
     Effect.gen(function* () {
       const requests: Array<{

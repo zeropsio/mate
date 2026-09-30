@@ -93,6 +93,7 @@ import {
   type SidebarProjectFlow,
 } from "~/components/zerops/SidebarZeropsTree";
 import { SidebarContent, SidebarProvider } from "~/components/ui/sidebar";
+import { HeadingLadder } from "./headingLadder";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { writeCollapsedProjects } from "~/zerops/collapsedProjects";
@@ -123,7 +124,7 @@ import {
 
 const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
 
-/** A full sha, the only thing `deployedCommit` accepts. */
+/** A full sha, as a version name written before 2026-09-30 spells it. */
 const sha = (seed: string) => seed.padEnd(40, "0").slice(0, 40);
 
 function routes(
@@ -1341,6 +1342,8 @@ writeCollapsedProjects(
         : fold.split(","),
   ),
 );
+/** `?set=ladder`: every state of a heading's second line (D′), open and folded (`headingLadder.tsx`). */
+const LADDER = params.get("set") === "ladder";
 const order = params.get("order");
 if (order === "custom" || order === "name" || order === "newest") {
   setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, order, ProjectOrderSchema);
@@ -1362,7 +1365,7 @@ const router = createRouter({
   routeTree: createRootRoute({
     component: () => (
       <SidebarProvider className="block" defaultOpen={!MENU_CLOSED}>
-        <Harness />
+        {LADDER ? <HeadingLadder width={Number(params.get("w") ?? 256)} /> : <Harness />}
       </SidebarProvider>
     ),
   }),

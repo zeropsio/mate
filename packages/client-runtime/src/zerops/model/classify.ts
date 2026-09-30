@@ -112,6 +112,7 @@ const CARD_ZEROPS_TOOLS: ReadonlySet<string> = new Set([
   "zerops_events",
   "zerops_process",
   "zerops_discover",
+  "zerops_standup",
 ]);
 
 /**

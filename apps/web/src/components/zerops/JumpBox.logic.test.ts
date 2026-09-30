@@ -321,6 +321,34 @@ describe("jumpMateOf and withLiveMates — a Mate as its row says it, read afres
     expect(jumpMateOf({ ...base, connected: true, activity: undefined }).face).toBe("idle");
   });
 
+  // Its change waiting for review needs you in the box as on its row (`mateFaceOf`).
+  it.each([
+    {
+      case: "at rest, its change waits",
+      activity: activity({ kind: "idle", face: "idle" }),
+      connected: true,
+      face: "needs",
+    },
+    {
+      case: "at work, its change waits: the work shows",
+      activity: activity(),
+      connected: true,
+      face: "working",
+    },
+    { case: "asleep, its change waits", activity: undefined, connected: false, face: "needs" },
+  ])("$case", ({ activity: read, connected, face }) => {
+    expect(jumpMateOf({ ...base, connected, activity: read, reviewWaits: true }).face).toBe(face);
+    // Read afresh, it keeps the rule.
+    const fresh = withLiveMates(
+      {
+        ...INDEX,
+        mates: [jumpMateOf({ ...base, connected, activity: undefined, reviewWaits: true })],
+      },
+      () => read,
+    );
+    expect(fresh.mates[0]?.face).toBe(face);
+  });
+
   it("puts each Mate's live conversation over what the menu last drew", () => {
     const fresh = withLiveMates(INDEX, (environmentId) =>
       environmentId === "env-shop-nova"

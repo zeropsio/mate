@@ -51,7 +51,7 @@ export interface CrewLock {
 /** A login as its conversation reads it (`resolveSpentLogin`, `resolveAgentAuthorizer`). */
 export interface CrewLoginFacts {
   /** Its agent's row — a login beyond the defaults as one (`mateLoginAsAgentRow`). */
-  readonly agent: Pick<ZeropsAgentAuth, "agentId" | "credPresent" | "flagToken">;
+  readonly agent: Pick<ZeropsAgentAuth, "agentId" | "credPresent" | "flagToken" | "signerUnknown">;
   /** Its recorded signer, this browser's own record counted until the feed carries it. */
   readonly authorizedBy: ZeropsAgentAuthorizer | undefined;
   /** This browser's own record of signing it in failed (H13). */
@@ -70,6 +70,7 @@ export function crewLoginLock(
     authorizedBy: facts.authorizedBy,
     viewerSubject,
     recordFailed: facts.recordFailed,
+    signerUnknown: facts.agent.signerUnknown,
   });
   if (agentOwnershipAllowsTurns(ownership)) return null;
   return { login, agentId: facts.agent.agentId, ownership: ownership as CrewLockOwnership };

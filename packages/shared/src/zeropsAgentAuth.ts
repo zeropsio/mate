@@ -116,3 +116,51 @@ export function zeropsLoginUnavailableReason(
         : `${title} is not signed in on this project. Sign it in to use it.`;
   }
 }
+
+// ── Signer records (D6) ──────────────────────────────────────────────────────────────────────
+
+/** D6's record, on the Mate's own project: `mate:signer:{login}:{userId}`. */
+const SIGNER_TAG_PREFIX = "mate:signer:";
+
+/**
+ * One login's record: the Zerops user id of whoever signed it in, or — where the project carries
+ * records for two or more people — who it may be, sorted, since whose it is is not known.
+ */
+export type SignerRecord = string | { readonly among: ReadonlyArray<string> };
+
+/** The one person a record names, or undefined where it names nobody or is not known. */
+export const knownSigner = (record: SignerRecord | undefined): string | undefined =>
+  typeof record === "string" && record.length > 0 ? record : undefined;
+
+/**
+ * The signer records a project's tags carry, per login key `isKey` accepts, in the order the tags
+ * first name each login: the one derivation the server's gate and the client's owner both read.
+ *
+ * Tolerant by design: an unknown login key, an empty user id and a tag with the wrong number of
+ * parts each drop out on their own — a tag list is a shared space. Records for two or more people
+ * on one login (two sign-ins racing their tag writes, a hand edit) say who it may be, never whose
+ * it is: the order the platform lists tags in is no evidence.
+ */
+export function readSignerTags(
+  tagList: ReadonlyArray<string> | undefined,
+  isKey: (key: string) => boolean,
+): Readonly<Partial<Record<string, SignerRecord>>> {
+  const named = new Map<string, Set<string>>();
+  for (const tag of tagList ?? []) {
+    if (!tag.startsWith(SIGNER_TAG_PREFIX)) continue;
+    const rest = tag.slice(SIGNER_TAG_PREFIX.length);
+    const separator = rest.indexOf(":");
+    if (separator <= 0) continue;
+    const key = rest.slice(0, separator);
+    const userId = rest.slice(separator + 1);
+    if (userId.length === 0 || !isKey(key)) continue;
+    named.set(key, (named.get(key) ?? new Set()).add(userId));
+  }
+  const signers: Partial<Record<string, SignerRecord>> = {};
+  for (const [key, users] of named) {
+    const [only, ...more] = [...users].sort();
+    if (only === undefined) continue;
+    signers[key] = more.length === 0 ? only : { among: [only, ...more] };
+  }
+  return signers;
+}

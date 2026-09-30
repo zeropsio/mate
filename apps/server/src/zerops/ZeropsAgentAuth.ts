@@ -83,6 +83,7 @@ import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsAgentFlagModule from "./ZeropsAgentFlag.ts";
 import { ZeropsAgentFlag, type ZeropsAgentFlagError } from "./ZeropsAgentFlag.ts";
 import { watchWithFallback, type WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
+import { knownSigner } from "@t3tools/shared/zeropsAgentAuth";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 import { turnAuthFailureAgent } from "./zeropsTurnAuthFailure.ts";
 import {
@@ -156,6 +157,8 @@ export const buildSnapshot = (
   credPresence: Readonly<Record<ZeropsAgentId, boolean>>,
   providerAuth: Readonly<Record<ZeropsAgentId, ServerProviderAuthStatus>>,
   authorizers: Readonly<Partial<Record<ZeropsAgentId, ZeropsAgentAuthorizer>>> = {},
+  /** Agents whose signer tags name two or more people: whose login it is is not known. */
+  unknownSigners: ReadonlySet<ZeropsAgentId> = new Set(),
 ): ZeropsAgentAuthSnapshot => {
   const agents = KNOWN_AGENT_IDS.map((agentId) => {
     const suffix = AGENT_OAUTH_SUFFIX[agentId];
@@ -174,6 +177,7 @@ export const buildSnapshot = (
       // for a credential that has since been removed would name an owner for
       // nothing.
       ...(credPresent && authorizedBy ? { authorizedBy } : {}),
+      ...(credPresent && unknownSigners.has(agentId) ? { signerUnknown: true } : {}),
     };
   });
   return { available: true, agents };
@@ -330,7 +334,7 @@ export interface ZeropsAgentAuthOptions {
    * client writes the record only after it sees the login succeed. Absent
    * disables provenance entirely — every snapshot then omits `authorizedBy`.
    */
-  readonly readSigners?: Effect.Effect<Readonly<Partial<Record<ZeropsAgentId, string>>>>;
+  readonly readSigners?: Effect.Effect<ZeropsProjectSignersModule.ProjectSigners>;
   /**
    * The agents whose turn just failed because they are not signed in
    * (`zeropsTurnAuthFailure.ts` over the provider runtime event bus at
@@ -430,7 +434,8 @@ const agentAuthEqual = (
   a.flagToken === b.flagToken &&
   a.providerAuth === b.providerAuth &&
   a.state === b.state &&
-  a.authorizedBy?.subject === b.authorizedBy?.subject;
+  a.authorizedBy?.subject === b.authorizedBy?.subject &&
+  a.signerUnknown === b.signerUnknown;
 
 /** Field-by-field equality — avoids a JSON round-trip for what is only ever an internal dedup check. */
 const snapshotsEqual = (a: ZeropsAgentAuthSnapshot, b: ZeropsAgentAuthSnapshot): boolean =>
@@ -501,16 +506,18 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       // it must see the write. The document is a handful of bytes.
       const signers = readSigners === undefined ? {} : yield* readSigners;
       const authorizers: Partial<Record<ZeropsAgentId, ZeropsAgentAuthorizer>> = {};
-      for (const [agentId, subject] of Object.entries(signers)) {
-        if (typeof subject === "string" && subject.length > 0) {
-          authorizers[agentId as ZeropsAgentId] = { subject };
-        }
+      const unknownSigners = new Set<ZeropsAgentId>();
+      for (const [agentId, record] of Object.entries(signers)) {
+        const subject = knownSigner(record);
+        if (subject !== undefined) authorizers[agentId as ZeropsAgentId] = { subject };
+        else if (typeof record === "object") unknownSigners.add(agentId as ZeropsAgentId);
       }
       const snapshot = buildSnapshot(
         current.env,
         current.credPresence,
         current.providerAuth,
         authorizers,
+        unknownSigners,
       );
       if (current.lastPublished !== undefined && snapshotsEqual(snapshot, current.lastPublished)) {
         return;

@@ -2092,7 +2092,7 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   - _Why:_ with the person's bubble neutral, the Mate's words must differ from theirs at a glance,
     and its tint already means who; the machinery must not outweigh the words
 - **2026-09-29** — **The card's foot says what is happening, with one clock** (K10, K3). The now
-  line carries the step itself while it runs, its time after 30 s ("· 0:31"), several at once
+  line carries the step itself while it runs (its own time after 30 s dropped 2026-09-30: the run's is the one clock), several at once
   counted by kind with a line each; a step that ends lands in the chat above (a 320 ms rise) and the
   line's words change in place (260 ms). Each running thing ticks in one place — the run on the now
   line, m:ss in ink, a deploy in its bar — and a call still running says "Running" where its time
@@ -2326,7 +2326,8 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   older server sends neither a step nor a question, and the row keeps its dots or its last words.
   - _Why:_ a pace on the server would need an event per step, and the menu and the card must never
     say different words
-- **2026-09-29** — **Switching Mates never shows an empty pane** (T1). The conversation being left
+- **2026-09-29** — **Switching Mates never shows an empty pane** (T1; superseded 2026-09-30: a
+  switch is at once). The conversation being left
   stays as a still picture over the pane until the next one stands where it stays, then fades over
   150 ms (at once under reduced motion); a Mate opened before paints where it was left. The picture
   is a copy of the page's conversation with its scroll, shadow roots, canvases and animations put
@@ -2334,7 +2335,7 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   conversation holds; the header, the composer's top and the composer switch at once.
   - _Why:_ an empty frame reads as a crash and a late scroll as a glitch: measured, about 320 ms
     empty on a first open and a 96 px scroll one frame after a return
-- **2026-09-29** — **The picture holds at most 600 ms.** A conversation slower than that gives way
+- **2026-09-29** — **The picture holds at most 600 ms** (superseded 2026-09-30). A conversation slower than that gives way
   to its own pane, its Mate at work (from 400 ms), held the same way while its rows are placed; a
   working Mate's conversation still on its way shows that pane, never a run made up from its status.
   - _Why:_ a picture of the wrong conversation under the new header for seconds would mislead
@@ -3036,3 +3037,129 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   stands it up.
   - _Why:_ on the live run (Kestrel, Enzo) the stand-up went to a project with no recipe and no
     code, and the Mate could only report that there was nothing to set up
+
+- **2026-09-30** — **A switch between Mates is at once** (amended the same evening: a return shows
+  the conversation as it stood, below) (the owner: "transition between mates
+  suck, I'd do it immediately then start loading content … it feels like when there are two
+  transparent texts transitioning over itself … the textarea element is transitioning from itself
+  to itself"). The press shows the next Mate's pane — its header, its composer, its own list — and
+  its rows come in as they are placed: out of sight until then, in over 140 ms, its Mate at work
+  from 400 ms when slow to come. No picture of the conversation left is held, and nothing
+  crossfades. The composer's frame takes no colour transition: its surface is painted by the frame
+  or by the shell's layer as a drawer comes and goes, never faded between the two.
+  - _Why:_ measured on the localhost pair, the conversation left stayed 250–600 ms after the press
+    and faded over the next one for 150 ms, two texts at once; the composer's frame faded three
+    times during one first open, showing the page through it
+
+- **2026-09-30** — **A return shows the conversation as it stood** (the owner, on the switch at
+  once: "the transition between chats still suck, sometimes the text area still flashed because
+  old one is gone sooner than new one is in"). The pane keeps the last four conversations' lists
+  mounted, hidden where the open one stands, so a return shows its rows in place in the press
+  frame, with no fade and nothing moving after. Resting on a menu row for 100 ms, focusing it or
+  touching it warms that conversation into the same keep. Only a cold open places its rows out of
+  sight and brings them in over 140 ms. A run in a kept conversation folds when its list leaves the
+  keep, not when the person leaves it.
+  - _Why:_ measured, a return blanked the list 150–210 ms and a first open 270–500 ms before the
+    rows faded in: the text went, nothing stood, and text came back
+- **2026-09-30** — **The composer never leaves the screen across a switch.** A Mate's own view
+  while it is reached, and a reload's stage before its conversation arrives, draw the composer
+  standing where the conversation's will stand, and the conversation header's subject, ··· menu and
+  panel toggles, inert until it connects. The stand-in takes typing into that conversation's
+  draft, and the real composer takes the caret where the person left it. After the hand-over the
+  list shows its Mate at work at once until its rows are placed.
+  - _Why:_ a first open after a reload went 2.5–6 s with no composer at all, and the face, nothing,
+    face, rows sequence read as flicker
+- **2026-09-30** — **A Mate's link speaks with one voice** (the owner: "banners and snacks and
+  weirdly aligned states all over the place"). Over a conversation that shows, only the banner
+  above the composer speaks; where no conversation can show, the Mate's stage does — face, name,
+  one line, centred on one axis. A state holds 1.5 s before it says anything. The words:
+  "Opening Quinn…" on a slow first connect, "Reconnecting to Quinn…" (Try now) only after a link
+  that was up drops, "Quinn is restarting." and "Quinn is updating." when the platform says so (a
+  drop re-reads the platform once to learn it). The top pill and the "message not sent" toast are
+  gone, and the sign-in's own surfaces say nothing about registering. A reload draws the stage from
+  the Mate's name and face this browser remembers (per account, cleared on sign-out).
+  - _Why:_ one restart stacked four surfaces saying overlapping things, a first load said
+    "Reconnecting…" for 3.4 s though nothing was lost, and a reload showed a blank pane for 2–3 s
+- **2026-09-30** — **A slow first connect lists what the platform is doing** (the owner: "why isnt
+  this showing the processes or something?"). Past 1.5 s the stage's line is followed by the
+  project's services as the arrival's chips — the zcp service first while a process runs on it —
+  in the order first seen.
+  - _Why:_ "Connecting…" said nothing while the platform knew exactly what was happening
+- **2026-09-30** — **Two signer records for one login name nobody.** When a login carries signer
+  tags for two people, the Mate reads as signed in, no ownership notice shows and no owner badge
+  names anyone; the server still lets in anyone the tags name.
+  - _Why:_ a restart showed "Signed in by another project member" to the person who signed it in;
+    naming nobody is never wrong, naming the wrong person is
+- **2026-09-30** — **The arrival says what each step waits on.** The copy step names its managed
+  services from the press (the creation writes them on the birth record); the runtimes sit under
+  the workspace, and while they come up after the sign-in shows, one quiet line under the sign-in
+  names them ("appdev · webdev coming up") — its words fade when all are up, its height stays until
+  the sign-in goes. Chips keep the order first seen. The steps are as wide as their words and
+  centred on the sentence's axis. A step's clock counts from the earliest start it knows.
+  - _Why:_ the copy step listed runtimes it did not wait for, chips reordered at 168 s, a clock ran
+    0:12 → 0:08, and the runtimes left the page 100–150 s before they were up
+- **2026-09-30** — **The stand-up's card shows its builds** (the owner: "what is even this state?
+  it shows nothing"). A stand-up call docks a bar of the platform's builds for the services it
+  deploys: a segment each, the one building's pipeline step or "3 building", "1 of 4", a failed one
+  in red while the rest go on. The call's words come from zcp's result: "Stood development up ·
+  apistage and webstage next", then "Stood stage up". One clock per run everywhere: no step keeps
+  a clock of its own beside the run's.
+  - _Why:_ zcp's progress notifications never reach the card — the Claude CLI drops them from its
+    headless stream — while the platform's own processes already reach the client
+- **2026-09-30** — **The stand-up answers once development is up** (zcp; the owner: "that's
+  crazy … whether something couldn't have been run in parallel better?"). Every dev half deploys at
+  once; a stage waits only for its dev half and the stages its build reads (the recipe's
+  `${host_…}` build variables; the recipe writer sets priorities from the same reads). The first
+  call returns with the stages queued; the Mate starts the dev servers, says so, and a second call
+  builds the stages. Stages beside their dev halves stay out: their start-up migrations would race
+  on the project's one database.
+  - _Why:_ Beviro's 26 minutes were four builds in a row; the one real build-time edge is the
+    storefront's stage reading its API's stage
+- **2026-09-30** — **A link in an answer reads as part of its sentence** (the owner: "design of
+  this is total shit oh my god, so painful"). Links take the sentence's ink with a quiet underline
+  that fills on hover; a service the side panel opens leads with the panel's own globe, nothing
+  fetched; nothing stands between a link's words and its full stop. External links drop their ↗.
+  - _Why:_ a blurry fetched favicon, saturated blue and a glyph glued before the full stop
+- **2026-09-30** — **The preview loads exactly the address it shows.** No cache-key query; a new
+  deploy or Reload remounts the frame. A static page may show its previous copy after a deploy
+  until the browser lets go of it; zcp tells static apps to send HTML with `Cache-Control:
+no-cache`.
+  - _Why:_ an app that routes on the exact address answered "Not found" to `/?_mate_preview=…`
+- **2026-09-30** — **"Waits for your review" is one rule on every face.** A Mate whose own change
+  waits for the person's review wears the needs face and the amber dot on its row, its folded
+  heading, the waiting stack and the projects pages, by the rule the composer's card uses; a Mate
+  at work still shows its work. "Waiting on an answer" stays the conversation's question.
+  - _Why:_ the card showed the surprised face while the row kept the plain one, and folded
+    headings lost the faces of Mates waiting on a review
+- **2026-09-30** — **Data never vanishes because its source blinked.** The account's Gitea answer
+  holds for 60 s within the same organisation while its project is missing from the inventory, so
+  projects keep their reads; a project's pull requests and main show nothing until its changes are
+  read, never "Nothing merged".
+  - _Why:_ rows claimed "None yet" / "Nothing merged" for 11–28 s per project on a reload
+- **2026-09-30** — **A menu verb opens what it names.** "Set up stage" and "Set up production" open
+  the projects page's own form for that environment.
+  - _Why:_ both only landed on the projects page
+- **2026-09-30** — **A version is named for people** (the owner: "these crazy long version names").
+  App versions read `main 7e2d4c1` (a stage, or a Mate's push), `v0.1.0 7e2d4c1` (a release),
+  `HEAD 7e2d4c1`, `commit 7e2d4c1`; `-dirty` names no commit. Readers read old names too and resolve
+  a short sha against the commits they know before comparing.
+  - _Why:_ the name is the platform's evidence of what runs, and people read it in Zerops
+- **2026-09-30** — **The Mate being opened connects first, and paints before its socket.** Other
+  Mates' sockets wait until the route's is open (5 s at most); the Mate's descriptor names what
+  the thread's snapshot needs, so the conversation paints over HTTP while the socket connects and
+  the socket resumes from the snapshot.
+  - _Why:_ the route's socket queued 4th–6th behind the others (one socket connects at a time to
+    the one Zerops address); measured p50 9.8 s, worst 15 s to the conversation
+- **2026-09-30** — **A project's release lives under its name (D′)** (the prod/stage board, picked
+  by the owner). The pills say only whether each place serves: dashed before it serves anything, the
+  stepped spinner inside it while it comes up, green for 4 s as it lands. The open heading's second
+  line says one thing at a time, in this order: a release that didn't go out (amber, Review), a
+  place that didn't come up (amber, Details), a place coming up ("Stage coming up · building the
+  app"), a landing this tab watched ("v2.4.0 is live · just now", 4 s), a release on its way
+  ("Releasing v2.4.0…"), changes waiting ("3 changes not released · all on stage"), each with its
+  door at the line's end in the column of the pull requests' Review. A folded heading carries the
+  release's mark after its faces. The line opens and folds as a 220 ms height reveal the Mates ride.
+  Where the board is silent: "coming up" only within 15 minutes of the place being made; a
+  production's first build is its first release; "all on stage" means the stage runs main's head.
+  - _Why:_ a row after the Mates read as the last Mate's, and Heron's stage pill sat plain for the
+    two minutes it took to come up

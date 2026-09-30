@@ -577,6 +577,23 @@ describe("serviceRows", () => {
     { name: "behind main's head", appVersionName: SHA_WEB, mainHead: SHA_API },
     { name: "while main's head is not read", appVersionName: SHA_WEB, mainHead: undefined },
     {
+      name: "at main's head, named by the branch and the short sha",
+      appVersionName: `main ${SHA_WEB.slice(0, 7)}`,
+      mainHead: SHA_WEB,
+      line: "head of main",
+    },
+    {
+      name: "behind main's head, named by the branch and the short sha",
+      appVersionName: `main ${SHA_API.slice(0, 7)}`,
+      mainHead: SHA_WEB,
+    },
+    {
+      name: "at main's head, released under the tag and the short sha",
+      appVersionName: `v0.1.14 ${SHA_WEB.slice(0, 7)}`,
+      mainHead: SHA_WEB,
+      line: "deployed with v0.1.14",
+    },
+    {
       name: "at main's head, deployed with a name",
       appVersionName: `${SHA_WEB} v0.1.14 gitea`,
       mainHead: SHA_WEB,
@@ -594,6 +611,25 @@ describe("serviceRows", () => {
       age: (iso) => iso,
     });
     expect(row?.line).toBe(line);
+  });
+
+  it.each([
+    { name: "before main's head is read", mainHead: undefined },
+    { name: "at main's head", mainHead: SHA_WEB },
+  ])("keys a stage service's commit by its name's own spelling $name", ({ mainHead }) => {
+    const [row] = serviceRows({
+      environment: "stage",
+      services: [
+        { hostname: "web", repository: "web", appVersionName: `main ${SHA_WEB.slice(0, 7)}` },
+      ],
+      platform: { state: "unread", waitingFor: null },
+      mainHead,
+      routes: [],
+      offers: [],
+      nowMs: 100_000,
+      age: (iso) => iso,
+    });
+    expect(row?.sha).toBe(SHA_WEB.slice(0, 7));
   });
 
   it("says no state for a service that runs nothing, whose commit's place already says so", () => {

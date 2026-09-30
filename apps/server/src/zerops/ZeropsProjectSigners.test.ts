@@ -57,6 +57,36 @@ describe("parseSignerTags", () => {
     });
   }
 
+  // Two records for one login (two sign-ins racing their tag writes, or a hand edit): whose it is
+  // is not known, and never guessed from the order the platform lists the tags in.
+  for (const [name, tags, expected] of [
+    ["one record", [signerTag("claude-code", JAN)], { "claude-code": JAN }],
+    [
+      "the same person twice",
+      [signerTag("claude-code", JAN), signerTag("claude-code", JAN)],
+      { "claude-code": JAN },
+    ],
+    [
+      "two people",
+      [signerTag("claude-code", JAN), signerTag("claude-code", EVA)],
+      { "claude-code": { among: [EVA, JAN] } },
+    ],
+    [
+      "two people, listed the other way round",
+      [signerTag("claude-code", EVA), signerTag("claude-code", JAN)],
+      { "claude-code": { among: [EVA, JAN] } },
+    ],
+    [
+      "two people on one login, one on another",
+      [signerTag("claude-code", JAN), signerTag("claude-code", EVA), signerTag("codex", EVA)],
+      { "claude-code": { among: [EVA, JAN] }, codex: EVA },
+    ],
+  ] as const) {
+    it(`reads ${name}`, () => {
+      assert.deepStrictEqual(parseSignerTags(tags), expected);
+    });
+  }
+
   it("reads nothing out of a project with no tags at all", () => {
     assert.deepStrictEqual(parseSignerTags(undefined), {});
   });
@@ -201,6 +231,18 @@ describe("loginTurnRefusal", () => {
       { state: "not-authorized", token: false, signer: JAN, subject: JAN },
       { kind: "not-signed-in", auth: "not-authorized" },
     ],
+    // Two records for one login: whose credential it is is not known, and a stale signer must
+    // never run turns on another's — refused for everyone until somebody signs it in again.
+    [
+      "a login recorded for two people, one of them me",
+      { state: "authorized", token: false, signer: { among: [EVA, JAN] }, subject: JAN },
+      { kind: "unsettled" },
+    ],
+    [
+      "a login recorded for two people, neither of them me",
+      { state: "authorized", token: false, signer: { among: [EVA, JAN] }, subject: "ida-user-id" },
+      { kind: "unsettled" },
+    ],
     [
       "a project token somebody else set",
       { state: "authorized", token: true, signer: EVA, subject: JAN },
@@ -287,6 +329,22 @@ describe("planAgentSignOut", () => {
       [],
     );
   });
+
+  // A record naming two people, one of whom has left: the credential may be theirs, so it goes.
+  for (const [name, active, out] of [
+    ["one of the two has left", [EVA], ["claude-code"]],
+    ["both are still members", [EVA, JAN], []],
+  ] as const) {
+    it(`a record that names two people: ${name}`, () => {
+      assert.deepStrictEqual(
+        planAgentSignOut({
+          signers: { "claude-code": { among: [EVA, JAN] } },
+          activeMemberIds: new Set(active),
+        }),
+        out,
+      );
+    });
+  }
 
   it("signs nobody out when nothing is recorded", () => {
     assert.deepStrictEqual(planAgentSignOut({ signers: {}, activeMemberIds: new Set() }), []);

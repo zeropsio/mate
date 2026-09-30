@@ -25,15 +25,29 @@
  * on the account — says why here, with the way to the projects: nothing here hands the person to
  * another screen on its own (the owner, 2026-09-30: "it just throws me at /zerops page").
  */
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  parseScopedThreadKey,
+  scopedThreadKey,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
 import {
   assignCandidateMateTints,
   resolvePrimaryConversation,
   type ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
 import { applyProjectCreationVerdict } from "@t3tools/client-runtime/zerops/candidates";
-import type { RouteGatePhrase } from "@t3tools/client-runtime/zerops/environments";
-import { birthRuntimesFacts } from "@t3tools/client-runtime/zerops/birthProgress";
+import {
+  MATE_VOICE_QUIET_MS,
+  MATE_VOICE_SLOW_MS,
+  mateVoice,
+  mateVoiceQuietKey,
+  type MateVoice,
+} from "@t3tools/client-runtime/zerops/environments";
+import {
+  birthCopyServices,
+  birthRuntimesFacts,
+  type BirthCopyService,
+} from "@t3tools/client-runtime/zerops/birthProgress";
 import type { ZeropsService } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
@@ -53,7 +67,7 @@ import {
 } from "~/zerops/mateComing";
 import { zeropsMateIdentityOf, type ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { takeMateConversation } from "~/zerops/mateOpening";
-import { arrivalSteps, comingSentence } from "~/zerops/mateArrival";
+import { arrivalSteps, comingSentence, inFirstSeenOrder } from "~/zerops/mateArrival";
 import { MATE_STAND_UP_RETRY_LABEL, mateStandUpPhase } from "~/zerops/mateStandUp";
 import { useNewMate } from "~/zerops/newMate";
 import {
@@ -61,6 +75,7 @@ import {
   newProjectProgress,
   useNewProjectBirths,
 } from "~/zerops/newProjectBirth";
+import { useHeldPast } from "~/zerops/useHeldPast";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useUsualAgent } from "~/zerops/useUsualAgent";
@@ -74,11 +89,19 @@ import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { ConversationStripView } from "../chat/ConversationStrip";
+import { MateLinkLine, MateOpeningLine } from "./MateLinkLine";
 import { zeropsAccountDisplay } from "./landing/ZeropsAccountControl.logic";
 import { ZeropsProjectLink } from "../chat/ChatHeader";
 import { Button } from "../ui/button";
 import { SidebarInset } from "../ui/sidebar";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
+import { ComposerStandIn, type StandInTyped } from "../chat/ComposerStandIn";
+import { PanelLayoutControls } from "../chat/PanelLayoutControls";
+import { EllipsisIcon } from "lucide-react";
+import { rememberedActivity } from "~/zerops/menuMemory";
+import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
+import { useComposerDraftStore } from "~/composerDraftStore";
+import { draftWithTyped, handOverMateConversation } from "~/zerops/mateHandOver";
 import type { BirthLineProgress } from "./ZeropsBirthProgress.logic";
 import { ZeropsArrivalSteps, type ArrivalYou } from "./ZeropsArrivalSteps";
 import { ALMOST_THERE_LINE } from "./ZeropsProjectRow.logic";
@@ -97,6 +120,8 @@ const NO_FACE: ZeropsMateFace = { tint: "slate", shape: "squircle" };
 
 /** The hand-over's own length: the stage's words and slot handing over (`ArrivalSwap`), then the route. */
 const HAND_OVER_MS = 280;
+
+const NOTHING_TYPED: StandInTyped = { text: "", caret: 0 };
 
 /** How long a connected Mate's conversation may take to be read live before it hands over anyway. */
 const LIVE_GRACE_MS = 3_000;
@@ -201,7 +226,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     [environmentId, primaryId],
   );
   const status = useThreadStatus(threadRef);
-  const empty = useMateEmptyState({ environmentId, mate, threadRef });
+  const empty = useMateEmptyState({ environmentId, mate, threadRef, projectId });
   // Its conversation read live and its agents' sign-in are what the conversation paints first; a
   // few seconds without them and the view hands over anyway.
   const [graceOver, setGraceOver] = useState(false);
@@ -224,12 +249,58 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const [handing, setHanding] = useState(false);
   if (up && !handing) setHanding(true);
   const handingOver = useNewMate((state) => state.handingOver);
+  // What the person types into the composer standing in while it connects: the conversation's
+  // draft, the caret where they left it (`mateHandOver`). The conversation its menu row stands
+  // for is known before it connects — its draft is typed into as its own composer would; else
+  // what is typed joins the conversation's draft as it opens.
+  const liveActivity = useZeropsThreadActivity(threadRef);
+  const remembered = rememberedActivity(projectId);
+  const standInKey = liveActivity?.threadKey ?? remembered?.threadKey ?? null;
+  // Where the typing went, fixed as it began: the conversation the row named then, or nowhere
+  // yet — then it is the view's own until it moves into the conversation's draft.
+  const [typing, setTyping] = useState<{
+    readonly typed: StandInTyped;
+    readonly into: string | null;
+    readonly touched: boolean;
+  }>({ typed: NOTHING_TYPED, into: null, touched: false });
+  const shownKey = typing.touched ? typing.into : standInKey;
+  const shownDraft = useComposerDraftStore((state) =>
+    shownKey === null ? "" : (state.draftsByThreadKey[shownKey]?.prompt ?? ""),
+  );
+  const typed: StandInTyped =
+    shownKey === null ? typing.typed : { text: shownDraft, caret: typing.typed.caret };
+  const type = (next: StandInTyped) => {
+    const into = typing.touched ? typing.into : standInKey;
+    const intoRef = into === null ? null : parseScopedThreadKey(into);
+    if (intoRef !== null) useComposerDraftStore.getState().setPrompt(intoRef, next.text);
+    setTyping({ typed: next, into, touched: true });
+  };
+  const typedRef = useRef({ typed, touched: typing.touched, key: typing.into });
+  useEffect(() => {
+    typedRef.current = { typed, touched: typing.touched, key: typing.into };
+  });
   useEffect(() => {
     if (!handing || environmentId === null || threadRef === null) return;
     // Kept read from above every view while the route changes under it.
     if (cameUp) handingOver(threadRef);
     const timer = setTimeout(
       () => {
+        const written = typedRef.current;
+        const conversation = scopedThreadKey(threadRef);
+        let caret: number | null = written.touched ? written.typed.caret : null;
+        if (written.touched && written.key !== conversation && written.typed.text.length > 0) {
+          // Typed where no conversation was known, or into another than the one that opened.
+          const drafts = useComposerDraftStore.getState();
+          const draft = draftWithTyped(
+            drafts.getComposerDraft(threadRef)?.prompt ?? "",
+            written.typed,
+          );
+          drafts.setPrompt(threadRef, draft.prompt);
+          const typedInto = written.key === null ? null : parseScopedThreadKey(written.key);
+          if (typedInto !== null) drafts.setPrompt(typedInto, "");
+          caret = draft.caret;
+        }
+        handOverMateConversation(conversation, { nowMs: Date.now(), caret });
         takeMateConversation(projectId)?.(threadRef);
         void navigate({
           to: "/$environmentId/$threadId",
@@ -326,14 +397,27 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           }),
         },
   );
+  // What its copy's first step waits on: the managed services its birth planned, else its
+  // project's own.
+  const managed = useMemo(
+    () =>
+      birthCopyServices({
+        planned: birth?.managed,
+        services: resolvedServices(inventory.services.get(projectId)),
+      }),
+    [birth?.managed, inventory.services, projectId],
+  );
   // A New project's first Mate: the project's own steps stay before the Mate's, done, as its view
   // drew them before the platform took the Mate's project — one line, one clock, from the press.
-  const lineProgress: BirthLineProgress | undefined =
+  const lineProgress: ArrivalProgress | undefined =
     progress === null
       ? undefined
-      : made === undefined
-        ? progress.progress
-        : newProjectProgress(made, progress.progress, progress.nowMs);
+      : {
+          ...(made === undefined
+            ? progress.progress
+            : newProjectProgress(made, progress.progress, progress.nowMs)),
+          ...(managed === undefined ? {} : { managed }),
+        };
 
   const [removing, setRemoving] = useState(false);
   const [trouble, setTrouble] = useState<string | null>(null);
@@ -382,6 +466,25 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const nowMs = useSecondsNowMs(
     page?.kind === "reaching" && page.reachability?.kind === "retrying",
   );
+  // What its link says under its name (`mateVoice`): nothing for a blip, "Opening Wren…" and the
+  // platform's processes for a first connect that is slow, a restart in its name.
+  const linkReachability =
+    page?.kind === "reaching"
+      ? page.reachability
+      : page?.kind === "up"
+        ? (link.reachability ?? null)
+        : null;
+  // The quiet is kept by what the voice would say, so "Opening Wren…" never goes and comes back.
+  const linkQuietKey = `${projectId}:${mateVoiceQuietKey(linkReachability)}`;
+  const linkPast = useHeldPast(linkQuietKey, MATE_VOICE_QUIET_MS);
+  const linkSlow = useHeldPast(linkQuietKey, MATE_VOICE_SLOW_MS);
+  const linkVoice = mateVoice({
+    reachability: linkReachability,
+    conversationShown: false,
+    heldMs: linkSlow ? MATE_VOICE_SLOW_MS : linkPast ? MATE_VOICE_QUIET_MS : 0,
+    nowMs,
+    mateName: named.name,
+  });
   const view: MateEmptyComing | null =
     page === undefined
       ? null
@@ -414,26 +517,48 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
             }
         : page.kind === "coming"
           ? null
-          : {
-              kind: page.kind === "unreachable" ? "unreachable" : "reaching",
-              below: (
-                <MateOpeningLine
-                  onTryNow={tryNow}
-                  projects={<Link to="/zerops" />}
-                  phrase={mateOpeningPhrase(
-                    page.kind === "up"
-                      ? { kind: "reaching", reachability: link.reachability }
-                      : page,
-                    { nowMs, mateName: named.name },
-                  )}
-                  projectUrl={mate.projectUrl}
-                />
-              ),
-            };
+          : page.kind === "unreachable"
+            ? {
+                kind: "unreachable",
+                below: (
+                  <MateOpeningLine
+                    onTryNow={tryNow}
+                    projects={<Link to="/zerops" />}
+                    phrase={mateOpeningPhrase(page, { nowMs, mateName: named.name })}
+                    projectUrl={mate.projectUrl}
+                  />
+                ),
+              }
+            : {
+                kind: "reaching",
+                below: (
+                  <MateLinkLine
+                    mateServiceId={mate.serviceId}
+                    onTryNow={tryNow}
+                    projectId={projectId}
+                    projectUrl={mate.projectUrl}
+                    voice={linkVoice.surface === "none" ? SILENT_STAGE : linkVoice}
+                  />
+                ),
+              };
+
+  // An existing Mate's composer stands in its place while its link is made, as its conversation
+  // will draw it: a switch here from a conversation keeps it on screen. A new Mate holds it back
+  // for its stand-up; one that cannot be opened has nothing to write to.
+  const standsInComposer = shown === undefined && page?.kind !== "unreachable";
+  // What the Mate is on, as its menu row says it: its conversation's own once its conversations
+  // are read, else what the menu remembers drawing.
+  const standInSubject = liveActivity?.subject ?? remembered?.subject ?? null;
 
   return (
     <MateComingFrame
-      header={<MateComingHeader mate={{ ...mate, connected: environmentId !== null }} />}
+      composer={standsInComposer ? <ComposerStandIn onType={type} typed={typed} /> : null}
+      header={
+        <MateComingHeader
+          mate={{ ...mate, connected: environmentId !== null }}
+          standsIn={standsInComposer ? { subject: standInSubject } : null}
+        />
+      }
     >
       {view === null ? null : (
         <MateEmptyStateView
@@ -442,6 +567,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           onRetry={empty.onRetry}
           phase={handing && cameUp ? empty.phase : phaseAhead}
           signIn={handing && cameUp ? empty.signIn : null}
+          runtimes={empty.runtimes}
           signInRequired={empty.signInRequired}
           unknown={handing && cameUp ? empty.unknown : null}
         />
@@ -457,9 +583,12 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
  */
 export function MateComingFrame({
   header,
+  composer = null,
   children,
 }: {
   readonly header: ReactNode;
+  /** The composer standing where its conversation's will (`ComposerStandIn`). */
+  readonly composer?: ReactNode;
   readonly children: ReactNode;
 }) {
   return (
@@ -471,7 +600,10 @@ export function MateComingFrame({
         <WorkspacePageHeader className="relative bg-background" data-chat-header>
           {header}
         </WorkspacePageHeader>
-        <div className="relative flex min-h-0 flex-1 flex-col">{children}</div>
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          {children}
+          {composer}
+        </div>
       </div>
     </SidebarInset>
   );
@@ -483,10 +615,17 @@ export function MateComingFrame({
  */
 export function MateComingHeader({
   mate,
+  standsIn = null,
 }: {
   readonly mate: Pick<ZeropsMateIdentity, "name" | "tint" | "shape" | "connected"> & {
     readonly projectUrl: string | undefined;
   };
+  /**
+   * An existing Mate's conversation header, standing in until it connects: what the Mate is on
+   * (its menu row's subject), the header's menu and the panel toggles, each in its place and
+   * inert, so the header stays as it is when the conversation takes over.
+   */
+  readonly standsIn?: { readonly subject: string | null } | null;
 }) {
   return (
     <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
@@ -500,7 +639,7 @@ export function MateComingHeader({
           face: mate.connected ? "idle" : "sleep",
           open: true,
           threadId: null,
-          tooltip: null,
+          tooltip: standsIn?.subject ?? null,
         }}
         onCloseChat={() => undefined}
         onOpen={() => undefined}
@@ -510,76 +649,51 @@ export function MateComingHeader({
       />
       <span className="flex size-4 shrink-0" />
       <div className="flex shrink-0 items-center justify-end gap-1 pr-18.25 sm:pr-14.25">
+        {standsIn === null ? null : (
+          <Button
+            aria-label="More header actions"
+            data-chat-header-ghost
+            inert
+            size="icon-sm"
+            variant="ghost-muted"
+          >
+            <EllipsisIcon className="size-4" />
+          </Button>
+        )}
         {mate.projectUrl === undefined ? null : <ZeropsProjectLink projectUrl={mate.projectUrl} />}
       </div>
+      {standsIn === null ? null : (
+        <div
+          className="absolute top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]"
+          data-workspace-titlebar-controls
+          inert
+        >
+          <PanelLayoutControls
+            liveAgentCount={0}
+            onToggleRightPanel={nothing}
+            onToggleTerminal={nothing}
+            rightPanelAvailable
+            rightPanelOpen={false}
+            rightPanelShortcutLabel={null}
+            terminalAvailable
+            terminalOpen={false}
+            terminalShortcutLabel={null}
+          />
+        </div>
+      )}
     </div>
   );
 }
 
-/**
- * Under a Mate's name while its link is made, or when it cannot be opened: the route gate's words
- * for its verdict (`mateOpeningPhrase`), and each of its verbs once — *Try now* retries its link;
- * *Start*, *Enable* and *Restart* are the projects screen's verbs, so until this view carries the
- * container machine's own they are *Go to projects*, as on the conversation's route.
- */
-export function MateOpeningLine({
-  phrase,
-  projectUrl,
-  onTryNow,
-  projects,
-}: {
-  readonly phrase: RouteGatePhrase;
-  /** Its project in Zerops, for "Open in Zerops". */
-  readonly projectUrl: string | undefined;
-  /** Retries its link; absent while nothing names its target. */
-  readonly onTryNow: (() => void) | undefined;
-  /** What *Go to projects* is: the router's link to the projects screen. */
-  readonly projects: ReactElement;
-}): ReactNode {
-  const tryNow = onTryNow !== undefined && phrase.actions.includes("try-now");
-  const openInZerops = projectUrl !== undefined && phrase.actions.includes("open-in-zerops");
-  const toProjects = phrase.actions.some(
-    (action) =>
-      action === "go-to-projects" ||
-      action === "start" ||
-      action === "enable" ||
-      action === "restart" ||
-      (action === "open-in-zerops" && projectUrl === undefined),
-  );
-  return (
-    <div
-      className="flex w-full max-w-sm flex-col items-center gap-3"
-      data-zerops-surface="mate-opening"
-    >
-      <p className="text-center text-sm text-muted-foreground" role="status">
-        {phrase.text}
-      </p>
-      {tryNow || openInZerops || toProjects ? (
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          {tryNow ? (
-            <Button onClick={onTryNow} size="compact" variant="pill">
-              Try now
-            </Button>
-          ) : null}
-          {openInZerops ? (
-            <Button
-              render={<a href={projectUrl} rel="noreferrer" target="_blank" />}
-              size="compact"
-              variant="pill"
-            >
-              Open in Zerops
-            </Button>
-          ) : null}
-          {toProjects ? (
-            <Button render={projects} size="compact" variant="pill">
-              Go to projects
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
+const nothing = () => undefined;
+
+/** The stage with nothing said on it: a link that is up, handing over to its conversation. */
+const SILENT_STAGE: Exclude<MateVoice, { readonly surface: "none" }> = {
+  surface: "stage",
+  text: null,
+  actions: [],
+  processes: false,
+};
 
 /** The person, as their own step wears them: their picture, else their initials. */
 export function personOf(
@@ -629,7 +743,7 @@ export function ComingBelow({
   projects,
 }: {
   readonly coming: MateComing | undefined;
-  readonly progress: BirthLineProgress | undefined;
+  readonly progress: ArrivalProgress | undefined;
   readonly nowMs: number | undefined;
   readonly mate: Pick<ZeropsMateIdentity, "name" | "project">;
   readonly you: ArrivalYou | null;
@@ -640,18 +754,28 @@ export function ComingBelow({
   /** What *Go to projects* is: the router's link to the projects screen. */
   readonly projects?: ReactElement;
 }): ReactNode {
+  // Each step's services in the order first seen here: a read that orders them otherwise — the
+  // birth's recipe order handing over to the listing's own — never makes them trade places.
+  const [seen, setSeen] = useState<ReadonlyMap<string, ReadonlyArray<string>>>(() => new Map());
+  const remembered = new Map(seen);
   // A creation that stopped says why in the sentence over its steps: the steps only mark where.
-  const steps =
-    progress === undefined || nowMs === undefined ? null : (
-      <ZeropsArrivalSteps
-        steps={arrivalSteps(progress, mate, nowMs).map((step) => {
-          if (coming?.kind !== "failed") return step;
+  const arrived =
+    progress === undefined || nowMs === undefined
+      ? null
+      : arrivalSteps(progress, mate, nowMs).map((step) => {
           const { why: _said, ...marked } = step;
-          return marked;
-        })}
-        you={you}
-      />
-    );
+          const shown = coming?.kind === "failed" ? marked : step;
+          if (shown.services === undefined) return shown;
+          const kept = inFirstSeenOrder(
+            seen.get(step.id) ?? [],
+            shown.services.map((service) => service.name),
+          );
+          if (kept.seen !== seen.get(step.id)) remembered.set(step.id, kept.seen);
+          const byName = new Map(shown.services.map((service) => [service.name, service]));
+          return { ...shown, services: kept.order.flatMap((name) => byName.get(name) ?? []) };
+        });
+  if ([...remembered].some(([id, names]) => seen.get(id) !== names)) setSeen(remembered);
+  const steps = arrived === null ? null : <ZeropsArrivalSteps steps={arrived} you={you} />;
   const verb =
     coming?.kind === "failed" ? (
       coming.verb === "remove" && onRemove !== undefined ? (
@@ -681,6 +805,11 @@ export function ComingBelow({
     </div>
   );
 }
+
+/** What the arrival's steps read: the birth's line, with its copy's managed services. */
+export type ArrivalProgress = BirthLineProgress & {
+  readonly managed?: ReadonlyArray<BirthCopyService> | undefined;
+};
 
 /** A project's services once the inventory has read them; nothing while it hasn't, or failed. */
 function resolvedServices(

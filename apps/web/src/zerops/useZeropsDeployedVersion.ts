@@ -1,7 +1,7 @@
 /**
  * What a service actually runs, read once through the account's runtime.
  *
- * The sha is the first token of the deployed version's name (`groupDeploys.ts`,
+ * The sha is the commit the deployed version's name spells (`versionName.ts`,
  * measured 2026-09-16), named only while it is the active version's (A14),
  * and it is the only proof of what an environment runs —
  * a branch head is what *should* be there. Two screens need it: the projects

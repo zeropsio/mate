@@ -24,9 +24,9 @@ import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 import { fixMatesOf } from "~/zerops/fixMates";
 import { fixRequestPrompt, type FixProblem } from "~/zerops/fixRequest";
-import { useOpenReview } from "~/zerops/review";
 
 import { gatedPortal } from "../ui/portal-gate";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ZeropsMark } from "../ZeropsMark";
 import { MateFace } from "./primitives";
 import { routeMenuEntries } from "./ZeropsPublicRoutes";
@@ -86,22 +86,30 @@ export function SidebarProductionChip({
   const face = chipFace(chip);
   return (
     <PopoverPrimitive.Root onOpenChange={setOpen} open={open}>
-      <PopoverPrimitive.Trigger
-        render={
-          <button
-            aria-label={face.words}
-            className="zerops-envchip relative z-1"
-            data-tone={face.tone}
-            data-zerops-chip={chip.label}
-            data-zerops-stops={stops.join(" ")}
-            data-zerops-surface="sidebar-production-chip"
-            ref={trigger}
-            type="button"
-          />
-        }
-      >
-        {face.label}
-      </PopoverPrimitive.Trigger>
+      {/* Its state in words before a press (D): the pill's word alone says only which place. */}
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <PopoverPrimitive.Trigger
+              render={
+                <button
+                  aria-label={face.words}
+                  className="zerops-envchip relative z-1"
+                  data-tone={face.tone}
+                  data-zerops-chip={chip.label}
+                  data-zerops-stops={stops.join(" ")}
+                  data-zerops-surface="sidebar-production-chip"
+                  ref={trigger}
+                  type="button"
+                />
+              }
+            />
+          }
+        >
+          {face.label}
+        </TooltipTrigger>
+        {open ? null : <TooltipPopup side="bottom">{face.words}</TooltipPopup>}
+      </Tooltip>
       <ChipPortal>
         <PopoverPrimitive.Positioner align="end" className="z-130" side="bottom" sideOffset={6}>
           <PopoverPrimitive.Popup
@@ -136,11 +144,7 @@ export function SidebarProductionChip({
                       opens();
                     };
               }}
-              onReview={() => {
-                setOpen(false);
-              }}
               projectName={projectName}
-              reviewFrom={trigger}
             />
           </PopoverPrimitive.Popup>
         </PopoverPrimitive.Positioner>
@@ -167,8 +171,6 @@ export function ChipMenu({
   mates,
   onAskToFix,
   onOpenStop,
-  onReview,
-  reviewFrom,
 }: {
   readonly menu: (nowMs: number) => ChipMenuModel;
   readonly projectName: string;
@@ -176,12 +178,7 @@ export function ChipMenu({
   readonly mates: ReadonlyArray<ChipMate>;
   readonly onAskToFix: ((mateProjectId: string, problem: FixProblem) => void) | undefined;
   readonly onOpenStop: OpenStop;
-  /** The review opened: the menu gives way to it. */
-  readonly onReview: () => void;
-  /** What the review opens from, and gives the focus back to. */
-  readonly reviewFrom: { readonly current: HTMLElement | null };
 }) {
-  const openReview = useOpenReview();
   // Drawn only while open, so this is the moment it opened.
   const [openedAt] = useState(Date.now);
   const model = menu(openedAt);
@@ -202,29 +199,6 @@ export function ChipMenu({
           />
         </Fragment>
       ))}
-      {model.waiting === 0 ? null : (
-        <>
-          <Separator />
-          <div className="zerops-envpop-act" data-zerops-surface="sidebar-production-waiting">
-            <span className="min-w-0 truncate tabular-nums">
-              {model.waiting === 1
-                ? "1 change waits for production"
-                : `${String(model.waiting)} changes wait for production`}
-            </span>
-            <button
-              className="zerops-envpop-review"
-              data-zerops-surface="sidebar-production-review"
-              onClick={() => {
-                onReview();
-                openReview({ kind: "release", groupId }, { from: reviewFrom.current });
-              }}
-              type="button"
-            >
-              Review
-            </button>
-          </div>
-        </>
-      )}
       {alone?.projectId === undefined ? null : (
         <>
           <Separator />

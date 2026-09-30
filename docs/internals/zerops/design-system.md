@@ -369,22 +369,17 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     meanings — once, at the first stretch after the last visit, read as the conversation opens)
   - _States:_ day · gap · new
   - _Lands:_ landed 2026-09-26; the hour 2026-09-29 (pass 16)
-- **`TimelineSwitch`** — web
-  - _Anatomy (fixed part):_ the conversation pane across a switch between Mates (T1): one layer per
-    conversation and, over it while the next is placed, a still picture of what the pane showed last
-    — its DOM copied whole, with its scrollers' offsets, its shadow roots, its canvases and each
-    animation's progress put back (`freezeFrame.ts`), in an inert host that takes no pointer, so a
-    gesture reaches the new conversation. The new one says when it stands where it stays — placed by
-    the row the person was reading, not a pixel offset (`resolveTimelineRestoreTarget`: the same
-    line of the same row, the run's line below the header's fade where that run folded since, the
-    end where it was left at its end) — and the picture fades over 150 ms, or goes in one frame
-    under reduced motion. A conversation slow to come holds the picture at most 600 ms, then shows
-    its own pane with its Mate at work, held the same way while its rows are placed. Only the
-    conversation holds: the header, the composer's top and the composer switch at once
-  - _States:_ holding · fading · slow (its Mate at work) · placing
-  - _Phrase source:_ `timelineSwitch.logic.ts` (`stepTimelineSwitch`); `timelineScrollAnchoring.ts`
-    (`judgeTimelinePlacing`)
-  - _Lands:_ landed 2026-09-29 (pass 16)
+- **Conversation switch** — web
+  - _Anatomy (fixed part):_ the conversation pane across a switch between Mates: at once — the
+    header, the composer's top, the composer and the pane are the next Mate's from the press, and
+    nothing of the conversation left stays or fades. Its list is out of sight until it stands where
+    it stays — placed by the row the person was reading, not a pixel offset
+    (`resolveTimelineRestoreTarget`: the same line of the same row, the run's line below the
+    header's fade where that run folded since, the end where it was left at its end) — then eases
+    in over 140 ms. A conversation slow to come shows its own pane, its Mate at work from 400 ms
+  - _States:_ placing · slow (its Mate at work) · in
+  - _Phrase source:_ `timelineScrollAnchoring.ts` (`judgeTimelinePlacing`)
+  - _Lands:_ landed 2026-09-29 (pass 16); at once, the held picture gone, 2026-09-30
 - **Composer's top** — web
   - _Anatomy (fixed part):_ the Mate's own change, waiting for the person's review, as the
     composer's first section (C3) — inside its white surface, on its edges and corners, a hairline

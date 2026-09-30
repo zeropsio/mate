@@ -152,6 +152,8 @@ export function Conversation({
     phrase: { text: null, actions: [] },
     projectId,
     conversation,
+    voice: { surface: "none" },
+    stage: null,
     children: "conversation: hello · draft: my words",
   });
 }

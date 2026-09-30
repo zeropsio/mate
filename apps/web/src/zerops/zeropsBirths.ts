@@ -11,6 +11,7 @@
  */
 import {
   projectCreationOutcome,
+  recipeTierServices,
   ZeropsApiError,
   type EnvironmentCreationOutcome,
   type EnvironmentCreationPlatform,
@@ -367,6 +368,21 @@ export function runtimesLeftToBirth(
     if (step.kind === "import-runtimes") return { yaml: step.yaml, services: step.services };
   }
   return undefined;
+}
+
+/**
+ * The managed services a creation's first import brings (`import-managed`, or a project imported
+ * whole), by hostname in the tier's order: carried on the birth's record, so the arrival names
+ * what its first step waits on from the press, before the project lists any.
+ */
+export function managedLeftToBirth(steps: ReadonlyArray<EnvironmentCreationStep>): string[] {
+  for (const step of steps) {
+    if (step.kind !== "import-managed" && step.kind !== "import-project") continue;
+    return (recipeTierServices(step.yaml) ?? []).flatMap((service) =>
+      service.role === "managed" ? [service.hostname] : [],
+    );
+  }
+  return [];
 }
 
 /** Whether a creation's container import went through: one that stopped on it or before made none. */

@@ -32,6 +32,7 @@ import {
   type ZeropsDataAdapter,
 } from "../data/types.ts";
 import type { DescriptorFacts } from "../environments/environmentMachine.ts";
+import { EXCHANGE_CONCURRENCY } from "../environments/exchangeDriver.ts";
 import { candidateListingsAtom } from "../environments/listings.ts";
 import { rowTarget } from "../environments/mateLink.ts";
 import type { ProbeReading } from "../environments/probeStore.ts";
@@ -237,6 +238,10 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
   let writesLand = true;
   let catalog: CatalogListener | null = null;
   let unhardened: ReadonlySet<string> = new Set();
+  /** The environment the tab's route names, as its address bar holds it. */
+  let route: EnvironmentId | null = null;
+  /** Each environment the stage told the socket admission to open first. */
+  const preferred: Array<EnvironmentId | null> = [];
   const ports: AccountEnvironmentPorts = {
     clock: {
       now: () => ({ wall: clock.wallMs(), mono: clock.monoMs() }),
@@ -280,9 +285,16 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
       },
       promote: (projectId) => void promoted.push(projectId),
     },
+    route: () => route,
+    admission: { prefer: (environmentId) => void preferred.push(environmentId) },
   };
   return {
     ports,
+    preferred,
+    /** The tab opens on this environment's route: the stage reads it when it starts. */
+    openOn: (environmentId: EnvironmentId | null) => {
+      route = environmentId;
+    },
     exchanges,
     descriptors,
     probes,
@@ -1656,6 +1668,51 @@ describe("the post-grant stage's Mate environments", () => {
         expect(rig.probes.map(({ input }) => input).toSorted()).toEqual(
           mates.map(({ origin }) => origin).toSorted(),
         );
+      }),
+    ),
+  );
+
+  it.effect(
+    "a reload on a Mate's conversation starts that Mate's exchange first, before a React effect names the route",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const mates = [mate("1"), mate("2"), mate("3"), mate("4")];
+          const route = mates[3]!;
+          const environment = EnvironmentId.make("env-4");
+          const records = mates.map((listed, index): RegistrationRecord => ({
+            targetKey: listed.key,
+            environmentId: EnvironmentId.make(`env-${index + 1}`),
+            origin: listed.origin,
+            projectRef: { projectId: listed.projectId, orgId: "org-1" },
+            name: listed.project.name,
+          }));
+          const { clock, grant, rig, built } = yield* openAccount(records, mates);
+          rig.openOn(environment);
+          yield* grant.answer();
+          yield* clock.advance(SECOND);
+          yield* settle;
+          yield* built.postGrant;
+
+          // Every remembered Mate could start; the route's takes a slot before the others fill them.
+          const started = rig.descriptors.map(({ input }) => input);
+          expect(started).toContain(route.origin);
+          expect(started).toHaveLength(EXCHANGE_CONCURRENCY);
+          // Its socket opens before theirs.
+          expect(rig.preferred).toEqual([environment]);
+        }),
+      ),
+  );
+
+  it.effect("the socket admission follows the route, and lets go when the account closes", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { rig, environments, built } = yield* granted([REMEMBERED_A]);
+        environments.setRoute(ENV_A);
+        environments.setRoute(null);
+        environments.setRoute(ENV_A);
+        yield* built.close("application-close");
+        expect(rig.preferred).toEqual([ENV_A, null, ENV_A, null]);
       }),
     ),
   );

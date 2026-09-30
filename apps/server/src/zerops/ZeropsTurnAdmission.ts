@@ -92,6 +92,10 @@ export function principalUserId(principal: TurnPrincipal): string | undefined {
     : undefined;
 }
 
+/** Two signer records for one login: nobody's until somebody signs it in again. */
+const UNSETTLED_SIGNER =
+  "This Mate's sign-in is recorded for more than one person. Sign it in again to make it yours.";
+
 /** The sentence a refused turn reports. */
 export function turnRefusalMessage(agentId: ZeropsAgentId, refusal: TurnRefusal): string {
   switch (refusal.kind) {
@@ -101,6 +105,8 @@ export function turnRefusalMessage(agentId: ZeropsAgentId, refusal: TurnRefusal)
       return "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it. Sign in with your own account first.";
     case "someone-else":
       return "This agent was signed in by another project member — only they can run it. Sign in with your own account first.";
+    case "unsettled":
+      return UNSETTLED_SIGNER;
   }
 }
 
@@ -117,6 +123,8 @@ export function loginRefusalMessage(
       return `${title}'s sign-in was not recorded by Zerops Mate, so nobody can run it. Sign it in with your own account first.`;
     case "someone-else":
       return `${title} was signed in by another project member — only they can run it. Use a login you signed in yourself.`;
+    case "unsettled":
+      return UNSETTLED_SIGNER;
   }
 }
 

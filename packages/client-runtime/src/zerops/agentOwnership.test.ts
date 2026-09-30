@@ -52,6 +52,22 @@ describe("resolveAgentOwnership", () => {
       expected: "unrecorded",
     },
     {
+      name: "not known when the project records it for two people",
+      credPresent: true,
+      authorizedBy: undefined,
+      viewerSubject: "user-a",
+      signerUnknown: true,
+      expected: "unsettled",
+    },
+    {
+      name: "the viewer's own record wins over a not-known one",
+      credPresent: true,
+      authorizedBy: { subject: "user-a", at: AT },
+      viewerSubject: "user-a",
+      signerUnknown: true,
+      expected: "mine",
+    },
+    {
       name: "unrecorded when we cannot identify the viewer",
       credPresent: true,
       authorizedBy: { subject: "user-b", at: AT },
@@ -63,6 +79,7 @@ describe("resolveAgentOwnership", () => {
     credPresent: boolean;
     authorizedBy: { subject: string; at: string } | undefined;
     viewerSubject: string | undefined;
+    signerUnknown?: boolean;
     expected: ZeropsAgentOwnership;
   }>)("$name", ({ name: _name, expected, ...input }) => {
     expect(resolveAgentOwnership(input)).toBe(expected);
@@ -149,6 +166,8 @@ describe("the composer notice and the gate (D6)", () => {
     ["someone-else", false],
     ["unrecorded", false],
     ["record-failed", false],
+    // Recorded for two people: the server refuses everyone until it is signed in again.
+    ["unsettled", false],
   ] as const)("%s may start a turn: %s", (ownership, allowed) => {
     expect(agentOwnershipAllowsTurns(ownership)).toBe(allowed);
   });
@@ -171,6 +190,15 @@ describe("the composer notice and the gate (D6)", () => {
     expect(agentOwnershipComposerNotice("none")).toBeUndefined();
   });
 
+  // Never a name that may be the wrong one: that it is recorded for more than one person, and
+  // the one way out.
+  it("says a login recorded for two people is nobody's until signed in again", () => {
+    const words =
+      "This Mate's sign-in is recorded for more than one person. Sign it in again to make it yours.";
+    expect(agentOwnershipComposerNotice("unsettled", "Jan")).toBe(words);
+    expect(agentOwnershipNotice("unsettled")).toBe(words);
+  });
+
   it("offers one recovery, and it is the person's own sign-in", () => {
     expect(AGENT_OWNERSHIP_RECOVERY_LABEL).toBe("Sign in with your own account");
   });
@@ -191,6 +219,7 @@ describe("agentOwnershipNeedsAttention", () => {
     { ownership: "mine", expected: false },
     { ownership: "none", expected: false },
     { ownership: "record-failed", expected: true },
+    { ownership: "unsettled", expected: true },
   ] satisfies ReadonlyArray<{ ownership: ZeropsAgentOwnership; expected: boolean }>)(
     "$ownership → $expected",
     ({ ownership, expected }) => {

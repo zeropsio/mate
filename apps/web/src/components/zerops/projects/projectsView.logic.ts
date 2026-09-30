@@ -296,8 +296,40 @@ export function foldUngrouped<E extends { readonly action: ZeropsRowAction["kind
   };
 }
 
-/** The pull requests' step with none open: "yet" until something has landed. */
-export function pullRequestsLine(flow: GroupFlow): string {
+/**
+ * Which of a project's steps wait on a read that is out, and so hold a skeleton rather than an
+ * empty word. The pull requests and `main` are Gitea's changes half: "None yet" and "Nothing
+ * merged" from a flow whose deploy half alone answered are claims the page then takes back —
+ * 11–28 s on a reload, and for as long as a project's changes are being read again (the owner,
+ * 2026-09-30).
+ */
+export function flowStepsAwaiting(input: {
+  /** Either half of its flow answered. */
+  readonly read: boolean;
+  /** Its changes half answered (`ZeropsProjectFlow.changesKnown`). */
+  readonly changesKnown: boolean;
+  /**
+   * Its changes' read failed and nothing is held (`ZeropsProjectFlow.changesFailure`): no read
+   * is out for them, and the steps say so rather than wait forever.
+   */
+  readonly changesFailed?: boolean;
+  /** Its read is out: a Gitea session is held or coming, and it has an org to read. */
+  readonly readOut: boolean;
+}): { readonly steps: boolean; readonly changes: boolean } {
+  const { read, changesKnown, readOut } = input;
+  const answered = read && (changesKnown || input.changesFailed === true);
+  return { steps: readOut && !read, changes: readOut && !answered };
+}
+
+/** What the changes' steps say where Gitea never answered for the project. */
+export const CHANGES_UNREAD_LINE = "Gitea didn’t answer";
+
+/**
+ * The pull requests' step with none open: "yet" until something has landed — and where the
+ * changes' read failed (`changesFailed`), that, since none is known either way.
+ */
+export function pullRequestsLine(flow: GroupFlow, changesFailed = false): string {
+  if (changesFailed) return CHANGES_UNREAD_LINE;
   return flow.main.hasCode === true ? "None open" : "None yet";
 }
 
@@ -324,7 +356,12 @@ export interface MainCell {
 }
 
 /** `main`'s step: where it is, the last change that landed, and how much of it is not live. */
-export function mainCell(flow: GroupFlow, lastMerged: FlowPullRequest | undefined): MainCell {
+export function mainCell(
+  flow: GroupFlow,
+  lastMerged: FlowPullRequest | undefined,
+  /** The changes' read failed (`ZeropsProjectFlow.changesFailure`): nothing merged is not known. */
+  changesFailed = false,
+): MainCell {
   const { main } = flow;
   const title =
     lastMerged === undefined ? undefined : `${lastMerged.title} (#${String(lastMerged.number)})`;
@@ -334,7 +371,9 @@ export function mainCell(flow: GroupFlow, lastMerged: FlowPullRequest | undefine
     main.notLive > 0
       ? changesNotLive(main.notLive)
       : empty
-        ? "Nothing merged"
+        ? changesFailed
+          ? CHANGES_UNREAD_LINE
+          : "Nothing merged"
         : "Nothing waiting to release";
   return { empty, head: main.head, title, state };
 }
@@ -518,6 +557,9 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
       mate: hasMate(item)
         ? {
             name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
+            // Waiting on an answer: its conversation's question. A change of its waiting for
+            // review wears the same face (`mateFaceOf`) and is the flow's own step — *Review* —
+            // never "waiting on an answer".
             waiting: mateFaceFor(connected, activity) === "needs",
             ...(connected && activity?.kind === "failed" ? { failed: true } : {}),
             talked: !connected

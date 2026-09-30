@@ -105,3 +105,43 @@ describe("buildDevServerFields — a dev server that did not come up says what i
     expect(fields.explanation).toBeUndefined();
   });
 });
+
+describe("buildVerifyFields — the card names the service the checks ran on", () => {
+  // zcp verifies a pair's stage when asked for its dev half (a push source):
+  // the checks, and so the verdict, are the stage's.
+  it.each([
+    {
+      name: "a dev half redirected to its stage names the stage",
+      input: { serviceHostname: "webdev" },
+      result: { hostname: "webstage", status: "unhealthy", checks: [] },
+      subject: "webstage",
+    },
+    {
+      name: "a service verified as asked names itself",
+      input: { serviceHostname: "apidev" },
+      result: { hostname: "apidev", status: "healthy", checks: [] },
+      subject: "apidev",
+    },
+    {
+      name: "a verify still running names the service asked for",
+      input: { serviceHostname: "webdev" },
+      result: undefined,
+      subject: "webdev",
+    },
+    {
+      name: "a verify of every service stays all services",
+      input: {},
+      result: { summary: "2/2 healthy", status: "healthy", services: [] },
+      subject: "all services",
+    },
+  ])("$name", ({ input, result, subject }) => {
+    const { resultText: _text, settledAt: _at, ...running } = call("zerops_verify", input, {});
+    const fields = buildVerifyFields(
+      result === undefined
+        ? { ...running, status: "inProgress" }
+        : call("zerops_verify", input, result),
+    );
+    expect(fields.subject).toBe(subject);
+    expect(fields.target).toEqual({ hostname: subject });
+  });
+});

@@ -289,6 +289,8 @@ export function operationStatusWord(
             : "Checking";
       case "bootstrap":
         return "In progress";
+      case "standup":
+        return "Standing up";
       case "error":
         return "Failed";
     }
@@ -340,6 +342,8 @@ export function operationStatusWord(
         : PROCESS_OUTCOME_WORD[context.processOutcome];
     case "bootstrap":
       return "Complete";
+    case "standup":
+      return "Stood up";
     case "error":
       return "Failed";
   }
@@ -412,6 +416,8 @@ export function operationVoice(kind: ZeropsOperationKind, subject: string): stri
       return `Looking at ${subject}.`;
     case "bootstrap":
       return `Setting up ${subject}.`;
+    case "standup":
+      return `Standing ${subject} up.`;
     case "error":
       return `${subject} failed.`;
   }
@@ -570,6 +576,8 @@ export function operationClosing(
       return browserClosing(context);
     case "bootstrap":
       return context.messageFirstParagraph ?? "Bootstrap complete.";
+    case "standup":
+      return context.message ?? "Finished.";
     case "error":
       return context.errorFirstLine ?? "Failed.";
   }

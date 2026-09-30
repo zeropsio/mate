@@ -24,11 +24,27 @@ export type AppLinkResolver = (url: string) => (() => void) | null;
 export const AppLinkContext = createContext<AppLinkResolver | null>(null);
 
 /**
- * Where a link goes, as a small mark after its words. The word joiner ties
- * the mark to the last word, so a wrapping link never leaves it alone on a
- * line of its own.
+ * Where a link goes: a small mark after its words, or — inside running text —
+ * only the words, said to whoever cannot see the link's leading mark. A mark
+ * after a link's last word sat between it and the sentence's full stop
+ * ("…/app ▯."); the owner, 2026-09-30: "so painful". The word joiner ties the
+ * mark to the last word, so a wrapping link never leaves it alone on a line.
  */
-function DestinationIndicator({ preview }: { preview: boolean }) {
+function DestinationIndicator({
+  preview,
+  indicator = "glyph",
+}: {
+  preview: boolean;
+  indicator?: LinkIndicator | undefined;
+}) {
+  const words = preview ? "Open in side panel" : "Open in new tab";
+  if (indicator === "words") {
+    return (
+      <span className="sr-only" data-link-indicator={preview ? "preview" : "external"}>
+        {words}
+      </span>
+    );
+  }
   const Icon = preview ? PanelRightIcon : ExternalLinkIcon;
   return (
     <span
@@ -37,7 +53,7 @@ function DestinationIndicator({ preview }: { preview: boolean }) {
     >
       {"\u2060"}
       <Icon aria-hidden="true" className="ms-0.5 inline size-3 align-baseline" />
-      <span className="sr-only">{preview ? "Open in side panel" : "Open in new tab"}</span>
+      <span className="sr-only">{words}</span>
     </span>
   );
 }
@@ -48,27 +64,50 @@ export function ServiceBrowserLinkIndicator({ href }: { href: string }) {
   return <DestinationIndicator preview={Boolean(resolve?.(href))} />;
 }
 
+/** How a link shows where it goes: a mark after its words, or the words alone to a reader. */
+export type LinkIndicator = "glyph" | "words";
+
+export type LinkDestination = "app" | "preview" | "external";
+
+/**
+ * Where a web link goes and what a click on it does: a page of this app, the
+ * side panel's preview, or a new tab. Undefined for a link that is not a web
+ * address (mail, a fragment, a file).
+ */
+export function useLinkDestination(
+  href: string | undefined,
+  resolvePreview?: ServicePreviewResolver,
+): { destination: LinkDestination | undefined; open: (() => void) | null } {
+  const contextResolve = useContext(ServiceBrowserLinkContext);
+  const resolveApp = useContext(AppLinkContext);
+  if (href === undefined || !isServiceBrowserUrl(href))
+    return { destination: undefined, open: null };
+  // A page inside this app wins over both a preview and a new tab: it is the
+  // same change, drawn by the surface that owns it.
+  const openInApp = resolveApp?.(href) ?? null;
+  if (openInApp) return { destination: "app", open: openInApp };
+  const open = (resolvePreview ?? contextResolve)?.(href) ?? null;
+  return { destination: open ? "preview" : "external", open };
+}
+
 /** The same resolved destination drives the indicator and the click. */
 export function ServiceBrowserLink({
   onClick,
   resolvePreview,
   showIndicator = true,
+  indicator,
   children,
   ...props
-}: ComponentProps<"a"> & { resolvePreview?: ServicePreviewResolver; showIndicator?: boolean }) {
-  const contextResolve = useContext(ServiceBrowserLinkContext);
-  const resolveApp = useContext(AppLinkContext);
-  const webLink = props.href !== undefined && isServiceBrowserUrl(props.href);
-  // A page inside this app wins over both a preview and a new tab: it is the
-  // same change, drawn by the surface that owns it.
-  const openInApp = (webLink ? resolveApp?.(props.href!) : null) ?? null;
-  const open = openInApp ?? (webLink ? (resolvePreview ?? contextResolve)?.(props.href!) : null);
+}: ComponentProps<"a"> & {
+  resolvePreview?: ServicePreviewResolver;
+  showIndicator?: boolean;
+  indicator?: LinkIndicator | undefined;
+}) {
+  const { destination, open } = useLinkDestination(props.href, resolvePreview);
   return (
     <a
       {...props}
-      data-link-destination={
-        webLink ? (openInApp ? "app" : open ? "preview" : "external") : undefined
-      }
+      data-link-destination={destination}
       onClick={(event) => {
         onClick?.(event);
         if (
@@ -86,8 +125,8 @@ export function ServiceBrowserLink({
       }}
     >
       {children}
-      {showIndicator && webLink && openInApp === null ? (
-        <DestinationIndicator preview={Boolean(open)} />
+      {showIndicator && (destination === "preview" || destination === "external") ? (
+        <DestinationIndicator preview={destination === "preview"} indicator={indicator} />
       ) : null}
     </a>
   );

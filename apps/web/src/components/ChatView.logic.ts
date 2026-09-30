@@ -130,11 +130,9 @@ export function resolveDraftHeroState(input: {
  * in light mode — while the thread detail reloads, even when the destination
  * was on screen moments ago.
  *
- * The timeline only ever holds a thread's own snapshot. While a thread with
- * none loads, the pane keeps a still picture of the conversation left over
- * it (`TimelineSwitch`, T1), never that conversation's rows under the next
- * one's name. Stored at module scope so it outlives the view; the account
- * lifetime clears it.
+ * The timeline only ever holds a thread's own snapshot, never the rows of
+ * the conversation left under the next one's name. Stored at module scope so
+ * it outlives the view; the account lifetime clears it.
  */
 export type HeldThreadTimeline<T extends readonly unknown[]> = {
   threadKey: string | null;
@@ -441,7 +439,8 @@ export function resolveZeropsProviderAvailability(input: {
     providerAuth: agent.providerAuth,
     state: agent.state,
     loginPhase: agent.login?.phase,
-    authorizedBy: resolveAgentAuthorizer(key, agent.authorizedBy, input.localSigners),
+    signerUnknown: agent.signerUnknown,
+    authorizedBy: resolveAgentAuthorizer(key, agent, input.localSigners, input.viewerSubject),
   });
   const reads = zeropsAgentAuthReads(input.agentAuth, (agent) => factsOf(agent, agent.agentId));
   if (reads === undefined) return undefined;
@@ -1316,4 +1315,20 @@ export function diffOpeningShowsWorkingTree(input: {
     input.activeThreadRef !== null &&
     input.explicitThreadRef !== input.activeThreadRef
   );
+}
+
+/**
+ * Whether a conversation's content is on its way: none of its messages is here yet, while its
+ * shell says it has been talked to. Its empty opening waits then — a load never paints something
+ * it takes back.
+ */
+export function conversationContentPending(input: {
+  readonly messageCount: number;
+  readonly shell: {
+    readonly latestUserMessageAt: string | null;
+    readonly latestTurn: unknown;
+  } | null;
+}): boolean {
+  if (input.messageCount > 0 || input.shell === null) return false;
+  return input.shell.latestUserMessageAt !== null || input.shell.latestTurn !== null;
 }

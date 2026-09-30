@@ -2,7 +2,11 @@ import {
   mateServerCompatibility,
   MINIMUM_MATE_SERVER_VERSION,
 } from "../zerops/serverCompatibility.ts";
-import type { DesktopSshEnvironmentTarget, EnvironmentId } from "@t3tools/contracts";
+import type {
+  DesktopSshEnvironmentTarget,
+  EnvironmentId,
+  ExecutionEnvironmentDescriptor,
+} from "@t3tools/contracts";
 import { resolveRemotePairingTarget } from "@t3tools/shared/remote";
 import * as Context from "effect/Context";
 import * as Clock from "effect/Clock";
@@ -63,6 +67,11 @@ export interface ZeropsDoorConnectionInput {
    * never comes here.
    */
   readonly doorToken: string;
+  /**
+   * The descriptor the caller judged this Mate on just before minting the throwaway; read again
+   * when absent. Checked here the same way either way.
+   */
+  readonly descriptor?: ExecutionEnvironmentDescriptor;
 }
 
 export interface BearerConnectionUpdateInput {
@@ -190,9 +199,11 @@ export const prepareZeropsIdentityRegistration = Effect.fn(
       }),
   });
   const presentation = yield* ClientCapabilities.ClientPresentation;
-  const descriptor = yield* fetchRemoteEnvironmentDescriptor({ httpBaseUrl }).pipe(
-    Effect.mapError(mapRemoteEnvironmentError),
-  );
+  const descriptor =
+    input.descriptor ??
+    (yield* fetchRemoteEnvironmentDescriptor({ httpBaseUrl }).pipe(
+      Effect.mapError(mapRemoteEnvironmentError),
+    ));
   if (mateServerCompatibility(descriptor.serverVersion) === "too-old") {
     return yield* new ConnectionBlockedError({
       reason: "unsupported",

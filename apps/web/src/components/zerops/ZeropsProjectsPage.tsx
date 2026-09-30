@@ -64,6 +64,7 @@ import {
 } from "@t3tools/client-runtime/zerops/projections";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { useAddMate } from "~/zerops/newMate";
+import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
@@ -95,7 +96,7 @@ import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
 import { useZeropsDeployTokenGaps } from "~/zerops/useZeropsDeployTokenGaps";
 import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { AuthGateState } from "~/environments/primary/auth";
-import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { mateFaceOf, mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
 
 import {
@@ -184,6 +185,7 @@ import {
   type ProjectsFlowGroup,
 } from "./projects/ZeropsProjectsFlow";
 import {
+  flowStepsAwaiting,
   groupFlowInputOf,
   groupMemberFactsOf,
   lastMergedCode,
@@ -1299,16 +1301,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // service to the internet means one thing wherever it is offered.
   const route = useEnableRoute();
 
-  /**
-   * The face a Mate wears: the state of its conversation when its socket is
-   * up, else asleep — a container that is not connected is the Zerops mark.
-   */
-  const mateFace = (candidate: ZeropsCandidatePresentation): MateMarkState =>
-    mateFaceFor(
-      candidate.group === "connected" && candidate.environmentId !== undefined,
-      candidate.environmentId === undefined ? undefined : activity.get(candidate.environmentId),
-    );
-
   /** Writes the group's registry entry for a Mate, as the owner. */
 
   /**
@@ -1777,6 +1769,24 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // is waiting to land, what was released — is read once for the account
   // (`ZeropsProjectFlowProvider`, D26); the page draws its share of it.
   const projectFlow = useZeropsProjectFlow();
+
+  /**
+   * The face a Mate wears (`mateFaceOf`): the state of its conversation when its socket is up,
+   * else asleep — and needing you while its own change waits for your review, as its row in the
+   * menu and its conversation's composer say.
+   */
+  const mateFace = (candidate: ZeropsCandidatePresentation): MateMarkState => {
+    const groupId = readZeropsGroupTags(candidate.project.tagList).groupId;
+    return mateFaceOf({
+      connected: candidate.group === "connected" && candidate.environmentId !== undefined,
+      activity:
+        candidate.environmentId === undefined ? undefined : activity.get(candidate.environmentId),
+      reviewWaits: mateReviewWaits(
+        groupId === undefined ? undefined : projectFlow.flows.get(groupId),
+        candidate.project.id,
+      ),
+    });
+  };
   const openReview = useOpenReview();
   const groupDeploys = projectFlow.flows;
 
@@ -1992,6 +2002,15 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     },
     [addMate, creationRunning, taken],
   );
+  // A stage or a production asked for from the left menu (`setUpEnvironment.ts`): its form opens
+  // here, as this page's own ⋯ opens it — taken once, so a later visit opens nothing.
+  const setUpAsked = useSetUpEnvironment((state) => state.asked);
+  const takeSetUp = useSetUpEnvironment((state) => state.take);
+  useEffect(() => {
+    if (setUpAsked === null) return;
+    const ask = takeSetUp();
+    if (ask !== null) requestEnvironment(ask.groupId, ask.role);
+  }, [requestEnvironment, setUpAsked, takeSetUp]);
 
   // The creation itself is the account's (`useEnvironmentCreation`), shared with the New Mate
   // dialog; this page shows its checklist and what it came to.
@@ -2753,6 +2772,16 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const flowGroups = groupTree.groups.map(
     ({ group, environments }): ProjectsFlowGroup<ZeropsCandidatePresentation> => {
       const reads = groupDeploys.get(group.groupId);
+      const awaiting = flowStepsAwaiting({
+        read: reads !== undefined,
+        changesKnown: reads?.changesKnown === true,
+        changesFailed: reads?.changesFailure !== undefined,
+        // Out and expected back: a Gitea session is held or coming, and the
+        // group has an org to read (or the registry has not answered yet).
+        readOut:
+          projectFlow.signInTrouble === null &&
+          (projectFlow.slugs.size === 0 || projectFlow.slugs.has(group.groupId)),
+      });
       const members = groupMemberFactsOf(
         environments,
         (item) => (item.environmentId === undefined ? undefined : activity.get(item.environmentId)),
@@ -2780,12 +2809,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         read: reads !== undefined,
         talkSettled: talkSettled(members),
         placed: lastGroupPlacement(group.groupId),
-        // Out and expected back: a Gitea session is held or coming, and the
-        // group has an org to read (or the registry has not answered yet).
-        awaiting:
-          reads === undefined &&
-          projectFlow.signInTrouble === null &&
-          (projectFlow.slugs.size === 0 || projectFlow.slugs.has(group.groupId)),
+        awaiting: awaiting.steps,
+        changesAwaiting: awaiting.changes,
+        changesFailed: reads?.changesFailure !== undefined,
         mates: new Map(
           environments
             .filter(({ item }) => hasMate(item))

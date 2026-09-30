@@ -100,3 +100,26 @@ identity is linked to the account of that username: measured on the test org aft
 **Blocks** Nothing in the product — the app gets the person's token from the broker (D21) and never sends them to Gitea's pages; it decides whether a person who opens a repository URL in Gitea's UI and clicks _Sign in with Zerops_ lands on their account or on an "account exists" error (`ACCOUNT_LINKING=disabled`).
 **Why unclear** The broker creates the account bound to the OIDC source with `login_name` = the Zerops user id (measured on the lab, 2026-09-17). Gitea's OAuth2 callback is expected to look an account up by `(login_source, login_name)` before it registers or links one, which would make the two the same account; that lookup is read from Gitea's source, not measured.
 **How to answer** On a live run, open the Gitea URL in a browser as a person the app has already signed in (their account exists, made by the broker), click _Sign in with Zerops_, and see whether the session lands on `u-{id}`. One row in `verified.md` either way; if it errors, the recipe moves to `ACCOUNT_LINKING=auto` (safe: the broker is the only provider and derives username and e-mail from the member list).
+
+### Q-18 · Does signing out revoke the personal token a Zerops sign-in mints?
+
+**Blocks** nothing yet; it decides whether an account collects tokens. Every "Continue to Zerops
+Code" mints a personal access token on the user, named "Zerops Code · macOS Chrome".
+**What is known** (2026-09-30) The test owner held 43 of them, one per audit-browser sign-in since
+6 Sep; none had been revoked. Audit browsers never sign out, so this does not yet show what a
+person's sign-out does.
+**How to answer** Sign in on a fresh browser, note the new token in Zerops' _Access tokens
+management_, sign out of the app, and see whether it goes. Then sign in twice on one browser and see
+whether the second replaces the first. One row in `verified.md` either way; if nothing revokes, the
+sign-out revokes its own token.
+
+### Q-19 · What makes the owner's Mate opens occasionally take 12 s?
+
+**Blocks** knowing whether the pass's connect fixes are enough on the owner's own machine.
+**What is known** (2026-09-30, `verified.md`, _Pass 25 as measured_) On this Mac every new TLS
+connection can stall 1–10 s: its VPN drops 1420-byte packets. Chrome connects one socket at a time
+to the one Zerops address. After the pass, the Mate being opened connects first and paints from HTTP
+before its socket. The owner reports the slow opens as occasional, which fits a VPN that is not
+always the route, or a path MTU that changes, as much as it fits a fault in the app.
+**How to answer** The next time an open is slow, read `ifconfig utun4` and `route -n get default`,
+and the load's `mateDiagnostics` spans. Then set the VPN's MTU to 1380 and open the same Mate again.

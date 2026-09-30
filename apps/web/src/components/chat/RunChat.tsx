@@ -36,7 +36,7 @@
  * is. Nothing opens a dialog.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import { standupStepRole, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
   isActiveSubagentStatus,
   type AgentPanelModel,
@@ -106,7 +106,7 @@ import {
 import { useRunEffortWords } from "./runResultFacts";
 import { drawerEase, LIST_LAYS_OUT_FRAMES, stepHeight } from "./stepHeight";
 import { StatusBar, type BarTone } from "./StatusBar";
-import { DOCKED_KINDS } from "./conversationDock.logic";
+import { StandupDetail } from "./StandupDetail";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
   normalizeCompactToolLabel,
@@ -123,7 +123,6 @@ import {
   earlierShown,
   formatClock,
   recoveredFailures,
-  LONG_STEP_MS,
   nowLineFace,
   nowLineOf,
   nowLineWords,
@@ -1383,6 +1382,27 @@ export function OperationDetail({
   readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | null;
 }) {
+  if (operation.kind === "standup") {
+    return <StandupDetail environmentId={environmentId} operation={operation} />;
+  }
+  return (
+    <ZeropsOperationDetail
+      environmentId={environmentId}
+      operation={operation}
+      threadRef={threadRef}
+    />
+  );
+}
+
+function ZeropsOperationDetail({
+  operation,
+  environmentId,
+  threadRef,
+}: {
+  readonly operation: ZeropsOperation;
+  readonly environmentId: EnvironmentId | null;
+  readonly threadRef: ScopedThreadRef | null;
+}) {
   const regions = useOperationCard(operation, environmentId);
   return <ZeropsOperationCard headless operation={operation} threadRef={threadRef} {...regions} />;
 }
@@ -1397,8 +1417,13 @@ function settledBar(
 ): ReadonlyArray<{ readonly key: string; readonly tone: BarTone }> {
   const failed = operation.phase === "failed";
   const cut: BarTone = undone ? "waiting" : "failed";
-  if (operation.steps.length === 0) return [{ key: "whole", tone: failed ? cut : "done" }];
-  return operation.steps.map((step) => ({
+  // A stage a stand-up queued or held back is no segment of this call.
+  const steps =
+    operation.kind === "standup"
+      ? operation.steps.filter((step) => standupStepRole(step) === "own")
+      : operation.steps;
+  if (steps.length === 0) return [{ key: "whole", tone: failed ? cut : "done" }];
+  return steps.map((step) => ({
     key: step.id,
     tone: failed
       ? step.state === "done"
@@ -2203,31 +2228,6 @@ function RunTicker({ status }: { readonly status: RunStatus }) {
 }
 
 /**
- * How long the step on the now line has run, once that passes 30 s: words on
- * the same line — "· 0:31" — never a second clock (K3). Nothing before.
- */
-function LongStepTime({ since }: { readonly since: string }) {
-  const ref = useRef<HTMLSpanElement>(null);
-  const read = () => {
-    const took = Date.now() - Date.parse(since);
-    return took >= LONG_STEP_MS ? `· ${formatClock(took)}` : "";
-  };
-  useEffect(() => {
-    const update = () => {
-      if (ref.current) ref.current.textContent = read();
-    };
-    update();
-    const id = setInterval(update, 1000);
-    return () => clearInterval(id);
-  });
-  return (
-    <span ref={ref} className="run-now-long">
-      {read()}
-    </span>
-  );
-}
-
-/**
  * A step as the now line says it, sweeping while it runs: its own words and a
  * command's code after them, a command that said nothing of itself as its
  * code, a call said plainly with the names it took in mono.
@@ -2319,7 +2319,6 @@ function NowWords({
       return (
         <>
           <StepNowWords codeAfter={!(open && saysLess(line.step))} step={line.step} />
-          <LongStepTime since={line.step.startedAt} />
         </>
       );
     case "operation":
@@ -2328,10 +2327,6 @@ function NowWords({
           <span className="run-now-verb" data-run-shimmer="">
             {operationNowWords(line.operation)}
           </span>
-          {/* A pipeline counts its time in its bar under the line (K3). */}
-          {DOCKED_KINDS.has(line.operation.kind) ? null : (
-            <LongStepTime since={line.operation.anchorAt} />
-          )}
         </>
       );
     case "several":

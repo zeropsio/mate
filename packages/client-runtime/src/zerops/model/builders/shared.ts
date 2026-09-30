@@ -231,6 +231,7 @@ export const KIND_LABEL: Readonly<
   events: "Events",
   process: "Process",
   discover: "Discover",
+  standup: "Stand-up",
 };
 
 /** The ONE call-status → operation-phase mapping (§2.3, declined/stopped are not "done"). */

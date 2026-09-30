@@ -336,14 +336,14 @@ function OverviewRow<T>({
         <MatesCell entry={entry} props={props} verb={verbIn("mates")} />
         {/* Until the group's read answers, its steps hold their place and claim nothing. */}
         <StepPlace label="Pull requests">
-          {entry.awaiting ? (
+          {entry.changesAwaiting ? (
             <PendingStep density="line" step="pull-requests" />
           ) : (
             <PullRequestsStep entry={entry} verb={verbIn("pull-requests")} />
           )}
         </StepPlace>
         <StepPlace label="main">
-          {entry.awaiting ? (
+          {entry.changesAwaiting ? (
             <PendingStep density="line" step="main" />
           ) : (
             <MainStep density="line" entry={entry} verb={verbIn("main")} />

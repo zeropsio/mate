@@ -1,7 +1,14 @@
 import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
 import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
-import { act, createRef, type ReactNode, type Ref } from "react";
+import {
+  act,
+  createRef,
+  useLayoutEffect,
+  useSyncExternalStore,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -1912,11 +1919,9 @@ describe("messageEnters", () => {
   });
 });
 
-describe("MessagesTimeline — standing in place across a switch", () => {
-  // T1: the pane holds what it showed last over this conversation until the
-  // conversation says it stands where it stays — once its list has placed
-  // its rows, never while it is on its way. On its way, a slow one shows its
-  // Mate at work, which is something on screen too.
+describe("MessagesTimeline — placing its rows", () => {
+  // A conversation is out of sight until its list stands where it stays: its
+  // end reached, or a reading position put back.
   const frames: FrameRequestCallback[] = [];
   const runFrames = () => {
     for (const frame of frames.splice(0)) frame(0);
@@ -1935,58 +1940,86 @@ describe("MessagesTimeline — standing in place across a switch", () => {
       getScrollableNode: () => ({ scrollTop: 0, scrollHeight: 2000, clientHeight: 800 }),
     } as unknown as LegendListRef,
   };
-  const layer = () => ({ painted: vi.fn(), waiting: vi.fn(), placing: vi.fn() });
-  type Shown = Pick<
-    Parameters<typeof MessagesTimeline>[0],
-    "timelineEntries" | "hideEmptyPlaceholder" | "loading"
-  >;
-  const timeline = async (switchLayer: ReturnType<typeof layer>, props: Shown) => {
-    const { TimelineSwitchContext } = await import("./TimelineSwitch");
-    return (
-      <TimelineSwitchContext value={switchLayer}>
+  const mount = async (props: Pick<Parameters<typeof MessagesTimeline>[0], "timelineEntries">) => {
+    let renderer: ReactTestRenderer | undefined;
+    await act(() => {
+      renderer = create(
         <MessagesTimeline
           {...buildProps()}
           listRef={listRef}
           routeThreadKey="environment-local:thread-in-place"
           {...props}
-        />
-      </TimelineSwitchContext>
-    );
-  };
-  const mount = async (switchLayer: ReturnType<typeof layer>, props: Shown) => {
-    let renderer: ReactTestRenderer | undefined;
-    const element = await timeline(switchLayer, props);
-    await act(() => {
-      renderer = create(element);
+        />,
+      );
     });
     runFrames();
     return renderer!;
   };
+  const outOfSight = (renderer: ReactTestRenderer) =>
+    renderer.root.find(
+      (node) => node.type === "div" && node.props["data-timeline-thread"] !== undefined,
+    ).props["data-timeline-placing"] !== undefined;
 
   const settleFrames = async (count: number) => {
     for (let frame = 0; frame < count; frame += 1) await act(() => runFrames());
   };
 
-  it("says so once its list has put the rows in place", async () => {
+  it("shows once its list has put the rows in place", async () => {
     const { LegendList } = await import("@legendapp/list/react");
-    const switchLayer = layer();
-    const renderer = await mount(switchLayer, {
+    const renderer = await mount({
       timelineEntries: [buildUserTimelineEntry("Where were we?")],
     });
     try {
       await settleFrames(4);
-      expect(switchLayer.painted).not.toHaveBeenCalled();
+      expect(outOfSight(renderer)).toBe(true);
       await act(() => renderer.root.findByType(LegendList).props.onLoad({ elapsedTimeInMs: 4 }));
       await settleFrames(6);
-      expect(switchLayer.painted).toHaveBeenCalledTimes(1);
+      expect(outOfSight(renderer)).toBe(false);
     } finally {
       await act(() => renderer.unmount());
     }
   });
 
+  // Handed over from its Mate's own view (a reload's stage), its Mate stays at
+  // work in the pane while the rows are placed out of sight: a face on screen
+  // the whole way, never an empty pane.
+  it.each([
+    { case: "handed over from its Mate's own view", handedOver: true, face: true },
+    { case: "opened from another conversation", handedOver: false, face: false },
+  ])("while its rows are placed, $case: its Mate at work $face", async ({ handedOver, face }) => {
+    const { LegendList } = await import("@legendapp/list/react");
+    const { standInForConversation } = await import("../../zerops/mateHandOver");
+    const key = `environment-local:thread-handed-${String(handedOver)}`;
+    const standing = handedOver ? standInForConversation(key) : null;
+    let renderer: ReactTestRenderer | undefined;
+    await act(() => {
+      renderer = create(
+        <MessagesTimeline
+          {...buildProps()}
+          listRef={listRef}
+          routeThreadKey={key}
+          timelineEntries={[buildUserTimelineEntry("Where were we?")]}
+        />,
+      );
+    });
+    standing?.release(Date.now());
+    const atWork = () => renderer!.root.findAll((node) => node.props.role === "status").length > 0;
+    try {
+      await settleFrames(2);
+      expect(outOfSight(renderer!)).toBe(true);
+      expect(atWork()).toBe(face);
+      await act(() => renderer!.root.findByType(LegendList).props.onLoad({ elapsedTimeInMs: 4 }));
+      await settleFrames(6);
+      expect(outOfSight(renderer!)).toBe(false);
+      expect(atWork()).toBe(false);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
   // A Mate streaming its answer changes the rows every frame: the list's end
   // never stands still, and the conversation still shows, after a while.
-  it("says so after a while, even while its rows never stand still", async () => {
+  it("shows after a while, even while its rows never stand still", async () => {
     const { LegendList } = await import("@legendapp/list/react");
     const { TIMELINE_PLACING_AT_MOST_MS } = await import("./timelineScrollAnchoring");
     let now = 0;
@@ -2007,28 +2040,24 @@ describe("MessagesTimeline — standing in place across a switch", () => {
         scrollToEnd: vi.fn(() => Promise.resolve()),
       } as unknown as LegendListRef,
     };
-    const switchLayer = layer();
-    const { TimelineSwitchContext } = await import("./TimelineSwitch");
     let renderer: ReactTestRenderer | undefined;
     try {
       await act(() => {
         renderer = create(
-          <TimelineSwitchContext value={switchLayer}>
-            <MessagesTimeline
-              {...buildProps()}
-              listRef={streamingList}
-              routeThreadKey="environment-local:thread-streaming-end"
-              timelineEntries={[buildUserTimelineEntry("Keep going.")]}
-            />
-          </TimelineSwitchContext>,
+          <MessagesTimeline
+            {...buildProps()}
+            listRef={streamingList}
+            routeThreadKey="environment-local:thread-streaming-end"
+            timelineEntries={[buildUserTimelineEntry("Keep going.")]}
+          />,
         );
       });
       await act(() => renderer!.root.findByType(LegendList).props.onLoad({ elapsedTimeInMs: 4 }));
       for (; now < TIMELINE_PLACING_AT_MOST_MS - 16; now += 16) await settleFrames(1);
-      expect(switchLayer.painted).not.toHaveBeenCalled();
+      expect(outOfSight(renderer!)).toBe(true);
       now = TIMELINE_PLACING_AT_MOST_MS;
       await settleFrames(3);
-      expect(switchLayer.painted).toHaveBeenCalledTimes(1);
+      expect(outOfSight(renderer!)).toBe(false);
     } finally {
       clock.mockRestore();
       await act(() => renderer?.unmount());
@@ -2074,30 +2103,26 @@ describe("MessagesTimeline — standing in place across a switch", () => {
       } as unknown as LegendListRef,
     };
     const onManualNavigation = vi.fn();
-    const switchLayer = layer();
-    const { TimelineSwitchContext } = await import("./TimelineSwitch");
     const streamed = (words: number) => (
-      <TimelineSwitchContext value={switchLayer}>
-        <MessagesTimeline
-          {...buildProps()}
-          listRef={readingList}
-          onManualNavigation={onManualNavigation}
-          routeThreadKey={threadKey}
-          timelineEntries={[
-            buildUserTimelineEntry("Where were we?"),
-            {
-              ...buildAssistantTimelineEntry("word ".repeat(words)),
-              id: "entry-2",
-              message: {
-                ...buildAssistantTimelineEntry("").message,
-                id: MessageId.make("message-2"),
-                text: "word ".repeat(words),
-                streaming: true,
-              },
+      <MessagesTimeline
+        {...buildProps()}
+        listRef={readingList}
+        onManualNavigation={onManualNavigation}
+        routeThreadKey={threadKey}
+        timelineEntries={[
+          buildUserTimelineEntry("Where were we?"),
+          {
+            ...buildAssistantTimelineEntry("word ".repeat(words)),
+            id: "entry-2",
+            message: {
+              ...buildAssistantTimelineEntry("").message,
+              id: MessageId.make("message-2"),
+              text: "word ".repeat(words),
+              streaming: true,
             },
-          ]}
-        />
-      </TimelineSwitchContext>
+          },
+        ]}
+      />
     );
     let renderer: ReactTestRenderer | undefined;
     try {
@@ -2111,53 +2136,277 @@ describe("MessagesTimeline — standing in place across a switch", () => {
       }
       await settleFrames(3);
       expect(reading.scrollTop).toBe(930);
-      expect(switchLayer.painted).toHaveBeenCalledTimes(1);
+      expect(outOfSight(renderer!)).toBe(false);
       expect(onManualNavigation).toHaveBeenCalledTimes(1);
       expect(readTimelinePosition(threadKey)?.rowId).toBe("entry-1");
     } finally {
       await act(() => renderer?.unmount());
     }
   });
+});
 
-  it.each([
-    { case: "never while it is still on its way", loading: true, says: 0 },
-    { case: "at once when there is nothing to place", loading: false, says: 1 },
-  ])("$case", async ({ loading, says }) => {
-    const switchLayer = layer();
-    const renderer = await mount(switchLayer, {
-      timelineEntries: [],
-      hideEmptyPlaceholder: true,
-      loading,
+describe("KeptTimelines — a conversation seen a moment ago", () => {
+  // A return shows the conversation's rows as they stood when the person
+  // left, in the frame the header changes: its list was kept, out of sight,
+  // and is never placed again.
+  const frames: FrameRequestCallback[] = [];
+  const runFrames = () => {
+    for (const frame of frames.splice(0)) frame(0);
+  };
+  beforeEach(() => {
+    frames.length = 0;
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+      frames.push(callback),
+    );
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+  });
+  const listRef = {
+    current: {
+      getState: () => ({ data: [], isWithinMaintainScrollAtEndThreshold: true }),
+      getScrollableNode: () => ({ scrollTop: 0, scrollHeight: 2000, clientHeight: 800 }),
+    } as unknown as LegendListRef,
+  };
+  const KEY_A = "environment-local:thread-a";
+  const KEY_B = "environment-local:thread-b";
+  // What a kept list reads of its conversation while out of sight, as a
+  // store it subscribes to.
+  const read = new Map<
+    string,
+    { readonly timelineEntries: ReadonlyArray<unknown>; readonly latestTurn?: unknown }
+  >();
+  const readers = new Set<() => void>();
+  const tell = (key: string, props: NonNullable<ReturnType<typeof read.get>>) => {
+    read.set(key, props);
+    for (const reader of readers) reader();
+  };
+  const Reader = ({
+    threadKey,
+    onRead,
+  }: {
+    readonly threadKey: string;
+    readonly onRead: (props: never) => void;
+  }) => {
+    const props = useSyncExternalStore(
+      (listener) => {
+        readers.add(listener);
+        return () => readers.delete(listener);
+      },
+      () => read.get(threadKey) ?? null,
+    );
+    useLayoutEffect(() => onRead(props as never), [onRead, props]);
+    return null;
+  };
+  beforeEach(() => read.clear());
+  const pane = async (
+    open: string,
+    alive: (key: string) => boolean = () => true,
+    extra: Partial<Parameters<typeof MessagesTimeline>[0]> = {},
+    inset: { readonly insetMeasured?: boolean; readonly insetRemembered?: boolean } = {},
+  ) => {
+    const { KeptTimelines } = await import("./KeptTimelines");
+    return (
+      <KeptTimelines
+        open={open}
+        alive={alive}
+        {...inset}
+        Reader={Reader}
+        crewTimeline={null}
+        timeline={{
+          ...buildProps(),
+          listRef,
+          routeThreadKey: open,
+          timelineEntries: [buildUserTimelineEntry(`Where were we in ${open}?`)],
+          ...extra,
+        }}
+      />
+    );
+  };
+  const listOf = (renderer: ReactTestRenderer, key: string) =>
+    renderer.root.find((node) => node.type === "div" && node.props["data-timeline-thread"] === key);
+  const placing = (renderer: ReactTestRenderer, key: string) =>
+    listOf(renderer, key).props["data-timeline-placing"] !== undefined;
+  const settle = async () => {
+    const { LegendList } = await import("@legendapp/list/react");
+    return async (renderer: ReactTestRenderer) => {
+      for (const list of renderer.root.findAllByType(LegendList)) {
+        await act(() => list.props.onLoad({ elapsedTimeInMs: 4 }));
+      }
+      for (let frame = 0; frame < 6; frame += 1) await act(() => runFrames());
+    };
+  };
+
+  it("shows its rows as they stood, never placed again", async () => {
+    const place = await settle();
+    let renderer: ReactTestRenderer | undefined;
+    await act(async () => {
+      renderer = create(await pane(KEY_A));
     });
     try {
-      expect(switchLayer.painted).toHaveBeenCalledTimes(says);
+      await place(renderer!);
+      expect(placing(renderer!, KEY_A)).toBe(false);
+
+      const b = await pane(KEY_B);
+      await act(() => renderer!.update(b));
+      expect(placing(renderer!, KEY_B)).toBe(true);
+      await place(renderer!);
+
+      const a = await pane(KEY_A);
+      await act(() => renderer!.update(a));
+      // A list mounted anew starts out of sight until it is placed.
+      expect(placing(renderer!, KEY_A)).toBe(false);
     } finally {
-      await act(() => renderer.unmount());
+      await act(() => renderer?.unmount());
     }
   });
 
-  it("shows its Mate at work once the wait passes 400 ms, and asks to be kept as the rows come", async () => {
-    vi.useFakeTimers();
-    const switchLayer = layer();
+  it("takes its conversation's rows while out of sight, so a return finds them placed", async () => {
+    const place = await settle();
+    let renderer: ReactTestRenderer | undefined;
+    await act(async () => {
+      renderer = create(await pane(KEY_A));
+    });
     try {
-      const renderer = await mount(switchLayer, {
-        timelineEntries: [],
-        hideEmptyPlaceholder: true,
-        loading: true,
-      });
-      vi.advanceTimersByTime(399);
-      expect(switchLayer.waiting).not.toHaveBeenCalled();
-      vi.advanceTimersByTime(1);
-      expect(switchLayer.waiting).toHaveBeenCalledTimes(1);
-      expect(switchLayer.placing).not.toHaveBeenCalled();
-      const rows = await timeline(switchLayer, {
-        timelineEntries: [buildUserTimelineEntry("Where were we?")],
-      });
-      await act(() => renderer.update(rows));
-      expect(switchLayer.placing).toHaveBeenCalledTimes(1);
-      await act(() => renderer.unmount());
+      await place(renderer!);
+      const b = await pane(KEY_B);
+      await act(() => renderer!.update(b));
+      // An answer comes in A while the person reads B.
+      await act(() =>
+        tell(KEY_A, {
+          timelineEntries: [
+            buildUserTimelineEntry(`Where were we in ${KEY_A}?`),
+            { ...buildAssistantTimelineEntry("Here is where."), id: "entry-answer" },
+          ],
+        }),
+      );
+      const { LegendList } = await import("@legendapp/list/react");
+      const rowsOfA = listOf(renderer!, KEY_A).findByType(LegendList).props.data;
+      expect(JSON.stringify(rowsOfA)).toContain("Here is where.");
     } finally {
-      vi.useRealTimers();
+      await act(() => renderer?.unmount());
+    }
+  });
+
+  // The line over what is new is read as the person comes back, not only as
+  // the list first opened: an answer that came while they were away is
+  // marked, and a line from an earlier visit goes.
+  it("marks what came while the person was away when it shows again", async () => {
+    const { useUiStateStore } = await import("../../uiStateStore");
+    const place = await settle();
+    const turn = (completedAt: string) => ({
+      turnId: TurnId.make("turn-a"),
+      state: "completed" as const,
+      startedAt: "2026-09-30T09:00:00.000Z",
+      completedAt,
+    });
+    useUiStateStore.setState((state) => ({
+      threadLastVisitedAtById: {
+        ...state.threadLastVisitedAtById,
+        [KEY_A]: "2026-09-30T09:10:00.000Z",
+      },
+    }));
+    const seamNew = (renderer: ReactTestRenderer) =>
+      JSON.stringify(listOf(renderer, KEY_A).findByType(LegendListType).props.data).includes(
+        '"seam:new"',
+      );
+    const { LegendList: LegendListType } = await import("@legendapp/list/react");
+    let renderer: ReactTestRenderer | undefined;
+    await act(async () => {
+      renderer = create(
+        await pane(KEY_A, undefined, { latestTurn: turn("2026-09-30T09:05:00.000Z") }),
+      );
+    });
+    try {
+      await place(renderer!);
+      expect(seamNew(renderer!)).toBe(false);
+      const b = await pane(KEY_B);
+      await act(() => renderer!.update(b));
+      const answered = await pane(KEY_A, undefined, {
+        latestTurn: turn("2026-09-30T09:30:00.000Z"),
+        timelineEntries: [
+          buildUserTimelineEntry(`Where were we in ${KEY_A}?`),
+          {
+            ...buildAssistantTimelineEntry("It is done."),
+            id: "entry-answer",
+            createdAt: "2026-09-30T09:30:00.000Z",
+            message: {
+              ...buildAssistantTimelineEntry("It is done.").message,
+              id: MessageId.make("message-answer"),
+              createdAt: "2026-09-30T09:30:00.000Z",
+              updatedAt: "2026-09-30T09:30:00.000Z",
+            },
+          },
+        ],
+      });
+      await act(() => renderer!.update(answered));
+      expect(seamNew(renderer!)).toBe(true);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
+  // A return shows a kept list in the press frame with the inset remembered
+  // for it; one whose conversation changed while away — its banners may have
+  // too — waits out of sight until its own inset is measured.
+  it.each([
+    { case: "unchanged while away", changed: false },
+    { case: "changed while away", changed: true },
+  ])("shows at once on a return, $case: out of sight $changed", async ({ changed }) => {
+    const place = await settle();
+    const turn = (completedAt: string) => ({
+      turnId: TurnId.make("turn-a"),
+      state: "completed" as const,
+      startedAt: "2026-09-30T09:00:00.000Z",
+      completedAt,
+    });
+    const before = { latestTurn: turn("2026-09-30T09:05:00.000Z") };
+    let renderer: ReactTestRenderer | undefined;
+    await act(async () => {
+      renderer = create(await pane(KEY_A, undefined, before));
+    });
+    try {
+      await place(renderer!);
+      const b = await pane(KEY_B);
+      await act(() => renderer!.update(b));
+      await act(() =>
+        tell(KEY_A, {
+          timelineEntries: [buildUserTimelineEntry(`Where were we in ${KEY_A}?`)],
+          latestTurn: changed ? turn("2026-09-30T09:30:00.000Z") : before.latestTurn,
+        }),
+      );
+      const back = await pane(KEY_A, undefined, before, {
+        insetMeasured: false,
+        insetRemembered: true,
+      });
+      await act(() => renderer!.update(back));
+      const outOfSightNow =
+        renderer!.root.findAll(
+          (node) =>
+            node.props["data-kept-timeline"] !== undefined &&
+            node.findAll((inner) => inner.props["data-timeline-thread"] === KEY_A).length > 0,
+        ).length > 0;
+      expect(outOfSightNow).toBe(changed);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
+  it("lets a list go once its conversation is gone", async () => {
+    const place = await settle();
+    let renderer: ReactTestRenderer | undefined;
+    await act(async () => {
+      renderer = create(await pane(KEY_A));
+    });
+    try {
+      await place(renderer!);
+      const b = await pane(KEY_B, (key) => key !== KEY_A);
+      await act(() => renderer!.update(b));
+      expect(
+        renderer!.root.findAll(
+          (node) => node.type === "div" && node.props["data-timeline-thread"] === KEY_A,
+        ),
+      ).toHaveLength(0);
+    } finally {
+      await act(() => renderer?.unmount());
     }
   });
 });

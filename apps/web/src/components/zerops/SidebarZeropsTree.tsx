@@ -46,6 +46,7 @@
  * Everything else about the account lives on the projects screen. This is
  * where you work; that is where you manage.
  */
+import { useWarmIntent } from "../chat/warmTimeline";
 import {
   checkDotTone,
   assignCandidateMateTints,
@@ -65,6 +66,7 @@ import {
   type EnvironmentRow,
   type FlowPullRequest,
   type GroupFlow,
+  type GroupEnvironmentTier,
   type GroupFlowStop,
   type MissingEnvironmentRow,
   type ZeropsEnvironmentRole,
@@ -77,7 +79,7 @@ import {
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
-import { deployActivatedAt } from "@t3tools/client-runtime/zerops/flow";
+import { deployActivatedAt, deployRuns } from "@t3tools/client-runtime/zerops/flow";
 import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
@@ -114,7 +116,7 @@ import { useComposerDraftStore } from "~/composerDraftStore";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { MateComing } from "~/zerops/mateComing";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import type { FixProblem } from "~/zerops/fixRequest";
@@ -213,6 +215,18 @@ import {
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
 import { groupAddsOffered } from "./ZeropsProjectRow.logic";
+import {
+  HeadingReleaseMark,
+  HeadingSubLine,
+  headingPillMotion,
+  useHeadingLine,
+} from "./SidebarHeadingLine";
+import {
+  headingMark,
+  stopComing,
+  type HeadingLineInput,
+  type StopComing,
+} from "./SidebarHeadingLine.logic";
 
 /** What the client holds per environment, when it holds anything. */
 type RosterCandidate = ZeropsCandidate & {
@@ -359,6 +373,8 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    * (`useAddMate`). Absent — a harness — the heading's + does nothing.
    */
   readonly onAddMate?: ((groupId: string) => void) | undefined;
+  /** Opens the form that sets a stage or a production up; absent, its item opens the projects page. */
+  readonly onSetUp?: ((groupId: string, tier: GroupEnvironmentTier) => void) | undefined;
   /**
    * A Mate in its first minutes (`mateComing`): still coming up, or never came. Its row says so
    * in the projects page's words, asleep, with no menu, and a press opens its own view. Absent,
@@ -532,6 +548,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   candidates,
   onSelect,
   onAddMate,
+  onSetUp,
   getComing,
   onOpenComing,
   onBrowseProjects,
@@ -893,6 +910,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           owner: getOwner?.(item),
           connected: item.group === "connected",
           activity: getActivity?.(item),
+          reviewWaits: mateReviewWaits(input.flow, item.project.id),
         }),
       );
     }
@@ -934,6 +952,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       readonly chips: ReactNode;
       /** Its busy Mates' faces, while it is folded. */
       readonly faces: ReactNode;
+      /** What its second line reads (D′, `headingLine`); none for the ungrouped section. */
+      readonly line: HeadingLineInput | undefined;
+      /** A stop's own page, where one opens: the line's Details. */
+      readonly openStop: (projectId: string) => (() => void) | undefined;
     }) => ReactNode,
     flow: SidebarProjectFlow | undefined,
     groupName: string | undefined,
@@ -1057,9 +1079,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       threadKey: getActivity?.(item)?.threadKey,
     }));
     const projectName = groupName ?? group?.name ?? "";
-    // What waits to go out, said on the stages' menu too — where there is a
-    // production for it to go to.
-    const waitingForProduction = prodChip === undefined ? 0 : projectFlow.main.notLive;
     const chips =
       group === undefined || (prodChip === undefined && stageChipDrawn === undefined) ? null : (
         // The stage first, production on the heading's end edge: the order a
@@ -1085,7 +1104,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                     projectId: creation.projectId,
                     name: creation.name,
                   })),
-                  waiting: waitingForProduction,
                   nowMs: openedAt,
                 })
               }
@@ -1107,7 +1125,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   failure: gitea.kind === "answered" ? gitea.failure : undefined,
                   down: downOf(productionServing),
                   routes: productionItem?.routes ?? [],
-                  waiting: projectFlow.main.notLive,
                   nowMs: openedAt,
                 })
               }
@@ -1152,6 +1169,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             },
           ]),
     ];
+    // Whether a Mate's own change waits on the person's review — the
+    // composer's top's own rule (`mateNextStep`), on the flow Gitea answered:
+    // its row and its face on the folded heading wear needs-you for it.
+    const reviewWaits = (item: T) => mateReviewWaits(flow, item.project.id);
     // Folded, the heading shows who is busy in it (M15): its Mates that need
     // you, work, stopped on an error or finished unseen, each as its row draws
     // it (`mateRowView`) — once its rows have folded away.
@@ -1161,7 +1182,11 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           mateEntries.map(({ item }) => {
             const live = getActivity?.(item);
             const coming = getComing?.(item);
-            const read = mateRowReading({ connected: item.group === "connected", activity: live });
+            const read = mateRowReading({
+              connected: item.group === "connected",
+              activity: live,
+              reviewWaits: reviewWaits(item),
+            });
             const view = coming === undefined ? read : mateComingRowView(read, coming);
             return {
               projectId: item.project.id,
@@ -1178,9 +1203,67 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           }),
         )
       : [];
+    // The heading's second line (D′): the release, and each environment coming up step by
+    // step, from what the platform says of it (`stopComing`).
+    const comingOf = (
+      tier: "stage" | "production",
+      stop: GroupFlowStop,
+    ): StopComing | undefined => {
+      const item = stopItem(stop.projectId);
+      const deployment = deployments?.get(stop.projectId);
+      return stopComing({
+        tier,
+        pending: false,
+        projectStatus: item?.project.status,
+        createdAt: item?.project.created,
+        nowMs,
+        services: item?.services?.statuses,
+        building: buildingOf(deployment) !== undefined,
+        deployed: stop.version !== undefined || deployRuns(deployment),
+        routes: item?.routes?.length ?? 0,
+      });
+    };
+    const PENDING: StopComing = { kind: "coming", step: "project" };
+    const line: HeadingLineInput | undefined =
+      group === undefined
+        ? undefined
+        : {
+            production:
+              projectFlow.production.kind === "absent"
+                ? undefined
+                : {
+                    projectId: productionStop?.projectId,
+                    chip: prodChip,
+                    coming:
+                      projectFlow.production.kind === "creating"
+                        ? PENDING
+                        : productionStop === undefined
+                          ? undefined
+                          : comingOf("production", productionStop),
+                    failure: gitea.kind === "answered" ? gitea.failure : undefined,
+                  },
+            stages: [
+              ...stages.map(({ name, stop }) => ({
+                projectId: stop.projectId,
+                name,
+                coming: comingOf("stage", stop),
+              })),
+              ...projectFlow.creatingStages.map((creation) => ({
+                projectId: creation.projectId,
+                name: creation.name,
+                coming: PENDING,
+              })),
+            ],
+            waiting: projectFlow.main.notLive,
+            allOnStage:
+              projectFlow.main.head !== undefined &&
+              stages.some(({ stop }) => stop.version?.commit === projectFlow.main.head),
+          };
     const header = renderHeader({
       chips,
       faces: busy.length === 0 ? null : <HeadingFaces faces={busy} />,
+      line,
+      openStop,
     });
     // Code only — a recipe change is the group's document, left to the
     // projects page, and is never one more thing a Mate's row here answers
@@ -1311,6 +1394,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   numbers={altHeld}
                   onSelect={onSelect}
                   owner={getOwner?.(item)}
+                  reviewWaits={reviewWaits(item)}
                   timestampFormat={timestampFormat}
                   {...faceOf(item.project)}
                 />
@@ -1440,14 +1524,17 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       {section(
         group.groupId,
         environments,
-        ({ chips, faces }) => (
+        ({ chips, faces, line, openStop }) => (
           <ProjectHeader
             chips={chips}
             collapsed={collapsed.has(group.groupId)}
             faces={faces}
+            line={line}
+            openStop={openStop}
             group={group}
             missing={getFlow?.(group.groupId)?.missing ?? []}
             onAddMate={onAddMate}
+            onSetUp={onSetUp}
             onBrowseProjects={onBrowseProjects}
             onOpen={
               onOpenGroup === undefined
@@ -1678,6 +1765,7 @@ export function ProjectHeader({
   muted = false,
   missing = NO_MISSING_TIERS,
   onAddMate,
+  onSetUp,
   onBrowseProjects,
   onOpen,
   collapsed = false,
@@ -1685,6 +1773,8 @@ export function ProjectHeader({
   reorder,
   chips,
   faces,
+  line,
+  openStop,
 }: {
   readonly group?: ZeropsGroup;
   readonly name?: string;
@@ -1692,6 +1782,8 @@ export function ProjectHeader({
   readonly missing?: ReadonlyArray<MissingEnvironmentRow>;
   /** Asks for the New Mate dialog over the view on screen; absent in the harness. */
   readonly onAddMate?: ((groupId: string) => void) | undefined;
+  /** Opens the form that sets a stage or a production up; absent, its item opens the projects page. */
+  readonly onSetUp?: ((groupId: string, tier: GroupEnvironmentTier) => void) | undefined;
   readonly onBrowseProjects: () => void;
   /** Absent for the ungrouped heading, which is not a group and has no page. */
   readonly onOpen?: (() => void) | undefined;
@@ -1713,8 +1805,15 @@ export function ProjectHeader({
   readonly chips?: ReactNode;
   /** Its busy Mates' faces (`HeadingFaces`), after the title while it is folded. */
   readonly faces?: ReactNode;
+  /** What its second line reads (D′), drawn while it is open. */
+  readonly line?: HeadingLineInput | undefined;
+  /** A stop's own page, where one opens: the line's Details. */
+  readonly openStop?: ((projectId: string) => (() => void) | undefined) | undefined;
 }) {
   const placeholder = group !== undefined && groupNameIsPlaceholder(group);
+  const { line: secondLine, landing } = useHeadingLine(line);
+  const pillMotion = headingPillMotion(line, landing);
+  const openReview = useOpenReview();
   const title = group?.name ?? name ?? "";
   // The New Mate dialog opens over whatever is on screen: the person stays where they were (the
   // owner, 2026-09-29, of a + that took them to the projects screen).
@@ -1729,156 +1828,193 @@ export function ProjectHeader({
     // Mate row's time ends. The chips stand 6 px from its top and bottom too,
     // so its corners run parallel to theirs (S4).
     // A heading that folds lights under the pointer, a band fainter than a
-    // Mate row's (`.zerops-project-heading`).
-    <div
-      className={cn(
-        "group/project relative flex h-8 min-w-0 items-center gap-1 ms-px me-0.5 ps-1.5 pe-1.5",
-        onToggle !== undefined && "zerops-project-heading",
-      )}
-      data-collapsed={collapsed ? "true" : undefined}
-      data-zerops-surface="sidebar-project"
-    >
-      {/* A name, not a label: no uppercase and no `MicroLabel`. The weight
+    // Mate row's (`.zerops-project-heading`); open, its second line (D′) sits
+    // under the name and the band grows over it.
+    <div className="zerops-heading-stack">
+      <div
+        className={cn(
+          "group/project relative flex h-8 min-w-0 items-center gap-1 ms-px me-0.5 ps-1.5 pe-1.5",
+          onToggle !== undefined && "zerops-project-heading",
+        )}
+        data-collapsed={collapsed ? "true" : undefined}
+        data-zerops-surface="sidebar-project"
+      >
+        {/* A name, not a label: no uppercase and no `MicroLabel`. The weight
           comes from size and room instead — at 13px it was *smaller* than the
           Mate names beneath it, which is a heading losing to its own contents
           (the owner, 2026-09-19: "shouldn't be uppercased, yet it should have
           bigger visual impact"). 15px, and the only thing in the column set
           that large. */}
-      {onToggle === undefined ? (
-        <span
-          className={cn(
-            HEADING_CLASS,
-            "flex-1",
-            muted && HEADING_MUTED,
-            placeholder && HEADING_UNNAMED,
-          )}
-        >
-          {title}
-        </span>
-      ) : (
-        // The whole heading opens and folds the project — its hit area is the
-        // heading's (`after:inset-0`) — and only its verbs and its production
-        // stand above that, each its own control.
-        <button
-          aria-expanded={!collapsed}
-          className="flex min-w-0 cursor-pointer items-center gap-1 rounded-sm text-left after:absolute after:inset-0 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
-          data-zerops-surface="sidebar-project-toggle"
-          onClick={onToggle}
-          type="button"
-        >
+        {onToggle === undefined ? (
           <span
-            className={cn(HEADING_CLASS, muted && HEADING_MUTED, placeholder && HEADING_UNNAMED)}
+            className={cn(
+              HEADING_CLASS,
+              "flex-1",
+              muted && HEADING_MUTED,
+              placeholder && HEADING_UNNAMED,
+            )}
           >
             {title}
           </span>
-          {/* After the words, not before them: before, it pushed the title
+        ) : (
+          // The whole heading opens and folds the project — its hit area is the
+          // heading's (`after:inset-0`) — and only its verbs and its production
+          // stand above that, each its own control.
+          <button
+            aria-expanded={!collapsed}
+            className="flex min-w-0 cursor-pointer items-center gap-1 rounded-sm text-left after:absolute after:inset-0 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+            data-zerops-surface="sidebar-project-toggle"
+            onClick={onToggle}
+            type="button"
+          >
+            <span
+              className={cn(HEADING_CLASS, muted && HEADING_MUTED, placeholder && HEADING_UNNAMED)}
+            >
+              {title}
+            </span>
+            {/* After the words, not before them: before, it pushed the title
               18px right of the rail's own left edge, where every heading had
               started (the owner, 2026-09-25: "everything jumps around
               differently"). The title hugs its text, so the chevron follows
               it. */}
-          <DisclosureGlyph />
-          {faces}
-        </button>
-      )}
-      {/* The room between the title and the heading's end takes what the
+            <DisclosureGlyph />
+            {faces}
+            {collapsed ? (
+              <HeadingReleaseMark
+                mark={line === undefined ? undefined : headingMark(line, landing)}
+              />
+            ) : null}
+          </button>
+        )}
+        {/* The room between the title and the heading's end takes what the
           title leaves — the faces too, which arrive once the rows have folded
           away, under a pointer still on the heading: + and ⋯ stand past it,
           so they never move. */}
-      <span aria-hidden="true" className="min-w-0 flex-1" />
-      {/* Hidden until hover keeps a list of five projects calm, but a finger
+        <span aria-hidden="true" className="min-w-0 flex-1" />
+        {/* Hidden until hover keeps a list of five projects calm, but a finger
           never hovers — so a coarse pointer gets them at rest. A slot that is
           always there: nothing moves when they show. */}
-      {muted ? null : (
-        <span className="relative z-1 flex shrink-0 items-center opacity-0 transition-opacity group-focus-within/project:opacity-100 group-hover/project:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100">
-          {/* In the Custom order the grip leads the verbs: inside the band,
+        {muted ? null : (
+          <span className="relative z-1 flex shrink-0 items-center opacity-0 transition-opacity group-focus-within/project:opacity-100 group-hover/project:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100">
+            {/* In the Custom order the grip leads the verbs: inside the band,
               clear of its rounded ends, and the name keeps the mark edge. */}
-          {reorder?.custom === true && group !== undefined ? (
-            <ProjectGrip
-              groupId={group.groupId}
-              name={title}
-              onMove={(direction) => {
-                reorder.onMove(direction, true);
-              }}
-              onPointerDown={reorder.onGripPointerDown}
-            />
-          ) : null}
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  aria-label={`Add a Mate to ${title}`}
-                  className={HEADING_ACTION_CLASS}
-                  data-zerops-surface="sidebar-project-add-mate"
-                  onClick={addMate}
-                  type="button"
-                />
-              }
-            >
-              <PlusIcon aria-hidden="true" className="size-3.75" />
-            </TooltipTrigger>
-            <TooltipPopup side="right">Add a Mate</TooltipPopup>
-          </Tooltip>
-          <Menu>
-            <MenuTrigger
-              render={
-                <button
-                  aria-label={`More for ${title}`}
-                  className={HEADING_ACTION_CLASS}
-                  data-zerops-surface="sidebar-project-more"
-                  type="button"
-                />
-              }
-            >
-              <MoreHorizontalIcon aria-hidden="true" className="size-3.75" />
-            </MenuTrigger>
-            <MenuPopup align="start" className="w-56" side="right">
-              {/* The project's own page. It went to the projects screen once,
+            {reorder?.custom === true && group !== undefined ? (
+              <ProjectGrip
+                groupId={group.groupId}
+                name={title}
+                onMove={(direction) => {
+                  reorder.onMove(direction, true);
+                }}
+                onPointerDown={reorder.onGripPointerDown}
+              />
+            ) : null}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    aria-label={`Add a Mate to ${title}`}
+                    className={HEADING_ACTION_CLASS}
+                    data-zerops-surface="sidebar-project-add-mate"
+                    onClick={addMate}
+                    type="button"
+                  />
+                }
+              >
+                <PlusIcon aria-hidden="true" className="size-3.75" />
+              </TooltipTrigger>
+              <TooltipPopup side="right">Add a Mate</TooltipPopup>
+            </Tooltip>
+            <Menu>
+              <MenuTrigger
+                render={
+                  <button
+                    aria-label={`More for ${title}`}
+                    className={HEADING_ACTION_CLASS}
+                    data-zerops-surface="sidebar-project-more"
+                    type="button"
+                  />
+                }
+              >
+                <MoreHorizontalIcon aria-hidden="true" className="size-3.75" />
+              </MenuTrigger>
+              <MenuPopup align="start" className="w-56" side="right">
+                {/* The project's own page. It went to the projects screen once,
                   so the one item named after the project was the one that did
                   not open it (the owner, 2026-09-19); now that the heading's
                   name collapses the project, this is the way in. */}
-              <MenuItem onClick={onOpen ?? onBrowseProjects}>Open project</MenuItem>
-              {/* The + beside this menu, which a narrow menu drops to keep the
+                <MenuItem onClick={onOpen ?? onBrowseProjects}>Open project</MenuItem>
+                {/* The + beside this menu, which a narrow menu drops to keep the
                   project's name: here either way. */}
-              <MenuItem onClick={addMate}>Add a Mate</MenuItem>
-              {reorder === undefined ? null : (
-                <>
-                  <MenuSeparator />
-                  {/* The keyboard's way to arrange the list, and the pointer's
+                <MenuItem onClick={addMate}>Add a Mate</MenuItem>
+                {reorder === undefined ? null : (
+                  <>
+                    <MenuSeparator />
+                    {/* The keyboard's way to arrange the list, and the pointer's
                       where the grip is not offered: from *Name* or *Creation
                       date* a move makes the order *Custom*, starting from the
                       one on screen. */}
+                    <MenuItem
+                      disabled={!reorder.canMoveUp}
+                      onClick={() => {
+                        reorder.onMove("up", false);
+                      }}
+                    >
+                      Move up
+                    </MenuItem>
+                    <MenuItem
+                      disabled={!reorder.canMoveDown}
+                      onClick={() => {
+                        reorder.onMove("down", false);
+                      }}
+                    >
+                      Move down
+                    </MenuItem>
+                    <MenuSeparator />
+                  </>
+                )}
+                {/* Each opens the form the projects page's own ⋯ opens for it. */}
+                {missing.map((row) => (
                   <MenuItem
-                    disabled={!reorder.canMoveUp}
-                    onClick={() => {
-                      reorder.onMove("up", false);
-                    }}
+                    key={row.tier}
+                    onClick={
+                      group === undefined || onSetUp === undefined
+                        ? onBrowseProjects
+                        : () => {
+                            onSetUp(group.groupId, row.tier);
+                          }
+                    }
                   >
-                    Move up
+                    {`Set up ${row.name.toLocaleLowerCase()}`}
                   </MenuItem>
-                  <MenuItem
-                    disabled={!reorder.canMoveDown}
-                    onClick={() => {
-                      reorder.onMove("down", false);
-                    }}
-                  >
-                    Move down
-                  </MenuItem>
-                  <MenuSeparator />
-                </>
-              )}
-              {missing.map((row) => (
-                <MenuItem key={row.tier} onClick={onBrowseProjects}>
-                  {`Set up ${row.name.toLocaleLowerCase()}`}
-                </MenuItem>
-              ))}
-              {/* Where setting one up happens, and where a project is added. */}
-              <MenuItem onClick={onBrowseProjects}>All projects</MenuItem>
-            </MenuPopup>
-          </Menu>
-        </span>
-      )}
-      {chips === undefined || chips === null ? null : (
-        <span className="flex shrink-0 items-center gap-1">{chips}</span>
+                ))}
+                {/* Where a project is added. */}
+                <MenuItem onClick={onBrowseProjects}>All projects</MenuItem>
+              </MenuPopup>
+            </Menu>
+          </span>
+        )}
+        {chips === undefined || chips === null ? null : (
+          <span
+            className="flex shrink-0 items-center gap-1"
+            data-coming={pillMotion.coming}
+            data-landed={pillMotion.landed}
+          >
+            {chips}
+          </span>
+        )}
+      </div>
+      {group === undefined ? null : (
+        <HeadingSubLine
+          line={collapsed ? undefined : secondLine}
+          onDetails={(projectId) => {
+            const open = projectId === undefined ? undefined : openStop?.(projectId);
+            if (open !== undefined) open();
+            else (onOpen ?? onBrowseProjects)();
+          }}
+          onReview={(from) => {
+            openReview({ kind: "release", groupId: group.groupId }, { from });
+          }}
+        />
       )}
     </div>
   );
@@ -2175,6 +2311,7 @@ function MateRow<T extends RosterCandidate>({
   keys,
   number,
   numbers = false,
+  reviewWaits = false,
 }: {
   readonly candidate: T;
   readonly tint: MateTintId;
@@ -2201,6 +2338,8 @@ function MateRow<T extends RosterCandidate>({
   readonly number?: number | undefined;
   /** Option is held: the time slot shows the number instead. */
   readonly numbers?: boolean;
+  /** Its own change waits on the person's review (`mateNextStep`): it wears needs-you. */
+  readonly reviewWaits?: boolean;
 }) {
   const tags = readZeropsGroupTags(candidate.project.tagList);
   const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
@@ -2214,7 +2353,11 @@ function MateRow<T extends RosterCandidate>({
   // read through its socket, or until the socket opens what this browser
   // remembers the row saying. A Mate still coming up says only that
   // (`mateComingRowView`).
-  const read = mateRowReading({ connected: candidate.group === "connected", activity });
+  const read = mateRowReading({
+    connected: candidate.group === "connected",
+    activity,
+    reviewWaits,
+  });
   const view = deleting
     ? mateDeletingView(read)
     : coming === undefined
@@ -2233,6 +2376,8 @@ function MateRow<T extends RosterCandidate>({
     asked: view.ask !== undefined,
     standUpBy: tags.standUp?.by,
     viewer,
+    // It waits on the viewer once its page can show the sign-in: its link made.
+    linked: candidate.group === "connected",
   });
   // The sign-in line stands where nothing else is said of a Mate that is up: to the person who
   // added it, that it waits on them — with the amber dot of what needs them.
@@ -2247,6 +2392,7 @@ function MateRow<T extends RosterCandidate>({
     viewer,
   });
   const known = activity !== undefined && activity.remembered !== true;
+  const warmIntent = useWarmIntent(activity?.threadKey);
   // Its menu's door to its crew (`mateCrewItem`): whether crew mode is on and
   // a crew applied — a fixture's, or its feed's once it is connected.
   const liveCrewStatus = useCrewStatus(
@@ -2340,6 +2486,9 @@ function MateRow<T extends RosterCandidate>({
         aria-disabled={deleting || undefined}
         className="menu-row grid w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default"
         data-zerops-surface="sidebar-mate"
+        // Resting on it, focusing or touching it warms its conversation, so
+        // a press finds its rows already placed (`KeptTimelines`).
+        {...warmIntent}
         onClick={() => {
           if (longPress.current.fired) {
             longPress.current.fired = false;
@@ -2377,9 +2526,10 @@ function MateRow<T extends RosterCandidate>({
             openMenu();
           }
         }}
-        onFocus={() => {
+        onFocus={(event) => {
           // The eye is on this Mate now: "the next one that waits" starts here.
           useSidebarReveal.getState().setCursor(candidate.project.id);
+          warmIntent.onFocus(event);
         }}
         ref={rowButton}
         type="button"

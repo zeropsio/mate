@@ -83,6 +83,8 @@ export type ZeropsAgentAvailability =
   | { readonly kind: "someone-else"; readonly signerId: string | undefined }
   /** Signed in on the project, but no signer was recorded for it (or this browser's own record write failed, H13). */
   | { readonly kind: "unrecorded" }
+  /** The project records its sign-in for two or more people: nobody's until signed in again. */
+  | { readonly kind: "unsettled" }
   /** The agent's row is not known yet, or its read failed: the read says which. */
   | { readonly kind: "unknown"; readonly read: ZeropsAgentAuthUnknown };
 
@@ -99,6 +101,8 @@ export interface ZeropsAgentAuthFacts extends ZeropsAgentAuthFields {
   /** Only the phase matters here — the rest of the login session is presentation. */
   readonly loginPhase?: ZeropsAgentLoginPhase | undefined;
   readonly authorizedBy?: ZeropsAgentAuthorizer | undefined;
+  /** The project records its sign-in for two or more people: whose it is is not known. */
+  readonly signerUnknown?: boolean | undefined;
 }
 
 /**
@@ -192,6 +196,7 @@ export function resolveZeropsAgentAvailability(
         : resolveZeropsAgentOwnership(
             {
               authorizedBy: agent.authorizedBy,
+              signerUnknown: agent.signerUnknown,
               viewerSubject: input.viewerSubject,
               recordFailed: input.recordFailed,
             },
@@ -224,14 +229,18 @@ export function resolveZeropsAgentAvailability(
  * or somebody else — is the truth regardless of a stale local failure flag.
  */
 function resolveZeropsAgentOwnership(
-  input: Pick<ZeropsAgentAuthFacts, "authorizedBy"> &
+  input: Pick<ZeropsAgentAuthFacts, "authorizedBy" | "signerUnknown"> &
     Pick<ZeropsAgentAvailabilityInput, "viewerSubject" | "recordFailed">,
   auth: Extract<ZeropsAgentAuthKind["kind"], "authorized" | "registering">,
 ): ZeropsAgentAvailability {
   const signer = input.authorizedBy?.subject;
-  if (signer === undefined || signer.length === 0) return { kind: "unrecorded" };
+  const runnable: ZeropsAgentAvailability =
+    auth === "authorized" ? { kind: "ready" } : { kind: "registering" };
+  if (signer === undefined || signer.length === 0) {
+    return input.signerUnknown === true ? { kind: "unsettled" } : { kind: "unrecorded" };
+  }
   if (input.viewerSubject !== signer) return { kind: "someone-else", signerId: signer };
-  return auth === "authorized" ? { kind: "ready" } : { kind: "registering" };
+  return runnable;
 }
 
 /** Whether the composer may select this agent: `ready` now, or `registering` on its way there. */

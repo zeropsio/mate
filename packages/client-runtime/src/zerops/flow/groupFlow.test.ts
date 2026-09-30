@@ -805,3 +805,132 @@ describe("groupFlow (DESIGN §4.7)", () => {
     expect(environment({ statuses: new Map() }, "p-stage")?.state).toBe("unread");
   });
 });
+
+describe("groupFlow over version names that spell a short sha", () => {
+  // Since 2026-09-30 the broker names a stage deploy `{branch} {short}` and a release `{tag} {short}`.
+  const short = (sha: string) => sha.slice(0, 7);
+  const runs = (name: string): SettledDeployment => ({
+    kind: "running",
+    activatedAt: null,
+    version: deployedVersion(name),
+  });
+  const TAG: GiteaTag = {
+    name: "v1.0.0",
+    message: `appdev ${PRODUCTION_SHA}`,
+    commit: { sha: "t0" },
+  };
+  const shortStops = (production: string) =>
+    new Map([
+      [
+        "p-stage",
+        known([stopService("p-stage", "appdev", known(runs(`main ${short(MAIN_SHA)}`)))]),
+      ],
+      ["p-prod", known([stopService("p-prod", "appdev", known(runs(production)))])],
+    ]);
+  const success: ReadonlyArray<GiteaCommitStatus> = [
+    { context: deployStatusContext("stage", "appdev"), state: "success" },
+  ];
+  const stageOf = (overrides: Partial<GroupFlowInputs>) => {
+    const flow = groupFlow(inputs(overrides), RELEASER, NOW);
+    if (flow.stops.state !== "known") throw new Error("stops not known");
+    return flow.stops.value.find((stop) => stop.projectId === "p-stage")?.environment;
+  };
+
+  it.each([
+    { name: "with nothing else read yet", mainHeads: new Map(), tags: known([]) },
+    { name: "once main's head and the release are read", mainHeads: undefined, tags: known([TAG]) },
+  ])("reads each running commit's statuses under its name's own spelling, $name", (row) => {
+    const reads = groupFlowStatusReads(
+      inputs({
+        stops: shortStops(`v1.0.0 ${short(PRODUCTION_SHA)}`),
+        tags: row.tags,
+        ...(row.mainHeads === undefined ? {} : { mainHeads: row.mainHeads }),
+      }),
+    );
+    expect(reads).toContainEqual({ repository: "appdev", sha: short(MAIN_SHA) });
+    expect(reads).toContainEqual({ repository: "appdev", sha: short(PRODUCTION_SHA) });
+  });
+
+  it.each([
+    { name: "before main's head is read", mainHeads: new Map() },
+    { name: "after main's head is read", mainHeads: undefined },
+  ])("keeps the stage row read $name, graded by its statuses", ({ mainHeads }) => {
+    const stage = stageOf({
+      stops: shortStops(`v1.0.0 ${short(PRODUCTION_SHA)}`),
+      tags: known([TAG]),
+      ...(mainHeads === undefined ? {} : { mainHeads }),
+      statuses: new Map([
+        [statusKey("appdev", short(MAIN_SHA)), known(success)],
+        [statusKey("appdev", short(PRODUCTION_SHA)), known<ReadonlyArray<GiteaCommitStatus>>([])],
+      ]),
+    });
+    if (stage?.state !== "known") throw new Error(`stage is ${String(stage?.state)}`);
+    expect(environmentRow(stage.value)).toMatchObject({
+      tone: "good",
+      version: { commit: short(MAIN_SHA), label: short(MAIN_SHA) },
+    });
+  });
+
+  it("names production's row by the tag", () => {
+    const flow = groupFlow(
+      inputs({
+        stops: shortStops(`v1.0.0 ${short(PRODUCTION_SHA)}`),
+        tags: known([TAG]),
+        statuses: new Map([
+          [statusKey("appdev", short(MAIN_SHA)), known(success)],
+          [statusKey("appdev", short(PRODUCTION_SHA)), known<ReadonlyArray<GiteaCommitStatus>>([])],
+        ]),
+      }),
+      RELEASER,
+      NOW,
+    );
+    if (flow.stops.state !== "known") throw new Error("stops not known");
+    const production = flow.stops.value.find((stop) => stop.projectId === "p-prod")?.environment;
+    if (production?.state !== "known") throw new Error("production not known");
+    expect(environmentRow(production.value).version).toMatchObject({
+      name: "v1.0.0",
+      label: "v1.0.0",
+      commit: short(PRODUCTION_SHA),
+    });
+  });
+
+  it.each([
+    { name: "before the release is read", tags: known([]) },
+    { name: "after the release is read", tags: known([TAG]) },
+  ])("compares what production runs with main from its name's spelling, $name", ({ tags }) => {
+    expect(
+      releaseContentReads(inputs({ stops: shortStops(`v1.0.0 ${short(PRODUCTION_SHA)}`), tags })),
+    ).toEqual([
+      { service: "appdev", repository: "appdev", from: short(PRODUCTION_SHA), head: MAIN_SHA },
+    ]);
+  });
+
+  it("reads nothing to release when production runs main's head by its short name", () => {
+    expect(
+      releaseContentReads(
+        inputs({ stops: shortStops(`v1.0.0 ${short(MAIN_SHA)}`), tags: known([]) }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("reads the release production runs as Live", () => {
+    const flow = groupFlow(
+      inputs({
+        stops: shortStops(`v1.0.0 ${short(PRODUCTION_SHA)}`),
+        tags: known([TAG]),
+        statuses: new Map([
+          [
+            statusKey("group", "t0"),
+            known([{ context: releaseStatusContext("v1.0.0"), state: "success" as const }]),
+          ],
+        ]),
+      }),
+      RELEASER,
+      NOW,
+    );
+    expect(flow.releases).toMatchObject({
+      state: "known",
+      value: [{ tag: "v1.0.0", row: { value: { standing: "live", word: "Live" } } }],
+    });
+  });
+});

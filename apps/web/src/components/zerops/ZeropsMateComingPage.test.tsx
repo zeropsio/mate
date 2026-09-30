@@ -1,5 +1,6 @@
+// @vitest-environment happy-dom
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { MateLink } from "@t3tools/client-runtime/zerops/environments";
+import { MATE_VOICE_QUIET_MS, type MateLink } from "@t3tools/client-runtime/zerops/environments";
 import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
 import { act, createElement as h, type ReactNode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
@@ -56,7 +57,9 @@ const app = vi.hoisted(() => ({
   listing: { state: "unread", waitingFor: null } as unknown,
   threads: [] as Array<unknown>,
   projects: [] as Array<unknown>,
+  remembered: undefined as { readonly subject: string; readonly threadKey?: string } | undefined,
 }));
+vi.mock("~/zerops/menuMemory", () => ({ rememberedActivity: () => app.remembered }));
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => app.navigate,
@@ -66,6 +69,13 @@ vi.mock("~/routes/-environmentTargets", () => ({
   useEnvironmentLinks: () => ({ mateLink: () => app.link }),
 }));
 vi.mock("~/state/entities", () => ({
+  // A conversation's shell once its environment's conversations are read.
+  useThreadShell: (ref: { readonly threadId: string } | null) =>
+    ref === null
+      ? null
+      : ((app.threads as Array<{ readonly id: string }>).find(
+          (thread) => thread.id === ref.threadId,
+        ) ?? null),
   useThreadShells: () => app.threads,
   useThreadStatus: () => "live",
   useProjects: () => app.projects,
@@ -102,6 +112,10 @@ vi.mock("~/zerops/useUsualAgent", () => ({
   useUsualAgent: () => ({ usual: null, settled: true }),
 }));
 vi.mock("~/zerops/useNowMs", () => ({ useSecondsNowMs: () => 0 }));
+// A slow first connect lists its project's processes; none are read here.
+vi.mock("~/zerops/activity/useProjectActivity", () => ({
+  useProjectActivity: () => ({ processes: [] }),
+}));
 vi.mock("~/zerops/inventoryContext", () => ({
   useZeropsInventory: () => ({ services: new Map() }),
 }));
@@ -123,8 +137,13 @@ vi.mock("./ZeropsMateEmptyState", () => ({
     readonly mate: { readonly name: string };
   }) => h("section", { "data-kind": coming.kind }, mate.name, coming.below),
 }));
-vi.mock("../chat/ConversationStrip", () => ({ ConversationStripView: () => null }));
+vi.mock("../chat/ConversationStrip", () => ({
+  // What the header's line says after the Mate's name: what it is on.
+  ConversationStripView: ({ mate }: { readonly mate: { readonly tooltip: string | null } }) =>
+    h("span", null, mate.tooltip),
+}));
 vi.mock("../chat/ChatHeader", () => ({ ZeropsProjectLink: () => null }));
+vi.mock("../chat/PanelLayoutControls", () => ({ PanelLayoutControls: () => null }));
 vi.mock("../ui/sidebar", () => ({
   SidebarInset: ({ children }: { readonly children?: ReactNode }) => h("main", null, children),
 }));
@@ -136,10 +155,12 @@ vi.mock("../ui/button", () => ({
   Button: ({
     children,
     onClick,
+    inert,
   }: {
     readonly children?: ReactNode;
     readonly onClick?: () => void;
-  }) => h("button", { onClick }, children),
+    readonly inert?: boolean;
+  }) => h("button", { onClick, inert }, children),
 }));
 vi.mock("./ZeropsProjectsPage", () => ({ removeFailedZeropsProject: async () => ({ ok: true }) }));
 
@@ -158,12 +179,19 @@ const said = () =>
     .flatMap((node) => node.children.filter((child) => typeof child === "string"))
     .join(" ");
 
+/** The verbs the view offers: what can be pressed. */
 const buttons = () =>
-  tree?.root.findAllByType("button").map((node) => node.children.join("")) ?? [];
+  tree?.root
+    .findAllByType("button")
+    .filter((node) => node.props.disabled !== true && node.props.inert !== true)
+    .map((node) => node.children.join("")) ?? [];
 
 beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  // The composer standing in takes the focus a frame after it arrives.
+  vi.stubGlobal("requestAnimationFrame", () => 0);
+  vi.stubGlobal("cancelAnimationFrame", () => undefined);
   app.navigate.mockClear();
   app.connect.mockClear();
   app.openMate.mockClear();
@@ -172,8 +200,11 @@ beforeEach(() => {
   app.threads = [];
   app.projects = [];
   app.link = { key: undefined, environmentId: undefined, reachability: null };
+  app.remembered = undefined;
 });
-afterEach(() => {
+afterEach(async () => {
+  const { useComposerDraftStore } = await import("~/composerDraftStore");
+  useComposerDraftStore.getState().setPrompt({ environmentId: ENV_QUINN, threadId: MAIN.id }, "");
   act(() => tree?.unmount());
   tree = undefined;
   takeMateConversation(PROJECT);
@@ -195,9 +226,12 @@ describe("a Mate's own view while its link is made", () => {
     openView();
     act(() => vi.advanceTimersByTime(10_000));
     openView();
+    // A blip says nothing; a link lost for longer says so in the Mate's name (`mateVoice`).
+    expect(said()).not.toContain("Reconnecting");
+    act(() => vi.advanceTimersByTime(MATE_VOICE_QUIET_MS));
 
     expect(said()).toContain("Quinn");
-    expect(said()).toContain("Reconnecting…");
+    expect(said()).toContain("Reconnecting to Quinn…");
     expect(app.connect).toHaveBeenCalledWith({ key: KEY });
     expect(app.navigate).not.toHaveBeenCalled();
   });
@@ -217,14 +251,20 @@ describe("a Mate's own view while its link is made", () => {
     expect(said()).toContain("This Mate isn't answering. Trying again in 5 s.");
     expect(buttons()).toEqual(["Try now"]);
     app.connect.mockClear();
-    act(() => tree?.root.findByType("button").props.onClick());
+    act(() =>
+      tree?.root
+        .findAllByType("button")
+        .find((node) => node.children.join("") === "Try now")
+        ?.props.onClick(),
+    );
     expect(app.connect).toHaveBeenCalledExactlyOnceWith({ key: KEY });
   });
 
   it("waits for a machine to name it before connecting: a Connect before the stage holds it ends unheard", () => {
     app.link = { key: KEY, environmentId: undefined, reachability: null } satisfies MateLink;
     openView();
-    expect(said()).toContain("Opening this conversation…");
+    act(() => vi.advanceTimersByTime(MATE_VOICE_QUIET_MS));
+    expect(said()).toContain("Opening Quinn…");
     expect(app.connect).not.toHaveBeenCalled();
     expect(app.navigate).not.toHaveBeenCalled();
   });
@@ -284,5 +324,167 @@ describe("a Mate's own view while its link is made", () => {
     });
     // An existing Mate's hand-over is not a new Mate's stand-up.
     expect(app.handingOver).not.toHaveBeenCalled();
+  });
+});
+
+// The owner, 2026-09-30: "sometimes the text area still flashed because old one is gone sooner
+// than new one is in". A switch from a conversation to a Mate whose link is still being made
+// lands here: its composer stands in its place, as the conversation that takes over draws it,
+// never nothing until the conversation opens. A Mate coming up for the first time holds its
+// composer back for its stand-up, and one that cannot be opened has nothing to write to.
+describe("the composer in a Mate's own view", () => {
+  const composer = () =>
+    tree?.root.findAll((node) => typeof node.type === "string" && node.type === "textarea") ?? [];
+
+  it.each([
+    {
+      case: "an existing Mate while its link is made",
+      link: { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } },
+      candidate: QUINN,
+      shown: true,
+    },
+    {
+      case: "an existing Mate no machine names yet",
+      link: { key: KEY, environmentId: undefined, reachability: null },
+      candidate: QUINN,
+      shown: true,
+    },
+    {
+      case: "a Mate that cannot be opened",
+      link: {
+        key: KEY,
+        environmentId: undefined,
+        reachability: { kind: "gone", because: "direct-not-found" },
+      },
+      candidate: QUINN,
+      shown: false,
+    },
+    {
+      case: "a new Mate coming up",
+      link: { key: KEY, environmentId: undefined, reachability: null },
+      candidate: { ...QUINN, group: "provisioning" } as ZeropsCandidate,
+      shown: false,
+    },
+  ] satisfies ReadonlyArray<{
+    case: string;
+    link: MateLink;
+    candidate: ZeropsCandidate;
+    shown: boolean;
+  }>)("$case: shown $shown", ({ link, candidate, shown }) => {
+    app.link = link;
+    app.listing = listingOf([candidate]);
+    openView();
+
+    expect(composer().length).toBe(shown ? 1 : 0);
+    if (shown) {
+      expect(composer()[0]?.props.placeholder).toBe("Describe what you want to build or change…");
+    }
+  });
+
+  // What the person types while the Mate connects is not lost: it is the conversation's draft
+  // once it opens, the caret where they left it.
+  it("hands what was typed to the conversation's draft, the caret with it", async () => {
+    const { useComposerDraftStore } = await import("~/composerDraftStore");
+    const { takeHandedOverCaret } = await import("~/zerops/mateHandOver");
+    app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
+    openView();
+    act(() =>
+      composer()[0]?.props.onChange({
+        currentTarget: { value: "Deploy it to stage", selectionEnd: 6 },
+      }),
+    );
+
+    app.link = {
+      key: KEY,
+      environmentId: ENV_QUINN,
+      reachability: { kind: "ready", notice: null },
+    } satisfies MateLink;
+    app.threads = [MAIN];
+    act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
+    act(() => vi.advanceTimersByTime(0));
+
+    const conversation = { environmentId: ENV_QUINN, threadId: MAIN.id };
+    expect(useComposerDraftStore.getState().getComposerDraft(conversation)?.prompt).toBe(
+      "Deploy it to stage",
+    );
+    expect(takeHandedOverCaret(`${ENV_QUINN}:${MAIN.id}`, Date.now())).toBe(6);
+  });
+});
+
+describe("the composer in a Mate's own view, its conversation known from the menu", () => {
+  it("is that conversation's composer: its draft shown, what is typed its draft", async () => {
+    const { useComposerDraftStore } = await import("~/composerDraftStore");
+    const { takeHandedOverCaret } = await import("~/zerops/mateHandOver");
+    const conversation = { environmentId: ENV_QUINN, threadId: MAIN.id };
+    const threadKey = `${ENV_QUINN}:${MAIN.id}`;
+    useComposerDraftStore.getState().setPrompt(conversation, "Check the logs");
+    app.remembered = { subject: "Check the logs", threadKey };
+    app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
+    openView();
+    const field = () =>
+      tree!.root.find((node) => typeof node.type === "string" && node.type === "textarea");
+    expect(field().props.value).toBe("Check the logs");
+
+    act(() =>
+      field().props.onChange({
+        currentTarget: { value: "Check the logs first", selectionEnd: 20 },
+      }),
+    );
+    expect(useComposerDraftStore.getState().getComposerDraft(conversation)?.prompt).toBe(
+      "Check the logs first",
+    );
+
+    app.link = {
+      key: KEY,
+      environmentId: ENV_QUINN,
+      reachability: { kind: "ready", notice: null },
+    } satisfies MateLink;
+    app.threads = [MAIN];
+    act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
+    act(() => vi.advanceTimersByTime(0));
+    expect(useComposerDraftStore.getState().getComposerDraft(conversation)?.prompt).toBe(
+      "Check the logs first",
+    );
+    expect(takeHandedOverCaret(threadKey, Date.now())).toBe(20);
+  });
+});
+
+describe("the composer in a Mate's own view, the menu naming an older conversation", () => {
+  it("moves what was typed there into the conversation that opens", async () => {
+    const { useComposerDraftStore } = await import("~/composerDraftStore");
+    const { takeHandedOverCaret } = await import("~/zerops/mateHandOver");
+    const older = { environmentId: ENV_QUINN, threadId: ThreadId.make("thread-older") };
+    const conversation = { environmentId: ENV_QUINN, threadId: MAIN.id };
+    app.remembered = { subject: "Earlier", threadKey: `${ENV_QUINN}:thread-older` };
+    app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
+    openView();
+    act(() =>
+      tree!.root
+        .find((node) => typeof node.type === "string" && node.type === "textarea")
+        .props.onChange({ currentTarget: { value: "Ship it", selectionEnd: 4 } }),
+    );
+
+    app.link = {
+      key: KEY,
+      environmentId: ENV_QUINN,
+      reachability: { kind: "ready", notice: null },
+    } satisfies MateLink;
+    app.threads = [MAIN];
+    act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
+    act(() => vi.advanceTimersByTime(0));
+
+    const drafts = useComposerDraftStore.getState();
+    expect(drafts.getComposerDraft(conversation)?.prompt).toBe("Ship it");
+    expect(drafts.getComposerDraft(older)?.prompt ?? "").toBe("");
+    expect(takeHandedOverCaret(`${ENV_QUINN}:${MAIN.id}`, Date.now())).toBe(4);
+  });
+});
+
+describe("the header in a Mate's own view", () => {
+  it("says what an existing Mate is on, as its menu row does, while its link is made", () => {
+    app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
+    app.remembered = { subject: "Rename the orders column" };
+    openView();
+    expect(said()).toContain("Rename the orders column");
   });
 });

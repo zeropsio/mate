@@ -392,6 +392,47 @@ describe("zeropsAgentSignInRequired", () => {
       expected: true,
     },
     {
+      name: "the only agent's credential landed while its code is still being checked",
+      snapshot: snapshot([
+        agent({
+          agentId: "claude-code",
+          state: "local-only",
+          credPresent: true,
+          providerAuth: "unknown",
+          login: loginState({ phase: "verifying-code" }),
+        }),
+        agent({ agentId: "codex", state: "not-authorized" }),
+      ]),
+      expected: true,
+    },
+    {
+      name: "the only agent's login succeeded and is being registered",
+      snapshot: snapshot([
+        agent({
+          agentId: "claude-code",
+          state: "local-only",
+          credPresent: true,
+          providerAuth: "unknown",
+          login: loginState({ phase: "succeeded" }),
+        }),
+        agent({ agentId: "codex", state: "not-authorized" }),
+      ]),
+      expected: false,
+    },
+    {
+      name: "an authorized agent signing in again stays signed in",
+      snapshot: snapshot([
+        agent({
+          agentId: "claude-code",
+          state: "authorized",
+          credPresent: true,
+          providerAuth: "authenticated",
+          login: loginState({ phase: "verifying-code" }),
+        }),
+      ]),
+      expected: false,
+    },
+    {
       name: "no agent is signed in and one login is in flight",
       snapshot: snapshot([
         agent({

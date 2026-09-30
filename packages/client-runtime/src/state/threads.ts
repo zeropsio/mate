@@ -9,6 +9,7 @@ import {
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
@@ -19,7 +20,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import { Atom } from "effect/unstable/reactivity";
 
 import { EnvironmentRegistry } from "../connection/registry.ts";
-import { connectionProjectionPhase } from "../connection/model.ts";
+import { connectionProjectionPhase, type PreparedConnection } from "../connection/model.ts";
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
 import * as ConnectionWakeups from "../connection/wakeups.ts";
 import { EnvironmentCacheStore } from "../platform/persistence.ts";
@@ -390,8 +391,10 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
     // "keep" preserves the current page state (live events touch only loaded
     // recent turns); a snapshot or merged page passes its own page state.
     page: Option.Option<EnvironmentThreadPageState> | "keep",
+    // A snapshot read before the socket is open is not live until the socket says so.
+    connecting = false,
   ) {
-    const waiting = yield* Ref.get(awaitingCompletion);
+    const waiting = connecting || (yield* Ref.get(awaitingCompletion));
     yield* SubscriptionRef.update(state, (current) => ({
       data: Option.some(thread),
       // Buffered values from the failed attempt can still arrive after its error.
@@ -437,6 +440,22 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
   });
 
   // Body of applyItem, running under applyLock.
+  const setSnapshot = Effect.fn("EnvironmentThreadState.setSnapshot")(function* (
+    snapshot: OrchestrationThreadDetailSnapshot,
+    connecting: boolean,
+  ) {
+    // A fresh snapshot replaces all loaded history, including older
+    // pages: a turn reverted while disconnected would otherwise survive
+    // in the preserved history with no event left to remove it. The
+    // epoch bump discards any older-page fetch racing this snapshot.
+    yield* Ref.update(historyEpoch, (epoch) => epoch + 1);
+    // A parked response must not clear loadingOlder on a request started
+    // from the replacement snapshot's cursor.
+    yield* Ref.set(pendingOlderPage, null);
+    yield* SubscriptionRef.set(lastSequence, snapshot.snapshotSequence);
+    yield* setThread(snapshot.thread, pageStateFromSnapshot(snapshot.page), connecting);
+  });
+
   const applyItemLocked = Effect.fn("EnvironmentThreadState.applyItemLocked")(function* (
     item: OrchestrationThreadStreamItem,
   ) {
@@ -451,16 +470,7 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
     }
 
     if (item.kind === "snapshot") {
-      // A fresh snapshot replaces all loaded history, including older
-      // pages: a turn reverted while disconnected would otherwise survive
-      // in the preserved history with no event left to remove it. The
-      // epoch bump discards any older-page fetch racing this snapshot.
-      yield* Ref.update(historyEpoch, (epoch) => epoch + 1);
-      // A parked response must not clear loadingOlder on a request started
-      // from the replacement snapshot's cursor.
-      yield* Ref.set(pendingOlderPage, null);
-      yield* SubscriptionRef.set(lastSequence, item.snapshot.snapshotSequence);
-      yield* setThread(item.snapshot.thread, pageStateFromSnapshot(item.snapshot.page));
+      yield* setSnapshot(item.snapshot, false);
       return;
     }
 
@@ -751,6 +761,61 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
   });
 
   yield* markSynchronizing;
+
+  // A server whose descriptor names the snapshot's parameters (`prepared.threadSnapshot`) has
+  // the thread read over HTTP as soon as its connection is prepared, on the tab's warm HTTP/2
+  // connection, while the socket still opens; the socket then resumes from it. The
+  // subscription waits for this read before it decides to read the snapshot itself, so a
+  // thread is never read twice, and one this read painted is only ever resumed.
+  const earlyRead = yield* Deferred.make<void>();
+  /**
+   * The connection the early read ran against. A read that found nothing (a thread not there
+   * yet, a timeout, a refusal) is not repeated against the same one: the socket's own snapshot
+   * serves instead, rather than a second wait and a second refusal.
+   */
+  const earlyReadAgainst = yield* Ref.make<PreparedConnection | null>(null);
+  if (Option.isNone(initialState.data)) {
+    yield* SubscriptionRef.changes(supervisor.prepared).pipe(
+      Stream.filter(Option.isSome),
+      Stream.map((value) => value.value),
+      Stream.runHead,
+      Effect.flatMap((first) => {
+        const prepared = Option.getOrNull(first);
+        const capabilities = prepared?.threadSnapshot;
+        if (prepared === null || capabilities === undefined) return Effect.void;
+        return Ref.set(earlyReadAgainst, prepared).pipe(
+          Effect.andThen(
+            snapshotLoader
+              .load(
+                prepared,
+                threadId,
+                capabilities.pagination ? { turnLimit: INITIAL_THREAD_USER_TURN_LIMIT } : undefined,
+                capabilities.reasoningMessages,
+              )
+              .pipe(
+                Effect.flatMap((response) =>
+                  Option.isNone(response)
+                    ? Effect.void
+                    : applyLock.withPermits(1)(
+                        Effect.gen(function* () {
+                          const current = yield* SubscriptionRef.get(state);
+                          if (Option.isSome(current.data) || current.status === "deleted") return;
+                          yield* setSnapshot(response.value, true);
+                          yield* remember;
+                        }),
+                      ),
+                ),
+              ),
+          ),
+        );
+      }),
+      Effect.ensuring(Deferred.succeed(earlyRead, undefined)),
+      Effect.forkScoped,
+    );
+  } else {
+    yield* Deferred.succeed(earlyRead, undefined);
+  }
+
   yield* Effect.forkScoped(
     subscribeDynamic(
       ORCHESTRATION_WS_METHODS.subscribeThread,
@@ -776,6 +841,7 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
         yield* Ref.set(awaitingCompletion, supportsCompletionMarker);
         yield* markSynchronizing;
         yield* Ref.set(resumingLive, false);
+        yield* Deferred.await(earlyRead);
 
         let current = yield* SubscriptionRef.get(state);
         // A windowed cache resuming against a server without pagination is a
@@ -814,12 +880,15 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
               }),
             ),
           );
-          const httpSnapshot = yield* snapshotLoader.load(
-            prepared,
-            threadId,
-            supportsPagination ? { turnLimit: INITIAL_THREAD_USER_TURN_LIMIT } : undefined,
-            supportsReasoningMessages,
-          );
+          const httpSnapshot =
+            (yield* Ref.get(earlyReadAgainst)) === prepared
+              ? Option.none<OrchestrationThreadDetailSnapshot>()
+              : yield* snapshotLoader.load(
+                  prepared,
+                  threadId,
+                  supportsPagination ? { turnLimit: INITIAL_THREAD_USER_TURN_LIMIT } : undefined,
+                  supportsReasoningMessages,
+                );
           if (Option.isSome(httpSnapshot)) {
             yield* applyItem({ kind: "snapshot", snapshot: httpSnapshot.value });
             current = yield* SubscriptionRef.get(state);

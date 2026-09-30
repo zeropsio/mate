@@ -61,7 +61,7 @@ import type { ActivityAppVersion } from "./activity/dto.ts";
 import { type ObservedStep, observedSteps } from "./activity/observedSteps.ts";
 import type { ProvisioningPhase, ZeropsContainerHealth } from "./provisioning.ts";
 import type { RecipeRuntimeRole } from "./recipeTier.ts";
-import { isRuntimeService } from "./topology.ts";
+import { isManagedDataService, isRuntimeService } from "./topology.ts";
 
 export interface BirthProcessFact {
   readonly actionName: string;
@@ -117,7 +117,7 @@ export interface BirthRuntimesFacts {
    * it did not.
    */
   readonly import: "waiting" | "importing" | "imported" | { readonly failed: string };
-  /** In the tier's order. */
+  /** By hostname. */
   readonly runtimes: ReadonlyArray<BirthRuntimeFact>;
 }
 
@@ -621,12 +621,16 @@ export function birthRuntimesFacts(input: {
         planned.failed === undefined
           ? IMPORT_BY_STEP[input.birth.step]
           : { failed: planned.failed },
-      runtimes: planned.services.map((runtime) => ({ ...runtime, ...serviceOf(runtime.hostname) })),
+      // By hostname, as its project's own read gives them after it: one order on every surface.
+      runtimes: [...planned.services]
+        .sort((left, right) => left.hostname.localeCompare(right.hostname))
+        .map((runtime) => ({ ...runtime, ...serviceOf(runtime.hostname) })),
     };
   }
-  const runtimes = services.filter(
-    (service) => service.isSystem !== true && isRuntimeService(service),
-  );
+  // The listing's order is its own and changes between reads: by hostname, it reads the same.
+  const runtimes = services
+    .filter((service) => service.isSystem !== true && isRuntimeService(service))
+    .sort(byName);
   if (runtimes.length === 0) return undefined;
   return {
     import: "imported",
@@ -636,6 +640,46 @@ export function birthRuntimesFacts(input: {
       service: { id: service.id, status: service.status },
     })),
   };
+}
+
+const byName = (left: { readonly name: string }, right: { readonly name: string }) =>
+  left.name.localeCompare(right.name);
+
+/** One managed service of a Mate's copy of the project, as far as it has come. */
+export interface BirthCopyService {
+  readonly hostname: string;
+  readonly state: BirthStepState;
+}
+
+function copyServiceState(service: { readonly status: string } | undefined): BirthStepState {
+  if (service === undefined) return "waiting";
+  if (service.status === "ACTIVE" || service.status === "RUNNING") return "done";
+  return RUNTIME_FAILED_STATUSES.has(service.status) ? "failed" : "active";
+}
+
+/**
+ * The managed services a Mate's copy of the project brings — what the project's first import
+ * waits on: the ones its birth planned, in the tier's order, from the press; once its birth is
+ * over, its project's own, by hostname. Undefined where it brings none, or the project is not
+ * read yet.
+ */
+export function birthCopyServices(input: {
+  /** The hostnames its birth planned (`BirthRecord.managed`); undefined where no birth is held. */
+  readonly planned: ReadonlyArray<string> | undefined;
+  readonly services: ReadonlyArray<ZeropsService> | undefined;
+}): ReadonlyArray<BirthCopyService> | undefined {
+  const services = input.services ?? [];
+  const copy =
+    input.planned !== undefined
+      ? input.planned.map((hostname) => ({
+          hostname,
+          state: copyServiceState(services.find((service) => service.name === hostname)),
+        }))
+      : services
+          .filter((service) => service.isSystem !== true && isManagedDataService(service))
+          .sort(byName)
+          .map((service) => ({ hostname: service.name, state: copyServiceState(service) }));
+  return copy.length === 0 ? undefined : copy;
 }
 
 export function deriveBirthProgress(facts: BirthFacts, nowMs: number): BirthProgress {

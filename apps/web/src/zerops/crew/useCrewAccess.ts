@@ -80,8 +80,9 @@ export function useCrewAccess(
                 agent: spent.agent,
                 authorizedBy: resolveAgentAuthorizer(
                   spent.key,
-                  spent.agent.authorizedBy,
+                  spent.agent,
                   localSigners,
+                  viewerSubject,
                 ),
                 recordFailed: recordFailed.has(spent.key),
               },

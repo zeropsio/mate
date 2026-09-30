@@ -321,6 +321,7 @@ function projectFlow(
     missing: deployed?.missing ?? [],
     pullRequests: forge?.pullRequests ?? [],
     changesKnown: forge !== undefined,
+    changesFailure: forge === undefined ? failures.forge : undefined,
     merged: forge?.merged ?? [],
     releases: releaseRows,
     release: {

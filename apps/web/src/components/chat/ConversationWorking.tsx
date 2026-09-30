@@ -33,12 +33,15 @@ import { ChevronDownIcon } from "lucide-react";
 
 import { cn } from "~/lib/utils";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
+import { useStandupReading } from "../../zerops/activity/useStandupReading";
 import { Button } from "../ui/button";
 import { MateFace } from "../zerops/primitives";
 import { formatWorkDuration, isGitPushOnly, type IncidentModel } from "./conversation.logic";
 import { StatusBar, type BarTone } from "./StatusBar";
 import type { DockBackgroundTask, DockModel } from "./conversationDock.logic";
 import { ElapsedSince, type ConversationSpeaker } from "./ConversationRows";
+import { DetailRow, spanOf } from "./DetailRow";
+import { standupBar } from "./standupBar.logic";
 import { OperationDetail, PlanSteps, useHoldReading } from "./RunChat";
 import { drawerEase, stepHeight, type CarriedRow } from "./stepHeight";
 
@@ -93,14 +96,6 @@ const INCIDENT_BAR: Record<IncidentModel["tone"], BarTone> = {
   attention: "attention",
   ok: "done",
   failed: "failed",
-};
-
-const TONE_DOT: Record<ServiceStatusToneId, string> = {
-  ok: "bg-status-ok",
-  busy: "bg-status-busy",
-  attention: "bg-status-attention",
-  failed: "bg-status-failed",
-  off: "bg-status-off",
 };
 
 /**
@@ -280,6 +275,39 @@ function DeployInstrument({
 }
 
 /** A step's key: its words, and how many times the same words came before it. */
+/**
+ * A stand-up call's status bar: the half it stands up, a segment per service
+ * it builds, the build that runs — or how many do — and how many are built.
+ * No clock: the run's is the now line's (K3).
+ */
+function StandupInstrument({
+  operation,
+  environmentId,
+  open,
+  onToggle,
+}: {
+  readonly operation: ZeropsOperation;
+  readonly environmentId: EnvironmentId | null;
+  readonly open: boolean;
+  readonly onToggle: () => void;
+}) {
+  const reading = useStandupReading(operation, environmentId);
+  const { words, figure, segments, failed } = standupBar(reading);
+  const subject = operation.subject === "stage" ? "Stage" : "Development";
+  return (
+    <Instrument
+      bar={segments}
+      failed={failed && reading !== null && reading.building === 0}
+      figure={figure}
+      label={`${subject}: ${words}${figure === null ? "" : `, ${figure} built`}. ${open ? "Hide" : "Show"} each service`}
+      onToggle={onToggle}
+      open={open}
+      subject={subject}
+      words={words}
+    />
+  );
+}
+
 function keyedSteps<T extends { readonly step: string }>(steps: ReadonlyArray<T>) {
   const seen = new Map<string, number>();
   return steps.map((step) => {
@@ -411,40 +439,6 @@ const TASK_STATE: Record<
   stopped: { tone: "off", word: "Stopped" },
 };
 
-function spanOf(startedAt: string, endedAt: string | null): ReactNode {
-  return endedAt === null ? (
-    <ElapsedSince since={startedAt} />
-  ) : (
-    formatWorkDuration(Date.parse(endedAt) - Date.parse(startedAt))
-  );
-}
-
-/** A list under a bar: a row per helper or task, its state and its time. */
-function DetailRow({
-  tone,
-  title,
-  word,
-  time,
-}: {
-  readonly tone: ServiceStatusToneId;
-  readonly title: string;
-  readonly word: string;
-  readonly time: ReactNode;
-}) {
-  return (
-    <li className="run-bar">
-      <span className="flex justify-center">
-        <span className={cn("size-1.5 rounded-full", TONE_DOT[tone])} />
-      </span>
-      <span className="flex min-w-0 items-baseline gap-2">
-        <span className="min-w-0 truncate text-foreground">{title}</span>
-        <span className="shrink-0 text-muted-foreground">{word}</span>
-      </span>
-      <span className="text-muted-foreground tabular-nums">{time}</span>
-    </li>
-  );
-}
-
 /** Whether anything in the dock runs alongside the Mate: a bar of its own under the live line. */
 export function dockDraws(dock: DockModel | null): boolean {
   return (
@@ -511,12 +505,21 @@ function Instruments({
     <ul className="run-band grid" data-working-instruments>
       {operations.map((operation) => (
         <Arriving key={operation.key}>
-          <DeployInstrument
-            environmentId={environmentId}
-            onToggle={() => toggle(operation.key)}
-            open={open.has(operation.key)}
-            operation={operation}
-          />
+          {operation.kind === "standup" ? (
+            <StandupInstrument
+              environmentId={environmentId}
+              onToggle={() => toggle(operation.key)}
+              open={open.has(operation.key)}
+              operation={operation}
+            />
+          ) : (
+            <DeployInstrument
+              environmentId={environmentId}
+              onToggle={() => toggle(operation.key)}
+              open={open.has(operation.key)}
+              operation={operation}
+            />
+          )}
           {open.has(operation.key) ? (
             <InstrumentDetail>
               <OperationDetail

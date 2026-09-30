@@ -29,7 +29,11 @@ import {
 } from "@t3tools/shared/userAsk";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
+import {
+  mateNextStep,
+  resolvePrimaryConversation,
+  type FlowPullRequest,
+} from "@t3tools/client-runtime/zerops";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
 import { maskSecrets } from "@t3tools/shared/messagePreview";
@@ -131,6 +135,66 @@ export function mateFaceFor(
 ): MateMarkState {
   if (!connected) return "sleep";
   return activity?.face ?? "idle";
+}
+
+/**
+ * The face of a Mate whose own change waits on the person's review
+ * (`mateNextStep`, the composer's top): it needs them, so it wears the
+ * needs-you face wherever it is not at work — a row, a folded heading — the
+ * one the composer's top wears for the same fact. At work, the work shows;
+ * the review still waits under it.
+ */
+export function mateFaceAwaitingReview(
+  face: MateMarkState,
+  reviewWaits: boolean,
+  /**
+   * Paused at its usage limit (`pausedUntil`): asleep, whatever its last turn said — its row
+   * reads paused, and the review stays on its change's row under it.
+   */
+  paused = false,
+): MateMarkState {
+  if (paused && face === "sleep") return face;
+  return reviewWaits && face !== "working" ? "needs" : face;
+}
+
+/**
+ * Whether a Mate's own change waits on the person's review: the composer's top's rule
+ * (`mateNextStep`), on a project flow Gitea answered — the one reading of it for every surface
+ * that draws the Mate's face.
+ */
+export function mateReviewWaits(
+  flow:
+    | {
+        readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+        /** Absent reads as answered. */
+        readonly changesKnown?: boolean | undefined;
+      }
+    | undefined,
+  mateProjectId: string,
+): boolean {
+  if (flow === undefined || flow.changesKnown === false) return false;
+  return (
+    mateNextStep({ pullRequests: flow.pullRequests, mateProjectId, mateName: undefined }).kind ===
+    "review"
+  );
+}
+
+/**
+ * The face a Mate wears wherever it is drawn (`mateFaceFor`), needing the person while its own
+ * change waits for their review (`mateFaceAwaitingReview`).
+ */
+export function mateFaceOf(input: {
+  readonly connected: boolean;
+  readonly activity:
+    | (Pick<ZeropsAgentActivity, "face"> & { readonly pausedUntil?: string | undefined })
+    | undefined;
+  readonly reviewWaits: boolean;
+}): MateMarkState {
+  return mateFaceAwaitingReview(
+    mateFaceFor(input.connected, input.activity),
+    input.reviewWaits,
+    input.activity?.pausedUntil !== undefined,
+  );
 }
 
 export function agentActivitySnippet(

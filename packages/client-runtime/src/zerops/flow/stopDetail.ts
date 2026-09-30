@@ -20,6 +20,7 @@ import {
 import type { Shown } from "../knowledge/known.ts";
 import { changesNotLive } from "../projectAttention.ts";
 import type { ZeropsPublicRoute, ZeropsRouteOffer } from "../publicRoutes.ts";
+import { sameCommit } from "../versionName.ts";
 import {
   releaseInFlightReason,
   RELEASE_NOTHING_NEW_ON_MAIN,
@@ -237,7 +238,7 @@ const HEAD_OF_MAIN = "head of main";
 
 function commitLine(version: DeployedVersion, mainHead: string | undefined): string | undefined {
   if (version.name !== undefined) return `deployed with ${version.name}`;
-  return version.sha !== undefined && version.sha === mainHead ? HEAD_OF_MAIN : undefined;
+  return sameCommit(version.sha, mainHead) ? HEAD_OF_MAIN : undefined;
 }
 
 const UNREAD: Shown<Deployment> = { state: "unread", waitingFor: null };
@@ -341,6 +342,8 @@ export function serviceRows(input: {
     return {
       hostname,
       repository: state.repository,
+      // As the name spells it: it keys the deploy-run read, which must not move as main's head
+      // arrives, and the run is matched with `sameCommit`.
       sha: version.sha,
       commit: version.commit,
       line: commitLine(version, input.mainHead),
