@@ -2963,10 +2963,10 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
     under the live line
 - **2026-09-30** — **A colleague's Mate wears its owner's picture on its face's corner; your own
   wear nothing** (the owner, of the picture before each name: "it looks like the avatar person is
-  named cleo / wren"; option A of the board they chose from). The picture is a 12 px badge cut out
-  of the 28 px face's bottom-right corner, 3 px in (`.menu-face-cut`, `ownerBadge`); a Mate nobody
-  has signed in wears the empty seat there; a Mate whose owner is not named yet wears nothing until
-  the badge arrives in its box, so nothing moves. Nothing stands before a Mate's name.
+  named cleo / wren"; option A of the board they chose from). The picture is a badge cut out of
+  the 28 px face's corner (`.menu-face-cut`, `ownerBadge`) — 16 px since the entry below; a Mate
+  nobody has signed in wears the empty seat there; a Mate whose owner is not named yet wears nothing
+  until the badge arrives in its box, so nothing moves. Nothing stands before a Mate's name.
   - _Why:_ "(face) Cleo" read as a person named Cleo, and the viewer's own face repeated on every
     Mate
 - **2026-09-30** — **The crew is as closed as the conversation to a viewer who may not run it** (the
@@ -2985,3 +2985,24 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   finished work under it, and _Change its job_ only where the crew's door would take it; a later
   conversation links the one before. Name and face stay empty until the crew is read.
   - _Why:_ a face in a void, a sentence that read as nobody's, and a fake "Message Lead…"
+- **2026-09-30** — **A Mate that is not yours wears a 16 px badge on a paler face** (the owner, of
+  the 12 px badge: "the not yours should have the avatar bigger and maybe some other small visual
+  diff also"; option A of the board "Colleague's Mate badge", taken with "paler face won't work
+  because it will simply look like a different shade of color, but I guess do it along the avatar
+  of 16px"). A colleague's Mate and one nobody has signed in wear the badge at 16 px, centred 25 px
+  across and 29 px down the face — level with the ask, since a bigger badge in the corner met the
+  done face's smile — over a face at 55 % of its colour with its eyes and mouth in full ink
+  (`mateNotYours`, `.menu-face-pale`). Your own Mates are unchanged. Whose a Mate is comes from the
+  member list this browser remembers, or before it names the owner from the signer tag against the
+  viewer's id, so the paler face is there from the first paint.
+  - _Why:_ a 12 px picture was too small to say "not yours" down a menu of Mates
+- **2026-09-30** — **A recipe change is never released** (the owner, of _Review release_ on a merged
+  change to the group repo: "review release on the group doesn't make sense, the group repo are
+  just the 'recipes' imports"). A change to the group repo's recipe offers no release, before or
+  after its merge; its review says what its merge does, from the tiers its files touch and the
+  environments made from them (`recipeReach`): the stage and production get any service added to
+  their recipe, created empty, and keep the services they have; a recipe nothing in the project is
+  made from changes no environment. Merged: "Merged into main · no environment changes" with only
+  _Close_.
+  - _Why:_ a merged recipe offered _Review release_ and said "the environments change to match" of
+    a change no environment is made from
