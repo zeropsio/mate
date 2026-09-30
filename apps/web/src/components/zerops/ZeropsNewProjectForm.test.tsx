@@ -49,8 +49,8 @@ describe("ZeropsNewProjectHost source", () => {
     expect(hostSource).not.toContain("ZeropsNewProjectAgents");
   });
 
-  it("asks the first Mate's stand-up for its person, with a name new on the account", () => {
-    expect(hostSource).toContain("standUpBy: user.id");
+  it("asks no stand-up — a new project has no code to stand up; its person says what to build — with a name new on the account", () => {
+    expect(hostSource).not.toContain("standUpBy");
     expect(hostSource).toContain("newMateTint(");
     expect(hostSource).not.toContain("generateBotName([],");
   });

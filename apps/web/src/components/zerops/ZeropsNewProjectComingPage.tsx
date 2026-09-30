@@ -17,7 +17,6 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo } from "react";
 
 import { mateOpeningPhrase } from "~/zerops/mateComing";
-import { mateStandUpPhase } from "~/zerops/mateStandUp";
 import {
   newProjectComing,
   newProjectHandOver,
@@ -69,8 +68,6 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
     [birth, nowMs],
   );
 
-  // This tab made it: the person looking asked for its stand-up.
-  const standUp = birth?.standUpBy === undefined ? undefined : { by: birth.standUpBy };
   const mate =
     birth === undefined
       ? NOBODY
@@ -80,16 +77,7 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
           shape: birth.face.shape,
           project: birth.name,
           connected: false,
-          ...(standUp === undefined ? {} : { standUp }),
         };
-  // The stand-up it will hand over to, waiting in the headline's box as on its Mate's own view.
-  const phaseAhead = mateStandUpPhase({
-    marker: standUp,
-    viewer: user?.id,
-    main: true,
-    signIn: "unknown",
-    attempt: "none",
-  });
   const projects = <Link to="/zerops" />;
   const coming = birth === undefined ? undefined : newProjectComing(birth);
   const view: MateEmptyComing =
@@ -132,7 +120,7 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
         coming={view}
         mate={mate}
         onRetry={() => undefined}
-        phase={phaseAhead}
+        phase={null}
         signIn={null}
         signInRequired={false}
         unknown={null}

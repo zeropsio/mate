@@ -100,7 +100,7 @@ export function ZeropsNewProjectHost() {
 
 function NewProjectDialog() {
   const dismiss = useNewProjectAsk((state) => state.dismiss);
-  const { activeOrganization, organizationStatus, organizations, selectOrganization, user } =
+  const { activeOrganization, organizationStatus, organizations, selectOrganization } =
     useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const navigate = useNavigate();
@@ -233,8 +233,6 @@ function NewProjectDialog() {
       locationId,
       // Every agent: an empty selection omits `ZCP_AGENTS` (`newProject.ts`).
       agents: [],
-      // Its person's first sign-in sends the Mate "Stand up development of the project." (D6).
-      ...(user?.id ? { standUpBy: user.id } : {}),
     };
     const birthId = beginNewProjectBirth({
       ask,
