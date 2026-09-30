@@ -236,28 +236,12 @@ describe("withEnvironmentsOutsideZerops", () => {
 
 describe("mateQuestion", () => {
   it("asks what the Mate should do on its project", () => {
-    expect(
-      mateQuestion({
-        name: "Fen",
-        tint: "coral",
-        shape: "pentagon",
-        project: "Acme Docs",
-        projectUrl: "https://app.zerops.io/project/acme-docs-dev",
-        connected: true,
-      }),
-    ).toBe("What should Fen do on Acme Docs?");
+    expect(mateQuestion({ name: "Fen", project: "Acme Docs" })).toBe(
+      "What should Fen do on Acme Docs?",
+    );
   });
 
   it("asks without a project for a Mate in none", () => {
-    expect(
-      mateQuestion({
-        name: "Nova",
-        tint: "rose",
-        shape: "flower",
-        project: undefined,
-        projectUrl: "https://app.zerops.io/project/scratch",
-        connected: true,
-      }),
-    ).toBe("What should Nova do?");
+    expect(mateQuestion({ name: "Nova", project: undefined })).toBe("What should Nova do?");
   });
 });

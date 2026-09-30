@@ -39,6 +39,8 @@ import {
   recipeOptions,
   validateCreationForm,
   type CreationFormErrors,
+  type NewMateDoorAction,
+  type NewMateDoorClosed,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 import { ZeropsNewMateForm } from "./ZeropsNewMateForm";
 
@@ -57,6 +59,8 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly role: ZeropsEnvironmentRole;
   readonly defaultName: string;
   readonly defaultBotName: string;
+  /** Another name free on the account, for a Mate's die (`ZeropsNewMateForm`). */
+  readonly proposeAnotherName?: ((current: string) => string) | undefined;
   /**
    * What the project calls an environment whose agent goes by `botName`: a
    * Mate after its bot, so renaming Fen to Ada renames "Todo - Fen" to
@@ -78,6 +82,10 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly adding?: boolean | undefined;
   /** Why the platform refused a Mate's last Add, before it took any project. */
   readonly addError?: string | undefined;
+  /** Why the project takes no Mate now, in the Mate's form's place (`newMateDoor`). */
+  readonly closed?: NewMateDoorClosed | undefined;
+  /** The one thing to do while the project takes no Mate, pressed. */
+  readonly onDoorAction?: ((action: NewMateDoorAction) => void) | undefined;
   readonly onCancel: () => void;
   readonly onCreate: (choice: EnvironmentCreationChoice) => void;
 }
@@ -86,18 +94,21 @@ export interface ZeropsEnvironmentCreationFormProps {
 export function ZeropsEnvironmentCreationForm(props: ZeropsEnvironmentCreationFormProps) {
   if (props.role !== "dev") return <EnvironmentForm {...props} />;
   const { groupName, defaultBotName, proposeName, takenBotNames, tier, tierLoading } = props;
-  const { defaultTintFor, adding, addError, onCancel, onCreate } = props;
+  const { defaultTintFor, adding, addError, closed, onDoorAction, onCancel, onCreate } = props;
   return (
     <ZeropsNewMateForm
       addError={addError}
       adding={adding}
+      closed={closed}
       defaultBotName={defaultBotName}
       defaultTintFor={defaultTintFor}
       groupName={groupName}
       onCancel={onCancel}
+      onDoorAction={onDoorAction}
       onCreate={({ name, botName, recipe, face }) => {
         onCreate({ name, withAgent: true, botName, recipe, face });
       }}
+      proposeAnotherName={props.proposeAnotherName}
       proposeName={proposeName}
       takenBotNames={takenBotNames}
       tier={tier}

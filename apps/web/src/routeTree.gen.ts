@@ -32,6 +32,7 @@ import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$proje
 import { Route as ChatMateProjectIdRouteImport } from './routes/_chat.mate.$projectId'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
+import { Route as ChatMateNewBirthIdRouteImport } from './routes/_chat.mate.new.$birthId'
 import { Route as ChatGroupGroupIdFlowRouteImport } from './routes/_chat.group.$groupId.flow'
 import { Route as ChatGroupGroupIdProjectIdRouteImport } from './routes/_chat.group.$groupId.$projectId'
 import { Route as ChatChangeGroupIdRepositoryNumberRouteImport } from './routes/_chat.change.$groupId.$repository.$number'
@@ -151,6 +152,11 @@ const ChatEnvironmentIdThreadIdRoute =
     path: '/$environmentId/$threadId',
     getParentRoute: () => ChatRoute,
   } as any)
+const ChatMateNewBirthIdRoute = ChatMateNewBirthIdRouteImport.update({
+  id: '/mate/new/$birthId',
+  path: '/mate/new/$birthId',
+  getParentRoute: () => ChatRoute,
+} as any)
 const ChatGroupGroupIdFlowRoute = ChatGroupGroupIdFlowRouteImport.update({
   id: '/group/$groupId/flow',
   path: '/group/$groupId/flow',
@@ -194,6 +200,7 @@ export interface FileRoutesByFullPath {
   '/mate/$projectId': typeof ChatMateProjectIdRoute
   '/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
   '/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
+  '/mate/new/$birthId': typeof ChatMateNewBirthIdRoute
   '/change/$groupId/$repository/$number': typeof ChatChangeGroupIdRepositoryNumberRoute
 }
 export interface FileRoutesByTo {
@@ -221,6 +228,7 @@ export interface FileRoutesByTo {
   '/mate/$projectId': typeof ChatMateProjectIdRoute
   '/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
   '/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
+  '/mate/new/$birthId': typeof ChatMateNewBirthIdRoute
   '/change/$groupId/$repository/$number': typeof ChatChangeGroupIdRepositoryNumberRoute
 }
 export interface FileRoutesById {
@@ -250,6 +258,7 @@ export interface FileRoutesById {
   '/_chat/mate/$projectId': typeof ChatMateProjectIdRoute
   '/_chat/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
   '/_chat/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
+  '/_chat/mate/new/$birthId': typeof ChatMateNewBirthIdRoute
   '/_chat/change/$groupId/$repository/$number': typeof ChatChangeGroupIdRepositoryNumberRoute
 }
 export interface FileRouteTypes {
@@ -279,6 +288,7 @@ export interface FileRouteTypes {
     | '/mate/$projectId'
     | '/group/$groupId/$projectId'
     | '/group/$groupId/flow'
+    | '/mate/new/$birthId'
     | '/change/$groupId/$repository/$number'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -306,6 +316,7 @@ export interface FileRouteTypes {
     | '/mate/$projectId'
     | '/group/$groupId/$projectId'
     | '/group/$groupId/flow'
+    | '/mate/new/$birthId'
     | '/change/$groupId/$repository/$number'
   id:
     | '__root__'
@@ -334,6 +345,7 @@ export interface FileRouteTypes {
     | '/_chat/mate/$projectId'
     | '/_chat/group/$groupId/$projectId'
     | '/_chat/group/$groupId/flow'
+    | '/_chat/mate/new/$birthId'
     | '/_chat/change/$groupId/$repository/$number'
   fileRoutesById: FileRoutesById
 }
@@ -513,6 +525,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatEnvironmentIdThreadIdRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/_chat/mate/new/$birthId': {
+      id: '/_chat/mate/new/$birthId'
+      path: '/mate/new/$birthId'
+      fullPath: '/mate/new/$birthId'
+      preLoaderRoute: typeof ChatMateNewBirthIdRouteImport
+      parentRoute: typeof ChatRoute
+    }
     '/_chat/group/$groupId/flow': {
       id: '/_chat/group/$groupId/flow'
       path: '/group/$groupId/flow'
@@ -544,6 +563,7 @@ interface ChatRouteChildren {
   ChatMateProjectIdRoute: typeof ChatMateProjectIdRoute
   ChatGroupGroupIdProjectIdRoute: typeof ChatGroupGroupIdProjectIdRoute
   ChatGroupGroupIdFlowRoute: typeof ChatGroupGroupIdFlowRoute
+  ChatMateNewBirthIdRoute: typeof ChatMateNewBirthIdRoute
   ChatChangeGroupIdRepositoryNumberRoute: typeof ChatChangeGroupIdRepositoryNumberRoute
 }
 
@@ -554,6 +574,7 @@ const ChatRouteChildren: ChatRouteChildren = {
   ChatMateProjectIdRoute: ChatMateProjectIdRoute,
   ChatGroupGroupIdProjectIdRoute: ChatGroupGroupIdProjectIdRoute,
   ChatGroupGroupIdFlowRoute: ChatGroupGroupIdFlowRoute,
+  ChatMateNewBirthIdRoute: ChatMateNewBirthIdRoute,
   ChatChangeGroupIdRepositoryNumberRoute:
     ChatChangeGroupIdRepositoryNumberRoute,
 }

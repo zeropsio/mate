@@ -370,6 +370,17 @@ export interface ZeropsServiceDeploys {
   readonly userData?: ReadonlyArray<{ readonly key?: string; readonly content?: string }>;
 }
 
+/**
+ * A managed service — a database, a cache, a storage: any type category but a
+ * runtime's `USER`, the line the service map draws between its data and its
+ * runtimes (`topology.ts`). A service whose category is not known is taken as
+ * one that runs code.
+ */
+function isManagedService(service: ZeropsService): boolean {
+  const category = service.serviceStackTypeInfo?.serviceStackTypeCategory;
+  return category !== undefined && category !== "USER";
+}
+
 /** A tool project the reconcile has to have by now (`createToolProject`). */
 function requireToolProject(project: ZeropsProject | undefined): ZeropsProject {
   if (project === undefined) {
@@ -2214,10 +2225,11 @@ export class ZeropsApiClient {
    * only place they come from. Safe to call on a project that has already been
    * through it: the plan is then empty and nothing, restarts included, runs.
    *
-   * Returns whether the plan it ran restarted anything — the project's OTHER
-   * services, whose running processes still hold the sibling variables they
-   * captured at start; never the Mate's own container, which needs no
-   * restart of its own (server commit 7d544119b, `projectIsolation.ts`).
+   * Returns whether the plan it ran restarted anything — the project's
+   * services that run its code, whose running processes still hold the
+   * sibling variables they captured at start; never a managed service, and
+   * never the Mate's own container, which needs no restart of its own
+   * (server commit 7d544119b, `projectIsolation.ts`).
    */
   async isolateProjectEnvironment(
     clientId: string,
@@ -2236,6 +2248,7 @@ export class ZeropsApiClient {
       services: own.map((service) => ({
         name: service.name,
         isControlPlane: isZcpService(service),
+        managed: isManagedService(service),
       })),
     });
     // The read has not caught up with a project this new. Nothing is written

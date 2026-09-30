@@ -35,7 +35,6 @@ const actions = vi.hoisted(() => ({
   cancel: vi.fn(),
   signIn: vi.fn(),
   signOut: vi.fn(),
-  terminalSurface: null as string | null,
 }));
 
 const signOutState = vi.hoisted(() => ({
@@ -54,14 +53,9 @@ vi.mock("../../zerops/useZeropsFeeds", () => ({
   },
 }));
 
+// A press opens the sign-in (`ZeropsAgentSignInDialog`); the panel starts no login itself.
 vi.mock("../../zerops/useAgentLogin", () => ({
-  useAgentLogin: (
-    _threadRef: unknown,
-    options?: { readonly terminalSurface?: "drawer" | "embedded" },
-  ) => {
-    actions.terminalSurface = options?.terminalSurface ?? null;
-    return actions.signIn;
-  },
+  useAgentLogin: () => actions.signIn,
 }));
 
 vi.mock("../../zerops/useAgentLoginCancel", () => ({
@@ -255,7 +249,6 @@ beforeEach(() => {
   actions.cancel.mockReset();
   actions.signIn.mockReset();
   actions.signOut.mockReset();
-  actions.terminalSurface = null;
   signOutState.supported = false;
   signOutState.statuses.clear();
   buttonState.handlers.clear();
@@ -397,7 +390,6 @@ describe("ZeropsPanel agent authorization ownership", () => {
       }
       expect(actions.signIn).toHaveBeenCalledTimes(expectedSignIn ? 1 : 0);
       expect(actions.cancel).toHaveBeenCalledTimes(expectedCancel ? 1 : 0);
-      expect(actions.terminalSurface).toBe("embedded");
       if (expectedSignIn) {
         expect(actions.signIn).toHaveBeenCalledWith("codex");
       }

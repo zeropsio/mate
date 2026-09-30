@@ -1762,7 +1762,8 @@ export interface DeleteTokenDelegationCommandIntent {
  * B-1/B-2/B-3): the Mate's own token lowered off `ADMIN` and out of the org,
  * every delegation it carries dropped, then `envIsolation` to `service`,
  * `ZCP_API_KEY` moved onto the container, the project entry deleted, every
- * OTHER service restarted. Idempotent — a hardened Mate makes it a read.
+ * service that runs the project's code restarted. Idempotent — a hardened
+ * Mate makes it a read.
 
  */
 export interface HardenMateCommandIntent {

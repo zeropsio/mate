@@ -6,8 +6,14 @@
  * the repo still being read; `none` — no recipe merged on main; `stage` — the
  * stage form, which keeps its own fields; `&name=<name>` proposes another
  * name; `&resolves=none` has a `reading` repo find no recipe; `adding` — Add pressed, the
- * platform taking the Mate's project; `refused` — the platform refused it before). A press on Add
- * goes busy for a second, as the platform takes the project, and then the dialog closes where
+ * platform taking the Mate's project; `refused` — the platform refused it before; and the project
+ * taking no Mate (`newMateDoor`): `waiting` — the recipe in Fen's change, `writer` — Fen still to
+ * write it, `mates` — one of three to, `unreadable` — the read failed; `&resolves=<one of them>`
+ * has a `reading` repo shut the door, to watch nothing move). The dialog ends with what happens
+ * next (board D1): up, signed in, development set up with the project's code for `recipe` and
+ * `reading`; up, signed in, told what to build for `none` — `&resolves=none` turns one into the
+ * other in place, to watch nothing move. The die at the name's end rolls another name. A press on
+ * Add goes busy for a second, as the platform takes the project, and then the dialog closes where
  * the person lands on the new Mate. Open it at the owner's 1786 × 1000. The account holds three Mates —
  * Fen, Ada and Nova — so the proposed face walks past the tints they wear.
  * `window.__newMateHarness.read()` answers the recipe the moment it is asked
@@ -22,7 +28,10 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { ZeropsEnvironmentCreationDialog } from "~/components/zerops/ZeropsEnvironmentCreationDialog";
-import { proposedEnvironmentName } from "~/components/zerops/ZeropsEnvironmentCreationDialog.logic";
+import {
+  newMateDoor,
+  proposedEnvironmentName,
+} from "~/components/zerops/ZeropsEnvironmentCreationDialog.logic";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
@@ -37,7 +46,6 @@ const TIER = {
   kind: "tier" as const,
   tier: "mate" as const,
   yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
-  sources: { app: { repository: "https://gitea.test/acme/app", setup: "app" } },
 };
 const SERVICES = ["db", "redis", "storage", "search", "mailpit", "appdev"];
 
@@ -57,7 +65,34 @@ function mate(bot: string): ZeropsCandidate {
 }
 
 const MATES = [mate("Fen"), mate("Ada"), mate("Nova")];
+/** What the die rolls, in turn: never the name it was rolled from. */
+const ROLLS = ["Wren", "Milo", "Iris"];
 const TAKEN = ["Acme Docs - Fen", "Acme Docs - Ada", "Acme Docs - Nova", "Acme Docs - stage"];
+
+/** The project taking no Mate, as the door says it for each. */
+const FEN = { projectId: "acme-docs-fen", name: "Fen" };
+const door = (input: Partial<Parameters<typeof newMateDoor>[0]>) =>
+  newMateDoor({
+    groupName: "Acme Docs",
+    recipe: "absent",
+    mates: [FEN],
+    change: undefined,
+    rereading: false,
+    ...input,
+  });
+const SHUT: Readonly<Record<string, ReturnType<typeof newMateDoor>>> = {
+  waiting: door({ change: { number: 11, mate: "Fen" } }),
+  writer: door({}),
+  mates: door({
+    mates: [
+      FEN,
+      { projectId: "acme-docs-ada", name: "Ada" },
+      { projectId: "acme-docs-nova", name: "Nova" },
+    ],
+  }),
+  unreadable: door({ recipe: "unreadable" }),
+};
+const SHUTS = SHUT[STATE] ?? SHUT[params.get("resolves") ?? ""];
 
 declare global {
   interface Window {
@@ -80,7 +115,7 @@ function Harness() {
       created,
     };
   }, []);
-  const loaded = read && RESOLVES === "recipe";
+  const loaded = read && RESOLVES === "recipe" && SHUTS === undefined;
   if (landed !== null) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
@@ -99,6 +134,7 @@ function Harness() {
             : undefined
         }
         adding={adding}
+        closed={read && SHUTS?.kind === "closed" ? SHUTS : undefined}
         defaultBotName={NAME}
         defaultName={role === "dev" ? `Acme Docs - ${NAME}` : "Acme Docs - stage"}
         defaultTintFor={(name) => newMateTint(MATES, name)}
@@ -113,8 +149,17 @@ function Harness() {
             setLanded(`/mate/acme-docs-${(choice.botName ?? "mate").toLowerCase()}`);
           }, 1200);
         }}
+        onDoorAction={(action) => {
+          if (action.kind === "retry") return;
+          setLanded(
+            action.kind === "change"
+              ? `/change/acme/group/${String(action.number)}`
+              : `/mate/${action.projectId}`,
+          );
+        }}
         onOpenChange={() => {}}
         open
+        proposeAnotherName={(current) => ROLLS.find((name) => name !== current) ?? current}
         proposeName={(botName) =>
           proposedEnvironmentName({
             groupName: "Acme Docs",

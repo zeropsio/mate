@@ -456,16 +456,20 @@ export interface ZeropsGroupEnvironment {
 export type ZeropsGroupNameSource = "store" | "tag" | "birth" | "id";
 
 /**
- * A creation the platform accepted and the organization's listing may not hold
- * yet, placed in its group (the birth store's record, `birth/birthStore.ts`).
+ * A creation the organization's listing may not hold yet, placed in its group:
+ * one the platform accepted (the birth store's record, `birth/birthStore.ts`),
+ * or a New project the client is still making, which it places from the press.
  */
 export interface ZeropsPlacedBirth {
+  /** The project the platform made for it; a creation still being made, the client's own id for it. */
   readonly projectId: string;
-  /** When the platform accepted the creation, wall ms. */
+  /** When the platform accepted the creation, wall ms — or the client began it. */
   readonly startedAt: number;
   readonly placement: BirthPlacement;
   readonly step: BirthStep;
   readonly overdue: boolean;
+  /** The client's creation stopped before the platform took it: it says so where it is drawn. */
+  readonly failed?: boolean | undefined;
 }
 
 /** A member of a group still being created: drawn until the listing holds its project. */
@@ -480,6 +484,8 @@ export interface ZeropsGroupPendingMember {
   readonly overdue: boolean;
   /** The face its person picked for a Mate, worn asleep until the listing holds it. */
   readonly face?: ZeropsMateFace | undefined;
+  /** Its creation stopped before the platform took it (`ZeropsPlacedBirth.failed`). */
+  readonly failed?: boolean | undefined;
 }
 
 export interface ZeropsGroup {
@@ -692,6 +698,7 @@ export function deriveZeropsGroups(
         step: birth.step,
         overdue: birth.overdue,
         ...(birth.placement.face === undefined ? {} : { face: birth.placement.face }),
+        ...(birth.failed === true ? { failed: true } : {}),
       })),
       production: production.length === 1 ? production[0] : undefined,
     } satisfies ZeropsGroup;

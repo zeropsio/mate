@@ -26,6 +26,7 @@ import {
   type BirthLedger,
   type BirthLocks,
   type BirthRecord,
+  type BirthRuntimes,
   type BirthStepOutcome,
   type BirthStore,
   type BirthWorker,
@@ -61,6 +62,7 @@ import {
 import { addGroupEnvironment, writeRegistryMember } from "./addGroupEnvironment";
 import { grantBrokerProject, projectTagsWrite } from "./brokerGrant";
 import { giteaClientFor } from "./accountGiteaSessions";
+import { placedNewProjects, type NewProjectBirth } from "./newProjectBirth";
 import { nextContainerReading } from "./zeropsContainers";
 import { runZeropsCommand, type ZeropsDataContextValue } from "./zeropsDataContext";
 
@@ -300,6 +302,16 @@ export function webBirthPorts(
         return birthStepFailure(cause);
       }
     },
+    importRuntimes: async (birth, yaml) => {
+      const inputs = read();
+      if (inputs === null) return NOT_BOUND;
+      try {
+        await runZeropsCommand(inputs.runtime.commands.importServices(refOf(inputs, birth), yaml));
+        return DONE;
+      } catch (cause) {
+        return birthStepFailure(cause);
+      }
+    },
     // Through the tab's one probe pool (DESIGN §4.5), never a probe of its own.
     probeHealth: async (origin) => (await nextContainerReading(origin)).kind,
     readMateFlag: async (birth, serviceId) => {
@@ -341,6 +353,20 @@ export function bornOnAccept(
       return imported;
     },
   };
+}
+
+/**
+ * The runtimes a creation leaves for its birth to import once the project is closed off
+ * (`import-runtimes`): carried on the birth's record from the moment the platform accepts the
+ * project, so a reload before the harden loses nothing.
+ */
+export function runtimesLeftToBirth(
+  steps: ReadonlyArray<EnvironmentCreationStep>,
+): BirthRuntimes | undefined {
+  for (const step of steps) {
+    if (step.kind === "import-runtimes") return { yaml: step.yaml, services: step.services };
+  }
+  return undefined;
 }
 
 /** Whether a creation's container import went through: one that stopped on it or before made none. */
@@ -523,18 +549,23 @@ export interface BirthsSnapshot {
  * The creations under way in the organization in view that know their group, as the group tree
  * places them (`deriveZeropsGroups`' `births`) — the projects page and the left menu read this one
  * mapping, so the two draw the same pending members. A birth begun on a project already listed
- * (Set up Mate, a claim) places nothing: the listing places it.
+ * (Set up Mate, a claim) places nothing: the listing places it. The New projects this tab is still
+ * making come after them, drawn from the press (`placedNewProjects`).
  */
 export function placedBirthsIn(
   births: ReadonlyArray<BirthRecord>,
   organizationId: string | undefined,
+  made: ReadonlyArray<NewProjectBirth> = [],
 ): ReadonlyArray<ZeropsPlacedBirth> {
-  return births.flatMap(
-    ({ projectId, organizationId: bornIn, startedAt, placement, step, overdue }) =>
-      placement === null || organizationId === undefined || bornIn !== organizationId
-        ? []
-        : [{ projectId, startedAt, placement, step, overdue }],
-  );
+  return [
+    ...births.flatMap(
+      ({ projectId, organizationId: bornIn, startedAt, placement, step, overdue }) =>
+        placement === null || organizationId === undefined || bornIn !== organizationId
+          ? []
+          : [{ projectId, startedAt, placement, step, overdue }],
+    ),
+    ...placedNewProjects(made, organizationId),
+  ];
 }
 
 /** The account's births and this tab's waits on them. */

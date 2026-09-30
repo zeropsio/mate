@@ -443,6 +443,12 @@ describe("a Mate being created", () => {
   ] as const)("on $step, overdue $overdue, reads $line", ({ step, overdue, line }) => {
     expect(comingMateLine({ step, overdue })).toBe(line);
   });
+
+  it("whose creation stopped before the platform took it says so, whatever its step", () => {
+    expect(comingMateLine({ step: "tags", overdue: false, failed: true })).toBe(
+      "Could not be set up.",
+    );
+  });
 });
 
 describe("groupMetaLine", () => {

@@ -14,6 +14,19 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { ProcessStep, ProcessStepState } from "./primitives";
 
+/**
+ * A step the line draws: one of a Mate's birth (`BirthStep`), or one its project takes before
+ * them (`newProjectBirth.ts`) — the line draws a step, whoever's it is.
+ */
+export type BirthLineStep = Omit<BirthStep, "id"> & { readonly id: string };
+
+/** What the line draws: a Mate's birth (`BirthProgress`), with its project's steps before it or not. */
+export type BirthLineProgress = Omit<BirthProgress, "steps" | "active" | "failed"> & {
+  readonly steps: ReadonlyArray<BirthLineStep>;
+  readonly active: BirthLineStep | null;
+  readonly failed: BirthLineStep | null;
+};
+
 /** `m:ss`, tabular-nums; a tick landing before the start reads as the floor, never negative. */
 export function formatBirthElapsed(ms: number): string {
   const totalSeconds = Math.floor(Math.max(0, ms) / 1000);
@@ -53,7 +66,7 @@ const PROCESS_STEP_STATE_LABEL: Readonly<Record<BirthStepState, string>> = {
  * waiting step that merely inherited an earlier step's timestamps, and never
  * negative.
  */
-function birthStepDurationMs(step: BirthStep, nowMs: number): number | undefined {
+function birthStepDurationMs(step: BirthLineStep, nowMs: number): number | undefined {
   if (step.startedAt === undefined) return undefined;
   const startedAtMs = Date.parse(step.startedAt);
   if (Number.isNaN(startedAtMs)) return undefined;
@@ -64,8 +77,8 @@ function birthStepDurationMs(step: BirthStep, nowMs: number): number | undefined
   return step.state === "active" ? Math.max(0, nowMs - startedAtMs) : undefined;
 }
 
-/** A `BirthStep`, read as one `ProcessSteps` row. */
-export function birthStepToProcessStep(step: BirthStep, nowMs: number): ProcessStep {
+/** A step of the line, read as one `ProcessSteps` row. */
+export function birthStepToProcessStep(step: BirthLineStep, nowMs: number): ProcessStep {
   const durationMs = birthStepDurationMs(step, nowMs);
   return {
     id: step.id,
@@ -79,7 +92,7 @@ export function birthStepToProcessStep(step: BirthStep, nowMs: number): ProcessS
 
 /** The one step the line's detail text and `aria-valuetext` read from: the failed step outranks the active one. */
 export function birthLineDetailStep(
-  progress: Pick<BirthProgress, "active" | "failed">,
-): BirthStep | null {
+  progress: Pick<BirthLineProgress, "active" | "failed">,
+): BirthLineStep | null {
   return progress.failed ?? progress.active;
 }

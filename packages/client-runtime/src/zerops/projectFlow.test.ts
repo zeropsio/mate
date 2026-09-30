@@ -18,6 +18,7 @@ import {
   flowPullRequest,
   flowVerbKey,
   flowVerbLabel,
+  isRecipeProposal,
   pullRequestLineWith,
   pullRequestsByMate,
   pullRequestsFolded,
@@ -783,5 +784,36 @@ describe("agentTurnNotes", () => {
     const notes = agentTurnNotes(many, "2026-09-20T09:00:00Z");
     expect(notes).toHaveLength(5);
     expect(notes[4]).toContain("#9");
+  });
+});
+
+describe("a Mate's proposal of the group's recipe", () => {
+  it.each([
+    {
+      case: "zcp's proposal, on the group repo",
+      repository: "group",
+      title: "Mate: the group's import files",
+      proposal: true,
+    },
+    {
+      case: "another change to the recipe",
+      repository: "group",
+      title: "Add a stage tier",
+      proposal: false,
+    },
+    {
+      case: "its title, on a code repository",
+      repository: "appdev",
+      title: "Mate: the group's import files",
+      proposal: false,
+    },
+  ])("tells $case", ({ repository, title, proposal }) => {
+    const change = flowPullRequest({
+      mergeability: "mergeable",
+      repository,
+      pull: pull({ number: 11, title }),
+      checks: [],
+    });
+    expect(isRecipeProposal(change)).toBe(proposal);
   });
 });

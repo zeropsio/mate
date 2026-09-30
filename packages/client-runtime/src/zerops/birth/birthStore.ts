@@ -6,8 +6,10 @@
  * - A birth starts at **create-accepted** and owes, in order, `tags` (its registry entry on the
  *   account's Gitea project), `registry` (the rest of its group registration: the broker's grant,
  *   and for a stage or a production its deploy token and declaration), `harden` (its project
- *   closed off, before anyone is admitted) and `health` (its Mate answering). The birth worker
- *   (`birthWorker.ts`) drives them; this store only keeps where each one got to.
+ *   closed off, before anyone is admitted), `runtimes` (its tier's runtimes imported, once nothing
+ *   that runs code can start holding the Mate's key) and `health` (its Mate answering). The birth
+ *   worker (`birthWorker.ts`) drives them; this store only keeps where each one got to, and the
+ *   runtimes' import document from the creation that planned it.
  * - Records are personal context under one account key (§1.1): never authority for existence or
  *   access, revalidated against the platform's facts by the worker. They carry no expiry: a birth
  *   ends when it is forgotten: its connect named the environment, or its project failed or was
@@ -25,14 +27,37 @@ import {
 } from "@t3tools/shared/brand";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
+import type { RecipeRuntime, RecipeRuntimeRole } from "../recipeTier.ts";
+
 export const BIRTHS_KEY = "zerops-mate.births.v1";
 
-export type BirthStep = "tags" | "registry" | "harden" | "health";
+export type BirthStep = "tags" | "registry" | "harden" | "runtimes" | "health";
 
-const STEPS: ReadonlySet<string> = new Set<BirthStep>(["tags", "registry", "harden", "health"]);
+const STEPS: ReadonlySet<string> = new Set<BirthStep>([
+  "tags",
+  "registry",
+  "harden",
+  "runtimes",
+  "health",
+]);
 const KINDS: ReadonlySet<string> = new Set<RoleProjectKind>(["mate", "stage", "production"]);
 const TINTS: ReadonlySet<string> = new Set<string>(MATE_TINT_IDS);
 const SHAPES: ReadonlySet<string> = new Set<string>(MATE_SHAPE_IDS);
+const RUNTIME_ROLES: ReadonlySet<string> = new Set<RecipeRuntimeRole>(["dev", "stage", "utility"]);
+
+/**
+ * The tier's runtimes a Mate's birth imports once its project is closed off
+ * (`createEnvironment.ts`), carried from the creation's plan so that a reload
+ * between the two loses nothing.
+ */
+export interface BirthRuntimes {
+  /** The one import, services only, converted (`splitRecipeTier`). */
+  readonly yaml: string;
+  /** Each runtime it creates, in the tier's order. */
+  readonly services: ReadonlyArray<RecipeRuntime>;
+  /** The platform would not take them, in its words: the birth went on to its Mate without them. */
+  readonly failed?: string;
+}
 
 /** The group writes a birth owes, as the creation that started it knew them. */
 export interface BirthRegistration {
@@ -89,6 +114,8 @@ export interface BirthRecord {
   readonly origin: string | null;
   /** Its group, where the creation knew one; null for a project already listed or claimed. */
   readonly placement: BirthPlacement | null;
+  /** The runtimes it imports after closing the project off; absent for a birth that imports none. */
+  readonly runtimes?: BirthRuntimes;
 }
 
 export interface BirthLedger {
@@ -102,10 +129,12 @@ export interface BeginBirth {
   readonly registration: BirthRegistration | null;
   readonly container: boolean;
   readonly placement: BirthPlacement | null;
+  /** The tier's runtimes its plan left for after the project is closed off. */
+  readonly runtimes?: BirthRuntimes;
 }
 
 export type BirthPatch = Partial<
-  Pick<BirthRecord, "step" | "overdue" | "container" | "serviceId" | "origin">
+  Pick<BirthRecord, "step" | "overdue" | "container" | "serviceId" | "origin" | "runtimes">
 >;
 
 /** One account's storage, synchronous. */
@@ -191,10 +220,35 @@ function parsePlacement(value: unknown): BirthPlacement | null | undefined {
   };
 }
 
+/** A runtime this build knows the role of. */
+function parseRuntime(value: unknown): RecipeRuntime | undefined {
+  if (!isObject(value)) return undefined;
+  const { hostname, role } = value;
+  if (!nonEmpty(hostname) || typeof role !== "string" || !RUNTIME_ROLES.has(role)) return undefined;
+  return { hostname, role: role as RecipeRuntimeRole };
+}
+
+/** Null for a record that carries none; undefined for runtimes this build cannot read. */
+function parseRuntimes(value: unknown): BirthRuntimes | null | undefined {
+  if (value === undefined) return null;
+  if (!isObject(value)) return undefined;
+  const { yaml, services, failed } = value;
+  if (!nonEmpty(yaml) || !Array.isArray(services)) return undefined;
+  if (failed !== undefined && typeof failed !== "string") return undefined;
+  const runtimes = services.map(parseRuntime);
+  if (runtimes.some((runtime) => runtime === undefined)) return undefined;
+  return {
+    yaml,
+    services: runtimes as ReadonlyArray<RecipeRuntime>,
+    ...(failed === undefined ? {} : { failed }),
+  };
+}
+
 function parseRecord(value: unknown): BirthRecord | undefined {
   if (!isObject(value)) return undefined;
   const registration = parseRegistration(value.registration);
   const placement = parsePlacement(value.placement);
+  const runtimes = parseRuntimes(value.runtimes);
   const { projectId, organizationId, startedAt, step, overdue, container } = value;
   const { serviceId, origin } = value;
   if (
@@ -208,7 +262,8 @@ function parseRecord(value: unknown): BirthRecord | undefined {
     typeof container !== "boolean" ||
     !nullableString(serviceId) ||
     !nullableString(origin) ||
-    placement === undefined
+    placement === undefined ||
+    runtimes === undefined
   ) {
     return undefined;
   }
@@ -223,6 +278,7 @@ function parseRecord(value: unknown): BirthRecord | undefined {
     serviceId,
     origin,
     placement,
+    ...(runtimes === null ? {} : { runtimes }),
   };
 }
 
@@ -243,8 +299,9 @@ export function parseBirths(raw: string | null): BirthLedger {
 }
 
 /**
- * The projects whose Mate is not closed off yet (DESIGN §4.5): nothing connects to them on its
- * own until their birth reaches `health`, however long that takes.
+ * The projects whose Mate is not closed off yet (DESIGN §4.5), or whose runtimes are still being
+ * asked for: nothing connects to them on its own until their birth reaches `health`, however long
+ * that takes.
  */
 export function unhardenedBirths(births: ReadonlyArray<BirthRecord>): ReadonlySet<string> {
   return new Set(
@@ -334,6 +391,7 @@ export function makeBirthStore(ports: {
           serviceId: null,
           origin: null,
           placement: input.placement ?? older?.placement ?? null,
+          ...(input.runtimes === undefined ? {} : { runtimes: input.runtimes }),
         };
         return { ...current, births: [...without(current, input.projectId), record] };
       });

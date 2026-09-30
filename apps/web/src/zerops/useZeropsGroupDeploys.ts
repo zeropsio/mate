@@ -39,6 +39,7 @@ import {
   planReleaseReads,
   releaseDeploys,
   RECIPE_TIER_PATHS,
+  recipeTierRepositories,
   type GiteaClient,
   type GiteaCommit,
   type GiteaCommitStatus,
@@ -46,7 +47,6 @@ import {
   type GroupEnvironment,
   type GroupEnvironmentRowInput,
   type GroupEnvironmentService,
-  importReadyTier,
   type GroupEnvironmentTier,
   type MissingEnvironmentRow,
   type ZeropsEnvironmentRole,
@@ -423,10 +423,8 @@ async function readTiersOnMain(client: GiteaClient, slug: string): Promise<Tiers
     tiers.map(async (tier) => {
       const file = await client.readFile(slug, GROUP_REPOSITORY, RECIPE_TIER_PATHS[tier], "main");
       if (file === undefined) return [];
-      for (const [hostname, source] of Object.entries(
-        importReadyTier(file.content)?.sources ?? {},
-      )) {
-        const name = repositoryName(source.repository);
+      for (const [hostname, repository] of recipeTierRepositories(file.content)) {
+        const name = repositoryName(repository);
         if (name !== undefined) repositories.set(hostname, name);
       }
       return [tier];

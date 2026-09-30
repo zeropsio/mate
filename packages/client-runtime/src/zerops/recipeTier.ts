@@ -1,6 +1,6 @@
 /**
- * The group repo's tiers, turned into something the platform will import
- * (guide 4.3, `../gitea-mate/docs/group-repo.md`).
+ * The group repo's tiers, turned into what the platform imports — guide 4.3,
+ * `../gitea-mate/docs/group-repo.md`.
  *
  * ## What the group repo holds
  *
@@ -11,31 +11,55 @@
  * proposes and updates them by pull request; a person with production rights
  * merges (D13).
  *
- * ## The one transform
+ * ## What each service of a tier is
  *
- * Every runtime service in a tier names its code repository in `buildFromGit`
- * and its build in `zeropsSetup`. The platform **cannot clone a private
- * repository**, and it refuses `zeropsSetup` without `buildFromGit` — so a tier
- * imported as written fails at the first service. Both keys come out and
- * `startWithoutCode: true` goes in: the services come up empty, and the code
- * arrives afterwards from the party that can actually push it (a Mate's zcp, or
- * the broker's deploy key for a group environment).
+ * Read off the service's own keys, never guessed:
  *
- * What comes out with them is not thrown away. The **source map** —
- * `hostname → { repository, setup }` — is exactly how zcp adopts an environment
- * it did not create (guide 2.4) and how the broker maps a service back to a
- * repository, so it is returned beside the document rather than reconstructed
- * later from a YAML nobody kept.
+ * - **managed** — no `buildFromGit`, no `zeropsSetup`, no `startWithoutCode`: a
+ *   database, a cache, a storage. The platform runs it; none of the project's
+ *   code does.
+ * - **utility** — built from a repository the platform can clone itself:
+ *   `buildFromGit` on github.com or gitlab.com, over https, with no userinfo,
+ *   query or fragment.
+ * - **stage** — any other runtime whose hostname ends in `stage`: zcp's name for
+ *   a pair's stage half.
+ * - **dev** — every other runtime: a pair's dev half, the Mate's clone target.
  *
- * A managed service — Postgres, Valkey, a volume — has neither key and is
- * carried through byte for byte.
+ * The platform **cannot clone a private repository**, and it refuses
+ * `zeropsSetup` without `buildFromGit`, so a runtime built from the group's own
+ * Gitea is imported without its build; its code arrives afterwards from the
+ * party that can push it — a Mate's zcp, or the broker's deploy key for a group
+ * environment. zcp reads which repository a runtime comes from off the tier
+ * itself; nothing here carries that along.
+ *
+ * ## A Mate's tier comes in two imports ({@link splitRecipeTier})
+ *
+ * The managed part — the project block and the managed services — is imported
+ * with the project. The runtimes follow as one import once the Mate has closed
+ * the project off (`createEnvironment.ts`), so nothing that runs code ever
+ * starts holding the Mate's key:
+ *
+ * - a dev half starts empty (`startWithoutCode: true`) — running, the clone
+ *   target;
+ * - a stage half waits at `READY_TO_DEPLOY` for its first deploy: no build and
+ *   no `startWithoutCode`;
+ * - a utility keeps `buildFromGit` and `zeropsSetup` verbatim, and the platform
+ *   builds it;
+ * - none keeps a `priority`: one wave, since everything a runtime could wait on
+ *   was created by the first import.
+ *
+ * ## A stage or a production takes its tier whole ({@link deployTargetTier})
+ *
+ * An environment with no container has no Mate and nothing to close off, so its
+ * tier goes in as one import, as it always has: every runtime starts empty for
+ * the broker to deploy onto, and a utility is built.
  *
  * ## Line-based, like everything else that touches these documents
  *
  * The tiers are written for people to read and carry comments that explain the
  * shape; a YAML round trip through a serializer drops every one of them. The
- * same reasoning as `recipeStore.ts` and `giteaRecipe.ts`, and the same
- * two-space layout to work against.
+ * same reasoning as `giteaRecipe.ts`, and each service's own indentation — a
+ * person's two spaces or zcp's four — is the one worked against.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -54,47 +78,87 @@ export type RecipeTier = keyof typeof RECIPE_TIER_PATHS;
 /** The environments document, beside the tiers (guide 5.1). */
 export const ENVIRONMENTS_DOCUMENT_PATH = "environments.yaml";
 
-/** Where one service's code comes from, kept for zcp's adoption (guide 2.4). */
-export interface RecipeServiceSource {
-  /** The canonical clone URL the broker returned — `{slug}/{name}` on this Gitea. */
-  readonly repository: string;
-  /** The `zeropsSetup` that builds it. */
-  readonly setup: string;
+/** A runtime of a tier: a pair's dev half, its stage half, or a public-build utility. */
+export type RecipeRuntimeRole = "dev" | "stage" | "utility";
+
+/** What a service of a tier is (the module's header). */
+export type RecipeServiceRole = "managed" | RecipeRuntimeRole;
+
+export interface RecipeTierService {
+  readonly hostname: string;
+  readonly role: RecipeServiceRole;
 }
 
-export interface ImportReadyTier {
-  /** The document to import, services only. */
+export interface RecipeRuntime {
+  readonly hostname: string;
+  readonly role: RecipeRuntimeRole;
+}
+
+/** A tier's runtimes, as the one import that brings them up. */
+export interface RecipeRuntimes {
+  /** Services only, converted, with no `priority` and the document's header still first. */
   readonly yaml: string;
-  /** Every service in the document, in its order. */
-  readonly services: ReadonlyArray<string>;
-  /** The services that were converted, and where their code lives. */
-  readonly sources: Readonly<Record<string, RecipeServiceSource>>;
+  /** Each runtime it creates, in the tier's order. */
+  readonly services: ReadonlyArray<RecipeRuntime>;
+}
+
+/** A Mate's tier as its two imports ({@link splitRecipeTier}). */
+export interface RecipeTierSplit {
+  /**
+   * The tier without its runtimes: its header, its project block and its
+   * managed services, byte for byte — `services: []` when it has none.
+   */
+  readonly managed: string;
+  /** The managed services' hostnames, in the tier's order. */
+  readonly managedServices: ReadonlyArray<string>;
+  /** Undefined for a tier of managed services alone. */
+  readonly runtimes: RecipeRuntimes | undefined;
 }
 
 // Indentation is the author's: a person's two spaces and zcp's four both
 // read (Dara's tier, 2026-09-17, was four-space and read as "no recipe on
-// main"). A key that opens an item keeps its `- ` in the captured prefix, so
-// `- buildFromGit:` becomes `- startWithoutCode: true` in place.
-const SERVICES_KEY = /^services:\s*$/u;
-const ITEM_START = /^\s+- /u;
-const HOSTNAME = /^\s*(?:- )?hostname:\s*(\S+)/u;
-const BUILD_FROM_GIT = /^(\s*(?:- )?)buildFromGit:\s*(\S.*)?$/u;
-const ZEROPS_SETUP = /^(\s*(?:- )?)zeropsSetup:\s*(\S.*)?$/u;
-const NESTED_URL = /^\s*url:\s*(\S.*)$/u;
+// main"). The list's own items are the dashes at its first item's column; a
+// dash deeper in is a list inside a service — its ports, its mounts.
+const SERVICES_KEY = /^services:\s*(?:#.*)?$/u;
+const ITEM_OPENING = /^\s+-\s+(?=\S)/u;
+const OWN_KEY = /^([A-Za-z][\w-]*)\s*:(.*)$/u;
+const NESTED_URL = /^\s*url:(.*)$/u;
+
+/** The keys that say a service runs code of its own: a build, its setup, an empty start. */
+const CODE_KEYS: ReadonlySet<string> = new Set(["buildFromGit", "zeropsSetup", "startWithoutCode"]);
+/** What a runtime of the Mate's second import comes without: its code keys and its wave. */
+const RUNTIME_KEYS: ReadonlySet<string> = new Set([...CODE_KEYS, "priority"]);
+const PRIORITY_KEY: ReadonlySet<string> = new Set(["priority"]);
+const START_EMPTY = "startWithoutCode: true";
+
+/** The only hosts whose repositories the platform clones with nobody's credentials. */
+const PUBLIC_GIT_HOSTS: ReadonlySet<string> = new Set(["github.com", "gitlab.com"]);
+
+/** One service of a tier: its lines, as written. */
+interface TierItem {
+  readonly lines: ReadonlyArray<string>;
+  /** The indentation and the `- ` that open it; its own keys sit at this column. */
+  readonly opening: string;
+  readonly hostname: string | undefined;
+}
+
+interface ParsedTier {
+  /** Everything before `services:` — the header, the project block. */
+  readonly head: ReadonlyArray<string>;
+  readonly servicesLine: string;
+  /** What sits between `services:` and its first item: a comment about the list as a whole. */
+  readonly preamble: ReadonlyArray<string>;
+  readonly items: ReadonlyArray<TierItem>;
+  /** Everything after the services block. */
+  readonly tail: ReadonlyArray<string>;
+}
 
 function indentOf(line: string): number {
   return line.length - line.trimStart().length;
 }
 
-/**
- * A tier's `import.yaml`, ready to import, plus where each service's code
- * lives; `undefined` when the document declares no services at all.
- *
- * `undefined` rather than an empty result on purpose: a tier with no services
- * is a group repo whose recipe has not been merged yet, and *Add Mate* says so
- * instead of creating an empty project.
- */
-export function importReadyTier(yaml: string): ImportReadyTier | undefined {
+/** The tier's services, as written, or `undefined` when it declares none. */
+function parseTier(yaml: string): ParsedTier | undefined {
   const lines = yaml.split("\n");
   const start = lines.findIndex((line) => SERVICES_KEY.test(line));
   if (start === -1) return undefined;
@@ -109,117 +173,271 @@ export function importReadyTier(yaml: string): ImportReadyTier | undefined {
     }
   }
 
-  const items: Array<Array<string>> = [];
-  // Anything between `services:` and the first item — a comment the tier's
-  // author wrote about the list as a whole, which belongs to no item and must
-  // not be attached to one.
+  const items: Array<{ readonly lines: Array<string>; readonly opening: string }> = [];
   const preamble: Array<string> = [];
+  let column: number | undefined;
   for (let index = start + 1; index < end; index += 1) {
     const line = lines[index] ?? "";
-    if (ITEM_START.test(line)) items.push([line]);
-    else if (items.length > 0) items.at(-1)!.push(line);
+    const opening = ITEM_OPENING.exec(line)?.[0];
+    if (opening !== undefined && (column === undefined || indentOf(line) === column)) {
+      column = indentOf(line);
+      items.push({ lines: [line], opening });
+    } else if (items.length > 0) items.at(-1)!.lines.push(line);
     else preamble.push(line);
   }
   if (items.length === 0) return undefined;
 
-  const services: Array<string> = [];
-  const sources: Record<string, RecipeServiceSource> = {};
-  const converted: Array<string> = [];
-
-  for (const item of items) {
-    const hostname = hostnameOf(item);
-    if (hostname !== undefined) services.push(hostname);
-    const result = withoutCode(item);
-    if (result.repository !== undefined && hostname !== undefined) {
-      sources[hostname] = {
-        repository: result.repository,
-        // The platform defaults an unnamed setup to the hostname, and so does
-        // this — a map that omitted it would send zcp looking for a setup that
-        // is there under another name.
-        setup: result.setup ?? hostname,
-      };
-    }
-    converted.push(...result.lines);
-  }
-
   return {
-    yaml: [...lines.slice(0, start), "services:", ...preamble, ...converted, ...lines.slice(end)]
-      .join("\n")
-      .replace(/\n+$/u, "")
-      .concat("\n"),
-    services,
-    sources,
+    head: lines.slice(0, start),
+    servicesLine: lines[start] ?? "services:",
+    preamble,
+    items: items.map((item) => ({ ...item, hostname: ownScalar(item, "hostname") })),
+    tail: lines.slice(end),
   };
 }
 
-function hostnameOf(item: ReadonlyArray<string>): string | undefined {
-  for (const line of item) {
-    const match = HOSTNAME.exec(line);
-    if (match?.[1] !== undefined) return match[1];
+/** A document of the tier's own shape holding these items; `services: []` when there are none. */
+function documentOf(tier: ParsedTier, items: ReadonlyArray<ReadonlyArray<string>>): string {
+  return [
+    ...tier.head,
+    items.length === 0 ? "services: []" : tier.servicesLine,
+    ...tier.preamble,
+    ...items.flat(),
+    ...tier.tail,
+  ]
+    .join("\n")
+    .replace(/\n+$/u, "")
+    .concat("\n");
+}
+
+type ItemLines = Pick<TierItem, "lines" | "opening">;
+
+/** The key a line of an item states at the item's own column; nested lines and comments state none. */
+function ownKey(
+  item: ItemLines,
+  index: number,
+): { readonly key: string; readonly rest: string } | undefined {
+  const line = item.lines[index] ?? "";
+  const column = item.opening.length;
+  if (index > 0 && indentOf(line) !== column) return undefined;
+  const match = OWN_KEY.exec(line.slice(column));
+  return match?.[1] === undefined ? undefined : { key: match[1], rest: match[2] ?? "" };
+}
+
+function ownKeyAt(item: ItemLines, key: string): number | undefined {
+  const at = item.lines.findIndex((_, index) => ownKey(item, index)?.key === key);
+  return at === -1 ? undefined : at;
+}
+
+/** A plain scalar: its quotes and any trailing comment off, `undefined` when there is none. */
+function scalar(rest: string): string | undefined {
+  const trimmed = rest.trim();
+  const quoted = /^(["'])(.*)\1(?:\s+#.*)?$/u.exec(trimmed);
+  const value = quoted === null ? trimmed.replace(/(?:^|\s+)#.*$/u, "").trim() : (quoted[2] ?? "");
+  return value.length === 0 ? undefined : value;
+}
+
+function ownScalar(item: ItemLines, key: string): string | undefined {
+  const at = ownKeyAt(item, key);
+  return at === undefined ? undefined : scalar(ownKey(item, at)?.rest ?? "");
+}
+
+/** The repository a service builds from — a scalar, or a block's `url:`. */
+function repositoryOf(item: TierItem): string | undefined {
+  const at = ownKeyAt(item, "buildFromGit");
+  if (at === undefined) return undefined;
+  const own = scalar(ownKey(item, at)?.rest ?? "");
+  if (own !== undefined) return own;
+  const column = item.opening.length;
+  for (const line of item.lines.slice(at + 1)) {
+    if (line.trim().length > 0 && indentOf(line) <= column) break;
+    const url = NESTED_URL.exec(line);
+    if (url !== null) return scalar(url[1] ?? "");
   }
   return undefined;
 }
 
-/**
- * One service item with its build taken out and `startWithoutCode: true` put
- * in its place — or untouched, when it had no build to take out.
- *
- * `startWithoutCode` goes in **where `buildFromGit` was**, so the key lands at
- * the item's own indentation whatever that is and the rest of the item keeps
- * its order and its comments.
- */
-function withoutCode(item: ReadonlyArray<string>): {
-  readonly lines: ReadonlyArray<string>;
-  readonly repository: string | undefined;
-  readonly setup: string | undefined;
-} {
-  let repository: string | undefined;
-  let setup: string | undefined;
-  const lines: Array<string> = [];
-  let skippingBelow: number | null = null;
-
-  for (const line of item) {
-    // A `buildFromGit:` written as a block (`url:`, `ref:`) takes its nested
-    // lines with it; a scalar has none and this never triggers.
-    if (skippingBelow !== null) {
-      if (line.trim().length === 0 || indentOf(line) > skippingBelow) {
-        // A block-form build names its repository in `url:`; the scalar form
-        // never reaches here.
-        const url = NESTED_URL.exec(line);
-        if (url?.[1] !== undefined && repository === undefined) repository = url[1].trim();
-        continue;
-      }
-      skippingBelow = null;
-    }
-
-    const build = BUILD_FROM_GIT.exec(line);
-    if (build) {
-      const scalar = build[2]?.trim();
-      if (scalar !== undefined && scalar.length > 0) repository = scalar;
-      skippingBelow = build[1]?.length ?? 0;
-      lines.push(`${build[1] ?? ""}startWithoutCode: true`);
-      continue;
-    }
-
-    const zeropsSetup = ZEROPS_SETUP.exec(line);
-    if (zeropsSetup) {
-      setup = zeropsSetup[2]?.trim();
-      skippingBelow = zeropsSetup[1]?.length ?? 0;
-      continue;
-    }
-
-    lines.push(line);
+/** A repository the platform clones itself (the module's header). */
+function isPublicRepository(repository: string): boolean {
+  // A query or a fragment, even an empty one, makes it something other than a plain clone.
+  if (/[?#]/u.test(repository)) return false;
+  let url: URL;
+  try {
+    url = new URL(repository);
+  } catch {
+    return false;
   }
+  return (
+    url.protocol === "https:" &&
+    PUBLIC_GIT_HOSTS.has(url.hostname) &&
+    url.port === "" &&
+    url.username === "" &&
+    url.password === ""
+  );
+}
 
-  // A `- buildFromGit:` that opened the item would have taken its `- ` with it;
-  // the regexes only match a key at its own indentation, so that cannot happen
-  // — but an item whose every line went is still nothing, and an empty item
-  // would break the document.
+function roleOf(item: TierItem): RecipeServiceRole {
+  if ([...CODE_KEYS].every((key) => ownKeyAt(item, key) === undefined)) return "managed";
+  const repository = repositoryOf(item);
+  if (repository !== undefined && isPublicRepository(repository)) return "utility";
+  return item.hostname?.endsWith("stage") === true ? "stage" : "dev";
+}
+
+/**
+ * The item without the named keys, each with the lines nested under it, and
+ * with `insert` where the first of them was — so an empty start lands at the
+ * item's own indentation, taking the `- ` of a key that opened the item. A key
+ * that opened the item and is simply gone hands its `- ` to the next of the
+ * item's own keys; an item that would be left with nothing stays as it was.
+ */
+function rewritten(
+  item: TierItem,
+  drop: ReadonlySet<string>,
+  insert?: string,
+): ReadonlyArray<string> {
+  const column = item.opening.length;
+  const kept: Array<string> = [];
+  let skipping = false;
+  let insertAt: number | undefined;
+  let openingDropped = false;
+  item.lines.forEach((line, index) => {
+    if (skipping) {
+      if (line.trim().length === 0 || indentOf(line) > column) return;
+      skipping = false;
+    }
+    const key = ownKey(item, index)?.key;
+    if (key !== undefined && drop.has(key)) {
+      skipping = true;
+      openingDropped ||= index === 0;
+      insertAt ??= kept.length;
+      return;
+    }
+    kept.push(line);
+  });
+  if (insertAt === undefined) return item.lines;
+  if (insert !== undefined) {
+    kept.splice(insertAt, 0, `${openingDropped ? item.opening : " ".repeat(column)}${insert}`);
+    return kept;
+  }
+  if (!openingDropped) return kept;
+  const next = kept.findIndex(
+    (line) => indentOf(line) === column && OWN_KEY.test(line.slice(column)),
+  );
+  if (next === -1) return item.lines;
+  kept[next] = `${item.opening}${kept[next]!.slice(column)}`;
+  return kept;
+}
+
+/** A runtime as the Mate's second import brings it up (the module's header). */
+function asMateRuntime(item: TierItem, role: RecipeRuntimeRole): ReadonlyArray<string> {
+  switch (role) {
+    case "dev":
+      return rewritten(item, RUNTIME_KEYS, START_EMPTY);
+    case "stage":
+      return rewritten(item, RUNTIME_KEYS);
+    case "utility":
+      return rewritten(item, PRIORITY_KEY);
+  }
+}
+
+/** Every service of a tier and what it is, in its order; `undefined` when it declares none. */
+export function recipeTierServices(yaml: string): ReadonlyArray<RecipeTierService> | undefined {
+  const tier = parseTier(yaml);
+  if (tier === undefined) return undefined;
+  return tier.items.flatMap((item) =>
+    item.hostname === undefined ? [] : [{ hostname: item.hostname, role: roleOf(item) }],
+  );
+}
+
+/**
+ * A Mate's tier as its two imports: the managed part, which goes in with the
+ * project, and the runtimes, which go in once the project is closed off
+ * (the module's header). `undefined` when the tier declares no services — a
+ * group repo whose recipe has not been merged yet.
+ */
+export function splitRecipeTier(yaml: string): RecipeTierSplit | undefined {
+  const tier = parseTier(yaml);
+  if (tier === undefined) return undefined;
+  const managed: Array<ReadonlyArray<string>> = [];
+  const managedServices: Array<string> = [];
+  const runtimeItems: Array<ReadonlyArray<string>> = [];
+  const runtimes: Array<RecipeRuntime> = [];
+  for (const item of tier.items) {
+    const role = roleOf(item);
+    if (role === "managed") {
+      managed.push(item.lines);
+      if (item.hostname !== undefined) managedServices.push(item.hostname);
+      continue;
+    }
+    runtimeItems.push(asMateRuntime(item, role));
+    if (item.hostname !== undefined) runtimes.push({ hostname: item.hostname, role });
+  }
   return {
-    lines: lines.length === 0 ? item : lines,
-    repository: repository === undefined || repository.length === 0 ? undefined : repository,
-    setup,
+    managed: documentOf(tier, managed),
+    managedServices,
+    runtimes:
+      runtimeItems.length === 0
+        ? undefined
+        : { yaml: recipeServicesYaml(documentOf(tier, runtimeItems)), services: runtimes },
   };
+}
+
+/**
+ * A stage's or a production's tier, whole and ready for its one import: every
+ * runtime built from the group's own repositories starts empty for the broker
+ * to deploy onto, a utility keeps its build, a managed service is carried
+ * through byte for byte. `undefined` when the tier declares no services.
+ */
+export function deployTargetTier(yaml: string): string | undefined {
+  const tier = parseTier(yaml);
+  if (tier === undefined) return undefined;
+  return documentOf(
+    tier,
+    tier.items.map((item) => {
+      const role = roleOf(item);
+      return role === "dev" || role === "stage"
+        ? rewritten(item, CODE_KEYS, START_EMPTY)
+        : item.lines;
+    }),
+  );
+}
+
+/**
+ * Where each built service's code lives, by hostname: its `buildFromGit`,
+ * which is where a deploy's commit statuses are (`groupDeploys.ts`).
+ */
+export function recipeTierRepositories(yaml: string): ReadonlyMap<string, string> {
+  const repositories = new Map<string, string>();
+  for (const item of parseTier(yaml)?.items ?? []) {
+    const repository = repositoryOf(item);
+    if (item.hostname !== undefined && repository !== undefined) {
+      repositories.set(item.hostname, repository);
+    }
+  }
+  return repositories;
+}
+
+/**
+ * A services document without the services a project already has, so an
+ * import asked for again — a reload between the import and the record of it —
+ * creates only what is missing. `undefined` once nothing is.
+ */
+export function recipeServicesWithout(
+  yaml: string,
+  hostnames: ReadonlyArray<string>,
+): string | undefined {
+  const tier = parseTier(yaml);
+  if (tier === undefined) return undefined;
+  const present = new Set(hostnames);
+  const missing = tier.items.filter(
+    (item) => item.hostname === undefined || !present.has(item.hostname),
+  );
+  return missing.length === 0
+    ? undefined
+    : documentOf(
+        tier,
+        missing.map((item) => item.lines),
+      );
 }
 
 /**

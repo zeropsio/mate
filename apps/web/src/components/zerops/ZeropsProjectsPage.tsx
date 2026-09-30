@@ -2,9 +2,10 @@ import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useZeropsUpgradeRestart, type UpgradeRecovery } from "~/zerops/useZeropsUpgradeRestart";
 /**
  * `/zerops` — the project picker for a signed-in Zerops account: an existing
- * candidate to connect to or wait on, and a way to `/zerops/new` (also where
- * an exhausted pool falls back to, since that phase has nothing ready-made to
- * pick). Creating a project happens at that route, not here.
+ * candidate to connect to or wait on, and a way to New project (also where an
+ * exhausted pool falls back to, since that phase has nothing ready-made to
+ * pick). Creating a project happens in its dialog over this page
+ * (`ZeropsNewProjectHost`), not here.
  */
 
 import { useAtomValue } from "@effect/atom-react";
@@ -63,6 +64,7 @@ import {
 } from "@t3tools/client-runtime/zerops/projections";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { useAddMate } from "~/zerops/newMate";
+import { askNewProject } from "~/zerops/newProjectAsk";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
 import { intendContainer, useZeropsContainers } from "~/zerops/zeropsContainers";
@@ -75,6 +77,7 @@ import {
   useZeropsBirths,
   type BirthsSnapshot,
 } from "~/zerops/zeropsBirths";
+import { useNewProjectBirths } from "~/zerops/newProjectBirth";
 import {
   useZeropsCandidates,
   type ZeropsCandidatePresentation,
@@ -960,6 +963,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     connectContainer,
     finishBirth,
   } = useZeropsProjectConnection();
+  // The New projects this tab is making: drawn from the press, as the left menu draws them.
+  const made = useNewProjectBirths((state) => state.births);
   const birthProjectIds = useMemo(
     () => new Set(births.births.map((birth) => birth.projectId)),
     [births.births],
@@ -1056,11 +1061,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   }, [creationRunning]);
   const projectOrder = useProjectOrderOptions();
   // A creation the platform accepted is drawn in its group before the
-  // listing holds its project — the same placing the left menu reads.
+  // listing holds its project, and a New project this tab is making from the
+  // press — the same placing the left menu reads.
   const groupTree = buildZeropsGroupTree(candidates, {
     rank: rankZeropsCandidateForListing,
     ...projectOrder,
-    births: placedBirthsIn(births.births, activeOrganization?.id),
+    births: placedBirthsIn(births.births, activeOrganization?.id, Object.values(made)),
   });
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   const activity = useZeropsAgentActivity();
@@ -2219,9 +2225,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       const { clientId, zcpClaimed } = deriveProvisioningStart(lastRegistration);
       clearLastRegistration();
       if (!clientId) return;
-      // No ready-made project to wait on: the only way forward is to create one.
+      // No ready-made project to wait on: the only way forward is to create one, in its dialog
+      // over this page (`ZeropsNewProjectHost`).
       if (zcpClaimed === false) {
-        void navigate({ to: "/zerops/new" });
+        askNewProject();
         return;
       }
       claimRef.current = clientId;
@@ -2241,7 +2248,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       // A claimed project is already listed, in no group of this account's.
       placement: null,
     });
-  }, [clearLastRegistration, inventory.projects, lastRegistration, navigate]);
+  }, [clearLastRegistration, inventory.projects, lastRegistration]);
 
   if (status === "loading") {
     return (
@@ -2869,11 +2876,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         isMate={hasMate}
         onCreateEnvironment={requestEnvironment}
         onCreateProject={
-          hasNoZeropsProject({ listing, creationPending: activeBirths })
-            ? () => {
-                void navigate({ to: "/zerops/new" });
-              }
-            : undefined
+          hasNoZeropsProject({ listing, creationPending: activeBirths }) ? askNewProject : undefined
         }
         // A Gitea the grant withholds is still the account's: never offered a second.
         {...(holdsGitea
@@ -3021,9 +3024,12 @@ export function ZeropsProjectsPage() {
   // invitation and no title row over it — a "Projects" heading with a reload
   // over nothing frames emptiness as a failed list.
   const { births } = useZeropsBirths();
+  const made = useNewProjectBirths((state) => state.births);
   const firstRun = hasNoZeropsProject({
     listing,
-    creationPending: births.some((birth) => birth.organizationId === activeOrganization?.id),
+    creationPending: [...births, ...Object.values(made)].some(
+      (birth) => birth.organizationId === activeOrganization?.id,
+    ),
   });
 
   return (

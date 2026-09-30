@@ -1,12 +1,8 @@
 /**
- * The one sign-in dialog, lifted out of whichever surface opened it.
- *
- * Three places open the same agent-authorization dialog: the Zerops empty
- * state (`ZeropsMateEmptyState`), the chat header's lifecycle band (via
- * `ZeropsAgentAuthorizationHost`), and — since the model picker learned to
- * offer sign-in per agent — the picker's own per-instance panel. This hook is
- * the one copy of "which agent is being authorized right now", so every
- * caller shares one `agentId` state and one dialog instead of three.
+ * The sign-in wherever it is started outside the Mate's own view — the chat header's band, the
+ * model picker's per-agent panels, the Crew tab's lock: the one sign-in module
+ * (`ZeropsAgentSignIn`) in a small dialog, opened on the agent asked for. This hook is the one
+ * copy of "which agent is being signed in right now", so every caller shares one dialog.
  *
  * The signer-record WRITE stays `ChatView`'s alone (`useZeropsAgentSignerRecord`,
  * run once per conversation view) — this hook only reads how it went, with
@@ -21,18 +17,17 @@
  *
  * @module useZeropsAgentSignInDialog
  */
-import { zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
 import type { EnvironmentId, ScopedThreadRef, ZeropsAgentId } from "@t3tools/contracts";
 import { useCallback, useState, type ReactNode } from "react";
 
-import { ZeropsAgentAuthorizationHost } from "../components/zerops/ZeropsAgentAuthorizationHost";
+import { ZeropsAgentSignInDialog } from "../components/zerops/ZeropsAgentSignIn";
 import { useZeropsAgentSignerRecordState } from "./useZeropsAgentSigner";
-import { useZeropsAgentAuth } from "./useZeropsFeeds";
+import { useZeropsMateDirectory } from "./useZeropsMates";
+import { zeropsMateAt } from "./mateIdentities";
 
 export function useZeropsAgentSignInDialog(
   environmentId: EnvironmentId | null,
   threadRef: ScopedThreadRef | null,
-  options?: { readonly projectName?: string | null | undefined },
 ): {
   readonly openFor: (agentId: ZeropsAgentId) => void;
   readonly dialog: ReactNode;
@@ -40,23 +35,28 @@ export function useZeropsAgentSignInDialog(
   readonly recordFailed: ReadonlySet<string>;
   readonly retryRecord: (key: string) => void;
 } {
-  const agentAuth = useZeropsAgentAuth(environmentId);
   const { recordFailed, retry: retryRecord } = useZeropsAgentSignerRecordState(environmentId);
+  const directory = useZeropsMateDirectory();
+  const whoLivesHere = environmentId === null ? null : zeropsMateAt(directory, environmentId);
   const [openAgentId, setOpenAgentId] = useState<ZeropsAgentId | null>(null);
 
   const openFor = useCallback((agentId: ZeropsAgentId) => {
     setOpenAgentId(agentId);
   }, []);
+  const close = useCallback(() => {
+    setOpenAgentId(null);
+  }, []);
 
-  const dialog = (
-    <ZeropsAgentAuthorizationHost
-      agentId={openAgentId}
-      onClose={() => setOpenAgentId(null)}
-      projectName={options?.projectName ?? null}
-      snapshot={zeropsAgentAuthView(agentAuth).snapshot}
-      threadRef={threadRef}
-    />
-  );
+  const dialog =
+    openAgentId === null ? null : (
+      <ZeropsAgentSignInDialog
+        agentId={openAgentId}
+        environmentId={environmentId}
+        mateName={whoLivesHere?.kind === "mate" ? whoLivesHere.mate.name : null}
+        onClose={close}
+        threadRef={threadRef}
+      />
+    );
 
   return { openFor, dialog, recordFailed, retryRecord };
 }

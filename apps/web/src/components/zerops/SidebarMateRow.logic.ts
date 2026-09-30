@@ -3,13 +3,20 @@
  * pure, so each rule has its table.
  */
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
-import { pullRequestBlocked, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import {
+  pullRequestBlocked,
+  type FlowPullRequest,
+  type ZeropsGroupPendingMember,
+} from "@t3tools/client-runtime/zerops";
 import { CREW_SET_UP_WORD } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewStatus } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { MateComing } from "~/zerops/mateComing";
+import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
+
+import { formatWorkingTime } from "./SidebarZeropsTree.logic";
 
 /** Whose Mate it is, as the mark before its name draws it. */
 export interface OwnerMark {
@@ -64,9 +71,12 @@ export interface MateOwnerView {
   readonly seat: OwnerSeat;
   /** The row's second line where it says nothing else: nobody has signed its agent in. */
   readonly signInLine: string | undefined;
+  /** That sign-in is the viewer's to make: they added the Mate. The line in ink, the amber dot. */
+  readonly waitsOnViewer: boolean;
 }
 
 const NOBODY_SIGNED_IN = "Nobody has signed in yet";
+const WAITING_FOR_YOUR_SIGN_IN = "Waiting for your sign-in";
 const NOBODY_OWNS = "No owner yet. Whoever signs in its coding agent owns it.";
 
 /**
@@ -88,6 +98,11 @@ const NOBODY_OWNS = "No owner yet. Whoever signs in its coding agent owns it.";
  * opens the Mate, whose conversation holds the sign-in (the owner,
  * 2026-09-29, of a *Sign in* on the row: it did nothing there, and stood on
  * the row's edge).
+ *
+ * To the person who added it — named by its stand-up's `mate:standup:` tag
+ * until their sign-in sends the stand-up — the line says it waits on them:
+ * "Waiting for your sign-in", in ink, with the amber dot of what needs them
+ * (board D1, 2026-09-30). Anybody else reads the fact, quietly.
  */
 export function mateOwnerView(input: {
   readonly owner:
@@ -97,6 +112,10 @@ export function mateOwnerView(input: {
   readonly records: { readonly named: boolean; readonly signedIn: boolean };
   /** The row already says what was asked under the name. */
   readonly asked: boolean;
+  /** Who added it, as its stand-up tag names them (`readZeropsGroupTags(…).standUp`). */
+  readonly standUpBy?: string | undefined;
+  /** The Zerops user looking, when known. */
+  readonly viewer?: string | undefined;
 }): MateOwnerView {
   const { owner, records } = input;
   const seat: OwnerSeat =
@@ -105,7 +124,14 @@ export function mateOwnerView(input: {
       : records.named
         ? { kind: "unnamed" }
         : { kind: "nobody", label: NOBODY_OWNS };
-  return { seat, signInLine: records.signedIn || input.asked ? undefined : NOBODY_SIGNED_IN };
+  if (records.signedIn || input.asked) return { seat, signInLine: undefined, waitsOnViewer: false };
+  const yours =
+    input.viewer !== undefined && input.viewer.length > 0 && input.standUpBy === input.viewer;
+  return {
+    seat,
+    signInLine: yours ? WAITING_FOR_YOUR_SIGN_IN : NOBODY_SIGNED_IN,
+    waitsOnViewer: yours,
+  };
 }
 
 /** What a Mate's face can wear on its corner: a person's picture, or nobody's empty seat. */
@@ -309,6 +335,18 @@ export function mateRowView(
     ask,
     reply: ask === undefined ? undefined : reply,
   });
+  // A new Mate's first run is the stand-up its person's sign-in sent: while it works, and where
+  // it stops, the row says so in the person's words — never the command sent on their behalf.
+  // Waiting on them, or done, it is any Mate's row.
+  if (ask === MATE_STAND_UP_MESSAGE) {
+    if (state === "working") {
+      return {
+        ...view(SETTING_UP_DEVELOPMENT, { kind: "clock", since: activity.at }),
+        ask: undefined,
+      };
+    }
+    if (state === "failed") return { ...view(SETTING_UP_STOPPED_REPLY), ask: undefined };
+  }
   switch (state) {
     case "working":
       return view(
@@ -406,10 +444,71 @@ export function mateRowReading(input: {
   return mateRowView(activity, mateFaceFor(input.connected || live !== undefined, live));
 }
 
+/** A new Mate's first run working: what it is doing, in the person's words. */
+const SETTING_UP_DEVELOPMENT = {
+  kind: "live",
+  words: "Setting up development",
+  code: undefined,
+} as const satisfies MateRowReply;
+
+/** Setting a new Mate up stopped — a step of its birth, or its first run. */
+const SETTING_UP_STOPPED = "Setting up stopped";
+const SETTING_UP_STOPPED_REPLY = {
+  kind: "words",
+  text: SETTING_UP_STOPPED,
+  tone: "failed",
+} as const satisfies MateRowReply;
+
+/** A Mate being born, as its row's one line says it (`mateBornLine`). */
+export interface MateBornLine {
+  readonly words: string;
+  /** When its clock started, wall ms: the line counts up from it. None where nothing is held. */
+  readonly since: number | undefined;
+  readonly tone: "muted" | "failed";
+}
+
+/**
+ * A Mate being born, in its row's one line (board D1, 2026-09-30): "Coming up" on a clock that
+ * counts from the press — its Mate waited on included, the clock running on — a step past its
+ * cap saying so on the same clock, and any step that stopped the one fact, in red. Where this
+ * browser holds no birth for it there is no clock to count, and the words stand alone. Why it
+ * stopped, and what to do, is its own view's to say.
+ */
+export function mateBornLine(coming: MateComing): MateBornLine {
+  if (coming.kind === "failed") return BORN_STOPPED;
+  return { words: bornWords(coming.verb === "keep-waiting"), since: coming.since, tone: "muted" };
+}
+
+const BORN_STOPPED: MateBornLine = { words: SETTING_UP_STOPPED, since: undefined, tone: "failed" };
+
+/** On its way, or past its step's cap: the clock beside them says for how long. */
+function bornWords(overdue: boolean): string {
+  return overdue ? "Taking longer than usual" : "Coming up";
+}
+
+/** The line as it reads at `nowMs`: its words, then its clock — "Coming up · 0:42". */
+export function mateBornLineText(line: MateBornLine, nowMs: number): string {
+  return line.since === undefined
+    ? line.words
+    : `${line.words} · ${formatWorkingTime(nowMs - line.since)}`;
+}
+
+/**
+ * A creation the listing does not hold yet (`ZeropsGroupPendingMember`), in its row's one line as
+ * a listed Mate coming up says it: on its way since the platform took it — a New project's since
+ * its press — past its step's cap, or stopped.
+ */
+export function pendingBornLine(
+  member: Pick<ZeropsGroupPendingMember, "startedAt" | "overdue" | "failed">,
+): MateBornLine {
+  if (member.failed === true) return BORN_STOPPED;
+  return { words: bornWords(member.overdue), since: member.startedAt, tone: "muted" };
+}
+
 /**
  * A Mate still coming up, or one that never came (`mateComing`), in its row: its face in the
- * coming pose — asleep, in the colours its person picked — its one line the projects page's words
- * for where it has got, and none of what only a Mate that is up has: no time, no ask, no words.
+ * coming pose — asleep, in the colours its person picked — its one line where it has got
+ * (`mateBornLine`), and none of what only a Mate that is up has: no time, no ask, no words.
  * One that did not come wears the red dot of something broken (S3).
  */
 export function mateComingRowView(view: MateRowView, coming: MateComing): MateRowView {

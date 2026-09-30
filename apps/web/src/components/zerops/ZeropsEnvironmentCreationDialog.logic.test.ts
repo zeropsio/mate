@@ -1,17 +1,25 @@
+import type { FlowPullRequest, ZeropsGroupPendingMember } from "@t3tools/client-runtime/zerops";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   faceName,
   hasCreationErrors,
+  landedRecipeProposal,
+  newMateDoor,
+  newMateDoorMates,
   newMateFace,
   newMateRecipe,
+  newMateRecipeChange,
   newMateSubmit,
   newMateWords,
   proposedEnvironmentName,
+  recipeChangeView,
   recipeOptions,
   validateBotName,
   validateCreationForm,
+  type NewMateDoor,
   type RecipeOption,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 
@@ -24,7 +32,6 @@ const TIER = {
   kind: "tier" as const,
   tier: "stage" as const,
   yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
-  sources: { app: { repository: "https://gitea.test/acme/app", setup: "app" } },
 };
 
 describe("recipeOptions", () => {
@@ -40,8 +47,8 @@ describe("recipeOptions", () => {
 
   /**
    * Every service arrives empty whatever the tier said: the platform cannot
-   * clone a private repository, so `importReadyTier` turned each build into
-   * `startWithoutCode` and the first deploy is what fills them. Measured on the
+   * clone a private repository, so the plan takes each build out
+   * (`recipeTier.ts`) and the first deploy is what fills them. Measured on the
    * demo where a stage came up `READY_TO_DEPLOY` and nothing said so.
    */
   it("says the services arrive without code", () => {
@@ -431,10 +438,8 @@ describe("newMateWords — what the Mate's dialog says", () => {
   }>([
     {
       case: "a project with a recipe",
-      input: { groupName: "Acme Docs", botName: "Quinn", recipe: "recipe", waitingOn: null },
+      input: { groupName: "Acme Docs", botName: " Quinn ", recipe: "recipe", waitingOn: null },
       words: {
-        description:
-          "It gets its own copy of Acme Docs with the recipe deployed. It takes a couple of minutes.",
         button: "Add Quinn to Acme Docs",
         line: undefined,
       },
@@ -443,8 +448,6 @@ describe("newMateWords — what the Mate's dialog says", () => {
       case: "the recipe still being read",
       input: { groupName: "Acme Docs", botName: "Quinn", recipe: "reading", waitingOn: null },
       words: {
-        description:
-          "It gets its own copy of Acme Docs with the recipe deployed. It takes a couple of minutes.",
         button: "Add Quinn to Acme Docs",
         line: "Reading the project's recipe…",
       },
@@ -453,8 +456,6 @@ describe("newMateWords — what the Mate's dialog says", () => {
       case: "a project with no recipe on main",
       input: { groupName: "Acme Docs", botName: "Quinn", recipe: "none", waitingOn: null },
       words: {
-        description:
-          "It gets its own copy of Acme Docs. There's no recipe yet, so it sets the application up itself. It takes a couple of minutes.",
         button: "Add Quinn to Acme Docs",
         line: undefined,
       },
@@ -463,8 +464,6 @@ describe("newMateWords — what the Mate's dialog says", () => {
       case: "Add pressed while the names are read",
       input: { groupName: "Acme Docs", botName: "Quinn", recipe: "recipe", waitingOn: "names" },
       words: {
-        description:
-          "It gets its own copy of Acme Docs with the recipe deployed. It takes a couple of minutes.",
         button: "Add Quinn to Acme Docs",
         line: "Checking which names are taken…",
       },
@@ -473,8 +472,6 @@ describe("newMateWords — what the Mate's dialog says", () => {
       case: "a blank name",
       input: { groupName: "Acme Docs", botName: "  ", recipe: "recipe", waitingOn: null },
       words: {
-        description:
-          "It gets its own copy of Acme Docs with the recipe deployed. It takes a couple of minutes.",
         button: "Add a Mate to Acme Docs",
         line: undefined,
       },
@@ -489,5 +486,265 @@ describe("newMateWords — what the Mate's dialog says", () => {
     { tier: undefined, tierLoading: false, recipe: "none" },
   ] as const)("reads the recipe as $recipe", ({ tier, tierLoading, recipe }) => {
     expect(newMateRecipe({ tier, tierLoading })).toBe(recipe);
+  });
+});
+
+describe("newMateDoor — whether the project takes another Mate, and why not", () => {
+  const CLEO = { projectId: "cleo-project", name: "Cleo" };
+  const JUNO = { projectId: "juno-project", name: "Juno" };
+  const UNREADABLE = "Beviro's recipe can't be read right now.";
+  it.each<{
+    readonly case: string;
+    readonly input: Partial<Parameters<typeof newMateDoor>[0]>;
+    readonly door: NewMateDoor;
+  }>([
+    {
+      case: "a recipe on main: the form",
+      input: { recipe: "present" },
+      door: { kind: "open", recipe: "recipe" },
+    },
+    {
+      case: "a recipe on main and a change to it open: the form",
+      input: { recipe: "present", change: { number: 11, mate: "Cleo" } },
+      door: { kind: "open", recipe: "recipe" },
+    },
+    {
+      case: "the recipe being read: the form, reading",
+      input: { recipe: "loading" },
+      door: { kind: "open", recipe: "reading" },
+    },
+    {
+      case: "no recipe and no Mate yet: the form, the first Mate setting the project up",
+      input: { recipe: "absent", mates: [] },
+      door: { kind: "open", recipe: "none" },
+    },
+    {
+      case: "no recipe and no Mate, a change left open: the form still",
+      input: { recipe: "absent", mates: [], change: { number: 11, mate: undefined } },
+      door: { kind: "open", recipe: "none" },
+    },
+    {
+      case: "no recipe, Cleo's change open: the change",
+      input: { recipe: "absent", change: { number: 11, mate: "Cleo" } },
+      door: {
+        kind: "closed",
+        reason:
+          "Beviro's recipe is waiting in Cleo's change. New Mates start from it once it's merged.",
+        action: { kind: "change", label: "Review the change", number: 11 },
+      },
+    },
+    {
+      case: "no recipe, a change open by a Mate no longer there: the change",
+      input: { recipe: "absent", mates: [CLEO, JUNO], change: { number: 12, mate: undefined } },
+      door: {
+        kind: "closed",
+        reason: "Beviro's recipe is waiting in a change. New Mates start from it once it's merged.",
+        action: { kind: "change", label: "Review the change", number: 12 },
+      },
+    },
+    {
+      case: "no recipe, nothing open, one Mate: that Mate",
+      input: { recipe: "absent" },
+      door: {
+        kind: "closed",
+        reason:
+          "Beviro has no recipe yet. Cleo writes it when it finishes setting Beviro up, and new Mates start from it.",
+        action: { kind: "mate", label: "Open Cleo", projectId: "cleo-project" },
+      },
+    },
+    {
+      case: "no recipe, nothing open, several Mates: no action",
+      input: { recipe: "absent", mates: [CLEO, JUNO] },
+      door: {
+        kind: "closed",
+        reason:
+          "Beviro has no recipe yet. Beviro's Mates write it when one of them finishes setting Beviro up.",
+        action: undefined,
+      },
+    },
+    {
+      case: "a recipe that cannot be read: try again",
+      input: { recipe: "unreadable" },
+      door: {
+        kind: "closed",
+        reason: UNREADABLE,
+        action: { kind: "retry", label: "Try again", busy: false },
+      },
+    },
+    {
+      case: "a recipe that cannot be read, being read again: try again, busy",
+      input: { recipe: "unreadable", rereading: true },
+      door: {
+        kind: "closed",
+        reason: UNREADABLE,
+        action: { kind: "retry", label: "Try again", busy: true },
+      },
+    },
+    {
+      case: "a recipe that cannot be read, no Mate yet: adding stays off",
+      input: { recipe: "unreadable", mates: [] },
+      door: {
+        kind: "closed",
+        reason: UNREADABLE,
+        action: { kind: "retry", label: "Try again", busy: false },
+      },
+    },
+    {
+      case: "a project and a Mate whose names end in s",
+      input: { groupName: "Acme Docs", recipe: "absent", change: { number: 11, mate: "Otis" } },
+      door: {
+        kind: "closed",
+        reason:
+          "Acme Docs' recipe is waiting in Otis' change. New Mates start from it once it's merged.",
+        action: { kind: "change", label: "Review the change", number: 11 },
+      },
+    },
+  ])("$case", ({ input, door }) => {
+    expect(
+      newMateDoor({
+        groupName: "Beviro",
+        recipe: "absent",
+        mates: [CLEO],
+        change: undefined,
+        rereading: false,
+        ...input,
+      }),
+    ).toEqual(door);
+  });
+});
+
+/** An open change on the project's repositories, as the forge read it. */
+function change(overrides: Partial<FlowPullRequest> = {}): FlowPullRequest {
+  return {
+    repository: "group",
+    number: 11,
+    title: "Mate: the group's import files",
+    kind: "recipe",
+    mateProjectId: "cleo-project",
+    author: "mate-cleo-project",
+    url: "https://gitea.example.test/beviro/group/pulls/11",
+    checks: "none",
+    checkWord: undefined,
+    mergeability: "mergeable",
+    merged: false,
+    mergedAt: undefined,
+    headSha: "abc1234",
+    baseBranch: "main",
+    line: "#11",
+    updatedAt: "2026-09-30T10:00:00Z",
+    ...overrides,
+  };
+}
+
+describe("newMateRecipeChange — the change the recipe waits in", () => {
+  const names: Readonly<Record<string, string>> = { "cleo-project": "Cleo" };
+  it.each<{
+    readonly case: string;
+    readonly flow: Parameters<typeof newMateRecipeChange>[0]["flow"];
+    readonly found: ReturnType<typeof newMateRecipeChange>;
+  }>([
+    { case: "nothing open", flow: { changesKnown: true, pullRequests: [] }, found: undefined },
+    {
+      case: "Cleo's proposal, among code changes",
+      flow: {
+        changesKnown: true,
+        pullRequests: [
+          change({ repository: "appdev", kind: "code", number: 4, title: "Add a due date" }),
+          change(),
+        ],
+      },
+      found: { number: 11, mate: "Cleo" },
+    },
+    {
+      case: "a proposal by a Mate the project no longer has",
+      flow: { changesKnown: true, pullRequests: [change({ mateProjectId: "gone-project" })] },
+      found: { number: 11, mate: undefined },
+    },
+    {
+      case: "no proposal in a person's own change to the recipe",
+      flow: {
+        changesKnown: true,
+        pullRequests: [change({ title: "Add a stage tier", mateProjectId: undefined })],
+      },
+      found: undefined,
+    },
+    {
+      case: "the first of two proposals opened",
+      flow: { changesKnown: true, pullRequests: [change({ number: 14 }), change({ number: 12 })] },
+      found: { number: 12, mate: "Cleo" },
+    },
+    {
+      case: "none while the forge has not answered for the project",
+      flow: { changesKnown: false, pullRequests: [change()] },
+      found: undefined,
+    },
+    { case: "none before the forge read anything", flow: undefined, found: undefined },
+  ])("finds $case", ({ flow, found }) => {
+    expect(newMateRecipeChange({ flow, mateName: (id) => names[id] })).toEqual(found);
+  });
+});
+
+describe("landedRecipeProposal — the proposal that landed last", () => {
+  it.each([
+    { case: "none landed", merged: [], landed: undefined },
+    {
+      case: "the newest of them, code changes aside",
+      merged: [
+        change({ number: 9, merged: true }),
+        change({ number: 13, merged: true }),
+        change({ repository: "appdev", kind: "code", number: 40, merged: true }),
+      ],
+      landed: 13,
+    },
+  ])("reads $case", ({ merged, landed }) => {
+    expect(landedRecipeProposal(merged)).toBe(landed);
+  });
+});
+
+describe("newMateDoorMates — the project's Mates, listed and coming", () => {
+  function listed(id: string, tagList: ReadonlyArray<string>): { readonly item: ZeropsCandidate } {
+    return {
+      item: {
+        key: `${id}:zcp`,
+        project: { id, name: `Beviro - ${id}`, status: "ACTIVE", tagList },
+        group: "ready",
+        service: { id: "zcp", name: "zcp", status: "ACTIVE" },
+      },
+    };
+  }
+  function coming(
+    projectId: string,
+    kind: ZeropsGroupPendingMember["kind"],
+    name: string,
+  ): ZeropsGroupPendingMember {
+    return { projectId, kind, name, startedAt: 0, step: "tags", overdue: false };
+  }
+  it("names each Mate by its agent, then those still coming, and leaves the stops out", () => {
+    const mates = newMateDoorMates({
+      environments: [
+        listed("cleo-project", ["mate", "mate:g:beviro", "mate:role:dev", "mate:bot:Cleo"]),
+        listed("stage-project", ["mate:g:beviro", "mate:role:stage"]),
+        listed("unnamed-project", ["mate", "mate:g:beviro", "mate:role:dev"]),
+      ],
+      pending: [
+        coming("wren-project", "mate", "Wren"),
+        coming("cleo-project", "mate", "Cleo"),
+        coming("prod-project", "production", "Beviro - production"),
+      ],
+    });
+    expect(mates).toEqual([
+      { projectId: "cleo-project", name: "Cleo" },
+      { projectId: "unnamed-project", name: "Beviro - unnamed-project" },
+      { projectId: "wren-project", name: "Wren" },
+    ]);
+  });
+});
+
+describe("recipeChangeView — where Review the change goes", () => {
+  it("opens the change on the group repo, on its own page", () => {
+    expect(recipeChangeView("beviro-group", 11)).toEqual({
+      to: "/change/$groupId/$repository/$number",
+      params: { groupId: "beviro-group", repository: "group", number: "11" },
+    });
   });
 });

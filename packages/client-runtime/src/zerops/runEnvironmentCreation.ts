@@ -9,14 +9,15 @@
  *
  * ## Who waits
  *
- * The last step, `await-ready`, is where the two kinds of environment part
- * ways:
+ * The last steps are where the two kinds of environment part ways:
  *
  * - An environment **with an agent** is handed back the moment its imports
- *   are accepted. The container wait is already a product surface — the
- *   provisioning state machine, its panel, its retry and enable paths — and
- *   duplicating it here would be a second opinion about when a container is
- *   ready. The caller starts that wait for the returned project.
+ *   are accepted — at `import-runtimes` when its tier has runtimes, which its
+ *   birth imports once it has closed the project off, else at `await-ready`.
+ *   The container wait is already a product surface — the provisioning state
+ *   machine, its panel, its retry and enable paths — and duplicating it here
+ *   would be a second opinion about when a container is ready. The caller
+ *   starts that wait for the returned project.
  * - An environment **without one** has nothing to hand off to: no container,
  *   no health probe. So this waits for its services itself, by reading the
  *   platform's own service status until every one of them is `ACTIVE`.
@@ -346,10 +347,22 @@ export async function runEnvironmentCreation(
           }
           break;
         }
-        case "import-recipe": {
+        case "import-recipe":
+        case "import-managed": {
           await input.platform.importServices(requireProject(projectId), step.yaml);
           break;
         }
+        case "import-runtimes":
+          // The birth's, not this run's: it imports them once it has closed
+          // the project off (`birthWorker.ts`), from the document its record
+          // was begun with, so neither a reload nor this run ending loses them.
+          // Handed off with the wait for the agent that follows.
+          return {
+            ok: true,
+            projectId: requireProject(projectId),
+            serviceName,
+            awaitingAgent: true,
+          };
         case "await-ready": {
           if (step.withAgent) {
             // Handed off, not finished: the caller's provisioning wait takes

@@ -23,7 +23,6 @@ function render(props: Partial<Parameters<typeof ZeropsEnvironmentCreationForm>[
           kind: "tier",
           tier: "stage",
           yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
-          sources: { app: { repository: "https://gitea.test/acme/app", setup: "app" } },
         }}
         tierLoading={false}
         tierServices={["app", "db"]}
@@ -44,7 +43,7 @@ describe("ZeropsEnvironmentCreationForm", () => {
   it("hands a Mate to a form of its own: who it is, and nothing else", () => {
     const html = render({ role: "dev", defaultName: "Acme Docs - Otto" });
     expect(html).toContain('data-zerops-surface="new-mate-form"');
-    expect(html).toContain(">New Mate<");
+    expect(html).toContain(">New Mate on Acme Docs<");
     expect(html).toContain("Add Otto to Acme Docs");
     expect(html).not.toContain("Environment");
     expect(html).not.toContain("Application");

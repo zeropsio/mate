@@ -1936,14 +1936,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "<DialogPopup> p-0 in \"h-[min(1080px,calc(100dvh-3rem))] max-w-[min(1720px,calc(100vw-3rem))] overflow-hidden p-0\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsAskDialog.tsx",
     "kind": "Literal",
     "fingerprint": "<DialogPanel> space-y-0 in \"space-y-0\"",

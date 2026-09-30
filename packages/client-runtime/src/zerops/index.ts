@@ -106,15 +106,23 @@ export {
   type ZeropsProjectOrder,
 } from "./groups.ts";
 export {
+  deployTargetTier,
   ENVIRONMENTS_DOCUMENT_PATH,
   hasProjectBlock,
-  importReadyTier,
   RECIPE_TIER_PATHS,
   recipeProjectImportYaml,
+  recipeServicesWithout,
   recipeServicesYaml,
-  type ImportReadyTier,
-  type RecipeServiceSource,
+  recipeTierRepositories,
+  recipeTierServices,
+  splitRecipeTier,
+  type RecipeRuntime,
+  type RecipeRuntimeRole,
+  type RecipeRuntimes,
+  type RecipeServiceRole,
   type RecipeTier,
+  type RecipeTierService,
+  type RecipeTierSplit,
 } from "./recipeTier.ts";
 export { recipeReach, type RecipeReach } from "./recipeReach.ts";
 export { agentsFromOAuthFlags, unionAgents } from "./agentSelection.ts";
@@ -485,6 +493,8 @@ export {
   flowPullRequest,
   flowVerbKey,
   flowVerbLabel,
+  isRecipeProposal,
+  RECIPE_PROPOSAL_TITLE,
   pullRequestLineWith,
   pullRequestsByMate,
   changeAuthorName,

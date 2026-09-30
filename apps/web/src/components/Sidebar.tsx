@@ -217,6 +217,8 @@ import {
 } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { newMateView, useAddMate } from "../zerops/newMate";
+import { useAskNewProject } from "../zerops/newProjectAsk";
+import { newProjectView, useNewProjectBirths } from "../zerops/newProjectBirth";
 import { useMateComingOf, useMateRowActivity } from "../zerops/useMenuMateReadings";
 import { useAskMateToFix } from "../zerops/fixRequest";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
@@ -1799,11 +1801,14 @@ export default function Sidebar() {
   const zeropsHeld = useMemo(() => heldCandidates(zeropsListing), [zeropsListing]);
   const zeropsCandidates = zeropsHeld.rows;
   // The creations under way in the organization in view, drawn in their
-  // groups before the listing holds them — the projects page's own placing.
+  // groups before the listing holds them — the projects page's own placing —
+  // and the New projects this tab is making, from the press.
   const { births: zeropsBirths } = useZeropsBirths();
+  const zeropsMade = useNewProjectBirths((state) => state.births);
   const zeropsPlacedBirths = useMemo(
-    () => placedBirthsIn(zeropsBirths, zeropsSession.activeOrganization?.id),
-    [zeropsBirths, zeropsSession.activeOrganization?.id],
+    () =>
+      placedBirthsIn(zeropsBirths, zeropsSession.activeOrganization?.id, Object.values(zeropsMade)),
+    [zeropsBirths, zeropsMade, zeropsSession.activeOrganization?.id],
   );
   // Whose each Mate is, for the badge on the corner of its face.
   const zeropsMateOwner = useZeropsMateOwners({
@@ -2259,23 +2264,33 @@ export default function Sidebar() {
     [isMobile, router, setOpenMobile],
   );
 
-  const navigateToNewZeropsProject = useCallback(() => {
+  // Every *New project* in the menu — its header's button, its pinned row, its empty state — asks
+  // for the New project dialog over whatever is on screen (`ZeropsNewProjectHost`).
+  const askNewProject = useAskNewProject();
+  const openNewZeropsProject = useCallback(() => {
     if (isMobile) {
       setOpenMobile(false);
     }
-    void router.navigate({ to: "/zerops/new" });
-  }, [isMobile, router, setOpenMobile]);
+    askNewProject();
+  }, [askNewProject, isMobile, setOpenMobile]);
 
   // The left menu's add button asks for a Mate on a named project: the New Mate
   // dialog opens over whatever is on screen (`ZeropsNewMateHost`).
   const addMate = useAddMate();
-  // A Mate still coming up opens its own view, where it comes up.
+  // A Mate still coming up opens its own view, where it comes up — a New
+  // project's first Mate, before the platform has made its project, by the
+  // creation's own id.
   const openComingMate = useCallback(
     (projectId: string) => {
       if (isMobile) setOpenMobile(false);
+      const made = zeropsMade[projectId];
+      if (made !== undefined && made.projectId === null) {
+        void router.navigate(newProjectView(projectId));
+        return;
+      }
       void router.navigate(newMateView(projectId));
     },
-    [isMobile, router, setOpenMobile],
+    [isMobile, router, setOpenMobile, zeropsMade],
   );
 
   const navigateToZeropsProjects = useCallback(() => {
@@ -2360,13 +2375,16 @@ export default function Sidebar() {
     [zeropsAgentActivity],
   );
 
-  // A Mate still coming up is open in its own view (`/mate/$projectId`).
+  // A Mate still coming up is open in its own view (`/mate/$projectId`) — a New
+  // project's first Mate, before its project exists, by the creation's id.
   const comingMateRoute = useMatch({ from: "/_chat/mate/$projectId", shouldThrow: false });
+  const newProjectRoute = useMatch({ from: "/_chat/mate/new/$birthId", shouldThrow: false });
   // The row for the environment whose conversation is open. A fresh draft
   // has no thread yet, but it knows its environment — and that is the one
   // the user is about to talk to.
   const activeZeropsProjectId = useMemo(() => {
     if (comingMateRoute !== undefined) return comingMateRoute.params.projectId;
+    if (newProjectRoute !== undefined) return newProjectRoute.params.birthId;
     const environmentId = routeThreadRef?.environmentId ?? routeDraftThread?.environmentId;
     if (environmentId === undefined) return null;
     const open = findCandidate(
@@ -2376,6 +2394,7 @@ export default function Sidebar() {
     return open.kind === "found" ? open.row.project.id : null;
   }, [
     comingMateRoute,
+    newProjectRoute,
     routeDraftThread?.environmentId,
     routeThreadRef?.environmentId,
     zeropsListing,
@@ -4108,7 +4127,7 @@ export default function Sidebar() {
                         <SidebarMenuButton
                           size="icon"
                           className="relative shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
-                          onClick={navigateToNewZeropsProject}
+                          onClick={openNewZeropsProject}
                           type="button"
                           aria-label="New project"
                         />
@@ -4664,7 +4683,7 @@ export default function Sidebar() {
                   <span>No projects yet</span>
                   <button
                     type="button"
-                    onClick={navigateToNewZeropsProject}
+                    onClick={openNewZeropsProject}
                     className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
                   >
                     <PlusIcon className="-mx-0.5 size-3" />
@@ -4691,7 +4710,7 @@ export default function Sidebar() {
         births: zeropsPlacedBirths,
         complete: zeropsHeld.complete,
       }) ? (
-        <SidebarNewProject onNewProject={navigateToNewZeropsProject} />
+        <SidebarNewProject onNewProject={openNewZeropsProject} />
       ) : null}
       <SidebarChromeFooter />
     </>

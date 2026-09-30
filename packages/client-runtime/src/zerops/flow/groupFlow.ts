@@ -50,7 +50,7 @@ import {
   type KnowledgeSource,
   type KnownAffordance,
 } from "../knowledge/presentation.ts";
-import { importReadyTier } from "../recipeTier.ts";
+import { recipeTierRepositories } from "../recipeTier.ts";
 import {
   GROUP_REPOSITORY,
   isReleaseTag,
@@ -257,8 +257,8 @@ export function tiersOnMain(
       const file = files.get(tier);
       if (file?.state !== "known" || file.value === null) continue;
       tiers.push(tier);
-      for (const [hostname, source] of Object.entries(importReadyTier(file.value)?.sources ?? {})) {
-        const name = repositoryName(source.repository);
+      for (const [hostname, repository] of recipeTierRepositories(file.value)) {
+        const name = repositoryName(repository);
         if (name !== undefined) repositories.set(hostname, name);
       }
     }

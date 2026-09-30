@@ -13,7 +13,15 @@
  * The crew is exactly as closed as its conversations (D6, `crewAccess`): a
  * viewer who may not run its logins reads it, and is offered nothing that
  * runs or changes it — the composer's place says why, with the one way out.
+ *
+ * A Mate nobody has signed in has no crew to set up yet: the tab shows the one
+ * "no agent yet" screen its conversation shows, word for word — its face,
+ * "Sign Fen in to start." and the sign-in itself (`ZeropsMateEmptyState`).
  */
+import {
+  zeropsAgentAuthView,
+  zeropsAgentSignInRequired,
+} from "@t3tools/client-runtime/zerops/agentLogin";
 import type { CrewAccess, CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import { crewRefusalSentence } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { EnvironmentId, ScopedThreadRef, ZeropsAgentId } from "@t3tools/contracts";
@@ -25,9 +33,10 @@ import { useServerConfigs, useThreadShells } from "~/state/entities";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { hasCrewSurface, useCrew, type CrewRead } from "~/zerops/crew/useCrew";
 import { askMateThread, useAskMate } from "~/zerops/useAskMate";
-import { useEnvironmentProjectRef } from "~/zerops/useZeropsFeeds";
+import { useEnvironmentProjectRef, useZeropsAgentAuth } from "~/zerops/useZeropsFeeds";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 
+import { ZeropsMateEmptyState } from "../ZeropsMateEmptyState";
 import { CrewSectionHost } from "./CrewSectionHost";
 
 /** The Crew tab beside one conversation. */
@@ -53,6 +62,18 @@ export function CrewPanel({
     threadId,
   );
   const askLock = askChat === undefined ? null : access.login(askChat.modelSelection.instanceId);
+  const agentAuth = zeropsAgentAuthView(useZeropsAgentAuth(environmentId)).snapshot;
+  if (whoLivesHere.kind === "mate" && agentAuth !== null && zeropsAgentSignInRequired(agentAuth)) {
+    return (
+      <div className="h-full" data-crew-panel="no-agent">
+        <ZeropsMateEmptyState
+          environmentId={environmentId}
+          mate={whoLivesHere.mate}
+          threadRef={threadRef}
+        />
+      </div>
+    );
+  }
   const mate =
     whoLivesHere.kind === "mate"
       ? {

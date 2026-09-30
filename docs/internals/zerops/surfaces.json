@@ -493,8 +493,8 @@
       "title": "Zerops agent authorization card",
       "components": [
         "apps/web/src/components/zerops/ZeropsAgentAuthCard.tsx",
-        "apps/web/src/components/zerops/ZeropsAgentAuthorizationHost.tsx",
-        "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
+        "apps/web/src/components/zerops/ZeropsAgentSignIn.logic.ts",
         "apps/web/src/components/zerops/ZeropsAgentPickerPanel.tsx",
         "apps/web/src/components/zerops/ZeropsReadOnlyConversationFooter.tsx",
         "packages/client-runtime/src/zerops/agentLogin.ts",
@@ -550,10 +550,6 @@
           "reverse": "none: The action opens the provider's external authorization page."
         },
         {
-          "action": "Copy link",
-          "reverse": "none: Copying text to the system clipboard has no application-managed reverse action."
-        },
-        {
           "action": "Copy code",
           "reverse": "none: Copying text to the system clipboard has no application-managed reverse action."
         }
@@ -563,8 +559,8 @@
       },
       "tests": [
         "apps/web/src/components/zerops/ZeropsAgentAuthCard.test.tsx",
-        "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.test.tsx",
-        "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.logic.test.ts",
+        "apps/web/src/components/zerops/ZeropsAgentSignIn.test.tsx",
+        "apps/web/src/components/zerops/ZeropsAgentSignIn.logic.test.ts",
         "apps/web/src/components/zerops/ZeropsAgentPickerPanel.test.tsx",
         "apps/web/src/components/zerops/ZeropsAgentPickerPanel.logic.test.ts",
         "apps/web/src/components/zerops/ZeropsReadOnlyConversationFooter.test.tsx",
@@ -813,7 +809,12 @@
         "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx",
         "apps/web/src/components/zerops/ZeropsNewMateForm.tsx",
         "apps/web/src/components/zerops/ZeropsNewMateHost.tsx",
+        "apps/web/src/components/zerops/MateNameInput.tsx",
+        "apps/web/src/components/zerops/WhatHappensNext.tsx",
+        "apps/web/src/components/zerops/whatHappensNext.logic.ts",
         "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
+        "apps/web/src/components/zerops/ZeropsArrivalSteps.tsx",
+        "apps/web/src/components/zerops/ArrivalSwap.tsx",
         "apps/web/src/components/zerops/MateFacePicker.tsx",
         "apps/web/src/components/zerops/ZeropsEnvironmentRow.tsx",
         "apps/web/src/components/zerops/ZeropsMateCard.tsx",
@@ -985,6 +986,7 @@
         "apps/web/src/components/zerops/ZeropsMateCard.test.tsx",
         "apps/web/src/components/zerops/ZeropsNextStepBanner.test.tsx",
         "apps/web/src/components/zerops/ZeropsNewMateForm.test.tsx",
+        "apps/web/src/components/zerops/whatHappensNext.logic.test.ts",
         "apps/web/src/zerops/newMate.test.ts",
         "apps/web/src/zerops/mateComing.test.ts",
         "apps/web/src/components/zerops/ZeropsMateComingPage.test.tsx",
@@ -1087,9 +1089,14 @@
     },
     {
       "id": "zerops-new-project",
-      "title": "Zerops new project wizard",
+      "title": "Zerops new project dialog",
       "components": [
-        "apps/web/src/components/zerops/ZeropsNewProjectWizard.tsx",
+        "apps/web/src/components/zerops/ZeropsNewProjectHost.tsx",
+        "apps/web/src/components/zerops/ZeropsNewProjectForm.tsx",
+        "apps/web/src/components/zerops/ZeropsNewProjectForm.logic.ts",
+        "apps/web/src/zerops/newProjectAsk.ts",
+        "apps/web/src/components/zerops/ZeropsNewProjectComingPage.tsx",
+        "apps/web/src/zerops/newProjectBirth.ts",
         "packages/client-runtime/src/zerops/newProject.ts"
       ],
       "entryPoints": [
@@ -1108,6 +1115,14 @@
         {
           "kind": "inline",
           "value": "Zerops projects page after a registration that claimed no project"
+        },
+        {
+          "kind": "inline",
+          "value": "Left menu header New project button and its empty state"
+        },
+        {
+          "kind": "overlay",
+          "value": "Command palette Create Zerops project, and the jump box's New project"
         }
       ],
       "clients": {
@@ -1167,10 +1182,14 @@
         }
       ],
       "docs": {
-        "none": "No docs/user page documents the Zerops project wizard yet."
+        "none": "No docs/user page documents the Zerops new project dialog yet."
       },
       "tests": [
-        "apps/web/src/components/zerops/ZeropsNewProjectWizard.test.tsx",
+        "apps/web/src/components/zerops/ZeropsNewProjectForm.test.tsx",
+        "apps/web/src/components/zerops/ZeropsNewProjectForm.logic.test.ts",
+        "apps/web/src/zerops/newProjectAsk.test.ts",
+        "apps/web/src/components/zerops/ZeropsNewProjectComingPage.test.tsx",
+        "apps/web/src/zerops/newProjectBirth.test.ts",
         "packages/client-runtime/src/zerops/newProject.test.ts",
         "packages/client-runtime/src/zerops/data/commands.test.ts",
         "packages/client-runtime/src/zerops/data/runtime.test.ts",

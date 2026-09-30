@@ -6,10 +6,10 @@
  * "Checking…" while it is read, the cause once a read failed.
  *
  * Pure view logic, mirroring the split every other Zerops dialog/card uses
- * (`ZeropsAgentAuthorizationDialog.logic.ts`, `ZeropsGroupTree.logic.ts`):
+ * (`ZeropsAgentSignIn.logic.ts`, `ZeropsGroupTree.logic.ts`):
  * the component renders exactly what this resolves, nothing more.
  */
-import { ZEROPS_AGENT_NAMES } from "./ZeropsAgentAuthorizationDialog.logic";
+import { ZEROPS_AGENT_NAMES } from "./ZeropsAgentSignIn.logic";
 import type {
   ZeropsAgentAuthUnknown,
   ZeropsAgentAvailability,

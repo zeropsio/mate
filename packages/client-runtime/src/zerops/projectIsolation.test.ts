@@ -12,9 +12,10 @@ import {
   type ProjectIsolationStep,
 } from "./projectIsolation.ts";
 
-const ZCP: ProjectIsolationService = { name: "zcp", isControlPlane: true };
-const APP: ProjectIsolationService = { name: "app", isControlPlane: false };
-const DB: ProjectIsolationService = { name: "db", isControlPlane: false };
+const ZCP: ProjectIsolationService = { name: "zcp", isControlPlane: true, managed: false };
+const APP: ProjectIsolationService = { name: "app", isControlPlane: false, managed: false };
+const DB: ProjectIsolationService = { name: "db", isControlPlane: false, managed: true };
+const FILES: ProjectIsolationService = { name: "files", isControlPlane: false, managed: true };
 
 const OPEN: ProjectEnvEntry = { id: "env-iso", key: PROJECT_ENV_ISOLATION_KEY, content: "none" };
 const CLOSED: ProjectEnvEntry = {
@@ -63,7 +64,6 @@ describe("planProjectIsolation", () => {
       { kind: "reread-project-env" },
       { kind: "delete-project-env", key: ZCP_API_KEY_ENV_KEY },
       { kind: "restart-service", serviceName: "app" },
-      { kind: "restart-service", serviceName: "db" },
     ]);
   });
 
@@ -95,7 +95,6 @@ describe("planProjectIsolation", () => {
       "update-project-env",
       "reread-project-env",
       "delete-project-env",
-      "restart-service",
       "restart-service",
     ]);
     expect(stepsOf(plan)).not.toContainEqual(
@@ -135,16 +134,27 @@ describe("planProjectIsolation", () => {
     expect(step).toMatchObject({ key: PROJECT_ENV_ISOLATION_KEY, content: "service" });
   });
 
-  it("restarts every other service, never the container", () => {
-    // The store is rewritten in seconds, but a running process keeps the
-    // sibling variables it captured at start until it restarts — the Mate
-    // itself reads its key live and needs none (server commit 7d544119b).
-    const plan = planProjectIsolation({ envList: [OPEN], services: [ZCP, APP, DB] });
+  // The store is rewritten in seconds, but a running process keeps the sibling
+  // variables it captured at start until it restarts, so every service that
+  // runs the project's code restarts. The Mate itself reads its key live and
+  // needs none (server commit 7d544119b); a managed service runs none of the
+  // project's code and captured nothing of it, and a storage's restart fails
+  // outright (every closing-off of the 2026-09-30 add).
+  it.each([
+    {
+      case: "a Mate's project with its runtimes",
+      services: [ZCP, APP, DB, FILES],
+      restarted: ["app"],
+    },
+    { case: "a Mate born before its runtimes", services: [ZCP, DB, FILES], restarted: [] },
+    { case: "a project with no container", services: [APP, DB], restarted: ["app"] },
+  ])("restarts only what runs the project's code: $case", ({ services, restarted }) => {
+    const plan = planProjectIsolation({ envList: [OPEN, KEY], services });
     expect(
       stepsOf(plan)
         .filter((step) => step.kind === "restart-service")
         .map((step) => (step.kind === "restart-service" ? step.serviceName : "")),
-    ).toEqual(["app", "db"]);
+    ).toEqual(restarted);
   });
 
   it("the container is never restarted", () => {

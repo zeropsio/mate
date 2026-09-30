@@ -191,6 +191,15 @@ describe("deriveBirthFacts — straight-through reads", () => {
     expect(facts.requestedAt).toBe("2026-09-22T09:59:00Z");
   });
 
+  it("passes the runtimes through, and leaves them out for a Mate that brings none up", () => {
+    const runtimes = {
+      import: "importing",
+      runtimes: [{ hostname: "appdev", role: "dev" }],
+    } as const;
+    expect(deriveBirthFacts(input({ runtimes })).runtimes).toEqual(runtimes);
+    expect("runtimes" in deriveBirthFacts(input())).toBe(false);
+  });
+
   it("reads creationFailed's message off the candidate", () => {
     const facts = deriveBirthFacts(
       input({ candidate: candidate({ creationFailed: { message: "no ready project" } }) }),
