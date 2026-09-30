@@ -277,7 +277,7 @@ function DeployInstrument({
 /** A step's key: its words, and how many times the same words came before it. */
 /**
  * A stand-up call's status bar: the half it stands up, a segment per service
- * it builds, the build that runs — or how many do — and how many are built.
+ * of its environment, the build that runs — or how many do — and how many are up.
  * No clock: the run's is the now line's (K3).
  */
 function StandupInstrument({
@@ -299,7 +299,7 @@ function StandupInstrument({
       bar={segments}
       failed={failed && reading !== null && reading.building === 0}
       figure={figure}
-      label={`${subject}: ${words}${figure === null ? "" : `, ${figure} built`}. ${open ? "Hide" : "Show"} each service`}
+      label={`${subject}: ${words}${figure === null ? "" : `, ${figure}`}. ${open ? "Hide" : "Show"} each service`}
       onToggle={onToggle}
       open={open}
       subject={subject}
