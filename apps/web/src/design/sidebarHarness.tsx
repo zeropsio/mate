@@ -89,6 +89,7 @@ import type { SidebarCrewRead } from "~/components/zerops/crew/SidebarCrewLine";
 import { newProjectOffered } from "~/components/zerops/SidebarProjects.logic";
 import {
   SidebarNewProject,
+  SidebarTroubleLine,
   SidebarZeropsTree,
   type SidebarProjectFlow,
 } from "~/components/zerops/SidebarZeropsTree";
@@ -796,6 +797,9 @@ const FIXTURES = COMING_SET
 
 const activityOfCandidate = (item: ZeropsCandidate) => FIXTURES.activity.get(item.project.id);
 
+/** `?notice=trouble`: the inventory's lasting trouble, pinned at the menu's foot. */
+const TROUBLE = new URLSearchParams(location.search).get("notice") === "trouble";
+
 /**
  * A crew of four under a Mate — the lead first — built from the crew's own
  * fixture, named and tinted as the plan's menu draws them: each crewmate's
@@ -991,6 +995,12 @@ function SidebarFrame({
           onNewProject={() => {
             menuActions.push("new project");
           }}
+        />
+      ) : null}
+      {TROUBLE ? (
+        <SidebarTroubleLine
+          sentence="Zerops isn't answering. Trying again…"
+          onTryNow={() => menuActions.push("try now")}
         />
       ) : null}
       <footer className="flex shrink-0 items-center gap-1 p-2">

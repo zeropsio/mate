@@ -188,3 +188,13 @@ export function useProjectDialog<T>(
   }
   return [dialog, setDialog];
 }
+
+/**
+ * "Try now" for the inventory's own trouble (`inventoryTroubleVoice`): a grant round and each
+ * troubled organization's reads at once. Null outside the account's product.
+ */
+export const InventoryRetryContext = createContext<(() => void) | null>(null);
+
+export function useInventoryRetry(): (() => void) | null {
+  return useContext(InventoryRetryContext);
+}
