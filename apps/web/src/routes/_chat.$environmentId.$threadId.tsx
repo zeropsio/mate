@@ -7,7 +7,17 @@ import { threadHasStarted } from "../components/ChatView.logic";
 import { finalizePromotedDraftThreadByRef, useComposerDraftStore } from "../composerDraftStore";
 import { resolveThreadRouteRef, resolveThreadRouteRenderState } from "../threadRoutes";
 import { resolveThreadSyncPhase } from "../threadSync";
+import { MATE_VOICE_QUIET_MS } from "@t3tools/client-runtime/zerops/environments";
+import { EnvironmentId } from "@t3tools/contracts";
+
+import { ComposerStandIn } from "~/components/chat/ComposerStandIn";
 import { SidebarInset } from "~/components/ui/sidebar";
+import { MateLinkStage } from "~/components/zerops/MateLinkStage";
+import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
+import { mateOpeningStage } from "~/zerops/mateOpeningStage";
+import { useMateVoice } from "~/zerops/mateVoiceContext";
+import { useHeldPast } from "~/zerops/useHeldPast";
+import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { useThreadDetail, useThreadShell, useThreadStatus } from "../state/entities";
 import { useEnvironmentQuery } from "../state/query";
 import { environmentShell } from "../state/shell";
@@ -41,6 +51,13 @@ function ChatThreadRouteView() {
     status: serverThreadStatus,
   });
   const serverThreadStarted = threadHasStarted(serverThreadDetail);
+  const routeMate = useZeropsMate(threadRef?.environmentId ?? NO_ENVIRONMENT);
+  const rememberedMate =
+    routeMate.kind === "mate"
+      ? routeMate.mate
+      : threadRef === null || routeMate.kind === "nobody"
+        ? undefined
+        : rememberedMateIdentity(threadRef.environmentId);
   useEffect(() => {
     if (!threadRef || !serverThreadStarted || !draftThread) {
       return;
@@ -66,6 +83,14 @@ function ChatThreadRouteView() {
     return null;
   }
 
+  // Its thread not read yet (a reload, before the catalog names it): the Mate's own view, from
+  // what this browser remembers of it, until the conversation takes over — never a blank pane.
+  const showsConversation =
+    renderState === "ready" || (renderState === "loading" && serverThreadShell !== null);
+  if (!showsConversation && renderState !== "missing" && rememberedMate !== undefined) {
+    return <ThreadOpeningStage environmentId={threadRef.environmentId} />;
+  }
+
   return (
     <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
       {renderState === "ready" || (renderState === "loading" && serverThreadShell !== null) ? (
@@ -76,11 +101,35 @@ function ChatThreadRouteView() {
           threadSyncPhase={threadSyncPhase}
         />
       ) : renderState === "missing" ? (
-        <div role="status" className="p-8">
+        <div
+          role="status"
+          className="flex h-full items-center justify-center p-8 text-center text-sm text-muted-foreground"
+        >
           This conversation is no longer available. <Link to="/zerops">Open your projects</Link>
         </div>
       ) : null}
     </SidebarInset>
+  );
+}
+
+const NO_ENVIRONMENT = EnvironmentId.make("none");
+
+/** The Mate's stage while its conversation is on its way: face, name, then "Opening Quinn…". */
+function ThreadOpeningStage({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const voice = useMateVoice();
+  const pastQuiet = useHeldPast(`opening:${environmentId}`, MATE_VOICE_QUIET_MS);
+  const at = useZeropsMate(environmentId);
+  const name =
+    at.kind === "mate"
+      ? at.mate.name
+      : (rememberedMateIdentity(environmentId)?.name ?? "This Mate");
+  return (
+    <MateLinkStage
+      composer={<ComposerStandIn />}
+      environmentId={environmentId}
+      projectId={null}
+      voice={mateOpeningStage({ voice, pastQuiet, mateName: name })}
+    />
   );
 }
 
