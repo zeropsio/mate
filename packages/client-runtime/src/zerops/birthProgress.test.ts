@@ -980,6 +980,21 @@ describe("birthRuntimesFacts", () => {
     });
   });
 
+  it("reads a Mate whose birth is over in one order however the listing comes", () => {
+    // The listing's order is its own and changes between reads (a live add, 2026-09-30, at 168 s).
+    const names = (services: ReadonlyArray<ZeropsService>) =>
+      birthRuntimesFacts({ birth: undefined, services })?.runtimes.map(
+        (runtime) => runtime.hostname,
+      );
+    const listed = ["webdev", "appstage", "mailpit", "appdev", "webstage"].map((name) =>
+      service(name, "ACTIVE"),
+    );
+    expect(names(listed)).toEqual(["appdev", "appstage", "mailpit", "webdev", "webstage"]);
+    expect(names([...listed].sort((left, right) => right.name.localeCompare(left.name)))).toEqual(
+      names(listed),
+    );
+  });
+
   it.each([
     { case: "a birth that imports none", birth: { step: "health" as const }, services: [] },
     { case: "a project with no runtime", birth: undefined, services: [service("zcp", "ACTIVE")] },

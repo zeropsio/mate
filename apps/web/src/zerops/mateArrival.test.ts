@@ -7,6 +7,7 @@ import {
   arrivalSentence,
   arrivalSteps,
   comingSentence,
+  inFirstSeenOrder,
   type ArrivalKind,
 } from "./mateArrival";
 
@@ -173,6 +174,42 @@ describe("arrivalSteps", () => {
     ]);
     // Its clock starts with the project's own creation.
     expect(steps[2]?.time).toBe("1:12");
+  });
+});
+
+describe("inFirstSeenOrder", () => {
+  it.each([
+    {
+      case: "the first read, as it comes",
+      seen: [],
+      names: ["mailpit", "medusadev"],
+      order: ["mailpit", "medusadev"],
+      remembered: ["mailpit", "medusadev"],
+    },
+    {
+      // A live add, 2026-09-30: the birth's recipe order, then the listing's own at 168 s.
+      case: "a later read in another order, as first seen",
+      seen: ["mailpit", "medusadev", "nextstoredev"],
+      names: ["nextstoredev", "medusadev", "mailpit"],
+      order: ["mailpit", "medusadev", "nextstoredev"],
+      remembered: ["mailpit", "medusadev", "nextstoredev"],
+    },
+    {
+      case: "a name new to it, after the ones it has seen",
+      seen: ["db", "cache"],
+      names: ["search", "cache", "db"],
+      order: ["db", "cache", "search"],
+      remembered: ["db", "cache", "search"],
+    },
+    {
+      case: "a name gone for a read, keeping its place for its return",
+      seen: ["db", "cache", "search"],
+      names: ["search", "db"],
+      order: ["db", "search"],
+      remembered: ["db", "cache", "search"],
+    },
+  ])("orders $case", ({ seen, names, order, remembered }) => {
+    expect(inFirstSeenOrder(seen, names)).toEqual({ order, seen: remembered });
   });
 });
 

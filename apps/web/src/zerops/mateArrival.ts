@@ -353,3 +353,21 @@ function drawnServices(
     state: BIRTH_SERVICE_STATE[service.state],
   }));
 }
+
+/**
+ * Names in the order they were first seen, however a read orders them — the new ones after, in
+ * the read's order — and the order to remember: a quiet line's names never trade places while
+ * nothing about them changed (a birth's recipe order handing over to the listing's own).
+ */
+export function inFirstSeenOrder(
+  seen: ReadonlyArray<string>,
+  names: ReadonlyArray<string>,
+): { readonly order: ReadonlyArray<string>; readonly seen: ReadonlyArray<string> } {
+  const present = new Set(names);
+  const known = new Set(seen);
+  const added = names.filter((name) => !known.has(name));
+  return {
+    order: [...seen.filter((name) => present.has(name)), ...added],
+    seen: added.length === 0 ? seen : [...seen, ...added],
+  };
+}

@@ -624,9 +624,10 @@ export function birthRuntimesFacts(input: {
       runtimes: planned.services.map((runtime) => ({ ...runtime, ...serviceOf(runtime.hostname) })),
     };
   }
-  const runtimes = services.filter(
-    (service) => service.isSystem !== true && isRuntimeService(service),
-  );
+  // The listing's order is its own and changes between reads: by hostname, it reads the same.
+  const runtimes = services
+    .filter((service) => service.isSystem !== true && isRuntimeService(service))
+    .sort(byName);
   if (runtimes.length === 0) return undefined;
   return {
     import: "imported",

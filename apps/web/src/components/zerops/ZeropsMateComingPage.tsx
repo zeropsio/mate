@@ -57,7 +57,7 @@ import {
 } from "~/zerops/mateComing";
 import { zeropsMateIdentityOf, type ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { takeMateConversation } from "~/zerops/mateOpening";
-import { arrivalSteps, comingSentence } from "~/zerops/mateArrival";
+import { arrivalSteps, comingSentence, inFirstSeenOrder } from "~/zerops/mateArrival";
 import { MATE_STAND_UP_RETRY_LABEL, mateStandUpPhase } from "~/zerops/mateStandUp";
 import { useNewMate } from "~/zerops/newMate";
 import {
@@ -657,18 +657,28 @@ export function ComingBelow({
   /** What *Go to projects* is: the router's link to the projects screen. */
   readonly projects?: ReactElement;
 }): ReactNode {
+  // Each step's services in the order first seen here: a read that orders them otherwise — the
+  // birth's recipe order handing over to the listing's own — never makes them trade places.
+  const [seen, setSeen] = useState<ReadonlyMap<string, ReadonlyArray<string>>>(() => new Map());
+  const remembered = new Map(seen);
   // A creation that stopped says why in the sentence over its steps: the steps only mark where.
-  const steps =
-    progress === undefined || nowMs === undefined ? null : (
-      <ZeropsArrivalSteps
-        steps={arrivalSteps(progress, mate, nowMs).map((step) => {
-          if (coming?.kind !== "failed") return step;
+  const arrived =
+    progress === undefined || nowMs === undefined
+      ? null
+      : arrivalSteps(progress, mate, nowMs).map((step) => {
           const { why: _said, ...marked } = step;
-          return marked;
-        })}
-        you={you}
-      />
-    );
+          const shown = coming?.kind === "failed" ? marked : step;
+          if (shown.services === undefined) return shown;
+          const kept = inFirstSeenOrder(
+            seen.get(step.id) ?? [],
+            shown.services.map((service) => service.name),
+          );
+          if (kept.seen !== seen.get(step.id)) remembered.set(step.id, kept.seen);
+          const byName = new Map(shown.services.map((service) => [service.name, service]));
+          return { ...shown, services: kept.order.flatMap((name) => byName.get(name) ?? []) };
+        });
+  if ([...remembered].some(([id, names]) => seen.get(id) !== names)) setSeen(remembered);
+  const steps = arrived === null ? null : <ZeropsArrivalSteps steps={arrived} you={you} />;
   const verb =
     coming?.kind === "failed" ? (
       coming.verb === "remove" && onRemove !== undefined ? (
