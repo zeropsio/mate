@@ -71,6 +71,11 @@ export interface ZeropsProjectFlow {
    * fails after an answer keeps it (`flow/groupAnswers.ts`).
    */
   readonly changesKnown: boolean;
+  /**
+   * Why its changes were never read: the Gitea read's failure while no answer is held — a 403 on
+   * the org, the broker down at load. `undefined` once any answer is held, or while none failed.
+   */
+  readonly changesFailure?: string | undefined;
   /** The changes that have landed — what a conversation's timeline places. */
   readonly merged: ReadonlyArray<FlowPullRequest>;
   /** Newest first. */

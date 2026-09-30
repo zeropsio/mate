@@ -569,7 +569,7 @@ describe("releaseReview", () => {
     [
       "releasing",
       { outcome: { kind: "releasing" } },
-      "You can close this. Production's chip in the menu follows the release.",
+      "You can close this. The project's line in the menu follows the release.",
       undefined,
     ],
     [
@@ -655,7 +655,7 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
         title: "Rolling back to v0.1.55",
         why: "Tagging main as v0.1.58",
       },
-      "You can close this. Production's chip in the menu follows the release.",
+      "You can close this. The project's line in the menu follows the release.",
     ],
     [
       // The tag existing is not production running it: the broker and the deploy still decide.
@@ -670,7 +670,7 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
         title: "Rolling back to v0.1.55",
         why: "Production redeploys from v0.1.58 · 0:40",
       },
-      "You can close this. Production's chip in the menu follows the release.",
+      "You can close this. The project's line in the menu follows the release.",
     ],
     [
       "rolled back once production runs it",

@@ -462,6 +462,7 @@ export function mateRowReading(input: {
     mateFaceAwaitingReview(
       mateFaceFor(input.connected || live !== undefined, live),
       input.reviewWaits === true,
+      activity?.pausedUntil !== undefined,
     ),
   );
 }

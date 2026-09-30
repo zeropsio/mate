@@ -2775,6 +2775,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       const awaiting = flowStepsAwaiting({
         read: reads !== undefined,
         changesKnown: reads?.changesKnown === true,
+        changesFailed: reads?.changesFailure !== undefined,
         // Out and expected back: a Gitea session is held or coming, and the
         // group has an org to read (or the registry has not answered yet).
         readOut:
@@ -2810,6 +2811,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         placed: lastGroupPlacement(group.groupId),
         awaiting: awaiting.steps,
         changesAwaiting: awaiting.changes,
+        changesFailed: reads?.changesFailure !== undefined,
         mates: new Map(
           environments
             .filter(({ item }) => hasMate(item))

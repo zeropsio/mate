@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { useUiStateStore } from "~/uiStateStore";
 import type { FixProblem } from "~/zerops/fixRequest";
-import { ReviewContext, type ReviewTarget } from "~/zerops/review";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { EnvironmentId } from "@t3tools/contracts";
@@ -70,7 +69,6 @@ const menuOf = (chip: ProductionChip, over: Partial<Parameters<typeof production
     failure: undefined,
     down: [],
     routes: ROUTES,
-    waiting: 0,
     nowMs: 0,
     ...over,
   });
@@ -132,9 +130,7 @@ function menu(
       menu={typeof model === "function" ? model : () => model}
       onAskToFix={() => {}}
       onOpenStop={() => undefined}
-      onReview={() => {}}
       projectName="Beviro"
-      reviewFrom={{ current: null }}
       {...props}
     />
   );
@@ -208,7 +204,7 @@ describe("a chip on the project's heading", () => {
       name: "changes waiting",
       chip: { label: "prod", state: "waiting", version: "v0.1.44", waiting: 1 },
       tone: "neutral",
-      words: "Production v0.1.44, 1 change waiting",
+      words: "Production v0.1.44, healthy",
     },
     {
       name: "releasing",
@@ -217,10 +213,10 @@ describe("a chip on the project's heading", () => {
       words: "Production v1.2.0, releasing v1.2.1",
     },
     {
-      name: "the last release failed",
+      name: "the last release failed: production still serves the one before",
       chip: { label: "prod", state: "failed", version: "v0.1.56" },
-      tone: "amber",
-      words: "Production v0.1.56, the last release failed",
+      tone: "neutral",
+      words: "Production v0.1.56, healthy",
     },
     {
       name: "down",
@@ -405,30 +401,6 @@ describe("production's menu", () => {
     expect(asked).toEqual([["shop-orsa", PROBLEM]]);
   });
 
-  it("counts what waits for production, and Review opens the release", () => {
-    const opened: ReviewTarget[] = [];
-    const tree = mount(
-      <ReviewContext value={(target) => opened.push(target)}>
-        {menu(
-          menuOf(
-            { label: "prod", state: "waiting", version: "v0.1.44", waiting: 2 },
-            { waiting: 2 },
-          ),
-          { groupId: "quillmark" },
-        )}
-      </ReviewContext>,
-    );
-    expect(text(surface(tree, "sidebar-production-waiting"))).toContain(
-      "2 changes wait for production",
-    );
-    press(tree, "sidebar-production-review");
-    expect(opened).toEqual([{ kind: "release", groupId: "quillmark" }]);
-  });
-
-  it("offers no Review where nothing waits", () => {
-    expect(renderToStaticMarkup(menu(HEALTHY))).not.toContain("sidebar-production-review");
-  });
-
   it("opens the stop's own page from its row, where one opens", () => {
     const opened: string[] = [];
     const tree = mount(
@@ -451,22 +423,17 @@ describe("the stages' menu", () => {
       )
       .map(text);
 
-  // One stage reads as production's menu does: its row, its links, what waits
-  // to go to production, and Open in Zerops last.
+  // One stage reads as production's menu does: its row, its links, and Open
+  // in Zerops last. What waits to go to production is the heading line's (D′).
   it("reads one stage as production's menu reads production", () => {
-    const tree = mount(
-      menu(stageMenu({ stages: [stageOf("stage")], creating: [], waiting: 2, nowMs: 0 })),
-    );
+    const tree = mount(menu(stageMenu({ stages: [stageOf("stage")], creating: [], nowMs: 0 })));
     expect(rows(tree, "sidebar-production-main")).toEqual(["stage3f9c1b2Deployed"]);
     expect(rows(tree, "sidebar-production-link")).toEqual(["appstage.example.app"]);
-    expect(rows(tree, "sidebar-production-waiting")).toEqual([
-      "2 changes wait for productionReview",
-    ]);
+    expect(rows(tree, "sidebar-production-waiting")).toEqual([]);
     const html = renderToStaticMarkup(
-      menu(stageMenu({ stages: [stageOf("stage")], creating: [], waiting: 2, nowMs: 0 })),
+      menu(stageMenu({ stages: [stageOf("stage")], creating: [], nowMs: 0 })),
     );
     expect(html.match(/Open in Zerops/gu)).toHaveLength(1);
-    expect(html.lastIndexOf("Open in Zerops")).toBeGreaterThan(html.indexOf("wait for production"));
     expect(html).toContain('href="https://app.zerops.io/project/shop-stage"');
   });
 
@@ -479,7 +446,6 @@ describe("the stages' menu", () => {
       stageMenu({
         stages: [stageOf("stage", { deployedAt: "2026-09-29T09:00:00Z" })],
         creating: [],
-        waiting: 0,
         nowMs,
       }),
     );
@@ -498,7 +464,6 @@ describe("the stages' menu", () => {
         }),
       ],
       creating: [],
-      waiting: 0,
       nowMs: 0,
     });
     const tree = mount(menu(model));
@@ -537,7 +502,6 @@ describe("the stages' menu", () => {
             }),
           ],
           creating: [],
-          waiting: 0,
           nowMs: 0,
         }),
         {

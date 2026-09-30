@@ -804,6 +804,20 @@ describe("mateRowReading — the face follows the work, and the words never outr
       dot: "attention",
     },
     {
+      // Paused at its usage limit it sleeps, whatever its last turn said; the review stays on
+      // its change's row under it.
+      case: "paused at its usage limit, its change waits: paused",
+      connected: true,
+      activity: reading({
+        kind: "failed",
+        face: "sleep",
+        pausedUntil: "2026-09-29T23:00:00.000Z",
+      }),
+      state: "paused",
+      face: "sleep",
+      dot: undefined,
+    },
+    {
       case: "stopped on an error, its change waits: the error shows",
       connected: true,
       activity: reading({ kind: "failed", face: "idle" }),

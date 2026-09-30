@@ -26,7 +26,7 @@ import type {
 import { maskSecrets, messageWords } from "@t3tools/shared/messagePreview";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
-import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { mateFaceOf, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 
 import type { MateDecision } from "./mateDecision.logic";
 import type { ChipDot } from "./SidebarProductionChip.logic";
@@ -61,6 +61,8 @@ export interface JumpMate {
   readonly owner: { readonly name: string; readonly isViewer: boolean } | undefined;
   /** When the usage limit pausing it resets; absent while it is not paused. */
   readonly pausedUntil: string | undefined;
+  /** Its own change waits for the person's review (`mateReviewWaits`): it needs them. */
+  readonly reviewWaits?: boolean;
 }
 
 export interface JumpProject {
@@ -124,7 +126,7 @@ export type JumpActivity = Pick<
 
 /**
  * A Mate as the box lists it, from what its row knows: the face its row
- * wears (`mateFaceFor`), and what it is on only while its container is
+ * wears (`mateFaceOf`, its review waiting included), and what it is on only while its container is
  * connected — the row's own rule, so the two never say two things.
  */
 export function jumpMateOf(input: {
@@ -137,6 +139,7 @@ export function jumpMateOf(input: {
   readonly owner: JumpMate["owner"];
   readonly connected: boolean;
   readonly activity: JumpActivity | undefined;
+  readonly reviewWaits?: boolean | undefined;
 }): JumpMate {
   const live = input.connected ? input.activity : undefined;
   return {
@@ -144,7 +147,11 @@ export function jumpMateOf(input: {
     name: input.name,
     tint: input.tint,
     shape: input.shape,
-    face: mateFaceFor(input.connected, input.activity),
+    face: mateFaceOf({
+      connected: input.connected,
+      activity: input.activity,
+      reviewWaits: input.reviewWaits === true,
+    }),
     projectName: input.projectName,
     subject: live?.subject,
     snippet: live?.snippet,
@@ -153,6 +160,7 @@ export function jumpMateOf(input: {
     conversation: live === undefined ? undefined : { threadId: live.threadId, kind: live.kind },
     owner: input.owner,
     pausedUntil: live?.pausedUntil,
+    ...(input.reviewWaits === true ? { reviewWaits: true } : {}),
   };
 }
 

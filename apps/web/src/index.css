@@ -3300,6 +3300,138 @@ code {
   }
 }
 
+/* p25/menu — D′: a project heading's second line, under the name and above the Mates. The
+   stack holds the heading and its line; the heading's band grows over the line (32 → 48 px)
+   as the line opens, and the Mates ride down on the line's height — a reveal, never a jump. */
+.zerops-heading-stack {
+  position: relative;
+}
+
+.zerops-heading-stack .zerops-project-heading::before {
+  transition:
+    background-color 150ms ease,
+    bottom 220ms var(--ease-out-strong);
+}
+
+.zerops-heading-stack:has(.zerops-heading-line[data-open]) .zerops-project-heading::before {
+  bottom: -16px;
+}
+
+@media (hover: hover) {
+  .zerops-heading-stack:hover .zerops-project-heading::before {
+    background-color: color-mix(in oklab, var(--sidebar-foreground) 3.5%, transparent);
+  }
+}
+
+/* 0 px between the name's line box and the line's: it hugs the name (9 px letter to letter),
+   and keeps the 20 px of line box to the first Mate that the name has without it. */
+.zerops-heading-line {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin: 0 2px 0 1px;
+  transition:
+    grid-template-rows 220ms var(--ease-out-strong),
+    margin-top 220ms var(--ease-out-strong),
+    padding-bottom 220ms var(--ease-out-strong),
+    opacity 220ms var(--ease-out-strong);
+  opacity: 0;
+}
+
+.zerops-heading-line[data-open] {
+  grid-template-rows: 1fr;
+  margin-top: -4px;
+  padding-bottom: 4px;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zerops-heading-line,
+  .zerops-heading-stack .zerops-project-heading::before {
+    transition: none;
+  }
+}
+
+.zerops-heading-line-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.zerops-heading-line-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 16px;
+  padding: 0 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.zerops-heading-line-words {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.zerops-heading-line-words > .zerops-envdot {
+  display: inline-block;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+
+/* The fact in ink; a landing in ok and trouble in amber carry weight as well. */
+.zerops-heading-line-fact {
+  color: var(--sidebar-foreground);
+}
+
+.zerops-heading-line-fact[data-tone="ok"] {
+  color: var(--zerops-status-ok-text);
+  font-weight: 500;
+}
+
+.zerops-heading-line-fact[data-tone="amber"] {
+  color: var(--zerops-status-attention-text);
+  font-weight: 500;
+}
+
+/* p25/menu — D: a folded heading's release mark after its faces, 12 · 500 muted, tabular. */
+.zerops-heading-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.zerops-heading-mark[data-tone="ok"] {
+  color: var(--zerops-status-ok-text);
+}
+
+.zerops-heading-mark[data-tone="amber"] {
+  color: var(--zerops-status-attention-text);
+}
+
+.zerops-heading-mark > .zerops-envdot {
+  display: inline-block;
+  margin-right: 2px;
+}
+
+/* The door: a 20 px tint inside the heading's rounded band, its word in the column of the
+   Review below it. */
+.zerops-heading-line-door {
+  margin: -2px -2px -2px 0;
+  padding: 1px 6px;
+}
+
 /* New project at the menu's foot, right after the list's scroll: a hairline
    on the list's inset parts them only while something is scrolled under it —
    the scroll area just above says so (`data-overflow-y-end`). It takes no
@@ -3410,6 +3542,59 @@ code {
 
 .zerops-envchip[data-tone="red"]:is(:hover, [data-popup-open]) {
   background-color: color-mix(in oklab, var(--zerops-status-failed) 34%, transparent);
+}
+
+/* p25/menu — D′: before a place serves anything its pill is dashed; while it comes up it turns
+   the stepped spinner inside, and for the 4 s its landing stands it wears ok, then plain. */
+.zerops-envchip[data-tone="dash"] {
+  padding: 0 7px;
+  border: 1px dashed color-mix(in oklab, var(--sidebar-foreground) 32%, transparent);
+  background-color: transparent;
+}
+
+.zerops-envchip[data-tone="dash"]:is(:hover, [data-popup-open]) {
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 5.5%, transparent);
+}
+
+:is(
+  [data-coming~="prod"] .zerops-envchip[data-zerops-chip="prod"],
+  [data-coming~="stage"] .zerops-envchip[data-zerops-chip="stage"]
+) {
+  gap: 5px;
+  padding: 0 8px 0 6px;
+  border: 0;
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 5.5%, transparent);
+}
+
+:is(
+  [data-coming~="prod"] .zerops-envchip[data-zerops-chip="prod"],
+  [data-coming~="stage"] .zerops-envchip[data-zerops-chip="stage"]
+)::before {
+  box-sizing: border-box;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid color-mix(in oklab, var(--muted-foreground) 35%, transparent);
+  border-top-color: var(--muted-foreground);
+  border-radius: 9999px;
+  content: "";
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :is(
+    [data-coming~="prod"] .zerops-envchip[data-zerops-chip="prod"],
+    [data-coming~="stage"] .zerops-envchip[data-zerops-chip="stage"]
+  )::before {
+    animation: zerops-env-spin 1s steps(8) infinite;
+  }
+}
+
+:is(
+  [data-landed="prod"] .zerops-envchip[data-zerops-chip="prod"],
+  [data-landed="stage"] .zerops-envchip[data-zerops-chip="stage"]
+) {
+  border: 0;
+  background-color: color-mix(in oklab, var(--zerops-status-ok) 26%, transparent);
+  color: color-mix(in oklab, var(--zerops-status-ok-text) 80%, var(--foreground));
 }
 
 /* The heading's end edge measures its room: a narrow menu drops the + first. */
