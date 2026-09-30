@@ -149,6 +149,7 @@ import { TurnReport } from "./TurnReport";
 import { ConversationAfterWork, ConversationWorking } from "./ConversationWorking";
 import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat, RunLine } from "./RunChat";
 import { forgetRunFolds } from "./runCard.logic";
+import type { CarriedRow } from "./stepHeight";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -1822,9 +1823,12 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
     watchedTurnKeys.add(row.turnKey);
   }, [row.turnKey]);
   const standRef = usePanelStand(row.turnKey, row.cardKey);
+  const { cardKey } = row;
+  const carry = useCallback(() => cardRowsCarried(standRef.current, cardKey), [standRef, cardKey]);
   return (
     <div ref={standRef} className="contents">
       <ConversationWorking
+        carry={carry}
         dock={dock}
         environmentId={ctx.activeThreadEnvironmentId}
         incidents={row.incidents}
@@ -1833,6 +1837,35 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
       />
     </div>
   );
+}
+
+/**
+ * The rows of a live card the list moves as what runs alongside gives its
+ * room back (`ConversationWorking`), from inside that card's working row.
+ * Following its end, the list re-pins to it, and what stands above the room
+ * goes down with it — the card's line and the room's own row — while the
+ * card's edge stands still. Else the list keeps its place, and the card's
+ * edge comes up.
+ */
+function cardRowsCarried(
+  from: HTMLElement | null,
+  cardKey: string,
+): ReadonlyArray<CarriedRow> | null {
+  const own = from?.closest<HTMLElement>("[data-card-slice]") ?? null;
+  const list = own?.closest<HTMLElement>(".timeline-legend-list") ?? null;
+  if (own === null || list === null) return null;
+  const find = (id: string) =>
+    list.querySelector<HTMLElement>(`[data-timeline-row-id="${CSS.escape(id)}"]`);
+  const line = find(`record:${cardKey}`);
+  const edge = find(`card-end:${cardKey}`);
+  if (own.closest("[data-timeline-follows-end]") !== null) {
+    return [
+      ...(line === null ? [] : [{ row: line, direction: 1 as const }]),
+      { row: own, direction: 1 },
+      ...(edge === null ? [] : [{ row: edge, direction: 0 as const }]),
+    ];
+  }
+  return edge === null ? [] : [{ row: edge, direction: -1 }];
 }
 
 /** Work that outlived the turn: the Mate at work, smaller, until it ends. */

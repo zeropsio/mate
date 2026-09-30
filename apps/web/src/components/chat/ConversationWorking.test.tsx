@@ -1,11 +1,22 @@
 import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { IncidentModel } from "./conversation.logic";
 import type { DockModel } from "./conversationDock.logic";
 import { ConversationWorking } from "./ConversationWorking";
+import type { stepHeight } from "./stepHeight";
+
+/** How the panel asked its room to close: the frames are the stepper's own to test. */
+const closings = vi.hoisted(() => [] as Array<Parameters<typeof stepHeight>[0]>);
+vi.mock("./stepHeight", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./stepHeight")>()),
+  stepHeight: (options: Parameters<typeof stepHeight>[0]) => {
+    closings.push(options);
+    return () => undefined;
+  },
+}));
 
 const at = (minute: number) => new Date(Date.UTC(2026, 8, 27, 10, minute)).toISOString();
 
@@ -195,6 +206,63 @@ describe("what runs alongside the Mate", () => {
       ).toHaveLength(3);
       act(() => tasks().props.onClick());
       expect(details()).toHaveLength(0);
+    } finally {
+      globalThis.ResizeObserver = observers;
+    }
+  });
+
+  // A bar that leaves gives its room back (the owner, 2026-09-30, of a
+  // finished deploy's room kept under a live line: "what's up with the big
+  // space … at the bottom"): the room is held where it stood and closes from
+  // there. One that arrives is followed at once.
+  it("gives back the room of a bar that leaves, and follows one that arrives at once", () => {
+    const observers = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    } as unknown as typeof ResizeObserver;
+    closings.length = 0;
+    try {
+      // The panel as the page lays it out: the room its bars take, unless held.
+      let bars = 96;
+      const panel = {
+        style: { height: "" },
+        closest: () => null,
+        getBoundingClientRect: () => ({
+          height: panel.style.height === "" ? bars : Number.parseFloat(panel.style.height),
+        }),
+      };
+      const rooms: Array<number | null> = [];
+      const draw = (dock: DockModel | null) => (
+        <ConversationWorking
+          dock={dock}
+          environmentId={null}
+          incidents={[]}
+          onOpenAgents={() => undefined}
+          onRoom={(room) => rooms.push(room)}
+          threadRef={null}
+        />
+      );
+      let renderer!: ReactTestRenderer;
+      act(() => {
+        renderer = create(draw(DOCK), {
+          createNodeMock: (element) =>
+            (element.props as Record<string, unknown>)["data-conversation-working"] === undefined
+              ? {}
+              : panel,
+        });
+      });
+      expect(closings).toHaveLength(0);
+      bars = 0;
+      act(() => renderer.update(draw(null)));
+      expect(closings).toHaveLength(1);
+      expect(closings[0]).toMatchObject({ element: panel, from: 96, to: 0 });
+      expect(rooms).toEqual([96]);
+      bars = 96;
+      act(() => renderer.update(draw(DOCK)));
+      expect(closings).toHaveLength(1);
+      expect(rooms).toEqual([96, null]);
     } finally {
       globalThis.ResizeObserver = observers;
     }
