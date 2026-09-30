@@ -50,6 +50,8 @@ function rig(session: {
   const giveWay = new AbortController();
   const admission: ConnectionAdmission = {
     prefer: () => undefined,
+    hold: () => () => undefined,
+    preferred: () => null,
     admit: (environmentId) => {
       log.push(`admit ${environmentId}`);
       return new Promise<AdmissionTicket>((resolve) => {
