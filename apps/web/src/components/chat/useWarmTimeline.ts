@@ -17,8 +17,10 @@ import {
 } from "@t3tools/client-runtime/state/threads";
 
 import { useAssetUrls } from "../../assets/assetUrls";
+import { useQueuedMessages } from "../../queuedMessageStore";
 import {
   createMessageAttachmentPreviewProjector,
+  deriveActiveWorkStartedAt,
   derivePhase,
   deriveTimelineEntriesWithState,
   deriveTurnPlans,
@@ -36,11 +38,17 @@ import {
 import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
 import { useNowMs } from "../../zerops/useNowMs";
 import { deriveDock, foldBackgroundTasks, latestUsagePause } from "./conversationDock.logic";
+import { readTimelinePosition } from "./timelineScrollAnchoring";
+import { crewChatEntries } from "../zerops/crew/crewChatSeams";
 import type { MessagesTimeline } from "./MessagesTimeline";
 
 type TimelineProps = ComponentProps<typeof MessagesTimeline>;
 
-/** What of the list is the conversation's own; the rest is the pane's. */
+/**
+ * What of the list is the conversation's own — its own values, or nothing
+ * where only the open conversation has any (a message on its way, an
+ * anchor); the rest is the pane's.
+ */
 export type WarmTimelineProps = Pick<
   TimelineProps,
   | "timelineEntries"
@@ -51,6 +59,14 @@ export type WarmTimelineProps = Pick<
   | "routeThreadKey"
   | "isWorking"
   | "working"
+  | "afterTurnWork"
+  | "workingStepLabel"
+  | "isCompacting"
+  | "activeTurnStartedAt"
+  | "agentPanelModel"
+  | "queuedMessages"
+  | "anchorMessageId"
+  | "liveFollowEnabled"
   | "hideEmptyPlaceholder"
   | "loading"
   | "syncing"
@@ -60,6 +76,7 @@ export type WarmTimelineProps = Pick<
 
 const NO_ACTIVITIES: [] = [];
 const NO_ATTACHMENT_HANDOFF = {};
+const NO_AGENTS = emptyAgentPanelModel();
 
 /** `openEnvironmentId` stands in for its pictures' environment until its key is read. */
 export function useWarmTimeline(
@@ -75,20 +92,24 @@ export function useWarmTimeline(
   const shell = useThreadShell(ref);
   const status = useThreadStatus(ref);
   const environmentId = ref?.environmentId ?? null;
+  const threadId = ref?.threadId ?? null;
   const activities = thread?.activities ?? NO_ACTIVITIES;
   const latestTurn = thread?.latestTurn ?? null;
+  const session = thread?.session ?? null;
   const runningTurnId =
-    (thread?.session?.status === "running" ? thread.session.activeTurnId : null) ??
+    (session?.status === "running" ? session.activeTurnId : null) ??
     (latestTurn?.state === "running" ? latestTurn.turnId : null);
-  const lifecycle = useZeropsLifecycle(environmentId, ref?.threadId ?? null);
+  const lifecycle = useZeropsLifecycle(environmentId, threadId);
   const nowMs = useNowMs();
   const zerops = useMemo(
     () => deriveZeropsThreadModel({ activities, lifecycle, runningTurnId, nowMs }),
     [activities, lifecycle, runningTurnId, nowMs],
   );
+  const zeropsActivityIds = zerops.zeropsActivityIds;
+  const zeropsEntries = zerops.entries;
   const workLog = useMemo(
-    () => deriveWorkLogEntries(activities, { exclude: zerops.zeropsActivityIds }),
-    [activities, zerops.zeropsActivityIds],
+    () => deriveWorkLogEntries(activities, { exclude: zeropsActivityIds }),
+    [activities, zeropsActivityIds],
   );
   const turnPlans = useMemo(() => deriveTurnPlans(activities), [activities]);
   // Its pictures as the open conversation shows them.
@@ -113,37 +134,46 @@ export function useWarmTimeline(
   }, [project, resources, serverMessages, urls]);
   const landed = useZeropsChangeLandedEvents(environmentId);
   const landings = useZeropsConversationLandings(landed, messages);
+  const proposedPlans = thread?.proposedPlans;
   const entries = useMemo(
     () =>
       deriveTimelineEntriesWithState(
         messages,
-        thread?.proposedPlans ?? [],
+        proposedPlans ?? [],
         workLog,
         null,
         turnPlans,
-        zerops.entries,
+        zeropsEntries,
         landings,
       ).entries,
-    [landings, messages, thread?.proposedPlans, turnPlans, workLog, zerops.entries],
+    [landings, messages, proposedPlans, turnPlans, workLog, zeropsEntries],
   );
-  const phase = derivePhase(thread?.session ?? null);
+  const phase = derivePhase(session);
   const isWorking = phase === "running" || phase === "connecting";
+  const latestUserMessageAt = shell?.latestUserMessageAt ?? null;
+  const activeTurnStartedAt = deriveActiveWorkStartedAt(
+    latestTurn,
+    session,
+    null,
+    latestUserMessageAt,
+  );
+  const usagePause = shell?.usagePause ?? null;
   const working = useMemo(
     () =>
       deriveDock({
         timelineEntries: entries,
         isWorking,
         runningTurnId,
-        agentPanelModel: emptyAgentPanelModel(),
+        turnStartedAt: activeTurnStartedAt,
+        agentPanelModel: NO_AGENTS,
         plan: null,
         backgroundTasks: foldBackgroundTasks(activities),
-        pause: shell?.usagePause
-          ? { resetsAt: shell.usagePause.resetsAt }
-          : latestUsagePause(entries),
+        pause: usagePause ? { resetsAt: usagePause.resetsAt } : latestUsagePause(entries),
       }),
-    [activities, entries, isWorking, runningTurnId, shell?.usagePause],
+    [activeTurnStartedAt, activities, entries, isWorking, runningTurnId, usagePause],
   );
-  const pageState = useEnvironmentThread(environmentId, ref?.threadId ?? null);
+  const queuedMessages = useQueuedMessages(threadKey ?? "");
+  const pageState = useEnvironmentThread(environmentId, threadId);
   const loadEarlier = useMemo(() => {
     if (ref === null || !threadHasOlderTurns(pageState)) return null;
     return {
@@ -156,21 +186,52 @@ export function useWarmTimeline(
     shellExists: shell !== null,
     status,
   });
-  if (ref === null || thread === null) return null;
-  const detailLoading = syncPhase === "loading";
-  return {
-    timelineEntries: entries,
-    latestTurn,
-    runningTurnId,
-    turnDiffSummaries: thread.checkpoints,
-    activeThreadEnvironmentId: ref.environmentId,
-    routeThreadKey: scopedThreadKey(ref),
+  const checkpoints = thread?.checkpoints;
+  // A crewmate's chat opens on its own rows, as the pane draws it.
+  const inCrewChat = shell?.crew != null;
+  const conversationEntries = useMemo(
+    () => (inCrewChat ? crewChatEntries(entries, loadEarlier === null) : entries),
+    [entries, inCrewChat, loadEarlier],
+  );
+  return useMemo((): WarmTimelineProps | null => {
+    if (ref === null || checkpoints === undefined) return null;
+    const detailLoading = syncPhase === "loading";
+    return {
+      timelineEntries: conversationEntries,
+      latestTurn,
+      runningTurnId,
+      turnDiffSummaries: checkpoints,
+      activeThreadEnvironmentId: ref.environmentId,
+      routeThreadKey: scopedThreadKey(ref),
+      isWorking,
+      working,
+      afterTurnWork: null,
+      workingStepLabel: null,
+      isCompacting: false,
+      activeTurnStartedAt,
+      agentPanelModel: NO_AGENTS,
+      queuedMessages,
+      anchorMessageId: null,
+      // As the pane opens it: where the person left it, else its end.
+      liveFollowEnabled: readTimelinePosition(scopedThreadKey(ref))?.atEnd !== false,
+      hideEmptyPlaceholder: detailLoading,
+      loading: detailLoading,
+      syncing: syncPhase !== null,
+      usagePause,
+      loadEarlier,
+    };
+  }, [
+    activeTurnStartedAt,
+    checkpoints,
+    conversationEntries,
     isWorking,
-    working,
-    hideEmptyPlaceholder: detailLoading,
-    loading: detailLoading,
-    syncing: syncPhase !== null,
-    usagePause: shell?.usagePause ?? null,
+    latestTurn,
     loadEarlier,
-  };
+    queuedMessages,
+    ref,
+    runningTurnId,
+    syncPhase,
+    usagePause,
+    working,
+  ]);
 }

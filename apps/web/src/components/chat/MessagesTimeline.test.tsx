@@ -1,7 +1,14 @@
 import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
 import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
-import { act, createRef, type ReactNode, type Ref } from "react";
+import {
+  act,
+  createRef,
+  useLayoutEffect,
+  useSyncExternalStore,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -2161,12 +2168,39 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
   };
   const KEY_A = "environment-local:thread-a";
   const KEY_B = "environment-local:thread-b";
+  // What a kept list reads of its conversation while out of sight, as a
+  // store it subscribes to.
+  const read = new Map<string, { readonly timelineEntries: ReadonlyArray<unknown> }>();
+  const readers = new Set<() => void>();
+  const tell = (key: string, props: NonNullable<ReturnType<typeof read.get>>) => {
+    read.set(key, props);
+    for (const reader of readers) reader();
+  };
+  const Reader = ({
+    threadKey,
+    onRead,
+  }: {
+    readonly threadKey: string;
+    readonly onRead: (props: never) => void;
+  }) => {
+    const props = useSyncExternalStore(
+      (listener) => {
+        readers.add(listener);
+        return () => readers.delete(listener);
+      },
+      () => read.get(threadKey) ?? null,
+    );
+    useLayoutEffect(() => onRead(props as never), [onRead, props]);
+    return null;
+  };
+  beforeEach(() => read.clear());
   const pane = async (open: string, alive: (key: string) => boolean = () => true) => {
     const { KeptTimelines } = await import("./KeptTimelines");
     return (
       <KeptTimelines
         open={open}
         alive={alive}
+        Reader={Reader}
         crewTimeline={null}
         timeline={{
           ...buildProps(),
@@ -2210,6 +2244,33 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
       await act(() => renderer!.update(a));
       // A list mounted anew starts out of sight until it is placed.
       expect(placing(renderer!, KEY_A)).toBe(false);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
+  it("takes its conversation's rows while out of sight, so a return finds them placed", async () => {
+    const place = await settle();
+    let renderer: ReactTestRenderer | undefined;
+    await act(async () => {
+      renderer = create(await pane(KEY_A));
+    });
+    try {
+      await place(renderer!);
+      const b = await pane(KEY_B);
+      await act(() => renderer!.update(b));
+      // An answer comes in A while the person reads B.
+      await act(() =>
+        tell(KEY_A, {
+          timelineEntries: [
+            buildUserTimelineEntry(`Where were we in ${KEY_A}?`),
+            { ...buildAssistantTimelineEntry("Here is where."), id: "entry-answer" },
+          ],
+        }),
+      );
+      const { LegendList } = await import("@legendapp/list/react");
+      const rowsOfA = listOf(renderer!, KEY_A).findByType(LegendList).props.data;
+      expect(JSON.stringify(rowsOfA)).toContain("Here is where.");
     } finally {
       await act(() => renderer?.unmount());
     }

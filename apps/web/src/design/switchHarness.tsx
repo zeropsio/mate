@@ -530,6 +530,8 @@ const COMPOSER_HEIGHT = 132;
 
 /** The harness's Mates are never removed. */
 const keptForever = () => true;
+/** Its kept lists are drawn as last shown: the harness has no store to read them from. */
+const readsNothing = () => null;
 
 function Pane({ threadKey }: { readonly threadKey: string }) {
   const { thread, live, ended, phase, entries } = useHarnessThread(threadKey);
@@ -586,6 +588,7 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
         <KeptTimelines
           open={routeThreadKey}
           alive={keptForever}
+          Reader={readsNothing}
           crewTimeline={null}
           timeline={{
             isWorking: live,

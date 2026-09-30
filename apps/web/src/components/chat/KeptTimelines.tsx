@@ -3,9 +3,8 @@
  * conversation's list shows; the last few left stay mounted out of sight, as
  * they stood when the person left them, so a return shows its rows in place
  * in the frame the header changes — nothing placed again, nothing faded in.
- * A kept list is drawn as it was last shown, and takes the conversation's
- * rows as they are now when it shows again: rows that came meanwhile are at
- * its end.
+ * A kept list reads its conversation's rows while it is out of sight, so
+ * rows that come meanwhile are placed at its end before it shows again.
  *
  * Not `<Activity mode="hidden">`: under it a list is `display: none` with
  * its effects gone, so a list warming (a conversation about to open) could
@@ -68,6 +67,7 @@ export function KeptTimelines({
   alive,
   warm = null,
   insetSettled = true,
+  Reader = WarmTimelineReader,
 }: {
   /** The open conversation's key. */
   readonly open: string;
@@ -84,6 +84,8 @@ export function KeptTimelines({
    * it, a frame, rather than move once shown.
    */
   readonly insetSettled?: boolean;
+  /** What reads an out-of-sight list's own props (`useWarmTimeline`). */
+  readonly Reader?: TimelineReader;
 }) {
   const [kept, setKept] = useState<ReadonlyArray<KeptTimeline>>(() =>
     keepTimelines([], { open, alive }),
@@ -116,6 +118,7 @@ export function KeptTimelines({
     readonly key: string;
     readonly timeline: TimelineProps;
   } | null>(null);
+  if (warming === null && warmBase !== null) setWarmBase(null);
   if (warming !== null && warmBase?.key !== warming) {
     const inset = rememberedTimelineInset(warming);
     setWarmBase({
@@ -159,6 +162,7 @@ export function KeptTimelines({
         <TimelineSlot
           key={slot.key}
           threadKey={slot.key}
+          Reader={Reader}
           crewTimeline={crewTimeline}
           kept={openShown}
           listRef={timeline.listRef}
@@ -172,6 +176,7 @@ export function KeptTimelines({
       <TimelineSlot
         key={slot.key}
         threadKey={slot.key}
+        Reader={Reader}
         crewTimeline={last.crewTimeline}
         kept={KEPT_OUT_OF_SIGHT}
         listRef={listRefOf(slot.key)}
@@ -185,6 +190,7 @@ export function KeptTimelines({
       <TimelineSlot
         key={warming}
         threadKey={warming}
+        Reader={Reader}
         crewTimeline={null}
         kept={KEPT_OUT_OF_SIGHT}
         listRef={listRefOf(warming)}
@@ -219,6 +225,7 @@ function outOfSight(timeline: TimelineProps): TimelineProps {
  */
 const TimelineSlot = memo(function TimelineSlot({
   threadKey,
+  Reader,
   mode,
   timeline,
   crewTimeline,
@@ -226,6 +233,7 @@ const TimelineSlot = memo(function TimelineSlot({
   kept,
 }: {
   readonly threadKey: string;
+  readonly Reader: TimelineReader;
   /**
    * Open; open but out of sight a frame more, its inset on its way; kept out
    * of sight; or warming for a conversation about to open.
@@ -236,18 +244,22 @@ const TimelineSlot = memo(function TimelineSlot({
   readonly listRef: RefObject<LegendListRef | null>;
   readonly kept: KeptTimelineState;
 }) {
-  // A warming list's own props, read beside it: as it opens the reader goes
-  // and the list stays, the pane's props taking over.
+  // An out-of-sight list's own props, read beside it, so it takes the
+  // conversation's rows as they come — an answer arriving while the person
+  // is elsewhere is measured and placed out of sight, never on the return.
+  // As it opens the reader goes and the list stays, the pane's props taking
+  // over; kept again, it reads anew.
   const [warmed, setWarmed] = useState<WarmTimelineProps | null>(null);
+  const opened = mode === "open" || mode === "settling";
+  if (opened && warmed !== null) setWarmed(null);
   const shown = mode === "open";
-  const props: TimelineProps | null =
-    mode === "open" || mode === "settling"
-      ? timeline
-      : mode === "hidden"
-        ? outOfSight(timeline)
-        : warmed === null
-          ? null
-          : { ...outOfSight(timeline), ...warmed };
+  const props: TimelineProps | null = opened
+    ? timeline
+    : mode === "hidden"
+      ? { ...outOfSight(timeline), ...warmed }
+      : warmed === null
+        ? null
+        : { ...outOfSight(timeline), ...warmed };
   return (
     <div
       aria-hidden={shown ? undefined : true}
@@ -262,8 +274,8 @@ const TimelineSlot = memo(function TimelineSlot({
           </CrewTimelineContext>
         </KeptTimelineContext>
       )}
-      {mode === "warm" ? (
-        <WarmTimelineReader
+      {!opened ? (
+        <Reader
           key="reader"
           onRead={setWarmed}
           openEnvironmentId={timeline.activeThreadEnvironmentId}
@@ -273,6 +285,13 @@ const TimelineSlot = memo(function TimelineSlot({
     </div>
   );
 });
+
+/** Reads a conversation's own list props for a list out of sight, and tells them. */
+export type TimelineReader = (props: {
+  readonly threadKey: string;
+  readonly openEnvironmentId: TimelineProps["activeThreadEnvironmentId"];
+  readonly onRead: (props: WarmTimelineProps | null) => void;
+}) => null;
 
 function WarmTimelineReader({
   threadKey,
