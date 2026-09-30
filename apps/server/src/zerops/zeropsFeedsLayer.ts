@@ -55,6 +55,7 @@ const ZeropsLoginsLive = ZeropsLoginsModule.layer.pipe(Layer.provide(providerIns
  * admit every turn through it, and so does the crew engine.
  */
 const ZeropsTurnAdmissionLive = ZeropsTurnAdmissionModule.layer.pipe(
+  Layer.provide(ZeropsAgentLoginModule.layer),
   Layer.provide(ZeropsAgentAuthLive),
   Layer.provide(ZeropsLoginsLive),
   Layer.provide(ZeropsProjectSignersModule.layer),

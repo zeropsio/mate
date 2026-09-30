@@ -27,7 +27,7 @@ import type {
   ZeropsLoginState,
 } from "@t3tools/contracts";
 import {
-  classifyZeropsAgentAuth,
+  zeropsAgentUnavailableReason,
   zeropsLoginTitle,
   zeropsLoginUnavailableReason,
 } from "@t3tools/shared/zeropsAgentAuth";
@@ -179,24 +179,32 @@ export function resolveSpentLogin(
 }
 
 /**
- * Whether a provider status on the login it names is behind the Mate's own sign-in record, and
- * so says nothing: a status short of ready while the record has that login runnable — signed in
- * and still being registered (`ZeropsTurnAdmission` admits it, and nothing is the person's to
- * do), or registered already. The server's provider status and its sign-in record are two
- * streams, and either may be ahead: past the registration the record says authorized while the
- * status still says "being registered", and that word flashed over a conversation that had
- * nothing to wait for.
+ * Whether a provider status is only the server's "being registered" on a login the Mate signs
+ * people in to, and so says nothing: that login runs while it is registered
+ * (`ZeropsTurnAdmission` admits it) and nothing is the person's to do. The server's provider
+ * status and its sign-in record are two streams, and either may be ahead, so the word flashed
+ * over a conversation that had nothing to wait for. Any other status — the driver's own
+ * warning, an error, a login disabled — is the person's to read.
  */
 export function spentLoginStatusStale(
-  status: { readonly instanceId: string; readonly status: string } | null | undefined,
+  status:
+    | {
+        readonly instanceId: string;
+        readonly status: string;
+        readonly message?: string | undefined;
+      }
+    | null
+    | undefined,
   snapshot: ZeropsAgentAuthSnapshot | null | undefined,
   providers: ReadonlyArray<{ readonly instanceId: string; readonly driver: string }>,
 ): boolean {
-  if (status == null || status.status === "ready") return false;
+  if (status == null || status.status !== "warning" || status.message === undefined) return false;
   const spent = resolveSpentLogin(status.instanceId, snapshot, providers);
   if (spent === undefined) return false;
-  // On a login Mate signs people in to, a warning is only ever the server's "being registered".
-  if (status.status === "warning") return true;
-  const kind = classifyZeropsAgentAuth(spent.agent).kind;
-  return kind === "registering" || kind === "authorized";
+  const login = snapshot?.logins?.find((entry) => !entry.default && entry.id === spent.key);
+  const registering =
+    login === undefined
+      ? zeropsAgentUnavailableReason(spent.agent.agentId, "registering")
+      : zeropsLoginUnavailableReason(login, "registering");
+  return status.message === registering;
 }

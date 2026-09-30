@@ -535,12 +535,14 @@ const loginSignOutFixtureLayer = Layer.succeed(
 
 export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
   const auth = agentAuthLayer(scene);
+  const login = agentLoginLayer(scene);
   return Layer.mergeAll(
     lifecycleLayer(scene),
-    agentLoginLayer(scene).pipe(Layer.provideMerge(auth)),
+    login.pipe(Layer.provideMerge(auth)),
     // The live gate, over this scene's agents and signers — a fixture admits
     // and refuses turns exactly as a live Mate would on the same facts.
     ZeropsTurnAdmission.layer.pipe(
+      Layer.provide(login),
       Layer.provide(auth),
       Layer.provide(loginsFixtureLayer),
       Layer.provide(fixtureSignersLayer),

@@ -700,9 +700,7 @@ describe("the turn gate", () => {
     Effect.gen(function* () {
       const now = yield* DateTime.now;
       return {
-        ...signedIn,
-        state: "local-only",
-        providerAuth: "unknown",
+        agent: { ...signedIn, state: "local-only", providerAuth: "unknown" },
         login: { phase: "succeeded", terminalId: "t", startedAt: now, startedBy },
       } as const;
     });
@@ -710,9 +708,9 @@ describe("the turn gate", () => {
   it.effect("a turn on its own person's sign-in just made waits for the record on its way", () =>
     Effect.gen(function* () {
       const { signers, setTags } = yield* gate([]);
-      const agent = yield* justSignedIn(JAN);
+      const { agent, login } = yield* justSignedIn(JAN);
       const fiber = yield* signers
-        .turnRefusal({ agentId: "claude-code", agent, subject: JAN })
+        .turnRefusal({ agentId: "claude-code", agent, subject: JAN, login })
         .pipe(Effect.forkChild);
       yield* TestClock.adjust(Duration.seconds(2));
       setTags([signerTag("claude-code", JAN)]);
@@ -725,9 +723,9 @@ describe("the turn gate", () => {
   it.effect("a record that never lands refuses once the wait is over", () =>
     Effect.gen(function* () {
       const { signers } = yield* gate([]);
-      const agent = yield* justSignedIn(JAN);
+      const { agent, login } = yield* justSignedIn(JAN);
       const fiber = yield* signers
-        .turnRefusal({ agentId: "claude-code", agent, subject: JAN })
+        .turnRefusal({ agentId: "claude-code", agent, subject: JAN, login })
         .pipe(Effect.forkChild);
       yield* TestClock.adjust(SIGNER_RECORD_WAIT);
       yield* TestClock.adjust(Duration.seconds(1));
@@ -736,13 +734,66 @@ describe("the turn gate", () => {
     }).pipe(Effect.scoped),
   );
 
+  // A sign-in over somebody else's record, or over a record naming two people, ends in this
+  // person's record too: their turn waits for it as for a first one.
+  for (const [name, before] of [
+    ["over another person's record", [signerTag("claude-code", EVA)]],
+    [
+      "over a record naming two people",
+      [signerTag("claude-code", EVA), signerTag("claude-code", JAN)],
+    ],
+  ] as const) {
+    it.effect(`a sign-in just made ${name} waits for its own record`, () =>
+      Effect.gen(function* () {
+        const { signers, setTags } = yield* gate(before);
+        const { agent, login } = yield* justSignedIn(JAN);
+        const fiber = yield* signers
+          .turnRefusal({ agentId: "claude-code", agent, subject: JAN, login })
+          .pipe(Effect.forkChild);
+        yield* TestClock.adjust(Duration.seconds(2));
+        setTags([signerTag("claude-code", JAN)]);
+        yield* TestClock.adjust(Duration.seconds(2));
+
+        assert.isUndefined(yield* Fiber.join(fiber));
+      }).pipe(Effect.scoped),
+    );
+  }
+
+  // Until the new record lands, the old one names the person before: the credential is already
+  // the new person's, so the one before runs nothing on it.
+  it.effect("the signer before runs nothing on a credential somebody just signed in", () =>
+    Effect.gen(function* () {
+      const { signers } = yield* gate([signerTag("claude-code", EVA)]);
+      const { agent, login } = yield* justSignedIn(JAN);
+
+      assert.deepStrictEqual(
+        yield* signers.turnRefusal({ agentId: "claude-code", agent, subject: EVA, login }),
+        { kind: "someone-else" },
+      );
+      assert.isUndefined(
+        yield* signers.turnRefusal({
+          agentId: "claude-code",
+          agent: { ...agent, state: "authorized-token", flagToken: true },
+          subject: EVA,
+          login,
+        }),
+        "a project token is nobody's login",
+      );
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("somebody else's sign-in is nothing this turn waits for", () =>
     Effect.gen(function* () {
       const { signers, reads } = yield* gate([]);
-      const agent = yield* justSignedIn(EVA);
+      const { agent, login } = yield* justSignedIn(EVA);
       const before = reads();
 
-      const refusal = yield* signers.turnRefusal({ agentId: "claude-code", agent, subject: JAN });
+      const refusal = yield* signers.turnRefusal({
+        agentId: "claude-code",
+        agent,
+        subject: JAN,
+        login,
+      });
       assert.deepStrictEqual(refusal, { kind: "unrecorded" });
       assert.strictEqual(reads() - before, 1, "one re-read, no wait");
     }).pipe(Effect.scoped),
