@@ -3859,6 +3859,66 @@ describe("ProviderCommandReactor", () => {
     }),
   );
 
+  // Juno, 2026-09-29: a start that stuck before its run began left the
+  // session "running" with no turn. Stop cancelled the pending start and the
+  // provider's interrupt went through, but no turn was there to report an
+  // end, so the thread said it ran on — the conversation thinking — until a
+  // restart. A Stop leaves nothing running that the provider will not settle.
+  effectIt.effect.each([
+    { case: "running no turn", status: "running", activeTurnId: null, settles: true },
+    { case: "starting no turn", status: "starting", activeTurnId: null, settles: true },
+    {
+      case: "running a turn, whose end the provider reports",
+      status: "running",
+      activeTurnId: "turn-1",
+      settles: false,
+    },
+  ] as const)("a Stop on a session $case", ({ status, activeTurnId, settles }) =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const now = "2026-01-01T00:00:00.000Z";
+      const stoppedAt = "2026-01-01T00:28:47.000Z";
+      const threadId = ThreadId.make("thread-1");
+
+      yield* harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-session-set-stop-nothing-running"),
+        threadId,
+        session: {
+          threadId,
+          status,
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: activeTurnId === null ? null : asTurnId(activeTurnId),
+          lastError: null,
+          updatedAt: now,
+        },
+        createdAt: now,
+      });
+      yield* harness.engine.dispatch({
+        type: "thread.turn.interrupt",
+        commandId: CommandId.make("cmd-turn-interrupt-nothing-running"),
+        threadId,
+        ...(activeTurnId === null ? {} : { turnId: asTurnId(activeTurnId) }),
+        createdAt: stoppedAt,
+      });
+      yield* Effect.promise(() => harness.drain());
+
+      const thread = (yield* Effect.promise(() => harness.readModel())).threads.find(
+        (entry) => entry.id === threadId,
+      );
+      expect(harness.interruptTurn).toHaveBeenCalledTimes(1);
+      expect(thread?.session).toMatchObject(
+        settles
+          ? { status: "interrupted", activeTurnId: null, lastError: null, updatedAt: stoppedAt }
+          : { status: "running", activeTurnId: "turn-1" },
+      );
+      expect(thread?.activities.map((activity) => activity.kind)).not.toContain(
+        "provider.turn.interrupt.failed",
+      );
+    }),
+  );
+
   effectIt.effect("does not overwrite a session that became ready while an interrupt failed", () =>
     Effect.gen(function* () {
       const harness = yield* Effect.promise(() => createHarness());

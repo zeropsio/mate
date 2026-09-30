@@ -1,10 +1,12 @@
 /**
  * Switching between Mates' conversations, as the conversation pane does it
- * (T1): four Mates with conversations of their own, one of them at work; a
- * first open that waits on the server; a Mate opened before that paints from
- * what the app remembers; and a run the person opened folding as they leave
- * (the card's own fold, K7). A live Mate streams its answer from the page's
- * load, so a return to it meets rows changing under it.
+ * (T1): five Mates with conversations of their own, two of them at work —
+ * Iris on a run the person started the day after a message whose own run
+ * never came; a first open that waits on the server; a Mate opened before
+ * that paints from what the app remembers; and a run the person opened
+ * folding as they leave (the card's own fold, K7). A live Mate streams its
+ * answer from the page's load, so a return to it meets rows changing under
+ * it.
  *
  * Served by the dev server at `/design-switch.html` (`?theme=dark`,
  * `?latency=<ms>` for the first open's wait, `?stream=<ms>` for how often the
@@ -175,6 +177,12 @@ interface HarnessThread {
   readonly live?: boolean;
   /** Calls in its last run, taller than the pane: somewhere to read inside a run. */
   readonly lastCalls?: number;
+  /**
+   * Its last run is one the person started after a message whose own run
+   * never came — a Stop before it began, then a restart — and it thinks
+   * (Juno, 2026-09-30: its clock counted from the message the day before).
+   */
+  readonly unreached?: boolean;
 }
 
 const THREADS: ReadonlyArray<HarnessThread> = [
@@ -182,10 +190,68 @@ const THREADS: ReadonlyArray<HarnessThread> = [
   { key: "juno", name: "Juno", turns: 9 },
   { key: "fen", name: "Fen", turns: 3 },
   { key: "mira", name: "Mira", turns: 5, live: true },
+  { key: "iris", name: "Iris", turns: 3, live: true, unreached: true },
 ];
 
 const LIVE_STARTED = Date.now() - 95_000;
 const liveAt = (second: number) => new Date(LIVE_STARTED + second * 1000).toISOString();
+
+function personSaid(id: string, createdAt: string, text: string): TimelineEntry {
+  return {
+    id,
+    kind: "message",
+    createdAt,
+    message: {
+      id: MessageId.make(id),
+      role: "user",
+      text,
+      turnId: null,
+      createdAt,
+      updatedAt: createdAt,
+      streaming: false,
+    },
+  };
+}
+
+/**
+ * The conversation of a Mate whose last message but one never got a run: the
+ * person's message 17 h 40 m before the run going now, and that run's first
+ * thought still streaming. Built once, so the list meets the same rows.
+ */
+const unreachedConversations = new Map<string, TimelineEntry[]>();
+function unreachedConversationOf(thread: HarnessThread): TimelineEntry[] {
+  const known = unreachedConversations.get(thread.key);
+  if (known) return known;
+  const last = thread.turns - 1;
+  const thought = `${thread.key}-thought-${last}`;
+  const entries: TimelineEntry[] = [
+    ...Array.from({ length: last }, (_, turn) =>
+      turnEntries(thread.key, turn, 3 + ((turn * 7) % 6)),
+    ).flat(),
+    personSaid(
+      `${thread.key}-ask-unreached`,
+      new Date(LIVE_STARTED - (17 * 60 + 40) * 60_000).toISOString(),
+      "Is the cache warmed on deploy?",
+    ),
+    personSaid(`${thread.key}-ask-${last}`, liveAt(0), ASKS[last % ASKS.length]!),
+    {
+      id: thought,
+      kind: "message",
+      createdAt: liveAt(3),
+      message: {
+        id: MessageId.make(thought),
+        role: "reasoning",
+        text: "Reading how the import files list the services before answering.",
+        turnId: TurnId.make(`${thread.key}-turn-${last}`),
+        createdAt: liveAt(3),
+        updatedAt: liveAt(3),
+        streaming: true,
+      },
+    },
+  ];
+  unreachedConversations.set(thread.key, entries);
+  return entries;
+}
 
 /**
  * The live run streams from the page's load, shown or not: its answer grows
@@ -272,6 +338,7 @@ function liveTurnEntries(
 
 /** A thread's conversation; the runs the person left fold to their Mate's words (K7). */
 function conversationOf(thread: HarnessThread, tick: number, ended: boolean): TimelineEntry[] {
+  if (thread.unreached) return unreachedConversationOf(thread);
   return Array.from({ length: thread.turns }, (_, turn) =>
     thread.live && turn === thread.turns - 1
       ? liveTurnEntries(thread.key, turn, tick, ended)
