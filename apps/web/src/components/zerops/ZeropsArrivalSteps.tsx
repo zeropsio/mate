@@ -4,9 +4,16 @@
  * on a quieter line under the first, and the person's own step last, with their picture: "You
  * sign Wren in", next.
  */
-import type { ReactNode } from "react";
+import type { BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgress";
+import { useState, type ReactNode } from "react";
 
-import type { ArrivalService, ArrivalStep } from "~/zerops/mateArrival";
+import {
+  nextRuntimesLine,
+  runtimesComing,
+  type ArrivalService,
+  type ArrivalStep,
+  type RuntimesLine,
+} from "~/zerops/mateArrival";
 
 import { Avatar } from "./primitives";
 
@@ -92,6 +99,39 @@ export function ArrivalServices({
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * Under the sign-in, the runtimes still coming up after the Mate answered — "appdev appstage
+ * coming up", one dot each as on the workspace step, in its order. Nothing for runtimes already
+ * up; once all are, its words fade and its place stays until the sign-in goes (`nextRuntimesLine`).
+ */
+export function ArrivalRuntimesLine({
+  runtimes,
+}: {
+  readonly runtimes: ReadonlyArray<BirthRuntimeFact> | undefined;
+}) {
+  const read = runtimesComing(runtimes);
+  const [held, setHeld] = useState<{
+    readonly line: RuntimesLine;
+    readonly services: ReadonlyArray<ArrivalService>;
+  }>({ line: "none", services: [] });
+  const line = nextRuntimesLine(held.line, read?.coming === true);
+  // Its last names are kept for a read that has none any more: its place stays drawn, faded.
+  const services = read?.services ?? held.services;
+  if (line !== held.line) setHeld({ line, services });
+  if (line === "none") return null;
+  return (
+    <div
+      aria-hidden={line === "settled" ? true : undefined}
+      className="arrival-runtimes"
+      data-state={line}
+      data-zerops-surface="arrival-runtimes"
+    >
+      <ArrivalServices services={services} />
+      <span>coming up</span>
+    </div>
   );
 }
 

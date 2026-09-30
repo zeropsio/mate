@@ -16,6 +16,7 @@
  *
  * Pure: the words, the face and the steps; the views draw them.
  */
+import type { BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgress";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
 import {
@@ -370,4 +371,70 @@ export function inFirstSeenOrder(
     order: [...seen.filter((name) => present.has(name)), ...added],
     seen: added.length === 0 ? seen : [...seen, ...added],
   };
+}
+
+// ── The runtimes while the person signs it in ────────────────────────────────────────────────
+
+/** The statuses of a runtime on its way up: made, being created, or a dev half awaiting its build. */
+const RUNTIME_COMING_STATUSES: ReadonlySet<string> = new Set([
+  "NEW",
+  "CREATING",
+  "READY_TO_DEPLOY",
+]);
+
+const RUNTIME_FAILED_STATUSES: ReadonlySet<string> = new Set([
+  "FAILED",
+  "ACTION_FAILED",
+  "CONTAINER_FAILED",
+  "REPAIR_FAILED",
+]);
+
+function runtimeDrawn(runtime: BirthRuntimeFact): {
+  readonly state: ArrivalService["state"];
+  readonly coming: boolean;
+} {
+  const status = runtime.service?.status;
+  // Imported, not listed yet: it is on its way.
+  if (status === undefined) return { state: "waiting", coming: true };
+  // A stage half rests at READY_TO_DEPLOY until its first deploy: it is up.
+  if (status === "ACTIVE" || (runtime.role === "stage" && status === "READY_TO_DEPLOY")) {
+    return { state: "ok", coming: false };
+  }
+  if (RUNTIME_FAILED_STATUSES.has(status)) return { state: "failed", coming: false };
+  if (RUNTIME_COMING_STATUSES.has(status)) return { state: "busy", coming: true };
+  // Stopped, or anything else no import is bringing up.
+  return { state: "waiting", coming: false };
+}
+
+/**
+ * The runtimes under the sign-in, as the workspace step drew them: each as far as it has come,
+ * and whether any is still coming up — the dev halves' first deploys and a utility's build run
+ * minutes past the Mate's first answer (measured 2026-09-30: until +264 s and +316 s, the sign-in
+ * at +170 s). Undefined for a Mate that has none.
+ */
+export function runtimesComing(runtimes: ReadonlyArray<BirthRuntimeFact> | undefined):
+  | {
+      readonly services: ReadonlyArray<ArrivalService>;
+      readonly coming: boolean;
+    }
+  | undefined {
+  if (runtimes === undefined || runtimes.length === 0) return undefined;
+  const drawn = runtimes.map((runtime) => ({ name: runtime.hostname, ...runtimeDrawn(runtime) }));
+  return {
+    services: drawn.map(({ name, state }) => ({ name, state })),
+    coming: drawn.some((runtime) => runtime.coming),
+  };
+}
+
+/**
+ * The sign-in's runtimes line: `none` until a runtime is seen coming up — never for a Mate whose
+ * runtimes are already up — `coming` while any is, then `settled` once all are: its words fade,
+ * its place stays, since the page is centred and a line that went would move everything above it.
+ * It ends with the sign-in: the stand-up's run card carries the builds from there.
+ */
+export type RuntimesLine = "none" | "coming" | "settled";
+
+export function nextRuntimesLine(line: RuntimesLine, coming: boolean): RuntimesLine {
+  if (coming) return "coming";
+  return line === "none" ? "none" : "settled";
 }

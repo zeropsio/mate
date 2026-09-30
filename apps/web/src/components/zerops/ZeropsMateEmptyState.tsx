@@ -22,13 +22,17 @@
  */
 import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import {
+  birthRuntimesFacts,
+  type BirthRuntimeFact,
+} from "@t3tools/client-runtime/zerops/birthProgress";
+import {
   zeropsAgentAuthView,
   zeropsAgentSignInRequired,
 } from "@t3tools/client-runtime/zerops/agentLogin";
 import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { RotateCcwIcon } from "lucide-react";
-import { Fragment, useMemo, type ReactNode } from "react";
+import { Fragment, useContext, useMemo, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 
@@ -52,11 +56,13 @@ import {
   useLocalAgentSigners,
   useZeropsEnvironmentProject,
 } from "../../zerops/useZeropsAgentSigner";
+import { InventoryContext } from "../../zerops/inventoryContext";
 import { useZeropsAgentAuth } from "../../zerops/useZeropsFeeds";
 import { useZeropsMemberNames } from "../../zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { Button } from "../ui/button";
 import { ArrivalSwap } from "./ArrivalSwap";
+import { ArrivalRuntimesLine } from "./ZeropsArrivalSteps";
 import { MateFace } from "./primitives";
 import { ZeropsAgentSignIn } from "./ZeropsAgentSignIn";
 
@@ -76,6 +82,7 @@ export function ZeropsMateEmptyState({
       mate={mate}
       onRetry={state.onRetry}
       phase={state.phase}
+      runtimes={state.runtimes}
       signIn={state.signIn}
       signInRequired={state.signInRequired}
       unknown={state.unknown}
@@ -99,6 +106,8 @@ export interface MateEmptyState {
    */
   readonly addedBy: string | null | undefined;
   readonly onRetry: () => void;
+  /** Its project's runtimes, as its project's read lists them; undefined while unread, or none. */
+  readonly runtimes: ReadonlyArray<BirthRuntimeFact> | undefined;
 }
 
 /**
@@ -110,10 +119,13 @@ export function useMateEmptyState({
   environmentId,
   mate,
   threadRef,
+  projectId,
 }: {
   readonly environmentId: EnvironmentId | null;
   readonly mate: ZeropsMateIdentity;
   readonly threadRef: ScopedThreadRef | null;
+  /** Its project, where the caller knows it before its environment's record says it. */
+  readonly projectId?: string | undefined;
 }): MateEmptyState {
   const { snapshot: agentAuth, unknown: agentAuthUnknown } = zeropsAgentAuthView(
     useZeropsAgentAuth(environmentId),
@@ -153,6 +165,17 @@ export function useMateEmptyState({
   const colleague =
     phase === null && signInRequired && adder !== undefined && adder !== viewerSubject;
   const project = useZeropsEnvironmentProject(environmentId);
+  // Its runtimes as its project's read lists them: the sign-in names the ones still coming up.
+  const inventory = useContext(InventoryContext);
+  const listed = inventory?.services.get(projectId ?? project?.projectId ?? "");
+  const runtimes = useMemo(
+    () =>
+      birthRuntimesFacts({
+        birth: undefined,
+        services: listed?.status === "resolved" ? listed.services : undefined,
+      })?.runtimes,
+    [listed],
+  );
   const nameOf = useZeropsMemberNames({ clientId: project?.orgId, enabled: colleague });
 
   return {
@@ -172,6 +195,7 @@ export function useMateEmptyState({
     onRetry: () => {
       if (environmentId !== null) retryMateStandUp(environmentId);
     },
+    runtimes,
   };
 }
 
@@ -244,6 +268,7 @@ export function MateEmptyStateView({
   onRetry,
   coming = null,
   addedBy,
+  runtimes,
 }: {
   readonly mate: DrawnMate;
   readonly phase: MateStandUpPhase | null;
@@ -257,6 +282,8 @@ export function MateEmptyStateView({
   readonly coming?: MateEmptyComing | null;
   /** A colleague's view of a Mate nobody has signed in (`MateEmptyState.addedBy`). */
   readonly addedBy?: string | null | undefined;
+  /** Its project's runtimes: under the sign-in, the ones still coming up. */
+  readonly runtimes?: ReadonlyArray<BirthRuntimeFact> | undefined;
 }) {
   const kind = mateArrivalKind({ coming, phase, signInRequired, addedBy });
   const clauses = arrivalHeadlineClauses(mate, kind);
@@ -264,7 +291,7 @@ export function MateEmptyStateView({
     coming !== null && coming.over !== true && coming.sentence !== undefined
       ? coming.sentence
       : arrivalSentence(mate, kind, { addedBy: addedBy ?? undefined });
-  const slot = arrivalSlot({ kind, coming, signIn, unknown, onRetry });
+  const slot = arrivalSlot({ kind, coming, signIn, unknown, onRetry, runtimes });
   return (
     <div
       className="flex h-full flex-col items-center px-5 sm:px-6"
@@ -327,6 +354,7 @@ function arrivalSlot(input: {
   readonly signIn: ReactNode | null;
   readonly unknown: KnownMessage | null;
   readonly onRetry: () => void;
+  readonly runtimes: ReadonlyArray<BirthRuntimeFact> | undefined;
 }): { readonly id: string; readonly node: ReactNode } {
   const { kind, coming, signIn, unknown } = input;
   switch (kind) {
@@ -356,6 +384,8 @@ function arrivalSlot(input: {
           node: (
             <section aria-label="Sign in" data-zerops-surface="mate-sign-in">
               {signIn}
+              {/* The runtimes still coming up: the stand-up's run card carries them from there. */}
+              <ArrivalRuntimesLine runtimes={input.runtimes} />
             </section>
           ),
         };

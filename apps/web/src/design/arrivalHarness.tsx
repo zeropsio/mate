@@ -19,6 +19,7 @@ import {
   deriveBirthProgress,
   type BirthCopyService,
   type BirthFacts,
+  type BirthRuntimeFact,
 } from "@t3tools/client-runtime/zerops/birthProgress";
 import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
@@ -518,7 +519,31 @@ function Conversation() {
   );
 }
 
+/**
+ * The runtimes under the sign-in, as its project's read lists them: the stage halves up, the dev
+ * halves and the utility still coming — appdev up 6 s after the pane opens, the rest by 12 s, so
+ * the line's words fade in its place.
+ */
+function signInRuntimes(sinceMs: number): ReadonlyArray<BirthRuntimeFact> {
+  const upAfter: ReadonlyArray<readonly [string, BirthRuntimeFact["role"], number]> = [
+    ["appdev", "dev", 6_000],
+    ["appstage", "stage", 0],
+    ["mailpit", "utility", 12_000],
+    ["webdev", "dev", 12_000],
+    ["webstage", "stage", 0],
+  ];
+  return upAfter.map(([hostname, role, after]) => ({
+    hostname,
+    role,
+    service: {
+      id: `svc-${hostname}`,
+      status: role === "stage" ? "READY_TO_DEPLOY" : sinceMs >= after ? "ACTIVE" : "CREATING",
+    },
+  }));
+}
+
 function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: string) => void }) {
+  const [openedAt] = useState(() => Date.now());
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
@@ -536,6 +561,7 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
       mate={state.mate}
       onRetry={() => go("standing-up")}
       phase={state.phase}
+      runtimes={signInRuntimes(nowMs - openedAt)}
       signIn={
         signingIn ? (
           // A state that opens on a login shows it from its first frame.

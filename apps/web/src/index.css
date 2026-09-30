@@ -6793,6 +6793,36 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   background: var(--zerops-status-failed);
 }
 
+/* p25/arrival: under the sign-in, the runtimes still coming up after the Mate answered, quiet
+   and centred. Once all are up its words fade (200 ms) and its place stays until the sign-in
+   goes: the page is centred, and a line that went would move everything above it. */
+.arrival-runtimes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 12px;
+  margin-top: 20px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+  transition: opacity 200ms var(--ease-out-strong);
+}
+
+.arrival-runtimes[data-state="settled"] {
+  opacity: 0;
+}
+
+.arrival-runtimes .arrival-services {
+  justify-content: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arrival-runtimes {
+    transition: none;
+  }
+}
+
 /* A step's mark: a soft check, an arc turning a notch at a time (R6), an empty ring, a cross,
    the person's picture ringed in the focus colour. */
 .arrival-glyph {
