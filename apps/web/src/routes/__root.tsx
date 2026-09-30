@@ -81,7 +81,8 @@ import { RouteGateView } from "./-routeGate";
 import { installMateDiagnostics } from "~/zerops/diagnostics";
 import { useHeldPast } from "~/zerops/useHeldPast";
 import { useNowMs } from "~/zerops/useNowMs";
-import { useZeropsMate } from "~/zerops/useZeropsMates";
+import { rememberedMateIdentity, rememberMateIdentities } from "~/zerops/mateIdentityMemory";
+import { useZeropsMate, useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import { ZeropsReviewProvider } from "~/zerops/ZeropsReviewProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
@@ -160,6 +161,17 @@ function SignedInRootRouteView() {
   const routeEnvironment =
     routeEnvironmentId === null ? null : EnvironmentId.make(routeEnvironmentId);
   const routeMate = useZeropsMate(routeEnvironment ?? NO_ENVIRONMENT);
+  // Who lives where, remembered for the next reload's first frame (`mateIdentityMemory`).
+  const mateDirectory = useZeropsMateDirectory();
+  useEffect(() => {
+    rememberMateIdentities(mateDirectory);
+  }, [mateDirectory]);
+  const routeMateName =
+    routeMate.kind === "mate"
+      ? routeMate.mate.name
+      : routeEnvironment === null
+        ? undefined
+        : rememberedMateIdentity(routeEnvironment)?.name;
   const linkReachability =
     gate.kind === "outlet" ? gate.banner : gate.kind === "wait" ? gate.reachability : null;
   const linkPast = useHeldPast(
@@ -173,7 +185,7 @@ function SignedInRootRouteView() {
           conversationShown: gate.kind === "outlet" && conversation.kind === "shown",
           heldMs: linkPast ? MATE_VOICE_QUIET_MS : 0,
           nowMs,
-          mateName: routeMate.kind === "mate" ? routeMate.mate.name : "This Mate",
+          mateName: routeMateName ?? "This Mate",
         })
       : SILENT_VOICE;
   useEffect(() => {
