@@ -217,54 +217,65 @@ export function ZeropsNewMateForm({
           </span>
         </DialogDescription>
       </DialogHeader>
-      <DialogPanel>
-        {/* Out of sight and out of reach while the project takes no Mate: it holds its room, and
-            what was typed and picked, for a door that opens again. */}
-        <div
-          className={cn(
-            "transition-[opacity,visibility] ease-out",
-            closed === undefined ? "delay-100 duration-200" : "invisible opacity-0 duration-100",
-          )}
-          inert={closed !== undefined}
-        >
-          <MateFacePicker
-            face={face}
-            onPickShape={(shape) => {
-              if (!adding) setPicked((current) => ({ ...current, shape }));
-            }}
-            onPickTint={(tint) => {
-              if (!adding) setPicked((current) => ({ ...current, tint }));
-            }}
-          >
-            <Input
-              aria-describedby={`${id}-line`}
-              aria-invalid={refused === undefined ? undefined : true}
-              aria-label="Name"
-              autoComplete="off"
-              onChange={(event) => {
-                const typed = event.target.value;
-                setBotName(typed);
-                setPressedFor(null);
-                const name = typed.replace(/\s+/g, " ").trim();
-                if (name.length > 0) setHeldName(name);
-              }}
-              onFocus={(event) => {
-                // The proposed name is taken whole by the first key typed over it.
-                if (selected) return;
-                setSelected(true);
-                event.currentTarget.select();
-              }}
-              // While the platform takes the Mate's project, what made it stays as it was: the
-              // name reads, and nothing typed or picked changes the Mate on its way.
-              readOnly={adding}
-              placeholder="Name"
-              size="lg"
-              spellCheck={false}
-              value={botName}
-            />
-          </MateFacePicker>
+      {/* While the project takes no Mate the form gives its room back, easing shut rather than
+          leaving a blank under the reason: a grid row from 1fr to 0fr, so the dialog's height
+          follows without a measurement. It stays mounted, out of sight and out of reach, keeping
+          what was typed and picked for a door that opens again. */}
+      <div
+        className="grid transition-[grid-template-rows] duration-200 ease-(--ease-out-strong) motion-reduce:transition-none"
+        style={{ gridTemplateRows: closed === undefined ? "1fr" : "0fr" }}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <DialogPanel>
+            <div
+              className={cn(
+                "transition-[opacity,visibility] ease-out",
+                closed === undefined
+                  ? "delay-100 duration-200"
+                  : "invisible opacity-0 duration-100",
+              )}
+              inert={closed !== undefined}
+            >
+              <MateFacePicker
+                face={face}
+                onPickShape={(shape) => {
+                  if (!adding) setPicked((current) => ({ ...current, shape }));
+                }}
+                onPickTint={(tint) => {
+                  if (!adding) setPicked((current) => ({ ...current, tint }));
+                }}
+              >
+                <Input
+                  aria-describedby={`${id}-line`}
+                  aria-invalid={refused === undefined ? undefined : true}
+                  aria-label="Name"
+                  autoComplete="off"
+                  onChange={(event) => {
+                    const typed = event.target.value;
+                    setBotName(typed);
+                    setPressedFor(null);
+                    const name = typed.replace(/\s+/g, " ").trim();
+                    if (name.length > 0) setHeldName(name);
+                  }}
+                  onFocus={(event) => {
+                    // The proposed name is taken whole by the first key typed over it.
+                    if (selected) return;
+                    setSelected(true);
+                    event.currentTarget.select();
+                  }}
+                  // While the platform takes the Mate's project, what made it stays as it was: the
+                  // name reads, and nothing typed or picked changes the Mate on its way.
+                  readOnly={adding}
+                  placeholder="Name"
+                  size="lg"
+                  spellCheck={false}
+                  value={botName}
+                />
+              </MateFacePicker>
+            </div>
+          </DialogPanel>
         </div>
-      </DialogPanel>
+      </div>
       <DialogFooter>
         {/* The one quiet line, beside the button it is about: what Add waits on, why it
             refused, or that there is no recipe to deploy. The footer holds its room. */}
