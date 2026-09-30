@@ -1,9 +1,10 @@
 /**
- * A stand-up call's docked bar, from where its builds stand
+ * A stand-up call's docked bar, from where its environment stands
  * (`@t3tools/client-runtime/zerops/activity/standupReading`): a segment per
- * service in its own state, the build that runs in the Zerops GUI's words —
- * or how many run, when several do — and how many are built, of how many.
- * The run's clock is the now line's (K3): the bar counts services, not time.
+ * service — the data, the utilities, the runtimes — in its own state, the
+ * build that runs in the Zerops GUI's words — or how many run, when several
+ * do — and how many are up, of how many. The run's clock is the now line's
+ * (K3): the bar counts services, not time.
  */
 import type {
   StandupReading,
@@ -16,13 +17,13 @@ import type { BarTone } from "./StatusBar";
 const SEGMENT: Record<StandupServiceRow["state"], BarTone> = {
   waits: "waiting",
   building: "running",
-  built: "done",
+  up: "done",
   failed: "failed",
 };
 
 export interface StandupBarModel {
   readonly words: string;
-  /** "1 of 4": built, of the call's services; null before any is known. */
+  /** "4 of 6 up": up, of the environment's services; null before any is known. */
   readonly figure: string | null;
   readonly segments: ReadonlyArray<{ readonly key: string; readonly tone: BarTone }>;
   readonly failed: boolean;
@@ -39,7 +40,7 @@ function words(reading: StandupReading): string {
   const [first] = failed;
   if (failed.length === 1 && first !== undefined) return `${first.hostname} failed`;
   if (failed.length > 1) return `${failed.length} failed`;
-  if (reading.rows.length > 0 && reading.built === reading.rows.length) return "All built";
+  if (reading.rows.length > 0 && reading.up === reading.rows.length) return "All up";
   return "Getting ready";
 }
 
@@ -56,7 +57,7 @@ export function standupBar(reading: StandupReading | null): StandupBarModel {
   const total = reading.rows.length;
   return {
     words: words(reading),
-    figure: total === 0 ? null : `${reading.built} of ${total}`,
+    figure: total === 0 ? null : `${reading.up} of ${total} up`,
     segments:
       total === 0
         ? [{ key: "whole", tone: "running" }]
@@ -69,20 +70,23 @@ const ROW: Record<
   StandupServiceRow["state"],
   { readonly tone: ServiceStatusToneId; readonly word: string }
 > = {
-  waits: { tone: "off", word: "Waits" },
+  waits: { tone: "off", word: "Queued" },
   building: { tone: "busy", word: "Building" },
-  built: { tone: "ok", word: "Built" },
-  failed: { tone: "failed", word: "Build failed" },
+  up: { tone: "ok", word: "Up" },
+  failed: { tone: "failed", word: "Failed" },
 };
 
-/** A service under the opened bar: its state's dot and word — a build that runs, its step. */
+/**
+ * A service under the opened bar: its state's dot and word — a build that
+ * runs, its step; one held back, what it waits on; a build that failed, so.
+ */
 export function standupRow(row: StandupServiceRow): {
   readonly tone: ServiceStatusToneId;
   readonly word: string;
 } {
   const { tone, word } = ROW[row.state];
   if (row.state === "building") return { tone, word: row.sentence ?? word };
-  if (row.state === "waits" && row.note !== undefined)
-    return { tone, word: `${word}: ${row.note}` };
+  if (row.state === "waits" && row.note !== undefined) return { tone, word: `Waits: ${row.note}` };
+  if (row.state === "failed" && row.startedAt !== undefined) return { tone, word: "Build failed" };
   return { tone, word };
 }

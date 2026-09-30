@@ -4005,14 +4005,18 @@ code {
   border-width: 0 1px;
 }
 
-/* Corners run parallel (S4): the tray's 34 px is its bubbles' 18 px plus the
-   16 px between them — 15 px of padding inside the 1 px ring. At 12 the
-   bubbles pressed on its edge, the top most of all (the owner, 2026-09-29:
-   "some spacing, especially at the top is pretty poor"). */
+/* p26/runcard */
+/* One radius, the composer's (`--composer-radius`), in every state of the
+   card: live or settled, closed or opened, its line alone or with results or
+   a stand-up's bar under it (the owner, 2026-09-30: "I'd just keep one
+   constant border radius, the 'expansion' doesn't work with the stuff on
+   bottom"). Its 15 px of padding inside the 1 px ring keep its bubbles 16 px
+   from its edge (the owner, 2026-09-29: "some spacing, especially at the top
+   is pretty poor"). */
 .run-tray-top {
   border-top-width: 1px;
-  border-top-left-radius: 34px;
-  border-top-right-radius: 34px;
+  border-top-left-radius: var(--composer-radius);
+  border-top-right-radius: var(--composer-radius);
   padding-top: 15px;
   padding-inline: 15px;
 }
@@ -4023,24 +4027,21 @@ code {
   padding-inline: 15px;
 }
 
+/* The edge row is 16 px tall: a round 20 px corner would be squeezed to 16
+   in it, so its corners reach the composer's width across and the row's
+   height up — a curve that meets the card's side as the top's does, and
+   differs from a circle by under a pixel. */
 .run-tray-bottom {
   height: 16px;
   border-bottom-width: 1px;
-  border-bottom-left-radius: 34px;
-  border-bottom-right-radius: 34px;
+  border-bottom-left-radius: var(--composer-radius) 16px;
+  border-bottom-right-radius: var(--composer-radius) 16px;
 }
 
 /* A card nothing stands in but its line's row (`cardWhole`) is drawn whole by
    that row: one box over the edge row's 16 px, and over the room its panel
-   holds while it closes (`--card-room`), so its corners are its own — sliced,
-   the 16 px edge row clamped the card's 34 px corners to 16 under 34 px ones.
-   Around its line alone it is the conversation's other box, the composer's
-   rectangle (the owner, 2026-09-30, of a card holding only "Thinking": "the
-   state of border radiuses in the initial thinking with no other content
-   around sucks"); once anything stands in it — the chat over its line, its
-   work opened under it, a panel's room — its corners are the card's. They
-   ease from one to the other as the card grows and shrinks: on the toggle's
-   curve, and from the card's on the fold's as its work folds into its line. */
+   holds while it closes (`--card-room`), so its corners are its own, the
+   card's one radius, whatever stands in it. */
 [data-card-whole] > .run-tray-top {
   position: relative;
   isolation: isolate;
@@ -4056,13 +4057,6 @@ code {
   border-radius: var(--composer-radius);
   background: var(--run-tray);
 }
-[data-card-whole]
-  > .run-tray-top:is(
-    [data-card-room],
-    :has(.run-above:not([data-folding]), .run-later-feed:not(:empty))
-  )::before {
-  border-radius: 34px 34px 16px 16px;
-}
 [data-card-whole] > :is(.run-tray-middle, .run-tray-bottom) {
   background: none;
   border-color: transparent;
@@ -4071,20 +4065,6 @@ code {
    from both of the card's edges, live as closed. */
 [data-card-whole] > .run-tray-middle {
   padding-top: 0;
-}
-@media (prefers-reduced-motion: no-preference) {
-  [data-card-whole] > .run-tray-top::before {
-    transition: border-radius 220ms var(--ease-out-strong);
-  }
-  [data-card-whole] > .run-tray-top:has(.run-above[data-folding])::before {
-    transition: none;
-    animation: run-card-folds 360ms var(--ease-drawer) both;
-  }
-}
-@keyframes run-card-folds {
-  from {
-    border-radius: 34px 34px 16px 16px;
-  }
 }
 
 /* The Mate's words in its card wear its tint lightly (K13): with the
@@ -4135,6 +4115,48 @@ code {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+/* p26/runcard */
+/* A change of the line's words crossfades in place: the old words leave where
+   they stood, rising 3 px out, as the new ones rise 3 px in over them — on the
+   strong ease-out, in under 180 ms. What changes it is paced
+   (`nowLineCalm.logic`), so a change comes at most once a second; the words'
+   column is the grid's flexible one, so the clock never moves for them. A
+   first paint is simply there, and under reduced motion a change is a cut. */
+.run-now-words {
+  position: relative;
+}
+.run-now-leaving {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .run-now-head[data-run-now-change] {
+    animation: run-now-in 180ms var(--ease-out-strong) both;
+  }
+  .run-now-leaving {
+    animation: run-now-out 140ms var(--ease-out-strong) both;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .run-now-leaving {
+    display: none;
+  }
+}
+@keyframes run-now-in {
+  from {
+    opacity: 0;
+    translate: 0 3px;
+  }
+}
+@keyframes run-now-out {
+  to {
+    opacity: 0;
+    translate: 0 -3px;
+  }
+}
+
 .run-now-verb {
   font-weight: 500;
   color: var(--color-foreground);
@@ -4301,7 +4323,7 @@ button.run-bar:focus-visible {
 /* A tray on its own, not sliced: the Mate at work once its turn is over. */
 .run-tray-whole {
   border-width: 1px;
-  border-radius: 34px;
+  border-radius: var(--composer-radius);
   padding: 15px;
 }
 
@@ -4776,8 +4798,8 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
    canvas. */
 :root {
   --chat-composer-shadow: 0 1px 2px rgb(15 18 24 / 5%), 0 14px 34px -16px rgb(15 18 24 / 28%);
-  /* The composer's corners: the conversation's other box, a run's card that
-     holds its line alone, wears them too. */
+  /* The composer's corners: the conversation's other box, a run's card,
+     wears them too, in every state. */
   --composer-radius: 20px;
 
   @variant dark {

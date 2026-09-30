@@ -51,9 +51,10 @@ import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
 import { StandupReadings } from "~/zerops/activity/useStandupReading";
-import type {
-  StandupReading,
-  StandupServiceRow,
+import {
+  standupReadingOf,
+  type StandupReading,
+  type StandupServiceRow,
 } from "@t3tools/client-runtime/zerops/activity/standupReading";
 import "../index.css";
 
@@ -728,14 +729,17 @@ function standupOp(key: string, subject: "development" | "stage"): ZeropsOperati
   };
 }
 
-function standupReading(rows: ReadonlyArray<StandupServiceRow>): StandupReading {
-  return {
-    rows,
-    building: rows.filter((row) => row.state === "building").length,
-    built: rows.filter((row) => row.state === "built").length,
-    failed: rows.filter((row) => row.state === "failed").length,
-  };
-}
+/** What development stands up around its runtimes: the data, up since the arrival, and a mail catcher. */
+const DEV_AROUND: ReadonlyArray<StandupServiceRow> = [
+  { hostname: "db", state: "up" },
+  { hostname: "cache", state: "up" },
+  { hostname: "storage", state: "up" },
+  { hostname: "search", state: "up" },
+  { hostname: "mailer", state: "up" },
+];
+
+/** What the stages share: the data. */
+const STAGE_AROUND = DEV_AROUND.filter((row) => row.hostname !== "mailer");
 
 const STANDUP_STATES: ReadonlyArray<{
   readonly label: string;
@@ -743,9 +747,10 @@ const STANDUP_STATES: ReadonlyArray<{
   readonly rows: ReadonlyArray<StandupServiceRow>;
 }> = [
   {
-    label: "Starting: nothing builds yet",
+    label: "Just started: the data and the mail catcher up, the runtimes queued",
     subject: "development",
     rows: [
+      ...DEV_AROUND,
       { hostname: "apidev", state: "waits" },
       { hostname: "shopdev", state: "waits" },
     ],
@@ -754,6 +759,7 @@ const STANDUP_STATES: ReadonlyArray<{
     label: "One building",
     subject: "development",
     rows: [
+      ...DEV_AROUND,
       {
         hostname: "apidev",
         state: "building",
@@ -764,9 +770,14 @@ const STANDUP_STATES: ReadonlyArray<{
     ],
   },
   {
-    label: "Several building",
+    label: "Several building, one of the data still starting",
     subject: "development",
     rows: [
+      { hostname: "db", state: "up" },
+      { hostname: "cache", state: "up" },
+      { hostname: "storage", state: "building", sentence: "Starting" },
+      { hostname: "search", state: "up" },
+      { hostname: "mailer", state: "up" },
       { hostname: "apidev", state: "building", startedAt: ago(130), sentence: "Deploying" },
       {
         hostname: "shopdev",
@@ -777,12 +788,13 @@ const STANDUP_STATES: ReadonlyArray<{
     ],
   },
   {
-    label: "One built",
-    subject: "stage",
+    label: "One runtime up",
+    subject: "development",
     rows: [
-      { hostname: "apistage", state: "built", startedAt: ago(400), endedAt: ago(90) },
+      ...DEV_AROUND,
+      { hostname: "apidev", state: "up", startedAt: ago(400), endedAt: ago(90) },
       {
-        hostname: "shopstage",
+        hostname: "shopdev",
         state: "building",
         startedAt: ago(80),
         sentence: "Running build commands from zerops.yml",
@@ -790,25 +802,27 @@ const STANDUP_STATES: ReadonlyArray<{
     ],
   },
   {
-    label: "One failed, the rest go on",
-    subject: "stage",
+    label: "All up",
+    subject: "development",
     rows: [
-      { hostname: "apistage", state: "failed", startedAt: ago(400), endedAt: ago(200) },
-      { hostname: "shopstage", state: "building", startedAt: ago(150) },
+      ...DEV_AROUND,
+      { hostname: "apidev", state: "up", startedAt: ago(400), endedAt: ago(90) },
+      { hostname: "shopdev", state: "up", startedAt: ago(398), endedAt: ago(4) },
     ],
   },
   {
-    label: "All built",
-    subject: "development",
+    label: "The stages: one failed, the rest go on",
+    subject: "stage",
     rows: [
-      { hostname: "apidev", state: "built", startedAt: ago(400), endedAt: ago(90) },
-      { hostname: "shopdev", state: "built", startedAt: ago(398), endedAt: ago(4) },
+      ...STAGE_AROUND,
+      { hostname: "apistage", state: "failed", startedAt: ago(400), endedAt: ago(200) },
+      { hostname: "shopstage", state: "building", startedAt: ago(150) },
     ],
   },
 ];
 
 const STANDUP_READINGS: ReadonlyMap<string, StandupReading> = new Map(
-  STANDUP_STATES.map((state, index) => [`op:standup-${index}`, standupReading(state.rows)]),
+  STANDUP_STATES.map((state, index) => [`op:standup-${index}`, standupReadingOf(state.rows)]),
 );
 
 function StandupStates() {
@@ -816,7 +830,7 @@ function StandupStates() {
     <StandupReadings value={STANDUP_READINGS}>
       <State
         label="Standing up"
-        note="A stand-up call's bar: a segment per service, the build that runs, how many are built."
+        note="A stand-up call's bar: a segment per service of the environment, the build that runs, how many are up."
       >
         {STANDUP_STATES.map((state, index) => {
           const operation = standupOp(`op:standup-${index}`, state.subject);

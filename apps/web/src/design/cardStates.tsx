@@ -12,7 +12,7 @@
  */
 import { MessageId, TurnId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import {
   checksStrip,
@@ -511,6 +511,27 @@ const FAILED = command("f1", "npm test -- status", "Run the tests for the page",
 });
 const RETRIED = command("f2", "npm test -- status", "Run the tests for the page", 12, 7);
 
+/** Files the burst reads, one every 150 ms, the way a Mate reads a folder. */
+const BURST = ["index.ts", "status.ts", "routes.ts", "db.ts", "config.ts", "server.ts"];
+
+/** A run whose steps change faster than anyone reads: the now line, calm. */
+function BurstTurn() {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setTick((current) => current + 1), 150);
+    return () => clearInterval(timer);
+  }, []);
+  const file = BURST[tick % BURST.length] ?? "index.ts";
+  return (
+    <Turn
+      row={record("status-burst", {
+        items: upTo("step:w1"),
+        now: { kind: "step", step: stepOf(running(read(`b${tick}`, file, 40))) },
+      })}
+    />
+  );
+}
+
 export function CardStates() {
   return (
     <>
@@ -536,6 +557,12 @@ export function CardStates() {
             now: { kind: "step", step: stepOf(running(read("w1", "index.ts", 74))) },
           })}
         />
+      </CardState>
+      <CardState
+        label="A burst of steps"
+        note="Steps change every 150 ms here: each line stands a second, the latest of a burst shows, and each change crossfades."
+      >
+        <BurstTurn />
       </CardState>
       <CardState
         label="A long step"

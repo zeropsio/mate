@@ -103,6 +103,13 @@ import {
   type IncidentModel,
   type OutcomeModel,
 } from "./conversation.logic";
+import {
+  calmClockMs,
+  calmLineDue,
+  calmLineOffer,
+  calmLineSettle,
+  calmLineStart,
+} from "./nowLineCalm.logic";
 import { useRunEffortWords } from "./runResultFacts";
 import { drawerEase, LIST_LAYS_OUT_FRAMES, stepHeight } from "./stepHeight";
 import { StatusBar, type BarTone } from "./StatusBar";
@@ -2207,10 +2214,14 @@ function ChatRow({
  */
 function RunTicker({ status }: { readonly status: RunStatus }) {
   const ref = useRef<HTMLSpanElement>(null);
+  // What it last showed: it never counts back (`calmClockMs`).
+  const last = useRef<{ readonly run: string; readonly ms: number } | null>(null);
   const read = () => {
     const start = Date.parse(status.startedAt);
     const now = status.waitingSince === null ? Date.now() : Date.parse(status.waitingSince);
-    return formatClock(now - start - status.waitedMs);
+    const ms = calmClockMs(last.current, status.startedAt, now - start - status.waitedMs);
+    last.current = { run: status.startedAt, ms };
+    return formatClock(ms);
   };
   useEffect(() => {
     const update = () => {
@@ -2360,6 +2371,62 @@ function NowWords({
 }
 
 /**
+ * The now line as it shows, calm (`nowLineCalm.logic`): what the run does now
+ * once the line before it has stood its dwell, the latest of a burst only,
+ * and the run's end (`final`) at once.
+ */
+function useCalmNowLine(latest: NowLineModel, key: string, final: boolean): NowLineModel {
+  const [calm, setCalm] = useState(() => calmLineStart(latest, key, Date.now()));
+  useLayoutEffect(() => {
+    setCalm((current) => calmLineOffer(current, latest, key, Date.now(), final));
+  }, [latest, key, final]);
+  const due = calmLineDue(calm);
+  useEffect(() => {
+    if (due === null) return;
+    const timer = setTimeout(
+      () => setCalm((current) => calmLineSettle(current, Date.now())),
+      Math.max(0, due - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [due]);
+  // The words shown are drawn from the latest line: a thought's newest words,
+  // a step's details.
+  return calm.key === key ? latest : calm.shown;
+}
+
+/** How long the words a line leaves take to go: their fade, and a frame to spare. */
+const LINE_LEAVES_MS = 160;
+
+/**
+ * The words the now line just left, as it last drew them, while they fade
+ * where they stood (`.run-now-leaving`); null once gone, and on a first paint.
+ */
+function useLeavingLine(
+  line: NowLineModel,
+  words: string,
+): { readonly line: NowLineModel; readonly words: string } | null {
+  const drawn = useRef({ line, words });
+  const [swap, setSwap] = useState<{
+    readonly words: string;
+    readonly leaving: { readonly line: NowLineModel; readonly words: string } | null;
+  }>({ words, leaving: null });
+  if (swap.words !== words) setSwap({ words, leaving: drawn.current });
+  useLayoutEffect(() => {
+    drawn.current = { line, words };
+  });
+  const leaving = swap.leaving;
+  useEffect(() => {
+    if (leaving === null) return;
+    const timer = setTimeout(
+      () => setSwap((current) => ({ ...current, leaving: null })),
+      LINE_LEAVES_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [leaving]);
+  return leaving;
+}
+
+/**
  * The card's foot, the now line (K10): the Mate's face, what it is doing this
  * moment in words — the step itself while it runs, which lands in the chat
  * above once it ends — and the run's one clock (K3), in ink (S3). The
@@ -2385,7 +2452,7 @@ function NowLine({
   const ctx = use(TimelineRowCtx);
   const { isCompacting } = use(TimelineRowActivityCtx);
   const effort = useRunEffortWords(outcome);
-  const line = nowLineOf({
+  const latest = nowLineOf({
     status,
     now,
     answering,
@@ -2393,11 +2460,16 @@ function NowLine({
     speaker: ctx.speaker.name,
     effort,
   });
+  // A line once shown stands a moment, and a burst shows its latest only
+  // (`nowLineCalm.logic`); the run's end shows at once.
+  const line = useCalmNowLine(latest, nowLineWords(latest), !status.live);
   const face = nowLineFace(line, status);
   const words = nowLineWords(line);
-  // The line's words change in place as the run goes: the new ones rise into
-  // it, so a change reads as the same line saying something new.
+  // The line's words change in place as the run goes: the old ones leave
+  // where they stood as the new ones rise into it, so a change reads as the
+  // same line saying something new.
   const wordsChanged = useChangedSinceShown(words);
+  const leaving = useLeavingLine(line, words);
   // D4: its one line opens to the whole of what runs — a command every line
   // of it, the thought so far — for as long as the line says the same.
   const hold = useHoldReading();
@@ -2419,11 +2491,8 @@ function NowLine({
     <span
       ref={watchHead}
       key={words}
-      className={cn(
-        "run-now-head",
-        open && "run-now-head-open",
-        wordsChanged && "animate-words-in motion-reduce:animate-none",
-      )}
+      className={cn("run-now-head", open && "run-now-head-open")}
+      data-run-now-change={wordsChanged ? "" : undefined}
     >
       <NowWords line={line} open={open} thoughtSoFar={thoughtSoFar} />
     </span>
@@ -2447,6 +2516,11 @@ function NowLine({
         tint={ctx.speaker.tint}
       />
       <div className="run-now-words" data-work-line={status.face}>
+        {leaving === null ? null : (
+          <span aria-hidden="true" className="run-now-head run-now-leaving" key={leaving.words}>
+            <NowWords line={leaving.line} />
+          </span>
+        )}
         {opens || open ? (
           <button
             aria-expanded={open}
