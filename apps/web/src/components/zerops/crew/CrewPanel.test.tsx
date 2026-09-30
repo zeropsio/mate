@@ -1,3 +1,4 @@
+import { crewAccess, type CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import { EnvironmentId, type CrewSnapshot } from "@t3tools/contracts";
@@ -67,13 +68,28 @@ function readOf(snapshot: CrewSnapshot): CrewRead {
   };
 }
 
-const render = (crew: CrewRead) =>
+/** Every login of Fen's closed to the viewer: signed in by another project member. */
+const CLOSED = (login: string): CrewLock => ({
+  login,
+  agentId: "claude-code",
+  ownership: "someone-else",
+});
+
+const render = (crew: CrewRead, viewer: "runs it" | "may not" = "runs it") =>
   renderToStaticMarkup(
     <CrewPanelBody
+      access={crewAccess({
+        snapshot: crew.snapshot,
+        lockOf: viewer === "runs it" ? () => null : CLOSED,
+        defaultLogin: "claudeAgent",
+        reading: false,
+      })}
+      askLock={viewer === "runs it" ? null : CLOSED("claudeAgent")}
       crew={crew}
       environmentId={ENVIRONMENT}
       mate={{ name: "Fen", tint: "amber" }}
       onAskMate={() => undefined}
+      onSignIn={() => undefined}
       treeCwd="/var/www"
     />,
   );
@@ -83,6 +99,7 @@ const textOf = (html: string) =>
   html
     .replace(/<[^>]*>/gu, " ")
     .replace(/&#x27;/gu, "'")
+    .replace(/\u00a0/gu, " ")
     .replace(/\s+/gu, " ")
     .trim();
 
@@ -152,5 +169,27 @@ describe("CrewPanelBody — a view in place of the column", () => {
     expect(html).toContain(`data-crew-screen="${screen}"`);
     expect(textOf(html)).toContain(words);
     expect(html).not.toContain("data-crew-rows");
+  });
+});
+
+describe("CrewPanelBody — for a viewer who may not run the crew (D6)", () => {
+  it.each([
+    [{ kind: "goal" } as const, APPLIED, 'data-crew-section="applied"'],
+    [{ kind: "job", handle: "backend" } as const, APPLIED, 'data-crew-section="applied"'],
+    [{ kind: "setup" } as const, NONE, 'data-crew-section="none"'],
+  ])("draws the tab in place of %o, a view that changes the crew", (view, snapshot, section) => {
+    tab.view = view;
+    const html = render(readOf(snapshot), "may not");
+    expect(html).toContain('data-crew-screen="column"');
+    expect(html).toContain(section);
+    expect(html).not.toContain("data-crew-view");
+  });
+
+  it("says why a crew cannot be set up here, in place of the press", () => {
+    const html = render(readOf(NONE), "may not");
+    expect(textOf(html)).toContain(
+      "Signed in by another project member — only they can run this crew.",
+    );
+    expect(html).not.toMatch(/<button[^>]*>Set up a crew<\/button>/u);
   });
 });

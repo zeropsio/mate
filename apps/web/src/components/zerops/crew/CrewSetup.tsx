@@ -9,7 +9,10 @@
  *
  * While the Mate writes a crew it was asked to suggest, the view reads the
  * crew home again every few seconds, so its crewmates arrive by themselves.
+ * A crew on a login the viewer may not run does not start (D6): *Start the
+ * crew* waits, saying why.
  */
+import type { CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import {
   CREW_COPY_READYING,
   CREW_KIND_WORDS,
@@ -20,6 +23,7 @@ import {
   crewBrokenCopyWord,
   crewDescribeAsk,
   crewJobSentence,
+  crewLockWords,
   crewNoDevHostWord,
   crewPortsOfferWords,
   crewSetUpFooter,
@@ -75,6 +79,8 @@ export interface CrewSetupProps {
   readonly onEditCrewmate: (handle: string | null) => void;
   /** Reserves an address for each builder on `host`, and asks the Mate to open them. */
   readonly onAskPorts: (host: string, count: number) => void;
+  /** What *Start the crew* meets for this viewer, by the crew it would start (D6). */
+  readonly startLock?: (members: ReadonlyArray<CrewMemberSpec>) => CrewLock | null;
 }
 
 export function CrewSetup(props: CrewSetupProps) {
@@ -164,6 +170,7 @@ export function CrewSetup(props: CrewSetupProps) {
     await commands.send({ _tag: "apply" });
   };
 
+  const startLock = members === null ? null : (props.startLock?.(members) ?? null);
   const writers = members === null ? [] : members.filter((member) => member.kind === "writer");
   const noDevHost = writers.length > 0 && props.devHosts.length === 0;
   const portless = props.applied
@@ -334,11 +341,13 @@ export function CrewSetup(props: CrewSetupProps) {
         ) : (
           <>
             <span className="text-line leading-4.5 text-muted-foreground">
-              {crewSetUpFooter(mate.name, [
-                ...new Set(
-                  writers.flatMap((member) => (member.host === undefined ? [] : [member.host])),
-                ),
-              ])}
+              {startLock !== null
+                ? crewLockWords(startLock.ownership)
+                : crewSetUpFooter(mate.name, [
+                    ...new Set(
+                      writers.flatMap((member) => (member.host === undefined ? [] : [member.host])),
+                    ),
+                  ])}
             </span>
             <span className="flex items-center gap-1.5">
               <CrewPress
@@ -346,6 +355,7 @@ export function CrewSetup(props: CrewSetupProps) {
                   busy ||
                   props.applied ||
                   noDevHost ||
+                  startLock !== null ||
                   home.issues.some((issue) => issue.code !== "file-missing")
                 }
                 label={CREW_SETUP_WORDS.start}

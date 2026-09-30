@@ -7014,6 +7014,40 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
     opacity: 1;
   }
 
+  /* A face whose crewmate the viewer may not run (D6): there, and not a press. */
+  .crew-pick:disabled {
+    cursor: default;
+    opacity: 0.2;
+  }
+
+  /* The composer's place for a viewer who may not run the crew (D6): the
+     pill's own 48 px and radius, quiet rather than white — nothing is
+     written here — the lock in the conversation's amber, its words on at
+     most two lines, and the one way out at its end. */
+  .crew-locked {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    padding: 6px 8px 6px 16px;
+    border-radius: 24px;
+    background: color-mix(in oklab, var(--foreground) 3.5%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 7%, transparent);
+  }
+
+  .dark .crew-locked {
+    background: color-mix(in oklab, var(--foreground) 5%, transparent);
+  }
+
+  .crew-locked-words {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 13px;
+    line-height: 18px;
+    text-wrap: pretty;
+    color: color-mix(in oklab, var(--foreground) 85%, transparent);
+  }
+
   .crew-pick:focus-visible {
     box-shadow: 0 0 0 2px var(--ring);
   }

@@ -10,6 +10,10 @@
  * (`ServiceBrowserLink`): in the side panel's preview when it is one of the
  * project's routes, else in a new tab. A refused press says so in a toast
  * titled for it, with the engine's own sentence.
+ *
+ * For a crewmate the viewer may not run (D6) it only opens: work already
+ * running or shown, or on its way there; running its app, showing it on dev
+ * and stopping its app are not offered.
  */
 import {
   isAtomCommandInterrupted,
@@ -26,6 +30,7 @@ import { useZeropsTopology } from "../useZeropsFeeds";
 import { crewCommands } from "./crewCommands";
 import { crewTryOf, crewTryOpens, crewTryPress, crewTryStops, type CrewTry } from "./crewTry";
 import { useCrew } from "./useCrew";
+import { useCrewAccess } from "./useCrewAccess";
 import { crewFailureSentence } from "./useCrewCommand";
 
 /** How long a press waits for the work to open: the engine's own wait on a Show-on-dev request. */
@@ -35,8 +40,10 @@ export interface CrewTryControl {
   readonly tries: CrewTry;
   /** A press does something now; not while one of its presses is on its way. */
   readonly enabled: boolean;
+  /** Offered to this viewer: for a crewmate they may not run, only a press that opens. */
+  readonly offered: boolean;
   readonly press: () => void;
-  /** *Stop its app*, while its own app runs; `null` otherwise. */
+  /** *Stop its app*, while its own app runs and the viewer runs it; `null` otherwise. */
   readonly stop: (() => void) | null;
 }
 
@@ -46,6 +53,7 @@ export function useCrewTry(
   handle: string | null,
 ): CrewTryControl | null {
   const { snapshot, view, current } = useCrew(environmentId);
+  const access = useCrewAccess(environmentId, snapshot);
   const services = useZeropsTopology(environmentId)?.services;
   const runCommand = useAtomCommand(crewCommands.command, { reportFailure: false });
   const resolvePreview = useContext(ServiceBrowserLinkContext);
@@ -115,11 +123,14 @@ export function useCrewTry(
   if (tries === null || row === undefined || handle === null) return null;
   const action = crewTryPress(tries, row.working);
   const waitFor = () => setWaiting({ handle, until: Date.now() + CREW_TRY_WAIT_MS });
+  const runs = access.crewmate(handle) === null;
+  const onlyOpens = action?.kind === "open" || action?.kind === "wait";
   return {
     tries,
-    enabled: action !== null && current && !pending && !waitingHere,
+    enabled: action !== null && current && !pending && !waitingHere && !access.reading,
+    offered: runs || onlyOpens,
     press: () => {
-      if (action === null) return;
+      if (action === null || !(runs || onlyOpens)) return;
       switch (action.kind) {
         case "open":
           open(action.url);
@@ -139,6 +150,6 @@ export function useCrewTry(
           return;
       }
     },
-    stop: crewTryStops(tries) ? () => void send({ _tag: "appStop", handle }, "stop") : null,
+    stop: runs && crewTryStops(tries) ? () => void send({ _tag: "appStop", handle }, "stop") : null,
   };
 }

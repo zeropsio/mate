@@ -44,6 +44,7 @@ import {
   crewSentBackWord,
   crewServedWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
+import type { CrewAccess, CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import type { CrewmateView, CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type {
   CrewAttention,
@@ -364,6 +365,33 @@ export function crewNeedActions(
             yourself,
           ];
     }
+  }
+}
+
+/**
+ * Whether a need's press is offered to this viewer (D6): nothing that runs or
+ * changes what runs on a login they may not run. A command by its own reach;
+ * an answer by its crewmate's; a review by its task's crewmate's, whose
+ * presses add the work or hand it back; an ask for the Mate by the chat it
+ * goes to; *Try it* only where it opens what already runs (`useCrewTry`).
+ */
+export function crewActionOffered(
+  action: CrewRowAction,
+  access: Pick<CrewAccess, "command" | "reach">,
+  askLock: CrewLock | null,
+  tryOffered: boolean,
+): boolean {
+  switch (action.kind) {
+    case "command":
+      return access.command(action.command) === null;
+    case "answer":
+      return access.reach({ kind: "crewmates", handles: [action.handle] }) === null;
+    case "review":
+      return access.reach({ kind: "tasks", taskIds: [action.taskId] }) === null;
+    case "ask":
+      return askLock === null;
+    case "try":
+      return tryOffered;
   }
 }
 

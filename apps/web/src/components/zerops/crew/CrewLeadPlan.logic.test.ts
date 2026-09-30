@@ -1,3 +1,4 @@
+import { crewAccess, type CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import {
   deriveCrewView,
@@ -7,7 +8,13 @@ import {
 import { ThreadId, type CrewRun, type CrewSnapshot } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { crewmateFace, crewPlanCard, crewPlanCommand, crewPlanStart } from "./CrewLeadPlan.logic";
+import {
+  crewmateFace,
+  crewPlanCard,
+  crewPlanCommand,
+  crewPlanLocks,
+  crewPlanStart,
+} from "./CrewLeadPlan.logic";
 
 const IDLE: CrewThreadRead = {
   status: { kind: "idle", toneId: "neutral" },
@@ -188,5 +195,59 @@ describe("crewPlanStart: what Start sends, for each run", () => {
 
   it("starts nothing without a task to start", () => {
     expect(crewPlanStart(run, [])).toBeNull();
+  });
+});
+
+describe("crewPlanLocks — the plan's presses for a viewer who may not run all it reaches (D6)", () => {
+  const fixture = crewSnapshotFixture();
+  const plan = fixture.board.tasks.filter((task) => task.state === "proposed");
+  const planIds = plan.map((task) => task.id);
+  const lock = (login: string): CrewLock => ({
+    login,
+    agentId: "claude-code",
+    ownership: "someone-else",
+  });
+  /** The viewer may not run `closed`; `defaultLogin` for a crew with no run. */
+  const accessOf = (closed: ReadonlyArray<string>) =>
+    crewAccess({
+      snapshot: fixture,
+      lockOf: (login) => (closed.includes(login) ? lock(login) : null),
+      defaultLogin: "claudeAgent",
+      reading: false,
+    });
+  const owners = new Set(
+    plan.map((task) => fixture.crewmates.find((mate) => mate.handle === task.owner)!.login.id),
+  );
+
+  it("offers every press to the person who runs every login", () => {
+    const locks = crewPlanLocks(fixture.run, planIds, accessOf([]));
+    expect([locks.start, locks.change, locks.drop, locks.leaveOut(planIds[0]!)]).toEqual([
+      null,
+      null,
+      null,
+      null,
+    ]);
+  });
+
+  it("closes Start, Change, Drop the plan and ×, each on what it reaches, for a login of the plan's", () => {
+    const [owner] = [...owners];
+    const locks = crewPlanLocks(fixture.run, planIds, accessOf([owner!]));
+    expect([locks.start, locks.drop, locks.leaveOut(planIds[0]!)]).toEqual([
+      lock(owner!),
+      lock(owner!),
+      lock(owner!),
+    ]);
+  });
+
+  it("closes Start and Change through the run dialog on the crew's logins", () => {
+    const closedElsewhere = fixture.crewmates
+      .map((mate) => mate.login.id)
+      .find((login) => !owners.has(login))!;
+    const locks = crewPlanLocks(null, planIds, accessOf([closedElsewhere]));
+    expect([locks.start, locks.change, locks.drop]).toEqual([
+      lock(closedElsewhere),
+      lock(closedElsewhere),
+      null,
+    ]);
   });
 });

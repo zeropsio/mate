@@ -11,13 +11,16 @@
  * conversation (`jobSave` `nextTurn`); a changed login starts one now
  * (`fresh`). A crewmate added to a standing crew joins it at once (`apply`);
  * before the crew stands a save only writes its files. *Remove from the
- * crew* stands at the footer's far end.
+ * crew* stands at the footer's far end. A login the viewer may not run is
+ * not saved onto a crewmate (D6): Save waits, saying why.
  */
+import type { CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import {
   CREW_JOB_WORDS,
   CREW_MENU,
   CREW_VIEW_WORDS,
   crewBuildsLine,
+  crewLockWords,
   crewMoreSummary,
   crewOneOfWord,
   crewRemoveLine,
@@ -93,6 +96,8 @@ export interface CrewmateJobProps {
   readonly onClose: () => void;
   /** *Remove from the crew*, for a crewmate of the standing crew. */
   readonly onRemove: (handle: string) => void;
+  /** What a Save onto `login` meets for this viewer (D6); `null` where it is theirs. */
+  readonly saveLock?: (login: string) => CrewLock | null;
 }
 
 export function CrewmateJob(props: CrewmateJobProps) {
@@ -124,6 +129,7 @@ function JobForm({
   crewPort,
   onClose,
   onRemove,
+  saveLock,
   blockers,
   definition,
   save,
@@ -163,11 +169,13 @@ function JobForm({
       member.displayName.trim().toLowerCase() === draft.displayName.trim().toLowerCase(),
   );
   const noHost = crewWriterWithoutHost(writes, draft.host);
+  const lock = saveLock?.(draft.login) ?? null;
   const ready =
     draft.displayName.trim() !== "" &&
     !nameTaken &&
     !noHost &&
     blockers.length === 0 &&
+    lock === null &&
     !commands.pending;
   const tint = draft.tint ?? "slate";
   const runsOnLabel = crewLoginLabel(logins, draft.login);
@@ -448,7 +456,11 @@ function JobForm({
           </p>
         )}
         <span className="text-line leading-4.5 text-muted-foreground">
-          {loginChanged ? CREW_JOB_WORDS.freshLine : CREW_JOB_WORDS.saveLine}
+          {lock !== null
+            ? crewLockWords(lock.ownership)
+            : loginChanged
+              ? CREW_JOB_WORDS.freshLine
+              : CREW_JOB_WORDS.saveLine}
         </span>
         <span className="flex items-center gap-1.5">
           <CrewPress
