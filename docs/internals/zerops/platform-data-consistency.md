@@ -7,15 +7,23 @@ Zerops. Production adapters and runtime reducers enforce the admission rules bel
 
 ## Source authority
 
-| Source                                          | Permitted effect                                                                                                                                                                                                             |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Indexed search, including subscription response | Establish that query's membership/window; seed unknown entity fields. Never overwrite fields already owned by admitted direct reads or pushes. Search lag is measured in [the ledger](verified.md).                          |
-| Direct entity/project collection read           | Update explicitly owned field groups under the read ticket rules below. A traversal is not an atomic snapshot.                                                                                                               |
-| Native entity update                            | Apply the decoded present fields in local receipt order. Omitted fields stay unchanged unless that exact source contract defines replacement. Explicit null and array replacement are domain decisions, covered by fixtures. |
-| Native membership delta                         | Change the named query's membership only. It cannot delete an entity, revoke access or declare a process finished.                                                                                                           |
-| Embedded related entity                         | Supply references and explicitly owned embedded facts. Never implicitly overwrite the related entity's canonical record.                                                                                                     |
-| Command response                                | Record acceptance/uncertainty and explicit source references; decode any returned domain observation through the same admission policy. HTTP success alone is not resource convergence.                                      |
-| Mate lifecycle/tool result                      | Remains a distinct source. Platform activity is an overlay and never the tool-result verdict.                                                                                                                                |
+- **Indexed search, including subscription response** — Establish that query's membership/window;
+  seed unknown entity fields. Never overwrite fields already owned by admitted direct reads or
+  pushes. Search lag is measured in [the ledger](verified.md).
+- **Direct entity/project collection read** — Update explicitly owned field groups under the read
+  ticket rules below. A traversal is not an atomic snapshot.
+- **Native entity update** — Apply the decoded present fields in local receipt order. Omitted fields
+  stay unchanged unless that exact source contract defines replacement. Explicit null and array
+  replacement are domain decisions, covered by fixtures.
+- **Native membership delta** — Change the named query's membership only. It cannot delete an
+  entity, revoke access or declare a process finished.
+- **Embedded related entity** — Supply references and explicitly owned embedded facts. Never
+  implicitly overwrite the related entity's canonical record.
+- **Command response** — Record acceptance/uncertainty and explicit source references; decode any
+  returned domain observation through the same admission policy. HTTP success alone is not resource
+  convergence.
+- **Mate lifecycle/tool result** — Remains a distinct source. Platform activity is an overlay and
+  never the tool-result verdict.
 
 Start with a few explicit field groups, not a general field-version framework.
 Inventory summaries, configuration facets and metrics have separate owners.
@@ -38,14 +46,17 @@ Credential refresh preserves the account model only within the same verified
 principal. Logout/account replacement disposes its entire scope even if the
 mutable API client instance is reused.
 
-| Record          | Required meaning                                                                                                                                           |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Entity/facet    | `unresolved`, `observed`, or scoped `unavailable`; accepted source and local observation stamp.                                                            |
-| Query           | Descriptor, ordered IDs, unresolved IDs, observed total, traversal/window coverage. Query key includes scope/filter/sort/projection/window/schema version. |
-| Interest        | `establishing`, `observing`, `recovering`, `paused`, `failed`, plus reason and generation.                                                                 |
-| Read            | Pending/succeeded/failed and completion marker independent of whether values changed.                                                                      |
-| Access          | Existing account/project verification scope, deadline and revocation policy; arrival of ordinary data does not extend it.                                  |
-| Command attempt | Pending/accepted/rejected/uncertain, target scope and zero or more explicit process references.                                                            |
+- **Entity/facet** — `unresolved`, `observed`, or scoped `unavailable`; accepted source and local
+  observation stamp.
+- **Query** — Descriptor, ordered IDs, unresolved IDs, observed total, traversal/window coverage.
+  Query key includes scope/filter/sort/projection/window/schema version.
+- **Interest** — `establishing`, `observing`, `recovering`, `paused`, `failed`, plus reason and
+  generation.
+- **Read** — Pending/succeeded/failed and completion marker independent of whether values changed.
+- **Access** — Existing account/project verification scope, deadline and revocation policy; arrival
+  of ordinary data does not extend it.
+- **Command attempt** — Pending/accepted/rejected/uncertain, target scope and zero or more explicit
+  process references.
 
 `observing` has guarantee `source-order-unverified`: required registrations and
 baseline reads completed and there is no known delivery failure. It does not mean

@@ -10,11 +10,14 @@ are the glossary's ([`design-system.md`](design-system.md) §2).
 
 Three levels, each built on the one before:
 
-| Level     | What it is                                                                                                                                                                                                                                                                             |
-| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Mate**  | one agent over one Zerops project's tree (`/var/www` on the zcp container); unchanged by crew mode                                                                                                                                                                                     |
-| **chats** | the Mate's several conversations over that same tree — person threads; the main chat is the pinned one; no new one is started, and a Mate holding more than one lists them from the ⌄ after its name on the conversation's line (`apps/web/src/components/chat/ConversationStrip.tsx`) |
-| **crew**  | standing crewmates, one crew per Mate (id always `main`); each crewmate talks in its own chat, and a writer works in its own copy of the code on a dev service; the person puts each piece of work into the Mate's tree by a press (the engine's `land`)                               |
+- **Mate** — one agent over one Zerops project's tree (`/var/www` on the zcp container); unchanged
+  by crew mode
+- **chats** — the Mate's several conversations over that same tree — person threads; the main chat
+  is the pinned one; no new one is started, and a Mate holding more than one lists them from the ⌄
+  after its name on the conversation's line (`apps/web/src/components/chat/ConversationStrip.tsx`)
+- **crew** — standing crewmates, one crew per Mate (id always `main`); each crewmate talks in its
+  own chat, and a writer works in its own copy of the code on a dev service; the person puts each
+  piece of work into the Mate's tree by a press (the engine's `land`)
 
 A crewmate is one of three kinds (`packages/shared/src/crewHome.ts`), which the Crew tab says by
 what each does — _Builds_, _Reviews_, _Plans_:

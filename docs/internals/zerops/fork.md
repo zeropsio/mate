@@ -36,13 +36,26 @@ Measured against the real upstream repo, 2026-08-28:
 
 ## 3. Zones — the map, machine-checked
 
-| Zone                          | Paths                                                                                                                                                                                                                                                                       | Rule                                                                                                                                                                            |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Imported** (byte-identical) | `packages/effect-codex-app-server/**`, `packages/effect-acp/**` — the standalone wire-protocol packages; the list is final only once the freeze checklist (§8) proves each imports nothing owned                                                                            | Never edited. Re-imported from an upstream SHA in one `import:` commit. Pinned by `imported.lock` (§3.1).                                                                       |
-| **Ported**                    | `apps/server/src/provider/**` (drivers, adapters, model manifest, maintenance), `packages/contracts/src/provider*.ts`, `apps/server/src/codexModelOptions.ts`                                                                                                               | Ours to compile, upstream's to author: upstream commits are **ported** (cherry-picked + adapted) behind the adapter SPI (§3.2). Our own edits stay minimal so ports stay cheap. |
-| **Owned core**                | the rest of `apps/server`, `apps/web` (outside the product sub-paths below), `packages/{contracts,client-runtime,shared,ssh}`, `apps/desktop`, `apps/mobile`                                                                                                                | Ours. Upstream changes here are optional cherry-picks chosen by triage (§6).                                                                                                    |
-| **Owned product**             | `apps/server/src/zerops/**`, `apps/web/src/zerops/**`, `apps/web/src/components/zerops/**`, `packages/client-runtime/src/zerops/**`, `apps/mobile/src/features/zerops/**`, `packages/shared/src/{brand,threadStatus,crewHome,crewTemplates}.ts`, `docs/internals/zerops/**` | Ours only. The client design system (`design-system.md`) governs the client dirs: tokens only, protected roots render only, one status resolver.                                |
-| **Removed**                   | per row in §4                                                                                                                                                                                                                                                               | Deleted, not disabled.                                                                                                                                                          |
+- **Imported** (byte-identical) — `packages/effect-codex-app-server/**`, `packages/effect-acp/**` —
+  the standalone wire-protocol packages; the list is final only once the freeze checklist (§8)
+  proves each imports nothing owned
+  - _Rule:_ Never edited. Re-imported from an upstream SHA in one `import:` commit. Pinned by
+    `imported.lock` (§3.1).
+- **Ported** — `apps/server/src/provider/**` (drivers, adapters, model manifest, maintenance),
+  `packages/contracts/src/provider*.ts`, `apps/server/src/codexModelOptions.ts`
+  - _Rule:_ Ours to compile, upstream's to author: upstream commits are **ported** (cherry-picked +
+    adapted) behind the adapter SPI (§3.2). Our own edits stay minimal so ports stay cheap.
+- **Owned core** — the rest of `apps/server`, `apps/web` (outside the product sub-paths below),
+  `packages/{contracts,client-runtime,shared,ssh}`, `apps/desktop`, `apps/mobile`
+  - _Rule:_ Ours. Upstream changes here are optional cherry-picks chosen by triage (§6).
+- **Owned product** — `apps/server/src/zerops/**`, `apps/web/src/zerops/**`,
+  `apps/web/src/components/zerops/**`, `packages/client-runtime/src/zerops/**`,
+  `apps/mobile/src/features/zerops/**`,
+  `packages/shared/src/{brand,threadStatus,crewHome,crewTemplates}.ts`, `docs/internals/zerops/**`
+  - _Rule:_ Ours only. The client design system (`design-system.md`) governs the client dirs: tokens
+    only, protected roots render only, one status resolver.
+- **Removed** — per row in §4
+  - _Rule:_ Deleted, not disabled.
 
 ### 3.1 Enforcement — `imported.lock`, not git history
 
@@ -66,18 +79,62 @@ Claude CLI × Codex CLI × Effect version × fixture set) live in `compat.md`.
 
 ## 4. What goes, what stays
 
-| Item                                                                                                                                                                                                                                  | What it is                                                                                                                                                                                             | Zerops path?                                                                                     | Decision                                                                                           |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| Desktop                                                                                                                                                                                                                               | same web bundle in Electron + local spawn, SSH launch, keychain, deep link, updater                                                                                                                    | yes (S5)                                                                                         | keep                                                                                               |
-| Mobile                                                                                                                                                                                                                                | Expo app on the shared client runtime                                                                                                                                                                  | yes (S5)                                                                                         | keep                                                                                               |
-| T3 cloud — **reach/pairing** (`app.t3.codes` pairing, CLI token manager, boot service, managed endpoint)                                                                                                                              | how a phone / hosted web reaches a home server                                                                                                                                                         | replaced by the door (D1)                                                                        | delete — the slice waits for S5 to prove mobile connects through the door first                    |
-| T3 cloud — **activity relay** (`AgentAwarenessRelay`, its `OrchestrationReactor` hook, `contracts/relay.ts`, client-runtime relay, mobile registration, `infra/relay`)                                                                | mobile push + Live Activities                                                                                                                                                                          | mobile needs it; the relay must be ours to host                                                  | keep and host ourselves — the `infra/relay` deployment is an S5 deliverable                        |
-| Tailscale (39 files: `packages/tailscale`, `environment/RemoteOpenTargets.ts`, server lifecycle/config, CLI `pair`/`connect`, desktop exposure/settings/IPC, web settings, contracts)                                                 | an endpoint add-on to reach a t3 server on another machine **the user owns** over their private tailnet                                                                                                | none — mate's server lives in the Zerops container behind the public origin + door               | delete as one refactor slice                                                                       |
-| Local spawn (`t3 serve` on a laptop, desktop "local backend")                                                                                                                                                                         | run the server on your own machine                                                                                                                                                                     | none                                                                                             | delete — desktop keeps SSH launch/keychain/deep link/updater, loses the local backend              |
-| Providers Cursor / Grok / OpenCode                                                                                                                                                                                                    | drivers in the ported zone                                                                                                                                                                             | not offered                                                                                      | keep the code (ports stay cheap when the tree matches upstream), hide via catalog config           |
-| Provider Google Antigravity (ported 2026-09-05, intake row 3)                                                                                                                                                                         | ACP driver in the ported zone with a managed `agy_acp_server` runtime; sign-in is upstream's own flow (Google URL in the settings provider setup, pasted callback forwarded from inside the container) | offered — owner decision 2026-09-04                                                              | keep; the zcp agent-auth door for it (spec §8) is a separate product slice; MCP attachment is Q-14 |
-| `apps/marketing`                                                                                                                                                                                                                      | the t3.codes website                                                                                                                                                                                   | none                                                                                             | delete                                                                                             |
-| T3 in-app preview browser + MCP server (`apps/server/src/mcp/**`, `apps/server/src/preview/**`, `apps/web/src/browser/**`, `apps/web/src/components/preview/**`, `apps/desktop/src/preview/**`, `packages/contracts/src/preview*.ts`) | an embedded browser panel (webview/`BrowserWindow`-backed) for previewing the user's dev server, with click/type/screenshot automation exposed to every provider adapter over a local MCP server       | none — a Zerops environment is reached over its own public URL, not a device-local browser guest | delete as one slice                                                                                |
+- Desktop
+  - _What it is:_ same web bundle in Electron + local spawn, SSH launch, keychain, deep link,
+    updater
+  - _Zerops path?:_ yes (S5)
+  - _Decision:_ keep
+- Mobile
+  - _What it is:_ Expo app on the shared client runtime
+  - _Zerops path?:_ yes (S5)
+  - _Decision:_ keep
+- T3 cloud — **reach/pairing** (`app.t3.codes` pairing, CLI token manager, boot service, managed
+  endpoint)
+  - _What it is:_ how a phone / hosted web reaches a home server
+  - _Zerops path?:_ replaced by the door (D1)
+  - _Decision:_ delete — the slice waits for S5 to prove mobile connects through the door first
+- T3 cloud — **activity relay** (`AgentAwarenessRelay`, its `OrchestrationReactor` hook,
+  `contracts/relay.ts`, client-runtime relay, mobile registration, `infra/relay`)
+  - _What it is:_ mobile push + Live Activities
+  - _Zerops path?:_ mobile needs it; the relay must be ours to host
+  - _Decision:_ keep and host ourselves — the `infra/relay` deployment is an S5 deliverable
+- Tailscale (39 files: `packages/tailscale`, `environment/RemoteOpenTargets.ts`, server
+  lifecycle/config, CLI `pair`/`connect`, desktop exposure/settings/IPC, web settings, contracts)
+  - _What it is:_ an endpoint add-on to reach a t3 server on another machine **the user owns** over
+    their private tailnet
+  - _Zerops path?:_ none — mate's server lives in the Zerops container behind the public origin +
+    door
+  - _Decision:_ delete as one refactor slice
+- Local spawn (`t3 serve` on a laptop, desktop "local backend")
+  - _What it is:_ run the server on your own machine
+  - _Zerops path?:_ none
+  - _Decision:_ delete — desktop keeps SSH launch/keychain/deep link/updater, loses the local
+    backend
+- Providers Cursor / Grok / OpenCode
+  - _What it is:_ drivers in the ported zone
+  - _Zerops path?:_ not offered
+  - _Decision:_ keep the code (ports stay cheap when the tree matches upstream), hide via catalog
+    config
+- Provider Google Antigravity (ported 2026-09-05, intake row 3)
+  - _What it is:_ ACP driver in the ported zone with a managed `agy_acp_server` runtime; sign-in is
+    upstream's own flow (Google URL in the settings provider setup, pasted callback forwarded from
+    inside the container)
+  - _Zerops path?:_ offered — owner decision 2026-09-04
+  - _Decision:_ keep; the zcp agent-auth door for it (spec §8) is a separate product slice; MCP
+    attachment is Q-14
+- `apps/marketing`
+  - _What it is:_ the t3.codes website
+  - _Zerops path?:_ none
+  - _Decision:_ delete
+- T3 in-app preview browser + MCP server (`apps/server/src/mcp/**`, `apps/server/src/preview/**`,
+  `apps/web/src/browser/**`, `apps/web/src/components/preview/**`, `apps/desktop/src/preview/**`,
+  `packages/contracts/src/preview*.ts`)
+  - _What it is:_ an embedded browser panel (webview/`BrowserWindow`-backed) for previewing the
+    user's dev server, with click/type/screenshot automation exposed to every provider adapter over
+    a local MCP server
+  - _Zerops path?:_ none — a Zerops environment is reached over its own public URL, not a
+    device-local browser guest
+  - _Decision:_ delete as one slice
 
 ### 4.1 Names
 
@@ -173,12 +230,22 @@ to be more than a mechanical cherry-pick.
 
 ## 8. Freeze checklist
 
-| #   | Item                                                                                                                          | Status                                                                                                                                                                                                                                                 |
-| --- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | Tag `upstream-base-2026-08-28`; rename `z3` → `main`; ledger row                                                              | done                                                                                                                                                                                                                                                   |
-| 2   | Adapter SPI + fixtures (§3.2) — the largest item; recorded from `z3-eval` with the real CLIs; the Zerops feeds move behind it | done 2026-08-29 (live sanity on `z3-eval` pending)                                                                                                                                                                                                     |
-| 3   | `imported.lock` + CI (lock check, changed-package tests, typecheck, architecture test)                                        | done 2026-08-29; first run on GitHub-hosted runners 2026-08-30 surfaced seven pre-existing failures (ledger), green since `07c3d0d8c`                                                                                                                  |
-| 4   | Deletions from §4 marked delete — one slice each (Tailscale is a refactor slice, not a `rm`)                                  | Tailscale + `apps/marketing` done 2026-08-29; T3 Connect reach removed from the relay + client-runtime/web/mobile 2026-08-29 (server-side CLI token manager / boot service → S5-5); desktop local spawn/WSL/SSH launch/Clerk removed 2026-08-29 (S5-1) |
-| 5   | Mirrored model manifest                                                                                                       | done 2026-08-29                                                                                                                                                                                                                                        |
-| 6   | Fork `CLAUDE.md` (the map) + this document + `intake.md` row 0                                                                | done 2026-08-29                                                                                                                                                                                                                                        |
-| 7   | Versioning `mate v0.1.0`; retire brief §4 rule 6; write `../zcp/docs/spec-mate.md` §7                                         | 0.1.0 done; `spec-mate.md` §7 written 2026-08-29; brief rule 6 retired                                                                                                                                                                                 |
+- **1** — Tag `upstream-base-2026-08-28`; rename `z3` → `main`; ledger row
+  - _Status:_ done
+- **2** — Adapter SPI + fixtures (§3.2) — the largest item; recorded from `z3-eval` with the real
+  CLIs; the Zerops feeds move behind it
+  - _Status:_ done 2026-08-29 (live sanity on `z3-eval` pending)
+- **3** — `imported.lock` + CI (lock check, changed-package tests, typecheck, architecture test)
+  - _Status:_ done 2026-08-29; first run on GitHub-hosted runners 2026-08-30 surfaced seven
+    pre-existing failures (ledger), green since `07c3d0d8c`
+- **4** — Deletions from §4 marked delete — one slice each (Tailscale is a refactor slice, not a
+  `rm`)
+  - _Status:_ Tailscale + `apps/marketing` done 2026-08-29; T3 Connect reach removed from the
+    relay + client-runtime/web/mobile 2026-08-29 (server-side CLI token manager / boot service →
+    S5-5); desktop local spawn/WSL/SSH launch/Clerk removed 2026-08-29 (S5-1)
+- **5** — Mirrored model manifest
+  - _Status:_ done 2026-08-29
+- **6** — Fork `CLAUDE.md` (the map) + this document + `intake.md` row 0
+  - _Status:_ done 2026-08-29
+- **7** — Versioning `mate v0.1.0`; retire brief §4 rule 6; write `../zcp/docs/spec-mate.md` §7
+  - _Status:_ 0.1.0 done; `spec-mate.md` §7 written 2026-08-29; brief rule 6 retired
