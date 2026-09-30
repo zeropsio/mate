@@ -33,7 +33,7 @@ import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 
 import { useEnvironmentLinks } from "~/routes/-environmentTargets";
 import { useProjects, useThreadShells, useThreadStatus } from "~/state/entities";
@@ -379,6 +379,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
               below: (
                 <MateOpeningLine
                   onTryNow={tryNow}
+                  projects={<Link to="/zerops" />}
                   phrase={mateOpeningPhrase(
                     page.kind === "up"
                       ? { kind: "reaching", reachability: link.reachability }
@@ -458,12 +459,15 @@ export function MateOpeningLine({
   phrase,
   projectUrl,
   onTryNow,
+  projects,
 }: {
   readonly phrase: RouteGatePhrase;
   /** Its project in Zerops, for "Open in Zerops". */
   readonly projectUrl: string | undefined;
   /** Retries its link; absent while nothing names its target. */
   readonly onTryNow: (() => void) | undefined;
+  /** What *Go to projects* is: the router's link to the projects screen. */
+  readonly projects: ReactElement;
 }): ReactNode {
   const tryNow = onTryNow !== undefined && phrase.actions.includes("try-now");
   const openInZerops = projectUrl !== undefined && phrase.actions.includes("open-in-zerops");
@@ -500,7 +504,7 @@ export function MateOpeningLine({
             </Button>
           ) : null}
           {toProjects ? (
-            <Button render={<Link to="/zerops" />} size="compact" variant="pill">
+            <Button render={projects} size="compact" variant="pill">
               Go to projects
             </Button>
           ) : null}

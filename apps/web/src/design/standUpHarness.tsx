@@ -8,7 +8,9 @@
  * where Add lands — with the projects page's progress under its headline, a
  * step past its cap, a creation the platform refused; and `handing`, the frame
  * its view hands over to the conversation with (`coming → handing` is the
- * hand-over the view plays in place).
+ * hand-over the view plays in place). Then the same view for any other Mate a
+ * door opens while its conversation cannot be: its name, and under it what its
+ * link waits for, or why it cannot be opened (`MateOpeningLine`).
  *
  * The pane is the real `MateEmptyStateView` over the real sign-in rows
  * (`ZeropsAgentAuthRows`, a fixture snapshot); the header and the composer
@@ -29,6 +31,7 @@ import { createRoot } from "react-dom/client";
 
 import { Button } from "~/components/ui/button";
 import { ZeropsBirthLine } from "~/components/zerops/ZeropsBirthProgress";
+import { MateOpeningLine } from "~/components/zerops/ZeropsMateComingPage";
 import {
   MateEmptyStateView,
   StandUpAuthorize,
@@ -36,6 +39,7 @@ import {
 } from "~/components/zerops/ZeropsMateEmptyState";
 import { ZeropsAgentAuthRows } from "~/components/zerops/ZeropsAgentAuthCard";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
+import { mateOpeningPhrase, type MateComingPage } from "~/zerops/mateComing";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import type { MateStandUpPhase } from "~/zerops/mateStandUp";
 import "../index.css";
@@ -96,6 +100,8 @@ interface HarnessState {
   readonly checking: boolean;
   /** The Mate's own view while it comes up, or the frame it hands over with. */
   readonly coming?: "coming" | "almost" | "slow" | "not-created" | "handing";
+  /** The same view for a Mate on its way to its conversation, or not to be opened. */
+  readonly opening?: Extract<MateComingPage, { readonly kind: "reaching" | "unreachable" }>;
 }
 
 const AGO = (seconds: number) => new Date(Date.now() - seconds * 1000).toISOString();
@@ -197,6 +203,56 @@ const STATES: ReadonlyArray<HarnessState> = [
     coming: "handing",
   },
   {
+    id: "reconnecting",
+    label: "Opening · its link made again",
+    mate: { ...QUINN, standUp: undefined },
+    phase: null,
+    rows: false,
+    checking: false,
+    opening: { kind: "reaching", reachability: { kind: "reconnecting" } },
+  },
+  {
+    id: "retrying",
+    label: "Opening · not answering",
+    mate: { ...QUINN, standUp: undefined },
+    phase: null,
+    rows: false,
+    checking: false,
+    opening: {
+      kind: "reaching",
+      reachability: {
+        kind: "retrying",
+        retryAtMs: Date.now() + 8_000,
+        last: { kind: "network" },
+        restart: false,
+      },
+    },
+  },
+  {
+    id: "stopped",
+    label: "Opening · stopped",
+    mate: { ...QUINN, standUp: undefined },
+    phase: null,
+    rows: false,
+    checking: false,
+    opening: {
+      kind: "reaching",
+      reachability: { kind: "container", container: { level: "inactive", status: "STOPPED" } },
+    },
+  },
+  {
+    id: "gone",
+    label: "Not to be opened · gone",
+    mate: { ...QUINN, standUp: undefined },
+    phase: null,
+    rows: false,
+    checking: false,
+    opening: {
+      kind: "unreachable",
+      reachability: { kind: "gone", because: "complete-scope-omits-verified" },
+    },
+  },
+  {
     id: "question",
     label: "Question · a colleague (before: everyone)",
     mate: FEN,
@@ -283,6 +339,22 @@ function ComingBelowFixture({ coming }: { readonly coming: NonNullable<HarnessSt
 }
 
 function comingOf(state: HarnessState): MateEmptyComing | null {
+  if (state.opening !== undefined) {
+    return {
+      kind: state.opening.kind,
+      below: (
+        <MateOpeningLine
+          onTryNow={() => undefined}
+          phrase={mateOpeningPhrase(state.opening, {
+            nowMs: Date.now(),
+            mateName: state.mate.name,
+          })}
+          projectUrl={state.mate.projectUrl}
+          projects={<a href="#projects" />}
+        />
+      ),
+    };
+  }
   if (state.coming === undefined) return null;
   return {
     kind: state.coming === "not-created" ? "failed" : "coming",
@@ -321,7 +393,7 @@ function Pane({ state, onRetry }: { readonly state: HarnessState; readonly onRet
           back while the stand-up waits on its person. */}
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-5 pt-2"
-        hidden={state.coming !== undefined}
+        hidden={state.coming !== undefined || state.opening !== undefined}
         style={{ height: COMPOSER_HEIGHT }}
       >
         <div
