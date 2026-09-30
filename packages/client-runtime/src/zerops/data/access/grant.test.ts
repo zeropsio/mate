@@ -1151,6 +1151,8 @@ describe("access grant invariants over enumerated event sequences", () => {
       { now, event: { type: "VISIBILITY", hidden: state.signals.hiddenSince === null } },
       { now, event: state.signals.online ? { type: "OFFLINE" } : { type: "ONLINE" } },
       { now, event: { type: "USER_RETRY" } },
+      // Someone else creates C: the organization's live list names it before any round does.
+      { now, event: { type: "PROJECTS_LISTED", projects: PROJECTS } },
     ];
     if (state.phase.phase === "unverified") steps.push({ now, event: { type: "START" } });
     const round = grantRoundInFlight(state);
