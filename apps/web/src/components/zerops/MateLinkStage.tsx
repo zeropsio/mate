@@ -3,6 +3,7 @@
  * Mate's face asleep, its name and its link's one line (`MateLinkLine`), on one axis.
  */
 import type { EnvironmentId } from "@t3tools/contracts";
+import type { ReactNode } from "react";
 
 import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
@@ -19,15 +20,23 @@ export function MateLinkStage({
   environmentId,
   voice,
   projectId,
+  composer = null,
 }: {
   readonly environmentId: EnvironmentId | null;
   readonly voice: Spoken;
   readonly projectId: string | null;
+  /** The composer standing where its conversation's will (`ComposerStandIn`). */
+  readonly composer?: ReactNode;
 }) {
   return environmentId === null ? (
     <MateLinkWords voice={voice} />
   ) : (
-    <MateLinkStageOf environmentId={environmentId} projectId={projectId} voice={voice} />
+    <MateLinkStageOf
+      composer={composer}
+      environmentId={environmentId}
+      projectId={projectId}
+      voice={voice}
+    />
   );
 }
 
@@ -45,10 +54,12 @@ function MateLinkStageOf({
   environmentId,
   voice,
   projectId,
+  composer,
 }: {
   readonly environmentId: EnvironmentId;
   readonly voice: Spoken;
   readonly projectId: string | null;
+  readonly composer: ReactNode;
 }) {
   const at = useZeropsMate(environmentId);
   // Before the catalog names it, the Mate this browser last knew there: a reload draws its stage
@@ -62,7 +73,7 @@ function MateLinkStageOf({
   if (known === undefined) return <MateLinkWords voice={voice} />;
   const mate = { ...known, connected: false };
   return (
-    <MateComingFrame header={<MateComingHeader mate={mate} />}>
+    <MateComingFrame composer={composer} header={<MateComingHeader mate={mate} />}>
       <MateEmptyStateView
         coming={{
           kind: "reaching",
