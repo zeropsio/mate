@@ -839,6 +839,16 @@ const apply = (
       if (credential.kind === "refused" && credential.reason.kind === "access" && mintMoved) {
         return inputChanged(next, "input-change");
       }
+      // A Mate the cap put five minutes out that becomes the route is tried now: the cap spares
+      // only the Mates nobody is looking at.
+      if (
+        event.guards.routeTarget &&
+        !before.routeTarget &&
+        credential.kind === "backoff" &&
+        machine.failures >= RETRY_CAP
+      ) {
+        return release(next, "prerequisite-arrived");
+      }
       return next;
     }
     case "PRESENCE": {
