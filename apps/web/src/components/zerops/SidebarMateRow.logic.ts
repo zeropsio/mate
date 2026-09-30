@@ -328,6 +328,10 @@ export function mateRowView(
           : { kind: "pending" }
         : undefined
       : { kind: "words", text: words, tone };
+  // A question waiting on somebody else — another's Mate asks its owner — is still its last
+  // words: said at rest, in the state's ink, with no amber.
+  const asked = (tone: "muted" | "ink-2"): MateRowReply =>
+    activity.question === undefined ? said(tone) : { kind: "words", text: activity.question, tone };
   const age: MateRowSlot = ask === undefined ? { kind: "none" } : { kind: "age" };
   const state = mateRowState(activity, face);
   const view = (reply: MateRowReply, slot: MateRowSlot = age) => ({
@@ -379,11 +383,11 @@ export function mateRowView(
           : { kind: "words", text: activity.errorLine, tone: "failed" },
       );
     case "unread":
-      return view(said("ink-2"));
+      return view(asked("ink-2"));
     case "paused":
       return view(said("muted"), { kind: "paused", until: activity.pausedUntil ?? activity.at });
     case "idle":
-      return view(said("muted"));
+      return view(asked("muted"));
   }
 }
 
@@ -443,7 +447,8 @@ export function mateRowActivity(input: {
  * | none                                  | asleep, idle if connected | —                       |
  *
  * Its own change waiting on the person's review lifts every face but work's to needs-you
- * (`mateFaceAwaitingReview`), as the composer's top wears it for the same fact.
+ * (`mateFaceAwaitingReview`), as the composer's top wears it for the same fact — on the viewer's
+ * own Mate only: another's waits on its owner, and rests here.
  *
  * A live reading stands while the socket blinks — reconnecting, a listing re-read — because the
  * conversation it was read from still stands; memory is only ever at rest.
@@ -454,6 +459,8 @@ export function mateRowReading(input: {
   readonly activity: ZeropsAgentActivity | undefined;
   /** Its own change waits on the person's review (`mateNextStep`): it needs them. */
   readonly reviewWaits?: boolean;
+  /** The viewer's own Mate (`mateIsViewers`): only then does what it waits on need them. */
+  readonly mine: boolean;
 }): MateRowView {
   const { activity } = input;
   const live = activity !== undefined && activity.remembered !== true ? activity : undefined;
@@ -463,6 +470,7 @@ export function mateRowReading(input: {
       mateFaceFor(input.connected || live !== undefined, live),
       input.reviewWaits === true,
       activity?.pausedUntil !== undefined,
+      input.mine,
     ),
   );
 }

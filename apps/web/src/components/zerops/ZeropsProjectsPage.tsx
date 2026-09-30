@@ -40,6 +40,7 @@ import {
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
 import {
+  mateIsViewers,
   resolveMateOwnerName,
   resolveMateVerbs,
   resolveMateVisibility,
@@ -941,6 +942,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     organizationStatus,
     selectOrganization,
     status,
+    user,
   } = useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const inventory = useZeropsInventory();
@@ -1785,6 +1787,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         groupId === undefined ? undefined : projectFlow.flows.get(groupId),
         candidate.project.id,
       ),
+      mine: mateIsViewers(candidate.project, user?.id),
     });
   };
   const openReview = useOpenReview();

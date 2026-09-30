@@ -38,6 +38,7 @@ function mate(
     conversation: { threadId: `thread-${projectId}`, kind: "idle" },
     owner: undefined,
     pausedUntil: undefined,
+    mine: true,
     ...overrides,
   };
 }
@@ -305,6 +306,7 @@ describe("jumpMateOf and withLiveMates — a Mate as its row says it, read afres
     projectName: "Shop",
     environmentId: "env-shop-nova",
     owner: undefined,
+    mine: true,
   } as const;
 
   it("reads a connected Mate's conversation, and nothing of one asleep", () => {

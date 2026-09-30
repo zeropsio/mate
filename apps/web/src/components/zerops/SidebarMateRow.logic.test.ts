@@ -758,7 +758,7 @@ describe("mateRowReading — the face follows the work, and the words never outr
       reply: undefined,
     },
   ] as const)("$case", ({ connected, activity, face, reply }) => {
-    const view = mateRowReading({ connected, activity });
+    const view = mateRowReading({ connected, activity, mine: true });
     expect(view.face).toBe(face);
     expect(view.reply).toEqual(reply);
   });
@@ -829,14 +829,62 @@ describe("mateRowReading — the face follows the work, and the words never outr
       dot: "failed",
     },
   ] as const)("$case", ({ connected, activity, state, face, dot }) => {
-    const view = mateRowReading({ connected, activity, reviewWaits: true });
+    const view = mateRowReading({ connected, activity, reviewWaits: true, mine: true });
     expect({ state: view.state, face: view.face, dot: view.dot }).toEqual({ state, face, dot });
   });
+
+  // Another's Mate waits on its owner (the owner, 2026-09-30): no needs face, no amber dot,
+  // its question said at rest as its last words; its own a viewer's needs them.
+  it.each([
+    {
+      case: "own Mate asking",
+      mine: true,
+      review: false,
+      state: "needs",
+      face: "needs",
+      dot: "attention",
+      reply: { kind: "words", text: "Which port?", tone: "ink" },
+    },
+    {
+      case: "another's Mate asking",
+      mine: false,
+      review: false,
+      state: "idle",
+      face: "idle",
+      dot: undefined,
+      reply: { kind: "words", text: "Which port?", tone: "muted" },
+    },
+    {
+      case: "another's Mate, its change waiting",
+      mine: false,
+      review: true,
+      state: "idle",
+      face: "idle",
+      dot: undefined,
+      reply: { kind: "words", text: "Which port?", tone: "muted" },
+    },
+  ] as const)(
+    "waits on the viewer only when it is theirs: $case",
+    ({ mine, review, state, face, dot, reply }) => {
+      const view = mateRowReading({
+        connected: true,
+        activity: reading({ kind: "input", face: "needs", question: "Which port?" }),
+        reviewWaits: review,
+        mine,
+      });
+      expect({ state: view.state, face: view.face, dot: view.dot, reply: view.reply }).toEqual({
+        state,
+        face,
+        dot,
+        reply,
+      });
+    },
+  );
 
   it("never draws the working dots under an asleep face", () => {
     for (const connected of [true, false]) {
       for (const activity of [reading(), remembered, undefined]) {
-        const view = mateRowReading({ connected, activity });
+        const view = mateRowReading({ connected, activity, mine: true });
         if (view.face === "sleep") expect(view.reply?.kind).not.toBe("pending");
       }
     }

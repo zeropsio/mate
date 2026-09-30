@@ -4,14 +4,28 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsAgentActivity } from "./agentActivity";
 import { waitingMatesOf } from "./useSidebarWaiting";
 
-const mate = (id: string, bot: string, group: ZeropsCandidate["group"] = "connected") =>
+/** Who is looking, and who signed each Mate in unless a test says otherwise: the viewer. */
+const VIEWER = "u-petra";
+
+const mate = (
+  id: string,
+  bot: string,
+  group: ZeropsCandidate["group"] = "connected",
+  signer: string | null = VIEWER,
+) =>
   ({
     key: `${id}:zcp`,
     project: {
       id,
       name: id,
       status: "ACTIVE",
-      tagList: ["mate", "mate:g:aaa", "mate:role:dev", `mate:bot:${bot}`],
+      tagList: [
+        "mate",
+        "mate:g:aaa",
+        "mate:role:dev",
+        `mate:bot:${bot}`,
+        ...(signer === null ? [] : [`mate:signer:claude-code:${signer}`]),
+      ],
     },
     group,
     service: { id: "zcp", name: "zcp", status: "ACTIVE" },
@@ -39,6 +53,7 @@ describe("waitingMatesOf — the faces the header stacks", () => {
       candidates: [KAI, NOVA, JUNO, ASLEEP],
       activityOf: (candidate) => faces.get(candidate.project.id),
       reviewWaits: (candidate) => reviews.includes(candidate.project.id),
+      viewer: VIEWER,
       tints: new Map([["kai", "amber"]]),
       order,
       shown,
@@ -85,11 +100,52 @@ describe("waitingMatesOf — the faces the header stacks", () => {
       candidates: [juno],
       activityOf: () => face("needs"),
       reviewWaits: () => false,
+      viewer: VIEWER,
       tints: new Map([["juno", "rose"]]),
       order: [],
       shown: () => true,
     });
     expect(waiting).toMatchObject({ tint: "rose", shape: "seal" });
+  });
+
+  // "sana doesn't wait for me, it waits for karlos" (the owner, 2026-09-30): only the viewer's
+  // own Mates wait on them — the ones they signed in.
+  it.each([
+    { case: "own Mate asking", signer: VIEWER, asks: true, review: false, stacked: true },
+    {
+      case: "own Mate, its change waiting",
+      signer: VIEWER,
+      asks: false,
+      review: true,
+      stacked: true,
+    },
+    {
+      case: "another's Mate asking",
+      signer: "u-karlos",
+      asks: true,
+      review: false,
+      stacked: false,
+    },
+    {
+      case: "another's Mate, its change waiting",
+      signer: "u-karlos",
+      asks: false,
+      review: true,
+      stacked: false,
+    },
+    { case: "nobody signed in, asking", signer: null, asks: true, review: true, stacked: false },
+  ])("$case", ({ signer, asks, review, stacked }) => {
+    const sana = mate("sana", "Sana", "connected", signer);
+    const waiting = waitingMatesOf({
+      candidates: [sana],
+      activityOf: () => face(asks ? "needs" : "idle"),
+      reviewWaits: () => review,
+      viewer: VIEWER,
+      tints: new Map(),
+      order: [],
+      shown: () => true,
+    });
+    expect(waiting.length > 0).toBe(stacked);
   });
 
   it("puts a Mate the menu has not drawn yet after the ones it has", () => {

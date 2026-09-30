@@ -138,6 +138,16 @@ function routes(
   }));
 }
 
+/** The Mates a colleague signed in: they wait on their owner, never on the viewer. */
+const COLLEAGUES_MATES: ReadonlySet<string> = new Set([
+  "links-theo",
+  "shop-otto",
+  "shop-mira",
+  "notes-iris",
+  "notes-kai",
+  "todo-nils",
+]);
+
 function candidate(
   id: string,
   name: string,
@@ -149,9 +159,10 @@ function candidate(
   } = {},
 ): ZeropsCandidate {
   const { connected = true, container = true, routes: theRoutes } = options;
-  // Every Mate here has its agent signed in (D6's tag); the plan set's Hollin
-  // holds the ones nobody has.
-  const tagList = tags.includes("mate") ? [...tags, "mate:signer:claude-code:u-harness"] : tags;
+  // Every Mate here has its agent signed in (D6's tag) — by the viewer, or by a colleague where
+  // its owner is not the viewer; the plan set's Hollin holds the ones nobody has.
+  const signer = COLLEAGUES_MATES.has(id) ? "u-colleague" : "u-harness";
+  const tagList = tags.includes("mate") ? [...tags, `mate:signer:claude-code:${signer}`] : tags;
   const base = {
     key: `${id}:zcp`,
     project: { id, name, status: "ACTIVE", tagList },
@@ -306,6 +317,8 @@ const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
   // The dead end: a production whose last deploy failed, running nothing.
   candidate("todo-vera", "Todo - vera", ["mate", ...TODO, "mate:role:dev", "mate:bot:Vera"]),
   candidate("todo-fen", "Todo - fen", ["mate", ...TODO, "mate:role:dev", "mate:bot:Fen"]),
+  // A colleague's Mate asking its owner, beside Vera asking the viewer.
+  candidate("todo-nils", "Todo - nils", ["mate", ...TODO, "mate:role:dev", "mate:bot:Nils"]),
   candidate("todo-stage", "Todo - stage", [...TODO, "mate:role:stage"], {
     container: false,
     routes: routes(["app", "todo-stage.zerops.app"]),
@@ -395,6 +408,21 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
         kind: "input",
       }),
       question: "Should finished items sink to the bottom, or hide behind a toggle?",
+    },
+  ],
+  [
+    "todo-nils",
+    {
+      // A colleague's Mate asking its owner: its question at rest, nothing on the viewer.
+      ...activity({
+        id: "todo-nils",
+        subject: "Sort the list by due date",
+        snippet: "The items have no due date yet.",
+        hours: 0.1,
+        face: "needs",
+        kind: "input",
+      }),
+      question: "Should an item without a due date go first or last?",
     },
   ],
   [
@@ -737,7 +765,8 @@ const OWNERS = new Map<string, ZeropsMateOwner>([
   ["notes-iris", { name: "Eva Dvořák", initials: "ED", avatarUrl: null, isViewer: false }],
   ["notes-kai", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
   ["notes-lena", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: true }],
-  ["todo-vera", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: false }],
+  ["todo-vera", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: true }],
+  ["todo-nils", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
 ]);
 
 /**
@@ -749,11 +778,12 @@ const COMING_PHASE: ComingPhase =
   COMING_PHASES.find((phase) => phase === new URLSearchParams(location.search).get("phase")) ??
   "coming";
 /**
- * Who looks at it: the person who added Quinn, so it waits for their sign-in — or with
+ * Who looks at it: the person who signed in the fixture set's own Mates — only theirs wait on
+ * them. In `?set=coming`, the person who added Quinn, so it waits for their sign-in — or with
  * `&viewer=colleague` anybody else, who reads that nobody has signed it in yet.
  */
 const COMING_VIEWER: ZeropsSessionValue | null = !COMING_SET
-  ? null
+  ? ({ user: { id: "u-harness" } } as unknown as ZeropsSessionValue)
   : ({
       user: {
         id:
@@ -933,59 +963,57 @@ function SidebarFrame({
           the canvas at an edge only while something is scrolled under it. */}
       <SidebarContent>
         <div className="ps-2.25 pe-2 pb-1">
-          <ZeropsSessionContext.Provider value={COMING_VIEWER}>
-            <SidebarZeropsTree
-              births={coming?.births}
-              candidates={candidates}
-              className="mb-2"
-              complete
-              getActivity={coming?.activity ?? activityOfCandidate}
-              getConversationsRead={(item) => item.group === "connected"}
-              getComing={coming?.coming}
-              onOpenComing={(projectId) => {
-                menuActions.push(`coming ${projectId}`);
-                setOpen(projectId);
-              }}
-              getFlow={(groupId) => FIXTURES.flows.get(groupId)}
-              getOwner={(item) => FIXTURES.owners.get(item.project.id)}
-              getCrew={(item) => CREWS.get(item.project.id)}
-              getMateActions={(item, live) => ({
-                muted: item.project.id === "notes-iris",
-                toggleMute: () => {},
-                toggleUnread: () => {},
-                copyLink: () => {},
-                rename: {
-                  initialValue:
-                    item.project.tagList
-                      ?.find((tag) => tag.startsWith("mate:bot:"))
-                      ?.slice("mate:bot:".length) ?? item.project.name,
-                  validate: (value) => (value.trim() === "" ? "Give the Mate a name." : undefined),
-                  commit: () => {},
-                },
-                ...(live?.face === "working" ? { stop: () => {} } : {}),
-                entries: [
-                  { id: "restart", label: "Restart", onSelect: () => {} },
-                  { id: "assign", label: "Hand over…", onSelect: () => {} },
-                  { id: "move", label: "Move to project…", onSelect: () => {} },
-                ],
-              })}
-              onBrowseProjects={() => {}}
-              onAskToFix={(mateProjectId, problem) => {
-                menuActions.push(`ask ${mateProjectId}: ${problem.what}`);
-              }}
-              onSelect={(item) => {
-                menuActions.push(`open ${item.project.id}`);
-                setOpen(item.project.id);
-              }}
-              onOpenCrew={(item, setUp) => {
-                menuActions.push(`${setUp ? "set up a crew" : "crew"} ${item.project.id}`);
-                setOpen(item.project.id);
-              }}
-              activeProjectId={open}
-              shown={shown}
-              timestampFormat="24-hour"
-            />
-          </ZeropsSessionContext.Provider>
+          <SidebarZeropsTree
+            births={coming?.births}
+            candidates={candidates}
+            className="mb-2"
+            complete
+            getActivity={coming?.activity ?? activityOfCandidate}
+            getConversationsRead={(item) => item.group === "connected"}
+            getComing={coming?.coming}
+            onOpenComing={(projectId) => {
+              menuActions.push(`coming ${projectId}`);
+              setOpen(projectId);
+            }}
+            getFlow={(groupId) => FIXTURES.flows.get(groupId)}
+            getOwner={(item) => FIXTURES.owners.get(item.project.id)}
+            getCrew={(item) => CREWS.get(item.project.id)}
+            getMateActions={(item, live) => ({
+              muted: item.project.id === "notes-iris",
+              toggleMute: () => {},
+              toggleUnread: () => {},
+              copyLink: () => {},
+              rename: {
+                initialValue:
+                  item.project.tagList
+                    ?.find((tag) => tag.startsWith("mate:bot:"))
+                    ?.slice("mate:bot:".length) ?? item.project.name,
+                validate: (value) => (value.trim() === "" ? "Give the Mate a name." : undefined),
+                commit: () => {},
+              },
+              ...(live?.face === "working" ? { stop: () => {} } : {}),
+              entries: [
+                { id: "restart", label: "Restart", onSelect: () => {} },
+                { id: "assign", label: "Hand over…", onSelect: () => {} },
+                { id: "move", label: "Move to project…", onSelect: () => {} },
+              ],
+            })}
+            onBrowseProjects={() => {}}
+            onAskToFix={(mateProjectId, problem) => {
+              menuActions.push(`ask ${mateProjectId}: ${problem.what}`);
+            }}
+            onSelect={(item) => {
+              menuActions.push(`open ${item.project.id}`);
+              setOpen(item.project.id);
+            }}
+            onOpenCrew={(item, setUp) => {
+              menuActions.push(`${setUp ? "set up a crew" : "crew"} ${item.project.id}`);
+              setOpen(item.project.id);
+            }}
+            activeProjectId={open}
+            shown={shown}
+            timestampFormat="24-hour"
+          />
         </div>
       </SidebarContent>
       {/* *New project* pinned above the account's row, as the app's
@@ -1380,9 +1408,13 @@ useSidebarJump.getState().setShowable(true);
 const router = createRouter({
   routeTree: createRootRoute({
     component: () => (
-      <SidebarProvider className="block" defaultOpen={!MENU_CLOSED}>
-        {LADDER ? <HeadingLadder width={Number(params.get("w") ?? 256)} /> : <Harness />}
-      </SidebarProvider>
+      // The viewer is the whole menu's, as in the app: the waiting stack in the header reads
+      // whose Mates wait on them too.
+      <ZeropsSessionContext.Provider value={COMING_VIEWER}>
+        <SidebarProvider className="block" defaultOpen={!MENU_CLOSED}>
+          {LADDER ? <HeadingLadder width={Number(params.get("w") ?? 256)} /> : <Harness />}
+        </SidebarProvider>
+      </ZeropsSessionContext.Provider>
     ),
   }),
   history: createMemoryHistory({ initialEntries: ["/"] }),
