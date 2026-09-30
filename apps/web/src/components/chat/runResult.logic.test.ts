@@ -75,6 +75,7 @@ const NOTHING_LATER: OutcomeLater = {
   changes: [],
   tasks: [],
   pages: [],
+  views: [],
   files: [],
   answered: false,
 };
@@ -856,9 +857,36 @@ describe("resultPictures", () => {
       name: "a page a later run checked again is that run's picture now",
       outcome: outcome({
         pictures: [checkPicture("op:b1", "/status"), filePicture("/var/www/shots/home.png")],
-        later: later({ pages: ["appdev-1f3c-3000.prg1.example.app/status"] }),
+        later: later({
+          pages: ["appdev-1f3c-3000.prg1.example.app/status"],
+          views: ["appdev-1f3c-3000.prg1.example.app/status on a desktop"],
+        }),
       }),
       labels: ["home.png"],
+    },
+    // Keyed by page and device: a later desktop check of "/" is not this
+    // run's "/" on a phone.
+    {
+      name: "a page a later run checked on another device keeps this run's picture",
+      outcome: outcome({
+        pictures: [checkPicture("op:b1", "/", { device: "iPhone 16" })],
+        later: later({
+          pages: ["appdev-1f3c-3000.prg1.example.app/"],
+          views: ["appdev-1f3c-3000.prg1.example.app/ on a desktop"],
+        }),
+      }),
+      labels: ["/ on iPhone 16"],
+    },
+    {
+      name: "a page a later run checked on the same device is that run's picture now",
+      outcome: outcome({
+        pictures: [checkPicture("op:b1", "/", { device: "iPhone 16" })],
+        later: later({
+          pages: ["appdev-1f3c-3000.prg1.example.app/"],
+          views: ["appdev-1f3c-3000.prg1.example.app/ on iPhone 16"],
+        }),
+      }),
+      labels: [],
     },
     {
       name: "a file a later run looked at again is that run's picture now",

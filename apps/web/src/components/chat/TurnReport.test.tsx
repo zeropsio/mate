@@ -104,7 +104,7 @@ const OUTCOME: OutcomeModel = {
   change: { repository: "app", number: 2 },
   crewTask: null,
   activity: [{ kind: "command", count: 2 }],
-  later: { services: [], changes: [], tasks: [], pages: [], files: [], answered: false },
+  later: { services: [], changes: [], tasks: [], pages: [], views: [], files: [], answered: false },
 };
 
 /** The forge knows the run's change, still open. */

@@ -431,7 +431,7 @@ const REPORT: OutcomeModel = {
   change: null,
   crewTask: null,
   activity: [],
-  later: { services: [], changes: [], tasks: [], pages: [], files: [], answered: false },
+  later: { services: [], changes: [], tasks: [], pages: [], views: [], files: [], answered: false },
 };
 
 const TURN = TurnId.make("turn-1");
