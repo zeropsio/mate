@@ -465,19 +465,33 @@ export function projectsListingNotice(
 }
 
 /**
- * The page's own alert, beside the listing's notice. A failure covers its own
- * region once (R-K2, R-K3): when the listing already says its read failed,
- * the inventory's failure over that same read is not said again. A connect
- * failure is another region's and always stands.
+ * What the page says of the account's trouble, in one voice (R-K2, R-K3): the
+ * inventory's lasting trouble is the account line's at the menu's foot, with
+ * its Try now, so the page repeats none of it. Rows it holds stand as they are;
+ * with none to show while the trouble lasts, the page's own empty words take
+ * the place of the listing's failed read, with no retry of their own. A
+ * connect failure is another region's and always stands.
  */
-export function projectsPageError(input: {
+export function projectsTroubleView(input: {
   readonly connectError: string | null;
   readonly inventoryError: string | null;
   readonly listingNotice: ProjectsListingNotice | null;
-}): string | null {
-  if (input.connectError !== null) return input.connectError;
-  return input.listingNotice?.region === "message" ? null : input.inventoryError;
+  readonly rows: number;
+}): {
+  readonly alert: string | null;
+  readonly listingNotice: ProjectsListingNotice | null;
+  readonly empty: string | null;
+} {
+  const spoken = input.inventoryError !== null;
+  const failed = input.listingNotice?.region === "message";
+  return {
+    alert: input.connectError,
+    listingNotice: spoken && failed ? null : input.listingNotice,
+    empty: spoken && input.rows === 0 ? PROJECTS_WAIT_FOR_ZEROPS : null,
+  };
 }
+
+const PROJECTS_WAIT_FOR_ZEROPS = "Your projects will show here once Zerops answers.";
 
 /**
  * What a declared stage or production says in its row's middle. With
@@ -2300,12 +2314,14 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // — the face asleep, the line saying how long, a failure and its retry on
   // the same line — and the rest of the roster stays where it was.
   const connectErrorOnRow = connectError !== null && candidates.some(connectFailedOn);
-  const listingNotice = projectsListingNotice(listing, nowMs);
-  const pageError = projectsPageError({
+  const troubleView = projectsTroubleView({
     connectError: connectErrorOnRow ? null : connectError,
     inventoryError: error,
-    listingNotice,
+    listingNotice: projectsListingNotice(listing, nowMs),
+    rows: candidates.length,
   });
+  const listingNotice = troubleView.listingNotice;
+  const pageError = troubleView.alert;
   // Every affordance this region carries asks for the list again: a failed or
   // stale read offers a retry, and the page it would go to is this one.
   const listingAffordance =
@@ -2883,6 +2899,13 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         >
           {pageError}
         </div>
+      )}
+      {/* Nothing to show while the account's line says Zerops isn't answering: the page's own
+          words, and no retry — Try now is the line's (`projectsTroubleView`). */}
+      {troubleView.empty === null ? null : (
+        <p className="py-16 text-center text-sm text-muted-foreground" role="status">
+          {troubleView.empty}
+        </p>
       )}
       {/* A project the grant withholds says why in place of its rows: its name,
           tags and Mates are its content, so none of them is drawn (DESIGN §3.4). */}
