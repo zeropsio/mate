@@ -8,8 +8,9 @@
  * that made it is its Mate's newest answer linking it: what it said stands in for a description
  * nobody wrote.
  *
- * After Merge the review stays: it says what happened, and where production waits, its button
- * opens the release's review in place.
+ * After Merge the review stays: it says what happened, and where production waits for a code
+ * change, its button opens the release's review in place. A recipe change is never released: its
+ * review says, from the files it changed, what its merge does to the environments made from it.
  *
  * `ChangeReviewView` is the picture with every read handed in, so the harness shows each state.
  */
@@ -19,11 +20,14 @@ import {
   changeRemarks,
   changeReview,
   historyAge,
+  recipeReach,
   releaseContentsCommits,
+  REVIEW_RELEASE_LABEL,
   type ChangeRemark,
   type FlowPullRequest,
   type GiteaChangedFile,
   type GiteaCommit,
+  type GroupEnvironmentTier,
   type ReviewPress,
 } from "@t3tools/client-runtime/zerops";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
@@ -279,10 +283,7 @@ function ChangeReviewData({
 
   return (
     <ChangeReviewView
-      downstream={{
-        production: flow.environmentInputs.some((entry) => entry.tier === "production"),
-        stage: flow.environmentInputs.some((entry) => entry.tier === "stage"),
-      }}
+      environments={flow.environmentInputs}
       frame={frame}
       giteaOrigin={flowValue.giteaOrigin}
       onOpenPage={onOpenPage}
@@ -387,7 +388,11 @@ export interface ChangeReviewViewProps {
   readonly giteaOrigin: string | undefined;
   /** Where its description's pictures are read from, as the person. */
   readonly pictures: GiteaPictureSource | undefined;
-  readonly downstream: { readonly production: boolean; readonly stage: boolean };
+  /**
+   * The environments `environments.yaml` declares: where `main` goes next, and what a recipe
+   * change's merge reaches.
+   */
+  readonly environments: ReadonlyArray<{ readonly tier: GroupEnvironmentTier }>;
   /** How many changes wait for production, as the flow last read it. */
   readonly waitingForProduction: number;
   /** The release production runs. */
@@ -416,6 +421,10 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   const { pull, readout, press, mate } = props;
   const files = readout.files.kind === "read" ? readout.files.value : undefined;
   const mainSince = readout.mainSince.kind === "read" ? readout.mainSince.value : undefined;
+  const downstream = {
+    production: props.environments.some((entry) => entry.tier === "production"),
+    stage: props.environments.some((entry) => entry.tier === "stage"),
+  };
   const model = changeReview({
     pull,
     mateName: mate?.name,
@@ -433,7 +442,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       head: pull.baseSha,
     }),
     behindBy: mainSince?.length,
-    downstream: props.downstream,
+    downstream,
     waiting: {
       // Until the flow reads it again, the change just merged is not among what waits yet.
       count:
@@ -442,7 +451,11 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           : props.waitingForProduction,
       live: props.live,
     },
-    releaseOffered: props.downstream.production,
+    releaseOffered: downstream.production,
+    recipe:
+      pull.kind === "recipe" && files !== undefined
+        ? recipeReach({ files, environments: props.environments })
+        : undefined,
     press,
     now: props.now,
   });
@@ -465,7 +478,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   const checkRows = pull.checkRows ?? [];
   const mine = mate?.mine === true ? mate : undefined;
   const fix = model.verdict.fix;
-  const next = model.primary?.label === "Review release";
+  const next = model.primary?.label === REVIEW_RELEASE_LABEL;
   // Merged or closed: nothing more to ask of it here.
   const over = model.verdict.state === "merged" || model.verdict.state === "closed";
   return (

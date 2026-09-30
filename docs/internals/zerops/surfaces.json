@@ -334,6 +334,7 @@
         "apps/web/src/zerops/useZeropsChangeRun.ts",
         "apps/web/src/zerops/useZeropsReviewMates.ts",
         "packages/client-runtime/src/zerops/changeDiff.ts",
+        "packages/client-runtime/src/zerops/recipeReach.ts",
         "packages/client-runtime/src/zerops/reviewVerdict.ts"
       ],
       "entryPoints": [
@@ -383,11 +384,13 @@
         "apps/web/src/components/zerops/review/ReviewCommits.test.tsx",
         "apps/web/src/components/zerops/review/ReviewConversation.test.tsx",
         "apps/web/src/components/zerops/review/ReviewDescription.test.tsx",
+        "apps/web/src/components/zerops/review/ZeropsChangeReview.test.tsx",
         "apps/web/src/components/zerops/review/ZeropsCrewTaskReview.test.tsx",
         "apps/web/src/components/zerops/review/ZeropsReview.logic.test.ts",
         "apps/web/src/zerops/useZeropsChangeComments.test.ts",
         "apps/web/src/zerops/useZeropsChangeReadout.test.ts",
         "packages/client-runtime/src/zerops/changeDiff.test.ts",
+        "packages/client-runtime/src/zerops/recipeReach.test.ts",
         "packages/client-runtime/src/zerops/reviewVerdict.test.ts"
       ],
       "captures": []

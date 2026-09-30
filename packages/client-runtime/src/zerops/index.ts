@@ -116,6 +116,7 @@ export {
   type RecipeServiceSource,
   type RecipeTier,
 } from "./recipeTier.ts";
+export { recipeReach, type RecipeReach } from "./recipeReach.ts";
 export { agentsFromOAuthFlags, unionAgents } from "./agentSelection.ts";
 export {
   isGenericPlatformError,
