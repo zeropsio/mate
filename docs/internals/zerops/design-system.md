@@ -75,28 +75,38 @@ T3 word → Zerops word. User-facing copy only (R4 guards the sinks); identifier
 comments keep whatever name the code has. Crew mode's rows put the word its design used on the
 left.
 
-| T3 says                                                                                 | mate says                                                                                                       |
-| --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| environment                                                                             | **project**                                                                                                     |
-| provider                                                                                | **coding agent**                                                                                                |
-| pairing, pairing code                                                                   | **Sign in with Zerops**; the fallback: "Connect another device with a one-time link"                            |
-| Connections                                                                             | **Devices**                                                                                                     |
-| worktree, Local checkout; a crewmate's worktree or lane                                 | gone — no replacement word; a crewmate's copy shows as its branch `crew/<handle>` and as "its copy of the code" |
-| T3 Connect, Tailscale, T3 Code                                                          | gone                                                                                                            |
-| Open in editor                                                                          | **Cloud IDE**                                                                                                   |
-| the `zcp` service                                                                       | **Zerops Control Plane**, under Infrastructure                                                                  |
-| commit & push                                                                           | zcp's pipeline, never the client's                                                                              |
-| "control plane" (self-description)                                                      | never — the product is Zerops Mate                                                                              |
-| stage half of a Mate's pair                                                             | **preview** — `appstage` beside `appdev`, runs a change before its pull request                                 |
-| a crewmate's commit deployed to another service by `sha=` (the crew design's _preview_) | **Deploy to `<host>`** — never _preview_, which is only the stage half                                          |
-| a group stage project                                                                   | **stage** — only that: optional, a side branch of `main`, never a gate                                          |
-| agent (one of a crew)                                                                   | **crewmate** — mostly just its name and face; _agent_ stays the coding agent                                    |
-| orchestrator                                                                            | **lead**                                                                                                        |
-| intent (for the whole crew)                                                             | **brief**                                                                                                       |
-| intent (for one crewmate), role                                                         | **job** — _role_ is the Zerops membership role                                                                  |
-| assignment                                                                              | **task**                                                                                                        |
-| tab (another conversation with the Mate)                                                | **chat** — "+ New chat"                                                                                         |
-| merge (a crewmate's work into your tree)                                                | **land** — the task's review's _Land_; not merging a pull request, which is a change's review's _Merge_         |
+| T3 says                                                                                 | mate says                                                                                             |
+| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| environment                                                                             | **project**                                                                                           |
+| provider                                                                                | **coding agent**                                                                                      |
+| pairing, pairing code                                                                   | **Sign in with Zerops**; the fallback: "Connect another device with a one-time link"                  |
+| Connections                                                                             | **Devices**                                                                                           |
+| worktree, Local checkout; a crewmate's worktree or lane                                 | gone — a crewmate's copy is "its own copy of Fen's code", in setup and under _Try its work_           |
+| T3 Connect, Tailscale, T3 Code                                                          | gone                                                                                                  |
+| Open in editor                                                                          | **Cloud IDE**                                                                                         |
+| the `zcp` service                                                                       | **Zerops Control Plane**, under Infrastructure                                                        |
+| commit & push                                                                           | zcp's pipeline, never the client's                                                                    |
+| "control plane" (self-description)                                                      | never — the product is Zerops Mate                                                                    |
+| stage half of a Mate's pair                                                             | **preview** — `appstage` beside `appdev`, runs a change before its pull request                       |
+| a crewmate's commit deployed to another service by `sha=` (the crew design's _preview_) | **Deploy to `<host>`** — never _preview_, which is only the stage half                                |
+| a group stage project                                                                   | **stage** — only that: optional, a side branch of `main`, never a gate                                |
+| agent (one of a crew)                                                                   | **crewmate** — mostly just its name and face; _agent_ stays the coding agent                          |
+| orchestrator                                                                            | **lead**                                                                                              |
+| intent (for the whole crew); the crew design's brief                                    | **goal** — _Change the goal_; its title heads the Crew tab                                            |
+| intent (for one crewmate), role                                                         | **job** — _role_ is the Zerops membership role                                                        |
+| assignment                                                                              | **task**                                                                                              |
+| tab (another conversation with the Mate)                                                | **chat** — "+ New chat"                                                                               |
+| merge (a crewmate's work into the Mate's tree); land, landed                            | **add to Fen's code** — the review's button; once in, **in Fen's code**; not a pull request's _Merge_ |
+| your tree (the Mate's working copy)                                                     | **Fen's code** — the Mate's name, never "your tree"                                                   |
+| deliver; landed, not delivered                                                          | **ship** — "Fen hasn't shipped these yet · Ask Fen to ship them"                                      |
+| run (the crew working within limits); pause, resume                                     | **working on its own** — _Let it work on its own…_, one _Stop_, _Keep going…_; no pause               |
+| budget                                                                                  | **what it may spend** — "up to $20"                                                                   |
+| Start fresh                                                                             | **Clear its conversation** — "It keeps its job and its work."                                         |
+| Discard                                                                                 | **Drop it**; a plan's **Drop the plan**                                                               |
+| Allow (a crewmate showing its work at the Mate's dev address)                           | **Let it**, beside _Not now_                                                                          |
+| Back to my tree                                                                         | **Back to Fen's**                                                                                     |
+| parked                                                                                  | **Stopped**                                                                                           |
+| writer, reader, lead (what a crewmate does)                                             | **Builds**, **Reviews**, **Plans**                                                                    |
 
 Tone: short declarative sentences, second person, "developer-first" as the one self-descriptor,
 no hype. Colour grammar: **blue acts, teal identifies** — `messageAction` (`#0077cc`) for
