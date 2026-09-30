@@ -66,6 +66,8 @@ export function useOpenMate(): OpenMate {
         "key" in mate
           ? mate
           : heldCandidates(listing).rows.find((row) => row.project.id === projectId);
+      // What an earlier door asked of its view is this door's to replace, whatever opens.
+      awaitMateConversation(projectId, undefined);
       // Its own view: it waits there for its conversation, and tells `then` once it hands over.
       const ownView = () => {
         awaitMateConversation(projectId, then);

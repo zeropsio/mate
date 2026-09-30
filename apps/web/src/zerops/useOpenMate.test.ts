@@ -173,6 +173,30 @@ describe("useOpenMate — a Mate whose conversation cannot be opened yet", () =>
     expect(told).toEqual([{ environmentId: ENVIRONMENT, threadId: "thread-main" }]);
   });
 
+  it("forgets what an earlier door asked of its view once a door opens its conversation at once", async () => {
+    app.reachable = false;
+    const earlier = vi.fn();
+    const opens: Array<OpenMate> = [];
+    function Harness() {
+      opens.push(useOpenMate());
+      return null;
+    }
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    let tree: ReturnType<typeof create> | undefined;
+    act(() => {
+      tree = create(h(Harness));
+    });
+    await act(async () => opens.at(-1)?.(CANDIDATE, earlier));
+    app.reachable = true;
+    app.threads = [shell("thread-main")];
+    act(() => tree?.update(h(Harness)));
+    await act(async () => opens.at(-1)?.(CANDIDATE));
+    act(() => tree?.unmount());
+
+    expect(takeMateConversation("project-fen")).toBeUndefined();
+    expect(earlier).not.toHaveBeenCalled();
+  });
+
   it("opens a Mate named by its project that the listing does not hold yet in its own view", async () => {
     expect(await openFen({ projectId: "project-fen" })).toEqual([]);
     expect(app.navigate).toHaveBeenCalledExactlyOnceWith(FEN_VIEW);
