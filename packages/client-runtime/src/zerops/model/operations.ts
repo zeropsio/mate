@@ -52,6 +52,7 @@ import {
   readInputString,
 } from "./builders/shared.ts";
 import { buildSimpleFields } from "./builders/simple.ts";
+import { buildStandupFields } from "./builders/standup.ts";
 import { buildSubdomainFields } from "./builders/subdomain.ts";
 import { buildVerifyFields } from "./builders/verify.ts";
 
@@ -71,6 +72,7 @@ const CARD_TOOL_KINDS: Readonly<Record<string, ZeropsOperationKind>> = {
   zerops_events: "events",
   zerops_process: "process",
   zerops_discover: "discover",
+  zerops_standup: "standup",
 };
 
 /**
@@ -118,11 +120,13 @@ function anchorOf(call: ZeropsCall): { anchorAt: string; anchorActivityId: strin
 interface StandaloneCall {
   readonly kind: Exclude<ZeropsOperationKind, "bootstrap">;
   readonly call: ZeropsCall;
+  /** `standup` only: the stand-up calls before it, which say which half it deploys. */
+  readonly earlier?: ReadonlyArray<ZeropsCall>;
 }
 
 const BUILDER_BY_KIND: Readonly<
   Record<
-    Exclude<ZeropsOperationKind, "bootstrap" | "delete" | "scale" | "manage" | "env">,
+    Exclude<ZeropsOperationKind, "bootstrap" | "delete" | "scale" | "manage" | "env" | "standup">,
     (call: ZeropsCall, context: OperationBuildContext) => BuiltCardFields
   >
 > = {
@@ -141,10 +145,12 @@ const BUILDER_BY_KIND: Readonly<
 };
 
 function buildFieldsFor(
-  kind: Exclude<ZeropsOperationKind, "bootstrap">,
-  call: ZeropsCall,
+  { kind, call, earlier }: StandaloneCall,
   context: OperationBuildContext,
 ): BuiltCardFields {
+  if (kind === "standup") {
+    return buildStandupFields(call, context, earlier ?? []);
+  }
   if (kind === "delete" || kind === "scale" || kind === "manage" || kind === "env") {
     return buildSimpleFields(kind, call);
   }
@@ -152,10 +158,11 @@ function buildFieldsFor(
 }
 
 function buildStandaloneOperation(
-  { kind, call }: StandaloneCall,
+  standalone: StandaloneCall,
   context: OperationBuildContext,
 ): ZeropsOperation {
-  const fields = buildFieldsFor(kind, call, context);
+  const { kind, call } = standalone;
+  const fields = buildFieldsFor(standalone, context);
   const phase = fields.phaseOverride ?? phaseFor(call.status);
   return {
     key: `op:${call.id}`,
@@ -414,6 +421,13 @@ export function reduceZeropsOperations(
       continue;
     }
 
+    if (kind === "standup") {
+      const earlier = standaloneCalls.flatMap((standalone) =>
+        standalone.kind === "standup" ? [standalone.call] : [],
+      );
+      standaloneCalls.push({ kind, call, earlier });
+      continue;
+    }
     standaloneCalls.push({ kind, call });
   }
 

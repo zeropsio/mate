@@ -74,6 +74,7 @@ export type ZeropsOperationKind =
   | "events"
   | "process"
   | "discover"
+  | "standup"
   | "error";
 
 /**
