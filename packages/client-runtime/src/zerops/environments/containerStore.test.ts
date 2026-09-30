@@ -328,6 +328,70 @@ describe("container store (DESIGN §4.5)", () => {
     store.dispose();
   });
 
+  it("the route's Mate coming back after its exchanges failed is exchanged within seconds", async () => {
+    const setup = rig();
+    const { clock, store } = setup;
+    setup.answer = { kind: "unreachable" };
+    let down = true;
+    const exchanges: Array<number> = [];
+    const driver = makeExchangeDriver<string>({
+      clock,
+      exchange: async () => {
+        exchanges.push(clock.now().mono);
+        return down
+          ? {
+              ok: false,
+              failure: { class: "retryable", cause: { kind: "descriptor-unreachable" } },
+              descriptor: null,
+            }
+          : {
+              ok: true,
+              environmentId: ENVIRONMENT_ID,
+              descriptor: (ready("0.11.40") as Extract<ProbeReading, { kind: "ready" }>).descriptor,
+              credential: "bearer",
+            };
+      },
+      install: async () => ({ ok: true }),
+      readDescriptor: () => new Promise(() => undefined),
+      retryLink: () => undefined,
+      refreshPresence: () => undefined,
+      retire: () => undefined,
+    });
+    const unbind = bindContainerStore(store, driver);
+    driver.setAccount({
+      postGrant: true,
+      identityMint: { allowed: true },
+      zeropsFailing: false,
+      grantVerifiedAtMs: 0,
+    });
+    driver.setVisible(true);
+    store.setTargets([target("ACTIVE")]);
+    driver.setTargets([
+      {
+        key: KEY,
+        presence: { kind: "present", origin: ORIGIN },
+        container: { level: "ready" },
+        record: null,
+      },
+    ]);
+    driver.setDemand("route", [KEY]);
+
+    // Down for a minute: its exchanges fail and climb the ladder.
+    await clock.advance(60_000);
+    expect(driver.machine(KEY)?.credential.kind).not.toBe("held");
+    const failed = exchanges.length;
+
+    // It comes back: the next read of its container finds it, and it is exchanged at once.
+    down = false;
+    setup.answer = ready("0.11.40");
+    await clock.advance(3_000);
+    expect(exchanges.length).toBeGreaterThan(failed);
+    expect(driver.machine(KEY)?.credential.kind).toBe("held");
+    unbind();
+    driver.dispose();
+    store.dispose();
+  });
+
   it("container ready kicks a link in backoff", async () => {
     const setup = rig();
     const { clock, store, probes } = setup;
