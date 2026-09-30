@@ -1,4 +1,5 @@
 import {
+  flowPullRequest,
   releaseInFlight,
   releaseMessage,
   type GiteaClient,
@@ -13,6 +14,7 @@ import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
+  checkingRepositories,
   GROUP_FORGE_REFRESH_MS,
   readForge,
   useZeropsGroupForge,
@@ -431,5 +433,34 @@ describe("useZeropsGroupForge", () => {
     await act(async () => {
       root.unmount();
     });
+  });
+});
+
+describe("checkingRepositories", () => {
+  const open = (repository: string, number: number, mergeability: "checking" | "mergeable") =>
+    flowPullRequest({ repository, pull: pull(number), checks: [], mergeability });
+  const state = (pullRequests: ZeropsGroupForgeState["pullRequests"]): ZeropsGroupForgeState => ({
+    repositories: [...new Set(pullRequests.map((entry) => entry.repository))],
+    pullRequests,
+    merged: [],
+    released: { releases: [], tags: [] },
+  });
+
+  it.each([
+    {
+      name: "nothing checking",
+      forges: [["g1", state([open("appdev", 1, "mergeable")])]],
+      want: [],
+    },
+    {
+      name: "one repository per group, however many of its changes check",
+      forges: [
+        ["g1", state([open("group", 13, "checking"), open("group", 14, "checking")])],
+        ["g2", state([open("appdev", 2, "mergeable"), open("apidev", 3, "checking")])],
+      ],
+      want: ["g1\u0000group", "g2\u0000apidev"],
+    },
+  ] as const)("$name", ({ forges, want }) => {
+    expect(checkingRepositories(new Map(forges))).toEqual(want);
   });
 });
