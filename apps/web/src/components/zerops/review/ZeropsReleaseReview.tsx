@@ -6,6 +6,9 @@
  * foot says what the tag does. Pressed, it stays: it shows the release on its way, and ends with
  * "Released" or with the failure and the fix to hand to the person's own Mate (S6).
  *
+ * Each change row opens that change's review in place (`ZeropsReleaseSteps`): the change, merged,
+ * and "← Release" back to where the release was.
+ *
  * A roll back is the same review, naming the version production goes back to and the new tag
  * that carries it.
  *
@@ -39,13 +42,15 @@ import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { useZeropsReviewMates } from "~/zerops/useZeropsReviewMates";
 
-import { releaseChangeRows, reviewKindLine, type ReleaseChangeRow } from "./ZeropsReview.logic";
+import { ZeropsChangeReview } from "./ZeropsChangeReview";
+import { useReleaseSteps, ZeropsReleaseSteps } from "./ZeropsReleaseSteps";
+import { releaseChangeRows, reviewKindLine } from "./ZeropsReview.logic";
 import {
   ReviewReleaseRows,
   ReviewSection,
   ReviewWhere,
   ZeropsReviewSurface,
-  type ReviewFaceProps,
+  type ReviewReleaseRow,
 } from "./ZeropsReviewSurface";
 
 type ReleaseTarget = Extract<ReviewTarget, { readonly kind: "release" | "rollback" }>;
@@ -94,9 +99,61 @@ export function ZeropsReleaseReview({
     );
   }
   return target.kind === "release" ? (
-    <ReleaseData flow={flow} name={name} onClose={onClose} titleId={titleId} />
+    <ReleaseSteps
+      flow={flow}
+      groupId={target.groupId}
+      name={name}
+      onClose={onClose}
+      titleId={titleId}
+    />
   ) : (
     <RollbackData flow={flow} name={name} onClose={onClose} tag={target.tag} titleId={titleId} />
+  );
+}
+
+/** A change read from its release hands over to nothing: it is already in the release. */
+const STAYS = () => {};
+
+/** The release, and a change it carries read in place: the title is the shown step's. */
+function ReleaseSteps({
+  flow,
+  groupId,
+  name,
+  titleId,
+  onClose,
+}: {
+  readonly flow: ZeropsProjectFlow;
+  readonly groupId: string;
+  readonly name: string | undefined;
+  readonly titleId: string;
+  readonly onClose: () => void;
+}) {
+  const steps = useReleaseSteps();
+  const onChange = steps.step.view === "change";
+  return (
+    <ZeropsReleaseSteps
+      change={
+        steps.shown === undefined ? null : (
+          <ZeropsChangeReview
+            onBack={steps.back}
+            onClose={onClose}
+            onReplace={STAYS}
+            target={{ kind: "change", groupId, ...steps.shown }}
+            titleId={onChange ? titleId : undefined}
+          />
+        )
+      }
+      release={
+        <ReleaseData
+          flow={flow}
+          name={name}
+          onClose={onClose}
+          onOpenChange={steps.open}
+          titleId={onChange ? undefined : titleId}
+        />
+      }
+      steps={steps}
+    />
   );
 }
 
@@ -142,11 +199,13 @@ function ReleaseData({
   name,
   titleId,
   onClose,
+  onOpenChange,
 }: {
   readonly flow: ZeropsProjectFlow;
   readonly name: string | undefined;
-  readonly titleId: string;
+  readonly titleId: string | undefined;
   readonly onClose: () => void;
+  readonly onOpenChange: (row: ReviewReleaseRow) => void;
 }) {
   const flowValue = useZeropsProjectFlowOptional();
   const mates = useZeropsReviewMates(flow.groupId);
@@ -235,6 +294,7 @@ function ReleaseData({
       name={name}
       now={now}
       onClose={onClose}
+      onOpenChange={onOpenChange}
       onFix={(problem) => {
         if (fixer === undefined) return;
         askMateToFix(fixer.mateProjectId, problem);
@@ -266,9 +326,7 @@ export interface ReleaseReviewViewProps {
   readonly name: string | undefined;
   readonly tag: string;
   readonly gate: ReleaseGate;
-  readonly rows: ReadonlyArray<
-    ReleaseChangeRow & { readonly face?: ReviewFaceProps; readonly sub: string }
-  >;
+  readonly rows: ReadonlyArray<ReviewReleaseRow>;
   readonly where: ReadonlyArray<{ readonly service: string; readonly line: string }>;
   readonly hasStage: boolean;
   readonly services: ReadonlyArray<string>;
@@ -281,6 +339,8 @@ export interface ReleaseReviewViewProps {
   readonly titleId?: string | undefined;
   readonly onRelease: () => void;
   readonly onFix: (problem: FixProblem) => void;
+  /** A change row pressed: its review, in place. */
+  readonly onOpenChange?: ((row: ReviewReleaseRow) => void) | undefined;
   readonly onClose: () => void;
 }
 
@@ -346,7 +406,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
           aside={`${String(rows.length)} ${rows.length === 1 ? "change" : "changes"}`}
           title="What goes out"
         >
-          <ReviewReleaseRows rows={rows} />
+          <ReviewReleaseRows onOpen={props.onOpenChange} rows={rows} />
         </ReviewSection>
       )}
       {props.where.length === 0 ? null : (

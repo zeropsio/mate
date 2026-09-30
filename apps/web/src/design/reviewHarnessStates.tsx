@@ -23,6 +23,7 @@ import {
   ReleaseReviewView,
   RollbackReviewView,
 } from "~/components/zerops/review/ZeropsReleaseReview";
+import { useReleaseSteps, ZeropsReleaseSteps } from "~/components/zerops/review/ZeropsReleaseSteps";
 import { ZeropsReviewDialog } from "~/components/zerops/review/ZeropsReviewDialog";
 import { ZeropsHostedFrame } from "~/components/zerops/landing/ZeropsHostedFrame";
 import {
@@ -457,6 +458,7 @@ const RELEASE_ROWS = [
   {
     key: "a1",
     title: "#54 Performance tuning across the storefront and backend",
+    change: { repository: "appdev", number: 54 },
     mateProjectId: "p-juno",
     mergedAt: minutesAgo(60 * 26),
     stage: "on-stage" as const,
@@ -466,6 +468,7 @@ const RELEASE_ROWS = [
   {
     key: "b2",
     title: "#55 Clearer copy on the admin sign-in",
+    change: { repository: "appdev", number: 55 },
     mateProjectId: "p-cleo",
     mergedAt: minutesAgo(90),
     stage: "on-stage" as const,
@@ -482,19 +485,27 @@ const WHERE = [
 function Release({
   outcome = OFFERED,
   press = IDLE,
+  titleId,
+  onOpenChange,
+  onClose = noop,
 }: {
   readonly outcome?: Parameters<typeof ReleaseReviewView>[0]["outcome"];
   readonly press?: ReviewPress;
+  readonly titleId?: string | undefined;
+  readonly onOpenChange?: Parameters<typeof ReleaseReviewView>[0]["onOpenChange"];
+  readonly onClose?: () => void;
 }) {
   return (
     <ReleaseReviewView
+      onOpenChange={onOpenChange}
+      titleId={titleId}
       fixer="Juno"
       gate={{ allowed: true }}
       hasStage
       live="v0.1.56"
       name="Beviro"
       now={NOW}
-      onClose={noop}
+      onClose={onClose}
       onFix={noop}
       onRelease={noop}
       outcome={outcome}
@@ -1071,6 +1082,111 @@ export function ReviewDialogTry() {
           titleId="review-try-title"
           waitingForProduction={0}
         />
+      </ZeropsReviewDialog>
+    </div>
+  );
+}
+
+/** The changes the harness's release carries, as each one's review reads it. */
+const RELEASED: Readonly<Record<number, Partial<FlowPullRequest>>> = {
+  54: {
+    number: 54,
+    title: "Performance tuning across the storefront and backend",
+    merged: true,
+    mergedAt: minutesAgo(60 * 26),
+    updatedAt: minutesAgo(60 * 26),
+  },
+  55: {
+    number: 55,
+    title: "Clearer copy on the admin sign-in",
+    merged: true,
+    mergedAt: minutesAgo(90),
+    updatedAt: minutesAgo(90),
+  },
+};
+
+/** The harness's release and the change a row steps into. */
+function ReleaseTrySteps({ onClose }: { readonly onClose: () => void }) {
+  const steps = useReleaseSteps();
+  const onChange = steps.step.view === "change";
+  const shown = steps.shown;
+  return (
+    <ZeropsReleaseSteps
+      change={
+        shown === undefined ? null : (
+          <ChangeReviewView
+            comments={TALKING}
+            environments={STAGE_AND_PRODUCTION}
+            giteaOrigin={HARNESS_GITEA}
+            live="v0.1.56"
+            mate={NOVA}
+            now={NOW}
+            onAsk={async () => {}}
+            onBack={steps.back}
+            onClose={onClose}
+            onFix={noop}
+            onMerge={noop}
+            onOpenPage={onClose}
+            onOpenRun={noop}
+            onReviewRelease={noop}
+            pictures={HARNESS_PICTURES}
+            press={IDLE}
+            pull={pull({
+              ...RELEASED[shown.number],
+              description: harnessDescription({ after: 0 }),
+              commentCount: TALK.length,
+            })}
+            readout={READ}
+            remarks={remarksOf(TALKING)}
+            run={RUN}
+            titleId={onChange ? "release-try-title" : undefined}
+            waitingForProduction={2}
+          />
+        )
+      }
+      release={
+        <Release
+          onClose={onClose}
+          onOpenChange={steps.open}
+          titleId={onChange ? undefined : "release-try-title"}
+        />
+      }
+      steps={steps}
+    />
+  );
+}
+
+/**
+ * The release's dialog, opened from a button, to step into a change it carries and back: the
+ * slide, the height, the focus and Esc twice. `?release=open` opens it as the page loads.
+ */
+export function ReleaseDialogTry({ openAtStart }: { readonly openAtStart: boolean }) {
+  const [from, setFrom] = useState<HTMLElement | null>(null);
+  const [open, setOpen] = useState(openAtStart);
+  const close = () => {
+    setOpen(false);
+  };
+  return (
+    <div className="flex gap-3 px-2">
+      <button
+        className="rv-btn2"
+        data-review-harness-open="release"
+        onClick={(event) => {
+          setFrom(event.currentTarget);
+          setOpen(true);
+        }}
+        type="button"
+      >
+        Open the release as a dialog
+      </button>
+      <ZeropsReviewDialog
+        from={from}
+        labelledBy="release-try-title"
+        onClosed={noop}
+        onOpenChange={setOpen}
+        open={open}
+      >
+        <ReleaseTrySteps onClose={close} />
       </ZeropsReviewDialog>
     </div>
   );

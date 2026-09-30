@@ -8,12 +8,24 @@
  * files are in — takes the focus then, if the review still holds it. Focus goes back to what
  * opened it. ⌘↵ presses the button while it is safe. Reduced motion keeps only the fade.
  *
+ * A review stepped into another one in place — a release's change — takes the first Esc to step
+ * back (`useReviewEscape`); the next one closes. A step set aside is `inert`: its button is never
+ * the one ⌘↵ presses.
+ *
  * Base UI's dialog does the modal work — the focus trap, Esc, the scroll lock, what is inert
  * behind it; the look is the review's own (`index.css`, "Pass 16 · review"). What is typed in
  * it stays in it: nothing the conversation behind listens for acts while the review is open.
  */
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import { useCallback, useRef, type KeyboardEvent, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 
 import { gatedPortal } from "~/components/ui/portal-gate";
 
@@ -31,7 +43,28 @@ const ReviewPortal = gatedPortal(DialogPrimitive.Portal);
 const PRIMARY = "[data-review-primary]";
 
 function primaryOf(popup: HTMLElement | null): HTMLButtonElement | null {
-  return popup?.querySelector<HTMLButtonElement>(PRIMARY) ?? null;
+  if (popup === null) return null;
+  for (const primary of popup.querySelectorAll<HTMLButtonElement>(PRIMARY)) {
+    if (primary.closest("[inert]") === null) return primary;
+  }
+  return null;
+}
+
+/** Answers Esc before the dialog closes: `true` when it stepped back and the dialog stays. */
+type ReviewEscape = () => boolean;
+
+/** Puts an Esc answer first, until the returned call takes it away. */
+type TakeEscape = (onEscape: ReviewEscape) => () => void;
+
+const ReviewEscapeContext = createContext<TakeEscape | null>(null);
+
+/** Takes Esc first while `onEscape` is given — a step back — and hands it back when it goes. */
+export function useReviewEscape(onEscape: ReviewEscape | undefined): void {
+  const take = useContext(ReviewEscapeContext);
+  useEffect(() => {
+    if (take === null || onEscape === undefined) return undefined;
+    return take(onEscape);
+  }, [onEscape, take]);
 }
 
 function isSafe(primary: HTMLButtonElement): boolean {
@@ -56,6 +89,13 @@ export function ZeropsReviewDialog({
   readonly children: ReactNode;
 }) {
   const popup = useRef<HTMLDivElement | null>(null);
+  const escape = useRef<ReviewEscape | null>(null);
+  const takeEscape = useCallback<TakeEscape>((onEscape) => {
+    escape.current = onEscape;
+    return () => {
+      if (escape.current === onEscape) escape.current = null;
+    };
+  }, []);
 
   // Laid out, not yet painted: the scale's origin is set before the first frame moves.
   const place = useCallback(
@@ -130,7 +170,11 @@ export function ZeropsReviewDialog({
 
   return (
     <DialogPrimitive.Root
-      onOpenChange={(next) => {
+      onOpenChange={(next, details) => {
+        if (!next && details.reason === "escape-key" && escape.current?.() === true) {
+          details.cancel();
+          return;
+        }
         onOpenChange(next);
       }}
       onOpenChangeComplete={(next) => {
@@ -158,7 +202,9 @@ export function ZeropsReviewDialog({
             onKeyDown={onKeyDown}
             ref={place}
           >
-            {children}
+            <ReviewEscapeContext.Provider value={takeEscape}>
+              {children}
+            </ReviewEscapeContext.Provider>
           </DialogPrimitive.Popup>
         </DialogPrimitive.Viewport>
       </ReviewPortal>

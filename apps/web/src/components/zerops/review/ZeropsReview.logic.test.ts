@@ -380,6 +380,7 @@ describe("sizeWords", () => {
 describe("releaseChangeRows: what goes out, one row per change", () => {
   const merged = [
     {
+      repository: "appdev",
       number: 54,
       title: "Performance tuning across the storefront",
       mateProjectId: "p-juno",
@@ -387,6 +388,7 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
       mergeCommitSha: "aaa111",
     },
     {
+      repository: "appdev",
       number: 55,
       title: "Clearer copy on the admin sign-in",
       mateProjectId: "p-cleo",
@@ -395,7 +397,7 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
     },
   ];
 
-  it("names each commit by the change it landed as, whose Mate, and whether stage runs it", () => {
+  it("names each commit by the change it landed as, which opens, whose Mate, and whether stage runs it", () => {
     const rows = releaseChangeRows({
       commits: [
         { sha: "AAA111", subject: "Performance tuning across the storefront (#54)" },
@@ -412,6 +414,7 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
       {
         key: "aaa111",
         title: "#54 Performance tuning across the storefront",
+        change: { repository: "appdev", number: 54 },
         mateProjectId: "p-juno",
         mergedAt: "2026-09-28T09:00:00Z",
         stage: "on-stage",
@@ -419,6 +422,7 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
       {
         key: "bbb222",
         title: "#55 Clearer copy on the admin sign-in",
+        change: { repository: "appdev", number: 55 },
         mateProjectId: "p-cleo",
         mergedAt: "2026-09-29T09:00:00Z",
         stage: "deploying-on-stage",
@@ -426,6 +430,7 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
       {
         key: "ccc333",
         title: "A person's direct fix",
+        change: undefined,
         mateProjectId: undefined,
         mergedAt: undefined,
         stage: "none",
@@ -443,6 +448,7 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
       merged: [
         ...merged,
         {
+          repository: "recipe",
           number: 54,
           title: "Add a staging environment",
           mateProjectId: "p-uma",
