@@ -31,6 +31,7 @@ import {
   type RoleMateVisibility,
   type ZeropsOrgRole,
 } from "@t3tools/shared/zeropsRoles";
+import { knownSigner, readSignerTags } from "@t3tools/shared/zeropsAgentAuth";
 
 export type { RoleMateVisibility };
 
@@ -291,7 +292,7 @@ export function resolveMateOwner<M extends MateOwnerCandidate>(input: {
   if (ownerEntry !== undefined) {
     return input.members.find((entry) => entry.id === ownerEntry.clientUserId);
   }
-  const signer = mateSignerUserId(input.project.tagList);
+  const signer = mateOwnerSigner(input.project.tagList).signer;
   if (signer === undefined) return undefined;
   return input.members.find((entry) => entry.user?.id === signer);
 }
@@ -316,23 +317,29 @@ export function mateOwnerRecords(project: Pick<MateAccessProject, "tagList" | "u
   /** The Zerops user id its signer tag names, where somebody signed its agent in. */
   readonly signer: string | undefined;
 } {
-  const signer = mateSignerUserId(project.tagList);
+  const { signedIn, signer } = mateOwnerSigner(project.tagList);
   const owned = project.userRoles?.some((entry) => entry.roleCode === "OWNER") === true;
-  return { named: owned || signer !== undefined, signedIn: signer !== undefined, signer };
+  return { named: owned || signedIn, signedIn, signer };
 }
 
 /** The agents whose own signer speaks for the Mate; a login added beside them names only who uses it. */
 const MATE_OWNER_SIGNER_KEYS: ReadonlySet<string> = new Set(["claude-code", "codex"]);
 
-/** The user id the first `mate:signer:{agent}:{userId}` tag of an agent's own login names. */
-function mateSignerUserId(tagList: ReadonlyArray<string> | undefined): string | undefined {
-  for (const tag of tagList ?? []) {
-    if (!tag.startsWith(`${MATE_SIGNER_TAG_PREFIX}:`)) continue;
-    const [, , key, userId] = tag.split(":");
-    if (key === undefined || !MATE_OWNER_SIGNER_KEYS.has(key)) continue;
-    if (userId !== undefined && userId.length > 0) return userId;
+/**
+ * What the signer tags of the agents' own logins say (`readSignerTags`, the derivation the
+ * server's gate reads): whether anybody signed in, and who — the first login's person, in tag
+ * order — or nobody named where any of them records two people, since whose it is is not known.
+ */
+function mateOwnerSigner(tagList: ReadonlyArray<string> | undefined): {
+  readonly signedIn: boolean;
+  readonly signer: string | undefined;
+} {
+  const records = Object.values(readSignerTags(tagList, (key) => MATE_OWNER_SIGNER_KEYS.has(key)));
+  if (records.length === 0) return { signedIn: false, signer: undefined };
+  if (records.some((record) => typeof record === "object")) {
+    return { signedIn: true, signer: undefined };
   }
-  return undefined;
+  return { signedIn: true, signer: knownSigner(records[0]) };
 }
 
 /** The owner's name, for "Jan's Mate — only Jan opens it" (D5). */

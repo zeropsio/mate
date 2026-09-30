@@ -4,6 +4,7 @@
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 
+import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { MateLinkLine, type Spoken } from "./MateLinkLine";
 import { MateComingFrame, MateComingHeader } from "./ZeropsMateComingPage";
@@ -50,8 +51,16 @@ function MateLinkStageOf({
   readonly projectId: string | null;
 }) {
   const at = useZeropsMate(environmentId);
-  if (at.kind !== "mate") return <MateLinkWords voice={voice} />;
-  const mate = { ...at.mate, connected: false };
+  // Before the catalog names it, the Mate this browser last knew there: a reload draws its stage
+  // from the first frame, and the listing's word replaces it once read.
+  const known =
+    at.kind === "mate"
+      ? at.mate
+      : at.kind === "unknown"
+        ? rememberedMateIdentity(environmentId)
+        : undefined;
+  if (known === undefined) return <MateLinkWords voice={voice} />;
+  const mate = { ...known, connected: false };
   return (
     <MateComingFrame header={<MateComingHeader mate={mate} />}>
       <MateEmptyStateView

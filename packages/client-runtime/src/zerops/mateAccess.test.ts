@@ -282,8 +282,43 @@ describe("mateOwnerRecords — what a Mate's own records say of its person", () 
       tagList: undefined,
       records: { named: false, signedIn: false },
     },
+    // Two records for one login (two sign-ins racing their tag writes): signed in, by somebody
+    // the records do not settle — never the first tag's person (the server reads it the same way).
+    {
+      name: "two people's records on one login: signed in, whose not known",
+      userRoles: [SERVICE],
+      tagList: ["mate:signer:claude-code:u-jan", "mate:signer:claude-code:u-eva"],
+      records: { named: true, signedIn: true },
+    },
+    {
+      name: "one person twice on one login: theirs",
+      userRoles: [SERVICE],
+      tagList: ["mate:signer:claude-code:u-jan", "mate:signer:claude-code:u-jan"],
+      records: { named: true, signedIn: true, signer: "u-jan" },
+    },
+    {
+      name: "one login not known, the other one person's: not known",
+      userRoles: [SERVICE],
+      tagList: [
+        "mate:signer:codex:u-eva",
+        "mate:signer:claude-code:u-jan",
+        "mate:signer:claude-code:u-eva",
+      ],
+      records: { named: true, signedIn: true },
+    },
   ])("$name", ({ userRoles, tagList, records }) => {
     expect(mateOwnerRecords({ userRoles, tagList })).toEqual(records);
+  });
+
+  it("names no owner from records that name two people on one login", () => {
+    const members = [
+      { id: "cu-jan", user: { id: "u-jan" } },
+      { id: "cu-eva", user: { id: "u-eva" } },
+    ];
+    const tagList = ["mate:signer:claude-code:u-jan", "mate:signer:claude-code:u-eva"];
+    expect(
+      resolveMateOwner({ project: { id: "p1", tagList, userRoles: [SERVICE] }, members }),
+    ).toBe(undefined);
   });
 });
 

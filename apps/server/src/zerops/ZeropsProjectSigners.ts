@@ -47,6 +47,9 @@ import type {
 } from "@t3tools/contracts";
 import {
   classifyZeropsAgentAuth,
+  knownSigner,
+  readSignerTags,
+  type SignerRecord,
   type ZeropsAgentAuthFields,
   type ZeropsAgentAuthKind,
 } from "@t3tools/shared/zeropsAgentAuth";
@@ -90,52 +93,17 @@ export const AGENT_CREDENTIAL_SEGMENTS: Readonly<Record<ZeropsAgentId, ReadonlyA
  */
 export type ProjectSigners = Readonly<Partial<Record<string, SignerRecord>>>;
 
-/**
- * One login's record: the Zerops user id of whoever signed it in, or — where the project carries
- * records for two or more people — who it may be, sorted, since whose it is is not known.
- */
-export type SignerRecord = string | { readonly among: ReadonlyArray<string> };
-
-/** The one person a record names, or undefined where it names nobody or is not known. */
-export const knownSigner = (record: SignerRecord | undefined): string | undefined =>
-  typeof record === "string" && record.length > 0 ? record : undefined;
-
 export function signerTag(key: string, userId: string): string {
   return `${MATE_SIGNER_TAG_PREFIX}:${key}:${userId}`;
 }
 
 /**
- * Reads the signer tags off a project's tag list: one per agent's default
- * login, and one per other login under that login's own id.
- *
- * Tolerant by design: an unknown login key, an empty user id and a tag with the
- * wrong number of parts each drop out on their own. A tag list is a shared
- * space — people put their own tags there — and one it does not understand
- * must never cost it the ones it does.
- *
- * A project that carries records for two or more people on one login (two sign-ins racing their
- * tag writes, a hand edit) says who it may be, never whose it is: the order the platform lists
- * tags in is no evidence. A re-sign-in writes its tag over every other (`withMateSignerTag`).
+ * Reads the signer tags off a project's tag list (`readSignerTags`, the one derivation the
+ * client's owner reads too): one per agent's default login, and one per other login under that
+ * login's own id. A re-sign-in writes its tag over every other (`withMateSignerTag`).
  */
 export function parseSignerTags(tagList: ReadonlyArray<string> | undefined): ProjectSigners {
-  const named = new Map<string, Set<string>>();
-  for (const tag of tagList ?? []) {
-    if (!tag.startsWith(`${MATE_SIGNER_TAG_PREFIX}:`)) continue;
-    const rest = tag.slice(MATE_SIGNER_TAG_PREFIX.length + 1);
-    const separator = rest.indexOf(":");
-    if (separator <= 0) continue;
-    const key = rest.slice(0, separator);
-    const userId = rest.slice(separator + 1);
-    if (userId.length === 0 || !isLoginSignerKey(key)) continue;
-    named.set(key, (named.get(key) ?? new Set()).add(userId));
-  }
-  const signers: Partial<Record<string, SignerRecord>> = {};
-  for (const [key, users] of named) {
-    const [only, ...more] = [...users].toSorted();
-    if (only === undefined) continue;
-    signers[key] = more.length === 0 ? only : { among: [only, ...more] };
-  }
-  return signers;
+  return readSignerTags(tagList, isLoginSignerKey);
 }
 
 /** Why a turn may not start on an agent, or `undefined` when it may. */

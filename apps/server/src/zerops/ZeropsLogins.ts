@@ -40,7 +40,12 @@ import {
   type ZeropsLoginKind,
   type ZeropsLoginState,
 } from "@t3tools/contracts";
-import { classifyZeropsAgentAuth, zeropsLoginTitle } from "@t3tools/shared/zeropsAgentAuth";
+import {
+  classifyZeropsAgentAuth,
+  knownSigner,
+  zeropsLoginTitle,
+  type SignerRecord,
+} from "@t3tools/shared/zeropsAgentAuth";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -62,12 +67,7 @@ import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { spawnAgentAuthProbe, verifyAgentAuth } from "./ZeropsAgentAuthVerify.ts";
 import { watchWithFallback, type WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import {
-  knownSigner,
-  ZeropsProjectSigners,
-  type ProjectSigners,
-  type SignerRecord,
-} from "./ZeropsProjectSigners.ts";
+import { ZeropsProjectSigners, type ProjectSigners } from "./ZeropsProjectSigners.ts";
 import { extraLoginAgent, LOGIN_DRIVER_KIND, makeExtraLoginId } from "./zeropsLoginIds.ts";
 
 /** One login beyond the defaults, as the settings hold it. */

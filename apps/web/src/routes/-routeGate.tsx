@@ -76,13 +76,11 @@ export function RouteGateView({
     case "wait":
       // The Mate's stage: its face asleep, its name and its link's line, on one axis.
       return (
-        <Suspense fallback={null}>
-          <MateLinkStage
-            environmentId={environmentId}
-            projectId={projectId}
-            voice={voice.surface === "none" ? SILENT_STAGE : voice}
-          />
-        </Suspense>
+        <MateLinkStageLoaded
+          environmentId={environmentId}
+          projectId={projectId}
+          voice={voice.surface === "none" ? SILENT_STAGE : voice}
+        />
       );
     case "unavailable":
       return <RouteGateWords phrase={phrase} projectId={projectId} />;
@@ -92,14 +90,40 @@ export function RouteGateView({
 const SILENT_STAGE: Spoken = { surface: "stage", text: null, actions: [], processes: false };
 
 /**
- * The Mate's stage draws its conversation's header, which brings the conversation's modules: the
- * gate loads it when a route first needs it, and the app has them by then.
+ * The Mate's stage draws its conversation's header, which brings the conversation's modules, so
+ * the gate imports it apart — and starts that import as this module loads, in a browser, so the
+ * stage is there before a reload while the Mate is down first needs it. Once loaded it renders
+ * in the same frame; only a stage needed before its module arrived waits, drawing nothing.
  */
-const MateLinkStage = lazy(() =>
-  import("../components/zerops/MateLinkStage").then((module) => ({
-    default: module.MateLinkStage,
-  })),
-);
+type MateLinkStageView = (typeof import("../components/zerops/MateLinkStage"))["MateLinkStage"];
+let mateLinkStage: MateLinkStageView | null = null;
+let mateLinkStageLoad: Promise<MateLinkStageView> | null = null;
+
+function loadMateLinkStage(): Promise<MateLinkStageView> {
+  mateLinkStageLoad ??= import("../components/zerops/MateLinkStage").then(
+    (module) => (mateLinkStage = module.MateLinkStage),
+    (cause: unknown) => {
+      // A failed load is tried again when the stage is next needed.
+      mateLinkStageLoad = null;
+      throw cause;
+    },
+  );
+  return mateLinkStageLoad;
+}
+
+if (typeof window !== "undefined") loadMateLinkStage().catch(() => undefined);
+
+const MateLinkStageLazy = lazy(() => loadMateLinkStage().then((view) => ({ default: view })));
+
+function MateLinkStageLoaded(props: Parameters<MateLinkStageView>[0]) {
+  const Loaded = mateLinkStage;
+  if (Loaded !== null) return <Loaded {...props} />;
+  return (
+    <Suspense fallback={null}>
+      <MateLinkStageLazy {...props} />
+    </Suspense>
+  );
+}
 
 /** A route's own words where nothing else stands: centred, with each verb once. */
 function RouteGateWords({
