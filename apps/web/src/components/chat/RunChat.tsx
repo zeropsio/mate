@@ -65,6 +65,7 @@ import {
   Fragment,
   use,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -136,6 +137,7 @@ import {
   nowLineWords,
   operationNowWords,
   reachesEarlier,
+  runCardShows,
   runFoldOf,
   setRunFold,
   severalWords,
@@ -2590,7 +2592,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // Whether the person reads the work this moment — scrolled up in it, or
   // something in it opened: a run settling then stays open.
   const readingRef = useRef(false);
-  const fold = useRunFold({
+  const { fold, foldNow } = useRunFold({
     conversation: ctx.routeThreadKey,
     run: row.turnKey,
     live: row.live,
@@ -2601,11 +2603,12 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // A run the person comes back to (D3), or one that just settled: its
   // worked line alone — the summary — and "Show work" opens the whole run
   // under it (K12).
-  const later = row.status !== null && !row.live && fold !== "watched";
-  const folded = later && fold !== "shown";
+  const settled = row.status !== null && !row.live;
+  const shows = runCardShows(settled, fold);
+  const folded = shows.toggle === "show";
   // The work stands over the line while the run goes on, while it stays open
   // for a reader, and while it folds away into the line.
-  const above = !later || fold === "folding";
+  const above = shows.work === "above";
   // What a later step undid, read once per record, not once per redraw.
   const undone = useMemo(() => recoveredFailures(row.items), [row.items]);
   const feedRef = useRef<HTMLDivElement>(null);
@@ -2638,7 +2641,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       ref={rootRef}
       className="@container/chat min-w-0"
       data-run-chat
-      data-run-fold={later ? fold : undefined}
+      data-run-fold={settled ? fold : undefined}
       style={
         { "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})` } as CSSProperties
       }
@@ -2655,17 +2658,23 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
           {fold === "folding" ? <div aria-hidden="true" className="run-above-rule" /> : null}
         </div>
       ) : null}
-      {row.status === null ? null : later ? (
+      {row.status === null ? null : settled ? (
         <NowLine
           key="line"
           answering={false}
           outcome={row.outcome}
           end={
             // A chat opens from its first thing the Mate did (`chatLines`).
-            row.items.some((item) => item.kind !== "person") ? (
+            shows.toggle !== null && row.items.some((item) => item.kind !== "person") ? (
               <WorkToggle
                 onToggle={() => {
                   hold();
+                  // Watched to its end and still open over its line: it
+                  // folds into the line as a run settling does.
+                  if (fold === "watched") {
+                    foldNow();
+                    return;
+                  }
                   fromHeightRef.current = feedRef.current?.getBoundingClientRect().height ?? null;
                   setRunFold(ctx.routeThreadKey, row.turnKey, folded ? "shown" : "folded");
                 }}
@@ -2732,13 +2741,22 @@ function useRunFold({
   readonly readingRef: { readonly current: boolean };
   readonly rootRef: { readonly current: HTMLElement | null };
   readonly aboveRef: { readonly current: HTMLElement | null };
-}): RunFold {
+}): { readonly fold: RunFold; readonly foldNow: () => void } {
   const read = () => runFoldOf(conversation, run);
   const stored = useSyncExternalStore(subscribeRunFolds, read, read);
   const fold = live ? "watched" : stored;
   const wasLiveRef = useRef(live);
   // Where the line's words stood as the run settled: the fold starts there.
   const settledAtRef = useRef<number | null>(null);
+  // It folds from where its line's words stand now, easing the work shut
+  // into the line — at once under reduced motion.
+  const foldNow = () => {
+    const words = nowWordsOf(rootRef.current);
+    settledAtRef.current =
+      words === null || prefersReducedMotion() ? null : words.getBoundingClientRect().top;
+    setRunFold(conversation, run, settledAtRef.current === null ? "folded" : "folding");
+  };
+  const foldOnSettle = useEffectEvent(foldNow);
   useLayoutEffect(() => {
     const wasLive = wasLiveRef.current;
     wasLiveRef.current = live;
@@ -2753,11 +2771,8 @@ function useRunFold({
       return;
     }
     if (readingRef.current) return;
-    const words = nowWordsOf(rootRef.current);
-    settledAtRef.current =
-      words === null || prefersReducedMotion() ? null : words.getBoundingClientRect().top;
-    setRunFold(conversation, run, settledAtRef.current === null ? "folded" : "folding");
-  }, [conversation, run, live, readingRef, rootRef]);
+    foldOnSettle();
+  }, [conversation, run, live, readingRef]);
   useLayoutEffect(() => {
     if (fold !== "folding") return;
     const from = settledAtRef.current;
@@ -2771,7 +2786,7 @@ function useRunFold({
     }
     return foldAway(above, from - words.getBoundingClientRect().top, done);
   }, [conversation, run, fold, aboveRef, rootRef]);
-  return fold;
+  return { fold, foldNow };
 }
 
 /** The now line's words in a run's chat: where the line stands. */

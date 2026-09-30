@@ -18,6 +18,7 @@ import {
   nowLineWords,
   reachesEarlier,
   recoveredFailures,
+  runCardShows,
   runFoldOf,
   setRunFold,
   severalWords,
@@ -566,5 +567,41 @@ describe("recoveredFailures on a long run", () => {
     const took = performance.now() - started;
     expect(undone.size).toBe(3000);
     expect(took).toBeLessThan(250);
+  });
+});
+
+describe("runCardShows — where a run's work stands, and what its line offers", () => {
+  it.each([
+    {
+      name: "live: over the line, nothing to toggle",
+      settled: false,
+      fold: "watched",
+      work: "above",
+      toggle: null,
+    },
+    {
+      name: "settled while the person read it: still open over the line, and it can be hidden",
+      settled: true,
+      fold: "watched",
+      work: "above",
+      toggle: "hide",
+    },
+    {
+      name: "folding into its line",
+      settled: true,
+      fold: "folding",
+      work: "above",
+      toggle: "show",
+    },
+    { name: "folded: the line alone", settled: true, fold: "folded", work: null, toggle: "show" },
+    {
+      name: "opened again: under the line",
+      settled: true,
+      fold: "shown",
+      work: "below",
+      toggle: "hide",
+    },
+  ] as const)("$name", ({ settled, fold, work, toggle }) => {
+    expect(runCardShows(settled, fold)).toEqual({ work, toggle });
   });
 });

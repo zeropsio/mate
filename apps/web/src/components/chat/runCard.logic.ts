@@ -311,6 +311,31 @@ export function formatClock(ms: number): string {
  */
 export type RunFold = "watched" | "folding" | "folded" | "shown";
 
+/**
+ * Where a run's work stands and what its line offers: over the line while it
+ * runs, and after, while the person reads it or it folds away; under the
+ * line once they open it again; nowhere, folded. A settled run carries its
+ * toggle in every fold — one the person watched to its end included, which
+ * they hide as they would any other (the owner, 2026-09-30: "why is this
+ * uncloseable? because I saw it finish live?").
+ */
+export function runCardShows(
+  settled: boolean,
+  fold: RunFold,
+): { readonly work: "above" | "below" | null; readonly toggle: "hide" | "show" | null } {
+  if (!settled) return { work: "above", toggle: null };
+  switch (fold) {
+    case "watched":
+      return { work: "above", toggle: "hide" };
+    case "folding":
+      return { work: "above", toggle: "show" };
+    case "folded":
+      return { work: null, toggle: "show" };
+    case "shown":
+      return { work: "below", toggle: "hide" };
+  }
+}
+
 /** The runs of each conversation the person watched or opened, by the conversation's key. */
 const runFolds = new Map<string, Map<string, Exclude<RunFold, "folded">>>();
 const runFoldListeners = new Set<() => void>();
