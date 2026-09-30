@@ -114,6 +114,7 @@ import {
 import { useRunEffortWords } from "./runResultFacts";
 import { drawerEase, LIST_LAYS_OUT_FRAMES, stepHeight } from "./stepHeight";
 import { StatusBar, type BarTone } from "./StatusBar";
+import { versionText } from "../zerops/operation/version";
 import { ImportDetail } from "./ImportDetail";
 import { StandupDetail } from "./StandupDetail";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
@@ -1468,13 +1469,10 @@ function OperationBubble({
   const failure: Failure | null = !failed ? null : undone ? "undone" : "broken";
   const running = operation.phase === "running";
   const words = operationLineWords(operation);
-  const version = operation.version?.name ?? null;
   const detail = failed
     ? (operation.explanation?.reason ?? operation.closing ?? null)
-    : operation.kind === "deploy" && version !== null
-      ? /^[0-9a-f]{12,40}$/i.test(version)
-        ? version.slice(0, 7)
-        : version
+    : operation.kind === "deploy"
+      ? (versionText(operation.version?.name) ?? null)
       : null;
   return (
     <CallRow

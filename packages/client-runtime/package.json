@@ -391,6 +391,14 @@
       "types": "./src/zerops/statusPresentation.ts",
       "default": "./src/zerops/statusPresentation.ts"
     },
+    "./zerops/versionName": {
+      "types": "./src/zerops/versionName.ts",
+      "default": "./src/zerops/versionName.ts"
+    },
+    "./zerops/mateIdentity": {
+      "types": "./src/zerops/mateIdentity.ts",
+      "default": "./src/zerops/mateIdentity.ts"
+    },
     "./zerops/topology": {
       "types": "./src/zerops/topology.ts",
       "default": "./src/zerops/topology.ts"

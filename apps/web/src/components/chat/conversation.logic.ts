@@ -28,6 +28,7 @@ import {
   isSlashCommand,
   isUsageLimitResumePrompt,
 } from "@t3tools/shared/userAsk";
+import { versionText } from "../zerops/operation/version";
 
 export type MessageEntry = Extract<TimelineEntry, { kind: "message" }>;
 export type WorkEntry = Extract<TimelineEntry, { kind: "work" }>;
@@ -1777,9 +1778,7 @@ export interface OutcomeModel {
 }
 
 function shortVersion(operation: ZeropsOperation): string | null {
-  const name = operation.version?.name;
-  if (!name) return null;
-  return /^[0-9a-f]{12,40}$/i.test(name) ? name.slice(0, 7) : name;
+  return versionText(operation.version?.name) ?? null;
 }
 
 function failureWords(operation: ZeropsOperation): string {
