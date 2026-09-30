@@ -23,6 +23,8 @@
 import type { MergeabilityKind } from "./forge/mergeState.ts";
 import type { GitCheckRow, GitCheckTone } from "./gitTab.ts";
 import type { FlowPullRequestKind } from "./projectFlow.ts";
+import type { RecipeReach } from "./recipeReach.ts";
+import type { RecipeTier } from "./recipeTier.ts";
 import {
   RELEASE_NOT_A_RELEASER,
   RELEASE_NOTHING_MERGED,
@@ -159,6 +161,12 @@ function listed(words: ReadonlyArray<string>): string {
   return `${words.slice(0, -1).join(", ")} and ${words.at(-1) ?? ""}`;
 }
 
+/** `a`, `a or b`, `a, b or c`. */
+function either(words: ReadonlyArray<string>): string {
+  if (words.length <= 1) return words[0] ?? "";
+  return `${words.slice(0, -1).join(", ")} or ${words.at(-1) ?? ""}`;
+}
+
 function count(n: number, one: string, many: string): string {
   return `${String(n)} ${n === 1 ? one : many}`;
 }
@@ -213,8 +221,16 @@ export interface ChangeReviewInput {
   readonly downstream: { readonly production: boolean; readonly stage: boolean };
   /** Once merged: how many changes wait for production now, and what production runs. */
   readonly waiting?: { readonly count: number; readonly live: string | undefined } | undefined;
-  /** A release is offered once it merged: the next review is the release's. */
+  /**
+   * A release is offered once a code change merged: the next review is the release's. A recipe
+   * change is never released — a release tags the code in the service repositories.
+   */
   readonly releaseOffered?: boolean | undefined;
+  /**
+   * For a recipe change, what merging it does to the project (`recipeReach`), once its files are
+   * read; `undefined` until then.
+   */
+  readonly recipe?: RecipeReach | undefined;
   readonly press?: ReviewPress | undefined;
   readonly now: number;
 }
@@ -251,9 +267,79 @@ function squashSentence(
   return `Squash-merges ${what} into ${pull.baseBranch}${asOne}${unseen}${onTop}.`;
 }
 
+/** What any recipe change does, which is all that can be said of one before its files are read. */
+const RECIPE_UNREAD =
+  "Each environment gets any service added to its recipe, created empty; the services it has stay as they are.";
+
+/** Who a recipe change's merge adds services to: the stages and the production made from it. */
+function recipeGainers(
+  reach: RecipeReach,
+): { readonly who: string; readonly one: boolean; readonly recipes: string } | undefined {
+  const stages = reach.stages === 0 ? undefined : reach.stages === 1 ? "the stage" : "the stages";
+  if (stages === undefined) {
+    return reach.production ? { who: "production", one: true, recipes: "its recipe" } : undefined;
+  }
+  if (reach.production) {
+    return { who: `${stages} and production`, one: false, recipes: "their recipes" };
+  }
+  return reach.stages === 1
+    ? { who: stages, one: true, recipes: "its recipe" }
+    : { who: stages, one: false, recipes: "their recipe" };
+}
+
+/** What is made later from a recipe it changes, as a sentence names it. */
+const MADE_LATER: Record<RecipeTier, string> = {
+  mate: "a Mate",
+  stage: "a stage",
+  production: "a production",
+};
+
+/** A sentence's first word takes a capital. */
+function capitalized(words: string): string {
+  return `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+}
+
+/**
+ * What merging a recipe change does, in the person's words (`recipeReach`): the stages and the
+ * production made from a recipe it changes get any service it adds, created empty, and nothing
+ * else of them changes; a Mate, a stage or a production made later is made from it. Never a
+ * release: a release tags code, and a recipe is what the environments are made from.
+ */
+function recipeSentence(reach: RecipeReach | undefined): string {
+  if (reach === undefined) return RECIPE_UNREAD;
+  const gainers = recipeGainers(reach);
+  const later = reach.later.map((tier) => MADE_LATER[tier]);
+  const unchanged =
+    later.length === 0 && reach.unused.length > 0
+      ? `Nothing in this project is made from the ${either(reach.unused)} recipe, so no environment changes.`
+      : "No environment changes.";
+  return sentences(
+    gainers === undefined
+      ? undefined
+      : `${capitalized(gainers.who)} ${gainers.one ? "gets" : "get"} any service added to ${gainers.recipes}, created empty; the services ${gainers.one ? "it has" : "they have"} stay as they are.`,
+    reach.declarations ? "The project deploys to the environments it declares." : undefined,
+    gainers === undefined && !reach.declarations ? unchanged : undefined,
+    later.length === 0
+      ? undefined
+      : `${capitalized(either(later))} added later is made from the new recipe.`,
+  );
+}
+
+/** What a recipe change's merge did, in the few words after its age. */
+function recipeNext(reach: RecipeReach | undefined, base: string): string {
+  if (reach === undefined) return `it's on ${base}`;
+  const gainers = recipeGainers(reach);
+  if (gainers === undefined) {
+    return reach.declarations
+      ? "the project deploys to what it declares"
+      : "no environment changes";
+  }
+  return `${gainers.who} ${gainers.one ? "gets" : "get"} any new service`;
+}
+
 /** What happens once `main` has it, as far as anything downstream goes. */
 function afterMain(input: ChangeReviewInput): string | undefined {
-  if (input.pull.kind === "recipe") return "The project's environments change to match.";
+  if (input.pull.kind === "recipe") return recipeSentence(input.recipe);
   if (input.downstream.production) return "Production isn't touched until you release.";
   if (input.downstream.stage) return `The stage picks it up from ${input.pull.baseBranch}.`;
   return undefined;
@@ -436,25 +522,24 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
         ? "Just now"
         : (reviewAge(pull.mergedAt, input.now) ?? "Just now");
     const waiting = input.waiting?.count ?? 0;
-    const next =
-      pull.kind === "recipe"
-        ? "the environments change to match"
-        : input.downstream.production && waiting > 0
-          ? `${count(waiting, "change now waits", "changes now wait")} for production`
-          : input.downstream.stage
-            ? "the stage picks it up"
-            : `it's on ${base}`;
+    const recipe = pull.kind === "recipe";
+    const next = recipe
+      ? recipeNext(input.recipe, base)
+      : input.downstream.production && waiting > 0
+        ? `${count(waiting, "change now waits", "changes now wait")} for production`
+        : input.downstream.stage
+          ? "the stage picks it up"
+          : `it's on ${base}`;
     const live = input.waiting?.live;
-    const consequence =
-      pull.kind === "recipe"
-        ? "The project's environments change to match."
-        : input.downstream.production
-          ? live === undefined
-            ? "Production isn't touched until you release."
-            : `Production still serves ${live} until you release.`
-          : input.downstream.stage
-            ? `The stage picks it up from ${base}.`
-            : `It's on ${base} now.`;
+    const consequence = recipe
+      ? recipeSentence(input.recipe)
+      : input.downstream.production
+        ? live === undefined
+          ? "Production isn't touched until you release."
+          : `Production still serves ${live} until you release.`
+        : input.downstream.stage
+          ? `The stage picks it up from ${base}.`
+          : `It's on ${base} now.`;
     return {
       verdict: {
         state: "merged",
@@ -464,9 +549,10 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
         fix: undefined,
       },
       consequence,
+      // A recipe is never released: the next review is a code change's release, and only its.
       primary:
-        input.releaseOffered === true
-          ? { label: "Review release", enabled: true, safe: true }
+        !recipe && input.releaseOffered === true
+          ? { label: REVIEW_RELEASE_LABEL, enabled: true, safe: true }
           : undefined,
     };
   }

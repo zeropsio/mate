@@ -123,6 +123,33 @@ export function ownerBadge(seat: OwnerSeat, isViewer: boolean): BadgeSeat | null
   return seat.kind === "person" && !isViewer ? seat : null;
 }
 
+/**
+ * Whether a Mate's row reads as not the viewer's — its face paler under its
+ * owner's badge (the owner, 2026-09-30: "the not yours should have the avatar
+ * bigger and maybe some other small visual diff also"): a colleague's, and
+ * nobody's until somebody signs it in. Known from the first paint: the owner
+ * the member list names, or before the list has named them, the signer tag
+ * against the viewer's own id; a Mate that may be the viewer's reads as theirs.
+ */
+export function mateNotYours(input: {
+  readonly seat: OwnerSeat;
+  readonly isViewer: boolean;
+  /** The user id its signer tag names (`mateOwnerRecords`). */
+  readonly signer: string | undefined;
+  readonly viewer: string | undefined;
+}): boolean {
+  switch (input.seat.kind) {
+    case "nobody":
+      return true;
+    case "person":
+      return !input.isViewer;
+    case "unnamed":
+      return (
+        input.signer !== undefined && input.viewer !== undefined && input.signer !== input.viewer
+      );
+  }
+}
+
 /** The crew's door in a Mate's own menu, and whether it sets a crew up. */
 export interface MateCrewItem {
   readonly label: string;

@@ -121,6 +121,7 @@ import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
 import { useCrewStatus } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
+import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { readCollapsedProjects, writeCollapsedProjects } from "~/zerops/collapsedProjects";
 import {
   movedBefore,
@@ -174,6 +175,7 @@ import {
   mateComingRowView,
   mateCrewItem,
   mateDeletingView,
+  mateNotYours,
   mateOwnerView,
   mateRowReading,
   type MateRowReply,
@@ -2220,13 +2222,17 @@ function MateRow<T extends RosterCandidate>({
   const actions = deleting || coming !== undefined ? undefined : offered;
   // Whose seat it is, and whether anybody has signed its agent in — read off
   // its own records, so from the first paint (`mateOwnerView`).
-  const seated = mateOwnerView({
-    owner,
-    records: mateOwnerRecords(candidate.project),
-    asked: view.ask !== undefined,
-  });
-  // What its face's corner wears (`ownerBadge`).
+  const records = mateOwnerRecords(candidate.project);
+  const seated = mateOwnerView({ owner, records, asked: view.ask !== undefined });
+  // What its face's corner wears (`ownerBadge`), and whether its face is paler: not the viewer's.
   const badge = ownerBadge(seated.seat, owner?.isViewer === true);
+  const viewer = useZeropsSessionOptional()?.user?.id;
+  const notYours = mateNotYours({
+    seat: seated.seat,
+    isViewer: owner?.isViewer === true,
+    signer: records.signer,
+    viewer,
+  });
   const known = activity !== undefined && activity.remembered !== true;
   // Its menu's door to its crew (`mateCrewItem`): whether crew mode is on and
   // a crew applied — a fixture's, or its feed's once it is connected.
@@ -2367,11 +2373,18 @@ function MateRow<T extends RosterCandidate>({
       >
         <span className="relative flex size-7">
           {/* The Mate wears the card's face, and a colleague's Mate its
-              owner's picture on the face's corner, cut out of it (the owner,
-              2026-09-30: a face before the name read as the name's). Your own
+              owner's picture on the face's corner, cut out of it, over a paler
+              face (the owner, 2026-09-30: a face before the name read as the
+              name's; "the not yours should have the avatar bigger"). Your own
               carry nothing; nobody's shows the empty seat there. Nothing
               rings it — the step it is on is its row's third line. */}
-          <span className={cn("relative flex", badge !== null && "menu-face-cut")}>
+          <span
+            className={cn(
+              "relative flex",
+              badge !== null && "menu-face-cut",
+              notYours && "menu-face-pale",
+            )}
+          >
             {/* Until its socket answers the face stands in idle or asleep, the
                 row's words as this browser remembered them: a Mate found
                 waiting then is not arriving at it. */}
@@ -2924,7 +2937,7 @@ function ComingMateRow({
       type="button"
     >
       <span className="relative flex size-7">
-        <span className="menu-face-cut relative flex">
+        <span className="menu-face-cut menu-face-pale relative flex">
           <MateFace
             shape={coming.face?.shape ?? mateShapeOf([], tint)}
             size="md"

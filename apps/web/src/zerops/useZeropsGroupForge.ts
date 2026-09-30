@@ -7,7 +7,8 @@
  * and the checks on each one's head, then the group repo's `v*` tags and the
  * broker's verdict on each (`release.ts`). Each group is published the moment
  * its read completes (`flow/groupAnswers.ts`), every group is read again every
- * sixty seconds, and a verb re-reads at once only the part it changed
+ * sixty seconds — a repository with a pull request still checking at the
+ * forge store's rungs too — and a verb re-reads at once only the part it changed
  * (`flow/verbs.ts`). Gitea has no event stream, so a clock is the only
  * freshness there is. Whether a pull request merges is what its reads so far
  * came to (`forge/mergeState.ts`), never one answer: Gitea says "no" for a
@@ -45,6 +46,7 @@ import {
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
   createMergeabilityTracker,
+  MERGE_RECHECK_AFTER_MS,
   mergeReadOf,
   type MergeabilityTracker,
 } from "@t3tools/client-runtime/zerops/forge";
@@ -115,7 +117,34 @@ export function useZeropsGroupForge(input: {
     keyOf: (group) => group.slug,
     read: (client, group, scope) => readForge(client, group.slug, scope, mergeability),
   });
+  const checking = checkingRepositories(answers).join("\n");
+  // A pull request Gitea says "no" for is read again at the forge store's rungs: only a later
+  // read tells a conflict from the moment after a push, and the next pass is a minute away (a
+  // conflicting group #13 read "Checking whether it merges cleanly" for that minute, 2026-09-30).
+  useEffect(() => {
+    if (checking === "") return;
+    const timers = checking.split("\n").flatMap((entry) => {
+      const [groupId = "", repository = ""] = entry.split("\u0000");
+      return MERGE_RECHECK_AFTER_MS.map((afterMs) =>
+        setTimeout(() => invalidate(groupId, { kind: "repository", repository }), afterMs),
+      );
+    });
+    return () => timers.forEach(clearTimeout);
+  }, [checking, invalidate]);
   return { forges: answers, failures, invalidate };
+}
+
+/** Each group's repositories with an open pull request still checking, as `groupId\0repository`. */
+export function checkingRepositories(forges: ZeropsGroupForges): ReadonlyArray<string> {
+  return [...forges].flatMap(([groupId, forge]) =>
+    [
+      ...new Set(
+        forge.pullRequests
+          .filter((pull) => pull.mergeability === "checking")
+          .map((pull) => pull.repository),
+      ),
+    ].map((repository) => `${groupId}\u0000${repository}`),
+  );
 }
 
 /**
