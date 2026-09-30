@@ -62,10 +62,10 @@ export interface AccessGrantView {
   readonly overdue: boolean;
 }
 
-/** The tab's signals, as the account runtime hands them over. */
+/** The tab's signals, and the organizations' live lists, as the account runtime hands them over. */
 export type GrantSignal = Extract<
   GrantEvent,
-  { readonly type: "VISIBILITY" | "WAKE" | "ONLINE" | "OFFLINE" }
+  { readonly type: "VISIBILITY" | "WAKE" | "ONLINE" | "OFFLINE" | "PROJECTS_LISTED" }
 >;
 
 /** What the grant asks the account's owners of pull-based facts to revalidate. */

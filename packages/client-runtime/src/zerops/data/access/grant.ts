@@ -59,10 +59,14 @@ export interface ProjectEvidence {
   readonly startedAt: Instant;
 }
 
-/** Listed, but its latest read failed: it keeps any older evidence until that expires. */
+/**
+ * Listed, but not verified: its latest read failed, and it keeps any older evidence until that
+ * expires — or the organization's list named it after the round that would have read it, and no
+ * read has answered yet (`failure` null).
+ */
 export interface UnverifiedProject {
   readonly project: ProjectRef;
-  readonly failure: GrantFailure;
+  readonly failure: GrantFailure | null;
   readonly retryAt: Instant;
   /** Failed reads so far; picks the rung of the next wait. */
   readonly attempt: number;
@@ -221,6 +225,12 @@ export type GrantEvent =
       readonly project: ProjectRef;
       readonly outcome: ProjectOutcome;
     }
+  /**
+   * The projects an organization's live list names now. One the held evidence does not name —
+   * a project someone else created since the round — is read on its own at once, rather than
+   * waiting out the window for the next renewal.
+   */
+  | { readonly type: "PROJECTS_LISTED"; readonly projects: ReadonlyArray<ProjectRef> }
   /** Any GET on the project answered 403/404 (G6). */
   | {
       readonly type: "PROJECT_DENIED";
@@ -681,6 +691,21 @@ const completeRound = (
     }
   }
 
+  // Listed after this round read its organizations: not its target, so still to be read.
+  const listedSince = new Set(
+    (round.organizations ?? []).map(({ organization }) => organization.organizationId),
+  );
+  for (const [id, entry] of previous?.unverified ?? []) {
+    if (
+      entry.failure === null &&
+      listedSince.has(entry.project.organization.organizationId) &&
+      !(round.targets ?? []).some((target) => target.projectId === id) &&
+      !closedProjects.has(id)
+    ) {
+      unverified.set(id, entry);
+    }
+  }
+
   const evidence: Evidence = {
     account: {
       round: round.id,
@@ -909,6 +934,8 @@ const apply = (
       projectAttempts.delete(id);
       return projectResult({ ...machine, projectAttempts }, attempt, event.outcome, ctx, out);
     }
+    case "PROJECTS_LISTED":
+      return listProjects(machine, event.projects, ctx);
     case "PROJECT_DENIED": {
       if (heldEvidence(machine) !== null) {
         return closeProject(machine, event.project, event.evidence, null, ctx, out);
@@ -929,6 +956,39 @@ const apply = (
     case "EPOCH_CLOSED":
       return machine;
   }
+};
+
+/**
+ * The listed projects a fresh grant does not name yet, in an organization its evidence holds, are
+ * held unverified and due now: `startProjectReads` reads each on its own. A project the evidence
+ * names already — verified, unverified or closed — is left as it is.
+ */
+const listProjects = (
+  machine: GrantMachine,
+  listed: ReadonlyArray<ProjectRef>,
+  ctx: GrantContext,
+): GrantMachine => {
+  const phase = machine.phase;
+  if (phase.phase !== "granted" || expired(phase.evidence.account.startedAt, ctx.now, ctx.policy)) {
+    return machine;
+  }
+  const evidence = phase.evidence;
+  const organizations = new Set(
+    evidence.account.organizations.map(({ organization }) => organization.organizationId),
+  );
+  const fresh = listed.filter(
+    (project) =>
+      organizations.has(project.organization.organizationId) &&
+      !evidence.projects.has(project.projectId) &&
+      !evidence.unverified.has(project.projectId) &&
+      !evidence.closedProjects.has(project.projectId),
+  );
+  if (fresh.length === 0) return machine;
+  const unverified = new Map(evidence.unverified);
+  for (const project of fresh) {
+    unverified.set(project.projectId, { project, failure: null, retryAt: ctx.now, attempt: 0 });
+  }
+  return withEvidence(machine, { ...evidence, unverified });
 };
 
 /**
@@ -1152,7 +1212,7 @@ const publish = (machine: GrantMachine, ctx: GrantContext, out: Effects): GrantM
             ? AUTHORIZED
             : withheld(
                 "access-unverified",
-                entry === undefined
+                entry === undefined || entry.failure === null
                   ? null
                   : { failure: entry.failure, retryAtMs: entry.retryAt.wall },
               );

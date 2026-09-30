@@ -960,6 +960,115 @@ describe("access grant reducer", () => {
     },
   );
 
+  describe("a project the organization's list names and no evidence holds (a Mate someone else added)", () => {
+    const C = projectRef("project-c");
+    const listed = (projects: ReadonlyArray<ProjectRef>): GrantEvent => ({
+      type: "PROJECTS_LISTED",
+      projects,
+    });
+    const verifyRuns = (sim: GrantSim, project: ProjectRef) =>
+      sim.effects.filter(
+        ({ effect }) =>
+          effect.kind === "run" &&
+          effect.op.kind === "verify-project" &&
+          effect.op.project.projectId === project.projectId,
+      );
+
+    it("is read at once, not at the next renewal, and admitted on its answer", () => {
+      const sim = grantedSim();
+      sim.elapse(MINUTE);
+      const before = sim.effects.length;
+      sim.send(listed([A, B, C]));
+      expect(verifyRuns(sim, C)).toHaveLength(1);
+      // Until it answers, nothing is claimed for it: no cause names a failure it never had.
+      expect(sim.effectsSince(before)).toContainEqual({
+        kind: "withhold",
+        scope: { kind: "project", project: C },
+        reason: "access-unverified",
+        cause: null,
+      });
+      expect(sim.read(C).allowed).toBe(false);
+      sim.elapse(300);
+      sim.send({
+        type: "PROJECT_RESULT",
+        attempt: sim.lastRun("verify-project").attempt,
+        project: C,
+        outcome: verified(C),
+      });
+      expect(sim.read(C).allowed).toBe(true);
+      expect(sim.effectsSince(before)).toContainEqual({
+        kind: "restore-authority",
+        scope: { kind: "project", project: C },
+      });
+      // One project read, and no round for it.
+      expect(sim.effectsSince(before).filter((effect) => effect.kind === "run")).toHaveLength(1);
+    });
+
+    it.each([
+      ["projects the evidence already holds", [A, B]],
+      ["an empty list", []],
+    ] as const)("changes nothing for %s", (_label, projects) => {
+      const sim = grantedSim();
+      sim.elapse(MINUTE);
+      const state = sim.state;
+      expect(sim.send(listed(projects))).toEqual([]);
+      expect(sim.state).toEqual(state);
+    });
+
+    it("is read once however often the list names it while its read is out", () => {
+      const sim = grantedSim();
+      sim.send(listed([A, B, C]));
+      sim.send(listed([A, B, C]));
+      sim.elapse(SECOND);
+      sim.send(listed([C]));
+      expect(verifyRuns(sim, C)).toHaveLength(1);
+    });
+
+    it("is read again on the project rungs while its read fails, never given up", () => {
+      const sim = grantedSim();
+      const failingC: Responder = (run) =>
+        run.op.kind === "verify-project" && run.op.project.projectId === C.projectId
+          ? [
+              {
+                afterMs: SECOND,
+                event: {
+                  type: "PROJECT_RESULT",
+                  attempt: run.attempt,
+                  project: C,
+                  outcome: failed,
+                },
+              },
+            ]
+          : healthyPlatform(2 * SECOND)(run);
+      sim.send(listed([A, B, C]));
+      play(sim, 5 * MINUTE, failingC);
+      const starts = verifyRuns(sim, C).map(({ at }) => at.mono);
+      const gaps = starts.slice(1).map((at, index) => at - starts[index]!);
+      // Each rung counted from the failed answer a second after its start; the last one repeats.
+      expect(gaps.slice(0, 5)).toEqual([11, 21, 41, 61, 61].map((s) => s * SECOND));
+      expect(sim.read(C).allowed).toBe(false);
+    });
+
+    it("listed while a renewal round runs that did not target it, is read when that round ends", () => {
+      const sim = grantedSim();
+      play(sim, 12 * MINUTE + 10 * SECOND, () => []);
+      const round = sim.round();
+      sim.send({ type: "ROUND_ACCOUNT", round, organizations, projects: [A, B] });
+      sim.send(listed([A, B, C]));
+      sim.elapse(SECOND);
+      sim.send({ type: "ROUND_PROJECT", round, project: A, outcome: verified(A) });
+      sim.send({ type: "ROUND_PROJECT", round, project: B, outcome: verified(B) });
+      expect(grantRoundInFlight(sim.state)).toBeNull();
+      expect(verifyRuns(sim, C)).toHaveLength(1);
+    });
+
+    it("is not read before the account's first grant: that round reads the list itself", () => {
+      const sim = new GrantSim();
+      sim.send({ type: "START" });
+      expect(sim.send(listed([C])).filter((effect) => effect.kind === "run")).toEqual([]);
+    });
+  });
+
   it("drops every result after the epoch closes", () => {
     const sim = new GrantSim();
     sim.send({ type: "START" });

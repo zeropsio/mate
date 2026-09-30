@@ -744,6 +744,115 @@ describe("the account runtime", () => {
   );
 
   it.effect(
+    "a project someone else creates is verified and its services read as the list names it, not at the next renewal",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+          const registry = AtomRegistry.make();
+          const page = yield* makePage(clock);
+          const rest = makeFakeZeropsRest();
+          rest.addUser({
+            user: {
+              id: account.accountId,
+              email: "person@example.test",
+              clientUserList: [
+                { id: "cu-1", clientId: organization.organizationId, roleCode: "OWNER" },
+              ],
+            },
+            password: "secret",
+          });
+          rest.addProject({
+            id: "project-1",
+            clientId: organization.organizationId,
+            name: "project-1",
+            status: "ACTIVE",
+          });
+          const client = new ZeropsApiClient({ fetch: rest.fetch });
+          client.restoreSession(rest.issueSession(account.accountId));
+          const built = yield* Effect.gen(function* () {
+            const data = yield* makeZeropsDataRuntime({
+              scope: scope(),
+              adapter: makeFakeDatastream(rest).adapter,
+              atomRegistry: registry,
+              makeOpaqueId: (() => {
+                let next = 0;
+                return () => `opaque-${++next}`;
+              })(),
+            });
+            return yield* makeAccountRuntime({
+              data,
+              verifier: makeRestAccessVerifier({
+                client,
+                account,
+                concurrency: policy.roundProjectConcurrency,
+                onUser: () => undefined,
+              }),
+              signals: page.signals,
+              atomRegistry: registry,
+              environments: inertEnvironments(clock),
+            });
+          }).pipe(Effect.provideService(Clock.Clock, clock));
+          yield* Effect.addFinalizer(() => built.close("application-close"));
+          const data = built.data;
+          const rounds = () => rest.requests().filter(({ route }) => route === "GET /user/info");
+          const verifiedProjects = () => {
+            const phase = registry.get(data.access.view).machine.phase;
+            return phase.phase === "granted" ? [...phase.evidence.projects.keys()].toSorted() : [];
+          };
+          const listing = () =>
+            registry
+              .get(candidateListingsAtom(data))
+              .find(({ organizationId }) => organizationId === organization.organizationId)
+              ?.listing;
+          const observing = () =>
+            Effect.map(
+              data.state,
+              (state) =>
+                [...state.interests.values()].filter(
+                  ({ interest }) => interest.status === "observing",
+                ).length,
+            );
+          const unsubscribe = registry.subscribe(candidateListingsAtom(data), () => undefined);
+          yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+          yield* clock.advance(SECOND);
+          yield* settle;
+          yield* settle;
+          expect(verifiedProjects()).toEqual(["project-1"]);
+          expect(yield* observing()).toBe(2);
+          const roundsBefore = rounds().length;
+
+          // Someone else adds a Mate: its project appears in the organization's list.
+          rest.addProject({
+            id: "project-2",
+            clientId: organization.organizationId,
+            name: "project-2",
+            status: "ACTIVE",
+          });
+          yield* built.invalidations
+            .invalidate({ topic: "inventory", organization })
+            .pipe(Effect.provideService(Clock.Clock, clock));
+          yield* clock.advance(SECOND);
+          yield* settle;
+          yield* settle;
+
+          expect(verifiedProjects()).toEqual(["project-1", "project-2"]);
+          // Its services are read: the organization's inventory and both projects'.
+          expect(yield* observing()).toBe(3);
+          expect(rounds()).toHaveLength(roundsBefore);
+          // Both projects' rows are read the same way: the new one is no less known than the old.
+          const listed = listing();
+          expect(listed?.state).toBe("known");
+          if (listed?.state === "known") {
+            const [first, second] = listed.value;
+            expect([first?.project.id, second?.project.id]).toEqual(["project-1", "project-2"]);
+            expect(second?.presence).toBe(first?.presence);
+          }
+        }),
+      ),
+  );
+
+  it.effect(
     "a visible wake after 30 s hidden retries the grant at once; a quick switch does not (§6.4)",
     () =>
       Effect.scoped(
