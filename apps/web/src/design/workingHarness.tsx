@@ -1131,6 +1131,15 @@ function Harness() {
         {[
           { label: "An import, one failed", operation: IMPORT_ONE_FAILED },
           { label: "A deploy, done", operation: DEPLOY_DONE },
+          {
+            label: "A deploy of a long name",
+            operation: deploy({
+              key: "op:deploy-long",
+              subject: "storefrontpreviewdevhost",
+              target: { hostname: "storefrontpreviewdevhost" },
+              statusWord: "Deploying",
+            }),
+          },
         ].map(({ label, operation }) => (
           <State
             key={label}
