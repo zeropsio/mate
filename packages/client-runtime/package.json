@@ -399,6 +399,10 @@
       "types": "./src/zerops/crew/phrases.ts",
       "default": "./src/zerops/crew/phrases.ts"
     },
+    "./zerops/crew/crewAccess": {
+      "types": "./src/zerops/crew/crewAccess.ts",
+      "default": "./src/zerops/crew/crewAccess.ts"
+    },
     "./zerops/projections/crew": {
       "types": "./src/zerops/projections/crew.ts",
       "default": "./src/zerops/projections/crew.ts"
