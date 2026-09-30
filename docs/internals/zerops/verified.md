@@ -7109,3 +7109,6 @@ Mates, and the parts' own harnesses where a state could not be made live. The Ma
   so Heron's never-deployed appstage (READY_TO_DEPLOY, no subdomain) read as "appdev not healthy, 2 of 4".
 - **A failed entity read was retried three times, then never** — until a foreground return or socket
   recovery, and every event from a watched project reset every failure budget.
+- **The heading line folds without a jump** — the sidebar harness (`design.html?set=ladder`) at
+  435 px: the line's height 20 → 0 px over about 150 ms, its words kept while it folds, no frame
+  where the Mates below it jump.

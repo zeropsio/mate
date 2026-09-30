@@ -3150,3 +3150,16 @@ no-cache`.
   the socket resumes from the snapshot.
   - _Why:_ the route's socket queued 4th–6th behind the others (one socket connects at a time to
     the one Zerops address); measured p50 9.8 s, worst 15 s to the conversation
+- **2026-09-30** — **A project's release lives under its name (D′)** (the prod/stage board, picked
+  by the owner). The pills say only whether each place serves: dashed before it serves anything, the
+  stepped spinner inside it while it comes up, green for 4 s as it lands. The open heading's second
+  line says one thing at a time, in this order: a release that didn't go out (amber, Review), a
+  place that didn't come up (amber, Details), a place coming up ("Stage coming up · building the
+  app"), a landing this tab watched ("v2.4.0 is live · just now", 4 s), a release on its way
+  ("Releasing v2.4.0…"), changes waiting ("3 changes not released · all on stage"), each with its
+  door at the line's end in the column of the pull requests' Review. A folded heading carries the
+  release's mark after its faces. The line opens and folds as a 220 ms height reveal the Mates ride.
+  Where the board is silent: "coming up" only within 15 minutes of the place being made; a
+  production's first build is its first release; "all on stage" means the stage runs main's head.
+  - _Why:_ a row after the Mates read as the last Mate's, and Heron's stage pill sat plain for the
+    two minutes it took to come up
