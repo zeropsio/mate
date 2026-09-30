@@ -4,7 +4,9 @@
  * first open that waits on the server; a Mate opened before that paints from
  * what the app remembers; and a run the person opened folding as they leave
  * (the card's own fold, K7). A live Mate streams its answer from the page's
- * load, so a return to it meets rows changing under it.
+ * load, so a return to it meets rows changing under it. A finished run that
+ * only ran commands leaves its card holding its line alone; Nova's
+ * second-to-last deployed to stage, and its result is a row under its line.
  *
  * Served by the dev server at `/design-switch.html` (`?theme=dark`,
  * `?latency=<ms>` for the first open's wait, `?stream=<ms>` for how often the
@@ -92,6 +94,34 @@ const COMMANDS = [
   "pnpm db:migrate --dry-run",
 ];
 
+/** A deploy to stage that went through: the run's result is the service it left running. */
+function deployedToStage(id: string, turnId: TurnId, when: string): TimelineEntry {
+  return {
+    id,
+    kind: "operation",
+    createdAt: when,
+    operation: {
+      key: `op:${id}`,
+      kind: "deploy",
+      phase: "done",
+      anchorAt: when,
+      anchorActivityId: `activity-${id}`,
+      settledAt: when,
+      turnId,
+      subject: "stage",
+      kicker: "Deploy · stage",
+      voice: "Deploying to stage",
+      voiceSource: "mate",
+      statusWord: "Deployed",
+      steps: [],
+      links: [],
+      callIds: [`call-${id}`],
+      target: { hostname: "stage" },
+      hasResult: true,
+    },
+  };
+}
+
 function turnEntries(thread: string, turn: number, calls: number): TimelineEntry[] {
   const minute = turn * 11;
   const turnId = TurnId.make(`${thread}-turn-${turn}`);
@@ -147,6 +177,9 @@ function turnEntries(thread: string, turn: number, calls: number): TimelineEntry
         toolLifecycleStatus: "completed",
       },
     });
+  }
+  if (thread === "nova" && turn === 12) {
+    entries.push(deployedToStage(`${thread}-deploy-${turn}`, turnId, at(minute, 6 + calls * 9)));
   }
   const answer = `${thread}-answer-${turn}`;
   const answerAt = at(minute, 8 + calls * 9);
