@@ -881,13 +881,14 @@ describe("a project's next step on the projects page", () => {
 
 describe("a creation under way on the projects page", () => {
   it("is drawn in its group from the one placing the left menu reads, and feeds the flow", () => {
+    // A New project this tab is making included, from the press, on both.
     expect(projectsPageSource).toContain(
-      "births: placedBirthsIn(births.births, activeOrganization?.id),",
+      "births: placedBirthsIn(births.births, activeOrganization?.id, Object.values(made)),",
     );
     expect(projectsPageSource).toContain("pending: group.pending,");
     expect(sidebarTreeSource).toContain("pending: group?.pending ?? [],");
     expect(sidebarSource).toContain(
-      "placedBirthsIn(zeropsBirths, zeropsSession.activeOrganization?.id)",
+      "placedBirthsIn(zeropsBirths, zeropsSession.activeOrganization?.id, Object.values(zeropsMade))",
     );
   });
 
