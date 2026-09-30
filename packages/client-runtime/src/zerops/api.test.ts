@@ -4,6 +4,7 @@ import {
   DEFAULT_ZEROPS_API_BASE,
   ZeropsApiClient,
   ZeropsApiError,
+  parseRetryAfterMs,
   servicePortOrigin,
   zeropsClientsFromUser,
   type ZeropsProject,
@@ -554,6 +555,31 @@ describe("ZeropsApiClient authentication", () => {
     expect(totpRequest?.method).toBe("POST");
     expect(totpRequest?.body).toBe(JSON.stringify({ token: "123456" }));
     expect(totpRequest?.authorization).toBe("Bearer half-1");
+  });
+});
+
+describe("a throttled answer's Retry-After", () => {
+  const NOW = Date.UTC(2026, 8, 30, 12, 0, 0);
+  it.each<[string | null, number | null]>([
+    ["7", 7_000],
+    ["0", 0],
+    ["Wed, 30 Sep 2026 12:00:30 GMT", 30_000],
+    ["Wed, 30 Sep 2026 11:59:00 GMT", 0],
+    ["soon", null],
+    ["", null],
+    [null, null],
+  ])("%s → %s ms", (header, expected) => {
+    expect(parseRetryAfterMs(header, NOW)).toBe(expected);
+  });
+
+  it("rides on the error of a 429", async () => {
+    const client = new ZeropsApiClient({
+      fetch: async () => new Response("{}", { status: 429, headers: { "Retry-After": "12" } }),
+    });
+    client.restoreSession(SESSION);
+    const error = await client.listClientProjects("org-1").catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(ZeropsApiError);
+    expect((error as ZeropsApiError).retryAfterMs).toBe(12_000);
   });
 });
 

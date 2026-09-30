@@ -1513,6 +1513,8 @@ export interface AdapterError {
    * the request failed before it was sent.
    */
   readonly status?: number;
+  /** How long a 429 asked to wait (its `Retry-After`), when it said. */
+  readonly retryAfterMs?: number;
 }
 
 export type ReceiverEvent =

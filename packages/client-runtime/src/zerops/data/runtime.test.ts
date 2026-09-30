@@ -925,6 +925,178 @@ describe("makeZeropsDataRuntime", () => {
       }),
   );
 
+  it.effect.each([
+    {
+      name: "a 403 is not read again until the grant changes",
+      error: { kind: "forbidden", status: 403 },
+      reads: { atFirst: 1, afterAMinute: 1, afterGrant: 2 },
+    },
+    {
+      name: "a 404 is not read again until the grant changes",
+      error: { kind: "not-found", status: 404 },
+      reads: { atFirst: 1, afterAMinute: 1, afterGrant: 2 },
+    },
+    {
+      name: "a 410 is not read again until the grant changes",
+      error: { kind: "network", status: 410 },
+      reads: { atFirst: 1, afterAMinute: 1, afterGrant: 2 },
+    },
+    {
+      name: "a 5xx backs off and is read again, as before",
+      error: { kind: "server", status: 503 },
+      reads: { atFirst: 1, afterAMinute: 12, afterGrant: 12 },
+    },
+  ] as const)("a failed entity read: $name", ({ error, reads }) =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      let processReads = 0;
+      const adapter: ZeropsDataAdapter = {
+        openReceiver: (_scope, organization, identity) =>
+          Effect.succeed({
+            identity,
+            organization,
+            delivery: "hot-single-consumer-buffered-before-open-resolves",
+            events: Stream.never,
+          }),
+        register: (_receiver, request) => {
+          const baseline = unresolvedProcessBaseline(request);
+          return Effect.succeed({ responseObservations: baseline === null ? [] : [baseline] });
+        },
+        read: (ticket) => {
+          if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
+          processReads += 1;
+          return Effect.fail({
+            _tag: "ZeropsDataAdapterError",
+            kind: error.kind,
+            status: error.status,
+            message: "refused",
+            retryable: error.status >= 500,
+            accountRevocationEvidence: false,
+          } satisfies AdapterError);
+        },
+        execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+        closeReceiver: () => Effect.void,
+      };
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter,
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+        policy: makeZeropsDataPolicy({
+          hydrationRetryLimit: 2,
+          recoveryBackoffStartMs: 1_000,
+          recoveryBackoffMaxMs: 10_000,
+        }),
+      });
+      const states = yield* Queue.unbounded<ZeropsDataState>();
+      const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+        Queue.offerUnsafe(states, state);
+      });
+      const leaseScope = yield* Scope.make();
+      const lease = yield* runtime.acquire(topologyDescriptor).pipe(Scope.provide(leaseScope));
+      yield* waitForState(
+        states,
+        (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+      );
+      const settle = Effect.gen(function* () {
+        for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+      });
+      yield* settle;
+      const atFirst = processReads;
+      for (let second = 0; second < 60; second++) {
+        yield* TestClock.adjust("1 second");
+        yield* settle;
+      }
+      const afterAMinute = processReads - atFirst + 1;
+      const before = processReads;
+      yield* runtime.observeAccess({
+        kind: "project-access-established",
+        accountEpoch: runtimeScope.epoch,
+        project: topologyDescriptor.project,
+      });
+      yield* settle;
+      const afterGrant = afterAMinute + processReads - before;
+      expect({ atFirst: atFirst > 0 ? 1 : 0, afterAMinute, afterGrant }).toEqual(reads);
+
+      yield* runtime.shutdown("application-close");
+      yield* Scope.close(leaseScope, Exit.void);
+      unsubscribe();
+      registry.dispose();
+    }),
+  );
+
+  it.effect("a 429 waits out the platform's Retry-After before the entity is read again", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      let processReads = 0;
+      const adapter: ZeropsDataAdapter = {
+        openReceiver: (_scope, organization, identity) =>
+          Effect.succeed({
+            identity,
+            organization,
+            delivery: "hot-single-consumer-buffered-before-open-resolves",
+            events: Stream.never,
+          }),
+        register: (_receiver, request) => {
+          const baseline = unresolvedProcessBaseline(request);
+          return Effect.succeed({ responseObservations: baseline === null ? [] : [baseline] });
+        },
+        read: (ticket) => {
+          if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
+          processReads += 1;
+          return Effect.fail({
+            _tag: "ZeropsDataAdapterError",
+            kind: "network",
+            status: 429,
+            retryAfterMs: 5_000,
+            message: "slow down",
+            retryable: true,
+            accountRevocationEvidence: false,
+          } satisfies AdapterError);
+        },
+        execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+        closeReceiver: () => Effect.void,
+      };
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter,
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+        policy: makeZeropsDataPolicy({
+          hydrationRetryLimit: 3,
+          recoveryBackoffStartMs: 100,
+          recoveryBackoffMaxMs: 1_000,
+        }),
+      });
+      const states = yield* Queue.unbounded<ZeropsDataState>();
+      const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+        Queue.offerUnsafe(states, state);
+      });
+      const leaseScope = yield* Scope.make();
+      const lease = yield* runtime.acquire(topologyDescriptor).pipe(Scope.provide(leaseScope));
+      yield* waitForState(
+        states,
+        (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+      );
+      const settle = Effect.gen(function* () {
+        for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+      });
+      yield* settle;
+      const observed = processReads;
+      yield* TestClock.adjust("4999 millis");
+      yield* settle;
+      expect(processReads).toBe(observed);
+      yield* TestClock.adjust("1 millis");
+      yield* settle;
+      expect(processReads).toBe(observed + 1);
+
+      yield* runtime.shutdown("application-close");
+      yield* Scope.close(leaseScope, Exit.void);
+      unsubscribe();
+      registry.dispose();
+    }),
+  );
+
   it.effect(
     "resets the hydration-failure budget for an organization once it recovers observing",
     () =>
