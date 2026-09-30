@@ -3355,10 +3355,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           ) : null}
           <div
             data-chat-composer-main-surface="true"
-            className={cn(
-              "group relative z-10 p-px transition-colors duration-200",
-              composerProviderState.composerFrameClassName,
-            )}
+            // No colour transition: its surface is painted here or by the
+            // shell's layer as a drawer comes and goes, and a fade between
+            // the two showed the page through the composer for 200 ms.
+            className={cn("group relative z-10 p-px", composerProviderState.composerFrameClassName)}
           >
             <div
               ref={composerSurfaceRef}
