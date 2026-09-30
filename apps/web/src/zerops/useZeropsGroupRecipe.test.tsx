@@ -7,7 +7,7 @@ import { act, type ReactElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { useZeropsGroupRecipe, type GroupRecipe } from "./useZeropsGroupRecipe";
+import { forgetGroupRecipes, useZeropsGroupRecipe, type GroupRecipe } from "./useZeropsGroupRecipe";
 
 /** Whether this tab can read Gitea now, and each read of the recipe still waiting on its answer. */
 const gitea = vi.hoisted(() => ({
@@ -74,6 +74,7 @@ afterEach(() => {
   gitea.readable = true;
   gitea.reads = [];
   renders.length = 0;
+  forgetGroupRecipes();
 });
 
 function mount(element: ReactElement): ReactTestRenderer {
@@ -166,4 +167,25 @@ describe("useZeropsGroupRecipe", () => {
     await answer("recipe");
     expect(seen()?.state).toBe("present");
   });
+
+  it.each<{ readonly first: Answer; readonly said: GroupRecipe["state"] }>([
+    { first: "missing", said: "absent" },
+    { first: "recipe", said: "present" },
+    { first: "fails", said: "loading" },
+  ])(
+    "opened again after $first, says $said at once and holds Add until it has read anew",
+    async ({ first, said }) => {
+      const tree = mount(<Probe />);
+      await answer(first);
+      act(() => {
+        tree.unmount();
+      });
+      mounted.splice(0);
+
+      mount(<Probe />);
+      expect(seen()).toMatchObject({ state: said, loading: true });
+      await answer("recipe");
+      expect(seen()).toMatchObject({ state: "present", loading: false });
+    },
+  );
 });

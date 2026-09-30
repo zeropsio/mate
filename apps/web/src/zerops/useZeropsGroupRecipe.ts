@@ -39,7 +39,10 @@ export interface GroupRecipe {
   /** The tier, while the recipe is `present`. */
   readonly tier: GroupRecipeTier | undefined;
   readonly services: ReadonlyArray<string>;
-  /** `state` is `loading`: what the stage's and the production's form waits on. */
+  /**
+   * No answer read this time yet — what the stage's and the production's form waits on. `state`
+   * may meanwhile say what the last read said (a dialog opened again).
+   */
   readonly loading: boolean;
   /** The answer held is being read again — *Try again*, or a token back — and stands meanwhile. */
   readonly rereading: boolean;
@@ -52,6 +55,20 @@ type Answer = Pick<GroupRecipe, "state" | "tier" | "services">;
 const LOADING: Answer = { state: "loading", tier: undefined, services: [] };
 const ABSENT: Answer = { state: "absent", tier: undefined, services: [] };
 const UNREADABLE: Answer = { state: "unreadable", tier: undefined, services: [] };
+
+/**
+ * The last answer read for each recipe, so a dialog opened again says at once what it said the
+ * time before — the door open or shut, no form flashing on the way — while the recipe is read anew
+ * behind it, and `loading` holds Add until that read is back. Only a mount's first read stands on
+ * it: a proposal landing reads again from nothing. A failed read says nothing about the recipe and
+ * is never remembered.
+ */
+const remembered = new Map<string, Answer>();
+
+/** Forgets every remembered answer: a test's clean start. */
+export function forgetGroupRecipes(): void {
+  remembered.clear();
+}
 
 export function useZeropsGroupRecipe(input: {
   /** Gitea's public origin, or `undefined` while the account has none. */
@@ -102,6 +119,7 @@ export function useZeropsGroupRecipe(input: {
     if (client === null) return;
     let cancelled = false;
     const settle = (answer: Answer) => {
+      if (answer.state !== "unreadable") remembered.set(`${giteaOrigin}|${slug}|${tier}`, answer);
       if (!cancelled) setHeld({ key, tries, answer });
     };
     void client.readFile(slug, GROUP_REPOSITORY, RECIPE_TIER_PATHS[tier], "main").then(
@@ -131,7 +149,12 @@ export function useZeropsGroupRecipe(input: {
   }, []);
 
   const current = key !== "" && held !== null && held.key === key ? held : null;
-  const answer = key === "" ? (pending ? LOADING : ABSENT) : (current?.answer ?? LOADING);
+  const recalled =
+    key !== "" && held === null ? remembered.get(`${giteaOrigin}|${slug}|${tier}`) : undefined;
+  const answer =
+    key === "" ? (pending ? LOADING : ABSENT) : (current?.answer ?? recalled ?? LOADING);
   const rereading = current !== null && current.tries !== tries;
-  return { ...answer, loading: answer.state === "loading", rereading, reread };
+  // A remembered answer is said, not acted on: what is imported comes from this read.
+  const loading = answer.state === "loading" || (key !== "" && current === null);
+  return { ...answer, loading, rereading, reread };
 }
