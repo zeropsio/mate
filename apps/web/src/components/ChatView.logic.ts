@@ -1333,35 +1333,52 @@ export function conversationContentPending(input: {
   return input.shell.latestUserMessageAt !== null || input.shell.latestTurn !== null;
 }
 
-/** The person's own turns in a conversation — its user messages; undefined while it is unread. */
-export function personTurns(
-  messages: ReadonlyArray<{ readonly role: string }> | undefined,
-): number | undefined {
-  return messages?.filter((message) => message.role === "user").length;
+/**
+ * When the person's newest turn in a conversation was made — its newest user message; `null` where
+ * it holds none, undefined while it is unread. Older history loaded into the window never moves it.
+ */
+export function newestPersonTurn(
+  messages: ReadonlyArray<{ readonly role: string; readonly createdAt: string }> | undefined,
+): string | null | undefined {
+  if (messages === undefined) return undefined;
+  let newest: { readonly at: string; readonly ms: number } | null = null;
+  for (const message of messages) {
+    if (message.role !== "user") continue;
+    const ms = Date.parse(message.createdAt);
+    if (newest === null || ms > newest.ms) newest = { at: message.createdAt, ms };
+  }
+  return newest?.at ?? null;
 }
 
 /**
  * The error this view wrote on a conversation, while it still stands: until the person sends
- * again (the send clears it), or a turn of theirs ran since it was written — the ask another of
- * their browsers sent through a moment later. The Mate's own messages during a run move nothing.
+ * again (the send clears it), or a turn of theirs newer than the newest when it was written
+ * (`after`; `null`, none yet) exists — the ask another of their browsers sent through a moment
+ * later. The Mate's own messages, older history loaded, and a window a reconnect shrank move
+ * nothing; an error that knows nothing of its turns (`after` absent) stands until the next send.
  */
 export function localThreadErrorStanding(
-  entry: { readonly message: string | null; readonly turns?: number | undefined } | undefined,
-  turns: number | undefined,
+  entry:
+    | { readonly message: string | null; readonly after?: string | null | undefined }
+    | undefined,
+  newest: string | null | undefined,
 ): string | null {
   if (entry === undefined || entry.message === null) return null;
-  if (entry.turns !== undefined && turns !== undefined && turns > entry.turns) return null;
+  if (entry.after === undefined || newest === undefined || newest === null) return entry.message;
+  if (entry.after === null || Date.parse(newest) > Date.parse(entry.after)) return null;
   return entry.message;
 }
 
-/** Whether writing `next` over `existing` changes nothing: the same words, the same turns. */
+/** Whether writing `next` over `existing` changes nothing: the same words, the same newest turn. */
 export function threadErrorEntryUnchanged(
-  existing: { readonly message: string | null; readonly turns?: number | undefined } | undefined,
-  next: { readonly message: string | null; readonly turns?: number | undefined },
+  existing:
+    | { readonly message: string | null; readonly after?: string | null | undefined }
+    | undefined,
+  next: { readonly message: string | null; readonly after?: string | null | undefined },
 ): boolean {
   return (
     existing !== undefined &&
     (existing.message ?? null) === next.message &&
-    existing.turns === next.turns
+    existing.after === next.after
   );
 }

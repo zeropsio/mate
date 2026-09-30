@@ -268,6 +268,7 @@ export const make = Effect.gen(function* () {
       state: row?.state ?? "not-authorized",
       token: false,
       subject: principalUserId(principal),
+      login: (yield* agentLogins.latest)[login.id],
     });
     if (refusal === undefined) return;
     return yield* new OrchestrationDispatchCommandError({
