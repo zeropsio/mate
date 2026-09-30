@@ -172,6 +172,7 @@ import { ZeropsChangeDetailPage } from "./zerops/ZeropsGroupDetail";
 import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
 import { CrewPanel } from "./zerops/crew/CrewPanel";
 import { useCrew } from "../zerops/crew/useCrew";
+import { useCrewAccess } from "../zerops/crew/useCrewAccess";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useZeropsNextStepStrip } from "./zerops/ZeropsNextStepBanner";
 import { zeropsMateAt } from "../zerops/mateIdentities";
@@ -432,7 +433,6 @@ import {
   resolveComposerInteractionMode,
   resolveComposerOverlayHeight,
   resolveComposerProviderSelection,
-  resolveCrewChangeOffered,
   resolveDraftHeroState,
   resolveZeropsConversationReadOnly,
   resolveZeropsOwnedAgentSendBlockReason,
@@ -3826,6 +3826,8 @@ export default function ChatView(props: ChatViewProps) {
   // is, or could be, set up; its view gives the strip its crew group and a
   // crew thread its crewmate.
   const crew = useCrew(activeThreadEnvironmentId);
+  // What this viewer may change on the crew: the answer the server's door reaches (D6).
+  const crewDoor = useCrewAccess(activeThreadEnvironmentId, crew.snapshot);
   // The band's sign-in request lands here: the first agent that needs a
   // sign-in gets the dialog, without a detour through the panel.
   const openAgentAuthDialog = useCallback(() => {
@@ -5420,15 +5422,12 @@ export default function ChatView(props: ChatViewProps) {
           to: "/$environmentId/$threadId",
           params: buildThreadRouteParams(scopeThreadRef(environmentId, target)),
         }),
-      // Its empty conversation's *Change its job*, as its menu's: offered to a
-      // viewer who may run its agent (D6), the answer its composer gets.
+      // Its empty conversation's *Change its job*: offered once whose logins
+      // they are is read, and only where the crew's door would take the save.
       onChangeJob:
         activeThreadRef !== null &&
-        resolveCrewChangeOffered({
-          agentAuthKnown: zeropsAgentAuth.snapshot !== null,
-          agent: zeropsOwnedAgent,
-          ownership: zeropsAgentOwnership,
-        })
+        !crewDoor.reading &&
+        crewDoor.crewmate(activeCrewOrigin.crewmate) === null
           ? () => openCrewView(activeThreadRef, { kind: "job", handle: activeCrewOrigin.crewmate })
           : null,
     };
@@ -5437,15 +5436,13 @@ export default function ChatView(props: ChatViewProps) {
     activeCrewmate,
     activeThreadRef,
     crew.snapshot,
+    crewDoor,
     displayedTimeline.entries,
     environmentId,
     loadEarlierTurns,
     navigate,
     threadId,
-    zeropsAgentAuth.snapshot,
-    zeropsAgentOwnership,
     zeropsMates,
-    zeropsOwnedAgent,
   ]);
 
   const feedbackBannerItems = useMemo(

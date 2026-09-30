@@ -28,6 +28,7 @@
  * Served by the dev server at `/design-crewmate.html`. Fixtures only: nothing
  * here ships, and no route imports this module.
  */
+import { crewAccess, type CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import {
@@ -584,6 +585,14 @@ function Pane({
 
 /* ------------------------------------------------------------ the panel */
 
+/** The column beside the conversation, open: the empty state's own lock is what this page shows. */
+const OPEN_CREW = crewAccess({
+  snapshot: CREW.snapshot,
+  lockOf: (): CrewLock | null => null,
+  defaultLogin: "claudeAgent",
+  reading: false,
+});
+
 function Panel({
   job,
   onCloseJob,
@@ -623,10 +632,13 @@ function Panel({
     >
       {job === null ? (
         <CrewPanelBody
+          access={OPEN_CREW}
+          askLock={null}
           crew={CREW}
           environmentId={ENVIRONMENT}
           mate={FEN}
           onAskMate={noop}
+          onSignIn={noop}
           treeCwd={null}
         />
       ) : (

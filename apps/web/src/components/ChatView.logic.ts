@@ -10,7 +10,6 @@ import {
 } from "@t3tools/client-runtime/zerops/agentAvailability";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import {
-  agentOwnershipAllowsTurns,
   agentOwnershipComposerNotice,
   resolveOwnedAgentId,
   type ZeropsAgentOwnership,
@@ -553,22 +552,6 @@ export function resolveZeropsConversationReadOnly(input: {
   const notice = agentOwnershipComposerNotice(input.ownership);
   if (notice === undefined) return null;
   return { notice, waitingLabel: "Waiting for the agent's owner" };
-}
-
-/**
- * Whether a crewmate's conversation offers to change its crew — its empty
- * state's _Change its job_: to a viewer who may run the conversation's agent
- * (D6, `agentOwnershipAllowsTurns`) — their own login or one nobody holds —
- * or whoever it is on the project's token, which belongs to no one; and only
- * once whose agent it is has been read, so the press only ever arrives.
- */
-export function resolveCrewChangeOffered(input: {
-  readonly agentAuthKnown: boolean;
-  readonly agent: { readonly flagToken: boolean } | undefined;
-  readonly ownership: ZeropsAgentOwnership;
-}): boolean {
-  if (!input.agentAuthKnown) return false;
-  return input.agent?.flagToken === true || agentOwnershipAllowsTurns(input.ownership);
 }
 
 /** Keep restored drafts and every plan control on the selected instance's supported mode. */
