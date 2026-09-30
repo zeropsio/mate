@@ -7,11 +7,8 @@ import {
 } from "@t3tools/client-runtime/zerops/environments";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import { Link } from "@tanstack/react-router";
-import { lazy, Suspense, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
-import type { EnvironmentId } from "@t3tools/contracts";
-
-import type { Spoken } from "../components/zerops/MateLinkLine";
 import { ZeropsOrganizationScope } from "../components/zerops/ZeropsOrganizationScope";
 import { MateVoiceContext } from "../zerops/mateVoiceContext";
 import { Button } from "../components/ui/button";
@@ -31,15 +28,15 @@ export function RouteGateView({
   projectId,
   conversation,
   voice,
-  environmentId,
+  stage,
   children,
 }: {
   readonly gate: RouteGate;
   readonly phrase: RouteGatePhrase;
   /** What the route's Mate link says, and where (`mateVoice`). */
   readonly voice: MateVoice;
-  /** The route's environment, whose Mate the stage draws. */
-  readonly environmentId: EnvironmentId | null;
+  /** The Mate's stage, drawn where the route waits for its conversation. */
+  readonly stage: ReactNode;
   /** The route's Zerops project, for "Open in Zerops"; null while it is not known. */
   readonly projectId: string | null;
   readonly conversation: ConversationView;
@@ -74,55 +71,11 @@ export function RouteGateView({
         </div>
       );
     case "wait":
-      // The Mate's stage: its face asleep, its name and its link's line, on one axis.
-      return (
-        <MateLinkStageLoaded
-          environmentId={environmentId}
-          projectId={projectId}
-          voice={voice.surface === "none" ? SILENT_STAGE : voice}
-        />
-      );
+      // The Mate's stage (`MateLinkStage`, drawn by the root): face asleep, name, the link's line.
+      return stage;
     case "unavailable":
       return <RouteGateWords phrase={phrase} projectId={projectId} />;
   }
-}
-
-const SILENT_STAGE: Spoken = { surface: "stage", text: null, actions: [], processes: false };
-
-/**
- * The Mate's stage draws its conversation's header, which brings the conversation's modules, so
- * the gate imports it apart — and starts that import as this module loads, in a browser, so the
- * stage is there before a reload while the Mate is down first needs it. Once loaded it renders
- * in the same frame; only a stage needed before its module arrived waits, drawing nothing.
- */
-type MateLinkStageView = (typeof import("../components/zerops/MateLinkStage"))["MateLinkStage"];
-let mateLinkStage: MateLinkStageView | null = null;
-let mateLinkStageLoad: Promise<MateLinkStageView> | null = null;
-
-function loadMateLinkStage(): Promise<MateLinkStageView> {
-  mateLinkStageLoad ??= import("../components/zerops/MateLinkStage").then(
-    (module) => (mateLinkStage = module.MateLinkStage),
-    (cause: unknown) => {
-      // A failed load is tried again when the stage is next needed.
-      mateLinkStageLoad = null;
-      throw cause;
-    },
-  );
-  return mateLinkStageLoad;
-}
-
-if (typeof window !== "undefined") loadMateLinkStage().catch(() => undefined);
-
-const MateLinkStageLazy = lazy(() => loadMateLinkStage().then((view) => ({ default: view })));
-
-function MateLinkStageLoaded(props: Parameters<MateLinkStageView>[0]) {
-  const Loaded = mateLinkStage;
-  if (Loaded !== null) return <Loaded {...props} />;
-  return (
-    <Suspense fallback={null}>
-      <MateLinkStageLazy {...props} />
-    </Suspense>
-  );
 }
 
 /** A route's own words where nothing else stands: centred, with each verb once. */
