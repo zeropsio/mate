@@ -185,6 +185,7 @@ import {
   type ProjectsFlowGroup,
 } from "./projects/ZeropsProjectsFlow";
 import {
+  flowStepsAwaiting,
   groupFlowInputOf,
   groupMemberFactsOf,
   lastMergedCode,
@@ -2763,6 +2764,15 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const flowGroups = groupTree.groups.map(
     ({ group, environments }): ProjectsFlowGroup<ZeropsCandidatePresentation> => {
       const reads = groupDeploys.get(group.groupId);
+      const awaiting = flowStepsAwaiting({
+        read: reads !== undefined,
+        changesKnown: reads?.changesKnown === true,
+        // Out and expected back: a Gitea session is held or coming, and the
+        // group has an org to read (or the registry has not answered yet).
+        readOut:
+          projectFlow.signInTrouble === null &&
+          (projectFlow.slugs.size === 0 || projectFlow.slugs.has(group.groupId)),
+      });
       const members = groupMemberFactsOf(
         environments,
         (item) => (item.environmentId === undefined ? undefined : activity.get(item.environmentId)),
@@ -2790,12 +2800,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         read: reads !== undefined,
         talkSettled: talkSettled(members),
         placed: lastGroupPlacement(group.groupId),
-        // Out and expected back: a Gitea session is held or coming, and the
-        // group has an org to read (or the registry has not answered yet).
-        awaiting:
-          reads === undefined &&
-          projectFlow.signInTrouble === null &&
-          (projectFlow.slugs.size === 0 || projectFlow.slugs.has(group.groupId)),
+        awaiting: awaiting.steps,
+        changesAwaiting: awaiting.changes,
         mates: new Map(
           environments
             .filter(({ item }) => hasMate(item))

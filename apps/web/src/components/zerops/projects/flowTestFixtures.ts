@@ -169,6 +169,7 @@ function entryOf(
     talkSettled: true,
     placed: undefined,
     awaiting: !read,
+    changesAwaiting: !read,
     mates: new Map(mates.map((mate) => [mate.project.id, mate])),
     stops: new Map(
       members

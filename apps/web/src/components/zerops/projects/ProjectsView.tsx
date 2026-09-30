@@ -215,7 +215,7 @@ export function ProjectCard<T>({
         <Arrow placement="@5xl/flow:col-start-2" />
         {/* Until the group's read answers, its steps hold their place and claim nothing. */}
         <Step label="Pull requests" name="pull-requests" placement="@5xl/flow:col-start-3">
-          {entry.awaiting ? (
+          {entry.changesAwaiting ? (
             <PendingStep density="box" step="pull-requests" />
           ) : (
             <OwnCell
@@ -245,7 +245,7 @@ export function ProjectCard<T>({
           name="main"
           placement="@2xl/flow:mt-2 @5xl/flow:col-start-5 @5xl/flow:mt-0"
         >
-          {entry.awaiting ? (
+          {entry.changesAwaiting ? (
             <PendingStep density="box" step="main" />
           ) : (
             <MainStep
