@@ -1376,6 +1376,35 @@ describe("standingIncidents — what the dock under the now line says of a servi
       ops: [dev("s1", 1, "Status", false), deploy("d1", 2, "appstage")],
       shows: [["appdev", "not running", "attention"]],
     },
+    {
+      name: "a batch deploy that takes the service in acts on it",
+      ops: [
+        dev("s1", 1, "Status", false),
+        deploy("d1", 2, "appstage, appdev", {
+          batch: true,
+          phase: "running",
+          steps: [
+            { id: "appstage", label: "appstage", state: "running", stateLabel: "Running" },
+            { id: "appdev", label: "appdev", state: "queued", stateLabel: "Waiting" },
+          ],
+        }),
+      ],
+      shows: [],
+    },
+    {
+      name: "a batch deploy of other services leaves it standing",
+      ops: [
+        dev("s1", 1, "Status", false),
+        deploy("d1", 2, "apistage, webstage", {
+          batch: true,
+          steps: [
+            { id: "apistage", label: "apistage", state: "done", stateLabel: "Done" },
+            { id: "webstage", label: "webstage", state: "done", stateLabel: "Done" },
+          ],
+        }),
+      ],
+      shows: [["appdev", "not running", "attention"]],
+    },
   ])("$name", ({ ops, shows }) => {
     // The Mate moved on: a step of its own after them.
     const [only] = structure([user("m0", 0), ...ops, moveOn], { live: "t1" }).turns;

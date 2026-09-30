@@ -1614,10 +1614,18 @@ const ACTING_KINDS: ReadonlySet<ZeropsOperation["kind"]> = new Set([
   "standup",
 ]);
 
-/** The services an operation acts on: its target, or each a stand-up or an import names. */
+/**
+ * The services an operation acts on: its target, or each a stand-up, an
+ * import or a batch deploy names — a batch stays one call in the run's
+ * entries, and every service it deploys is acted on.
+ */
 function actedOn(operation: ZeropsOperation): ReadonlyArray<string> {
   if (!ACTING_KINDS.has(operation.kind)) return [];
-  if (operation.kind === "standup" || operation.kind === "import") {
+  if (
+    operation.kind === "standup" ||
+    operation.kind === "import" ||
+    (operation.kind === "deploy" && operation.batch === true)
+  ) {
     return operation.steps.map((step) => step.label);
   }
   return [operationTargetKey(operation)];
