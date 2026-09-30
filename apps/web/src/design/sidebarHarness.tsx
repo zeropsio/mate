@@ -47,13 +47,13 @@ import {
   type FlowPullRequest,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import {
   deriveCrewView,
   type CrewShellInput,
 } from "@t3tools/client-runtime/zerops/projections/crew";
-import { EnvironmentId, ThreadId, type CrewSnapshot } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ThreadId, type CrewSnapshot } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 import { EllipsisIcon } from "lucide-react";
@@ -94,7 +94,7 @@ import {
 } from "~/components/zerops/SidebarZeropsTree";
 import { SidebarContent, SidebarProvider } from "~/components/ui/sidebar";
 import { HeadingLadder } from "./headingLadder";
-import { useComposerDraftStore } from "~/composerDraftStore";
+import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { writeCollapsedProjects } from "~/zerops/collapsedProjects";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
@@ -295,6 +295,9 @@ const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
   candidate("notes-iris", "Notes - iris", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Iris"]),
   candidate("notes-kai", "Notes - kai", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Kai"]),
   candidate("notes-lena", "Notes - lena", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Lena"]),
+  // Signed in, and nobody has asked either anything yet: one says so, one holds a draft.
+  candidate("notes-juno", "Notes - juno", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Juno"]),
+  candidate("notes-rhea", "Notes - rhea", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Rhea"]),
   candidate("notes-prod", "Notes - production", [...NOTES, "mate:role:prod"], {
     container: false,
     routes: routes(["app", "notes.example.com"], ["app", "www.notes.example.com"]),
@@ -937,6 +940,7 @@ function SidebarFrame({
               className="mb-2"
               complete
               getActivity={coming?.activity ?? activityOfCandidate}
+              getConversationsRead={(item) => item.group === "connected"}
               getComing={coming?.coming}
               onOpenComing={(projectId) => {
                 menuActions.push(`coming ${projectId}`);
@@ -1324,7 +1328,8 @@ if (new URLSearchParams(location.search).get("palette") === "zerops") {
 }
 
 // An account is open, as in the app: the order and the mutes are kept under
-// its key. A draft stands in Iris's composer, as the composer would keep it.
+// its key. A draft stands in Iris's composer, as the composer would keep it,
+// and one in Rhea's new conversation, nothing sent yet.
 openAccountLifetime("design-harness");
 const params = new URLSearchParams(location.search);
 // The fixture set's folded projects, as a person left them — or `?fold=all`,
@@ -1354,6 +1359,17 @@ useComposerDraftStore
     scopeThreadRef(EnvironmentId.make("env-notes-iris"), ThreadId.make("thread-notes-iris")),
     "also count the title",
   );
+{
+  const rhea = DraftId.make("draft-notes-rhea");
+  useComposerDraftStore
+    .getState()
+    .setProjectDraftThreadId(
+      scopeProjectRef(EnvironmentId.make("env-notes-rhea"), ProjectId.make("project-notes-rhea")),
+      rhea,
+      { threadId: ThreadId.make("thread-notes-rhea") },
+    );
+  useComposerDraftStore.getState().setPrompt(rhea, "set up a staging for the notes app");
+}
 
 // The menu is always on screen here: a find is shown in it, as on a desktop.
 useSidebarJump.getState().setShowable(true);

@@ -467,6 +467,112 @@ export function mateRowReading(input: {
   );
 }
 
+/**
+ * The row's second line: the person's words — the last they sent, or the next waiting unsent in
+ * its composer — or why none stand there. It is the person's line, as the third is the Mate's.
+ */
+export type MateRowAskLine =
+  | { readonly kind: "ask"; readonly text: string }
+  /** Unsent, led by *Draft*: the ask it stands over is kept under it, so clearing it is still. */
+  | { readonly kind: "draft"; readonly text: string; readonly ask: string | undefined }
+  | { readonly kind: "sign-in"; readonly text: string; readonly waitsOnViewer: boolean }
+  /** Its conversation read, and nobody has asked it anything: the fact, quietly. */
+  | { readonly kind: "nothing-asked" }
+  | undefined;
+
+/**
+ * What a row's second line says (the owner, 2026-09-30: an empty conversation "not showing draft
+ * and has weird position of the name without the questions and response under it"):
+ *
+ * | the row                                | its second line                              |
+ * | -------------------------------------- | -------------------------------------------- |
+ * | coming up                              | — its born line says it                      |
+ * | deleting                               | the ask, where there was one; no draft       |
+ * | nobody signed in                       | the sign-in, whatever is typed               |
+ * | a draft typed                          | *Draft* and its words, over the ask if any   |
+ * | asked                                  | the ask                                      |
+ * | never asked, its conversations read    | "Nothing asked yet"                          |
+ * | never asked, not read, or a step below | nothing                                      |
+ *
+ * A draft stands in the person's line, never the Mate's: the question it waits on, its error,
+ * its live step and its dots all keep their place under it. Nothing asked is said only once its
+ * conversations are read — before that it is a socket still opening, and a reload paints nothing
+ * it takes back. The row keeps three lines' height whatever this says, so nothing moves when
+ * the first message lands.
+ */
+export function mateRowAskLine(input: {
+  readonly view: {
+    readonly ask: string | undefined;
+    readonly reply: MateRowReply;
+    readonly coming?: MateComing | undefined;
+  };
+  readonly signIn: { readonly text: string; readonly waitsOnViewer: boolean } | undefined;
+  /** Its unsent message (`mateRowDraft`). */
+  readonly draft: string | undefined;
+  readonly deleting: boolean;
+  /** Its conversations are read: none there is a fact, not a socket still opening. */
+  readonly read: boolean;
+}): MateRowAskLine {
+  const { view } = input;
+  if (view.coming !== undefined) return undefined;
+  if (input.deleting) return view.ask === undefined ? undefined : { kind: "ask", text: view.ask };
+  if (input.signIn !== undefined) return { kind: "sign-in", ...input.signIn };
+  if (input.draft !== undefined) return { kind: "draft", text: input.draft, ask: view.ask };
+  if (view.ask !== undefined) return { kind: "ask", text: view.ask };
+  return view.reply === undefined && input.read ? { kind: "nothing-asked" } : undefined;
+}
+
+/** What `mateRowDraft` reads of the composer's store (`composerDraftStore.ts`). */
+export interface MateDraftSource {
+  readonly draftsByThreadKey: Readonly<Record<string, { readonly prompt: string } | undefined>>;
+  readonly draftThreadsByThreadKey: Readonly<
+    Record<
+      string,
+      {
+        readonly environmentId: string;
+        readonly threadId: string;
+        readonly createdAt: string;
+        readonly promotedTo?: unknown;
+      }
+    >
+  >;
+}
+
+/**
+ * A Mate's unsent message, where its composer keeps it: under its conversation's key, or under
+ * the draft its conversation was made from; with no conversation yet, the newest new one's in its
+ * environment not sent yet. Its words trimmed; nothing where only blanks are typed.
+ */
+export function mateRowDraft(
+  source: MateDraftSource,
+  mate: {
+    readonly environmentId?: string | undefined;
+    readonly threadId?: string | undefined;
+    readonly threadKey?: string | undefined;
+  },
+): string | undefined {
+  const words = (key: string) => {
+    const prompt = source.draftsByThreadKey[key]?.prompt.trim() ?? "";
+    return prompt.length > 0 ? prompt : undefined;
+  };
+  if (mate.environmentId === undefined) return undefined;
+  const own = mate.threadKey === undefined ? undefined : words(mate.threadKey);
+  if (own !== undefined) return own;
+  let newest: { readonly at: string; readonly text: string } | undefined;
+  for (const [key, session] of Object.entries(source.draftThreadsByThreadKey)) {
+    if (session.environmentId !== mate.environmentId) continue;
+    const mine =
+      mate.threadId === undefined
+        ? session.promotedTo === undefined || session.promotedTo === null
+        : session.threadId === mate.threadId;
+    const text = mine ? words(key) : undefined;
+    if (text !== undefined && (newest === undefined || session.createdAt > newest.at)) {
+      newest = { at: session.createdAt, text };
+    }
+  }
+  return newest?.text;
+}
+
 /** A new Mate's first run working: what it is doing, in the person's words. */
 const SETTING_UP_DEVELOPMENT = {
   kind: "live",

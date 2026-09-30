@@ -14,6 +14,7 @@ import {
 import { useCallback, useMemo } from "react";
 
 import { mateRowActivity } from "../components/zerops/SidebarMateRow.logic";
+import { environmentsWithSnapshotAtom } from "../state/shell";
 import { zeropsEnvironmentsAtom } from "../state/zerops";
 import type { ZeropsAgentActivity } from "./agentActivity";
 import { mateComing, type MateComing } from "./mateComing";
@@ -60,6 +61,21 @@ export function useMateRowActivity(
       });
     },
     [activity, sockets],
+  );
+}
+
+/**
+ * Whether a Mate's conversations have been read — its connected environment's shell arrived — so
+ * a Mate with none has nothing asked yet, and its row may say so without taking it back.
+ */
+export function useMateConversationsRead(): (candidate: ZeropsCandidate) => boolean {
+  const read = useAtomValue(environmentsWithSnapshotAtom);
+  return useCallback(
+    (candidate: ZeropsCandidate) =>
+      candidate.group === "connected" &&
+      candidate.environmentId !== undefined &&
+      read.has(candidate.environmentId),
+    [read],
   );
 }
 
