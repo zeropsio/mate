@@ -140,11 +140,18 @@ describe("mateVoice — the one voice of a Mate's link", () => {
       voice: banner("This Mate isn't answering. Trying again in 5 s.", ["try-now"]),
     },
     {
-      state: "nothing names the target yet, nothing shown",
+      state: "nothing names the target yet, nothing shown, a blip",
+      reachability: null,
+      shown: false,
+      held: BLIP,
+      voice: stage(null),
+    },
+    {
+      state: "nothing names the target yet, nothing shown, slow: being looked for is opening it",
       reachability: null,
       shown: false,
       held: LONG,
-      voice: stage(null),
+      voice: stage("Opening Quinn…", [], true),
     },
   ] as const)("$state", ({ reachability, shown, held, voice }) => {
     expect(

@@ -1,5 +1,5 @@
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { MateLink } from "@t3tools/client-runtime/zerops/environments";
+import { MATE_VOICE_QUIET_MS, type MateLink } from "@t3tools/client-runtime/zerops/environments";
 import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
 import { act, createElement as h, type ReactNode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
@@ -102,6 +102,10 @@ vi.mock("~/zerops/useUsualAgent", () => ({
   useUsualAgent: () => ({ usual: null, settled: true }),
 }));
 vi.mock("~/zerops/useNowMs", () => ({ useSecondsNowMs: () => 0 }));
+// A slow first connect lists its project's processes; none are read here.
+vi.mock("~/zerops/activity/useProjectActivity", () => ({
+  useProjectActivity: () => ({ processes: [] }),
+}));
 vi.mock("~/zerops/inventoryContext", () => ({
   useZeropsInventory: () => ({ services: new Map() }),
 }));
@@ -199,9 +203,12 @@ describe("a Mate's own view while its link is made", () => {
     openView();
     act(() => vi.advanceTimersByTime(10_000));
     openView();
+    // A blip says nothing; a link lost for longer says so in the Mate's name (`mateVoice`).
+    expect(said()).not.toContain("Reconnecting");
+    act(() => vi.advanceTimersByTime(MATE_VOICE_QUIET_MS));
 
     expect(said()).toContain("Quinn");
-    expect(said()).toContain("Reconnecting…");
+    expect(said()).toContain("Reconnecting to Quinn…");
     expect(app.connect).toHaveBeenCalledWith({ key: KEY });
     expect(app.navigate).not.toHaveBeenCalled();
   });
@@ -233,7 +240,8 @@ describe("a Mate's own view while its link is made", () => {
   it("waits for a machine to name it before connecting: a Connect before the stage holds it ends unheard", () => {
     app.link = { key: KEY, environmentId: undefined, reachability: null } satisfies MateLink;
     openView();
-    expect(said()).toContain("Opening this conversation…");
+    act(() => vi.advanceTimersByTime(MATE_VOICE_QUIET_MS));
+    expect(said()).toContain("Opening Quinn…");
     expect(app.connect).not.toHaveBeenCalled();
     expect(app.navigate).not.toHaveBeenCalled();
   });

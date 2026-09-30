@@ -66,7 +66,9 @@ export function mateVoice(input: MateVoiceInput): MateVoice {
     actions: ReadonlyArray<ReachabilityAction> = [],
     processes = false,
   ): MateVoice => ({ surface, text, actions, processes });
-  if (reachability === null) return conversationShown ? NONE : speak(null);
+  const opening = (): MateVoice => (quiet ? speak(null) : speak(`Opening ${mateName}…`, [], true));
+  // Nothing names its target yet: it is being looked for, which is opening it.
+  if (reachability === null) return conversationShown ? NONE : opening();
   switch (reachability.kind) {
     case "ready":
       return reachability.notice === null
@@ -86,13 +88,13 @@ export function mateVoice(input: MateVoiceInput): MateVoice {
     case "connecting":
     case "resolving": {
       if (conversationShown) return NONE;
-      if (quiet) return speak(null);
+      if (quiet) return opening();
       // A wait with a cause of its own says it; the link itself being made says the Mate opens.
       const own =
         reachability.kind === "connecting" &&
         (reachability.waitingOn === "access" || reachability.waitingOn === "visible");
       if (own) return speak(reachabilityPhrase(reachability, { nowMs, mateName }).text);
-      return speak(`Opening ${mateName}…`, [], true);
+      return opening();
     }
     case "reconnecting":
       if (quiet) return conversationShown ? NONE : speak(null);

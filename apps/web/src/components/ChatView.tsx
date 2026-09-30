@@ -83,7 +83,7 @@ import {
   useState,
 } from "react";
 import { flushSync } from "react-dom";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useShallow } from "zustand/react/shallow";
 import {
   isAtomCommandInterrupted,
@@ -176,6 +176,7 @@ import { useCrewAccess } from "../zerops/crew/useCrewAccess";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useZeropsNextStepStrip } from "./zerops/ZeropsNextStepBanner";
 import { zeropsMateAt } from "../zerops/mateIdentities";
+import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
@@ -382,6 +383,7 @@ import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/Compos
 import { deriveDock, foldBackgroundTasks, latestUsagePause } from "./chat/conversationDock.logic";
 import {
   environmentConnectionBannerItem,
+  mateVoiceBannerItem,
   environmentRetryFailureToast,
 } from "./chat/EnvironmentConnectionBanner";
 import {
@@ -2323,6 +2325,7 @@ export default function ChatView(props: ChatViewProps) {
   // The banner names the Mate, never the environment's label: on a Mate that
   // is the container's internal host.
   const zeropsMates = useZeropsMateDirectory();
+  const mateLinkVoice = useMateVoice();
   const systemComposerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     const items: ComposerBannerStackItem[] = [];
     const unavailableConnection = activeEnvironmentUnavailableState?.connection ?? null;
@@ -2331,6 +2334,19 @@ export default function ChatView(props: ChatViewProps) {
       (unavailableConnection.phase === "connecting" ||
         unavailableConnection.phase === "reconnecting");
     const suppressUnavailableBanner = environmentReconnecting && !reconnectWarningGraceElapsed;
+    // A Mate's link speaks with one voice, the route's (`mateVoice`): its banner, not the
+    // connection's.
+    const routeMateAt = zeropsMateAt(zeropsMates, environmentId);
+    if (routeMateAt.kind === "mate") {
+      const banner = mateVoiceBannerItem({
+        environmentId,
+        voice: mateLinkVoice,
+        onRetry: () => void handleReconnectActiveEnvironment(environmentId),
+        projects: <Link to="/zerops" />,
+      });
+      if (banner !== null) items.push(banner);
+      return items;
+    }
     if (activeEnvironmentUnavailableState && unavailableConnection && !suppressUnavailableBanner) {
       const { environmentId } = activeEnvironmentUnavailableState;
       const mateAt = zeropsMateAt(zeropsMates, environmentId);
@@ -2345,6 +2361,8 @@ export default function ChatView(props: ChatViewProps) {
     return items;
   }, [
     activeEnvironmentUnavailableState,
+    environmentId,
+    mateLinkVoice,
     reconnectWarningGraceElapsed,
     handleReconnectActiveEnvironment,
     zeropsMates,
@@ -6269,6 +6287,8 @@ export default function ChatView(props: ChatViewProps) {
       return;
     }
     if (activeEnvironmentUnavailable) {
+      // A Mate's banner already says where its link is (`mateVoice`): no second voice.
+      if (zeropsMateAt(zeropsMates, environmentId).kind === "mate") return;
       toastManager.add(
         stackedThreadToast({
           type: "warning",

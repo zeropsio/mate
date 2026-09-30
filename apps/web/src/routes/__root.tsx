@@ -2,7 +2,13 @@ import { rememberAccountRoute } from "../zerops/navigationStorage";
 import { EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
-import { routeGatePhrase, selectRouteGate } from "@t3tools/client-runtime/zerops/environments";
+import {
+  MATE_VOICE_QUIET_MS,
+  mateVoice,
+  routeGatePhrase,
+  selectRouteGate,
+  type MateVoice,
+} from "@t3tools/client-runtime/zerops/environments";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
   Link,
@@ -73,9 +79,14 @@ import { draftIdFromPathname, environmentIdFromPathname } from "./-environmentRo
 import { useRouteConversation, useRouteGateInputs } from "./-environmentTargets";
 import { RouteGateView } from "./-routeGate";
 import { installMateDiagnostics } from "~/zerops/diagnostics";
+import { useHeldPast } from "~/zerops/useHeldPast";
 import { useNowMs } from "~/zerops/useNowMs";
+import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsReviewProvider } from "~/zerops/ZeropsReviewProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+
+const NO_ENVIRONMENT = EnvironmentId.make("none");
+const SILENT_VOICE: MateVoice = { surface: "none" };
 
 // At boot, before the first route renders: every emit point writes from then on.
 installMateDiagnostics();
@@ -144,6 +155,27 @@ function SignedInRootRouteView() {
   const gate = selectRouteGate(gateInputs.target);
   const nowMs = useNowMs();
   const gatePhrase = routeGatePhrase(gate, { nowMs, mateName: gateInputs.mateName });
+  // The link's one voice (`mateVoice`): the banner over a mounted conversation, the stage where
+  // none can show yet; the Mate by its own name, never its container's host.
+  const routeEnvironment =
+    routeEnvironmentId === null ? null : EnvironmentId.make(routeEnvironmentId);
+  const routeMate = useZeropsMate(routeEnvironment ?? NO_ENVIRONMENT);
+  const linkReachability =
+    gate.kind === "outlet" ? gate.banner : gate.kind === "wait" ? gate.reachability : null;
+  const linkPast = useHeldPast(
+    `${gate.kind}:${linkReachability?.kind ?? "none"}`,
+    MATE_VOICE_QUIET_MS,
+  );
+  const voice =
+    gate.kind === "outlet" || gate.kind === "wait"
+      ? mateVoice({
+          reachability: linkReachability,
+          conversationShown: gate.kind === "outlet" && conversation.kind === "shown",
+          heldMs: linkPast ? MATE_VOICE_QUIET_MS : 0,
+          nowMs,
+          mateName: routeMate.kind === "mate" ? routeMate.mate.name : "This Mate",
+        })
+      : SILENT_VOICE;
   useEffect(() => {
     rememberAccountRoute(pathname);
   }, [pathname]);
@@ -182,6 +214,8 @@ function SignedInRootRouteView() {
             phrase={gatePhrase}
             projectId={gateInputs.projectId}
             conversation={conversation}
+            environmentId={routeEnvironment}
+            voice={voice}
           >
             <Outlet />
           </RouteGateView>

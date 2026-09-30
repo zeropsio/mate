@@ -1,14 +1,19 @@
 import {
   conversationPhrase,
+  type MateVoice,
   type ConversationView,
   type RouteGate,
   type RouteGatePhrase,
 } from "@t3tools/client-runtime/zerops/environments";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import { Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 
+import type { EnvironmentId } from "@t3tools/contracts";
+
+import type { Spoken } from "../components/zerops/MateLinkLine";
 import { ZeropsOrganizationScope } from "../components/zerops/ZeropsOrganizationScope";
+import { MateVoiceContext } from "../zerops/mateVoiceContext";
 import { Button } from "../components/ui/button";
 import { PortalGate } from "../components/ui/portal-gate";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
@@ -25,10 +30,16 @@ export function RouteGateView({
   phrase,
   projectId,
   conversation,
+  voice,
+  environmentId,
   children,
 }: {
   readonly gate: RouteGate;
   readonly phrase: RouteGatePhrase;
+  /** What the route's Mate link says, and where (`mateVoice`). */
+  readonly voice: MateVoice;
+  /** The route's environment, whose Mate the stage draws. */
+  readonly environmentId: EnvironmentId | null;
   /** The route's Zerops project, for "Open in Zerops"; null while it is not known. */
   readonly projectId: string | null;
   readonly conversation: ConversationView;
@@ -47,24 +58,11 @@ export function RouteGateView({
               aria-hidden={suppressed || undefined}
               className={suppressed ? "hidden" : "contents"}
             >
-              {children}
+              {/* The link's words go to the one banner over the composer (`mateVoice`). */}
+              <MateVoiceContext value={voice}>{children}</MateVoiceContext>
             </div>
           </PortalGate>
-          {cause.text === null ? null : (
-            <div className="flex flex-col items-start gap-3 p-8">
-              <p className="text-sm text-muted-foreground">{cause.text}</p>
-              <RouteGateActions phrase={cause} projectId={projectId} />
-            </div>
-          )}
-          {suppressed || phrase.text === null ? null : (
-            <div
-              role="status"
-              className="fixed top-3 left-1/2 z-40 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-lg border border-border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
-            >
-              <span>{phrase.text}</span>
-              <RouteGateActions phrase={phrase} projectId={projectId} />
-            </div>
-          )}
+          {cause.text === null ? null : <RouteGateWords phrase={cause} projectId={projectId} />}
         </>
       );
     }
@@ -76,14 +74,51 @@ export function RouteGateView({
         </div>
       );
     case "wait":
-    case "unavailable":
+      // The Mate's stage: its face asleep, its name and its link's line, on one axis.
       return (
-        <div className="flex flex-col items-start gap-3 p-8">
-          <p className="text-sm text-muted-foreground">{phrase.text}</p>
-          <RouteGateActions phrase={phrase} projectId={projectId} />
-        </div>
+        <Suspense fallback={null}>
+          <MateLinkStage
+            environmentId={environmentId}
+            projectId={projectId}
+            voice={voice.surface === "none" ? SILENT_STAGE : voice}
+          />
+        </Suspense>
       );
+    case "unavailable":
+      return <RouteGateWords phrase={phrase} projectId={projectId} />;
   }
+}
+
+const SILENT_STAGE: Spoken = { surface: "stage", text: null, actions: [], processes: false };
+
+/**
+ * The Mate's stage draws its conversation's header, which brings the conversation's modules: the
+ * gate loads it when a route first needs it, and the app has them by then.
+ */
+const MateLinkStage = lazy(() =>
+  import("../components/zerops/MateLinkStage").then((module) => ({
+    default: module.MateLinkStage,
+  })),
+);
+
+/** A route's own words where nothing else stands: centred, with each verb once. */
+function RouteGateWords({
+  phrase,
+  projectId,
+}: {
+  readonly phrase: RouteGatePhrase;
+  readonly projectId: string | null;
+}) {
+  return (
+    <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+      <p className="text-sm text-muted-foreground" role="status">
+        {phrase.text}
+      </p>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <RouteGateActions phrase={phrase} projectId={projectId} />
+      </div>
+    </div>
+  );
 }
 
 /**

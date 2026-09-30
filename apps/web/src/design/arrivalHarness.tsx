@@ -48,9 +48,9 @@ import {
 import {
   ComingBelow,
   comingSentenceOf,
-  MateOpeningLine,
   type ArrivalProgress,
 } from "~/components/zerops/ZeropsMateComingPage";
+import { MateOpeningLine } from "~/components/zerops/MateLinkLine";
 import { MateEmptyStateView, type MateEmptyComing } from "~/components/zerops/ZeropsMateEmptyState";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { ArrivalStepInput } from "~/zerops/mateArrival";

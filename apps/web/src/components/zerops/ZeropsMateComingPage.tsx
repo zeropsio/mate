@@ -32,7 +32,11 @@ import {
   type ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
 import { applyProjectCreationVerdict } from "@t3tools/client-runtime/zerops/candidates";
-import type { RouteGatePhrase } from "@t3tools/client-runtime/zerops/environments";
+import {
+  MATE_VOICE_QUIET_MS,
+  mateVoice,
+  type MateVoice,
+} from "@t3tools/client-runtime/zerops/environments";
 import {
   birthCopyServices,
   birthRuntimesFacts,
@@ -65,6 +69,7 @@ import {
   newProjectProgress,
   useNewProjectBirths,
 } from "~/zerops/newProjectBirth";
+import { useHeldPast } from "~/zerops/useHeldPast";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useUsualAgent } from "~/zerops/useUsualAgent";
@@ -78,6 +83,7 @@ import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { ConversationStripView } from "../chat/ConversationStrip";
+import { MateLinkLine, MateOpeningLine } from "./MateLinkLine";
 import { zeropsAccountDisplay } from "./landing/ZeropsAccountControl.logic";
 import { ZeropsProjectLink } from "../chat/ChatHeader";
 import { Button } from "../ui/button";
@@ -400,6 +406,25 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const nowMs = useSecondsNowMs(
     page?.kind === "reaching" && page.reachability?.kind === "retrying",
   );
+  // What its link says under its name (`mateVoice`): nothing for a blip, "Opening Wren…" and the
+  // platform's processes for a first connect that is slow, a restart in its name.
+  const linkReachability =
+    page?.kind === "reaching"
+      ? page.reachability
+      : page?.kind === "up"
+        ? (link.reachability ?? null)
+        : null;
+  const linkPast = useHeldPast(
+    `${page?.kind ?? "none"}:${linkReachability?.kind ?? "none"}`,
+    MATE_VOICE_QUIET_MS,
+  );
+  const linkVoice = mateVoice({
+    reachability: linkReachability,
+    conversationShown: false,
+    heldMs: linkPast ? MATE_VOICE_QUIET_MS : 0,
+    nowMs,
+    mateName: named.name,
+  });
   const view: MateEmptyComing | null =
     page === undefined
       ? null
@@ -432,22 +457,30 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
             }
         : page.kind === "coming"
           ? null
-          : {
-              kind: page.kind === "unreachable" ? "unreachable" : "reaching",
-              below: (
-                <MateOpeningLine
-                  onTryNow={tryNow}
-                  projects={<Link to="/zerops" />}
-                  phrase={mateOpeningPhrase(
-                    page.kind === "up"
-                      ? { kind: "reaching", reachability: link.reachability }
-                      : page,
-                    { nowMs, mateName: named.name },
-                  )}
-                  projectUrl={mate.projectUrl}
-                />
-              ),
-            };
+          : page.kind === "unreachable"
+            ? {
+                kind: "unreachable",
+                below: (
+                  <MateOpeningLine
+                    onTryNow={tryNow}
+                    projects={<Link to="/zerops" />}
+                    phrase={mateOpeningPhrase(page, { nowMs, mateName: named.name })}
+                    projectUrl={mate.projectUrl}
+                  />
+                ),
+              }
+            : {
+                kind: "reaching",
+                below: (
+                  <MateLinkLine
+                    mateServiceId={mate.serviceId}
+                    onTryNow={tryNow}
+                    projectId={projectId}
+                    projectUrl={mate.projectUrl}
+                    voice={linkVoice.surface === "none" ? SILENT_STAGE : linkVoice}
+                  />
+                ),
+              };
 
   // An existing Mate's composer stands in its place while its link is made, as its conversation
   // will draw it: a switch here from a conversation keeps it on screen. A new Mate holds it back
@@ -547,70 +580,13 @@ export function MateComingHeader({
   );
 }
 
-/**
- * Under a Mate's name while its link is made, or when it cannot be opened: the route gate's words
- * for its verdict (`mateOpeningPhrase`), and each of its verbs once — *Try now* retries its link;
- * *Start*, *Enable* and *Restart* are the projects screen's verbs, so until this view carries the
- * container machine's own they are *Go to projects*, as on the conversation's route.
- */
-export function MateOpeningLine({
-  phrase,
-  projectUrl,
-  onTryNow,
-  projects,
-}: {
-  readonly phrase: RouteGatePhrase;
-  /** Its project in Zerops, for "Open in Zerops". */
-  readonly projectUrl: string | undefined;
-  /** Retries its link; absent while nothing names its target. */
-  readonly onTryNow: (() => void) | undefined;
-  /** What *Go to projects* is: the router's link to the projects screen. */
-  readonly projects: ReactElement;
-}): ReactNode {
-  const tryNow = onTryNow !== undefined && phrase.actions.includes("try-now");
-  const openInZerops = projectUrl !== undefined && phrase.actions.includes("open-in-zerops");
-  const toProjects = phrase.actions.some(
-    (action) =>
-      action === "go-to-projects" ||
-      action === "start" ||
-      action === "enable" ||
-      action === "restart" ||
-      (action === "open-in-zerops" && projectUrl === undefined),
-  );
-  return (
-    <div
-      className="mx-auto flex w-full max-w-sm flex-col items-center gap-3"
-      data-zerops-surface="mate-opening"
-    >
-      <p className="text-center text-sm text-muted-foreground" role="status">
-        {phrase.text}
-      </p>
-      {tryNow || openInZerops || toProjects ? (
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          {tryNow ? (
-            <Button onClick={onTryNow} size="compact" variant="pill">
-              Try now
-            </Button>
-          ) : null}
-          {openInZerops ? (
-            <Button
-              render={<a href={projectUrl} rel="noreferrer" target="_blank" />}
-              size="compact"
-              variant="pill"
-            >
-              Open in Zerops
-            </Button>
-          ) : null}
-          {toProjects ? (
-            <Button render={projects} size="compact" variant="pill">
-              Go to projects
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
+/** The stage with nothing said on it: a link that is up, handing over to its conversation. */
+const SILENT_STAGE: Exclude<MateVoice, { readonly surface: "none" }> = {
+  surface: "stage",
+  text: null,
+  actions: [],
+  processes: false,
+};
 
 /** The person, as their own step wears them: their picture, else their initials. */
 export function personOf(
