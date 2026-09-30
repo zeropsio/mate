@@ -118,6 +118,14 @@ function candidate(
 /** D6's record of who signed a Mate's agent in: its person, somebody signed in. */
 const SIGNER = "mate:signer:claude-code:u-ada";
 
+/** A Mate signed in by `u-ada` — the viewer's own, where a test makes her the viewer. */
+function mine(item: ZeropsCandidate, signer = SIGNER): ZeropsCandidate {
+  return {
+    ...item,
+    project: { ...item.project, tagList: [...(item.project.tagList ?? []), signer] },
+  };
+}
+
 const CRM_DEV = candidate("crm-dev", [
   "mate",
   "mate:g:aaa",
@@ -1832,7 +1840,8 @@ describe("a project collapsed to its heading", () => {
       { ...named("crm-a", "CRM - a", ["mate", "mate:g:aaa", "mate:role:dev", "mate:bot:Ada"]) },
       { ...named("crm-b", "CRM - b", ["mate", "mate:g:aaa", "mate:role:dev", "mate:bot:Bo"]) },
       { ...named("crm-c", "CRM - c", ["mate", "mate:g:aaa", "mate:role:dev", "mate:bot:Cy"]) },
-    ].map((item) => ({ ...item, group: "connected" }) as ZeropsCandidate);
+    ].map((item) => mine({ ...item, group: "connected" }) as ZeropsCandidate);
+    session.viewer = "u-ada";
     const busy = (id: string): ZeropsAgentActivity => ({
       threadId: `thread-${id}` as ZeropsAgentActivity["threadId"],
       kind: id === "crm-a" ? "working" : id === "crm-b" ? "input" : "idle",
@@ -1888,8 +1897,9 @@ describe("a project collapsed to its heading", () => {
         releaseOffered: false,
       }),
     };
+    session.viewer = "u-ada";
     stored.collapsed = new Set(["aaa"]);
-    const folded = render([CRM_DEV_CONNECTED], props);
+    const folded = render([mine(CRM_DEV_CONNECTED)], props);
     const shown =
       /data-zerops-surface="sidebar-project-faces">(.*?)<span class="sr-only">([^<]*)</u.exec(
         folded,
@@ -1898,11 +1908,11 @@ describe("a project collapsed to its heading", () => {
     expect(shown?.[1]).toContain('data-mate-face-state="needs"');
     expect(shown?.[1]).toContain('data-dot="attention"');
     stored.collapsed = new Set();
-    const open = render([CRM_DEV_CONNECTED], props);
+    const open = render([mine(CRM_DEV_CONNECTED)], props);
     expect(open).not.toContain("sidebar-project-faces");
     expect(open).toContain('data-mate-face-state="needs"');
     // Still being checked, it waits on Gitea, not on the person: at rest.
-    const checking = render([CRM_DEV_CONNECTED], {
+    const checking = render([mine(CRM_DEV_CONNECTED)], {
       ...props,
       getFlow: (): SidebarProjectFlow => ({
         pullRequests: [pull(2, { mergeability: "checking" })],
@@ -1911,6 +1921,42 @@ describe("a project collapsed to its heading", () => {
       }),
     });
     expect(checking).not.toContain('data-mate-face-state="needs"');
+  });
+
+  // Another's Mate waits on its owner, not the viewer (the owner, 2026-09-30: "sana doesn't wait
+  // for me, it waits for karlos"): no needs face, no amber, nothing on its folded heading — and
+  // its change keeps its Review, for anybody with write on the group to merge.
+  it("claims nothing of the viewer for another's Mate whose change waits, and keeps its Review", () => {
+    session.viewer = "u-ada";
+    const theirs = mine(CRM_DEV_CONNECTED, "mate:signer:claude-code:u-karlos");
+    const props = {
+      getActivity: (): ZeropsAgentActivity => ({
+        threadId: "thread-crm" as ZeropsAgentActivity["threadId"],
+        kind: "idle",
+        status: null,
+        face: "idle",
+        subject: "Something",
+        at: new Date().toISOString(),
+        snippet: undefined,
+        unread: false,
+        pausedUntil: undefined,
+        threadKey: "env-crm-dev:thread-crm",
+        task: undefined,
+      }),
+      getFlow: (): SidebarProjectFlow => ({
+        pullRequests: [pull(2)],
+        environments: new Map(),
+        releaseOffered: false,
+      }),
+    };
+    stored.collapsed = new Set(["aaa"]);
+    expect(render([theirs], props)).not.toContain("sidebar-project-faces");
+    stored.collapsed = new Set();
+    const open = render([theirs], props);
+    expect(open).not.toContain('data-mate-face-state="needs"');
+    expect(open).not.toContain('data-zerops-surface="sidebar-mate-dot"');
+    expect(open).toContain('data-zerops-surface="sidebar-pull-request"');
+    expect(open).toContain(">Review<");
   });
 
   // A folded heading's face is its row's (`mateRowView`): a Mate stopped on
@@ -1971,8 +2017,9 @@ describe("a project collapsed to its heading", () => {
         }),
       ),
     );
+    session.viewer = "u-ada";
     act(() => {
-      mounted.update(tree(CRM_DEV_CONNECTED, { ...read, kind: "input", face: "needs" }));
+      mounted.update(tree(mine(CRM_DEV_CONNECTED), { ...read, kind: "input", face: "needs" }));
     });
     const faces = mounted.root.find(
       (node) =>
@@ -2760,7 +2807,9 @@ describe("a Mate's row says more without words", () => {
       third: 'data-zerops-reply-tone="failed"',
     },
   ])("draws $case", ({ activity, face, dot, third }) => {
-    const html = row(activity);
+    // The viewer's own Mate: what it waits on waits on them.
+    session.viewer = "u-ada";
+    const html = render([SIGNED_IN], { getActivity: () => activity });
     expect(html).toContain(`data-mate-face-state="${face}"`);
     if (dot === undefined) expect(html).not.toContain("sidebar-mate-dot");
     else

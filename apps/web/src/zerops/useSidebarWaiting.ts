@@ -14,6 +14,7 @@ import {
   readZeropsGroupTags,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { useCallback, useEffect, useMemo } from "react";
 
@@ -22,13 +23,19 @@ import type { WaitingMate } from "~/components/zerops/SidebarWaitingStack";
 import { mateFaceOf, mateReviewWaits, type ZeropsAgentActivity } from "./agentActivity";
 import { useZeropsProjectFlowOptional } from "./projectFlowContext";
 import { nextWaitingMate, useSidebarReveal } from "./sidebarReveal";
+import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
-/** The Mates that wait on somebody, in the menu's order; one the menu does not hold, last. */
+/**
+ * The Mates that wait on the viewer — their own, asking or with a change for review — in the
+ * menu's order; one the menu does not hold, last. Another's Mate waits on its owner, not here.
+ */
 export function waitingMatesOf<T extends ZeropsCandidate>(input: {
   readonly candidates: ReadonlyArray<T>;
   readonly activityOf: (candidate: T) => ZeropsAgentActivity | undefined;
   /** Its own change waits for the person's review (`mateReviewWaits`). */
   readonly reviewWaits: (candidate: T) => boolean;
+  /** Who is looking: only their own Mates wait on them (`mateIsViewers`). */
+  readonly viewer: string | undefined;
   readonly tints: ReadonlyMap<string, MateTintId>;
   readonly order: ReadonlyArray<string>;
   readonly shown: (candidate: T) => boolean;
@@ -46,6 +53,7 @@ export function waitingMatesOf<T extends ZeropsCandidate>(input: {
         connected,
         activity: connected ? input.activityOf(candidate) : undefined,
         reviewWaits: input.reviewWaits(candidate),
+        mine: mateIsViewers(candidate.project, input.viewer),
       });
       if (face !== "needs") return [];
       const tags = readZeropsGroupTags(candidate.project.tagList);
@@ -85,6 +93,7 @@ export function useSidebarWaiting<T extends ZeropsCandidate>(input: {
   const { activityOf, candidates, shown, activeProjectId, beforeReveal, enabled } = input;
   // Its change waiting for your review, read off the project flow the row reads.
   const flows = useZeropsProjectFlowOptional()?.flows;
+  const viewer = useZeropsSessionOptional()?.user?.id;
   const reviewWaits = useCallback(
     (candidate: T) => {
       const groupId = readZeropsGroupTags(candidate.project.tagList).groupId;
@@ -96,8 +105,8 @@ export function useSidebarWaiting<T extends ZeropsCandidate>(input: {
     [flows],
   );
   const mates = useMemo(
-    () => waitingMatesOf({ candidates, activityOf, reviewWaits, tints, order, shown }),
-    [activityOf, candidates, order, reviewWaits, shown, tints],
+    () => waitingMatesOf({ candidates, activityOf, reviewWaits, viewer, tints, order, shown }),
+    [activityOf, candidates, order, reviewWaits, shown, tints, viewer],
   );
   const next = useCallback(() => {
     const { cursor, reveal, mateOrder } = useSidebarReveal.getState();

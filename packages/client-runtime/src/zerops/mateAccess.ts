@@ -322,6 +322,21 @@ export function mateOwnerRecords(project: Pick<MateAccessProject, "tagList" | "u
   return { named: owned || signedIn, signedIn, signer };
 }
 
+/**
+ * Whether a Mate is the viewer's own: they signed its agent in (D6's signer tag, read as
+ * `mateOwnerRecords` reads it). Only what one's own Mate waits on waits on them — its question,
+ * its change's review; a colleague's waits on its owner (the owner, 2026-09-30: "sana doesn't
+ * wait for me, it waits for karlos"). Nobody's Mate, one whose signers disagree, and any Mate
+ * while the viewer is not known yet, are nobody's to be waited on.
+ */
+export function mateIsViewers(
+  project: Pick<MateAccessProject, "tagList">,
+  viewer: string | undefined,
+): boolean {
+  const { signer } = mateOwnerSigner(project.tagList);
+  return signer !== undefined && viewer !== undefined && viewer.length > 0 && signer === viewer;
+}
+
 /** The agents whose own signer speaks for the Mate; a login added beside them names only who uses it. */
 const MATE_OWNER_SIGNER_KEYS: ReadonlySet<string> = new Set(["claude-code", "codex"]);
 

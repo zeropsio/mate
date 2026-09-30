@@ -78,7 +78,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
+import { mateIsViewers, mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import { deployActivatedAt, deployRuns } from "@t3tools/client-runtime/zerops/flow";
 import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
@@ -607,6 +607,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // in step without either one owning the other. In *Custom* the headings
   // take a grip, and every heading's menu moves its project up or down.
   const projectOrder = useProjectOrder();
+  // Who is looking: only their own Mates wait on them (`mateIsViewers`).
+  const viewer = useZeropsSessionOptional()?.user?.id;
   const treeRef = useRef<HTMLElement>(null);
   const reorder = useProjectReorder(treeRef);
   // A Mate opened from elsewhere — Add landing on the new Mate, a link, a
@@ -920,6 +922,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           connected: item.group === "connected",
           activity: getActivity?.(item),
           reviewWaits: mateReviewWaits(input.flow, item.project.id),
+          mine: mateIsViewers(item.project, viewer),
         }),
       );
     }
@@ -1195,6 +1198,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
               connected: item.group === "connected",
               activity: live,
               reviewWaits: reviewWaits(item),
+              mine: mateIsViewers(item.project, viewer),
             });
             const view = coming === undefined ? read : mateComingRowView(read, coming);
             return {
@@ -2366,10 +2370,12 @@ function MateRow<T extends RosterCandidate>({
   // read through its socket, or until the socket opens what this browser
   // remembers the row saying. A Mate still coming up says only that
   // (`mateComingRowView`).
+  const viewer = useZeropsSessionOptional()?.user?.id;
   const read = mateRowReading({
     connected: candidate.group === "connected",
     activity,
     reviewWaits,
+    mine: mateIsViewers(candidate.project, viewer),
   });
   const view = deleting
     ? mateDeletingView(read)
@@ -2382,7 +2388,6 @@ function MateRow<T extends RosterCandidate>({
   // Whose seat it is, and whether anybody has signed its agent in — read off
   // its own records, so from the first paint (`mateOwnerView`).
   const records = mateOwnerRecords(candidate.project);
-  const viewer = useZeropsSessionOptional()?.user?.id;
   const seated = mateOwnerView({
     owner,
     records,

@@ -110,6 +110,7 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { failedJob, runAgainLabel, ZeropsDeployRunView } from "./ZeropsDeployRun";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
@@ -386,6 +387,8 @@ function useGroupMates(groupId: string): {
   const updates = useZeropsMateUpdateStates();
   const nowMs = useNowMs();
   const flow = useZeropsProjectFlowOptional()?.flows.get(groupId);
+  // Who is looking: only their own Mates wait on them (`mateIsViewers`).
+  const viewer = useZeropsSession().user?.id;
   const mates = useMemo(() => {
     const candidates = heldCandidates(listing).rows;
     const tints = assignCandidateMateTints(candidates);
@@ -407,19 +410,21 @@ function useGroupMates(groupId: string): {
             : undefined;
         const subject = live?.subject;
         const tint = tints.get(item.project.id) ?? "slate";
+        const mine = mateIsViewers(item.project, viewer);
         return {
           projectId: item.project.id,
           name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
           tint,
           shape: mateShapeOf(item.project.tagList, tint),
           // Its row's face (`mateFaceOf`): needing you while it asks, or while its own change
-          // waits for your review.
+          // waits for your review — your own Mate only; another's waits on its owner.
           face: mateFaceOf({
             connected: item.group === "connected",
             activity: live,
             reviewWaits: mateReviewWaits(flow, item.project.id),
+            mine,
           }),
-          asks: mateFaceFor(item.group === "connected", live) === "needs",
+          asks: mine && mateFaceFor(item.group === "connected", live) === "needs",
           ...(live?.kind === "failed" ? { failed: true } : {}),
           subject,
           snippet: subject === undefined ? undefined : live?.snippet,
@@ -430,7 +435,7 @@ function useGroupMates(groupId: string): {
           update: mateUpdateStatus(updates.of(item)),
         };
       });
-  }, [activity, flow, groupId, listing, updates]);
+  }, [activity, flow, groupId, listing, updates, viewer]);
   const notice = useMemo(
     () => candidatesNotice(listing, GROUP_MATES_SURFACE, nowMs),
     [listing, nowMs],
