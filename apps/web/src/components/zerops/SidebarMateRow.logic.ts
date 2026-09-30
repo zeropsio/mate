@@ -116,6 +116,12 @@ export function mateOwnerView(input: {
   readonly standUpBy?: string | undefined;
   /** The Zerops user looking, when known. */
   readonly viewer?: string | undefined;
+  /**
+   * Its link is made, so its page can show the sign-in. Until then the row says the words and
+   * does not wait on the viewer: the page is still connecting, and the dot would ask for what
+   * the page cannot offer yet.
+   */
+  readonly linked?: boolean | undefined;
 }): MateOwnerView {
   const { owner, records } = input;
   const seat: OwnerSeat =
@@ -130,7 +136,7 @@ export function mateOwnerView(input: {
   return {
     seat,
     signInLine: yours ? WAITING_FOR_YOUR_SIGN_IN : NOBODY_SIGNED_IN,
-    waitsOnViewer: yours,
+    waitsOnViewer: yours && input.linked === true,
   };
 }
 
