@@ -1175,6 +1175,13 @@ export function operationLineWords(operation: ZeropsOperation): string {
       return `Read the events of ${subject}`;
     case "discover":
       return `Looked at ${subject}`;
+    case "standup": {
+      if (!failed) return `Stood ${subject} up`;
+      const broke = operation.steps.find((step) => step.state === "failed");
+      if (broke === undefined) return `Standing ${subject} up failed`;
+      const up = operation.steps.filter((step) => step.state === "done").length;
+      return `Stood up ${up} of ${operation.steps.length} · ${broke.label} failed`;
+    }
     case "devServer":
       // What it came to, as its pill says it: "Running app" read as work
       // still going on, under a finished bar.
@@ -1261,6 +1268,35 @@ export function splitBatchDeploy(operation: ZeropsOperation): ZeropsOperation[] 
       steps: [step],
       links: [],
       ...(phase === "failed" && reason !== undefined ? { explanation: { reason } } : {}),
+    };
+  });
+}
+
+/**
+ * A settled stand-up as the deploys it made, one per service: each stands at
+ * its address, or broken with its build's reason — the result reads them as
+ * it reads any deploy. A running one is its bar's, not the result's.
+ */
+export function splitStandup(operation: ZeropsOperation): ZeropsOperation[] {
+  if (operation.kind !== "standup" || operation.phase === "running") return [operation];
+  const { explanation: _explanation, closing: _closing, ...shared } = operation;
+  return operation.steps.map((step) => {
+    const phase: ZeropsOperation["phase"] = step.state === "failed" ? "failed" : "done";
+    const link = operation.links.find((candidate) => candidate.label === step.label);
+    return {
+      ...shared,
+      key: `${operation.key}:${step.label}`,
+      kind: "deploy",
+      subject: step.label,
+      kicker: `Deploy · ${step.label}`,
+      target: { hostname: step.label },
+      phase,
+      statusWord: phase === "done" ? "Deployed" : "Failed",
+      steps: [step],
+      links: link === undefined ? [] : [{ label: "Open", url: link.url }],
+      ...(phase === "failed" && step.note !== undefined
+        ? { explanation: { reason: step.note } }
+        : {}),
     };
   });
 }
@@ -2007,7 +2043,10 @@ export function deriveOutcome(input: {
 }): OutcomeModel | null {
   const { turn } = input;
   if (turn.live || turn.limitOnly) return null;
-  const operations = turn.stretches.flatMap(stretchOperations).flatMap(splitBatchDeploy);
+  const operations = turn.stretches
+    .flatMap(stretchOperations)
+    .flatMap(splitBatchDeploy)
+    .flatMap(splitStandup);
   const settled = operations.filter((operation) => operation.phase !== "running");
 
   const services = new Map<string, OutcomeService>();

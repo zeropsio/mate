@@ -20,12 +20,13 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import type { ActivePlanState, TimelineEntry } from "../../session-logic";
 import { readUsageLimitNotice, splitBatchDeploy } from "./conversation.logic";
 
-/** Operations that run long enough to watch: a pipeline or a multi-step setup. */
+/** Operations that run long enough to watch: a pipeline, a multi-step setup, a stand-up's builds. */
 export const DOCKED_KINDS: ReadonlySet<ZeropsOperation["kind"]> = new Set([
   "deploy",
   "import",
   "bootstrap",
   "mount",
+  "standup",
 ]);
 
 export interface DockHelper {
