@@ -358,7 +358,7 @@ describe("RunChat", () => {
     );
     // What it opened onto is simply there: only words that change while
     // watched rise in.
-    expect(markup).not.toContain("animate-words-in");
+    expect(markup).not.toContain("data-run-now-change");
     expect(markup).toContain(says);
     // It stands under the chat, never in it.
     expect(markup.indexOf(says)).toBeGreaterThan(markup.lastIndexOf("data-chat-row"));
