@@ -153,7 +153,7 @@ export function Conversation({
     projectId,
     conversation,
     voice: { surface: "none" },
-    environmentId: null,
+    stage: null,
     children: "conversation: hello · draft: my words",
   });
 }

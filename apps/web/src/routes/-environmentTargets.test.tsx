@@ -279,7 +279,7 @@ function RoutedOutlet({
       phrase={routeGatePhrase(gate, { nowMs, mateName: inputs.mateName })}
       projectId={inputs.projectId}
       conversation={useRouteConversation(ENV_A)}
-      environmentId={null}
+      stage={null}
       voice={mateVoice({
         reachability:
           gate.kind === "outlet" ? gate.banner : gate.kind === "wait" ? gate.reachability : null,

@@ -77,6 +77,7 @@ import { countDoorEnvironments, resolveDoor } from "./-door";
 import { resolveZeropsAccountGate } from "./-accountGate";
 import { draftIdFromPathname, environmentIdFromPathname } from "./-environmentRoute";
 import { useRouteConversation, useRouteGateInputs } from "./-environmentTargets";
+import { MateLinkStage } from "../components/zerops/MateLinkStage";
 import { RouteGateView } from "./-routeGate";
 import { installMateDiagnostics } from "~/zerops/diagnostics";
 import { useHeldPast } from "~/zerops/useHeldPast";
@@ -88,6 +89,7 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 const NO_ENVIRONMENT = EnvironmentId.make("none");
 const SILENT_VOICE: MateVoice = { surface: "none" };
+const SILENT_STAGE = { surface: "stage", text: null, actions: [], processes: false } as const;
 
 // At boot, before the first route renders: every emit point writes from then on.
 installMateDiagnostics();
@@ -226,8 +228,16 @@ function SignedInRootRouteView() {
             phrase={gatePhrase}
             projectId={gateInputs.projectId}
             conversation={conversation}
-            environmentId={routeEnvironment}
             voice={voice}
+            stage={
+              gate.kind === "wait" ? (
+                <MateLinkStage
+                  environmentId={routeEnvironment}
+                  projectId={gateInputs.projectId}
+                  voice={voice.surface === "none" ? SILENT_STAGE : voice}
+                />
+              ) : null
+            }
           >
             <Outlet />
           </RouteGateView>
