@@ -87,6 +87,7 @@ import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { mateFaceFor, mateFaceOf, mateReviewWaits } from "~/zerops/agentActivity";
 import { useAddMate } from "~/zerops/newMate";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
+import { useListingPatience } from "~/zerops/useListingPatience";
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus, type MateUpdateStatus } from "~/zerops/mateUpdate";
 import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
@@ -431,9 +432,10 @@ function useGroupMates(groupId: string): {
         };
       });
   }, [activity, flow, groupId, listing, updates]);
+  const patient = useListingPatience(listing);
   const notice = useMemo(
-    () => candidatesNotice(listing, GROUP_MATES_SURFACE, nowMs),
-    [listing, nowMs],
+    () => candidatesNotice(listing, GROUP_MATES_SURFACE, nowMs, { patient }),
+    [listing, nowMs, patient],
   );
   return { mates, notice, refresh };
 }

@@ -25,6 +25,8 @@ import {
 import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   admittedOnly,
+  takenBotNames,
+  type TakenBotNames,
   heldCandidates,
   type CandidateRow,
 } from "@t3tools/client-runtime/zerops/projections";
@@ -115,6 +117,57 @@ export const zeropsEnvironmentsAtom = Atom.make((get): ReadonlyArray<ZeropsEnvir
 const UNREAD: Known<never> = { state: "unread", waitingFor: null };
 
 /**
+ * The active organization's listing as the account runtime reads it (`candidateListingsAtom`),
+ * before any project's admission, with the test a row's project must pass to be shown: unread
+ * until the account's product has published a signed-in session with an organization chosen, its
+ * runtime and its inventory, and withheld whole while the account's access lapses (§3.1). The
+ * rows and the names each read it their own way.
+ */
+const organizationListingAtom = Atom.make(
+  (
+    get,
+  ): {
+    readonly listing: Shown<ReadonlyArray<CandidateRow>>;
+    readonly admits: (row: CandidateRow) => boolean;
+  } => {
+    const session = get(zeropsSessionAtom);
+    const runtime = get(zeropsDataRuntimeAtom);
+    const inventory = get(zeropsInventoryAtom);
+    if (
+      session === null ||
+      runtime === null ||
+      inventory === null ||
+      session.status !== "signed-in" ||
+      session.organizationStatus !== "selected" ||
+      session.activeOrganization === null
+    ) {
+      return { listing: UNREAD, admits: NONE };
+    }
+    if (inventory.account.kind === "withheld") {
+      const { reason, cause } = inventory.account;
+      return { listing: { state: "withheld", reason, cause }, admits: NONE };
+    }
+    const organization = session.activeOrganization;
+    const listed = get(candidateListingsAtom(runtime)).find(
+      ({ organizationId }) => organizationId === organization.organizationId,
+    );
+    return {
+      listing: listed?.listing ?? UNREAD,
+      admits: (row) => {
+        const key = projectKeyOf({
+          kind: "project",
+          organization,
+          projectId: ZeropsProjectId.make(row.project.id),
+        });
+        return inventory.projectRefs.has(key) && inventory.authority.get(key)?.kind !== "withheld";
+      },
+    };
+  },
+).pipe(Atom.withLabel("zerops:organization-listing"));
+
+const NONE = (): boolean => false;
+
+/**
  * The active organization's candidate rows (DESIGN §2.B B4): the account runtime's listing of it
  * (`candidateListingsAtom`), unread until the account's product has published a signed-in
  * session with an organization chosen, its runtime and its inventory. Only the rows of projects
@@ -124,36 +177,20 @@ const UNREAD: Known<never> = { state: "unread", waitingFor: null };
  * account's own. Derived, so nothing it held outlives the account.
  */
 export const candidateRowsAtom = Atom.make((get): Shown<ReadonlyArray<CandidateRow>> => {
-  const session = get(zeropsSessionAtom);
-  const runtime = get(zeropsDataRuntimeAtom);
-  const inventory = get(zeropsInventoryAtom);
-  if (
-    session === null ||
-    runtime === null ||
-    inventory === null ||
-    session.status !== "signed-in" ||
-    session.organizationStatus !== "selected" ||
-    session.activeOrganization === null
-  ) {
-    return UNREAD;
-  }
-  if (inventory.account.kind === "withheld") {
-    return { state: "withheld", reason: inventory.account.reason, cause: inventory.account.cause };
-  }
-  const organization = session.activeOrganization;
-  const listed = get(candidateListingsAtom(runtime)).find(
-    ({ organizationId }) => organizationId === organization.organizationId,
-  );
-  if (listed === undefined) return UNREAD;
-  return admittedOnly(listed.listing, (row) => {
-    const key = projectKeyOf({
-      kind: "project",
-      organization,
-      projectId: ZeropsProjectId.make(row.project.id),
-    });
-    return inventory.projectRefs.has(key) && inventory.authority.get(key)?.kind !== "withheld";
-  });
+  const { listing, admits } = get(organizationListingAtom);
+  return listing.state === "known" ? admittedOnly(listing, admits) : listing;
 }).pipe(Atom.withLabel("zerops:candidate-rows"));
+
+/**
+ * The names the active organization's Mates go by (`takenBotNames`), read off its project list:
+ * a name lives on its project's tags, so it is known the moment the list is — a project the grant
+ * has not verified yet, or that this account may not open, still holds its name, and no project's
+ * services need reading. Complete only as the list is, so a name missing from a list still read
+ * in part is never called free; nothing while the account's access lapses.
+ */
+export const takenBotNamesAtom = Atom.make((get): TakenBotNames =>
+  takenBotNames(get(organizationListingAtom).listing),
+).pipe(Atom.withLabel("zerops:taken-bot-names"));
 
 /**
  * The derived half of the environment → project index (DESIGN §2.C C3): the project each

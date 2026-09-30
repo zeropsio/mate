@@ -59,7 +59,6 @@ import {
 import {
   heldCandidates,
   listsNoProject,
-  takenBotNames,
   type TakenBotNames,
 } from "@t3tools/client-runtime/zerops/projections";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
@@ -80,6 +79,7 @@ import {
 } from "~/zerops/zeropsBirths";
 import { useNewProjectBirths } from "~/zerops/newProjectBirth";
 import {
+  useTakenBotNames,
   useZeropsCandidates,
   type ZeropsCandidatePresentation,
 } from "~/zerops/useZeropsCandidates";
@@ -950,7 +950,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const observedCandidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   // An agent's name must be new on the account, not just in the group: it is
   // what the left menu calls the row, and two Adas is two of nothing.
-  const taken = useMemo(() => takenBotNames(listing), [listing]);
+  const taken = useTakenBotNames();
   const nowMs = useNowMs();
   const {
     births,

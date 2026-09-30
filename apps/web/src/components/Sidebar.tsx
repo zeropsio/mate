@@ -229,6 +229,7 @@ import { useAskMateToFix } from "../zerops/fixRequest";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
+import { useListingPatience } from "../zerops/useListingPatience";
 import { useNowMs } from "../zerops/useNowMs";
 import { useZeropsContainers } from "../zerops/zeropsContainers";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
@@ -1827,12 +1828,15 @@ export default function Sidebar() {
   // account still to choose its organization is asked on the projects screen,
   // and no listing is on its way to be waited on here.
   const zeropsNowMs = useNowMs();
+  const zeropsPatient = useListingPatience(zeropsListing);
   const zeropsNotice = useMemo(
     () =>
       zeropsSession.organizationStatus === "needs-selection"
         ? null
-        : candidatesNotice(zeropsListing, ZEROPS_SIDEBAR_SURFACE, zeropsNowMs),
-    [zeropsListing, zeropsNowMs, zeropsSession.organizationStatus],
+        : candidatesNotice(zeropsListing, ZEROPS_SIDEBAR_SURFACE, zeropsNowMs, {
+            patient: zeropsPatient,
+          }),
+    [zeropsListing, zeropsNowMs, zeropsPatient, zeropsSession.organizationStatus],
   );
   // A Mate's conversation, from its row — the jump box opens it the same way.
   const openMate = useOpenMate();
