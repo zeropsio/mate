@@ -746,8 +746,8 @@ ledger row or a test.
   - _Proven by:_ `MessagesTimeline.test.tsx`, `RunChat.test.tsx`; the harnesses
     `/design-working.html` and `/design-switch.html`
 - **—** — Pass 25: the add-Mate run's findings, the one voice, the switch, the stand-up's pace
-  - _State:_ built, 2026-09-30, on `pass-25`, not released: every item of the run's findings board
-    but the stage and production heading (D′, building); a Mate's link speaks with one voice and a
+  - _State:_ built, 2026-09-30, on `pass-25`, not released: every item of the run's findings board,
+    and the stage and production heading (D′: the release under the project's name); a Mate's link speaks with one voice and a
     reload never shows an empty pane; a return to a conversation shows it as it stood; the composer
     never leaves the screen; the stand-up's card shows its builds; zcp stands development up as a
     graph and answers once it is up (`p25/standup`); versions are named for people (with the
