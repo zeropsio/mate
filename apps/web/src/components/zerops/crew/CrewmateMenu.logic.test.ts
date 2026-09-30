@@ -173,3 +173,44 @@ describe("crewmateMenuModel", () => {
     ).toEqual(items);
   });
 });
+
+describe("crewmateMenuModel for a crewmate the viewer may not run (D6)", () => {
+  const lock = { login: "claudeAgent", agentId: "claude-code", ownership: "someone-else" } as const;
+  const why = "Signed in by another project member\u00a0— only they can run this crew.";
+  const ids = (model: ReturnType<typeof crewmateMenuModel>) =>
+    [model.items.map((item) => item.id), model.notice] as const;
+
+  it.each([
+    [
+      "offers only Try its work, where it opens what already runs",
+      { where: "own", enabled: true, stops: true, offered: true },
+      [["try"], why],
+    ],
+    [
+      "offers nothing where Try its work would start something",
+      { where: "own", enabled: true, stops: false, offered: false },
+      [[], why],
+    ],
+    ["offers nothing for a crewmate with no copy of the code", null, [[], why]],
+  ] as const)("%s", (_name, tries, expected) => {
+    expect(
+      ids(
+        crewmateMenuModel({
+          crewmate: WRITER,
+          mateName: "Fen",
+          tries,
+          busy: false,
+          removable: true,
+          lock,
+        }),
+      ),
+    ).toEqual(expected);
+  });
+
+  it("says nothing of the kind to the person who runs it", () => {
+    expect(
+      crewmateMenuModel({ crewmate: WRITER, mateName: "Fen", tries: null, busy: false, lock: null })
+        .notice,
+    ).toBeNull();
+  });
+});

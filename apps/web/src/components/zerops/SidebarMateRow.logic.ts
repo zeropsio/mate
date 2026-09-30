@@ -122,16 +122,20 @@ export interface MateCrewItem {
  * tab. Only where crew mode is on — its feed says `none` or `applied`, as the
  * tab's own availability reads it — and only on the viewer's own Mate: a
  * crew's turns run only as the person who signed its agent in (D6), so a
- * colleague's Mate, and one whose owner is not named yet, offer none.
+ * colleague's Mate, and one whose owner is not named yet, offer none. Where
+ * its agent is signed in by somebody else, the viewer's own Mate still opens
+ * its crew to read, and offers no setup (`crewAccess`).
  */
 export function mateCrewItem(input: {
   readonly status: CrewStatus | null;
   readonly owner: { readonly isViewer: boolean } | undefined;
+  /** The viewer may run the login a new crew runs on; absent, they may. */
+  readonly mayChange?: boolean;
 }): MateCrewItem | null {
   if (input.owner?.isViewer !== true) return null;
   switch (input.status) {
     case "none":
-      return { label: CREW_SET_UP_WORD, setUp: true };
+      return input.mayChange === false ? null : { label: CREW_SET_UP_WORD, setUp: true };
     case "applied":
       return { label: "Crew", setUp: false };
     case "off":

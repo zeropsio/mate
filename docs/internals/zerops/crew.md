@@ -111,7 +111,9 @@ for the engine's life.
 
 Registered by `registerCrewRpc.ts`, spread by `ws.ts`; scopes in
 `apps/server/src/auth/RpcAuthorization.ts`. A command runs as the connecting session — its subject
-comes from the authenticated session, never from the input. The snapshot is built from the tables
+comes from the authenticated session, never from the input — and a command that runs or changes
+the crew, or a write to the crew home, is refused at its door as `not-allowed`, in admission's
+words, for a person who may not run a login it reaches (`crewAccess.ts`, §6 _Admission_). The snapshot is built from the tables
 and the engine's memory, never over ssh, at most four times a second, with `seq` rising across
 restarts (`crewLayer.ts`, `crewSnapshot.ts`). An older server's snapshot still decodes, and a frame
 no build can read decodes as undecodable and fails the crew feed alone, never the socket
@@ -135,6 +137,18 @@ Server:
   (`scripts/turn-start-sites.test.ts`). A login beyond the two defaults is gated on its own signer
   (`ZeropsLogins.ts`); a queued task whose admission was refused starts again once a sign-in or a
   signer changes (`crewRunFlow.ts`).
+- **The crew's door** — `crewAccess.ts` judges every press before it runs, as the person, on the
+  logins it reaches (`crewCommandReach` and `crewReachLogins` in `zeropsCrew.ts`, the same answer a
+  client reads off its snapshot): a crewmate's own for its message, answer, new task, conversation,
+  memory, app, Show on dev, removal or an adopted branch; the crewmate's and the one the crew home
+  now names for `jobSave`; each task's crewmate's for the task presses and the plan; the claiming
+  crewmate's for a claim; the lead's, or each mentioned crewmate's without one, for `tell`; every
+  crewmate's for a run and the goal; every crewmate's and every login the crew home names for
+  Apply; none for `deliverDraft`, `orphanScan` and `addCrewPorts`, which only read. A write to the
+  crew home reaches the crewmates it changes, before and after, and every crewmate's when it
+  changes the goal or the crew's name. `ZeropsTurnAdmission.admitOperator` judges each login by
+  whose it is, as a turn on it once signed in: held here by somebody else, or by nobody on record,
+  refuses; one no credential holds, a project token's and a driver Mate signs nobody in to pass.
 - **Crew origin on threads** — `ThreadCrewOrigin {crew, crewmate, stint}` on the thread, its shell
   and `ThreadCreatedPayload`, set once by the internal command `thread.crew.create`
   (`packages/contracts/src/orchestration.ts`, decider, projector, `ProjectionPipeline.ts`,
@@ -174,6 +188,18 @@ Client:
   drafts, confirmations and dialogs. The board and its sheets are gone. The Zerops tab has no crew
   section and no setup; its map still names crew ports by crewmate, and its coding agents' card who
   runs on each login.
+- **Closed to a viewer** — a crew is exactly as closed as its conversations (D6): for a viewer who
+  may not run the logins a press reaches, nothing that runs or changes the crew is offered, and
+  everything that reads stays (`crewAccess.ts` in the client-runtime, the server's door's answer
+  from the snapshot; `useCrewAccess.ts` reads each login as `ChatView` reads its own agent). In the
+  composer's place the Crew tab says why and offers the conversation's one way out, _Sign in with
+  your own account_, on a quiet 48 px pill — the composer's own height (`CrewTellLocked`); the
+  empty state says it in place of _Set up a crew_. The head's goal only reads, with no ··· and no
+  mode-line press; a row offers no press that reaches such a login and no ··· that would offer
+  nothing; the plan reads without its presses; _Try its work_ only opens what already runs; a view
+  that changes the crew does not open. The crewmate's menu on the conversation's line says why under
+  its job, a crew task's review drops _Add to Fen's code_ and its ask, and the left menu drops _Set
+  up a crew_. `design-crew.html?viewer=other` draws every state so.
 - **Chat** — `ChatHeader.tsx` and `ConversationStrip.tsx`: the conversation's line — the Mate, then
   the crew's faces, the crewmate on screen a pill whose menu (`CrewmateMenu`) offers _Try its work_
   (`useCrewTry`, `crewTry.ts`: its own app, run first while stopped, or its work shown at the Mate's

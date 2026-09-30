@@ -328,6 +328,30 @@ export const CREW_TO_PICK_LINE = "Each one you pick gets it as a task of its own
 export const crewSendToWord = (name: string | null): string =>
   name === null ? "Send to the crew" : `Send to ${name}`;
 
+/* ------------------------------------------------------------ a crew closed to you (D6) */
+
+/**
+ * What stands in the composer's place for a viewer who may not run the crew:
+ * the conversation's own words (`agentOwnershipComposerNotice`, pinned to
+ * these by the phrases' test), the crew named where the conversation names
+ * its agent — in the Crew tab the crew is what they may not run — its dash
+ * held to the word before it, so no line starts with it. Why nobody runs it,
+ * or why the viewer's own record failed, reads as the conversation says it.
+ */
+export function crewLockWords(ownership: "someone-else" | "unrecorded" | "record-failed"): string {
+  switch (ownership) {
+    case "someone-else":
+      return "Signed in by another project member\u00a0— only they can run this crew.";
+    case "unrecorded":
+      return "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.";
+    case "record-failed":
+      return "Your sign-in could not be recorded.";
+  }
+}
+
+/** The notice's one way out, the conversation's (`AGENT_OWNERSHIP_RECOVERY_LABEL`): the viewer's own sign-in. */
+export const CREW_LOCK_ACTION = "Sign in with your own account";
+
 /* ------------------------------------------------------------ the rows */
 
 /** A row opens its crewmate's conversation. */

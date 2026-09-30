@@ -8,8 +8,11 @@
  * and refuses everything as `unavailable`; otherwise the live engine
  * (`crewLayer.ts`) runs it.
  *
- * A command carries its caller as a `TurnPrincipal`: the person's session, so
- * a turn the command starts inside the call is admitted as them (PRD §5.2a).
+ * A command, and a write to the crew home, carries its caller as a
+ * `TurnPrincipal`: the person's session, so a turn the command starts inside
+ * the call is admitted as them (PRD §5.2a), and a press that runs or changes
+ * the crew is refused at its entry for anybody who may not run the logins it
+ * reaches (`crewAccess.ts`).
  *
  * @module CrewEngine
  */
@@ -31,7 +34,10 @@ export interface CrewEngineService {
   /** The current snapshot at once, then one per change, coalesced. */
   readonly snapshot: Stream.Stream<CrewSnapshot>;
   readonly readFiles: Effect.Effect<CrewFiles, CrewCommandError>;
-  readonly writeFiles: (files: CrewFiles) => Effect.Effect<void, CrewCommandError>;
+  readonly writeFiles: (
+    files: CrewFiles,
+    principal: TurnPrincipal,
+  ) => Effect.Effect<void, CrewCommandError>;
   readonly command: (
     command: CrewCommand,
     principal: TurnPrincipal,

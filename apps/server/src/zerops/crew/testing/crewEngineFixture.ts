@@ -4,9 +4,10 @@
  * service repository (over the local ssh shim, as `crewGitFixture` does),
  * with everything above it faked and recorded — the orchestration engine
  * (every dispatched command), the projection (a Mate project and the threads
- * a test says run), admission (every principal it was asked about, and a
- * refusal a test can set), the provider event bus (events a test publishes)
- * and the server's command readiness (a test completes it).
+ * a test says run), admission (every principal it was asked about, the
+ * logins each press was judged on, and the refusals a test can set), the
+ * provider event bus (events a test publishes) and the server's command
+ * readiness (a test completes it).
  *
  * @module crewEngineFixture
  */
@@ -84,6 +85,15 @@ export interface CrewWorld {
   >;
   /** Admission refuses every turn with this, while set. */
   readonly refusal: Ref.Ref<string | undefined>;
+  /** The logins each press was judged on (`admitOperator`), and as whom. */
+  readonly operated: Ref.Ref<
+    ReadonlyArray<{
+      readonly instanceIds: ReadonlyArray<string>;
+      readonly principal: TurnPrincipal;
+    }>
+  >;
+  /** Logins the person may not run, with the words admission refuses them in. */
+  readonly notTheirs: Ref.Ref<ReadonlyMap<string, string>>;
   /** Threads the projection reports, for the landing gate and the boot sweep. */
   readonly threads: Ref.Ref<ReadonlyArray<OrchestrationThreadShell>>;
   readonly installs: Ref.Ref<number>;
@@ -209,6 +219,16 @@ const fakes = (
               : Effect.fail(new OrchestrationDispatchCommandError({ message: refusal })),
           ),
         ),
+      admitOperator: ({ instanceIds, principal }) =>
+        Ref.update(world.operated, (all) => [...all, { instanceIds, principal }]).pipe(
+          Effect.andThen(Ref.get(world.notTheirs)),
+          Effect.flatMap((notTheirs) => {
+            const refusal = instanceIds.map((id) => notTheirs.get(id)).find((words) => words);
+            return refusal === undefined
+              ? Effect.void
+              : Effect.fail(new OrchestrationDispatchCommandError({ message: refusal }));
+          }),
+        ),
     }),
     Layer.mock(ZeropsLogins)({
       resolve: (id) => Effect.map(Ref.get(world.logins), (logins) => logins.get(id)),
@@ -281,6 +301,13 @@ export const withCrewEngines = <E>(
         ReadonlyArray<{ readonly type: string; readonly principal: TurnPrincipal }>
       >([]),
       refusal: yield* Ref.make<string | undefined>(undefined),
+      operated: yield* Ref.make<
+        ReadonlyArray<{
+          readonly instanceIds: ReadonlyArray<string>;
+          readonly principal: TurnPrincipal;
+        }>
+      >([]),
+      notTheirs: yield* Ref.make<ReadonlyMap<string, string>>(new Map()),
       threads: yield* Ref.make<ReadonlyArray<OrchestrationThreadShell>>([]),
       installs: yield* Ref.make(0),
       sshCalls: yield* Ref.make(0),

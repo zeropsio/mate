@@ -523,6 +523,16 @@ export const makeCrewCore = Effect.gen(function* () {
 
 export type CrewCore = Effect.Success<typeof makeCrewCore>;
 
+/** The login a crewmate runs on when its `crew.yaml` names none: the project's default. */
+export const defaultCrewLogin = (core: CrewCore) =>
+  core.projection.getActiveProjectByWorkspaceRoot(core.config.cwd).pipe(
+    Effect.map(
+      (project) =>
+        Option.getOrUndefined(project)?.defaultModelSelection?.instanceId ?? DEFAULT_CREW_LOGIN,
+    ),
+    Effect.orElseSucceed(() => DEFAULT_CREW_LOGIN),
+  );
+
 /** The applied crew, or the refusal that nothing is applied. */
 export const requireApplied = (core: CrewCore) =>
   Effect.flatMap(core.applied, (applied) =>

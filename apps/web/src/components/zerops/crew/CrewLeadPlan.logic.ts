@@ -13,6 +13,7 @@
  *
  * Pure: every word comes from the crew phrases; this module only arranges.
  */
+import type { CrewAccess, CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import { crewAfterWord } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewmateView, CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { CrewCommand, CrewRun, CrewSnapshot, CrewTint } from "@t3tools/contracts";
@@ -119,4 +120,40 @@ export function crewPlanStart(
         ? { kind: "dialog", dialog: "resume", after: accept }
         : { kind: "send", commands: [{ _tag: "resume", runId: run.id }, accept] };
   }
+}
+
+/** What each of the plan's presses meets for this viewer (D6); `null` where it is offered. */
+export interface CrewPlanLocks {
+  readonly start: CrewLock | null;
+  /** The run's limits: the dialog's start or resume, then the accept. */
+  readonly change: CrewLock | null;
+  readonly drop: CrewLock | null;
+  /** A line's ×. */
+  readonly leaveOut: (taskId: string) => CrewLock | null;
+}
+
+/**
+ * Each press by what it sends: Start by every command it sends — through the
+ * dialog, the run's start or resume, which reaches the whole crew, then the
+ * accept; *Drop the plan* and a line's × by the tasks they drop.
+ */
+export function crewPlanLocks(
+  run: CrewRun | null,
+  taskIds: ReadonlyArray<string>,
+  access: Pick<CrewAccess, "command" | "crew">,
+): CrewPlanLocks {
+  const lockOf = (command: CrewCommand | null) =>
+    command === null ? null : access.command(command);
+  const start = crewPlanStart(run, taskIds);
+  return {
+    start:
+      start === null
+        ? null
+        : start.kind === "send"
+          ? (start.commands.map(lockOf).find((lock) => lock !== null) ?? null)
+          : (access.crew ?? lockOf(start.after)),
+    change: access.crew ?? lockOf(crewPlanCommand("planAccept", taskIds)),
+    drop: lockOf(crewPlanCommand("planDiscard", taskIds)),
+    leaveOut: (taskId) => lockOf(crewPlanCommand("planDiscard", [taskId])),
+  };
 }

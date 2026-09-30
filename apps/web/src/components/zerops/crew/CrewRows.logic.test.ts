@@ -4,6 +4,7 @@ import {
   type CrewShellInput,
   type CrewThreadRead,
 } from "@t3tools/client-runtime/zerops/projections/crew";
+import { crewAccess, type CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import {
   CrewAttentionKind,
   type CrewAttention,
@@ -14,8 +15,10 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   CREW_ROW_NO_THREAD,
+  crewActionOffered,
   crewNeedsByHandle,
   crewRowModel,
+  type CrewRowAction,
   type CrewRowModel,
   type CrewRowThread,
 } from "./CrewRows.logic";
@@ -518,5 +521,104 @@ describe("crewRowModel: never the engine's words", () => {
       if (word === undefined || word === null) continue;
       expect(word).not.toMatch(/\bv\d+\b|@[a-z]|#\d+|\bIdle\b|\byour tree\b/u);
     }
+  });
+});
+
+describe("crewActionOffered — a row's presses for a viewer who may not run its crewmate (D6)", () => {
+  const lock = {
+    login: "claudeAgent_eva",
+    agentId: "claude-code",
+    ownership: "someone-else",
+  } as const;
+  /** Backend's login is closed to the viewer; the rest of the crew is theirs. */
+  const access = crewAccess({
+    snapshot: crewSnapshotFixture({
+      crewmates: base.crewmates.map((mate) =>
+        mate.handle === "backend"
+          ? { ...mate, login: { id: "claudeAgent_eva", label: "eva", agent: "claude-code" } }
+          : mate,
+      ),
+    }),
+    lockOf: (login) => (login === "claudeAgent_eva" ? lock : null),
+    defaultLogin: "claudeAgent",
+    reading: false,
+  });
+  const labelled = { label: "x", line: "x" };
+
+  it.each([
+    [
+      "a command on Backend's task",
+      { kind: "command", ...labelled, command: { _tag: "discard", taskId: "task-12" } },
+      null,
+      false,
+      false,
+    ],
+    [
+      "a command on Frontend's task",
+      { kind: "command", ...labelled, command: { _tag: "askFix", taskId: "task-13" } },
+      null,
+      false,
+      true,
+    ],
+    [
+      "an answer to Backend",
+      { kind: "answer", ...labelled, handle: "backend", taskId: "task-12" },
+      null,
+      false,
+      false,
+    ],
+    [
+      "an answer to Erik",
+      { kind: "answer", ...labelled, handle: "erik", taskId: "task-14" },
+      null,
+      false,
+      true,
+    ],
+    [
+      "the review of Backend's work",
+      { kind: "review", ...labelled, taskId: "task-12" },
+      null,
+      false,
+      false,
+    ],
+    [
+      "the review of Frontend's work",
+      { kind: "review", ...labelled, taskId: "task-13" },
+      null,
+      false,
+      true,
+    ],
+    [
+      "an ask for the Mate in a chat the viewer runs",
+      { kind: "ask", ...labelled, ask: "x" },
+      null,
+      false,
+      true,
+    ],
+    [
+      "an ask for the Mate in a chat they may not run",
+      { kind: "ask", ...labelled, ask: "x" },
+      lock,
+      false,
+      false,
+    ],
+    [
+      "Try it that would start something",
+      { kind: "try", ...labelled, handle: "backend" },
+      null,
+      false,
+      false,
+    ],
+    [
+      "Try it that opens what runs",
+      { kind: "try", ...labelled, handle: "backend" },
+      null,
+      true,
+      true,
+    ],
+  ] as const satisfies ReadonlyArray<
+    readonly [string, CrewRowAction, CrewLock | null, boolean, boolean]
+  >)("%s", (_name, action, askLock, tryOffered, offered) => {
+    expect(crewActionOffered(action, access, askLock, tryOffered)).toBe(offered);
   });
 });

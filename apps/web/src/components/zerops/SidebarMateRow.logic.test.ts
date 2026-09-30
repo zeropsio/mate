@@ -170,6 +170,14 @@ describe("mateCrewItem — the crew's door in a Mate's own menu", () => {
   ] as const)("$case", ({ status, owner, item }) => {
     expect(mateCrewItem({ status, owner })).toEqual(item);
   });
+
+  // D6: its agent signed in by somebody else, the viewer may read a crew and not set one up.
+  it.each([
+    { case: "without a crew", status: "none", item: null },
+    { case: "with a crew", status: "applied", item: CREW },
+  ] as const)("the viewer's own, on a login they may not run, $case", ({ status, item }) => {
+    expect(mateCrewItem({ status, owner: MINE, mayChange: false })).toEqual(item);
+  });
 });
 
 describe("changeMarkTone — the one colour a change row's mark may wear", () => {

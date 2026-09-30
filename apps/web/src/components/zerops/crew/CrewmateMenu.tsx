@@ -8,7 +8,9 @@
  * same popup, with *Remove from the crew* after a separator.
  *
  * A crew thread is the engine's: nothing here archives, renames or starts a
- * session of the person's own in it.
+ * session of the person's own in it. For a crewmate the viewer may not run
+ * (D6), the menu says why under the job, and offers only *Try its work*
+ * where it opens what already runs.
  */
 import {
   isAtomCommandInterrupted,
@@ -16,11 +18,13 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { crewMenuFailureWord } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { LockIcon } from "lucide-react";
 import { Fragment, useId, useState } from "react";
 
 import { useAtomCommand } from "~/state/use-atom-command";
 import { crewCommands } from "~/zerops/crew/crewCommands";
 import { useCrew } from "~/zerops/crew/useCrew";
+import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { crewFailureSentence } from "~/zerops/crew/useCrewCommand";
 import { useCrewTry } from "~/zerops/crew/useCrewTry";
 import { MenuItem, MenuPopup, MenuSeparator } from "../../ui/menu";
@@ -56,6 +60,15 @@ export function CrewmateMenuPopup({
       <p className="px-2.75 pt-1.5 pb-2 text-line text-muted-foreground" id={headingId}>
         {model.heading}
       </p>
+      {model.notice === null ? null : (
+        <p
+          className="flex items-start gap-2 border-t border-border/60 px-2.75 pt-2 pb-1.5 text-line text-foreground/85"
+          data-crewmate-menu-notice
+        >
+          <LockIcon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-warning" />
+          {model.notice}
+        </p>
+      )}
       {model.items.map((item) => (
         <Fragment key={item.id}>
           {item.id === "remove" ? <MenuSeparator /> : null}
@@ -93,7 +106,8 @@ export function CrewmateMenu({
   /** The lead's *Change the goal*: the Crew tab on the crew's goal. */
   readonly onEditBrief: () => void;
 }) {
-  const { view, current } = useCrew(environmentId);
+  const { snapshot, view, current } = useCrew(environmentId);
+  const access = useCrewAccess(environmentId, snapshot);
   const tries = useCrewTry(environmentId, handle);
   const runCommand = useAtomCommand(crewCommands.command, { reportFailure: false });
   const [clearing, setClearing] = useState(false);
@@ -105,8 +119,14 @@ export function CrewmateMenu({
     tries:
       tries === null
         ? null
-        : { where: tries.tries.where, enabled: tries.enabled, stops: tries.stop !== null },
-    busy: clearing || !current,
+        : {
+            where: tries.tries.where,
+            enabled: tries.enabled,
+            stops: tries.stop !== null,
+            offered: tries.offered,
+          },
+    busy: clearing || !current || access.reading,
+    lock: access.crewmate(handle),
   });
 
   const clear = async () => {

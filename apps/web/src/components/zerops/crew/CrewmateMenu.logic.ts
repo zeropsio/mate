@@ -12,13 +12,17 @@
  * - A reader: *Change its job*, *Clear its conversation*.
  * - The lead: *Change the goal*, *Clear its conversation*.
  * - In the Crew tab's row, after a separator: *Remove from the crew*.
+ * - A crewmate the viewer may not run (D6): only *Try its work* where it opens
+ *   what already runs, and under the heading why, in the crew's words.
  *
  * Every word is the crew phrases' (R5). Pure: no clock, no I/O.
  */
+import type { CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import {
   CREW_MENU,
   CREW_MENU_LINES,
   crewJobSentence,
+  crewLockWords,
   crewRemoveLine,
   crewTryWorkLine,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
@@ -37,6 +41,8 @@ export interface CrewmateMenuItem {
 export interface CrewmateMenuModel {
   /** The job's first sentence, as the person reads it (`crewJobSentence`), at the top. */
   readonly heading: string;
+  /** Why nothing here changes it, for a crewmate the viewer may not run; `null` otherwise. */
+  readonly notice: string | null;
   readonly items: ReadonlyArray<CrewmateMenuItem>;
 }
 
@@ -52,13 +58,32 @@ export function crewmateMenuModel(input: {
     readonly where: "own" | "dev";
     readonly enabled: boolean;
     readonly stops: boolean;
+    /** Offered to this viewer: only what opens where the crewmate is not theirs to run. */
+    readonly offered?: boolean;
   } | null;
   /** A press would act on a crew not read yet, or one of its presses is on its way. */
   readonly busy: boolean;
   /** The Crew tab's row offers *Remove from the crew* last. */
   readonly removable?: boolean;
+  /** The crewmate is not this viewer's to run (D6); `null` or absent where it is. */
+  readonly lock?: CrewLock | null;
 }): CrewmateMenuModel {
   const { crewmate, tries, busy } = input;
+  const heading = crewJobSentence(crewmate.jobFirstLine, crewmate.displayName);
+  if (input.lock !== undefined && input.lock !== null) {
+    const opens: ReadonlyArray<CrewmateMenuItem> =
+      tries !== null && tries.offered === true
+        ? [
+            {
+              id: "try",
+              label: CREW_MENU.tryWork,
+              line: crewTryWorkLine(input.mateName, tries.where),
+              enabled: tries.enabled && !busy,
+            },
+          ]
+        : [];
+    return { heading, notice: crewLockWords(input.lock.ownership), items: opens };
+  }
   const clear: CrewmateMenuItem = {
     id: "clear",
     label: CREW_MENU.clearConversation,
@@ -76,7 +101,6 @@ export function crewmateMenuModel(input: {
           },
         ]
       : [];
-  const heading = crewJobSentence(crewmate.jobFirstLine, crewmate.displayName);
   if (crewmate.kind === "lead") {
     const goal: CrewmateMenuItem = {
       id: "goal",
@@ -84,7 +108,7 @@ export function crewmateMenuModel(input: {
       line: CREW_MENU_LINES.changeGoal,
       enabled: true,
     };
-    return { heading, items: [goal, clear, ...remove] };
+    return { heading, notice: null, items: [goal, clear, ...remove] };
   }
   const job: CrewmateMenuItem = {
     id: "job",
@@ -92,7 +116,7 @@ export function crewmateMenuModel(input: {
     line: CREW_MENU_LINES.changeJob,
     enabled: true,
   };
-  if (tries === null) return { heading, items: [job, clear, ...remove] };
+  if (tries === null) return { heading, notice: null, items: [job, clear, ...remove] };
   const tryWork: CrewmateMenuItem = {
     id: "try",
     label: CREW_MENU.tryWork,
@@ -107,6 +131,7 @@ export function crewmateMenuModel(input: {
   };
   return {
     heading,
+    notice: null,
     items: tries.stops ? [tryWork, stop, job, clear, ...remove] : [tryWork, job, clear, ...remove],
   };
 }

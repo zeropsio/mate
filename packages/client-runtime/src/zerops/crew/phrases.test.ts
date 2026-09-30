@@ -7,8 +7,10 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
+import { AGENT_OWNERSHIP_RECOVERY_LABEL, agentOwnershipComposerNotice } from "../agentOwnership.ts";
 import { crewSnapshotFixture } from "./testing/fixtures.ts";
 import {
+  CREW_LOCK_ACTION,
   CREW_MENU,
   CREW_MENU_LINES,
   CREW_MODE_PRESS,
@@ -31,6 +33,7 @@ import {
   crewEarlierStintNotice,
   crewFaceWord,
   crewJobLine,
+  crewLockWords,
   crewJobSentence,
   crewLandingWords,
   crewLineNeedsWord,
@@ -954,5 +957,27 @@ describe("the crew's one line under its Mate", () => {
     { name: "Bo", lead: false, says: "Bo" },
   ])("names a face: $says", ({ name, lead, says }) => {
     expect(crewFaceWord(name, lead)).toBe(says);
+  });
+});
+
+describe("a crew closed to the viewer (D6)", () => {
+  it("says it as the conversation does, the crew for its agent, its dash never starting a line", () => {
+    expect(crewLockWords("someone-else")).toBe(
+      "Signed in by another project member\u00a0— only they can run this crew.",
+    );
+    expect(crewLockWords("someone-else").replace("\u00a0", " ")).toBe(
+      agentOwnershipComposerNotice("someone-else")?.replace("this agent", "this crew"),
+    );
+  });
+
+  it.each(["unrecorded", "record-failed"] as const)(
+    "says %s in the conversation's own words",
+    (ownership) => {
+      expect(crewLockWords(ownership)).toBe(agentOwnershipComposerNotice(ownership));
+    },
+  );
+
+  it("offers the conversation's one way out", () => {
+    expect(CREW_LOCK_ACTION).toBe(AGENT_OWNERSHIP_RECOVERY_LABEL);
   });
 });

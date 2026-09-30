@@ -15,6 +15,8 @@ import {
 const state = vi.hoisted(() => ({
   snapshot: null as CrewSnapshot | null,
   send: (() => Promise.resolve(null)) as (command: unknown) => Promise<unknown>,
+  /** Every login is somebody else's (D6). */
+  closed: false,
 }));
 
 vi.mock("~/zerops/crew/useCrew", () => ({
@@ -29,6 +31,19 @@ vi.mock("~/zerops/crew/useCrew", () => ({
           }),
   }),
 }));
+vi.mock("~/zerops/crew/useCrewAccess", async () => {
+  const { crewAccess } = await import("@t3tools/client-runtime/zerops/crew/crewAccess");
+  return {
+    useCrewAccess: (_environmentId: unknown, snapshot: CrewSnapshot | null) =>
+      crewAccess({
+        snapshot,
+        lockOf: (login) =>
+          state.closed ? { login, agentId: "claude-code", ownership: "someone-else" } : null,
+        defaultLogin: "claudeAgent",
+        reading: false,
+      }),
+  };
+});
 vi.mock("~/zerops/crew/useCrewCommand", () => ({
   useCrewCommand: () => ({
     send: (command: unknown) => state.send(command),
@@ -134,6 +149,7 @@ describe("CrewLeadPlan — the lead's plan in its chat", () => {
   const sent: Array<unknown> = [];
   beforeEach(() => {
     sent.length = 0;
+    state.closed = false;
     state.snapshot = crewSnapshotFixture();
     state.send = (command) => {
       sent.push(command);
@@ -208,5 +224,15 @@ describe("CrewLeadPlan — the lead's plan in its chat", () => {
       ),
     );
     expect(sent).toEqual([DROP]);
+  });
+
+  it("reads the plan without a press for a viewer who may not run the crew (D6)", async () => {
+    state.closed = true;
+    await mounted(PLAN, (container) => {
+      const text = readableText(container);
+      expect(text).toContain("Rate-limit the public API");
+      expect(text).not.toContain("Start lets the crew work on its own");
+      expect(elementsOf(container, "button")).toHaveLength(0);
+    });
   });
 });

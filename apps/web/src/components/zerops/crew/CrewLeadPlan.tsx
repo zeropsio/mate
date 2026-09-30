@@ -8,12 +8,15 @@
  *
  * Start's commands for the run the crew is in are `crewPlanStart`'s: a
  * paused run goes on first, and the first run asks its limits in the dialog.
+ * A viewer who may not run what a press reaches (D6, `crewPlanLocks`) reads
+ * the plan without it.
  */
 import {
   CREW_PLAN_LINES,
   CREW_PLAN_VERBS,
   crewPlanStartLine,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
+import type { CrewAccess } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import type { CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type {
   CrewCommand,
@@ -26,6 +29,7 @@ import { XIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useCrew } from "~/zerops/crew/useCrew";
+import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { useCrewCommand } from "~/zerops/crew/useCrewCommand";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 
@@ -33,6 +37,7 @@ import { MateFace } from "../primitives";
 import {
   crewPlanCard,
   crewPlanCommand,
+  crewPlanLocks,
   crewPlanStart,
   type CrewPlanCard,
 } from "./CrewLeadPlan.logic";
@@ -40,11 +45,13 @@ import { CrewPress, CrewTextButton, CrewTip } from "./CrewParts";
 import { CREW_ORIGIN } from "./CrewRows.logic";
 import { CrewRunDialog, type CrewRunDialogAsk } from "./CrewRunDialog";
 
+/** The plan's presses; each `null` where the viewer may not press it (D6). */
 export interface CrewPlanPresses {
-  readonly start: () => void;
+  readonly start: (() => void) | null;
   readonly change: (() => void) | null;
-  readonly drop: () => void;
-  readonly leaveOut: (taskId: string) => void;
+  readonly drop: (() => void) | null;
+  /** A line's ×, where that line's drop is the viewer's. */
+  readonly leaveOut: (taskId: string) => (() => void) | null;
 }
 
 /**
@@ -58,39 +65,50 @@ export function crewPlanPresses(input: {
   readonly plan: CrewPlanCard;
   readonly send: (command: CrewCommand, origin: string) => Promise<CrewCommandResult | null>;
   readonly openRunDialog: (ask: CrewRunDialogAsk) => void;
+  readonly access: Pick<CrewAccess, "command" | "crew">;
 }): CrewPlanPresses {
   const { snapshot, plan, send, openRunDialog } = input;
   const taskIds = plan.rows.map((row) => row.taskId);
   const run = snapshot.run;
   const accept = crewPlanCommand("planAccept", taskIds);
   const running = run?.state === "running" || run?.state === "finishing";
+  const locks = crewPlanLocks(run, taskIds, input.access);
   return {
-    start: () => {
-      const start = crewPlanStart(run, taskIds);
-      if (start === null) return;
-      if (start.kind === "dialog") {
-        openRunDialog({ mode: start.dialog, after: start.after });
-        return;
-      }
-      void (async () => {
-        for (const command of start.commands) {
-          if ((await send(command, CREW_ORIGIN.plan)) === null) return;
-        }
-      })();
-    },
+    start:
+      locks.start !== null
+        ? null
+        : () => {
+            const start = crewPlanStart(run, taskIds);
+            if (start === null) return;
+            if (start.kind === "dialog") {
+              openRunDialog({ mode: start.dialog, after: start.after });
+              return;
+            }
+            void (async () => {
+              for (const command of start.commands) {
+                if ((await send(command, CREW_ORIGIN.plan)) === null) return;
+              }
+            })();
+          },
     change:
-      running || accept === null
+      running || accept === null || locks.change !== null
         ? null
         : () =>
             openRunDialog({ mode: run?.state === "paused" ? "resume" : "start", after: accept }),
-    drop: () => {
-      const command = crewPlanCommand("planDiscard", taskIds);
-      if (command !== null) void send(command, CREW_ORIGIN.plan);
-    },
-    leaveOut: (taskId) => {
-      const command = crewPlanCommand("planDiscard", [taskId]);
-      if (command !== null) void send(command, CREW_ORIGIN.plan);
-    },
+    drop:
+      locks.drop !== null
+        ? null
+        : () => {
+            const command = crewPlanCommand("planDiscard", taskIds);
+            if (command !== null) void send(command, CREW_ORIGIN.plan);
+          },
+    leaveOut: (taskId) =>
+      locks.leaveOut(taskId) !== null
+        ? null
+        : () => {
+            const command = crewPlanCommand("planDiscard", [taskId]);
+            if (command !== null) void send(command, CREW_ORIGIN.plan);
+          },
   };
 }
 
@@ -134,43 +152,42 @@ export function CrewLeadPlanBlock({
                 <span className="text-line leading-4.5 text-muted-foreground">{row.after}</span>
               )}
             </span>
-            <CrewTip tip={CREW_PLAN_VERBS.leaveOut}>
-              <button
-                aria-label={`${CREW_PLAN_VERBS.leaveOut}: ${row.title}`}
-                className="crew-tray-out"
-                disabled={busy}
-                onClick={() => presses.leaveOut(row.taskId)}
-                type="button"
-              >
-                <XIcon aria-hidden="true" className="size-3.5" />
-              </button>
-            </CrewTip>
+            <LeaveOut busy={busy} onPress={presses.leaveOut(row.taskId)} title={row.title} />
           </div>
         ))}
       </div>
-      <p className="mt-2.5 text-line leading-4.5 text-muted-foreground">
-        {crewPlanStartLine(limits)}
-        {presses.change === null ? null : (
-          <>
-            {" "}
-            <CrewTextButton
-              label={CREW_PLAN_VERBS.change}
-              line={CREW_PLAN_LINES.change}
-              onPress={presses.change}
+      {/* What Start lets the crew do is said before it, and only where it is offered. */}
+      {presses.start === null ? null : (
+        <p className="mt-2.5 text-line leading-4.5 text-muted-foreground">
+          {crewPlanStartLine(limits)}
+          {presses.change === null ? null : (
+            <>
+              {" "}
+              <CrewTextButton
+                label={CREW_PLAN_VERBS.change}
+                line={CREW_PLAN_LINES.change}
+                onPress={presses.change}
+              />
+            </>
+          )}
+        </p>
+      )}
+      {presses.start === null && presses.drop === null ? null : (
+        <div className="mt-2.5 flex items-center gap-1">
+          {presses.start === null ? null : (
+            <CrewPress disabled={busy} label={CREW_PLAN_VERBS.start} onPress={presses.start} />
+          )}
+          {presses.drop === null ? null : (
+            <CrewPress
+              disabled={busy}
+              label={CREW_PLAN_VERBS.drop}
+              line={CREW_PLAN_LINES.drop}
+              onPress={presses.drop}
+              tone={presses.start === null ? "primary" : "quiet"}
             />
-          </>
-        )}
-      </p>
-      <div className="mt-2.5 flex items-center gap-1">
-        <CrewPress disabled={busy} label={CREW_PLAN_VERBS.start} onPress={presses.start} />
-        <CrewPress
-          disabled={busy}
-          label={CREW_PLAN_VERBS.drop}
-          line={CREW_PLAN_LINES.drop}
-          onPress={presses.drop}
-          tone="quiet"
-        />
-      </div>
+          )}
+        </div>
+      )}
       {error === null ? null : (
         <p className="mt-1.5 text-line leading-4.5 text-status-failed-text" role="alert">
           {error}
@@ -180,9 +197,36 @@ export function CrewLeadPlanBlock({
   );
 }
 
+/** A line's ×, in its 20 px column; the column stays where the viewer may not drop the line. */
+function LeaveOut({
+  title,
+  busy,
+  onPress,
+}: {
+  readonly title: string;
+  readonly busy: boolean;
+  readonly onPress: (() => void) | null;
+}) {
+  if (onPress === null) return <span aria-hidden="true" />;
+  return (
+    <CrewTip tip={CREW_PLAN_VERBS.leaveOut}>
+      <button
+        aria-label={`${CREW_PLAN_VERBS.leaveOut}: ${title}`}
+        className="crew-tray-out"
+        disabled={busy}
+        onClick={onPress}
+        type="button"
+      >
+        <XIcon aria-hidden="true" className="size-3.5" />
+      </button>
+    </CrewTip>
+  );
+}
+
 /** The lead's plan in its chat, above its composer; nothing while the lead proposes nothing. */
 export function CrewLeadPlan({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const { snapshot, view, current } = useCrew(environmentId);
+  const access = useCrewAccess(environmentId, snapshot);
   const commands = useCrewCommand(environmentId);
   const mate = useZeropsMate(environmentId);
   const [runDialog, setRunDialog] = useState<CrewRunDialogAsk | null>(null);
@@ -194,11 +238,12 @@ export function CrewLeadPlan({ environmentId }: { readonly environmentId: Enviro
     plan,
     send: commands.send,
     openRunDialog: setRunDialog,
+    access,
   });
   return (
     <div data-crew-lead-plan>
       <CrewLeadPlanBlock
-        busy={!current || commands.pending}
+        busy={!current || commands.pending || access.reading}
         error={commands.errorAt(CREW_ORIGIN.plan)}
         limits={snapshot.run?.options ?? null}
         plan={plan}

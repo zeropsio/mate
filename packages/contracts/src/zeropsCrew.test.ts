@@ -5,10 +5,14 @@ import {
   CrewCommand,
   CrewCommandError,
   CrewCommandResult,
+  crewCommandReach,
   CrewFeedFrame,
   CrewFiles,
+  crewReachLogins,
   CrewSeam,
   CrewSnapshot,
+  type CrewCommandReach,
+  type CrewLoginRoster,
 } from "./zeropsCrew.ts";
 
 const decodeSnapshot = Schema.decodeUnknownSync(CrewSnapshot);
@@ -295,6 +299,137 @@ describe("CrewCommand", () => {
 
   it.each(commandSamples)("decodes $_tag", (sample) => {
     expect(decodeCommand(sample)).toEqual(sample);
+  });
+});
+
+/** Every tag's reach: a tag missing here, or one the union no longer has, fails to compile. */
+const REACH: { readonly [Tag in CrewCommand["_tag"]]: CrewCommandReach } = {
+  apply: { kind: "home" },
+  start: { kind: "crew" },
+  pause: { kind: "crew" },
+  resume: { kind: "crew" },
+  stop: { kind: "crew" },
+  finish: { kind: "crew" },
+  briefSave: { kind: "crew" },
+  message: { kind: "crewmates", handles: ["backend"] },
+  answer: { kind: "crewmates", handles: ["erik"] },
+  taskCreate: { kind: "crewmates", handles: ["frontend"] },
+  showOnDev: { kind: "crewmates", handles: ["backend"] },
+  startFresh: { kind: "crewmates", handles: ["backend"] },
+  memoryEdit: { kind: "crewmates", handles: ["backend"] },
+  memoryRemove: { kind: "crewmates", handles: ["backend"] },
+  forgetMemory: { kind: "crewmates", handles: ["backend"] },
+  removeCrewmate: { kind: "crewmates", handles: ["erik"] },
+  adopt: { kind: "crewmates", handles: ["map"] },
+  appRun: { kind: "crewmates", handles: ["backend"] },
+  appStop: { kind: "crewmates", handles: ["backend"] },
+  jobSave: { kind: "job", handle: "backend" },
+  taskEdit: { kind: "tasks", taskIds: ["task-12"] },
+  discard: { kind: "tasks", taskIds: ["task-12"] },
+  markFresh: { kind: "tasks", taskIds: ["task-12"] },
+  taskRetry: { kind: "tasks", taskIds: ["task-17"] },
+  planAccept: { kind: "tasks", taskIds: ["task-16"] },
+  planDiscard: { kind: "tasks", taskIds: ["task-16"] },
+  review: { kind: "tasks", taskIds: ["task-12"] },
+  land: { kind: "tasks", taskIds: ["task-12"] },
+  landNow: { kind: "tasks", taskIds: ["task-12"] },
+  askResolve: { kind: "tasks", taskIds: ["task-12"] },
+  askFix: { kind: "tasks", taskIds: ["task-12"] },
+  claimGrant: { kind: "claim", host: "appdev" },
+  claimDeny: { kind: "claim", host: "appdev" },
+  claimRelease: { kind: "claim", host: "appdev" },
+  tell: { kind: "tell", handles: ["backend", "erik"] },
+  orphanScan: { kind: "reads" },
+  deliverDraft: { kind: "reads" },
+  addCrewPorts: { kind: "reads" },
+};
+
+describe("crewCommandReach", () => {
+  it.each(commandSamples)("reaches what $_tag runs or changes", (sample) => {
+    expect(crewCommandReach(decodeCommand(sample))).toEqual(REACH[sample._tag]);
+  });
+});
+
+/**
+ * Lead on the Mate's default login, Backend on Eva's second Claude login,
+ * Reviewer on Codex; the crew home moves Backend to another login and names a
+ * crewmate not applied yet.
+ */
+const ROSTER: CrewLoginRoster = {
+  crewmates: [
+    { handle: "lead", kind: "lead", login: "claudeAgent" },
+    { handle: "backend", kind: "writer", login: "claudeAgent-eva" },
+    { handle: "reviewer", kind: "reader", login: "codex" },
+  ],
+  ownerOf: (taskId) => ({ "task-1": "backend", "task-2": "reviewer" })[taskId],
+  claimOf: (host) => (host === "appdev" ? "backend" : undefined),
+  home: [
+    { handle: "lead", login: "claudeAgent" },
+    { handle: "backend", login: "claudeAgent-jan" },
+    { handle: "newcomer", login: "codex-jan" },
+  ],
+};
+
+const LEADLESS: CrewLoginRoster = {
+  ...ROSTER,
+  crewmates: ROSTER.crewmates.filter((mate) => mate.kind !== "lead"),
+};
+
+describe("crewReachLogins", () => {
+  it.each([
+    ["reads nothing", { kind: "reads" }, ROSTER, []],
+    ["every crewmate's", { kind: "crew" }, ROSTER, ["claudeAgent", "claudeAgent-eva", "codex"]],
+    [
+      "every crewmate's and every one the crew home names",
+      { kind: "home" },
+      ROSTER,
+      ["claudeAgent", "claudeAgent-eva", "codex", "claudeAgent-jan", "codex-jan"],
+    ],
+    ["a crewmate's own", { kind: "crewmates", handles: ["backend"] }, ROSTER, ["claudeAgent-eva"]],
+    [
+      "nobody's for a crewmate the crew lacks",
+      { kind: "crewmates", handles: ["ghost"] },
+      ROSTER,
+      [],
+    ],
+    [
+      "a crewmate's, and the one its job now names",
+      { kind: "job", handle: "backend" },
+      ROSTER,
+      ["claudeAgent-eva", "claudeAgent-jan"],
+    ],
+    [
+      "a crewmate's once for an unchanged login",
+      { kind: "job", handle: "lead" },
+      ROSTER,
+      ["claudeAgent"],
+    ],
+    ["a newcomer's from the crew home", { kind: "job", handle: "newcomer" }, ROSTER, ["codex-jan"]],
+    [
+      "each task's crewmate's, once",
+      { kind: "tasks", taskIds: ["task-1", "task-2", "task-1"] },
+      ROSTER,
+      ["claudeAgent-eva", "codex"],
+    ],
+    ["nobody's for a task the board lacks", { kind: "tasks", taskIds: ["task-9"] }, ROSTER, []],
+    ["the claiming crewmate's", { kind: "claim", host: "appdev" }, ROSTER, ["claudeAgent-eva"]],
+    ["nobody's for an unclaimed service", { kind: "claim", host: "apidev" }, ROSTER, []],
+    [
+      "the lead's, whoever is mentioned",
+      { kind: "tell", handles: ["backend", "reviewer"] },
+      ROSTER,
+      ["claudeAgent"],
+    ],
+    [
+      "each mentioned crewmate's without a lead",
+      { kind: "tell", handles: ["backend", "reviewer"] },
+      LEADLESS,
+      ["claudeAgent-eva", "codex"],
+    ],
+  ] as const satisfies ReadonlyArray<
+    readonly [string, CrewCommandReach, CrewLoginRoster, ReadonlyArray<string>]
+  >)("%s", (_name, reach, roster, logins) => {
+    expect(crewReachLogins(reach, roster)).toEqual(logins);
   });
 });
 
