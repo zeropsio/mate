@@ -27,6 +27,7 @@
 import {
   deployedCommit,
   deployStatusContext,
+  sameCommit,
   type FlowReleaseRow,
   type GiteaCommitStatus,
   type GroupEnvironmentRowInput,
@@ -162,10 +163,9 @@ function failedDeployStatus(
   const production = environments.find((environment) => environment.tier === "production");
   if (production === undefined) return undefined;
   const context = deployStatusContext(production.environment, entry.service);
-  const commit = entry.commit.toLowerCase();
   for (const environment of environments) {
     for (const service of environment.services) {
-      if (deployedCommit(service.appVersionName) !== commit) continue;
+      if (!sameCommit(deployedCommit(service.appVersionName), entry.commit)) continue;
       // Newest first: only the newest of a context says how that deploy went.
       const status = (service.statuses ?? []).find((each) => each.context === context);
       if (status?.state === "failure" || status?.state === "error") return status;

@@ -58,18 +58,35 @@ describe("a group's history", () => {
     expect(history[1]?.tags).toEqual([]);
   });
 
-  it("matches on the whole sha, never a prefix of one", () => {
+  it.each([
+    // Since 2026-09-30 a version's name spells its commit short.
+    { name: "the short sha a version name spells", runs: SHA_A.slice(0, 7), expected: ["stage"] },
+    { name: "the whole sha an older name spells", runs: SHA_A, expected: ["stage"] },
+    { name: "a short sha another commit begins", runs: SHA_B.slice(0, 7), expected: [] },
+    { name: "a prefix shorter than seven", runs: SHA_A.slice(0, 6), expected: [] },
+    { name: "a dirty working tree's token", runs: `${SHA_A.slice(0, 7)}-dirty`, expected: [] },
+    {
+      name: "what a person typed into a hand-made deploy",
+      runs: "hotfix-cache-headers",
+      expected: [],
+    },
+  ])("places a stage running $name", ({ runs, expected }) => {
     const history = groupHistory({
-      commits: [commit(SHA_A, "Add a footer")],
-      // What a person typed into a hand-made deploy, and a short sha: neither
-      // is a commit the branch can be said to be running.
-      deployed: new Map([
-        ["stage", SHA_A.slice(0, 7)],
-        ["production", "hotfix-cache-headers"],
-      ]),
+      commits: [commit(SHA_A, "Add a footer"), commit(SHA_B, "Rename the heading")],
+      deployed: new Map([["stage", runs]]),
       tags: new Map(),
     });
-    expect(history[0]?.deployedTo).toEqual([]);
+    expect(history[0]?.deployedTo).toEqual(expected);
+  });
+
+  it("places a short sha two of the branch's commits begin on neither", () => {
+    const twin = `${SHA_A.slice(0, 7)}${"0".repeat(33)}`;
+    const history = groupHistory({
+      commits: [commit(SHA_A, "Add a footer"), commit(twin, "Rename the heading")],
+      deployed: new Map([["stage", SHA_A.slice(0, 7)]]),
+      tags: new Map(),
+    });
+    expect(history.map((entry) => entry.deployedTo)).toEqual([[], []]);
   });
 
   it("reads the commit down to the seven characters a person uses", () => {

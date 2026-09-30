@@ -19,6 +19,7 @@ import {
   environmentRow,
   releaseRunBy,
   nameStopByRelease,
+  sameCommit,
   releaseContentsSummary,
   releaseRow,
   type EnvironmentRow,
@@ -695,8 +696,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
         atMainHead:
           !production &&
           commits.kind === "read" &&
-          view.version?.sha !== undefined &&
-          commits.commits[0]?.sha === view.version.sha,
+          sameCommit(view.version?.sha, commits.commits[0]?.sha),
       })}
       view={view}
       waiting={waiting}

@@ -595,3 +595,10 @@ export {
   type MateRowState,
   type PullRequestRow,
 } from "./groupRows.ts";
+export {
+  parseVersionName,
+  resolveCommit,
+  sameCommit,
+  SHORT_SHA_LENGTH,
+  type ParsedVersionName,
+} from "./versionName.ts";

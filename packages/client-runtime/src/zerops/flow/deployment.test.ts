@@ -226,6 +226,15 @@ describe("stopView", () => {
       expected: { tone: "neutral", word: "Deployed", line: "v1.6.0" },
     },
     {
+      // A name written since 2026-09-30 spells the commit short; the platform's may be older.
+      name: "the row's release, read under the short sha of the commit the platform names",
+      row: row(
+        { ...RUNNING.version, name: "v1.6.0", sha: SHA.slice(0, 7), label: "v1.6.0" },
+        "good",
+      ),
+      expected: { tone: "good", word: "Deployed", line: "v1.6.0" },
+    },
+    {
       name: "a row naming another commit leaves the platform's name standing",
       row: row(
         {

@@ -778,6 +778,36 @@ describe("releaseFailureOf — the release that did not go through, newer than w
     });
   });
 
+  it("reads the broker's words on a stage whose version name spells the commit short", () => {
+    const shortNamed = environments.map((environment) =>
+      environment.tier === "stage"
+        ? {
+            ...environment,
+            services: environment.services.map((service) => ({
+              ...service,
+              appVersionName: `main ${failedSha.slice(0, 7)}`,
+            })),
+          }
+        : environment,
+    );
+    expect(
+      releaseFailureOf({
+        releases: [
+          release({
+            tag: "v0.1.57",
+            standing: "deploy-failed",
+            word: "Deploy failed",
+            failedEntry: { service: "app", commit: failedSha },
+          }),
+        ],
+        environmentInputs: shortNamed,
+      }),
+    ).toMatchObject({
+      tag: "v0.1.57",
+      error: "The build step exited with code 2 while installing packages.",
+    });
+  });
+
   it("names a release the broker refused, with its reason", () => {
     expect(
       releaseFailureOf({

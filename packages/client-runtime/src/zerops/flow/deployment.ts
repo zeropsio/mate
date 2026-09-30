@@ -48,6 +48,7 @@ import {
 import type { FailureReason, Freshness, Known, Shown, Stamp } from "../knowledge/known.ts";
 import { knownPresentation, type KnownSurface } from "../knowledge/presentation.ts";
 import { shortCommit } from "../release.ts";
+import { sameCommit } from "../versionName.ts";
 
 export type Deployment =
   /** The deployment facet is observed and names no active deploy. */
@@ -581,10 +582,13 @@ export interface StopView {
   readonly afterMs: number;
 }
 
-/** Whether two versions name the same deploy: by commit where both carry one. */
+/**
+ * Whether two versions name the same deploy: by commit where both carry one — either may spell it
+ * short, as a name written since 2026-09-30 does (`sameCommit`).
+ */
 const sameVersion = (left: DeployedVersion, right: DeployedVersion): boolean =>
   left.sha !== undefined && right.sha !== undefined
-    ? left.sha === right.sha
+    ? sameCommit(left.sha, right.sha) || sameCommit(right.sha, left.sha)
     : left.label === right.label;
 
 /**

@@ -835,3 +835,73 @@ describe("a release in flight", () => {
     expect(gate).toEqual({ allowed: false, reason: releaseInFlightReason("v0.1.3") });
   });
 });
+
+describe("a production whose version names spell short shas", () => {
+  // Since 2026-09-30 the broker names a deploy `{tag} {short sha}`, so what production runs
+  // reads as the seven-hex prefix of the commit a release lists.
+  const short = (sha: string) => sha.slice(0, 7);
+  const RUNS = new Map([
+    ["api", short(API)],
+    ["web", short(WEB)],
+  ]);
+  const TAGGED = "2026-09-30T10:00:00Z";
+  const listing = (tag: string, api = API) => ({
+    tag,
+    verdict: "approved" as const,
+    detail: undefined,
+    line: "",
+    entries: [
+      { service: "api", commit: api },
+      { service: "web", commit: WEB },
+    ],
+    taggedAt: TAGGED,
+  });
+
+  it("compares the stage's commit against it as the same commit", () => {
+    expect(
+      compareForRelease({ candidate: new Map([["api", API]]), production: RUNS }).find(
+        (row) => row.service === "api",
+      ),
+    ).toEqual({ service: "api", candidate: "3f9c1b2", production: "3f9c1b2", changed: false });
+  });
+
+  it("names the release it runs, and not one listing another commit", () => {
+    expect(releaseRunBy([listing("v1.1.0", OLD), listing("v1.0.0")], RUNS)).toBe("v1.0.0");
+  });
+
+  it("reads nothing for a service it already runs main's head of", () => {
+    expect(planReleaseReads(new Map([["api", API]]), RUNS)).toEqual([]);
+  });
+
+  it("holds no release in flight once production runs every commit it lists", () => {
+    expect(
+      releaseInFlight({
+        newest: listing("v1.0.0"),
+        production: RUNS,
+        failed: new Map(),
+        nowMs: Date.parse(TAGGED) + 60_000,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("ends the hold when a listed commit's short name failed after the tag", () => {
+    expect(
+      releaseInFlight({
+        newest: listing("v1.1.0", OLD),
+        production: RUNS,
+        failed: new Map([[`api@${short(OLD)}`, "2026-09-30T10:05:00Z"]]),
+        nowMs: Date.parse(TAGGED) + 60_000,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("reads a failure under the short name as the listed commit's", () => {
+    const release = listing("v1.1.0", OLD);
+    const row = releaseRow(release, 0, {
+      production: RUNS,
+      failed: new Map([[`api@${short(OLD)}`, "2026-09-30T10:05:00Z"]]),
+      live: false,
+    });
+    expect(row.standing).toBe("deploy-failed");
+  });
+});

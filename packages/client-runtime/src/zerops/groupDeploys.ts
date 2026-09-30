@@ -9,9 +9,10 @@
  * - **`environments.yaml` on the group repo** says which environments exist,
  *   which Zerops project each one is, and what feeds it. Read as the person,
  *   from Gitea (`groupEnvironments.ts`).
- * - **Zerops** says what is deployed, as the first token of the service's
- *   `appVersionName` (`docs/group-repo.md`; measured 2026-09-16 — the version
- *   list carries no name at all, the service's `userData` does).
+ * - **Zerops** says what is deployed, as the commit the service's
+ *   `appVersionName` spells (`versionName.ts`, `docs/group-repo.md`; measured
+ *   2026-09-16 — the version list carries no name at all, the service's
+ *   `userData` does).
  * - **Gitea's commit statuses** say how that deploy went, under the context
  *   the broker writes: `mate/deploy/{environment}/{service}` on the service
  *   repository's commit.
@@ -99,9 +100,12 @@ export function deployStatusKey(
 /**
  * Which commits to ask Gitea about, from the version names that came back.
  *
- * Only a full sha is asked about: a version somebody deployed by hand is named
- * whatever they typed, and `{repo}/commits/not-a-sha/statuses` is a request
- * that can only answer `404`. Deduplicated, because a stage and a production
+ * Only a sha is asked about, whole or short as the name spells it — Gitea's
+ * `commits/{ref}/statuses` resolves a sha of seven characters or more to its
+ * commit (`ResolveRefCommit`, Gitea's source) and answers that commit's
+ * statuses. A version somebody deployed by hand is named whatever they typed,
+ * and `{repo}/commits/not-a-sha/statuses` is a request that can only answer
+ * `404`. Deduplicated, because a stage and a production
  * running the same commit of the same service is the normal state of a group
  * between releases and the answer is the same one.
  */
@@ -239,14 +243,14 @@ export function buildGroupEnvironmentRows(
   return buildGroupEnvironmentRowInputs(input).map((entry) => environmentRow(entry));
 }
 
-/** `{service hostname: full sha}` per side of a release. */
+/** `{service hostname: sha}` per side of a release, whole or short as the name spells it. */
 export interface ReleaseDeploys {
   /** What the stage runs. Several stages: the first the file declares (D16). */
   readonly stage: ReadonlyMap<string, string>;
   /** What production runs, read the same way and never from a release tag. */
   readonly production: ReadonlyMap<string, string>;
   /**
-   * `{service}@{full sha}` → when the failure was posted (`undefined`: not
+   * `{service}@{sha}` → when the failure was posted (`undefined`: not
    * read), for every commit whose newest production status for that service is
    * a failure, from every status read — a stage running the commit a release
    * lists carries the broker's production status on it too.
