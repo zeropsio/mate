@@ -1,6 +1,8 @@
 /**
  * The New Mate dialog asks who the Mate is — a name, a colour, a shape — and decides the rest: it
- * always deploys the project's recipe, and a project with none gets its Mate with nothing in it.
+ * always deploys the project's recipe, and a project with none gets its first Mate with nothing
+ * in it. A project whose Mates have not written its recipe yet takes no other: the dialog says
+ * why, in the form's place, and offers the one thing to do about it.
  */
 import { MATE_SHAPE_IDS, MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
 import { act, type ReactElement } from "react";
@@ -13,6 +15,7 @@ import {
   ZeropsEnvironmentCreationForm,
   type EnvironmentCreationChoice,
 } from "./ZeropsEnvironmentCreationDialog";
+import type { NewMateDoorAction, NewMateDoorClosed } from "./ZeropsEnvironmentCreationDialog.logic";
 
 const TIER = {
   kind: "tier" as const,
@@ -107,6 +110,25 @@ const lineText = (tree: ReactTestRenderer) =>
     .children.filter((child): child is string => typeof child === "string")
     .join("");
 
+/** A node's words as they are read: what `aria-hidden` keeps out of sight is not among them. */
+function spoken(node: ReactTestInstance): string {
+  if (node.props["aria-hidden"] === true) return "";
+  return node.children.map((child) => (typeof child === "string" ? child : spoken(child))).join("");
+}
+
+/** What the dialog's description says now. */
+const said = (tree: ReactTestRenderer) =>
+  spoken(host(tree, (node) => node.props["data-slot"] === "dialog-description"));
+
+/** Every button's words, in order. */
+const buttons = (tree: ReactTestRenderer) =>
+  tree.root
+    .findAll((node) => node.type === "button" && node.props.role !== "radio")
+    .map((node) => spoken(node));
+
+const button = (tree: ReactTestRenderer, words: string) =>
+  host(tree, (node) => node.type === "button" && spoken(node) === words);
+
 describe("the New Mate dialog", () => {
   it("asks for a name, a colour and a shape, and nothing else", () => {
     const html = renderToStaticMarkup(form());
@@ -122,11 +144,12 @@ describe("the New Mate dialog", () => {
   });
 
   it("says what happens, and names the Mate on its button", () => {
+    const tree = mount(form());
+    expect(said(tree)).toBe("Otto gets its own copy of Acme Docs, with its services and code.");
+    type(tree, "Ada");
+    expect(said(tree)).toBe("Ada gets its own copy of Acme Docs, with its services and code.");
     const html = renderToStaticMarkup(form());
     expect(html).toContain(">New Mate<");
-    expect(html).toContain(
-      "It gets its own copy of Acme Docs with the recipe deployed. It takes a couple of minutes.",
-    );
     expect(html).toContain(">Add Otto to Acme Docs</button>");
   });
 
@@ -259,13 +282,9 @@ describe("the New Mate dialog", () => {
   });
 
   it("tells a project with no recipe on main that its Mate sets the application up", () => {
-    const html = renderToStaticMarkup(form({ tier: undefined, tierLoading: false }));
-    // The saying with the recipe keeps its room, out of sight and out of the reading.
-    expect(html).toMatch(
-      /invisible opacity-0 duration-100">It gets its own copy of Acme Docs with the recipe deployed\./u,
-    );
-    expect(html).toMatch(
-      /delay-100 duration-200">It gets its own copy of Acme Docs\. There&#x27;s no recipe yet, so it sets the application up itself\. It takes a couple of minutes\./u,
+    const tree = mount(form({ tier: undefined, tierLoading: false }));
+    expect(said(tree)).toBe(
+      "It gets its own copy of Acme Docs. There's no recipe yet, so it sets the application up itself. It takes a couple of minutes.",
     );
   });
 
@@ -364,5 +383,119 @@ describe("the New Mate dialog", () => {
     expect(input.props["aria-invalid"]).toBeUndefined();
     press(tree);
     expect(made.map((choice) => choice.botName)).toEqual(["Otto"]);
+  });
+});
+
+describe("the New Mate dialog, while the project takes no Mate", () => {
+  const REVIEW: NewMateDoorClosed = {
+    kind: "closed",
+    reason:
+      "Acme Docs' recipe is waiting in Cleo's change. New Mates start from it once it's merged.",
+    action: { kind: "change", label: "Review the change", number: 11 },
+  };
+  const OPEN_CLEO: NewMateDoorClosed = {
+    kind: "closed",
+    reason:
+      "Acme Docs has no recipe yet. Cleo writes it when it finishes setting Acme Docs up, and new Mates start from it.",
+    action: { kind: "mate", label: "Open Cleo", projectId: "cleo-project" },
+  };
+  const RETRY: NewMateDoorClosed = {
+    kind: "closed",
+    reason: "Acme Docs' recipe can't be read right now.",
+    action: { kind: "retry", label: "Try again", busy: false },
+  };
+  const NOBODY: NewMateDoorClosed = {
+    kind: "closed",
+    reason:
+      "Acme Docs has no recipe yet. Acme Docs' Mates write it when one of them finishes setting Acme Docs up.",
+    action: undefined,
+  };
+
+  it("says why in the form's place, under the same title, with no Add", () => {
+    const tree = mount(form({ tier: undefined, closed: REVIEW }));
+    expect(said(tree)).toBe(REVIEW.reason);
+    expect(renderToStaticMarkup(form({ tier: undefined, closed: REVIEW }))).toContain(">New Mate<");
+    expect(buttons(tree)).toEqual(["Close", "Review the change"]);
+    expect(
+      tree.root.findAll((node) => node.type === "button" && node.props.type === "submit"),
+    ).toEqual([]);
+  });
+
+  it.each([
+    { case: "the change the recipe waits in", closed: REVIEW, words: "Review the change" },
+    { case: "the Mate that writes it", closed: OPEN_CLEO, words: "Open Cleo" },
+    { case: "a read of it again", closed: RETRY, words: "Try again" },
+  ])("sends its one action to $case", ({ closed, words }) => {
+    const acted: NewMateDoorAction[] = [];
+    const tree = mount(
+      form({ tier: undefined, closed, onDoorAction: (action) => acted.push(action) }),
+    );
+    act(() => {
+      button(tree, words).props.onClick();
+    });
+    expect(acted).toEqual([closed.action]);
+  });
+
+  it("offers no action where there is none, only the way out", () => {
+    let cancelled = 0;
+    const tree = mount(
+      form({
+        tier: undefined,
+        closed: NOBODY,
+        onCancel: () => {
+          cancelled += 1;
+        },
+      }),
+    );
+    expect(said(tree)).toBe(NOBODY.reason);
+    expect(buttons(tree)).toEqual(["Close"]);
+    act(() => {
+      button(tree, "Close").props.onClick();
+    });
+    expect(cancelled).toBe(1);
+  });
+
+  it("holds Try again while the recipe is read again, and says so", () => {
+    const tree = mount(
+      form({
+        tier: undefined,
+        closed: { ...RETRY, action: { kind: "retry", label: "Try again", busy: true } },
+      }),
+    );
+    expect(button(tree, "Try again").props).toMatchObject({ disabled: true, "aria-busy": true });
+    expect(lineText(tree)).toBe("Reading the project's recipe…");
+  });
+
+  it("takes no Mate while it says why: the name is out of reach, and a submit adds nothing", () => {
+    const made: EnvironmentCreationChoice[] = [];
+    const tree = mount(
+      form({ tier: undefined, closed: OPEN_CLEO, onCreate: (choice) => made.push(choice) }),
+    );
+    let node: ReactTestInstance | null = host(
+      tree,
+      (candidate) => candidate.type === "input" && candidate.props["aria-label"] === "Name",
+    );
+    while (node !== null && node.props.inert !== true) node = node.parent;
+    expect(node).not.toBeNull();
+    press(tree);
+    expect(made).toEqual([]);
+  });
+
+  it("drops a press made while the recipe was read once it says why, and adds only on a new one", () => {
+    const made: EnvironmentCreationChoice[] = [];
+    const onCreate = (choice: EnvironmentCreationChoice) => made.push(choice);
+    const tree = mount(form({ onCreate, tier: undefined, tierLoading: true }));
+    type(tree, "Ada");
+    press(tree);
+    act(() => {
+      tree.update(form({ onCreate, tier: undefined, closed: OPEN_CLEO }));
+    });
+    act(() => {
+      tree.update(form({ onCreate, tier: TIER }));
+    });
+    expect(made).toEqual([]);
+    // What was typed stayed, out of sight, while the door was shut.
+    press(tree);
+    expect(made.map((choice) => [choice.botName, choice.recipe])).toEqual([["Ada", TIER]]);
   });
 });

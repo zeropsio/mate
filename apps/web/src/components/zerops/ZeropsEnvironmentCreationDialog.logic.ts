@@ -3,10 +3,19 @@
  */
 
 import {
+  botDisplayName,
+  GROUP_REPOSITORY,
+  hasMate,
+  isRecipeProposal,
+  readZeropsGroupTags,
   ZEROPS_BOT_NAME_MAX_LENGTH,
   type EnvironmentRecipeChoice,
+  type FlowPullRequest,
+  type ZeropsGroupPendingMember,
   type ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import { MATE_SHAPE_OF_TINT, type MateShapeId, type MateTintId } from "@t3tools/shared/brand";
 
@@ -260,12 +269,26 @@ export function newMateSubmit(input: {
     : { kind: "create", recipe: { kind: "none" } };
 }
 
-/** What happens when a Mate is added, as the dialog's description says it. */
-export function newMateDescription(groupName: string, recipe: NewMateRecipe): string {
-  return recipe === "none"
-    ? `It gets its own copy of ${groupName}. There's no recipe yet, so it sets the application up itself. It takes a couple of minutes.`
-    : `It gets its own copy of ${groupName} with the recipe deployed. It takes a couple of minutes.`;
+/**
+ * What happens when a Mate is added, as the dialog's description says it: the Mate being named
+ * gets the project's recipe — its services and its code — and the project's first, with no
+ * recipe to start from, sets the application up itself.
+ */
+export function newMateDescription(input: {
+  readonly groupName: string;
+  readonly botName: string;
+  readonly recipe: NewMateRecipe;
+}): string {
+  const { groupName } = input;
+  if (input.recipe === "none") {
+    return `It gets its own copy of ${groupName}. There's no recipe yet, so it sets the application up itself. It takes a couple of minutes.`;
+  }
+  const name = input.botName.replace(/\s+/g, " ").trim();
+  return `${name.length === 0 ? "It" : name} gets its own copy of ${groupName}, with its services and code.`;
 }
+
+/** The quiet line while the group repo is read for the recipe. */
+export const READING_RECIPE = "Reading the project's recipe…";
 
 /**
  * What the Mate's dialog says: what happens, in its description — a project with no recipe to
@@ -281,13 +304,194 @@ export function newMateWords(input: {
   const { groupName, recipe } = input;
   const name = input.botName.replace(/\s+/g, " ").trim();
   return {
-    description: newMateDescription(groupName, recipe),
+    description: newMateDescription({ groupName, botName: input.botName, recipe }),
     button: name.length === 0 ? `Add a Mate to ${groupName}` : `Add ${name} to ${groupName}`,
     line:
       input.waitingOn === "names"
         ? CHECKING_NAMES
         : recipe === "reading"
-          ? "Reading the project's recipe…"
+          ? READING_RECIPE
           : undefined,
+  };
+}
+
+/** Where the recipe on the group repo's `main` stands, as it answered (`useZeropsGroupRecipe`). */
+export type NewMateRecipeRead = "loading" | "present" | "absent" | "unreadable";
+
+/** One of the project's Mates, as the door names it. */
+export interface NewMateDoorMate {
+  readonly projectId: string;
+  readonly name: string;
+}
+
+/** The change a Mate proposed the recipe in, still open, and that Mate while the project has it. */
+export interface NewMateRecipeChange {
+  readonly number: number;
+  readonly mate: string | undefined;
+}
+
+/** The one thing to do while the project takes no Mate. */
+export type NewMateDoorAction =
+  | { readonly kind: "change"; readonly label: string; readonly number: number }
+  | { readonly kind: "mate"; readonly label: string; readonly projectId: string }
+  | { readonly kind: "retry"; readonly label: string; readonly busy: boolean };
+
+/** Why the project takes no Mate now, and what to do about it where anything can be done. */
+export interface NewMateDoorClosed {
+  readonly kind: "closed";
+  readonly reason: string;
+  readonly action: NewMateDoorAction | undefined;
+}
+
+/** Whether the project takes another Mate: the form, knowing the recipe as it stands, or why not. */
+export type NewMateDoor =
+  | { readonly kind: "open"; readonly recipe: NewMateRecipe }
+  | NewMateDoorClosed;
+
+/**
+ * Whether "Add a Mate" can add one now (the owner, 2026-09-30: adding a second Mate before the
+ * first has written the group's import files "shouldn't be possible with explanation").
+ *
+ * A new Mate is made from the project's recipe on `main`, and its first Mate writes it: a project
+ * with no Mate yet takes one, which sets the application up itself, and a project whose recipe is
+ * on `main` takes any. A project whose Mates have not written it yet takes none — an empty Mate
+ * would set the application up a second time, beside the first — and says where the recipe is:
+ * waiting in a Mate's change, which it offers to review, or still to be written by the Mate
+ * setting the project up, which it offers to open. A recipe that cannot be read takes none either:
+ * nobody knows what the Mate would be made from, so the dialog offers to read it again.
+ */
+export function newMateDoor(input: {
+  readonly groupName: string;
+  readonly recipe: NewMateRecipeRead;
+  readonly mates: ReadonlyArray<NewMateDoorMate>;
+  readonly change: NewMateRecipeChange | undefined;
+  /** The recipe that could not be read is being read again (`useZeropsGroupRecipe`). */
+  readonly rereading: boolean;
+}): NewMateDoor {
+  const { change, groupName, mates } = input;
+  switch (input.recipe) {
+    case "loading":
+      return { kind: "open", recipe: "reading" };
+    case "present":
+      return { kind: "open", recipe: "recipe" };
+    case "unreadable":
+      return {
+        kind: "closed",
+        reason: `${crewPossessive(groupName)} recipe can't be read right now.`,
+        action: { kind: "retry", label: "Try again", busy: input.rereading },
+      };
+    case "absent":
+      break;
+  }
+  if (mates.length === 0) return { kind: "open", recipe: "none" };
+  if (change !== undefined) {
+    const where = change.mate === undefined ? "a change" : `${crewPossessive(change.mate)} change`;
+    return {
+      kind: "closed",
+      reason: `${crewPossessive(groupName)} recipe is waiting in ${where}. New Mates start from it once it's merged.`,
+      action: { kind: "change", label: "Review the change", number: change.number },
+    };
+  }
+  const [writer, ...others] = mates;
+  if (writer !== undefined && others.length === 0) {
+    return {
+      kind: "closed",
+      reason: `${groupName} has no recipe yet. ${writer.name} writes it when it finishes setting ${groupName} up, and new Mates start from it.`,
+      action: { kind: "mate", label: `Open ${writer.name}`, projectId: writer.projectId },
+    };
+  }
+  return {
+    kind: "closed",
+    reason: `${groupName} has no recipe yet. ${crewPossessive(groupName)} Mates write it when one of them finishes setting ${groupName} up.`,
+    action: undefined,
+  };
+}
+
+/**
+ * The project's Mates, as the door counts and names them: the listed ones by their agent, in the
+ * tree's order, then the ones still coming up — a Mate the platform took and the listing does not
+ * hold yet is setting the project up as surely as one it does.
+ */
+export function newMateDoorMates(input: {
+  readonly environments: ReadonlyArray<{ readonly item: ZeropsCandidate }>;
+  readonly pending: ReadonlyArray<ZeropsGroupPendingMember>;
+}): ReadonlyArray<NewMateDoorMate> {
+  const listed = input.environments.flatMap(({ item }) =>
+    hasMate(item)
+      ? [
+          {
+            projectId: item.project.id,
+            name: botDisplayName({
+              bot: readZeropsGroupTags(item.project.tagList).bot,
+              projectName: item.project.name,
+            }),
+          },
+        ]
+      : [],
+  );
+  const held = new Set(listed.map((mate) => mate.projectId));
+  const coming = input.pending
+    .filter((member) => member.kind === "mate" && !held.has(member.projectId))
+    .map(({ projectId, name }) => ({ projectId, name }));
+  return [...listed, ...coming];
+}
+
+/**
+ * The change the recipe waits in: a Mate's proposal of it still open on the group repo
+ * (`isRecipeProposal`) — the first opened, should two Mates each have proposed it — and the name
+ * of the Mate that opened it, while there is one.
+ *
+ * None is known before the forge has answered for the project (`changesKnown`): until then the
+ * door says who writes the recipe, never a form that the answer would take back, and where the
+ * recipe waits once the forge says so.
+ */
+export function newMateRecipeChange(input: {
+  /** The project's changes as the forge last read them (`ZeropsProjectFlow`); none read yet. */
+  readonly flow:
+    | {
+        readonly changesKnown: boolean;
+        readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+      }
+    | undefined;
+  readonly mateName: (projectId: string) => string | undefined;
+}): NewMateRecipeChange | undefined {
+  const { flow } = input;
+  if (flow === undefined || !flow.changesKnown) return undefined;
+  let first: FlowPullRequest | undefined;
+  for (const pull of flow.pullRequests) {
+    if (!isRecipeProposal(pull) || pull.merged) continue;
+    if (first === undefined || pull.number < first.number) first = pull;
+  }
+  if (first === undefined) return undefined;
+  const mate = first.mateProjectId === undefined ? undefined : input.mateName(first.mateProjectId);
+  return { number: first.number, mate };
+}
+
+/** The proposal of the recipe that landed last, by its number: another landing may put one on `main`. */
+export function landedRecipeProposal(merged: ReadonlyArray<FlowPullRequest>): number | undefined {
+  let newest: number | undefined;
+  for (const pull of merged) {
+    if (isRecipeProposal(pull) && (newest === undefined || pull.number > newest)) {
+      newest = pull.number;
+    }
+  }
+  return newest;
+}
+
+/** Where *Review the change* goes: the recipe's change on the group repo, on its own page. */
+export function recipeChangeView(
+  groupId: string,
+  number: number,
+): {
+  readonly to: "/change/$groupId/$repository/$number";
+  readonly params: {
+    readonly groupId: string;
+    readonly repository: string;
+    readonly number: string;
+  };
+} {
+  return {
+    to: "/change/$groupId/$repository/$number",
+    params: { groupId, repository: GROUP_REPOSITORY, number: String(number) },
   };
 }
