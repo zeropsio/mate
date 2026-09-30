@@ -254,25 +254,28 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const liveActivity = useZeropsThreadActivity(threadRef);
   const remembered = rememberedActivity(projectId);
   const standInKey = liveActivity?.threadKey ?? remembered?.threadKey ?? null;
-  const standInRef = useMemo(
-    () => (standInKey === null ? null : parseScopedThreadKey(standInKey)),
-    [standInKey],
-  );
-  const heldDraft = useComposerDraftStore((state) =>
-    standInKey === null ? "" : (state.draftsByThreadKey[standInKey]?.prompt ?? ""),
-  );
-  const [typing, setTyping] = useState<{ readonly typed: StandInTyped; readonly touched: boolean }>(
-    { typed: NOTHING_TYPED, touched: false },
+  // Where the typing went, fixed as it began: the conversation the row named then, or nowhere
+  // yet — then it is the view's own until it moves into the conversation's draft.
+  const [typing, setTyping] = useState<{
+    readonly typed: StandInTyped;
+    readonly into: string | null;
+    readonly touched: boolean;
+  }>({ typed: NOTHING_TYPED, into: null, touched: false });
+  const shownKey = typing.touched ? typing.into : standInKey;
+  const shownDraft = useComposerDraftStore((state) =>
+    shownKey === null ? "" : (state.draftsByThreadKey[shownKey]?.prompt ?? ""),
   );
   const typed: StandInTyped =
-    standInRef === null ? typing.typed : { text: heldDraft, caret: typing.typed.caret };
+    shownKey === null ? typing.typed : { text: shownDraft, caret: typing.typed.caret };
   const type = (next: StandInTyped) => {
-    if (standInRef !== null) useComposerDraftStore.getState().setPrompt(standInRef, next.text);
-    setTyping({ typed: next, touched: true });
+    const into = typing.touched ? typing.into : standInKey;
+    const intoRef = into === null ? null : parseScopedThreadKey(into);
+    if (intoRef !== null) useComposerDraftStore.getState().setPrompt(intoRef, next.text);
+    setTyping({ typed: next, into, touched: true });
   };
-  const typedRef = useRef({ typed, touched: typing.touched, key: standInKey });
+  const typedRef = useRef({ typed, touched: typing.touched, key: typing.into });
   useEffect(() => {
-    typedRef.current = { typed, touched: typing.touched, key: standInKey };
+    typedRef.current = { typed, touched: typing.touched, key: typing.into };
   });
   useEffect(() => {
     if (!handing || environmentId === null || threadRef === null) return;
@@ -283,7 +286,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         const written = typedRef.current;
         const conversation = scopedThreadKey(threadRef);
         let caret: number | null = written.touched ? written.typed.caret : null;
-        if (written.key !== conversation && written.typed.text.length > 0) {
+        if (written.touched && written.key !== conversation && written.typed.text.length > 0) {
           // Typed where no conversation was known, or into another than the one that opened.
           const drafts = useComposerDraftStore.getState();
           const draft = draftWithTyped(

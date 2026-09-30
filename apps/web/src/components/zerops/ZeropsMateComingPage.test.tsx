@@ -68,7 +68,13 @@ vi.mock("~/routes/-environmentTargets", () => ({
   useEnvironmentLinks: () => ({ mateLink: () => app.link }),
 }));
 vi.mock("~/state/entities", () => ({
-  useThreadShell: () => null,
+  // A conversation's shell once its environment's conversations are read.
+  useThreadShell: (ref: { readonly threadId: string } | null) =>
+    ref === null
+      ? null
+      : ((app.threads as Array<{ readonly id: string }>).find(
+          (thread) => thread.id === ref.threadId,
+        ) ?? null),
   useThreadShells: () => app.threads,
   useThreadStatus: () => "live",
   useProjects: () => app.projects,
@@ -436,6 +442,37 @@ describe("the composer in a Mate's own view, its conversation known from the men
       "Check the logs first",
     );
     expect(takeHandedOverCaret(threadKey, Date.now())).toBe(20);
+  });
+});
+
+describe("the composer in a Mate's own view, the menu naming an older conversation", () => {
+  it("moves what was typed there into the conversation that opens", async () => {
+    const { useComposerDraftStore } = await import("~/composerDraftStore");
+    const { takeHandedOverCaret } = await import("~/zerops/mateHandOver");
+    const older = { environmentId: ENV_QUINN, threadId: ThreadId.make("thread-older") };
+    const conversation = { environmentId: ENV_QUINN, threadId: MAIN.id };
+    app.remembered = { subject: "Earlier", threadKey: `${ENV_QUINN}:thread-older` };
+    app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
+    openView();
+    act(() =>
+      tree!.root
+        .find((node) => typeof node.type === "string" && node.type === "textarea")
+        .props.onChange({ currentTarget: { value: "Ship it", selectionEnd: 4 } }),
+    );
+
+    app.link = {
+      key: KEY,
+      environmentId: ENV_QUINN,
+      reachability: { kind: "ready", notice: null },
+    } satisfies MateLink;
+    app.threads = [MAIN];
+    act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
+    act(() => vi.advanceTimersByTime(0));
+
+    const drafts = useComposerDraftStore.getState();
+    expect(drafts.getComposerDraft(conversation)?.prompt).toBe("Ship it");
+    expect(drafts.getComposerDraft(older)?.prompt ?? "").toBe("");
+    expect(takeHandedOverCaret(`${ENV_QUINN}:${MAIN.id}`, Date.now())).toBe(4);
   });
 });
 
