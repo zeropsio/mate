@@ -7,26 +7,8 @@ import { useLocalStorage } from "../hooks/useLocalStorage";
 import type { RightPanelSurface } from "../rightPanelStore";
 import { Button } from "./ui/button";
 
-const PREVIEW_CACHE_PARAM = "_mate_preview";
-
 /** Set once this browser's viewer has read the cookie note; a per-viewer convenience. */
 export const PREVIEW_COOKIE_NOTE_KEY = "mate:zerops:preview-cookie-note-read";
-
-/**
- * The address the frame loads: the service URL with one query parameter
- * carrying `key`, so a load the panel starts is never answered from a stale
- * HTTP cache. A static site served with `Last-Modified` and no `Cache-Control`
- * is heuristically cacheable, and an identical `src` came back as the page
- * from before a deploy.
- */
-export function previewSrc(url: string, key: string): string {
-  const src = new URL(url);
-  // Appended to the query as written: re-serialising it through
-  // `searchParams` would rewrite a page's own parameters (`?flag` → `?flag=`).
-  const param = `${PREVIEW_CACHE_PARAM}=${encodeURIComponent(key)}`;
-  src.search = src.search === "" ? param : `${src.search.slice(1)}&${param}`;
-  return src.href;
-}
 
 /**
  * What tells the version a service runs from the next: when it went live. The
@@ -46,7 +28,21 @@ export function nextHeldVersion(
   return incoming ?? held;
 }
 
-/** The cache key of a load: the deployed version it follows and the manual reload count. */
+/**
+ * What a load of the frame is: the deployed version it follows and the manual
+ * reload count. A new one remounts the frame on the address as shown.
+ *
+ * It rode in the address as a `_mate_preview` query until 2026-09-30, so an
+ * identical `src` could not be answered from a stale heuristic cache (a static
+ * site with `Last-Modified` and no `Cache-Control`). A page that routes on its
+ * exact address answered it "Not found" (`req.url === "/"`: `/` 200,
+ * `/?_mate_preview=…` 404, measured live). Nothing short of another address
+ * reaches that cache: measured in Chrome, a cross-site frame remounted, its
+ * `src` set again, a fragment, its location set or replaced, and a
+ * `cache: "reload"` fetch from the parent (a partition of its own) all came
+ * back from the cache, and `location.reload()` throws cross-origin. A page
+ * that works is worth more than a fresh copy of one that caches itself.
+ */
 export function previewKey(version: string | undefined, revision: number): string {
   return `${version ?? "none"}.${revision}`;
 }
@@ -93,7 +89,6 @@ export function ServiceBrowserPanel({
   const version = nextHeldVersion(heldVersion, deployedVersion);
   if (version !== heldVersion) setHeldVersion(version);
   if (!isServiceBrowserUrl(url)) return null;
-  const src = previewSrc(url, previewKey(version, revision));
   // Public services need their own origin for storage and API requests. A page on
   // Mate's own origin must remain opaque so its scripts cannot remove the sandbox.
   const sandbox =
@@ -155,9 +150,9 @@ export function ServiceBrowserPanel({
         </div>
       )}
       <iframe
-        key={src}
+        key={previewKey(version, revision)}
         title={`${service} live preview`}
-        src={src}
+        src={url}
         className="min-h-0 w-full flex-1 border-0 bg-background"
         sandbox={sandbox}
         referrerPolicy="no-referrer"
