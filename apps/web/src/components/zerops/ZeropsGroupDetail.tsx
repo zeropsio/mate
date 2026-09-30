@@ -34,7 +34,6 @@ import {
   releasesCarried,
   type GiteaCommit,
   type ReleaseContentsSummary,
-  resolvePrimaryConversation,
   shortCommit,
   sidebarChangeLabel,
   type ProjectAttentionItem,
@@ -81,10 +80,7 @@ import { ChevronRightIcon, ExternalLinkIcon, PlusIcon } from "lucide-react";
 import { Fragment, useCallback, useId, useMemo, useState } from "react";
 
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 
-import { useThreadShells } from "~/state/entities";
-import { buildThreadRouteParams } from "~/threadRoutes";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { mateFaceFor } from "~/zerops/agentActivity";
@@ -136,6 +132,7 @@ import { ZeropsStopMenu } from "./ZeropsStopMenu";
 import { useRenameGroup } from "~/zerops/useRenameGroup";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
+import { useOpenMate } from "~/zerops/useOpenMate";
 import { useZeropsContainers } from "~/zerops/zeropsContainers";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { findInventoryProjectRef, withheldProjectNotice } from "~/zerops/inventoryContext";
@@ -458,34 +455,10 @@ function useStopRoutes(projectId: string): {
 const EMPTY_ROUTES: ReadonlyArray<ZeropsPublicRoute> = [];
 const EMPTY_OFFERS: ReadonlyArray<ZeropsRouteOffer> = [];
 
-/** Opens a Mate's own conversation, as selecting its row in the menu does. */
-function useOpenMate(): (projectId: string) => void {
-  const { listing } = useZeropsCandidates();
-  const threads = useThreadShells();
-  const navigate = useNavigate();
-  return useCallback(
-    (projectId: string) => {
-      const found = findCandidate(listing, (entry) => entry.project.id === projectId);
-      const environmentId = found.kind === "found" ? found.row.environmentId : undefined;
-      const { primary } =
-        environmentId === undefined
-          ? { primary: undefined }
-          : resolvePrimaryConversation(
-              threads.filter((thread) => thread.environmentId === environmentId),
-            );
-      // Not connected, nothing started, or not read yet: the projects screen
-      // owns connecting and starting, and says what it is still reading.
-      if (environmentId === undefined || primary === undefined) {
-        void navigate({ to: "/zerops" });
-        return;
-      }
-      void navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(scopeThreadRef(environmentId, primary.id)),
-      });
-    },
-    [listing, navigate, threads],
-  );
+/** Opens a Mate's own conversation, as selecting its row in the menu does (`useOpenMate`). */
+function useOpenMateOf(): (projectId: string) => void {
+  const openMate = useOpenMate();
+  return useCallback((projectId: string) => openMate({ projectId }), [openMate]);
 }
 
 /**
@@ -511,7 +484,7 @@ function useProjectAttention(
 } {
   const flowValue = useZeropsProjectFlowOptional();
   const mateNames = flowValue?.mateNames;
-  const openMate = useOpenMate();
+  const openMate = useOpenMateOf();
   const navigate = useNavigate();
   const { environments, pullRequests, notLive, canRelease } = input;
 
@@ -642,7 +615,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const crumbs = useCrumbs();
   const names = useHistoryNames(groupName);
   const { mates, notice: matesNotice, refresh: rereadMates } = useGroupMates(groupId);
-  const openMate = useOpenMate();
+  const openMate = useOpenMateOf();
   const { withheldNotice, shown } = useWithheldStops(environments);
   const attention = useProjectAttention(groupId, mates, {
     environments: shown,

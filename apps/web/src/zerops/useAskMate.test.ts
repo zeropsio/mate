@@ -6,6 +6,10 @@ import { askMateTarget, askMateThread, askedDraft } from "./useAskMate";
 
 const connected = EnvironmentId.make("environment-1");
 
+// The owner, 2026-09-30: "it just throws me at /zerops page". An ask to a Mate goes to that Mate:
+// its conversation where it is connected, else its door (`useOpenMate`), which opens its own view
+// until its conversation can be opened and writes the ask there then — never the projects screen,
+// where the ask was lost.
 describe("askMateTarget", () => {
   it.each<{
     readonly name: string;
@@ -13,29 +17,29 @@ describe("askMateTarget", () => {
     readonly target: object;
   }>([
     {
-      name: "an unread listing sends the ask to the projects screen, which says what it still reads, never parks it unseen",
-      lookup: { kind: "pending" },
-      target: { kind: "projects" },
-    },
-    {
       name: "a Mate connected to an environment is asked there",
       lookup: { kind: "found", row: { environmentId: connected } },
       target: { kind: "environment", environmentId: connected },
     },
     {
-      name: "a Mate not connected goes to the projects screen",
+      name: "a Mate not connected is asked through its door, which connects it",
       lookup: { kind: "found", row: {} },
-      target: { kind: "projects" },
+      target: { kind: "mate" },
     },
     {
-      name: "a Mate proven absent goes to the projects screen",
-      lookup: { kind: "absent" },
-      target: { kind: "projects" },
+      name: "an unread listing: its door, whose view says what it still reads",
+      lookup: { kind: "pending" },
+      target: { kind: "mate" },
     },
     {
-      name: "a listing that cannot say goes to the projects screen, which says why",
+      name: "a listing that cannot say: its door, whose view says why",
       lookup: { kind: "unknown" },
-      target: { kind: "projects" },
+      target: { kind: "mate" },
+    },
+    {
+      name: "a Mate proven absent: its door, whose view says it is not on the account",
+      lookup: { kind: "absent" },
+      target: { kind: "mate" },
     },
   ])("$name", ({ lookup, target }) => {
     expect(askMateTarget(lookup)).toEqual(target);

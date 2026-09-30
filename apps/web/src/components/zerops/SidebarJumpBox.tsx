@@ -29,7 +29,6 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { agentTurnNotes } from "@t3tools/client-runtime/zerops";
-import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { ApprovalRequestId, EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
 import * as Option from "effect/Option";
@@ -47,7 +46,6 @@ import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useMateReadOnly, useMatesReadOnly } from "~/zerops/useMateReadOnly";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
-import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsChangeLandedEvents } from "~/zerops/useZeropsChangeLandedEvents";
 
 import { stackedThreadToast, toastManager } from "../ui/toast";
@@ -168,19 +166,17 @@ export function SidebarJumpBox({
   );
 }
 
-/** Where a find goes on its own: a Mate's conversation, and every other thing's page. */
+/**
+ * Where a find goes on its own: a Mate's conversation — or its own view while that cannot be
+ * opened, the listing not holding it yet included (`useOpenMate`) — and every other thing's page.
+ */
 function useJumpPages(): JumpPages {
   const router = useRouter();
   const openMateOf = useOpenMate();
-  const { listing } = useZeropsCandidates();
   return useMemo(
     () => ({
       openMate: (mate) => {
-        const candidate = heldCandidates(listing).rows.find(
-          (row) => row.project.id === mate.projectId,
-        );
-        if (candidate === undefined) void router.navigate({ to: "/zerops" });
-        else openMateOf(candidate);
+        openMateOf({ projectId: mate.projectId });
       },
       openProject: (groupId) => {
         void router.navigate({ to: "/group/$groupId/flow", params: { groupId } });
@@ -205,7 +201,7 @@ function useJumpPages(): JumpPages {
         void router.navigate({ to: "/zerops/new" });
       },
     }),
-    [listing, openMateOf, router],
+    [openMateOf, router],
   );
 }
 

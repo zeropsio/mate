@@ -5,7 +5,8 @@ import { create } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { markMateDeleting, settleDeletingMates } from "./deletingMates";
-import { useOpenMate } from "./useOpenMate";
+import { takeMateConversation } from "./mateOpening";
+import { useOpenMate, type OpenMate } from "./useOpenMate";
 
 const ENVIRONMENT = EnvironmentId.make("env-fen");
 
@@ -35,6 +36,10 @@ const app = vi.hoisted(() => ({
   newThreadCalls: vi.fn(),
   /** The births this browser holds. */
   births: [] as Array<unknown>,
+  /** The projects its environments' conversations list, once read. */
+  projects: [] as Array<unknown>,
+  /** The active organization's listing, as the jump box and a project's page look a Mate up in it. */
+  listing: { state: "unread", waitingFor: null } as unknown,
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -46,7 +51,10 @@ vi.mock("../routes/-environmentTargets", () => ({
 vi.mock("../state/entities", () => ({
   useThreadShells: () => app.threads,
   readThreadShells: () => app.threadsLater,
-  useProjects: () => [{ id: ProjectId.make("project-fen"), environmentId: ENVIRONMENT }],
+  useProjects: () => app.projects,
+}));
+vi.mock("./useZeropsCandidates", () => ({
+  useZeropsCandidates: () => ({ listing: app.listing }),
 }));
 vi.mock("./zeropsBirths", () => ({
   useZeropsBirths: () => ({ births: app.births, waits: new Map(), outstanding: null }),
@@ -68,10 +76,10 @@ const CANDIDATE = {
 
 /** Opens Fen as the left menu's item does, and hands back what was told of the conversation. */
 async function openFen(
-  candidate: ZeropsCandidate = CANDIDATE,
+  candidate: Parameters<OpenMate>[0] = CANDIDATE,
 ): Promise<ReadonlyArray<ScopedThreadRef>> {
   const told: Array<ScopedThreadRef> = [];
-  const opens: Array<ReturnType<typeof useOpenMate>> = [];
+  const opens: Array<OpenMate> = [];
   function Harness() {
     opens.push(useOpenMate());
     return null;
@@ -102,11 +110,16 @@ beforeEach(() => {
   app.navigate.mockClear();
   app.newThreadCalls.mockClear();
   app.births = [];
+  app.projects = [{ id: ProjectId.make("project-fen"), environmentId: ENVIRONMENT }];
+  app.listing = { state: "unread", waitingFor: null };
 });
 afterEach(() => {
   vi.unstubAllGlobals();
   settleDeletingMates(new Set());
+  takeMateConversation("project-fen");
 });
+
+const FEN_VIEW = { to: "/mate/$projectId", params: { projectId: "project-fen" } } as const;
 
 describe("useOpenMate — what it tells the caller of the conversation it opened", () => {
   it("tells its main chat before the route changes, so the conversation paints with it", async () => {
@@ -127,11 +140,66 @@ describe("useOpenMate — what it tells the caller of the conversation it opened
     app.threadsLater = [shell("thread-arrived")];
     expect(await openFen()).toEqual([{ environmentId: ENVIRONMENT, threadId: "thread-arrived" }]);
   });
+});
 
-  it("tells nothing where the projects screen takes over", async () => {
-    app.reachable = false;
-    expect(await openFen()).toEqual([]);
-    expect(app.navigate).toHaveBeenCalledExactlyOnceWith({ to: "/zerops" });
+// The owner, 2026-09-30: "all of the sudden when I now try to open Quinn or Wren it just throws me
+// at /zerops page". A Mate the person can see opens its own view whenever its conversation cannot be
+// opened yet; the view connects it, says what it waits for, and hands over — telling the caller
+// then, not before.
+describe("useOpenMate — a Mate whose conversation cannot be opened yet", () => {
+  it.each([
+    {
+      case: "its link not made in this tab, or being made again",
+      reachable: false,
+      projects: [{ id: "project-fen", environmentId: ENVIRONMENT }],
+    },
+    {
+      case: "its environment registered, its conversations not read yet",
+      reachable: true,
+      projects: [],
+    },
+  ])("opens its own view, never the projects screen: $case", async ({ reachable, projects }) => {
+    app.reachable = reachable;
+    app.projects = projects;
+    const told = await openFen();
+    expect(app.navigate).toHaveBeenCalledExactlyOnceWith(FEN_VIEW);
+    expect(app.newThreadCalls).not.toHaveBeenCalled();
+    // Told once the view hands over, of the conversation it hands over to.
+    expect(told).toEqual([]);
+    takeMateConversation("project-fen")?.({
+      environmentId: ENVIRONMENT,
+      threadId: ThreadId.make("thread-main"),
+    });
+    expect(told).toEqual([{ environmentId: ENVIRONMENT, threadId: "thread-main" }]);
+  });
+
+  it("opens a Mate named by its project that the listing does not hold yet in its own view", async () => {
+    expect(await openFen({ projectId: "project-fen" })).toEqual([]);
+    expect(app.navigate).toHaveBeenCalledExactlyOnceWith(FEN_VIEW);
+  });
+
+  it("opens a Mate named by its project that the listing holds as its row does", async () => {
+    app.listing = {
+      state: "known",
+      value: [{ ...CANDIDATE, presence: "known" }],
+      coverage: "complete",
+      asOf: { ordinal: 1, atMs: 0 },
+      freshness: { kind: "live" },
+    };
+    app.threads = [shell("thread-main")];
+    expect(await openFen({ projectId: "project-fen" })).toEqual([
+      { environmentId: ENVIRONMENT, threadId: "thread-main" },
+    ]);
+    expect(app.navigate).toHaveBeenCalledExactlyOnceWith({
+      to: "/$environmentId/$threadId",
+      params: { environmentId: ENVIRONMENT, threadId: "thread-main" },
+    });
+  });
+
+  it("opens nothing of a Mate on its way off Zerops, named by its project", async () => {
+    markMateDeleting("project-fen");
+    expect(await openFen({ projectId: "project-fen" })).toEqual([]);
+    expect(app.navigate).not.toHaveBeenCalled();
   });
 
   it.each([
