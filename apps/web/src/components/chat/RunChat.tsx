@@ -107,6 +107,7 @@ import { useRunEffortWords } from "./runResultFacts";
 import { drawerEase, LIST_LAYS_OUT_FRAMES, stepHeight } from "./stepHeight";
 import { StatusBar, type BarTone } from "./StatusBar";
 import { DOCKED_KINDS } from "./conversationDock.logic";
+import { StandupDetail } from "./StandupDetail";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
   normalizeCompactToolLabel,
@@ -1375,6 +1376,27 @@ function StepBubble({
 
 /** A deploy's pipeline and build log, whole: the card, under what opened it. */
 export function OperationDetail({
+  operation,
+  environmentId,
+  threadRef,
+}: {
+  readonly operation: ZeropsOperation;
+  readonly environmentId: EnvironmentId | null;
+  readonly threadRef: ScopedThreadRef | null;
+}) {
+  if (operation.kind === "standup") {
+    return <StandupDetail environmentId={environmentId} operation={operation} />;
+  }
+  return (
+    <ZeropsOperationDetail
+      environmentId={environmentId}
+      operation={operation}
+      threadRef={threadRef}
+    />
+  );
+}
+
+function ZeropsOperationDetail({
   operation,
   environmentId,
   threadRef,

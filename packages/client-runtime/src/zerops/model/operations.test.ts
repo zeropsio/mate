@@ -1071,3 +1071,36 @@ describe("reduceZeropsOperations — read tools", () => {
     expect(operations[0]).not.toHaveProperty("readResult");
   });
 });
+
+describe("reduceZeropsOperations — the stand-up's two calls", () => {
+  it("names each call by the half it deploys: development, then stage", () => {
+    const developmentUp = JSON.stringify({
+      standUp: "ready",
+      message: "Development is up.",
+      services: [
+        { hostname: "apidev", role: "dev", deploy: { status: "deployed" }, next: "" },
+        { hostname: "apistage", role: "stage", next: "" },
+      ],
+      next: "",
+    });
+    const { operations } = reduceFrom([
+      {
+        id: "c1",
+        createdAt: "2026-09-01T00:00:00.000Z",
+        toolName: "zerops_standup",
+        status: "completed",
+        resultText: developmentUp,
+      },
+      {
+        id: "c2",
+        createdAt: "2026-09-01T00:10:00.000Z",
+        toolName: "zerops_standup",
+        status: "inProgress",
+      },
+    ]);
+    expect(operations.map(({ kind, subject, phase }) => ({ kind, subject, phase }))).toEqual([
+      { kind: "standup", subject: "development", phase: "done" },
+      { kind: "standup", subject: "stage", phase: "running" },
+    ]);
+  });
+});

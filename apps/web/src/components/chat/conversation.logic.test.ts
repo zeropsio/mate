@@ -1374,6 +1374,59 @@ describe("deriveOutcome", () => {
     });
   });
 
+  // A stand-up leaves each service it deployed running at its address, and a
+  // failed one broken with its build's reason.
+  it("lists each service a stand-up deployed, at its address, and one that failed", () => {
+    const entries = [
+      user("m0", 0),
+      operation("s1", "t1", 1, {
+        kind: "standup",
+        subject: "stage",
+        phase: "failed",
+        statusWord: "Failed",
+        steps: [
+          { id: "apistage", label: "apistage", state: "done", stateLabel: "Deployed" },
+          {
+            id: "webstage",
+            label: "webstage",
+            state: "failed",
+            stateLabel: "Failed",
+            note: "the build ran out of memory",
+          },
+        ],
+        links: [{ label: "apistage", url: "https://apistage.example.dev" }],
+      }),
+      assistant("a1", "t1", 2),
+    ];
+    const [only] = structure(entries, settled).turns;
+    const outcome = deriveOutcome({ turn: only!, landed: [], diff: null });
+    expect(
+      outcome?.live.map(({ hostname, tone, word, url, failure }) => ({
+        hostname,
+        tone,
+        word,
+        url,
+        reason: failure?.reason ?? null,
+      })),
+    ).toEqual([
+      {
+        hostname: "apistage",
+        tone: "ok",
+        word: "Deployed",
+        url: "https://apistage.example.dev",
+        reason: null,
+      },
+      {
+        hostname: "webstage",
+        tone: "failed",
+        word: expect.any(String),
+        url: null,
+        reason: "the build ran out of memory",
+      },
+    ]);
+    expect(outcome?.notDone).toEqual([]);
+  });
+
   // What is still broken says why, when, and what its log said last: the
   // row's words and the fix request's (S6).
   it.each([

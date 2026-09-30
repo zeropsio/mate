@@ -100,6 +100,7 @@ const PIPELINE_KINDS: ReadonlySet<ZeropsOperationKind> = new Set<ZeropsOperation
 const KIND_GLYPH: Partial<Record<ZeropsOperationKind, LucideIcon>> = {
   browser: AppWindowIcon,
   deploy: RocketIcon,
+  standup: RocketIcon,
   logs: ScrollTextIcon,
   verify: ShieldCheckIcon,
 };

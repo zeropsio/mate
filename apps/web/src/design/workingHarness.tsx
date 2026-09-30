@@ -50,6 +50,11 @@ import type { ChatMessage } from "~/types";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
+import { StandupReadings } from "~/zerops/activity/useStandupReading";
+import type {
+  StandupReading,
+  StandupServiceRow,
+} from "@t3tools/client-runtime/zerops/activity/standupReading";
 import "../index.css";
 
 const SPEAKER: ConversationSpeaker = { name: "Nova", tint: "sky" };
@@ -701,6 +706,147 @@ function Card({
   );
 }
 
+// A stand-up call's bar in each state its builds reach: made-up services, a
+// reading per state in place of the platform's.
+function standupOp(key: string, subject: "development" | "stage"): ZeropsOperation {
+  return {
+    key,
+    kind: "standup",
+    phase: "running",
+    anchorAt: ago(420),
+    anchorActivityId: key,
+    turnId: "turn-1",
+    subject,
+    kicker: `Stand-up · ${subject}`,
+    voice: `Standing ${subject} up.`,
+    voiceSource: "mate",
+    statusWord: "Standing up",
+    steps: [],
+    links: [],
+    callIds: [key],
+    hasResult: false,
+  };
+}
+
+function standupReading(rows: ReadonlyArray<StandupServiceRow>): StandupReading {
+  return {
+    rows,
+    building: rows.filter((row) => row.state === "building").length,
+    built: rows.filter((row) => row.state === "built").length,
+    failed: rows.filter((row) => row.state === "failed").length,
+  };
+}
+
+const STANDUP_STATES: ReadonlyArray<{
+  readonly label: string;
+  readonly subject: "development" | "stage";
+  readonly rows: ReadonlyArray<StandupServiceRow>;
+}> = [
+  {
+    label: "Starting: nothing builds yet",
+    subject: "development",
+    rows: [
+      { hostname: "apidev", state: "waits" },
+      { hostname: "shopdev", state: "waits" },
+    ],
+  },
+  {
+    label: "One building",
+    subject: "development",
+    rows: [
+      {
+        hostname: "apidev",
+        state: "building",
+        startedAt: ago(130),
+        sentence: "Running build commands from zerops.yml",
+      },
+      { hostname: "shopdev", state: "waits" },
+    ],
+  },
+  {
+    label: "Several building",
+    subject: "development",
+    rows: [
+      { hostname: "apidev", state: "building", startedAt: ago(130), sentence: "Deploying" },
+      {
+        hostname: "shopdev",
+        state: "building",
+        startedAt: ago(128),
+        sentence: "Running build commands from zerops.yml",
+      },
+    ],
+  },
+  {
+    label: "One built",
+    subject: "stage",
+    rows: [
+      { hostname: "apistage", state: "built", startedAt: ago(400), endedAt: ago(90) },
+      {
+        hostname: "shopstage",
+        state: "building",
+        startedAt: ago(80),
+        sentence: "Running build commands from zerops.yml",
+      },
+    ],
+  },
+  {
+    label: "One failed, the rest go on",
+    subject: "stage",
+    rows: [
+      { hostname: "apistage", state: "failed", startedAt: ago(400), endedAt: ago(200) },
+      { hostname: "shopstage", state: "building", startedAt: ago(150) },
+    ],
+  },
+  {
+    label: "All built",
+    subject: "development",
+    rows: [
+      { hostname: "apidev", state: "built", startedAt: ago(400), endedAt: ago(90) },
+      { hostname: "shopdev", state: "built", startedAt: ago(398), endedAt: ago(4) },
+    ],
+  },
+];
+
+const STANDUP_READINGS: ReadonlyMap<string, StandupReading> = new Map(
+  STANDUP_STATES.map((state, index) => [`op:standup-${index}`, standupReading(state.rows)]),
+);
+
+function StandupStates() {
+  return (
+    <StandupReadings value={STANDUP_READINGS}>
+      <State
+        label="Standing up"
+        note="A stand-up call's bar: a segment per service, the build that runs, how many are built."
+      >
+        {STANDUP_STATES.map((state, index) => {
+          const operation = standupOp(`op:standup-${index}`, state.subject);
+          return (
+            <div className="grid gap-1" data-standup-state={state.label} key={operation.key}>
+              <p className="text-muted-foreground text-xs">{state.label}</p>
+              <Card>
+                <RunChat
+                  row={record({
+                    turnKey: `standup-${index}`,
+                    items: [],
+                    now: { kind: "operation", operation },
+                  })}
+                />
+                <ConversationWorking
+                  dock={{ ...EMPTY_DOCK, operations: [operation] }}
+                  environmentId={null}
+                  incidents={[]}
+                  onOpenAgents={() => undefined}
+                  threadRef={null}
+                />
+              </Card>
+            </div>
+          );
+        })}
+      </State>
+    </StandupReadings>
+  );
+}
+
 function State({
   label,
   note: caption,
@@ -751,6 +897,7 @@ function Harness() {
   return (
     <div className="min-h-screen bg-background px-6 py-8">
       <div className="mx-auto grid w-full max-w-3xl gap-16">
+        <StandupStates />
         <CardStates />
         <State
           label="Doing, with work alongside"
