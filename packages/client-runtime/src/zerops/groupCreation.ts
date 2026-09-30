@@ -59,7 +59,7 @@ export function canWriteRegistry(viewer: { readonly roleCode?: string | undefine
  *
  * One refusal: a member simply is not the one who does this. An account with
  * no Gitea yet is not a refusal — the first project stands it up on its way
- * (`submitZeropsNewProject`), so nobody has to know the word.
+ * (the web's `runNewProjectBirth`), so nobody has to know the word.
  */
 export function resolveAddProjectVerb(input: {
   readonly viewer: MateAccessViewer;

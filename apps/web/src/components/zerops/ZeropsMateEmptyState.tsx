@@ -229,6 +229,12 @@ export function StandUpAuthorize({
   );
 }
 
+/**
+ * Who the view is of: a Mate's identity, its project on Zerops or not — a New project's first
+ * Mate is drawn before the platform has made it (`ZeropsNewProjectComingPage`).
+ */
+type DrawnMate = Omit<ZeropsMateIdentity, "projectUrl">;
+
 /** The stand-up's sentences, in the order a stand-up moves through them. */
 const STAND_UP_PHASES: ReadonlyArray<MateStandUpPhase> = ["sign-in", "standing-up", "failed"];
 
@@ -279,7 +285,7 @@ export function MateEmptyStateView({
   onRetry,
   coming = null,
 }: {
-  readonly mate: ZeropsMateIdentity;
+  readonly mate: DrawnMate;
   readonly phase: MateStandUpPhase | null;
   /** The agents' sign-in rows, once their sign-in is known; null before. */
   readonly signIn: ReactNode | null;
@@ -416,7 +422,7 @@ function SignInBelow({
   signInRequired,
   unknown,
 }: {
-  readonly mate: ZeropsMateIdentity;
+  readonly mate: DrawnMate;
   readonly phase: MateStandUpPhase | null;
   readonly signIn: ReactNode | null;
   readonly signInRequired: boolean;
@@ -439,7 +445,7 @@ function QuestionSignIn({
   signIn,
   unknown,
 }: {
-  readonly mate: ZeropsMateIdentity;
+  readonly mate: DrawnMate;
   readonly signIn: ReactNode | null;
   readonly unknown: KnownMessage | null;
 }) {

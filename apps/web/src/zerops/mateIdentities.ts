@@ -161,7 +161,7 @@ export function zeropsMateDecisions(
 }
 
 /** The question an empty conversation asks: "What should Fen do on Acme Docs?" */
-export function mateQuestion(mate: ZeropsMateIdentity): string {
+export function mateQuestion(mate: Pick<ZeropsMateIdentity, "name" | "project">): string {
   return mate.project === undefined
     ? `What should ${mate.name} do?`
     : `What should ${mate.name} do on ${mate.project}?`;
