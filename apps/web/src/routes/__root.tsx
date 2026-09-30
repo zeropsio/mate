@@ -4,7 +4,10 @@ import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/envir
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import {
   MATE_VOICE_QUIET_MS,
+  MATE_VOICE_SLOW_MS,
   mateVoice,
+  mateVoiceQuietKey,
+  type Reachability,
   routeGatePhrase,
   selectRouteGate,
   type MateVoice,
@@ -76,19 +79,28 @@ import {
 import { countDoorEnvironments, resolveDoor } from "./-door";
 import { resolveZeropsAccountGate } from "./-accountGate";
 import { draftIdFromPathname, environmentIdFromPathname } from "./-environmentRoute";
-import { useRouteConversation, useRouteGateInputs } from "./-environmentTargets";
+import {
+  useEnvironmentReachability,
+  useRouteConversation,
+  useRouteGateInputs,
+} from "./-environmentTargets";
 import { MateLinkStage } from "../components/zerops/MateLinkStage";
+import { RouteStandIn } from "../components/zerops/RouteStandIn";
+import { resolveThreadRouteRef } from "../threadRoutes";
 import { RouteGateView } from "./-routeGate";
 import { installMateDiagnostics } from "~/zerops/diagnostics";
 import { useHeldPast } from "~/zerops/useHeldPast";
 import { useNowMs } from "~/zerops/useNowMs";
+import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { rememberedMateIdentity, rememberMateIdentities } from "~/zerops/mateIdentityMemory";
+import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsMate, useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import { ZeropsReviewProvider } from "~/zerops/ZeropsReviewProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 const NO_ENVIRONMENT = EnvironmentId.make("none");
 const SILENT_VOICE: MateVoice = { surface: "none" };
+const READY: Reachability = { kind: "ready", notice: null };
 const SILENT_STAGE = { surface: "stage", text: null, actions: [], processes: false } as const;
 
 // At boot, before the first route renders: every emit point writes from then on.
@@ -131,7 +143,7 @@ function RootRouteView() {
 function SignedInRootRouteView() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
-  const { environments } = useEnvironments();
+  const { environments, isReady: environmentsReady } = useEnvironments();
   const door = resolveDoor(authGateState, {
     pathname,
     environmentCount: countDoorEnvironments(environments),
@@ -165,31 +177,57 @@ function SignedInRootRouteView() {
   const routeMate = useZeropsMate(routeEnvironment ?? NO_ENVIRONMENT);
   // Who lives where, remembered for the next reload's first frame (`mateIdentityMemory`).
   const mateDirectory = useZeropsMateDirectory();
+  // Whole only once the listing is complete and every environment is registered: a Mate the
+  // directory then lacks has left, and is forgotten.
+  const { listing: mateListing } = useZeropsCandidates();
+  const directoryWhole = heldCandidates(mateListing).complete && environmentsReady;
   useEffect(() => {
-    rememberMateIdentities(mateDirectory);
-  }, [mateDirectory]);
+    rememberMateIdentities(mateDirectory, { complete: directoryWhole });
+  }, [directoryWhole, mateDirectory]);
   const routeMateName =
     routeMate.kind === "mate"
       ? routeMate.mate.name
       : routeEnvironment === null
         ? undefined
         : rememberedMateIdentity(routeEnvironment)?.name;
-  const linkReachability =
-    gate.kind === "outlet" ? gate.banner : gate.kind === "wait" ? gate.reachability : null;
-  const linkPast = useHeldPast(
-    `${gate.kind}:${linkReachability?.kind ?? "none"}`,
-    MATE_VOICE_QUIET_MS,
+  // A draft's route names no environment; its voice is its environment's all the same.
+  const draftReachability = useEnvironmentReachability(
+    routeEnvironment === null && draftEnvironmentId !== null ? draftEnvironmentId : null,
   );
+  const draftMate = useZeropsMate(draftEnvironmentId ?? NO_ENVIRONMENT);
+  const linkReachability =
+    routeEnvironment === null
+      ? draftReachability
+      : gate.kind === "outlet"
+        ? (gate.banner ?? READY)
+        : gate.kind === "wait"
+          ? gate.reachability
+          : null;
+  const speaksFor = routeEnvironment ?? draftEnvironmentId;
+  // The quiet is kept by what the voice would say, so one line never goes and comes back.
+  const quietKey = `${speaksFor ?? "none"}:${gate.kind}:${mateVoiceQuietKey(linkReachability)}`;
+  const quietPast = useHeldPast(quietKey, MATE_VOICE_QUIET_MS);
+  const slowPast = useHeldPast(quietKey, MATE_VOICE_SLOW_MS);
   const voice =
-    gate.kind === "outlet" || gate.kind === "wait"
+    speaksFor !== null && (gate.kind === "outlet" || gate.kind === "wait")
       ? mateVoice({
           reachability: linkReachability,
           conversationShown: gate.kind === "outlet" && conversation.kind === "shown",
-          heldMs: linkPast ? MATE_VOICE_QUIET_MS : 0,
+          heldMs: slowPast ? MATE_VOICE_SLOW_MS : quietPast ? MATE_VOICE_QUIET_MS : 0,
           nowMs,
-          mateName: routeMateName ?? "This Mate",
+          mateName:
+            (routeEnvironment === null
+              ? draftMate.kind === "mate"
+                ? draftMate.mate.name
+                : undefined
+              : routeMateName) ?? "This Mate",
         })
       : SILENT_VOICE;
+  // The conversation the route names, for the stand-in its stage draws.
+  const routeThreadRef = resolveThreadRouteRef({
+    environmentId: routeEnvironmentId ?? undefined,
+    threadId: pathname.split("/").filter((part) => part.length > 0)[1],
+  });
   useEffect(() => {
     rememberAccountRoute(pathname);
   }, [pathname]);
@@ -232,6 +270,9 @@ function SignedInRootRouteView() {
             stage={
               gate.kind === "wait" ? (
                 <MateLinkStage
+                  composer={
+                    routeThreadRef === null ? null : <RouteStandIn threadRef={routeThreadRef} />
+                  }
                   environmentId={routeEnvironment}
                   projectId={gateInputs.projectId}
                   voice={voice.surface === "none" ? SILENT_STAGE : voice}

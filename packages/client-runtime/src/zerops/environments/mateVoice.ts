@@ -28,6 +28,13 @@ import {
 /** How long a link state holds before it says anything: a blip says nothing. */
 export const MATE_VOICE_QUIET_MS = 1_500;
 
+/**
+ * How long a first connect holds before it offers Try now — and, over a shown conversation,
+ * before it speaks at all: a link that never comes up (a blocked socket, a 502 at the edge, a
+ * session that never answers) is never silent for good.
+ */
+export const MATE_VOICE_SLOW_MS = 8_000;
+
 export type MateVoice =
   | { readonly surface: "none" }
   | {
@@ -66,9 +73,18 @@ export function mateVoice(input: MateVoiceInput): MateVoice {
     actions: ReadonlyArray<ReachabilityAction> = [],
     processes = false,
   ): MateVoice => ({ surface, text, actions, processes });
-  const opening = (): MateVoice => (quiet ? speak(null) : speak(`Opening ${mateName}…`, [], true));
+  const slow = heldMs >= MATE_VOICE_SLOW_MS;
+  // Opening it: on the stage, nothing for a blip, then its line and the platform's processes; over
+  // a shown conversation, nothing until it is slow. Slow, it offers Try now wherever it speaks.
+  const opening = (): MateVoice => {
+    if (conversationShown) {
+      return slow ? speak(`Opening ${mateName}…`, ["try-now"]) : NONE;
+    }
+    if (quiet) return speak(null);
+    return speak(`Opening ${mateName}…`, slow ? ["try-now"] : [], true);
+  };
   // Nothing names its target yet: it is being looked for, which is opening it.
-  if (reachability === null) return conversationShown ? NONE : opening();
+  if (reachability === null) return opening();
   switch (reachability.kind) {
     case "ready":
       return reachability.notice === null
@@ -87,14 +103,13 @@ export function mateVoice(input: MateVoiceInput): MateVoice {
     }
     case "connecting":
     case "resolving": {
-      if (conversationShown) return NONE;
-      if (quiet) return opening();
       // A wait with a cause of its own says it; the link itself being made says the Mate opens.
       const own =
         reachability.kind === "connecting" &&
         (reachability.waitingOn === "access" || reachability.waitingOn === "visible");
-      if (own) return speak(reachabilityPhrase(reachability, { nowMs, mateName }).text);
-      return opening();
+      if (!own) return opening();
+      if (conversationShown ? !slow : quiet) return conversationShown ? NONE : speak(null);
+      return speak(reachabilityPhrase(reachability, { nowMs, mateName }).text);
     }
     case "reconnecting":
       if (quiet) return conversationShown ? NONE : speak(null);
@@ -105,3 +120,30 @@ export function mateVoice(input: MateVoiceInput): MateVoice {
     }
   }
 }
+
+/**
+ * What a quiet is kept by: the family of what the voice would say, so a verdict that changes
+ * under one line (nothing named yet, resolving, connecting — all "Opening Quinn…") never starts
+ * the quiet again and the line never shows, goes and comes back.
+ */
+export function mateVoiceQuietKey(reachability: Reachability | null): string {
+  if (reachability === null) return "opening";
+  switch (reachability.kind) {
+    case "resolving":
+      return "opening";
+    case "connecting":
+      return reachability.waitingOn === "access" || reachability.waitingOn === "visible"
+        ? `connecting:${reachability.waitingOn}`
+        : "opening";
+    case "container":
+      return `container:${reachability.container.level}`;
+    case "ready":
+      return reachability.notice === null ? "ready" : `container:${reachability.notice.level}`;
+    default:
+      return reachability.kind;
+  }
+}
+
+/** Whether the voice has words on the banner: a refused send is then already explained. */
+export const mateVoiceSpeaks = (voice: MateVoice): boolean =>
+  voice.surface === "banner" && voice.text !== null;

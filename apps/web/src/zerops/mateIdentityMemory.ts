@@ -41,9 +41,16 @@ const same = (a: ZeropsMateIdentity, b: ZeropsMateIdentity): boolean =>
 export function withMateIdentities(
   memory: MateIdentityMemory,
   directory: ZeropsMateDirectory,
+  /** The listing behind the directory was read whole: what it does not name is gone. */
+  options: { readonly complete: boolean } = { complete: false },
 ): MateIdentityMemory {
   let next: Record<string, ZeropsMateIdentity> | null = null;
   const edit = () => (next ??= { ...memory });
+  if (options.complete) {
+    for (const environmentId of Object.keys(memory)) {
+      if (!directory.has(environmentId as EnvironmentId)) delete edit()[environmentId];
+    }
+  }
   for (const [environmentId, mate] of directory) {
     const held = memory[environmentId];
     if (mate === null) {
@@ -128,10 +135,13 @@ export function rememberedMateIdentity(
 }
 
 /** Remembers what the directory decides, written at once only when it changed something. */
-export function rememberMateIdentities(directory: ZeropsMateDirectory): void {
+export function rememberMateIdentities(
+  directory: ZeropsMateDirectory,
+  options: { readonly complete: boolean },
+): void {
   const before = memoryNow();
   if (held === null) return;
-  const next = withMateIdentities(before, directory);
+  const next = withMateIdentities(before, directory, options);
   if (next === before) return;
   held.memory = next;
   try {

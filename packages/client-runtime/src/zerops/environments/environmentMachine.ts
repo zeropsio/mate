@@ -679,9 +679,10 @@ const onBlocked = (
           kind: "log",
           diagnostic: { kind: "auth-loop", rejections: authRejections.length },
         });
-        return backoff(next, { kind: "rejected" }, true, ctx);
+        return backoff(next, { kind: "rejected" }, next.linkLostAt !== null, ctx);
       }
-      return { ...next, credential: { kind: "none", reconnect: true } };
+      // A reconnect only once a link was lost; a first link blocked is still a first connect.
+      return { ...next, credential: { kind: "none", reconnect: next.linkLostAt !== null } };
     }
     case "configuration":
     case "unsupported":
@@ -690,7 +691,11 @@ const onBlocked = (
     case "permission":
     case "read-only":
       if (machine.permissionRetried) return refuse(machine, { kind: "role" }, out);
-      return { ...machine, permissionRetried: true, credential: { kind: "none", reconnect: true } };
+      return {
+        ...machine,
+        permissionRetried: true,
+        credential: { kind: "none", reconnect: machine.linkLostAt !== null },
+      };
   }
 };
 
@@ -910,7 +915,11 @@ const apply = (
         });
         return refuse({ ...next, configurationBlocks }, { kind: "configuration" }, out);
       }
-      return { ...next, configurationBlocks, credential: { kind: "none", reconnect: true } };
+      return {
+        ...next,
+        configurationBlocks,
+        credential: { kind: "none", reconnect: next.linkLostAt !== null },
+      };
     }
     case "EXCHANGE_SUCCEEDED": {
       if (credential.kind !== "exchanging" || credential.attempt !== event.attempt) {

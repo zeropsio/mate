@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { MATE_VOICE_QUIET_MS, mateVoice } from "./mateVoice.ts";
+import {
+  MATE_VOICE_QUIET_MS,
+  MATE_VOICE_SLOW_MS,
+  mateVoice,
+  mateVoiceQuietKey,
+  mateVoiceSpeaks,
+} from "./mateVoice.ts";
 import type { Reachability } from "./reachability.ts";
 
 const NOW = 1_000_000;
 const LONG = MATE_VOICE_QUIET_MS + 1;
 const BLIP = MATE_VOICE_QUIET_MS - 1;
+const SLOW = MATE_VOICE_SLOW_MS;
 
 const RESTARTING: Reachability = {
   kind: "container",
@@ -50,6 +57,27 @@ describe("mateVoice — the one voice of a Mate's link", () => {
       shown: true,
       held: LONG,
       voice: { surface: "none" },
+    },
+    {
+      state: "a first connect that never comes up, conversation shown: slow, it opens with Try now",
+      reachability: { kind: "connecting", waitingOn: "exchange" },
+      shown: true,
+      held: SLOW,
+      voice: banner("Opening Quinn…", ["try-now"]),
+    },
+    {
+      state: "presence never read, conversation shown, slow",
+      reachability: { kind: "resolving" },
+      shown: true,
+      held: SLOW,
+      voice: banner("Opening Quinn…", ["try-now"]),
+    },
+    {
+      state: "a first connect that never comes up, nothing shown: Try now joins its line",
+      reachability: { kind: "connecting", waitingOn: "exchange" },
+      shown: false,
+      held: SLOW,
+      voice: stage("Opening Quinn…", ["try-now"], true),
     },
     {
       state: "first load, nothing shown, a blip",
@@ -163,5 +191,44 @@ describe("mateVoice — the one voice of a Mate's link", () => {
         mateName: "Quinn",
       }),
     ).toEqual(voice);
+  });
+});
+
+describe("mateVoiceQuietKey — the quiet is kept by what the voice would say", () => {
+  it.each([
+    { a: null, b: { kind: "resolving" }, same: true },
+    { a: { kind: "resolving" }, b: { kind: "connecting", waitingOn: "descriptor" }, same: true },
+    {
+      a: { kind: "connecting", waitingOn: "descriptor" },
+      b: { kind: "connecting", waitingOn: "exchange" },
+      same: true,
+    },
+    { a: { kind: "connecting", waitingOn: "exchange" }, b: { kind: "reconnecting" }, same: false },
+    {
+      a: { kind: "connecting", waitingOn: "exchange" },
+      b: { kind: "connecting", waitingOn: "visible" },
+      same: false,
+    },
+  ] as const)("$a.kind → $b.kind keeps the quiet: $same", ({ a, b, same }) => {
+    expect(
+      mateVoiceQuietKey(a as Reachability | null) === mateVoiceQuietKey(b as Reachability | null),
+    ).toBe(same);
+  });
+});
+
+describe("mateVoiceSpeaks — a refused send is explained only where the banner has words", () => {
+  it.each([
+    { voice: { surface: "none" }, speaks: false },
+    {
+      voice: { surface: "banner", text: "Reconnecting to Quinn…", actions: [], processes: false },
+      speaks: true,
+    },
+    { voice: { surface: "banner", text: null, actions: [], processes: false }, speaks: false },
+    {
+      voice: { surface: "stage", text: "Opening Quinn…", actions: [], processes: true },
+      speaks: false,
+    },
+  ] as const)("$voice.surface $voice.text → $speaks", ({ voice, speaks }) => {
+    expect(mateVoiceSpeaks(voice)).toBe(speaks);
   });
 });

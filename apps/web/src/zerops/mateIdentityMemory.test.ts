@@ -47,6 +47,17 @@ describe("the Mate identity memory", () => {
     expect(withMateIdentities(stored, directory)).toEqual(expected);
   });
 
+  // A Mate that left the account is forgotten once a whole listing says so, never on a partial
+  // one: a reload of its old URL would paint a face and take it back.
+  it.each([
+    { case: "a complete listing without it forgets it", complete: true, kept: ["Gita"] },
+    { case: "a listing still being read keeps it", complete: false, kept: ["Pia", "Gita"] },
+  ])("$case", ({ complete, kept }) => {
+    const stored = { [PIA]: { ...identity("Pia"), connected: false } };
+    const next = withMateIdentities(stored, new Map([[GITA, identity("Gita")]]), { complete });
+    expect(Object.values(next).map((mate) => mate.name)).toEqual(kept);
+  });
+
   it("keeps the same memory when nothing changed, so nothing is written", () => {
     const stored = withMateIdentities({}, new Map([[GITA, identity("Gita")]]));
     expect(withMateIdentities(stored, new Map([[GITA, identity("Gita")]]))).toBe(stored);

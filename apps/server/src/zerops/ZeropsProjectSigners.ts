@@ -116,7 +116,9 @@ export type TurnRefusal =
   /** Signed in, but no signer was recorded for it. */
   | { readonly kind: "unrecorded" }
   /** Signed in by somebody other than this session's person. */
-  | { readonly kind: "someone-else" };
+  | { readonly kind: "someone-else" }
+  /** The project records the sign-in for two or more people: nobody's until signed in again. */
+  | { readonly kind: "unsettled" };
 
 /**
  * Whether this session may start a turn on this agent.
@@ -162,12 +164,9 @@ export function loginTurnRefusal(input: {
   }
   if (input.token) return undefined;
   const signer = input.signer;
-  if (typeof signer === "object") {
-    // Whose it is is not known: somebody it may be is admitted, nobody else.
-    return input.subject !== undefined && signer.among.includes(input.subject)
-      ? undefined
-      : { kind: "someone-else" };
-  }
+  // Whose credential it is is not known: a stale signer must never run turns on another's, so
+  // nobody does until somebody signs it in again, which writes the one record.
+  if (typeof signer === "object") return { kind: "unsettled" };
   if (signer === undefined || signer.length === 0) return { kind: "unrecorded" };
   return input.subject === signer ? undefined : { kind: "someone-else" };
 }
@@ -187,8 +186,10 @@ export function planAgentSignOut(input: {
   const activeMemberIds = input.activeMemberIds;
   if (activeMemberIds === undefined) return [];
   return KNOWN_AGENT_IDS.filter((agentId) => {
-    // A record that names two people says of neither that the login is theirs.
-    const signer = knownSigner(input.signers[agentId]);
+    const record = input.signers[agentId];
+    // A record that names two people, one of whom has left: the credential may be theirs.
+    if (typeof record === "object") return record.among.some((user) => !activeMemberIds.has(user));
+    const signer = knownSigner(record);
     return signer !== undefined && !activeMemberIds.has(signer);
   });
 }

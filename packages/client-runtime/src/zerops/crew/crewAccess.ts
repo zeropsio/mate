@@ -38,7 +38,7 @@ import {
 } from "../agentOwnership.ts";
 
 /** Why a login is not the viewer's to run: somebody else's, nobody's on record, or their own record failed. */
-export type CrewLockOwnership = Exclude<ZeropsAgentOwnership, "mine" | "none" | "unknown">;
+export type CrewLockOwnership = Exclude<ZeropsAgentOwnership, "mine" | "none">;
 
 /** A login the viewer may not run, and whose sign-in its one way out opens. */
 export interface CrewLock {

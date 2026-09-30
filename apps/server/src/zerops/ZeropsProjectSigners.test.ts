@@ -231,15 +231,17 @@ describe("loginTurnRefusal", () => {
       { state: "not-authorized", token: false, signer: JAN, subject: JAN },
       { kind: "not-signed-in", auth: "not-authorized" },
     ],
+    // Two records for one login: whose credential it is is not known, and a stale signer must
+    // never run turns on another's — refused for everyone until somebody signs it in again.
     [
       "a login recorded for two people, one of them me",
       { state: "authorized", token: false, signer: { among: [EVA, JAN] }, subject: JAN },
-      undefined,
+      { kind: "unsettled" },
     ],
     [
       "a login recorded for two people, neither of them me",
       { state: "authorized", token: false, signer: { among: [EVA, JAN] }, subject: "ida-user-id" },
-      { kind: "someone-else" },
+      { kind: "unsettled" },
     ],
     [
       "a project token somebody else set",
@@ -328,15 +330,21 @@ describe("planAgentSignOut", () => {
     );
   });
 
-  it("signs nobody out on a record that names two people", () => {
-    assert.deepStrictEqual(
-      planAgentSignOut({
-        signers: { "claude-code": { among: [EVA, JAN] } },
-        activeMemberIds: new Set([EVA]),
-      }),
-      [],
-    );
-  });
+  // A record naming two people, one of whom has left: the credential may be theirs, so it goes.
+  for (const [name, active, out] of [
+    ["one of the two has left", [EVA], ["claude-code"]],
+    ["both are still members", [EVA, JAN], []],
+  ] as const) {
+    it(`a record that names two people: ${name}`, () => {
+      assert.deepStrictEqual(
+        planAgentSignOut({
+          signers: { "claude-code": { among: [EVA, JAN] } },
+          activeMemberIds: new Set(active),
+        }),
+        out,
+      );
+    });
+  }
 
   it("signs nobody out when nothing is recorded", () => {
     assert.deepStrictEqual(planAgentSignOut({ signers: {}, activeMemberIds: new Set() }), []);
