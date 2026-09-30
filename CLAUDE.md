@@ -75,6 +75,9 @@ Every tool call re-sends the whole conversation, so a task keeps its context sma
 
 - A subagent or a worktree is for a pass's independent part or a long read-only search, never for a
   tweak or a one-surface change.
+- A subagent's model and effort fit its job, not the lead's (`.claude/agents/`): `scout` (Sonnet,
+  medium, read-only) for a search or a lookup, `part` (high) for a pass's part, `reviewer` (xhigh,
+  read-only) for an independent review. Max effort stays with the lead.
 - Hot files run 2–9k lines (`ChatView.tsx`, `index.css`, `SidebarZeropsTree.tsx`,
   `MessagesTimeline*`, `RunChat.tsx`): grep the symbol, read the range.
 - The ledger, `primer.md`, `design-system.md` and `design-decisions.md` are grepped, never read

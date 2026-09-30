@@ -44,3 +44,6 @@ node_modules/
 
 # hand-delivered dev tarballs (eval/scripts/mate-dev-push.sh in ../zcp)
 /builds/
+
+# Agent worktrees (Claude Code's isolation): whole checkouts that `git add -A` would take as gitlinks.
+.claude/worktrees/
