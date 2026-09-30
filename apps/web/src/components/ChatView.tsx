@@ -449,6 +449,8 @@ import {
   resolveZeropsConversationReadOnly,
   conversationContentPending,
   localThreadErrorStanding,
+  personTurns,
+  threadErrorEntryUnchanged,
   resolveZeropsOwnedAgentSendBlockReason,
   resolveZeropsProviderAvailability,
   peekRememberedThreadTimeline,
@@ -1283,8 +1285,8 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
 type LocalThreadErrorEntry = {
   readonly message: string | null;
   readonly at: number;
-  /** How many messages its conversation held when it was written (`localThreadErrorStanding`). */
-  readonly messages?: number | undefined;
+  /** The person's turns in its conversation when it was written (`localThreadErrorStanding`). */
+  readonly turns?: number | undefined;
 };
 
 function chatActionErrorMessage(error: unknown): string {
@@ -1661,9 +1663,15 @@ export default function ChatView(props: ChatViewProps) {
   const localDraftError = activeServerThread
     ? null
     : ((draftId ? localDraftErrorsByDraftId[draftId]?.message : null) ?? null);
+  const activeServerThreadTurns = personTurns(activeServerThread?.messages);
+  // The turns as they stand now, for an error written after an await (`setThreadError`).
+  const activeServerThreadTurnsRef = useRef(activeServerThreadTurns);
+  useLayoutEffect(() => {
+    activeServerThreadTurnsRef.current = activeServerThreadTurns;
+  }, [activeServerThreadTurns]);
   const localServerError = localThreadErrorStanding(
     localServerErrorsByThreadKey[routeThreadKey],
-    activeServerThread?.messages.length,
+    activeServerThreadTurns,
   );
   // Draft errors are keyed by draftId while server errors are keyed by thread
   // key, so a pending draft entry must migrate when the server thread loads or
@@ -1696,10 +1704,20 @@ export default function ChatView(props: ChatViewProps) {
       }
       return {
         ...existing,
-        [routeThreadKey]: pendingDraftEntry,
+        // A draft's error carries no turns: from here, the conversation's own count stands.
+        [routeThreadKey]: {
+          ...pendingDraftEntry,
+          turns: pendingDraftEntry.turns ?? activeServerThreadTurns,
+        },
       };
     });
-  }, [activeServerThread, draftId, localDraftErrorsByDraftId, routeThreadKey]);
+  }, [
+    activeServerThread,
+    activeServerThreadTurns,
+    draftId,
+    localDraftErrorsByDraftId,
+    routeThreadKey,
+  ]);
   const localDraftThread = useMemo(
     () =>
       draftThread
@@ -3169,7 +3187,7 @@ export default function ChatView(props: ChatViewProps) {
       const nextEntry: LocalThreadErrorEntry = {
         message: nextError,
         at: Date.now(),
-        messages: activeServerThread?.messages.length,
+        turns: activeServerThreadTurnsRef.current,
       };
       if (
         shouldWriteThreadErrorToCurrentServerThread({
@@ -3179,7 +3197,7 @@ export default function ChatView(props: ChatViewProps) {
         })
       ) {
         setLocalServerErrorsByThreadKey((existing) => {
-          if ((existing[routeThreadKey]?.message ?? null) === nextError) {
+          if (threadErrorEntryUnchanged(existing[routeThreadKey], nextEntry)) {
             return existing;
           }
           return {

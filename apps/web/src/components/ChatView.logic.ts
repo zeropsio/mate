@@ -1333,18 +1333,35 @@ export function conversationContentPending(input: {
   return input.shell.latestUserMessageAt !== null || input.shell.latestTurn !== null;
 }
 
+/** The person's own turns in a conversation — its user messages; undefined while it is unread. */
+export function personTurns(
+  messages: ReadonlyArray<{ readonly role: string }> | undefined,
+): number | undefined {
+  return messages?.filter((message) => message.role === "user").length;
+}
+
 /**
- * The error this view wrote on a conversation, while it still stands: until the conversation
- * holds more than it did when the error was written. A turn ran since — whoever started it, from
- * whichever of the person's browsers — and a refusal from before it no longer speaks for it.
+ * The error this view wrote on a conversation, while it still stands: until the person sends
+ * again (the send clears it), or a turn of theirs ran since it was written — the ask another of
+ * their browsers sent through a moment later. The Mate's own messages during a run move nothing.
  */
 export function localThreadErrorStanding(
-  entry: { readonly message: string | null; readonly messages?: number | undefined } | undefined,
-  messageCount: number | undefined,
+  entry: { readonly message: string | null; readonly turns?: number | undefined } | undefined,
+  turns: number | undefined,
 ): string | null {
   if (entry === undefined || entry.message === null) return null;
-  if (entry.messages !== undefined && messageCount !== undefined && messageCount > entry.messages) {
-    return null;
-  }
+  if (entry.turns !== undefined && turns !== undefined && turns > entry.turns) return null;
   return entry.message;
+}
+
+/** Whether writing `next` over `existing` changes nothing: the same words, the same turns. */
+export function threadErrorEntryUnchanged(
+  existing: { readonly message: string | null; readonly turns?: number | undefined } | undefined,
+  next: { readonly message: string | null; readonly turns?: number | undefined },
+): boolean {
+  return (
+    existing !== undefined &&
+    (existing.message ?? null) === next.message &&
+    existing.turns === next.turns
+  );
 }

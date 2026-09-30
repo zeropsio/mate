@@ -75,6 +75,8 @@ import {
   shouldWriteThreadErrorToCurrentServerThread,
   conversationContentPending,
   localThreadErrorStanding,
+  personTurns,
+  threadErrorEntryUnchanged,
 } from "./ChatView.logic";
 
 const environmentId = EnvironmentId.make("environment-local");
@@ -2326,49 +2328,74 @@ describe("conversationContentPending", () => {
   });
 });
 
-// A refusal this view was told of stands until the conversation moves on: a turn another of the
-// person's browsers started a moment later ran under the red line for as long as the view was
-// open (a live run, 2026-09-30).
-describe("localThreadErrorStanding", () => {
+// A refusal this view was told of stands until the person sends again, or its cause is gone: a
+// turn of theirs that ran since — the ask another of their browsers sent through a moment later
+// (a live run, 2026-09-30). The Mate's own messages during a run move nothing.
+describe("the view's own thread error", () => {
+  const said = (role: "user" | "assistant" | "system") => ({ role });
   it.each([
-    { name: "nothing written", entry: undefined, messages: 0, expected: null },
+    { name: "no conversation read", messages: undefined, expected: undefined },
+    { name: "an empty conversation", messages: [], expected: 0 },
     {
-      name: "an error on an empty conversation",
-      entry: { message: "Refused.", messages: 0 },
-      messages: 0,
+      name: "the person's turns, never the Mate's",
+      messages: [said("user"), said("assistant"), said("system"), said("assistant"), said("user")],
+      expected: 2,
+    },
+  ])("counts $name", ({ messages, expected }) => {
+    expect(personTurns(messages)).toBe(expected);
+  });
+
+  it.each([
+    { name: "nothing written", entry: undefined, turns: 0, expected: null },
+    {
+      name: "an error, nothing since",
+      entry: { message: "Refused.", turns: 0 },
+      turns: 0,
       expected: "Refused.",
     },
     {
-      name: "a turn ran since",
-      entry: { message: "Refused.", messages: 0 },
-      messages: 2,
+      name: "a turn of the person's ran since",
+      entry: { message: "Refused.", turns: 0 },
+      turns: 1,
       expected: null,
     },
     {
-      name: "an error on a conversation with messages, nothing since",
-      entry: { message: "Refused.", messages: 4 },
-      messages: 4,
-      expected: "Refused.",
-    },
-    {
-      name: "an error written before its conversation was read",
+      name: "an error with no count (a draft's)",
       entry: { message: "Refused." },
-      messages: 3,
+      turns: 3,
       expected: "Refused.",
     },
     {
       name: "a conversation not read",
-      entry: { message: "Refused.", messages: 0 },
-      messages: undefined,
+      entry: { message: "Refused.", turns: 0 },
+      turns: undefined,
       expected: "Refused.",
     },
+    { name: "an error cleared", entry: { message: null, turns: 0 }, turns: 0, expected: null },
+  ])("$name", ({ entry, turns, expected }) => {
+    expect(localThreadErrorStanding(entry, turns)).toBe(expected);
+  });
+
+  it.each([
     {
-      name: "an error cleared",
-      entry: { message: null, messages: 0 },
-      messages: 0,
-      expected: null,
+      name: "the same words again, after a turn of the person's: written anew, with the new count",
+      existing: { message: "Refused.", at: 1, turns: 0 },
+      next: { message: "Refused.", at: 2, turns: 1 },
+      kept: false,
     },
-  ])("$name", ({ entry, messages, expected }) => {
-    expect(localThreadErrorStanding(entry, messages)).toBe(expected);
+    {
+      name: "the same words, nothing since: the one written stays",
+      existing: { message: "Refused.", at: 1, turns: 1 },
+      next: { message: "Refused.", at: 2, turns: 1 },
+      kept: true,
+    },
+    {
+      name: "other words",
+      existing: { message: "Refused.", at: 1, turns: 1 },
+      next: { message: "Upload failed.", at: 2, turns: 1 },
+      kept: false,
+    },
+  ])("$name", ({ existing, next, kept }) => {
+    expect(threadErrorEntryUnchanged(existing, next)).toBe(kept);
   });
 });
