@@ -146,6 +146,16 @@ describe("mateFaceOf — the face a Mate wears wherever it is drawn", () => {
       }),
     ).toBe(shown);
   });
+
+  it("keeps a Mate paused at its usage limit asleep, its review waiting or not", () => {
+    expect(
+      mateFaceOf({
+        connected: true,
+        activity: { face: "sleep", pausedUntil: "2026-09-29T23:00:00.000Z" },
+        reviewWaits: true,
+      }),
+    ).toBe("sleep");
+  });
 });
 
 describe("deriveZeropsAgentActivity", () => {

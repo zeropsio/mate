@@ -144,7 +144,16 @@ export function mateFaceFor(
  * one the composer's top wears for the same fact. At work, the work shows;
  * the review still waits under it.
  */
-export function mateFaceAwaitingReview(face: MateMarkState, reviewWaits: boolean): MateMarkState {
+export function mateFaceAwaitingReview(
+  face: MateMarkState,
+  reviewWaits: boolean,
+  /**
+   * Paused at its usage limit (`pausedUntil`): asleep, whatever its last turn said — its row
+   * reads paused, and the review stays on its change's row under it.
+   */
+  paused = false,
+): MateMarkState {
+  if (paused && face === "sleep") return face;
   return reviewWaits && face !== "working" ? "needs" : face;
 }
 
@@ -176,10 +185,16 @@ export function mateReviewWaits(
  */
 export function mateFaceOf(input: {
   readonly connected: boolean;
-  readonly activity: Pick<ZeropsAgentActivity, "face"> | undefined;
+  readonly activity:
+    | (Pick<ZeropsAgentActivity, "face"> & { readonly pausedUntil?: string | undefined })
+    | undefined;
   readonly reviewWaits: boolean;
 }): MateMarkState {
-  return mateFaceAwaitingReview(mateFaceFor(input.connected, input.activity), input.reviewWaits);
+  return mateFaceAwaitingReview(
+    mateFaceFor(input.connected, input.activity),
+    input.reviewWaits,
+    input.activity?.pausedUntil !== undefined,
+  );
 }
 
 export function agentActivitySnippet(
