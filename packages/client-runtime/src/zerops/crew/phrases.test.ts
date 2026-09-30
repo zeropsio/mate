@@ -153,14 +153,40 @@ describe("the mode line's words", () => {
       "Stopped working on its own: it spent its $20",
     ],
     [
+      "its time, spending something",
+      { reason: "time", spentUsd: 6.4 },
+      "Stopped working on its own: its 8 hours are up. It spent $6.40.",
+    ],
+    // Nothing spent says nothing about money: "It spent $0.00." was noise.
+    [
       "its time, spending nothing",
       { reason: "time", spentUsd: 0 },
-      "Stopped working on its own: its 8 hours are up. It spent $0.00.",
+      "Stopped working on its own: its 8 hours are up",
+    ],
+    [
+      "its time, spending less than a cent",
+      { reason: "time", spentUsd: 0.004 },
+      "Stopped working on its own: its 8 hours are up",
     ],
     [
       "an hour",
       { reason: "time", spentUsd: 1.25, options: options(20, 1) },
       "Stopped working on its own: its hour is up. It spent $1.25.",
+    ],
+    [
+      "an hour, spending nothing",
+      { reason: "time", spentUsd: 0, options: options(20, 1) },
+      "Stopped working on its own: its hour is up",
+    ],
+    [
+      "its time with no limit set",
+      { reason: "time", spentUsd: 1.25, options: options(20, "unlimited") },
+      "Stopped working on its own. It spent $1.25.",
+    ],
+    [
+      "its time with no limit set, spending nothing",
+      { reason: "time", spentUsd: 0, options: options(20, "unlimited") },
+      "Stopped working on its own",
     ],
     [
       "the usage stop",

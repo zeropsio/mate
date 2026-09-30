@@ -109,7 +109,11 @@ export function crewOnItsOwnWords(
 
 const STOPPED = "Stopped working on its own";
 
-/** Why a run stopped working on its own, as its mode line says it. */
+/**
+ * Why a run stopped working on its own, as its mode line says it. Its time
+ * running out says what it spent — and nothing about money when that comes
+ * to less than a cent.
+ */
 export function crewStoppedWords(
   run: Pick<CrewRun, "reason" | "reasonDetail" | "spentUsd" | "usagePercent" | "options">,
 ): string {
@@ -120,11 +124,15 @@ export function crewStoppedWords(
         ? `${STOPPED}: it spent ${dollars(run.spentUsd, true)}`
         : `${STOPPED}: it spent its ${dollars(budgetUsd)}`;
     case "time": {
-      const spent = `It spent ${dollars(run.spentUsd, true)}.`;
-      if (timeLimitHours === "unlimited") return `${STOPPED}. ${spent}`;
-      return timeLimitHours === 1
-        ? `${STOPPED}: its hour is up. ${spent}`
-        : `${STOPPED}: its ${timeLimitHours} hours are up. ${spent}`;
+      const why =
+        timeLimitHours === "unlimited"
+          ? STOPPED
+          : timeLimitHours === 1
+            ? `${STOPPED}: its hour is up`
+            : `${STOPPED}: its ${timeLimitHours} hours are up`;
+      return Math.round(run.spentUsd * 100) === 0
+        ? why
+        : `${why}. It spent ${dollars(run.spentUsd, true)}.`;
     }
     case "usage": {
       const percent = stopAtUsagePercent ?? Math.round(run.usagePercent ?? 0);
