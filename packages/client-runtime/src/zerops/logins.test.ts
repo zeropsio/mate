@@ -236,7 +236,14 @@ describe("spentLoginStatusStale", () => {
       providerAuth,
       state,
     }) as const;
-  const registeringWord = { instanceId: "claudeAgent", status: "warning" } as const;
+  const REGISTERING =
+    "Claude Code is signed in and being registered with Zerops. It will be ready in a moment.";
+  const registeringWord = {
+    instanceId: "claudeAgent",
+    status: "warning",
+    message: REGISTERING,
+  } as const;
+  const authorized = { available: true, agents: [agentRow("authorized", "authenticated")] };
 
   it.each([
     {
@@ -248,14 +255,8 @@ describe("spentLoginStatusStale", () => {
     {
       name: "the default login registered while its status still says it is being registered",
       status: registeringWord,
-      feed: { available: true, agents: [agentRow("authorized", "authenticated")] },
+      feed: authorized,
       expected: true,
-    },
-    {
-      name: "a ready status (a version advisory) on a registered login",
-      status: { instanceId: "claudeAgent", status: "ready" },
-      feed: { available: true, agents: [agentRow("authorized", "authenticated")] },
-      expected: false,
     },
     {
       name: "the record not caught up yet while the status already says it is being registered",
@@ -264,39 +265,58 @@ describe("spentLoginStatusStale", () => {
       expected: true,
     },
     {
-      name: "the default login not signed in",
-      status: { instanceId: "claudeAgent", status: "error" },
-      feed: { available: true, agents: [agentRow("not-authorized", "unauthenticated")] },
-      expected: false,
-    },
-    {
       name: "a login beyond the defaults still answering its own check",
-      status: { instanceId: "claudeAgent-work", status: "warning" },
+      status: {
+        instanceId: "claudeAgent-work",
+        status: "warning",
+        message: "Claude Code · work is signed in and being checked. It will be ready in a moment.",
+      },
       feed: {
-        available: true,
-        agents: [agentRow("authorized", "authenticated")],
-        logins: [login({ id: "claudeAgent-work", state: "registering" })],
+        ...authorized,
+        logins: [login({ id: "claudeAgent-work", label: "work", state: "registering" })],
       },
       expected: true,
     },
     {
+      name: "a driver's own warning on a registered login (its check could not answer)",
+      status: {
+        instanceId: "claudeAgent",
+        status: "warning",
+        message: "Could not verify Claude authentication status.",
+      },
+      feed: authorized,
+      expected: false,
+    },
+    {
+      name: "a driver's error on a registered login (a revoked credential)",
+      status: { instanceId: "claudeAgent", status: "error", message: "Not signed in." },
+      feed: authorized,
+      expected: false,
+    },
+    {
+      name: "the agent disabled in settings",
+      status: {
+        instanceId: "claudeAgent",
+        status: "warning",
+        message: "Claude is disabled in settings.",
+      },
+      feed: authorized,
+      expected: false,
+    },
+    {
+      name: "a ready status (a version advisory) on a registered login",
+      status: { instanceId: "claudeAgent", status: "ready", message: REGISTERING },
+      feed: authorized,
+      expected: false,
+    },
+    {
       name: "a provider Mate signs nobody in to",
-      status: { instanceId: "opencode", status: "warning" },
-      feed: { available: true, agents: [agentRow("authorized", "authenticated")] },
+      status: { instanceId: "opencode", status: "warning", message: REGISTERING },
+      feed: authorized,
       expected: false,
     },
-    {
-      name: "no feed",
-      status: registeringWord,
-      feed: null,
-      expected: false,
-    },
-    {
-      name: "no status",
-      status: null,
-      feed: { available: true, agents: [agentRow("authorized", "authenticated")] },
-      expected: false,
-    },
+    { name: "no feed", status: registeringWord, feed: null, expected: false },
+    { name: "no status", status: null, feed: authorized, expected: false },
   ])("is $expected for $name", ({ status, feed, expected }) => {
     expect(spentLoginStatusStale(status, feed as ZeropsAgentAuthSnapshot | null, providers)).toBe(
       expected,

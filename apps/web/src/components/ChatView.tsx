@@ -3063,8 +3063,7 @@ export default function ChatView(props: ChatViewProps) {
       setDismissedProviderStatusBannerKey(null);
     }
   }, [dismissedProviderStatusBannerKey, providerStatusBannerKey]);
-  // A Zerops login signed in, being registered or registered, runs: a status saying otherwise
-  // is behind the Mate's sign-in record and says nothing.
+  // A Zerops login being registered runs already: the server's "being registered" says nothing.
   const visibleProviderStatus =
     shouldShowProviderStatusBanner(activeProviderStatus, dismissedProviderStatusBannerKey) &&
     !spentLoginStatusStale(activeProviderStatus, zeropsAgentAuth.snapshot, providerStatuses)
