@@ -11,6 +11,7 @@
  * lays a set of them out.
  */
 
+import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
   botDisplayName,
   changesNotLive,
@@ -545,6 +546,8 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
   }>,
   activityOf: (item: T) => ZeropsAgentActivity | undefined,
   conversationsRead: (item: T) => boolean,
+  /** Who is looking: only their own Mate's question waits on them (`mateIsViewers`). */
+  viewer: string | undefined,
 ): ReadonlyArray<GroupMemberFacts> {
   return environments.map(({ item, role }) => {
     const tags = readZeropsGroupTags(item.project.tagList);
@@ -559,8 +562,9 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
             name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
             // Waiting on an answer: its conversation's question. A change of its waiting for
             // review wears the same face (`mateFaceOf`) and is the flow's own step — *Review* —
-            // never "waiting on an answer".
-            waiting: mateFaceFor(connected, activity) === "needs",
+            // never "waiting on an answer". Another's Mate waits on its owner, not the viewer.
+            waiting:
+              mateIsViewers(item.project, viewer) && mateFaceFor(connected, activity) === "needs",
             ...(connected && activity?.kind === "failed" ? { failed: true } : {}),
             talked: !connected
               ? undefined

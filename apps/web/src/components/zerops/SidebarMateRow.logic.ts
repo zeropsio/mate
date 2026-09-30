@@ -3,6 +3,7 @@
  * pure, so each rule has its table.
  */
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
+import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   pullRequestBlocked,
   type FlowPullRequest,
@@ -549,7 +550,9 @@ export interface MateDraftSource {
 /**
  * A Mate's unsent message, where its composer keeps it: under its conversation's key, or under
  * the draft its conversation was made from; with no conversation yet, the newest new one's in its
- * environment not sent yet. Its words trimmed; nothing where only blanks are typed.
+ * environment not sent yet. Its words trimmed; nothing where only blanks are typed. Read from
+ * this browser alone: a socket down or reconnecting, a Mate stopped, still shows its draft —
+ * a reload paints it with the row, never after.
  */
 export function mateRowDraft(
   source: MateDraftSource,
@@ -563,12 +566,19 @@ export function mateRowDraft(
     const prompt = source.draftsByThreadKey[key]?.prompt.trim() ?? "";
     return prompt.length > 0 ? prompt : undefined;
   };
-  if (mate.environmentId === undefined) return undefined;
+  // What this browser holds, socket or none: its conversation's key — remembered while its socket
+  // is down — names its environment too.
   const own = mate.threadKey === undefined ? undefined : words(mate.threadKey);
   if (own !== undefined) return own;
+  const environmentId =
+    mate.environmentId ??
+    (mate.threadKey === undefined
+      ? undefined
+      : parseScopedThreadKey(mate.threadKey)?.environmentId);
+  if (environmentId === undefined) return undefined;
   let newest: { readonly at: string; readonly text: string } | undefined;
   for (const [key, session] of Object.entries(source.draftThreadsByThreadKey)) {
-    if (session.environmentId !== mate.environmentId) continue;
+    if (session.environmentId !== environmentId) continue;
     const mine =
       mate.threadId === undefined
         ? session.promotedTo === undefined || session.promotedTo === null

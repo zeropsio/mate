@@ -1002,6 +1002,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           entries,
           (item) => getActivity?.(item),
           () => false,
+          viewer,
         ),
         flow: flow === undefined ? undefined : groupFlowReadsOf(flow),
         deployments,
@@ -1417,6 +1418,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                     browser last saw it, so a reload moves no row. */}
                 <SidebarCrewLine
                   environmentId={item.group === "connected" ? item.environmentId : undefined}
+                  mine={mateIsViewers(item.project, viewer)}
                   projectId={item.project.id}
                   read={getCrew?.(item)}
                 />
@@ -1925,6 +1927,7 @@ export function ProjectHeader({
             {faces}
             {collapsed ? (
               <HeadingReleaseMark
+                line={secondLine}
                 mark={line === undefined ? undefined : headingMark(line, landing)}
               />
             ) : null}
@@ -2440,11 +2443,11 @@ function MateRow<T extends RosterCandidate>({
     viewer,
   });
   const known = activity !== undefined && activity.remembered !== true;
-  // What the person is about to send it, waiting in its composer: the row's second line says it.
-  const environmentId = candidate.group === "connected" ? candidate.environmentId : undefined;
+  // What the person is about to send it, waiting in its composer: the row's second line says it,
+  // read from this browser whether or not its socket is open (`mateRowDraft`).
   const draft = useComposerDraftStore((state) =>
     mateRowDraft(state, {
-      environmentId,
+      environmentId: candidate.environmentId,
       threadId: activity?.threadId,
       threadKey: activity?.threadKey,
     }),

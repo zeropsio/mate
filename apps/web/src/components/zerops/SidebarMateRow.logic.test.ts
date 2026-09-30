@@ -1244,6 +1244,21 @@ describe("mateRowDraft — a Mate's unsent message, wherever its composer keeps 
       draft: "and the logo",
     },
     {
+      case: "not connected: its remembered conversation's draft, read from this browser",
+      source: { drafts: { "env-milo:thread-1": "also check the thumbnails" }, sessions: {} },
+      mate: { threadId: "thread-1", threadKey: "env-milo:thread-1" },
+      draft: "also check the thumbnails",
+    },
+    {
+      case: "not connected: its remembered conversation, made from a draft",
+      source: {
+        drafts: { "draft-a": "and the logo" },
+        sessions: { "draft-a": session("thread-1") },
+      },
+      mate: { threadId: "thread-1", threadKey: "env-milo:thread-1" },
+      draft: "and the logo",
+    },
+    {
       case: "not connected: nowhere to look",
       source: {
         drafts: { "draft-a": "set up a staging" },

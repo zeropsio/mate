@@ -3314,7 +3314,7 @@ code {
 }
 
 .zerops-heading-stack:has(.zerops-heading-line[data-open]) .zerops-project-heading::before {
-  bottom: -16px;
+  bottom: -24px;
 }
 
 @media (hover: hover) {
@@ -3323,8 +3323,9 @@ code {
   }
 }
 
-/* 0 px between the name's line box and the line's: it hugs the name (9 px letter to letter),
-   and keeps the 20 px of line box to the first Mate that the name has without it. */
+/* p26/row — the line breathes under the name (13 px letter to letter, was 10) and stays one
+   group with it, twice that from the first Mate; 13/18 like the rows under it, where 12/16
+   tucked under the name read as squeezed and faint (the owner, 2026-09-30). */
 .zerops-heading-line {
   display: grid;
   grid-template-rows: 0fr;
@@ -3339,8 +3340,8 @@ code {
 
 .zerops-heading-line[data-open] {
   grid-template-rows: 1fr;
-  margin-top: -4px;
-  padding-bottom: 4px;
+  margin-top: -2px;
+  padding-bottom: 8px;
   opacity: 1;
 }
 
@@ -3362,11 +3363,11 @@ code {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 16px;
+  height: 18px;
   padding: 0 6px;
   color: var(--muted-foreground);
-  font-size: 12px;
-  line-height: 16px;
+  font-size: 13px;
+  line-height: 18px;
 }
 
 .zerops-heading-line-words {
@@ -3379,8 +3380,17 @@ code {
 
 .zerops-heading-line-words > .zerops-envdot {
   display: inline-block;
-  margin-right: 5px;
+  margin-right: 6px;
   vertical-align: -1px;
+}
+
+/* The release's tag, the one its folded heading's mark wears: the eye ties the two. */
+.zerops-heading-line-tag {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  margin-right: 6px;
+  vertical-align: -2px;
 }
 
 /* The fact in ink; a landing in ok and trouble in amber carry weight as well. */
@@ -3398,18 +3408,26 @@ code {
   font-weight: 500;
 }
 
-/* p25/menu — D: a folded heading's release mark after its faces, 12 · 500 muted, tabular. */
+/* p25/menu — D: a folded heading's release mark after its faces, 12 · 500, tabular — its open
+   line's colours (p26/row): the tag muted, the count in the fact's ink. */
 .zerops-heading-mark {
+  /* Over the heading button's hit area, so a pointer on it reaches the mark's tooltip. */
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   flex: none;
   align-items: center;
   gap: 3px;
   margin-left: 6px;
-  color: var(--muted-foreground);
+  color: var(--sidebar-foreground);
   font-size: 12px;
   font-weight: 500;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+}
+
+.zerops-heading-mark:not([data-tone]) > svg {
+  color: var(--muted-foreground);
 }
 
 .zerops-heading-mark[data-tone="ok"] {

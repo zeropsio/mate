@@ -9,6 +9,8 @@
 import { TagIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+
 import {
   headingLanding,
   headingLine,
@@ -114,6 +116,8 @@ export function HeadingSubLine({
             <span className="zerops-heading-line-words">
               {shown.spinner ? (
                 <span aria-hidden="true" className="zerops-envdot" data-dot="spinner" />
+              ) : shown.release ? (
+                <TagIcon aria-hidden="true" className="zerops-heading-line-tag" />
               ) : null}
               <span className="zerops-heading-line-fact" data-tone={shown.tone}>
                 {shown.fact}
@@ -142,7 +146,12 @@ export function HeadingSubLine({
   );
 }
 
-/** A folded heading's release mark, in words: what a screen reader hears after the faces. */
+/** The line's own words — "1 change not released · since v0.1.0" — for its folded mark. */
+export function headingLineWords(line: HeadingLine): string {
+  return line.rest === undefined ? line.fact : `${line.fact} · ${line.rest}`;
+}
+
+/** A folded heading's release mark, in words, where its line is about something else. */
 function markWords(mark: HeadingMark): string {
   switch (mark.kind) {
     case "waiting":
@@ -159,29 +168,45 @@ function markWords(mark: HeadingMark): string {
 }
 
 /**
- * A folded heading's release mark after its faces (D): a 14 px tag and how many changes wait,
- * the stepped spinner and the version on its way, the tag in ok as it lands, in amber where it
- * did not go out.
+ * A folded heading's release mark after its faces (D) — its open line, folded: the same tag the
+ * line leads with and how many changes wait, the stepped spinner and the version on its way, the
+ * tag in ok as it lands, in amber where it did not go out; the count in the ink the line's fact
+ * wears. Hovered, it says the line's own words.
  */
-export function HeadingReleaseMark({ mark }: { readonly mark: HeadingMark | undefined }) {
+export function HeadingReleaseMark({
+  mark,
+  line,
+}: {
+  readonly mark: HeadingMark | undefined;
+  /** The heading's line while open: its words are the mark's tooltip. */
+  readonly line: HeadingLine | undefined;
+}) {
   if (mark === undefined) return null;
+  const words = line?.release === true ? headingLineWords(line) : markWords(mark);
   return (
-    <span
-      className="zerops-heading-mark"
-      data-tone={mark.kind === "live" ? "ok" : mark.kind === "failed" ? "amber" : undefined}
-      data-zerops-surface="sidebar-project-release-mark"
-    >
-      {mark.kind === "releasing" ? (
-        <span aria-hidden="true" className="zerops-envdot" data-dot="spinner" />
-      ) : (
-        <TagIcon aria-hidden="true" className="size-3.5" />
-      )}
-      {mark.kind === "waiting" ? (
-        <span aria-hidden="true">{mark.count}</span>
-      ) : mark.kind === "releasing" && mark.version !== undefined ? (
-        <span aria-hidden="true">{mark.version}</span>
-      ) : null}
-      <span className="sr-only">{markWords(mark)}</span>
-    </span>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            className="zerops-heading-mark"
+            data-tone={mark.kind === "live" ? "ok" : mark.kind === "failed" ? "amber" : undefined}
+            data-zerops-surface="sidebar-project-release-mark"
+          />
+        }
+      >
+        {mark.kind === "releasing" ? (
+          <span aria-hidden="true" className="zerops-envdot" data-dot="spinner" />
+        ) : (
+          <TagIcon aria-hidden="true" className="size-3.5" />
+        )}
+        {mark.kind === "waiting" ? (
+          <span aria-hidden="true">{mark.count}</span>
+        ) : mark.kind === "releasing" && mark.version !== undefined ? (
+          <span aria-hidden="true">{mark.version}</span>
+        ) : null}
+        <span className="sr-only">{words}</span>
+      </TooltipTrigger>
+      <TooltipPopup side="bottom">{words}</TooltipPopup>
+    </Tooltip>
   );
 }

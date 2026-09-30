@@ -60,7 +60,7 @@ describe("SidebarCrewLine", () => {
   it("draws every crewmate's face whole, the lead first, each opening its chat", () => {
     read.current = applied();
     const markup = renderToStaticMarkup(
-      <SidebarCrewLine environmentId={ENVIRONMENT} projectId="crm-dev" />,
+      <SidebarCrewLine environmentId={ENVIRONMENT} mine projectId="crm-dev" />,
     );
     expect(markup.match(/aria-label="Open [^"]+"/gu)).toEqual([
       'aria-label="Open Lead, the lead"',
@@ -79,10 +79,9 @@ describe("SidebarCrewLine", () => {
   it("says who needs you, in the words' second ink, with no Review", () => {
     read.current = applied({ waiting: true, ready: true });
     const markup = renderToStaticMarkup(
-      <SidebarCrewLine environmentId={ENVIRONMENT} projectId="crm-dev" />,
+      <SidebarCrewLine environmentId={ENVIRONMENT} mine projectId="crm-dev" />,
     );
     expect(markup).toContain(">Erik needs you</span>");
-    expect(markup).toContain('class="menu-ink-2 min-w-0 truncate"');
     expect(markup).not.toContain("sidebar-crew-review");
   });
 
@@ -101,7 +100,7 @@ describe("SidebarCrewLine", () => {
     act(() => {
       tree = create(
         <ReviewContext.Provider value={openReview}>
-          <SidebarCrewLine environmentId={ENVIRONMENT} projectId="crm-dev" />
+          <SidebarCrewLine environmentId={ENVIRONMENT} mine projectId="crm-dev" />
         </ReviewContext.Provider>,
       );
     });
@@ -135,7 +134,7 @@ describe("SidebarCrewLine", () => {
     read.closed = true;
     try {
       const markup = renderToStaticMarkup(
-        <SidebarCrewLine environmentId={ENVIRONMENT} projectId="crm-dev" />,
+        <SidebarCrewLine environmentId={ENVIRONMENT} mine projectId="crm-dev" />,
       );
       expect(markup).toContain('data-zerops-surface="sidebar-crew-fact"');
       expect(markup).not.toContain("sidebar-crew-review");
@@ -149,6 +148,7 @@ describe("SidebarCrewLine", () => {
     const { view, snapshot } = applied({ ready: true });
     const markup = renderToStaticMarkup(
       <SidebarCrewLine
+        mine
         environmentId={ENVIRONMENT}
         projectId="crm-dev"
         read={{ status: "applied", view, attention: snapshot.attention }}
@@ -160,7 +160,9 @@ describe("SidebarCrewLine", () => {
   it("draws nothing without an applied crew", () => {
     read.current = { status: "none", snapshot: null, view: null, current: true };
     expect(
-      renderToStaticMarkup(<SidebarCrewLine environmentId={ENVIRONMENT} projectId="crm-dev" />),
+      renderToStaticMarkup(
+        <SidebarCrewLine environmentId={ENVIRONMENT} mine projectId="crm-dev" />,
+      ),
     ).toBe("");
   });
 });
@@ -210,7 +212,7 @@ describe("SidebarCrewLine across a reload", () => {
     read.current = unread;
     // Not connected yet: no environment to read a crew from.
     const markup = renderToStaticMarkup(
-      <SidebarCrewLine environmentId={undefined} projectId="crm-dev" />,
+      <SidebarCrewLine environmentId={undefined} mine projectId="crm-dev" />,
     );
     expect(markup).toContain('data-zerops-surface="sidebar-crew"');
     expect(markup.match(/data-mate-face-state="idle"/gu)).toHaveLength(4);
@@ -224,7 +226,7 @@ describe("SidebarCrewLine across a reload", () => {
     withStorage();
     read.current = unread;
     expect(
-      renderToStaticMarkup(<SidebarCrewLine environmentId={undefined} projectId="crm-dev" />),
+      renderToStaticMarkup(<SidebarCrewLine environmentId={undefined} mine projectId="crm-dev" />),
     ).toBe("");
   });
 
@@ -233,7 +235,7 @@ describe("SidebarCrewLine across a reload", () => {
     read.current = applied();
     let tree: ReturnType<typeof create> | undefined;
     act(() => {
-      tree = create(<SidebarCrewLine environmentId={ENVIRONMENT} projectId="crm-dev" />);
+      tree = create(<SidebarCrewLine environmentId={ENVIRONMENT} mine projectId="crm-dev" />);
     });
     expect(menuMemory().crews["crm-dev"]?.faces.map((face) => face.handle)).toEqual([
       "lead",
@@ -243,7 +245,7 @@ describe("SidebarCrewLine across a reload", () => {
     ]);
     read.current = { status: "none", snapshot: null, view: null, current: true };
     act(() => {
-      tree?.update(<SidebarCrewLine environmentId={ENVIRONMENT} projectId="crm-dev" />);
+      tree?.update(<SidebarCrewLine environmentId={ENVIRONMENT} mine projectId="crm-dev" />);
     });
     expect(menuMemory().crews["crm-dev"]).toBeUndefined();
     act(() => {

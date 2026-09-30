@@ -1508,7 +1508,7 @@ describe("production and the stages are two chips on the project's heading (M2, 
       /data-zerops-surface="sidebar-project-release-mark"[^>]*>.*?<span class="sr-only">([^<]*)</u.exec(
         html,
       )?.[1],
-    ).toBe("1 change not released");
+    ).toBe("1 change not released · since v2.4.0");
   });
 
   it("keeps production neutral when the newest release did not go through: the old one serves", () => {
@@ -2454,6 +2454,7 @@ describe("the sidebar and the projects page read one group the same way", () => 
           group.environments,
           () => undefined,
           () => false,
+          undefined,
         ),
         flow: groupReads,
         deployments: new Map(),
