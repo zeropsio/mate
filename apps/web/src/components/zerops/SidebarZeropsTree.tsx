@@ -120,6 +120,7 @@ import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
 import { useCrewStatus } from "~/zerops/crew/useCrew";
+import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { readCollapsedProjects, writeCollapsedProjects } from "~/zerops/collapsedProjects";
 import {
   movedBefore,
@@ -2231,10 +2232,22 @@ function MateRow<T extends RosterCandidate>({
       ? (candidate.environmentId ?? null)
       : null,
   );
+  const crewStatus = crew === undefined ? liveCrewStatus : crew.status;
+  // Setting a crew up is the viewer's only on a login they may run (D6): read where it is offered.
+  const setUpAccess = useCrewAccess(
+    onOpenCrew !== undefined &&
+      crew === undefined &&
+      crewStatus === "none" &&
+      owner?.isViewer === true &&
+      candidate.group === "connected"
+      ? (candidate.environmentId ?? null)
+      : null,
+    null,
+  );
   const crewItem =
     onOpenCrew === undefined
       ? null
-      : mateCrewItem({ status: crew === undefined ? liveCrewStatus : crew.status, owner });
+      : mateCrewItem({ status: crewStatus, owner, mayChange: setUpAccess.crew === null });
   // A new ask rises into the row's second line as the person sets it; the
   // ask this browser remembered gives way to the one read without a rise.
   const askChanged = useChangedSinceShown(view.ask, known);
