@@ -150,6 +150,7 @@ import { TurnReport } from "./TurnReport";
 import { ConversationAfterWork, ConversationWorking, dockDraws } from "./ConversationWorking";
 import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat, RunLine } from "./RunChat";
 import { forgetRunFolds } from "./runCard.logic";
+import { KeptTimelineContext } from "./keptTimelineContext";
 import type { CarriedRow } from "./stepHeight";
 import {
   TimelineRowActivityCtx,
@@ -794,11 +795,35 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // the conversation every run in it folds, so coming back it is folded from
   // the first frame and nothing moves (K7). It folds as the timeline goes,
   // never while it is still on screen.
+  // A list the pane keeps (`KeptTimelines`) hides as the person leaves and
+  // shows again as they come back, its runs as they stood: the keeper folds
+  // them once it lets the list go.
+  const kept = use(KeptTimelineContext);
   const foldsOfRef = useRef(routeThreadKey);
   useLayoutEffect(() => {
     foldsOfRef.current = routeThreadKey;
   }, [routeThreadKey]);
-  useEffect(() => () => forgetRunFolds(foldsOfRef.current), []);
+  const keptBy = kept !== null;
+  useEffect(() => {
+    if (keptBy) return;
+    return () => forgetRunFolds(foldsOfRef.current);
+  }, [keptBy]);
+  // Shown after it was kept out of sight: what came meanwhile is history,
+  // not a message arriving while the person watched.
+  const newestMessageAtRef = useRef(newestMessageAt);
+  useLayoutEffect(() => {
+    newestMessageAtRef.current = newestMessageAt;
+  });
+  const shown = kept?.shown ?? true;
+  useLayoutEffect(() => {
+    if (!shown) return;
+    const at = newestMessageAtRef.current;
+    setOpenedWith((opened) =>
+      opened === null || opened.key !== foldsOfRef.current || opened.at >= at
+        ? opened
+        : { key: opened.key, at },
+    );
+  }, [shown]);
 
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({

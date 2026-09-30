@@ -2100,3 +2100,101 @@ describe("MessagesTimeline — placing its rows", () => {
     }
   });
 });
+
+describe("KeptTimelines — a conversation seen a moment ago", () => {
+  // A return shows the conversation's rows as they stood when the person
+  // left, in the frame the header changes: its list was kept, out of sight,
+  // and is never placed again.
+  const frames: FrameRequestCallback[] = [];
+  const runFrames = () => {
+    for (const frame of frames.splice(0)) frame(0);
+  };
+  beforeEach(() => {
+    frames.length = 0;
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+      frames.push(callback),
+    );
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+  });
+  const listRef = {
+    current: {
+      getState: () => ({ data: [], isWithinMaintainScrollAtEndThreshold: true }),
+      getScrollableNode: () => ({ scrollTop: 0, scrollHeight: 2000, clientHeight: 800 }),
+    } as unknown as LegendListRef,
+  };
+  const KEY_A = "environment-local:thread-a";
+  const KEY_B = "environment-local:thread-b";
+  const pane = async (open: string, alive: (key: string) => boolean = () => true) => {
+    const { KeptTimelines } = await import("./KeptTimelines");
+    return (
+      <KeptTimelines
+        open={open}
+        alive={alive}
+        crewTimeline={null}
+        timeline={{
+          ...buildProps(),
+          listRef,
+          routeThreadKey: open,
+          timelineEntries: [buildUserTimelineEntry(`Where were we in ${open}?`)],
+        }}
+      />
+    );
+  };
+  const listOf = (renderer: ReactTestRenderer, key: string) =>
+    renderer.root.find((node) => node.type === "div" && node.props["data-timeline-thread"] === key);
+  const placing = (renderer: ReactTestRenderer, key: string) =>
+    listOf(renderer, key).props["data-timeline-placing"] !== undefined;
+  const settle = async () => {
+    const { LegendList } = await import("@legendapp/list/react");
+    return async (renderer: ReactTestRenderer) => {
+      for (const list of renderer.root.findAllByType(LegendList)) {
+        await act(() => list.props.onLoad({ elapsedTimeInMs: 4 }));
+      }
+      for (let frame = 0; frame < 6; frame += 1) await act(() => runFrames());
+    };
+  };
+
+  it("shows its rows as they stood, never placed again", async () => {
+    const place = await settle();
+    let renderer: ReactTestRenderer | undefined;
+    await act(async () => {
+      renderer = create(await pane(KEY_A));
+    });
+    try {
+      await place(renderer!);
+      expect(placing(renderer!, KEY_A)).toBe(false);
+
+      const b = await pane(KEY_B);
+      await act(() => renderer!.update(b));
+      expect(placing(renderer!, KEY_B)).toBe(true);
+      await place(renderer!);
+
+      const a = await pane(KEY_A);
+      await act(() => renderer!.update(a));
+      // A list mounted anew starts out of sight until it is placed.
+      expect(placing(renderer!, KEY_A)).toBe(false);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
+  it("lets a list go once its conversation is gone", async () => {
+    const place = await settle();
+    let renderer: ReactTestRenderer | undefined;
+    await act(async () => {
+      renderer = create(await pane(KEY_A));
+    });
+    try {
+      await place(renderer!);
+      const b = await pane(KEY_B, (key) => key !== KEY_A);
+      await act(() => renderer!.update(b));
+      expect(
+        renderer!.root.findAll(
+          (node) => node.type === "div" && node.props["data-timeline-thread"] === KEY_A,
+        ),
+      ).toHaveLength(0);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+});
