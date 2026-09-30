@@ -3029,6 +3029,64 @@ describe("a Mate's own menu, in its row", () => {
     expect(row(ACTIONS)).not.toContain("sidebar-mate-stop");
   });
 
+  // Two presses stop a run from its row (the owner, 2026-10-01: "this has confirm, right?"):
+  // the ■ arms it — a red "Stop?" in its place, named for the confirm — and only that stops.
+  it("stops a run on the second press of its row's stop, never the first", () => {
+    const stop = vi.fn();
+    const tree = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getActivity={() => spoken}
+        getMateActions={() => ({ ...ACTIONS, stop })}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    press(tree, "sidebar-mate-stop");
+    expect(stop).not.toHaveBeenCalled();
+    const armed = surface(tree, "sidebar-mate-stop");
+    expect(armed.props["aria-label"]).toBe("Confirm stop crm-dev");
+    expect(text(armed)).toContain("Stop?");
+    press(tree, "sidebar-mate-stop");
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(surface(tree, "sidebar-mate-stop").props["aria-label"]).toBe("Stop crm-dev");
+  });
+
+  it("lets an armed stop go on Esc, and x on the row arms before it stops", () => {
+    const stop = vi.fn();
+    const tree = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV_CONNECTED]}
+        complete
+        getActivity={() => spoken}
+        getMateActions={() => ({ ...ACTIONS, stop })}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    const key = (value: string) =>
+      act(() => {
+        surface(tree, "sidebar-mate").props.onKeyDown({
+          key: value,
+          metaKey: false,
+          ctrlKey: false,
+          altKey: false,
+          shiftKey: false,
+          preventDefault: () => {},
+          currentTarget: {},
+        });
+      });
+    key("x");
+    expect(stop).not.toHaveBeenCalled();
+    expect(surface(tree, "sidebar-mate-stop").props["aria-label"]).toBe("Confirm stop crm-dev");
+    key("Escape");
+    expect(surface(tree, "sidebar-mate-stop").props["aria-label"]).toBe("Stop crm-dev");
+    key("x");
+    key("x");
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
   it("carries no menu where nobody supplied its verbs", () => {
     expect(row(undefined)).not.toContain("sidebar-mate-actions");
   });
@@ -3283,7 +3341,7 @@ describe("a long list, kept scannable", () => {
     expect(html).not.toContain('data-zerops-group="aaa"');
   });
 
-  it("stops a working Mate with x and marks one read or unread with e, from its row", () => {
+  it("stops a working Mate with x pressed twice and marks one read or unread with e, from its row", () => {
     const stop = vi.fn();
     const toggleUnread = vi.fn();
     const tree = mount(
@@ -3307,6 +3365,8 @@ describe("a long list, kept scannable", () => {
         });
       });
     };
+    key("x");
+    expect(stop).not.toHaveBeenCalled();
     key("x");
     key("e");
     expect(stop).toHaveBeenCalledTimes(1);
