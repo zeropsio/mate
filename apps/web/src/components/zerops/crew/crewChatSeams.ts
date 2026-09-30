@@ -1,7 +1,7 @@
 /**
  * An empty crewmate chat opens on its own empty state (the owner, 2026-09-29):
- * a save's seam — "Job updated to v2 — applies at the next turn", the brief's
- * or a login's — dated before the crewmate's first message told of a
+ * a save's seam — "Its job changed — from its next message", the goal's or
+ * a login's — dated before the crewmate's first message told of a
  * conversation that had not begun yet, so it is not drawn; one after the
  * first message is the conversation's history, and stays. The other seams —
  * why the conversation began and the one before it, a landing — are the

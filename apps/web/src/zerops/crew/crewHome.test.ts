@@ -1,7 +1,9 @@
+import { CREW_HANDLE_PATTERN } from "@t3tools/contracts";
 import { parseBrief, type CrewDefinition, type CrewMemberSpec } from "@t3tools/shared/crewHome";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  crewHandleFor,
   crewmateDraftOf,
   crewmateSpecOf,
   emptyCrewmateDraft,
@@ -132,5 +134,26 @@ describe("withMember and withBrief", () => {
       text: "Sell things.\n\n## Done when\n- a guest pays\n",
       doneWhen: ["a guest pays"],
     });
+  });
+});
+
+describe("crewHandleFor: a crewmate's handle, from its name", () => {
+  it.each<[string, ReadonlyArray<string>, string]>([
+    ["Game systems", [], "game-systems"],
+    ["Server and world", [], "server-and-world"],
+    ["Clients & creation!", [], "clients-creation"],
+    ["Přemysl Ořáč", [], "premysl-orac"],
+    ["  Lead  ", [], "lead"],
+    ["An exceptionally long crewmate name", [], "an-exceptionally-lon"],
+    ["A name ending in a dash at twenty-", [], "a-name-ending-in-a-d"],
+    ["Game systems", ["game-systems"], "game-systems-2"],
+    ["Game systems", ["game-systems", "game-systems-2"], "game-systems-3"],
+    ["An exceptionally long crewmate name", ["an-exceptionally-lon"], "an-exceptionally-l-2"],
+    ["???", [], "crewmate"],
+    ["???", ["crewmate"], "crewmate-2"],
+  ])("%s (taken: %j) → %s", (name, taken, handle) => {
+    const made = crewHandleFor(name, new Set(taken));
+    expect(made).toBe(handle);
+    expect(made).toMatch(CREW_HANDLE_PATTERN);
   });
 });

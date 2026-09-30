@@ -20,47 +20,43 @@ describe("crewTaskCardModel", () => {
     readonly model: ReturnType<typeof crewTaskCardModel>;
   }>([
     {
-      name: "names a board task by its number and title, where it came from and when it is done",
+      name: "names a board task by its title and when it is done — never its number or source",
       card: {
-        title: "#12 Add pagination to /api/items",
+        title: "#12 Add pagination to /api/items · from you",
         text: "Add cursor pagination to /api/items, 50 per page.\nDone when: /api/items takes ?cursor; npm test passes",
       },
       model: {
-        heading: "#12 Add pagination to /api/items",
-        source: "from you",
+        heading: "Add pagination to /api/items",
         text: "Add cursor pagination to /api/items, 50 per page.",
         doneWhen: "/api/items takes ?cursor; npm test passes",
       },
     },
     {
-      name: "says a task the lead planned came from the lead, with the board's done-when",
-      card: { title: "#15 Camera rig follows the player", text: "" },
+      name: "takes the board's done-when for a task the card says none for",
+      card: { title: "#15 Camera rig follows the player · from the lead", text: "" },
       model: {
-        heading: "#15 Camera rig follows the player",
-        source: "from lead",
+        heading: "Camera rig follows the player",
         text: "",
         doneWhen: "The camera follows the player; npm test passes",
       },
     },
     {
-      name: "keeps a card whose task is not on the board as it was written",
+      name: "reads a card whose task is not on the board by its own title",
       card: {
-        title: "#99 Something older",
+        title: "#99 Something older · rework after review",
         text: "The body.\nDone when: it builds",
       },
       model: {
-        heading: "#99 Something older",
-        source: null,
+        heading: "Something older",
         text: "The body.",
         doneWhen: "it builds",
       },
     },
     {
       name: "keeps a card without a task number as it was written",
-      card: { title: "Continue your task; your job changed (v5).", text: "" },
+      card: { title: "Continue your task; your job changed.", text: "" },
       model: {
-        heading: "Continue your task; your job changed (v5).",
-        source: null,
+        heading: "Continue your task; your job changed.",
         text: "",
         doneWhen: null,
       },
@@ -74,7 +70,7 @@ describe("crewCardOrigin", () => {
   const first = { threadId: ThreadId.make("thread-crew-backend-1"), reason: null };
   const second = {
     threadId: ThreadId.make("thread-crew-backend-2"),
-    reason: "Started fresh by you",
+    reason: "You cleared its conversation",
   };
   const third = { threadId: ThreadId.make("thread-crew-backend-3"), reason: null };
   const stints = [first, second, third];
@@ -95,7 +91,7 @@ describe("crewCardOrigin", () => {
       name: "a later one says why it began and links the one before",
       threadId: second.threadId,
       seamed: false,
-      origin: { text: "Started fresh by you", previousThreadId: first.threadId },
+      origin: { text: "You cleared its conversation", previousThreadId: first.threadId },
     },
     {
       name: "a later one without a reason is a new conversation",

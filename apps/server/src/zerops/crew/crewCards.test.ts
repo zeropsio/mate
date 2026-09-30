@@ -10,6 +10,7 @@ import {
   fixCard,
   resolveCard,
   rotationSeed,
+  savedSeamWords,
   stintReasonWords,
   taskCard,
 } from "./crewCards.ts";
@@ -165,36 +166,93 @@ describe("crew cards", () => {
   });
 
   it.each([
-    ["start-fresh", { brief: 1, job: 1 }, { brief: 1, job: 1 }, "Started fresh by you"],
-    [
-      "prompt-changed",
-      { brief: 1, job: 4 },
-      { brief: 1, job: 5 },
-      "Job updated to v5 — applies from here",
-    ],
-    [
-      "prompt-changed",
-      { brief: 3, job: 2 },
-      { brief: 4, job: 2 },
-      "Brief updated to v4 — applies from here",
-    ],
+    ["start-fresh", { brief: 1, job: 1 }, { brief: 1, job: 1 }, "You cleared its conversation"],
+    ["prompt-changed", { brief: 1, job: 4 }, { brief: 1, job: 5 }, "Its job changed"],
+    ["prompt-changed", { brief: 3, job: 2 }, { brief: 4, job: 2 }, "The crew's goal changed"],
     [
       "prompt-changed",
       { brief: 3, job: 2 },
       { brief: 4, job: 3 },
-      "Brief updated to v4 and job to v3 — applies from here",
+      "The crew's goal and its job changed",
     ],
-    ["login-changed", { brief: 1, job: 1 }, { brief: 1, job: 1 }, "New login — a new conversation"],
+    [
+      "login-changed",
+      { brief: 1, job: 1 },
+      { brief: 1, job: 1 },
+      "It runs on a different login now",
+    ],
+    [
+      "fresh-task",
+      { brief: 1, job: 1 },
+      { brief: 1, job: 1 },
+      "A fresh conversation for unrelated work",
+    ],
+    [
+      "principal-changed",
+      { brief: 1, job: 1 },
+      { brief: 1, job: 1 },
+      "A fresh conversation for someone else's work",
+    ],
+    [
+      "second-rework",
+      { brief: 1, job: 1 },
+      { brief: 1, job: 1 },
+      "A fresh conversation: its work came back a second time",
+    ],
+    [
+      "compactions",
+      { brief: 1, job: 1 },
+      { brief: 1, job: 1 },
+      "A fresh conversation, carried on from memory",
+    ],
     [
       "context-overflow",
       { brief: 1, job: 1 },
       { brief: 1, job: 1 },
-      "New conversation — the last one outgrew its context",
+      "A fresh conversation: the last one grew too long",
+    ],
+    [
+      "resume-failed",
+      { brief: 1, job: 1 },
+      { brief: 1, job: 1 },
+      "A fresh conversation: the last one couldn't be resumed",
     ],
   ] as const)(
-    "a stint opened for %s reads as its seam line",
+    "a stint opened for %s reads as its seam line, with no version",
     (reason, running, current, expected) => {
       expect(stintReasonWords(reason, running, current)).toBe(expected);
+    },
+  );
+
+  it.each([
+    [
+      { kind: "job", version: 5 },
+      "prompt-changed",
+      "nextTurn",
+      "Its job changed — from its next message",
+    ],
+    [
+      { kind: "brief", version: 4 },
+      "prompt-changed",
+      "now",
+      "The crew's goal changed — from now on",
+    ],
+    [
+      { kind: "job", version: 5 },
+      "prompt-changed",
+      "fresh",
+      "Its job changed — its next message starts a fresh conversation",
+    ],
+    [
+      { kind: "job", version: 5 },
+      "login-changed",
+      "fresh",
+      "It runs on a different login now — its next message starts a fresh conversation",
+    ],
+  ] as const)(
+    "a %o save (%s, %s) leaves its seam line in the person's words",
+    (change, reason, apply, expected) => {
+      expect(savedSeamWords(change, reason, apply)).toBe(expected);
     },
   );
 
@@ -202,14 +260,14 @@ describe("crew cards", () => {
     expect(
       carriedCard({
         ...TASK,
-        reason: "Job updated to v5 — applies from here",
+        reason: "Its job changed",
         text: "Now also sort them.",
       }),
     ).toBe(
       [
         CREW_CARD_OPENER,
         "#12 Camera rig · continues",
-        "Job updated to v5 — applies from here",
+        "Its job changed",
         "",
         "Now also sort them.",
       ].join("\n"),

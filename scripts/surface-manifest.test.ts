@@ -209,7 +209,6 @@ const EXPECTED_SURFACE_IDS = [
   "zerops-settings",
   "zerops-crew-section",
   "zerops-crew-editors",
-  "zerops-crew-board",
   "zerops-crew-chat",
   "manual-link",
 ] as const;

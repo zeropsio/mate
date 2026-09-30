@@ -111,6 +111,7 @@ const appliedSnapshot = {
         check: null,
         review: null,
         landedCommit: null,
+        landedAt: null,
         delivered: false,
       },
     ],
@@ -218,8 +219,8 @@ const commandSamples = [
 
 /**
  * The snapshot as the first contract's server sent it: none of the fields
- * added since (`dirty`, `integration`, `routed` null, `note`, `devHosts`,
- * `grantWaiting`).
+ * added since (`dirty`, `integration`, `routed` null, `note`, `landedAt`,
+ * `devHosts`, `grantWaiting`).
  */
 const firstContractSnapshot = (() => {
   const { devHosts: _devHosts, ...snapshot } = appliedSnapshot;
@@ -228,7 +229,7 @@ const firstContractSnapshot = (() => {
   const [host] = appliedSnapshot.hosts;
   const { integration: _integration, ...hostFields } = host!;
   const [task] = appliedSnapshot.board.tasks;
-  const { note: _note, ...taskFields } = task!;
+  const { note: _note, landedAt: _landedAt, ...taskFields } = task!;
   return {
     ...snapshot,
     crewmates: [{ ...mate, lane }],
@@ -245,6 +246,7 @@ describe("CrewSnapshot from an older server", () => {
     expect(decoded.hosts[0]?.integration).toBeNull();
     expect(decoded.hosts[0]?.crewPorts).toEqual([{ port: 3001, routed: null }]);
     expect(decoded.board.tasks[0]?.note).toBeNull();
+    expect(decoded.board.tasks[0]?.landedAt).toBeNull();
     expect(decoded.devHosts).toEqual([]);
     expect(decoded.hosts[0]?.claim.grantWaiting).toBe(false);
   });
@@ -267,6 +269,15 @@ describe("CrewFeedFrame", () => {
         { _tag: "CrewFrameUndecodable" },
       ]);
     }
+  });
+
+  it("reads a newer server's frame past a field this build does not know", () => {
+    const [task] = appliedSnapshot.board.tasks;
+    const newer = {
+      ...appliedSnapshot,
+      board: { tasks: [{ ...task, reviewedAt: "2026-09-29T09:00:00.000Z" }] },
+    };
+    expect(decodeFrame(newer)).toEqual(appliedSnapshot);
   });
 
   it("encodes a snapshot the way the snapshot itself encodes", () => {

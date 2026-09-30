@@ -33,9 +33,9 @@ import { resolveOwnedAgentId } from "./agentOwnership.ts";
 export interface MateLoginRow extends ZeropsLogin {
   /** "Claude Code", "Claude Code · work", "Claude API key". */
   readonly title: string;
-  /** The handles of the crewmates that run on it, in roster order. */
+  /** The names of the crewmates that run on it, in roster order. */
   readonly crewmates: ReadonlyArray<string>;
-  /** The lead's handle when the lead is one of them; the card names it as the lead. */
+  /** The lead's name when the lead is one of them; the card names it as the lead. */
   readonly lead: string | null;
 }
 
@@ -52,8 +52,8 @@ export function mateLoginRows(
     return {
       ...login,
       title: zeropsLoginTitle(login),
-      crewmates: running.map((crewmate) => crewmate.handle),
-      lead: running.find((crewmate) => crewmate.kind === "lead")?.handle ?? null,
+      crewmates: running.map((crewmate) => crewmate.displayName),
+      lead: running.find((crewmate) => crewmate.kind === "lead")?.displayName ?? null,
     };
   });
 }

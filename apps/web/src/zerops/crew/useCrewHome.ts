@@ -24,6 +24,8 @@ export interface CrewHomeRead {
   readonly issues: ReadonlyArray<CrewDefinitionIssue>;
   /** Writes `definition`'s files among `paths`; whether they were saved. */
   readonly save: (definition: CrewDefinition, paths: ReadonlyArray<string>) => Promise<boolean>;
+  /** Reads the files again: someone else — the Mate — may have written them. */
+  readonly reload: () => Promise<void>;
 }
 
 const parseFiles = (files: CrewFiles) => {
@@ -63,5 +65,10 @@ export function useCrewHome(
     [readFiles, writeFiles],
   );
 
-  return { definition: read.definition, issues: read.issues, save };
+  const reload = useCallback(async () => {
+    const files = await readFiles();
+    if (files !== null) setRead(parseFiles(files));
+  }, [readFiles]);
+
+  return { definition: read.definition, issues: read.issues, save, reload };
 }

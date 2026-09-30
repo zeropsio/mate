@@ -1,16 +1,15 @@
 /**
- * What the crew editors (PRD §4.7) compute: the edited crew home, the save
- * choices (§5.6, on the probe-22 fallback: a next-turn save starts a fresh
- * conversation), when a job changed enough to start fresh, the free tints,
- * and *Runs on*'s logins, models and effort levels from the Mate's provider
- * catalog. Phase B offers the two default logins only.
+ * What the Crew tab's views (PRD §4.7) compute: the free tints, *Runs on*'s
+ * logins, models and effort levels from the Mate's provider catalog, where a
+ * builder's copy may live, and the issues a view must not save over. Phase B
+ * offers the two default logins only. One Save applies at the crewmate's
+ * next message (§5.6, on the probe-22 fallback: in a fresh conversation).
  *
  * The crew home's format is `@t3tools/shared/crewHome`'s, and the form ↔
  * definition adapter is `zerops/crew/crewHome.ts`.
  */
 import {
   agentIdForProviderInstance,
-  type CrewApplyChoice,
   type CrewDevHost,
   type CrewLogin,
   type CrewSnapshot,
@@ -18,51 +17,11 @@ import {
   type ServerProvider,
 } from "@t3tools/contracts";
 import {
-  crewApplyWord,
   crewDevHostDatabaseWord,
   crewNoDevHostWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
 import type { CrewDefinition, CrewDefinitionIssue } from "@t3tools/shared/crewHome";
-
-export interface CrewSaveChoice {
-  readonly apply: CrewApplyChoice;
-  readonly label: string;
-  readonly description: string;
-}
-
-/** The split save button's choices; the first is the default. */
-export const CREW_SAVE_CHOICES: ReadonlyArray<CrewSaveChoice> = [
-  {
-    apply: "nextTurn",
-    label: "Save — the next turn starts a fresh conversation",
-    description: "Each crewmate it applies to starts its next turn in a new conversation.",
-  },
-  {
-    apply: "now",
-    label: "Save and apply now",
-    description: "Interrupts working crewmates, keeps their work and continues with the change.",
-  },
-  {
-    apply: "fresh",
-    label: "Save and start fresh",
-    description: "New conversations now, started from the task, the branch and the last report.",
-  },
-];
-
-/** CONCEPT §3A.3's docs-derived figure, until probe 19 measures it. */
-export const CREW_APPLY_COST_LINE =
-  "Applying re-reads this crewmate’s conversation once (up to about $1.25 at 200k context)";
-
-/** More than half of the job's lines changed: a fresh conversation follows it better. */
-export function jobChangedMostly(before: string, after: string): boolean {
-  const lines = (text: string) => text.split(/\r?\n/u).filter((line) => line.trim() !== "");
-  const old = lines(before);
-  if (old.length === 0) return false;
-  const kept = new Set(lines(after));
-  const changed = old.filter((line) => !kept.has(line)).length;
-  return changed * 2 > old.length;
-}
 
 /** The tints a crewmate may take: its own and those nobody else wears, never the Mate's. */
 export function freeTints(
@@ -99,6 +58,15 @@ export function crewLoginOptions(
       ? [{ id: login.id, label: login.label, agent }]
       : [];
   });
+}
+
+/** A login's name: the catalog's, else — before the Mate's catalog is read — a default's own. */
+export function crewLoginLabel(logins: ReadonlyArray<CrewLogin>, loginId: string): string {
+  return (
+    logins.find((login) => login.id === loginId)?.label ??
+    DEFAULT_LOGINS.find((login) => login.id === loginId)?.label ??
+    loginId
+  );
 }
 
 /**
@@ -209,34 +177,6 @@ export function crewServiceHint(
 export const crewWriterWithoutHost = (writes: boolean, host: string): boolean =>
   writes && host.trim() === "";
 
-export interface CrewApplyStep {
-  readonly id: string;
-  readonly label: string;
-  readonly state: "queued" | "running" | "done" | "failed";
-  readonly stateLabel: string;
-}
-
-/** Apply's progress per crewmate (PRD §4.7): its copy being created, set up, ready or failed. */
-export function crewApplyProgress(
-  crewmates: ReadonlyArray<Crewmate>,
-): ReadonlyArray<CrewApplyStep> {
-  return crewmates.map((mate): CrewApplyStep => {
-    const step = { id: mate.handle, label: mate.displayName, stateLabel: crewApplyWord(mate) };
-    switch (mate.lane?.state) {
-      case "creating":
-      case "setting-up":
-        return { ...step, state: "running" };
-      case "missing":
-      case "failed":
-        return { ...step, state: "failed" };
-      case undefined:
-      case "ready":
-      case "conflicts":
-      case "frozen":
-        return { ...step, state: "done" };
-    }
-  });
-}
 /**
  * The issues an editor must not save over: an editor writes crew.yaml back
  * from the parsed definition, so a field it could not read would be dropped.

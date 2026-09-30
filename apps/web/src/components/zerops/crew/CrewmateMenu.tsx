@@ -3,8 +3,9 @@
  * job's first sentence at the top, then each press with one line under it
  * saying what it does (`CrewmateMenu.logic.ts` says which). *Try its work*
  * and *Stop its app* press `useCrewTry`; *Change its job* and *Change the
- * brief* open the crew's editors where the chat keeps them; *Clear its
- * conversation* starts the crewmate fresh, keeping its job and its work.
+ * goal* open the Crew tab on that view; *Clear its conversation* starts the
+ * crewmate fresh, keeping its job and its work. The Crew tab's rows draw the
+ * same popup, with *Remove from the crew* after a separator.
  *
  * A crew thread is the engine's: nothing here archives, renames or starts a
  * session of the person's own in it.
@@ -15,14 +16,14 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { crewMenuFailureWord } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { useId, useState } from "react";
+import { Fragment, useId, useState } from "react";
 
 import { useAtomCommand } from "~/state/use-atom-command";
 import { crewCommands } from "~/zerops/crew/crewCommands";
 import { useCrew } from "~/zerops/crew/useCrew";
 import { crewFailureSentence } from "~/zerops/crew/useCrewCommand";
 import { useCrewTry } from "~/zerops/crew/useCrewTry";
-import { MenuItem, MenuPopup } from "../../ui/menu";
+import { MenuItem, MenuPopup, MenuSeparator } from "../../ui/menu";
 import { stackedThreadToast, toastManager } from "../../ui/toast";
 import {
   crewmateMenuModel,
@@ -34,35 +35,44 @@ import {
 export function CrewmateMenuPopup({
   model,
   onSelect,
+  from = "line",
 }: {
   readonly model: CrewmateMenuModel;
   readonly onSelect: (id: CrewmateMenuItemId) => void;
+  /**
+   * Under the ⌄ on the conversation's line it opens from the start, as wide as
+   * its words; under a Crew tab row's ··· from the end, at the tab's 364.
+   */
+  readonly from?: "line" | "row";
 }) {
   const headingId = useId();
   return (
     <MenuPopup
-      align="start"
+      align={from === "row" ? "end" : "start"}
       aria-describedby={headingId}
-      className="w-max max-w-100"
+      className={from === "row" ? "w-91" : "w-max max-w-100"}
       data-crewmate-menu
     >
-      <p className="px-2 pt-1.5 pb-2 text-line text-muted-foreground" id={headingId}>
+      <p className="px-2.75 pt-1.5 pb-2 text-line text-muted-foreground" id={headingId}>
         {model.heading}
       </p>
       {model.items.map((item) => (
-        <MenuItem
-          data-crewmate-menu-item={item.id}
-          disabled={!item.enabled}
-          key={item.id}
-          onClick={() => onSelect(item.id)}
-        >
-          <span className="flex min-w-0 flex-col py-0.5">
-            <span>{item.label}</span>
-            {item.line === null ? null : (
-              <span className="text-xs text-muted-foreground">{item.line}</span>
-            )}
-          </span>
-        </MenuItem>
+        <Fragment key={item.id}>
+          {item.id === "remove" ? <MenuSeparator /> : null}
+          <MenuItem
+            data-crewmate-menu-item={item.id}
+            disabled={!item.enabled}
+            onClick={() => onSelect(item.id)}
+            variant={item.id === "remove" ? "destructive" : "default"}
+          >
+            <span className="flex min-w-0 flex-col px-0.75 py-0.75">
+              <span>{item.label}</span>
+              {item.line === null ? null : (
+                <span className="text-xs text-muted-foreground">{item.line}</span>
+              )}
+            </span>
+          </MenuItem>
+        </Fragment>
       ))}
     </MenuPopup>
   );
@@ -78,9 +88,9 @@ export function CrewmateMenu({
   readonly environmentId: EnvironmentId;
   readonly handle: string;
   readonly mateName: string;
-  /** *Change its job*: the crew's Crewmate editor on this crewmate. */
+  /** *Change its job*: the Crew tab on this crewmate's job. */
   readonly onEditJob: (handle: string) => void;
-  /** *Change the brief*: the crew's Brief editor. */
+  /** The lead's *Change the goal*: the Crew tab on the crew's goal. */
   readonly onEditBrief: () => void;
 }) {
   const { view, current } = useCrew(environmentId);
@@ -128,11 +138,13 @@ export function CrewmateMenu({
           case "job":
             onEditJob(handle);
             return;
-          case "brief":
+          case "goal":
             onEditBrief();
             return;
           case "clear":
             void clear();
+            return;
+          case "remove":
             return;
         }
       }}

@@ -13,6 +13,7 @@ const timeline = (profile: CrewTimeline["crewmate"]["profile"]): CrewTimeline =>
   origin: null,
   tasks: [],
   crewmate: { handle: "backend", profile },
+  mateName: "Fen",
   onOpenThread: () => {},
 });
 
@@ -24,12 +25,12 @@ const render = (crew: CrewTimeline, seams: Parameters<typeof CrewmateEmptyState>
   );
 
 describe("CrewmateEmptyState", () => {
-  it("opens an empty crewmate conversation with the crewmate: face, name, @handle, job, the invite", () => {
+  it("opens an empty crewmate conversation with the crewmate: face, name, its job, the invite", () => {
     const html = render(timeline(BACKEND), []);
     expect(html).toContain('data-zerops-surface="crewmate-empty-state"');
     expect(html).toContain('data-mate-face-tint="sky"');
     expect(html).toContain(">Backend<");
-    expect(html).toContain("@backend");
+    expect(html).not.toContain("@backend");
     expect(html).toContain("Owns the API under src/api and its tests.");
     expect(html).toContain("Message Backend…");
     expect(html).not.toContain("data-crew-seam");
@@ -40,17 +41,17 @@ describe("CrewmateEmptyState", () => {
       {
         id: "seam-1",
         seam: { seam: "stint", previousThreadId: ThreadId.make("thread-crew-backend-1") },
-        words: "Started fresh by you",
+        words: "You cleared its conversation",
       },
     ]);
-    expect(html.indexOf("Started fresh by you")).toBeLessThan(html.indexOf(">Backend<"));
+    expect(html.indexOf("You cleared its conversation")).toBeLessThan(html.indexOf(">Backend<"));
     expect(html).toContain("previous conversation ↗");
   });
 
-  it("names the crewmate by its handle while the crew is not read yet", () => {
+  it("names the crewmate as the engine does, never with an @, while the crew is not read yet", () => {
     const html = render(timeline(null), []);
-    expect(html).toContain(">@backend<");
-    expect(html).toContain("Message @backend…");
+    expect(html).toContain(">backend<");
+    expect(html).toContain("Message backend…");
     expect(html).not.toContain("data-mate-face-tint");
   });
 });

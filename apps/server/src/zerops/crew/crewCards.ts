@@ -195,9 +195,9 @@ export const claimReleaseCard = (input: {
 
 /**
  * The seam line a new stint opens with (PRD §4.5 *Seam lines*): the client
- * shows a stint's reason verbatim above its first card. `running` is what
- * the retired stint's session started with, `current` what the crew home
- * holds now.
+ * shows a stint's reason verbatim above its first card, in the person's
+ * words — what changed, never a version. `running` is what the retired
+ * stint's session started with, `current` what the crew home holds now.
  */
 export const stintReasonWords = (
   reason: RotationReason,
@@ -206,40 +206,38 @@ export const stintReasonWords = (
 ): string => {
   switch (reason) {
     case "start-fresh":
-      return "Started fresh by you";
+      return "You cleared its conversation";
     case "prompt-changed": {
-      const brief = current.brief > running.brief;
+      const goal = current.brief > running.brief;
       const job = current.job > running.job;
-      const what =
-        brief && job
-          ? `Brief updated to v${current.brief} and job to v${current.job}`
-          : brief
-            ? `Brief updated to v${current.brief}`
-            : `Job updated to v${current.job}`;
-      return `${what} — applies from here`;
+      return goal && job
+        ? "The crew's goal and its job changed"
+        : goal
+          ? "The crew's goal changed"
+          : "Its job changed";
     }
     case "login-changed":
-      return "New login — a new conversation";
+      return "It runs on a different login now";
     case "fresh-task":
-      return "New conversation — the next task is unrelated work";
+      return "A fresh conversation for unrelated work";
     case "principal-changed":
-      return "New conversation — the next task is someone else's";
+      return "A fresh conversation for someone else's work";
     case "second-rework":
-      return "New conversation — the task came back a second time";
+      return "A fresh conversation: its work came back a second time";
     case "compactions":
-      return "New conversation — continues from memory";
+      return "A fresh conversation, carried on from memory";
     case "context-overflow":
-      return "New conversation — the last one outgrew its context";
+      return "A fresh conversation: the last one grew too long";
     case "transcript-missing":
     case "resume-failed":
-      return "New conversation — the last one could not be resumed";
+      return "A fresh conversation: the last one couldn't be resumed";
   }
 };
 
 /**
  * The seam line a save leaves in the conversation it reaches later (PRD
- * §5.6): at the next turn, now (the running turn is interrupted), or as a
- * fresh conversation once the running turn ends.
+ * §5.6): from its next message, from now on (the running turn is
+ * interrupted), or with a fresh conversation once the running turn ends.
  */
 export const savedSeamWords = (
   change: PromptChange,
@@ -248,15 +246,17 @@ export const savedSeamWords = (
 ): string => {
   const what =
     reason === "login-changed"
-      ? "New login"
-      : `${change.kind === "brief" ? "Brief" : "Job"} updated to v${change.version}`;
+      ? "It runs on a different login now"
+      : change.kind === "brief"
+        ? "The crew's goal changed"
+        : "Its job changed";
   switch (apply) {
     case "nextTurn":
-      return `${what} — applies at the next turn`;
+      return `${what} — from its next message`;
     case "now":
-      return `${what} — applies now`;
+      return `${what} — from now on`;
     case "fresh":
-      return `${what} — a fresh conversation follows this turn`;
+      return `${what} — its next message starts a fresh conversation`;
   }
 };
 

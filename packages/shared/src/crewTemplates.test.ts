@@ -6,59 +6,35 @@ import { crewFromTemplate } from "./crewTemplates.ts";
 describe("crewFromTemplate", () => {
   it.each([
     {
-      template: "feature-team",
-      withLead: false,
-      members: [
-        ["builder-1", "writer", "appdev"],
-        ["builder-2", "writer", "webdev"],
-        ["reviewer", "reader", undefined],
-      ],
-    },
-    {
-      template: "feature-team",
-      withLead: true,
+      template: "lead-and-builders",
       members: [
         ["lead", "lead", undefined],
         ["builder-1", "writer", "appdev"],
         ["builder-2", "writer", "webdev"],
-        ["reviewer", "reader", undefined],
       ],
     },
-    {
-      template: "solo-reviewer",
-      withLead: true,
-      members: [
-        ["builder", "writer", "appdev"],
-        ["reviewer", "reader", undefined],
-      ],
-    },
-    { template: "empty", withLead: true, members: [] },
-  ] as const)(
-    "$template (lead: $withLead) writes a crew home that applies as it is",
-    ({ template, withLead, members }) => {
-      const definition = crewFromTemplate({
-        template,
-        crew: "crew",
-        devHosts: ["appdev", "webdev"],
-        withLead,
-        mateTint: "coral",
-      });
+    { template: "empty", members: [] },
+  ] as const)("$template writes a crew home that stands as it is", ({ template, members }) => {
+    const definition = crewFromTemplate({
+      template,
+      crew: "crew",
+      devHosts: ["appdev", "webdev"],
+      mateTint: "coral",
+    });
 
-      expect(definition.members.map((m) => [m.handle, m.kind, m.host])).toEqual(members);
-      const parsed = parseCrewHome("crew", renderCrewHome(definition));
-      expect(parsed).toEqual({ definition, issues: [] });
-      expect(
-        validateCrewTopology(definition, { devHosts: ["appdev", "webdev"], databaseHosts: [] }),
-      ).toEqual([]);
-    },
-  );
+    expect(definition.members.map((m) => [m.handle, m.kind, m.host])).toEqual(members);
+    const parsed = parseCrewHome("crew", renderCrewHome(definition));
+    expect(parsed).toEqual({ definition, issues: [] });
+    expect(
+      validateCrewTopology(definition, { devHosts: ["appdev", "webdev"], databaseHosts: [] }),
+    ).toEqual([]);
+  });
 
   it("gives every crewmate its own tint and never the Mate's", () => {
     const definition = crewFromTemplate({
-      template: "feature-team",
+      template: "lead-and-builders",
       crew: "crew",
       devHosts: ["appdev"],
-      withLead: true,
       mateTint: "amber",
     });
 
@@ -68,5 +44,35 @@ describe("crewFromTemplate", () => {
     expect(
       definition.members.every((member) => member.host === undefined || member.host === "appdev"),
     ).toBe(true);
+  });
+
+  it.each([
+    { mateTint: "amber", tints: ["violet", "sky", "coral"] },
+    { mateTint: "violet", tints: ["sky", "coral", "olive"] },
+    { mateTint: "coral", tints: ["violet", "sky", "olive"] },
+  ] as const)(
+    "draws the lead in violet and the builders in sky and coral, stepping past $mateTint",
+    ({ mateTint, tints }) => {
+      const definition = crewFromTemplate({
+        template: "lead-and-builders",
+        crew: "crew",
+        devHosts: [],
+        mateTint,
+      });
+      expect(definition.members.map((member) => member.tint)).toEqual(tints);
+    },
+  );
+
+  it("opens each job with the line the person reads, in the person's words", () => {
+    const definition = crewFromTemplate({
+      template: "lead-and-builders",
+      crew: "crew",
+      devHosts: [],
+    });
+    expect(definition.members.map((member) => member.job.split("\n")[0])).toEqual([
+      "Plans the work and splits it between the crew.",
+      "Builds its part of the work, in its own copy of the code.",
+      "Builds its part of the work, in its own copy of the code.",
+    ]);
   });
 });

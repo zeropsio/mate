@@ -311,6 +311,11 @@ export const CrewTask = Schema.Struct({
   review: Schema.NullOr(CrewReview),
   /** The landing commit in your tree. */
   landedCommit: Schema.NullOr(TrimmedNonEmptyString),
+  /**
+   * When it went into your tree — the Crew tab dates its row in "In Fen's
+   * code" by it; `null` before, and from an older server, which says nothing.
+   */
+  landedAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   /** A landed task whose change has gone out with *Deliver*. */
   delivered: Schema.Boolean,
 });
@@ -355,7 +360,12 @@ export const CrewRun = Schema.Struct({
   /** The Zerops user who pressed Start. */
   startedBy: TrimmedNonEmptyString,
   startedAt: IsoDateTime,
-  /** Wall time the run has been running, excluding paused time. */
+  /**
+   * The time the crew has worked in the run — running with a crew turn
+   * running — which its time limit counts; paused time and time the crew sat
+   * idle are left out. An older server counts wall time running, idle time
+   * included; a client reads either the same way.
+   */
   elapsedMs: NonNegativeInt,
   spentUsd: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0)),
   /** The usage window's current use; `null` when the login reports none. */

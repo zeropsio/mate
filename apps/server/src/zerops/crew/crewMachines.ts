@@ -15,6 +15,7 @@
  */
 import type {
   CrewClaimState,
+  CrewRunOptions,
   CrewRunReason,
   CrewRunState,
   CrewStintState,
@@ -303,28 +304,64 @@ export const NO_REPORT = {
   detail: "its turn ended without a report",
 } as const;
 
-const RUN_PAUSE_WORDS: Readonly<Record<CrewRunReason, string>> = {
-  person: "you paused the run",
-  budget: "the run reached its budget",
-  time: "the run reached its time limit",
-  usage: "the usage window reached the run's stop",
-  refused: "the run's turn was refused",
+/** The limits a run's stop names: what it may spend, for how long, how near the plan's limit. */
+export type RunStopLimits = Pick<
+  CrewRunOptions,
+  "budgetUsd" | "timeLimitHours" | "stopAtUsagePercent"
+>;
+
+const dollarsWord = (usd: number): string =>
+  `$${Number.isInteger(usd) ? String(usd) : usd.toFixed(2)}`;
+
+/**
+ * Why a task stopped mid-way when the crew stopped working on its own, as its
+ * row says it: "Stopped mid-way when the $20 ran out." — a clause opening
+ * with *when*, in the person's words and with the limit's own figure. No
+ * engine noun: the person never meets a *run*.
+ */
+const runStopWords = (reason: CrewRunReason, limits: RunStopLimits | undefined): string => {
+  switch (reason) {
+    case "person":
+      return "when you stopped it";
+    case "budget":
+      return typeof limits?.budgetUsd === "number"
+        ? `when the ${dollarsWord(limits.budgetUsd)} ran out`
+        : "when the money it may spend ran out";
+    case "time":
+      return typeof limits?.timeLimitHours === "number"
+        ? `when the ${limits.timeLimitHours} ${limits.timeLimitHours === 1 ? "hour" : "hours"} ran out`
+        : "when its time ran out";
+    case "usage":
+      return typeof limits?.stopAtUsagePercent === "number"
+        ? `when it neared ${limits.stopAtUsagePercent} % of your Claude plan's limit`
+        : "when it neared your Claude plan's limit";
+    case "refused":
+      return "when its next turn was refused";
+  }
 };
 
 /**
  * How a turn that left its task `working` ends the task's attempt, and the
- * words for why: its session hit the run's budget, the run's pause or stop
- * interrupted it, something else did, it failed, or the crewmate ended it
- * without a report. The next turn of the attempt opens it again.
+ * words for why: its session spent what the run may spend, the crew stopped
+ * working on its own, something else interrupted it, it failed, or the
+ * crewmate ended it without a report. The next turn of the attempt opens it
+ * again.
  */
 export const attemptEndingOf = (input: {
   readonly state: ProviderRuntimeTurnStatus;
   readonly terminalReason: string | undefined;
   readonly errorMessage: string | undefined;
-  readonly run: { readonly state: CrewRunState; readonly reason: CrewRunReason | null } | undefined;
+  readonly run:
+    | {
+        readonly state: CrewRunState;
+        readonly reason: CrewRunReason | null;
+        /** The run's limits; `undefined` when its options no longer read. */
+        readonly limits: RunStopLimits | undefined;
+      }
+    | undefined;
 }): { readonly ending: string; readonly detail: string } => {
   if (turnEndingOf(input.terminalReason) === "budget") {
-    return { ending: "budget", detail: "its session reached the run's budget" };
+    return { ending: "budget", detail: runStopWords("budget", input.run?.limits) };
   }
   switch (input.state) {
     case "interrupted":
@@ -332,11 +369,11 @@ export const attemptEndingOf = (input: {
       if (input.run?.state === "paused") {
         return {
           ending: "run-paused",
-          detail: RUN_PAUSE_WORDS[input.run.reason ?? "person"],
+          detail: runStopWords(input.run.reason ?? "person", input.run.limits),
         };
       }
       return input.run?.state === "stopped"
-        ? { ending: "run-stopped", detail: "the run stopped" }
+        ? { ending: "run-stopped", detail: runStopWords("person", input.run.limits) }
         : { ending: "interrupted", detail: "its turn was interrupted" };
     case "failed":
       return { ending: "failed", detail: input.errorMessage ?? "its turn failed" };

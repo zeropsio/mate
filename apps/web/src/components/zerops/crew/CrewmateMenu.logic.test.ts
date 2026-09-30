@@ -127,19 +127,39 @@ describe("crewmateMenuModel", () => {
       ],
     },
     {
-      name: "the lead: the crew's brief and a clean start",
+      name: "the lead: the crew's goal and a clean start",
       input: {
         crewmate: {
           kind: "lead",
           displayName: "Lead",
-          jobFirstLine: "Turns the brief into tasks.",
+          jobFirstLine: "Turns the goal into tasks.",
         },
         tries: null,
         busy: false,
       },
       items: [
-        ["brief", "Change the brief", "What the whole crew works toward.", true],
+        ["goal", "Change the goal", "What the whole crew works toward.", true],
         ["clear", "Clear its conversation", "It keeps its job and its work.", true],
+      ],
+    },
+    {
+      name: "in the Crew tab's row: the same, then Remove from the crew",
+      input: {
+        crewmate: WRITER,
+        tries: { where: "own", enabled: true, stops: false },
+        busy: false,
+        removable: true,
+      },
+      items: [
+        ["try", "Try its work", "Opens its copy of the app. Nothing is in Fen's code yet.", true],
+        ["job", "Change its job", "What it's responsible for.", true],
+        ["clear", "Clear its conversation", "It keeps its job and its work.", true],
+        [
+          "remove",
+          "Remove from the crew",
+          "It leaves the crew. You decide about work not in Fen's code yet.",
+          true,
+        ],
       ],
     },
   ])("$name", ({ input, items }) => {

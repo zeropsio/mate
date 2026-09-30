@@ -10,25 +10,30 @@ import { CrewSection, CrewSectionEmpty, type CrewSectionProps } from "./CrewSect
 const noop = () => {};
 const sent = async () => null;
 
+/** The visible text, tags and style sheets stripped, whitespace folded. */
+const textOf = (html: string) =>
+  html
+    .replace(/<style[^>]*>.*?<\/style>/gsu, " ")
+    .replace(/<[^>]*>/gu, " ")
+    .replace(/&#x27;/gu, "'")
+    .replace(/\s+/gu, " ")
+    .trim();
+
 const render = (snapshot: CrewSnapshot, overrides: Partial<CrewSectionProps> = {}) =>
   renderToStaticMarkup(
     <CrewSection
+      busy={false}
       environmentId={EnvironmentId.make("env-crew")}
       errorAt={() => null}
       mateName="Fen"
-      onAddCrewPorts={noop}
-      onAddLead={noop}
-      onResumeRun={noop}
-      onStartRun={noop}
       onAsk={noop}
-      onDeliver={noop}
-      onEditBrief={noop}
-      onEditCrewmate={noop}
-      onShowBoard={null}
+      onHeadMenu={noop}
+      onModePress={noop}
       onOpenThread={noop}
-      onRemove={noop}
-      onStartFresh={noop}
-      pending={false}
+      onReview={noop}
+      onRowMenu={noop}
+      onShip={noop}
+      renderPlan={() => null}
       send={sent}
       snapshot={snapshot}
       tell={{ send: sent, pending: false, error: null }}
@@ -38,206 +43,137 @@ const render = (snapshot: CrewSnapshot, overrides: Partial<CrewSectionProps> = {
     />,
   );
 
-describe("CrewSectionEmpty", () => {
-  it("offers to set up a crew", () => {
-    const markup = renderToStaticMarkup(<CrewSectionEmpty onSetUp={noop} />);
-    expect(markup).toContain(
-      "Named crewmates, each with its own job and its own copy of the code.",
+const FIXTURE = crewSnapshotFixture();
+const RUN = FIXTURE.run!;
+
+describe("CrewSectionEmpty — no crew yet", () => {
+  it("says what a crew is, with Fen and three empty seats, and one press", () => {
+    const html = renderToStaticMarkup(
+      <CrewSectionEmpty mate={{ name: "Fen", tint: "amber" }} onSetUp={noop} />,
     );
-    expect(markup).toContain("Set up a crew");
+    expect(textOf(html)).toBe(
+      [
+        "Give Fen a crew",
+        "For a job too big for one conversation. A lead plans it, and crewmates build its parts side by side, each in its own copy of Fen's code. Nothing goes into Fen's code until you review it.",
+        "Set up a crew",
+      ].join(" "),
+    );
+    expect(html.match(/class="crew-seat"/gu)).toHaveLength(3);
   });
 });
 
-describe("CrewSection", () => {
-  it("reads the applied crew top to bottom", () => {
-    const markup = render(crewSnapshotFixture());
+describe("CrewSection — the Crew tab's column", () => {
+  it("reads top to bottom: the goal, how it works, the composer, the lead first, then Fen's code", () => {
+    const text = textOf(render(FIXTURE));
     const order = [
       "Camera and HUD rework",
-      "Running · 1 h 12 m",
-      "Spend $6.40 of $20 · Time 1 h 12 m of 8 h · Usage 54 %, stops at 80",
-      "v4",
-      "Erik asks: Pricing in CZK or EUR?",
-      "@lead",
-      "@backend",
-      "v5 at next turn",
-      "@frontend",
-      "@erik",
-      "Tell the crew… use @ to address",
-      "appdev serves: your tree",
-      "Landed, not delivered · 1",
-    ].map((text) => markup.indexOf(text));
-
+      "Working on its own · $6.40 of $20 · 1 h 12 m of 8 h",
+      "Stop",
+      "To Lead",
+      "Lead Plans the work",
+      "Backend",
+      "Frontend",
+      "Erik",
+      "In Fen's code",
+      "Fen hasn't shipped these yet",
+      "Ask Fen to ship them",
+    ].map((words) => text.indexOf(words));
     expect(order.every((index) => index >= 0)).toBe(true);
     expect([...order].sort((left, right) => left - right)).toEqual(order);
   });
 
-  it("offers each Waiting on you row its presses", () => {
-    const markup = render(crewSnapshotFixture(), { onShowBoard: noop });
-    for (const label of ["Answer", "Commit my edit", "Review plan", "Allow", "Not now"]) {
-      expect(markup).toContain(`>${label}<`);
+  it("says what each crewmate needs in its own row, with the presses that answer it", () => {
+    const text = textOf(render(FIXTURE));
+    for (const [need, presses] of [
+      ["Wants to show its work at Fen's dev address.", "Let it Not now"],
+      [
+        "Can't go into Fen's code yet: Fen has uncommitted edits to hud.ts.",
+        "Ask Fen to commit them",
+      ],
+      ["Pricing in CZK or EUR?", "Answer"],
+      ["Stopped: the check timed out twice.", "Try again Drop it"],
+    ] as const) {
+      expect(text).toContain(`${need} ${presses}`);
     }
-    expect(render(crewSnapshotFixture())).not.toContain(">Review plan<");
   });
 
-  it("shows a run's controls and meters only while a run is on, and a lead's send only with a lead", () => {
-    const snapshot = crewSnapshotFixture();
-    const manual = render({
-      ...snapshot,
-      run: null,
-      crewmates: snapshot.crewmates.slice(1),
+  it("tightens at a phone's width: the head, the composer and the rows closer, the ship line short", () => {
+    const html = render(FIXTURE);
+    expect(html).toContain('pt-4 @max-md:pt-3" data-crew-head');
+    expect(html).toContain('mt-4 @max-md:mt-3.5" data-crew-composer');
+    expect(html).toContain('@max-md:mt-4" data-crew-rows');
+    expect(html).toContain('class="hidden @max-md:inline">Not shipped yet</span>');
+    expect(html).toMatch(/class="truncate @max-md:hidden">Fen hasn&#x27;t shipped these yet</u);
+  });
+
+  it("names nothing of the engine's: no version, handle, number, status word or engine noun", () => {
+    const text = textOf(render(FIXTURE));
+    expect(text).not.toMatch(/\bv\d+\b|@[a-z]|#\d+/u);
+    expect(text).not.toMatch(/\b(?:LEAD|TASK|RUNNING|IDLE|QUEUED|PAUSED)\b/u);
+    expect(text).not.toMatch(
+      /\bIdle\b|Waiting on you|\bLand(?:ed|ing)?\b|\bDeliver|\bBrief\b|\bRun\b/u,
+    );
+  });
+
+  it("draws no empty list: nothing in Fen's code draws no heading, no need draws no press", () => {
+    const quiet: CrewSnapshot = {
+      ...FIXTURE,
       attention: [],
-    });
-
-    expect(manual).not.toContain("Pause");
-    expect(manual).not.toContain("Spend ");
-    expect(manual).not.toContain("Send to lead");
-    expect(render(snapshot)).toContain("Send to lead");
-    expect(render(snapshot)).toContain("Pause");
-    expect(render(snapshot)).not.toContain("Start run");
-    expect(render({ ...snapshot, run: null })).toContain("Start run");
+      board: { tasks: [] },
+      landedNotDelivered: 0,
+    };
+    const text = textOf(render(quiet));
+    expect(text).not.toContain("In Fen's code");
+    expect(text).not.toMatch(/Answer|Let it|Try again|Drop it/u);
   });
 
-  it("reads a paused run, offers Resume and Stop, and meters a budget without a limit", () => {
-    const snapshot = crewSnapshotFixture();
-    const paused = render({
-      ...snapshot,
-      run: {
-        ...snapshot.run!,
-        state: "paused",
-        reason: "budget",
-        options: { ...snapshot.run!.options, budgetUsd: "unlimited" },
-      },
-    });
-
-    expect(paused).toContain("Paused · budget reached");
-    expect(paused).toContain(">Resume<");
-    expect(paused).toContain(">Stop<");
-    expect(paused).not.toContain(">Pause<");
-    expect(paused).toContain("Spend $6.40 · no limit · Time 1 h 12 m of 8 h");
+  it.each([
+    ["working on its own", RUN, "Stop"],
+    [
+      "stopped at its money",
+      { ...RUN, state: "paused", reason: "budget", spentUsd: 20 },
+      "Keep going…",
+    ],
+    [
+      "stopped by a refusal",
+      { ...RUN, state: "paused", reason: "refused", reasonDetail: "signed out" },
+      "Try again",
+    ],
+  ] as const)("offers one press for how the crew works while %s", (_state, run, press) => {
+    const html = render({ ...FIXTURE, run });
+    expect(html).toContain(`>${press}</button>`);
   });
 
-  it("meters a run without usage until the first rate-limit event, and words a refused pause", () => {
-    const snapshot = crewSnapshotFixture();
-    const running = render({ ...snapshot, run: { ...snapshot.run!, usagePercent: null } });
-    expect(running).toContain("Spend $6.40 of $20 · Time 1 h 12 m of 8 h<");
-    expect(running).not.toContain("Usage");
-
-    const refused = render({
-      ...snapshot,
-      run: {
-        ...snapshot.run!,
-        state: "paused",
-        reason: "refused",
-        reasonDetail: "Backend's login is not yours",
-      },
-    });
-    expect(refused).toContain("Paused · Backend&#x27;s login is not yours");
+  it("offers no press in the head while the crew works only when asked", () => {
+    const html = render({ ...FIXTURE, run: null, attention: [], board: { tasks: [] } });
+    const head = html.slice(0, html.indexOf("data-crew-composer"));
+    expect(textOf(head)).toContain("Works when you give it something to do");
+    expect(head).not.toMatch(/>(?:Stop|Keep going…|Try again|Let it work on its own…)<\/button>/u);
   });
 
-  it("reads the brief as plain text, and asks for one while it is the template's", () => {
-    const snapshot = crewSnapshotFixture();
-    const written = render({
-      ...snapshot,
-      crew: { ...snapshot.crew!, briefExcerpt: "Sell handmade goods.\n## Binding decisions" },
-    });
-    expect(written).toContain("Sell handmade goods.");
-    expect(written).not.toContain("## Binding decisions");
-
-    const template = render({
-      ...snapshot,
-      crew: {
-        ...snapshot.crew!,
-        briefExcerpt: "Describe what the crew builds and why.\n## Binding decisions",
-      },
-    });
-    expect(template).toContain("data-crew-brief-placeholder");
-    expect(template).toContain(">Describe what the crew builds<");
+  it("offers to let it work on its own while it works with you on something", () => {
+    const html = render({ ...FIXTURE, run: null });
+    const head = html.slice(0, html.indexOf("data-crew-composer"));
+    expect(textOf(head)).toContain("Working with you · finished work waits for your review");
+    expect(head).toContain(">Let it work on its own…</button>");
   });
 
-  it("names the Mate where the engine's words say your Mate", () => {
-    const markup = render({
-      ...crewSnapshotFixture(),
-      lastError: "Start appdev's dev server first — ask your Mate to run it",
-    });
-    expect(markup).toContain("ask Fen to run it");
-    expect(markup).not.toContain("your Mate");
-  });
-
-  it("says a refused press beside its own row, not in the section's line", () => {
-    const snapshot = crewSnapshotFixture();
-    const refused = "That can't be done in its current state.";
-    const markup = render(snapshot, {
-      errorAt: (origin) => (origin === "attention:show-on-dev:appdev" ? refused : null),
-    });
-    const row = markup.slice(markup.indexOf("asks to show its work on appdev"));
-
-    expect(markup.split("can&#x27;t be done")).toHaveLength(2);
-    expect(row.indexOf("can&#x27;t be done")).toBeLessThan(row.indexOf("</li>"));
-    expect(markup.indexOf("can&#x27;t be done")).toBeGreaterThan(
-      markup.indexOf("data-crew-attention"),
+  it("names the Mate where the engine's words say your Mate or your tree", () => {
+    const text = textOf(
+      render({
+        ...FIXTURE,
+        lastError: "Start appdev's dev server first — ask your Mate to run it.",
+      }),
     );
+    expect(text).toContain("Start appdev's dev server first — ask Fen to run it.");
+    expect(text).not.toContain("your Mate");
   });
 
-  it("sets the lead apart: first, under its own label, with a Lead chip", () => {
-    const markup = render(crewSnapshotFixture());
-    const lead = markup.slice(markup.indexOf("data-crew-lead"), markup.indexOf("data-crew-rows"));
-    const rows = markup.slice(markup.indexOf("data-crew-rows"));
-
-    expect(markup.indexOf("data-crew-lead")).toBeLessThan(markup.indexOf("data-crew-rows"));
-    expect(lead).toContain(">Lead<");
-    expect(lead).toContain("@lead");
-    expect(lead).toContain("data-crew-lead-chip");
-    expect(rows).toContain(">Crewmates<");
-    expect(rows).not.toContain("@lead");
-    expect(rows).toContain("@backend");
-  });
-
-  it("has no lead group without a lead", () => {
-    const snapshot = crewSnapshotFixture();
-    const markup = render({ ...snapshot, crewmates: snapshot.crewmates.slice(1) });
-    expect(markup).not.toContain("data-crew-lead=");
-    expect(markup).toContain(">Crewmates<");
-  });
-
-  it("offers + Add lead exactly while the crew has no lead", () => {
-    const snapshot = crewSnapshotFixture();
-    const leadless = { ...snapshot, crewmates: snapshot.crewmates.slice(1) };
-
-    expect(render(snapshot)).not.toContain("+ Add lead");
-    expect(render(leadless)).toContain("+ Add lead");
-    expect(render({ ...leadless, run: null })).toContain("+ Add lead");
-  });
-
-  it("links to no board: the Crew tab draws it right under the section", () => {
-    expect(render(crewSnapshotFixture(), { onShowBoard: noop })).not.toContain("Board ·");
-  });
-
-  it("draws no footer where your tree has nothing to say", () => {
-    const snapshot = crewSnapshotFixture();
-    expect(render(snapshot)).toContain("data-crew-footer");
-    // A crew with no writer has no dev service; nothing landed waits to go out.
-    expect(render({ ...snapshot, hosts: [], landedNotDelivered: 0 })).not.toContain(
-      "data-crew-footer",
-    );
-    expect(render({ ...snapshot, hosts: [], landedNotDelivered: 2 })).toContain(
-      "Landed, not delivered · 2",
-    );
-  });
-
-  it("names a crewmate's copy served on dev, with the way back", () => {
-    const snapshot = crewSnapshotFixture();
-    const markup = render({
-      ...snapshot,
-      hosts: [{ ...snapshot.hosts[0]!, served: { by: "crewmate", handle: "frontend" } }],
+  it("says a refused press beside the row it was pressed in", () => {
+    const html = render(FIXTURE, {
+      errorAt: (origin) => (origin === "crewmate:erik" ? "That task is gone." : null),
     });
-    expect(markup).toContain("appdev serves: Frontend&#x27;s copy");
-    expect(markup).toContain("Back to my tree");
-  });
-
-  it("offers crew ports on a service that has none", () => {
-    const snapshot = crewSnapshotFixture();
-    const markup = render({ ...snapshot, hosts: [{ ...snapshot.hosts[0]!, crewPorts: [] }] });
-    expect(markup).toContain("appdev · Crew ports: off");
-    expect(markup).toContain("Add crew ports");
+    const erik = html.slice(html.indexOf('data-crew-row="erik"'));
+    expect(textOf(erik)).toContain("That task is gone.");
   });
 });
