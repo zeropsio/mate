@@ -17,11 +17,13 @@
  * - While a route is named and its socket is not open, others wait: from the naming until its
  *   first attempt ends (or {@link ROUTE_FIRST_HOLD_MS}, a route whose exchange never finishes),
  *   and during every later attempt of its own — a reconnect included.
- * - With a route named, others connect one at a time, each given {@link OTHER_ATTEMPT_MS} before
- *   it gives way. With none, nothing waits: there is no one to go first.
+ * - Others connect one at a time, each given {@link OTHER_ATTEMPT_MS} from its start before it
+ *   gives way, a route named or not: without one, a page opening every Mate of an organization
+ *   would otherwise stack them all in the browser's queue, where the wait counts against each.
  *
  * A ticket the caller never claims (its wait was interrupted as the attempt started) ends by
- * itself once the caller's signal aborts, or after {@link UNCLAIMED_TICKET_MS}.
+ * itself once the caller's signal aborts, or after {@link UNCLAIMED_TICKET_MS}, and its signal
+ * aborts so that no late claim opens a socket without a turn.
  *
  * @module connection/admission
  */
@@ -128,14 +130,15 @@ export function makeConnectionAdmission(
 
   /** Re-judges every attempt against the route now named. */
   const rejudge = () => {
-    const routeGoing = routeConnecting();
+    // A replacement of the route's open socket makes nobody give way: the route is not waiting.
+    const routeGoing = routeConnecting() && preferred !== null && !isOpen(preferred);
     for (const attempt of connecting) {
       if (isRoute(attempt)) {
         attempt.cancelTimer?.();
         attempt.cancelTimer = null;
       } else if (routeGoing) {
         giveWay(attempt, "The route's socket goes first.");
-      } else if (preferred !== null) {
+      } else {
         armOther(attempt);
       }
     }
@@ -148,10 +151,6 @@ export function makeConnectionAdmission(
       waiter.start();
     }
     if (holding()) return;
-    if (preferred === null) {
-      for (const waiter of waiting.splice(0)) waiter.start();
-      return;
-    }
     while (waiting.length > 0 && othersConnecting().length === 0) waiting.shift()!.start();
   }
 
@@ -164,8 +163,9 @@ export function makeConnectionAdmission(
       attempt.settled = true;
       attempt.cancelTimer?.();
       attempt.cancelTimer = null;
-      connecting.delete(attempt);
-      if (isRoute(attempt)) endFirstHold();
+      // Only the route's own attempt still holding the lock ends its hold: one already told to
+      // give way that ends later — its Mate the route again by now — says nothing of the new one.
+      if (connecting.delete(attempt) && isRoute(attempt)) endFirstHold();
       if (isOpenNow) {
         opened = true;
         open.set(attempt.environmentId, (open.get(attempt.environmentId) ?? 0) + 1);
@@ -174,7 +174,10 @@ export function makeConnectionAdmission(
     };
     // Until claimed, a caller that went away ends the attempt.
     const abandoned = () => {
-      if (!claimed) settle(false);
+      if (claimed) return;
+      settle(false);
+      // Let go, it can no longer be claimed into a socket that holds no turn.
+      attempt.controller.abort(new Error("The ticket was never claimed."));
     };
     callerSignal?.addEventListener("abort", abandoned, { once: true });
     const cancelUnclaimed = timers.setTimer(UNCLAIMED_TICKET_MS, abandoned);
@@ -206,7 +209,7 @@ export function makeConnectionAdmission(
     };
     connecting.add(attempt);
     if (environmentId === preferred) rejudge();
-    else if (preferred !== null) armOther(attempt);
+    else armOther(attempt);
     return ticketFor(attempt, callerSignal);
   };
 

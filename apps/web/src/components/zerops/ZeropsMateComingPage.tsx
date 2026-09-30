@@ -111,6 +111,7 @@ import {
   type MateEmptyComing,
 } from "./ZeropsMateEmptyState";
 import { removeFailedZeropsProject } from "./ZeropsProjectsPage";
+import { usePreferredConnection } from "~/zerops/mateConnectionPreference";
 
 /** Up, its conversation being opened: the last of its coming words. */
 const UP_AND_OPENING: MateComing = { kind: "coming", line: ALMOST_THERE_LINE, verb: undefined };
@@ -227,6 +228,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   );
   const status = useThreadStatus(threadRef);
   const empty = useMateEmptyState({ environmentId, mate, threadRef, projectId });
+  // The Mate on screen: its socket goes first, though this path names no environment.
+  usePreferredConnection(environmentId);
   // Its conversation read live and its agents' sign-in are what the conversation paints first; a
   // few seconds without them and the view hands over anyway.
   const [graceOver, setGraceOver] = useState(false);
