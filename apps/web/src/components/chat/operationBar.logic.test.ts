@@ -8,6 +8,7 @@ import {
   operationLineWord,
   operationSubject,
   processReasons,
+  settledOperationBar,
   settledOperationWords,
 } from "./operationBar.logic";
 
@@ -181,5 +182,56 @@ describe("processReasons — why the platform says each service failed", () => {
       processIds,
     );
     expect([...reasons]).toEqual(shows);
+  });
+});
+
+describe("settledOperationBar — a settled operation's bar carries what it found", () => {
+  it.each([
+    {
+      name: "a dev server found running: green",
+      op: { kind: "devServer", phase: "done", steps: [step("dev-server", "done")] },
+      undone: false,
+      tones: ["done"],
+    },
+    {
+      name: "a dev server found not running, from a call that went through: amber, never green",
+      op: { kind: "devServer", phase: "done", steps: [step("dev-server", "failed")] },
+      undone: false,
+      tones: ["attention"],
+    },
+    {
+      name: "that finding undone by a later call: quiet",
+      op: { kind: "devServer", phase: "done", steps: [step("dev-server", "failed")] },
+      undone: true,
+      tones: ["waiting"],
+    },
+    {
+      name: "a call that failed: cut red where it failed",
+      op: {
+        kind: "deploy",
+        phase: "failed",
+        steps: [step("build", "done"), step("deploy", "failed"), step("ready", "queued")],
+      },
+      undone: false,
+      tones: ["done", "failed", "waiting"],
+    },
+    {
+      name: "all checks passed: whole",
+      op: { kind: "verify", phase: "done", steps: [step("a", "done"), step("b", "done")] },
+      undone: false,
+      tones: ["done", "done"],
+    },
+    {
+      name: "no steps, landed: one green",
+      op: { kind: "deploy", phase: "done", steps: [] },
+      undone: false,
+      tones: ["done"],
+    },
+  ] as const)("$name", ({ op, undone, tones }) => {
+    expect(
+      settledOperationBar(operation(op as Partial<ZeropsOperation>), undone).map(
+        (segment) => segment.tone,
+      ),
+    ).toEqual(tones);
   });
 });

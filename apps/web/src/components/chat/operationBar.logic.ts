@@ -7,7 +7,7 @@
  * lives on the failed service's line.
  */
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import { standupStepRole, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { BarTone } from "./StatusBar";
@@ -150,4 +150,40 @@ export function processReasons(
     if (failed?.failReason !== undefined) reasons.set(host, failed.failReason);
   }
   return reasons;
+}
+
+/**
+ * A settled operation's bar in the chat, from what it knew of its steps: it
+ * carries what the call found, not only that the call ran. Whole and green
+ * when all went as asked; a step that found something wrong — a dev server
+ * not running, from a call that itself went through — amber; a call that
+ * failed cut where it failed, red while that still stands and quiet once a
+ * later one undid it (K9).
+ */
+export function settledOperationBar(
+  operation: ZeropsOperation,
+  undone: boolean,
+): ReadonlyArray<{ readonly key: string; readonly tone: BarTone }> {
+  const failed = operation.phase === "failed";
+  const cut: BarTone = undone ? "waiting" : "failed";
+  // A stage a stand-up queued or held back is no segment of this call.
+  const steps =
+    operation.kind === "standup"
+      ? operation.steps.filter((step) => standupStepRole(step) === "own")
+      : operation.steps;
+  if (steps.length === 0) return [{ key: "whole", tone: failed ? cut : "done" }];
+  return steps.map((step) => ({
+    key: step.id,
+    tone: failed
+      ? step.state === "done"
+        ? "done"
+        : step.state === "failed" || step.state === "running"
+          ? cut
+          : "waiting"
+      : step.state === "failed"
+        ? undone
+          ? "waiting"
+          : "attention"
+        : "done",
+  }));
 }

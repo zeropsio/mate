@@ -36,7 +36,7 @@
  * is. Nothing opens a dialog.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { standupStepRole, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
   isActiveSubagentStatus,
   type AgentPanelModel,
@@ -113,9 +113,10 @@ import {
 } from "./nowLineCalm.logic";
 import { useRunEffortWords } from "./runResultFacts";
 import { drawerEase, LIST_LAYS_OUT_FRAMES, stepHeight } from "./stepHeight";
-import { StatusBar, type BarTone } from "./StatusBar";
+import { StatusBar } from "./StatusBar";
 import { versionText } from "../zerops/operation/version";
 import { ImportDetail } from "./ImportDetail";
+import { settledOperationBar } from "./operationBar.logic";
 import { StandupDetail } from "./StandupDetail";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
@@ -1422,34 +1423,6 @@ function ZeropsOperationDetail({
 }
 
 /**
- * A settled operation's bar, from what it knew of its steps: whole, or cut
- * where it failed — in red while that still stands, quiet once undone (K9).
- */
-function settledBar(
-  operation: ZeropsOperation,
-  undone: boolean,
-): ReadonlyArray<{ readonly key: string; readonly tone: BarTone }> {
-  const failed = operation.phase === "failed";
-  const cut: BarTone = undone ? "waiting" : "failed";
-  // A stage a stand-up queued or held back is no segment of this call.
-  const steps =
-    operation.kind === "standup"
-      ? operation.steps.filter((step) => standupStepRole(step) === "own")
-      : operation.steps;
-  if (steps.length === 0) return [{ key: "whole", tone: failed ? cut : "done" }];
-  return steps.map((step) => ({
-    key: step.id,
-    tone: failed
-      ? step.state === "done"
-        ? "done"
-        : step.state === "failed" || step.state === "running"
-          ? cut
-          : "waiting"
-      : "done",
-  }));
-}
-
-/**
  * A platform operation as its bubble — a deploy, a subdomain, a restart:
  * what it did in a sentence, its pipeline as a bar, and its time; while it
  * runs, what the Mate waits on beside its face (the bar under the chat has
@@ -1497,7 +1470,7 @@ function OperationBubble({
           <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5">
             <span className="text-foreground/75">{words}</span>
             {running ? null : (
-              <StatusBar className="w-12" segments={settledBar(operation, undone)} />
+              <StatusBar className="w-12" segments={settledOperationBar(operation, undone)} />
             )}
             {detail !== null ? (
               <span className="min-w-0 truncate font-mono text-muted-foreground">{detail}</span>
