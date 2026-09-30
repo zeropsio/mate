@@ -11,6 +11,7 @@ import { useId } from "react";
 
 import { cn } from "~/lib/utils";
 
+import { SignInPhrase } from "./ZeropsArrivalSteps";
 import type { WhatHappensNext as Next } from "./whatHappensNext.logic";
 
 export interface WhatHappensNextVersion {
@@ -59,7 +60,9 @@ export function WhatHappensNext({
                   >
                     {index + 1}
                   </span>
-                  <span className="text-pretty">{step.words}</span>
+                  <span className="text-pretty">
+                    {step.phrase === undefined ? step.words : <SignInPhrase parts={step.phrase} />}
+                  </span>
                   <span className="whitespace-nowrap text-muted-foreground tabular-nums">
                     {step.time ?? ""}
                   </span>
