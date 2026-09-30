@@ -11,8 +11,22 @@ import { menuMemory, rememberedCrewOf, rememberMenu, withCrews } from "../../../
 import { ReviewContext } from "../../../zerops/review";
 import { SidebarCrewLine } from "./SidebarCrewLine";
 
-const read = vi.hoisted(() => ({ current: null as unknown }));
+const read = vi.hoisted(() => ({ current: null as unknown, closed: false }));
 vi.mock("../../../zerops/crew/useCrew", () => ({ useCrew: () => read.current }));
+// Whose the crew's logins are: every one somebody else's while `closed` (D6).
+vi.mock("../../../zerops/crew/useCrewAccess", async () => {
+  const { crewAccess } = await import("@t3tools/client-runtime/zerops/crew/crewAccess");
+  return {
+    useCrewAccess: (_environmentId: unknown, snapshot: never) =>
+      crewAccess({
+        snapshot,
+        lockOf: (login) =>
+          read.closed ? { login, agentId: "claude-code", ownership: "someone-else" } : null,
+        defaultLogin: "claudeAgent",
+        reading: false,
+      }),
+  };
+});
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => () => undefined }));
 
 const ENVIRONMENT = EnvironmentId.make("env-crew");
@@ -114,6 +128,20 @@ describe("SidebarCrewLine", () => {
       tree?.unmount();
     });
     vi.unstubAllGlobals();
+  });
+
+  it("offers no Review where the task's crewmate is not the viewer's to run (D6)", () => {
+    read.current = applied({ ready: true });
+    read.closed = true;
+    try {
+      const markup = renderToStaticMarkup(
+        <SidebarCrewLine environmentId={ENVIRONMENT} projectId="crm-dev" />,
+      );
+      expect(markup).toContain('data-zerops-surface="sidebar-crew-fact"');
+      expect(markup).not.toContain("sidebar-crew-review");
+    } finally {
+      read.closed = false;
+    }
   });
 
   it("draws a crew handed in instead of reading the feed", () => {
