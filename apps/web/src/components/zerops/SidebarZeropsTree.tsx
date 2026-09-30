@@ -66,6 +66,7 @@ import {
   type EnvironmentRow,
   type FlowPullRequest,
   type GroupFlow,
+  type GroupEnvironmentTier,
   type GroupFlowStop,
   type MissingEnvironmentRow,
   type ZeropsEnvironmentRole,
@@ -360,6 +361,8 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    * (`useAddMate`). Absent — a harness — the heading's + does nothing.
    */
   readonly onAddMate?: ((groupId: string) => void) | undefined;
+  /** Opens the form that sets a stage or a production up; absent, its item opens the projects page. */
+  readonly onSetUp?: ((groupId: string, tier: GroupEnvironmentTier) => void) | undefined;
   /**
    * A Mate in its first minutes (`mateComing`): still coming up, or never came. Its row says so
    * in the projects page's words, asleep, with no menu, and a press opens its own view. Absent,
@@ -533,6 +536,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   candidates,
   onSelect,
   onAddMate,
+  onSetUp,
   getComing,
   onOpenComing,
   onBrowseProjects,
@@ -1465,6 +1469,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             group={group}
             missing={getFlow?.(group.groupId)?.missing ?? []}
             onAddMate={onAddMate}
+            onSetUp={onSetUp}
             onBrowseProjects={onBrowseProjects}
             onOpen={
               onOpenGroup === undefined
@@ -1695,6 +1700,7 @@ export function ProjectHeader({
   muted = false,
   missing = NO_MISSING_TIERS,
   onAddMate,
+  onSetUp,
   onBrowseProjects,
   onOpen,
   collapsed = false,
@@ -1709,6 +1715,8 @@ export function ProjectHeader({
   readonly missing?: ReadonlyArray<MissingEnvironmentRow>;
   /** Asks for the New Mate dialog over the view on screen; absent in the harness. */
   readonly onAddMate?: ((groupId: string) => void) | undefined;
+  /** Opens the form that sets a stage or a production up; absent, its item opens the projects page. */
+  readonly onSetUp?: ((groupId: string, tier: GroupEnvironmentTier) => void) | undefined;
   readonly onBrowseProjects: () => void;
   /** Absent for the ungrouped heading, which is not a group and has no page. */
   readonly onOpen?: (() => void) | undefined;
@@ -1883,12 +1891,22 @@ export function ProjectHeader({
                   <MenuSeparator />
                 </>
               )}
+              {/* Each opens the form the projects page's own ⋯ opens for it. */}
               {missing.map((row) => (
-                <MenuItem key={row.tier} onClick={onBrowseProjects}>
+                <MenuItem
+                  key={row.tier}
+                  onClick={
+                    group === undefined || onSetUp === undefined
+                      ? onBrowseProjects
+                      : () => {
+                          onSetUp(group.groupId, row.tier);
+                        }
+                  }
+                >
                   {`Set up ${row.name.toLocaleLowerCase()}`}
                 </MenuItem>
               ))}
-              {/* Where setting one up happens, and where a project is added. */}
+              {/* Where a project is added. */}
               <MenuItem onClick={onBrowseProjects}>All projects</MenuItem>
             </MenuPopup>
           </Menu>

@@ -64,6 +64,7 @@ import {
 } from "@t3tools/client-runtime/zerops/projections";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { useAddMate } from "~/zerops/newMate";
+import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
@@ -1992,6 +1993,15 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     },
     [addMate, creationRunning, taken],
   );
+  // A stage or a production asked for from the left menu (`setUpEnvironment.ts`): its form opens
+  // here, as this page's own ⋯ opens it — taken once, so a later visit opens nothing.
+  const setUpAsked = useSetUpEnvironment((state) => state.asked);
+  const takeSetUp = useSetUpEnvironment((state) => state.take);
+  useEffect(() => {
+    if (setUpAsked === null) return;
+    const ask = takeSetUp();
+    if (ask !== null) requestEnvironment(ask.groupId, ask.role);
+  }, [requestEnvironment, setUpAsked, takeSetUp]);
 
   // The creation itself is the account's (`useEnvironmentCreation`), shared with the New Mate
   // dialog; this page shows its checklist and what it came to.
