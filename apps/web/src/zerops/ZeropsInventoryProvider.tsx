@@ -599,7 +599,10 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     authority,
     account,
     lost,
-    isLoading: !projected.read && trouble === null,
+    // A read failing or stalled is not known, spoken of yet or not: the 20 s silence decides only
+    // when the account's line speaks, never what the data says (a Mate link settled "not found",
+    // "no projects" painted and taken back).
+    isLoading: !projected.read || trouble !== null,
     error: shownError,
   });
   useEffect(() => {
