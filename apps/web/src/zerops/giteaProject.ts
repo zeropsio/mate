@@ -16,6 +16,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { useContext, useMemo } from "react";
 
+import { useHeldThroughBlink } from "./heldThroughBlink";
 import { HeldInventoryContext, type Inventory } from "./inventoryContext";
 
 export interface AccountGitea {
@@ -57,7 +58,11 @@ function findAccountGitea(
  */
 export function useAccountGitea(clientId: string | undefined): AccountGitea | undefined {
   const held = useContext(HeldInventoryContext);
-  return useMemo(() => findAccountGitea(held, clientId), [clientId, held]);
+  const found = useMemo(() => findAccountGitea(held, clientId), [clientId, held]);
+  // The inventory loses the Gitea project for a moment when its socket is replaced: the registry,
+  // the Gitea session and every project's reads rest on this, so a blink must not end them
+  // (`heldThroughBlink.ts`). No inventory at all is no scope — signed out — and holds nothing.
+  return useHeldThroughBlink(found, held === null ? undefined : (clientId ?? ""));
 }
 
 /**
