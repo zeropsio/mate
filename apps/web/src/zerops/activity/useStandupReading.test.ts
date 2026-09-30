@@ -42,11 +42,11 @@ describe("settledStandupReading — a settled call's services, as its report sai
       }),
     );
     expect(reading.rows).toEqual([
-      { hostname: "apidev", state: "built" },
+      { hostname: "apidev", state: "up" },
       { hostname: "webdev", state: "failed" },
       { hostname: "shopdev", state: "building" },
     ]);
-    expect({ built: reading.built, failed: reading.failed }).toEqual({ built: 1, failed: 1 });
+    expect({ up: reading.up, failed: reading.failed }).toEqual({ up: 1, failed: 1 });
   });
 
   it("reads a stage held back as waiting on what did not stand up, never as failed", () => {
