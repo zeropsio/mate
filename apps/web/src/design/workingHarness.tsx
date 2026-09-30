@@ -1176,6 +1176,57 @@ function Harness() {
           </Card>
         </State>
         <State
+          label="A result with long words"
+          note="A dirty push's version, a long page checked twice, a long reason: the checked words keep their room."
+        >
+          <Card
+            result={
+              <TurnReport
+                facts={{}}
+                onOpenImage={() => undefined}
+                onOpenTurnDiff={() => undefined}
+                outcome={{
+                  ...GUESTBOOK_RESULT,
+                  pictures: [],
+                  checks: {
+                    count: 2,
+                    views: 2,
+                    failures: 0,
+                    takes: STAGE_TAKES.map((take) => ({
+                      ...take,
+                      subject: `${STAGE_URL}/api/health`,
+                    })),
+                  },
+                  live: [
+                    { ...GUESTBOOK_RESULT.live[0]!, version: "227b804 · uncommitted" },
+                    {
+                      ...GUESTBOOK_RESULT.live[1]!,
+                      tone: "failed",
+                      word: "Build failing",
+                      failure: {
+                        reason:
+                          "3 type errors in src/routes/guestbook/entries.ts: Property 'author' does not exist on type 'Entry'",
+                        at: ago(20),
+                        logLines: [],
+                      },
+                    },
+                  ],
+                }}
+              />
+            }
+          >
+            <RunChat
+              row={record({
+                turnKey: "guestbook-long",
+                items: GUESTBOOK,
+                live: false,
+                status: status({ live: false, face: "produced", endedAt: ago(2) }),
+                outcome: GUESTBOOK_RESULT,
+              })}
+            />
+          </Card>
+        </State>
+        <State
           label="The guestbook result"
           note="Its stage deployed from the Mate's branch and checked on a desktop and a phone; its dev server running."
         >
