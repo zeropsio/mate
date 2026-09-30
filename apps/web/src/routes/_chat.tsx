@@ -1,4 +1,4 @@
-import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
+import { Outlet, createFileRoute, redirect, useLocation } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useMemo } from "react";
 
@@ -16,7 +16,13 @@ import { resolveShortcutCommand } from "../keybindings";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { primaryServerKeybindingsAtom } from "~/state/server";
+import { SidebarInset } from "~/components/ui/sidebar";
+import { ZeropsLandingWait } from "~/components/zerops/landing/ZeropsLandingShell";
+import { MateOpeningView } from "~/components/zerops/MateLinkStage";
+import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
 import { resolveDoor } from "./-door";
+import { environmentIdFromPathname } from "./-environmentRoute";
+import { resolveThreadRouteRef } from "../threadRoutes";
 import { loadDoorEnvironmentCount } from "./-doorEnvironments";
 
 function ChatRouteGlobalShortcuts() {
@@ -123,6 +129,24 @@ function ChatRouteLayout() {
   );
 }
 
+function ChatRoutePending() {
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const routed = environmentIdFromPathname(pathname);
+  const threadId = pathname.split("/").filter((part) => part.length > 0)[1];
+  const threadRef =
+    routed === null || threadId === undefined
+      ? null
+      : resolveThreadRouteRef({ environmentId: routed, threadId });
+  if (threadRef !== null && rememberedMateIdentity(threadRef.environmentId) !== undefined) {
+    return <MateOpeningView threadRef={threadRef} />;
+  }
+  return (
+    <SidebarInset className="h-svh min-h-0 overflow-hidden md:h-dvh">
+      <ZeropsLandingWait label="Checking your Zerops projects…" />
+    </SidebarInset>
+  );
+}
+
 export const Route = createFileRoute("/_chat")({
   beforeLoad: async ({ context, location }) => {
     const door = resolveDoor(context.authGateState, {
@@ -139,4 +163,10 @@ export const Route = createFileRoute("/_chat")({
     }
   },
   component: ChatRouteLayout,
+  // Its guard waits on the environment catalog: meanwhile the layout draws what the reload was
+  // drawing — the Mate's own view where this browser remembers it, else the account's wait —
+  // never an empty pane, and hands over the moment the guard answers.
+  pendingComponent: ChatRoutePending,
+  pendingMs: 0,
+  pendingMinMs: 0,
 });

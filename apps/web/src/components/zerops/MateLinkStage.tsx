@@ -2,11 +2,18 @@
  * The route's stage while its conversation cannot show yet (a reload while the Mate is down): the
  * Mate's face asleep, its name and its link's one line (`MateLinkLine`), on one axis.
  */
-import type { EnvironmentId } from "@t3tools/contracts";
+import { MATE_VOICE_QUIET_MS } from "@t3tools/client-runtime/zerops/environments";
+import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import { useState } from "react";
 import type { ReactNode } from "react";
 
+import { useComposerDraftStore } from "~/composerDraftStore";
 import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
+import { mateOpeningStage } from "~/zerops/mateOpeningStage";
+import { useMateVoice } from "~/zerops/mateVoiceContext";
+import { useHeldPast } from "~/zerops/useHeldPast";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
+import { ComposerStandIn } from "../chat/ComposerStandIn";
 import { MateLinkLine, type Spoken } from "./MateLinkLine";
 import { MateComingFrame, MateComingHeader } from "./ZeropsMateComingPage";
 import { MateEmptyStateView } from "./ZeropsMateEmptyState";
@@ -95,5 +102,40 @@ function MateLinkStageOf({
         unknown={null}
       />
     </MateComingFrame>
+  );
+}
+
+/**
+ * A Mate's own view while its conversation is on its way (a reload, before the catalog names its
+ * thread or before the chat layout can draw it): its header, its face and name at once, the
+ * composer standing in — typed into, the conversation's own draft, which its composer reads as it
+ * takes over — then "Opening Quinn…" past the quiet or the link's own words.
+ */
+export function MateOpeningView({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
+  const environmentId = threadRef.environmentId;
+  const draft = useComposerDraftStore((state) => state.getComposerDraft(threadRef)?.prompt ?? "");
+  const [caret, setCaret] = useState(0);
+  const voice = useMateVoice();
+  const pastQuiet = useHeldPast(`opening:${environmentId}`, MATE_VOICE_QUIET_MS);
+  const at = useZeropsMate(environmentId);
+  const name =
+    at.kind === "mate"
+      ? at.mate.name
+      : (rememberedMateIdentity(environmentId)?.name ?? "This Mate");
+  return (
+    <MateLinkStage
+      composer={
+        <ComposerStandIn
+          typed={{ text: draft, caret: Math.min(caret, draft.length) }}
+          onType={(next) => {
+            useComposerDraftStore.getState().setPrompt(threadRef, next.text);
+            setCaret(next.caret);
+          }}
+        />
+      }
+      environmentId={environmentId}
+      projectId={null}
+      voice={mateOpeningStage({ voice, pastQuiet, mateName: name })}
+    />
   );
 }
