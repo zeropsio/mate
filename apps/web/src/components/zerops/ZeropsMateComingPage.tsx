@@ -33,7 +33,11 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { applyProjectCreationVerdict } from "@t3tools/client-runtime/zerops/candidates";
 import type { RouteGatePhrase } from "@t3tools/client-runtime/zerops/environments";
-import { birthRuntimesFacts } from "@t3tools/client-runtime/zerops/birthProgress";
+import {
+  birthCopyServices,
+  birthRuntimesFacts,
+  type BirthCopyService,
+} from "@t3tools/client-runtime/zerops/birthProgress";
 import type { ZeropsService } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
@@ -326,14 +330,27 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           }),
         },
   );
+  // What its copy's first step waits on: the managed services its birth planned, else its
+  // project's own.
+  const managed = useMemo(
+    () =>
+      birthCopyServices({
+        planned: birth?.managed,
+        services: resolvedServices(inventory.services.get(projectId)),
+      }),
+    [birth?.managed, inventory.services, projectId],
+  );
   // A New project's first Mate: the project's own steps stay before the Mate's, done, as its view
   // drew them before the platform took the Mate's project — one line, one clock, from the press.
-  const lineProgress: BirthLineProgress | undefined =
+  const lineProgress: ArrivalProgress | undefined =
     progress === null
       ? undefined
-      : made === undefined
-        ? progress.progress
-        : newProjectProgress(made, progress.progress, progress.nowMs);
+      : {
+          ...(made === undefined
+            ? progress.progress
+            : newProjectProgress(made, progress.progress, progress.nowMs)),
+          ...(managed === undefined ? {} : { managed }),
+        };
 
   const [removing, setRemoving] = useState(false);
   const [trouble, setTrouble] = useState<string | null>(null);
@@ -629,7 +646,7 @@ export function ComingBelow({
   projects,
 }: {
   readonly coming: MateComing | undefined;
-  readonly progress: BirthLineProgress | undefined;
+  readonly progress: ArrivalProgress | undefined;
   readonly nowMs: number | undefined;
   readonly mate: Pick<ZeropsMateIdentity, "name" | "project">;
   readonly you: ArrivalYou | null;
@@ -681,6 +698,11 @@ export function ComingBelow({
     </div>
   );
 }
+
+/** What the arrival's steps read: the birth's line, with its copy's managed services. */
+export type ArrivalProgress = BirthLineProgress & {
+  readonly managed?: ReadonlyArray<BirthCopyService> | undefined;
+};
 
 /** A project's services once the inventory has read them; nothing while it hasn't, or failed. */
 function resolvedServices(

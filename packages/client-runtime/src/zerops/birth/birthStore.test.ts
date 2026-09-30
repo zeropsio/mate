@@ -309,6 +309,57 @@ describe("a birth's runtimes", () => {
   });
 });
 
+/**
+ * The managed services its copy's first import brings, by hostname in the tier's order: what the
+ * arrival's first step names from the press, before the project lists any.
+ */
+describe("a birth's managed services", () => {
+  it("keeps the managed services a creation began with, through a reload", () => {
+    const storage = memoryStorage();
+    const store = makeBirthStore({ storage, now: () => STARTED_AT });
+    store.begin({ ...mate, managed: ["db", "cache"] });
+    expect(store.birth("project-1")?.managed).toEqual(["db", "cache"]);
+    store.update("project-1", { step: "harden" });
+    expect(makeBirthStore({ storage, now: () => 0 }).birth("project-1")?.managed).toEqual([
+      "db",
+      "cache",
+    ]);
+  });
+
+  it.each([
+    { case: "none", stored: undefined, read: undefined },
+    { case: "a list of hostnames", stored: ["db"], read: ["db"] },
+    { case: "a list this build cannot read, as none", stored: ["db", 7], read: undefined },
+    { case: "anything else, as none", stored: "db", read: undefined },
+  ])("reads $case, keeping the birth", ({ stored, read }) => {
+    const storage = memoryStorage();
+    storage.setItem(
+      BIRTHS_KEY,
+      JSON.stringify({
+        births: [
+          {
+            projectId: "project-1",
+            organizationId: "org-1",
+            startedAt: STARTED_AT,
+            step: "harden",
+            overdue: false,
+            registration: null,
+            container: true,
+            serviceId: null,
+            origin: null,
+            placement: null,
+            ...(stored === undefined ? {} : { managed: stored }),
+          },
+        ],
+      }),
+    );
+    const born = makeBirthStore({ storage, now: () => STARTED_AT }).birth("project-1");
+    // What it names is only drawn: a list it cannot read costs the names, never the birth.
+    expect(born?.step).toBe("harden");
+    expect(born?.managed).toEqual(read);
+  });
+});
+
 describe("a storage that refuses", () => {
   it("keeps the births in this tab's memory", () => {
     const refusing: BirthsStorage = {

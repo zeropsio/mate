@@ -8,7 +8,6 @@ import {
   arrivalSteps,
   comingSentence,
   type ArrivalKind,
-  type ArrivalStepInput,
 } from "./mateArrival";
 
 const WREN = { name: "Wren", project: "Beviro" };
@@ -80,19 +79,18 @@ describe("arrivalSteps", () => {
     ]);
   });
 
-  it("draws the services the copy's import brings under it, and nothing where none are read", () => {
+  it("names the managed services under its copy, what the copy waits on, and nothing where none are read", () => {
     const progress = deriveBirthProgress(CREATING, NOW);
-    const services = [
-      { name: "db", state: "ok" as const },
-      { name: "medusadev", state: "busy" as const },
-      { name: "medusastage", state: "empty" as const },
+    const managed = [
+      { hostname: "db", state: "done" as const },
+      { hostname: "cache", state: "active" as const },
+      { hostname: "storage", state: "waiting" as const },
     ];
-    const withServices = {
-      steps: progress.steps.map((step): ArrivalStepInput =>
-        step.id === "project" ? { ...step, services } : step,
-      ),
-    };
-    expect(arrivalSteps(withServices, WREN, NOW)[0]?.services).toEqual(services);
+    expect(arrivalSteps({ ...progress, managed }, WREN, NOW)[0]?.services).toEqual([
+      { name: "db", state: "ok" },
+      { name: "cache", state: "busy" },
+      { name: "storage", state: "waiting" },
+    ]);
     expect(arrivalSteps(progress, WREN, NOW)[0]).not.toHaveProperty("services");
   });
 
@@ -102,16 +100,16 @@ describe("arrivalSteps", () => {
     { state: "waiting" as const, drawn: "waiting" as const },
     { state: "failed" as const, drawn: "failed" as const },
   ])(
-    "draws a runtime the birth imports after closing off, $state, as $drawn",
+    "draws a runtime the birth imports after closing off, $state, as $drawn under its workspace, never its copy",
     ({ state, drawn }) => {
       const progress = deriveBirthProgress(CREATING, NOW);
       const withRuntimes = {
         ...progress,
         runtimes: { runtimes: [{ hostname: "medusadev", state }] },
       };
-      expect(arrivalSteps(withRuntimes, WREN, NOW)[0]?.services).toEqual([
-        { name: "medusadev", state: drawn },
-      ]);
+      const steps = arrivalSteps(withRuntimes, WREN, NOW);
+      expect(steps[0]).not.toHaveProperty("services");
+      expect(steps[1]?.services).toEqual([{ name: "medusadev", state: drawn }]);
     },
   );
 
