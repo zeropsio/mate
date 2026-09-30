@@ -47,8 +47,7 @@ import { cn } from "~/lib/utils";
 
 import { useThreadShells } from "../../state/entities";
 import { mateFaceFor } from "../../zerops/agentActivity";
-import type { MateComing } from "../../zerops/mateComing";
-import { mateComingHeadlineClauses } from "../../zerops/mateComing";
+import { mateComingHeadlineClauses, type MateViewKind } from "../../zerops/mateComing";
 import { mateHandedOver } from "../../zerops/mateHandOver";
 import { mateQuestion, type ZeropsMateIdentity } from "../../zerops/mateIdentities";
 import {
@@ -234,12 +233,12 @@ export function StandUpAuthorize({
 const STAND_UP_PHASES: ReadonlyArray<MateStandUpPhase> = ["sign-in", "standing-up", "failed"];
 
 /**
- * A Mate still coming up, or one that never came, as its own view draws it
- * (`ZeropsMateComingPage`): the kind of headline, and what stands under its words — how far it
- * has got, or what can be done about it.
+ * A Mate still coming up, one that never came, or one on its way to its conversation, as its own
+ * view draws it (`ZeropsMateComingPage`): the kind of headline, and what stands under its words —
+ * how far it has got, what it waits for, or what can be done about it.
  */
 export interface MateEmptyComing {
-  readonly kind: MateComing["kind"];
+  readonly kind: MateViewKind;
   readonly below: ReactNode;
   /** It is up: the phase it moves into is read, and its words leave with what stood under them. */
   readonly over?: boolean;
