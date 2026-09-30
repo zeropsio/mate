@@ -11,6 +11,9 @@
  * - A run stopped by a limit: which, and *Keep going…* — for its time, only
  *   while something is left to do. A refused turn offers *Try again*.
  *
+ * A viewer who may not run the crew (D6) is offered *Stop* alone: a colleague
+ * stops what they may not start (`crewModePressLock`).
+ *
  * Pure: every word comes from the crew phrases.
  */
 import {
@@ -24,6 +27,7 @@ import {
   crewOnItsOwnWords,
   crewStoppedWords,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
+import type { CrewAccess, CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import type { CrewRun, CrewSummary, CrewTask } from "@t3tools/contracts";
 import { CREW_BRIEF_TEMPLATE } from "@t3tools/shared/crewTemplates";
 
@@ -95,6 +99,28 @@ export function crewModeLine(input: CrewModeInput): CrewModeLine {
           return { words, press: press("keepGoing") };
       }
     }
+  }
+}
+
+/**
+ * What the mode line's press meets for this viewer, by what it sends: *Stop*
+ * is every member's — a runaway crew on somebody's account never waits for
+ * them — while *Keep going…* and *Try again* resume the run and *Let it work
+ * on its own…* starts one, each reaching the whole crew.
+ */
+export function crewModePressLock(
+  kind: CrewModePressKind,
+  run: Pick<CrewRun, "id"> | null,
+  access: Pick<CrewAccess, "command" | "crew">,
+): CrewLock | null {
+  switch (kind) {
+    case "stop":
+      return run === null ? access.crew : access.command({ _tag: "stop", runId: run.id });
+    case "keepGoing":
+    case "tryAgain":
+      return run === null ? access.crew : access.command({ _tag: "resume", runId: run.id });
+    case "letItWork":
+      return access.crew;
   }
 }
 

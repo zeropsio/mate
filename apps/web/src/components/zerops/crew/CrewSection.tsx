@@ -9,8 +9,9 @@
  * owns the commands, the views and the dialogs.
  *
  * A viewer who may not run the crew's logins (`crewAccess`, D6) reads the
- * column and is offered nothing that runs or changes it: in the composer's
- * place, why and the one way out, in the composer's own height.
+ * column and is offered nothing that runs or changes it but *Stop*, which is
+ * every member's: in the composer's place, why and the one way out, in the
+ * composer's own height.
  */
 import type { CrewAccess, CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import {
@@ -38,7 +39,7 @@ import type { ReactNode } from "react";
 
 import { MateFace } from "../primitives";
 import { CrewHead, type CrewHeadMenuItem } from "./CrewHead";
-import { crewModeLine, type CrewModePressKind } from "./CrewHead.logic";
+import { crewModeLine, crewModePressLock, type CrewModePressKind } from "./CrewHead.logic";
 import { CrewInFensCode } from "./CrewInFensCode";
 import type { CrewmateMenuItemId } from "./CrewmateMenu.logic";
 import { CrewPress } from "./CrewParts";
@@ -141,15 +142,20 @@ export function CrewSection(props: CrewSectionProps) {
   const engineError =
     snapshot.lastError === null ? null : crewNamingTheMate(snapshot.lastError, props.mateName);
   const lead = view.lead;
-  // The goal, a crewmate added and a run each reach the whole crew.
+  // The goal, a crewmate added and a run's start each reach the whole crew.
   const changes = access.crew === null;
+  // The mode line's press by what it sends: Stop is every member's (D6), the rest the crew's.
+  const press =
+    mode.press !== null && crewModePressLock(mode.press.kind, run, access) === null
+      ? mode.press
+      : null;
   return (
     <section className="flex flex-col pb-6" data-crew-section="applied">
       <CrewHead
         crew={snapshot.crew ?? { briefTitle: "", briefExcerpt: "" }}
         error={props.errorAt(CREW_ORIGIN.run) ?? engineError}
         letItWork={run === null || run.state === "finished" || run.state === "stopped"}
-        mode={changes ? mode : { ...mode, press: null }}
+        mode={{ ...mode, press }}
         onGoal={changes ? () => props.onHeadMenu("goal") : null}
         onMenu={changes ? props.onHeadMenu : null}
         onModePress={props.onModePress}
