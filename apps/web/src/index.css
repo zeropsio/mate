@@ -3045,21 +3045,24 @@ code {
     color: color-mix(in oklab, var(--contrast-sidebar-foreground) 78%, transparent);
   }
 
-  /* Whose Mate it is, before its name: 16 px round, the person's picture or
-     their initial on their own hue (`ownerMark`), lighter at the top left. A
-     hairline keeps a pale picture off the ground. With no owner to name, the
-     mark keeps its place as a plain disc. */
+  /* Whose Mate it is, on the face's corner: a colleague's picture or their
+     initial on their own hue (`ownerMark`), lighter at the top left, 12 px
+     round and centred 3 px in from the 28 px face's bottom-right corner — cut
+     out of the face (`.menu-face-cut`) rather than laid on it, so it holds on
+     the hover band and the open Mate's band alike. A hairline keeps a pale
+     picture off the ground. */
   .menu-owner {
-    position: relative;
+    position: absolute;
+    top: 19px;
+    left: 19px;
     display: inline-flex;
-    flex: none;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
+    width: 12px;
+    height: 12px;
     overflow: hidden;
     border-radius: 9999px;
-    font-size: 9px;
+    font-size: 7px;
     font-weight: 600;
     line-height: 1;
     color: var(--color-white);
@@ -3072,8 +3075,15 @@ code {
     user-select: none;
   }
 
-  .menu-owner[data-zerops-avatar="none"] {
-    background: color-mix(in oklab, var(--contrast-sidebar-foreground) 10%, transparent);
+  /* The face wears the badge's seat cut out of it: a 2 px gap all round the
+     12 px badge, whatever the face's shape reaches into that corner. */
+  .menu-face-cut {
+    -webkit-mask-image: radial-gradient(
+      circle 8px at 25px 25px,
+      transparent 7.5px,
+      currentColor 8px
+    );
+    mask-image: radial-gradient(circle 8px at 25px 25px, transparent 7.5px, currentColor 8px);
   }
 
   /* Nobody's: an empty seat — a dashed ring in the muted ink, no fill and no

@@ -9,6 +9,7 @@ import {
   mateCrewItem,
   mateDeletingView,
   mateOwnerView,
+  ownerBadge,
   mateRowActivity,
   mateRowReading,
   mateRowView,
@@ -670,5 +671,22 @@ describe("mateRowActivity — the conversation's reading while its socket stands
 
   it("draws memory where the socket stands but its conversation is not read yet", () => {
     expect(mateRowActivity({ live: undefined, phase: "connected", remembered })).toBe(remembered);
+  });
+});
+
+describe("ownerBadge — what the corner of a Mate's face wears", () => {
+  const person = {
+    kind: "person",
+    mark: { label: "Jan's Mate", initial: "J", hue: 210, picture: null },
+  } as const;
+  const nobody = { kind: "nobody", label: "No owner yet." } as const;
+  const unnamed = { kind: "unnamed" } as const;
+  it.each([
+    ["a colleague's Mate: their picture", person, false, person],
+    ["the viewer's own Mate: nothing", person, true, null],
+    ["a Mate nobody signed in: the empty seat", nobody, false, nobody],
+    ["an owner not named yet: nothing, it may be the viewer's", unnamed, false, null],
+  ] as const)("%s", (_name, seat, isViewer, wears) => {
+    expect(ownerBadge(seat, isViewer)).toEqual(wears);
   });
 });

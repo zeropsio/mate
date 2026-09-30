@@ -178,7 +178,8 @@ import {
   mateRowReading,
   type MateRowReply,
   type MateRowSlot,
-  type OwnerSeat,
+  ownerBadge,
+  type BadgeSeat,
 } from "./SidebarMateRow.logic";
 import { MATE_DELETING_WORD } from "./ZeropsDeleteMateDialog.logic";
 import { mateDeleting, useDeletingMates } from "~/zerops/deletingMates";
@@ -2224,6 +2225,8 @@ function MateRow<T extends RosterCandidate>({
     records: mateOwnerRecords(candidate.project),
     asked: view.ask !== undefined,
   });
+  // What its face's corner wears (`ownerBadge`).
+  const badge = ownerBadge(seated.seat, owner?.isViewer === true);
   const known = activity !== undefined && activity.remembered !== true;
   // Its menu's door to its crew (`mateCrewItem`): whether crew mode is on and
   // a crew applied — a fixture's, or its feed's once it is connected.
@@ -2363,16 +2366,18 @@ function MateRow<T extends RosterCandidate>({
         type="button"
       >
         <span className="relative flex size-7">
-          {/* The Mate wears the card's face rather than a row's, whole: the
-              person it belongs to stands before its name instead of on its
-              corner, and nothing rings it — the step it is on is its row's
-              third line. */}
-          <span className="relative flex">
+          {/* The Mate wears the card's face, and a colleague's Mate its
+              owner's picture on the face's corner, cut out of it (the owner,
+              2026-09-30: a face before the name read as the name's). Your own
+              carry nothing; nobody's shows the empty seat there. Nothing
+              rings it — the step it is on is its row's third line. */}
+          <span className={cn("relative flex", badge !== null && "menu-face-cut")}>
             {/* Until its socket answers the face stands in idle or asleep, the
                 row's words as this browser remembered them: a Mate found
                 waiting then is not arriving at it. */}
             <MateFace greets known={known} shape={shape} size="md" state={view.face} tint={tint} />
           </span>
+          {badge === null ? null : <MateOwnerMark seat={badge} />}
         </span>
         {/* One even leading, three lines of one thing: the name 14/20, what
             was asked 13/18, the answer 13/18, and no gap between them — the
@@ -2383,7 +2388,6 @@ function MateRow<T extends RosterCandidate>({
             <span
               className={cn("flex min-w-0 flex-1 items-center gap-1.5", renaming && "invisible")}
             >
-              <MateOwnerMark seat={seated.seat} />
               <span
                 className={cn(
                   "min-w-0 truncate text-sm leading-5",
@@ -2522,32 +2526,20 @@ function MateRow<T extends RosterCandidate>({
 }
 
 /**
- * Whose Mate it is, before its name (`OwnerSeat`): the person's picture, 16 px
- * round, or their initial on a colour of their own (`ownerMark`) — on every
- * row, so a face you recognise answers "whose" before the name is read, and
- * every name starts on one edge. Off the face, which it used to cover a
- * quarter of with 7 px initials. A Mate whose records name somebody the
- * member list has not named keeps the mark's place as a plain disc, so its
- * name starts where every other does and nothing moves when the owner is
- * read. A Mate whose records name nobody sits on an empty seat: a dashed ring
- * in the muted ink, the "no assignee" convention — never a person without a
- * picture, never a spinner — said in words on hover.
+ * Whose Mate it is, on the corner of its face (`OwnerSeat`): a colleague's
+ * picture, 12 px round and cut out of the face rather than laid over it, or
+ * their initial on a colour of their own (`ownerMark`) — never before the
+ * name, where "(face) Cleo" read as a person called Cleo (the owner,
+ * 2026-09-30). A Mate whose records name nobody sits on an empty seat there:
+ * a dashed ring in the muted ink, the "no assignee" convention — never a
+ * person without a picture, never a spinner — said in words on hover. The
+ * badge stands in the face's box, so nothing moves when it arrives.
  *
- * The initial is part of a mark, not text: 9 px inside a 16 px disc, the one
- * size under the menu's scale (S1), as a picture would be.
+ * The initial is part of a mark, not text: 7 px inside the 12 px disc, as a
+ * picture would be.
  */
-function MateOwnerMark({ seat }: { readonly seat: OwnerSeat }) {
+function MateOwnerMark({ seat }: { readonly seat: BadgeSeat }) {
   const [failed, setFailed] = useState(false);
-  if (seat.kind === "unnamed") {
-    return (
-      <span
-        aria-hidden="true"
-        className="menu-owner"
-        data-zerops-avatar="none"
-        data-zerops-surface="sidebar-mate-owner"
-      />
-    );
-  }
   if (seat.kind === "nobody") {
     return (
       <Tooltip>
@@ -2932,16 +2924,18 @@ function ComingMateRow({
       type="button"
     >
       <span className="relative flex size-7">
-        <MateFace
-          shape={coming.face?.shape ?? mateShapeOf([], tint)}
-          size="md"
-          state="sleep"
-          tint={tint}
-        />
+        <span className="menu-face-cut relative flex">
+          <MateFace
+            shape={coming.face?.shape ?? mateShapeOf([], tint)}
+            size="md"
+            state="sleep"
+            tint={tint}
+          />
+        </span>
+        {COMING_SEAT === null ? null : <MateOwnerMark seat={COMING_SEAT} />}
       </span>
       <span className="flex min-w-0 flex-col">
         <span className="flex h-5 min-w-0 items-center gap-1.5">
-          <MateOwnerMark seat={COMING_SEAT} />
           <span className="min-w-0 truncate text-sm leading-5 font-medium">{name}</span>
         </span>
         <MateComingLine
@@ -2953,11 +2947,14 @@ function ComingMateRow({
 }
 
 /** Nobody has signed a Mate's agent in while it is being made: the empty seat, in words. */
-const COMING_SEAT: OwnerSeat = mateOwnerView({
-  owner: undefined,
-  records: { named: false, signedIn: false },
-  asked: true,
-}).seat;
+const COMING_SEAT: BadgeSeat | null = ownerBadge(
+  mateOwnerView({
+    owner: undefined,
+    records: { named: false, signedIn: false },
+    asked: true,
+  }).seat,
+  false,
+);
 
 /**
  * A Mate's open pull requests: the rows themselves while there are a few, a
