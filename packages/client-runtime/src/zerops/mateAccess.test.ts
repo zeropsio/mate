@@ -342,6 +342,23 @@ describe("the signer tag (D6)", () => {
     ]);
   });
 
+  // A sign-in settles a login recorded for two people: its one record replaces every older one,
+  // and never touches a login whose key merely starts the same.
+  it.each([
+    {
+      case: "two people's records on the login become the signer's one",
+      tags: [mateSignerTag("claude-code", "eva"), mateSignerTag("claude-code", "ida")],
+      expected: [mateSignerTag("claude-code", "jan")],
+    },
+    {
+      case: "a login beyond the defaults keeps its own record",
+      tags: [mateSignerTag("claudeAgent-work", "eva"), mateSignerTag("claude-code", "eva")],
+      expected: [mateSignerTag("claudeAgent-work", "eva"), mateSignerTag("claude-code", "jan")],
+    },
+  ])("$case", ({ tags, expected }) => {
+    expect(withMateSignerTag(tags, "claude-code", "jan")).toEqual(expected);
+  });
+
   it("records a signer on a project that had no tags at all", () => {
     expect(withMateSignerTag(undefined, "codex", "jan")).toEqual([mateSignerTag("codex", "jan")]);
   });
