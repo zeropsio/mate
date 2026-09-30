@@ -29,7 +29,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
@@ -149,7 +148,7 @@ import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic
 import { TurnReport } from "./TurnReport";
 import { ConversationAfterWork, ConversationWorking } from "./ConversationWorking";
 import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat, RunLine } from "./RunChat";
-import { forgetRunFolds, runFoldOf, subscribeRunFolds } from "./runCard.logic";
+import { forgetRunFolds } from "./runCard.logic";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -1571,22 +1570,11 @@ export function messageEnters(row: TimelineRow, arrivedAfter: number | null): bo
   return Date.parse(row.createdAt) > arrivedAfter;
 }
 
-/**
- * Whether a card that holds its line alone is closed (`cardAlone`): then its
- * line stands by itself, the card's box drawn only once the work is open.
- */
-function useCardClosedAlone(run: string | undefined): boolean {
-  const { routeThreadKey } = use(TimelineRowCtx);
-  const read = () => run !== undefined && runFoldOf(routeThreadKey, run) === "folded";
-  return useSyncExternalStore(subscribeRunFolds, read, read);
-}
-
 const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: TimelineRow }) {
   const gap = GAP_CLASS[row.gap ?? "none"];
   const card = row.card;
   const content = <TimelineRowBody row={row} />;
   const { arrivedAfter } = use(TimelineRowCtx);
-  const closedAlone = useCardClosedAlone(row.cardAlone);
   const [entering] = useState(() => messageEnters(row, arrivedAfter));
   useEffect(() => {
     if (!entering) return;
@@ -1619,15 +1607,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {card === undefined ? (
         content
       ) : (
-        <div
-          className={cn(
-            CARD_SLICE[card],
-            card === "middle" ? gap : null,
-            closedAlone ? "run-tray-alone" : null,
-          )}
-        >
-          {content}
-        </div>
+        <div className={cn(CARD_SLICE[card], card === "middle" ? gap : null)}>{content}</div>
       )}
     </div>
   );

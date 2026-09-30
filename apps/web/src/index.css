@@ -3824,16 +3824,6 @@ code {
   border-bottom-right-radius: 34px;
 }
 
-/* A line with nothing under it is no card (the owner, 2026-09-29: "shape of
-   this with no items below is pretty weird"): closed, a run's line stands by
-   itself in the card's geometry, and opening its work draws the card around
-   it — the line never moves. */
-.run-tray-alone,
-[data-card-slice]:has(> .run-tray-alone)::after {
-  background: transparent;
-  border-color: transparent;
-}
-
 /* The Mate's words in its card wear its tint lightly (K13): with the
    person's bubble neutral, who is speaking shows at a glance, in the one
    colour that means "who" (S3). A crewmate speaks in its own. */

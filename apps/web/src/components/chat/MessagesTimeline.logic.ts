@@ -771,13 +771,6 @@ export type RecordItem =
 export type MessagesTimelineRow = MessagesTimelineRowBody & {
   readonly gap?: RowGap;
   readonly card?: CardSlice;
-  /**
-   * A settled run's card that holds its line alone, by the run whose fold
-   * draws it (`runFoldOf`): closed, the line stands by itself — a line with
-   * nothing under it is no card — and open, the card is drawn around it. On
-   * both of its slices.
-   */
-  readonly cardAlone?: string;
 };
 
 function isPersonRow(row: MessagesTimelineRow): boolean {
@@ -2156,20 +2149,13 @@ export function deriveMessagesTimelineRows(input: {
     });
   });
   const cards = new Map<number, CardSlice>();
-  const alone = new Map<number, string>();
   for (const [start, end] of cardRanges) {
     for (let index = start; index < end; index += 1) {
       cards.set(index, index === start ? "top" : index === end - 1 ? "bottom" : "middle");
     }
-    const line = rows[start];
-    if (end - start === 2 && line?.kind === "record" && !line.live) {
-      alone.set(start, line.turnKey);
-      alone.set(end - 1, line.turnKey);
-    }
   }
   return rows.map((row, index) => {
     const card = cards.get(index);
-    const cardAlone = alone.get(index);
     // A card's edge is not a row of the conversation: the row after it keeps
     // the room it kept after the card's last row.
     const previous = rows[index - 1]?.kind === "card-end" ? rows[index - 2] : rows[index - 1];
@@ -2177,7 +2163,6 @@ export function deriveMessagesTimelineRows(input: {
       ...row,
       gap: row.kind === "card-end" ? "none" : rowGap(previous, row),
       ...(card === undefined ? {} : { card }),
-      ...(cardAlone === undefined ? {} : { cardAlone }),
     };
   });
 }
@@ -2244,8 +2229,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
     a.id !== b.id ||
     a.createdAt !== b.createdAt ||
     a.gap !== b.gap ||
-    a.card !== b.card ||
-    a.cardAlone !== b.cardAlone
+    a.card !== b.card
   ) {
     return false;
   }

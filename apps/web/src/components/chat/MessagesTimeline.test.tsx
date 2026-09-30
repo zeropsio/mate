@@ -1318,6 +1318,33 @@ describe("MessagesTimeline — the conversation", () => {
     expect(markup).not.toContain('aria-haspopup="dialog"');
   });
 
+  // A run whose card holds its line alone keeps its card, closed as open (the
+  // owner, 2026-09-30, of a bare worked line: "why the collapsed state has no
+  // bg at all?").
+  it.each([
+    { fold: "folded", case: "closed" },
+    { fold: "shown", case: "opened" },
+  ] as const)("keeps the card of a run whose line is all it holds, $case", ({ fold }) => {
+    setRunFold("environment-local:thread-1", "msg:message-1", fold);
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        latestTurn={settled}
+        timelineEntries={[
+          buildUserTimelineEntry("Build it"),
+          tool("w1", 5),
+          assistant("a1", 60, "The shop builds."),
+        ]}
+      />,
+    );
+    forgetRunFolds("environment-local:thread-1");
+    const slice = (id: string) =>
+      new RegExp(`data-timeline-row-id="${id}"[^>]*><div class="([^"]*)"`, "u").exec(markup)?.[1];
+    expect(markup).toContain(`data-run-fold="${fold}"`);
+    expect(slice("record:msg:message-1")).toBe("run-tray run-tray-top");
+    expect(slice("card-end:msg:message-1")).toBe("run-tray run-tray-bottom");
+  });
+
   // A step is a bubble of the run's chat; what it printed opens in place,
   // under it — never a dialog (the owner, 2026-09-27: "I hate the dialog").
   it("opens what a step printed in place, under its bubble", () => {
