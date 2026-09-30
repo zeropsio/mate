@@ -217,6 +217,7 @@ import {
 } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { newMateView, useAddMate } from "../zerops/newMate";
+import { useAskNewProject } from "../zerops/newProjectAsk";
 import { newProjectView, useNewProjectBirths } from "../zerops/newProjectBirth";
 import { useMateComingOf, useMateRowActivity } from "../zerops/useMenuMateReadings";
 import { useAskMateToFix } from "../zerops/fixRequest";
@@ -2263,12 +2264,15 @@ export default function Sidebar() {
     [isMobile, router, setOpenMobile],
   );
 
-  const navigateToNewZeropsProject = useCallback(() => {
+  // Every *New project* in the menu — its header's button, its pinned row, its empty state — asks
+  // for the New project dialog over whatever is on screen (`ZeropsNewProjectHost`).
+  const askNewProject = useAskNewProject();
+  const openNewZeropsProject = useCallback(() => {
     if (isMobile) {
       setOpenMobile(false);
     }
-    void router.navigate({ to: "/zerops/new" });
-  }, [isMobile, router, setOpenMobile]);
+    askNewProject();
+  }, [askNewProject, isMobile, setOpenMobile]);
 
   // The left menu's add button asks for a Mate on a named project: the New Mate
   // dialog opens over whatever is on screen (`ZeropsNewMateHost`).
@@ -4123,7 +4127,7 @@ export default function Sidebar() {
                         <SidebarMenuButton
                           size="icon"
                           className="relative shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
-                          onClick={navigateToNewZeropsProject}
+                          onClick={openNewZeropsProject}
                           type="button"
                           aria-label="New project"
                         />
@@ -4679,7 +4683,7 @@ export default function Sidebar() {
                   <span>No projects yet</span>
                   <button
                     type="button"
-                    onClick={navigateToNewZeropsProject}
+                    onClick={openNewZeropsProject}
                     className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
                   >
                     <PlusIcon className="-mx-0.5 size-3" />
@@ -4706,7 +4710,7 @@ export default function Sidebar() {
         births: zeropsPlacedBirths,
         complete: zeropsHeld.complete,
       }) ? (
-        <SidebarNewProject onNewProject={navigateToNewZeropsProject} />
+        <SidebarNewProject onNewProject={openNewZeropsProject} />
       ) : null}
       <SidebarChromeFooter />
     </>

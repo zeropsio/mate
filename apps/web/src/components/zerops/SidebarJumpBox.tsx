@@ -42,6 +42,7 @@ import { useThreadSearch } from "~/state/queries";
 import { threadEnvironment, useEnvironmentThread } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { formatShortTimestamp } from "~/timestampFormat";
+import { askNewProject } from "~/zerops/newProjectAsk";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useMateReadOnly, useMatesReadOnly } from "~/zerops/useMateReadOnly";
 import { useOpenMate } from "~/zerops/useOpenMate";
@@ -197,9 +198,8 @@ function useJumpPages(): JumpPages {
           },
         });
       },
-      newProject: () => {
-        void router.navigate({ to: "/zerops/new" });
-      },
+      // Its dialog, over whatever is on screen (`ZeropsNewProjectHost`).
+      newProject: askNewProject,
     }),
     [openMateOf, router],
   );

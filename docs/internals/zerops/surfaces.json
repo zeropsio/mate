@@ -1091,9 +1091,12 @@
     },
     {
       "id": "zerops-new-project",
-      "title": "Zerops new project wizard",
+      "title": "Zerops new project dialog",
       "components": [
-        "apps/web/src/components/zerops/ZeropsNewProjectWizard.tsx",
+        "apps/web/src/components/zerops/ZeropsNewProjectHost.tsx",
+        "apps/web/src/components/zerops/ZeropsNewProjectForm.tsx",
+        "apps/web/src/components/zerops/ZeropsNewProjectForm.logic.ts",
+        "apps/web/src/zerops/newProjectAsk.ts",
         "apps/web/src/components/zerops/ZeropsNewProjectComingPage.tsx",
         "apps/web/src/zerops/newProjectBirth.ts",
         "packages/client-runtime/src/zerops/newProject.ts"
@@ -1114,6 +1117,14 @@
         {
           "kind": "inline",
           "value": "Zerops projects page after a registration that claimed no project"
+        },
+        {
+          "kind": "inline",
+          "value": "Left menu header New project button and its empty state"
+        },
+        {
+          "kind": "overlay",
+          "value": "Command palette Create Zerops project, and the jump box's New project"
         }
       ],
       "clients": {
@@ -1173,10 +1184,12 @@
         }
       ],
       "docs": {
-        "none": "No docs/user page documents the Zerops project wizard yet."
+        "none": "No docs/user page documents the Zerops new project dialog yet."
       },
       "tests": [
-        "apps/web/src/components/zerops/ZeropsNewProjectWizard.test.tsx",
+        "apps/web/src/components/zerops/ZeropsNewProjectForm.test.tsx",
+        "apps/web/src/components/zerops/ZeropsNewProjectForm.logic.test.ts",
+        "apps/web/src/zerops/newProjectAsk.test.ts",
         "apps/web/src/components/zerops/ZeropsNewProjectComingPage.test.tsx",
         "apps/web/src/zerops/newProjectBirth.test.ts",
         "packages/client-runtime/src/zerops/newProject.test.ts",

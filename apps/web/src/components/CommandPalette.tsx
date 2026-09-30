@@ -141,6 +141,7 @@ import {
 import { ThreadRowLeadingStatus, ThreadRowTrailingStatus } from "./ThreadStatusIndicators";
 import { SidebarJumpBox } from "./zerops/SidebarJumpBox";
 import { useSidebarJump } from "../zerops/sidebarJump";
+import { askNewProject } from "../zerops/newProjectAsk";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import { slashKeyOpensJumpBox } from "../zerops/jumpSlash";
 import { primaryServerKeybindingsAtom, primaryServerProvidersAtom } from "../state/server";
@@ -419,12 +420,13 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     [],
   );
   const navigate = useNavigate();
+  // New project opens its dialog over whatever is on screen (`ZeropsNewProjectHost`).
   const openAddProject = useCallback(
     (_environmentId?: EnvironmentId) => {
       setOpen(false);
-      void navigate({ to: "/zerops/new" });
+      askNewProject();
     },
-    [navigate, setOpen],
+    [setOpen],
   );
   const openNewThreadIn = useCallback(() => dispatch({ _tag: "OpenNewThreadIn" }), []);
   const clearOpenIntent = useCallback(() => dispatch({ _tag: "ClearOpenIntent" }), []);
@@ -1670,7 +1672,7 @@ function OpenCommandPaletteDialog(props: {
     icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
     run: async () => {
       setOpen(false);
-      await navigate({ to: "/zerops/new" });
+      askNewProject();
     },
   });
 
