@@ -4,6 +4,22 @@ Zerops Mate is a hard fork of T3 Code: a control surface for coding agents. Its 
 Zerops `zcp` container under `/mate/`, spawning Claude Code / Codex with ZCP's MCP tools attached;
 its client — web, desktop, mobile — is the product surface a Zerops user signs into.
 
+## Size the work first
+
+Name the tier before the first tool call. A tier's loop is the whole loop; a higher tier's rituals
+are waste on a lower one (measured 2026-09-30: two chips and three spacing nudges, run as a pass,
+took 53 min, 218 calls, 83 M tokens and 9 commits — +44 lines of CSS, +1,136 lines of tests).
+
+- **Tweak** — the look of what exists: CSS, spacing, colour, copy, an icon, one component's layout.
+  Grep the lines, edit, take one look cropped to the surface at the owner's view (1786 × 1000, the
+  menu at 435 px) in the theme the report names, `vp check` the files, one commit. No new test,
+  harness, sampler, theme × shell matrix, ledger entry, subagent or release unless asked. A test
+  that pinned the old class, pixel or colour is deleted, not updated.
+- **Change** — behaviour: state, data, protocol, a new control. RED → GREEN on the logic
+  (`*.logic.ts`, server, runtime), targeted `vp test run`, package typecheck, one live look for UI.
+- **Pass** — the owner calls it a pass, or it redesigns several surfaces or lands a slice: the loop
+  in `docs/internals/zerops/fork.md` §5.
+
 ## Where knowledge lives
 
 This file is a MAP, not a knowledge store — it never caches a product fact that already lives in
@@ -17,7 +33,8 @@ the spec or the ledger. To answer a question, go to the home:
 | Provider runtime SPI contract — version, delivery guarantee, enrichment, typed capabilities, fixtures, porting checklist | `docs/internals/zerops/spi.md`                                                     |
 | Per-port compatibility matrix                                                                                            | `docs/internals/zerops/compat.md`                                                  |
 | Measured facts (dated, one writer)                                                                                       | the ledger: `docs/internals/zerops/{verified,questions,hacks,map,poc-findings}.md` |
-| Client design system — vocabulary, glossary, icon map, rules R1–R8 with their tests, exception ledgers                   | `docs/internals/zerops/design-system.md`                                           |
+| Client design system — vocabulary, glossary, icon map, rules R1–R11 with their tests, exception ledgers                  | `docs/internals/zerops/design-system.md`                                           |
+| Design decisions taken inside the programme, dated                                                                       | `docs/internals/zerops/design-decisions.md`                                        |
 | Crew mode — levels, code map, switch, crew home, RPCs, seams                                                             | `docs/internals/zerops/crew.md`                                                    |
 | Behavior invariant                                                                                                       | a test                                                                             |
 | Transient roadmap / journal                                                                                              | `../zcp/plans/` (never cite as a source)                                           |
@@ -41,15 +58,37 @@ Full map, `imported.lock` enforcement, and the adapter SPI contract: `docs/inter
 - Before a push: `vp check` on the touched files; a deletion must also pass
   `node scripts/check-guard-exceptions.ts` and `vp test run scripts/surface-manifest.test.ts` — CI's
   Check job reconciles the guard ledgers and `docs/internals/zerops/surfaces.json` against the tree.
+  Before a big branch's push, `node scripts/ci-local.ts` runs CI's whole Check job, read from
+  `.github/workflows/ci.yml`, and prints only what failed.
 - The CI Check job runs `vp check` repo-wide, ledger markdown included: a table row committed past
   the pre-commit hook (`--no-verify`, an editor) leaves unaligned columns and a red job — `vp fmt`
   the file first.
+- A release is `node scripts/release-mate.ts` (`--minor` when the client's floor rises, `--dry-run`
+  prints the plan): it bumps the three versions in a throwaway worktree of `origin/main`, pushes,
+  tags, and waits until `stable.json` serves the new version.
 - Delivery to a running container is the push loop, not a release:
   `../zcp/eval/scripts/mate-dev-push.sh`. A container restart wipes a dev build; push again after.
 
+## Context is the cost
+
+Every tool call re-sends the whole conversation, so a task keeps its context small.
+
+- A subagent or a worktree is for a pass's independent part or a long read-only search, never for a
+  tweak or a one-surface change.
+- Hot files run 2–9k lines (`ChatView.tsx`, `index.css`, `SidebarZeropsTree.tsx`,
+  `MessagesTimeline*`, `RunChat.tsx`): grep the symbol, read the range.
+- The ledger, `primer.md`, `design-system.md` and `design-decisions.md` are grepped, never read
+  whole.
+- Command output shows failures only (`… 2>&1 | tail -40`); a screenshot is cropped to the surface,
+  one per question.
+- A paragraph-sized doc entry is a list item, never a table row: the formatter pads every row to its
+  table's widest cell (`verified.md` was 48 % spaces), and one wider cell rewrites every row.
+
 ## Disciplines
 
-- TDD: RED → GREEN, table-driven tests.
+- Tests pin behaviour — state, data, protocol, guards, what a render shows and what a click does —
+  never a class string, a pixel or a colour: the owner judges the look by eye.
+- TDD for behaviour: RED → GREEN, table-driven tests.
 - Atomic commits, English, never a `Co-Authored-By` trailer.
 - Delete, don't disable — no commented-out code or compat shims.
 - Ported-zone edits stay minimal; a diverged port is an expensive port next time.

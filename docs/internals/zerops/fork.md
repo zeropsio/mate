@@ -161,7 +161,8 @@ a vendor, and `t3.json` is the project file's name.
   (`verified.md`, `questions.md`, `hacks.md`, `map.md`, dated, with the command; answered
   questions leave `questions.md`); behaviour → tests; the map → this fork's `CLAUDE.md`/
   `AGENTS.md` (never caches product knowledge). Plans are transient.
-- **Loop per change**: FRAME → PROVE (live on `z3-eval`) → SHAPE (plan + a `judge` pass; Codex only when the owner asks) →
+- **Loop per pass or slice** (a tweak or a one-surface change runs its own tier in `CLAUDE.md`,
+  "Size the work first"): FRAME → PROVE (live on `z3-eval`) → SHAPE (plan + a `judge` pass; Codex only when the owner asks) →
   BUILD (one worktree per slice, RED → GREEN, Sonnet slices with self-contained briefs, atomic
   commits, no trailers) → ASSEMBLE (targeted tests + typecheck + live smoke through the push loop
   - owner retest pack) → LAND (spec + ledger updated, plan deleted).
