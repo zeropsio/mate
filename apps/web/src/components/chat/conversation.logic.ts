@@ -1176,11 +1176,21 @@ export function operationLineWords(operation: ZeropsOperation): string {
     case "discover":
       return `Looked at ${subject}`;
     case "standup": {
-      if (!failed) return `Stood ${subject} up`;
-      const broke = operation.steps.find((step) => step.state === "failed");
+      // A stage the call queued is the next call's: named as coming, never
+      // counted as one it failed.
+      const built = operation.steps.filter((step) => step.state !== "queued");
+      if (!failed) {
+        const next = operation.steps
+          .filter((step) => step.state === "queued")
+          .map((step) => step.label);
+        return next.length === 0
+          ? `Stood ${subject} up`
+          : `Stood ${subject} up · ${namesInWords(next)} next`;
+      }
+      const broke = built.find((step) => step.state === "failed");
       if (broke === undefined) return `Standing ${subject} up failed`;
-      const up = operation.steps.filter((step) => step.state === "done").length;
-      return `Stood up ${up} of ${operation.steps.length} · ${broke.label} failed`;
+      const up = built.filter((step) => step.state === "done").length;
+      return `Stood up ${up} of ${built.length} · ${broke.label} failed`;
     }
     case "devServer":
       // What it came to, as its pill says it: "Running app" read as work
@@ -1192,6 +1202,12 @@ export function operationLineWords(operation: ZeropsOperation): string {
     default:
       return failed ? `${subject}: ${statusWord.toLowerCase()}` : `${statusWord} ${subject}`;
   }
+}
+
+/** "a", "a and b", "a, b and c". */
+function namesInWords(names: ReadonlyArray<string>): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 
 /** A setback the turn did not come back from, on the operation's own target. */
@@ -1280,25 +1296,28 @@ export function splitBatchDeploy(operation: ZeropsOperation): ZeropsOperation[] 
 export function splitStandup(operation: ZeropsOperation): ZeropsOperation[] {
   if (operation.kind !== "standup" || operation.phase === "running") return [operation];
   const { explanation: _explanation, closing: _closing, ...shared } = operation;
-  return operation.steps.map((step) => {
-    const phase: ZeropsOperation["phase"] = step.state === "failed" ? "failed" : "done";
-    const link = operation.links.find((candidate) => candidate.label === step.label);
-    return {
-      ...shared,
-      key: `${operation.key}:${step.label}`,
-      kind: "deploy",
-      subject: step.label,
-      kicker: `Deploy · ${step.label}`,
-      target: { hostname: step.label },
-      phase,
-      statusWord: phase === "done" ? "Deployed" : "Failed",
-      steps: [step],
-      links: link === undefined ? [] : [{ label: "Open", url: link.url }],
-      ...(phase === "failed" && step.note !== undefined
-        ? { explanation: { reason: step.note } }
-        : {}),
-    };
-  });
+  // A stage the call queued runs nothing yet: the next call builds it.
+  return operation.steps
+    .filter((step) => step.state !== "queued")
+    .map((step) => {
+      const phase: ZeropsOperation["phase"] = step.state === "failed" ? "failed" : "done";
+      const link = operation.links.find((candidate) => candidate.label === step.label);
+      return {
+        ...shared,
+        key: `${operation.key}:${step.label}`,
+        kind: "deploy",
+        subject: step.label,
+        kicker: `Deploy · ${step.label}`,
+        target: { hostname: step.label },
+        phase,
+        statusWord: phase === "done" ? "Deployed" : "Failed",
+        steps: [step],
+        links: link === undefined ? [] : [{ label: "Open", url: link.url }],
+        ...(phase === "failed" && step.note !== undefined
+          ? { explanation: { reason: step.note } }
+          : {}),
+      };
+    });
 }
 
 export function stretchOperations(stretch: Stretch): ZeropsOperation[] {

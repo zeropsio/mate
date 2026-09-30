@@ -3973,13 +3973,6 @@ code {
   font-style: italic;
   color: var(--color-muted-foreground);
 }
-.run-now-long:not(:empty) {
-  margin-left: 8px;
-  font-size: 13px;
-  line-height: 1;
-  color: var(--color-muted-foreground);
-  font-variant-numeric: tabular-nums;
-}
 .run-now-dots {
   display: inline-flex;
   margin-left: 6px;

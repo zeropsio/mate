@@ -1,0 +1,58 @@
+import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import { describe, expect, it } from "vite-plus/test";
+
+import { settledStandupReading, standupExpected } from "./useStandupReading";
+
+const standup = (overrides: Partial<ZeropsOperation>): ZeropsOperation => ({
+  key: "op:s",
+  kind: "standup",
+  phase: "done",
+  anchorAt: "2026-09-02T10:00:00.000Z",
+  anchorActivityId: "s",
+  turnId: "t1",
+  subject: "development",
+  kicker: "Stand-up · development",
+  voice: "Standing development up.",
+  voiceSource: "mate",
+  statusWord: "Stood up",
+  steps: [],
+  links: [],
+  callIds: ["s"],
+  hasResult: true,
+  ...overrides,
+});
+
+const step = (label: string, state: ZeropsOperation["steps"][number]["state"]) => ({
+  id: label,
+  label,
+  state,
+  stateLabel: state,
+});
+
+describe("settledStandupReading — a settled call's services, as its report said them", () => {
+  it("reads each service the call built, never a stage it queued for the next call", () => {
+    const reading = settledStandupReading(
+      standup({
+        steps: [step("apidev", "done"), step("apistage", "queued"), step("webdev", "failed")],
+      }),
+    );
+    expect(reading.rows).toEqual([
+      { hostname: "apidev", state: "built" },
+      { hostname: "webdev", state: "failed" },
+    ]);
+    expect({ built: reading.built, failed: reading.failed }).toEqual({ built: 1, failed: 1 });
+  });
+});
+
+describe("standupExpected — the services a running call builds, when the report before it named them", () => {
+  it.each([
+    { name: "the first call: not named", steps: [], expected: undefined },
+    {
+      name: "the stage call: the stages the call before it queued",
+      steps: [step("apistage", "queued"), step("webstage", "queued")],
+      expected: ["apistage", "webstage"],
+    },
+  ])("$name", ({ steps, expected }) => {
+    expect(standupExpected(standup({ phase: "running", steps }))).toEqual(expected);
+  });
+});

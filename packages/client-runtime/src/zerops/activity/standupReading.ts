@@ -8,12 +8,13 @@
  * notifications), but every build it starts is a process of the Mate's own
  * project, which the client already reads over the platform socket.
  *
- * A call's services are the runtimes of its half that run no code (zcp's own
- * rule: it deploys a half that has none, `HasDeployedCode`), and every one a
- * build of the call's window names. A pair's stage half is the runtime whose
- * hostname ends in `stage` — zcp's own convention (`IsStageHostname`). A
- * service that already runs code and builds nothing in the call is not the
- * call's.
+ * A call's services are those it will build — the stages the call before it
+ * queued, when its report named them — and every one a build of the call's
+ * window names. Without the names, they are the runtimes of its half that run
+ * no code (zcp's own rule: it deploys a half that has none, `HasDeployedCode`),
+ * a pair's stage half the runtime whose hostname ends in `stage` — zcp's own
+ * convention (`IsStageHostname`). A service that already runs code and builds
+ * nothing in the call is not the call's.
  *
  * Pure: the caller reads the topology and the processes and hands them here.
  */
@@ -90,6 +91,8 @@ function sentenceOf(process: ActivityProcess, hostname: string, nowMs: number): 
 
 export function readStandup(input: {
   readonly half: StandupHalf;
+  /** The services the call builds, when the report before it named them. */
+  readonly expected?: ReadonlyArray<string>;
   readonly services: ReadonlyArray<StandupService>;
   readonly processes: ReadonlyArray<ActivityProcess>;
   /** When the call started. */
@@ -109,8 +112,11 @@ export function readStandup(input: {
         process.serviceStackIds.includes(service.serviceId),
       );
       if (latest === undefined) {
-        const ofHalf = isStageHostname(service.hostname) === (input.half === "stage");
-        return !service.runsCode && ofHalf ? [{ hostname: service.hostname, state: "waits" }] : [];
+        const waits =
+          input.expected === undefined
+            ? !service.runsCode && isStageHostname(service.hostname) === (input.half === "stage")
+            : input.expected.includes(service.hostname);
+        return waits ? [{ hostname: service.hostname, state: "waits" }] : [];
       }
       const state = stateOf(latest.status);
       const sentence =

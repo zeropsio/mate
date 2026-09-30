@@ -35,44 +35,83 @@ const deployed = (hostname: string, url?: string) => ({
   next: "",
 });
 
-/** The development call's report: both dev halves up, the stages the next call's. */
+const queued = (hostname: string, dev: string) => ({
+  hostname,
+  role: "stage",
+  deploy: {
+    status: "queued",
+    reason: `${dev} was deployed on this call, and the stage builds on the next zerops_standup call`,
+  },
+  next: "",
+});
+
+/** zcp's first call: every dev half stands, each stage queued for the next call. */
 const DEVELOPMENT_UP = {
-  standUp: "ready",
-  message: "Development is up.",
+  standUp: "development",
+  message: "0 of 2 pairs stand and 2 of 2 dev halves run.",
   services: [
     deployed("apidev", "https://apidev.example.test"),
-    { hostname: "apistage", role: "stage", next: "" },
+    queued("apistage", "apidev"),
     deployed("webdev", "https://webdev.example.test"),
-    { hostname: "webstage", role: "stage", next: "" },
+    queued("webstage", "webdev"),
     { hostname: "db", role: "managed", next: "" },
   ],
   next: "",
 };
 
+/** A first call where one dev half failed: its stage is not deployed, the other's queued. */
 const DEV_FAILED = {
   standUp: "partial",
-  message: "One dev half did not deploy.",
+  message: "0 of 2 pairs stand and 1 of 2 dev halves run.",
   services: [
     deployed("apidev"),
+    queued("apistage", "apidev"),
     {
       hostname: "webdev",
       role: "dev",
       deploy: { status: "failed", reason: "npm install exited with 1" },
       next: "",
     },
-    { hostname: "apistage", role: "stage", next: "" },
-    { hostname: "webstage", role: "stage", next: "" },
+    {
+      hostname: "webstage",
+      role: "stage",
+      deploy: {
+        status: "not deployed",
+        reason: "webdev did not deploy, and the stage is built from it",
+      },
+      next: "",
+    },
+  ],
+  next: "",
+};
+
+const already = (hostname: string) => ({
+  hostname,
+  role: "dev",
+  deploy: { status: "already deployed" },
+  next: "",
+});
+
+/** zcp's second call: the dev halves already run, every stage deployed. */
+const STAGE_READY = {
+  standUp: "ready",
+  message: "2 of 2 pairs stand and 2 of 2 dev halves run.",
+  services: [
+    already("apidev"),
+    deployed("apistage", "https://apistage.example.test"),
+    already("webdev"),
+    deployed("webstage", "https://webstage.example.test"),
   ],
   next: "",
 };
 
 const STAGE_PARTIAL = {
   standUp: "partial",
-  message: "One stage did not deploy.",
+  message: "1 of 2 pairs stand and 2 of 2 dev halves run.",
   services: [
-    { ...deployed("apidev"), deploy: { status: "already deployed" } },
-    { ...deployed("webdev"), deploy: { status: "already deployed" } },
+    already("apidev"),
     deployed("apistage", "https://apistage.example.test"),
+    already("webdev"),
     {
       hostname: "webstage",
       role: "stage",
@@ -83,10 +122,30 @@ const STAGE_PARTIAL = {
   next: "",
 };
 
+/** A report from before zcp said "development": the stages carry no deploy. */
+const DEVELOPMENT_UP_UNMARKED = {
+  standUp: "partial",
+  message: "0 of 2 pairs stand.",
+  services: [
+    deployed("apidev"),
+    { hostname: "apistage", role: "stage", next: "" },
+    deployed("webdev"),
+    { hostname: "webstage", role: "stage", next: "" },
+  ],
+  next: "",
+};
+
+const NEXT = (hostname: string) => ({
+  id: hostname,
+  label: hostname,
+  state: "queued",
+  stateLabel: "Next",
+});
+
 describe("buildStandupFields — a stand-up call, named by the half it deploys", () => {
   it.each([
     {
-      name: "the first call, running: development",
+      name: "the first call, running: development, its services unknown yet",
       call: standupCall("c2", "inProgress", undefined),
       earlier: [],
       expected: {
@@ -97,10 +156,21 @@ describe("buildStandupFields — a stand-up call, named by the half it deploys",
       },
     },
     {
-      name: "a call after one that stood development up, running: stage",
+      name: "after the development call, running: stage, its services the queued stages",
       call: standupCall("c2", "inProgress", undefined),
       earlier: [standupCall("c1", "completed", DEVELOPMENT_UP)],
-      expected: { subject: "stage", voice: "Standing stage up.", phase: "running", steps: [] },
+      expected: {
+        subject: "stage",
+        voice: "Standing stage up.",
+        phase: "running",
+        steps: [NEXT("apistage"), NEXT("webstage")],
+      },
+    },
+    {
+      name: "after a report that does not say development, running: stage by the fallback",
+      call: standupCall("c2", "inProgress", undefined),
+      earlier: [standupCall("c1", "completed", DEVELOPMENT_UP_UNMARKED)],
+      expected: { subject: "stage", phase: "running", steps: [] },
     },
     {
       name: "a retry after a dev half failed, running: development again",
@@ -109,7 +179,7 @@ describe("buildStandupFields — a stand-up call, named by the half it deploys",
       expected: { subject: "development", phase: "running", steps: [] },
     },
     {
-      name: "the development call settled: each dev half it deployed",
+      name: "the development call settled: each dev half it deployed, the stages next",
       call: standupCall("c1", "completed", DEVELOPMENT_UP),
       earlier: [],
       expected: {
@@ -118,11 +188,51 @@ describe("buildStandupFields — a stand-up call, named by the half it deploys",
         statusWord: "Stood up",
         steps: [
           { id: "apidev", label: "apidev", state: "done", stateLabel: "Deployed" },
+          NEXT("apistage"),
           { id: "webdev", label: "webdev", state: "done", stateLabel: "Deployed" },
+          NEXT("webstage"),
         ],
         links: [
           { label: "apidev", url: "https://apidev.example.test" },
           { label: "webdev", url: "https://webdev.example.test" },
+        ],
+      },
+    },
+    {
+      name: "the development call with a dev half failed: its stage is not the call's",
+      call: standupCall("c1", "completed", DEV_FAILED),
+      earlier: [],
+      expected: {
+        subject: "development",
+        phase: "failed",
+        steps: [
+          { id: "apidev", label: "apidev", state: "done", stateLabel: "Deployed" },
+          NEXT("apistage"),
+          {
+            id: "webdev",
+            label: "webdev",
+            state: "failed",
+            stateLabel: "Failed",
+            note: "npm install exited with 1",
+          },
+        ],
+        explanation: { reason: "npm install exited with 1" },
+      },
+    },
+    {
+      name: "the stage call settled: each stage, the dev halves it found running left out",
+      call: standupCall("c2", "completed", STAGE_READY),
+      earlier: [standupCall("c1", "completed", DEVELOPMENT_UP)],
+      expected: {
+        subject: "stage",
+        phase: "done",
+        steps: [
+          { id: "apistage", label: "apistage", state: "done", stateLabel: "Deployed" },
+          { id: "webstage", label: "webstage", state: "done", stateLabel: "Deployed" },
+        ],
+        links: [
+          { label: "apistage", url: "https://apistage.example.test" },
+          { label: "webstage", url: "https://webstage.example.test" },
         ],
       },
     },

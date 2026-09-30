@@ -508,7 +508,7 @@ describe("RunChat", () => {
   // One ticking time for each thing that runs (K3): a command left running in
   // the background ticks in its bar, never again in the chat; a deploy ticks
   // in its bar, never again as the now line's long-step words.
-  it("ticks each running thing once: in its bar, or on the now line", () => {
+  it("ticks each running thing once: the run's one clock, never a step's own (K3)", () => {
     const background: RecordItem = {
       kind: "step",
       key: "step:w1",
@@ -540,8 +540,11 @@ describe("RunChat", () => {
         record([], { live: true, now: { kind: "operation", operation: taking }, status: status() }),
       );
     };
-    expect(running("deploy")).not.toMatch(/run-now-long">· 0:4\d/u);
-    expect(running("browser")).toMatch(/run-now-long">· 0:4\d/u);
+    // A step past 30 s still says what runs, with no clock of its own beside the run's.
+    for (const kind of ["deploy", "browser"] as const) {
+      expect(running(kind)).not.toMatch(/· 0:4\d/u);
+    }
+    expect(running("browser")).toMatch(/Checking [^<]*in the browser/u);
   });
 
   it("counts the run's time in ink, never in the busy blue", () => {

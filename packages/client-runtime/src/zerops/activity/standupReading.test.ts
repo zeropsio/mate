@@ -50,6 +50,7 @@ describe("readStandup — each service a stand-up call builds, from the project'
   const cases: ReadonlyArray<{
     readonly name: string;
     readonly half: "development" | "stage";
+    readonly expected?: ReadonlyArray<string>;
     readonly services: ReadonlyArray<StandupService>;
     readonly processes: ReadonlyArray<ActivityProcess>;
     readonly rows: ReadonlyArray<{ hostname: string; state: string; sentence?: string }>;
@@ -74,6 +75,21 @@ describe("readStandup — each service a stand-up call builds, from the project'
       rows: [
         { hostname: "apistage", state: "waits" },
         { hostname: "webstage", state: "waits" },
+      ],
+      counts: { building: 0, built: 0, failed: 0 },
+    },
+    {
+      name: "the stage call told which stages it builds: those wait, whatever their names",
+      half: "stage",
+      expected: ["apistage", "preview"],
+      services: [
+        ...DEVS_UP,
+        { hostname: "preview", serviceId: "s-preview", runtime: true, runsCode: false },
+      ],
+      processes: [],
+      rows: [
+        { hostname: "apistage", state: "waits" },
+        { hostname: "preview", state: "waits" },
       ],
       counts: { building: 0, built: 0, failed: 0 },
     },
@@ -187,6 +203,7 @@ describe("readStandup — each service a stand-up call builds, from the project'
     it(testCase.name, () => {
       const reading = readStandup({
         half: testCase.half,
+        ...(testCase.expected === undefined ? {} : { expected: testCase.expected }),
         services: testCase.services,
         processes: testCase.processes,
         since: SINCE,

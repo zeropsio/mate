@@ -81,33 +81,72 @@ function reportedServices(call: ZeropsCall): ReadonlyArray<ReportedService> | un
 }
 
 const runsCode = (service: ReportedService) => RUNS_CODE.has(service.deploy?.status ?? "");
+const deployedNow = (service: ReportedService) => DEPLOYED_NOW.has(service.deploy?.status ?? "");
+const isQueued = (service: ReportedService) => service.deploy?.status === QUEUED;
 
-/** The half a call deploys, from the stand-up before it: stage once development runs and stage does not. */
-function halfAfter(earlier: ReadonlyArray<ZeropsCall>): StandupHalf {
-  const report = earlier
-    .filter((call) => call.status !== "inProgress")
-    .map(reportedServices)
-    .findLast((services) => services !== undefined);
-  if (report === undefined) return "development";
-  const devs = report.filter((service) => service.role === "dev");
-  const stages = report.filter((service) => service.role === "stage");
-  return devs.length > 0 && devs.every(runsCode) && stages.some((stage) => !runsCode(stage))
-    ? "stage"
-    : "development";
+/** zcp's `standUp` of a first call: every dev half stands, the stages queued. */
+const DEVELOPMENT_STOOD = "development";
+/** zcp's word for a stage the next call builds. */
+const QUEUED = "queued";
+
+interface Report {
+  readonly standUp: string | undefined;
+  readonly services: ReadonlyArray<ReportedService>;
 }
 
-/** The half a settled call deployed, by its report; undefined when it deployed nothing. */
-function halfDeployed(services: ReadonlyArray<ReportedService>): StandupHalf | undefined {
-  const now = services.filter((service) => DEPLOYED_NOW.has(service.deploy?.status ?? ""));
+function readReport(call: ZeropsCall): Report | undefined {
+  const services = reportedServices(call);
+  if (services === undefined) return undefined;
+  return { standUp: readString(decodeCall(call).document?.standUp), services };
+}
+
+/**
+ * What a running call deploys, from the stand-up before it: after a
+ * development call (its `standUp` says so), the stages it queued; after a
+ * report that does not say, stage once every dev half runs and a stage does
+ * not; else development — the first call, or a retry after a dev half failed.
+ */
+function callAfter(earlier: ReadonlyArray<ZeropsCall>): {
+  readonly half: StandupHalf;
+  readonly queued: ReadonlyArray<ReportedService>;
+} {
+  const report = earlier
+    .filter((call) => call.status !== "inProgress")
+    .map(readReport)
+    .findLast((candidate) => candidate !== undefined);
+  if (report === undefined) return { half: "development", queued: [] };
+  const queued = report.services.filter(isQueued);
+  if (report.standUp === DEVELOPMENT_STOOD) return { half: "stage", queued };
+  const devs = report.services.filter((service) => service.role === "dev");
+  const stages = report.services.filter((service) => service.role === "stage");
+  return devs.length > 0 && devs.every(runsCode) && stages.some((stage) => !runsCode(stage))
+    ? { half: "stage", queued }
+    : { half: "development", queued: [] };
+}
+
+/**
+ * The half a settled call deployed, by its report: a development call says
+ * so, else the halves it built — any dev half makes it development. Undefined
+ * when it built nothing.
+ */
+function halfDeployed(report: Report): StandupHalf | undefined {
+  if (report.standUp === DEVELOPMENT_STOOD) return "development";
+  const now = report.services.filter(deployedNow);
   if (now.length === 0) return undefined;
-  return now.every((service) => service.role === "stage") ? "stage" : "development";
+  return now.some((service) => service.role === "dev") ? "development" : "stage";
 }
 
 const ROLE: Readonly<Record<StandupHalf, string>> = { development: "dev", stage: "stage" };
 
+/** A stage the next call builds: coming, never failed. */
+function nextStep(service: ReportedService): ZeropsOperationStep {
+  return { id: service.hostname, label: service.hostname, state: "queued", stateLabel: "Next" };
+}
+
 function stepOf(service: ReportedService): ZeropsOperationStep {
   const status = service.deploy?.status ?? "";
   const base = { id: service.hostname, label: service.hostname };
+  if (status === QUEUED) return nextStep(service);
   if (status === "deployed") return { ...base, state: "done", stateLabel: "Deployed" };
   if (status === "already deployed") return { ...base, state: "done", stateLabel: "Running" };
   if (status === "still building") return { ...base, state: "running", stateLabel: "Building" };
@@ -120,6 +159,21 @@ function stepOf(service: ReportedService): ZeropsOperationStep {
   };
 }
 
+/**
+ * The services a settled call answers for: those of its half it deployed or
+ * found in its way, and — a development call — each stage it queued, named as
+ * next. A stage it left because its dev half failed is that dev half's story.
+ */
+function callServices(report: Report, half: StandupHalf): ReadonlyArray<ReportedService> {
+  return report.services.filter(
+    (service) =>
+      service.deploy !== undefined &&
+      (half === "development"
+        ? service.role === "dev" || (service.role === "stage" && isQueued(service))
+        : service.role === ROLE[half] && !isQueued(service)),
+  );
+}
+
 export function buildStandupFields(
   call: ZeropsCall,
   _context: OperationBuildContext,
@@ -127,17 +181,17 @@ export function buildStandupFields(
 ): BuiltCardFields {
   const decoded = decodeCall(call);
   const errorInfo = errorInfoFor(call, decoded);
-  const services = call.status === "inProgress" ? undefined : reportedServices(call);
-  const half = (services === undefined ? undefined : halfDeployed(services)) ?? halfAfter(earlier);
-  const ofHalf = (services ?? []).filter(
-    (service) => service.role === ROLE[half] && service.deploy !== undefined,
-  );
-  const steps = ofHalf.map(stepOf);
-  const links: ZeropsOperationLink[] = ofHalf.flatMap((service) =>
+  const report = call.status === "inProgress" ? undefined : readReport(call);
+  const after = callAfter(earlier);
+  const half = (report === undefined ? undefined : halfDeployed(report)) ?? after.half;
+  const answered = report === undefined ? undefined : callServices(report, half);
+  // Running, a stage call's services are the stages the call before it queued.
+  const steps = (answered ?? (half === after.half ? after.queued : [])).map(stepOf);
+  const links: ZeropsOperationLink[] = (answered ?? []).flatMap((service) =>
     service.deploy?.url === undefined ? [] : [{ label: service.hostname, url: service.deploy.url }],
   );
   const failedStep = steps.find((step) => step.state === "failed");
-  const standUp = readString(decoded.document?.standUp);
+  const standUp = report?.standUp;
   const phase: ZeropsOperationPhase =
     call.status === "completed" &&
     (failedStep !== undefined || standUp === "failed" || standUp === "partial")
