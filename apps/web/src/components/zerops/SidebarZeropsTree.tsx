@@ -136,6 +136,7 @@ import { SidebarCrewLine, type SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { SidebarSelectedBand } from "./SidebarSelectedBand";
 import { KeyChip, MateFace } from "./primitives";
 import { groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
+import { STOP_ARM_MS, stopArmStep, type StopArm, type StopArmEvent } from "./SidebarStopArm.logic";
 import { formatWorkingTime, isQuietMate, sidebarMateKey } from "./SidebarZeropsTree.logic";
 import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
 import {
@@ -2305,6 +2306,10 @@ const HEADING_CLASS =
 const HEADING_MUTED = "text-line font-medium text-sidebar-muted-foreground";
 const HEADING_UNNAMED = "font-normal text-sidebar-muted-foreground italic";
 
+/** The row's stop, armed: its confirm in red words, as tall as the ■ it replaces. */
+const ROW_STOP_ARMED_CLASS =
+  "inline-flex h-5 cursor-pointer items-center rounded px-1 text-line leading-5 font-semibold text-status-failed-text outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
 const ROW_ACTION_CLASS =
   "inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground";
 
@@ -2492,6 +2497,30 @@ function MateRow<T extends RosterCandidate>({
   // ask this browser remembered gives way to the one read without a rise.
   const askChanged = useChangedSinceShown(view.ask, known);
   const unread = activity?.unread === true;
+  // Stopping from the row is two presses (`stopArmStep`): the ■ or x arms it, a second press
+  // within 3 s stops; leaving, Esc, blur, the time or the run ending by itself let it go.
+  const [stopArm, setStopArm] = useState<StopArm>(null);
+  if (stopArm !== null && actions?.stop === undefined) {
+    setStopArm(stopArmStep(stopArm, { kind: "run-ended" }).state);
+  }
+  const armed = stopArm !== null;
+  const stepStop = (event: StopArmEvent) => {
+    const next = stopArmStep(stopArm, event);
+    setStopArm(next.state);
+    if (next.stop) actions?.stop?.();
+  };
+  useEffect(() => {
+    if (stopArm === null) return;
+    const timer = setTimeout(
+      () => {
+        setStopArm((current) => stopArmStep(current, { kind: "tick", at: Date.now() }).state);
+      },
+      STOP_ARM_MS - (Date.now() - stopArm.armedAt),
+    );
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [stopArm]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuAt, setMenuAt] = useState<MenuPoint | undefined>(undefined);
   const [renaming, setRenaming] = useState(false);
@@ -2540,7 +2569,15 @@ function MateRow<T extends RosterCandidate>({
           openMenu();
         }, 480);
       }}
-      onPointerLeave={cancelLongPress}
+      onBlur={(event) => {
+        if (armed && !event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          stepStop({ kind: "blur" });
+        }
+      }}
+      onPointerLeave={() => {
+        cancelLongPress();
+        if (armed) stepStop({ kind: "leave" });
+      }}
       onPointerMove={(event) => {
         if (event.pointerType === "touch" && event.movementY !== 0) cancelLongPress();
       }}
@@ -2570,8 +2607,13 @@ function MateRow<T extends RosterCandidate>({
           onSelect(candidate);
         }}
         onKeyDown={(event) => {
-          // The list's keys: j and k move, x stops a working Mate, e marks it
-          // read or unread.
+          if (armed && event.key === "Escape") {
+            event.preventDefault();
+            stepStop({ kind: "escape" });
+            return;
+          }
+          // The list's keys: j and k move, x arms a working Mate's stop and x again stops it,
+          // e marks it read or unread.
           const action = sidebarMateKey({
             key: event.key,
             modified: event.metaKey || event.ctrlKey || event.altKey,
@@ -2583,7 +2625,7 @@ function MateRow<T extends RosterCandidate>({
           }
           if (action === "stop" && actions?.stop !== undefined) {
             event.preventDefault();
-            actions.stop();
+            stepStop({ kind: "press", at: Date.now() });
             return;
           }
           if (action === "unread" && actions?.toggleUnread !== undefined) {
@@ -2664,6 +2706,7 @@ function MateRow<T extends RosterCandidate>({
                 "relative flex h-5 min-w-11 shrink-0 justify-end",
                 actions !== undefined &&
                   "transition-opacity group-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0",
+                armed && "opacity-0",
               )}
             >
               <span
@@ -2699,26 +2742,39 @@ function MateRow<T extends RosterCandidate>({
       </button>
       {actions === undefined ? null : (
         <span
-          className="absolute end-2 top-2.5 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100"
+          className={cn(
+            "absolute end-2 top-2.5 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100",
+            armed && "opacity-100",
+          )}
           data-zerops-surface="sidebar-mate-actions"
         >
           {actions.stop === undefined ? null : (
-            // While it works, the time's slot is also its stop.
+            // While it works, the time's slot is also its stop: armed by a first press, a red
+            // "Stop?" stands where the ■ stood, and only it stops (`stopArmStep`).
             <Tooltip>
               <TooltipTrigger
                 render={
                   <button
-                    aria-label={`Stop ${name}`}
-                    className={ROW_ACTION_CLASS}
+                    aria-label={armed ? `Confirm stop ${name}` : `Stop ${name}`}
+                    className={armed ? ROW_STOP_ARMED_CLASS : ROW_ACTION_CLASS}
+                    data-armed={armed ? "" : undefined}
                     data-zerops-surface="sidebar-mate-stop"
-                    onClick={actions.stop}
+                    onClick={() => {
+                      stepStop({ kind: "press", at: Date.now() });
+                    }}
                     type="button"
                   />
                 }
               >
-                <SquareIcon aria-hidden="true" className="size-2.5 fill-current" />
+                {armed ? (
+                  <span className="menu-stop-armed">Stop?</span>
+                ) : (
+                  <SquareIcon aria-hidden="true" className="size-2.5 fill-current" />
+                )}
               </TooltipTrigger>
-              <TooltipPopup side="right">Stop the run</TooltipPopup>
+              <TooltipPopup side="right">
+                {armed ? "Press again to stop" : "Stop the run"}
+              </TooltipPopup>
             </Tooltip>
           )}
           <MateMenu

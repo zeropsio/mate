@@ -3260,6 +3260,13 @@ code {
   }
 }
 
+/* p26/row — the row's stop, armed: "Stop?" crossfades in where the ■ stood (140 ms). */
+@media (prefers-reduced-motion: no-preference) {
+  .menu-stop-armed {
+    animation: zerops-appear 140ms ease-out both;
+  }
+}
+
 @keyframes menu-clock-breathe {
   from {
     opacity: 1;
