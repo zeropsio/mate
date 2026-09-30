@@ -2412,11 +2412,11 @@ function MateRow<T extends RosterCandidate>({
     viewer,
   });
   const known = activity !== undefined && activity.remembered !== true;
-  // What the person is about to send it, waiting in its composer: the row's second line says it.
-  const environmentId = candidate.group === "connected" ? candidate.environmentId : undefined;
+  // What the person is about to send it, waiting in its composer: the row's second line says it,
+  // read from this browser whether or not its socket is open (`mateRowDraft`).
   const draft = useComposerDraftStore((state) =>
     mateRowDraft(state, {
-      environmentId,
+      environmentId: candidate.environmentId,
       threadId: activity?.threadId,
       threadKey: activity?.threadKey,
     }),
