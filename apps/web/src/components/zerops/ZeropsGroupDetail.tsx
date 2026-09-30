@@ -83,7 +83,7 @@ import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/bra
 
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
-import { mateFaceFor } from "~/zerops/agentActivity";
+import { mateFaceFor, mateFaceOf, mateReviewWaits } from "~/zerops/agentActivity";
 import { useAddMate } from "~/zerops/newMate";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
 import { useNowMs } from "~/zerops/useNowMs";
@@ -384,6 +384,7 @@ function useGroupMates(groupId: string): {
   const activity = useZeropsAgentActivity();
   const updates = useZeropsMateUpdateStates();
   const nowMs = useNowMs();
+  const flow = useZeropsProjectFlowOptional()?.flows.get(groupId);
   const mates = useMemo(() => {
     const candidates = heldCandidates(listing).rows;
     const tints = assignCandidateMateTints(candidates);
@@ -410,7 +411,14 @@ function useGroupMates(groupId: string): {
           name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
           tint,
           shape: mateShapeOf(item.project.tagList, tint),
-          face: mateFaceFor(item.group === "connected", live),
+          // Its row's face (`mateFaceOf`): needing you while it asks, or while its own change
+          // waits for your review.
+          face: mateFaceOf({
+            connected: item.group === "connected",
+            activity: live,
+            reviewWaits: mateReviewWaits(flow, item.project.id),
+          }),
+          asks: mateFaceFor(item.group === "connected", live) === "needs",
           ...(live?.kind === "failed" ? { failed: true } : {}),
           subject,
           snippet: subject === undefined ? undefined : live?.snippet,
@@ -421,7 +429,7 @@ function useGroupMates(groupId: string): {
           update: mateUpdateStatus(updates.of(item)),
         };
       });
-  }, [activity, groupId, listing, updates]);
+  }, [activity, flow, groupId, listing, updates]);
   const notice = useMemo(
     () => candidatesNotice(listing, GROUP_MATES_SURFACE, nowMs),
     [listing, nowMs],
@@ -494,7 +502,7 @@ function useProjectAttention(
         // A face wearing `needs` is a Mate that has stopped and asked
         // something: the one state where nothing moves until a person answers.
         waitingMates: mates
-          .filter((mate) => mate.face === "needs" && mate.failed !== true)
+          .filter((mate) => mate.asks === true && mate.failed !== true)
           .map((mate) => ({ projectId: mate.projectId, name: mate.name })),
         // Stopped on an error, it wears the same face and asks nothing.
         failedMates: mates
@@ -1860,6 +1868,11 @@ export interface GroupMate {
   /** The shape its person picked, else its tint's own (`mateShapeOf`). */
   readonly shape: MateShapeId;
   readonly face: MateMarkState;
+  /**
+   * Its conversation waits on an answer — what *waiting on an answer* lists. A change waiting
+   * for review wears the same face and is the change's own item, never an answer.
+   */
+  readonly asks?: boolean;
   /** Its last run stopped on an error: its face reads `needs`, and it asks nothing. */
   readonly failed?: boolean;
   /** What it is on, or was last on; absent until somebody has spoken to it. */

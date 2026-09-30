@@ -537,6 +537,9 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
       mate: hasMate(item)
         ? {
             name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
+            // Waiting on an answer: its conversation's question. A change of its waiting for
+            // review wears the same face (`mateFaceOf`) and is the flow's own step — *Review* —
+            // never "waiting on an answer".
             waiting: mateFaceFor(connected, activity) === "needs",
             ...(connected && activity?.kind === "failed" ? { failed: true } : {}),
             talked: !connected

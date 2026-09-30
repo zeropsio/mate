@@ -33,14 +33,27 @@ describe("waitingMatesOf — the faces the header stacks", () => {
   const derive = (
     shown: (candidate: ZeropsCandidate) => boolean = () => true,
     order = ["juno", "nova", "kai"],
+    reviews: ReadonlyArray<string> = [],
   ) =>
     waitingMatesOf({
       candidates: [KAI, NOVA, JUNO, ASLEEP],
       activityOf: (candidate) => faces.get(candidate.project.id),
+      reviewWaits: (candidate) => reviews.includes(candidate.project.id),
       tints: new Map([["kai", "amber"]]),
       order,
       shown,
     });
+
+  // A Mate whose change waits for your review waits on you, as its row and the composer say
+  // (`mateFaceOf`); one at work shows its work.
+  it.each([
+    { case: "asleep, its change waits: stacked", reviews: ["zed"], names: ["Juno", "Kai", "Zed"] },
+    { case: "at work, its change waits: not stacked", reviews: ["nova"], names: ["Juno", "Kai"] },
+  ])("$case", ({ reviews, names }) => {
+    const stacked = derive(undefined, undefined, reviews);
+    expect(stacked.map((waiting) => waiting.name)).toEqual(names);
+    expect(stacked.every((waiting) => waiting.face === "needs")).toBe(true);
+  });
 
   it("stacks only the Mates whose face says they need somebody, in the menu's order", () => {
     expect(derive().map((waiting) => waiting.name)).toEqual(["Juno", "Kai"]);
@@ -71,6 +84,7 @@ describe("waitingMatesOf — the faces the header stacks", () => {
     const [waiting] = waitingMatesOf({
       candidates: [juno],
       activityOf: () => face("needs"),
+      reviewWaits: () => false,
       tints: new Map([["juno", "rose"]]),
       order: [],
       shown: () => true,

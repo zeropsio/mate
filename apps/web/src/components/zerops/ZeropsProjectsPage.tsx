@@ -96,7 +96,7 @@ import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
 import { useZeropsDeployTokenGaps } from "~/zerops/useZeropsDeployTokenGaps";
 import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { AuthGateState } from "~/environments/primary/auth";
-import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { mateFaceOf, mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
 
 import {
@@ -1301,16 +1301,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // service to the internet means one thing wherever it is offered.
   const route = useEnableRoute();
 
-  /**
-   * The face a Mate wears: the state of its conversation when its socket is
-   * up, else asleep — a container that is not connected is the Zerops mark.
-   */
-  const mateFace = (candidate: ZeropsCandidatePresentation): MateMarkState =>
-    mateFaceFor(
-      candidate.group === "connected" && candidate.environmentId !== undefined,
-      candidate.environmentId === undefined ? undefined : activity.get(candidate.environmentId),
-    );
-
   /** Writes the group's registry entry for a Mate, as the owner. */
 
   /**
@@ -1779,6 +1769,24 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // is waiting to land, what was released — is read once for the account
   // (`ZeropsProjectFlowProvider`, D26); the page draws its share of it.
   const projectFlow = useZeropsProjectFlow();
+
+  /**
+   * The face a Mate wears (`mateFaceOf`): the state of its conversation when its socket is up,
+   * else asleep — and needing you while its own change waits for your review, as its row in the
+   * menu and its conversation's composer say.
+   */
+  const mateFace = (candidate: ZeropsCandidatePresentation): MateMarkState => {
+    const groupId = readZeropsGroupTags(candidate.project.tagList).groupId;
+    return mateFaceOf({
+      connected: candidate.group === "connected" && candidate.environmentId !== undefined,
+      activity:
+        candidate.environmentId === undefined ? undefined : activity.get(candidate.environmentId),
+      reviewWaits: mateReviewWaits(
+        groupId === undefined ? undefined : projectFlow.flows.get(groupId),
+        candidate.project.id,
+      ),
+    });
+  };
   const openReview = useOpenReview();
   const groupDeploys = projectFlow.flows;
 
