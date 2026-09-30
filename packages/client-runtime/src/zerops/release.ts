@@ -71,7 +71,8 @@ export interface ReleaseEntry {
   readonly commit: string;
 }
 
-const FULL_SHA = /^[0-9a-f]{40}$/iu;
+/** A whole commit sha: 40 hex, or 64 in a SHA-256 repository (`versionName.ts`). */
+const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/iu;
 
 /** What a release tag is called. */
 export function releaseTagName(version: string): string {

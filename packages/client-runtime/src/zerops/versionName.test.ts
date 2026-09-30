@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { parseVersionName, resolveCommit, sameCommit } from "./versionName.ts";
+import { isWholeSha, parseVersionName, resolveCommit, sameCommit } from "./versionName.ts";
 
 const SHA = "7e2d4c1a9b3f5e6d8c0a1b2c3d4e5f6a7b8c9d0e";
 const OTHER = "3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d";
@@ -47,6 +47,18 @@ describe("parseVersionName", () => {
     { name: "a hand-made name", value: "hotfix for the outage", expected: undefined },
     { name: "a hand-made two-word name", value: "hotfix friday", expected: undefined },
     { name: "two words whose sha is too short", value: "main 7e2d4c", expected: undefined },
+    {
+      name: "two words whose sha is longer than seven",
+      value: "main 7e2d4c1a",
+      expected: undefined,
+    },
+    { name: "a hand-made name ending in a date", value: "release 20260930", expected: undefined },
+    {
+      name: "a hand-made name ending in a timestamp",
+      value: "deploy 1727712000",
+      expected: undefined,
+    },
+    { name: "three words a person typed", value: "deploy 7e2d4c1 again", expected: undefined },
     { name: "a bare short sha, which no writer ever wrote", value: "7e2d4c1", expected: undefined },
     { name: "zcp's old name of a dirty tree", value: `${SHA}-dirty`, expected: undefined },
     { name: "zcp's name of a dirty tree", value: "main 7e2d4c1-dirty", expected: undefined },
@@ -121,5 +133,27 @@ describe("resolveCommit", () => {
     { name: "nothing", token: undefined, known: [SHA], expected: undefined },
   ])("resolves $name", ({ token, known, expected }) => {
     expect(resolveCommit(token, known)).toBe(expected);
+  });
+});
+
+describe("a SHA-256 repository's whole sha", () => {
+  const SHA256 = "7e2d4c1a".repeat(8);
+  it.each([
+    { name: "an old stage name", value: SHA256, expected: { sha: SHA256 } },
+    {
+      name: "an old production name",
+      value: `${SHA256} v0.1.0 ada`,
+      expected: { sha: SHA256, label: "v0.1.0", taggedBy: "ada" },
+    },
+    { name: "a new name", value: "main 7e2d4c1", expected: { sha: "7e2d4c1", label: "main" } },
+  ])("reads $name", ({ value, expected }) => {
+    expect(parseVersionName(value)).toEqual(expected);
+  });
+
+  it("is the commit its seven-hex prefix names", () => {
+    expect(sameCommit("7e2d4c1", SHA256)).toBe(true);
+    expect(resolveCommit("7e2d4c1", [SHA256])).toBe(SHA256);
+    expect(isWholeSha(SHA256)).toBe(true);
+    expect(isWholeSha(SHA256.slice(0, 50))).toBe(false);
   });
 });

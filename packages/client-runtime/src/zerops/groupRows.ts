@@ -43,7 +43,7 @@ import {
 import type { GroupEnvironmentTier, MissingEnvironmentRow } from "./groupEnvironments.ts";
 import { mateOnlyOwnerOpensIt, type MateOwnerCandidate } from "./mateAccess.ts";
 import { isReleaseTag, shortCommit } from "./release.ts";
-import { parseVersionName } from "./versionName.ts";
+import { isWholeSha, parseVersionName } from "./versionName.ts";
 import type { RoleMateVisibility } from "@t3tools/shared/zeropsRoles";
 
 /** What a row's dot says, for the four things a dot can honestly mean. */
@@ -201,7 +201,7 @@ export function deployedVersion(appVersionName: string | undefined): DeployedVer
   const commit = shortCommit(sha);
   // A new name's label is a stage's branch or a release's tag; only the tag is
   // what a person calls the version.
-  const isBranch = label !== undefined && sha.length < 40 && !isReleaseTag(label);
+  const isBranch = label !== undefined && !isWholeSha(sha) && !isReleaseTag(label);
   const name = isBranch ? undefined : label;
   return {
     name,

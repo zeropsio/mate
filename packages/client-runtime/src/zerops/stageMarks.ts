@@ -18,7 +18,7 @@
 
 import type { Deployment } from "./flow/deployment.ts";
 import { deployedCommit, deployTone, type EnvironmentServiceState } from "./groupRows.ts";
-import { resolveCommit } from "./versionName.ts";
+import { isWholeSha, resolveCommit } from "./versionName.ts";
 import type { Shown } from "./knowledge/known.ts";
 
 /** One commit `main` has and a stop does not run, in the words it was merged under. */
@@ -35,14 +35,12 @@ export interface ServiceChanges {
   readonly commits: ReadonlyArray<StopChange>;
 }
 
-const FULL_SHA = /^[0-9a-f]{40}$/iu;
-
 /** Whether two commits are the same one — by the whole sha, never a prefix (`resolveCommit` first). */
 function sameSha(left: string | undefined, right: string | undefined): boolean {
   return (
     left !== undefined &&
     right !== undefined &&
-    FULL_SHA.test(left) &&
+    isWholeSha(left) &&
     left.toLowerCase() === right.toLowerCase()
   );
 }
