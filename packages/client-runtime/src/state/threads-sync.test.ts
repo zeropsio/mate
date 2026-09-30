@@ -1,6 +1,7 @@
 import {
   EnvironmentId,
   EventId,
+  MessageId,
   ORCHESTRATION_WS_METHODS,
   ProjectId,
   ProviderInstanceId,
@@ -36,6 +37,7 @@ import * as Persistence from "../platform/persistence.ts";
 import * as RpcSession from "../rpc/session.ts";
 import {
   EMPTY_ENVIRONMENT_THREAD_STATE,
+  INITIAL_THREAD_USER_TURN_LIMIT,
   makeEnvironmentThreadState,
   ThreadSnapshotLoader,
   type EnvironmentThreadState,
@@ -141,6 +143,10 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
   readonly resumeCache?: NonNullable<Parameters<typeof makeEnvironmentThreadState>[1]>;
   readonly loadCached?: Effect.Effect<Option.Option<OrchestrationThreadDetailSnapshot>>;
   readonly saveThread?: Persistence.EnvironmentCacheStore["Service"]["saveThread"];
+  /** The socket is not ready yet: `openSession` makes it so. */
+  readonly sessionLater?: boolean;
+  /** What the prepared connection says of the HTTP snapshot, from the server's descriptor. */
+  readonly threadSnapshot?: PreparedConnection["threadSnapshot"];
 }) {
   const inputs = yield* Queue.unbounded<TestThreadInput>();
   const observed = yield* Queue.unbounded<EnvironmentThreadState>();
@@ -185,19 +191,27 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
       ),
   } as unknown as WsRpcProtocolClient;
   const supervisorSession = yield* SubscriptionRef.make<Option.Option<RpcSession.RpcSession>>(
-    Option.some(
-      testSession(
-        client,
-        options?.completionMarker === true ? { completionMarker: true } : undefined,
-      ),
-    ),
+    options?.sessionLater === true
+      ? Option.none()
+      : Option.some(
+          testSession(
+            client,
+            options?.completionMarker === true ? { completionMarker: true } : undefined,
+          ),
+        ),
   );
   const prepared = yield* SubscriptionRef.make<Option.Option<PreparedConnection>>(
-    Option.some(PREPARED),
+    Option.some(
+      options?.threadSnapshot === undefined
+        ? PREPARED
+        : { ...PREPARED, threadSnapshot: options.threadSnapshot },
+    ),
   );
+  const loaderWindows = yield* Ref.make<ReadonlyArray<number | undefined>>([]);
   const snapshotLoader = ThreadSnapshotLoader.of({
-    load: (_prepared, threadId) =>
+    load: (_prepared, threadId, window) =>
       Ref.update(loaderCalls, (count) => count + 1).pipe(
+        Effect.andThen(Ref.update(loaderWindows, (all) => [...all, window?.turnLimit])),
         Effect.as(
           threadId === THREAD_ID
             ? (options?.httpSnapshot ?? Option.none<OrchestrationThreadDetailSnapshot>())
@@ -277,6 +291,16 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
     savedThreads,
     removedThreads,
     wakeups,
+    loaderWindows,
+    openSession: SubscriptionRef.set(
+      supervisorSession,
+      Option.some(
+        testSession(
+          client,
+          options?.completionMarker === true ? { completionMarker: true } : undefined,
+        ),
+      ),
+    ),
     replaceSession: SubscriptionRef.set(
       supervisorSession,
       Option.some(
@@ -741,6 +765,111 @@ describe("EnvironmentThreads", () => {
       expect(yield* Ref.get(harness.loaderCalls)).toBeGreaterThanOrEqual(1);
       expect(yield* Ref.get(harness.lastSubscribeAfterSequence)).toBe(1);
     }),
+  );
+
+  it.effect(
+    "paints the HTTP snapshot while the socket still connects, when the descriptor names its parameters",
+    () =>
+      Effect.gen(function* () {
+        const httpThread: OrchestrationThread = { ...BASE_THREAD, title: "Painted title" };
+        const harness = yield* makeHarness({
+          sessionLater: true,
+          threadSnapshot: { pagination: true, reasoningMessages: true },
+          httpSnapshot: Option.some({ snapshotSequence: 3, thread: httpThread }),
+        });
+        const painted = yield* awaitThreadState(harness.observed, (value) =>
+          Option.isSome(value.data),
+        );
+        expect({
+          title: Option.getOrThrow(painted.data).title,
+          status: painted.status,
+          subscriptions: yield* Ref.get(harness.subscriptionCount),
+          windows: yield* Ref.get(harness.loaderWindows),
+        }).toEqual({
+          title: "Painted title",
+          status: "synchronizing",
+          subscriptions: 0,
+          windows: [INITIAL_THREAD_USER_TURN_LIMIT],
+        });
+
+        // The socket connects: it resumes from the painted snapshot, which is not read again.
+        yield* harness.openSession;
+        yield* Queue.offer(harness.inputs, synchronized());
+        yield* awaitThreadState(harness.observed, (value) => value.status === "live");
+        expect(yield* Ref.get(harness.lastSubscribeAfterSequence)).toBe(3);
+        expect(yield* Ref.get(harness.loaderCalls)).toBe(1);
+      }),
+  );
+
+  it.effect("takes back nothing it painted when the socket's first events arrive", () =>
+    Effect.gen(function* () {
+      const message = {
+        id: MessageId.make("message-1"),
+        role: "user" as const,
+        text: "Painted question",
+        turnId: null,
+        streaming: false,
+        createdAt: "2026-04-01T00:00:30.000Z",
+        updatedAt: "2026-04-01T00:00:30.000Z",
+      };
+      const httpThread = {
+        ...BASE_THREAD,
+        title: "Painted title",
+        messages: [message],
+      } as OrchestrationThread;
+      const harness = yield* makeHarness({
+        sessionLater: true,
+        threadSnapshot: { pagination: false, reasoningMessages: false },
+        httpSnapshot: Option.some({ snapshotSequence: 3, thread: httpThread }),
+      });
+      yield* awaitThreadState(harness.observed, (value) => Option.isSome(value.data));
+      const seen: Array<EnvironmentThreadState> = [];
+      yield* SubscriptionRef.changes(harness.threadState).pipe(
+        Stream.runForEach((value) => Effect.sync(() => void seen.push(value))),
+        Effect.forkScoped,
+      );
+
+      yield* harness.openSession;
+      // A replay the socket sends from before the snapshot, then a live change after it.
+      yield* Queue.offer(harness.inputs, titleUpdated("Stale title", 2));
+      yield* Queue.offer(harness.inputs, titleUpdated("Live title", 4));
+      yield* awaitThreadState(
+        harness.observed,
+        (value) => Option.isSome(value.data) && value.data.value.title === "Live title",
+      );
+
+      expect(
+        seen.map((value) => ({
+          title: Option.getOrUndefined(value.data)?.title,
+          messages: Option.getOrUndefined(value.data)?.messages.map(({ id }) => id),
+        })),
+      ).not.toContainEqual(expect.objectContaining({ title: "Stale title" }));
+      expect(
+        seen.every(
+          (value) =>
+            Option.isSome(value.data) &&
+            value.data.value.messages.some(({ id }) => id === message.id),
+        ),
+      ).toBe(true);
+      expect(yield* Ref.get(harness.lastSubscribeAfterSequence)).toBe(3);
+    }),
+  );
+
+  it.effect(
+    "reads the snapshot once the socket is ready from a server whose descriptor is silent",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({
+          sessionLater: true,
+          httpSnapshot: Option.some({ snapshotSequence: 1, thread: BASE_THREAD }),
+        });
+        for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+        expect(yield* Ref.get(harness.loaderCalls)).toBe(0);
+
+        yield* harness.openSession;
+        yield* awaitThreadState(harness.observed, (value) => Option.isSome(value.data));
+        expect(yield* Ref.get(harness.loaderCalls)).toBe(1);
+      }),
   );
 
   it.effect("ignores replayed thread events at or below the snapshot sequence", () =>

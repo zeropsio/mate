@@ -129,6 +129,15 @@ export type PreparedHttpAuthorization =
       readonly expiresAtEpochMs: number;
     };
 
+/**
+ * The parameters the server's HTTP thread snapshot accepts, as its descriptor advertises them
+ * (`capabilities.threadSnapshotPagination`, `capabilities.reasoningMessages`).
+ */
+export interface ThreadSnapshotCapabilities {
+  readonly pagination: boolean;
+  readonly reasoningMessages: boolean;
+}
+
 export interface PreparedConnection {
   readonly environmentId: EnvironmentId;
   readonly label: string;
@@ -136,6 +145,12 @@ export interface PreparedConnection {
   readonly socketUrl: string;
   readonly httpAuthorization: PreparedHttpAuthorization | null;
   readonly target: ConnectionTarget;
+  /**
+   * Known before the socket is: a thread's snapshot is read over HTTP while the socket still
+   * connects. Absent when the descriptor does not say (an older server): the snapshot waits for
+   * the socket's config.
+   */
+  readonly threadSnapshot?: ThreadSnapshotCapabilities;
 }
 
 export type SupervisorConnectionPhase =
