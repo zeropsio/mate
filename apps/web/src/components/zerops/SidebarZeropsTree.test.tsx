@@ -1385,6 +1385,72 @@ describe("production and the stages are two chips on the project's heading (M2, 
     ]);
   });
 
+  // D′: the release is said on the heading's second line, under the name and above the Mates,
+  // with the Review a merge has — never a row after the Mates.
+  const lineOf = (html: string) => {
+    const at = html.indexOf('data-zerops-surface="sidebar-project-line"');
+    if (at === -1) return undefined;
+    const row = html.slice(html.indexOf(">", at) + 1, html.indexOf("</div></div></div>", at));
+    return {
+      words: row
+        .replace(/<[^>]+>/gu, "")
+        .replace(/(Review|Details)$/u, "")
+        .trim(),
+      door: /sidebar-project-line-door"[^>]*>([^<]*)</u.exec(row)?.[1],
+    };
+  };
+  it.each([
+    {
+      case: "changes waiting",
+      flow: {
+        releaseOffered: true,
+        releaseContents: [
+          {
+            commits: [
+              { sha: "a", subject: "Search box" },
+              { sha: "b", subject: "Cart badge" },
+            ],
+          },
+        ],
+      },
+      words: "2 changes not released · since v2.4.0",
+      door: "Review",
+    },
+    {
+      case: "a release that did not go out",
+      flow: {
+        releaseFailure: {
+          tag: "v2.5.0",
+          kind: "deploy-failed" as const,
+          at: undefined,
+          error: undefined,
+          service: "app",
+        },
+      },
+      words: "v2.5.0 didn’t go out · app’s deploy failed",
+      door: "Review",
+    },
+  ])("says $case on the heading's second line, above the Mates", ({ flow: over, words, door }) => {
+    const html = render([CRM_DEV, up(CRM_PROD)], { getFlow: () => flow(over) });
+    expect(lineOf(html)).toMatchObject({ words, door });
+    // Under the name, before the Mates.
+    expect(html.indexOf("sidebar-project-line")).toBeLessThan(html.indexOf("sidebar-project-rows"));
+  });
+
+  it("draws no second line on a healthy project, nor on a folded one", () => {
+    expect(lineOf(render([CRM_DEV, up(CRM_PROD)], { getFlow: () => flow() }))?.words).toBe("");
+    stored.collapsed = new Set(["aaa"]);
+    const folded = render([CRM_DEV, up(CRM_PROD)], {
+      getFlow: () =>
+        flow({
+          releaseOffered: true,
+          releaseContents: [{ commits: [{ sha: "a", subject: "x" }] }],
+        }),
+    });
+    expect(lineOf(folded)?.words ?? "").toBe("");
+    stored.collapsed = new Set();
+  });
+
   it("turns production amber when the newest release did not go through, the old one serving", () => {
     const html = render([CRM_DEV, up(CRM_PROD)], {
       getFlow: () =>
