@@ -15,7 +15,7 @@ import {
   type StandupServiceRow,
   readStandup,
 } from "@t3tools/client-runtime/zerops/activity/standupReading";
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import { standupStepRole, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { createContext, use, useMemo } from "react";
 
 import { useNowMs } from "../useNowMs";
@@ -28,18 +28,25 @@ const SETTLED_STATE: Record<string, StandupServiceRow["state"]> = {
   done: "built",
   failed: "failed",
   running: "building",
-  queued: "waits",
 };
 
 /** What the report said of each service, once the call settled. */
 export function settledStandupReading(operation: ZeropsOperation): StandupReading {
-  // A stage the call queued is the next call's.
-  const rows = operation.steps
-    .filter((step) => step.state !== "queued")
-    .map((step): StandupServiceRow => ({
-      hostname: step.label,
-      state: SETTLED_STATE[step.state] ?? "built",
-    }));
+  const rows = operation.steps.flatMap((step): StandupServiceRow[] => {
+    const role = standupStepRole(step);
+    // A stage the call queued is the next call's.
+    if (role === "next") return [];
+    if (role === "held") {
+      return [
+        {
+          hostname: step.label,
+          state: "waits",
+          ...(step.note === undefined ? {} : { note: step.note }),
+        },
+      ];
+    }
+    return [{ hostname: step.label, state: SETTLED_STATE[step.state] ?? "built" }];
+  });
   return {
     rows,
     building: rows.filter((row) => row.state === "building").length,
@@ -48,10 +55,10 @@ export function settledStandupReading(operation: ZeropsOperation): StandupReadin
   };
 }
 
-/** The services a running call builds, when the report before it named them (its queued steps). */
+/** The services a running call builds, when the report before it named them (the stages it queued). */
 export function standupExpected(operation: ZeropsOperation): ReadonlyArray<string> | undefined {
-  const queued = operation.steps.filter((step) => step.state === "queued");
-  return queued.length === 0 ? undefined : queued.map((step) => step.label);
+  const next = operation.steps.filter((step) => standupStepRole(step) === "next");
+  return next.length === 0 ? undefined : next.map((step) => step.label);
 }
 
 export function useStandupReading(

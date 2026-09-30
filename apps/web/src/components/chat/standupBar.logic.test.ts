@@ -126,6 +126,11 @@ describe("standupRow — a service under the opened bar", () => {
   it.each([
     { row: { hostname: "webdev", state: "waits" } as const, tone: "off", word: "Waits" },
     {
+      row: { hostname: "webstage", state: "waits", note: "apistage did not stand up" } as const,
+      tone: "off",
+      word: "Waits: apistage did not stand up",
+    },
+    {
       row: { hostname: "webdev", state: "building", startedAt: T, sentence: "Deploying" } as const,
       tone: "busy",
       word: "Deploying",

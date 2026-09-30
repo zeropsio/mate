@@ -33,14 +33,42 @@ describe("settledStandupReading — a settled call's services, as its report sai
   it("reads each service the call built, never a stage it queued for the next call", () => {
     const reading = settledStandupReading(
       standup({
-        steps: [step("apidev", "done"), step("apistage", "queued"), step("webdev", "failed")],
+        steps: [
+          step("apidev", "done"),
+          { ...step("apistage", "queued"), stateLabel: "Next" },
+          step("webdev", "failed"),
+          step("shopdev", "running"),
+        ],
       }),
     );
     expect(reading.rows).toEqual([
       { hostname: "apidev", state: "built" },
       { hostname: "webdev", state: "failed" },
+      { hostname: "shopdev", state: "building" },
     ]);
     expect({ built: reading.built, failed: reading.failed }).toEqual({ built: 1, failed: 1 });
+  });
+
+  it("reads a stage held back as waiting on what did not stand up, never as failed", () => {
+    const reading = settledStandupReading(
+      standup({
+        subject: "stage",
+        phase: "failed",
+        steps: [
+          step("apistage", "failed"),
+          {
+            ...step("webstage", "queued"),
+            stateLabel: "Waits",
+            note: "apistage did not stand up",
+          },
+        ],
+      }),
+    );
+    expect(reading.rows).toEqual([
+      { hostname: "apistage", state: "failed" },
+      { hostname: "webstage", state: "waits", note: "apistage did not stand up" },
+    ]);
+    expect(reading.failed).toBe(1);
   });
 });
 
@@ -49,7 +77,10 @@ describe("standupExpected — the services a running call builds, when the repor
     { name: "the first call: not named", steps: [], expected: undefined },
     {
       name: "the stage call: the stages the call before it queued",
-      steps: [step("apistage", "queued"), step("webstage", "queued")],
+      steps: [
+        { ...step("apistage", "queued"), stateLabel: "Next" },
+        { ...step("webstage", "queued"), stateLabel: "Next" },
+      ],
       expected: ["apistage", "webstage"],
     },
   ])("$name", ({ steps, expected }) => {

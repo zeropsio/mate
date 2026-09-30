@@ -81,5 +81,8 @@ export function standupRow(row: StandupServiceRow): {
   readonly word: string;
 } {
   const { tone, word } = ROW[row.state];
-  return { tone, word: row.state === "building" ? (row.sentence ?? word) : word };
+  if (row.state === "building") return { tone, word: row.sentence ?? word };
+  if (row.state === "waits" && row.note !== undefined)
+    return { tone, word: `${word}: ${row.note}` };
+  return { tone, word };
 }
