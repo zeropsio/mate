@@ -677,7 +677,9 @@ In the order the owner ranked them, then the rest:
     data layer still drops a project's services query the moment its last lease goes (the Mate's
     view no longer depends on it; its row briefly loses its service line); a stopped Mate's view
     offers the projects screen rather than Start. A result's pictures whose files are gone still
-    draw as "Gone" tiles. **The add-Mate flow**, recorded on Beviro the same day (26 min 9 s from
+    draw as "Gone" tiles. The lone card's corners jump 20 → 34 if a bar arrives beside a card that holds
+    only its line; a result band that ends up empty still draws an empty middle slice; reduced
+    motion was checked in code, not in a browser. **The add-Mate flow**, recorded on Beviro the same day (26 min 9 s from
     _Add_ to development up, the person needed at 0:00 and 3:07, the stand-up 16 min of a model
     improvising a procedure zcp knows): the process to replace it is the next pass; its findings —
     `recipeTier.ts` strips `buildFromGit` even from public repositories (mailpit), the Mate tier's
