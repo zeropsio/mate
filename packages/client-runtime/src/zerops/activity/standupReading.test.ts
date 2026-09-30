@@ -94,6 +94,47 @@ describe("readStandup — each service a stand-up call builds, from the project'
       counts: { building: 0, built: 0, failed: 0 },
     },
     {
+      name: "a runtime with no partner zcp never builds: it does not wait",
+      half: "development",
+      services: [
+        ...FRESH,
+        { hostname: "worker", serviceId: "s-worker", runtime: true, runsCode: false },
+        { hostname: "docsstage", serviceId: "s-docsstage", runtime: true, runsCode: false },
+      ],
+      processes: [],
+      rows: [
+        { hostname: "apidev", state: "waits" },
+        { hostname: "webdev", state: "waits" },
+      ],
+      counts: { building: 0, built: 0, failed: 0 },
+    },
+    {
+      name: "a dev half named like its stage's stem (api beside apistage) waits",
+      half: "development",
+      services: [
+        { hostname: "api", serviceId: "s-api", runtime: true, runsCode: false },
+        { hostname: "apistage", serviceId: "s-apistage", runtime: true, runsCode: false },
+      ],
+      processes: [],
+      rows: [{ hostname: "api", state: "waits" }],
+      counts: { building: 0, built: 0, failed: 0 },
+    },
+    {
+      name: "one with no partner is the call's once a build of the call names it",
+      half: "development",
+      services: [
+        ...FRESH,
+        { hostname: "worker", serviceId: "s-worker", runtime: true, runsCode: false },
+      ],
+      processes: [build("s-worker", "RUNNING")],
+      rows: [
+        { hostname: "apidev", state: "waits" },
+        { hostname: "webdev", state: "waits" },
+        { hostname: "worker", state: "building" },
+      ],
+      counts: { building: 1, built: 0, failed: 0 },
+    },
+    {
       name: "one building: its row says the pipeline's step",
       half: "development",
       services: FRESH,
@@ -224,13 +265,33 @@ describe("readStandup — each service a stand-up call builds, from the project'
     });
   }
 
+  it("a row's start never moves later: a queued build counts from when it was made", () => {
+    const { started: _started, ...pending } = build("s-apidev", "PENDING", { created: at(1) });
+    const queued = readStandup({
+      half: "development",
+      services: FRESH,
+      processes: [pending],
+      since: SINCE,
+      nowMs: NOW,
+    });
+    const started = readStandup({
+      half: "development",
+      services: FRESH,
+      processes: [build("s-apidev", "RUNNING", { created: at(1), started: at(2) })],
+      since: SINCE,
+      nowMs: NOW,
+    });
+    expect(queued.rows[0]?.startedAt).toBe(at(1));
+    expect(started.rows[0]?.startedAt).toBe(at(1));
+  });
+
   it("a row carries its build's own span: from its start, until it ended", () => {
     const reading = readStandup({
       half: "development",
       services: FRESH,
       processes: [
-        build("s-apidev", "FINISHED", { started: at(1, 5), finished: at(4, 10) }),
-        build("s-webdev", "RUNNING", { started: at(2) }),
+        build("s-apidev", "FINISHED", { created: at(1, 5), finished: at(4, 10) }),
+        build("s-webdev", "RUNNING", { created: at(2) }),
       ],
       since: SINCE,
       nowMs: NOW,

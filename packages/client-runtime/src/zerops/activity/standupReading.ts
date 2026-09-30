@@ -13,8 +13,9 @@
  * window names. Without the names, they are the runtimes of its half that run
  * no code (zcp's own rule: it deploys a half that has none, `HasDeployedCode`),
  * a pair's stage half the runtime whose hostname ends in `stage` — zcp's own
- * convention (`IsStageHostname`). A service that already runs code and builds
- * nothing in the call is not the call's.
+ * convention (`IsStageHostname`) — and only a half with its partner beside it.
+ * A service that already runs code and builds nothing in the call is not the
+ * call's.
  *
  * Pure: the caller reads the topology and the processes and hands them here.
  */
@@ -45,6 +46,8 @@ export interface StandupServiceRow {
   readonly endedAt?: string;
   /** A build that runs: the step it is on, in the Zerops GUI's words. */
   readonly sentence?: string;
+  /** One held back: what it waits on that did not stand up. */
+  readonly note?: string;
 }
 
 export interface StandupReading {
@@ -58,6 +61,21 @@ export interface StandupReading {
 /** zcp's `IsStageHostname`: a pair's stage half is named `…stage`. */
 export function isStageHostname(hostname: string): boolean {
   return hostname.length > "stage".length && hostname.endsWith("stage");
+}
+
+/**
+ * Whether a runtime is a half of a pair by zcp's rule (`pairRepositoryRuntimes`):
+ * a stage `Xstage` beside its dev half `Xdev` or `X`. A runtime with no
+ * partner — no repository, unpaired, a utility the platform built — is none
+ * zcp stands up.
+ */
+function hasPartner(hostname: string, hostnames: ReadonlySet<string>): boolean {
+  if (isStageHostname(hostname)) {
+    const stem = hostname.slice(0, -"stage".length);
+    return hostnames.has(`${stem}dev`) || hostnames.has(stem);
+  }
+  const stem = hostname.endsWith("dev") ? hostname.slice(0, -"dev".length) : hostname;
+  return hostnames.has(`${stem}stage`) || hostnames.has(`${hostname}stage`);
 }
 
 const BUILD_ACTIONS: ReadonlySet<string> = new Set(["stack.build", "stack.deploy"]);
@@ -104,6 +122,9 @@ export function readStandup(input: {
   const builds = input.processes
     .filter((process) => inWindow(process, sinceMs))
     .sort((left, right) => Date.parse(left.created) - Date.parse(right.created));
+  const runtimes = new Set(
+    input.services.filter((service) => service.runtime).map((service) => service.hostname),
+  );
   const rows = [...input.services]
     .sort((left, right) => left.hostname.localeCompare(right.hostname))
     .filter((service) => service.runtime)
@@ -114,7 +135,9 @@ export function readStandup(input: {
       if (latest === undefined) {
         const waits =
           input.expected === undefined
-            ? !service.runsCode && isStageHostname(service.hostname) === (input.half === "stage")
+            ? !service.runsCode &&
+              isStageHostname(service.hostname) === (input.half === "stage") &&
+              hasPartner(service.hostname, runtimes)
             : input.expected.includes(service.hostname);
         return waits ? [{ hostname: service.hostname, state: "waits" }] : [];
       }
@@ -125,7 +148,8 @@ export function readStandup(input: {
         {
           hostname: service.hostname,
           state,
-          startedAt: latest.started ?? latest.created,
+          // When it was made, not when it started: a row's start never moves later.
+          startedAt: latest.created,
           ...(state === "building" || latest.finished === undefined
             ? {}
             : { endedAt: latest.finished }),
