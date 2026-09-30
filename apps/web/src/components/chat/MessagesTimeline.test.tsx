@@ -2170,7 +2170,10 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
   const KEY_B = "environment-local:thread-b";
   // What a kept list reads of its conversation while out of sight, as a
   // store it subscribes to.
-  const read = new Map<string, { readonly timelineEntries: ReadonlyArray<unknown> }>();
+  const read = new Map<
+    string,
+    { readonly timelineEntries: ReadonlyArray<unknown>; readonly latestTurn?: unknown }
+  >();
   const readers = new Set<() => void>();
   const tell = (key: string, props: NonNullable<ReturnType<typeof read.get>>) => {
     read.set(key, props);
@@ -2198,12 +2201,14 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
     open: string,
     alive: (key: string) => boolean = () => true,
     extra: Partial<Parameters<typeof MessagesTimeline>[0]> = {},
+    inset: { readonly insetMeasured?: boolean; readonly insetRemembered?: boolean } = {},
   ) => {
     const { KeptTimelines } = await import("./KeptTimelines");
     return (
       <KeptTimelines
         open={open}
         alive={alive}
+        {...inset}
         Reader={Reader}
         crewTimeline={null}
         timeline={{
@@ -2334,6 +2339,52 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
       });
       await act(() => renderer!.update(answered));
       expect(seamNew(renderer!)).toBe(true);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
+  // A return shows a kept list in the press frame with the inset remembered
+  // for it; one whose conversation changed while away — its banners may have
+  // too — waits out of sight until its own inset is measured.
+  it.each([
+    { case: "unchanged while away", changed: false },
+    { case: "changed while away", changed: true },
+  ])("shows at once on a return, $case: out of sight $changed", async ({ changed }) => {
+    const place = await settle();
+    const turn = (completedAt: string) => ({
+      turnId: TurnId.make("turn-a"),
+      state: "completed" as const,
+      startedAt: "2026-09-30T09:00:00.000Z",
+      completedAt,
+    });
+    const before = { latestTurn: turn("2026-09-30T09:05:00.000Z") };
+    let renderer: ReactTestRenderer | undefined;
+    await act(async () => {
+      renderer = create(await pane(KEY_A, undefined, before));
+    });
+    try {
+      await place(renderer!);
+      const b = await pane(KEY_B);
+      await act(() => renderer!.update(b));
+      await act(() =>
+        tell(KEY_A, {
+          timelineEntries: [buildUserTimelineEntry(`Where were we in ${KEY_A}?`)],
+          latestTurn: changed ? turn("2026-09-30T09:30:00.000Z") : before.latestTurn,
+        }),
+      );
+      const back = await pane(KEY_A, undefined, before, {
+        insetMeasured: false,
+        insetRemembered: true,
+      });
+      await act(() => renderer!.update(back));
+      const outOfSightNow =
+        renderer!.root.findAll(
+          (node) =>
+            node.props["data-kept-timeline"] !== undefined &&
+            node.findAll((inner) => inner.props["data-timeline-thread"] === KEY_A).length > 0,
+        ).length > 0;
+      expect(outOfSightNow).toBe(changed);
     } finally {
       await act(() => renderer?.unmount());
     }

@@ -1552,8 +1552,7 @@ export default function ChatView(props: ChatViewProps) {
   });
   const warmTimelineAsk = useWarmTimelineAsk();
   const rememberedInset = rememberedTimelineInset(routeThreadKey);
-  const timelineInsetSettled =
-    composerOverlaySettledFor === routeThreadKey || rememberedInset !== undefined;
+  const timelineInsetMeasured = composerOverlaySettledFor === routeThreadKey;
   const timelineInsetEnd =
     composerOverlaySettledFor === routeThreadKey
       ? composerOverlayHeight
@@ -8122,7 +8121,8 @@ export default function ChatView(props: ChatViewProps) {
               <KeptTimelines
                 open={routeThreadKey}
                 warm={warmTimelineAsk}
-                insetSettled={timelineInsetSettled}
+                insetMeasured={timelineInsetMeasured}
+                insetRemembered={rememberedInset !== undefined}
                 crewTimeline={crewTimeline}
                 timeline={{
                   agentPanelModel,
