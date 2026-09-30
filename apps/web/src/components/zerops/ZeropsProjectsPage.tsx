@@ -485,10 +485,12 @@ export function projectsTroubleView(input: {
 } {
   const spoken = input.inventoryError !== null;
   const failed = input.listingNotice?.region === "message";
+  const empty = spoken && input.rows === 0;
   return {
     alert: input.connectError,
-    listingNotice: spoken && failed ? null : input.listingNotice,
-    empty: spoken && input.rows === 0 ? PROJECTS_WAIT_FOR_ZEROPS : null,
+    // The empty words replace the listing's own line, its reading placeholder included: one says it.
+    listingNotice: spoken && (failed || empty) ? null : input.listingNotice,
+    empty: empty ? PROJECTS_WAIT_FOR_ZEROPS : null,
   };
 }
 
