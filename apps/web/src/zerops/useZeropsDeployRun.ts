@@ -13,10 +13,11 @@
  * `rerunActionJob` since the forge landed and used none of them anywhere, so a
  * failed deploy was a red dot and nothing else. Gitea cannot be asked for the
  * run of a given commit, only for a branch's runs, so the run is found by
- * matching `head_sha` in the newest page — a deploy older than that page has
+ * matching `head_sha` in the newest page (`sameCommit`: a version's name may
+ * spell the commit short) — a deploy older than that page has
  * no run here, which is the honest answer rather than a wrong one.
  */
-import type { GiteaActionJob } from "@t3tools/client-runtime/zerops";
+import { sameCommit, type GiteaActionJob } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -134,7 +135,7 @@ export function useZeropsDeployRun(request: ZeropsDeployRunRequest | null): Zero
     void client
       .listActionRuns(owner, repo, { limit: DEPLOY_RUN_SEARCH })
       .then(async (runs) => {
-        const run = runs.find((entry) => entry.head_sha === sha);
+        const run = runs.find((entry) => sameCommit(sha, entry.head_sha));
         if (run === undefined) {
           if (live) setHeld({ key, generation, state: { kind: "none" } });
           return;

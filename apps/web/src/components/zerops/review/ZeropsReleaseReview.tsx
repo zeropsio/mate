@@ -17,7 +17,9 @@ import {
   releaseContentsCommits,
   releaseReview,
   reviewAge,
+  deployedCommit,
   rollbackReview,
+  sameCommit,
   shortCommit,
   stageMarks,
   stageStandings,
@@ -397,7 +399,7 @@ function RollbackData({
     (production?.services ?? []).map((service) => [service.hostname, service.appVersionName]),
   );
   const moving = (earlier?.entries ?? [])
-    .filter((entry) => !(running.get(entry.service) ?? "").includes(shortCommit(entry.commit)))
+    .filter((entry) => !sameCommit(deployedCommit(running.get(entry.service)), entry.commit))
     .map((entry) => entry.service);
   const rollBack = async () => {
     if (flowValue === null) return;

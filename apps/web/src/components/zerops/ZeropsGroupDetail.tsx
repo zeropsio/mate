@@ -48,6 +48,7 @@ import {
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
   type ZeropsRouteOffer,
+  sameCommit,
 } from "@t3tools/client-runtime/zerops";
 import {
   DEPLOYS_ASIDE,
@@ -324,7 +325,7 @@ function useGroupActions(groupId: string): {
   };
 }
 
-/** Every environment of a group, by the whole sha it runs. */
+/** Every environment of a group, by the sha it runs, whole or short as its version name spells it. */
 function deployedShas(environments: ReadonlyArray<EnvironmentRow>): ReadonlyMap<string, string> {
   const deployed = new Map<string, string>();
   for (const environment of environments) {
@@ -984,10 +985,7 @@ export function ZeropsStopDetailPage({
     releasedAge: releasedAge.length === 0 ? undefined : releasedAge,
     since: view.activatedAt === null ? undefined : formatRelativeTimeLabel(view.activatedAt),
     atMainHead:
-      stage &&
-      commits.kind === "read" &&
-      view.version?.sha !== undefined &&
-      commits.commits[0]?.sha === view.version.sha,
+      stage && commits.kind === "read" && sameCommit(view.version?.sha, commits.commits[0]?.sha),
   });
 
   return (

@@ -7,7 +7,9 @@
  * surfaces already hold (its environment input and the platform's
  * deployment), and a change is placed by the whole sha in the list Gitea's
  * `compare/{production}...{main}` returned, oriented by where `main`'s head
- * sits. Shas compare whole — a short one never equals anything.
+ * sits. Shas compare whole: a version name that spells the stage's commit
+ * short (`versionName.ts`) is first resolved to the one listed commit — or
+ * `main`'s head — it begins, and one that begins none, or two, places nothing.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -16,6 +18,7 @@
 
 import type { Deployment } from "./flow/deployment.ts";
 import { deployedCommit, deployTone, type EnvironmentServiceState } from "./groupRows.ts";
+import { resolveCommit } from "./versionName.ts";
 import type { Shown } from "./knowledge/known.ts";
 
 /** One commit `main` has and a stop does not run, in the words it was merged under. */
@@ -34,7 +37,7 @@ export interface ServiceChanges {
 
 const FULL_SHA = /^[0-9a-f]{40}$/iu;
 
-/** Whether two commits are the same one — by the whole sha, never a prefix. */
+/** Whether two commits are the same one — by the whole sha, never a prefix (`resolveCommit` first). */
 function sameSha(left: string | undefined, right: string | undefined): boolean {
   return (
     left !== undefined &&
@@ -63,9 +66,12 @@ function newestFirst(
 
 /** Where the main-following stage stands, as much as the marks under production need. */
 export interface StageStandings {
-  /** What each stage service runs, hostname → whole sha; `undefined` for one nothing names. */
+  /**
+   * What each stage service runs, hostname → sha as its version name spells it, whole or short;
+   * `undefined` for one nothing names.
+   */
   readonly runs: ReadonlyMap<string, string | undefined>;
-  /** The whole sha a build on the stage is deploying now. */
+  /** The sha a build on the stage is deploying now, whole or short. */
   readonly deploying: string | undefined;
   /**
    * The services whose last deploy of what they run failed. Per service: in a
@@ -119,12 +125,14 @@ function markOnService(input: {
   readonly ordered: ReadonlyArray<StopChange> | undefined;
   readonly head: string | undefined;
   readonly service: string;
+  /** What the service runs and deploys, resolved to whole shas. */
   readonly runs: string | undefined;
+  readonly deploying: string | undefined;
   readonly stage: StageStandings;
 }): StageMark {
   const { change, runs, stage } = input;
   if (stage.failed.has(input.service) && sameSha(runs, change.sha)) return "failed-on-stage";
-  if (sameSha(stage.deploying, change.sha)) return "deploying-on-stage";
+  if (sameSha(input.deploying, change.sha)) return "deploying-on-stage";
   if (sameSha(runs, input.head)) return "on-stage";
   if (input.ordered === undefined) return "none";
   const at = indexOfSha(input.ordered, runs);
@@ -154,6 +162,9 @@ export function stageMarks(input: {
   for (const entry of input.contents) {
     const head = input.mainHeads?.get(entry.service);
     const ordered = newestFirst(entry.commits, head);
+    const known = [head, ...entry.commits.map((commit) => commit.sha)];
+    const runs = resolveCommit(input.stage?.runs.get(entry.service), known);
+    const deploying = resolveCommit(input.stage?.deploying, known);
     for (const change of entry.commits) {
       const mark =
         input.stage === undefined
@@ -163,7 +174,8 @@ export function stageMarks(input: {
               ordered,
               head,
               service: entry.service,
-              runs: input.stage.runs.get(entry.service),
+              runs,
+              deploying,
               stage: input.stage,
             });
       const key = change.sha.toLowerCase();

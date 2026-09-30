@@ -82,8 +82,30 @@ describe("stageMarks", () => {
       expected: { [D]: "none", [C]: "none", [B]: "none" },
     },
     {
-      name: "a short sha never places the stage",
+      // A version name since 2026-09-30 spells the commit short: it is the listed one it begins.
+      name: "a short sha places the stage as the listed commit it begins",
       stage: standing({ runs: new Map([["app", C.slice(0, 7)]]), deploying: D.slice(0, 7) }),
+      expected: { [D]: "deploying-on-stage", [C]: "on-stage", [B]: "on-stage" },
+    },
+    {
+      name: "a short sha two listed commits begin places nothing",
+      contents: [
+        {
+          service: "app",
+          commits: [change(D), change(C), change(`${"c".repeat(7)}${"1".repeat(33)}`)],
+        },
+      ],
+      stage: standing({ runs: new Map([["app", C.slice(0, 7)]]) }),
+      expected: { [D]: "none", [C]: "none", [`${"c".repeat(7)}${"1".repeat(33)}`]: "none" },
+    },
+    {
+      name: "a short sha nothing listed begins places nothing",
+      stage: standing({ runs: new Map([["app", "eeeeeee"]]) }),
+      expected: { [D]: "none", [C]: "none", [B]: "none" },
+    },
+    {
+      name: "a dirty tree's token is no commit",
+      stage: standing({ runs: new Map([["app", `${C.slice(0, 7)}-dirty`]]) }),
       expected: { [D]: "none", [C]: "none", [B]: "none" },
     },
     {

@@ -66,6 +66,7 @@ import {
   type FlowReleaseRow,
   type ReleaseGate,
 } from "../release.ts";
+import { resolveCommit } from "../versionName.ts";
 import type { Deployment, StopService } from "./deployment.ts";
 import { CHECKING_RELEASE } from "./release.ts";
 
@@ -405,14 +406,55 @@ function rowVersionOf(deployment: Deployment): DeployedVersion | undefined {
 }
 
 /**
- * The name a version was read from, as `environmentRow` reads one back (`deployedVersion`): the
- * sha, then the name and who tagged it; a hand-made name whole.
+ * The name a version was read from, as `environmentRow` reads one back (`deployedVersion`): a
+ * short sha after its tag or branch, a whole one before the name and who tagged it; a hand-made
+ * name whole.
  */
 function versionName(version: DeployedVersion): string | undefined {
   if (version.sha === undefined) return version.name;
+  if (version.sha.length < 40) {
+    const label = version.name ?? version.branch;
+    return label === undefined ? undefined : `${label} ${version.sha}`;
+  }
   return [version.sha, version.name, version.taggedBy]
     .filter((token) => token !== undefined)
     .join(" ");
+}
+
+/**
+ * The whole shas the group's reads already name: each `main` head, each release tag's listed
+ * commits, each pull request's head and landing. A version name that spells its commit short is
+ * one of these, where any is (`resolveCommit`).
+ */
+function knownCommits(inputs: GroupFlowInputs): ReadonlyArray<string | undefined> {
+  const commits: Array<string | undefined> = [];
+  for (const head of inputs.mainHeads.values()) if (isKnown(head)) commits.push(head.value);
+  if (isKnown(inputs.tags)) {
+    for (const tag of inputs.tags.value) {
+      for (const entry of readReleaseMessage(tag.message ?? "")) commits.push(entry.commit);
+    }
+  }
+  for (const pull of inputs.pulls.values()) {
+    if (isKnown(pull)) commits.push(pull.value.pull.head?.sha);
+  }
+  for (const landed of inputs.merged.values()) {
+    if (!isKnown(landed)) continue;
+    for (const pull of landed.value)
+      commits.push(pull.head?.sha, pull.merge_commit_sha ?? undefined);
+  }
+  return commits;
+}
+
+/**
+ * The sha a version's commit is read and keyed by: the whole one a known commit gives a short
+ * spelling, else the spelling itself — Gitea resolves a sha of seven characters or more to its
+ * commit (`commits/{ref}/statuses`, `compare`), and one it cannot tell stays unknown.
+ */
+function commitKey(
+  sha: string | undefined,
+  known: ReadonlyArray<string | undefined>,
+): string | undefined {
+  return sha === undefined ? undefined : (resolveCommit(sha, known) ?? sha);
 }
 
 /**
@@ -425,13 +467,14 @@ function declaredVersions(
   const { declarations, members, tiers } = inputs;
   if (!isKnown(declarations) || !isKnown(members) || !isKnown(tiers)) return [];
   const versions: Array<{ readonly repository: string; readonly sha: string }> = [];
+  const known = knownCommits(inputs);
   for (const { project } of declarations.value) {
     if (!members.value.some(({ projectId }) => projectId === project)) continue;
     const services = inputs.stops.get(project);
     if (services === undefined || !isKnown(services)) continue;
     for (const { hostname, deployment } of services.value) {
       if (!isKnown(deployment)) continue;
-      const sha = rowVersionOf(deployment.value)?.sha;
+      const sha = commitKey(rowVersionOf(deployment.value)?.sha, known);
       const repository = tiers.value.repositories.get(hostname);
       if (sha !== undefined && repository !== undefined) versions.push({ repository, sha });
     }
@@ -457,6 +500,7 @@ function environmentOf(
   ];
   if (!isKnown(services) || !isKnown(tiers)) return combine(parts).shown as Shown<never>;
   const states: Array<EnvironmentServiceState> = [];
+  const known = knownCommits(inputs);
   for (const { hostname, deployment } of services.value) {
     parts.push({ shown: deployment, source: "zerops" });
     if (!isKnown(deployment)) continue;
@@ -464,8 +508,9 @@ function environmentOf(
     const repository = tiers.value.repositories.get(hostname);
     const appVersionName = version === undefined ? undefined : versionName(version);
     let statuses: ReadonlyArray<GiteaCommitStatus> | undefined;
-    if (version?.sha !== undefined && repository !== undefined) {
-      const read = inputs.statuses.get(statusKey(repository, version.sha)) ?? UNREAD;
+    const sha = commitKey(version?.sha, known);
+    if (sha !== undefined && repository !== undefined) {
+      const read = inputs.statuses.get(statusKey(repository, sha)) ?? UNREAD;
       parts.push({ shown: read, source: "gitea" });
       if (isKnown(read)) statuses = read.value;
     }
@@ -703,6 +748,7 @@ function releaseSides(inputs: GroupFlowInputs): ReleaseSides {
   const candidate = new Map<string, string>();
   const repositories = new Map<string, string>();
   const unstated = new Set<string>();
+  const known = knownCommits(inputs);
   for (const { tier, project } of isKnown(declarations) ? declarations.value : []) {
     // A production with no member project runs nothing anybody can read.
     if (
@@ -728,7 +774,8 @@ function releaseSides(inputs: GroupFlowInputs): ReleaseSides {
         parts.push({ shown: UNREAD, source: "zerops" });
         unstated.add(hostname);
       }
-      if (runs?.version.sha !== undefined) production.set(hostname, runs.version.sha);
+      const runsSha = commitKey(runs?.version.sha, known);
+      if (runsSha !== undefined) production.set(hostname, runsSha);
       if (repository !== undefined && head !== null && isKnown(head)) {
         candidate.set(hostname, head.value);
         repositories.set(hostname, repository);

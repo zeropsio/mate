@@ -577,6 +577,23 @@ describe("serviceRows", () => {
     { name: "behind main's head", appVersionName: SHA_WEB, mainHead: SHA_API },
     { name: "while main's head is not read", appVersionName: SHA_WEB, mainHead: undefined },
     {
+      name: "at main's head, named by the branch and the short sha",
+      appVersionName: `main ${SHA_WEB.slice(0, 7)}`,
+      mainHead: SHA_WEB,
+      line: "head of main",
+    },
+    {
+      name: "behind main's head, named by the branch and the short sha",
+      appVersionName: `main ${SHA_API.slice(0, 7)}`,
+      mainHead: SHA_WEB,
+    },
+    {
+      name: "at main's head, released under the tag and the short sha",
+      appVersionName: `v0.1.14 ${SHA_WEB.slice(0, 7)}`,
+      mainHead: SHA_WEB,
+      line: "deployed with v0.1.14",
+    },
+    {
       name: "at main's head, deployed with a name",
       appVersionName: `${SHA_WEB} v0.1.14 gitea`,
       mainHead: SHA_WEB,
