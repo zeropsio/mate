@@ -532,7 +532,10 @@ const backoff = (
       ? { rung: Math.max(machine.ladder.rung, IDENTITY_FAILED_RUNG) }
       : machine.ladder;
   const next = scheduleRetry(from, ctx.now.wall, ctx.random);
-  const delayMs = failures >= RETRY_CAP ? CAPPED_RETRY_MS : next.retryAtMs - ctx.now.wall;
+  // The cap spares a Mate nobody is looking at; the route's own stays on the ladder, which its
+  // container coming back also cuts short (`bindContainerStore`).
+  const capped = failures >= RETRY_CAP && !machine.guards.routeTarget;
+  const delayMs = capped ? CAPPED_RETRY_MS : next.retryAtMs - ctx.now.wall;
   return {
     ...machine,
     failures,
