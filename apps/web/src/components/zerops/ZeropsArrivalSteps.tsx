@@ -117,7 +117,11 @@ export function ArrivalRuntimesLine({
     readonly line: RuntimesLine;
     readonly services: ReadonlyArray<ArrivalService>;
   }>({ line: "none", services: [] });
-  const line = nextRuntimesLine(held.line, read?.coming === true);
+  // An unread listing (it blinks between reads) says nothing: the line stays as it stands.
+  const line = nextRuntimesLine(
+    held.line,
+    runtimes === undefined ? undefined : read?.coming === true,
+  );
   // Its last names are kept for a read that has none any more: its place stays drawn, faded.
   const services = read?.services ?? held.services;
   if (line !== held.line) setHeld({ line, services });

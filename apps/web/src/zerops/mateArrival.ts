@@ -430,11 +430,17 @@ export function runtimesComing(runtimes: ReadonlyArray<BirthRuntimeFact> | undef
  * The sign-in's runtimes line: `none` until a runtime is seen coming up — never for a Mate whose
  * runtimes are already up — `coming` while any is, then `settled` once all are: its words fade,
  * its place stays, since the page is centred and a line that went would move everything above it.
- * It ends with the sign-in: the stand-up's run card carries the builds from there.
+ * It ends with the sign-in: the stand-up's run card carries the builds from there. A listing that
+ * blinks unread between reads leaves it as it stands.
  */
 export type RuntimesLine = "none" | "coming" | "settled";
 
-export function nextRuntimesLine(line: RuntimesLine, coming: boolean): RuntimesLine {
+export function nextRuntimesLine(
+  line: RuntimesLine,
+  /** Whether any is coming up; undefined while the listing is unread, which says nothing. */
+  coming: boolean | undefined,
+): RuntimesLine {
+  if (coming === undefined) return line;
   if (coming) return "coming";
   return line === "none" ? "none" : "settled";
 }
