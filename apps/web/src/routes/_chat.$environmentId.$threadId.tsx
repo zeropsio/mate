@@ -1,22 +1,17 @@
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 import ChatView from "../components/ChatView";
 import { threadHasStarted } from "../components/ChatView.logic";
 import { finalizePromotedDraftThreadByRef, useComposerDraftStore } from "../composerDraftStore";
 import { resolveThreadRouteRef, resolveThreadRouteRenderState } from "../threadRoutes";
 import { resolveThreadSyncPhase } from "../threadSync";
-import { MATE_VOICE_QUIET_MS } from "@t3tools/client-runtime/zerops/environments";
-import { EnvironmentId, type ScopedThreadRef } from "@t3tools/contracts";
+import { EnvironmentId } from "@t3tools/contracts";
 
-import { ComposerStandIn } from "~/components/chat/ComposerStandIn";
 import { SidebarInset } from "~/components/ui/sidebar";
-import { MateLinkStage } from "~/components/zerops/MateLinkStage";
+import { MateOpeningView } from "~/components/zerops/MateLinkStage";
 import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
-import { mateOpeningStage } from "~/zerops/mateOpeningStage";
-import { useMateVoice } from "~/zerops/mateVoiceContext";
-import { useHeldPast } from "~/zerops/useHeldPast";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { useThreadDetail, useThreadShell, useThreadStatus } from "../state/entities";
 import { useEnvironmentQuery } from "../state/query";
@@ -88,7 +83,7 @@ function ChatThreadRouteView() {
   const showsConversation =
     renderState === "ready" || (renderState === "loading" && serverThreadShell !== null);
   if (!showsConversation && renderState !== "missing" && rememberedMate !== undefined) {
-    return <ThreadOpeningStage threadRef={threadRef} />;
+    return <MateOpeningView threadRef={threadRef} />;
   }
 
   return (
@@ -113,37 +108,6 @@ function ChatThreadRouteView() {
 }
 
 const NO_ENVIRONMENT = EnvironmentId.make("none");
-
-/** The Mate's stage while its conversation is on its way: face, name, then "Opening Quinn…". */
-function ThreadOpeningStage({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
-  const environmentId = threadRef.environmentId;
-  // Typed into while it opens: the conversation's own draft, which its composer reads as it takes over.
-  const draft = useComposerDraftStore((state) => state.getComposerDraft(threadRef)?.prompt ?? "");
-  const [caret, setCaret] = useState(0);
-  const voice = useMateVoice();
-  const pastQuiet = useHeldPast(`opening:${environmentId}`, MATE_VOICE_QUIET_MS);
-  const at = useZeropsMate(environmentId);
-  const name =
-    at.kind === "mate"
-      ? at.mate.name
-      : (rememberedMateIdentity(environmentId)?.name ?? "This Mate");
-  return (
-    <MateLinkStage
-      composer={
-        <ComposerStandIn
-          typed={{ text: draft, caret: Math.min(caret, draft.length) }}
-          onType={(next) => {
-            useComposerDraftStore.getState().setPrompt(threadRef, next.text);
-            setCaret(next.caret);
-          }}
-        />
-      }
-      environmentId={environmentId}
-      projectId={null}
-      voice={mateOpeningStage({ voice, pastQuiet, mateName: name })}
-    />
-  );
-}
 
 export const Route = createFileRoute("/_chat/$environmentId/$threadId")({
   component: ChatThreadRouteView,
