@@ -652,6 +652,7 @@ const SHARED: TimelineRowSharedState = {
   onImageExpand: () => undefined,
   onOpenTurnDiff: () => undefined,
   speaker: SPEAKER,
+  standUpAsk: null,
   livePauseId: null,
   usagePause: null,
   onUsageAutoResumeChange: null,

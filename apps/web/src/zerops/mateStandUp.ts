@@ -8,7 +8,8 @@
  * Fen stands up development on Acme Docs." (`mateArrival.ts`) — and the moment
  * they have signed an agent in, their own client sends "Stand up development
  * of the project." as them, through the composer's own send, and clears the tag
- * once the conversation holds it (the owner, 2026-09-29).
+ * once the conversation holds it (the owner, 2026-09-29). The conversation
+ * draws that ask as a quiet line, not as their bubble (`mateStandUpAskLine`).
  *
  * Why the client and not the server: the message is the person's, and only
  * their session may start a turn on the agent they signed in (D6); the tag is
@@ -33,6 +34,7 @@ import type { ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import { classifyZeropsAgentAuth } from "@t3tools/shared/zeropsAgentAuth";
 
 import type { ComposerSendIds } from "../composerDraftStore";
+import type { ZeropsMateIdentity } from "./mateIdentities";
 import { resolveAgentAuthorizer, type LocalAgentSigners } from "./useZeropsAgentSigner";
 
 /** The ask, word for word (the owner, 2026-09-29). */
@@ -175,3 +177,21 @@ export function mateStandUpPhase(input: {
   if (input.attempt === "sending" || input.signIn === "signed-in") return "standing-up";
   return "sign-in";
 }
+
+/**
+ * The stand-up's ask as its conversation draws it: a quiet line in nobody's voice, never a bubble
+ * in the person's words — the ask is the product's, sent for them by their sign-in. Its person
+ * reads it as theirs; anybody else reading the conversation, as asked.
+ */
+export function mateStandUpAskLine(
+  mate: Pick<ZeropsMateIdentity, "name" | "project">,
+  asker: "you" | "someone",
+): string {
+  const of = mate.project === undefined ? "the project" : mate.project;
+  return asker === "you"
+    ? `You asked ${mate.name} to stand up development of ${of}`
+    : `${mate.name} was asked to stand up development of ${of}`;
+}
+
+/** Whether a message of the Mate's main conversation is the stand-up's ask: its exact words. */
+export const isMateStandUpAsk = (text: string): boolean => text.trim() === MATE_STAND_UP_MESSAGE;

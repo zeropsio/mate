@@ -19,6 +19,7 @@ import {
   GitMergeIcon,
   Minimize2Icon,
   PauseIcon,
+  SendIcon,
   TerminalIcon,
 } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
@@ -296,6 +297,33 @@ export function EventLine({
       );
     }
   }
+}
+
+/**
+ * The ask a Mate's first sign-in sends for its person — "You asked Wren to stand up development
+ * of Beviro" — as a quiet line on the text edge, never a bubble in the person's words: the words
+ * are the product's, sent for them. Its time on hover, as every event's.
+ */
+export function StandUpAskLine({
+  words,
+  at,
+  timestampFormat,
+}: {
+  readonly words: string;
+  readonly at: string;
+  readonly timestampFormat: TimestampFormat;
+}) {
+  return (
+    <div className="px-4.25" data-mate-standup-ask>
+      <EventShell
+        at={at}
+        icon={<SendIcon className="size-3.5" />}
+        timestampFormat={timestampFormat}
+      >
+        {words}
+      </EventShell>
+    </div>
+  );
 }
 
 /**

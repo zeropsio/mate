@@ -3,8 +3,10 @@ import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  isMateStandUpAsk,
   MATE_STAND_UP_MESSAGE,
   mateArrivalHoldsComposer,
+  mateStandUpAskLine,
   mateStandUpCleared,
   mateStandUpDecision,
   mateStandUpHoldsComposer,
@@ -30,6 +32,36 @@ const DUE: MateStandUpInput = {
 describe("the stand-up's words", () => {
   it("are the owner's, word for word", () => {
     expect(MATE_STAND_UP_MESSAGE).toBe("Stand up development of the project.");
+  });
+
+  // The ask is drawn as a quiet line, never a bubble in the person's words.
+  it.each([
+    {
+      asker: "you" as const,
+      project: "Acme Docs",
+      line: "You asked Fen to stand up development of Acme Docs",
+    },
+    {
+      asker: "someone" as const,
+      project: "Acme Docs",
+      line: "Fen was asked to stand up development of Acme Docs",
+    },
+    {
+      asker: "you" as const,
+      project: undefined,
+      line: "You asked Fen to stand up development of the project",
+    },
+  ])("draw the ask, for $asker in $project: $line", ({ asker, project, line }) => {
+    expect(mateStandUpAskLine({ name: "Fen", project }, asker)).toBe(line);
+  });
+
+  it.each([
+    [MATE_STAND_UP_MESSAGE, true],
+    [`  ${MATE_STAND_UP_MESSAGE}\n`, true],
+    ["Stand up development of the project, then add a blog.", false],
+    ["stand up development of the project.", false],
+  ])("know the ask by its exact words: %j is %s", (text, ask) => {
+    expect(isMateStandUpAsk(text)).toBe(ask);
   });
 });
 

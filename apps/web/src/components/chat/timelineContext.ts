@@ -37,6 +37,11 @@ export interface TimelineRowSharedState {
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   /** Who the conversation is with: the Mate's name and colour. */
   speaker: ConversationSpeaker;
+  /**
+   * The quiet line a Mate's main conversation draws its stand-up's ask as
+   * (`mateStandUpAskLine`); null where the words are just a message.
+   */
+  standUpAsk: string | null;
   /** The pause row that holds the thread now, and the server's reading of it. */
   livePauseId: string | null;
   usagePause: ServerUsagePause | null;

@@ -26,12 +26,14 @@ import { onAccountLifetimeClose } from "./accountLifetime";
 import { zeropsMateAt } from "./mateIdentities";
 import {
   MATE_STAND_UP_MESSAGE,
+  mateStandUpAskLine,
   mateStandUpCleared,
   mateStandUpDecision,
   mateStandUpHoldsComposer,
   mateStandUpSendIds,
   type MateStandUpConversation,
 } from "./mateStandUp";
+import { useMateReadOnly } from "./useMateReadOnly";
 import { useZeropsEnvironmentProject } from "./useZeropsAgentSigner";
 import { useZeropsMateDirectory } from "./useZeropsMates";
 import { runZeropsCommand, ZeropsDataContext } from "./zeropsDataContext";
@@ -94,6 +96,30 @@ export function resetMateStandUpSession(): void {
 
 // Like every other account-scoped client state, it goes when the account does.
 onAccountLifetimeClose(resetMateStandUpSession);
+
+/**
+ * The quiet line the stand-up's ask is drawn as, where the conversation is a Mate's main one
+ * (`mateStandUpAskLine`); null anywhere else — another chat, a crewmate's, a conversation nobody
+ * lives in — where the words are just a message.
+ */
+export function useMateStandUpAskLine(threadRef: ScopedThreadRef | null): string | null {
+  const directory = useZeropsMateDirectory();
+  const threads = useThreadShells();
+  const environmentId = threadRef?.environmentId ?? null;
+  const whoLivesHere = environmentId === null ? null : zeropsMateAt(directory, environmentId);
+  const own = useMemo(
+    () => threads.filter((thread) => thread.environmentId === environmentId),
+    [environmentId, threads],
+  );
+  const main =
+    threadRef !== null && resolvePrimaryConversation(own).primary?.id === threadRef.threadId;
+  const instanceId = own.find((thread) => thread.id === threadRef?.threadId)?.modelSelection
+    .instanceId;
+  // Somebody else's agent runs it: the viewer reads the ask, they did not make it.
+  const readOnly = useMateReadOnly(environmentId, instanceId);
+  if (whoLivesHere?.kind !== "mate" || !main) return null;
+  return mateStandUpAskLine(whoLivesHere.mate, readOnly ? "someone" : "you");
+}
 
 export function useMateStandUp(input: {
   readonly environmentId: EnvironmentId | null;
