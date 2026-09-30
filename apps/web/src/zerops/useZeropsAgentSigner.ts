@@ -33,7 +33,11 @@
  */
 
 import type { RecordProjectRef } from "@t3tools/client-runtime/zerops/environments";
-import type { EnvironmentId, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  ZeropsAgentAuthSnapshot,
+  ZeropsAgentLoginPhase,
+} from "@t3tools/contracts";
 import {
   useCallback,
   useContext,
@@ -117,19 +121,44 @@ export function useLocalAgentSigners(): LocalAgentSigners {
   );
 }
 
+/** The login a signer comes from, as a snapshot row carries it. */
+export interface AgentSignerFacts {
+  readonly authorizedBy?: { readonly subject: string } | undefined;
+  readonly login?:
+    | { readonly phase: ZeropsAgentLoginPhase; readonly startedBy?: string | undefined }
+    | undefined;
+}
+
+/** A login that ended without a credential vouches for nobody. */
+const LOGIN_ENDED_EMPTY: ReadonlySet<ZeropsAgentLoginPhase> = new Set(["failed", "cancelled"]);
+
 /**
- * Who signed this agent in, for ownership: the snapshot's own record when it
- * has one, else the record this client wrote and the server has not read back
- * yet, else nobody.
+ * Who signed this agent in, for ownership: the snapshot's own record when it has one, else the
+ * record this client wrote and the server has not read back yet, else the viewer's own login —
+ * being checked, or succeeded with its record on its way — else nobody. The viewer is the one
+ * person who knows what the record will say, so the seconds before it lands never read as a
+ * sign-in nobody recorded.
  */
 export function resolveAgentAuthorizer(
   key: string,
-  authorizedBy: { readonly subject: string } | undefined,
+  agent: AgentSignerFacts,
   local: LocalAgentSigners,
+  viewer: string | undefined,
 ): { readonly subject: string } | undefined {
-  if (authorizedBy !== undefined) return { subject: authorizedBy.subject };
+  if (agent.authorizedBy !== undefined) return { subject: agent.authorizedBy.subject };
   const subject = local[key];
-  return subject === undefined ? undefined : { subject };
+  if (subject !== undefined) return { subject };
+  const login = agent.login;
+  if (
+    viewer !== undefined &&
+    viewer.length > 0 &&
+    login !== undefined &&
+    login.startedBy === viewer &&
+    !LOGIN_ENDED_EMPTY.has(login.phase)
+  ) {
+    return { subject: viewer };
+  }
+  return undefined;
 }
 
 /**

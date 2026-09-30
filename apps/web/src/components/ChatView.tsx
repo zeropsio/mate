@@ -3848,8 +3848,9 @@ export default function ChatView(props: ChatViewProps) {
         ? undefined
         : resolveAgentAuthorizer(
             zeropsSpentLogin.key,
-            zeropsSpentLogin.agent.authorizedBy,
+            zeropsSpentLogin.agent,
             zeropsLocalSigners,
+            zeropsViewerSubject,
           ),
     viewerSubject: zeropsViewerSubject,
     recordFailed:

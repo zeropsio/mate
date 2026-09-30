@@ -269,27 +269,64 @@ describe("local agent signers", () => {
     localSignersSettledBy(authorized({ codex: "user-a" }));
   });
 
+  const login = (phase: "verifying-code" | "succeeded" | "failed" | "cancelled", by?: string) => ({
+    phase,
+    terminalId: "term-1",
+    startedAt: DateTime.makeUnsafe("2026-09-30T10:00:00.000Z"),
+    ...(by === undefined ? {} : { startedBy: by }),
+  });
+
   it.each([
     {
       name: "the snapshot's authorizer wins",
-      authorizedBy: { subject: "user-b" },
+      agent: { authorizedBy: { subject: "user-b" }, login: login("verifying-code", "user-a") },
       local: { "claude-code": "user-a" },
       expected: { subject: "user-b" },
     },
     {
       name: "the local record fills in while the server catches up",
-      authorizedBy: undefined,
+      agent: {},
       local: { "claude-code": "user-a" },
       expected: { subject: "user-a" },
     },
     {
-      name: "neither means nobody",
-      authorizedBy: undefined,
+      name: "the viewer's own login being checked is theirs before any record",
+      agent: { login: login("verifying-code", "user-a") },
+      local: {},
+      expected: { subject: "user-a" },
+    },
+    {
+      name: "the viewer's own login that succeeded is theirs while its record is written",
+      agent: { login: login("succeeded", "user-a") },
+      local: {},
+      expected: { subject: "user-a" },
+    },
+    {
+      name: "a colleague's login in flight is not the viewer's",
+      agent: { login: login("verifying-code", "user-b") },
       local: {},
       expected: undefined,
     },
-  ])("$name", ({ authorizedBy, local, expected }) => {
-    expect(resolveAgentAuthorizer("claude-code", authorizedBy, local)).toEqual(expected);
+    {
+      name: "a login that failed vouches for nobody",
+      agent: { login: login("failed", "user-a") },
+      local: {},
+      expected: undefined,
+    },
+    {
+      name: "a login that names no starter vouches for nobody",
+      agent: { login: login("verifying-code") },
+      local: {},
+      expected: undefined,
+    },
+    {
+      name: "neither means nobody",
+      agent: {},
+      local: {},
+      expected: undefined,
+    },
+  ])("$name", ({ agent, local, expected }) => {
+    expect(resolveAgentAuthorizer("claude-code", agent, local, "user-a")).toEqual(expected);
   });
 });
 

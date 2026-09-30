@@ -48,7 +48,7 @@ export function mateReadOnly(input: {
         authorizedBy:
           agent === undefined
             ? undefined
-            : resolveAgentAuthorizer(agent.agentId, agent.authorizedBy, input.localSigners),
+            : resolveAgentAuthorizer(agent.agentId, agent, input.localSigners, input.viewerSubject),
         viewerSubject: input.viewerSubject,
       }),
     }) !== null
