@@ -1345,6 +1345,81 @@ describe("MessagesTimeline — the conversation", () => {
     expect(slice("card-end:msg:message-1")).toBe("run-tray run-tray-bottom");
   });
 
+  // A card with nothing in it but its line's row is drawn whole by that row
+  // (the owner, 2026-09-30, of a live card holding only "Thinking": "the
+  // state of border radiuses in the initial thinking with no other content
+  // around sucks"): closed as open, and live while nothing runs alongside.
+  it.each([
+    {
+      case: "closed",
+      fold: "folded",
+      live: false,
+      alongside: false,
+      whole: ["record", "card-end"],
+    },
+    { case: "opened", fold: "shown", live: false, alongside: false, whole: ["record", "card-end"] },
+    {
+      case: "live, nothing alongside",
+      fold: null,
+      live: true,
+      alongside: false,
+      whole: ["record", "working", "card-end"],
+    },
+    { case: "live, a task alongside", fold: null, live: true, alongside: true, whole: [] },
+  ] as const)("draws a card whole by its line's row: $case", ({ fold, live, alongside, whole }) => {
+    if (fold !== null) setRunFold("environment-local:thread-1", "msg:message-1", fold);
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        {...(live
+          ? {
+              isWorking: true,
+              activeTurnStartedAt: MESSAGE_CREATED_AT,
+              latestTurn: running,
+              runningTurnId: turnId,
+            }
+          : { latestTurn: settled })}
+        {...(alongside
+          ? {
+              working: {
+                operations: [],
+                helpers: null,
+                tasks: null,
+                background: {
+                  tasks: [
+                    {
+                      id: "b1",
+                      title: "Serve the app on port 3000",
+                      state: "running" as const,
+                      watch: false,
+                      turnId: "turn-1",
+                      startedAt: at(2),
+                      endedAt: null,
+                    },
+                  ],
+                  running: 1,
+                  done: 0,
+                  failed: 0,
+                },
+                afterTurn: null,
+                pause: null,
+              },
+            }
+          : {})}
+        timelineEntries={[
+          buildUserTimelineEntry("Build it"),
+          tool("w1", 5),
+          ...(live ? [] : [assistant("a1", 60, "The shop builds.")]),
+        ]}
+      />,
+    );
+    forgetRunFolds("environment-local:thread-1");
+    const drawn = [
+      ...markup.matchAll(/data-card-whole=""[^>]*? data-timeline-row-kind="([^"]+)"/gu),
+    ];
+    expect(drawn.map((match) => match[1])).toEqual(whole);
+  });
+
   // A step is a bubble of the run's chat; what it printed opens in place,
   // under it — never a dialog (the owner, 2026-09-27: "I hate the dialog").
   it("opens what a step printed in place, under its bubble", () => {

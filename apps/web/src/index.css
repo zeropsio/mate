@@ -2637,7 +2637,7 @@ code {
    1.58× the top slice's side took one device column and the middle slice's
    two, and the side jogged at every joint (2026-09-29). So every slice and
    strip takes a radius, the middle ones one nobody can see, and all their
-   sides are drawn the same way. */
+   sides are drawn the same way. A card drawn whole has no joints. */
 .timeline-legend-list
   .legend-list-content-container
   > div
@@ -2649,7 +2649,7 @@ code {
   position: relative;
 }
 
-:is([data-card-slice="top"], [data-card-slice="middle"])::after {
+:is([data-card-slice="top"], [data-card-slice="middle"]):not([data-card-whole])::after {
   content: "";
   position: absolute;
   inset-inline: 0;
@@ -3824,6 +3824,63 @@ code {
   border-bottom-right-radius: 34px;
 }
 
+/* A card nothing stands in but its line's row (`cardWhole`) is drawn whole by
+   that row: one box over the edge row's 16 px, and over the room its panel
+   holds while it closes (`--card-room`), so its corners are its own — sliced,
+   the 16 px edge row clamped the card's 34 px corners to 16 under 34 px ones.
+   Around its line alone it is the conversation's other box, the composer's
+   rectangle (the owner, 2026-09-30, of a card holding only "Thinking": "the
+   state of border radiuses in the initial thinking with no other content
+   around sucks"); once anything stands in it — the chat over its line, its
+   work opened under it, a panel's room — its corners are the card's. They
+   ease from one to the other as the card grows and shrinks: on the toggle's
+   curve, and from the card's on the fold's as its work folds into its line. */
+[data-card-whole] > .run-tray-top {
+  position: relative;
+  isolation: isolate;
+  background: none;
+  border-color: transparent;
+}
+[data-card-whole] > .run-tray-top::before {
+  content: "";
+  position: absolute;
+  inset: -1px -1px calc(-16px - var(--card-room, 0px));
+  z-index: -1;
+  border: 1px solid var(--run-tray-ring);
+  border-radius: var(--composer-radius);
+  background: var(--run-tray);
+}
+[data-card-whole]
+  > .run-tray-top:is(
+    [data-card-room],
+    :has(.run-above:not([data-folding]), .run-later-feed:not(:empty))
+  )::before {
+  border-radius: 34px 34px 16px 16px;
+}
+[data-card-whole] > :is(.run-tray-middle, .run-tray-bottom) {
+  background: none;
+  border-color: transparent;
+}
+/* Its panel, with nothing in it, takes no room: the line's words stand 20 px
+   from both of the card's edges, live as closed. */
+[data-card-whole] > .run-tray-middle {
+  padding-top: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  [data-card-whole] > .run-tray-top::before {
+    transition: border-radius 220ms var(--ease-out-strong);
+  }
+  [data-card-whole] > .run-tray-top:has(.run-above[data-folding])::before {
+    transition: none;
+    animation: run-card-folds 360ms var(--ease-drawer) both;
+  }
+}
+@keyframes run-card-folds {
+  from {
+    border-radius: 34px 34px 16px 16px;
+  }
+}
+
 /* The Mate's words in its card wear its tint lightly (K13): with the
    person's bubble neutral, who is speaking shows at a glance, in the one
    colour that means "who" (S3). A crewmate speaks in its own. */
@@ -4520,6 +4577,9 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
    canvas. */
 :root {
   --chat-composer-shadow: 0 1px 2px rgb(15 18 24 / 5%), 0 14px 34px -16px rgb(15 18 24 / 28%);
+  /* The composer's corners: the conversation's other box, a run's card that
+     holds its line alone, wears them too. */
+  --composer-radius: 20px;
 
   @variant dark {
     --chat-composer-shadow: 0 16px 36px -18px rgb(0 0 0 / 85%);
@@ -4529,11 +4589,11 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 /* One radius for the composer's surface wherever it paints — itself, or its
    read-only stand-in — and the one a pixel inside it for what it holds. */
 [data-chat-composer-main-surface="true"] {
-  border-radius: 20px;
+  border-radius: var(--composer-radius);
 }
 
 [data-chat-composer-surface="true"] {
-  border-radius: 19px;
+  border-radius: calc(var(--composer-radius) - 1px);
 }
 
 /* C3: Review, the one blue button on the composer's top — blue is for what

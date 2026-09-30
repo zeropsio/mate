@@ -317,7 +317,8 @@ const FACTS: ResultFacts = {
 
 /**
  * The run as the conversation draws it: the person's words, the card's
- * slices — each a row of its own, as the list lays them out — the answer.
+ * slices — each a row of its own, as the list lays them out, the card drawn
+ * whole by its line's row while nothing else stands in it — the answer.
  */
 function Turn({
   row,
@@ -337,7 +338,7 @@ function Turn({
         {ask}
       </p>
       <div>
-        <div data-card-slice="top">
+        <div data-card-slice="top" data-card-whole={result ? undefined : ""}>
           <div className="run-tray run-tray-top">
             <RunChat row={row} />
           </div>
@@ -356,7 +357,7 @@ function Turn({
             </div>
           </div>
         ) : null}
-        <div data-card-slice="bottom">
+        <div data-card-slice="bottom" data-card-whole={result ? undefined : ""}>
           <div className="run-tray run-tray-bottom" />
         </div>
       </div>
@@ -513,6 +514,12 @@ const RETRIED = command("f2", "npm test -- status", "Run the tests for the page"
 export function CardStates() {
   return (
     <>
+      <CardState
+        label="Nothing done yet"
+        note="The line alone, live: the same box as a closed run's line with nothing under it."
+      >
+        <Turn row={record("status-first", { items: [] })} />
+      </CardState>
       <CardState
         label="Thinking"
         note="Thinking, and the latest of its thought on the same line; the face looks up."

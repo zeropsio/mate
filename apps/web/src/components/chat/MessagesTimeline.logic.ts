@@ -771,6 +771,14 @@ export type RecordItem =
 export type MessagesTimelineRow = MessagesTimelineRowBody & {
   readonly gap?: RowGap;
   readonly card?: CardSlice;
+  /**
+   * Nothing stands in this row's card but its line's row: a settled run with
+   * nothing to report, or a live one with nothing running alongside it. That
+   * row draws the card whole, so its corners are its own — the composer's
+   * around the line alone, the card's once more stands in it — and the rest
+   * of its rows draw nothing (`[data-card-whole]`). On each of its rows.
+   */
+  readonly cardWhole?: true;
 };
 
 function isPersonRow(row: MessagesTimelineRow): boolean {
@@ -1530,6 +1538,8 @@ export function deriveMessagesTimelineRows(input: {
   nowMs?: number;
   /** When each helper finished, as the helpers panel knows it (`helperFinishesOf`). */
   helperFinishes?: ReadonlyArray<HelperFinish>;
+  /** Something runs alongside the live run: its panel draws a bar (`dockDraws`). */
+  alongside?: boolean;
 }): MessagesTimelineRow[] {
   const entries = input.timelineEntries;
   const structure = deriveConversationStructure({
@@ -2149,9 +2159,20 @@ export function deriveMessagesTimelineRows(input: {
     });
   });
   const cards = new Map<number, CardSlice>();
+  const whole = new Set<number>();
   for (const [start, end] of cardRanges) {
     for (let index = start; index < end; index += 1) {
       cards.set(index, index === start ? "top" : index === end - 1 ? "bottom" : "middle");
+    }
+    // Nothing under the line but what runs alongside, while nothing does.
+    const body = rows.slice(start + 1, end - 1);
+    const bare =
+      rows[start]?.kind === "record" &&
+      body.every(
+        (row) => row.kind === "working" && row.incidents.length === 0 && input.alongside !== true,
+      );
+    if (bare) {
+      for (let index = start; index < end; index += 1) whole.add(index);
     }
   }
   return rows.map((row, index) => {
@@ -2163,6 +2184,7 @@ export function deriveMessagesTimelineRows(input: {
       ...row,
       gap: row.kind === "card-end" ? "none" : rowGap(previous, row),
       ...(card === undefined ? {} : { card }),
+      ...(whole.has(index) ? { cardWhole: true as const } : {}),
     };
   });
 }
@@ -2229,7 +2251,8 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
     a.id !== b.id ||
     a.createdAt !== b.createdAt ||
     a.gap !== b.gap ||
-    a.card !== b.card
+    a.card !== b.card ||
+    a.cardWhole !== b.cardWhole
   ) {
     return false;
   }

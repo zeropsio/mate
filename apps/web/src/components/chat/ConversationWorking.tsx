@@ -445,6 +445,17 @@ function DetailRow({
   );
 }
 
+/** Whether anything in the dock runs alongside the Mate: a bar of its own under the live line. */
+export function dockDraws(dock: DockModel | null): boolean {
+  return (
+    dock !== null &&
+    (dock.operations.length > 0 ||
+      dock.tasks !== null ||
+      dock.helpers !== null ||
+      dock.background !== null)
+  );
+}
+
 /**
  * A status bar for each thing that runs — the deploys, a service in trouble,
  * the task list, the helpers, the background tasks — each opening what it
@@ -473,15 +484,7 @@ function Instruments({
   const helpers = dock?.helpers ?? null;
   const tasks = dock?.tasks ?? null;
   const background = dock?.background ?? null;
-  if (
-    operations.length === 0 &&
-    incidents.length === 0 &&
-    tasks === null &&
-    helpers === null &&
-    background === null
-  ) {
-    return null;
-  }
+  if (!dockDraws(dock) && incidents.length === 0) return null;
   const runningTask = background?.tasks.findLast((task) => task.state === "running");
   const toggle = (key: string) => {
     // What the person opened is theirs to read: the conversation stops

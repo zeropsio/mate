@@ -146,7 +146,7 @@ import {
 import { SkillInlineText } from "./SkillInlineText";
 import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic";
 import { TurnReport } from "./TurnReport";
-import { ConversationAfterWork, ConversationWorking } from "./ConversationWorking";
+import { ConversationAfterWork, ConversationWorking, dockDraws } from "./ConversationWorking";
 import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat, RunLine } from "./RunChat";
 import { forgetRunFolds } from "./runCard.logic";
 import type { CarriedRow } from "./stepHeight";
@@ -425,6 +425,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     () => helperFinishesOf(agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL),
     [agentPanelModel],
   );
+  // Whether something runs alongside the live run: its card is then drawn a
+  // slice a row, its panel one of them.
+  const alongside = dockDraws(working);
   const rawRows = useMemo(
     () =>
       deriveMessagesTimelineRows({
@@ -440,6 +443,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         queuedMessages,
         afterTurnWork,
         helperFinishes,
+        alongside,
       }),
     [
       nowMs,
@@ -454,6 +458,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       queuedMessages,
       afterTurnWork,
       helperFinishes,
+      alongside,
     ],
   );
   const rows = useStableRows(rawRows);
@@ -1600,6 +1605,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
             : "animate-rise-in motion-reduce:animate-none"),
       )}
       data-card-slice={card}
+      data-card-whole={row.cardWhole ? "" : undefined}
       data-timeline-row-id={row.id}
       data-timeline-row-kind={row.kind}
       data-message-id={row.kind === "message" ? row.message.id : undefined}
@@ -1825,10 +1831,15 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
   const standRef = usePanelStand(row.turnKey, row.cardKey);
   const { cardKey } = row;
   const carry = useCallback(() => cardRowsCarried(standRef.current, cardKey), [standRef, cardKey]);
+  const onRoom = useCallback(
+    (room: number | null) => holdCardRoom(standRef.current, cardKey, room),
+    [standRef, cardKey],
+  );
   return (
     <div ref={standRef} className="contents">
       <ConversationWorking
         carry={carry}
+        onRoom={onRoom}
         dock={dock}
         environmentId={ctx.activeThreadEnvironmentId}
         incidents={row.incidents}
@@ -1837,6 +1848,27 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
       />
     </div>
   );
+}
+
+/**
+ * The room a live card's panel holds while it closes (`ConversationWorking`),
+ * on the card's line: drawn whole by that row (`[data-card-whole]`), the card
+ * reaches over it (`--card-room`), and is no longer the line alone while it
+ * holds any (`data-card-room`).
+ */
+function holdCardRoom(from: HTMLElement | null, cardKey: string, room: number | null) {
+  const list = from?.closest<HTMLElement>(".timeline-legend-list") ?? null;
+  const line = list?.querySelector<HTMLElement>(
+    `[data-timeline-row-id="${CSS.escape(`record:${cardKey}`)}"] > .run-tray`,
+  );
+  if (line === null || line === undefined) return;
+  if (room === null || room < 0.5) {
+    line.style.removeProperty("--card-room");
+    line.removeAttribute("data-card-room");
+    return;
+  }
+  line.style.setProperty("--card-room", `${room}px`);
+  line.setAttribute("data-card-room", "");
 }
 
 /**
