@@ -946,6 +946,24 @@ describe("birthRuntimesFacts", () => {
     ]);
   });
 
+  it("names its planned runtimes by hostname, the order its project's own read gives after it", () => {
+    // One order before and after the birth: the arrival's steps and the sign-in's line agree.
+    const planned = {
+      ...RUNTIMES,
+      services: [
+        { hostname: "mailpit", role: "utility" },
+        { hostname: "appstage", role: "stage" },
+        { hostname: "appdev", role: "dev" },
+      ],
+    } as const;
+    expect(
+      birthRuntimesFacts({
+        birth: { step: "health", runtimes: planned },
+        services: [],
+      })?.runtimes.map((runtime) => runtime.hostname),
+    ).toEqual(["appdev", "appstage", "mailpit"]);
+  });
+
   it("says the import failed in the platform's words", () => {
     expect(
       birthRuntimesFacts({
