@@ -106,7 +106,6 @@ import {
 import { useRunEffortWords } from "./runResultFacts";
 import { drawerEase, LIST_LAYS_OUT_FRAMES, stepHeight } from "./stepHeight";
 import { StatusBar, type BarTone } from "./StatusBar";
-import { DOCKED_KINDS } from "./conversationDock.logic";
 import { StandupDetail } from "./StandupDetail";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
@@ -124,7 +123,6 @@ import {
   earlierShown,
   formatClock,
   recoveredFailures,
-  LONG_STEP_MS,
   nowLineFace,
   nowLineOf,
   nowLineWords,
@@ -2230,31 +2228,6 @@ function RunTicker({ status }: { readonly status: RunStatus }) {
 }
 
 /**
- * How long the step on the now line has run, once that passes 30 s: words on
- * the same line — "· 0:31" — never a second clock (K3). Nothing before.
- */
-function LongStepTime({ since }: { readonly since: string }) {
-  const ref = useRef<HTMLSpanElement>(null);
-  const read = () => {
-    const took = Date.now() - Date.parse(since);
-    return took >= LONG_STEP_MS ? `· ${formatClock(took)}` : "";
-  };
-  useEffect(() => {
-    const update = () => {
-      if (ref.current) ref.current.textContent = read();
-    };
-    update();
-    const id = setInterval(update, 1000);
-    return () => clearInterval(id);
-  });
-  return (
-    <span ref={ref} className="run-now-long">
-      {read()}
-    </span>
-  );
-}
-
-/**
  * A step as the now line says it, sweeping while it runs: its own words and a
  * command's code after them, a command that said nothing of itself as its
  * code, a call said plainly with the names it took in mono.
@@ -2346,7 +2319,6 @@ function NowWords({
       return (
         <>
           <StepNowWords codeAfter={!(open && saysLess(line.step))} step={line.step} />
-          <LongStepTime since={line.step.startedAt} />
         </>
       );
     case "operation":
@@ -2355,10 +2327,6 @@ function NowWords({
           <span className="run-now-verb" data-run-shimmer="">
             {operationNowWords(line.operation)}
           </span>
-          {/* A pipeline counts its time in its bar under the line (K3). */}
-          {DOCKED_KINDS.has(line.operation.kind) ? null : (
-            <LongStepTime since={line.operation.anchorAt} />
-          )}
         </>
       );
     case "several":
