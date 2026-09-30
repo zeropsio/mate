@@ -205,7 +205,6 @@ import { agentTurnNotes } from "@t3tools/client-runtime/zerops";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import {
   AGENT_OWNERSHIP_RECOVERY_LABEL,
-  agentOwnershipAllowsTurns,
   agentOwnershipComposerNotice,
   resolveAgentOwnership,
 } from "@t3tools/client-runtime/zerops/agentOwnership";
@@ -433,6 +432,7 @@ import {
   resolveComposerInteractionMode,
   resolveComposerOverlayHeight,
   resolveComposerProviderSelection,
+  resolveCrewChangeOffered,
   resolveDraftHeroState,
   resolveZeropsConversationReadOnly,
   resolveZeropsOwnedAgentSendBlockReason,
@@ -5421,9 +5421,14 @@ export default function ChatView(props: ChatViewProps) {
           params: buildThreadRouteParams(scopeThreadRef(environmentId, target)),
         }),
       // Its empty conversation's *Change its job*, as its menu's: offered to a
-      // viewer who may run its agent (D6), the same answer its composer gets.
+      // viewer who may run its agent (D6), the answer its composer gets.
       onChangeJob:
-        activeThreadRef !== null && agentOwnershipAllowsTurns(zeropsAgentOwnership)
+        activeThreadRef !== null &&
+        resolveCrewChangeOffered({
+          agentAuthKnown: zeropsAgentAuth.snapshot !== null,
+          agent: zeropsOwnedAgent,
+          ownership: zeropsAgentOwnership,
+        })
           ? () => openCrewView(activeThreadRef, { kind: "job", handle: activeCrewOrigin.crewmate })
           : null,
     };
@@ -5437,8 +5442,10 @@ export default function ChatView(props: ChatViewProps) {
     loadEarlierTurns,
     navigate,
     threadId,
+    zeropsAgentAuth.snapshot,
     zeropsAgentOwnership,
     zeropsMates,
+    zeropsOwnedAgent,
   ]);
 
   const feedbackBannerItems = useMemo(
