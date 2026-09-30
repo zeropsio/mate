@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { MATE_VOICE_QUIET_MS, type MateLink } from "@t3tools/client-runtime/zerops/environments";
 import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
@@ -188,6 +189,9 @@ const buttons = () =>
 beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  // The composer standing in takes the focus a frame after it arrives.
+  vi.stubGlobal("requestAnimationFrame", () => 0);
+  vi.stubGlobal("cancelAnimationFrame", () => undefined);
   app.navigate.mockClear();
   app.connect.mockClear();
   app.openMate.mockClear();

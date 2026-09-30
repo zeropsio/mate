@@ -13,10 +13,13 @@
  * they left it. Nothing is sent from it — its send waits, as Enter does — and
  * the toolbar's model and meter come with the conversation.
  */
+import { useEffect, useRef } from "react";
+
 import { ZEROPS_CONNECTED_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
 import { COMPOSER_PROMPT_TYPE_CLASS_NAME } from "../ComposerPromptEditor";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
+import { shouldTypeToFocusComposer } from "./typeToFocus";
 
 const nothing = () => undefined;
 
@@ -35,6 +38,38 @@ export function ComposerStandIn({
 }) {
   const report = (field: HTMLTextAreaElement) =>
     onType({ text: field.value, caret: field.selectionEnd });
+  // Where the person types, as the conversation's composer is: it takes the
+  // focus as it arrives, and a key typed with nothing to type into.
+  const fieldRef = useRef<HTMLTextAreaElement>(null);
+  const typedRef = useRef(typed);
+  const onTypeRef = useRef(onType);
+  useEffect(() => {
+    typedRef.current = typed;
+    onTypeRef.current = onType;
+  });
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const field = fieldRef.current;
+      if (field === null) return;
+      const end = field.value.length;
+      field.focus({ preventScroll: true });
+      field.setSelectionRange(end, end);
+    });
+    const onKeyDown = (event: KeyboardEvent) => {
+      const field = fieldRef.current;
+      if (field === null || !shouldTypeToFocusComposer(event)) return;
+      event.preventDefault();
+      const text = `${typedRef.current.text}${event.key}`;
+      onTypeRef.current({ text, caret: text.length });
+      field.focus({ preventScroll: true });
+      requestAnimationFrame(() => field.setSelectionRange(text.length, text.length));
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
   return (
     <div
       className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 sm:pt-2"
@@ -56,6 +91,7 @@ export function ComposerStandIn({
                           <div className="relative px-3 pt-3.5 pb-2 sm:px-4 sm:pt-4">
                             <div className={COMPOSER_PROMPT_TYPE_CLASS_NAME}>
                               <textarea
+                                ref={fieldRef}
                                 aria-label="Message"
                                 className="block field-sizing-content max-h-50 min-h-17.5 w-full resize-none overflow-y-auto bg-transparent p-0 leading-relaxed text-foreground outline-none placeholder:text-placeholder"
                                 onChange={(event) => report(event.currentTarget)}
