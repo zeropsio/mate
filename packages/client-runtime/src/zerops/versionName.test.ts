@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { isWholeSha, parseVersionName, resolveCommit, sameCommit } from "./versionName.ts";
+import {
+  isWholeSha,
+  parseDirtyVersionName,
+  parseVersionName,
+  resolveCommit,
+  sameCommit,
+} from "./versionName.ts";
 
 const SHA = "7e2d4c1a9b3f5e6d8c0a1b2c3d4e5f6a7b8c9d0e";
 const OTHER = "3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d";
@@ -82,6 +88,26 @@ describe("parseVersionName", () => {
     { name: "nothing", value: undefined, expected: undefined },
   ])("reads $name", ({ value, expected }) => {
     expect(parseVersionName(value)).toEqual(expected);
+  });
+});
+
+describe("parseDirtyVersionName — zcp's push of a tree with uncommitted changes", () => {
+  it.each([
+    { name: "main 7e2d4c1-dirty", read: { label: "main", sha: "7e2d4c1" } },
+    {
+      name: "mate/mate-Pq7Zr0TestProject 7E2D4C1-dirty",
+      read: { label: "mate/mate-Pq7Zr0TestProject", sha: "7e2d4c1" },
+    },
+    { name: "main 7e2d4c1", read: undefined },
+    { name: "7e2d4c1-dirty", read: undefined },
+    { name: "main 7e2d4-dirty", read: undefined },
+    { name: undefined, read: undefined },
+  ])("$name", ({ name, read }) => {
+    expect(parseDirtyVersionName(name)).toEqual(read);
+    // Built from no commit: never one to compare.
+    expect(parseVersionName(name)).toEqual(
+      name === "main 7e2d4c1" ? { sha: "7e2d4c1", label: "main" } : undefined,
+    );
   });
 });
 
