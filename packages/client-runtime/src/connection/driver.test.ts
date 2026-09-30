@@ -9,7 +9,11 @@ import * as Scope from "effect/Scope";
 
 import type { WsRpcProtocolClient } from "../rpc/protocol.ts";
 import * as RpcSession from "../rpc/session.ts";
-import { ConnectionAdmissionRef, type ConnectionAdmission } from "./admission.ts";
+import {
+  ConnectionAdmissionRef,
+  type AdmissionTicket,
+  type ConnectionAdmission,
+} from "./admission.ts";
 import type { ConnectionCatalogEntry } from "./catalog.ts";
 import * as ConnectionDriver from "./driver.ts";
 import {
@@ -39,16 +43,20 @@ const PREPARED: PreparedConnection = {
 function rig(ready: Effect.Effect<void, ConnectionTransientError>) {
   const log: Array<string> = [];
   let letThrough: () => void = () => undefined;
+  const giveWay = new AbortController();
   const admission: ConnectionAdmission = {
     prefer: () => undefined,
     admit: (environmentId) => {
       log.push(`admit ${environmentId}`);
-      return new Promise<void>((resolve) => {
-        letThrough = resolve;
+      return new Promise<AdmissionTicket>((resolve) => {
+        letThrough = () =>
+          resolve({
+            signal: giveWay.signal,
+            settle: (open) => void log.push(`settle ${environmentId} ${open}`),
+            close: () => void log.push(`close ${environmentId}`),
+          });
       });
     },
-    settle: (environmentId, open) => void log.push(`settle ${environmentId} ${open}`),
-    close: (environmentId) => void log.push(`close ${environmentId}`),
   };
   const layer = ConnectionDriver.layer.pipe(
     Layer.provide(
@@ -81,7 +89,13 @@ function rig(ready: Effect.Effect<void, ConnectionTransientError>) {
       ),
     ),
   );
-  return { log, admission, layer, letThrough: () => letThrough() };
+  return {
+    log,
+    admission,
+    layer,
+    letThrough: () => letThrough(),
+    giveWay: () => giveWay.abort(),
+  };
 }
 
 const settle = Effect.promise(() => new Promise<void>((resolve) => setImmediate(resolve)));
@@ -157,6 +171,29 @@ describe("connection driver admission", () => {
       yield* settle;
       yield* Fiber.interrupt(fiber);
       expect(log).toEqual(["admit environment-1"]);
+    }),
+  );
+
+  it.effect("an attempt told to give way ends and settles closed", () =>
+    Effect.gen(function* () {
+      const { log, admission, layer, letThrough, giveWay } = rig(Effect.never);
+      const driver = yield* ConnectionDriver.ConnectionDriver.pipe(Effect.provide(layer));
+      const fiber = yield* driver
+        .connect(ENTRY, () => Effect.void)
+        .pipe(
+          Effect.scoped,
+          Effect.provideService(ConnectionAdmissionRef, admission),
+          Effect.forkChild,
+        );
+      yield* settle;
+      letThrough();
+      yield* settle;
+      expect(log).toEqual(["admit environment-1", "ticket", "socket"]);
+
+      giveWay();
+      const exit = yield* Fiber.await(fiber);
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(log.at(-1)).toBe("settle environment-1 false");
     }),
   );
 });
