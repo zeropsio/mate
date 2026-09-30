@@ -315,6 +315,31 @@ const ROWS: ReadonlyArray<{
     },
   },
   {
+    row: 7,
+    name: "held, the link lost while the platform restarts it: the restart, not a reconnect",
+    machine: machine({
+      credential: HELD,
+      link: { phase: "backoff", retryAtMs: NOW + 2_000 },
+      linkLostAt: at(NOW - 5_000),
+      container: { level: "restarting", by: "platform", overdue: false },
+    }),
+    verdict: {
+      kind: "container",
+      container: { level: "restarting", by: "platform", overdue: false },
+    },
+  },
+  {
+    row: 7,
+    name: "held, the link lost while it updates: the update, not a reconnect",
+    machine: machine({
+      credential: HELD,
+      link: { phase: "connecting" },
+      linkLostAt: at(NOW - 5_000),
+      container: { level: "updating", overdue: false },
+    }),
+    verdict: { kind: "container", container: { level: "updating", overdue: false } },
+  },
+  {
     row: 10,
     name: "held, the link lost and in backoff",
     machine: machine({
