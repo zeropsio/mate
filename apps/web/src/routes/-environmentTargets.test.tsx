@@ -11,6 +11,8 @@ import {
   isTerminalReachability,
   makeContainerStore,
   makeExchangeDriver,
+  MATE_VOICE_QUIET_MS,
+  mateVoice,
   routeGatePhrase,
   selectReachability,
   selectRouteGate,
@@ -42,6 +44,7 @@ import {
 import { RouteGateView } from "./-routeGate";
 import { bindAccountEnvironments } from "../zerops/accountEnvironments";
 import { InventoryContext, type Inventory } from "../zerops/inventoryContext";
+import { useMateVoice } from "../zerops/mateVoiceContext";
 import type { ZeropsOrganizationStatus } from "../zerops/ZeropsSessionProvider";
 
 /** Where the fixture's zcp service is served: `zcp`, subdomain host `abc`, port 8080, region `prg1`. */
@@ -276,6 +279,15 @@ function RoutedOutlet({
       phrase={routeGatePhrase(gate, { nowMs, mateName: inputs.mateName })}
       projectId={inputs.projectId}
       conversation={useRouteConversation(ENV_A)}
+      environmentId={null}
+      voice={mateVoice({
+        reachability:
+          gate.kind === "outlet" ? gate.banner : gate.kind === "wait" ? gate.reachability : null,
+        conversationShown: gate.kind === "outlet",
+        heldMs: MATE_VOICE_QUIET_MS,
+        nowMs,
+        mateName: "Shop",
+      })}
     >
       {children}
     </RouteGateView>
@@ -300,7 +312,9 @@ describe("the route gate over the exchange driver's machines", () => {
       useEffect(() => {
         mounts.push(mounts.length + 1);
       }, []);
-      return "conversation";
+      // The link's one voice comes down to the conversation, for its banner.
+      const voice = useMateVoice();
+      return `conversation${voice.surface === "banner" ? ` · ${voice.text ?? ""}` : ""}`;
     }
     const gates: Array<RouteGate["kind"]> = [];
     const texts: Array<string> = [];
@@ -363,7 +377,7 @@ describe("the route gate over the exchange driver's machines", () => {
     expect(new Set(gates)).toEqual(new Set(["outlet"]));
     expect(texts).toEqual([
       "conversation",
-      ...texts.slice(1, -1).map(() => "conversationZerops is restarting this Mate."),
+      ...texts.slice(1, -1).map(() => "conversation · Shop is restarting."),
       "conversation",
     ]);
     expect(texts.join(" ")).not.toContain("not reachable");

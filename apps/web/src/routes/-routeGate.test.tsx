@@ -1,4 +1,6 @@
 import {
+  MATE_VOICE_QUIET_MS,
+  mateVoice,
   routeGatePhrase,
   selectRouteGate,
   type ConversationView,
@@ -11,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { gatedPortal } from "../components/ui/portal-gate";
 import { readableText, TestNode } from "../zerops/__fixtures__/testDom";
+import { useMateVoice } from "../zerops/mateVoiceContext";
 import { RouteGateView } from "./-routeGate";
 
 // "Go to projects" is a router link; no router runs here.
@@ -40,7 +43,20 @@ function gateFor(
   conversation: ConversationView = SHOWN,
 ) {
   const gate = selectRouteGate({ kind: "resolved", reachability, content });
-  return { gate, phrase: routeGatePhrase(gate, { nowMs: 0, mateName: "shop" }), conversation };
+  const voice = mateVoice({
+    reachability: gate.kind === "outlet" ? gate.banner : null,
+    conversationShown: gate.kind === "outlet",
+    heldMs: MATE_VOICE_QUIET_MS,
+    nowMs: 0,
+    mateName: "Shop",
+  });
+  return {
+    gate,
+    phrase: routeGatePhrase(gate, { nowMs: 0, mateName: "shop" }),
+    conversation,
+    voice,
+    environmentId: null,
+  };
 }
 
 let container: TestNode;
@@ -66,7 +82,9 @@ afterEach(() => {
 });
 
 describe("RouteGateView", () => {
-  it("a restart under a live link, then with the link down, keeps the ChatView instance", () => {
+  // The gate says nothing over a mounted conversation: the link's one voice goes down to it, for
+  // the banner over its composer (`mateVoice`).
+  it("a restart under a live link, then with the link down, keeps the ChatView instance and hands it the voice", () => {
     const mounts: Array<number> = [];
     let next = 0;
     function ChatView() {
@@ -74,7 +92,8 @@ describe("RouteGateView", () => {
         next += 1;
         mounts.push(next);
       }, []);
-      return "conversation";
+      const voice = useMateVoice();
+      return `conversation${voice.surface === "banner" ? ` · ${voice.text ?? ""}` : ""}`;
     }
     const render = (view: ReturnType<typeof gateFor>) =>
       act(() =>
@@ -98,8 +117,8 @@ describe("RouteGateView", () => {
     expect(mounts).toEqual([1]);
     expect(texts).toEqual([
       "conversation",
-      "conversationZerops is restarting this Mate.",
-      "conversationZerops is restarting this Mate.",
+      "conversation · Shop is restarting.",
+      "conversation · Shop is restarting.",
       "conversation",
     ]);
     expect(texts.join(" ")).not.toContain("not reachable");

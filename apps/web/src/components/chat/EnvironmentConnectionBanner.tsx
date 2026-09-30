@@ -6,8 +6,10 @@ import {
   type AtomCommandResult,
   isAtomCommandInterrupted,
 } from "@t3tools/client-runtime/state/runtime";
+import type { MateVoice } from "@t3tools/client-runtime/zerops/environments";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { WifiOffIcon } from "lucide-react";
+import type { ReactElement } from "react";
 
 import { Button } from "../ui/button";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
@@ -41,6 +43,54 @@ export function environmentConnectionBannerItem(input: {
             </Button>
           ),
         }),
+  };
+}
+
+/**
+ * The banner over a Mate's conversation (`mateVoice`): the link's one line, in the Mate's name,
+ * and its verb once — *Try now* asks the supervisor again; the projects screen's verbs send the
+ * person there. Nothing while the voice speaks elsewhere or not at all.
+ */
+export function mateVoiceBannerItem(input: {
+  readonly environmentId: EnvironmentId;
+  readonly voice: MateVoice;
+  readonly onRetry: () => void;
+  readonly projects: ReactElement;
+}): ComposerBannerStackItem | null {
+  const { voice } = input;
+  if (voice.surface !== "banner" || voice.text === null) return null;
+  const tryNow = voice.actions.includes("try-now");
+  const toProjects = voice.actions.some(
+    (action) =>
+      action === "go-to-projects" ||
+      action === "start" ||
+      action === "enable" ||
+      action === "restart" ||
+      action === "open-in-zerops",
+  );
+  return {
+    id: `mate-link:${input.environmentId}`,
+    variant: "warning",
+    icon: <WifiOffIcon />,
+    title: voice.text,
+    ...(tryNow || toProjects
+      ? {
+          actions: (
+            <>
+              {tryNow ? (
+                <Button size="xs" onClick={input.onRetry}>
+                  Try now
+                </Button>
+              ) : null}
+              {toProjects ? (
+                <Button render={input.projects} size="xs" variant="outline">
+                  Go to projects
+                </Button>
+              ) : null}
+            </>
+          ),
+        }
+      : {}),
   };
 }
 

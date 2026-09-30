@@ -439,6 +439,7 @@ export function resolveZeropsProviderAvailability(input: {
     providerAuth: agent.providerAuth,
     state: agent.state,
     loginPhase: agent.login?.phase,
+    signerUnknown: agent.signerUnknown,
     authorizedBy: resolveAgentAuthorizer(key, agent, input.localSigners, input.viewerSubject),
   });
   const reads = zeropsAgentAuthReads(input.agentAuth, (agent) => factsOf(agent, agent.agentId));
@@ -1314,4 +1315,20 @@ export function diffOpeningShowsWorkingTree(input: {
     input.activeThreadRef !== null &&
     input.explicitThreadRef !== input.activeThreadRef
   );
+}
+
+/**
+ * Whether a conversation's content is on its way: none of its messages is here yet, while its
+ * shell says it has been talked to. Its empty opening waits then — a load never paints something
+ * it takes back.
+ */
+export function conversationContentPending(input: {
+  readonly messageCount: number;
+  readonly shell: {
+    readonly latestUserMessageAt: string | null;
+    readonly latestTurn: unknown;
+  } | null;
+}): boolean {
+  if (input.messageCount > 0 || input.shell === null) return false;
+  return input.shell.latestUserMessageAt !== null || input.shell.latestTurn !== null;
 }

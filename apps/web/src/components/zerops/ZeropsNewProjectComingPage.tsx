@@ -32,9 +32,9 @@ import {
   comingSentenceOf,
   MateComingFrame,
   MateComingHeader,
-  MateOpeningLine,
   personOf,
 } from "./ZeropsMateComingPage";
+import { MateOpeningLine } from "./MateLinkLine";
 import { MateEmptyStateView, type MateEmptyComing } from "./ZeropsMateEmptyState";
 
 /** Who a creation this tab does not hold is: nobody it can name, in the slate face. */

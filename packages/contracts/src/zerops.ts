@@ -396,6 +396,11 @@ export const ZeropsAgentAuth = Schema.Struct({
       at: Schema.optional(Schema.DateTimeUtc),
     }),
   ),
+  /**
+   * The project records its sign-in for two or more people, so whose it is is not known: no
+   * `authorizedBy`, and nothing is said about whose it is (never a guess).
+   */
+  signerUnknown: Schema.optional(Schema.Boolean),
 });
 export type ZeropsAgentAuth = typeof ZeropsAgentAuth.Type;
 
@@ -454,6 +459,8 @@ export const ZeropsLogin = Schema.Struct({
   token: Schema.Boolean,
   /** The Zerops user id of whoever signed it in (or added its key), from its signer tag. */
   signedInBy: Schema.optional(Schema.String),
+  /** Its signer tags name two or more people: whose it is is not known (`ZeropsAgentAuth`). */
+  signerUnknown: Schema.optional(Schema.Boolean),
   /** Its server-driven login, while one runs or just finished. */
   login: Schema.optional(ZeropsAgentLoginState),
 });

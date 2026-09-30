@@ -50,6 +50,7 @@ export function mateReadOnly(input: {
             ? undefined
             : resolveAgentAuthorizer(agent.agentId, agent, input.localSigners, input.viewerSubject),
         viewerSubject: input.viewerSubject,
+        signerUnknown: agent?.signerUnknown,
       }),
     }) !== null
   );

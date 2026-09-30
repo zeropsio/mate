@@ -88,7 +88,17 @@ export const AGENT_CREDENTIAL_SEGMENTS: Readonly<Record<ZeropsAgentId, ReadonlyA
  * are the agent ids for the two default logins and the login's own id for
  * every other one (`zeropsLoginIds.ts`).
  */
-export type ProjectSigners = Readonly<Partial<Record<string, string>>>;
+export type ProjectSigners = Readonly<Partial<Record<string, SignerRecord>>>;
+
+/**
+ * One login's record: the Zerops user id of whoever signed it in, or — where the project carries
+ * records for two or more people — who it may be, sorted, since whose it is is not known.
+ */
+export type SignerRecord = string | { readonly among: ReadonlyArray<string> };
+
+/** The one person a record names, or undefined where it names nobody or is not known. */
+export const knownSigner = (record: SignerRecord | undefined): string | undefined =>
+  typeof record === "string" && record.length > 0 ? record : undefined;
 
 export function signerTag(key: string, userId: string): string {
   return `${MATE_SIGNER_TAG_PREFIX}:${key}:${userId}`;
@@ -103,12 +113,12 @@ export function signerTag(key: string, userId: string): string {
  * space — people put their own tags there — and one it does not understand
  * must never cost it the ones it does.
  *
- * Last one wins when a project somehow carries two for the same login: a
- * re-sign-in writes the new tag, and the reconcile that removes the old one is
- * the app's.
+ * A project that carries records for two or more people on one login (two sign-ins racing their
+ * tag writes, a hand edit) says who it may be, never whose it is: the order the platform lists
+ * tags in is no evidence. A re-sign-in writes its tag over every other (`withMateSignerTag`).
  */
 export function parseSignerTags(tagList: ReadonlyArray<string> | undefined): ProjectSigners {
-  const signers: Partial<Record<string, string>> = {};
+  const named = new Map<string, Set<string>>();
   for (const tag of tagList ?? []) {
     if (!tag.startsWith(`${MATE_SIGNER_TAG_PREFIX}:`)) continue;
     const rest = tag.slice(MATE_SIGNER_TAG_PREFIX.length + 1);
@@ -117,7 +127,13 @@ export function parseSignerTags(tagList: ReadonlyArray<string> | undefined): Pro
     const key = rest.slice(0, separator);
     const userId = rest.slice(separator + 1);
     if (userId.length === 0 || !isLoginSignerKey(key)) continue;
-    signers[key] = userId;
+    named.set(key, (named.get(key) ?? new Set()).add(userId));
+  }
+  const signers: Partial<Record<string, SignerRecord>> = {};
+  for (const [key, users] of named) {
+    const [only, ...more] = [...users].toSorted();
+    if (only === undefined) continue;
+    signers[key] = more.length === 0 ? only : { among: [only, ...more] };
   }
   return signers;
 }
@@ -151,7 +167,7 @@ export type TurnRefusal =
  */
 export function turnRefusal(input: {
   readonly agent: ZeropsAgentAuthFields & Pick<ZeropsAgentAuth, "flagToken">;
-  readonly signer: string | undefined;
+  readonly signer: SignerRecord | undefined;
   readonly subject: string | undefined;
 }): TurnRefusal | undefined {
   return loginTurnRefusal({
@@ -170,15 +186,22 @@ export function turnRefusal(input: {
 export function loginTurnRefusal(input: {
   readonly state: ZeropsLoginState;
   readonly token: boolean;
-  readonly signer: string | undefined;
+  readonly signer: SignerRecord | undefined;
   readonly subject: string | undefined;
 }): TurnRefusal | undefined {
   if (input.state !== "authorized" && input.state !== "registering") {
     return { kind: "not-signed-in", auth: input.state };
   }
   if (input.token) return undefined;
-  if (input.signer === undefined || input.signer.length === 0) return { kind: "unrecorded" };
-  return input.subject === input.signer ? undefined : { kind: "someone-else" };
+  const signer = input.signer;
+  if (typeof signer === "object") {
+    // Whose it is is not known: somebody it may be is admitted, nobody else.
+    return input.subject !== undefined && signer.among.includes(input.subject)
+      ? undefined
+      : { kind: "someone-else" };
+  }
+  if (signer === undefined || signer.length === 0) return { kind: "unrecorded" };
+  return input.subject === signer ? undefined : { kind: "someone-else" };
 }
 
 /**
@@ -196,8 +219,9 @@ export function planAgentSignOut(input: {
   const activeMemberIds = input.activeMemberIds;
   if (activeMemberIds === undefined) return [];
   return KNOWN_AGENT_IDS.filter((agentId) => {
-    const signer = input.signers[agentId];
-    return signer !== undefined && signer.length > 0 && !activeMemberIds.has(signer);
+    // A record that names two people says of neither that the login is theirs.
+    const signer = knownSigner(input.signers[agentId]);
+    return signer !== undefined && !activeMemberIds.has(signer);
   });
 }
 
@@ -452,7 +476,10 @@ export const make = Effect.gen(function* () {
       : cachedOrRead(environment).pipe(Effect.map((read) => read.value));
 
   /** `refuse` against the signer of `key`: from the cache, and once more from a fresh read. */
-  const gate = (key: string, refuse: (signer: string | undefined) => TurnRefusal | undefined) =>
+  const gate = (
+    key: string,
+    refuse: (signer: SignerRecord | undefined) => TurnRefusal | undefined,
+  ) =>
     Effect.gen(function* () {
       if (environment === undefined) return refuse(undefined);
       const held = yield* cachedOrRead(environment);

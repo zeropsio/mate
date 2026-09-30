@@ -279,6 +279,7 @@ function ZeropsAgentAuthRow({
     authorizedBy: resolveAgentAuthorizer(agent.agentId, agent, localSigners, viewerSubject),
     viewerSubject,
     recordFailed,
+    signerUnknown: agent.signerUnknown,
   });
   const ownershipNotice = agentOwnershipNotice(ownership);
 
