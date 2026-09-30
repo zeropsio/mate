@@ -19,6 +19,16 @@ describe("parseVersionName", () => {
       expected: { sha: SHA, label: "v0.1.0", taggedBy: "Gitea Admin" },
     },
     {
+      name: "an old production name whose tagger was empty",
+      value: `${SHA} v0.1.0 `,
+      expected: { sha: SHA, label: "v0.1.0" },
+    },
+    {
+      name: "an old production name whose tagger has a doubled space",
+      value: `${SHA} v0.1.0  Gitea Admin`,
+      expected: { sha: SHA, label: "v0.1.0", taggedBy: "Gitea Admin" },
+    },
+    {
       name: "an old production name with no tagger",
       value: `${SHA} v0.1.0`,
       expected: { sha: SHA, label: "v0.1.0" },
