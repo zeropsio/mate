@@ -36,7 +36,7 @@
  * is. Nothing opens a dialog.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { standupStepRole, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
   isActiveSubagentStatus,
   type AgentPanelModel,
@@ -65,6 +65,7 @@ import {
   Fragment,
   use,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -103,16 +104,14 @@ import {
   type IncidentModel,
   type OutcomeModel,
 } from "./conversation.logic";
-import {
-  calmClockMs,
-  calmLineDue,
-  calmLineOffer,
-  calmLineSettle,
-  calmLineStart,
-} from "./nowLineCalm.logic";
+import { calmClockMs } from "./nowLineCalm.logic";
+import { useCalmLine } from "./useCalmLine";
 import { useRunEffortWords } from "./runResultFacts";
 import { drawerEase, LIST_LAYS_OUT_FRAMES, stepHeight } from "./stepHeight";
-import { StatusBar, type BarTone } from "./StatusBar";
+import { StatusBar } from "./StatusBar";
+import { versionText } from "../zerops/operation/version";
+import { ImportDetail } from "./ImportDetail";
+import { settledOperationBar } from "./operationBar.logic";
 import { StandupDetail } from "./StandupDetail";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
@@ -135,6 +134,7 @@ import {
   nowLineWords,
   operationNowWords,
   reachesEarlier,
+  runCardShows,
   runFoldOf,
   setRunFold,
   severalWords,
@@ -1392,6 +1392,9 @@ export function OperationDetail({
   if (operation.kind === "standup") {
     return <StandupDetail environmentId={environmentId} operation={operation} />;
   }
+  if (operation.kind === "import") {
+    return <ImportDetail environmentId={environmentId} operation={operation} />;
+  }
   return (
     <ZeropsOperationDetail
       environmentId={environmentId}
@@ -1415,34 +1418,6 @@ function ZeropsOperationDetail({
 }
 
 /**
- * A settled operation's bar, from what it knew of its steps: whole, or cut
- * where it failed — in red while that still stands, quiet once undone (K9).
- */
-function settledBar(
-  operation: ZeropsOperation,
-  undone: boolean,
-): ReadonlyArray<{ readonly key: string; readonly tone: BarTone }> {
-  const failed = operation.phase === "failed";
-  const cut: BarTone = undone ? "waiting" : "failed";
-  // A stage a stand-up queued or held back is no segment of this call.
-  const steps =
-    operation.kind === "standup"
-      ? operation.steps.filter((step) => standupStepRole(step) === "own")
-      : operation.steps;
-  if (steps.length === 0) return [{ key: "whole", tone: failed ? cut : "done" }];
-  return steps.map((step) => ({
-    key: step.id,
-    tone: failed
-      ? step.state === "done"
-        ? "done"
-        : step.state === "failed" || step.state === "running"
-          ? cut
-          : "waiting"
-      : "done",
-  }));
-}
-
-/**
  * A platform operation as its bubble — a deploy, a subdomain, a restart:
  * what it did in a sentence, its pipeline as a bar, and its time; while it
  * runs, what the Mate waits on beside its face (the bar under the chat has
@@ -1462,13 +1437,10 @@ function OperationBubble({
   const failure: Failure | null = !failed ? null : undone ? "undone" : "broken";
   const running = operation.phase === "running";
   const words = operationLineWords(operation);
-  const version = operation.version?.name ?? null;
   const detail = failed
     ? (operation.explanation?.reason ?? operation.closing ?? null)
-    : operation.kind === "deploy" && version !== null
-      ? /^[0-9a-f]{12,40}$/i.test(version)
-        ? version.slice(0, 7)
-        : version
+    : operation.kind === "deploy"
+      ? (versionText(operation.version?.name) ?? null)
       : null;
   return (
     <CallRow
@@ -1493,7 +1465,7 @@ function OperationBubble({
           <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5">
             <span className="text-foreground/75">{words}</span>
             {running ? null : (
-              <StatusBar className="w-12" segments={settledBar(operation, undone)} />
+              <StatusBar className="w-12" segments={settledOperationBar(operation, undone)} />
             )}
             {detail !== null ? (
               <span className="min-w-0 truncate font-mono text-muted-foreground">{detail}</span>
@@ -2370,30 +2342,6 @@ function NowWords({
   }
 }
 
-/**
- * The now line as it shows, calm (`nowLineCalm.logic`): what the run does now
- * once the line before it has stood its dwell, the latest of a burst only,
- * and the run's end (`final`) at once.
- */
-function useCalmNowLine(latest: NowLineModel, key: string, final: boolean): NowLineModel {
-  const [calm, setCalm] = useState(() => calmLineStart(latest, key, Date.now()));
-  useLayoutEffect(() => {
-    setCalm((current) => calmLineOffer(current, latest, key, Date.now(), final));
-  }, [latest, key, final]);
-  const due = calmLineDue(calm);
-  useEffect(() => {
-    if (due === null) return;
-    const timer = setTimeout(
-      () => setCalm((current) => calmLineSettle(current, Date.now())),
-      Math.max(0, due - Date.now()),
-    );
-    return () => clearTimeout(timer);
-  }, [due]);
-  // The words shown are drawn from the latest line: a thought's newest words,
-  // a step's details.
-  return calm.key === key ? latest : calm.shown;
-}
-
 /** How long the words a line leaves take to go: their fade, and a frame to spare. */
 const LINE_LEAVES_MS = 160;
 
@@ -2462,7 +2410,7 @@ function NowLine({
   });
   // A line once shown stands a moment, and a burst shows its latest only
   // (`nowLineCalm.logic`); the run's end shows at once.
-  const line = useCalmNowLine(latest, nowLineWords(latest), !status.live);
+  const line = useCalmLine(latest, nowLineWords(latest), !status.live);
   const face = nowLineFace(line, status);
   const words = nowLineWords(line);
   // The line's words change in place as the run goes: the old ones leave
@@ -2586,7 +2534,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // Whether the person reads the work this moment — scrolled up in it, or
   // something in it opened: a run settling then stays open.
   const readingRef = useRef(false);
-  const fold = useRunFold({
+  const { fold, foldNow } = useRunFold({
     conversation: ctx.routeThreadKey,
     run: row.turnKey,
     live: row.live,
@@ -2597,11 +2545,12 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // A run the person comes back to (D3), or one that just settled: its
   // worked line alone — the summary — and "Show work" opens the whole run
   // under it (K12).
-  const later = row.status !== null && !row.live && fold !== "watched";
-  const folded = later && fold !== "shown";
+  const settled = row.status !== null && !row.live;
+  const shows = runCardShows(settled, fold);
+  const folded = shows.toggle === "show";
   // The work stands over the line while the run goes on, while it stays open
   // for a reader, and while it folds away into the line.
-  const above = !later || fold === "folding";
+  const above = shows.work === "above";
   // What a later step undid, read once per record, not once per redraw.
   const undone = useMemo(() => recoveredFailures(row.items), [row.items]);
   const feedRef = useRef<HTMLDivElement>(null);
@@ -2634,7 +2583,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       ref={rootRef}
       className="@container/chat min-w-0"
       data-run-chat
-      data-run-fold={later ? fold : undefined}
+      data-run-fold={settled ? fold : undefined}
       style={
         { "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})` } as CSSProperties
       }
@@ -2651,17 +2600,23 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
           {fold === "folding" ? <div aria-hidden="true" className="run-above-rule" /> : null}
         </div>
       ) : null}
-      {row.status === null ? null : later ? (
+      {row.status === null ? null : settled ? (
         <NowLine
           key="line"
           answering={false}
           outcome={row.outcome}
           end={
             // A chat opens from its first thing the Mate did (`chatLines`).
-            row.items.some((item) => item.kind !== "person") ? (
+            shows.toggle !== null && row.items.some((item) => item.kind !== "person") ? (
               <WorkToggle
                 onToggle={() => {
                   hold();
+                  // Watched to its end and still open over its line: it
+                  // folds into the line as a run settling does.
+                  if (fold === "watched") {
+                    foldNow();
+                    return;
+                  }
                   fromHeightRef.current = feedRef.current?.getBoundingClientRect().height ?? null;
                   setRunFold(ctx.routeThreadKey, row.turnKey, folded ? "shown" : "folded");
                 }}
@@ -2728,13 +2683,22 @@ function useRunFold({
   readonly readingRef: { readonly current: boolean };
   readonly rootRef: { readonly current: HTMLElement | null };
   readonly aboveRef: { readonly current: HTMLElement | null };
-}): RunFold {
+}): { readonly fold: RunFold; readonly foldNow: () => void } {
   const read = () => runFoldOf(conversation, run);
   const stored = useSyncExternalStore(subscribeRunFolds, read, read);
   const fold = live ? "watched" : stored;
   const wasLiveRef = useRef(live);
   // Where the line's words stood as the run settled: the fold starts there.
   const settledAtRef = useRef<number | null>(null);
+  // It folds from where its line's words stand now, easing the work shut
+  // into the line — at once under reduced motion.
+  const foldNow = () => {
+    const words = nowWordsOf(rootRef.current);
+    settledAtRef.current =
+      words === null || prefersReducedMotion() ? null : words.getBoundingClientRect().top;
+    setRunFold(conversation, run, settledAtRef.current === null ? "folded" : "folding");
+  };
+  const foldOnSettle = useEffectEvent(foldNow);
   useLayoutEffect(() => {
     const wasLive = wasLiveRef.current;
     wasLiveRef.current = live;
@@ -2749,11 +2713,8 @@ function useRunFold({
       return;
     }
     if (readingRef.current) return;
-    const words = nowWordsOf(rootRef.current);
-    settledAtRef.current =
-      words === null || prefersReducedMotion() ? null : words.getBoundingClientRect().top;
-    setRunFold(conversation, run, settledAtRef.current === null ? "folded" : "folding");
-  }, [conversation, run, live, readingRef, rootRef]);
+    foldOnSettle();
+  }, [conversation, run, live, readingRef]);
   useLayoutEffect(() => {
     if (fold !== "folding") return;
     const from = settledAtRef.current;
@@ -2767,7 +2728,7 @@ function useRunFold({
     }
     return foldAway(above, from - words.getBoundingClientRect().top, done);
   }, [conversation, run, fold, aboveRef, rootRef]);
-  return fold;
+  return { fold, foldNow };
 }
 
 /** The now line's words in a run's chat: where the line stands. */

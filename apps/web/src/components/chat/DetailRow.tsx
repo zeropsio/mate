@@ -7,6 +7,7 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatWorkDuration } from "./conversation.logic";
 import { ElapsedSince } from "./ConversationRows";
 
@@ -32,11 +33,17 @@ export function DetailRow({
   title,
   word,
   time,
+  long = "title",
 }: {
   readonly tone: ServiceStatusToneId;
   readonly title: string;
   readonly word: string;
   readonly time: ReactNode;
+  /**
+   * Which of the two runs long and gives way, whole on hover: a helper's
+   * title, or — a failed service — the reason its word says.
+   */
+  readonly long?: "title" | "word";
 }) {
   return (
     <li className="run-bar">
@@ -44,8 +51,21 @@ export function DetailRow({
         <span className={cn("size-1.5 rounded-full", TONE_DOT[tone])} />
       </span>
       <span className="flex min-w-0 items-baseline gap-2">
-        <span className="min-w-0 truncate text-foreground">{title}</span>
-        <span className="shrink-0 text-muted-foreground">{word}</span>
+        <span className={cn("text-foreground", long === "title" ? "min-w-0 truncate" : "shrink-0")}>
+          {title}
+        </span>
+        {long === "word" ? (
+          <Tooltip>
+            <TooltipTrigger render={<span className="min-w-0 truncate text-muted-foreground" />}>
+              {word}
+            </TooltipTrigger>
+            <TooltipPopup className="max-w-md" side="bottom">
+              {word}
+            </TooltipPopup>
+          </Tooltip>
+        ) : (
+          <span className="shrink-0 text-muted-foreground">{word}</span>
+        )}
       </span>
       <span className="text-muted-foreground tabular-nums">{time}</span>
     </li>

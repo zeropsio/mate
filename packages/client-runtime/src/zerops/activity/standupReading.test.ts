@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ActivityAppVersion, ActivityProcess } from "./dto.ts";
-import {
-  type StandupReading,
-  type StandupService,
-  readStandup,
-  settleStandup,
-} from "./standupReading.ts";
+import { type StandupReading, type StandupService, readStandup } from "./standupReading.ts";
 
 const SINCE = "2026-09-02T10:00:00.000Z";
 const NOW = Date.parse("2026-09-02T10:06:00.000Z");
@@ -99,6 +94,7 @@ describe("readStandup — each service a stand-up call builds, from the project'
       state: string;
       sentence?: string;
       note?: string;
+      reason?: string;
     }>;
     readonly counts: { building: number; up: number; failed: number };
   }> = [
@@ -251,13 +247,16 @@ describe("readStandup — each service a stand-up call builds, from the project'
       counts: { building: 0, up: 3, failed: 0 },
     },
     {
-      name: "one stage failed and the rest go on",
+      name: "one stage failed and the rest go on: the platform's reason on its row",
       half: "stage",
       services: DEVS_UP,
-      processes: [build("s-apistage", "FAILED"), build("s-webstage", "RUNNING")],
+      processes: [
+        build("s-apistage", "FAILED", { failReason: "Build commands exited 1" }),
+        build("s-webstage", "RUNNING"),
+      ],
       rows: [
         ...STAGE_AROUND,
-        { hostname: "apistage", state: "failed" },
+        { hostname: "apistage", state: "failed", reason: "Build commands exited 1" },
         { hostname: "webstage", state: "building" },
       ],
       counts: { building: 1, up: 3, failed: 1 },
@@ -364,6 +363,7 @@ describe("readStandup — each service a stand-up call builds, from the project'
           state: row.state,
           ...(row.sentence === undefined ? {} : { sentence: row.sentence }),
           ...(row.note === undefined ? {} : { note: row.note }),
+          ...(row.reason === undefined ? {} : { reason: row.reason }),
         })),
       ).toEqual(testCase.rows.map((row) => ({ ...row })));
       expect({
@@ -413,47 +413,5 @@ describe("readStandup — each service a stand-up call builds, from the project'
       expect.objectContaining({ hostname: "webdev", startedAt: at(2) }),
     ]);
     expect(runtimes[1]).not.toHaveProperty("endedAt");
-  });
-});
-
-describe("settleStandup — a settled call's report, in the environment it stood up", () => {
-  it.each([
-    {
-      name: "the report's rows in their places, the rest as the project says they stand",
-      services: DEVS_UP as ReadonlyArray<StandupService> | undefined,
-      rows: [
-        { hostname: "apidev", state: "up" },
-        { hostname: "webdev", state: "failed" },
-      ] as const,
-      shows: [
-        ...DEV_AROUND,
-        { hostname: "apidev", state: "up" },
-        { hostname: "webdev", state: "failed" },
-      ],
-    },
-    {
-      name: "a row the project no longer lists stays, last",
-      services: FRESH,
-      rows: [{ hostname: "olddev", state: "up" }] as const,
-      shows: [
-        ...DEV_AROUND,
-        { hostname: "apidev", state: "waits" },
-        { hostname: "webdev", state: "waits" },
-        { hostname: "olddev", state: "up" },
-      ],
-    },
-    {
-      name: "without the project read, the report's rows alone",
-      services: undefined,
-      rows: [{ hostname: "apidev", state: "up" }] as const,
-      shows: [{ hostname: "apidev", state: "up" }],
-    },
-  ])("$name", ({ services, rows, shows }) => {
-    const reading = settleStandup({
-      half: "development",
-      rows,
-      ...(services === undefined ? {} : { services }),
-    });
-    expect(reading.rows).toEqual(shows);
   });
 });

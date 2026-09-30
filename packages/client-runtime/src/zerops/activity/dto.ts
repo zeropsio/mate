@@ -125,6 +125,22 @@ export interface ActivityProcess {
   readonly started?: string;
   readonly finished?: string;
   readonly appVersion?: ActivityAppVersion;
+  /**
+   * Why it failed, as the platform says it: its public reason
+   * (`publicMeta.failReason`), else its error's code and message — the same
+   * reading zcp's own direct process list makes.
+   */
+  readonly failReason?: string;
+}
+
+function readFailReason(entry: Record<string, unknown>): string | undefined {
+  const reason = readString(readRecord(entry.publicMeta)?.failReason);
+  if (reason !== undefined && reason.length > 0) return reason;
+  const error = readRecord(entry.error);
+  const code = readString(error?.code);
+  if (code === undefined || code.length === 0) return undefined;
+  const message = readString(error?.message);
+  return message === undefined || message.length === 0 ? code : `${code}: ${message}`;
 }
 
 export function readActivityAppVersion(value: unknown): ActivityAppVersion | undefined {
@@ -176,6 +192,7 @@ function readActivityProcess(entry: Record<string, unknown>): ActivityProcess | 
   const appVersion = readActivityAppVersion(entry.appVersion);
   const started = readString(entry.started);
   const finished = readString(entry.finished);
+  const failReason = readFailReason(entry);
   return {
     id,
     projectId,
@@ -186,6 +203,7 @@ function readActivityProcess(entry: Record<string, unknown>): ActivityProcess | 
     ...(started === undefined ? {} : { started }),
     ...(finished === undefined ? {} : { finished }),
     ...(appVersion === undefined ? {} : { appVersion }),
+    ...(failReason === undefined ? {} : { failReason }),
   };
 }
 

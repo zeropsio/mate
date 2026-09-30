@@ -178,6 +178,116 @@ const BATCH = splitBatchDeploy(
   }),
 );
 
+/** An import of a pair whose dev half the platform refused, with its reason. */
+const IMPORT_ONE_FAILED: ZeropsOperation = {
+  ...deploy({}),
+  key: "op:import",
+  kind: "import",
+  phase: "failed",
+  anchorAt: ago(70),
+  settledAt: ago(9),
+  subject: "appdev, appstage",
+  kicker: "Import · appdev, appstage",
+  voice: "Importing appdev and appstage.",
+  statusWord: "Import failed",
+  closing: "Failed.",
+  target: { hostname: "appdev" },
+  steps: [
+    {
+      id: "appdev",
+      label: "appdev",
+      state: "failed",
+      stateLabel: "Failed",
+      note: "serviceStackCreateFailed: the project's disk quota is used up",
+    },
+    { id: "appstage", label: "appstage", state: "done", stateLabel: "Done" },
+  ],
+};
+
+/** A deploy that landed. */
+const DEPLOY_DONE = deploy({
+  key: "op:deploy-done",
+  phase: "done",
+  statusWord: "Deployed",
+  settledAt: ago(2),
+  closing: "appdev is live.",
+});
+
+/** An operation of no single service: a check of every one. */
+function withoutTarget(overrides: Partial<ZeropsOperation>): ZeropsOperation {
+  const { target: _target, ...rest } = deploy(overrides);
+  return rest;
+}
+
+/** A made-up Mate's own working branch, as zcp names its pushes. */
+const MATE_BRANCH_VERSION = "mate/mate-Pq7Zr0TestProject0000A 227b804";
+
+/** What the owner's guestbook run did, made up: a deploy, a check of every service, a dev server found down. */
+const GUESTBOOK: ReadonlyArray<RecordItem> = [
+  {
+    kind: "operation",
+    key: "operation:op:gb-deploy",
+    at: ago(90),
+    operation: deploy({
+      key: "op:gb-deploy",
+      subject: "appstage",
+      target: { hostname: "appstage" },
+      phase: "done",
+      statusWord: "Deployed",
+      anchorAt: ago(168),
+      settledAt: ago(90),
+      version: { name: MATE_BRANCH_VERSION },
+      steps: ["Build container", "Build", "Prepare", "Deploy", "Run"].map((label) => ({
+        id: label,
+        label,
+        state: "done" as const,
+        stateLabel: "Done",
+      })),
+    }),
+  },
+  {
+    kind: "operation",
+    key: "operation:op:gb-verify",
+    at: ago(80),
+    operation: withoutTarget({
+      key: "op:gb-verify",
+      kind: "verify",
+      subject: "all services",
+      phase: "done",
+      statusWord: "Healthy",
+      voice: "Checking all services.",
+      anchorAt: ago(82),
+      settledAt: ago(80),
+      steps: ["appdev", "appstage", "db", "cache"].map((label) => ({
+        id: label,
+        label,
+        state: "done" as const,
+        stateLabel: "Done",
+      })),
+    }),
+  },
+  {
+    kind: "operation",
+    key: "operation:op:gb-dev",
+    at: ago(60),
+    operation: deploy({
+      key: "op:gb-dev",
+      kind: "devServer",
+      subject: "appdev",
+      target: { hostname: "appdev" },
+      phase: "done",
+      statusWord: "Not running",
+      voice: "Checking the dev server on appdev.",
+      anchorAt: ago(61),
+      settledAt: ago(60),
+      steps: [{ id: "dev-server", label: "Status", state: "failed", stateLabel: "Failed" }],
+    }),
+  },
+];
+
+/** Thinking, between steps. */
+const THINKING_NOW: TurnHeaderActivity = { kind: "thinking", key: null, messages: [] };
+
 const EMPTY_DOCK: DockModel = {
   operations: [],
   helpers: null,
@@ -881,6 +991,73 @@ function State({
   );
 }
 
+/** A made-up screenshot: a page's shape, drawn, in place of a real take. */
+function shot(width: number, height: number, label: string): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#f4f1ea"/><rect x="6%" y="6%" width="88%" height="10%" rx="8" fill="#d9d2c3"/><text x="50%" y="55%" font-family="sans-serif" font-size="${Math.round(width / 12)}" text-anchor="middle" fill="#6b6456">${label}</text></svg>`;
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
+}
+
+const STAGE_URL = "https://appstage-2b7d.prg1.example.app";
+
+/** The guestbook's stage checked on a desktop and on a phone. */
+const STAGE_TAKES = [
+  { key: "op:gb-desktop", device: undefined, width: 1440, height: 900, label: "Guestbook" },
+  { key: "op:gb-phone", device: "iPhone 16", width: 393, height: 852, label: "Guestbook" },
+].map(({ key, device, width, height, label }) =>
+  deploy({
+    key,
+    kind: "browser",
+    subject: `${STAGE_URL}/`,
+    target: { hostname: "appstage" },
+    phase: "done",
+    statusWord: "Checked",
+    anchorAt: ago(40),
+    settledAt: ago(30),
+    screenshot: { src: shot(width, height, label), width, height },
+    ...(device === undefined ? {} : { deviceName: device }),
+  }),
+);
+
+/** What the guestbook run left: its stage deployed and checked twice, its dev server running. */
+const GUESTBOOK_RESULT: OutcomeModel = {
+  ...REPORT,
+  key: "outcome:guestbook",
+  turnKey: "guestbook",
+  live: [
+    {
+      hostname: "appstage",
+      tone: "ok",
+      word: "Deployed",
+      version: "227b804",
+      url: STAGE_URL,
+      at: ago(90),
+      failure: null,
+    },
+    {
+      hostname: "appdev",
+      tone: "ok",
+      word: "Dev server running",
+      version: null,
+      url: null,
+      at: ago(20),
+      failure: null,
+    },
+  ],
+  files: null,
+  change: null,
+  checks: { count: 2, views: 2, failures: 0, takes: STAGE_TAKES },
+  pictures: STAGE_TAKES.map((take) => ({
+    kind: "check" as const,
+    key: take.key,
+    src: take.screenshot!.src,
+    caption: "/",
+    page: "appstage-2b7d.prg1.example.app/",
+    device: take.deviceName ?? null,
+    failed: false,
+    ratio: take.screenshot!.width! / take.screenshot!.height!,
+  })),
+};
+
 // What its calls came to: the worked line's effort, never a row.
 const REPORT_WITH_ACTIVITY: OutcomeModel = {
   ...REPORT,
@@ -947,6 +1124,69 @@ function Harness() {
                 live: false,
                 status: status({ live: false, face: "produced", endedAt: ago(2) }),
                 outcome: REPORT_WITH_ACTIVITY,
+              })}
+            />
+          </Card>
+        </State>
+        {[
+          { label: "An import, one failed", operation: IMPORT_ONE_FAILED },
+          { label: "A deploy, done", operation: DEPLOY_DONE },
+        ].map(({ label, operation }) => (
+          <State
+            key={label}
+            label={label}
+            note="Its name, a segment per service, its state once; opened, a line per service."
+          >
+            <Card>
+              <RunChat
+                row={record({ turnKey: `dock-${operation.key}`, items: [], now: RUNNING_STEP })}
+              />
+              <ConversationWorking
+                dock={{ ...EMPTY_DOCK, operations: [operation] }}
+                environmentId={null}
+                incidents={[]}
+                onOpenAgents={() => undefined}
+                threadRef={null}
+              />
+            </Card>
+          </State>
+        ))}
+        <State
+          label="The guestbook card"
+          note="A deploy from the Mate's branch, a check of every service, a dev server found down: the dock waits while that is the latest line."
+        >
+          <Card>
+            <RunChat row={record({ turnKey: "guestbook", items: GUESTBOOK, now: THINKING_NOW })} />
+            <ConversationWorking
+              dock={EMPTY_DOCK}
+              environmentId={null}
+              incidents={[]}
+              onOpenAgents={() => undefined}
+              threadRef={null}
+            />
+          </Card>
+        </State>
+        <State
+          label="The guestbook result"
+          note="Its stage deployed from the Mate's branch and checked on a desktop and a phone; its dev server running."
+        >
+          <Card
+            result={
+              <TurnReport
+                facts={{}}
+                onOpenImage={() => undefined}
+                onOpenTurnDiff={() => undefined}
+                outcome={GUESTBOOK_RESULT}
+              />
+            }
+          >
+            <RunChat
+              row={record({
+                turnKey: "guestbook-settled",
+                items: GUESTBOOK,
+                live: false,
+                status: status({ live: false, face: "produced", endedAt: ago(2) }),
+                outcome: GUESTBOOK_RESULT,
               })}
             />
           </Card>

@@ -62,6 +62,8 @@ export interface StandupServiceRow {
   readonly sentence?: string;
   /** One held back: what it waits on that did not stand up; one stopped, "stopped". */
   readonly note?: string;
+  /** A build that failed: why, as the platform says it, when it says. */
+  readonly reason?: string;
 }
 
 export interface StandupReading {
@@ -199,24 +201,6 @@ function environment(
   return standupReadingOf(rows);
 }
 
-/**
- * A settled call's reading: the rows its report gave the services it built
- * (`rows`), in the environment it stood up, the rest as the project's
- * services say they stand. Without the project read, the report's rows alone.
- */
-export function settleStandup(input: {
-  readonly half: StandupHalf;
-  readonly rows: ReadonlyArray<StandupServiceRow>;
-  readonly services?: ReadonlyArray<StandupService>;
-}): StandupReading {
-  if (input.services === undefined) return standupReadingOf(input.rows);
-  return environment(
-    input.half,
-    input.services,
-    new Map(input.rows.map((row) => [row.hostname, row])),
-  );
-}
-
 export function readStandup(input: {
   readonly half: StandupHalf;
   /** The services the call builds, when the report before it named them. */
@@ -265,6 +249,9 @@ export function readStandup(input: {
         ? {}
         : { endedAt: latest.finished }),
       ...(sentence === undefined ? {} : { sentence }),
+      ...(state === "failed" && latest.failReason !== undefined
+        ? { reason: latest.failReason }
+        : {}),
     });
   }
   // Told which it builds, the call's runtimes are those alone: a half the

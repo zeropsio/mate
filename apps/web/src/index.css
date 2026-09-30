@@ -4629,6 +4629,20 @@ button.run-bar:focus-visible {
    Six tiles at most, 8 px apart, wrapping into rows as the column needs.
    Their corners run parallel with the tray's (S4): 30 px = 12 + the 18 px
    between a tile and the tray's edge — 6 px here, the tray's 12 under it. */
+/* p26/runcard */
+/* What a service's checks found stays on its one line, never a line of its
+   own that leads with a "·" or a "/"; the pictures its checks took stand
+   under its row, the open card's thumbnails' 80 px. */
+.run-result-checked {
+  white-space: nowrap;
+}
+.run-result-row-pictures {
+  margin-top: 8px;
+}
+.run-result-row-pictures .run-result-tile {
+  height: 80px;
+}
+
 .run-result-pictures {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);

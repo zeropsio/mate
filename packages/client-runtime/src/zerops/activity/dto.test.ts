@@ -138,6 +138,47 @@ describe("readProjectProcesses", () => {
     expect(processes?.[0]?.appVersion).toBeUndefined();
   });
 
+  it.each([
+    {
+      name: "the platform's public reason",
+      extra: { publicMeta: { failReason: "Out of disk" } },
+      reason: "Out of disk",
+    },
+    {
+      name: "its error, when the public reason is absent",
+      extra: {
+        error: { code: "serviceStackCreateFailed", message: "Type postgresql@99 is unknown" },
+      },
+      reason: "serviceStackCreateFailed: Type postgresql@99 is unknown",
+    },
+    {
+      name: "an error with a code alone",
+      extra: { error: { code: "quotaExceeded" } },
+      reason: "quotaExceeded",
+    },
+    {
+      name: "the public reason over the error",
+      extra: { publicMeta: { failReason: "Out of disk" }, error: { code: "x" } },
+      reason: "Out of disk",
+    },
+    { name: "nothing, for a process that says none", extra: {}, reason: undefined },
+  ])("reads why a process failed: $name", ({ extra, reason }) => {
+    const processes = readProjectProcesses({
+      list: [
+        {
+          id: "p1",
+          projectId: "proj-1",
+          serviceStackId: "svc-1",
+          status: "FAILED",
+          actionName: "stack.create",
+          created: "2026-09-02T10:00:00.000Z",
+          ...extra,
+        },
+      ],
+    });
+    expect(processes?.[0]?.failReason).toBe(reason);
+  });
+
   it("drops a process entry missing an identifying field, keeping the rest", () => {
     const processes = readProjectProcesses({
       list: [

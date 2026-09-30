@@ -40,6 +40,7 @@ import type { OutcomeModel } from "./conversation.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
   resultPictures,
+  rowPictures,
   resultRows,
   tileRatio,
   type ResultFacts,
@@ -496,10 +497,17 @@ export function TurnReport({
   // what the checks took stands.
   const workspace = files !== undefined || threadRef !== null;
   const all = useMemo(() => resultPictures(outcome), [outcome]);
-  const pictures = useMemo(
-    () => (workspace ? all : all.filter((picture) => picture.kind === "check")),
-    [all, workspace],
+  // Every picture of a service stands under its row; the rest in the strip.
+  const placed = useMemo(
+    () =>
+      rowPictures(
+        outcome,
+        rows,
+        workspace ? all : all.filter((picture) => picture.kind === "check"),
+      ),
+    [all, outcome, rows, workspace],
   );
+  const pictures = placed.rest;
   // The rows the result arrived with, while the person watched, rise once
   // and drop their rise as it ends: a row that turns up later is simply
   // there, and one that moves later (a service stopping tonight moves up to
@@ -520,30 +528,51 @@ export function TurnReport({
   if (rows.length === 0 && pictures.length === 0) return null;
   return (
     <section aria-label="What this run left" className="run-result" data-turn-report>
-      {rows.map((row, index) => (
-        <div
-          key={row.key}
-          className="run-result-row"
-          data-result-row={row.group}
-          data-tall={row.sub !== null || undefined}
-          {...riseOf(row.key, index, rising, risen)}
-        >
-          <RowMark row={row} />
-          <div className="min-w-0">
-            <div className="run-result-main">
-              <span className="run-result-title" data-broken={row.group === "broken" || undefined}>
-                {row.title}
-              </span>
-              {row.words === null ? null : <span className="run-result-words">{row.words}</span>}
-              {row.version === null ? null : (
-                <span className="run-result-version">{row.version}</span>
+      {rows.map((row, index) => {
+        const own = placed.byRow.get(row.key) ?? [];
+        return (
+          <div
+            key={row.key}
+            className="run-result-row"
+            data-result-row={row.group}
+            data-tall={row.sub !== null || own.length > 0 || undefined}
+            {...riseOf(row.key, index, rising, risen)}
+          >
+            <RowMark row={row} />
+            <div className="min-w-0">
+              <div className="run-result-main">
+                <span
+                  className="run-result-title"
+                  data-broken={row.group === "broken" || undefined}
+                >
+                  {row.title}
+                </span>
+                {row.words === null ? null : <span className="run-result-words">{row.words}</span>}
+                {row.version === null ? null : (
+                  <span className="run-result-version">{row.version}</span>
+                )}
+                {row.checked === undefined ? null : (
+                  <span className="run-result-words run-result-checked">
+                    {row.words === null && row.version === null ? "" : "· "}
+                    {row.checked}
+                  </span>
+                )}
+              </div>
+              <RowSub onOpenTurnDiff={onOpenTurnDiff} row={row} />
+              {own.length === 0 ? null : (
+                <div className="run-result-row-pictures">
+                  <PictureStrip
+                    onOpenImage={onOpenImage}
+                    pictures={own}
+                    source={{ kind: "given", files: NO_FILES }}
+                  />
+                </div>
               )}
             </div>
-            <RowSub onOpenTurnDiff={onOpenTurnDiff} row={row} />
+            <RowEnd mate={now.mate} row={row} />
           </div>
-          <RowEnd mate={now.mate} row={row} />
-        </div>
-      ))}
+        );
+      })}
       {pictures.length === 0 ? null : (
         <div className="run-result-pictures" {...riseOf(PICTURES, rows.length, rising, risen)}>
           {files !== undefined || threadRef === null ? (

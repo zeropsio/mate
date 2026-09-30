@@ -10,6 +10,7 @@ import type {
 } from "./conversation.logic";
 import {
   resultPictures,
+  rowPictures,
   resultRows,
   runEffortWords,
   tileRatio,
@@ -158,7 +159,7 @@ function read(row: ResultRow) {
         : sub.kind === "since"
           ? `since ${sub.at}`
           : `${sub.files === null ? "" : `${sub.files} files · `}+${sub.additions} −${sub.deletions}`;
-  return [row.group, row.tone, row.title, row.words, row.version, line].filter(
+  return [row.group, row.tone, row.title, row.words, row.version, row.checked ?? null, line].filter(
     (part) => part !== null,
   );
 }
@@ -403,7 +404,8 @@ describe("resultRows", () => {
       facts: {},
       rows: [
         ["broken", "failed", "appdev", "Check of /admin failed", "couldn't click Login"],
-        ["running", "ok", "appdev", "Dev server running", "/ checked ✓"],
+        // The home page is the service itself: no "/" leads the words.
+        ["running", "ok", "appdev", "Dev server running", "checked ✓"],
       ],
     },
     {
@@ -869,6 +871,94 @@ describe("resultPictures", () => {
     { name: "a run that took no picture has none", outcome: NOVA, labels: [] },
   ])("$name", ({ outcome: model, labels }) => {
     expect(resultPictures(model).map((picture) => picture.label)).toEqual(labels);
+  });
+});
+
+describe("a service's row reads as one line", () => {
+  it("says its state, its version and what its checks found on one line, nothing under it", () => {
+    const both = [
+      take("op:b1", "https://appstage-2b7d.prg1.example.app/"),
+      take("op:b2", "https://appstage-2b7d.prg1.example.app/", { deviceName: "iPhone 16" }),
+    ];
+    const rows = resultRows(
+      outcome({
+        live: [
+          service("appstage", {
+            version: "227b804",
+            url: "https://appstage-2b7d.prg1.example.app",
+          }),
+        ],
+        checks: checks(both),
+      }),
+      {},
+    );
+    expect(rows.map((row) => [row.words, row.version, row.checked, row.sub])).toEqual([
+      ["Deployed", "227b804", "both checks passed", null],
+    ]);
+  });
+});
+
+describe("rowPictures — every picture of a service under its row", () => {
+  const take = (key: string, page: string, device: string | null) => ({
+    kind: "check" as const,
+    key,
+    src: `data:image/png;base64,${key}`,
+    caption: page.slice(page.indexOf("/")),
+    page,
+    device,
+    failed: false,
+    ratio: device === null ? 1.6 : 0.46,
+    label: key,
+  });
+  const file = {
+    kind: "file" as const,
+    key: "file:/var/www/shots/home.png",
+    path: "/var/www/shots/home.png",
+    name: "home.png",
+    label: "home.png",
+  };
+  const model = outcome({
+    live: [
+      service("appstage", { url: "https://appstage-2b7d.prg1.example.app" }),
+      service("appdev", { word: "Dev server running" }),
+    ],
+  });
+  const rows = [
+    { key: "service:appstage" },
+    { key: "service:appdev" },
+  ] as unknown as ReadonlyArray<ResultRow>;
+
+  it.each([
+    {
+      name: "a stage's desktop and phone pictures both under its row, in the order taken",
+      pictures: [
+        take("desktop", "appstage-2b7d.prg1.example.app/", null),
+        take("phone", "appstage-2b7d.prg1.example.app/", "iPhone 16"),
+      ],
+      byRow: { "service:appstage": ["desktop", "phone"] },
+      rest: [],
+    },
+    {
+      name: "each service's under its own row, never another's",
+      pictures: [
+        take("stage", "appstage-2b7d.prg1.example.app/", null),
+        take("dev", "appdev-1f3c-3000.prg1.example.app/status", null),
+      ],
+      byRow: { "service:appstage": ["stage"], "service:appdev": ["dev"] },
+      rest: [],
+    },
+    {
+      name: "a file it looked at and a page of no service stand in the strip under the rows",
+      pictures: [file, take("docs", "docs.example.dev/guide", null)],
+      byRow: {},
+      rest: ["file:/var/www/shots/home.png", "docs"],
+    },
+  ])("$name", ({ pictures, byRow, rest }) => {
+    const read = rowPictures(model, rows, pictures);
+    expect(
+      Object.fromEntries([...read.byRow].map(([key, list]) => [key, list.map((p) => p.key)])),
+    ).toEqual(byRow);
+    expect(read.rest.map((picture) => picture.key)).toEqual(rest);
   });
 });
 

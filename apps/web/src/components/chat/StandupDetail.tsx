@@ -19,6 +19,7 @@ export function StandupRows({ reading }: { readonly reading: StandupReading | nu
         return (
           <DetailRow
             key={row.hostname}
+            long={row.state === "failed" ? "word" : "title"}
             time={row.startedAt === undefined ? null : spanOf(row.startedAt, row.endedAt ?? null)}
             title={row.hostname}
             tone={tone}

@@ -18,6 +18,7 @@ import {
   nowLineWords,
   reachesEarlier,
   recoveredFailures,
+  runCardShows,
   runFoldOf,
   setRunFold,
   severalWords,
@@ -488,7 +489,47 @@ describe("recoveredFailures", () => {
       operation: entry.kind === "operation" ? entry.operation : (null as never),
     };
   };
+  const devServer = (id: string, service: string, running: boolean): RecordItem => {
+    const entry = operationEntry(id, "t1", 1, {
+      kind: "devServer",
+      phase: "done",
+      subject: service,
+      target: { hostname: service },
+      statusWord: running ? "Running" : "Not running",
+      steps: [
+        {
+          id: "dev-server",
+          label: running ? "Start" : "Status",
+          state: running ? "done" : "failed",
+          stateLabel: running ? "Done" : "Failed",
+        },
+      ],
+    });
+    return {
+      kind: "operation",
+      key: `operation:op:${id}`,
+      at: at(1),
+      operation: entry.kind === "operation" ? entry.operation : (null as never),
+    };
+  };
   it.each([
+    // One story (the owner, 2026-09-30): a dev server found down and then
+    // running again is quiet where it was found down; the current state wins.
+    {
+      name: "a dev server found not running, then running",
+      items: [devServer("s1", "appdev", false), devServer("s2", "appdev", true)],
+      recovered: ["operation:op:s1"],
+    },
+    {
+      name: "a dev server found not running, and still",
+      items: [devServer("s1", "appdev", false), devServer("s2", "appdev", false)],
+      recovered: [],
+    },
+    {
+      name: "another service's dev server running",
+      items: [devServer("s1", "appdev", false), devServer("s2", "apidev", true)],
+      recovered: [],
+    },
     {
       name: "a command that passed on a retry",
       items: [ran("w1", "npm test", true), ran("w2", "npm test", false)],
@@ -566,5 +607,41 @@ describe("recoveredFailures on a long run", () => {
     const took = performance.now() - started;
     expect(undone.size).toBe(3000);
     expect(took).toBeLessThan(250);
+  });
+});
+
+describe("runCardShows — where a run's work stands, and what its line offers", () => {
+  it.each([
+    {
+      name: "live: over the line, nothing to toggle",
+      settled: false,
+      fold: "watched",
+      work: "above",
+      toggle: null,
+    },
+    {
+      name: "settled while the person read it: still open over the line, and it can be hidden",
+      settled: true,
+      fold: "watched",
+      work: "above",
+      toggle: "hide",
+    },
+    {
+      name: "folding into its line",
+      settled: true,
+      fold: "folding",
+      work: "above",
+      toggle: "show",
+    },
+    { name: "folded: the line alone", settled: true, fold: "folded", work: null, toggle: "show" },
+    {
+      name: "opened again: under the line",
+      settled: true,
+      fold: "shown",
+      work: "below",
+      toggle: "hide",
+    },
+  ] as const)("$name", ({ settled, fold, work, toggle }) => {
+    expect(runCardShows(settled, fold)).toEqual({ work, toggle });
   });
 });

@@ -152,6 +152,17 @@ describe("standupRow — a service under the opened bar", () => {
       word: "Build failed",
     },
     { row: { hostname: "cache", state: "failed" } as const, tone: "failed", word: "Failed" },
+    {
+      row: {
+        hostname: "webdev",
+        state: "failed",
+        startedAt: T,
+        endedAt: T,
+        reason: "Build commands exited 1",
+      } as const,
+      tone: "failed",
+      word: "Build commands exited 1",
+    },
   ])("$row.hostname $row.state", ({ row, tone, word }) => {
     expect(standupRow(row)).toEqual({ tone, word });
   });
