@@ -52,6 +52,7 @@ function rig(ready: Effect.Effect<void, ConnectionTransientError>) {
         letThrough = () =>
           resolve({
             signal: giveWay.signal,
+            claim: () => undefined,
             settle: (open) => void log.push(`settle ${environmentId} ${open}`),
             close: () => void log.push(`close ${environmentId}`),
           });

@@ -127,13 +127,19 @@ describe("connection admission", () => {
     expect(third.ticket).not.toBeNull();
   });
 
-  it("other environments start one at a time, each yielding after its time", async () => {
+  it("with a route named, other environments start one at a time, each yielding after its time", async () => {
     const timers = manualTimers();
     const admission = makeConnectionAdmission(timers);
+    admission.prefer(ROUTE);
+    const route = ask(admission, ROUTE);
+    await flush();
+    route.ticket!.claim();
+    route.ticket!.settle(true);
     const other = ask(admission, OTHER);
     const third = ask(admission, THIRD);
     await flush();
     expect([other.ticket !== null, third.ticket !== null]).toEqual([true, false]);
+    other.ticket!.claim();
 
     // Held by a Mate whose upgrade the balancer keeps waiting, it gives way.
     timers.advance(OTHER_ATTEMPT_MS - 1);
@@ -143,6 +149,7 @@ describe("connection admission", () => {
     await flush();
     expect(other.ticket!.signal.aborted).toBe(true);
     expect(third.ticket).not.toBeNull();
+    third.ticket!.claim();
     expect(third.ticket!.signal.aborted).toBe(false);
   });
 
@@ -187,5 +194,84 @@ describe("connection admission", () => {
     admission.prefer(null);
     await flush();
     expect(other).toEqual({ ticket: null, refused: true });
+  });
+
+  describe("the route is judged now, not when it asked", () => {
+    const QUEUED = Array.from({ length: 10 }, (_, index) => EnvironmentId.make(`env-q${index}`));
+
+    it.each([
+      { name: "named while it waits behind nine others", viaNone: false },
+      { name: "named through a switch that passes no route", viaNone: true },
+    ])("a queued Mate becoming the route starts at once: $name", async ({ viaNone }) => {
+      const timers = manualTimers();
+      const admission = makeConnectionAdmission(timers);
+      admission.prefer(ROUTE);
+      const route = ask(admission, ROUTE);
+      await flush();
+      route.ticket!.claim();
+      const queued = QUEUED.map((environmentId) => ask(admission, environmentId));
+      await flush();
+      const b = queued[5]!;
+      expect(b.ticket).toBeNull();
+
+      if (viaNone) admission.prefer(null);
+      await flush();
+      const startedBetween = queued.filter((asked, index) => index !== 5 && asked.ticket !== null);
+      admission.prefer(QUEUED[5]!);
+      await flush();
+      expect(b.ticket).not.toBeNull();
+      // Whatever started in between is still connecting, and gives way to the new route.
+      expect(startedBetween.every((asked) => asked.ticket!.signal.aborted)).toBe(true);
+      // The previous route's attempt, still connecting, gives way too.
+      expect(route.ticket!.signal.aborted).toBe(true);
+    });
+
+    it("the previous route's attempt in flight is an ordinary other: capped", async () => {
+      const timers = manualTimers();
+      const admission = makeConnectionAdmission(timers);
+      admission.prefer(ROUTE);
+      const route = ask(admission, ROUTE);
+      await flush();
+      route.ticket!.claim();
+      // The person opens another Mate, whose exchange is still running.
+      admission.prefer(OTHER);
+      timers.advance(OTHER_ATTEMPT_MS);
+      await flush();
+      expect(route.ticket!.signal.aborted).toBe(true);
+    });
+
+    it("an other becoming the route keeps its socket past the others' time", async () => {
+      const timers = manualTimers();
+      const admission = makeConnectionAdmission(timers);
+      const other = ask(admission, OTHER);
+      await flush();
+      other.ticket!.claim();
+      admission.prefer(OTHER);
+      timers.advance(OTHER_ATTEMPT_MS * 2);
+      await flush();
+      expect(other.ticket!.signal.aborted).toBe(false);
+    });
+  });
+
+  it("a route ticket whose caller went away before claiming it holds nobody", async () => {
+    const admission = makeConnectionAdmission(manualTimers());
+    admission.prefer(ROUTE);
+    const caller = new AbortController();
+    const route = ask(admission, ROUTE, caller.signal);
+    await flush();
+    expect(route.ticket).not.toBeNull();
+    // Interrupted as it started: the ticket is never claimed nor settled.
+    caller.abort();
+    const other = ask(admission, OTHER);
+    await flush();
+    expect(other.ticket).not.toBeNull();
+  });
+
+  it("with no route named, nothing waits", async () => {
+    const admission = makeConnectionAdmission(manualTimers());
+    const other = ask(admission, OTHER);
+    const third = ask(admission, THIRD);
+    await flush();
+    expect([other.ticket !== null, third.ticket !== null]).toEqual([true, true]);
   });
 });

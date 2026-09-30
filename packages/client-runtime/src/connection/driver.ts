@@ -58,6 +58,7 @@ export const make = Effect.gen(function* () {
     // asked for once admitted, and an attempt told to give way ends, closing its socket.
     const admission = yield* ConnectionAdmissionRef;
     const ticket = yield* Effect.promise((signal) => admission.admit(target.environmentId, signal));
+    ticket.claim();
     const yielded = Effect.callback<never, ConnectionTransientError>((resume) => {
       const give = () =>
         resume(
