@@ -120,6 +120,19 @@ export interface FlowPullRequest {
   readonly commentCount?: number | undefined;
 }
 
+/**
+ * What zcp calls the pull request a Mate proposes the group's recipe in (`giteaRecipeBranchTitle`,
+ * zcp `gitea_recipe_reconcile.go`): the tiers `main` lacks, `0 — AI Agent/import.yaml` among them,
+ * which the broker merges by itself when it only adds files. A new Mate waits on it while `main`
+ * has no recipe.
+ */
+export const RECIPE_PROPOSAL_TITLE = "Mate: the group's import files";
+
+/** A Mate's proposal of the group's recipe: the group repo's change of zcp's title. */
+export function isRecipeProposal(pull: Pick<FlowPullRequest, "kind" | "title">): boolean {
+  return pull.kind === "recipe" && pull.title === RECIPE_PROPOSAL_TITLE;
+}
+
 /** The default branch until Gitea says otherwise. */
 const FALLBACK_BASE = "main";
 
