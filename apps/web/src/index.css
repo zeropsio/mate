@@ -3046,23 +3046,26 @@ code {
   }
 
   /* Whose Mate it is, on the face's corner: a colleague's picture or their
-     initial on their own hue (`ownerMark`), lighter at the top left, 12 px
-     round and centred 3 px in from the 28 px face's bottom-right corner — cut
-     out of the face (`.menu-face-cut`) rather than laid on it, so it holds on
-     the hover band and the open Mate's band alike. A hairline keeps a pale
+     initial on their own hue (`ownerMark`), lighter at the top left, 16 px
+     round, centred 25 px across and 29 px down the 28 px face — below its
+     corner, level with the ask, because a larger badge in the corner met the
+     done face's smile; there it clears every pose's eyes and mouth by 1.3 px
+     (the owner, 2026-09-30: "the not yours should have the avatar bigger").
+     Cut out of the face (`.menu-face-cut`) rather than laid on it, so it holds
+     on the hover band and the open Mate's band alike. A hairline keeps a pale
      picture off the ground. */
   .menu-owner {
     position: absolute;
-    top: 19px;
-    left: 19px;
+    top: 21px;
+    left: 17px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 12px;
-    height: 12px;
+    width: 16px;
+    height: 16px;
     overflow: hidden;
     border-radius: 9999px;
-    font-size: 7px;
+    font-size: 9px;
     font-weight: 600;
     line-height: 1;
     color: var(--color-white);
@@ -3076,14 +3079,21 @@ code {
   }
 
   /* The face wears the badge's seat cut out of it: a 2 px gap all round the
-     12 px badge, whatever the face's shape reaches into that corner. */
+     16 px badge, whatever the face's shape reaches into that corner. */
   .menu-face-cut {
     -webkit-mask-image: radial-gradient(
-      circle 8px at 25px 25px,
-      transparent 7.5px,
-      currentColor 8px
+      circle 10px at 25px 29px,
+      transparent 9.5px,
+      currentColor 10px
     );
-    mask-image: radial-gradient(circle 8px at 25px 25px, transparent 7.5px, currentColor 8px);
+    mask-image: radial-gradient(circle 10px at 25px 29px, transparent 9.5px, currentColor 10px);
+  }
+
+  /* A Mate that is not the viewer's — a colleague's, or nobody's yet — wears
+     its colour at 55 %, its eyes and mouth in full ink, so the owner's picture
+     is the strongest mark on its row (the owner's board, 2026-09-30, A). */
+  .menu-face-pale [data-mate-face-body] > path {
+    fill-opacity: 0.55;
   }
 
   /* Nobody's: an empty seat — a dashed ring in the muted ink, no fill and no

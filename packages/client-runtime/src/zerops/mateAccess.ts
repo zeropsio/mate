@@ -313,10 +313,12 @@ export function resolveMateOwner<M extends MateOwnerCandidate>(input: {
 export function mateOwnerRecords(project: Pick<MateAccessProject, "tagList" | "userRoles">): {
   readonly named: boolean;
   readonly signedIn: boolean;
+  /** The Zerops user id its signer tag names, where somebody signed its agent in. */
+  readonly signer: string | undefined;
 } {
-  const signedIn = mateSignerUserId(project.tagList) !== undefined;
+  const signer = mateSignerUserId(project.tagList);
   const owned = project.userRoles?.some((entry) => entry.roleCode === "OWNER") === true;
-  return { named: owned || signedIn, signedIn };
+  return { named: owned || signer !== undefined, signedIn: signer !== undefined, signer };
 }
 
 /** The agents whose own signer speaks for the Mate; a login added beside them names only who uses it. */

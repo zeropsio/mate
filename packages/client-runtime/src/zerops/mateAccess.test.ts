@@ -244,7 +244,7 @@ describe("mateOwnerRecords — what a Mate's own records say of its person", () 
       name: "an OWNER entry and its agent's signer",
       userRoles: [OWNER],
       tagList: ["mate", "mate:signer:claude-code:u-jan"],
-      records: { named: true, signedIn: true },
+      records: { named: true, signedIn: true, signer: "u-jan" },
     },
     {
       name: "an OWNER entry, nobody signed in (a creator below ADMIN, a hand-over)",
@@ -256,7 +256,7 @@ describe("mateOwnerRecords — what a Mate's own records say of its person", () 
       name: "no OWNER entry, the signer names the person (an org owner's Mate)",
       userRoles: [SERVICE],
       tagList: ["mate", "mate:signer:codex:u-eva"],
-      records: { named: true, signedIn: true },
+      records: { named: true, signedIn: true, signer: "u-eva" },
     },
     {
       name: "no OWNER entry and nobody signed in: nobody's",
