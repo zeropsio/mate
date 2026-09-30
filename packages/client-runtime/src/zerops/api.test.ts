@@ -677,6 +677,47 @@ describe("ZeropsApiClient project reads", () => {
     expect(result.steps).toBeGreaterThan(0);
   });
 
+  it("restarts what runs the project's code, never the container or a managed service", async () => {
+    // A storage's restart fails outright, and a database runs none of the
+    // project's code (the add measured 2026-09-30).
+    const typed = (id: string, name: string, version: string, category: string) => ({
+      id,
+      name,
+      serviceStackTypeInfo: {
+        serviceStackTypeVersionName: version,
+        serviceStackTypeCategory: category,
+      },
+    });
+    const stub = recordingFetch((request) => {
+      if (request.url.endsWith("/project/search"))
+        return jsonResponse(200, {
+          items: [{ envList: [{ id: "iso", key: "envIsolation", content: "none" }] }],
+        });
+      if (request.url.includes("/service-stack?")) {
+        return jsonResponse(200, {
+          list: [
+            typed("svc-zcp", "zcp", "zcp@1", "USER"),
+            typed("svc-app", "appdev", "nodejs@22", "USER"),
+            typed("svc-db", "db", "postgresql@17", "STANDARD"),
+            typed("svc-files", "files", "shared-storage", "SHARED_STORAGE"),
+            typed("svc-s3", "storage", "object-storage", "OBJECT_STORAGE"),
+          ],
+        });
+      }
+      return jsonResponse(200, {});
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.isolateProjectEnvironment("org-1", "project-1");
+
+    expect(
+      stub.requests
+        .filter((request) => request.url.endsWith("/restart"))
+        .map((request) => request.url.split("/").at(-2)),
+    ).toEqual(["svc-app"]);
+  });
+
   it("reports no restart for a project already through isolation", async () => {
     const stub = recordingFetch((request) => {
       if (request.url.endsWith("/project/search"))

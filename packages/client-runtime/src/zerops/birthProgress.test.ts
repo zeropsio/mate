@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import type { ZeropsService } from "./api.ts";
 import {
+  birthRuntimesFacts,
   deriveBirthProgress,
   type BirthFacts,
   type BirthProcessFact,
+  type BirthRuntimesFacts,
   type BirthStepId,
 } from "./birthProgress.ts";
 
@@ -772,5 +775,215 @@ describe("steps that finish out of order (measured 2026-09-22, a cached containe
       "done",
     ]);
     expect(progress.active?.id).toBe("connect");
+  });
+});
+
+/**
+ * A Mate's runtimes come up beside it once its project is closed off (`createEnvironment.ts`):
+ * a track of their own the Mate's view can draw — never one of the six steps, which stay the
+ * Mate's own, and never what the sign-in waits on.
+ */
+describe("the runtimes", () => {
+  const PLANNED = [
+    { hostname: "appdev", role: "dev" },
+    { hostname: "appstage", role: "stage" },
+    { hostname: "mail", role: "utility" },
+  ] as const;
+  const listed = (statuses: Readonly<Record<string, string>>): BirthRuntimesFacts["runtimes"] =>
+    PLANNED.map((runtime) =>
+      statuses[runtime.hostname] === undefined
+        ? runtime
+        : {
+            ...runtime,
+            service: { id: `svc-${runtime.hostname}`, status: statuses[runtime.hostname]! },
+          },
+    );
+  const runtimesOf = (
+    runtimes: BirthRuntimesFacts,
+    processes: ReadonlyArray<BirthProcessFact> = [],
+  ) => deriveBirthProgress({ ...SETTLED, processes, runtimes }, NOW).runtimes;
+
+  it.each([
+    {
+      case: "waiting for the project to be closed off",
+      facts: { import: "waiting", runtimes: listed({}) },
+      want: { state: "waiting", up: 0, total: 3 },
+    },
+    {
+      case: "being asked for",
+      facts: { import: "importing", runtimes: listed({}) },
+      want: { state: "active", up: 0, total: 3, detail: "Adding the runtimes" },
+    },
+    {
+      case: "created, one on its way",
+      facts: {
+        import: "imported",
+        runtimes: listed({ appdev: "ACTIVE", appstage: "READY_TO_DEPLOY", mail: "CREATING" }),
+      },
+      want: { state: "active", up: 2, total: 3, detail: "Bringing the runtimes up" },
+    },
+    {
+      case: "all up — a stage half waiting for its first deploy counts as up",
+      facts: {
+        import: "imported",
+        runtimes: listed({ appdev: "ACTIVE", appstage: "READY_TO_DEPLOY", mail: "ACTIVE" }),
+      },
+      want: { state: "done", up: 3, total: 3 },
+    },
+    {
+      case: "refused by the platform",
+      facts: { import: { failed: "The hostname appdev is taken." }, runtimes: listed({}) },
+      want: { state: "failed", up: 0, total: 3, detail: "The hostname appdev is taken." },
+    },
+    {
+      case: "one that failed to start",
+      facts: {
+        import: "imported",
+        runtimes: listed({
+          appdev: "CONTAINER_FAILED",
+          appstage: "READY_TO_DEPLOY",
+          mail: "ACTIVE",
+        }),
+      },
+      want: { state: "failed", up: 2, total: 3, detail: "appdev did not come up." },
+    },
+  ] satisfies ReadonlyArray<{ case: string; facts: BirthRuntimesFacts; want: object }>)(
+    "reads the runtimes $case",
+    ({ facts, want }) => {
+      expect(runtimesOf(facts)).toMatchObject(want);
+    },
+  );
+
+  it.each([
+    { case: "a dev half", hostname: "appdev", status: "READY_TO_DEPLOY", state: "active" },
+    { case: "a utility", hostname: "mail", status: "READY_TO_DEPLOY", state: "active" },
+    { case: "a stage half", hostname: "appstage", status: "READY_TO_DEPLOY", state: "done" },
+    { case: "a dev half running", hostname: "appdev", status: "ACTIVE", state: "done" },
+  ])(
+    "is up once $case reads its resting status: $status → $state",
+    ({ hostname, status, state }) => {
+      const progress = runtimesOf({ import: "imported", runtimes: listed({ [hostname]: status }) });
+      expect(progress?.runtimes.find((runtime) => runtime.hostname === hostname)?.state).toBe(
+        state,
+      );
+    },
+  );
+
+  it("reads a utility whose build failed as failed, though its status only waits", () => {
+    // A build that fails leaves the service at READY_TO_DEPLOY for good.
+    const progress = runtimesOf(
+      {
+        import: "imported",
+        runtimes: listed({
+          appdev: "ACTIVE",
+          appstage: "READY_TO_DEPLOY",
+          mail: "READY_TO_DEPLOY",
+        }),
+      },
+      [process({ actionName: "stack.build", status: "FAILED", serviceIds: ["svc-mail"] })],
+    );
+    expect(progress?.runtimes.find((runtime) => runtime.hostname === "mail")?.state).toBe("failed");
+    expect(progress).toMatchObject({ state: "failed", detail: "mail did not come up." });
+  });
+
+  it("keeps the Mate's six steps as they were, and has no track for a birth that imports none", () => {
+    const progress = deriveBirthProgress(
+      { ...SETTLED, runtimes: { import: "importing", runtimes: listed({}) } },
+      NOW,
+    );
+    expect(progress.steps.map((step) => step.id)).toEqual([
+      "project",
+      "container",
+      "public-access",
+      "hardening",
+      "mate",
+      "connect",
+    ]);
+    expect(progress.complete).toBe(true);
+    expect(deriveBirthProgress(SETTLED, NOW).runtimes).toBeUndefined();
+  });
+});
+
+describe("birthRuntimesFacts", () => {
+  const RUNTIMES = {
+    yaml: "services:\n  - hostname: appdev\n  - hostname: appstage\n",
+    services: [
+      { hostname: "appdev", role: "dev" },
+      { hostname: "appstage", role: "stage" },
+    ],
+  } as const;
+  const service = (name: string, status: string, category = "USER"): ZeropsService => ({
+    id: `svc-${name}`,
+    name,
+    status,
+    serviceStackTypeInfo: {
+      serviceStackTypeVersionName: name === "zcp" ? "zcp@1" : "nodejs@22",
+      serviceStackTypeCategory: category,
+    },
+  });
+
+  it.each([
+    { step: "tags", want: "waiting" },
+    { step: "harden", want: "waiting" },
+    { step: "runtimes", want: "importing" },
+    { step: "health", want: "imported" },
+  ] as const)("reads a birth at $step as $want", ({ step, want }) => {
+    expect(birthRuntimesFacts({ birth: { step, runtimes: RUNTIMES }, services: [] })?.import).toBe(
+      want,
+    );
+  });
+
+  it("names each planned runtime with its service, once the project lists it", () => {
+    expect(
+      birthRuntimesFacts({
+        birth: { step: "health", runtimes: RUNTIMES },
+        services: [service("zcp", "ACTIVE"), service("appdev", "CREATING")],
+      })?.runtimes,
+    ).toEqual([
+      { hostname: "appdev", role: "dev", service: { id: "svc-appdev", status: "CREATING" } },
+      { hostname: "appstage", role: "stage" },
+    ]);
+  });
+
+  it("says the import failed in the platform's words", () => {
+    expect(
+      birthRuntimesFacts({
+        birth: { step: "health", runtimes: { ...RUNTIMES, failed: "No." } },
+        services: [],
+      })?.import,
+    ).toEqual({ failed: "No." });
+  });
+
+  it("reads a Mate whose birth is over off its project's own runtimes", () => {
+    // The connect ends the birth as the Mate answers, while its runtimes may still be coming up.
+    expect(
+      birthRuntimesFacts({
+        birth: undefined,
+        services: [
+          service("zcp", "ACTIVE"),
+          service("appdev", "ACTIVE"),
+          service("appstage", "READY_TO_DEPLOY"),
+          service("db", "ACTIVE", "STANDARD"),
+        ],
+      }),
+    ).toEqual({
+      import: "imported",
+      runtimes: [
+        { hostname: "appdev", role: "dev", service: { id: "svc-appdev", status: "ACTIVE" } },
+        {
+          hostname: "appstage",
+          role: "stage",
+          service: { id: "svc-appstage", status: "READY_TO_DEPLOY" },
+        },
+      ],
+    });
+  });
+
+  it.each([
+    { case: "a birth that imports none", birth: { step: "health" as const }, services: [] },
+    { case: "a project with no runtime", birth: undefined, services: [service("zcp", "ACTIVE")] },
+    { case: "a project not read yet", birth: undefined, services: undefined },
+  ])("has no runtimes for $case", ({ birth, services }) => {
+    expect(birthRuntimesFacts({ birth, services })).toBeUndefined();
   });
 });

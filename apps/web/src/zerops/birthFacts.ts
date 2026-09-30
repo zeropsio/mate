@@ -11,7 +11,11 @@ import type {
   ActivityAppVersion,
   ActivityProcess,
 } from "@t3tools/client-runtime/zerops/activity/dto";
-import type { BirthFacts, BirthProcessFact } from "@t3tools/client-runtime/zerops/birthProgress";
+import type {
+  BirthFacts,
+  BirthProcessFact,
+  BirthRuntimesFacts,
+} from "@t3tools/client-runtime/zerops/birthProgress";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { KnownProcessStatus, ProcessStatus } from "@t3tools/client-runtime/zerops/data";
 import type {
@@ -31,6 +35,11 @@ export interface BirthFactsInput {
   /** A connect verdict the page reached, distinct from "not yet connected". */
   readonly connectionFailed?: boolean | undefined;
   readonly requestedAt?: string | undefined;
+  /**
+   * The Mate's runtimes, from its birth and its project's services (`birthRuntimesFacts`): the
+   * import that follows closing off, and how many of them are up.
+   */
+  readonly runtimes?: BirthRuntimesFacts | undefined;
 }
 
 /**
@@ -115,5 +124,6 @@ export function deriveBirthFacts(input: BirthFactsInput): BirthFacts {
     ...(input.hardenError === undefined ? {} : { hardenError: input.hardenError }),
     connection: deriveConnection(input),
     ...(input.requestedAt === undefined ? {} : { requestedAt: input.requestedAt }),
+    ...(input.runtimes === undefined ? {} : { runtimes: input.runtimes }),
   };
 }

@@ -4,16 +4,16 @@ import {
   defaultAgentForRole,
   environmentCreationStepLabel,
   planEnvironmentCreation,
+  type EnvironmentCreationInput,
   type EnvironmentCreationStep,
 } from "./createEnvironment.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 
-/** A tier as `importReadyTier` hands it over: services, and where their code is. */
+/** A tier as the group repo's `main` holds it. */
 const TIER = {
   kind: "tier" as const,
   tier: "production" as const,
   yaml: "services:\n  - hostname: api\n    startWithoutCode: true\n",
-  sources: { api: { repository: "https://gitea.test/acme/api", setup: "api" } },
 };
 
 const BASE = {
@@ -105,7 +105,7 @@ describe("planEnvironmentCreation", () => {
       "import-container",
       "secure-container-token",
       "drop-container-delegation",
-      "import-recipe",
+      "import-runtimes",
       "await-ready",
     ]);
   });
@@ -181,19 +181,42 @@ describe("planEnvironmentCreation", () => {
 });
 
 describe("environmentCreationStepLabel", () => {
-  it("labels every step a plan can contain", () => {
-    const plan = planEnvironmentCreation({ ...BASE, role: "dev", name: "dev" });
+  it("labels a Mate's steps in the order they run", () => {
+    const plan = planEnvironmentCreation({
+      ...BASE,
+      role: "dev",
+      name: "dev",
+      recipe: {
+        ...TIER,
+        yaml: `services:\n  - hostname: db\n${TIER.yaml.slice("services:\n".length)}`,
+      },
+    });
     if (!plan.ok) throw new Error("expected a plan");
 
     expect(plan.steps.map(environmentCreationStepLabel)).toEqual([
       "Creating the environment",
+      "Adding the managed services",
       "Adding the agent container",
       "Locking the container's access",
       "Taking back the container's one-time permit",
-      "Importing the application",
+      "Adding the runtimes",
       "Waiting for the agent",
     ]);
   });
+
+  it.each([
+    {
+      step: { kind: "import-project", name: "x", tagList: [], yaml: "" },
+      label: "Creating the environment",
+    },
+    { step: { kind: "import-recipe", role: "prod", yaml: "" }, label: "Importing the application" },
+    { step: { kind: "import-runtimes", yaml: "", services: [] }, label: "Adding the runtimes" },
+  ] satisfies ReadonlyArray<{ step: EnvironmentCreationStep; label: string }>)(
+    "labels $step.kind",
+    ({ step, label }) => {
+      expect(environmentCreationStepLabel(step)).toBe(label);
+    },
+  );
 
   it("says what it is waiting for when there is no agent", () => {
     expect(environmentCreationStepLabel({ kind: "await-ready", withAgent: false })).toBe(
@@ -360,14 +383,19 @@ describe("the Mate's face", () => {
 });
 
 describe("the recipe choice", () => {
-  it("imports the tier it is handed, and keeps its source map", () => {
-    const plan = planEnvironmentCreation(BASE);
+  it("imports the tier it is handed, each build taken out for an empty start", () => {
+    const plan = planEnvironmentCreation({
+      ...BASE,
+      recipe: {
+        ...TIER,
+        yaml: "services:\n  - hostname: api\n    buildFromGit: https://gitea.test/acme/api\n    zeropsSetup: api\n",
+      },
+    });
     if (!plan.ok) throw new Error(plan.reason);
     const step = plan.steps.find((entry) => entry.kind === "import-recipe");
-    expect(step?.kind === "import-recipe" && step.yaml).toContain("startWithoutCode: true");
-    // The only record of which repository a service's code comes from; the
-    // party that adopts the environment afterwards has no other way to know.
-    expect(step?.kind === "import-recipe" && step.sources).toEqual(TIER.sources);
+    expect(step?.kind === "import-recipe" && step.yaml).toBe(
+      "services:\n  - hostname: api\n    startWithoutCode: true\n",
+    );
   });
 
   it("skips the application entirely when the agent is to set it up", () => {
@@ -393,6 +421,168 @@ describe("the recipe choice", () => {
   });
 });
 
+/**
+ * A Mate's tier goes in as two imports: its project with the managed services first, and its
+ * runtimes only once the Mate has closed the project off — which its birth does, not this run
+ * (`birthWorker.ts`). Nothing that runs code ever starts holding the Mate's key.
+ */
+describe("planEnvironmentCreation — a Mate's tier", () => {
+  const MATE_TIER = `#zeropsPreprocessor=on
+project:
+  name: published-name
+  envVariables:
+    APP_KEY: <@generateRandomString(<32>)>
+services:
+  - hostname: appdev
+    type: nodejs@22
+    buildFromGit: https://gitea.test/acme/app
+    zeropsSetup: dev
+  - hostname: appstage
+    type: nodejs@22
+    buildFromGit: https://gitea.test/acme/app
+    zeropsSetup: prod
+    priority: 5
+  - hostname: db
+    type: postgresql@17
+    priority: 10
+`;
+  const SERVICES_ONLY = MATE_TIER.replace(/^project:\n(?: {2}.*\n)+/mu, "");
+  const CONTAINER_STEPS = [
+    "import-container",
+    "secure-container-token",
+    "drop-container-delegation",
+  ] as const;
+
+  function plan(yaml: string, extra: Partial<EnvironmentCreationInput> = {}) {
+    const result = planEnvironmentCreation({
+      clientId: "c1",
+      groupId: "g1",
+      role: "dev",
+      name: "Acme - Wren",
+      botName: "Wren",
+      recipe: { kind: "tier", tier: "mate", yaml },
+      ...extra,
+    });
+    if (!result.ok) throw new Error(result.reason);
+    return result.steps;
+  }
+
+  it.each([
+    {
+      case: "a tier that describes its project",
+      yaml: MATE_TIER,
+      extra: {},
+      steps: ["import-project", ...CONTAINER_STEPS, "import-runtimes", "await-ready"],
+    },
+    {
+      case: "a tier of services only",
+      yaml: SERVICES_ONLY,
+      extra: {},
+      steps: [
+        "create-project",
+        "import-managed",
+        ...CONTAINER_STEPS,
+        "import-runtimes",
+        "await-ready",
+      ],
+    },
+    {
+      case: "a tier placed in a region",
+      yaml: MATE_TIER,
+      extra: { location: "eu-central" },
+      steps: [
+        "create-project",
+        "import-managed",
+        ...CONTAINER_STEPS,
+        "import-runtimes",
+        "await-ready",
+      ],
+    },
+    {
+      case: "a tier of runtimes alone",
+      yaml: "services:\n  - hostname: appdev\n    buildFromGit: https://gitea.test/acme/app\n",
+      extra: {},
+      steps: ["create-project", ...CONTAINER_STEPS, "import-runtimes", "await-ready"],
+    },
+    {
+      case: "a tier of managed services alone",
+      yaml: "project:\n  name: x\nservices:\n  - hostname: db\n    type: postgresql@17\n",
+      extra: {},
+      steps: ["import-project", ...CONTAINER_STEPS, "await-ready"],
+    },
+    {
+      case: "a stage given an agent",
+      yaml: MATE_TIER,
+      extra: { role: "stage", withAgent: true },
+      steps: ["import-project", ...CONTAINER_STEPS, "import-runtimes", "await-ready"],
+    },
+  ] satisfies ReadonlyArray<{
+    case: string;
+    yaml: string;
+    extra: Partial<EnvironmentCreationInput>;
+    steps: ReadonlyArray<EnvironmentCreationStep["kind"]>;
+  }>)("plans $case: managed first, runtimes after closing off", ({ yaml, extra, steps }) => {
+    expect(stepKinds(plan(yaml, extra))).toEqual(steps);
+  });
+
+  it("creates the project with its managed services alone, its variables evaluated there", () => {
+    const [step] = plan(MATE_TIER);
+    if (step?.kind !== "import-project") throw new Error("expected import-project");
+    expect(step.yaml).toBe(`#zeropsPreprocessor=on
+project:
+  name: Acme - Wren
+  tags:
+    - mate:g:g1
+    - mate:role:dev
+    - mate
+    - mate:bot:Wren
+  envVariables:
+    APP_KEY: <@generateRandomString(<32>)>
+services:
+  - hostname: db
+    type: postgresql@17
+    priority: 10
+`);
+  });
+
+  it("adds the managed services, services only, to a project it created", () => {
+    const managed = plan(SERVICES_ONLY).find((step) => step.kind === "import-managed");
+    expect(managed?.kind === "import-managed" && managed.yaml).toBe(
+      "#zeropsPreprocessor=on\nservices:\n  - hostname: db\n    type: postgresql@17\n    priority: 10\n",
+    );
+  });
+
+  it("leaves the runtimes for after closing off, in one wave, each as it comes up", () => {
+    const runtimes = plan(MATE_TIER).find((step) => step.kind === "import-runtimes");
+    expect(runtimes).toEqual({
+      kind: "import-runtimes",
+      yaml: `#zeropsPreprocessor=on
+services:
+  - hostname: appdev
+    type: nodejs@22
+    startWithoutCode: true
+  - hostname: appstage
+    type: nodejs@22
+`,
+      services: [
+        { hostname: "appdev", role: "dev" },
+        { hostname: "appstage", role: "stage" },
+      ],
+    });
+  });
+
+  it("refuses a tier that declares no services: nothing has been merged yet", () => {
+    const result = planEnvironmentCreation({
+      clientId: "c1",
+      groupId: "g1",
+      role: "dev",
+      name: "Acme - Wren",
+      recipe: { kind: "tier", tier: "mate", yaml: "project:\n  name: x\n" },
+    });
+    expect(result).toEqual({ ok: false, reason: "This project has no recipe merged yet." });
+  });
+});
+
 describe("planEnvironmentCreation — whole-project recipes", () => {
   const WHOLE = `#zeropsPreprocessor=on
 project:
@@ -410,7 +600,7 @@ services:
       groupId: "g1",
       role: "prod",
       name: "Aurora - production",
-      recipe: { kind: "tier" as const, tier: "production" as const, yaml: recipe, sources: {} },
+      recipe: { kind: "tier" as const, tier: "production" as const, yaml: recipe },
       withAgent: false,
       ...extra,
     });
@@ -455,10 +645,17 @@ services:
   it("keeps create-then-import when the caller chose a region", () => {
     // The project block has no location; ignoring one would put the
     // environment somewhere the user did not ask for.
-    expect(plan(WHOLE, { location: "eu-central" }).map((step) => step.kind)).toEqual([
+    const steps = plan(WHOLE, { location: "eu-central" });
+    expect(steps.map((step) => step.kind)).toEqual([
       "create-project",
       "import-recipe",
       "await-ready",
     ]);
+    // Into a project that exists, services only: the platform refuses a
+    // project block there (`projectImportProjectIncluded`).
+    const [, services] = steps;
+    expect(services?.kind === "import-recipe" && services.yaml).toBe(
+      "#zeropsPreprocessor=on\nservices:\n  - hostname: app\n",
+    );
   });
 });

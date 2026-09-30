@@ -235,6 +235,80 @@ describe("the birth store's records", () => {
   });
 });
 
+/**
+ * The tier's runtimes a Mate's birth imports once its project is closed off: carried from the
+ * creation's plan to the birth's own record, so a reload between the two loses nothing.
+ */
+describe("a birth's runtimes", () => {
+  const runtimes = {
+    yaml: "services:\n  - hostname: appdev\n    startWithoutCode: true\n  - hostname: appstage\n",
+    services: [
+      { hostname: "appdev", role: "dev" },
+      { hostname: "appstage", role: "stage" },
+    ],
+  } as const;
+
+  it("keeps the runtimes a creation began with, through a reload", () => {
+    const storage = memoryStorage();
+    const store = makeBirthStore({ storage, now: () => STARTED_AT });
+    store.begin({ ...mate, runtimes });
+    expect(store.birth("project-1")?.runtimes).toEqual(runtimes);
+    store.update("project-1", { step: "runtimes" });
+    expect(makeBirthStore({ storage, now: () => 0 }).birth("project-1")).toMatchObject({
+      step: "runtimes",
+      runtimes,
+    });
+  });
+
+  it.each([
+    { case: "none: a birth that imports none, or an older build's", stored: undefined, kept: true },
+    {
+      case: "the words of an import that failed",
+      stored: { ...runtimes, failed: "No." },
+      kept: true,
+    },
+    {
+      case: "a runtime this build cannot read",
+      stored: { ...runtimes, services: [{ hostname: "appdev", role: "worker" }] },
+      kept: false,
+    },
+    { case: "no import to make", stored: { services: runtimes.services }, kept: false },
+  ])("reads $case", ({ stored, kept }) => {
+    const storage = memoryStorage();
+    storage.setItem(
+      BIRTHS_KEY,
+      JSON.stringify({
+        births: [
+          {
+            projectId: "project-1",
+            organizationId: "org-1",
+            startedAt: STARTED_AT,
+            step: "runtimes",
+            overdue: false,
+            registration: null,
+            container: true,
+            serviceId: "service-1",
+            origin: "https://zcp-1-8080.prg1.zerops.app",
+            placement: null,
+            ...(stored === undefined ? {} : { runtimes: stored }),
+          },
+        ],
+      }),
+    );
+    const born = makeBirthStore({ storage, now: () => STARTED_AT }).birth("project-1");
+    // Anything this build cannot read is dropped, never guessed.
+    expect(born === undefined).toBe(!kept);
+    expect(born?.runtimes).toEqual(kept ? stored : undefined);
+  });
+
+  it("keeps a Mate whose runtimes are being asked for from connecting on its own", () => {
+    const store = makeBirthStore({ storage: memoryStorage(), now: () => STARTED_AT });
+    store.begin({ ...mate, runtimes });
+    store.update("project-1", { step: "runtimes" });
+    expect(unhardenedBirths(store.ledger().births)).toEqual(new Set(["project-1"]));
+  });
+});
+
 describe("a storage that refuses", () => {
   it("keeps the births in this tab's memory", () => {
     const refusing: BirthsStorage = {

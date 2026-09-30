@@ -8,10 +8,10 @@
  * token — Gitea enforces their mirrored rights, and a person who cannot see the
  * repository sees no recipe rather than somebody else's.
  *
- * What comes back is already import-ready (`importReadyTier`): every
- * `buildFromGit` + `zeropsSetup` converted to `startWithoutCode`, with the map
- * of which repository each service's code lives in carried alongside for zcp's
- * adoption.
+ * What comes back is the tier as `main` holds it, and the names of its
+ * services: the creation's plan converts it for the platform
+ * (`createEnvironment.ts`, `recipeTier.ts`), since which service goes in when
+ * depends on whether the new environment has a Mate.
  *
  * Four honest answers, and the New Mate dialog says a different thing for each
  * (`newMateDoor`): `loading` while the repository is being read — or cannot be
@@ -23,8 +23,8 @@
 
 import {
   GROUP_REPOSITORY,
-  importReadyTier,
   RECIPE_TIER_PATHS,
+  recipeTierServices,
   type EnvironmentRecipeChoice,
   type RecipeTier,
 } from "@t3tools/client-runtime/zerops";
@@ -124,14 +124,14 @@ export function useZeropsGroupRecipe(input: {
     };
     void client.readFile(slug, GROUP_REPOSITORY, RECIPE_TIER_PATHS[tier], "main").then(
       (file) => {
-        const ready = file === undefined ? undefined : importReadyTier(file.content);
+        const services = file === undefined ? undefined : recipeTierServices(file.content);
         settle(
-          ready === undefined
+          file === undefined || services === undefined
             ? ABSENT
             : {
                 state: "present",
-                tier: { kind: "tier", tier, yaml: ready.yaml, sources: ready.sources },
-                services: ready.services,
+                tier: { kind: "tier", tier, yaml: file.content },
+                services: services.map((service) => service.hostname),
               },
         );
       },

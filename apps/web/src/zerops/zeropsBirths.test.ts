@@ -28,6 +28,7 @@ import {
   bornOnAccept,
   importedContainer,
   placedBirthsIn,
+  runtimesLeftToBirth,
   webBirthPorts,
   type BirthInputs,
 } from "./zeropsBirths";
@@ -223,7 +224,19 @@ function matePlan(yaml: string): ReadonlyArray<EnvironmentCreationStep> {
     role: "dev",
     name: "Todo - Vera",
     botName: "Vera",
-    recipe: { kind: "tier", tier: "mate", yaml, sources: {} },
+    recipe: { kind: "tier", tier: "mate", yaml },
+  });
+  if (!plan.ok) throw new Error(plan.reason);
+  return plan.steps;
+}
+
+function mateWithoutRecipe(): ReadonlyArray<EnvironmentCreationStep> {
+  const plan = planEnvironmentCreation({
+    clientId: "org-1",
+    groupId: "group-1",
+    role: "dev",
+    name: "Todo - Vera",
+    recipe: { kind: "none" },
   });
   if (!plan.ok) throw new Error(plan.reason);
   return plan.steps;
@@ -291,6 +304,20 @@ describe("a creation's birth", () => {
         ? ({ ok: true, projectId: "project-1", serviceName: "zcp", awaitingAgent: true } as const)
         : ({ ok: false, projectId: "project-1", failedStep, error: "No." } as const);
     expect(importedContainer(steps, outcome)).toBe(want);
+  });
+
+  it.each([
+    {
+      name: "a tier's runtimes, for after the project is closed off",
+      steps: () => matePlan(`${SERVICES}  - hostname: db\n    type: postgresql@17\n`),
+      want: {
+        yaml: SERVICES,
+        services: [{ hostname: "api", role: "dev" }],
+      },
+    },
+    { name: "none for a Mate with no recipe", steps: () => mateWithoutRecipe(), want: undefined },
+  ])("leaves its birth $name", ({ steps, want }) => {
+    expect(runtimesLeftToBirth(steps())).toEqual(want);
   });
 });
 
@@ -454,6 +481,47 @@ describe("the birth's project read", () => {
     expect(calls.filter((call) => call.startsWith("creation"))).toEqual(
       project !== "not-found" && project.status !== "ACTIVE" ? ["creation in org-1"] : [],
     );
+  });
+});
+
+describe("the birth's runtimes import", () => {
+  const RUNTIMES = "services:\n  - hostname: appdev\n    startWithoutCode: true\n";
+
+  it.each([
+    { name: "one the platform took", failure: undefined, want: "done" },
+    {
+      name: "one it refused",
+      failure: new ZeropsApiError("The hostname appdev is taken.", "invalid-input"),
+      want: "failed",
+    },
+    {
+      name: "one the network lost",
+      failure: new ZeropsApiError("Could not reach Zerops.", "network"),
+      want: "not-yet",
+    },
+  ])("imports into the birth's own project as its person: $name", async ({ failure, want }) => {
+    const calls: Array<string> = [];
+    const runtime = {
+      commands: {
+        importServices: (project: ProjectRef, yaml: string) =>
+          failure === undefined
+            ? Effect.sync(() => {
+                calls.push(
+                  `import into ${project.organization.organizationId}/${project.projectId}`,
+                );
+                expect(yaml).toBe(RUNTIMES);
+                return { attempt: null, value: undefined };
+              })
+            : Effect.fail(failure),
+      },
+    };
+    const ports = webBirthPorts(
+      () => ({ client: fakeClient(calls), runtime, projectRef }) as unknown as BirthInputs,
+      () => true,
+    );
+
+    expect((await ports.importRuntimes(birth, RUNTIMES)).kind).toBe(want);
+    expect(calls).toEqual(failure === undefined ? ["import into org-1/project-1"] : []);
   });
 });
 

@@ -23,7 +23,6 @@ function render(props: Partial<Parameters<typeof ZeropsEnvironmentCreationForm>[
           kind: "tier",
           tier: "stage",
           yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
-          sources: { app: { repository: "https://gitea.test/acme/app", setup: "app" } },
         }}
         tierLoading={false}
         tierServices={["app", "db"]}

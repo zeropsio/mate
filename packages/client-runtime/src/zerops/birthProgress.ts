@@ -54,10 +54,14 @@
  * @module birthProgress
  */
 
+import type { ZeropsService } from "./api.ts";
+import type { BirthRuntimes, BirthStep as BirthRecordStep } from "./birth/birthStore.ts";
 import type { ProcessStatus } from "./data/types.ts";
 import type { ActivityAppVersion } from "./activity/dto.ts";
 import { type ObservedStep, observedSteps } from "./activity/observedSteps.ts";
 import type { ProvisioningPhase, ZeropsContainerHealth } from "./provisioning.ts";
+import type { RecipeRuntimeRole } from "./recipeTier.ts";
+import { isRuntimeService } from "./topology.ts";
 
 export interface BirthProcessFact {
   readonly actionName: string;
@@ -94,6 +98,27 @@ export interface BirthFacts {
   readonly connection: "none" | "connecting" | "connected" | "failed";
   /** When this client started the creation (the hand-off), ISO — the fallback start. */
   readonly requestedAt?: string | undefined;
+  /** The tier's runtimes, for a Mate that brings some up ({@link birthRuntimesFacts}). */
+  readonly runtimes?: BirthRuntimesFacts | undefined;
+}
+
+/** One runtime a Mate brings up after closing its project off. */
+export interface BirthRuntimeFact {
+  readonly hostname: string;
+  readonly role: RecipeRuntimeRole;
+  /** The service, once the project lists it. */
+  readonly service?: { readonly id: string; readonly status: string };
+}
+
+export interface BirthRuntimesFacts {
+  /**
+   * Where the import of them stands: `waiting` until the project is closed off, `importing` while
+   * the birth asks for it, `imported` once the platform took it, or the platform's words for why
+   * it did not.
+   */
+  readonly import: "waiting" | "importing" | "imported" | { readonly failed: string };
+  /** In the tier's order. */
+  readonly runtimes: ReadonlyArray<BirthRuntimeFact>;
 }
 
 export type BirthStepId =
@@ -126,6 +151,29 @@ export interface BirthProgress {
   readonly complete: boolean;
   /** Earliest known start: project.create's createdAt, else project.createdAt, else requestedAt. */
   readonly startedAt?: string;
+  /**
+   * The Mate's runtimes, a track of their own beside the six steps: they come up while the Mate
+   * answers and is signed in, so nothing in the steps waits on them. Absent for a Mate that
+   * brings none up.
+   */
+  readonly runtimes?: BirthRuntimesProgress;
+}
+
+export interface BirthRuntimeProgress {
+  readonly hostname: string;
+  readonly role: RecipeRuntimeRole;
+  /** `done` once up: running, or — a stage half — waiting for its first deploy. */
+  readonly state: BirthStepState;
+}
+
+export interface BirthRuntimesProgress {
+  readonly state: BirthStepState;
+  /** A person-readable sentence for the active or failed track. */
+  readonly detail?: string;
+  /** How many are up, of `total`. */
+  readonly up: number;
+  readonly total: number;
+  readonly runtimes: ReadonlyArray<BirthRuntimeProgress>;
 }
 
 const STEP_LABEL: Readonly<Record<BirthStepId, string>> = {
@@ -469,6 +517,127 @@ function governingStartedAt(facts: BirthFacts): string | undefined {
   return create?.createdAt ?? facts.project?.createdAt ?? facts.requestedAt;
 }
 
+/** The actions whose failure leaves a runtime without what it runs. */
+const RUNTIME_ACTIONS: ReadonlySet<string> = new Set([
+  "stack.create",
+  "stack.build",
+  "stack.deploy",
+  "stack.start",
+]);
+
+const RUNTIME_FAILED_STATUSES: ReadonlySet<string> = new Set([
+  ...CONTAINER_FAILED_STATUSES,
+  "REPAIR_FAILED",
+]);
+
+function runtimeState(
+  runtime: BirthRuntimeFact,
+  imported: boolean,
+  processes: ReadonlyArray<BirthProcessFact>,
+): BirthStepState {
+  const service = runtime.service;
+  if (service === undefined) return imported ? "active" : "waiting";
+  // A stage half rests at READY_TO_DEPLOY until its first deploy; everything else runs.
+  if (
+    service.status === "ACTIVE" ||
+    (runtime.role === "stage" && service.status === "READY_TO_DEPLOY")
+  ) {
+    return "done";
+  }
+  // A build that fails leaves its service waiting at READY_TO_DEPLOY for good: the process says so.
+  const newest = newestByCreatedAt(
+    processes.filter(
+      (process) =>
+        RUNTIME_ACTIONS.has(process.actionName) && process.serviceIds.includes(service.id),
+    ),
+  );
+  if (
+    RUNTIME_FAILED_STATUSES.has(service.status) ||
+    (newest !== undefined && isFailedOrCanceled(newest.status))
+  ) {
+    return "failed";
+  }
+  return "active";
+}
+
+function deriveRuntimes(
+  facts: BirthRuntimesFacts,
+  processes: ReadonlyArray<BirthProcessFact>,
+): BirthRuntimesProgress {
+  const imported = facts.import === "imported";
+  const runtimes = facts.runtimes.map((runtime) => ({
+    hostname: runtime.hostname,
+    role: runtime.role,
+    state: runtimeState(runtime, imported, processes),
+  }));
+  const counts = { up: runtimes.filter((runtime) => runtime.state === "done").length };
+  const base = { ...counts, total: runtimes.length, runtimes };
+  if (typeof facts.import === "object") {
+    return { ...base, state: "failed", detail: facts.import.failed };
+  }
+  if (facts.import === "waiting") return { ...base, state: "waiting" };
+  if (facts.import === "importing") {
+    return { ...base, state: "active", detail: "Adding the runtimes" };
+  }
+  const failed = runtimes.filter((runtime) => runtime.state === "failed");
+  if (failed.length > 0) {
+    const names = failed.map((runtime) => runtime.hostname).join(", ");
+    return { ...base, state: "failed", detail: `${names} did not come up.` };
+  }
+  if (counts.up === runtimes.length) return { ...base, state: "done" };
+  return { ...base, state: "active", detail: "Bringing the runtimes up" };
+}
+
+/** Where a birth's runtime import stands, by the step its record is on. */
+const IMPORT_BY_STEP: Readonly<Record<BirthRecordStep, "waiting" | "importing" | "imported">> = {
+  tags: "waiting",
+  registry: "waiting",
+  harden: "waiting",
+  runtimes: "importing",
+  health: "imported",
+};
+
+/**
+ * The runtimes' facts, from what the Mate's view holds: the birth's record while it lasts — the
+ * runtimes its plan named, and where their import stands — and the project's services as the
+ * inventory lists them. A Mate whose birth is over (the connect ends it as the Mate answers,
+ * while its runtimes may still be coming up) is read off its project's own runtimes, a stage half
+ * by zcp's `stage` suffix. Undefined for a Mate that brings none up, or a project not read yet.
+ */
+export function birthRuntimesFacts(input: {
+  readonly birth: { readonly step: BirthRecordStep; readonly runtimes?: BirthRuntimes } | undefined;
+  readonly services: ReadonlyArray<ZeropsService> | undefined;
+}): BirthRuntimesFacts | undefined {
+  const services = input.services ?? [];
+  const serviceOf = (hostname: string): Pick<BirthRuntimeFact, "service"> => {
+    const listed = services.find((service) => service.name === hostname);
+    return listed === undefined ? {} : { service: { id: listed.id, status: listed.status } };
+  };
+  if (input.birth !== undefined) {
+    const planned = input.birth.runtimes;
+    if (planned === undefined) return undefined;
+    return {
+      import:
+        planned.failed === undefined
+          ? IMPORT_BY_STEP[input.birth.step]
+          : { failed: planned.failed },
+      runtimes: planned.services.map((runtime) => ({ ...runtime, ...serviceOf(runtime.hostname) })),
+    };
+  }
+  const runtimes = services.filter(
+    (service) => service.isSystem !== true && isRuntimeService(service),
+  );
+  if (runtimes.length === 0) return undefined;
+  return {
+    import: "imported",
+    runtimes: runtimes.map((service) => ({
+      hostname: service.name,
+      role: service.name.endsWith("stage") ? "stage" : "dev",
+      service: { id: service.id, status: service.status },
+    })),
+  };
+}
+
 export function deriveBirthProgress(facts: BirthFacts, nowMs: number): BirthProgress {
   const project = deriveProjectStep(facts);
   const container = deriveContainerStep(facts, project.state === "done", nowMs);
@@ -506,5 +675,8 @@ export function deriveBirthProgress(facts: BirthFacts, nowMs: number): BirthProg
     total: steps.length,
     complete: steps[steps.length - 1]!.state === "done",
     ...(startedAt !== undefined ? { startedAt } : {}),
+    ...(facts.runtimes === undefined
+      ? {}
+      : { runtimes: deriveRuntimes(facts.runtimes, facts.processes) }),
   };
 }
