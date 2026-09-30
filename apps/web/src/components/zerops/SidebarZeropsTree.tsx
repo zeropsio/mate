@@ -2886,7 +2886,7 @@ function MateDeletingLine() {
  * why it did not come, in red. It stands where the sign-in line would, and a
  * new step's words rise into it as the person watches.
  */
-function MateComingLine({ coming }: { readonly coming: MateComing }) {
+function MateComingLine({ coming }: { readonly coming: Pick<MateComing, "kind" | "line"> }) {
   const risen = useChangedSinceShown(coming.line, true);
   return (
     <span
@@ -2952,7 +2952,10 @@ function ComingMateRow({
           <span className="min-w-0 truncate text-sm leading-5 font-medium">{name}</span>
         </span>
         <MateComingLine
-          coming={{ kind: "coming", line: comingMateLine(coming), verb: undefined }}
+          coming={{
+            kind: coming.failed === true ? "failed" : "coming",
+            line: comingMateLine(coming),
+          }}
         />
       </span>
     </button>

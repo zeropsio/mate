@@ -37,6 +37,7 @@ import { comingMateLine } from "../components/zerops/projects/projectsView.logic
 import {
   COMING_UP_LINE,
   creationFailedLine,
+  NOT_SET_UP_LINE,
   RESTARTING_SERVICE_STATUSES,
 } from "../components/zerops/ZeropsProjectRow.logic";
 
@@ -45,7 +46,11 @@ export type MateComingVerb =
   /** A step past its cap: its clock starts over (`retryBirth`). */
   | "keep-waiting"
   /** It never became a Mate: its project is taken off the account. */
-  | "remove";
+  | "remove"
+  /** A New project's step stopped before the platform took anything: it resumes there. */
+  | "try-again"
+  /** The platform may have taken it anyway: the projects page lists it if it did. */
+  | "go-to-projects";
 
 export type MateComing =
   | {
@@ -58,7 +63,7 @@ export type MateComing =
       readonly kind: "failed";
       /** Why it did not come, as its row says it. */
       readonly line: string;
-      readonly verb: "remove";
+      readonly verb: Exclude<MateComingVerb, "keep-waiting">;
     };
 
 export interface MateComingInput {
@@ -84,8 +89,8 @@ export interface MateComingInput {
   readonly setUpFailed?: string | undefined;
 }
 
-/** Said after "Could not be set up.", as a sentence. */
-function sentence(reason: string): string {
+/** A reason, as a sentence: capitalised, and ended; empty where it says nothing. */
+export function asSentence(reason: string): string {
   const said = reason.trim();
   if (said.length === 0) return "";
   const capital = said.charAt(0).toUpperCase() + said.slice(1);
@@ -107,10 +112,10 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
     };
   }
   if (input.setUpFailed !== undefined) {
-    const why = sentence(input.setUpFailed);
+    const why = asSentence(input.setUpFailed);
     return {
       kind: "failed",
-      line: why.length === 0 ? "Could not be set up." : `Could not be set up. ${why}`,
+      line: why.length === 0 ? NOT_SET_UP_LINE : `${NOT_SET_UP_LINE} ${why}`,
       verb: "remove",
     };
   }

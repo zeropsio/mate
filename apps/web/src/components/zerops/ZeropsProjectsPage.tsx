@@ -75,6 +75,7 @@ import {
   useZeropsBirths,
   type BirthsSnapshot,
 } from "~/zerops/zeropsBirths";
+import { useNewProjectBirths } from "~/zerops/newProjectBirth";
 import {
   useZeropsCandidates,
   type ZeropsCandidatePresentation,
@@ -960,6 +961,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     connectContainer,
     finishBirth,
   } = useZeropsProjectConnection();
+  // The New projects this tab is making: drawn from the press, as the left menu draws them.
+  const made = useNewProjectBirths((state) => state.births);
   const birthProjectIds = useMemo(
     () => new Set(births.births.map((birth) => birth.projectId)),
     [births.births],
@@ -1056,11 +1059,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   }, [creationRunning]);
   const projectOrder = useProjectOrderOptions();
   // A creation the platform accepted is drawn in its group before the
-  // listing holds its project — the same placing the left menu reads.
+  // listing holds its project, and a New project this tab is making from the
+  // press — the same placing the left menu reads.
   const groupTree = buildZeropsGroupTree(candidates, {
     rank: rankZeropsCandidateForListing,
     ...projectOrder,
-    births: placedBirthsIn(births.births, activeOrganization?.id),
+    births: placedBirthsIn(births.births, activeOrganization?.id, Object.values(made)),
   });
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   const activity = useZeropsAgentActivity();
@@ -3021,9 +3025,12 @@ export function ZeropsProjectsPage() {
   // invitation and no title row over it — a "Projects" heading with a reload
   // over nothing frames emptiness as a failed list.
   const { births } = useZeropsBirths();
+  const made = useNewProjectBirths((state) => state.births);
   const firstRun = hasNoZeropsProject({
     listing,
-    creationPending: births.some((birth) => birth.organizationId === activeOrganization?.id),
+    creationPending: [...births, ...Object.values(made)].some(
+      (birth) => birth.organizationId === activeOrganization?.id,
+    ),
   });
 
   return (

@@ -94,6 +94,8 @@ export interface GroupFlowComing {
   readonly overdue: boolean;
   /** The face its person picked for a Mate, worn asleep while it comes up. */
   readonly face?: ZeropsMateFace | undefined;
+  /** Its creation stopped before the platform took it: the words say so. */
+  readonly failed?: boolean | undefined;
 }
 
 /** A creation under way in the group, as its birth knows it (`ZeropsGroupPendingMember`). */
@@ -487,6 +489,7 @@ export function groupFlow(input: GroupFlowInput): GroupFlow {
         step: entry.step,
         overdue: entry.overdue,
         ...(entry.face === undefined ? {} : { face: entry.face }),
+        ...(entry.failed === true ? { failed: true } : {}),
       },
     }));
   return {

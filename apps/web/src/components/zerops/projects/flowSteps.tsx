@@ -324,7 +324,7 @@ export function ComingMateCard({
 }) {
   return (
     <ZeropsMateCard
-      busy
+      busy={coming.failed !== true}
       face="sleep"
       layout={layout}
       shape={coming.face?.shape}

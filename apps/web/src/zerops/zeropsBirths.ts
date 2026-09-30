@@ -61,6 +61,7 @@ import {
 import { addGroupEnvironment, writeRegistryMember } from "./addGroupEnvironment";
 import { grantBrokerProject, projectTagsWrite } from "./brokerGrant";
 import { giteaClientFor } from "./accountGiteaSessions";
+import { placedNewProjects, type NewProjectBirth } from "./newProjectBirth";
 import { nextContainerReading } from "./zeropsContainers";
 import { runZeropsCommand, type ZeropsDataContextValue } from "./zeropsDataContext";
 
@@ -523,18 +524,23 @@ export interface BirthsSnapshot {
  * The creations under way in the organization in view that know their group, as the group tree
  * places them (`deriveZeropsGroups`' `births`) — the projects page and the left menu read this one
  * mapping, so the two draw the same pending members. A birth begun on a project already listed
- * (Set up Mate, a claim) places nothing: the listing places it.
+ * (Set up Mate, a claim) places nothing: the listing places it. The New projects this tab is still
+ * making come after them, drawn from the press (`placedNewProjects`).
  */
 export function placedBirthsIn(
   births: ReadonlyArray<BirthRecord>,
   organizationId: string | undefined,
+  made: ReadonlyArray<NewProjectBirth> = [],
 ): ReadonlyArray<ZeropsPlacedBirth> {
-  return births.flatMap(
-    ({ projectId, organizationId: bornIn, startedAt, placement, step, overdue }) =>
-      placement === null || organizationId === undefined || bornIn !== organizationId
-        ? []
-        : [{ projectId, startedAt, placement, step, overdue }],
-  );
+  return [
+    ...births.flatMap(
+      ({ projectId, organizationId: bornIn, startedAt, placement, step, overdue }) =>
+        placement === null || organizationId === undefined || bornIn !== organizationId
+          ? []
+          : [{ projectId, startedAt, placement, step, overdue }],
+    ),
+    ...placedNewProjects(made, organizationId),
+  ];
 }
 
 /** The account's births and this tab's waits on them. */

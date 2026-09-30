@@ -5,8 +5,8 @@
  * Served by the dev server at `/design-newproject.html` (`?theme=dark`; `?state=`: `idle` — as
  * the page opens, the Mate's name proposed; `picked` — a project named, the Mate called Mira,
  * Rose and Seal picked; `refused` — the Mate named as another already is, Create pressed;
- * `checking` — the account's Mates' names still being read; `creating` — Git hosting being set
- * up; `&locations=2` offers two locations). The page stands beside the left menu at the owner's
+ * `checking` — the account's Mates' names still being read; `creating` — Create pressed, the
+ * first Mate's view on its way; `&locations=2` offers two locations). The page stands beside the left menu at the owner's
  * 435 px, as it does in the app. Open it at 1786 × 1000. `window.__newProjectHarness.created`
  * holds what Create handed over.
  *
@@ -120,8 +120,6 @@ function Harness() {
         />
         <ZeropsNewProjectFrame>
           <ZeropsNewProjectForm
-            blocked={false}
-            createError={null}
             creating={STATE === "creating"}
             defaultBotName="Quinn"
             defaultTintFor={(name) => newMateTint(MATES, name)}
@@ -133,7 +131,6 @@ function Harness() {
               created.push(choice);
             }}
             onLocation={() => {}}
-            phase={STATE === "creating" ? "gitea" : "project"}
             takenBotNames={{
               names: ["Fen", "Ada", "Nova"],
               complete: STATE !== "checking",

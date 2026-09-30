@@ -2,6 +2,11 @@
  * A Mate's own view (`/mate/$projectId`): where Add lands, and where every door opens a Mate whose
  * conversation cannot be opened yet (`useOpenMate`).
  *
+ * A New project's first Mate lands a moment before, on the same view by the creation's own id
+ * (`ZeropsNewProjectComingPage`), which hands over to this one once the platform takes the Mate's
+ * project; its progress keeps the project's own steps before the Mate's while this tab holds the
+ * creation (`newProjectBirth.ts`).
+ *
  * A new Mate comes up here. It is the Mate's empty conversation before the conversation exists —
  * the same header line, the same face a third of the way down, the headline in the box the
  * stand-up's phases share (`MateEmptyStateView`) — saying it is coming up, with the projects
@@ -48,8 +53,13 @@ import {
 } from "~/zerops/mateComing";
 import { zeropsMateIdentityOf, type ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { takeMateConversation } from "~/zerops/mateOpening";
-import { mateStandUpPhase } from "~/zerops/mateStandUp";
+import { MATE_STAND_UP_RETRY_LABEL, mateStandUpPhase } from "~/zerops/mateStandUp";
 import { useNewMate } from "~/zerops/newMate";
+import {
+  newProjectBirthOf,
+  newProjectProgress,
+  useNewProjectBirths,
+} from "~/zerops/newProjectBirth";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useZeropsBirthProgress } from "~/zerops/useZeropsBirthProgress";
@@ -66,6 +76,7 @@ import { Button } from "../ui/button";
 import { SidebarInset } from "../ui/sidebar";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { ZeropsBirthLine } from "./ZeropsBirthProgress";
+import type { BirthLineProgress } from "./ZeropsBirthProgress.logic";
 import { ALMOST_THERE_LINE } from "./ZeropsProjectRow.logic";
 import {
   MateEmptyStateView,
@@ -102,6 +113,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   );
   const wait = waits.get(projectId);
   const creation = useNewMate((state) => state.creations[projectId]);
+  // The New project this tab made whose first Mate this is, while the tab holds it.
+  const made = useNewProjectBirths((state) => newProjectBirthOf(state.births, projectId));
   const forgetCreation = useNewMate((state) => state.forget);
   // The platform's verdict on its creation, read while it may still be refused (H20).
   const verdicts = useZeropsCreationVerdicts(
@@ -301,6 +314,14 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           connecting: candidate?.connection?.phase === "connecting",
         },
   );
+  // A New project's first Mate: the project's own steps stay before the Mate's, done, as its view
+  // drew them before the platform took the Mate's project — one line, one clock, from the press.
+  const lineProgress: BirthLineProgress | undefined =
+    progress === null
+      ? undefined
+      : made === undefined
+        ? progress.progress
+        : newProjectProgress(made, progress.progress, progress.nowMs);
 
   const [removing, setRemoving] = useState(false);
   const [trouble, setTrouble] = useState<string | null>(null);
@@ -366,7 +387,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                     retryBirth(projectId);
                   }}
                   onRemove={remove}
-                  progress={progress?.progress}
+                  progress={lineProgress}
                   removing={removing}
                   trouble={trouble}
                 />
@@ -392,35 +413,63 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
             };
 
   return (
+    <MateComingFrame
+      header={<MateComingHeader mate={{ ...mate, connected: environmentId !== null }} />}
+    >
+      {view === null ? null : (
+        <MateEmptyStateView
+          coming={view}
+          mate={{ ...(shown === undefined ? named : mate), connected: environmentId !== null }}
+          onRetry={empty.onRetry}
+          phase={handing && cameUp ? empty.phase : phaseAhead}
+          signIn={handing && cameUp ? empty.signIn : null}
+          signInRequired={empty.signInRequired}
+          unknown={handing && cameUp ? empty.unknown : null}
+        />
+      )}
+      {empty.dialog}
+    </MateComingFrame>
+  );
+}
+
+/**
+ * A Mate's own view around what it says: its header line over the place its empty conversation
+ * will take — a New project's first Mate's before its project exists too, so the two paint one
+ * frame across the hand-over between them.
+ */
+export function MateComingFrame({
+  header,
+  children,
+}: {
+  readonly header: ReactNode;
+  readonly children: ReactNode;
+}) {
+  return (
     <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh">
       <div
         className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground"
         data-zerops-surface="mate-coming-page"
       >
         <WorkspacePageHeader className="relative bg-background" data-chat-header>
-          <MateComingHeader mate={{ ...mate, connected: environmentId !== null }} />
+          {header}
         </WorkspacePageHeader>
-        <div className="relative flex min-h-0 flex-1 flex-col">
-          {view === null ? null : (
-            <MateEmptyStateView
-              coming={view}
-              mate={{ ...(shown === undefined ? named : mate), connected: environmentId !== null }}
-              onRetry={empty.onRetry}
-              phase={handing && cameUp ? empty.phase : phaseAhead}
-              signIn={handing && cameUp ? empty.signIn : null}
-              signInRequired={empty.signInRequired}
-              unknown={handing && cameUp ? empty.unknown : null}
-            />
-          )}
-          {empty.dialog}
-        </div>
+        <div className="relative flex min-h-0 flex-1 flex-col">{children}</div>
       </div>
     </SidebarInset>
   );
 }
 
-/** The header's line as its conversation will draw it: the Mate's face and its name. */
-function MateComingHeader({ mate }: { readonly mate: ZeropsMateIdentity }) {
+/**
+ * The header's line as its conversation will draw it: the Mate's face and its name, and its
+ * project in Zerops — once the platform has made one.
+ */
+export function MateComingHeader({
+  mate,
+}: {
+  readonly mate: Pick<ZeropsMateIdentity, "name" | "tint" | "shape" | "connected"> & {
+    readonly projectUrl: string | undefined;
+  };
+}) {
   return (
     <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
       <ConversationStripView
@@ -443,7 +492,7 @@ function MateComingHeader({ mate }: { readonly mate: ZeropsMateIdentity }) {
       />
       <span className="flex size-4 shrink-0" />
       <div className="flex shrink-0 items-center justify-end gap-1 pr-18.25 sm:pr-14.25">
-        <ZeropsProjectLink projectUrl={mate.projectUrl} />
+        {mate.projectUrl === undefined ? null : <ZeropsProjectLink projectUrl={mate.projectUrl} />}
       </div>
     </div>
   );
@@ -517,24 +566,32 @@ export function MateOpeningLine({
 /**
  * Under the headline while it comes up: the projects page's own line for a birth — its steps,
  * the step's words and how long — or, past a step's cap, "Taking longer than usual." with *Keep
- * waiting*; one that did not come says why, with *Remove*.
+ * waiting*; one that did not come says why, with its verb: *Remove*, *Try again* where a New
+ * project's step stopped before anything was made, or *Go to projects* where the platform may have
+ * made it anyway.
  */
-function ComingBelow({
+export function ComingBelow({
   coming,
   progress,
   nowMs,
-  removing,
-  trouble,
+  removing = false,
+  trouble = null,
   onKeepWaiting,
   onRemove,
+  onTryAgain,
+  projects,
 }: {
   readonly coming: MateComing | undefined;
-  readonly progress: Parameters<typeof ZeropsBirthLine>[0]["progress"] | undefined;
+  readonly progress: BirthLineProgress | undefined;
   readonly nowMs: number | undefined;
-  readonly removing: boolean;
-  readonly trouble: string | null;
-  readonly onKeepWaiting: () => void;
-  readonly onRemove: () => void;
+  readonly removing?: boolean;
+  /** Why *Remove* did not; null while it has not failed. */
+  readonly trouble?: string | null;
+  readonly onKeepWaiting?: () => void;
+  readonly onRemove?: () => void;
+  readonly onTryAgain?: () => void;
+  /** What *Go to projects* is: the router's link to the projects screen. */
+  readonly projects?: ReactElement;
 }): ReactNode {
   if (coming?.kind === "failed") {
     return (
@@ -543,13 +600,23 @@ function ComingBelow({
         data-zerops-surface="mate-coming-failed"
       >
         <p className="text-center text-sm text-status-failed-text">{trouble ?? coming.line}</p>
-        <Button disabled={removing} onClick={onRemove} size="compact" variant="pill">
-          Remove
-        </Button>
+        {coming.verb === "remove" && onRemove !== undefined ? (
+          <Button disabled={removing} onClick={onRemove} size="compact" variant="pill">
+            Remove
+          </Button>
+        ) : coming.verb === "try-again" && onTryAgain !== undefined ? (
+          <Button onClick={onTryAgain} size="compact" variant="pill">
+            {MATE_STAND_UP_RETRY_LABEL}
+          </Button>
+        ) : coming.verb === "go-to-projects" && projects !== undefined ? (
+          <Button render={projects} size="compact" variant="pill">
+            Go to projects
+          </Button>
+        ) : null}
       </div>
     );
   }
-  if (coming?.verb === "keep-waiting") {
+  if (coming?.verb === "keep-waiting" && onKeepWaiting !== undefined) {
     return (
       <div
         className="flex w-full max-w-sm flex-col items-center gap-3"
