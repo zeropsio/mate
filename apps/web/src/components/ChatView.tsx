@@ -176,6 +176,7 @@ import { useCrewAccess } from "../zerops/crew/useCrewAccess";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useZeropsNextStepStrip } from "./zerops/ZeropsNextStepBanner";
 import { zeropsMateAt } from "../zerops/mateIdentities";
+import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
@@ -6319,8 +6320,9 @@ export default function ChatView(props: ChatViewProps) {
       return;
     }
     if (activeEnvironmentUnavailable) {
-      // A Mate's banner already says where its link is (`mateVoice`): no second voice.
-      if (zeropsMateAt(zeropsMates, environmentId).kind === "mate") return;
+      // A Mate's banner already says where its link is (`mateVoice`): no second voice. Where the
+      // banner has no words yet, the refused send says so itself.
+      if (mateVoiceSpeaks(mateLinkVoice)) return;
       toastManager.add(
         stackedThreadToast({
           type: "warning",

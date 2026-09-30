@@ -4,19 +4,17 @@
  */
 import { MATE_VOICE_QUIET_MS } from "@t3tools/client-runtime/zerops/environments";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-import { useComposerDraftStore } from "~/composerDraftStore";
+import { environmentCatalog } from "~/connection/catalog";
+import { useAtomCommand } from "~/state/use-atom-command";
 import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
-import { standInForConversation } from "~/zerops/mateHandOver";
 import { mateOpeningStage } from "~/zerops/mateOpeningStage";
 import { useMateVoice } from "~/zerops/mateVoiceContext";
 import { useHeldPast } from "~/zerops/useHeldPast";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
-import { ComposerStandIn } from "../chat/ComposerStandIn";
 import { MateLinkLine, type Spoken } from "./MateLinkLine";
+import { RouteStandIn } from "./RouteStandIn";
 import { MateComingFrame, MateComingHeader } from "./ZeropsMateComingPage";
 import { MateEmptyStateView } from "./ZeropsMateEmptyState";
 
@@ -71,6 +69,8 @@ function MateLinkStageOf({
   readonly composer: ReactNode;
 }) {
   const at = useZeropsMate(environmentId);
+  // Try now asks the link again, as the banner's does.
+  const retry = useAtomCommand(environmentCatalog.retryNow);
   // Before the catalog names it, the Mate this browser last knew there: a reload draws its stage
   // from the first frame, and the listing's word replaces it once read.
   const known =
@@ -89,7 +89,9 @@ function MateLinkStageOf({
           below: (
             <MateLinkLine
               mateServiceId={mate.serviceId}
-              onTryNow={undefined}
+              onTryNow={
+                voice.actions.includes("try-now") ? () => void retry(environmentId) : undefined
+              }
               projectId={projectId}
               projectUrl={mate.projectUrl}
               voice={voice}
@@ -115,20 +117,6 @@ function MateLinkStageOf({
  */
 export function MateOpeningView({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   const environmentId = threadRef.environmentId;
-  const draft = useComposerDraftStore((state) => state.getComposerDraft(threadRef)?.prompt ?? "");
-  const [caret, setCaret] = useState(0);
-  // Standing in for its conversation: the conversation takes over with its Mate at work at once
-  // and the caret where it was typed (`mateHandOver`).
-  const threadKey = scopedThreadKey(threadRef);
-  const standIn = useRef<ReturnType<typeof standInForConversation> | null>(null);
-  useLayoutEffect(() => {
-    const standing = standInForConversation(threadKey);
-    standIn.current = standing;
-    return () => {
-      standIn.current = null;
-      standing.release(Date.now());
-    };
-  }, [threadKey]);
   const voice = useMateVoice();
   const pastQuiet = useHeldPast(`opening:${environmentId}`, MATE_VOICE_QUIET_MS);
   const at = useZeropsMate(environmentId);
@@ -138,16 +126,7 @@ export function MateOpeningView({ threadRef }: { readonly threadRef: ScopedThrea
       : (rememberedMateIdentity(environmentId)?.name ?? "This Mate");
   return (
     <MateLinkStage
-      composer={
-        <ComposerStandIn
-          typed={{ text: draft, caret: Math.min(caret, draft.length) }}
-          onType={(next) => {
-            useComposerDraftStore.getState().setPrompt(threadRef, next.text);
-            setCaret(next.caret);
-            standIn.current?.caret(next.caret);
-          }}
-        />
-      }
+      composer={<RouteStandIn threadRef={threadRef} />}
       environmentId={environmentId}
       projectId={null}
       voice={mateOpeningStage({ voice, pastQuiet, mateName: name })}

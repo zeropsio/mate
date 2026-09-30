@@ -38,7 +38,9 @@ import {
 import { applyProjectCreationVerdict } from "@t3tools/client-runtime/zerops/candidates";
 import {
   MATE_VOICE_QUIET_MS,
+  MATE_VOICE_SLOW_MS,
   mateVoice,
+  mateVoiceQuietKey,
   type MateVoice,
 } from "@t3tools/client-runtime/zerops/environments";
 import {
@@ -469,14 +471,14 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       : page?.kind === "up"
         ? (link.reachability ?? null)
         : null;
-  const linkPast = useHeldPast(
-    `${page?.kind ?? "none"}:${linkReachability?.kind ?? "none"}`,
-    MATE_VOICE_QUIET_MS,
-  );
+  // The quiet is kept by what the voice would say, so "Opening Wren…" never goes and comes back.
+  const linkQuietKey = `${projectId}:${mateVoiceQuietKey(linkReachability)}`;
+  const linkPast = useHeldPast(linkQuietKey, MATE_VOICE_QUIET_MS);
+  const linkSlow = useHeldPast(linkQuietKey, MATE_VOICE_SLOW_MS);
   const linkVoice = mateVoice({
     reachability: linkReachability,
     conversationShown: false,
-    heldMs: linkPast ? MATE_VOICE_QUIET_MS : 0,
+    heldMs: linkSlow ? MATE_VOICE_SLOW_MS : linkPast ? MATE_VOICE_QUIET_MS : 0,
     nowMs,
     mateName: named.name,
   });
