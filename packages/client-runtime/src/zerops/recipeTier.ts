@@ -1,6 +1,6 @@
 /**
- * The group repo's tiers, turned into what the platform will import (guide 4.3,
- * `../gitea-mate/docs/group-repo.md`).
+ * The group repo's tiers, turned into what the platform imports — guide 4.3,
+ * `../gitea-mate/docs/group-repo.md`.
  *
  * ## What the group repo holds
  *
