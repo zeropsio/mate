@@ -1,9 +1,10 @@
 # Crew mode — the map
 
-2026-09-28, as built at `feat/crew-mode` 2026-09-28 on `feat/crew-mode`. What crew mode is in code and where each
-part lives. It holds facts about the tree, not decisions: `../../../../zcp/docs/spec-mate.md` has
-no crew section yet, so until it has one each rule is stated in the header of the module named
-beside it. Words the UI uses are the glossary's ([`design-system.md`](design-system.md) §2).
+2026-09-28, as built at `feat/crew-mode`; the Crew tab, the run's clock and the crew's words as
+built on `fix/pass-20`, 2026-09-30. What crew mode is in code and where each part lives. It holds
+facts about the tree, not decisions: `../../../../zcp/docs/spec-mate.md` has no crew section yet, so
+until it has one each rule is stated in the header of the module named beside it. Words the UI uses
+are the glossary's ([`design-system.md`](design-system.md) §2).
 
 ## 1. What a crew is
 
@@ -13,9 +14,10 @@ Three levels, each built on the one before:
 | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Mate**  | one agent over one Zerops project's tree (`/var/www` on the zcp container); unchanged by crew mode                                                                                                                                                                                     |
 | **chats** | the Mate's several conversations over that same tree — person threads; the main chat is the pinned one; no new one is started, and a Mate holding more than one lists them from the ⌄ after its name on the conversation's line (`apps/web/src/components/chat/ConversationStrip.tsx`) |
-| **crew**  | standing crewmates, one crew per Mate (id always `main`); each crewmate talks in its own chat, and a writer works in its own copy of the code on a dev service; the person lands each piece of work into the tree by a press                                                           |
+| **crew**  | standing crewmates, one crew per Mate (id always `main`); each crewmate talks in its own chat, and a writer works in its own copy of the code on a dev service; the person puts each piece of work into the Mate's tree by a press (the engine's `land`)                               |
 
-A crewmate is one of three kinds (`packages/shared/src/crewHome.ts`):
+A crewmate is one of three kinds (`packages/shared/src/crewHome.ts`), which the Crew tab says by
+what each does — _Builds_, _Reviews_, _Plans_:
 
 - **writer** — its copy of the code is branch `crew/<handle>` checked out at `.crew/<handle>` in
   its dev service's tree (`CrewDefinition.ts`, `CrewWorkspace.ts`), with its own `setup`, `check`
@@ -24,14 +26,14 @@ A crewmate is one of three kinds (`packages/shared/src/crewHome.ts`):
 - **lead** — read only, at most one per crew; it plans, reviews, takes the crew's questions first
   and ends a run, and has no copy and no tasks of its own (`crewLead.ts`).
 
-Work is **tasks**. A crewmate works one task at a time and queues the rest; a message to a
-crewmate with no open task opens an implicit one (`crewTasks.ts`). A reported task merges your
-tree's head into the copy and runs the check on exactly the tree that would land
-(`crewLanding.ts`, `CrewIntegration.ts`); what happens next is the run's landing mode (§7), and
-without a run nothing lands without the person's **Land** or **Land now**. Every crew turn is
-admitted as a person: the caller's session inside their own call; later on their behalf,
-`{kind: "crew", startedBy}` — the running run's starter, or without a run the task's creator
-(`CrewDispatch.ts`).
+Work is **tasks**. A crewmate works one task at a time and queues the rest; a message to a crewmate
+with no open task opens an implicit one (`crewTasks.ts`). A reported task merges your tree's head
+into the copy and runs the check on exactly the tree that would land (`crewLanding.ts`,
+`CrewIntegration.ts`); what happens next is the run's landing mode (§7), and without a run nothing
+lands without the person's _Add to Fen's code_ or _Add what it has_ in the task's review (`land`,
+`landNow`). Every crew turn is admitted as a person: the caller's session inside their own call;
+later on their behalf, `{kind: "crew", startedBy}` — the running run's starter, or without a run the
+task's creator (`CrewDispatch.ts`).
 
 A crewmate's conversation is a **stint**: one Mate thread over one session. Apply opens each
 crewmate's first stint without a turn, so its chat exists before its first message, and opens it
@@ -70,7 +72,7 @@ for the engine's life.
 | RPC            | `registerCrewRpc.ts`                                                                                                                       | the four crew RPCs, spread by `ws.ts`                                                                                                                 |
 | Client runtime | `packages/client-runtime/src/zerops/crew/phrases.ts`, `crew/testing/fixtures.ts`, `projections/crew.ts`                                    | every crew word (R5); `crewSnapshotFixture`; `deriveCrewView` — the snapshot joined to the thread shells                                              |
 | Web            | `apps/web/src/zerops/crew/`                                                                                                                | `useCrew`, `useCrewCommand`, `crewCommands`, `useCrewHome`, `crewHome` (the editors' adapter over the format), `crewTab`                              |
-|                | `apps/web/src/components/zerops/crew/`                                                                                                     | the Crew tab (the section above the board), the editors and the crewmate chat — rows `zerops-crew-*` in [`surfaces.json`](surfaces.json)              |
+|                | `apps/web/src/components/zerops/crew/`                                                                                                     | the Crew tab's column and views, its run dialog, the lead's plan and the crewmate chat — rows `zerops-crew-*` in [`surfaces.json`](surfaces.json)     |
 
 ## 4. The crew home and what the engine keeps
 
@@ -95,7 +97,8 @@ for the engine's life.
   at every turn's end (`crewState.ts`, `CrewStateRef.ts`).
 - **Versions** — the brief's vN and each job's vM live in the tables, not the files; a stint records
   the versions its session started with, and a crewmate is pending while that record is behind
-  (`crewVersions.ts`).
+  (`crewVersions.ts`). No version reaches the person: a save says once what follows, and a new
+  conversation's seam line says what changed.
 
 ## 5. The RPCs
 
@@ -112,7 +115,11 @@ comes from the authenticated session, never from the input. The snapshot is buil
 and the engine's memory, never over ssh, at most four times a second, with `seq` rising across
 restarts (`crewLayer.ts`, `crewSnapshot.ts`). An older server's snapshot still decodes, and a frame
 no build can read decodes as undecodable and fails the crew feed alone, never the socket
-(`zeropsCrew.ts`). Words are not on the wire: clients render codes through `phrases.ts`.
+(`zeropsCrew.ts`). Words are not on the wire, but for the engine's own sentences — an attempt's
+ending, a stint's reason, a seam's summary, a refusal's detail — which it writes in the person's
+words; clients render every code through `phrases.ts`. A task carries `landedAt`, the time it went
+in (`null` before, and from an older server by a decoding default; an older client ignores it), and
+a run's `elapsedMs` is the time its crew worked (§7).
 
 ## 6. Seams into existing code
 
@@ -133,10 +140,15 @@ Server:
   (`packages/contracts/src/orchestration.ts`, decider, projector, `ProjectionPipeline.ts`,
   `ProjectionSnapshotQuery.ts`). `ProviderCommandReactor.ts` and `CheckpointReactor.ts` keep no
   checkpoints for a crew thread; `AgentAwarenessRelay.ts` publishes no alert for one.
-- **Seam lines as thread activities** — a landing, a save that reaches a conversation later, and
-  the reason of a conversation opened between turns are thread activities of kind `crew.seam` on
-  the conversation the person reads at that moment, a `CrewSeam` as payload and the line's words
-  as `summary` (`crewSeamLines.ts`). A seam line never fails the press that wrote it.
+- **Seam lines as thread activities** — a landing, a save that reaches a conversation later, and the
+  reason of a conversation opened between turns are thread activities of kind `crew.seam` on the
+  conversation the person reads at that moment, a `CrewSeam` as payload and the line's words as
+  `summary` (`crewSeamLines.ts`), in the person's words and never a version — "Its job changed",
+  "The crew's goal changed — from its next message", "You cleared its conversation", "A fresh
+  conversation: the last one grew too long" (`crewCards.ts`); the client composes a landing's line
+  and a closed task's from the seam itself ("… went into Fen's code", "… closed with nothing to add
+  to Fen's code"), and shows an older server's line as it was written. A seam line never fails the
+  press that wrote it.
 - **Provider SPI** — `spi/threadToolPolicy.ts`, `spi/claudeThreadProfile.ts`,
   `spi/codexThreadProfile.ts`, `spi/serverCommandReadiness.ts`; registries provided in `server.ts`,
   readiness completed in `serverRuntimeStartup.ts`. A Claude crew session's own start reaches the
@@ -150,38 +162,47 @@ Client:
 
 - **Crew tab** — right-panel kind `crew` (`rightPanelKinds.ts`, `rightPanelStore.ts`,
   `RightPanelTabs.tsx`), `hidden` unless the Zerops panel is available and the status is `none` or
-  `applied`, is the crew's one home (`CrewPanel.tsx`): for `none` the empty state and _Set up a
-  crew_, for `applied` the section (`CrewSectionHost`) above the board (`CrewBoardHost`) in one
-  column. The left menu asks for the setup sheet through `crewTab.ts`. The Zerops tab has no crew
-  section and no setup; its map still names crew ports by crewmate, and its coding agents' card
-  who runs on each login.
-- **Chat** — `ChatHeader.tsx` and `ConversationStrip.tsx`: the conversation's line — the Mate,
-  then the crew's faces, the crewmate on screen a pill whose menu (`CrewmateMenu`) offers _Try its
-  work_ (`useCrewTry`, `crewTry.ts`: its own app, run first while stopped, or its work shown at
-  the Mate's dev address), _Stop its app_, _Change its job_ (the lead's _Change the brief_,
-  `CrewBriefEditor`) and _Clear its conversation_; `ChatView.tsx`: the board in the right panel,
-  the lead's plan in the lead's chat (`CrewLeadPlan`), and a crew thread's send as
+  `applied`, is the crew's one home (`CrewPanel.tsx`). For `none` it is the empty state — the Mate,
+  three empty seats, "Give Fen a crew" and _Set up a crew_; for `applied`, one column
+  (`CrewSection`): the head (`CrewHead`: the goal's title, the tab's ···, and the mode line with its
+  one press, `crewModeLine`), the composer (`CrewTellComposer`), a row per crewmate (`CrewRows`:
+  what it is on, its step, what it needs and the presses that settle it; the lead's row carries its
+  plan, `CrewLeadPlan`) and _In Fen's code_ (`CrewInFensCode`). Setup, the goal and a crewmate's job
+  are views in the column's place (`CrewView`: `CrewSetup`, `CrewGoal`, `CrewmateJob`), asked for
+  from outside the tab through `crewTab.ts` (`openCrewView`); the run dialog (`CrewRunDialog`) is
+  _Let it work on its own…_ and _Keep going…_. The host (`CrewSectionHost`) owns the commands,
+  drafts, confirmations and dialogs. The board and its sheets are gone. The Zerops tab has no crew
+  section and no setup; its map still names crew ports by crewmate, and its coding agents' card who
+  runs on each login.
+- **Chat** — `ChatHeader.tsx` and `ConversationStrip.tsx`: the conversation's line — the Mate, then
+  the crew's faces, the crewmate on screen a pill whose menu (`CrewmateMenu`) offers _Try its work_
+  (`useCrewTry`, `crewTry.ts`: its own app, run first while stopped, or its work shown at the Mate's
+  dev address), _Stop its app_, _Change its job_ (the lead's _Change the goal_), each opening that
+  view in the Crew tab (`openCrewView`), and _Clear its conversation_; `ChatView.tsx`: the lead's
+  plan in the lead's chat as in its row (`CrewLeadPlan`), and a crew thread's send as
   `zerops.crew.command` `message` instead of a turn start; `MessagesTimeline.tsx` and
   `conversation.logic.ts`: a message opening with `CREW_CARD_OPENER` drawn as a task card,
   `crew.seam` activities drawn as seam lines — a save's from before the first message left out
   (`crewChatSeams.ts`) — and an empty crewmate conversation opening with the crewmate
-  (`CrewmateEmptyState`); `TurnReport.tsx`: _Try it_ beside _Review_ on a crew task ready to land
+  (`CrewmateEmptyState`); `TurnReport.tsx`: _Try it_ beside _Review_ on a crew task's finished work
   (`CrewTryIt`). In a crew thread the speaker — the work line, the answer's heading, the working
   face — is the crewmate, in its name and tint, never the Mate.
-- **The lead** reads as the lead: first in the crew on the line, named the Mate's lead on hover, a
-  Lead chip beside its name in the section, its own group first in the section, and the
-  coding-agents card names it on the login it runs on.
+- **The lead** reads as the lead: first in the crew on the line and in the Crew tab, named the
+  Mate's lead on hover, its line saying what it does, with no chip, and the coding-agents card names
+  it on the login it runs on.
 - **Composer** — trigger kind `crewmate` (`composer-logic.ts`, `ComposerCommandMenu.tsx`,
-  `composer-editor-mentions.ts`), offered in _Tell the crew_ and in the lead's chat, in no other
-  chat. In a crewmate's chat the model, effort and permission pickers give way to one read-only
-  _Runs on_ line ("Runs on Claude Code · Haiku 4.5 · High") that opens the crewmate's editor
-  (`CrewRunsOnControl`, `ChatComposer.tsx`): its Runs on and the crew gate decide those, not the
-  message.
-- **Sidebar** — `SidebarZeropsTree.tsx`: the crew's faces on the Mate row, and in a Mate's own
-  menu (`SidebarMateMenu.tsx`) _Set up a crew_ or _Crew_ on the viewer's own Mate with crew mode on
-  (`mateCrewItem`), opening its conversation on the Crew tab (`openCrewTab`). A crew thread is never
-  an ordinary row: `Sidebar.tsx`, the command palette, the archived list, thread notifications,
-  mobile's thread list and prompt-history recall all leave crew threads or cards out.
+  `composer-editor-mentions.ts`), offered in the lead's chat and in no other; the Crew tab's
+  composer ("Give the crew something to do…") sends to the lead, or without one to the faces picked,
+  and its `@` finds the Mate's files — nobody is named by a handle. In a crewmate's chat the model,
+  effort and permission pickers give way to one read-only _Runs on_ line ("Runs on Claude Code ·
+  Haiku 4.5 · High") that opens the crewmate's job in the Crew tab (`CrewRunsOnControl`,
+  `ChatComposer.tsx`): its Runs on and the crew gate decide those, not the message.
+- **Sidebar** — `SidebarZeropsTree.tsx`: the crew's faces on the Mate row, and in a Mate's own menu
+  (`SidebarMateMenu.tsx`) _Set up a crew_ or _Crew_ on the viewer's own Mate with crew mode on
+  (`mateCrewItem`), opening its conversation on the Crew tab (`openCrewTab`), _Set up a crew_ on its
+  setup view. A crew thread is never an ordinary row: `Sidebar.tsx`, the command palette, the
+  archived list, thread notifications, mobile's thread list and prompt-history recall all leave crew
+  threads or cards out.
 
 ## 7. What this build does
 
@@ -194,49 +215,57 @@ at every turn end; merge-in, check, `land` and `landNow` with landing refusals c
 `removeCrewmate`; `deliverDraft`, `orphanScan`, `adopt`; recovery after a Mate server restart.
 Every crew turn traces to a person's press.
 
-**Show on dev** (`crewClaims.ts`, `CrewRuntime.ts`): the crewmate asks with `crew_show_on_dev`
-(the request times out after 10 minutes); the person answers with `claimGrant`, `claimDeny` or
-later `claimRelease`, or presses `showOnDev` — _Try its work_ for a writer whose app cannot run on
-its own — as request and grant at once. A grant
-pressed while the crewmate's turn runs waits for that turn's end, then sends the claim turn as the
-person who pressed it, and keeps the request from timing out; a deny or any other move of the
-claim drops it. The waiting grant is `grantWaiting` on the wire — _Waiting on you_ reads "Allowed ·
-waits for <name>'s turn to end" — and a `crew_log` note, sent at boot when a restart ended the
-turn. Show on dev restarts the dev server zcp started; with none, the refusal says to ask the Mate
-to start it, or to open the crewmate's own app when it has a crew port.
+**Show on dev** (`crewClaims.ts`, `CrewRuntime.ts`): the crewmate asks with `crew_show_on_dev` (the
+request times out after 10 minutes); the person answers with `claimGrant`, `claimDeny` or later
+`claimRelease`, or presses `showOnDev` — _Try its work_ for a writer whose app cannot run on its own
+— as request and grant at once. A grant pressed while the crewmate's turn runs waits for that turn's
+end, then sends the claim turn as the person who pressed it, and keeps the request from timing out;
+a deny or any other move of the claim drops it. The waiting grant is `grantWaiting` on the wire —
+the crewmate's row reads "Shows its work at Fen's dev address once its current step ends." — and a
+`crew_log` note, sent at boot when a restart ended the turn. Show on dev restarts the dev server zcp
+started; with none, the refusal says to ask the Mate to start it, or to open the crewmate's own app
+when it has a crew port.
 
-**Runs** (`crewRuns.ts`, `crewRunFlow.ts`): `start` takes a budget, a time limit (either may be
-_No limit_), an optional stop at a share of the usage window, a landing mode (`person` — you land
-everything; `check` — a task lands when its check passes; `lead` — after the lead's review), the
-dev grant and whether the lead may start tasks. `pause`, `resume`, `stop` and `finish` move it;
-pausing or stopping interrupts every crew turn, each ending with its WIP commit. A reached limit
-pauses the run with that limit as its reason; a refused dispatch pauses it with admission's words.
-`resume` may carry new limits (budget, time, usage stop; an absent one keeps the run's), which a
-run paused by its budget or time limit resumes with through the run dialog; a budget must exceed
-what the run has spent, and a limit still reached refuses the resume by name ("The run has spent
-its $3 budget — raise it or choose No limit to resume").
-Spend is each crew turn's own cost: what its session's `totalCostUsd` — a running total, carried
-over a resume — rose by since the last total the engine kept for that thread (a `turn-cost` note
-in `crew_log`). A live session with no kept total (its turns ran before totals were logged), or
-one whose total comes back below the kept one, counts nothing for that turn and counts from its
-new total on. Time is wall time running, usage the fullest window of the crewmates' logins. A crew
-session's `maxBudgetUsd` is what the run has left — the CLI caps a process's own spend (§8) — and
-a run's start or resume restarts the crew's sessions so each takes the new cap: an idle one at
-once, a working one when its turn ends. While running, the run starts queued tasks, sends rework
-back, lands per its mode, nudges a turn that ended without a report once per attempt, and with the
-dev grant allows a request to show on dev. A run's start or resume, and a boot inside a running
-run, take up what waits on someone (`takeUpWaiting` in `crewRunFlow.ts`): every crewmate whose
-task stands `working` with no turn running gets a carry-on turn as the run's starter (a turn the
-run's own pause stopped carries on in the pause's words), and every review, and every question
-not passed on to the person, that the lead was woken for and no running turn of the lead's serves
-wakes the lead again (`wakesToRenew` in `crewLead.ts`).
+**Runs** (`crewRuns.ts`, `crewRunFlow.ts`): `start` takes a budget, a time limit (either may be _No
+limit_), an optional stop at a share of the usage window, a landing mode (`person` — you land
+everything; `check` — a task lands when its check passes; `lead` — after the lead's review), the dev
+grant and whether the lead may start tasks. `pause`, `resume`, `stop` and `finish` move it; pausing
+or stopping interrupts every crew turn, each ending with its WIP commit. The Crew tab presses
+`start` as _Let it work on its own…_, `stop` as its one _Stop_, and `resume` as _Keep going…_ after
+a limit — with more money or more time, added to what the run spent or worked, never a new figure —
+or as _Try again_ after a refusal; `pause` is no press of the person's. A plan's _Start_ takes the
+plan into a running run, starts a run on the last run's limits where none is on, and resumes a
+paused run first. A reached limit pauses the run with that limit as its reason; a refused dispatch
+pauses it with admission's words. `resume` may carry new limits (budget, time, usage stop; an absent
+one keeps the run's), which a run paused by its budget or time limit resumes with through the run
+dialog; a budget must exceed what the run has spent, and a limit still reached refuses the resume by
+name ("The run has spent its $3 budget — raise it or choose No limit to resume"). Spend is each crew
+turn's own cost: what its session's `totalCostUsd` — a running total, carried over a resume — rose
+by since the last total the engine kept for that thread (a `turn-cost` note in `crew_log`). A live
+session with no kept total (its turns ran before totals were logged), or one whose total comes back
+below the kept one, counts nothing for that turn and counts from its new total on. Time is the time
+the crew works: the run's clock counts while the run runs and one of the crew's turns runs, and
+stands, keeping what it counted, while none does (`runClockFollows`, followed wherever a crew turn
+begins or ends), so a crew idle, waiting on the person or with nothing to do never uses up its time
+limit, and a restart counts again once the crew works. `elapsedMs` keeps its name and now means that
+time: an older server counts wall time running, and a client reads either the same way. Usage is the
+fullest window of the crewmates' logins. A crew session's `maxBudgetUsd` is what the run has left —
+the CLI caps a process's own spend (§8) — and a run's start or resume restarts the crew's sessions
+so each takes the new cap: an idle one at once, a working one when its turn ends. While running, the
+run starts queued tasks, sends rework back, lands per its mode, nudges a turn that ended without a
+report once per attempt, and with the dev grant allows a request to show on dev. A run's start or
+resume, and a boot inside a running run, take up what waits on someone (`takeUpWaiting` in
+`crewRunFlow.ts`): every crewmate whose task stands `working` with no turn running gets a carry-on
+turn as the run's starter (a turn the run's own pause stopped carries on in the pause's words), and
+every review, and every question not passed on to the person, that the lead was woken for and no
+running turn of the lead's serves wakes the lead again (`wakesToRenew` in `crewLead.ts`).
 
-**What waits on someone** (`crewRunFlow.ts`, `crewLead.ts`, `crewSnapshot.ts`): a task that
-stands still is either taken up by a running run or named in _Waiting on you_. A crewmate's queue
-waits behind its open task until that task lands, parks or is discarded, so a task nobody acts on
-holds every task after it.
+**What waits on someone** (`crewRunFlow.ts`, `crewLead.ts`, `crewSnapshot.ts`): a task that stands
+still is either taken up by a running run or named to the person in its crewmate's row. A crewmate's
+queue waits behind its open task until that task lands, parks or is discarded, so a task nobody acts
+on holds every task after it.
 
-| A task stands                               | A running run                                                                                         | _Waiting on you_                                                       |
+| A task stands                               | A running run                                                                                         | In its crewmate's row                                                  |
 | ------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | `working`, no turn running                  | carries it on at start, resume and boot; nudges it once an attempt after a turn ends without a report | `stalled` once nobody has acted for five minutes, in a run too         |
 | `review`, no turn of the lead's on it       | wakes the lead again at start, resume and boot                                                        | `review-wait` once nobody has acted for five minutes, in a run too     |
@@ -253,15 +282,25 @@ ends at the task's last move. The five minutes are one rule (`UNATTENDED_MS`): a
 counts from the attempt's end, a `review-wait` row from the task's move into review, and the feed
 publishes again when they pass.
 
-**The lead** (`crewLead.ts`): the person talks to it like any crewmate, and _Tell the crew_ goes
-to its chat (`crewRouting.ts`). In a running run the engine wakes it, one wake at a time, at least
-two minutes apart (across a restart too; the person's Start or Resume wakes it at once) and at
-most 30 per run: for a review (`crew_review` accepts, or rejects with the
-note as rework) and for a crewmate's question (`crew_report` blocked goes to the lead first; its
-reply is the crewmate's next turn; a question only the person can answer reaches them at once, and
-any question reaches them after 15 minutes). `crew_propose` puts tasks on the board as `proposed`
-— `queued` when the run lets the lead start them — for the person's `planAccept` or
-`planDiscard`; `crew_finish` ends the run. The lead's tasks start only in a running run.
+An attempt the crew's stop ended says when, in the person's words and with the limit's own figure
+(`attemptEndingOf` in `crewMachines.ts`, fed the run's limits by `crewTurns.ts`): "when the $20 ran
+out", "when the 8 hours ran out", "when it neared 80 % of your Claude plan's limit", "when you
+stopped it", "when its next turn was refused". The Crew tab joins such a clause without a colon —
+"Stopped mid-way when the $20 ran out." — and any other reason after one. Both pair with older
+builds: an older client shows "Backend's task #12 stopped mid-way: when the $20 ran out", and a
+newer client shows an older server's "Stopped mid-way: the run reached its budget." as it was
+written.
+
+**The lead** (`crewLead.ts`): the person talks to it like any crewmate, and the Crew tab's composer
+goes to its chat (`crewRouting.ts`). In a running run the engine wakes it, one wake at a time, at
+least two minutes apart (across a restart too; the person's `start` or `resume` wakes it at once) and at
+most 30 per run: for a review (`crew_review` accepts, or rejects with the note as rework) and for a
+crewmate's question (`crew_report` blocked goes to the lead first; its reply is the crewmate's next
+turn; a question only the person can answer reaches them at once, and any question reaches them
+after 15 minutes). `crew_propose` puts tasks on the board as `proposed` — `queued` when the run lets
+the lead start them — for the person's _Start_ (`planAccept`) or _Drop the plan_ (`planDiscard`), in
+the lead's row and its chat; `crew_finish` ends the run. The lead's tasks start only in a running
+run.
 
 **Memory** (`CrewMemory.ts`, `CrewPacket.ts`, `crewMemoryCommands.ts`): a Claude crewmate's prompt
 turns memory on and it gets `crew_memory`; its session starts with the state packet on startup,
@@ -278,28 +317,31 @@ the copy or the tasks.
 
 **Logins and Codex:** logins beyond the two defaults each have their own home under
 `~/.mate/logins/<id>` and their own signer (`ZeropsLogins.ts`). A Codex crewmate is code only: no
-zcp tools, no crew tools and no memory, so its task completes by the person's _Land_. Codex wraps a
-command as `<shell> -lc "<command>"`; for zsh, bash or sh with `-lc` or `-c` the gate judges the
-command inside, and only the exact lane form passes (`codexThreadProfile.ts`, `spi.md` §1a).
+zcp tools, no crew tools and no memory, so its task completes by the person's _Add to Fen's code_.
+Codex wraps a command as `<shell> -lc "<command>"`; for zsh, bash or sh with `-lc` or `-c` the gate
+judges the command inside, and only the exact lane form passes (`codexThreadProfile.ts`, `spi.md`
+§1a).
 
 **Refusals:** a refused command reads as the engine's own sentence, never the tagged error, beside
-the row that was pressed and only until the next press or ten seconds; the section's last error
-is the same sentence (`failureWords` in `crewCore.ts`, `crewFailureSentence` in
-`useCrewCommand.ts`); where the engine says "your Mate", the section says the Mate's name
+the row that was pressed and only until the next press or ten seconds; the tab's last error is the
+same sentence (`failureWords` in `crewCore.ts`, `crewFailureSentence` in `useCrewCommand.ts`); where
+the engine says "your Mate" or "your tree", the tab says the Mate's name or "Fen's code"
 (`crewNamingTheMate`).
 
-**Client:** run meters show while a run is running or paused; _Start run_ is offered while no run
-is on and the crew has a lead or a queued task; _+ Add lead_ whenever the crew has none; a
-task that could not start offers _Try again_ (`taskRetry`) in _Waiting on you_; a task stopped
-mid-way reads "Backend's task #16 stopped mid-way: <why>" and offers _Continue_ (a `message`
-"Carry on with your task." as you), _Land now_ (`landNow`) and _Discard_ (`discard`); a review
-nobody takes up reads "#16 waits for the lead's review" and offers _Ask lead to review_ (a
-`message` to the lead as you) and _Land it myself_ (`land`, which on a task in review is your
-accept first); a task its review sent back reads "#16 was sent back by the lead: <note>" and
-offers _Ask Backend to rework_ (a `message` to the crewmate as you, carrying the note) and
-_Discard_; a queued task behind one that will not land reads "#21 waits for #16, which was
-discarded" and offers _Drop the wait_ (`taskEdit` without that dependency, after which it starts
-when its crewmate is free) and _Discard_.
+**Client:** the mode line and its presses are the Crew tab's head (§6). A task that could not start
+reads "Couldn't start: …" and offers _Try again_ (`taskRetry`); a stopped one, "Stopped: …", _Try
+again_ and _Drop it_ (`discard`); one stopped mid-way, "Stopped mid-way when the $20 ran out.",
+_Continue_ (a `message` "Carry on with your task." as you), _Review what it has_ (its review, whose
+_Add what it has_ is `landNow`) and _Drop it_; a review nobody takes up, "Waits for the lead's
+review.", _Ask the lead_ (a `message` to the lead as you) and _Review it yourself_ (its review,
+where `land` on a task in review is your accept first); a task its review sent back, "The lead sent
+it back: <note>", _Ask it to rework_ (a `message` to the crewmate as you, carrying the note) and
+_Drop it_; a queued task behind one that will not go in, "Waits for <title>, which was dropped.",
+_Start it anyway_ (`taskEdit` without that dependency, after which it starts when its crewmate is
+free) and _Drop it_; a clash, "Clashes with what's now in Fen's code, in <file>.", _Ask it to sort
+it out_ (`askResolve`); failing checks, _Ask it to fix them_ (`askFix`); the Mate's own uncommitted
+edits in the way, "Can't go into Fen's code yet: Fen has uncommitted edits to <file>.", _Ask Fen to
+commit them_.
 
 ## 8. Measured facts the design stands on
 
