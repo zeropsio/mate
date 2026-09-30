@@ -32,8 +32,11 @@ import {
   type ZeropsDataAdapter,
 } from "../data/types.ts";
 import type { DescriptorFacts } from "../environments/environmentMachine.ts";
+import { candidateListingsAtom } from "../environments/listings.ts";
+import { rowTarget } from "../environments/mateLink.ts";
 import type { ProbeReading } from "../environments/probeStore.ts";
 import { REGISTRATION_RECORDS_KEY, type RegistrationRecord } from "../environments/records.ts";
+import { heldCandidates } from "../projections/candidates.ts";
 import type { ExchangeAnswer } from "../identityExchange.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
 import { makePlatformSignals, type PageEvent } from "../knowledge/signals.ts";
@@ -936,7 +939,7 @@ describe("the post-grant stage's Mate environments", () => {
       });
     }).pipe(Effect.provideService(Clock.Clock, clock));
     yield* Effect.addFinalizer(() => built.close("application-close"));
-    return { clock, page, grant, rig, built };
+    return { clock, page, grant, rig, built, registry };
   });
 
   /** `openAccount` past the epoch's first grant, with its post-grant stage. */
@@ -1223,6 +1226,50 @@ describe("the post-grant stage's Mate environments", () => {
         expect([...new Set(rig.removed)]).toEqual(row.removed);
       }),
     ),
+  );
+
+  // Until a project's services are read — at every load, and again whenever its inventory lease is
+  // released, which drops its services query — the listing's row for its Mate stands for the whole
+  // project (`projectCandidates`): its key is the project's id, and the target that key names is
+  // nobody's. The Mate is still there, and its machine still holds it.
+  it.effect(
+    "a Mate's row read before its project's services names the target its machine holds",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const platform = heldQueries(platformAdapter([A_MATE]), ["services-of-project"]);
+          const { rig, built, registry, environments } = yield* granted(
+            [REMEMBERED_A],
+            [A_MATE],
+            platform.adapter,
+          );
+          // Remembered, it is exchanged where its record kept it (A16).
+          yield* answerDescriptor(rig, ENV_A);
+          rig.exchanges[0]!.answer(admitted(ENV_A, async () => ({ ok: true })));
+          yield* settle;
+
+          const rows = registry
+            .get(candidateListingsAtom(built.data))
+            .flatMap(({ listing }) => heldCandidates(listing).rows);
+          const listed = rows.find(({ project }) => project.id === A_MATE.projectId);
+          expect(listed).toMatchObject({ key: A_MATE.projectId, presence: "unknown" });
+          const machines = environments.machines();
+          // What the row's own key names holds nothing.
+          expect(machines.get(listed!.key)?.credential.kind).not.toBe("held");
+          const key = rowTarget({
+            key: listed!.key,
+            projectId: listed!.project.id,
+            machines,
+            records: environments.records(),
+          });
+          expect(key).toBe(MATE);
+          expect(machines.get(MATE)?.credential).toMatchObject({
+            kind: "held",
+            environmentId: ENV_A,
+            installed: true,
+          });
+        }),
+      ),
   );
 
   /** Answers the oldest probe of this origin still in flight. */
