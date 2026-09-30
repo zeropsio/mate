@@ -34,7 +34,11 @@ import { CALCULATING_SENTENCE, readPipeline } from "./pipelineReadout.ts";
 /** Which half of the tier's pairs a stand-up call deploys. */
 export type StandupHalf = "development" | "stage";
 
-export type StandupServiceState = "waits" | "building" | "up" | "failed";
+/**
+ * `unchecked`: a settled call that failed says nothing of a service it did
+ * not build — its data, its utilities — and today's status is not the call's.
+ */
+export type StandupServiceState = "waits" | "building" | "up" | "failed" | "unchecked";
 
 /** A service of the Mate's project, as the stand-up reads it. */
 export interface StandupService {
@@ -49,6 +53,8 @@ export interface StandupService {
   readonly runsCode: boolean;
   /** The platform's status: `ACTIVE`, `READY_TO_DEPLOY`, `CREATING`… */
   readonly status: string;
+  /** When it was created, where the platform says: one made after a call is none of it. */
+  readonly createdAt?: string;
 }
 
 export interface StandupServiceRow {
@@ -72,6 +78,8 @@ export interface StandupReading {
   readonly building: number;
   readonly up: number;
   readonly failed: number;
+  /** Rows a settled call's report says nothing of: never counted. */
+  readonly unchecked: number;
 }
 
 /** A reading of rows: how many of them build, are up, failed. */
@@ -81,6 +89,7 @@ export function standupReadingOf(rows: ReadonlyArray<StandupServiceRow>): Standu
     building: rows.filter((row) => row.state === "building").length,
     up: rows.filter((row) => row.state === "up").length,
     failed: rows.filter((row) => row.state === "failed").length,
+    unchecked: rows.filter((row) => row.state === "unchecked").length,
   };
 }
 
@@ -181,6 +190,7 @@ function environment(
   half: StandupHalf,
   services: ReadonlyArray<StandupService>,
   own: ReadonlyMap<string, StandupServiceRow>,
+  stands: (service: StandupService) => StandupServiceRow,
 ): StandupReading {
   const runtimes = new Set(
     services.filter((service) => service.group === "runtimes").map((service) => service.hostname),
@@ -189,7 +199,7 @@ function environment(
     // One of the call's own that its half would not hold stands with the runtimes.
     const rank = rankOf(service, half, runtimes) ?? (own.has(service.hostname) ? 2 : null);
     if (rank === null) return [];
-    return [{ rank, row: own.get(service.hostname) ?? standing(service) }];
+    return [{ rank, row: own.get(service.hostname) ?? stands(service) }];
   });
   const listed = new Set(ranked.map(({ row }) => row.hostname));
   const rows = [
@@ -262,5 +272,36 @@ export function readStandup(input: {
       : input.services.filter(
           (service) => service.group !== "runtimes" || own.has(service.hostname),
         );
-  return environment(input.half, services, own);
+  return environment(input.half, services, own, standing);
+}
+
+/**
+ * A settled call's reading, as the call left it — never as the project
+ * stands today: the rows its report gave the services it built, in the
+ * environment it stood up, of the services that were there when it ended
+ * (`endedAt`; one created after is none of it). The rest are up where the
+ * call succeeded — it stands up only an environment that is up — and not
+ * checked where it failed. Without the project read, its report alone.
+ */
+export function settleStandup(input: {
+  readonly half: StandupHalf;
+  readonly rows: ReadonlyArray<StandupServiceRow>;
+  readonly succeeded: boolean;
+  readonly endedAt?: string;
+  readonly services?: ReadonlyArray<StandupService>;
+}): StandupReading {
+  if (input.services === undefined) return standupReadingOf(input.rows);
+  const ended = input.endedAt === undefined ? Number.NaN : Date.parse(input.endedAt);
+  const there = input.services.filter(
+    (service) =>
+      service.createdAt === undefined ||
+      !Number.isFinite(ended) ||
+      Date.parse(service.createdAt) <= ended,
+  );
+  return environment(
+    input.half,
+    there,
+    new Map(input.rows.map((row) => [row.hostname, row])),
+    (service) => ({ hostname: service.hostname, state: input.succeeded ? "up" : "unchecked" }),
+  );
 }
