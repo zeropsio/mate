@@ -1,0 +1,226 @@
+import { EnvironmentId } from "@t3tools/contracts";
+import { describe, expect, it } from "vite-plus/test";
+
+import type { DescriptorIndex } from "./descriptorIndex.ts";
+import { initialEnvironment, type EnvironmentMachine } from "./environmentMachine.ts";
+import { mateLink, rowTarget, type MateLink } from "./mateLink.ts";
+import type { RegistrationRecord } from "./records.ts";
+
+const ENV_A = EnvironmentId.make("env-a");
+const ENV_B = EnvironmentId.make("env-b");
+/** Project 1's Mate, and the row its project stands as while its services are not read. */
+const KEY = "project-1:service-1";
+const PROJECT = "project-1";
+
+const HELD = {
+  kind: "held",
+  environmentId: ENV_A,
+  installed: true,
+  staleBlock: false,
+  rereading: null,
+} as const;
+const CONNECTED = { phase: "connected", since: { wall: 0, mono: 0 } } as const;
+
+/** A Mate present at its origin, remembering `env-a`, its container ready. */
+const machine = (overrides: Partial<EnvironmentMachine> = {}): EnvironmentMachine => ({
+  ...initialEnvironment({ record: ENV_A }),
+  presence: { kind: "present", origin: "https://zcp-1-8080.prg1.zerops.app" },
+  container: { level: "ready" },
+  ...overrides,
+});
+
+/** What the driver keeps for the placeholder row's own target: nothing known there. */
+const NOBODY: EnvironmentMachine = {
+  ...initialEnvironment({ record: null }),
+  presence: { kind: "unknown" },
+};
+
+const record = (targetKey: string, environmentId = ENV_A): RegistrationRecord => ({
+  targetKey,
+  environmentId,
+  origin: "https://zcp-1-8080.prg1.zerops.app",
+  projectRef: { projectId: PROJECT, orgId: "org-1" },
+  name: "shop",
+});
+
+const NO_INDEX: DescriptorIndex = {
+  serving: new Map(),
+  reported: new Map(),
+  unanswered: [],
+  failed: [],
+};
+
+describe("rowTarget — the Mate a listing row stands for", () => {
+  it.each<{
+    readonly case: string;
+    readonly key: string;
+    readonly machines: ReadonlyArray<readonly [string, EnvironmentMachine]>;
+    readonly records: ReadonlyArray<RegistrationRecord>;
+    readonly target: string | undefined;
+  }>([
+    {
+      case: "a row naming its target: that target, machine or not",
+      key: KEY,
+      machines: [],
+      records: [],
+      target: KEY,
+    },
+    {
+      case: "the project's row, its Mate's machine holding a credential",
+      key: PROJECT,
+      machines: [
+        [PROJECT, NOBODY],
+        [KEY, machine({ credential: HELD })],
+      ],
+      records: [],
+      target: KEY,
+    },
+    {
+      case: "the project's row, its Mate's machine remembering an environment",
+      key: PROJECT,
+      machines: [
+        [PROJECT, NOBODY],
+        [KEY, machine()],
+      ],
+      records: [],
+      target: KEY,
+    },
+    {
+      case: "the project's row, the one holding before one only remembering",
+      key: PROJECT,
+      machines: [
+        ["project-1:service-0", machine()],
+        [KEY, machine({ credential: HELD })],
+      ],
+      records: [],
+      target: KEY,
+    },
+    {
+      case: "the project's row, no machine of its Mate yet: its record's target",
+      key: PROJECT,
+      machines: [[PROJECT, NOBODY]],
+      records: [record("project-2:service-2"), record(KEY)],
+      target: KEY,
+    },
+    {
+      case: "the project's row, another project's Mate never its own",
+      key: PROJECT,
+      machines: [
+        [PROJECT, NOBODY],
+        ["project-10:service-1", machine({ credential: HELD })],
+      ],
+      records: [record("project-10:service-1")],
+      target: undefined,
+    },
+    {
+      case: "the project's row, nothing of its Mate known",
+      key: PROJECT,
+      machines: [[PROJECT, NOBODY]],
+      records: [],
+      target: undefined,
+    },
+  ])("$case", ({ key, machines, records, target }) => {
+    expect(rowTarget({ key, projectId: PROJECT, machines: new Map(machines), records })).toBe(
+      target,
+    );
+  });
+});
+
+describe("mateLink — what a door opens of a Mate, and what its own view waits for", () => {
+  it.each<{
+    readonly case: string;
+    readonly key: string;
+    readonly machines: ReadonlyArray<readonly [string, EnvironmentMachine]>;
+    readonly registered: ReadonlyArray<EnvironmentId>;
+    readonly index?: DescriptorIndex;
+    readonly link: MateLink;
+  }>([
+    {
+      case: "held, connected and registered: its conversation opens",
+      key: KEY,
+      machines: [[KEY, machine({ credential: HELD, link: CONNECTED })]],
+      registered: [ENV_A],
+      link: { key: KEY, environmentId: ENV_A, reachability: { kind: "ready", notice: null } },
+    },
+    {
+      case: "the project's row while its services are unread: its Mate's conversation opens",
+      key: PROJECT,
+      machines: [
+        [PROJECT, NOBODY],
+        [KEY, machine({ credential: HELD, link: CONNECTED })],
+      ],
+      registered: [ENV_A],
+      link: { key: KEY, environmentId: ENV_A, reachability: { kind: "ready", notice: null } },
+    },
+    {
+      case: "reconnecting on its record after its session ended: still its conversation",
+      key: KEY,
+      machines: [[KEY, machine({ credential: { kind: "none", reconnect: true } })]],
+      registered: [ENV_A],
+      link: { key: KEY, environmentId: ENV_A, reachability: { kind: "reconnecting" } },
+    },
+    {
+      case: "held while the registry has not taken it yet: its own view waits",
+      key: KEY,
+      machines: [[KEY, machine({ credential: { ...HELD, installed: false } })]],
+      registered: [],
+      link: { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } },
+    },
+    {
+      case: "never exchanged in this tab: its own view connects it",
+      key: KEY,
+      machines: [[KEY, { ...machine(), record: null }]],
+      registered: [],
+      link: {
+        key: KEY,
+        environmentId: undefined,
+        reachability: { kind: "connecting", waitingOn: "exchange" },
+      },
+    },
+    {
+      case: "found gone: nothing to open, and why",
+      key: KEY,
+      machines: [
+        [
+          KEY,
+          machine({
+            presence: { kind: "gone", evidence: "direct-not-found" },
+            credential: { kind: "retired", evidence: "direct-not-found" },
+          }),
+        ],
+      ],
+      registered: [ENV_A],
+      link: {
+        key: KEY,
+        environmentId: undefined,
+        reachability: { kind: "gone", because: "direct-not-found" },
+      },
+    },
+    {
+      case: "its origin now reporting another environment: replaced",
+      key: KEY,
+      machines: [[KEY, machine({ credential: { kind: "none", reconnect: false } })]],
+      registered: [ENV_A],
+      index: { ...NO_INDEX, reported: new Map([[KEY, ENV_B]]) },
+      link: { key: KEY, environmentId: undefined, reachability: { kind: "replaced", by: ENV_B } },
+    },
+    {
+      case: "no machine names it yet (the stage not bound)",
+      key: KEY,
+      machines: [],
+      registered: [ENV_A],
+      link: { key: KEY, environmentId: undefined, reachability: null },
+    },
+  ])("$case", ({ key, machines, registered, index, link }) => {
+    expect(
+      mateLink({
+        key,
+        projectId: PROJECT,
+        machines: new Map(machines),
+        index: index ?? NO_INDEX,
+        records: [],
+        registered: new Set(registered),
+      }),
+    ).toEqual(link);
+  });
+});

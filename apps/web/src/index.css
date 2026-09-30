@@ -2637,7 +2637,7 @@ code {
    1.58× the top slice's side took one device column and the middle slice's
    two, and the side jogged at every joint (2026-09-29). So every slice and
    strip takes a radius, the middle ones one nobody can see, and all their
-   sides are drawn the same way. */
+   sides are drawn the same way. A card drawn whole has no joints. */
 .timeline-legend-list
   .legend-list-content-container
   > div
@@ -2649,7 +2649,7 @@ code {
   position: relative;
 }
 
-:is([data-card-slice="top"], [data-card-slice="middle"])::after {
+:is([data-card-slice="top"], [data-card-slice="middle"]):not([data-card-whole])::after {
   content: "";
   position: absolute;
   inset-inline: 0;
@@ -3045,21 +3045,24 @@ code {
     color: color-mix(in oklab, var(--contrast-sidebar-foreground) 78%, transparent);
   }
 
-  /* Whose Mate it is, before its name: 16 px round, the person's picture or
-     their initial on their own hue (`ownerMark`), lighter at the top left. A
-     hairline keeps a pale picture off the ground. With no owner to name, the
-     mark keeps its place as a plain disc. */
+  /* Whose Mate it is, on the face's corner: a colleague's picture or their
+     initial on their own hue (`ownerMark`), lighter at the top left, 12 px
+     round and centred 3 px in from the 28 px face's bottom-right corner — cut
+     out of the face (`.menu-face-cut`) rather than laid on it, so it holds on
+     the hover band and the open Mate's band alike. A hairline keeps a pale
+     picture off the ground. */
   .menu-owner {
-    position: relative;
+    position: absolute;
+    top: 19px;
+    left: 19px;
     display: inline-flex;
-    flex: none;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
+    width: 12px;
+    height: 12px;
     overflow: hidden;
     border-radius: 9999px;
-    font-size: 9px;
+    font-size: 7px;
     font-weight: 600;
     line-height: 1;
     color: var(--color-white);
@@ -3072,8 +3075,15 @@ code {
     user-select: none;
   }
 
-  .menu-owner[data-zerops-avatar="none"] {
-    background: color-mix(in oklab, var(--contrast-sidebar-foreground) 10%, transparent);
+  /* The face wears the badge's seat cut out of it: a 2 px gap all round the
+     12 px badge, whatever the face's shape reaches into that corner. */
+  .menu-face-cut {
+    -webkit-mask-image: radial-gradient(
+      circle 8px at 25px 25px,
+      transparent 7.5px,
+      currentColor 8px
+    );
+    mask-image: radial-gradient(circle 8px at 25px 25px, transparent 7.5px, currentColor 8px);
   }
 
   /* Nobody's: an empty seat — a dashed ring in the muted ink, no fill and no
@@ -3824,14 +3834,61 @@ code {
   border-bottom-right-radius: 34px;
 }
 
-/* A line with nothing under it is no card (the owner, 2026-09-29: "shape of
-   this with no items below is pretty weird"): closed, a run's line stands by
-   itself in the card's geometry, and opening its work draws the card around
-   it — the line never moves. */
-.run-tray-alone,
-[data-card-slice]:has(> .run-tray-alone)::after {
-  background: transparent;
+/* A card nothing stands in but its line's row (`cardWhole`) is drawn whole by
+   that row: one box over the edge row's 16 px, and over the room its panel
+   holds while it closes (`--card-room`), so its corners are its own — sliced,
+   the 16 px edge row clamped the card's 34 px corners to 16 under 34 px ones.
+   Around its line alone it is the conversation's other box, the composer's
+   rectangle (the owner, 2026-09-30, of a card holding only "Thinking": "the
+   state of border radiuses in the initial thinking with no other content
+   around sucks"); once anything stands in it — the chat over its line, its
+   work opened under it, a panel's room — its corners are the card's. They
+   ease from one to the other as the card grows and shrinks: on the toggle's
+   curve, and from the card's on the fold's as its work folds into its line. */
+[data-card-whole] > .run-tray-top {
+  position: relative;
+  isolation: isolate;
+  background: none;
   border-color: transparent;
+}
+[data-card-whole] > .run-tray-top::before {
+  content: "";
+  position: absolute;
+  inset: -1px -1px calc(-16px - var(--card-room, 0px));
+  z-index: -1;
+  border: 1px solid var(--run-tray-ring);
+  border-radius: var(--composer-radius);
+  background: var(--run-tray);
+}
+[data-card-whole]
+  > .run-tray-top:is(
+    [data-card-room],
+    :has(.run-above:not([data-folding]), .run-later-feed:not(:empty))
+  )::before {
+  border-radius: 34px 34px 16px 16px;
+}
+[data-card-whole] > :is(.run-tray-middle, .run-tray-bottom) {
+  background: none;
+  border-color: transparent;
+}
+/* Its panel, with nothing in it, takes no room: the line's words stand 20 px
+   from both of the card's edges, live as closed. */
+[data-card-whole] > .run-tray-middle {
+  padding-top: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  [data-card-whole] > .run-tray-top::before {
+    transition: border-radius 220ms var(--ease-out-strong);
+  }
+  [data-card-whole] > .run-tray-top:has(.run-above[data-folding])::before {
+    transition: none;
+    animation: run-card-folds 360ms var(--ease-drawer) both;
+  }
+}
+@keyframes run-card-folds {
+  from {
+    border-radius: 34px 34px 16px 16px;
+  }
 }
 
 /* The Mate's words in its card wear its tint lightly (K13): with the
@@ -4530,6 +4587,9 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
    canvas. */
 :root {
   --chat-composer-shadow: 0 1px 2px rgb(15 18 24 / 5%), 0 14px 34px -16px rgb(15 18 24 / 28%);
+  /* The composer's corners: the conversation's other box, a run's card that
+     holds its line alone, wears them too. */
+  --composer-radius: 20px;
 
   @variant dark {
     --chat-composer-shadow: 0 16px 36px -18px rgb(0 0 0 / 85%);
@@ -4539,11 +4599,11 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 /* One radius for the composer's surface wherever it paints — itself, or its
    read-only stand-in — and the one a pixel inside it for what it holds. */
 [data-chat-composer-main-surface="true"] {
-  border-radius: 20px;
+  border-radius: var(--composer-radius);
 }
 
 [data-chat-composer-surface="true"] {
-  border-radius: 19px;
+  border-radius: calc(var(--composer-radius) - 1px);
 }
 
 /* C3: Review, the one blue button on the composer's top — blue is for what
@@ -7012,6 +7072,40 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 
   .crew-pick[aria-pressed="true"] {
     opacity: 1;
+  }
+
+  /* A face whose crewmate the viewer may not run (D6): there, and not a press. */
+  .crew-pick:disabled {
+    cursor: default;
+    opacity: 0.2;
+  }
+
+  /* The composer's place for a viewer who may not run the crew (D6): the
+     pill's own 48 px and radius, quiet rather than white — nothing is
+     written here — the lock in the conversation's amber, its words on at
+     most two lines, and the one way out at its end. */
+  .crew-locked {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    padding: 6px 8px 6px 16px;
+    border-radius: 24px;
+    background: color-mix(in oklab, var(--foreground) 3.5%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 7%, transparent);
+  }
+
+  .dark .crew-locked {
+    background: color-mix(in oklab, var(--foreground) 5%, transparent);
+  }
+
+  .crew-locked-words {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 13px;
+    line-height: 18px;
+    text-wrap: pretty;
+    color: color-mix(in oklab, var(--foreground) 85%, transparent);
   }
 
   .crew-pick:focus-visible {

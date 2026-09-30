@@ -542,6 +542,112 @@ describe("the route gate and every link into an environment", () => {
   });
 });
 
+// The owner, 2026-09-30: "all of the sudden when I now try to open Quinn or Wren it just throws me
+// at /zerops page". A Mate's row is the listing's; what links to it is its machine. While its
+// project's services are not read — before their first read, or once the project's inventory lease
+// was released and its services query with it — the listing's row stands for the whole project
+// (`projectCandidates`: the project's id for its key, no service), and the target that key names is
+// nobody's Mate.
+describe("a Mate's link, whatever its row says of it at the moment", () => {
+  /** The row `projectCandidates` gives a project whose services are not read. */
+  const placeholder: ZeropsCandidate = {
+    key: "project-1",
+    project: candidate.project,
+    group: "unavailable",
+  };
+  /** What the driver keeps for the placeholder's own target: nothing known there. */
+  const nobody: EnvironmentMachine = {
+    ...initialEnvironment({ record: null }),
+    presence: { kind: "unknown" },
+  };
+  const CONNECTED = machine({
+    credential: HELD,
+    link: { phase: "connected", since: { wall: 0, mono: 0 } },
+  });
+  const REGISTERED = {
+    environmentId: ENV_A,
+    displayUrl: ORIGIN,
+    label: "shop",
+    connection: { phase: "connected" },
+  };
+  it.each<{
+    readonly case: string;
+    readonly row: ZeropsCandidate;
+    readonly machines: ReadonlyArray<readonly [string, EnvironmentMachine]>;
+    readonly registered: boolean;
+    readonly opens: string | null;
+  }>([
+    {
+      case: "its services not read: the environment its Mate's machine holds",
+      row: placeholder,
+      machines: [
+        [KEY, CONNECTED],
+        ["project-1", nobody],
+      ],
+      registered: true,
+      opens: ENV_A,
+    },
+    {
+      case: "its services not read, its machine reconnecting on its record",
+      row: placeholder,
+      machines: [
+        [KEY, machine({ credential: { kind: "none", reconnect: true } })],
+        ["project-1", nobody],
+      ],
+      registered: true,
+      opens: ENV_A,
+    },
+    {
+      case: "its services read without its container for a moment (MC-14)",
+      row: { ...placeholder, missingContainer: true },
+      machines: [
+        [KEY, CONNECTED],
+        ["project-1", nobody],
+      ],
+      registered: true,
+      opens: ENV_A,
+    },
+    {
+      case: "its row naming its target, as ever",
+      row: candidate,
+      machines: [[KEY, CONNECTED]],
+      registered: true,
+      opens: ENV_A,
+    },
+    {
+      case: "its environment not registered in this tab: nothing to open yet",
+      row: placeholder,
+      machines: [
+        [KEY, CONNECTED],
+        ["project-1", nobody],
+      ],
+      registered: false,
+      opens: null,
+    },
+    {
+      case: "nothing of its project known",
+      row: placeholder,
+      machines: [["project-1", nobody]],
+      registered: true,
+      opens: null,
+    },
+  ])("$case", ({ row, machines, registered, opens }) => {
+    shell.driver = publishing(new Map(machines));
+    shell.environments = registered ? [REGISTERED] : [];
+    function Probe() {
+      return JSON.stringify(useEnvironmentLinks().linkTarget(row) ?? null);
+    }
+    act(() =>
+      root.render(
+        <InventoryContext value={inventory("ACTIVE")}>
+          <Probe />
+        </InventoryContext>,
+      ),
+    );
+    expect(JSON.parse(container.textContent)).toBe(opens);
+  });
+});
+
 describe("useRouteGateInputs", () => {
   it("asks for an organization on a thread deep link before one is chosen", async () => {
     shell.organization = "needs-selection";

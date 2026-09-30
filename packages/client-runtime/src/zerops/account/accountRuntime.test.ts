@@ -32,8 +32,11 @@ import {
   type ZeropsDataAdapter,
 } from "../data/types.ts";
 import type { DescriptorFacts } from "../environments/environmentMachine.ts";
+import { candidateListingsAtom } from "../environments/listings.ts";
+import { rowTarget } from "../environments/mateLink.ts";
 import type { ProbeReading } from "../environments/probeStore.ts";
 import { REGISTRATION_RECORDS_KEY, type RegistrationRecord } from "../environments/records.ts";
+import { heldCandidates } from "../projections/candidates.ts";
 import type { ExchangeAnswer } from "../identityExchange.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
 import { makePlatformSignals, type PageEvent } from "../knowledge/signals.ts";
@@ -230,6 +233,8 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
   let recordReads = 0;
   /** What the stage hears when another tab writes the records. */
   let recordsChanged: (() => void) | null = null;
+  /** The tab's writes of the records do not land: a full or refusing storage, which the port swallows. */
+  let writesLand = true;
   let catalog: CatalogListener | null = null;
   let unhardened: ReadonlySet<string> = new Set();
   const ports: AccountEnvironmentPorts = {
@@ -251,7 +256,9 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
         recordReads += 1;
         return storage.get(key) ?? null;
       },
-      setItem: (key, value) => void storage.set(key, value),
+      setItem: (key, value) => {
+        if (writesLand) storage.set(key, value);
+      },
       listen: (changed) => {
         recordsChanged = changed;
         listening.records += 1;
@@ -296,6 +303,10 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
     },
     /** The connection catalog as the stage hears it. */
     catalog: () => catalog!,
+    /** Whether this tab's writes of the records land from now on. */
+    landWrites: (land: boolean) => {
+      writesLand = land;
+    },
     setUnhardened: (next: ReadonlySet<string>) => {
       unhardened = next;
     },
@@ -936,7 +947,7 @@ describe("the post-grant stage's Mate environments", () => {
       });
     }).pipe(Effect.provideService(Clock.Clock, clock));
     yield* Effect.addFinalizer(() => built.close("application-close"));
-    return { clock, page, grant, rig, built };
+    return { clock, page, grant, rig, built, registry };
   });
 
   /** `openAccount` past the epoch's first grant, with its post-grant stage. */
@@ -1223,6 +1234,86 @@ describe("the post-grant stage's Mate environments", () => {
         expect([...new Set(rig.removed)]).toEqual(row.removed);
       }),
     ),
+  );
+
+  // A registration a machine holds is the Mate's live link. Records are personal context: a write
+  // that does not land — a full storage, which the web's port swallows — or another tab's write
+  // made without it says nothing about the link, and releasing it left a Mate this tab still held
+  // unregistered, so no door could open it, with nothing to exchange it again.
+  it.effect.each([
+    { name: "its record's write did not land", lands: false, elsewhere: null },
+    { name: "another tab stored the records without it", lands: true, elsewhere: [] },
+  ])("a registration its machine holds is kept though the records lack it: $name", (row) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { rig, environments } = yield* granted([]);
+        rig.landWrites(row.lands);
+        void environments.connect(MATE, "user");
+        yield* settle;
+        rig.exchanges[0]!.answer(
+          admitted(ENV_A, async () => {
+            // The registry takes it: the catalog publishes it before the record is written.
+            rig.catalog().environments([{ environmentId: ENV_A, origin: MATE_ORIGIN }]);
+            return { ok: true };
+          }),
+        );
+        yield* settle;
+        if (row.elsewhere !== null) rig.storeElsewhere(row.elsewhere, true);
+        yield* settle;
+
+        expect(environments.machines().get(MATE)?.credential).toMatchObject({
+          kind: "held",
+          environmentId: ENV_A,
+          installed: true,
+        });
+        expect(rig.records()).toEqual([]);
+        expect(rig.removed).toEqual([]);
+      }),
+    ),
+  );
+
+  // Until a project's services are read — at every load, and again whenever its inventory lease is
+  // released, which drops its services query — the listing's row for its Mate stands for the whole
+  // project (`projectCandidates`): its key is the project's id, and the target that key names is
+  // nobody's. The Mate is still there, and its machine still holds it.
+  it.effect(
+    "a Mate's row read before its project's services names the target its machine holds",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const platform = heldQueries(platformAdapter([A_MATE]), ["services-of-project"]);
+          const { rig, built, registry, environments } = yield* granted(
+            [REMEMBERED_A],
+            [A_MATE],
+            platform.adapter,
+          );
+          // Remembered, it is exchanged where its record kept it (A16).
+          yield* answerDescriptor(rig, ENV_A);
+          rig.exchanges[0]!.answer(admitted(ENV_A, async () => ({ ok: true })));
+          yield* settle;
+
+          const rows = registry
+            .get(candidateListingsAtom(built.data))
+            .flatMap(({ listing }) => heldCandidates(listing).rows);
+          const listed = rows.find(({ project }) => project.id === A_MATE.projectId);
+          expect(listed).toMatchObject({ key: A_MATE.projectId, presence: "unknown" });
+          const machines = environments.machines();
+          // What the row's own key names holds nothing.
+          expect(machines.get(listed!.key)?.credential.kind).not.toBe("held");
+          const key = rowTarget({
+            key: listed!.key,
+            projectId: listed!.project.id,
+            machines,
+            records: environments.records(),
+          });
+          expect(key).toBe(MATE);
+          expect(machines.get(MATE)?.credential).toMatchObject({
+            kind: "held",
+            environmentId: ENV_A,
+            installed: true,
+          });
+        }),
+      ),
   );
 
   /** Answers the oldest probe of this origin still in flight. */

@@ -7,27 +7,34 @@
  * plan waits for Start, what you write changes it. `@` finds the Mate's
  * files. A refusal comes back as its sentence under the pill; the text stays
  * for a fix.
+ *
+ * For a viewer who may not run the crew (D6), `CrewTellLocked` stands in its
+ * place: why, and the one way out, in the pill's own 48 px.
  */
+import type { CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import {
   CREW_COMPOSER_PLACEHOLDER,
   CREW_COMPOSER_PLAN_PLACEHOLDER,
+  CREW_LOCK_ACTION,
   CREW_TO_LEAD_LINE,
   CREW_TO_PICK_LINE,
   CREW_TO_WORD,
+  crewLockWords,
   crewSendToWord,
   crewToWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewCommand, Crewmate, EnvironmentId } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
-import { ArrowUpIcon } from "lucide-react";
+import { ArrowUpIcon, LockIcon } from "lucide-react";
 import { useCallback, useRef, useState, type KeyboardEvent } from "react";
 
 import { useTheme } from "~/hooks/useTheme";
 import { useComposerPathSearch } from "~/lib/composerPathSearchState";
+import { cn } from "~/lib/utils";
 
 import { ComposerCommandMenu } from "../../chat/ComposerCommandMenu";
 import { MateFace } from "../primitives";
-import { CrewTip } from "./CrewParts";
+import { CrewPress, CrewTip } from "./CrewParts";
 import {
   pickTellItem,
   tellMenu,
@@ -49,6 +56,8 @@ export function CrewTellComposer({
   lead,
   planWaits,
   sending,
+  holding = false,
+  pickable,
   error,
   onSend,
 }: {
@@ -62,6 +71,10 @@ export function CrewTellComposer({
   /** The lead's plan waits for Start: what is written changes it. */
   readonly planWaits: boolean;
   readonly sending: boolean;
+  /** Whose the crew's logins are is still being read: Send waits for it. */
+  readonly holding?: boolean;
+  /** Without a lead, whether a face may be picked: a crewmate the viewer may run. */
+  readonly pickable?: (handle: string) => boolean;
   /** The last send's refusal, as its sentence. */
   readonly error: string | null;
   /** Whether the engine took it; a taken message clears the pill. */
@@ -99,7 +112,7 @@ export function CrewTellComposer({
   );
 
   const command = tellPayload(text, lead === null ? picked : []);
-  const ready = command !== null && !sending && (lead !== null || picked.length > 0);
+  const ready = command !== null && !sending && !holding && (lead !== null || picked.length > 0);
   const send = useCallback(() => {
     if (!ready || command === null) return;
     void onSend(command).then((taken) => {
@@ -161,6 +174,7 @@ export function CrewTellComposer({
                     aria-label={mate.displayName}
                     aria-pressed={picked.includes(mate.handle)}
                     className="crew-pick"
+                    disabled={pickable?.(mate.handle) === false}
                     key={mate.handle}
                     onClick={() => setPicked(tellPicks(picked, mate.handle, crewmates))}
                     type="button"
@@ -210,6 +224,32 @@ export function CrewTellComposer({
           {error}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * The composer's place for a viewer who may not run the crew (D6): the lock
+ * in the conversation's amber, why in its words with the crew for its agent
+ * (`crewLockWords`), and its one way out — in the pill's own 48 px and
+ * radius, quiet rather than white since nothing is written here, so nothing
+ * under it moves when whose the crew's logins are becomes known.
+ */
+export function CrewTellLocked({
+  lock,
+  onSignIn,
+  className,
+}: {
+  readonly lock: CrewLock;
+  readonly onSignIn: (lock: CrewLock) => void;
+  /** Where it stands: the composer's place, or the empty state's press. */
+  readonly className?: string;
+}) {
+  return (
+    <div className={cn("crew-locked", className)} data-crew-locked={lock.ownership}>
+      <LockIcon aria-hidden="true" className="size-4 shrink-0 text-warning" />
+      <p className="crew-locked-words">{crewLockWords(lock.ownership)}</p>
+      <CrewPress label={CREW_LOCK_ACTION} onPress={() => onSignIn(lock)} />
     </div>
   );
 }

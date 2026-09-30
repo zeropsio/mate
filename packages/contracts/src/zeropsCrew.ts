@@ -625,6 +625,150 @@ export const CrewCommand = Schema.TaggedUnion({
 export type CrewCommand = typeof CrewCommand.Type;
 
 /**
+ * Whose logins a press reaches — D6 at the crew's door. A crewmate runs on a
+ * login someone signed in (PRD §2.3), and only that person may run it; so a
+ * command that runs or changes the crew is refused, at its entry, for a
+ * person who may not run one of the logins it reaches, and a client offers it
+ * to nobody else. Nothing a crewmate does later can then trace to a press of
+ * someone who may not run it: a queued task, a resumed run, a landing that
+ * starts the next task.
+ *
+ * - `crewmates` — the named crewmates' own: a message or an answer, a new
+ *   task's owner, a conversation cleared, memory, the app, Show on dev, a
+ *   removal, a branch adopted as a copy;
+ * - `job` — the crewmate's, and the login the crew home now names for it;
+ * - `tasks` — each task's crewmate's;
+ * - `claim` — that of the crewmate the dev service's claim names;
+ * - `tell` — the lead's, with a lead; else each crewmate mentioned;
+ * - `crew` — every crewmate's: a run's start, resume or finish, the goal;
+ * - `home` — every crewmate's, and every login the crew home names: Apply;
+ * - `stops` — none: any member may stop or pause a running crew, since a
+ *   colleague must be able to stop what they may not start (D6) — a runaway
+ *   crew on somebody's account never waits for them;
+ * - `reads` — none: a draft's facts, lost work found, ports proposed.
+ */
+export type CrewCommandReach =
+  | { readonly kind: "reads" }
+  | { readonly kind: "stops" }
+  | { readonly kind: "crew" }
+  | { readonly kind: "home" }
+  | { readonly kind: "crewmates"; readonly handles: ReadonlyArray<string> }
+  | { readonly kind: "job"; readonly handle: string }
+  | { readonly kind: "tasks"; readonly taskIds: ReadonlyArray<string> }
+  | { readonly kind: "claim"; readonly host: string }
+  | { readonly kind: "tell"; readonly handles: ReadonlyArray<string> };
+
+export function crewCommandReach(command: CrewCommand): CrewCommandReach {
+  switch (command._tag) {
+    case "orphanScan":
+    case "deliverDraft":
+    case "addCrewPorts":
+      return { kind: "reads" };
+    case "pause":
+    case "stop":
+      return { kind: "stops" };
+    case "start":
+    case "resume":
+    case "finish":
+    case "briefSave":
+      return { kind: "crew" };
+    case "apply":
+      return { kind: "home" };
+    case "message":
+    case "answer":
+    case "showOnDev":
+    case "startFresh":
+    case "memoryEdit":
+    case "memoryRemove":
+    case "forgetMemory":
+    case "removeCrewmate":
+    case "appRun":
+    case "appStop":
+      return { kind: "crewmates", handles: [command.handle] };
+    case "taskCreate":
+      return { kind: "crewmates", handles: [command.owner] };
+    case "adopt":
+      return { kind: "crewmates", handles: [command.branch.replace(/^crew\//u, "")] };
+    case "jobSave":
+      return { kind: "job", handle: command.handle };
+    case "taskEdit":
+    case "discard":
+    case "markFresh":
+    case "taskRetry":
+    case "review":
+    case "land":
+    case "landNow":
+    case "askResolve":
+    case "askFix":
+      return { kind: "tasks", taskIds: [command.taskId] };
+    case "planAccept":
+    case "planDiscard":
+      return { kind: "tasks", taskIds: command.taskIds };
+    case "claimGrant":
+    case "claimDeny":
+    case "claimRelease":
+      return { kind: "claim", host: command.host };
+    case "tell":
+      return { kind: "tell", handles: command.mentions.map((mention) => mention.handle) };
+  }
+}
+
+/**
+ * The crew as a reach resolves against it — the engine's tables on the
+ * server, the snapshot in a client — so both name the same logins.
+ */
+export interface CrewLoginRoster {
+  /** Every crewmate, the lead's kind included, with the login it runs on. */
+  readonly crewmates: ReadonlyArray<{
+    readonly handle: string;
+    readonly kind: CrewMemberKind;
+    readonly login: string;
+  }>;
+  /** A task's crewmate. */
+  readonly ownerOf: (taskId: string) => string | undefined;
+  /** The crewmate a dev service's Show-on-dev claim names. */
+  readonly claimOf: (host: string) => string | undefined;
+  /** The crew home's crewmates and the login each would run on, for `home` and `job`. */
+  readonly home?: ReadonlyArray<{ readonly handle: string; readonly login: string }>;
+}
+
+/** The logins `reach` reaches, each once, the crew's order first. */
+export function crewReachLogins(
+  reach: CrewCommandReach,
+  roster: CrewLoginRoster,
+): ReadonlyArray<string> {
+  const loginOf = (handle: string | undefined) =>
+    roster.crewmates.find((mate) => mate.handle === handle)?.login;
+  const homeLoginOf = (handle: string) =>
+    roster.home?.find((mate) => mate.handle === handle)?.login;
+  const logins = (candidates: ReadonlyArray<string | undefined>): ReadonlyArray<string> => [
+    ...new Set(candidates.filter((login): login is string => login !== undefined)),
+  ];
+  const every = roster.crewmates.map((mate) => mate.login);
+  switch (reach.kind) {
+    case "reads":
+    case "stops":
+      return [];
+    case "crew":
+      return logins(every);
+    case "home":
+      return logins([...every, ...(roster.home ?? []).map((mate) => mate.login)]);
+    case "crewmates":
+      return logins(reach.handles.map(loginOf));
+    case "job":
+      return logins([loginOf(reach.handle), homeLoginOf(reach.handle)]);
+    case "tasks":
+      return logins(reach.taskIds.map((taskId) => loginOf(roster.ownerOf(taskId))));
+    case "claim":
+      return logins([loginOf(roster.claimOf(reach.host))]);
+    case "tell": {
+      const lead = roster.crewmates.find((mate) => mate.kind === "lead");
+      return lead === undefined ? logins(reach.handles.map(loginOf)) : [lead.login];
+    }
+  }
+}
+
+/**
  * A file of the crew home, relative to it: `crew.yaml`, `brief.md` or
  * `jobs/<handle>.md` — nothing else is readable or writable through the files
  * RPCs, so no path can leave the home.

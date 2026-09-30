@@ -19,10 +19,13 @@
  * One seam for every surface that hands work over — a change's page, the
  * crew, the review — so each asks the same way.
  *
- * No Mate we can reach, or no conversation started yet: the projects screen
- * owns connecting and starting one, exactly as selecting the row does.
+ * A Mate not connected here, or with no conversation started yet, is asked
+ * through its door, exactly as selecting its row opens it (`useOpenMate`): its
+ * own view connects it, says what it waits for, and the ask is written in the
+ * conversation it hands over to. Only an ask that names no Mate goes to the
+ * projects screen.
  */
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import {
   resolvePrimaryConversation,
   type ZeropsConversationCandidate,
@@ -35,6 +38,7 @@ import { useCallback } from "react";
 import { useThreadShells } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { useComposerDraftStore } from "../composerDraftStore";
+import { useOpenMate } from "./useOpenMate";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 
 /**
@@ -79,23 +83,33 @@ export function askMateThread<T extends ZeropsConversationCandidate>(
 }
 
 /**
- * Where an ask goes, from the one lookup of the Mate it names. Only a Mate found connected to an
- * environment is asked there. Every other answer goes to the projects screen, which owns
- * connecting and says what the listing knows: why a Mate cannot be reached, or — while the listing
- * has not answered — that it is still reading (§3.4). An ask never waits unseen for a listing that
- * may not answer.
+ * Where an ask goes, from the one lookup of the Mate it names. A Mate found connected to an
+ * environment is asked there. Every other answer goes through its door (`useOpenMate`): its own
+ * view connects it and says what it waits for — why it cannot be reached, or, while the listing
+ * has not answered, that it is still looking (§3.4) — and the ask is written once its
+ * conversation opens. An ask never waits unseen.
  */
 export type AskMateTarget =
-  | { readonly kind: "projects" }
+  | { readonly kind: "mate" }
   | { readonly kind: "environment"; readonly environmentId: EnvironmentId };
 
 export function askMateTarget(
   lookup: CandidateLookup<{ readonly environmentId?: EnvironmentId }>,
 ): AskMateTarget {
   const environmentId = lookup.kind === "found" ? lookup.row.environmentId : undefined;
-  return environmentId === undefined
-    ? { kind: "projects" }
-    : { kind: "environment", environmentId };
+  return environmentId === undefined ? { kind: "mate" } : { kind: "environment", environmentId };
+}
+
+/**
+ * Writes an ask in a conversation's composer: sent where the person already decided (spec §5.4
+ * retired for those surfaces by the owner, 2026-09-19); a request left to be read joins what they
+ * had typed.
+ */
+function askIn(threadRef: ScopedThreadRef, ask: string, send: boolean): void {
+  const drafts = useComposerDraftStore.getState();
+  if (!send) {
+    drafts.setPrompt(threadRef, askedDraft(drafts.getComposerDraft(threadRef)?.prompt, ask));
+  } else drafts.requestSend(threadRef, ask);
 }
 
 export function useAskMate(
@@ -104,39 +118,40 @@ export function useAskMate(
   const router = useRouter();
   const threads = useThreadShells();
   const { listing } = useZeropsCandidates();
+  const openMate = useOpenMate();
   const { onNavigate } = options;
 
   return useCallback<AskMate>(
     (mateProjectId, ask, options) => {
-      const target: AskMateTarget =
-        mateProjectId === undefined
-          ? { kind: "projects" }
-          : askMateTarget(findCandidate(listing, (row) => row.project.id === mateProjectId));
+      const send = options?.send !== false;
+      if (mateProjectId === undefined) {
+        void router.navigate({ to: "/zerops" });
+        return;
+      }
+      const lookup = findCandidate(listing, (row) => row.project.id === mateProjectId);
+      const target = askMateTarget(lookup);
       const chat =
-        target.kind === "projects"
+        target.kind === "mate"
           ? undefined
           : askMateThread(
               threads.filter((thread) => thread.environmentId === target.environmentId),
               options?.threadId,
             );
-      if (target.kind === "projects" || chat === undefined) {
-        void router.navigate({ to: "/zerops" });
+      onNavigate?.();
+      if (target.kind === "mate" || chat === undefined) {
+        // Its door: the conversation it opens — now, or once its own view hands over — is asked.
+        openMate(lookup.kind === "found" ? lookup.row : { projectId: mateProjectId }, (opened) => {
+          askIn(opened, ask, send);
+        });
         return;
       }
       const threadRef = scopeThreadRef(target.environmentId, chat.id);
-      // Sent where the person already decided (spec §5.4 retired for those
-      // surfaces by the owner, 2026-09-19); a request left to be read joins
-      // what they had typed.
-      const drafts = useComposerDraftStore.getState();
-      if (options?.send === false) {
-        drafts.setPrompt(threadRef, askedDraft(drafts.getComposerDraft(threadRef)?.prompt, ask));
-      } else drafts.requestSend(threadRef, ask);
-      onNavigate?.();
+      askIn(threadRef, ask, send);
       void router.navigate({
         to: "/$environmentId/$threadId",
         params: buildThreadRouteParams(threadRef),
       });
     },
-    [listing, onNavigate, router, threads],
+    [listing, onNavigate, openMate, router, threads],
   );
 }

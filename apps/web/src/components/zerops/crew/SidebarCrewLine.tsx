@@ -11,7 +11,8 @@
  * A reload draws the line where it stood (`menuMemory.ts`), so no row moves
  * when the crew's feed answers: the faces this browser last read, at rest —
  * which of them works or waits, and the crew's fact, are only true now and
- * wait for the feed.
+ * wait for the feed. *Review* stands only where the task's crewmate is the
+ * viewer's to run (D6, `crewAccess`); its place stays either way.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { crewFaceWord } from "@t3tools/client-runtime/zerops/crew/phrases";
@@ -23,6 +24,7 @@ import { useEffect, useState } from "react";
 
 import { buildThreadRouteParams } from "../../../threadRoutes";
 import { useCrew } from "../../../zerops/crew/useCrew";
+import { useCrewAccess } from "../../../zerops/crew/useCrewAccess";
 import { menuMemory, rememberedCrewOf, rememberMenu, withCrews } from "../../../zerops/menuMemory";
 import { useOpenReview } from "../../../zerops/review";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
@@ -49,6 +51,8 @@ export function SidebarCrewLine({
   readonly read?: SidebarCrewRead | undefined;
 }) {
   const live = useCrew(environmentId ?? null);
+  // Whose the crew's logins are, for the crew the feed reads; a crew handed in reads nobody's.
+  const access = useCrewAccess(read === undefined ? (environmentId ?? null) : null, live.snapshot);
   // What this browser last read of the crew, for the line's place on a reload.
   const [remembered] = useState(() => menuMemory().crews[projectId]);
   // A crew surface exists only for a crew read and applied (seam 21): not
@@ -77,7 +81,15 @@ export function SidebarCrewLine({
     }
   }, [faces, gone, projectId, read]);
   if (line !== undefined) {
-    return <CrewLineView environmentId={environmentId} fact={line.fact} faces={line.faces} known />;
+    return (
+      <CrewLineView
+        environmentId={environmentId}
+        fact={line.fact}
+        faces={line.faces}
+        known
+        reviews={(taskId) => access.reach({ kind: "tasks", taskIds: [taskId] }) === null}
+      />
+    );
   }
   if (crew !== undefined || remembered === undefined) return null;
   return (
@@ -100,11 +112,14 @@ function CrewLineView({
   faces,
   fact,
   known,
+  reviews,
 }: {
   readonly environmentId: EnvironmentId | undefined;
   readonly faces: ReadonlyArray<CrewLineFace>;
   readonly fact: CrewLineFact | null;
   readonly known: boolean;
+  /** Whether a task's review is the viewer's to open from here; absent, none is. */
+  readonly reviews?: ((taskId: string) => boolean) | undefined;
 }) {
   const navigate = useNavigate();
   const openReview = useOpenReview();
@@ -175,7 +190,7 @@ function CrewLineView({
           <TooltipPopup side="right">{fact.words}</TooltipPopup>
         </Tooltip>
       )}
-      {fact?.kind === "land" && environmentId !== undefined ? (
+      {fact?.kind === "land" && environmentId !== undefined && reviews?.(fact.taskId) === true ? (
         <button
           aria-label={`Review: ${fact.words}`}
           className="menu-textbtn outline-none focus-visible:ring-2 focus-visible:ring-ring"

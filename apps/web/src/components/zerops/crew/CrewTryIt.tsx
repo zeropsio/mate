@@ -3,7 +3,9 @@
  * task is ready to land: the crewmate's work tried before it lands — its own
  * app, run first while stopped, or its work shown at the Mate's dev address —
  * as its menu's *Try its work* tries it (`useCrewTry`). Nothing for a
- * crewmate with no copy of the code; held while there is nothing to open yet.
+ * crewmate with no copy of the code, nor where it would start something for a
+ * viewer who may not run the crewmate (D6); held while there is nothing to
+ * open yet.
  */
 import { CREW_TRY_IT_WORD } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -21,7 +23,7 @@ export function CrewTryIt({
   readonly title: string;
 }) {
   const tries = useCrewTry(environmentId, handle);
-  if (tries === null) return null;
+  if (tries === null || !tries.offered) return null;
   return (
     <button
       aria-label={`${CREW_TRY_IT_WORD}: ${title}`}

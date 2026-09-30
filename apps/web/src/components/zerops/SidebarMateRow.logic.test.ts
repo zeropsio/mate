@@ -9,6 +9,7 @@ import {
   mateCrewItem,
   mateDeletingView,
   mateOwnerView,
+  ownerBadge,
   mateRowActivity,
   mateRowReading,
   mateRowView,
@@ -169,6 +170,14 @@ describe("mateCrewItem — the crew's door in a Mate's own menu", () => {
     { case: "one whose owner is not named", status: "applied", owner: undefined, item: null },
   ] as const)("$case", ({ status, owner, item }) => {
     expect(mateCrewItem({ status, owner })).toEqual(item);
+  });
+
+  // D6: its agent signed in by somebody else, the viewer may read a crew and not set one up.
+  it.each([
+    { case: "without a crew", status: "none", item: null },
+    { case: "with a crew", status: "applied", item: CREW },
+  ] as const)("the viewer's own, on a login they may not run, $case", ({ status, item }) => {
+    expect(mateCrewItem({ status, owner: MINE, mayChange: false })).toEqual(item);
   });
 });
 
@@ -662,5 +671,22 @@ describe("mateRowActivity — the conversation's reading while its socket stands
 
   it("draws memory where the socket stands but its conversation is not read yet", () => {
     expect(mateRowActivity({ live: undefined, phase: "connected", remembered })).toBe(remembered);
+  });
+});
+
+describe("ownerBadge — what the corner of a Mate's face wears", () => {
+  const person = {
+    kind: "person",
+    mark: { label: "Jan's Mate", initial: "J", hue: 210, picture: null },
+  } as const;
+  const nobody = { kind: "nobody", label: "No owner yet." } as const;
+  const unnamed = { kind: "unnamed" } as const;
+  it.each([
+    ["a colleague's Mate: their picture", person, false, person],
+    ["the viewer's own Mate: nothing", person, true, null],
+    ["a Mate nobody signed in: the empty seat", nobody, false, nobody],
+    ["an owner not named yet: nothing, it may be the viewer's", unnamed, false, null],
+  ] as const)("%s", (_name, seat, isViewer, wears) => {
+    expect(ownerBadge(seat, isViewer)).toEqual(wears);
   });
 });

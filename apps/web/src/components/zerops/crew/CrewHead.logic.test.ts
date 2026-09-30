@@ -2,7 +2,15 @@ import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing
 import type { CrewRun, CrewTask } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { crewGoalTitle, crewModeLine, type CrewModeInput } from "./CrewHead.logic";
+import { crewAccess, type CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
+
+import {
+  crewGoalTitle,
+  crewModeLine,
+  crewModePressLock,
+  type CrewModeInput,
+  type CrewModePressKind,
+} from "./CrewHead.logic";
 
 const fixture = crewSnapshotFixture();
 const run = fixture.run!;
@@ -68,14 +76,14 @@ describe("crewModeLine", () => {
     ],
     [
       "stopped by its time, with work queued",
-      { run: at({ state: "paused", reason: "time", spentUsd: 0 }), ...QUEUED },
-      "Stopped working on its own: its 8 hours are up. It spent $0.00.",
+      { run: at({ state: "paused", reason: "time", spentUsd: 6.4 }), ...QUEUED },
+      "Stopped working on its own: its 8 hours are up. It spent $6.40.",
       "keepGoing",
     ],
     [
-      "stopped by its time, with nothing left to do",
+      "stopped by its time, with nothing left to do and nothing spent",
       { run: at({ state: "paused", reason: "time", spentUsd: 0 }), ...QUIET },
-      "Stopped working on its own: its 8 hours are up. It spent $0.00.",
+      "Stopped working on its own: its 8 hours are up",
       null,
     ],
     [
@@ -155,4 +163,51 @@ describe("crewGoalTitle", () => {
   ])("%s", (_, crew, title) => {
     expect(crewGoalTitle(crew)).toEqual(title);
   });
+});
+
+describe("crewModePressLock — the mode line's press for a viewer who may not run the crew (D6)", () => {
+  const lock = (login: string): CrewLock => ({
+    login,
+    agentId: "claude-code",
+    ownership: "someone-else",
+  });
+  const accessOf = (closed: boolean) =>
+    crewAccess({
+      snapshot: fixture,
+      lockOf: (login) => (closed ? lock(login) : null),
+      defaultLogin: "claudeAgent",
+      reading: false,
+    });
+
+  it.each<{
+    readonly kind: CrewModePressKind;
+    readonly run: CrewRun | null;
+    readonly offered: boolean;
+    readonly says: string;
+  }>([
+    // A colleague stops what they may not start: a runaway crew never waits for its signer.
+    { kind: "stop", run, offered: true, says: "Stop, a running crew's" },
+    {
+      kind: "keepGoing",
+      run: at({ state: "paused", reason: "budget" }),
+      offered: false,
+      says: "no Keep going…, which resumes it",
+    },
+    {
+      kind: "tryAgain",
+      run: at({ state: "paused", reason: "refused" }),
+      offered: false,
+      says: "no Try again, which resumes it",
+    },
+    { kind: "letItWork", run: null, offered: false, says: "no Let it work, which starts one" },
+  ])("offers a viewer who may not run the crew $says", ({ kind, run: current, offered }) => {
+    expect(crewModePressLock(kind, current, accessOf(true)) === null).toBe(offered);
+  });
+
+  it.each<CrewModePressKind>(["stop", "keepGoing", "tryAgain", "letItWork"])(
+    "offers %s to the person who runs it",
+    (kind) => {
+      expect(crewModePressLock(kind, run, accessOf(false))).toBeNull();
+    },
+  );
 });

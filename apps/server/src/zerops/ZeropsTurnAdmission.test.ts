@@ -539,3 +539,169 @@ describe("ZeropsTurnAdmission", () => {
     );
   }
 });
+
+const operator = (
+  world: World,
+  instanceIds: ReadonlyArray<string>,
+  principal: TurnPrincipal,
+): Effect.Effect<string | undefined> =>
+  admission(world).pipe(
+    Effect.flatMap((service) => service.admitOperator({ instanceIds, principal })),
+    Effect.match({ onFailure: (error) => error.message, onSuccess: () => undefined }),
+  );
+
+/** Jan's Claude Code login whose credential stopped working here: still his. */
+const janNeedsReauth: World = {
+  ...janSignedClaude,
+  agents: [{ ...signedIn("claude-code"), providerAuth: "unauthenticated" }],
+};
+
+describe("ZeropsTurnAdmission.admitOperator", () => {
+  for (const [name, world, instanceIds, principal, expected] of [
+    [
+      "lets the signer run or change what runs on their login",
+      janSignedClaude,
+      ["claudeAgent"],
+      session(JAN),
+      undefined,
+    ],
+    [
+      "refuses anybody else, in admission's words",
+      janSignedClaude,
+      ["claudeAgent"],
+      session(EVA),
+      SOMEONE_ELSE,
+    ],
+    [
+      "refuses everybody on a login nobody recorded a signer for",
+      { agents: [signedIn("claude-code")] },
+      ["claudeAgent"],
+      session(JAN),
+      UNRECORDED,
+    ],
+    [
+      "lets anybody on a token-authorized agent: a key belongs to the project",
+      { agents: [signedIn("codex", true)], signers: { codex: JAN } },
+      ["codex"],
+      session(EVA),
+      undefined,
+    ],
+    [
+      "lets anybody where no login is held: there is nobody's to spend",
+      {
+        agents: [
+          {
+            ...signedIn("claude-code"),
+            credPresent: false,
+            providerAuth: "unauthenticated",
+            state: "not-authorized",
+          },
+        ],
+        signers: { "claude-code": JAN },
+      },
+      ["claudeAgent"],
+      session(EVA),
+      undefined,
+    ],
+    [
+      "judges a login whose credential stopped working by whose it is",
+      janNeedsReauth,
+      ["claudeAgent"],
+      session(EVA),
+      SOMEONE_ELSE,
+    ],
+    [
+      "lets its signer at a login whose credential stopped working",
+      janNeedsReauth,
+      ["claudeAgent"],
+      session(JAN),
+      undefined,
+    ],
+    [
+      "judges another login by its own signer",
+      evaSignedWork,
+      ["claudeAgent-work"],
+      session(JAN),
+      LOGIN_SOMEONE_ELSE,
+    ],
+    [
+      "lets another login's own signer",
+      evaSignedWork,
+      ["claudeAgent-work"],
+      session(EVA),
+      undefined,
+    ],
+    [
+      "never lets another login inherit its agent's signer",
+      { ...evaSignedWork, signers: { "claude-code": JAN } },
+      ["claudeAgent-work"],
+      session(JAN),
+      LOGIN_UNRECORDED,
+    ],
+    [
+      "lets anybody on another login that holds no credential",
+      { ...evaSignedWork, logins: { "claudeAgent-work": "reconnect" } },
+      ["claudeAgent-work"],
+      session(JAN),
+      undefined,
+    ],
+    [
+      "judges another login that must sign in again by whose it is",
+      { ...evaSignedWork, logins: { "claudeAgent-work": "needs-reauth" } },
+      ["claudeAgent-work"],
+      session(JAN),
+      LOGIN_SOMEONE_ELSE,
+    ],
+    [
+      "refuses on the first login of several the person may not run",
+      evaSignedWork,
+      ["claudeAgent-work", "claudeAgent"],
+      session(EVA),
+      SOMEONE_ELSE,
+    ],
+    ["lets a press that reaches no login", janSignedClaude, [], session(EVA), undefined],
+    [
+      "lets anybody on a driver Mate signs nobody in to",
+      janSignedClaude,
+      ["opencode"],
+      session(EVA),
+      undefined,
+    ],
+    [
+      "lets anybody on an agent the auth feed does not report",
+      { signers: { "claude-code": JAN } },
+      ["claudeAgent"],
+      session(EVA),
+      undefined,
+    ],
+    [
+      "refuses a session that names no Zerops user",
+      janSignedClaude,
+      ["claudeAgent"],
+      { kind: "session", subject: "cloud-connect" },
+      SOMEONE_ELSE,
+    ],
+    [
+      "judges a crew principal by its starter",
+      janSignedClaude,
+      ["claudeAgent"],
+      { kind: "crew", startedBy: EVA },
+      SOMEONE_ELSE,
+    ],
+    [
+      "lets everybody outside a Zerops environment",
+      { ...janSignedClaude, zerops: false },
+      ["claudeAgent"],
+      session(EVA),
+      undefined,
+    ],
+  ] as const satisfies ReadonlyArray<
+    readonly [string, World, ReadonlyArray<string>, TurnPrincipal, string | undefined]
+  >) {
+    it.effect(name, () =>
+      Effect.gen(function* () {
+        assert.strictEqual(yield* operator(world, instanceIds, principal), expected);
+      }),
+    );
+  }
+});

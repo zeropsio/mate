@@ -267,16 +267,17 @@ describe("SidebarZeropsTree", () => {
     expect(row).not.toContain("border");
   });
 
-  it("puts the owner's picture before the Mate's name, off its face", () => {
+  it("wears a colleague's picture on its face's corner, cut out of the face, never before the name", () => {
     const jan = { name: "Jan Novák", initials: "JN", avatarUrl: "https://cdn/jan.png" };
     const html = render([CRM_DEV], { getOwner: () => jan });
     const rowAt = html.indexOf('data-zerops-surface="sidebar-mate"');
     const row = html.slice(rowAt, html.indexOf("</button>", rowAt));
     const ownerAt = row.indexOf('data-zerops-surface="sidebar-mate-owner"');
-    // On the name's line, right before the name — and nothing on the face's
-    // corner any more: its shape stays whole.
+    // In the face's box, after the face and before the words: "(face) Cleo"
+    // on the name's line read as a person called Cleo (the owner, 2026-09-30).
     expect(ownerAt).toBeGreaterThan(row.indexOf("</svg>"));
-    expect(ownerAt).toBeLessThan(row.indexOf('data-zerops-surface="sidebar-mate-name"'));
+    expect(ownerAt).toBeLessThan(row.indexOf("flex min-w-0 flex-col"));
+    expect(row).toContain("menu-face-cut");
     expect(row).toContain('data-zerops-avatar="picture"');
     expect(row).toContain('src="https://cdn/jan.png"');
     expect(row).toContain('class="menu-owner"');
@@ -284,18 +285,32 @@ describe("SidebarZeropsTree", () => {
     expect(row).toContain("Jan Novák&#x27;s Mate");
   });
 
-  it("gives an owner without a picture their initial on their own hue, and an unknown one a plain disc", () => {
+  it("puts nothing on the face of the viewer's own Mate", () => {
+    const petra = {
+      name: "Petra Malá",
+      initials: "PM",
+      avatarUrl: "https://cdn/petra.png",
+      isViewer: true,
+    };
+    const html = render([CRM_DEV], { getOwner: () => petra });
+    expect(html).not.toContain('data-zerops-surface="sidebar-mate-owner"');
+    expect(html).not.toContain("menu-face-cut");
+  });
+
+  it("gives an owner without a picture their initial on their own hue, and an unnamed one nothing yet", () => {
     const quiet = { name: "Eva Dvořák", initials: "ED", avatarUrl: null };
     const withInitials = render([CRM_DEV], { getOwner: () => quiet });
     expect(withInitials).toContain('data-zerops-avatar="initials"');
     expect(withInitials).toContain('<span aria-hidden="true">E</span>');
     expect(withInitials).toMatch(/--menu-owner-hue:\d+/u);
 
-    // Somebody its records name, whom the member list has not named: the mark
-    // keeps its place, so the name starts where every other one does.
+    // Somebody its records name, whom the member list has not named: it may be
+    // the viewer, so the face waits whole — the badge only ever arrives, and
+    // in the face's box, so nothing moves when it does.
     const signed = candidate("crm-dev", [...CRM_DEV.project.tagList!, SIGNER]);
     const unnamed = render([signed], { getOwner: () => undefined });
-    expect(unnamed).toContain('data-zerops-avatar="none"');
+    expect(unnamed).not.toContain('data-zerops-surface="sidebar-mate-owner"');
+    expect(unnamed).not.toContain("menu-face-cut");
     expect(unnamed).not.toContain("&#x27;s Mate");
     expect(unnamed).not.toContain('data-zerops-primitive="avatar"');
     expect(unnamed).not.toContain("sidebar-mate-sign-in");

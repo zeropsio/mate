@@ -109,7 +109,11 @@ export function crewOnItsOwnWords(
 
 const STOPPED = "Stopped working on its own";
 
-/** Why a run stopped working on its own, as its mode line says it. */
+/**
+ * Why a run stopped working on its own, as its mode line says it. Its time
+ * running out says what it spent — and nothing about money when that comes
+ * to less than a cent.
+ */
 export function crewStoppedWords(
   run: Pick<CrewRun, "reason" | "reasonDetail" | "spentUsd" | "usagePercent" | "options">,
 ): string {
@@ -120,11 +124,15 @@ export function crewStoppedWords(
         ? `${STOPPED}: it spent ${dollars(run.spentUsd, true)}`
         : `${STOPPED}: it spent its ${dollars(budgetUsd)}`;
     case "time": {
-      const spent = `It spent ${dollars(run.spentUsd, true)}.`;
-      if (timeLimitHours === "unlimited") return `${STOPPED}. ${spent}`;
-      return timeLimitHours === 1
-        ? `${STOPPED}: its hour is up. ${spent}`
-        : `${STOPPED}: its ${timeLimitHours} hours are up. ${spent}`;
+      const why =
+        timeLimitHours === "unlimited"
+          ? STOPPED
+          : timeLimitHours === 1
+            ? `${STOPPED}: its hour is up`
+            : `${STOPPED}: its ${timeLimitHours} hours are up`;
+      return Math.round(run.spentUsd * 100) === 0
+        ? why
+        : `${why}. It spent ${dollars(run.spentUsd, true)}.`;
     }
     case "usage": {
       const percent = stopAtUsagePercent ?? Math.round(run.usagePercent ?? 0);
@@ -319,6 +327,30 @@ export const CREW_TO_PICK_LINE = "Each one you pick gets it as a task of its own
 /** The send button, named for whom it sends to. */
 export const crewSendToWord = (name: string | null): string =>
   name === null ? "Send to the crew" : `Send to ${name}`;
+
+/* ------------------------------------------------------------ a crew closed to you (D6) */
+
+/**
+ * What stands in the composer's place for a viewer who may not run the crew:
+ * the conversation's own words (`agentOwnershipComposerNotice`, pinned to
+ * these by the phrases' test), the crew named where the conversation names
+ * its agent — in the Crew tab the crew is what they may not run — its dash
+ * held to the word before it, so no line starts with it. Why nobody runs it,
+ * or why the viewer's own record failed, reads as the conversation says it.
+ */
+export function crewLockWords(ownership: "someone-else" | "unrecorded" | "record-failed"): string {
+  switch (ownership) {
+    case "someone-else":
+      return "Signed in by another project member\u00a0— only they can run this crew.";
+    case "unrecorded":
+      return "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.";
+    case "record-failed":
+      return "Your sign-in could not be recorded.";
+  }
+}
+
+/** The notice's one way out, the conversation's (`AGENT_OWNERSHIP_RECOVERY_LABEL`): the viewer's own sign-in. */
+export const CREW_LOCK_ACTION = "Sign in with your own account";
 
 /* ------------------------------------------------------------ the rows */
 
@@ -617,15 +649,21 @@ export const crewShowAllWord = (count: number): string => `Show all ${count}`;
 
 export const CREW_WHAT_CHANGED = "What changed";
 
+/** What became of a piece of work that went in, after its title. */
+export const crewWentInOutcome = (mateName: string): string =>
+  `went into ${crewPossessive(mateName)} code`;
+
+/** What became of a piece of work that closed with nothing of its own to add, after its title. */
+export const crewClosedOutcome = (mateName: string): string =>
+  `closed with nothing to add to ${crewPossessive(mateName)} code`;
+
 /** A piece of work that went in, as a crewmate's chat marks it. */
 export const crewWentInWord = (title: string | null, mateName: string): string =>
-  title === null
-    ? `Its work went into ${crewPossessive(mateName)} code`
-    : `${title} went into ${crewPossessive(mateName)} code`;
+  `${title ?? "Its work"} ${crewWentInOutcome(mateName)}`;
 
 /** A piece of work that closed with nothing of its own to add, as a crewmate's chat marks it. */
 export const crewClosedWord = (title: string | null, mateName: string): string =>
-  `${title ?? "Its work"} closed with nothing to add to ${crewPossessive(mateName)} code`;
+  `${title ?? "Its work"} ${crewClosedOutcome(mateName)}`;
 
 /* ------------------------------------------------------------ no crew yet, setup */
 
@@ -895,6 +933,16 @@ export const crewDiffStatWord = (stat: {
 /** A crewmate chat's composer. */
 export const crewMessagePlaceholder = (name: string): string => `Message ${name}…`;
 
+/**
+ * A crewmate's empty conversation: its job, headed as the job view heads it,
+ * and the work it finished — each piece by its title and what became of it,
+ * as its chat's seam says it (`crewWentInOutcome`, `crewClosedOutcome`).
+ */
+export const CREWMATE_EMPTY_WORDS = {
+  job: CREW_JOB_WORDS.job,
+  work: "Its work",
+} as const;
+
 const FRESH_NEXT = "Its next message starts a fresh conversation.";
 
 /**
@@ -969,14 +1017,40 @@ export function crewLoginRunsWord(names: ReadonlyArray<string>, lead: string | n
 /* ------------------------------------------------------------ the conversation's line */
 
 /**
+ * What each kind of crewmate does, as a clause: the lead plans and reviews,
+ * a builder works in its own copy of the Mate's code (the job view's
+ * _Builds_), a reviewer changes nothing (its _Reviews_).
+ */
+export function crewmateDoesWords(kind: Crewmate["kind"], mateName: string): string {
+  switch (kind) {
+    case "lead":
+      return "plans and reviews the crew's work";
+    case "writer":
+      return `builds its part in its own copy of ${crewPossessive(mateName)} code`;
+    case "reader":
+      return "checks the others' work and changes nothing";
+  }
+}
+
+/**
  * Who a crewmate is on the conversation's line, after its name: one of its
  * Mate's crew, or the Mate's lead and what the lead does. A face's tooltip
  * and its accessible name say it; the name stands before it.
  */
 export function crewmateRoleWords(mateName: string, lead: boolean): string {
   return lead
-    ? `, ${mateName}'s lead — plans and reviews the crew's work`
+    ? `, ${mateName}'s lead — ${crewmateDoesWords("lead", mateName)}`
     : `, one of ${mateName}'s crew`;
+}
+
+/**
+ * Whose a crewmate is and what it does, the one line under its name in its
+ * empty conversation, after its Mate's small face: "Fen's lead · plans and
+ * reviews the crew's work", "One of Fen's crew · builds its part in its own
+ * copy of Fen's code".
+ */
+export function crewmateWhoseLine(kind: Crewmate["kind"], mateName: string): string {
+  return `${crewOneOfWord(mateName, kind === "lead")} · ${crewmateDoesWords(kind, mateName)}`;
 }
 
 /** The Mate's own chat, as its face on the line says it while another chat is open. */
@@ -1023,17 +1097,31 @@ function personsLine(plain: string, name: string): string {
 }
 
 /**
- * The first sentence of a job, in plain words and the person's: what a
- * crewmate's row says while it is on nothing, its face says on hover and its
- * menu says at the top. Markdown's marks go — a heading's hashes, a list's
- * bullet, emphasis, code ticks, a link's address — the words the job says to
- * its crewmate become the person's line (`personsLine`), and the sentence
- * ends at its first full stop, question or exclamation mark that a space or
- * the line's end follows, so `index.ts` or `v1.2` never ends it; a line with
- * none is whole.
+ * A job's first line in plain words and the person's: what its crewmate's
+ * empty conversation says under _Its job_. Markdown's marks go — a heading's
+ * hashes, a list's bullet, emphasis, code ticks, a link's address — and the
+ * words the job says to its crewmate become the person's line
+ * (`personsLine`). Its first sentence always stays; a later one stays only
+ * while it speaks about the crewmate, never to it: "You read, plan and
+ * review; you never change files." is the crewmate's instruction, not the
+ * person's line.
  */
-export function crewJobSentence(jobFirstLine: string, name: string): string {
-  const plain = jobFirstLine
+export function crewJobLine(jobFirstLine: string, name: string): string {
+  const [first = "", ...rest] = jobSentences(personsLine(plainJobLine(jobFirstLine), name));
+  return [first, ...rest.filter((sentence) => !SPEAKS_TO_IT.test(sentence))].join(" ");
+}
+
+/** A later sentence that addresses the crewmate rather than describing it. */
+const SPEAKS_TO_IT = /\byou(?:r|rs|rself)?\b/iu;
+
+/** A line's sentences: each ends at a full stop, question or exclamation mark a space or the end follows. */
+function jobSentences(line: string): ReadonlyArray<string> {
+  return line.split(/(?<=[.!?])\s+/u).filter((sentence) => sentence.length > 0);
+}
+
+/** A job line without markdown's marks. */
+function plainJobLine(jobFirstLine: string): string {
+  return jobFirstLine
     .replace(MARKDOWN_LEAD, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/gu, "$1")
     .replace(/`([^`]*)`/gu, "$1")
@@ -1042,7 +1130,18 @@ export function crewJobSentence(jobFirstLine: string, name: string): string {
     .replace(/(^|[^\w*])\*([^*\s][^*]*)\*(?!\w)/gu, "$1$2")
     .replace(/(^|[^\w])_([^_\s][^_]*)_(?!\w)/gu, "$1$2")
     .trim();
-  const line = personsLine(plain, name);
+}
+
+/**
+ * The first sentence of a job, in plain words and the person's
+ * (`crewJobLine`): what a crewmate's row says while it is on nothing, its
+ * face says on hover and its menu says at the top. The sentence ends at its
+ * first full stop, question or exclamation mark that a space or the line's
+ * end follows, so `index.ts` or `v1.2` never ends it; a line with none is
+ * whole.
+ */
+export function crewJobSentence(jobFirstLine: string, name: string): string {
+  const line = crewJobLine(jobFirstLine, name);
   const end = /[.!?](?=\s|$)/u.exec(line);
   return end === null ? line : line.slice(0, end.index + 1);
 }

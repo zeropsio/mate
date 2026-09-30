@@ -318,6 +318,31 @@ export interface TurnSpan {
   readonly terminalEntry: MessageEntry | null;
 }
 
+/**
+ * How far apart two of the person's messages may stand and still be one
+ * start: the later one sent into a run that has said nothing yet. A run says
+ * something within seconds of beginning — its first thought — and the
+ * composer holds a second message until the first one's run has begun, so a
+ * message that waited longer than this for the next one had its own moment:
+ * its run never came (a Stop before it began, a restart, a failed start), and
+ * the run the next message starts is that message's alone (Juno, 2026-09-30:
+ * the next day's run took the message before it for its opener, and its
+ * clock read "Thinking 17:42:08").
+ */
+export const ONE_START_MS = 60_000;
+
+/**
+ * Whether the server said, outside any run, that the messages waiting for
+ * one will get none: their start failed, or a Stop found nothing to stop.
+ */
+function endsTheWait(entry: TimelineEntry): boolean {
+  return (
+    entry.kind === "work" &&
+    (entry.entry.sourceActivityKind === "provider.turn.start.failed" ||
+      entry.entry.sourceActivityKind === "provider.turn.interrupt.failed")
+  );
+}
+
 export function deriveTurnSpans(input: {
   readonly timelineEntries: ReadonlyArray<TimelineEntry>;
   readonly terminalAssistantMessageIds: ReadonlySet<string>;
@@ -335,16 +360,31 @@ export function deriveTurnSpans(input: {
   const byTurnId = new Map<TurnId, MutableSpan>();
   const spans: MutableSpan[] = [];
   // Messages no turn has claimed yet. The next new turn is opened by the
-  // first of them; the later ones were sent into it before it produced
-  // anything. An entry of an existing turn arriving after them makes them
-  // messages sent into that turn. Nothing reads which turn is the latest, so
-  // a turn keeps its opener once another starts.
+  // first of the last of them sent one soon after another (`ONE_START_MS`);
+  // the later ones were sent into it before it produced anything, and one
+  // before a longer silence stands alone. An entry of an existing turn
+  // arriving after them makes them messages sent into that turn. Nothing
+  // reads which turn is the latest, so a turn keeps its opener once another
+  // starts.
   let unclaimed: Array<{ entry: MessageEntry; index: number }> = [];
   // A command the harness ran without a turn of its own (a `/compact`) still
   // waits here when the person writes next: that message opens the next
   // turn, never the command — the command stands alone before it.
-  const openerOf = (waiting: typeof unclaimed) =>
-    waiting.find(({ entry }) => !isCommandMessage(entry)) ?? waiting[0] ?? null;
+  const openerOf = (waiting: typeof unclaimed) => {
+    let first = waiting.length - 1;
+    while (
+      first > 0 &&
+      !(
+        (parseMs(waiting[first]!.entry.createdAt) ?? 0) -
+          (parseMs(waiting[first - 1]!.entry.createdAt) ?? 0) >
+        ONE_START_MS
+      )
+    ) {
+      first -= 1;
+    }
+    const start = waiting.slice(Math.max(first, 0));
+    return start.find(({ entry }) => !isCommandMessage(entry)) ?? start[0] ?? null;
+  };
   const open = (turnId: TurnId | null, opener: { entry: MessageEntry; index: number } | null) => {
     const span: MutableSpan = {
       key: opener ? `msg:${opener.entry.message.id}` : `turn:${turnId}`,
@@ -364,7 +404,10 @@ export function deriveTurnSpans(input: {
       continue;
     }
     const turnId = timelineEntryTurnId(entry);
-    if (turnId === null) continue;
+    if (turnId === null) {
+      if (endsTheWait(entry)) unclaimed = [];
+      continue;
+    }
     let span = byTurnId.get(turnId);
     if (span) {
       unclaimed = [];
@@ -2106,7 +2149,7 @@ export function deriveOutcome(input: {
 /**
  * Whether a run's outcome draws anything under its line. What its calls came
  * to is said on the line itself (`runEffortWords`), so an outcome of that
- * alone draws nothing, and its card is its line (`cardAlone`).
+ * alone draws nothing, and its card holds its line alone.
  */
 export function outcomeDraws(outcome: OutcomeModel): boolean {
   return (
@@ -2132,15 +2175,21 @@ export function outcomeDraws(outcome: OutcomeModel): boolean {
  * the server has begun it: the run is the Mate reading it, however long it
  * thinks before a word shows. One sent into a running turn is read at the
  * Mate's next step — once something of its turn came after it. A message the
- * provider has not reached yet is only sent.
+ * provider has not reached yet is only sent. One no run took, with a run
+ * after it, says nothing: the Mate moved on without it, and "not read yet"
+ * would promise a next step that never comes.
  */
 export function messageReceipt(
   message: ChatMessage,
   structure: ConversationStructure,
   index: number,
-): "sent" | "seen" {
+): "sent" | "seen" | null {
   const stretch = structure.stretchByIndex.get(index);
-  if (stretch === undefined) return "sent";
+  if (stretch === undefined) {
+    return structure.turns.some((turn) => (turn.stretches[0]?.anchorIndex ?? -1) > index)
+      ? null
+      : "sent";
+  }
   if (!stretch.aside && stretch.turnId !== null) return "seen";
   const turn = structure.turns.find((candidate) => candidate.key === stretch.turnKey);
   if (turn === undefined) return "sent";

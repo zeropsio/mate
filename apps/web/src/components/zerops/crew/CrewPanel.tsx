@@ -9,29 +9,50 @@
  *
  * A tab kept open after crew mode went off says so; a feed not read yet draws
  * nothing.
+ *
+ * The crew is exactly as closed as its conversations (D6, `crewAccess`): a
+ * viewer who may not run its logins reads it, and is offered nothing that
+ * runs or changes it — the composer's place says why, with the one way out.
  */
+import type { CrewAccess, CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import { crewRefusalSentence } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import type { EnvironmentId, ScopedThreadRef, ZeropsAgentId } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import type { ReactNode } from "react";
 
 import { ScrollArea } from "~/components/ui/scroll-area";
-import { useServerConfigs } from "~/state/entities";
+import { useServerConfigs, useThreadShells } from "~/state/entities";
+import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { hasCrewSurface, useCrew, type CrewRead } from "~/zerops/crew/useCrew";
-import { useAskMate } from "~/zerops/useAskMate";
+import { askMateThread, useAskMate } from "~/zerops/useAskMate";
 import { useEnvironmentProjectRef } from "~/zerops/useZeropsFeeds";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 
 import { CrewSectionHost } from "./CrewSectionHost";
 
 /** The Crew tab beside one conversation. */
-export function CrewPanel({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
+export function CrewPanel({
+  threadRef,
+  onSignIn,
+}: {
+  readonly threadRef: ScopedThreadRef;
+  /** The conversation's one sign-in dialog, opened on an agent. */
+  readonly onSignIn: (agentId: ZeropsAgentId) => void;
+}) {
   const { environmentId, threadId } = threadRef;
   const crew = useCrew(environmentId);
+  const access = useCrewAccess(environmentId, crew.snapshot);
   const whoLivesHere = useZeropsMate(environmentId);
   const askMate = useAskMate();
   const projectId = useEnvironmentProjectRef(environmentId)?.projectId;
   const treeCwd = useServerConfigs().get(environmentId)?.cwd ?? null;
+  // An ask for the Mate goes into this chat when it is a person chat, else the main one:
+  // offered only where that chat is the viewer's to run.
+  const askChat = askMateThread(
+    useThreadShells().filter((thread) => thread.environmentId === environmentId),
+    threadId,
+  );
+  const askLock = askChat === undefined ? null : access.login(askChat.modelSelection.instanceId);
   const mate =
     whoLivesHere.kind === "mate"
       ? {
@@ -42,12 +63,15 @@ export function CrewPanel({ threadRef }: { readonly threadRef: ScopedThreadRef }
       : undefined;
   return (
     <CrewPanelBody
+      access={access}
+      askLock={askLock}
       crew={crew}
       environmentId={environmentId}
       mate={mate}
       // Every draft for the Mate goes into the chat the tab is open beside
       // when it is a person chat, else the main one.
       onAskMate={(draft) => askMate(projectId, draft, { threadId })}
+      onSignIn={(lock) => onSignIn(lock.agentId)}
       treeCwd={treeCwd}
     />
   );
@@ -65,6 +89,12 @@ export interface CrewPanelBodyProps {
   readonly treeCwd: string | null;
   /** Hands the Mate a draft, confirmed first by the tab. */
   readonly onAskMate: (draft: string) => void;
+  /** What this viewer may run or change on the crew (`useCrewAccess`). */
+  readonly access: CrewAccess;
+  /** The chat an ask for the Mate goes to is not this viewer's to run; `null` where it is. */
+  readonly askLock: CrewLock | null;
+  /** A closed crew's one way out: the viewer's own sign-in on its login's agent. */
+  readonly onSignIn: (lock: CrewLock) => void;
 }
 
 /** The tab's column for the crew it is handed — what a harness draws too. */
@@ -74,6 +104,9 @@ export function CrewPanelBody({
   mate,
   treeCwd,
   onAskMate,
+  access,
+  askLock,
+  onSignIn,
 }: CrewPanelBodyProps) {
   if (crew.status === null) return null;
   if (!hasCrewSurface(crew.status) || crew.snapshot === null) {
@@ -86,10 +119,13 @@ export function CrewPanelBody({
   return (
     <CrewPanelFrame status={crew.status}>
       <CrewSectionHost
+        access={access}
+        askLock={askLock}
         current={crew.current}
         environmentId={environmentId}
         mate={mate}
         onAskMate={onAskMate}
+        onSignIn={onSignIn}
         snapshot={crew.snapshot}
         treeCwd={treeCwd}
         view={crew.status === "applied" ? crew.view : null}

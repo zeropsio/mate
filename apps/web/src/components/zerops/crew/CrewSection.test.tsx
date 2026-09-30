@@ -1,3 +1,4 @@
+import { crewAccess, type CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import { EnvironmentId, type CrewSnapshot } from "@t3tools/contracts";
@@ -16,12 +17,30 @@ const textOf = (html: string) =>
     .replace(/<style[^>]*>.*?<\/style>/gsu, " ")
     .replace(/<[^>]*>/gu, " ")
     .replace(/&#x27;/gu, "'")
+    .replace(/\u00a0/gu, " ")
     .replace(/\s+/gu, " ")
     .trim();
+
+/** What a viewer may run: every login but those `closed`, each signed in by somebody else. */
+const accessOf = (snapshot: CrewSnapshot, closed: ReadonlyArray<string>) =>
+  crewAccess({
+    snapshot,
+    lockOf: (login) => (closed.includes(login) ? lockOn(login) : null),
+    defaultLogin: "claudeAgent",
+    reading: false,
+  });
+
+const lockOn = (login: string): CrewLock => ({
+  login,
+  agentId: "claude-code",
+  ownership: "someone-else",
+});
 
 const render = (snapshot: CrewSnapshot, overrides: Partial<CrewSectionProps> = {}) =>
   renderToStaticMarkup(
     <CrewSection
+      access={accessOf(snapshot, [])}
+      askLock={null}
       busy={false}
       environmentId={EnvironmentId.make("env-crew")}
       errorAt={() => null}
@@ -33,6 +52,7 @@ const render = (snapshot: CrewSnapshot, overrides: Partial<CrewSectionProps> = {
       onReview={noop}
       onRowMenu={noop}
       onShip={noop}
+      onSignIn={noop}
       renderPlan={() => null}
       send={sent}
       snapshot={snapshot}
@@ -49,7 +69,12 @@ const RUN = FIXTURE.run!;
 describe("CrewSectionEmpty — no crew yet", () => {
   it("says what a crew is, with Fen and three empty seats, and one press", () => {
     const html = renderToStaticMarkup(
-      <CrewSectionEmpty mate={{ name: "Fen", tint: "amber" }} onSetUp={noop} />,
+      <CrewSectionEmpty
+        lock={null}
+        mate={{ name: "Fen", tint: "amber" }}
+        onSetUp={noop}
+        onSignIn={noop}
+      />,
     );
     expect(textOf(html)).toBe(
       [
@@ -59,6 +84,21 @@ describe("CrewSectionEmpty — no crew yet", () => {
       ].join(" "),
     );
     expect(html.match(/class="crew-seat"/gu)).toHaveLength(3);
+  });
+
+  it("says why, with the one way out, in place of Set up a crew for a viewer who may not run it", () => {
+    const html = renderToStaticMarkup(
+      <CrewSectionEmpty
+        lock={lockOn("claudeAgent")}
+        mate={{ name: "Fen", tint: "amber" }}
+        onSetUp={noop}
+        onSignIn={noop}
+      />,
+    );
+    expect(textOf(html)).toContain(
+      "Signed in by another project member — only they can run this crew. Sign in with your own account",
+    );
+    expect(html).not.toContain(">Set up a crew</button>");
   });
 });
 
@@ -175,5 +215,81 @@ describe("CrewSection — the Crew tab's column", () => {
     });
     const erik = html.slice(html.indexOf('data-crew-row="erik"'));
     expect(textOf(erik)).toContain("That task is gone.");
+  });
+});
+
+describe("CrewSection — for a viewer who may not run the crew (D6)", () => {
+  const LOGINS = ["claudeAgent", "codex"];
+  const closed = (snapshot: CrewSnapshot = FIXTURE) =>
+    render(snapshot, { access: accessOf(snapshot, LOGINS), askLock: lockOn("claudeAgent") });
+
+  it("puts why and the one way out in the composer's own place", () => {
+    const html = closed();
+    expect(html).not.toContain("data-crew-composer");
+    expect(html).toContain(
+      'class="crew-locked mx-4 mt-4 @max-md:mt-3.5" data-crew-locked="someone-else"',
+    );
+    expect(textOf(html)).toContain(
+      "Signed in by another project member — only they can run this crew. Sign in with your own account",
+    );
+  });
+
+  it("reads every row, need and piece of work, and offers nothing that runs or changes the crew", () => {
+    const text = textOf(closed());
+    for (const words of [
+      "Working on its own · $6.40 of $20 · 1 h 12 m of 8 h",
+      "Wants to show its work at Fen's dev address.",
+      "Pricing in CZK or EUR?",
+      "Stopped: the check timed out twice.",
+      "In Fen's code",
+      "Fen hasn't shipped these yet",
+    ]) {
+      expect(text).toContain(words);
+    }
+    expect(text).not.toMatch(
+      /Let it|Not now|Answer|Try again|Drop it|Ask Fen to|Keep going|Let it work/u,
+    );
+  });
+
+  it("offers Stop alone on a running crew: a colleague stops what they may not start", () => {
+    const html = closed();
+    const head = html.slice(0, html.indexOf("data-crew-locked"));
+    expect(head).toContain(">Stop</button>");
+    expect(html.match(/<button[^>]*>Stop<\/button>/gu)).toHaveLength(1);
+  });
+
+  it.each([
+    ["stopped at its money", { ...RUN, state: "paused", reason: "budget", spentUsd: 20 }],
+    ["stopped by a refusal", { ...RUN, state: "paused", reason: "refused", reasonDetail: "x" }],
+  ] as const)("offers nothing to keep a crew %s going", (_state, run) => {
+    const html = closed({ ...FIXTURE, run });
+    expect(html).not.toMatch(/>(?:Keep going…|Try again)<\/button>/u);
+  });
+
+  it("offers no menu and no goal to change, the goal's title only read", () => {
+    const html = closed();
+    expect(html).not.toContain("The crew&#x27;s menu");
+    expect(html).not.toMatch(/aria-label="[^"]* menu"/u);
+    expect(html).toMatch(/<span[^>]*data-crew-goal-title[^>]*>Camera and HUD rework<\/span>/u);
+  });
+
+  it("closes only what reaches a login the viewer may not run", () => {
+    // Backend alone runs on a login signed in by somebody else.
+    const mixed: CrewSnapshot = {
+      ...FIXTURE,
+      crewmates: FIXTURE.crewmates.map((mate) =>
+        mate.handle === "backend"
+          ? { ...mate, login: { id: "claudeAgent_eva", label: "eva", agent: "claude-code" } }
+          : mate,
+      ),
+    };
+    const html = render(mixed, { access: accessOf(mixed, ["claudeAgent_eva"]) });
+    const text = textOf(html);
+    expect(html).toContain("data-crew-composer");
+    expect(text).toContain("Wants to show its work at Fen's dev address.");
+    expect(text).not.toMatch(/Let it|Not now/u);
+    expect(text).toContain("Pricing in CZK or EUR? Answer");
+    // Stopping the run is every member's.
+    expect(html).toContain(">Stop</button>");
   });
 });

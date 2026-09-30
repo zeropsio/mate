@@ -32,6 +32,11 @@ export interface CrewTimeline {
   /** The Mate whose crew it is, named where work goes into its code. */
   readonly mateName: string;
   readonly onOpenThread: (threadId: ThreadId) => void;
+  /**
+   * _Change its job_: the crewmate's job in the Crew tab, as its menu opens it;
+   * `null` for a viewer who may not change the crew.
+   */
+  readonly onChangeJob: (() => void) | null;
 }
 
 export const CrewTimelineContext = createContext<CrewTimeline | null>(null);

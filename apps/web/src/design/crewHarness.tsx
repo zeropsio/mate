@@ -13,6 +13,12 @@
  * crew mode went off. The board's menus (`RowMenu`, `CrewMenu`) are `idle`
  * with its ··· pressed. `?theme=dark` for the dark theme.
  *
+ * `&viewer=other` draws every state for a viewer who may not run the crew's
+ * agent — signed in by another project member (D6) — so each can be put
+ * beside its open twin; `&viewer=unrecorded` and `&viewer=record-failed` for
+ * the other two reasons. A view (setup, goal, job) is not the viewer's to open
+ * then, and the tab draws what the app does in its place: the column.
+ *
  * The column is the real `CrewPanelBody` in the real `RightPanelTabs`, over a
  * fixture crew; a view (setup, goal, job) is the real view in the same frame,
  * over fixture crew files.
@@ -20,6 +26,11 @@
  * Served by the dev server at `/design-crew.html`. Fixtures only: nothing here
  * ships, and no route imports this module.
  */
+import {
+  crewAccess,
+  type CrewLock,
+  type CrewLockOwnership,
+} from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import {
@@ -56,6 +67,17 @@ import "../index.css";
 const params = new URLSearchParams(location.search);
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const STATE = params.get("state") ?? "idle";
+
+/** Who looks: the person who runs the crew's agent, or — `&viewer=` — somebody who may not. */
+const VIEWERS: Readonly<Record<string, CrewLockOwnership>> = {
+  other: "someone-else",
+  unrecorded: "unrecorded",
+  "record-failed": "record-failed",
+};
+const CLOSED = VIEWERS[params.get("viewer") ?? ""] ?? null;
+/** Every login of Fen's is closed to such a viewer: Fen's own chat, and each crewmate's. */
+const lockOf = (login: string): CrewLock | null =>
+  CLOSED === null ? null : { login, agentId: "claude-code", ownership: CLOSED };
 
 const ENVIRONMENT = EnvironmentId.make("environment-crew-harness");
 const PROJECT = ProjectId.make("project-crew-harness");
@@ -699,14 +721,21 @@ const NONE: CrewSnapshot = {
   landedNotDelivered: 0,
 };
 
+/** A view is not a closed viewer's to open: the tab draws the column in its place, as the app does. */
+const VIEWS = ["goal", "job", "setup-start", "setup-draft"];
+const COLUMN_IN_PLACE = CLOSED !== null && VIEWS.includes(STATE);
+
 function crewRead(): CrewRead {
   if (STATE === "off") return { status: "off", snapshot: null, view: null, current: false };
-  if (STATE === "none") return { status: "none", snapshot: NONE, view: null, current: true };
+  if (STATE === "none" || (COLUMN_IN_PLACE && STATE.startsWith("setup"))) {
+    return { status: "none", snapshot: NONE, view: null, current: true };
+  }
   const view = deriveCrewView(SNAPSHOT, SHELLS, readCrewThread);
   return { status: "applied", snapshot: SNAPSHOT, view, current: true };
 }
 
 function Tab() {
+  if (COLUMN_IN_PLACE) return <Column />;
   if (STATE === "goal") {
     return (
       <CrewPanelFrame status="applied">
@@ -758,12 +787,27 @@ function Tab() {
       </CrewPanelFrame>
     );
   }
+  return <Column />;
+}
+
+/** The tab's column over the fixture crew, as the viewer the harness was asked for sees it. */
+function Column() {
+  const crew = crewRead();
+  const access = crewAccess({
+    snapshot: crew.snapshot,
+    lockOf,
+    defaultLogin: "claudeAgent",
+    reading: false,
+  });
   return (
     <CrewPanelBody
-      crew={crewRead()}
+      access={access}
+      askLock={lockOf("claudeAgent")}
+      crew={crew}
       environmentId={ENVIRONMENT}
       mate={FEN}
       onAskMate={noop}
+      onSignIn={noop}
       treeCwd={null}
     />
   );

@@ -763,6 +763,7 @@ describe("MessagesTimeline", () => {
           crewmate: { handle: "backend", profile: null },
           mateName: "Fen",
           onOpenThread: () => {},
+          onChangeJob: null,
         }}
       >
         <MessagesTimeline
@@ -789,7 +790,10 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain('data-zerops-surface="crewmate-empty-state"');
     expect(markup).toContain("You cleared its conversation");
-    expect(markup).toContain("Message backend…");
+    // Its name's line is held, empty, until the crew is read: the handle never stands in.
+    expect(markup).toContain("data-crewmate-name-held");
+    expect(markup).not.toContain(">backend<");
+    expect(markup).not.toContain("Message backend");
     expect(markup).not.toContain("@backend");
     expect(markup).not.toContain('data-timeline-row-kind="crew-seam"');
   });
@@ -1265,6 +1269,7 @@ describe("MessagesTimeline — the conversation", () => {
           crewmate: { handle: "backend", profile: backend },
           mateName: "Fen",
           onOpenThread: () => {},
+          onChangeJob: null,
         }}
       >
         <MessagesTimeline
@@ -1316,6 +1321,108 @@ describe("MessagesTimeline — the conversation", () => {
     expect(markup).not.toContain("data-message-receipt");
     // Nothing about the run opens a dialog: what it holds opens in place.
     expect(markup).not.toContain('aria-haspopup="dialog"');
+  });
+
+  // A run whose card holds its line alone keeps its card, closed as open (the
+  // owner, 2026-09-30, of a bare worked line: "why the collapsed state has no
+  // bg at all?").
+  it.each([
+    { fold: "folded", case: "closed" },
+    { fold: "shown", case: "opened" },
+  ] as const)("keeps the card of a run whose line is all it holds, $case", ({ fold }) => {
+    setRunFold("environment-local:thread-1", "msg:message-1", fold);
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        latestTurn={settled}
+        timelineEntries={[
+          buildUserTimelineEntry("Build it"),
+          tool("w1", 5),
+          assistant("a1", 60, "The shop builds."),
+        ]}
+      />,
+    );
+    forgetRunFolds("environment-local:thread-1");
+    const slice = (id: string) =>
+      new RegExp(`data-timeline-row-id="${id}"[^>]*><div class="([^"]*)"`, "u").exec(markup)?.[1];
+    expect(markup).toContain(`data-run-fold="${fold}"`);
+    expect(slice("record:msg:message-1")).toBe("run-tray run-tray-top");
+    expect(slice("card-end:msg:message-1")).toBe("run-tray run-tray-bottom");
+  });
+
+  // A card with nothing in it but its line's row is drawn whole by that row
+  // (the owner, 2026-09-30, of a live card holding only "Thinking": "the
+  // state of border radiuses in the initial thinking with no other content
+  // around sucks"): closed as open, and live while nothing runs alongside.
+  it.each([
+    {
+      case: "closed",
+      fold: "folded",
+      live: false,
+      alongside: false,
+      whole: ["record", "card-end"],
+    },
+    { case: "opened", fold: "shown", live: false, alongside: false, whole: ["record", "card-end"] },
+    {
+      case: "live, nothing alongside",
+      fold: null,
+      live: true,
+      alongside: false,
+      whole: ["record", "working", "card-end"],
+    },
+    { case: "live, a task alongside", fold: null, live: true, alongside: true, whole: [] },
+  ] as const)("draws a card whole by its line's row: $case", ({ fold, live, alongside, whole }) => {
+    if (fold !== null) setRunFold("environment-local:thread-1", "msg:message-1", fold);
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        {...(live
+          ? {
+              isWorking: true,
+              activeTurnStartedAt: MESSAGE_CREATED_AT,
+              latestTurn: running,
+              runningTurnId: turnId,
+            }
+          : { latestTurn: settled })}
+        {...(alongside
+          ? {
+              working: {
+                operations: [],
+                helpers: null,
+                tasks: null,
+                background: {
+                  tasks: [
+                    {
+                      id: "b1",
+                      title: "Serve the app on port 3000",
+                      state: "running" as const,
+                      watch: false,
+                      turnId: "turn-1",
+                      startedAt: at(2),
+                      endedAt: null,
+                    },
+                  ],
+                  running: 1,
+                  done: 0,
+                  failed: 0,
+                },
+                afterTurn: null,
+                pause: null,
+              },
+            }
+          : {})}
+        timelineEntries={[
+          buildUserTimelineEntry("Build it"),
+          tool("w1", 5),
+          ...(live ? [] : [assistant("a1", 60, "The shop builds.")]),
+        ]}
+      />,
+    );
+    forgetRunFolds("environment-local:thread-1");
+    const drawn = [
+      ...markup.matchAll(/data-card-whole=""[^>]*? data-timeline-row-kind="([^"]+)"/gu),
+    ];
+    expect(drawn.map((match) => match[1])).toEqual(whole);
   });
 
   // A step is a bubble of the run's chat; what it printed opens in place,

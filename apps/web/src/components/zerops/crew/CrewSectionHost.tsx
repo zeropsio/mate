@@ -12,8 +12,14 @@
  *
  * A view slides 24 px in from the right; "‹ Crew" brings the column back from
  * the left. A first paint never moves.
+ *
+ * Nothing that runs or changes the crew is offered to a viewer who may not
+ * run the logins it reaches (`crewAccess`, D6): a view that changes the crew
+ * opens only for one who may change what it changes, and the column stands in
+ * its place otherwise.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type { CrewAccess, CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import {
   crewClearConfirm,
   crewDeliverAsk,
@@ -64,11 +70,21 @@ export interface CrewSectionHostProps {
   readonly treeCwd: string | null;
   /** Hands the Mate a draft, into the chat the tab is open beside when it is a person chat. */
   readonly onAskMate: (draft: string) => void;
+  /** What this viewer may run or change on the crew. */
+  readonly access: CrewAccess;
+  /** The chat an ask for the Mate goes to is not this viewer's to run; `null` where it is. */
+  readonly askLock: CrewLock | null;
+  /** A closed crew's one way out: the viewer's own sign-in. */
+  readonly onSignIn: (lock: CrewLock) => void;
 }
 
 /** Which of the tab's screens stands: its column, or a view. */
 const screenOf = (view: CrewTabView | null): string =>
   view === null ? "column" : view.kind === "job" ? `job:${view.handle ?? "new"}` : view.kind;
+
+/** What a view changes: one crewmate's job, or the whole crew — its setup, its goal, a crewmate added. */
+const viewLock = (access: CrewAccess, view: CrewTabView): CrewLock | null =>
+  view.kind === "job" && view.handle !== null ? access.crewmate(view.handle) : access.crew;
 
 export function CrewSectionHost({
   environmentId,
@@ -78,6 +94,9 @@ export function CrewSectionHost({
   mate,
   treeCwd,
   onAskMate,
+  access,
+  askLock,
+  onSignIn,
 }: CrewSectionHostProps) {
   const commands = useCrewCommand(environmentId);
   const tell = useCrewCommand(environmentId);
@@ -85,7 +104,8 @@ export function CrewSectionHost({
   const navigate = useNavigate();
   const openReview = useOpenReview();
   const providers = useServerConfigs().get(environmentId)?.providers;
-  const [view, setView] = useCrewView(environmentId);
+  const [asked, setView] = useCrewView(environmentId);
+  const view = asked === null || viewLock(access, asked) !== null ? null : asked;
   const [runDialog, setRunDialog] = useState<CrewRunDialogAsk | null>(null);
   const [ask, setAsk] = useState<{ readonly ask: string; readonly what: string } | null>(null);
   // The screen before this one, so a change of screen slides and a first paint does not.
@@ -99,6 +119,8 @@ export function CrewSectionHost({
   }
   const mateName = mate?.name ?? "the Mate";
   const applied = crew !== null;
+  // A press waits while whose the crew's logins are is still being read.
+  const busy = !current || commands.pending || access.reading;
   const errorAt = (origin: string) => {
     const words = commands.errorAt(origin);
     return words === null ? null : crewNamingTheMate(words, mateName);
@@ -195,6 +217,7 @@ export function CrewSectionHost({
           onAskPorts={askPorts}
           onClose={() => setView(null)}
           onEditCrewmate={(handle) => setView({ kind: "job", handle })}
+          startLock={access.home}
         />
       );
     }
@@ -220,6 +243,7 @@ export function CrewSectionHost({
           onClose={closeView}
           onRemove={remove}
           providers={providers}
+          saveLock={(login) => viewLock(access, view) ?? access.login(login)}
           target={target}
         />
       );
@@ -227,18 +251,22 @@ export function CrewSectionHost({
     if (crew === null) {
       return (
         <CrewSectionEmpty
+          lock={access.crew}
           mate={{
             name: mateName,
             tint: mate?.tint ?? "amber",
             ...(mate?.shape === undefined ? {} : { shape: mate.shape }),
           }}
           onSetUp={() => setView({ kind: "setup" })}
+          onSignIn={onSignIn}
         />
       );
     }
     return (
       <CrewSection
-        busy={!current || commands.pending}
+        access={access}
+        askLock={askLock}
+        busy={busy}
         environmentId={environmentId}
         errorAt={errorAt}
         mateName={mateName}
@@ -266,14 +294,21 @@ export function CrewSectionHost({
           else if (item === "remove") remove(handle);
         }}
         onShip={ship}
+        onSignIn={onSignIn}
         renderPlan={(words) =>
           plan === null ? null : (
             <CrewLeadPlanBlock
-              busy={!current || commands.pending}
+              busy={busy}
               error={errorAt(CREW_ORIGIN.plan)}
               limits={run?.options ?? null}
               plan={plan}
-              presses={crewPlanPresses({ snapshot, plan, send, openRunDialog: setRunDialog })}
+              presses={crewPlanPresses({
+                snapshot,
+                plan,
+                send,
+                openRunDialog: setRunDialog,
+                access,
+              })}
               words={words}
             />
           )

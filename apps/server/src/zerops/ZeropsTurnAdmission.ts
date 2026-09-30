@@ -29,6 +29,14 @@
  * unless the thread tool policy has a profile for it: a crewmate's turn
  * never runs ungated.
  *
+ * A press on the crew that runs or changes it without starting a turn at once
+ * — a task queued, a run resumed, a job changed — is judged by
+ * {@link ZeropsTurnAdmission.admitOperator} on every login it reaches: whose
+ * the login is, never whether it works this minute. A login held here by
+ * somebody else, or by nobody on record, refuses it in the words its turn
+ * would be refused in; one nobody holds — never signed in, or its credential
+ * gone — is nobody's, and whoever signs it in makes it theirs.
+ *
  * @module ZeropsTurnAdmission
  */
 import {
@@ -38,6 +46,7 @@ import {
   type OrchestrationCommand,
   type OrchestrationThreadShell,
   type ZeropsAgentId,
+  type ZeropsLoginState,
 } from "@t3tools/contracts";
 import {
   zeropsAgentUnavailableReason,
@@ -126,12 +135,35 @@ const CREW_KEPT_COMMANDS: ReadonlySet<OrchestrationCommand["type"]> = new Set([
   "thread.delete",
 ]);
 
+/**
+ * Whether a login beyond the defaults holds a credential here, by its state —
+ * the client reads the same off it (`mateLoginAsAgentRow`): signed in, being
+ * checked, or signed in and no longer working all hold one.
+ */
+const LOGIN_HOLDS_CREDENTIAL: Readonly<Record<ZeropsLoginState, boolean>> = {
+  authorized: true,
+  registering: true,
+  "needs-reauth": true,
+  reconnect: false,
+  "not-authorized": false,
+};
+
 export class ZeropsTurnAdmission extends Context.Service<
   ZeropsTurnAdmission,
   {
     /** Fails with the refusal when `command` would start a turn `principal` may not start. */
     readonly admit: (input: {
       readonly command: OrchestrationCommand;
+      readonly principal: TurnPrincipal;
+    }) => Effect.Effect<void, OrchestrationDispatchCommandError>;
+    /**
+     * Fails with admission's refusal when `principal` may not operate one of
+     * `instanceIds` (D6): a personal login held here whose recorded signer is
+     * somebody else, or nobody. A login no credential holds, a token's and a
+     * driver Mate signs nobody in to are nobody's, and pass.
+     */
+    readonly admitOperator: (input: {
+      readonly instanceIds: ReadonlyArray<string>;
       readonly principal: TurnPrincipal;
     }) => Effect.Effect<void, OrchestrationDispatchCommandError>;
   }
@@ -292,7 +324,59 @@ export const make = Effect.gen(function* () {
     yield* refuseSomeoneElsesAgent(command, thread, principal);
   });
 
-  return ZeropsTurnAdmission.of({ admit });
+  /**
+   * Whose login `instanceId` is, judged as if it were signed in — a login
+   * that holds a credential goes on to its token and its signer, exactly as a
+   * turn on it would; one that holds none is nobody's. Resolved as a turn
+   * resolves it: a login beyond the defaults by its own row, any other
+   * instance by its driver's agent.
+   */
+  const operatorRefusal = Effect.fnUntraced(function* (
+    instanceId: string,
+    principal: TurnPrincipal,
+  ) {
+    const subject = principalUserId(principal);
+    const login = yield* zeropsLogins.resolve(instanceId);
+    if (login !== undefined) {
+      const row = (yield* zeropsLogins.latest).find((entry) => entry.id === login.id);
+      const refusal = yield* projectSigners.loginRefusal({
+        key: login.id,
+        state: LOGIN_HOLDS_CREDENTIAL[row?.state ?? "not-authorized"]
+          ? "authorized"
+          : "not-authorized",
+        token: false,
+        subject,
+      });
+      return refusal === undefined || refusal.kind === "not-signed-in"
+        ? undefined
+        : loginRefusalMessage(login, refusal);
+    }
+    const agentId = yield* agentIdOf(instanceId);
+    if (agentId === undefined) return undefined;
+    const agent = (yield* agentAuth.latest).agents.find((entry) => entry.agentId === agentId);
+    if (agent === undefined) return undefined;
+    const refusal = yield* projectSigners.loginRefusal({
+      key: agentId,
+      state: agent.credPresent ? "authorized" : "not-authorized",
+      token: agent.flagToken,
+      subject,
+    });
+    return refusal === undefined || refusal.kind === "not-signed-in"
+      ? undefined
+      : turnRefusalMessage(agentId, refusal);
+  });
+
+  const admitOperator: ZeropsTurnAdmission["Service"]["admitOperator"] = Effect.fnUntraced(
+    function* ({ instanceIds, principal }) {
+      if (!isZeropsEnvironment(config)) return;
+      for (const instanceId of instanceIds) {
+        const message = yield* operatorRefusal(instanceId, principal);
+        if (message !== undefined) return yield* refuse(message);
+      }
+    },
+  );
+
+  return ZeropsTurnAdmission.of({ admit, admitOperator });
 });
 
 export const layer = Layer.effect(ZeropsTurnAdmission, make);

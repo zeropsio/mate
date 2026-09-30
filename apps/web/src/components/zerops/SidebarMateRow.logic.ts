@@ -108,6 +108,21 @@ export function mateOwnerView(input: {
   return { seat, signInLine: records.signedIn || input.asked ? undefined : NOBODY_SIGNED_IN };
 }
 
+/** What a Mate's face can wear on its corner: a person's picture, or nobody's empty seat. */
+export type BadgeSeat = Exclude<OwnerSeat, { readonly kind: "unnamed" }>;
+
+/**
+ * What the corner of a Mate's face wears in the menu (the owner, 2026-09-30:
+ * "(face) Cleo" before the name read as a person called Cleo): a colleague's
+ * picture, or the empty seat of a Mate nobody has signed in; the viewer's own
+ * Mate nothing, and one whose owner the member list has not named yet nothing
+ * either — it may be the viewer's, and a badge only ever arrives.
+ */
+export function ownerBadge(seat: OwnerSeat, isViewer: boolean): BadgeSeat | null {
+  if (seat.kind === "nobody") return seat;
+  return seat.kind === "person" && !isViewer ? seat : null;
+}
+
 /** The crew's door in a Mate's own menu, and whether it sets a crew up. */
 export interface MateCrewItem {
   readonly label: string;
@@ -122,16 +137,20 @@ export interface MateCrewItem {
  * tab. Only where crew mode is on — its feed says `none` or `applied`, as the
  * tab's own availability reads it — and only on the viewer's own Mate: a
  * crew's turns run only as the person who signed its agent in (D6), so a
- * colleague's Mate, and one whose owner is not named yet, offer none.
+ * colleague's Mate, and one whose owner is not named yet, offer none. Where
+ * its agent is signed in by somebody else, the viewer's own Mate still opens
+ * its crew to read, and offers no setup (`crewAccess`).
  */
 export function mateCrewItem(input: {
   readonly status: CrewStatus | null;
   readonly owner: { readonly isViewer: boolean } | undefined;
+  /** The viewer may run the login a new crew runs on; absent, they may. */
+  readonly mayChange?: boolean;
 }): MateCrewItem | null {
   if (input.owner?.isViewer !== true) return null;
   switch (input.status) {
     case "none":
-      return { label: CREW_SET_UP_WORD, setUp: true };
+      return input.mayChange === false ? null : { label: CREW_SET_UP_WORD, setUp: true };
     case "applied":
       return { label: "Crew", setUp: false };
     case "off":

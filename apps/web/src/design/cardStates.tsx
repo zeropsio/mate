@@ -3,9 +3,10 @@
  * — Nova building a /status page: the now line in each of its states (a step,
  * a long step, several at once, thinking, waiting on the person, writing),
  * the run finished while the person watched, the same run come back to —
- * closed, and opened — and a failure that still stands beside one a retry
- * undid. Each card is drawn as the conversation draws it: its record on the
- * tray's top, its result in the band under the now line, its bottom edge.
+ * closed, and opened — a run with nothing to report, whose card holds its
+ * line alone, and a failure that still stands beside one a retry undid. Each
+ * card is drawn as the conversation draws it, a row per slice: its record on
+ * the tray's top, its result in the band under the now line, its bottom edge.
  *
  * Fixtures only: the run, its hosts and its words are invented.
  */
@@ -314,13 +315,19 @@ const FACTS: ResultFacts = {
   },
 };
 
-/** The run as the conversation draws it: the person's words, the card's slices, the answer. */
+/**
+ * The run as the conversation draws it: the person's words, the card's
+ * slices — each a row of its own, as the list lays them out, the card drawn
+ * whole by its line's row while nothing else stands in it — the answer.
+ */
 function Turn({
   row,
+  ask = ASK,
   result = false,
   answer = null,
 }: {
   readonly row: RecordRow;
+  readonly ask?: string;
   /** Its result, in the band under its worked line. */
   readonly result?: boolean;
   readonly answer?: string | null;
@@ -328,25 +335,31 @@ function Turn({
   return (
     <div className="grid gap-6">
       <p className="ms-auto max-w-4/5 rounded-2xl bg-message px-3.5 py-2.5 text-message-foreground text-prose">
-        {ASK}
+        {ask}
       </p>
       <div>
-        <div className="run-tray run-tray-top">
-          <RunChat row={row} />
+        <div data-card-slice="top" data-card-whole={result ? undefined : ""}>
+          <div className="run-tray run-tray-top">
+            <RunChat row={row} />
+          </div>
         </div>
         {result ? (
-          <div className="run-tray run-tray-middle pt-1">
-            <div className="run-band">
-              <TurnReport
-                facts={FACTS}
-                onOpenImage={() => undefined}
-                onOpenTurnDiff={() => undefined}
-                outcome={OUTCOME}
-              />
+          <div data-card-slice="middle">
+            <div className="run-tray run-tray-middle pt-1">
+              <div className="run-band">
+                <TurnReport
+                  facts={FACTS}
+                  onOpenImage={() => undefined}
+                  onOpenTurnDiff={() => undefined}
+                  outcome={OUTCOME}
+                />
+              </div>
             </div>
           </div>
         ) : null}
-        <div className="run-tray run-tray-bottom" />
+        <div data-card-slice="bottom" data-card-whole={result ? undefined : ""}>
+          <div className="run-tray run-tray-bottom" />
+        </div>
       </div>
       {answer === null ? null : <p className="px-4 text-foreground text-prose">{answer}</p>}
     </div>
@@ -397,24 +410,60 @@ const THINKING: TurnHeaderActivity = {
 // A run come back to is closed to its summary line, and opened once they ask
 // for the work.
 setRunFold(CONVERSATION, "status-shown", "shown");
+setRunFold(CONVERSATION, "tests-shown", "shown");
+
+/**
+ * A run with nothing to report: it ran the tests once, and what it ran is
+ * counted on its line — "Nova worked 10s · 1 command" — so its card holds
+ * its line alone.
+ */
+const TESTS_ASK = "Run the tests once more, please.";
+const TESTS_RUN: ReadonlyArray<RecordItem> = [
+  step(command("t1", "pnpm test", "Run the tests", 2, 10), 2),
+];
+const TESTS_OUTCOME: OutcomeModel = {
+  key: "outcome:tests-run",
+  turnKey: "tests-run",
+  live: [],
+  landed: [],
+  files: null,
+  checks: null,
+  pictures: [],
+  created: [],
+  notDone: [],
+  planLeft: [],
+  change: null,
+  crewTask: null,
+  activity: [{ kind: "command", count: 1 }],
+  later: NOTHING_LATER,
+};
+const TESTS_ANSWER = "All 42 tests pass.";
+const testsSettled = status({ live: false, face: "idle", startedAt: ago(12), endedAt: ago(2) });
 
 /**
  * A run the person watches to its end: it writes its answer until End the
- * run, then its work folds into its line as its result arrives under it.
- * Run it again starts it over.
+ * run, then its work folds into its line — as its result arrives under it,
+ * or, with nothing to report, into the line alone. Run it again starts it
+ * over.
  */
-function WatchedToItsEnd() {
+function WatchedToItsEnd({ reports = true }: { readonly reports?: boolean }) {
   const [round, setRound] = useState(0);
   const [ended, setEnded] = useState(false);
-  const run = `status-watched-${round}`;
+  const run = `${reports ? "status" : "tests"}-watched-${round}`;
+  const items = reports ? RUN : TESTS_RUN;
   return (
     <div className="grid gap-3">
       <div className="flex gap-2">
-        <Button data-harness-end disabled={ended} onClick={() => setEnded(true)} size="sm">
+        <Button
+          data-harness-end={reports ? "" : "alone"}
+          disabled={ended}
+          onClick={() => setEnded(true)}
+          size="sm"
+        >
           End the run
         </Button>
         <Button
-          data-harness-again
+          data-harness-again={reports ? "" : "alone"}
           onClick={() => {
             setEnded(false);
             setRound((value) => value + 1);
@@ -426,12 +475,18 @@ function WatchedToItsEnd() {
         </Button>
       </div>
       <Turn
-        answer={ANSWER}
-        result={ended}
+        answer={reports ? ANSWER : TESTS_ANSWER}
+        {...(reports ? {} : { ask: TESTS_ASK })}
+        result={reports && ended}
         row={
           ended
-            ? record(run, { live: false, status: settled, outcome: OUTCOME })
-            : record(run, { answering: true })
+            ? record(run, {
+                items,
+                live: false,
+                status: reports ? settled : testsSettled,
+                outcome: reports ? OUTCOME : TESTS_OUTCOME,
+              })
+            : record(run, { items, answering: true })
         }
       />
     </div>
@@ -459,6 +514,12 @@ const RETRIED = command("f2", "npm test -- status", "Run the tests for the page"
 export function CardStates() {
   return (
     <>
+      <CardState
+        label="Nothing done yet"
+        note="The line alone, live: the same box as a closed run's line with nothing under it."
+      >
+        <Turn row={record("status-first", { items: [] })} />
+      </CardState>
       <CardState
         label="Thinking"
         note="Thinking, and the latest of its thought on the same line; the face looks up."
@@ -547,6 +608,12 @@ export function CardStates() {
         <WatchedToItsEnd />
       </CardState>
       <CardState
+        label="Finished while you watch, nothing to report"
+        note="Its work folds into the line, and the card closes round the line alone."
+      >
+        <WatchedToItsEnd reports={false} />
+      </CardState>
+      <CardState
         label="You come back later"
         note="Closed: the summary line alone, with Show work; the result stands under it."
       >
@@ -563,6 +630,36 @@ export function CardStates() {
         <Turn
           result
           row={record("status-shown", { live: false, status: settled, outcome: OUTCOME })}
+        />
+      </CardState>
+      <CardState
+        label="Its line alone, come back to"
+        note="Nothing to report, what it ran counted on the line: the card holds the line alone."
+      >
+        <Turn
+          answer={TESTS_ANSWER}
+          ask={TESTS_ASK}
+          row={record("tests-folded", {
+            items: TESTS_RUN,
+            live: false,
+            status: testsSettled,
+            outcome: TESTS_OUTCOME,
+          })}
+        />
+      </CardState>
+      <CardState
+        label="Its line alone, opened"
+        note="Show work opens the run under the line, which keeps its place."
+      >
+        <Turn
+          answer={TESTS_ANSWER}
+          ask={TESTS_ASK}
+          row={record("tests-shown", {
+            items: TESTS_RUN,
+            live: false,
+            status: testsSettled,
+            outcome: TESTS_OUTCOME,
+          })}
         />
       </CardState>
       <CardState

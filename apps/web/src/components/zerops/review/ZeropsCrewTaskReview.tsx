@@ -5,14 +5,19 @@
  * one commit in the Mate's code, nothing shipped until the Mate ships it. A clash or a failing
  * check is the crewmate's to fix, and the verdict hands it over with the crew's own ask.
  *
- * `CrewTaskReviewView` takes every read handed in, so the harness shows each state.
+ * `CrewTaskReviewView` takes every read handed in, so the harness shows each state. A viewer
+ * who may not run the task's crewmate (D6) reads it all, and its foot says why nothing is
+ * offered — no *Add to Fen's code*, no ask to fix.
  */
 import { crewTaskReview, type ReviewPress } from "@t3tools/client-runtime/zerops";
+import type { CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
+import { crewLockWords } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewCommand, CrewTask, EnvironmentId } from "@t3tools/contracts";
 import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
 import { useState } from "react";
 
 import { useCrew } from "~/zerops/crew/useCrew";
+import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { useCrewCommand } from "~/zerops/crew/useCrewCommand";
 import type { ReviewTarget } from "~/zerops/review";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
@@ -38,6 +43,7 @@ export function ZeropsCrewTaskReview({
   readonly onClose: () => void;
 }) {
   const { snapshot, view } = useCrew(target.environmentId);
+  const access = useCrewAccess(target.environmentId, snapshot);
   const mate = useZeropsMate(target.environmentId);
   const row = view?.tasks.find((candidate) => candidate.task.id === target.taskId);
   if (snapshot === null || view === null || row === undefined) {
@@ -70,6 +76,8 @@ export function ZeropsCrewTaskReview({
       conflicts={paths.length > 0 ? paths : laneConflicts ? ["the files it changed"] : []}
       environmentId={target.environmentId}
       face={crewmateFace(task.owner, owner)}
+      // What adds the work or hands it back reaches its crewmate's login.
+      lock={access.reach({ kind: "tasks", taskIds: [task.id] })}
       mateName={mate.kind === "mate" ? mate.mate.name : "the Mate"}
       onClose={onClose}
       task={task}
@@ -138,6 +146,8 @@ export interface CrewTaskReviewViewProps {
   readonly press: ReviewPress;
   /** The task's state when *Add to Fen's code* was pressed. */
   readonly pressedAt?: string | undefined;
+  /** The task's crewmate is not this viewer's to run (D6): nothing is offered, and the foot says why. */
+  readonly lock?: CrewLock | null;
   readonly titleId?: string | undefined;
   readonly onLand: () => void;
   /** Hands the conflict or the failed check back to the crewmate. */
@@ -160,7 +170,12 @@ export function CrewTaskReviewView(props: CrewTaskReviewViewProps) {
     press,
     pressedAt: props.pressedAt,
   });
-  const fix = model.verdict.fix;
+  const lock = props.lock ?? null;
+  const fix = lock === null ? model.verdict.fix : undefined;
+  const primary = lock === null ? model.primary : undefined;
+  // Work that went in offers nothing to anybody: its foot says so in its own words.
+  const withheld =
+    lock !== null && (model.primary !== undefined || model.verdict.fix !== undefined);
   const ask: CrewCommand | undefined =
     fix === undefined
       ? undefined
@@ -169,8 +184,8 @@ export function CrewTaskReviewView(props: CrewTaskReviewViewProps) {
         : { _tag: "askFix", taskId: task.id };
   return (
     <ZeropsReviewSurface
-      consequence={model.consequence}
-      dismiss={model.primary === undefined ? "Close" : "Cancel"}
+      consequence={withheld ? crewLockWords(lock.ownership) : model.consequence}
+      dismiss={primary === undefined ? "Close" : "Cancel"}
       fix={
         fix === undefined || ask === undefined
           ? undefined
@@ -204,12 +219,12 @@ export function CrewTaskReviewView(props: CrewTaskReviewViewProps) {
       }
       onClose={props.onClose}
       primary={
-        model.primary === undefined
+        primary === undefined
           ? undefined
           : {
-              ...model.primary,
+              ...primary,
               busy: press.kind === "running",
-              label: model.primary.label,
+              label: primary.label,
               onPress: props.onLand,
             }
       }

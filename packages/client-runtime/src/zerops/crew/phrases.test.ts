@@ -7,8 +7,10 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
+import { AGENT_OWNERSHIP_RECOVERY_LABEL, agentOwnershipComposerNotice } from "../agentOwnership.ts";
 import { crewSnapshotFixture } from "./testing/fixtures.ts";
 import {
+  CREW_LOCK_ACTION,
   CREW_MENU,
   CREW_MENU_LINES,
   CREW_MODE_PRESS,
@@ -17,10 +19,12 @@ import {
   CREW_TRY_IT_WORD,
   CREW_WORKING_WITH_YOU,
   CREW_WORKS_WHEN_ASKED,
+  CREWMATE_EMPTY_WORDS,
   crewAfterWord,
   crewBackToMateWord,
   crewBriefPlainText,
   crewBrokenCopyWord,
+  crewClosedOutcome,
   crewCommitEditAsk,
   crewDeliverAsk,
   crewDescribeAsk,
@@ -28,13 +32,17 @@ import {
   crewDiffStatWord,
   crewEarlierStintNotice,
   crewFaceWord,
+  crewJobLine,
+  crewLockWords,
   crewJobSentence,
   crewLandingWords,
   crewLineNeedsWord,
   crewLineReadyWord,
   crewLoginRunsWord,
   crewMenuFailureWord,
+  crewmateDoesWords,
   crewmateRoleWords,
+  crewmateWhoseLine,
   crewMessagePlaceholder,
   crewMoreSummary,
   crewNamingTheMate,
@@ -59,6 +67,7 @@ import {
   crewStoppedWords,
   crewSuggestedLine,
   crewTryWorkLine,
+  crewWentInOutcome,
   crewWentInWord,
   crewClosedWord,
   crewNotShippedWords,
@@ -153,14 +162,40 @@ describe("the mode line's words", () => {
       "Stopped working on its own: it spent its $20",
     ],
     [
+      "its time, spending something",
+      { reason: "time", spentUsd: 6.4 },
+      "Stopped working on its own: its 8 hours are up. It spent $6.40.",
+    ],
+    // Nothing spent says nothing about money: "It spent $0.00." was noise.
+    [
       "its time, spending nothing",
       { reason: "time", spentUsd: 0 },
-      "Stopped working on its own: its 8 hours are up. It spent $0.00.",
+      "Stopped working on its own: its 8 hours are up",
+    ],
+    [
+      "its time, spending less than a cent",
+      { reason: "time", spentUsd: 0.004 },
+      "Stopped working on its own: its 8 hours are up",
     ],
     [
       "an hour",
       { reason: "time", spentUsd: 1.25, options: options(20, 1) },
       "Stopped working on its own: its hour is up. It spent $1.25.",
+    ],
+    [
+      "an hour, spending nothing",
+      { reason: "time", spentUsd: 0, options: options(20, 1) },
+      "Stopped working on its own: its hour is up",
+    ],
+    [
+      "its time with no limit set",
+      { reason: "time", spentUsd: 1.25, options: options(20, "unlimited") },
+      "Stopped working on its own. It spent $1.25.",
+    ],
+    [
+      "its time with no limit set, spending nothing",
+      { reason: "time", spentUsd: 0, options: options(20, "unlimited") },
+      "Stopped working on its own",
     ],
     [
       "the usage stop",
@@ -790,6 +825,96 @@ describe("the conversation's line and a crewmate's menu", () => {
   });
 });
 
+describe("a crewmate's empty conversation", () => {
+  it("heads its job as the job view does, and the work it finished beside it", () => {
+    expect(CREWMATE_EMPTY_WORDS).toEqual({ job: "Its job", work: "Its work" });
+  });
+
+  it("says what became of a piece of work after its title, as its chat's seam does", () => {
+    expect(crewWentInOutcome("Fen")).toBe("went into Fen's code");
+    expect(crewClosedOutcome("Fen")).toBe("closed with nothing to add to Fen's code");
+    expect(crewWentInWord("Seasons", "Fen")).toBe(`Seasons ${crewWentInOutcome("Fen")}`);
+    expect(crewClosedWord("Seasons", "Fen")).toBe(`Seasons ${crewClosedOutcome("Fen")}`);
+  });
+
+  it.each([
+    { kind: "lead", says: "Fen's lead · plans and reviews the crew's work" },
+    {
+      kind: "writer",
+      says: "One of Fen's crew · builds its part in its own copy of Fen's code",
+    },
+    { kind: "reader", says: "One of Fen's crew · checks the others' work and changes nothing" },
+  ] as const)("says whose it is and what it does, under its name: $says", ({ kind, says }) => {
+    expect(crewmateWhoseLine(kind, "Fen")).toBe(says);
+  });
+
+  it("says whose it is in a Mate's possessive", () => {
+    expect(crewmateWhoseLine("lead", "Atlas")).toBe(
+      "Atlas' lead · plans and reviews the crew's work",
+    );
+    expect(crewmateWhoseLine("writer", "Atlas")).toBe(
+      "One of Atlas' crew · builds its part in its own copy of Atlas' code",
+    );
+  });
+
+  // The lead's face on the conversation's line says what the lead does in the same words.
+  it("says what a crewmate does as the line says the lead's", () => {
+    expect(crewmateRoleWords("Fen", true)).toBe(
+      `, Fen's lead — ${crewmateDoesWords("lead", "Fen")}`,
+    );
+  });
+
+  it.each([
+    {
+      name: "Game Rules",
+      line: "You own Game Rules: turns, scoring and their tests. Write the tests first.",
+      says: "Turns, scoring and their tests. Write the tests first.",
+    },
+    {
+      name: "Lead",
+      line: "You lead the Letopis crew: Server and world, Game systems, Clients and creation.",
+      says: "Leads the Letopis crew: Server and world, Game systems, Clients and creation.",
+    },
+    {
+      name: "Referee",
+      line: "You review every change: nothing may break a saved world. Ask before you block.",
+      says: "Reviews every change: nothing may break a saved world.",
+    },
+    {
+      name: "Lead",
+      line: "You lead the Letopis crew: Server and world, Game systems. You read, plan and review; you never change files.",
+      says: "Leads the Letopis crew: Server and world, Game systems.",
+    },
+    {
+      name: "Game systems",
+      line: "How life in the world works: seasons and growth. Its code is src/systems, with its tests. Keep your changes small.",
+      says: "How life in the world works: seasons and growth. Its code is src/systems, with its tests.",
+    },
+    {
+      name: "World Server",
+      line: "How life in the harbour town works. Seasons, weather and trade.",
+      says: "How life in the harbour town works. Seasons, weather and trade.",
+    },
+    {
+      name: "World Server",
+      line: "**Owns** the `server/` tree. Tests first.",
+      says: "Owns the server/ tree. Tests first.",
+    },
+    {
+      name: "World Server",
+      line: "- Keeps the [README](https://docs.example.test/readme) current. Always.",
+      says: "Keeps the README current. Always.",
+    },
+    { name: "World Server", line: "## Game rules", says: "Game rules" },
+    { name: "World Server", line: "   ", says: "" },
+  ])(
+    "reads a job's first line in plain words, leaving out what it says to its crewmate: $line",
+    ({ name, line, says }) => {
+      expect(crewJobLine(line, name)).toBe(says);
+    },
+  );
+});
+
 describe("crewRunsOnWord", () => {
   it.each([
     [
@@ -832,5 +957,27 @@ describe("the crew's one line under its Mate", () => {
     { name: "Bo", lead: false, says: "Bo" },
   ])("names a face: $says", ({ name, lead, says }) => {
     expect(crewFaceWord(name, lead)).toBe(says);
+  });
+});
+
+describe("a crew closed to the viewer (D6)", () => {
+  it("says it as the conversation does, the crew for its agent, its dash never starting a line", () => {
+    expect(crewLockWords("someone-else")).toBe(
+      "Signed in by another project member\u00a0— only they can run this crew.",
+    );
+    expect(crewLockWords("someone-else").replace("\u00a0", " ")).toBe(
+      agentOwnershipComposerNotice("someone-else")?.replace("this agent", "this crew"),
+    );
+  });
+
+  it.each(["unrecorded", "record-failed"] as const)(
+    "says %s in the conversation's own words",
+    (ownership) => {
+      expect(crewLockWords(ownership)).toBe(agentOwnershipComposerNotice(ownership));
+    },
+  );
+
+  it("offers the conversation's one way out", () => {
+    expect(CREW_LOCK_ACTION).toBe(AGENT_OWNERSHIP_RECOVERY_LABEL);
   });
 });

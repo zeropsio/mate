@@ -1,16 +1,23 @@
 /**
  * Switching between Mates' conversations, as the conversation pane does it
- * (T1): four Mates with conversations of their own, one of them at work; a
- * first open that waits on the server; a Mate opened before that paints from
- * what the app remembers; and a run the person opened folding as they leave
- * (the card's own fold, K7). A live Mate streams its answer from the page's
- * load, so a return to it meets rows changing under it.
+ * (T1): five Mates with conversations of their own, two of them at work —
+ * Iris on a run the person started the day after a message whose own run
+ * never came; a first open that waits on the server; a Mate opened before
+ * that paints from what the app remembers; and a run the person opened
+ * folding as they leave (the card's own fold, K7). A live Mate streams its
+ * answer from the page's load, so a return to it meets rows changing under
+ * it. A finished run that only ran commands leaves its card holding its line
+ * alone; Nova's second-to-last deployed to stage, and its result is a row
+ * under its line.
  *
  * Served by the dev server at `/design-switch.html` (`?theme=dark`,
  * `?latency=<ms>` for the first open's wait, `?stream=<ms>` for how often the
  * live Mate's answer grows, `?line=1` to head the pane with the conversation
  * line — Fen and a crew of three, each chat one of the four — so a press on
- * a face swaps the conversation as the line moves). `window.__switchHarness
+ * a face swaps the conversation as the line moves, `?first=<ms>` for a live
+ * Mate that has done nothing yet, `?deploy=<from>,<to>` for a deploy running
+ * alongside its run, and `?end=<ms>` for its run's end).
+ * `window.__switchHarness
  * .switchTo("juno")` switches from a script, so a per-frame sampler can watch
  * a switch it started itself.
  *
@@ -33,7 +40,9 @@ import type { MateTintId } from "@t3tools/shared/brand";
 import type { ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
 import * as Stream from "effect/Stream";
 
+import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
+import { deriveDock } from "~/components/chat/conversationDock.logic";
 import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
 import { MessagesTimeline } from "~/components/chat/MessagesTimeline";
 import { TimelineSwitch } from "~/components/chat/TimelineSwitch";
@@ -92,6 +101,34 @@ const COMMANDS = [
   "pnpm db:migrate --dry-run",
 ];
 
+/** A deploy to stage that went through: the run's result is the service it left running. */
+function deployedToStage(id: string, turnId: TurnId, when: string): TimelineEntry {
+  return {
+    id,
+    kind: "operation",
+    createdAt: when,
+    operation: {
+      key: `op:${id}`,
+      kind: "deploy",
+      phase: "done",
+      anchorAt: when,
+      anchorActivityId: `activity-${id}`,
+      settledAt: when,
+      turnId,
+      subject: "stage",
+      kicker: "Deploy · stage",
+      voice: "Deploying to stage",
+      voiceSource: "mate",
+      statusWord: "Deployed",
+      steps: [],
+      links: [],
+      callIds: [`call-${id}`],
+      target: { hostname: "stage" },
+      hasResult: true,
+    },
+  };
+}
+
 function turnEntries(thread: string, turn: number, calls: number): TimelineEntry[] {
   const minute = turn * 11;
   const turnId = TurnId.make(`${thread}-turn-${turn}`);
@@ -148,6 +185,9 @@ function turnEntries(thread: string, turn: number, calls: number): TimelineEntry
       },
     });
   }
+  if (thread === "nova" && turn === 12) {
+    entries.push(deployedToStage(`${thread}-deploy-${turn}`, turnId, at(minute, 6 + calls * 9)));
+  }
   const answer = `${thread}-answer-${turn}`;
   const answerAt = at(minute, 8 + calls * 9);
   entries.push({
@@ -175,6 +215,12 @@ interface HarnessThread {
   readonly live?: boolean;
   /** Calls in its last run, taller than the pane: somewhere to read inside a run. */
   readonly lastCalls?: number;
+  /**
+   * Its last run is one the person started after a message whose own run
+   * never came — a Stop before it began, then a restart — and it thinks
+   * (Juno, 2026-09-30: its clock counted from the message the day before).
+   */
+  readonly unreached?: boolean;
 }
 
 const THREADS: ReadonlyArray<HarnessThread> = [
@@ -182,10 +228,68 @@ const THREADS: ReadonlyArray<HarnessThread> = [
   { key: "juno", name: "Juno", turns: 9 },
   { key: "fen", name: "Fen", turns: 3 },
   { key: "mira", name: "Mira", turns: 5, live: true },
+  { key: "iris", name: "Iris", turns: 3, live: true, unreached: true },
 ];
 
 const LIVE_STARTED = Date.now() - 95_000;
 const liveAt = (second: number) => new Date(LIVE_STARTED + second * 1000).toISOString();
+
+function personSaid(id: string, createdAt: string, text: string): TimelineEntry {
+  return {
+    id,
+    kind: "message",
+    createdAt,
+    message: {
+      id: MessageId.make(id),
+      role: "user",
+      text,
+      turnId: null,
+      createdAt,
+      updatedAt: createdAt,
+      streaming: false,
+    },
+  };
+}
+
+/**
+ * The conversation of a Mate whose last message but one never got a run: the
+ * person's message 17 h 40 m before the run going now, and that run's first
+ * thought still streaming. Built once, so the list meets the same rows.
+ */
+const unreachedConversations = new Map<string, TimelineEntry[]>();
+function unreachedConversationOf(thread: HarnessThread): TimelineEntry[] {
+  const known = unreachedConversations.get(thread.key);
+  if (known) return known;
+  const last = thread.turns - 1;
+  const thought = `${thread.key}-thought-${last}`;
+  const entries: TimelineEntry[] = [
+    ...Array.from({ length: last }, (_, turn) =>
+      turnEntries(thread.key, turn, 3 + ((turn * 7) % 6)),
+    ).flat(),
+    personSaid(
+      `${thread.key}-ask-unreached`,
+      new Date(LIVE_STARTED - (17 * 60 + 40) * 60_000).toISOString(),
+      "Is the cache warmed on deploy?",
+    ),
+    personSaid(`${thread.key}-ask-${last}`, liveAt(0), ASKS[last % ASKS.length]!),
+    {
+      id: thought,
+      kind: "message",
+      createdAt: liveAt(3),
+      message: {
+        id: MessageId.make(thought),
+        role: "reasoning",
+        text: "Reading how the import files list the services before answering.",
+        turnId: TurnId.make(`${thread.key}-turn-${last}`),
+        createdAt: liveAt(3),
+        updatedAt: liveAt(3),
+        streaming: true,
+      },
+    },
+  ];
+  unreachedConversations.set(thread.key, entries);
+  return entries;
+}
 
 /**
  * The live run streams from the page's load, shown or not: its answer grows
@@ -200,6 +304,18 @@ const STREAM_STARTED = Date.now();
  * watched and sampled in the real list.
  */
 const END_MS = Number(params.get("end") ?? 0);
+/**
+ * `?first=<ms>`: the live run has done nothing yet — its Mate thinks, and its
+ * card holds its line alone — until its first call lands that long after the
+ * page loads; then a call lands every second, its answer on its way.
+ */
+const FIRST_MS = Number(params.get("first") ?? 0);
+/**
+ * `?deploy=<from>,<to>`: a deploy to stage runs alongside the live run from
+ * <from> ms after the page loads, its bar under the live line, and is done at
+ * <to> — its bar leaves, as a finished one does.
+ */
+const DEPLOY_MS = params.get("deploy")?.split(",").map(Number) ?? null;
 const runEnded = () => END_MS > 0 && Date.now() - STREAM_STARTED >= END_MS;
 const streamTick = () => Math.floor((Date.now() - STREAM_STARTED) / STREAM_EVERY_MS);
 const STREAM_WORDS =
@@ -216,6 +332,13 @@ function liveTurnEntries(
 ): TimelineEntry[] {
   const turnId = TurnId.make(`${thread}-turn-${turn}`);
   const ask = `${thread}-ask-${turn}`;
+  const since = tick * STREAM_EVERY_MS;
+  const calls =
+    FIRST_MS === 0
+      ? 4 + Math.floor(tick / 20)
+      : since < FIRST_MS
+        ? 0
+        : 1 + Math.floor((since - FIRST_MS) / 1000);
   return [
     {
       id: ask,
@@ -231,7 +354,7 @@ function liveTurnEntries(
         streaming: false,
       },
     },
-    ...Array.from({ length: 4 + Math.floor(tick / 20) }, (_, call): TimelineEntry => {
+    ...Array.from({ length: calls }, (_, call): TimelineEntry => {
       const id = `${thread}-call-${turn}-${call}`;
       return {
         id,
@@ -250,28 +373,80 @@ function liveTurnEntries(
         },
       };
     }),
-    {
-      id: `${thread}-answer-${turn}`,
-      kind: "message",
-      createdAt: liveAt(95),
-      message: {
-        id: MessageId.make(`${thread}-answer-${turn}`),
-        role: "assistant",
-        text: Array.from(
-          { length: 6 + tick },
-          (_, word) => STREAM_WORDS[word % STREAM_WORDS.length],
-        ).join(" "),
-        turnId,
-        createdAt: liveAt(95),
-        updatedAt: liveAt(95),
-        streaming: !ended,
-      },
-    },
+    ...(DEPLOY_MS !== null && since >= DEPLOY_MS[0]!
+      ? [liveDeploy(thread, turn, turnId, since < DEPLOY_MS[1]! && !ended)]
+      : []),
+    ...(calls === 0 && !ended ? [] : [liveAnswer(thread, turn, turnId, tick, ended)]),
   ];
+}
+
+/** The deploy running alongside the live run (`?deploy=`), or done. */
+function liveDeploy(thread: string, turn: number, turnId: TurnId, running: boolean): TimelineEntry {
+  const id = `${thread}-deploy-${turn}`;
+  return {
+    id,
+    kind: "operation",
+    createdAt: liveAt(60),
+    operation: {
+      key: `op:${id}`,
+      kind: "deploy",
+      phase: running ? "running" : "done",
+      anchorAt: liveAt(60),
+      anchorActivityId: `activity-${id}`,
+      ...(running ? {} : { settledAt: liveAt(90) }),
+      turnId,
+      subject: "stage",
+      kicker: "Deploy · stage",
+      voice: "Deploying to stage",
+      voiceSource: "mate",
+      statusWord: running ? "Deploying" : "Deployed",
+      steps: [
+        { id: "build", label: "Build", state: "done", stateLabel: "Done" },
+        {
+          id: "deploy",
+          label: "Deploy",
+          state: running ? "running" : "done",
+          stateLabel: running ? "Running build commands from zerops.yml" : "Done",
+        },
+      ],
+      links: [],
+      callIds: [`call-${id}`],
+      target: { hostname: "stage" },
+      hasResult: !running,
+    },
+  };
+}
+
+/** The live run's answer, streaming until the run ends. */
+function liveAnswer(
+  thread: string,
+  turn: number,
+  turnId: TurnId,
+  tick: number,
+  ended: boolean,
+): TimelineEntry {
+  return {
+    id: `${thread}-answer-${turn}`,
+    kind: "message",
+    createdAt: liveAt(95),
+    message: {
+      id: MessageId.make(`${thread}-answer-${turn}`),
+      role: "assistant",
+      text: Array.from(
+        { length: 6 + tick },
+        (_, word) => STREAM_WORDS[word % STREAM_WORDS.length],
+      ).join(" "),
+      turnId,
+      createdAt: liveAt(95),
+      updatedAt: liveAt(95),
+      streaming: !ended,
+    },
+  };
 }
 
 /** A thread's conversation; the runs the person left fold to their Mate's words (K7). */
 function conversationOf(thread: HarnessThread, tick: number, ended: boolean): TimelineEntry[] {
+  if (thread.unreached) return unreachedConversationOf(thread);
   return Array.from({ length: thread.turns }, (_, turn) =>
     thread.live && turn === thread.turns - 1
       ? liveTurnEntries(thread.key, turn, tick, ended)
@@ -330,8 +505,10 @@ function useHarnessThread(key: string) {
   }, [key, opened]);
   const thread = THREADS.find((candidate) => candidate.key === key)!;
   const shown = state.key === key ? state.phase : opened.has(key) ? "syncing" : "loading";
-  // A live run's rows change every 50 ms while it is shown, until it ends.
-  const [, setStreamed] = useState(0);
+  // A live run's rows change every 50 ms while it is shown, until it ends:
+  // drawn from the tick kept in state — a tick read from the clock while
+  // rendering is one the compiler keeps from the first render.
+  const [streamed, setStreamed] = useState(streamTick);
   const [ended, setEnded] = useState(runEnded);
   useEffect(() => {
     if (!thread.live || ended) return;
@@ -341,7 +518,7 @@ function useHarnessThread(key: string) {
     }, STREAM_EVERY_MS);
     return () => clearInterval(stream);
   }, [thread.live, ended]);
-  const tick = thread.live ? (ended ? Math.floor(END_MS / STREAM_EVERY_MS) : streamTick()) : 0;
+  const tick = thread.live ? (ended ? Math.floor(END_MS / STREAM_EVERY_MS) : streamed) : 0;
   const loading = shown === "loading";
   const entries = useMemo(
     () => (loading ? [] : conversationOf(thread, tick, ended)),
@@ -380,6 +557,19 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
     [],
   );
   const latestTurn = useMemo(() => latestTurnOf(thread, ended), [thread, ended]);
+  // What runs alongside the live run, as ChatView gives it the timeline.
+  const dock = useMemo(
+    () =>
+      deriveDock({
+        timelineEntries: entries,
+        isWorking: live,
+        runningTurnId: live ? latestTurn.turnId : null,
+        agentPanelModel: emptyAgentPanelModel(),
+        plan: null,
+        pause: null,
+      }),
+    [entries, live, latestTurn],
+  );
   const loading = phase === "loading";
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
@@ -400,6 +590,7 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
             latestTurn={latestTurn}
             runningTurnId={live ? latestTurn.turnId : null}
             turnDiffSummaries={[]}
+            working={dock}
             routeThreadKey={routeThreadKey}
             onOpenTurnDiff={() => undefined}
             supportsConversationRollback={false}

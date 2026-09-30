@@ -9,8 +9,13 @@
  * face greets once, its dot fades in, what it needs unfolds from the top, and
  * the rows below slide down by transform (FLIP, 220 ms). Answer opens its box
  * right in the row, with the focus in it. Nothing moves on a first paint.
+ *
+ * A row reads the same to everybody; a press that runs or changes what runs
+ * on a login the viewer may not run is not offered (`crewActionOffered`, D6),
+ * and a row whose ··· would offer nothing has none.
  */
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type { CrewAccess, CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import {
   CREW_NEXT_WORD,
@@ -57,6 +62,7 @@ import { CrewDots, CrewPress, CrewTip, useArrived } from "./CrewParts";
 import {
   CREW_ORIGIN,
   CREW_ROW_NO_THREAD,
+  crewActionOffered,
   crewNeedsByHandle,
   crewRowModel,
   type CrewRowAction,
@@ -86,6 +92,10 @@ export interface CrewRowsProps {
   readonly onMenu: (handle: string, item: CrewmateMenuItemId) => void;
   /** The lead's plan, drawn in its row while it waits for Start. */
   readonly renderPlan: (leadWords: string | null) => ReactNode;
+  /** What this viewer may run or change on the crew. */
+  readonly access: CrewAccess;
+  /** The chat an ask for the Mate goes to is not this viewer's to run; `null` where it is. */
+  readonly askLock: CrewLock | null;
 }
 
 /** A crewmate's thread as the row reads it, through the one status resolver. */
@@ -316,10 +326,18 @@ function CrewRow(
     tries:
       tries === null
         ? null
-        : { where: tries.tries.where, enabled: tries.enabled, stops: tries.stop !== null },
+        : {
+            where: tries.tries.where,
+            enabled: tries.enabled,
+            stops: tries.stop !== null,
+            offered: tries.offered,
+          },
     busy: props.busy,
     removable: true,
+    lock: props.access.crewmate(model.handle),
   });
+  const offered = (action: CrewRowAction) =>
+    crewActionOffered(action, props.access, props.askLock, tries?.offered ?? false);
   const open = model.threadId;
   return (
     <div
@@ -349,28 +367,30 @@ function CrewRow(
             <span className="crew-dot" data-arrived={needed ? "" : undefined} />
           ) : null}
           <RowTime slot={model.slot} />
-          <Menu>
-            <MenuTrigger
-              render={
-                <button
-                  aria-label={crewMenuOfWord(model.name)}
-                  className="crew-menu-btn crew-row-menu crew-row-above"
-                  type="button"
-                />
-              }
-            >
-              <CrewDots />
-            </MenuTrigger>
-            <CrewmateMenuPopup
-              from="row"
-              model={menu}
-              onSelect={(item) => {
-                if (item === "try") tries?.press();
-                else if (item === "stop") tries?.stop?.();
-                else props.onMenu(model.handle, item);
-              }}
-            />
-          </Menu>
+          {menu.items.length === 0 ? null : (
+            <Menu>
+              <MenuTrigger
+                render={
+                  <button
+                    aria-label={crewMenuOfWord(model.name)}
+                    className="crew-menu-btn crew-row-menu crew-row-above"
+                    type="button"
+                  />
+                }
+              >
+                <CrewDots />
+              </MenuTrigger>
+              <CrewmateMenuPopup
+                from="row"
+                model={menu}
+                onSelect={(item) => {
+                  if (item === "try") tries?.press();
+                  else if (item === "stop") tries?.stop?.();
+                  else props.onMenu(model.handle, item);
+                }}
+              />
+            </Menu>
+          )}
         </div>
         {model.line2 === null ? null : <RowLine className="mt-0.5" line={model.line2} />}
         {model.line3 === null ? null : <RowLine line={model.line3} />}
@@ -385,7 +405,7 @@ function CrewRow(
             arrived={!firstNeeds.has(need.id)}
             first={index === 0}
             key={need.id}
-            need={need}
+            need={{ ...need, actions: need.actions.filter(offered) }}
             origin={origin}
             tryPress={tries === null ? null : tries.press}
             tryEnabled={tries?.enabled ?? false}
@@ -394,8 +414,12 @@ function CrewRow(
         {model.served === null ? null : (
           <p className="mt-1 text-line leading-4.5 text-muted-foreground">
             {model.served.line.text}
-            <span aria-hidden="true">{" · "}</span>
-            <Action {...props} action={model.served.action} origin={origin} quiet="text" />
+            {offered(model.served.action) ? (
+              <>
+                <span aria-hidden="true">{" · "}</span>
+                <Action {...props} action={model.served.action} origin={origin} quiet="text" />
+              </>
+            ) : null}
           </p>
         )}
         {model.next === null ? null : (

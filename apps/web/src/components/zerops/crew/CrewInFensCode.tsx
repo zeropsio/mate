@@ -3,8 +3,9 @@
  * first — the crewmate's face at 20 px, what it was, and when — the last
  * three, and *Show all N*, which opens every one (D4: every fold opens). A
  * line opens that work's review. While some of it has not shipped, the list
- * ends in "Fen hasn't shipped these yet · Ask Fen to ship them". Nothing is
- * drawn while nothing went in.
+ * ends in "Fen hasn't shipped these yet · Ask Fen to ship them" — the ask
+ * only where Fen's chat is the viewer's to run. Nothing is drawn while nothing
+ * went in.
  */
 import {
   CREW_WHAT_CHANGED,
@@ -54,7 +55,8 @@ export function CrewInFensCode({
   /** *Ask Fen to ship them*'s refusal. */
   readonly error: string | null;
   readonly onReview: (taskId: string, from: HTMLElement) => void;
-  readonly onShip: () => void;
+  /** *Ask Fen to ship them*; `null` where the viewer may not run the chat it asks in. */
+  readonly onShip: (() => void) | null;
 }) {
   const [all, setAll] = useState(false);
   const work = crewWorkInCode(tasks);
@@ -100,12 +102,16 @@ export function CrewInFensCode({
           {/* A phone's width says it short. */}
           <span className="truncate @max-md:hidden">{crewNotShippedWords(mateName)}</span>
           <span className="hidden @max-md:inline">{CREW_NOT_SHIPPED_SHORT}</span>
-          <span aria-hidden="true">·</span>
-          <CrewTextButton
-            label={crewShipWord(mateName)}
-            line={crewShipLine(mateName)}
-            onPress={onShip}
-          />
+          {onShip === null ? null : (
+            <>
+              <span aria-hidden="true">·</span>
+              <CrewTextButton
+                label={crewShipWord(mateName)}
+                line={crewShipLine(mateName)}
+                onPress={onShip}
+              />
+            </>
+          )}
         </div>
       )}
       {error === null ? null : (

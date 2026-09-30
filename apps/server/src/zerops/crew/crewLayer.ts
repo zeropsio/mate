@@ -42,6 +42,7 @@ import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
 import { ZeropsAgentAuth } from "../ZeropsAgentAuth.ts";
 import { isZeropsEnvironment } from "../ZeropsEnvironment.ts";
 import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
+import { guardCommand, guardFilesWrite } from "./crewAccess.ts";
 import * as CrewApp from "./CrewApp.ts";
 import {
   addCrewPorts,
@@ -501,8 +502,12 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
       readFiles: core
         .background(core.probeDevHosts)
         .pipe(Effect.andThen(Effect.map(core.home.read, (files) => ({ files })))),
-      writeFiles: (files) => core.home.write(files.files),
-      command: (command, principal) => run(core, command, principal, activate),
+      writeFiles: (files, principal) =>
+        guardFilesWrite(core, files, principal).pipe(Effect.andThen(core.home.write(files.files))),
+      command: (command, principal) =>
+        guardCommand(core, command, principal).pipe(
+          Effect.andThen(run(core, command, principal, activate)),
+        ),
     };
     return Context.make(CrewEngine, engine).pipe(
       Context.add(CrewThreadDirectory, directory),
