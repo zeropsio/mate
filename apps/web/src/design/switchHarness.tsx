@@ -12,7 +12,9 @@
  * `?latency=<ms>` for the first open's wait, `?stream=<ms>` for how often the
  * live Mate's answer grows, `?line=1` to head the pane with the conversation
  * line — Fen and a crew of three, each chat one of the four — so a press on
- * a face swaps the conversation as the line moves). `window.__switchHarness
+ * a face swaps the conversation as the line moves, `?first=<ms>` for a live
+ * Mate that has done nothing yet, and `?end=<ms>` for its run's end).
+ * `window.__switchHarness
  * .switchTo("juno")` switches from a script, so a per-frame sampler can watch
  * a switch it started itself.
  *
@@ -233,6 +235,12 @@ const STREAM_STARTED = Date.now();
  * watched and sampled in the real list.
  */
 const END_MS = Number(params.get("end") ?? 0);
+/**
+ * `?first=<ms>`: the live run has done nothing yet — its Mate thinks, and its
+ * card holds its line alone — until its first call lands that long after the
+ * page loads; then a call lands every second, its answer on its way.
+ */
+const FIRST_MS = Number(params.get("first") ?? 0);
 const runEnded = () => END_MS > 0 && Date.now() - STREAM_STARTED >= END_MS;
 const streamTick = () => Math.floor((Date.now() - STREAM_STARTED) / STREAM_EVERY_MS);
 const STREAM_WORDS =
@@ -249,6 +257,13 @@ function liveTurnEntries(
 ): TimelineEntry[] {
   const turnId = TurnId.make(`${thread}-turn-${turn}`);
   const ask = `${thread}-ask-${turn}`;
+  const since = tick * STREAM_EVERY_MS;
+  const calls =
+    FIRST_MS === 0
+      ? 4 + Math.floor(tick / 20)
+      : since < FIRST_MS
+        ? 0
+        : 1 + Math.floor((since - FIRST_MS) / 1000);
   return [
     {
       id: ask,
@@ -264,7 +279,7 @@ function liveTurnEntries(
         streaming: false,
       },
     },
-    ...Array.from({ length: 4 + Math.floor(tick / 20) }, (_, call): TimelineEntry => {
+    ...Array.from({ length: calls }, (_, call): TimelineEntry => {
       const id = `${thread}-call-${turn}-${call}`;
       return {
         id,
@@ -283,24 +298,35 @@ function liveTurnEntries(
         },
       };
     }),
-    {
-      id: `${thread}-answer-${turn}`,
-      kind: "message",
-      createdAt: liveAt(95),
-      message: {
-        id: MessageId.make(`${thread}-answer-${turn}`),
-        role: "assistant",
-        text: Array.from(
-          { length: 6 + tick },
-          (_, word) => STREAM_WORDS[word % STREAM_WORDS.length],
-        ).join(" "),
-        turnId,
-        createdAt: liveAt(95),
-        updatedAt: liveAt(95),
-        streaming: !ended,
-      },
-    },
+    ...(calls === 0 && !ended ? [] : [liveAnswer(thread, turn, turnId, tick, ended)]),
   ];
+}
+
+/** The live run's answer, streaming until the run ends. */
+function liveAnswer(
+  thread: string,
+  turn: number,
+  turnId: TurnId,
+  tick: number,
+  ended: boolean,
+): TimelineEntry {
+  return {
+    id: `${thread}-answer-${turn}`,
+    kind: "message",
+    createdAt: liveAt(95),
+    message: {
+      id: MessageId.make(`${thread}-answer-${turn}`),
+      role: "assistant",
+      text: Array.from(
+        { length: 6 + tick },
+        (_, word) => STREAM_WORDS[word % STREAM_WORDS.length],
+      ).join(" "),
+      turnId,
+      createdAt: liveAt(95),
+      updatedAt: liveAt(95),
+      streaming: !ended,
+    },
+  };
 }
 
 /** A thread's conversation; the runs the person left fold to their Mate's words (K7). */
