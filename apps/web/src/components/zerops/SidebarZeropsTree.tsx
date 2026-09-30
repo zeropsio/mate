@@ -55,7 +55,6 @@ import {
   groupFlow,
   hasMate,
   mateEnvironmentsEmptyReason,
-  mateNextStep,
   mateShapeOf,
   pullRequestsByMate,
   pullRequestsFolded,
@@ -116,7 +115,7 @@ import { useComposerDraftStore } from "~/composerDraftStore";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { MateComing } from "~/zerops/mateComing";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import type { FixProblem } from "~/zerops/fixRequest";
@@ -1160,14 +1159,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // Whether a Mate's own change waits on the person's review — the
     // composer's top's own rule (`mateNextStep`), on the flow Gitea answered:
     // its row and its face on the folded heading wear needs-you for it.
-    const reviewWaits = (item: T) =>
-      flow !== undefined &&
-      flow.changesKnown !== false &&
-      mateNextStep({
-        pullRequests: flow.pullRequests,
-        mateProjectId: item.project.id,
-        mateName: undefined,
-      }).kind === "review";
+    const reviewWaits = (item: T) => mateReviewWaits(flow, item.project.id);
     // Folded, the heading shows who is busy in it (M15): its Mates that need
     // you, work, stopped on an error or finished unseen, each as its row draws
     // it (`mateRowView`) — once its rows have folded away.
