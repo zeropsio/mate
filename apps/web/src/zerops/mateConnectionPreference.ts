@@ -9,11 +9,11 @@ import { useEffect } from "react";
 
 export function usePreferredConnection(
   environmentId: EnvironmentId | null,
-  admission: Pick<ConnectionAdmission, "prefer"> = connectionAdmission,
+  admission: Pick<ConnectionAdmission, "hold"> = connectionAdmission,
 ): void {
-  useEffect(() => {
-    if (environmentId === null) return;
-    admission.prefer(environmentId);
-    return () => admission.prefer(null);
-  }, [admission, environmentId]);
+  // Its own claim: leaving releases only it, never the route a conversation named meanwhile.
+  useEffect(
+    () => (environmentId === null ? undefined : admission.hold(environmentId)),
+    [admission, environmentId],
+  );
 }
