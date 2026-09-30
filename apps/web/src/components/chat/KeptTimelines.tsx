@@ -50,7 +50,7 @@ interface Shown {
  * A kept conversation stays while its Mate lists it: a Mate removed, or the
  * conversation deleted, takes its list with it.
  */
-export function useKeptTimelineAlive(): (key: string) => boolean {
+function useKeptTimelineAlive(): (key: string) => boolean {
   const threads = useThreadShells();
   return useMemo(() => {
     const present = new Set(
@@ -64,7 +64,7 @@ export function KeptTimelines({
   open,
   timeline,
   crewTimeline,
-  alive,
+  alive: aliveAsSaid,
   warm = null,
   insetSettled = true,
   Reader = WarmTimelineReader,
@@ -74,8 +74,8 @@ export function KeptTimelines({
   /** The open conversation's list, its `listRef` the pane's own. */
   readonly timeline: TimelineProps;
   readonly crewTimeline: CrewTimeline | null;
-  /** Whether a kept conversation may stay (`useKeptTimelineAlive`). */
-  readonly alive: (key: string) => boolean;
+  /** Whether a kept conversation may stay; its Mate listing it, when not said. */
+  readonly alive?: (key: string) => boolean;
   /** The conversation the person is about to open (`useWarmTimelineAsk`). */
   readonly warm?: string | null;
   /**
@@ -87,6 +87,9 @@ export function KeptTimelines({
   /** What reads an out-of-sight list's own props (`useWarmTimeline`). */
   readonly Reader?: TimelineReader;
 }) {
+  // Subscribed here, not by the view around: only the keeper hears the shells change.
+  const listed = useKeptTimelineAlive();
+  const alive = aliveAsSaid ?? listed;
   const [kept, setKept] = useState<ReadonlyArray<KeptTimeline>>(() =>
     keepTimelines([], { open, alive }),
   );

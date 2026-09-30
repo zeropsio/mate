@@ -350,7 +350,7 @@ import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog"
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
-import { KeptTimelines, useKeptTimelineAlive } from "./chat/KeptTimelines";
+import { KeptTimelines } from "./chat/KeptTimelines";
 import { useWarmTimelineAsk } from "./chat/warmTimeline";
 import { shouldTypeToFocusComposer } from "./chat/typeToFocus";
 import { rememberTimelineInset, rememberedTimelineInset } from "./chat/timelineInsets";
@@ -1550,7 +1550,6 @@ export default function ChatView(props: ChatViewProps) {
     // dismissed, before a resize would ever fire to report 0.
     bannerStackHeight: composerBannerStackElement ? composerBannerStackHeight : 0,
   });
-  const keptTimelineAlive = useKeptTimelineAlive();
   const warmTimelineAsk = useWarmTimelineAsk();
   const rememberedInset = rememberedTimelineInset(routeThreadKey);
   const timelineInsetSettled =
@@ -8122,7 +8121,6 @@ export default function ChatView(props: ChatViewProps) {
                   another's come in as they are placed. */}
               <KeptTimelines
                 open={routeThreadKey}
-                alive={keptTimelineAlive}
                 warm={warmTimelineAsk}
                 insetSettled={timelineInsetSettled}
                 crewTimeline={crewTimeline}
