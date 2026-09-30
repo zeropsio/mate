@@ -116,6 +116,8 @@ export interface BirthRecord {
   readonly placement: BirthPlacement | null;
   /** The runtimes it imports after closing the project off; absent for a birth that imports none. */
   readonly runtimes?: BirthRuntimes;
+  /** Its copy's managed services, by hostname in the tier's order; absent where it brings none. */
+  readonly managed?: ReadonlyArray<string>;
 }
 
 export interface BirthLedger {
@@ -131,6 +133,8 @@ export interface BeginBirth {
   readonly placement: BirthPlacement | null;
   /** The tier's runtimes its plan left for after the project is closed off. */
   readonly runtimes?: BirthRuntimes;
+  /** The managed services its project's first import brings, by hostname in the tier's order. */
+  readonly managed?: ReadonlyArray<string>;
 }
 
 export type BirthPatch = Partial<
@@ -244,11 +248,18 @@ function parseRuntimes(value: unknown): BirthRuntimes | null | undefined {
   };
 }
 
+/** Only drawn, so a list this build cannot read is none: it never costs the birth. */
+function parseManaged(value: unknown): ReadonlyArray<string> | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  return value.every(nonEmpty) ? (value as ReadonlyArray<string>) : undefined;
+}
+
 function parseRecord(value: unknown): BirthRecord | undefined {
   if (!isObject(value)) return undefined;
   const registration = parseRegistration(value.registration);
   const placement = parsePlacement(value.placement);
   const runtimes = parseRuntimes(value.runtimes);
+  const managed = parseManaged(value.managed);
   const { projectId, organizationId, startedAt, step, overdue, container } = value;
   const { serviceId, origin } = value;
   if (
@@ -279,6 +290,7 @@ function parseRecord(value: unknown): BirthRecord | undefined {
     origin,
     placement,
     ...(runtimes === null ? {} : { runtimes }),
+    ...(managed === undefined ? {} : { managed }),
   };
 }
 
@@ -392,6 +404,9 @@ export function makeBirthStore(ports: {
           origin: null,
           placement: input.placement ?? older?.placement ?? null,
           ...(input.runtimes === undefined ? {} : { runtimes: input.runtimes }),
+          ...(input.managed === undefined || input.managed.length === 0
+            ? {}
+            : { managed: input.managed }),
         };
         return { ...current, births: [...without(current, input.projectId), record] };
       });

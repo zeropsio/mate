@@ -196,6 +196,11 @@ export function isRuntimeService(service: ZeropsService): boolean {
   return zeropsTopologyServiceGroup(service) === "runtimes";
 }
 
+/** Whether a service keeps the project's data — the map's *Data*: a database, a cache, a store. */
+export function isManagedDataService(service: ZeropsService): boolean {
+  return zeropsTopologyServiceGroup(service) === "data";
+}
+
 /**
  * Platform service statuses that are settled. Everything else is treated as
  * transient. This keeps a status added by the platform from appearing settled

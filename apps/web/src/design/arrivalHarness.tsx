@@ -15,7 +15,11 @@
  * `window.__arrivalHarness.go(id)` moves to a state from a script. Fixtures only: nothing here
  * ships, and no route imports this module.
  */
-import { deriveBirthProgress, type BirthFacts } from "@t3tools/client-runtime/zerops/birthProgress";
+import {
+  deriveBirthProgress,
+  type BirthCopyService,
+  type BirthFacts,
+} from "@t3tools/client-runtime/zerops/birthProgress";
 import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import { EnvironmentId, type ZeropsAgentId, type ZeropsAgentLoginState } from "@t3tools/contracts";
@@ -40,10 +44,14 @@ import {
   ZeropsAgentSignInDialogPopup,
   type SignInAgent,
 } from "~/components/zerops/ZeropsAgentSignIn";
-import { ComingBelow, comingSentenceOf } from "~/components/zerops/ZeropsMateComingPage";
+import {
+  ComingBelow,
+  comingSentenceOf,
+  type ArrivalProgress,
+} from "~/components/zerops/ZeropsMateComingPage";
 import { MateEmptyStateView, type MateEmptyComing } from "~/components/zerops/ZeropsMateEmptyState";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
-import type { ArrivalService, ArrivalStepInput } from "~/zerops/mateArrival";
+import type { ArrivalStepInput } from "~/zerops/mateArrival";
 import type { MateComing } from "~/zerops/mateComing";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { mateStandUpAskLine, type MateStandUpPhase } from "~/zerops/mateStandUp";
@@ -103,20 +111,35 @@ function creatingFacts(): BirthFacts {
   };
 }
 
-/** The services the copy's import brings, as the birth may carry them (the runtimes' import). */
-const SERVICES: ReadonlyArray<ArrivalService> = [
-  { name: "db", state: "ok" },
-  { name: "cache", state: "ok" },
-  { name: "storage", state: "ok" },
-  { name: "search", state: "ok" },
-  { name: "mailpit", state: "busy" },
-  { name: "appdev", state: "waiting" },
-  { name: "webdev", state: "waiting" },
-  { name: "appstage", state: "empty" },
-  { name: "webstage", state: "empty" },
+/**
+ * The copy's managed services, what its first step waits on — shaped like a live add (2026-09-30:
+ * the project made at +40 s, its data services up by +87 s).
+ */
+const MANAGED: ReadonlyArray<BirthCopyService> = [
+  { hostname: "db", state: "done" },
+  { hostname: "cache", state: "done" },
+  { hostname: "storage", state: "done" },
+  { hostname: "search", state: "active" },
 ];
 
-function comingProgress(kind: "coming" | "coming-new" | "slow" | "not-created", nowMs: number) {
+/**
+ * The runtimes its workspace imports once the project is closed off, in the recipe's order: the
+ * utility's build and the dev halves under way, the stage halves waiting for a first deploy.
+ */
+const RUNTIMES = {
+  runtimes: [
+    { hostname: "mailpit", role: "utility", state: "active" },
+    { hostname: "appdev", role: "dev", state: "active" },
+    { hostname: "webdev", role: "dev", state: "waiting" },
+    { hostname: "appstage", role: "stage", state: "waiting" },
+    { hostname: "webstage", role: "stage", state: "waiting" },
+  ],
+} as const;
+
+function comingProgress(
+  kind: "coming" | "coming-new" | "slow" | "not-created",
+  nowMs: number,
+): ArrivalProgress {
   const mate = deriveBirthProgress(creatingFacts(), nowMs);
   if (kind === "coming-new") {
     const steps: ReadonlyArray<ArrivalStepInput> = [
@@ -130,26 +153,13 @@ function comingProgress(kind: "coming" | "coming-new" | "slow" | "not-created", 
     const steps = mate.steps.map((step): ArrivalStepInput =>
       step.id === "container"
         ? { ...step, state: "failed", detail: "It could not be created." }
-        : step.id === "project"
-          ? {
-              ...step,
-              services: SERVICES.map((service) => ({
-                ...service,
-                state: service.state === "empty" ? "empty" : "ok",
-              })),
-            }
-          : step.state === "active"
-            ? { ...step, state: "waiting" }
-            : step,
+        : step.state === "active"
+          ? { ...step, state: "waiting" }
+          : step,
     );
-    return { ...mate, steps };
+    return { ...mate, steps, managed: MANAGED.map((service) => ({ ...service, state: "done" })) };
   }
-  return {
-    ...mate,
-    steps: mate.steps.map((step): ArrivalStepInput =>
-      step.id === "project" ? { ...step, services: SERVICES } : step,
-    ),
-  };
+  return { ...mate, managed: MANAGED, runtimes: { ...RUNTIMES, state: "active", up: 0, total: 5 } };
 }
 
 const CLAUDE_URL = "https://claude.example/oauth/authorize?code=true";

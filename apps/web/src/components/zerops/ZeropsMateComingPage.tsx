@@ -33,7 +33,11 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { applyProjectCreationVerdict } from "@t3tools/client-runtime/zerops/candidates";
 import type { RouteGatePhrase } from "@t3tools/client-runtime/zerops/environments";
-import { birthRuntimesFacts } from "@t3tools/client-runtime/zerops/birthProgress";
+import {
+  birthCopyServices,
+  birthRuntimesFacts,
+  type BirthCopyService,
+} from "@t3tools/client-runtime/zerops/birthProgress";
 import type { ZeropsService } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
@@ -53,7 +57,7 @@ import {
 } from "~/zerops/mateComing";
 import { zeropsMateIdentityOf, type ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { takeMateConversation } from "~/zerops/mateOpening";
-import { arrivalSteps, comingSentence } from "~/zerops/mateArrival";
+import { arrivalSteps, comingSentence, inFirstSeenOrder } from "~/zerops/mateArrival";
 import { MATE_STAND_UP_RETRY_LABEL, mateStandUpPhase } from "~/zerops/mateStandUp";
 import { useNewMate } from "~/zerops/newMate";
 import {
@@ -326,14 +330,27 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           }),
         },
   );
+  // What its copy's first step waits on: the managed services its birth planned, else its
+  // project's own.
+  const managed = useMemo(
+    () =>
+      birthCopyServices({
+        planned: birth?.managed,
+        services: resolvedServices(inventory.services.get(projectId)),
+      }),
+    [birth?.managed, inventory.services, projectId],
+  );
   // A New project's first Mate: the project's own steps stay before the Mate's, done, as its view
   // drew them before the platform took the Mate's project — one line, one clock, from the press.
-  const lineProgress: BirthLineProgress | undefined =
+  const lineProgress: ArrivalProgress | undefined =
     progress === null
       ? undefined
-      : made === undefined
-        ? progress.progress
-        : newProjectProgress(made, progress.progress, progress.nowMs);
+      : {
+          ...(made === undefined
+            ? progress.progress
+            : newProjectProgress(made, progress.progress, progress.nowMs)),
+          ...(managed === undefined ? {} : { managed }),
+        };
 
   const [removing, setRemoving] = useState(false);
   const [trouble, setTrouble] = useState<string | null>(null);
@@ -629,7 +646,7 @@ export function ComingBelow({
   projects,
 }: {
   readonly coming: MateComing | undefined;
-  readonly progress: BirthLineProgress | undefined;
+  readonly progress: ArrivalProgress | undefined;
   readonly nowMs: number | undefined;
   readonly mate: Pick<ZeropsMateIdentity, "name" | "project">;
   readonly you: ArrivalYou | null;
@@ -640,18 +657,28 @@ export function ComingBelow({
   /** What *Go to projects* is: the router's link to the projects screen. */
   readonly projects?: ReactElement;
 }): ReactNode {
+  // Each step's services in the order first seen here: a read that orders them otherwise — the
+  // birth's recipe order handing over to the listing's own — never makes them trade places.
+  const [seen, setSeen] = useState<ReadonlyMap<string, ReadonlyArray<string>>>(() => new Map());
+  const remembered = new Map(seen);
   // A creation that stopped says why in the sentence over its steps: the steps only mark where.
-  const steps =
-    progress === undefined || nowMs === undefined ? null : (
-      <ZeropsArrivalSteps
-        steps={arrivalSteps(progress, mate, nowMs).map((step) => {
-          if (coming?.kind !== "failed") return step;
+  const arrived =
+    progress === undefined || nowMs === undefined
+      ? null
+      : arrivalSteps(progress, mate, nowMs).map((step) => {
           const { why: _said, ...marked } = step;
-          return marked;
-        })}
-        you={you}
-      />
-    );
+          const shown = coming?.kind === "failed" ? marked : step;
+          if (shown.services === undefined) return shown;
+          const kept = inFirstSeenOrder(
+            seen.get(step.id) ?? [],
+            shown.services.map((service) => service.name),
+          );
+          if (kept.seen !== seen.get(step.id)) remembered.set(step.id, kept.seen);
+          const byName = new Map(shown.services.map((service) => [service.name, service]));
+          return { ...shown, services: kept.order.flatMap((name) => byName.get(name) ?? []) };
+        });
+  if ([...remembered].some(([id, names]) => seen.get(id) !== names)) setSeen(remembered);
+  const steps = arrived === null ? null : <ZeropsArrivalSteps steps={arrived} you={you} />;
   const verb =
     coming?.kind === "failed" ? (
       coming.verb === "remove" && onRemove !== undefined ? (
@@ -681,6 +708,11 @@ export function ComingBelow({
     </div>
   );
 }
+
+/** What the arrival's steps read: the birth's line, with its copy's managed services. */
+export type ArrivalProgress = BirthLineProgress & {
+  readonly managed?: ReadonlyArray<BirthCopyService> | undefined;
+};
 
 /** A project's services once the inventory has read them; nothing while it hasn't, or failed. */
 function resolvedServices(

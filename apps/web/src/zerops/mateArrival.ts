@@ -165,19 +165,20 @@ export function arrivalFace(kind: ArrivalKind, connected: boolean): MateMarkStat
 
 // ── The steps while it comes up ──────────────────────────────────────────────────────────────
 
-/** A service of the Mate's copy of the project, on the first step's quiet line. */
+/** A service of the Mate's copy of the project, on a step's quiet line. */
 export interface ArrivalService {
   readonly name: string;
   readonly state: "ok" | "busy" | "waiting" | "failed" | "empty";
 }
 
-/**
- * A step as the Mate's birth may carry it: the services its project's import brings, where the
- * birth reads them (the runtimes' import) — drawn when present, and nothing when not.
- */
-export type ArrivalStepInput = BirthLineStep & {
-  readonly services?: ReadonlyArray<ArrivalService> | undefined;
-};
+/** A step as the Mate's birth carries it. */
+export type ArrivalStepInput = BirthLineStep;
+
+/** A service as the birth reads it: its hostname, as far as it has come. */
+interface BirthService {
+  readonly hostname: string;
+  readonly state: "waiting" | "active" | "done" | "failed";
+}
 
 /** One step of the arrival, in the person's words. */
 export interface ArrivalStep {
@@ -226,22 +227,22 @@ const timeOf = (startedAt: string | undefined, endedAt: string | undefined, nowM
 
 /**
  * The arrival's steps from the Mate's birth: its project's own steps first where it has them (a
- * New project's Git hosting and registration), then the Mate's copy of the project — the
- * services its import brings on a quiet line under it — then its workspace (the container, its
- * address, closing it off, Mate answering, the first connect: one step to the person), then the
+ * New project's Git hosting and registration), then the Mate's copy of the project — the managed
+ * services its first import brings, what it waits on, on a quiet line under it — then its
+ * workspace (the container, its address, closing it off, the runtimes' import, Mate answering,
+ * the first connect: one step to the person) with the runtimes it imports under it, then the
  * person's own sign-in, next. A New project's first Mate is the project, so its copy folds into
- * its workspace. A step's time is what its own facts measure; a step with none says none.
+ * its workspace. A step's time is what its own facts measure; a step with none says none, and a
+ * running one counts from the earliest start its facts hold, so a start read later never moves
+ * its clock back.
  */
 export function arrivalSteps(
   progress: {
     readonly steps: ReadonlyArray<ArrivalStepInput>;
+    /** The copy's managed services (`birthCopyServices`). */
+    readonly managed?: ReadonlyArray<BirthService> | undefined;
     /** The tier's runtimes, imported once the project is closed off (`birthRuntimesFacts`). */
-    readonly runtimes?: {
-      readonly runtimes: ReadonlyArray<{
-        readonly hostname: string;
-        readonly state: "waiting" | "active" | "done" | "failed";
-      }>;
-    };
+    readonly runtimes?: { readonly runtimes: ReadonlyArray<BirthService> };
   },
   mate: Named,
   nowMs: number,
@@ -273,7 +274,7 @@ export function arrivalSteps(
         project.state === "waiting" ? undefined : timeOf(project.startedAt, project.endedAt, nowMs),
       ),
       ...optional("why", project.state === "failed" ? project.detail : undefined),
-      ...optional("services", copyServices(project.services, progress.runtimes?.runtimes)),
+      ...optional("services", drawnServices(progress.managed)),
     });
   }
   const parts = foldsCopy && project !== undefined ? [project, ...workspace] : workspace;
@@ -287,10 +288,12 @@ export function arrivalSteps(
           : parts.some((step) => step.state === "active" || step.state === "done")
             ? "active"
             : "waiting";
-    // From the first of its parts with a measured start, else from its project's end.
-    const startedAt =
-      parts.find((step) => step.startedAt !== undefined)?.startedAt ??
-      (project?.state === "done" ? project.endedAt : undefined);
+    // From the earliest start its facts hold: its project's end, or a part's own start. Never
+    // the first one read, which a start read later can precede (0:12, then 0:08, measured).
+    const startedAt = earliest([
+      ...parts.map((step) => step.startedAt),
+      project?.state === "done" && !foldsCopy ? project.endedAt : undefined,
+    ]);
     const time =
       state === "active" || state === "failed" ? timeOf(startedAt, undefined, nowMs) : undefined;
     steps.push({
@@ -300,6 +303,13 @@ export function arrivalSteps(
       ...optional("time", time),
       ...optional("note", state === "active" ? WORKSPACE_ABOUT : undefined),
       ...optional("why", failed?.detail),
+      ...optional(
+        "services",
+        drawnServices([
+          ...(foldsCopy ? (progress.managed ?? []) : []),
+          ...(progress.runtimes?.runtimes ?? []),
+        ]),
+      ),
     });
   }
   steps.push({ id: "you", label: `You sign ${mate.name} in`, state: "you", note: "next" });
@@ -313,28 +323,51 @@ function optional<Key extends string, Value>(
   return (value === undefined ? {} : { [key]: value }) as { readonly [K in Key]?: Value };
 }
 
-/** How a runtime's own step reads on the copy's quiet line. */
-const RUNTIME_SERVICE_STATE: Readonly<
-  Record<"waiting" | "active" | "done" | "failed", ArrivalService["state"]>
-> = { waiting: "waiting", active: "busy", done: "ok", failed: "failed" };
+/** The earliest of the times given, as given; undefined where none reads as a time. */
+function earliest(times: ReadonlyArray<string | undefined>): string | undefined {
+  let found: { readonly at: string; readonly ms: number } | undefined;
+  for (const at of times) {
+    if (at === undefined) continue;
+    const ms = Date.parse(at);
+    if (Number.isNaN(ms) || (found !== undefined && found.ms <= ms)) continue;
+    found = { at, ms };
+  }
+  return found?.at;
+}
+
+/** How a service the birth reads is drawn on a step's quiet line. */
+const BIRTH_SERVICE_STATE: Readonly<Record<BirthService["state"], ArrivalService["state"]>> = {
+  waiting: "waiting",
+  active: "busy",
+  done: "ok",
+  failed: "failed",
+};
+
+/** A step's quiet line: each service as far as it has come; nothing when there are none. */
+function drawnServices(
+  services: ReadonlyArray<BirthService> | undefined,
+): ReadonlyArray<ArrivalService> | undefined {
+  if (services === undefined || services.length === 0) return undefined;
+  return services.map((service) => ({
+    name: service.hostname,
+    state: BIRTH_SERVICE_STATE[service.state],
+  }));
+}
 
 /**
- * The services the copy's quiet line names: what the step carries itself, else the runtimes the
- * birth imports after closing off, each as far as it has come; nothing when neither has any.
+ * Names in the order they were first seen, however a read orders them — the new ones after, in
+ * the read's order — and the order to remember: a quiet line's names never trade places while
+ * nothing about them changed (a birth's recipe order handing over to the listing's own).
  */
-function copyServices(
-  own: ReadonlyArray<ArrivalService> | undefined,
-  runtimes:
-    | ReadonlyArray<{
-        readonly hostname: string;
-        readonly state: "waiting" | "active" | "done" | "failed";
-      }>
-    | undefined,
-): ReadonlyArray<ArrivalService> | undefined {
-  if (own !== undefined && own.length > 0) return own;
-  if (runtimes === undefined || runtimes.length === 0) return undefined;
-  return runtimes.map((runtime) => ({
-    name: runtime.hostname,
-    state: RUNTIME_SERVICE_STATE[runtime.state],
-  }));
+export function inFirstSeenOrder(
+  seen: ReadonlyArray<string>,
+  names: ReadonlyArray<string>,
+): { readonly order: ReadonlyArray<string>; readonly seen: ReadonlyArray<string> } {
+  const present = new Set(names);
+  const known = new Set(seen);
+  const added = names.filter((name) => !known.has(name));
+  return {
+    order: [...seen.filter((name) => present.has(name)), ...added],
+    seen: added.length === 0 ? seen : [...seen, ...added],
+  };
 }

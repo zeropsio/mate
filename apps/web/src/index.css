@@ -6672,16 +6672,24 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 }
 
 /* ---- the Mate's steps while it comes up (`ZeropsArrivalSteps`) ---- */
+/* p25/arrival: the steps are as wide as their words, centred under the sentence on its axis —
+   not a wide block with its labels flush left and its times at the far edge. The rows share
+   one grid (subgrid), so the labels start on one line and the times end on one; the time's
+   column holds its longest form, so a tick never changes the width. */
 .arrival-steps {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 20px minmax(0, max-content) max-content;
+  column-gap: 12px;
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
 }
 
 .arrival-step {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   align-items: center;
-  column-gap: 12px;
   min-height: 32px;
 }
 
@@ -6714,6 +6722,9 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 }
 
 .arrival-step-time {
+  min-width: 136px;
+  padding-inline-start: 12px;
+  text-align: end;
   color: var(--muted-foreground);
   font-size: 13px;
   line-height: 18px;
@@ -6727,6 +6738,8 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 
 .arrival-step-sub {
   grid-column: 2 / -1;
+  /* Wraps within the words' width, never widening the steps. */
+  contain: inline-size;
   padding: 2px 0 8px;
 }
 

@@ -7,8 +7,8 @@ import {
   arrivalSentence,
   arrivalSteps,
   comingSentence,
+  inFirstSeenOrder,
   type ArrivalKind,
-  type ArrivalStepInput,
 } from "./mateArrival";
 
 const WREN = { name: "Wren", project: "Beviro" };
@@ -51,7 +51,7 @@ describe("arrivalSteps", () => {
         id: "workspace",
         label: "Wren's workspace",
         state: "active",
-        time: "0:44",
+        time: "0:47",
         note: "about 2 min",
       },
       { id: "you", label: "You sign Wren in", state: "you", note: "next" },
@@ -80,19 +80,18 @@ describe("arrivalSteps", () => {
     ]);
   });
 
-  it("draws the services the copy's import brings under it, and nothing where none are read", () => {
+  it("names the managed services under its copy, what the copy waits on, and nothing where none are read", () => {
     const progress = deriveBirthProgress(CREATING, NOW);
-    const services = [
-      { name: "db", state: "ok" as const },
-      { name: "medusadev", state: "busy" as const },
-      { name: "medusastage", state: "empty" as const },
+    const managed = [
+      { hostname: "db", state: "done" as const },
+      { hostname: "cache", state: "active" as const },
+      { hostname: "storage", state: "waiting" as const },
     ];
-    const withServices = {
-      steps: progress.steps.map((step): ArrivalStepInput =>
-        step.id === "project" ? { ...step, services } : step,
-      ),
-    };
-    expect(arrivalSteps(withServices, WREN, NOW)[0]?.services).toEqual(services);
+    expect(arrivalSteps({ ...progress, managed }, WREN, NOW)[0]?.services).toEqual([
+      { name: "db", state: "ok" },
+      { name: "cache", state: "busy" },
+      { name: "storage", state: "waiting" },
+    ]);
     expect(arrivalSteps(progress, WREN, NOW)[0]).not.toHaveProperty("services");
   });
 
@@ -102,18 +101,31 @@ describe("arrivalSteps", () => {
     { state: "waiting" as const, drawn: "waiting" as const },
     { state: "failed" as const, drawn: "failed" as const },
   ])(
-    "draws a runtime the birth imports after closing off, $state, as $drawn",
+    "draws a runtime the birth imports after closing off, $state, as $drawn under its workspace, never its copy",
     ({ state, drawn }) => {
       const progress = deriveBirthProgress(CREATING, NOW);
       const withRuntimes = {
         ...progress,
         runtimes: { runtimes: [{ hostname: "medusadev", state }] },
       };
-      expect(arrivalSteps(withRuntimes, WREN, NOW)[0]?.services).toEqual([
-        { name: "medusadev", state: drawn },
-      ]);
+      const steps = arrivalSteps(withRuntimes, WREN, NOW);
+      expect(steps[0]).not.toHaveProperty("services");
+      expect(steps[1]?.services).toEqual([{ name: "medusadev", state: drawn }]);
     },
   );
+
+  it("never moves its workspace's clock back: it counts from its project's end, though its container starts later", () => {
+    // Measured live (Gita, 2026-09-30): 0:12, then 0:08 once the container's own start was read.
+    const projectOnly: BirthFacts = {
+      ...CREATING,
+      container: { serviceId: "zcp", status: "READY_TO_DEPLOY", hasOrigin: false },
+      processes: CREATING.processes.filter((process) => process.actionName === "project.create"),
+    };
+    const later = NOW + 5_000;
+    const before = arrivalSteps(deriveBirthProgress(projectOnly, NOW), WREN, NOW)[1]?.time;
+    const after = arrivalSteps(deriveBirthProgress(CREATING, later), WREN, later)[1]?.time;
+    expect([before, after]).toEqual(["0:47", "0:52"]);
+  });
 
   it("says where its workspace stopped, in its own words", () => {
     const steps = arrivalSteps(
@@ -162,6 +174,42 @@ describe("arrivalSteps", () => {
     ]);
     // Its clock starts with the project's own creation.
     expect(steps[2]?.time).toBe("1:12");
+  });
+});
+
+describe("inFirstSeenOrder", () => {
+  it.each([
+    {
+      case: "the first read, as it comes",
+      seen: [],
+      names: ["mailpit", "medusadev"],
+      order: ["mailpit", "medusadev"],
+      remembered: ["mailpit", "medusadev"],
+    },
+    {
+      // A live add, 2026-09-30: the birth's recipe order, then the listing's own at 168 s.
+      case: "a later read in another order, as first seen",
+      seen: ["mailpit", "medusadev", "nextstoredev"],
+      names: ["nextstoredev", "medusadev", "mailpit"],
+      order: ["mailpit", "medusadev", "nextstoredev"],
+      remembered: ["mailpit", "medusadev", "nextstoredev"],
+    },
+    {
+      case: "a name new to it, after the ones it has seen",
+      seen: ["db", "cache"],
+      names: ["search", "cache", "db"],
+      order: ["db", "cache", "search"],
+      remembered: ["db", "cache", "search"],
+    },
+    {
+      case: "a name gone for a read, keeping its place for its return",
+      seen: ["db", "cache", "search"],
+      names: ["search", "db"],
+      order: ["db", "search"],
+      remembered: ["db", "cache", "search"],
+    },
+  ])("orders $case", ({ seen, names, order, remembered }) => {
+    expect(inFirstSeenOrder(seen, names)).toEqual({ order, seen: remembered });
   });
 });
 
